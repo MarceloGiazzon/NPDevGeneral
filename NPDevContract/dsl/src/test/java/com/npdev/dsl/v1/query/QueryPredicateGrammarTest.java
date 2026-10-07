@@ -121,6 +121,21 @@ class QueryPredicateGrammarTest {
         assertEquals(PredicateLiteral.None.INSTANCE, clause.literal());
     }
 
+    /** Pigmentampas 2026-10-07: "capId != null" was refused with no hint that "is not null" exists. */
+    @Test
+    void equalsNullAndNotEqualsNullAreNullChecks() {
+        PredicateClause notNull = QueryPredicateGrammar.parseGroups("capId != null").get(0).get(0);
+        assertEquals(PredicateOperator.IS_NOT_NULL, notNull.operator());
+        assertEquals(PredicateLiteral.None.INSTANCE, notNull.literal());
+        assertEquals(new GroupByJoinGrammar.Target.Direct("capId"), notNull.path());
+        PredicateClause isNull = QueryPredicateGrammar.parseGroups("capId == NULL").get(0).get(0);
+        assertEquals(PredicateOperator.IS_NULL, isNull.operator());
+        // A quoted 'null' stays the four-letter string.
+        PredicateClause text = QueryPredicateGrammar.parseGroups("note == 'null'").get(0).get(0);
+        assertEquals(PredicateOperator.EQ, text.operator());
+        assertEquals(new PredicateLiteral.Value("null"), text.literal());
+    }
+
     @Test
     void isNotNullIsNotMisreadAsIsNull() {
         // "is not null" contains "is null" is NOT a substring relationship the other way, but this

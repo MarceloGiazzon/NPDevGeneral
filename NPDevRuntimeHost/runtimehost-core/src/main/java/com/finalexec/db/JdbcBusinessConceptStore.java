@@ -1447,7 +1447,15 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         if (isUuidColumn(column)) {
             return coerceId(value);
         }
-        if (value instanceof Map<?, ?> || value instanceof List<?>) {
+        // A JSON-backed DSL field (object/array/file/json) carrying any other non-text Java value --
+        // e.g. a typed file handle the CRUD path hands through -- is serialized the same way, never
+        // given to the driver as JAVA_OBJECT (2026-10-07: approving a Cap with a file field 500'd).
+        boolean jsonField = dslType != null && switch (dslType.trim().toLowerCase(Locale.ROOT)) {
+            case "object", "array", "file", "json" -> true;
+            default -> false;
+        };
+        if (value instanceof Map<?, ?> || value instanceof List<?>
+                || (jsonField && !(value instanceof CharSequence) && !(value instanceof byte[]))) {
             // Object/array/file DSL fields map to a JSON/JSONB column (SqlTypeSupport). Handing the
             // JDBC driver a raw Map/List makes it default to JAVA_OBJECT, which H2 (and Postgres)
             // both reject for a JSON-typed column ("Data conversion error converting JAVA_OBJECT

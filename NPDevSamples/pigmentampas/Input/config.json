@@ -3,7 +3,7 @@
   "configVersion": "1.0",
   "scenario": {
     "name": "pigmentampas",
-    "description": "S6 (NPDEV_MEGA_ROADMAP.md): greenfield pigment store -- minimal end-to-end proof. Explicit packs[] composes identity + workspace + tracing (WmsOffice's proven pattern -- internal.tables composes AFTER semantic validation, so a user concept referencing a pack concept, like Credential -> identity::User, cannot validate under that mechanism); auth.mode=jwt gives Google signup/link/login plus username/password via the Credential concept; every screen is declaratively generated (zero hand-authored HTML).",
+    "description": "Pigmentampas -- paint with beer caps: cap catalogue, collections, 20x33 hex cap mosaics (aggregate), dashboard. The NPDev demo + maturity evaluation for visual, non-CRUD apps (plan PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07). Explicit packs[] composes identity + workspace + tracing; auth.mode=jwt (Google + username/password via Credential).",
     "outputRoot": "..\\Output"
   },
   "generator": {
@@ -48,7 +48,7 @@
     "runtimeUrl": "http://localhost:8084/",
     "databaseMode": "step0-h2",
     "notes": [
-      "S6 Pigmentampas: jwt-mode greenfield proof app on port 8084."
+      "Pigmentampas: beer-cap mosaic studio on port 8084."
     ]
   }
 }

@@ -101,6 +101,16 @@ public final class LiveConceptGatewaySemanticPolicy implements ConceptGatewaySem
     }
 
     @Override
+    public Optional<String> rowReadRule(String conceptName) {
+        return current().rowReadRule(conceptName);
+    }
+
+    @Override
+    public Object evaluateFieldDefault(String expression, java.util.Map<String, Object> data, String tenantId) {
+        return current().evaluateFieldDefault(expression, data, tenantId);
+    }
+
+    @Override
     public Optional<String> resolveReferenceTarget(String conceptName, String fieldName) {
         return current().resolveReferenceTarget(conceptName, fieldName);
     }

@@ -85,7 +85,7 @@ public class ModelSeedRunner implements ApplicationRunner {
         if (seeds.isEmpty()) {
             return;
         }
-        ExecutionContext context = ExecutionContext.system(tenantId);
+        ExecutionContext context = ExecutionContext.seeding(tenantId);
 
         // insert-if-empty, evaluated once per distinct concept and cached -- a concept referenced
         // by 20 seed records only costs one list() round trip, not 20.

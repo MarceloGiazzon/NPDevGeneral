@@ -24,6 +24,7 @@ import com.npdev.kernel.FlowStepDefinition;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.KernelRunner;
 import com.npdev.kernel.concepts.ConceptGateway;
+import com.npdev.kernel.concepts.UserScopedExpressions;
 import com.npdev.kernel.concepts.ConceptListRequest;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.events.EventEnvelope;
@@ -281,6 +282,15 @@ public final class GeneratedCrudRuntimeSupport {
     // EntityManager (e.g. npdev.storage.mode=in-memory). Set via withConceptGateway after
     // construction rather than threaded through the constructor overloads below, since this
     // is an optional capability rather than a required dependency.
+    // The gateway's own sequence-aware defaultExpression evaluator (nextNumber('seq') allocation),
+    // so a row created through generated CRUD gets the same default a gateway write would.
+    private com.npdev.kernel.concepts.ConceptGatewaySemanticPolicy fieldDefaults;
+
+    public GeneratedCrudRuntimeSupport withFieldDefaults(com.npdev.kernel.concepts.ConceptGatewaySemanticPolicy fieldDefaults) {
+        this.fieldDefaults = fieldDefaults;
+        return this;
+    }
+
     public GeneratedCrudRuntimeSupport withConceptGateway(ConceptGateway conceptGateway) {
         this.conceptGateway = conceptGateway;
         return this;
@@ -493,7 +503,10 @@ public final class GeneratedCrudRuntimeSupport {
 
     public Map<String, Object> buildCreateInvariantPayload(String entityName, Object dto) {
         CompiledConcept entity = requireEntity(entityName);
-        return new LinkedHashMap<>(materializeEntityValues(entity, dto, null, false));
+        // The ONE allocation of a nextNumber() default for this create: the gateway write receives
+        // it in this payload (and so allocates nothing itself), and the JPA entity gets it via
+        // applyCreateFields(name, source, payload, target) -- one number per row, no gaps.
+        return new LinkedHashMap<>(materializeEntityValues(entity, dto, null, false, true));
     }
 
     public Map<String, Object> buildUpdateInvariantPayload(
@@ -503,7 +516,7 @@ public final class GeneratedCrudRuntimeSupport {
             Object dto
     ) {
         CompiledConcept entity = requireEntity(entityName);
-        Map<String, Object> payload = new LinkedHashMap<>(materializeEntityValues(entity, dto, existing, true));
+        Map<String, Object> payload = new LinkedHashMap<>(materializeEntityValues(entity, dto, existing, true, false));
         payload.put("__id", id);
         payload.put("id", id);
         return payload;
@@ -637,6 +650,26 @@ public final class GeneratedCrudRuntimeSupport {
 
     public void applyCreateFields(String entityName, Object source, Object target) {
         applyEntityFields(entityName, source, target, false);
+    }
+
+    /** Create with the payload {@link #buildCreateInvariantPayload} built: also carries over the
+     *  sequence (nextNumber) values allocated there, so the entity and the gateway agree. */
+    public void applyCreateFields(String entityName, Object source, Map<String, Object> createPayload, Object target) {
+        applyEntityFields(entityName, source, target, false);
+        if (target == null || createPayload == null) {
+            return;
+        }
+        for (CompiledField field : requireEntity(entityName).getFields()) {
+            CompiledSchema schema = field == null ? null : field.getSchema();
+            if (schema == null || schema.getDefaultExpression() == null
+                    || !NEXT_NUMBER_DEFAULT.matcher(schema.getDefaultExpression()).matches()) {
+                continue;
+            }
+            Object allocated = createPayload.get(field.getName());
+            if (allocated != null && readObjectValue(target, field.getName()) == null) {
+                writeObjectValue(target, field.getName(), allocated);
+            }
+        }
     }
 
     public void applyUpdateFields(String entityName, Object source, Object target) {
@@ -2825,7 +2858,8 @@ public final class GeneratedCrudRuntimeSupport {
             CompiledConcept entity,
             Object explicitSource,
             Object existingSource,
-            boolean patchMode
+            boolean patchMode,
+            boolean allocateSequences
     ) {
         Map<String, Object> values = new LinkedHashMap<>();
         if (entity == null) {
@@ -2857,11 +2891,25 @@ public final class GeneratedCrudRuntimeSupport {
             }
         }
 
-        applySchemaValueBehaviors(entity, values);
+        applySchemaValueBehaviors(entity, values, allocateSequences);
         return values;
     }
 
-    private void applySchemaValueBehaviors(CompiledConcept entity, Map<String, Object> values) {
+    /** The row's own tenantId when the payload carries one, else the caller's (sequence scope: tenant). */
+    private String tenantForDefaults(Map<String, Object> values) {
+        Object rowTenant = readMapValue(values, "tenantId");
+        if (rowTenant != null && !String.valueOf(rowTenant).isBlank()) {
+            return String.valueOf(rowTenant);
+        }
+        return resolveCurrentExecutionContext().tenantId();
+    }
+
+    /** nextNumber('seq') allocates a counter value -- only ever on the persisting pass, never while
+     *  building a validation payload, or every create burns extra numbers (PTM-0001 then PTM-0004). */
+    private static final java.util.regex.Pattern NEXT_NUMBER_DEFAULT =
+            java.util.regex.Pattern.compile("^\\s*nextNumber\\(.*\\)\\s*$");
+
+    private void applySchemaValueBehaviors(CompiledConcept entity, Map<String, Object> values, boolean allocateSequences) {
         if (entity == null || values == null) {
             return;
         }
@@ -2884,7 +2932,16 @@ public final class GeneratedCrudRuntimeSupport {
                 }
 
                 if (currentValue == null && schema.getDefaultExpression() != null && !schema.getDefaultExpression().isBlank()) {
-                    Object evaluated = evaluateSchemaExpression(schema.getDefaultExpression(), values);
+                    boolean sequenceDefault = NEXT_NUMBER_DEFAULT.matcher(schema.getDefaultExpression()).matches();
+                    if (sequenceDefault && !allocateSequences) {
+                        continue;
+                    }
+                    Object evaluated = fieldDefaults == null
+                            ? null
+                            : fieldDefaults.evaluateFieldDefault(schema.getDefaultExpression(), values, tenantForDefaults(values));
+                    if (evaluated == null) {
+                        evaluated = evaluateSchemaExpression(schema.getDefaultExpression(), values);
+                    }
                     if (evaluated != null) {
                         Object normalizedDefault = normalizeFieldValue(entity, field, evaluated);
                         values.put(fieldName, normalizedDefault);
@@ -3470,7 +3527,7 @@ public final class GeneratedCrudRuntimeSupport {
             return;
         }
         CompiledConcept entity = requireEntity(entityName);
-        Map<String, Object> materialized = materializeEntityValues(entity, source, patchMode ? target : null, patchMode);
+        Map<String, Object> materialized = materializeEntityValues(entity, source, patchMode ? target : null, patchMode, false);
         for (CompiledField field : entity.getFields()) {
             if (field == null || field.isId()) {
                 continue;
@@ -3883,6 +3940,11 @@ public final class GeneratedCrudRuntimeSupport {
         }
         if ("false".equalsIgnoreCase(condition)) {
             return false;
+        }
+        // A guard naming the acting user ($user.roles.contains('Curator')) goes through the same
+        // evaluator the concept gateway and row access use, never the legacy matcher below.
+        if (UserScopedExpressions.referencesUser(condition)) {
+            return UserScopedExpressions.evaluate(condition, payload, resolveCurrentExecutionContext());
         }
 
         int equalsIndex = condition.indexOf("==");

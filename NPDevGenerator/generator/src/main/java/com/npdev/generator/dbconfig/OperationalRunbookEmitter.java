@@ -1831,6 +1831,9 @@ echo 'InMemory has no physical database service.'
      */
     private static String buildFinalAppScript() {
         return """
+# -SkipTests: build the runnable jar without the app's own test suite (minutes, not ten) -- the
+# change-and-look loop. The default still runs everything.
+param([switch]$SkipTests)
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
 """ + DATA_ROOT_HELPER + RUNTIMEHOST_LIBS_HELPER + """
@@ -1856,6 +1859,7 @@ if (-not [string]::IsNullOrWhiteSpace($libs) -and
 }
 if (-not [string]::IsNullOrWhiteSpace($libs)) { $gradleArgs += "-PnpdevRuntimeHostLibsDir=$libs" }
 $gradleArgs += @('clean', 'build', '--stacktrace', '--console=plain')
+if ($SkipTests) { $gradleArgs += @('-x', 'test') }
 & '.\\gradlew.bat' @gradleArgs
 exit $LASTEXITCODE
 """;
@@ -1891,6 +1895,8 @@ fi
 set -- --no-daemon
 if [ -n "$LIBS" ]; then set -- "$@" "-PnpdevRuntimeHostLibsDir=$LIBS"; fi
 set -- "$@" clean build --stacktrace --console=plain
+# NPDEV_SKIP_TESTS=1: the POSIX spelling of Build-FinalApp.ps1 -SkipTests.
+if [ "${NPDEV_SKIP_TESTS:-}" = "1" ]; then set -- "$@" -x test; fi
 exec ./gradlew "$@"
 """;
     }

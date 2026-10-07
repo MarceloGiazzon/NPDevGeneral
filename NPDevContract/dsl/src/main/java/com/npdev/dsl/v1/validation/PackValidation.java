@@ -40,6 +40,7 @@ import com.npdev.dsl.v1.ast.PresentationMetadataAst;
 import com.npdev.dsl.v1.ast.ProcedureAst;
 import com.npdev.dsl.v1.ast.ProcedureParameterAst;
 import com.npdev.dsl.v1.ast.ProcedureStepAst;
+import com.npdev.dsl.v1.query.AccessReadPredicate;
 import com.npdev.dsl.v1.query.GroupByJoinGrammar;
 import com.npdev.dsl.v1.query.QueryPredicateGrammar;
 import com.npdev.dsl.v1.ast.QueryAst;
@@ -391,11 +392,16 @@ final class PackValidation {
     private static void validateAggregateQuery(
             QueryAst query, ConceptAst concept, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         String here = "Query " + query.name();
-        if (concept.getAccess() != null && hasText(concept.getAccess().getRead())) {
+        // 2026-10-07: an access.read inside AccessReadPredicate's subset is pushed down into the
+        // aggregate's own WHERE per caller (DefaultConceptGateway#aggregate), so the totals only
+        // ever cover rows that caller may read. Anything outside the subset keeps the hard stop.
+        if (concept.getAccess() != null && hasText(concept.getAccess().getRead())
+                && !AccessReadPredicate.isTranslatable(concept.getAccess().getRead(), "")) {
             errors.add(here + ": groupBy/aggregates are not supported on concept " + concept.getName()
-                    + ", which declares access.read -- a pushed-down GROUP BY would compute totals over "
-                    + "rows the row-level access.read scope exists to hide (accepted boundary; lift when "
-                    + "access.read gains a SQL translation)");
+                    + ", whose access.read is outside the SQL-translatable subset -- a pushed-down GROUP BY "
+                    + "would compute totals over rows the row-level access.read scope exists to hide"
+                    + " -- suggestedFix: write access.read as ||/&& of field comparisons, "
+                    + "field == $user.id, or $user.roles.contains('Role') (no parentheses)");
             return;
         }
 
@@ -529,9 +535,11 @@ final class PackValidation {
             // first or last) -- a group total computed by joining through a field is exactly as much
             // of a leak as one computed directly on a restricted concept (see this method's javadoc
             // and the class-level one above it).
-            if (targetConcept.getAccess() != null && hasText(targetConcept.getAccess().getRead())) {
+            String joinPrefix = String.join(".", join.referenceFields().subList(0, hopIndex + 1)) + ".";
+            if (targetConcept.getAccess() != null && hasText(targetConcept.getAccess().getRead())
+                    && !AccessReadPredicate.isTranslatable(targetConcept.getAccess().getRead(), joinPrefix)) {
                 errors.add(here + ": groupBy join \"" + groupByField.field() + "\" crosses into concept "
-                        + targetConcept.getName() + ", which declares access.read -- a pushed-down GROUP BY "
+                        + targetConcept.getName() + ", whose access.read is outside the SQL-translatable subset -- a pushed-down GROUP BY "
                         + "would compute totals over rows the row-level access.read scope exists to hide, the "
                         + "same leak whether the restricted concept is queried directly or reached through a "
                         + "join (accepted boundary; lift when access.read gains a SQL translation)"

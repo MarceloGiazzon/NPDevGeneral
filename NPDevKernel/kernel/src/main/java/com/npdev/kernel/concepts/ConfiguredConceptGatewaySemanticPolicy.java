@@ -11,7 +11,6 @@ import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.CompiledSequence;
 import com.npdev.dsl.v1.compiled.CompiledStateMachineState;
 import com.npdev.dsl.v1.compiled.CompiledStateTransition;
-import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.dsl.v1.expr.SequenceNumberFormat;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.ports.SequenceAllocator;
@@ -192,12 +191,17 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
             initial = states.get(0);
         }
         List<StateTransition> transitions = new ArrayList<>();
+        Map<StateTransition, String> userGuards = new LinkedHashMap<>();
         for (CompiledStateTransition transition : lifecycle.getTransitions()) {
             if (hasText(transition.getFrom()) && hasText(transition.getTo())) {
-                transitions.add(new StateTransition(transition.getFrom(), transition.getTo()));
+                StateTransition key = new StateTransition(transition.getFrom(), transition.getTo());
+                transitions.add(key);
+                if (UserScopedExpressions.referencesUser(transition.getGuard())) {
+                    userGuards.put(key, transition.getGuard().trim());
+                }
             }
         }
-        return LifecycleDefinition.of(lifecycle.getStatusField(), initial, states, transitions);
+        return LifecycleDefinition.of(lifecycle.getStatusField(), initial, states, transitions, userGuards);
     }
 
     private static LinkedHashSet<String> hiddenFieldsOf(Map<String, FieldDefinition> fields) {
@@ -334,6 +338,21 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
             );
         }
 
+        // A guard naming the acting user ("only a Curator approves") is enforced here, on every
+        // write path that reaches the gateway (CRUD, agents, flows). Guards over payload fields
+        // alone keep their legacy evaluator in GeneratedCrudRuntimeSupport.
+        String userGuard = previous == null ? null : lifecycle.userGuards().get(new StateTransition(previous, next));
+        if (userGuard != null && !ExecutionContext.isSeeding(request.executionContext())
+                && !UserScopedExpressions.evaluate(userGuard, data, request.executionContext())) {
+            return ConceptSemanticDecision.deny(
+                    "CONCEPT_LIFECYCLE_GUARD_FAILED",
+                    "Concept lifecycle transition " + previous + " -> " + next + " is not allowed for this user"
+                            + " (guard: " + userGuard + ")",
+                    Map.of("concept", request.conceptName(), "statusField", statusField, "from", previous, "to", next,
+                            "guard", userGuard)
+            );
+        }
+
         return new ConceptSemanticDecision(
                 true,
                 "allowed",
@@ -460,6 +479,14 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
     }
 
     @Override
+    public Optional<String> rowReadRule(String conceptName) {
+        ConceptDefinition concept = conceptsByName.get(normalizeKey(conceptName));
+        return concept == null || concept.access() == null || !hasText(concept.access().read())
+                ? Optional.empty()
+                : Optional.of(concept.access().read());
+    }
+
+    @Override
     public Optional<String> resolveReferenceTarget(String conceptName, String fieldName) {
         ConceptDefinition concept = conceptsByName.get(normalizeKey(conceptName));
         if (concept == null) {
@@ -475,6 +502,9 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
     @Override
     public boolean isRowWritable(ConceptGatewayRequestContext request) {
         ConceptDefinition concept = concept(request);
+        if (ExecutionContext.isSeeding(request.executionContext())) {
+            return true;
+        }
         if (concept == null || concept.access() == null || !hasText(concept.access().write())) {
             return true;
         }
@@ -500,7 +530,7 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
     @Override
     public List<String> deniedWriteFields(ConceptGatewayRequestContext request) {
         ConceptDefinition concept = concept(request);
-        if (concept == null) {
+        if (concept == null || ExecutionContext.isSeeding(request.executionContext())) {
             return List.of();
         }
         Map<String, Object> incoming = request.data();
@@ -526,59 +556,9 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         return List.copyOf(denied);
     }
 
-    /**
-     * REG-195: an access rule is evaluated via the plain two-argument {@code evaluateBoolean},
-     * which resolves to an EMPTY {@link ComputedExpression.FunctionRegistry} -- so
-     * {@code $user.roles.contains(...)}, the only idiom this platform's own docs/corpus use for
-     * "does the actor have role X" inside {@code access.read}/{@code access.write}, throws
-     * "unknown function: contains" and the catch below turned that into a permanent, silent deny
-     * regardless of the actor's roles. {@code contains} does not exist in ANY {@code
-     * ComputedExpression} caller yet (not just this one) -- it is registered here, scoped to
-     * access-rule evaluation, following the extension pattern {@code docs/EXPRESSIONS.md} already
-     * documents ("a function registry is just a Map ... a future call site can register its own
-     * without touching the grammar itself") rather than reaching into the invariant engine's
-     * adapter-side registry, which kernel has no dependency on.
-     */
-    private static final ComputedExpression.FunctionRegistry ACCESS_RULE_FUNCTIONS =
-            ComputedExpression.FunctionRegistry.of(Map.of(
-                    "contains", (args, vars) -> {
-                        Object receiver = args.get(0).eval(vars);
-                        Object needle = args.get(1).eval(vars);
-                        if (receiver instanceof java.util.SortedSet<?> roleSet) {
-                            // $user.roles (below): a case-insensitive String set, so a non-String
-                            // needle would throw ClassCastException -- it simply is not a role.
-                            return needle instanceof String && roleSet.contains(needle);
-                        }
-                        if (receiver instanceof java.util.Collection<?> collection) {
-                            return collection.contains(needle);
-                        }
-                        if (receiver instanceof String haystack) {
-                            return needle != null && haystack.contains(String.valueOf(needle));
-                        }
-                        return false;
-                    }
-            ));
-
+    /** Row/field access rules share {@link UserScopedExpressions} with lifecycle guards. */
     private static boolean evaluateAccessRule(String expression, Map<String, Object> recordData, ExecutionContext context) {
-        Map<String, Object> scope = new LinkedHashMap<>(recordData == null ? Map.of() : recordData);
-        ExecutionContext effectiveContext = context == null ? ExecutionContext.anonymous() : context;
-        scope.put("$user.id", effectiveContext.actorId());
-        scope.put("$user.actorId", effectiveContext.actorId());
-        scope.put("$user.tenantId", effectiveContext.tenantId());
-        // Role names are case-insensitive identifiers platform-wide (ExecutionContext upper-cases
-        // them), so a model's natural $user.roles.contains('Staff') must match a STAFF actor.
-        java.util.SortedSet<String> roles = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        roles.addAll(effectiveContext.roles());
-        scope.put("$user.roles", roles);
-        try {
-            return ComputedExpression.evaluateBoolean(expression, scope, ACCESS_RULE_FUNCTIONS);
-        } catch (ComputedExpression.ExpressionException malformed) {
-            // Fail closed: a row-level access rule that doesn't evaluate cleanly must never
-            // silently grant access -- SemanticValidator already rejects this at model-compile
-            // time, so reaching this at runtime means something bypassed validation (e.g. a
-            // hand-edited compiled model); denying is the only safe default.
-            return false;
-        }
+        return UserScopedExpressions.evaluate(expression, recordData, context);
     }
 
     private static boolean canApplyDefault(ConceptDefinition concept, FieldDefinition field) {
@@ -618,7 +598,8 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
      * way any other unrecognized function call does (evaluates to null) instead of failing the
      * write outright.
      */
-    private Object evaluateFieldDefault(String expression, Map<String, Object> data, String tenantId) {
+    @Override
+    public Object evaluateFieldDefault(String expression, Map<String, Object> data, String tenantId) {
         Matcher matcher = NEXT_NUMBER_PATTERN.matcher(expression == null ? "" : expression.trim());
         if (matcher.matches()) {
             CompiledSequence sequence = sequencesByName.get(normalizeKey(matcher.group(1)));
@@ -944,11 +925,18 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
             String statusField,
             String initialState,
             Set<String> states,
-            Set<StateTransition> transitions
+            Set<StateTransition> transitions,
+            Map<StateTransition, String> userGuards
     ) {
         public LifecycleDefinition {
             states = states == null ? Set.of() : Set.copyOf(states);
             transitions = transitions == null ? Set.of() : Set.copyOf(transitions);
+            userGuards = userGuards == null ? Map.of() : Map.copyOf(userGuards);
+        }
+
+        public LifecycleDefinition(String statusField, String initialState, Set<String> states,
+                                   Set<StateTransition> transitions) {
+            this(statusField, initialState, states, transitions, Map.of());
         }
 
         public static LifecycleDefinition of(
@@ -957,11 +945,23 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
                 List<String> states,
                 List<StateTransition> transitions
         ) {
+            return of(statusField, initialState, states, transitions, Map.of());
+        }
+
+        /** {@code userGuards}: transitions whose guard names {@code $user} (see UserScopedExpressions). */
+        public static LifecycleDefinition of(
+                String statusField,
+                String initialState,
+                List<String> states,
+                List<StateTransition> transitions,
+                Map<StateTransition, String> userGuards
+        ) {
             return new LifecycleDefinition(
                     statusField,
                     initialState,
                     states == null ? Set.of() : new LinkedHashSet<>(states),
-                    transitions == null ? Set.of() : new LinkedHashSet<>(transitions)
+                    transitions == null ? Set.of() : new LinkedHashSet<>(transitions),
+                    userGuards
             );
         }
     }

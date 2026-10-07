@@ -111,6 +111,108 @@ class DefaultConceptGatewayAggregateJoinAccessReadTest {
         assertEquals(10L, ((Number) result.rows().get(0).get("total")).longValue());
     }
 
+    /**
+     * 2026-10-07 (Pigmentampas): a translatable access.read on the JOINED concept is pushed down into
+     * the aggregate's WHERE for this caller -- the totals cover only warehouses the caller may read,
+     * and a role constant ($user.roles.contains) widens it per caller.
+     */
+    @Test
+    void translatableAccessReadOnAJoinedConceptScopesTheTotalsPerCaller() {
+        // The in-memory store refuses reference-path filters by design (only the JDBC store joins),
+        // so this pins the exact predicate the gateway hands the store.
+        List<ConceptAggregateQuery> seen = new java.util.ArrayList<>();
+        DefaultConceptGateway gateway = seededGateway(
+                new AccessRules("region == 'east' || $user.roles.contains('Auditor')", null), null, seen);
+        ConceptAggregateRequest request = totalByRegion();
+
+        gateway.aggregate(request, ExecutionContext.of(TENANT, "clerk"));
+        assertEquals(List.of(ConceptQuery.Filter.eq("warehouse.region", "east")), seen.get(0).filters());
+
+        ExecutionContext auditor = new ExecutionContext(TENANT, "audit-1", Map.of(), java.util.Set.of("auditor"));
+        assertEquals(2, gateway.aggregate(request, auditor).rows().size());
+        assertTrue(seen.get(1).filters().isEmpty(), seen.get(1).filters().toString());
+    }
+
+    /** The base concept's own translatable access.read ($user.id) scopes the totals to the caller's rows. */
+    @Test
+    void translatableAccessReadOnTheBaseConceptScopesTheTotalsToTheCaller() {
+        DefaultConceptGateway gateway = seededGateway(null, new AccessRules("createdBy == $user.id", null),
+                new java.util.ArrayList<>());
+        ConceptAggregateRequest request = new ConceptAggregateRequest("ShipmentEvent", TENANT,
+                new ConceptAggregateQuery(List.of(), List.of(),
+                        List.of(new ConceptAggregateQuery.AggregateFunction("total", "sum", "unitsShipped")),
+                        List.of(), List.of(), null));
+
+        ConceptAggregateResult mine = gateway.aggregate(request, ExecutionContext.of(TENANT, "ana"));
+        assertEquals(10L, ((Number) mine.rows().get(0).get("total")).longValue());
+        ConceptAggregateResult nobody = gateway.aggregate(request, ExecutionContext.of(TENANT, "zed"));
+        assertTrue(nobody.rows().isEmpty()
+                || ((Number) nobody.rows().get(0).getOrDefault("total", 0)).longValue() == 0L, nobody.rows().toString());
+    }
+
+    private static ConceptAggregateRequest totalByRegion() {
+        return new ConceptAggregateRequest("ShipmentEvent", TENANT,
+                new ConceptAggregateQuery(
+                        List.of(),
+                        List.of(new ConceptAggregateQuery.GroupByField("warehouse.region", null)),
+                        List.of(new ConceptAggregateQuery.AggregateFunction("total", "sum", "unitsShipped")),
+                        List.of(), List.of(), null));
+    }
+
+    private static DefaultConceptGateway seededGateway(
+            AccessRules warehouseRead, AccessRules shipmentRead, List<ConceptAggregateQuery> seen) {
+        CompiledModel model = joinModel();
+        InMemoryConceptStore store = new InMemoryConceptStore(model);
+        store.save(new ConceptRecord("Warehouse", "11111111-1111-1111-1111-111111111111", TENANT, Map.of("region", "east")));
+        store.save(new ConceptRecord("Warehouse", "33333333-3333-3333-3333-333333333333", TENANT, Map.of("region", "west")));
+        store.save(new ConceptRecord("ShipmentEvent", "22222222-2222-2222-2222-222222222222", TENANT,
+                Map.of("warehouse", "11111111-1111-1111-1111-111111111111", "unitsShipped", 10, "createdBy", "ana")));
+        store.save(new ConceptRecord("ShipmentEvent", "44444444-4444-4444-4444-444444444444", TENANT,
+                Map.of("warehouse", "33333333-3333-3333-3333-333333333333", "unitsShipped", 7, "createdBy", "bob")));
+        ConceptDefinition warehouse = new ConceptDefinition(
+                "Warehouse",
+                Map.of(
+                        "id", new FieldDefinition("id", true, List.of(), null, null, null),
+                        "region", new FieldDefinition("region", true, List.of(), null, null, null)
+                ),
+                List.of(), null, java.util.Set.of(), warehouseRead);
+        ConceptDefinition shipmentEvent = new ConceptDefinition(
+                "ShipmentEvent",
+                Map.of(
+                        "id", new FieldDefinition("id", true, List.of(), null, null, null),
+                        "warehouse", new FieldDefinition("warehouse", false, List.of(), null, null, null, false, "Warehouse"),
+                        "unitsShipped", new FieldDefinition("unitsShipped", true, List.of(), null, null, null),
+                        "createdBy", new FieldDefinition("createdBy", false, List.of(), null, null, null)
+                ),
+                List.of(), null, java.util.Set.of(), shipmentRead);
+        com.npdev.kernel.ports.ConceptStore recording = (com.npdev.kernel.ports.ConceptStore) java.lang.reflect.Proxy.newProxyInstance(
+                com.npdev.kernel.ports.ConceptStore.class.getClassLoader(),
+                new Class<?>[]{com.npdev.kernel.ports.ConceptStore.class},
+                (proxy, method, args) -> {
+                    if (method.getName().equals("aggregate")) {
+                        ConceptAggregateQuery query = (ConceptAggregateQuery) args[2];
+                        seen.add(query);
+                        boolean joinFilter = query.filters().stream().anyMatch(f -> f.field().contains("."));
+                        if (joinFilter) {
+                            return new ConceptAggregateResult(List.of());
+                        }
+                    }
+                    try {
+                        return method.invoke(store, args);
+                    } catch (java.lang.reflect.InvocationTargetException failure) {
+                        throw failure.getCause();
+                    }
+                });
+        return new DefaultConceptGateway(
+                recording,
+                PermissionEvaluator.allowAll(),
+                TenantIsolationPolicy.STRICT_EQUALS,
+                AuditLogStore.noop(),
+                new ConfiguredConceptGatewaySemanticPolicy(List.of(warehouse, shipmentEvent)),
+                record -> { }
+        );
+    }
+
     private static DefaultConceptGateway gatewayWithRestrictedWarehouse() {
         ConceptDefinition warehouse = new ConceptDefinition(
                 "Warehouse",
@@ -192,7 +294,8 @@ class DefaultConceptGatewayAggregateJoinAccessReadTest {
                         new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
                         new CompiledField("warehouse", "reference", "String", false, false, false,
                                 List.of(), "Warehouse"),
-                        new CompiledField("unitsShipped", "int", "Integer", false, true, false)
+                        new CompiledField("unitsShipped", "int", "Integer", false, true, false),
+                        new CompiledField("createdBy", "string", "String", false, false, false)
                 )
         );
         return new CompiledModel("s4.groupbyjoin.gateway", "1.0.0", "1.0.0",

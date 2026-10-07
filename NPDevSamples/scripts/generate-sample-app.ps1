@@ -4,7 +4,10 @@ param(
     [string]$NPDevRoot = "",
     [string]$OutputRoot = "",
     [string]$RunId = "",
-    [switch]$NoAssembleFinalApp
+    [switch]$NoAssembleFinalApp,
+    # The itemized token a refused boot prints ("Expected acknowledgment token: ...") -- written into
+    # the generated schema manifest so the next boot applies exactly those destructive items.
+    [string]$DestructiveAcknowledgment = ""
 )
 
 Set-StrictMode -Version Latest
@@ -74,6 +77,10 @@ $generatorArgs = @(
 $webAssetsRoot = Join-Path $sample.InputRoot "web"
 if (Test-Path -LiteralPath $webAssetsRoot -PathType Container) {
     $generatorArgs += @("--webAssetsRoot", $webAssetsRoot)
+}
+
+if (-not [string]::IsNullOrWhiteSpace($DestructiveAcknowledgment)) {
+    $generatorArgs += @("--destructiveAcknowledgment", $DestructiveAcknowledgment.Trim())
 }
 
 if ($NoAssembleFinalApp) {

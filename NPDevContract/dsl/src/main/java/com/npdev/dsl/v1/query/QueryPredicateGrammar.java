@@ -76,8 +76,10 @@ public final class QueryPredicateGrammar {
         public UnsupportedPredicateException(String where, String clause, String reason) {
             super("cannot compile query predicate " + quote(where)
                     + (clause == null ? "" : " at clause " + quote(clause)) + " -- " + reason
-                    + ". Supported: AND-combined single-field comparisons, "
-                    + "field (== | != | > | >= | < | <=) literal, literal being 'text', a number, "
+                    + ". Supported: clauses combined with && and || (no parentheses), each one of "
+                    + "field (== | != | > | >= | < | <= | contains | startsWith) literal, "
+                    + "field in ('a', 'b'), field is null, field is not null (or == null / != null); "
+                    + "field may be a reference path (customerId.name); literal being 'text', a number, "
                     + "true, false, or a ':name' bind placeholder. A predicate that cannot be "
                     + "compiled is refused rather than applied partially: an unenforced filter "
                     + "returns rows the author asked to exclude, with no error anywhere.");
@@ -469,6 +471,13 @@ public final class QueryPredicateGrammar {
             }
             if (literalText.isEmpty()) {
                 throw new UnsupportedPredicateException(where, clauseText, "no literal after '" + operator.token() + "'");
+            }
+            // "field == null" / "field != null" -- the spelling every author tries first -- is the
+            // same clause as "field is null" / "field is not null" (SQL's = NULL would match nothing).
+            if ("null".equalsIgnoreCase(literalText)
+                    && (operator == PredicateOperator.EQ || operator == PredicateOperator.NEQ)) {
+                return buildUnaryClause(where, clauseText, pathText,
+                        operator == PredicateOperator.EQ ? PredicateOperator.IS_NULL : PredicateOperator.IS_NOT_NULL);
             }
             return new PredicateClause(pathTarget(where, clauseText, pathText), operator,
                     parsePredicateLiteral(where, clauseText, literalText));
