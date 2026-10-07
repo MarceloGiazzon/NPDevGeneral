@@ -1485,6 +1485,43 @@
 
   // ------------------------------------------------------------- pipeline ----
 
+  // NPDevShell.api.ready(): resolves (once) with the signed-in user the first time identity is known.
+  var resolveReady;
+  var readyPromise = new Promise(function (resolve) { resolveReady = resolve; });
+
+  function currentUser() {
+    return { id: state.actorId, roles: (state.roles || []).slice(), token: state.token || findToken() };
+  }
+
+  // The documented helper for a hand-made companion page (web/*.html, wrapped by this shell): the
+  // same token, headers and error shape the generated UI uses, so a page never re-implements them.
+  //   NPDevShell.api.get("/api/caps").then(rows => ...)
+  //   NPDevShell.api.post("/api/mosaics", { title: "Sunset" })
+  //   NPDevShell.api.fileUrl(cap.image)   // an <img src> for a stored file handle
+  // A non-2xx response rejects with an Error carrying .status and .body (parsed JSON when possible).
+  function apiRequest(method, path, body) {
+    var headers = authHeaders(findToken());
+    var init = { method: method, headers: headers };
+    if (body !== undefined) {
+      headers["Content-Type"] = "application/json";
+      init.body = typeof body === "string" ? body : JSON.stringify(body);
+    }
+    return fetch(path, init).then(function (res) {
+      return res.text().then(function (raw) {
+        var parsed = null;
+        try { parsed = raw ? JSON.parse(raw) : null; } catch (ignored) { parsed = raw; }
+        if (!res.ok) {
+          var message = (parsed && (parsed.message || parsed.error)) || (method + " " + path + " -> HTTP " + res.status);
+          var error = new Error(message);
+          error.status = res.status;
+          error.body = parsed;
+          throw error;
+        }
+        return parsed;
+      });
+    });
+  }
+
   function applyData(me, menuRows, manifest, token) {
     state.token = token;
     state.roles = Array.isArray(me.roles) ? me.roles : [];
@@ -1496,6 +1533,7 @@
 
     if (maybeRedirectToLogin(manifest)) return;
 
+    resolveReady(currentUser());
     applyIdentity();
     applyCompanyName();
     renderSidebar();
@@ -2084,6 +2122,20 @@
     renderError: renderError,
     renderDenied: renderDenied,
     renderOffline: renderOffline,
+    api: {
+      ready: function () { return readyPromise; },
+      user: currentUser,
+      token: findToken,
+      request: apiRequest,
+      get: function (path) { return apiRequest("GET", path); },
+      post: function (path, body) { return apiRequest("POST", path, body === undefined ? {} : body); },
+      put: function (path, body) { return apiRequest("PUT", path, body === undefined ? {} : body); },
+      del: function (path) { return apiRequest("DELETE", path); },
+      fileUrl: function (handle) {
+        if (!handle || !handle.key) return "";
+        return "/api/files?" + new URLSearchParams({ storeId: handle.storeId || "", key: handle.key }).toString();
+      }
+    },
     mount: function (options) {
       state.hostMode = true;
       state.deriveNativeGroups = options && options.deriveNativeGroups;
