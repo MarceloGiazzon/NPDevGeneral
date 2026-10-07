@@ -8,6 +8,8 @@ import com.npdev.kernel.ports.ExternalAiGenerationRequest;
 import com.npdev.kernel.ports.ExternalAiGenerationResult;
 import com.npdev.kernel.ports.ExternalAiPackSubmission;
 import com.npdev.kernel.ports.ExternalAiRunResult;
+import com.npdev.kernel.ports.ExternalAiStructuredRequest;
+import com.npdev.kernel.ports.ExternalAiStructuredResult;
 import com.npdev.kernel.ports.ExternalAiToolCall;
 import com.npdev.kernel.ports.ExternalAiToolChatRequest;
 import com.npdev.kernel.ports.ExternalAiToolChatResult;
@@ -478,6 +480,79 @@ class HttpExternalAiCapabilityAdapterTest {
 
     private interface StubHandler {
         void handle(com.sun.net.httpserver.HttpExchange exchange) throws IOException;
+    }
+
+    @Test
+    void generateStructuredSendsGeminiJsonModeWithInlineImageAndReadsUsage() throws IOException {
+        AtomicReference<String> seenBody = new AtomicReference<>();
+        server = startStubServer("/models/gemini-3.5-flash:generateContent", exchange -> {
+            seenBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            writeJson(exchange, "{\"candidates\":[{\"content\":{\"parts\":["
+                    + "{\"text\":\"thinking...\",\"thought\":true},"
+                    + "{\"text\":\"{\\\"tags\\\":\"},{\"text\":\"[\\\"red\\\"]}\"}]}}],"
+                    + "\"usageMetadata\":{\"promptTokenCount\":120,\"candidatesTokenCount\":8,\"thoughtsTokenCount\":30}}");
+        });
+        ExternalAiVendorProfile profile = new ExternalAiVendorProfile(
+                "gemini", "http://127.0.0.1:" + server.getAddress().getPort(),
+                "gemini-3.5-flash", "NPDEV_TEST_GEMINI_KEY", ExternalAiRequestFormat.GEMINI_GENERATE_CONTENT);
+        HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(
+                List.of(profile), HttpClient.newHttpClient(), env -> "test-key");
+
+        ExternalAiStructuredResult result = adapter.generateStructured(new ExternalAiStructuredRequest(
+                "gemini", null, "tag this cap", "{\"type\":\"object\",\"required\":[\"tags\"]}",
+                new byte[] {1, 2, 3}, "image/png", 300));
+
+        JsonNode body = new ObjectMapper().readTree(seenBody.get());
+        assertEquals("tag this cap", body.at("/contents/0/parts/0/text").asText());
+        assertEquals("image/png", body.at("/contents/0/parts/1/inline_data/mime_type").asText());
+        assertEquals("AQID", body.at("/contents/0/parts/1/inline_data/data").asText());
+        assertEquals("application/json", body.at("/generationConfig/responseMimeType").asText());
+        assertEquals("object", body.at("/generationConfig/responseJsonSchema/type").asText());
+        assertEquals(300, body.at("/generationConfig/maxOutputTokens").asInt());
+
+        assertEquals("{\"tags\":[\"red\"]}", result.json(), "thought parts are skipped, text parts joined");
+        assertEquals("gemini-3.5-flash", result.model());
+        assertEquals(120, result.inputTokens());
+        assertEquals(38, result.outputTokens(), "thinking tokens bill as output");
+    }
+
+    @Test
+    void generateStructuredSendsOpenAiJsonSchemaAndStripsACodeFence() throws IOException {
+        AtomicReference<String> seenBody = new AtomicReference<>();
+        server = startStubServer("/v1/chat/completions", exchange -> {
+            seenBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            writeJson(exchange, "{\"choices\":[{\"message\":{\"content\":"
+                    + "\"```json\\n{\\\"ok\\\":true}\\n```\"}}],"
+                    + "\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":4}}");
+        });
+        ExternalAiVendorProfile profile = new ExternalAiVendorProfile(
+                "openai", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions",
+                "gpt-test", "NPDEV_TEST_OPENAI_KEY", ExternalAiRequestFormat.OPENAI_CHAT);
+        HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(
+                List.of(profile), HttpClient.newHttpClient(), env -> "test-key");
+
+        ExternalAiStructuredResult result = adapter.generateStructured(new ExternalAiStructuredRequest(
+                "openai", "gpt-override", "say ok", "{\"type\":\"object\"}", null, null, null));
+
+        JsonNode body = new ObjectMapper().readTree(seenBody.get());
+        assertEquals("gpt-override", body.path("model").asText());
+        assertEquals("json_schema", body.at("/response_format/type").asText());
+        assertEquals("object", body.at("/response_format/json_schema/schema/type").asText());
+        assertEquals("say ok", body.at("/messages/0/content").asText());
+        assertEquals("{\"ok\":true}", result.json());
+        assertEquals(10, result.inputTokens());
+        assertEquals(4, result.outputTokens());
+    }
+
+    @Test
+    void generateStructuredDeniesWhenTheApiKeyEnvVarIsUnset() {
+        HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(
+                List.of(ExternalAiVendorProfile.gemini("NPDEV_TEST_UNSET_KEY", "gemini-3.5-flash")),
+                HttpClient.newHttpClient(), env -> null);
+        ExternalAiEgressDeniedException denied = assertThrows(ExternalAiEgressDeniedException.class,
+                () -> adapter.generateStructured(new ExternalAiStructuredRequest(
+                        "gemini", null, "x", "{\"type\":\"object\"}", null, null, null)));
+        assertEquals("EGRESS_DENIED_NO_API_KEY", denied.code());
     }
 
     private HttpServer startStubServer(String path, StubHandler handler) throws IOException {

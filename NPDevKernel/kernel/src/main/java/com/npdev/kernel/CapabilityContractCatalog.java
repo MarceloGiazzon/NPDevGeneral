@@ -82,7 +82,9 @@ public final class CapabilityContractCatalog {
                                 "ingestVerdict",
                                 List.of("missionId", "vendorId", "verdictJson"),
                                 List.of("verdictRecord")
-                        )
+                        ),
+                        // P4 (G3): the flow-facing prompt run -- (promptName, input) -> validated JSON.
+                        new CapabilityOperationContract("generate", List.of("promptName", "input"), List.of("answer"))
                 )
         ));
         return catalog;

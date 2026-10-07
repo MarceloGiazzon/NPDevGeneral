@@ -497,7 +497,10 @@ public class NpdevPluginConfig {
                 ));
 
         for (CompiledCapabilityBinding binding : modelHolder.get().getBindings()) {
-            if ("eventbus".equalsIgnoreCase(binding.getCapability())) {
+            // externalAi (P4/G3) is platform-served by ExternalAiPromptRunner, never a plugin
+            // contribution -- registered directly by NpdevCapabilityBindingConfig, like eventbus.
+            if ("eventbus".equalsIgnoreCase(binding.getCapability())
+                    || "externalai".equalsIgnoreCase(binding.getCapability())) {
                 continue;
             }
             CompiledCapability capability = capabilitiesByName.get(binding.getCapability());

@@ -1292,7 +1292,13 @@
                 .then(function (folded) { if (folded) store.patch(folded); render(); refreshServerDerivedFields(); })
                 .catch(function () { render(); refreshServerDerivedFields(); });
             } else {
-              if (action.applyTo) { applyResultTo(action.applyTo, res.b); } else { store.patch(res.b); }
+              // A procedure ending in a `return` step answers with state.return -- the same rule
+              // DefaultProcedureExecutor's callProcedure applies -- so the full patch folds THAT (e.g.
+              // an externalAi suggestion {dominantColor, tags} or {cells}), not the echoed draft
+              // around it. applyTo keeps resolving its $result paths against the whole response.
+              var returned = res.b && res.b["return"];
+              var folded = returned && typeof returned === "object" && !Array.isArray(returned) ? returned : res.b;
+              if (action.applyTo) { applyResultTo(action.applyTo, res.b); } else { store.patch(folded); }
               render();
               refreshServerDerivedFields();
             }

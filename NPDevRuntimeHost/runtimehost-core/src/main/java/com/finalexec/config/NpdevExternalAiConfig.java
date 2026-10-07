@@ -1,18 +1,26 @@
 package com.finalexec.config;
 
+import com.finalexec.ai.ExternalAiPromptRunner;
 import com.npdev.adapters.externalai.http.ExternalAiVendorProfile;
 import com.npdev.adapters.externalai.http.HttpExternalAiCapabilityAdapter;
 import com.npdev.adapters.externalai.inproc.InProcExternalAiCapabilityAdapter;
+import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.ExternalAiCapabilityContract;
+import com.npdev.kernel.ports.FileStoreContract;
+import com.npdev.kernel.properties.PropertyResolver;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.math.BigDecimal;
 import java.net.http.HttpClient;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 /**
  * ADR-0009: wires the {@link ExternalAiCapabilityContract} adapter by config --
@@ -80,5 +88,42 @@ public class NpdevExternalAiConfig {
                 maxRetries,
                 Duration.ofMillis(retryBackoffMs)
         );
+    }
+
+    /**
+     * P4 (G3): the flow-facing {@code externalAi} capability -- registered into the
+     * {@code CapabilityRegistry} for a model binding {@code { "capability": "externalAi" }} (see
+     * {@code NpdevCapabilityBindingConfig}), on top of whichever contract bean above is active. Prices
+     * are USD per million tokens, used only to estimate spend for {@code externalAi.limits
+     * .monthlyCostCapUsd}; override per deployment when a vendor's list price changes.
+     */
+    @Bean
+    public ExternalAiPromptRunner externalAiPromptRunner(
+            ModelHolder modelHolder,
+            ExternalAiCapabilityContract externalAiCapabilityContract,
+            ObjectProvider<PropertyResolver> propertyResolver,
+            ObjectProvider<AuditLogStore> auditLogStore,
+            ObjectProvider<FileStoreContract> fileStore,
+            @Value("${npdev.externalai.price.gemini.inputUsdPerMTok:0.30}") BigDecimal geminiIn,
+            @Value("${npdev.externalai.price.gemini.outputUsdPerMTok:2.50}") BigDecimal geminiOut,
+            @Value("${npdev.externalai.price.anthropic.inputUsdPerMTok:5.00}") BigDecimal anthropicIn,
+            @Value("${npdev.externalai.price.anthropic.outputUsdPerMTok:25.00}") BigDecimal anthropicOut,
+            @Value("${npdev.externalai.price.openai.inputUsdPerMTok:0.15}") BigDecimal openaiIn,
+            @Value("${npdev.externalai.price.openai.outputUsdPerMTok:0.60}") BigDecimal openaiOut,
+            @Value("${npdev.externalai.price.nvidia.inputUsdPerMTok:0}") BigDecimal nvidiaIn,
+            @Value("${npdev.externalai.price.nvidia.outputUsdPerMTok:0}") BigDecimal nvidiaOut
+    ) {
+        return new ExternalAiPromptRunner(
+                modelHolder::get,
+                externalAiCapabilityContract,
+                propertyResolver::getIfAvailable,
+                auditLogStore.getIfAvailable(),
+                fileStore::getIfAvailable,
+                Map.of(
+                        "gemini", new ExternalAiPromptRunner.Price(geminiIn, geminiOut),
+                        "anthropic", new ExternalAiPromptRunner.Price(anthropicIn, anthropicOut),
+                        "openai", new ExternalAiPromptRunner.Price(openaiIn, openaiOut),
+                        "nvidia", new ExternalAiPromptRunner.Price(nvidiaIn, nvidiaOut)),
+                Clock.systemUTC());
     }
 }

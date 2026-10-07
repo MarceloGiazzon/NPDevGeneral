@@ -139,6 +139,7 @@ import com.npdev.dsl.v1.compiled.CompiledDocument;
 import com.npdev.dsl.v1.compiled.CompiledDocumentBand;
 import com.npdev.dsl.v1.compiled.CompiledDocumentLogo;
 import com.npdev.dsl.v1.compiled.CompiledExternalAi;
+import com.npdev.dsl.v1.compiled.CompiledExternalAiPrompt;
 import com.npdev.dsl.v1.compiled.CompiledSettings;
 import com.npdev.dsl.v1.compiled.CompiledTransactionHooks;
 import com.npdev.dsl.v1.compiled.CompiledDerivedField;
@@ -737,7 +738,17 @@ public final class ModelCompiler {
         if (externalAiAst == null) {
             return null;
         }
-        return new CompiledExternalAi(externalAiAst.getEgress(), externalAiAst.getVendors());
+        return new CompiledExternalAi(
+                externalAiAst.getEgress(),
+                externalAiAst.getVendors(),
+                externalAiAst.getPrompts().stream()
+                        .map(prompt -> new CompiledExternalAiPrompt(
+                                prompt.name(), prompt.description(), prompt.vendor(), prompt.model(),
+                                prompt.template(), prompt.image(), prompt.outputSchemaJson(),
+                                prompt.maxOutputTokens()))
+                        .toList(),
+                externalAiAst.getCallsPerUserPerDayProperty(),
+                externalAiAst.getMonthlyCostCapUsdProperty());
     }
 
     /** Move 6 Move A: compiles the app-level settings block, merging platform string defaults. */

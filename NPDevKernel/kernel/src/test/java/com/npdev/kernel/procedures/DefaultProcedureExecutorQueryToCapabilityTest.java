@@ -87,4 +87,33 @@ class DefaultProcedureExecutorQueryToCapabilityTest {
         assertEquals(50.0, summary.get("sum"));
         assertEquals(2, summary.get("count"));
     }
+
+    /**
+     * P4 (G3): a bare arg naming nothing in state is a literal (the flow-step rule), a missing $ref
+     * stays null, and the adapter sees the caller's tenantId/actorId the way a flow-step adapter does.
+     */
+    @Test
+    void bareUnresolvedArgsAreLiteralsAndTheAdapterSeesTheCallersIdentity() {
+        java.util.concurrent.atomic.AtomicReference<CapabilityCall> seenCall = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<Map<String, Object>> seenState = new java.util.concurrent.atomic.AtomicReference<>();
+        CapabilityDispatcher recording = (call, state) -> {
+            seenCall.set(call);
+            seenState.set(state);
+            return CapabilityResult.success(Map.of("ok", true));
+        };
+        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
+                seededGateway(), recording, NOOP_BUS, Map.of(), ProcedureExecutionLimits.defaults(), Map.of());
+
+        ProcedureExecutionResult result = executor.execute(new ProcedureDefinition("AskAi", List.of(
+                ProcedureStep.callCapability("ask", "externalAi", "ExternalAiCapability", "externalAi", "generate",
+                        List.of("PaintMosaic", "$input", "$missing"), "answer"))),
+                Map.of("description", "a red heart"), ExecutionContext.of("t1", "tito"));
+
+        assertTrue(result.ok(), () -> "procedure failed: " + result.failureCode());
+        assertEquals("PaintMosaic", seenCall.get().args().get(0));
+        assertEquals("a red heart", ((Map<?, ?>) seenCall.get().args().get(1)).get("description"));
+        assertNull(seenCall.get().args().get(2), "a missing $ref is still null, never its own text");
+        assertEquals("t1", seenState.get().get("tenantId"));
+        assertEquals("tito", seenState.get().get("actorId"));
+    }
 }

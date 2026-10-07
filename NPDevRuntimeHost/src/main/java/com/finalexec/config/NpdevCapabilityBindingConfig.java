@@ -50,6 +50,7 @@ import com.npdev.kernel.ports.SchemaValidator;
 import com.npdev.kernel.procedures.ProcedureExecutor;
 import com.npdev.kernel.security.PermissionGrant;
 import com.npdev.kernel.security.StaticPermissionEvaluator;
+import com.finalexec.ai.ExternalAiPromptRunner;
 import com.finalexec.npdev.service.ProcedureRunner;
 import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
 import com.npdev.runtime.support.InMemoryOrchestrationExecutionRegistry;
@@ -469,14 +470,17 @@ public class NpdevCapabilityBindingConfig {
             ModelHolder modelHolder,
             CapabilityAdapterResolver capabilityAdapterResolver,
             InProcMessagingCapabilityAdapter inProcMessagingCapabilityAdapter,
-            ObjectProvider<HttpMessagingCapabilityAdapter> httpMessagingCapabilityAdapterProvider
+            ObjectProvider<HttpMessagingCapabilityAdapter> httpMessagingCapabilityAdapterProvider,
+            ObjectProvider<ExternalAiPromptRunner> externalAiPromptRunnerProvider
     ) {
         CapabilityRegistry registry = new CapabilityRegistry();
         populateCapabilityRegistry(registry, modelHolder.get(), capabilityAdapterResolver,
-                inProcMessagingCapabilityAdapter, httpMessagingCapabilityAdapterProvider);
+                inProcMessagingCapabilityAdapter, httpMessagingCapabilityAdapterProvider,
+                externalAiPromptRunnerProvider);
         modelHolder.addReloadListener((before, after) -> populateCapabilityRegistry(
                 registry, after, capabilityAdapterResolver,
-                inProcMessagingCapabilityAdapter, httpMessagingCapabilityAdapterProvider));
+                inProcMessagingCapabilityAdapter, httpMessagingCapabilityAdapterProvider,
+                externalAiPromptRunnerProvider));
         return registry;
     }
 
@@ -485,7 +489,8 @@ public class NpdevCapabilityBindingConfig {
             CompiledModel compiledModel,
             CapabilityAdapterResolver capabilityAdapterResolver,
             InProcMessagingCapabilityAdapter inProcMessagingCapabilityAdapter,
-            ObjectProvider<HttpMessagingCapabilityAdapter> httpMessagingCapabilityAdapterProvider
+            ObjectProvider<HttpMessagingCapabilityAdapter> httpMessagingCapabilityAdapterProvider,
+            ObjectProvider<ExternalAiPromptRunner> externalAiPromptRunnerProvider
     ) {
         Map<String, CompiledCapability> capabilitiesByName = compiledModel.getCapabilities().stream()
                 .collect(Collectors.toMap(
@@ -512,6 +517,19 @@ public class NpdevCapabilityBindingConfig {
                         resolveMessagingAdapter(
                                 binding.getAdapter(), inProcMessagingCapabilityAdapter, httpMessagingCapabilityAdapterProvider)
                 );
+                continue;
+            }
+
+            // P4 (G3): externalAi is a platform capability (the runner owns egress, limits, schema
+            // validation and audit around the vendor port), never a plugin contribution -- same
+            // special-casing as messaging above.
+            if ("externalai".equalsIgnoreCase(binding.getCapability())) {
+                ExternalAiPromptRunner runner = externalAiPromptRunnerProvider.getIfAvailable();
+                if (runner == null) {
+                    throw new IllegalStateException("Model binds capability 'externalAi' but no "
+                            + "ExternalAiPromptRunner bean exists -- see NpdevExternalAiConfig#externalAiPromptRunner.");
+                }
+                registry.register(capability.getName(), capability.getType(), runner.adapterId(), runner);
                 continue;
             }
 

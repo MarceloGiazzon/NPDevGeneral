@@ -47,6 +47,19 @@ public interface ExternalAiCapabilityContract {
     }
 
     /**
+     * P4 (G3): send a prompt (optionally with an image) whose answer must be JSON of
+     * {@code request.responseSchemaJson()}. Fail-closed by the same inverted-default convention as
+     * {@link #submitPack}/{@link #generateText}: an adapter that has not opted in denies rather than
+     * sending. The returned JSON is unvalidated -- the flow-facing caller validates it.
+     */
+    default ExternalAiStructuredResult generateStructured(ExternalAiStructuredRequest request) {
+        throw new ExternalAiEgressDeniedException(
+                "EGRESS_DENIED",
+                "This ExternalAiCapabilityContract has no adapter opted in to structured generation; denying "
+                        + "rather than sending unchecked to vendor '" + request.vendorId() + "'.");
+    }
+
+    /**
      * The vendors this contract can actually reach, for a caller that must render a choice before
      * sending. Empty by default: an adapter that cannot generate text has no vendors to offer, and
      * an empty list is what tells a UI to say "not configured" instead of showing an empty dropdown

@@ -909,6 +909,74 @@
             "minLength": 1
           },
           "description": "Vendor ids (e.g. \"openai\") this app has opted into. Required non-empty when egress is not \"denied\" -- SemanticValidator rejects egress-enabled with no vendor configured."
+        },
+        "prompts": {
+          "type": "array",
+          "description": "P4 (G3): named prompts a flow runs with capabilityCall externalAi.generate, args [\"<prompt name>\", \"$input\"]. The vendor's answer is validated against outputSchema before the flow sees it.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "vendor",
+              "template",
+              "outputSchema"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string"
+              },
+              "vendor": {
+                "type": "string",
+                "minLength": 1,
+                "description": "One of externalAi.vendors."
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Overrides the vendor profile's default model."
+              },
+              "template": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Prompt text with {{field}} placeholders filled from the call's input map (dotted paths allowed; lists/maps are inserted as JSON)."
+              },
+              "image": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Input field holding a file reference (an image) sent alongside the text for vision."
+              },
+              "outputSchema": {
+                "type": "object",
+                "description": "JSON Schema the answer must satisfy; the vendor is asked for JSON of this shape and anything else fails the step."
+              },
+              "maxOutputTokens": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "P4 (G3): each value names a declared properties[] key, resolved through the scoped-property cascade per call. Absent = unbounded on that axis.",
+          "properties": {
+            "callsPerUserPerDay": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Property (type int) bounding generate calls per user per UTC day."
+            },
+            "monthlyCostCapUsd": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Property (type int = whole USD, or string = decimal USD like \"2.50\") bounding the tenant's estimated AI spend per UTC calendar month."
+            }
+          }
         }
       }
     },

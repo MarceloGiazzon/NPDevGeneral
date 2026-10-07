@@ -28,6 +28,65 @@
     { "name": "user", "from": "$user.id" },
     { "name": "tenant" }
   ],
+  "properties": [
+    { "name": "aiCallsPerUserPerDay", "type": "int", "default": 20,
+      "settableAt": ["tenant", "user"], "label": "AI calls per member per day" },
+    { "name": "aiMonthlyBudgetUsd", "type": "string", "default": "2.00",
+      "settableAt": ["tenant"], "label": "Monthly AI budget (USD)" }
+  ],
+  "externalAi": {
+    "egress": "apiEnabled",
+    "vendors": ["gemini"],
+    "prompts": [
+      {
+        "name": "PaintMosaic",
+        "description": "Describe it, AI paints it: a cell layout using only approved caps, folded into the open DRAFT for review.",
+        "vendor": "gemini",
+        "template": "You design beer-cap mosaics on a hex grid of {{rows}} rows by {{cols}} columns (row 0 is the top, col 0 the left; odd rows are shifted half a cell right). Paint this: {{aiPrompt}}. Fill EVERY cell (row 0..{{rows}}-1, col 0..{{cols}}-1) -- return exactly {{cellCount}} cells, one per row/col pair, never stop early -- with one cap from this palette, matching colours as closely as you can; use a background cap for areas outside the motif. Palette (use only these ids): {{palette}}",
+        "outputSchema": {
+          "type": "object",
+          "required": ["cells"],
+          "properties": {
+            "cells": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["row", "col", "capId"],
+                "properties": {
+                  "row": { "type": "integer", "minimum": 0 },
+                  "col": { "type": "integer", "minimum": 0 },
+                  "capId": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "maxOutputTokens": 60000
+      },
+      {
+        "name": "IdentifyCap",
+        "description": "Snap a cap, AI identifies it: vision suggests colours, finish and tags for a SUBMITTED cap; the Curator reviews and saves.",
+        "vendor": "gemini",
+        "template": "This is a photo of a beer bottle cap labelled '{{label}}'. Identify its dominant and accent colours as #RRGGBB hex, its finish, and up to 6 short lowercase tags (colours, motifs, brewery or brand words you can read). Return tags as one comma-separated string.",
+        "image": "image",
+        "outputSchema": {
+          "type": "object",
+          "required": ["dominantColor", "finish", "tags"],
+          "properties": {
+            "dominantColor": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+            "accentColor": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+            "finish": { "type": "string", "enum": ["GLOSSY", "MATTE", "METALLIC", "PRINTED"] },
+            "tags": { "type": "string", "maxLength": 200 }
+          }
+        },
+        "maxOutputTokens": 2048
+      }
+    ],
+    "limits": {
+      "callsPerUserPerDay": "aiCallsPerUserPerDay",
+      "monthlyCostCapUsd": "aiMonthlyBudgetUsd"
+    }
+  },
   "agentAccess": {
     "assistant": {
       "name": "Pigmentampas Assistant",
@@ -65,13 +124,19 @@
   },
   "bindings": [
     { "adapter": "repository", "capability": "persistence" },
-    { "adapter": "inproc", "capability": "eventBus" }
+    { "adapter": "inproc", "capability": "eventBus" },
+    { "adapter": "externalAi", "capability": "externalAi" }
   ],
   "capabilities": [
     {
       "name": "persistence",
       "operations": ["save", "findById"],
       "type": "PersistenceCapability"
+    },
+    {
+      "name": "externalAi",
+      "operations": ["generate"],
+      "type": "ExternalAiCapability"
     }
   ],
   "packs": [
@@ -287,6 +352,34 @@
       "collections": [
         { "name": "cells", "concept": "MosaicCell", "childField": "mosaicId", "ownership": "owned", "orderBy": "row" }
       ]
+    },
+    {
+      "name": "CapAggregate",
+      "root": "Cap",
+      "collections": []
+    }
+  ],
+  "procedures": [
+    {
+      "name": "PaintMosaicWithAi",
+      "description": "P4 (G3): reads the approved-cap palette, asks the PaintMosaic prompt for a full cell layout, and returns {cells} -- the workbench folds it into the open draft for review; nothing is saved until the member clicks Save.",
+      "steps": [
+        { "name": "approved-caps", "type": "runQuery", "query": "ApprovedCaps", "concept": "Cap", "target": "approvedCaps" },
+        { "name": "palette", "type": "mapList", "items": "$approvedCaps", "as": "cap",
+          "select": { "id": "$cap.id", "label": "$cap.label", "color": "$cap.dominantColor" }, "target": "palette" },
+        { "name": "paint", "type": "capabilityCall", "capability": "externalAi", "operation": "generate",
+          "args": { "prompt": "PaintMosaic", "input": "$input" }, "target": "painted" },
+        { "name": "return-painted", "type": "return", "value": "$painted" }
+      ]
+    },
+    {
+      "name": "IdentifyCapWithAi",
+      "description": "P4 (G3): sends the cap's image to the IdentifyCap prompt and returns suggested dominantColor/accentColor/finish/tags -- folded into the open cap for the Curator to review and save.",
+      "steps": [
+        { "name": "identify", "type": "capabilityCall", "capability": "externalAi", "operation": "generate",
+          "args": { "prompt": "IdentifyCap", "input": "$input" }, "target": "suggestion" },
+        { "name": "return-suggestion", "type": "return", "value": "$suggestion" }
+      ]
     }
   ],
   "queries": [
@@ -324,13 +417,23 @@
               "palette": { "query": "ApprovedCaps", "labelField": "label", "imageField": "image", "colorField": "dominantColor" }
             }
           }
-        }
+        },
+        "actions": [
+          { "procedure": "PaintMosaicWithAi", "label": "Paint with AI", "inputFields": ["aiPrompt"],
+            "visibleWhen": "$root.status == 'DRAFT'" }
+        ]
       } },
     { "name": "Collection", "concept": "CollectionItem", "route": "/collection",
       "surfaces": ["selection", "detail", "transaction"] },
-    { "name": "Caps", "concept": "Cap", "route": "/caps",
+    { "name": "Caps", "aggregate": "CapAggregate", "route": "/caps",
       "surfaces": ["selection", "detail", "transaction"],
-      "selection": { "columns": ["image", "label", "breweryId", "dominantColor", "finish", "rarity", "status"] } },
+      "selection": { "columns": ["image", "label", "breweryId", "dominantColor", "finish", "rarity", "status"] },
+      "transaction": {
+        "actions": [
+          { "procedure": "IdentifyCapWithAi", "label": "Identify with AI",
+            "visibleWhen": "$root.status == 'SUBMITTED'" }
+        ]
+      } },
     { "name": "Breweries", "concept": "Brewery", "route": "/breweries",
       "surfaces": ["selection", "detail", "transaction"] },
     { "name": "Members", "concept": "Member", "route": "/members",

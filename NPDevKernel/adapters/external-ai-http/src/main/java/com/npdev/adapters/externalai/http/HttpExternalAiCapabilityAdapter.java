@@ -19,6 +19,8 @@ import com.npdev.kernel.ports.ExternalAiGenerationResult;
 import com.npdev.kernel.ports.ExternalAiPackSubmission;
 import com.npdev.kernel.ports.ExternalAiPayload;
 import com.npdev.kernel.ports.ExternalAiRunResult;
+import com.npdev.kernel.ports.ExternalAiStructuredRequest;
+import com.npdev.kernel.ports.ExternalAiStructuredResult;
 import com.npdev.kernel.ports.ExternalAiToolCall;
 import com.npdev.kernel.ports.ExternalAiToolChatRequest;
 import com.npdev.kernel.ports.ExternalAiToolChatResult;
@@ -35,6 +37,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -236,6 +239,133 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
         return new ExternalAiGenerationResult(
                 profile.vendorId(), model, extractAssistantText(profile.requestFormat(), response.body()),
                 response.body());
+    }
+
+    /**
+     * P4 (G3): Gemini gets its native JSON mode ({@code responseMimeType} + {@code responseJsonSchema});
+     * the OpenAI-compatible shape gets {@code response_format: json_schema} (non-strict, since strict
+     * mode rejects ordinary schemas lacking {@code additionalProperties:false}); Anthropic has no such
+     * request field here, so the schema travels in the prompt. Every vendor's answer is re-validated by
+     * the caller regardless -- see {@link ExternalAiStructuredRequest}.
+     */
+    @Override
+    public ExternalAiStructuredResult generateStructured(ExternalAiStructuredRequest request) {
+        ExternalAiVendorProfile profile = requireConfiguredVendor(request.vendorId(), "structured prompt");
+        String apiKey = requireApiKey(profile, "structured prompt");
+        String model = (request.model() == null || request.model().isBlank()) ? profile.model() : request.model();
+
+        HttpRequest.Builder builder = HttpRequest.newBuilder();
+        applyUriAndAuth(builder, profile, apiKey, model);
+        String body;
+        try {
+            body = objectMapper.writeValueAsString(structuredBody(profile.requestFormat(), model, request));
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Failed building external AI structured request body", e);
+        }
+        HttpResponse<String> response = send(builder
+                .header("Content-Type", "application/json")
+                .timeout(requestTimeout)
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                .build(), profile);
+
+        JsonNode root = readTree(response.body());
+        String text;
+        long inputTokens;
+        long outputTokens;
+        switch (profile.requestFormat()) {
+            case GEMINI_GENERATE_CONTENT -> {
+                StringBuilder joined = new StringBuilder();
+                for (JsonNode part : root.path("candidates").path(0).path("content").path("parts")) {
+                    if (!part.path("thought").asBoolean(false) && part.path("text").isTextual()) {
+                        joined.append(part.path("text").asText());
+                    }
+                }
+                text = joined.toString();
+                JsonNode usage = root.path("usageMetadata");
+                inputTokens = usage.path("promptTokenCount").asLong(0);
+                // Thinking tokens are billed as output.
+                outputTokens = usage.path("candidatesTokenCount").asLong(0) + usage.path("thoughtsTokenCount").asLong(0);
+            }
+            case OPENAI_CHAT -> {
+                text = root.path("choices").path(0).path("message").path("content").asText("");
+                inputTokens = root.path("usage").path("prompt_tokens").asLong(0);
+                outputTokens = root.path("usage").path("completion_tokens").asLong(0);
+            }
+            case ANTHROPIC_MESSAGES -> {
+                text = firstAnthropicTextBlock(root).asText("");
+                inputTokens = root.path("usage").path("input_tokens").asLong(0);
+                outputTokens = root.path("usage").path("output_tokens").asLong(0);
+            }
+            default -> throw new IllegalStateException("Unhandled request format " + profile.requestFormat());
+        }
+        return new ExternalAiStructuredResult(profile.vendorId(), model, stripCodeFence(text), inputTokens, outputTokens);
+    }
+
+    private Map<String, Object> structuredBody(
+            ExternalAiRequestFormat format, String model, ExternalAiStructuredRequest request) {
+        JsonNode schema = readTree(request.responseSchemaJson());
+        String imageBase64 = request.hasImage() ? Base64.getEncoder().encodeToString(request.imageBytes()) : null;
+        String instructedPrompt = request.prompt()
+                + "\n\nRespond with JSON only (no prose, no code fence) that validates against this JSON Schema:\n"
+                + request.responseSchemaJson();
+        Map<String, Object> payload = new LinkedHashMap<>();
+        switch (format) {
+            case GEMINI_GENERATE_CONTENT -> {
+                List<Object> parts = new ArrayList<>();
+                parts.add(Map.of("text", request.prompt()));
+                if (imageBase64 != null) {
+                    parts.add(Map.of("inline_data", Map.of("mime_type", request.imageMimeType(), "data", imageBase64)));
+                }
+                payload.put("contents", List.of(Map.of("role", "user", "parts", parts)));
+                Map<String, Object> generationConfig = new LinkedHashMap<>();
+                generationConfig.put("responseMimeType", "application/json");
+                generationConfig.put("responseJsonSchema", schema);
+                if (request.maxOutputTokens() != null) {
+                    generationConfig.put("maxOutputTokens", request.maxOutputTokens());
+                }
+                payload.put("generationConfig", generationConfig);
+            }
+            case OPENAI_CHAT -> {
+                payload.put("model", model);
+                Object content = imageBase64 == null
+                        ? request.prompt()
+                        : List.of(Map.of("type", "text", "text", request.prompt()),
+                                Map.of("type", "image_url", "image_url",
+                                        Map.of("url", "data:" + request.imageMimeType() + ";base64," + imageBase64)));
+                payload.put("messages", List.of(Map.of("role", "user", "content", content)));
+                payload.put("response_format", Map.of("type", "json_schema",
+                        "json_schema", Map.of("name", "answer", "schema", schema, "strict", false)));
+                if (request.maxOutputTokens() != null) {
+                    payload.put("max_completion_tokens", request.maxOutputTokens());
+                }
+            }
+            case ANTHROPIC_MESSAGES -> {
+                payload.put("model", model);
+                payload.put("max_tokens", request.maxOutputTokens() != null ? request.maxOutputTokens() : ANTHROPIC_MAX_TOKENS);
+                List<Object> content = new ArrayList<>();
+                if (imageBase64 != null) {
+                    content.add(Map.of("type", "image", "source", Map.of(
+                            "type", "base64", "media_type", request.imageMimeType(), "data", imageBase64)));
+                }
+                content.add(Map.of("type", "text", "text", instructedPrompt));
+                payload.put("messages", List.of(Map.of("role", "user", "content", content)));
+            }
+            default -> throw new IllegalStateException("Unhandled request format " + format);
+        }
+        return payload;
+    }
+
+    /** A vendor that wraps JSON in a markdown fence despite being told not to still yields the JSON. */
+    static String stripCodeFence(String text) {
+        String trimmed = text == null ? "" : text.trim();
+        if (trimmed.startsWith("```")) {
+            int firstNewline = trimmed.indexOf('\n');
+            int lastFence = trimmed.lastIndexOf("```");
+            if (firstNewline > 0 && lastFence > firstNewline) {
+                return trimmed.substring(firstNewline + 1, lastFence).trim();
+            }
+        }
+        return trimmed;
     }
 
     @Override
