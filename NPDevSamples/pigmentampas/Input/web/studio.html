@@ -21,7 +21,7 @@
     .cap { border-radius: 50%; background-size: cover; background-position: center; display: inline-block; }
     .board-wrap { overflow-x: auto; padding-bottom: 8px; }
     .board { position: relative; user-select: none; }
-    .board .cell { position: absolute; width: 26px; height: 26px; cursor: crosshair; }
+    .board .cell { position: absolute; cursor: crosshair; }
     .board .cell.empty { background: #888; opacity: .25; }
     .legend { margin-top: 8px; opacity: .7; font-size: 12px; }
   </style>
@@ -40,6 +40,10 @@
       <button id="toolErase" type="button" aria-pressed="false">Erase</button>
       <button id="undo" type="button">Undo</button>
       <button id="clear" type="button">Clear</button>
+      <span style="width:12px"></span>
+      <button id="zoomOut" type="button" title="Zoom out">-</button>
+      <span id="zoomLabel">100%</span>
+      <button id="zoomIn" type="button" title="Zoom in">+</button>
     </div>
     <div id="status" class="status">Loading...</div>
     <div id="palette" class="palette" aria-label="Cap palette"></div>
@@ -52,7 +56,8 @@
     // Pigmentampas studio: a hex-offset board (odd rows shifted half a cap) painted with caps from the
     // ApprovedCaps query, saved as one MosaicAggregate commit (root Mosaic + cells[]). Only painted
     // cells are sent; a cell absent from the draft is deleted by the aggregate reconcile.
-    var ROWS = 20, COLS = 33, SIZE = 26, ROW_STEP = 23;
+    var ROWS = 20, COLS = 33, BASE_SIZE = 26, ZOOMS = [0.5, 0.65, 0.8, 1, 1.25, 1.5, 2], zoomIdx = 3;
+    var SIZE = BASE_SIZE, ROW_STEP = 23;
     var api;
     var caps = [], capById = {};
     var grid = {};          // "r,c" -> capId
@@ -88,18 +93,35 @@
       el.title = "";
     }
 
+    // Positions every cell for the current zoom; rows overlap by ~11.5% so caps nest like real ones.
+    function layoutBoard() {
+      SIZE = Math.round(BASE_SIZE * ZOOMS[zoomIdx]);
+      ROW_STEP = Math.round(SIZE * 0.885);
+      var board = $("board");
+      board.style.width = (COLS * SIZE + SIZE / 2) + "px";
+      board.style.height = ((ROWS - 1) * ROW_STEP + SIZE) + "px";
+      Object.keys(cellEls).forEach(function (k) {
+        var el = cellEls[k], r = +el.dataset.r, c = +el.dataset.c;
+        el.style.width = el.style.height = SIZE + "px";
+        el.style.left = (c * SIZE + (r % 2 ? SIZE / 2 : 0)) + "px";
+        el.style.top = (r * ROW_STEP) + "px";
+      });
+      $("zoomLabel").textContent = Math.round(ZOOMS[zoomIdx] * 100) + "%";
+    }
+
+    function zoom(step) {
+      zoomIdx = Math.max(0, Math.min(ZOOMS.length - 1, zoomIdx + step));
+      layoutBoard();
+    }
+
     function renderBoard() {
       var board = $("board");
       board.innerHTML = "";
       cellEls = {};
-      board.style.width = (COLS * SIZE + SIZE / 2) + "px";
-      board.style.height = ((ROWS - 1) * ROW_STEP + SIZE) + "px";
       for (var r = 0; r < ROWS; r++) {
         for (var c = 0; c < COLS; c++) {
           var el = document.createElement("span");
           el.className = "cap cell empty";
-          el.style.left = (c * SIZE + (r % 2 ? SIZE / 2 : 0)) + "px";
-          el.style.top = (r * ROW_STEP) + "px";
           el.dataset.r = r;
           el.dataset.c = c;
           board.appendChild(el);
@@ -107,6 +129,7 @@
           paintCellEl(key(r, c));
         }
       }
+      layoutBoard();
       updateLegend();
     }
 
@@ -290,6 +313,8 @@
       $("clear").addEventListener("click", function () {
         snapshot(); grid = {}; Object.keys(cellEls).forEach(paintCellEl); updateLegend();
       });
+      $("zoomIn").addEventListener("click", function () { zoom(1); });
+      $("zoomOut").addEventListener("click", function () { zoom(-1); });
       $("save").addEventListener("click", function () { save(false); });
       $("saveAs").addEventListener("click", function () { save(true); });
       $("mosaicPicker").addEventListener("change", function (e) {

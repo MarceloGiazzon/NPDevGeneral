@@ -4,5 +4,11 @@
     "label": "Studio",
     "requiredRole": null,
     "ordinal": 1000
+  },
+  {
+    "path": "gallery.html",
+    "label": "Gallery",
+    "requiredRole": null,
+    "ordinal": 1010
   }
 ]

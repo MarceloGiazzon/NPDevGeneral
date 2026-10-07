@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "npdev-panel-provenance.v1",
+  "panel": "Gallery",
+  "screen": "web/gallery.html",
+  "screenClass": "list",
+  "producer": "human",
+  "generatedFrom": {
+    "modelHash": null,
+    "generatedAt": "2026-10-07T00:00:00Z",
+    "generator": "hand-written companion page (path 4)",
+    "bundleScope": {}
+  },
+  "reads": [
+    "Cap.label",
+    "Cap.image",
+    "Cap.dominantColor",
+    "Mosaic.title",
+    "Mosaic.code",
+    "Mosaic.ownerUsername",
+    "Mosaic.status",
+    "Mosaic.rows",
+    "Mosaic.cols",
+    "MosaicCell.row",
+    "MosaicCell.col",
+    "MosaicCell.capId"
+  ],
+  "writes": [],
+  "invokes": [],
+  "calls": [
+    "/api/queries/ApprovedCaps",
+    "/api/queries/PublishedMosaics",
+    "/api/runtime/aggregate/MosaicAggregate",
+    "/api/files"
+  ],
+  "slotOf": null,
+  "confirmed": true,
+  "unresolved": [],
+  "handWritten": true,
+  "reviewedBy": "claude-opus-5-5",
+  "notes": "Read-only gallery of PublishedMosaics. Each card shows a 30-cell hex thumbnail (rows 3-4-5-6-5-4-3) cropped around the densest painted region, and links to studio.html?id=<id>."
+}
