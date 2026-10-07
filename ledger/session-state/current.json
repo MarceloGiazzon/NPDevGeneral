@@ -1,18 +1,19 @@
 {
-  "closedAt": "2026-10-07T11:49:51.6135560Z",
+  "closedAt": "2026-10-07T13:17:37.1221571Z",
   "branch": "main",
-  "head": "fa7d8f43",
-  "headSubject": "feat(pigmentampas): hand-made mosaic studio page; FEATURES lists hand-made pages (P3, G1c, G7)",
-  "summary": "Pigmentampas P3: committed 802e5293 (CompanionPagesMenuEmitter builds pages.json/menu.json menu seed in the generator for every builder; shell.js NPDevShell.api helper) and fa7d8f43 (NPDevSamples/pigmentampas/Input/web/studio.html hex 20x33 mosaic editor + studio.panel.json + pages.json; docs/FEATURES.md lists hand-made web/ pages + custom regions/widgets, G1c). G7 measured: 660-cell MosaicAggregate commit 1.2-3.5 s.",
-  "nextStep": "Finish P3: (1) gallery thumbnails for published mosaics (30-cell hex 3-4-5-6-5-4-3 crop of the densest region, per plan) -- likely a web/gallery.html companion page using /api/queries/PublishedMosaics + GET /api/runtime/aggregate/MosaicAggregate/{id}, linking to studio.html?id=<id>, with its own pages.json entry; (2) zoom control in studio.html; (3) the P3 done-when check: delete D:/WorkSpace/NPDev/Build/samples/pigmentampas/Output entirely, regenerate via run_digest + NPDevSamples/scripts/generate-sample-app.ps1 -SampleId pigmentampas -OutputRoot D:/WorkSpace/NPDev/Build/samples/pigmentampas/Output, build _ops/Build-FinalApp.ps1 -SkipTests, Start-App.ps1, re-run scratchpad-style Playwright check (login via page.context.request.post /api/auth/login so the npdev_jwt cookie is set -- images 401 otherwise). Delete NPDevGenerator/.gradle before committing (slimness hook). Then P3b/P4 per plan.",
+  "head": "c8e86db4",
+  "headSubject": "feat(dsl): declarative cellGrid board region for aggregate workbenches (Pigmentampas P3b)",
+  "summary": "Pigmentampas P3 finished (d2d499c9: web/gallery.html with 30-cell hex thumbnails of PublishedMosaics + studio zoom, verified on a from-scratch regenerate) and P3b shipped (c8e86db4: DSL transaction.regions render 'cellGrid' -- CellGridAst/CompiledCellGrid through schema x4, parser, canonical JSON, expander, validation, renderCellGrid in workbench-page.html.mustache; consumers Pigmentampas Mosaics hex board + dsl-conformance-max ShelfLayoutWorkbench; also fixed workbench Save showing 'Saved...' before the commit returned via new workbench.saving string).",
+  "nextStep": "Start P4 (AI as a model capability, plan section 4 row P4): design an externalAi runtime capability callable from flows -- prompt template with {{field}} bindings, JSON-schema-validated output, optional image input from a file field, per-user quota + monthly cost cap via the properties cascade, ADR-0009 egress (egress: apiEnabled, vendor allow-list), audit without prompt bodies, offline adapter for tests, Gemini first. First grep the existing externalAi top-level model key (ExternalAiAst, dsl-conformance-max has externalAi.egress) to see what already exists before designing. Pigmentampas app runs from D:/WorkSpace/NPDev/Build/samples/pigmentampas/Output on :8084, logins tito/tavo demo-pass-1, admin/demo-admin-1.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
   "blocked": "D5 Google OAuth client + Meta app must be created by the owner; D6 story names unanswered (only P8/P9 need them).",
-  "verified": "generator:test full pass (exit 0, before commit 802e5293); sample regenerated + built (-SkipTests) + booted on :8084; headless Chromium (Playwright) on studio.html: menu entry present, 660-cell board, palette images load, paint/fill/undo, save 660 cells 1.2-3.5 s, reload round-trips 660 cells; only benign theme.css + ShellCompanyName 404s. No T1/T2 gate run.",
+  "verified": "NPDevGenerator :dsl:test full suite pass + :generator:test --tests *Workbench* pass (exit 0, before c8e86db4); check-dsl-coverage, check-twin-pair-consistency, check-schema-mirror-consistency OK; headless Chromium on regenerated app: studio/gallery menu, 660-cell save+reload, gallery card->studio, MosaicsWorkbench cellGrid erase/paint/undo/zoom + Save 'Saving...'->'Saved.' with server cell count matching draft (651). No T1/T2 gate run.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "fa7d8f43 feat(pigmentampas): hand-made mosaic studio page; FEATURES lists hand-made pages (P3, G1c, G7)",
-    "802e5293 feat(generator): companion pages menu in the generator + NPDevShell.api (Pigmentampas P3, G1a/G1b)"
+    "c8e86db4 feat(dsl): declarative cellGrid board region for aggregate workbenches (Pigmentampas P3b)",
+    "d2d499c9 feat(pigmentampas): gallery page with hex thumbnails + studio zoom (P3)",
+    "c7bbcda3 chore(session): handoff after Pigmentampas P3 studio"
   ]
 }
