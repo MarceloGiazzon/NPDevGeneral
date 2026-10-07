@@ -7,12 +7,12 @@ param(
 # either ignoring it (old insert-if-empty default) or nuking every manual edit (old
 # upsert-if-fingerprint-changed). Invoked by scripts/quality/check-navigation-reprojection.py.
 #
-# NPDevSamples/scripts/generate-sample-app.ps1 has no definition/menu.json flattening step (that
-# authoring convention -- and Build-NpdevApp.ps1's Get-MenuSeedKey -- is AppGen-only, and AppGen
-# apps live outside this repo in a non-git layer, which a committed, repeatable gate cannot depend
-# on). WorkspaceMenuSeeder's real, documented input contract is the seed FILE at
+# Since 2026-10-07 the generator itself flattens a menu.json/pages.json next to model.json
+# (CompanionPagesMenuEmitter, for every builder); this probe still writes the seed file directly so
+# it can change the declared menu between two boots without regenerating. WorkspaceMenuSeeder's
+# real, documented input contract is the seed FILE at
 # npdev-seed/workspace-menu-pages-seed.json, regardless of what produced it -- so this script
-# writes that file directly, in the exact shape Build-NpdevApp.ps1 (also W1.2) produces, standing
+# writes that file directly, in the exact shape CompanionPagesMenuEmitter produces, standing
 # in for "the app author edited definition/menu.json and rebuilt." Everything downstream (boot,
 # Flyway, the reconcile SQL, the second boot against the SAME database) is completely real.
 #

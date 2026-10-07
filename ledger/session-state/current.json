@@ -1,22 +1,27 @@
 {
-  "closedAt": "2026-09-30T20:11:46.5686337Z",
+  "closedAt": "2026-10-07T07:25:57.9336196Z",
   "branch": "main",
-  "head": "915cb8bf",
-  "headSubject": "refactor(runtimehost): move supported-core classes out of .internal; convergence checks block again",
-  "summary": "Fixed every open item: REG-250 portable npdev.lock + digest-verified NPDEV_PACK_MIRRORS offline mirror (a3d55358/e73e4bf6); re-wired the app-upgrade-contract gate into the release chain as sub-gate 16/28 (7c0d3555, QUAL-59); moved 14 controllers + 24 services out of .internal and made the runtime-surface convergence checks blocking again (915cb8bf, QUAL-60); fixed the flaky existsUnique timing test (e2f44e76, REG-251). Also diagnosed a poisoned local Gradle build cache in BOTH ~/.gradle and %LOCALAPPDATA%\\NPDev\\gradle (both moved aside as build-cache-1.poisoned-20260930).",
-  "nextStep": "Ledger is fully DONE (0 open items) and main is green. Pick the next piece of platform work with the owner; optionally delete the two moved-aside caches (~/.gradle/caches/build-cache-1.poisoned-20260930 and %LOCALAPPDATA%\\NPDev\\gradle\\caches\\build-cache-1.poisoned-20260930). Known local-only red: run-final-regression-coverage-audit-tests.ps1 fails on this machine with or without changes (needs full local release-chain reports) -- not a regression.",
-  "plan": "",
-  "blocked": "",
-  "verified": "CI: NPDev Release Gate 36763312798 on 915cb8bf SUCCESS (28/28 incl. app-upgrade-contract sub-gate 16); Release Gate 36741456192 on e2f44e76 SUCCESS; AI Beta Gate 36732388481 SUCCESS; Manager harness rerun 36704513828 SUCCESS. Local on 915cb8bf: run-all-gates -Only runtimeHost PASSED, -Only aiKnowledge PASSED; run-app-upgrade-contract-gate.ps1 passed (5/5); :NPDevContract:dsl:test green; PigmentampasSampleTest green from empty cache; 96 pack CLI tests + new codemod tests OK.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "head": "831112cf",
+  "headSubject": "feat(ui): images first-class, file seeds, honest grid columns/labels (Pigmentampas P2)",
+  "summary": "Pigmentampas plan: D1-D4 answered (D1=both hand-made studio + later cellGrid, D2 public read-only, D3 Gemini, D4 English). Shipped P1 (5c1c64d8: remodelled sample; $user lifecycle guards; access.read pushed into aggregates; seeding context; nextNumber on CRUD allocated once; file-field update 500; -SkipTests; -DestructiveAcknowledgment) and P2 (831112cf: image thumbnails, file-token seeds, file store moved to data/files, selection.columns honored, DisplayLabels enum fix, shell strings from manifest). Started P3: CompanionPagesMenuEmitter (pages.json/menu.json in generator, PS block removed from Build-NpdevApp) + NPDevShell.api helper -- UNCOMMITTED.",
+  "nextStep": "Commit the uncommitted P3 platform work after running :generator:test in full (CompanionPagesMenuEmitter + test, GeneratorFacade wiring, shell.js NPDevShell.api, Build-NpdevApp.ps1 4c block removed, run-navigation-reprojection-probe.ps1 comment). Then write NPDevSamples/pigmentampas/Input/web/studio.html (+ studio.panel.json sidecar, Input/pages.json entry): hex 20x33 board, cap palette from /api/queries/ApprovedCaps using NPDevShell.api.fileUrl for images, paint/erase/fill/undo, load via GET /api/runtime/aggregate/MosaicAggregate/{id}, save via POST /api/runtime/aggregate/MosaicAggregate with root fields + cells[] (measure 660-cell commit = G7). Regenerate with generate-sample-app.ps1 -SampleId pigmentampas -OutputRoot D:/WorkSpace/NPDev/Build/samples/pigmentampas/Output, build _ops/Build-FinalApp.ps1 -SkipTests, verify in headless Chromium (login tito/demo-pass-1). Then G1c: add path 4 to docs/FEATURES.md.",
+  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
+  "blocked": "D5 Google OAuth client + Meta app must be created by the owner; D6 story names unanswered (only P8/P9 need them).",
+  "verified": "Narrow module suites, no T2 gate: dsl:test full (1041 pass), kernel:test + runtime-support:test full pass, generator:test full pass (before the shell.js/CompanionPagesMenuEmitter edits), runtimehost-core test full pass, CompanionPagesMenuEmitterTest pass. Live app on :8084: per-user aggregates, Curator guard 422/200, consecutive sequence codes, seeded cap thumbnails rendering in headless Chromium.",
+  "dirtyCount": 8,
+  "dirtyFiles": [
+    " M NPDevGenerator/generator/src/main/java/com/npdev/generator/api/GeneratorFacade.java",
+    " M NPDevGenerator/generator/src/main/resources/npdev-templates/shell.js.mustache",
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl",
+    " M scripts/appgen/Build-NpdevApp.ps1",
+    " M scripts/quality/run-navigation-reprojection-probe.ps1",
+    "?? NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/CompanionPagesMenuEmitter.java",
+    "?? NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/CompanionPagesMenuEmitterTest.java"
+  ],
   "unpushed": 0,
   "landedCommits": [
-    "915cb8bf refactor(runtimehost): move supported-core classes out of .internal; convergence checks block again",
-    "7c0d3555 feat(quality): prove the app upgrade contract in the release gate again",
-    "e73e4bf6 fix(ledger): REG-250 guard resolves to a real test; cover the pack-lock-paths codemod",
-    "a3d55358 fix(packs): portable npdev.lock + digest-verified offline pack mirror (REG-250)",
-    "e2f44e76 test(runtimehost): warm up and best-of-5 the existsUnique pushdown timing",
-    "a712df04 chore(session): handoff -- release roll-up fix a9663766 dispatched, awaiting CI"
+    "831112cf feat(ui): images first-class, file seeds, honest grid columns/labels (Pigmentampas P2)",
+    "5c1c64d8 feat(platform): Pigmentampas P1 -- role guards, row-scoped aggregates, seed/sequence fixes"
   ]
 }
