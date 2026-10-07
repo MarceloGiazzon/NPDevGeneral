@@ -42,6 +42,21 @@ public final class GeneratedSourceWriter {
         }
     }
 
+    /** Binary twin of {@link #writeRelative} -- e.g. a seed's image copied into the app's resources. */
+    public void writeRelativeBytes(String relativePath, byte[] content) {
+        try {
+            Path p = outRoot.resolve(relativePath).normalize();
+            Files.createDirectories(p.getParent());
+            if (Files.exists(p) && !policy.canOverwrite(p)) {
+                return;
+            }
+            Files.write(p, content, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            written.add(p.toString());
+        } catch (IOException e) {
+            throw new RuntimeException("Failed writing file: " + relativePath, e);
+        }
+    }
+
     public void deleteRelativeIfExists(String relativePath) {
         try {
             Path p = outRoot.resolve(relativePath).normalize();

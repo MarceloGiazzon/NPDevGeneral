@@ -112,5 +112,10 @@ class PigmentampasSampleTest {
                 "/members")) {
             assertTrue(manifest.contains(route), "UI manifest must contain route " + route);
         }
+        // G6: every "$file:" seed value is packaged with the app for SeedDataService to store.
+        for (String image : List.of("branik.png", "lech-pils.png", "la-bierre.png", "plain-silver.png")) {
+            Path packaged = out.resolve("src/main/resources/npdev-seed/files/seed-files/" + image);
+            assertTrue(Files.exists(packaged), "Expected packaged seed file: " + packaged);
+        }
     }
 }

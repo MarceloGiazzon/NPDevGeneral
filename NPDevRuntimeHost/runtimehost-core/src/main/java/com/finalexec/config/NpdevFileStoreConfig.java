@@ -41,7 +41,12 @@ public class NpdevFileStoreConfig {
             // became one bogus single-segment directory name on the container's Linux filesystem
             // (confirmed live: docker compose up on Alpine failed with
             // "AccessDeniedException: /app\npdev-files" when trying to create it).
-            @Value("${npdev.filestore.root:${user.dir}/npdev-files}") String root
+            //
+            // 2026-10-07: default moved from <app>/npdev-files to <app>/data/files -- regeneration
+            // spares exactly data/logs/secrets, so every regenerate silently deleted all uploaded
+            // files while the database kept their handles (broken images on Pigmentampas). data/files
+            // is also where the generated Docker deployment already mounts the file volume.
+            @Value("${npdev.filestore.root:${user.dir}/data/files}") String root
     ) {
         return new FileSystemFileStoreAdapter(Path.of(root));
     }

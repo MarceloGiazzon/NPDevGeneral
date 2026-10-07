@@ -8,6 +8,7 @@ import com.npdev.dsl.v1.settings.SettingResolver;
 import com.npdev.dsl.v1.settings.SettingStore;
 import com.npdev.dsl.v1.settings.SettingTarget;
 import com.npdev.generator.emitters.BusinessUiEmitter;
+import com.npdev.generator.emitters.SeedFilesEmitter;
 import com.npdev.generator.emitters.AgentLinkPageEmitter;
 import com.npdev.generator.emitters.ChangePasswordPageEmitter;
 import com.npdev.generator.emitters.ControllerEmitter;
@@ -352,6 +353,7 @@ public final class GeneratorFacade {
         new ControllerEmitter(templates, writer).emit(model, linkedSealedPacks);
 
         new RuntimeApiEmitter(templates, writer).emit(model, resolvedModelSource, modelSourcePath, superUserRole);
+        new SeedFilesEmitter(writer).emit(model, modelSourcePath);
         new InfoPageEmitter(templates, writer).emit(model, databasePlan);
         // R10.2: schema-driven model surface, emitted unconditionally (like info.html) rather than
         // gated on UI_GENERATE_BUSINESS_UI -- it walks the canonical model JSON itself, not the

@@ -493,11 +493,18 @@
 
   // --------------------------------------------------------------- identity ----
 
+  // Chrome strings come from the app's manifest (PlatformStrings defaults + settings.strings);
+  // the English fallback covers an app generated before the manifest carried them.
+  function shellString(key, fallback) {
+    var strings = state.manifest && state.manifest.strings;
+    return (strings && strings[key]) || fallback;
+  }
+
   function applyIdentity() {
     el.identity.innerHTML = "";
     if (state.token && state.actorId) {
       var text = document.createElement("span");
-      text.textContent = "logado como " + state.actorId + (state.roles.length ? " (" + state.roles.join(", ") + ")" : "");
+      text.textContent = shellString("shell.signedInAs", "Signed in as") + " " + state.actorId + (state.roles.length ? " (" + state.roles.join(", ") + ")" : "");
       el.identity.appendChild(text);
       // WMS-9 N6: "change my password" is a jwt-mode-only endpoint/page (ChangePasswordController,
       // change-password.html) -- an apiKey app's "token" is a static dev key with no per-user
@@ -507,13 +514,13 @@
         var changePasswordLink = document.createElement("a");
         changePasswordLink.className = "npdev-shell-change-password";
         changePasswordLink.href = "/change-password.html";
-        changePasswordLink.textContent = "Alterar senha";
+        changePasswordLink.textContent = shellString("shell.changePassword", "Change password");
         el.identity.appendChild(changePasswordLink);
       }
       var logoutBtn = document.createElement("button");
       logoutBtn.className = "npdev-shell-logout";
       logoutBtn.type = "button";
-      logoutBtn.textContent = "Sair";
+      logoutBtn.textContent = shellString("shell.signOut", "Sign out");
       logoutBtn.addEventListener("click", function () {
         TOKEN_STORAGE_KEYS.forEach(function (key) { localStorage.removeItem(key); });
         sessionStorage.clear();
