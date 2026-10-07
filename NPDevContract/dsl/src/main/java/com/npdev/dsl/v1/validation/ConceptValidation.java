@@ -874,7 +874,9 @@ final class ConceptValidation {
             byName.put(SemanticValidator.normalize(field.getName()), field);
         }
         if (publicRead.fields().isEmpty()) {
-            errors.add(label + ".fields: must list at least one field (nothing is public by default)");
+            errors.add(label + ".fields: must list at least one field (nothing is public by default)"
+                    + " -- suggestedFix: list the fields an anonymous visitor may see, e.g. \"fields\": [\"title\"],"
+                    + " or remove access.public");
         }
         for (String name : publicRead.fields()) {
             FieldAst field = byName.get(SemanticValidator.normalize(name));
@@ -892,7 +894,9 @@ final class ConceptValidation {
         if (PublicReadAst.SCOPE_AGGREGATE.equals(publicRead.scope())
                 && !isAggregateChild(concept.getName(), aggregates)) {
             errors.add(label + ".scope: 'aggregate' but " + concept.getName()
-                    + " is not a child collection of any aggregate, so it could never be served");
+                    + " is not a child collection of any aggregate, so it could never be served"
+                    + " -- suggestedFix: set \"scope\": \"concept\", or add " + concept.getName()
+                    + " as a child collection of an aggregate");
         }
         String where = publicRead.where();
         if (where == null) {
@@ -906,7 +910,9 @@ final class ConceptValidation {
         try {
             groups = com.npdev.dsl.v1.query.QueryPredicateGrammar.parseGroups(where);
         } catch (com.npdev.dsl.v1.query.QueryPredicateGrammar.UnsupportedPredicateException unsupported) {
-            errors.add(label + ".where: outside the queries[].where grammar: " + unsupported.getMessage());
+            errors.add(label + ".where: outside the queries[].where grammar: " + unsupported.getMessage()
+                    + " -- suggestedFix: rewrite it as field comparisons joined by and/or,"
+                    + " e.g. \"status = 'PUBLISHED'\"");
             return;
         }
         for (List<com.npdev.dsl.v1.query.QueryPredicateGrammar.PredicateClause> group : groups) {
