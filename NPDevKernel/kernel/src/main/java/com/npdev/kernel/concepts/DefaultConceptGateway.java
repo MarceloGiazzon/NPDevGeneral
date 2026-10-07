@@ -329,12 +329,13 @@ public final class DefaultConceptGateway implements ConceptGateway {
                 request.tenantId(), effectiveContext, "CONCEPT_AGGREGATE", request.conceptName(), "*");
         enforcePermission(effectiveContext, "concept.list", request.conceptName(), "CONCEPT_AGGREGATE", "*");
 
+        // 2026-10-07: a row scope inside AccessReadPredicate's subset is pushed down INTO the
+        // aggregate's WHERE for this caller (base concept and every groupBy join hop), so totals
+        // only ever cover rows the caller may read; outside the subset the hard stop stands.
+        List<String> rowScopes = new ArrayList<>();
         if (semanticPolicy.hasRowReadScope(request.conceptName())) {
-            throw new ConceptGatewayAccessDeniedException(
-                    "AGGREGATE_ACCESS_READ_UNSUPPORTED",
-                    "Concept " + request.conceptName() + " declares access.read; groupBy/aggregate "
-                            + "queries against it are refused (LC-B1 accepted boundary -- a pushed-down "
-                            + "GROUP BY would compute totals over rows access.read exists to hide).");
+            rowScopes.add(translateRowScope(request.conceptName(), "", effectiveContext,
+                    "Concept " + request.conceptName() + " declares access.read"));
         }
         for (ConceptAggregateQuery.GroupByField groupByField : request.query().groupBy()) {
             if (!(com.npdev.dsl.v1.query.GroupByJoinGrammar.parse(groupByField.field())
@@ -342,22 +343,28 @@ public final class DefaultConceptGateway implements ConceptGateway {
                 continue;
             }
             String currentConcept = request.conceptName();
+            List<String> hops = new ArrayList<>();
             for (String referenceField : join.referenceFields()) {
                 String targetConcept = semanticPolicy.resolveReferenceTarget(currentConcept, referenceField).orElse(null);
                 if (targetConcept == null) {
                     break;
                 }
+                hops.add(referenceField);
                 if (semanticPolicy.hasRowReadScope(targetConcept)) {
-                    throw new ConceptGatewayAccessDeniedException(
-                            "AGGREGATE_ACCESS_READ_UNSUPPORTED",
+                    rowScopes.add(translateRowScope(targetConcept, String.join(".", hops) + ".", effectiveContext,
                             "groupBy join \"" + groupByField.field() + "\" crosses into concept " + targetConcept
-                                    + ", which declares access.read; groupBy/aggregate queries reached through "
-                                    + "this join are refused (C3 -- the same leak whether the restricted "
-                                    + "concept is queried directly or reached through a join).");
+                                    + ", which declares access.read"));
                 }
                 currentConcept = targetConcept;
             }
         }
+        if (rowScopes.contains(null)) {
+            audit(effectiveContext, "CONCEPT_AGGREGATE", request.conceptName(), "*", "SUCCESS", "row-scope-empty", tenantId);
+            return new ConceptAggregateResult(List.of());
+        }
+        ConceptAggregateQuery effectiveQuery = rowScopes.isEmpty()
+                ? request.query()
+                : withRowScopes(request.query(), rowScopes);
 
         ConceptGatewayRequestContext requestContext = requestContext(
                 ConceptGatewayOperation.LIST,
@@ -370,10 +377,73 @@ public final class DefaultConceptGateway implements ConceptGateway {
         );
         ConceptSemanticDecision decision = evaluateRuleProfiles(requestContext, ruleProfilesForRead(effectiveContext));
 
-        ConceptAggregateResult result = store.aggregate(tenantId, request.conceptName(), request.query());
+        ConceptAggregateResult result = store.aggregate(tenantId, request.conceptName(), effectiveQuery);
         audit(effectiveContext, "CONCEPT_AGGREGATE", request.conceptName(), "*", "SUCCESS", "allowed", tenantId);
         trace(requestContext, "SUCCESS", "allowed", decision);
         return result;
+    }
+
+    /**
+     * @return the caller-specific WHERE text for {@code conceptName}'s access.read ({@code ""} when
+     *         the caller is unrestricted, {@code null} when no row is visible to them)
+     * @throws ConceptGatewayAccessDeniedException when the rule is outside AccessReadPredicate's subset
+     */
+    private String translateRowScope(String conceptName, String pathPrefix, ExecutionContext context, String what) {
+        String rule = semanticPolicy.rowReadRule(conceptName).orElse(null);
+        java.util.Set<String> roles = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        roles.addAll(context.roles());
+        Optional<com.npdev.dsl.v1.query.AccessReadPredicate.Translation> translation = rule == null
+                ? Optional.empty()
+                : com.npdev.dsl.v1.query.AccessReadPredicate.translate(
+                        rule, pathPrefix, context.actorId(), context.tenantId(), roles::contains);
+        if (translation.isEmpty()) {
+            throw new ConceptGatewayAccessDeniedException(
+                    "AGGREGATE_ACCESS_READ_UNSUPPORTED",
+                    what + " outside the SQL-translatable subset; groupBy/aggregate queries over it are "
+                            + "refused (a pushed-down GROUP BY would compute totals over rows access.read "
+                            + "exists to hide).");
+        }
+        return switch (translation.get().kind()) {
+            case ALL -> "";
+            case NONE -> null;
+            case WHERE -> translation.get().where();
+        };
+    }
+
+    /** ANDs each row-scope predicate into the query's own where, as OR-of-AND groups (DNF product). */
+    private static ConceptAggregateQuery withRowScopes(ConceptAggregateQuery query, List<String> rowScopes) {
+        List<List<ConceptQuery.Filter>> groups = toGroups(query.filters());
+        for (String scope : rowScopes) {
+            if (scope.isEmpty()) {
+                continue;
+            }
+            List<List<ConceptQuery.Filter>> scopeGroups =
+                    toGroups(ConceptQueryPredicateCompiler.compileToConceptQueryFilters(scope));
+            List<List<ConceptQuery.Filter>> product = new ArrayList<>();
+            for (List<ConceptQuery.Filter> left : groups) {
+                for (List<ConceptQuery.Filter> right : scopeGroups) {
+                    List<ConceptQuery.Filter> combined = new ArrayList<>(left);
+                    combined.addAll(right);
+                    product.add(combined);
+                }
+            }
+            groups = product;
+        }
+        List<ConceptQuery.Filter> filters = groups.size() == 1
+                ? groups.get(0)
+                : List.of(ConceptQuery.Filter.orGroups(groups));
+        return new ConceptAggregateQuery(filters, query.groupBy(), query.aggregates(), query.having(),
+                query.sorts(), query.limit());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<List<ConceptQuery.Filter>> toGroups(List<ConceptQuery.Filter> filters) {
+        if (filters.size() == 1 && filters.get(0).operator() == ConceptQuery.Operator.OR_GROUPS) {
+            return new ArrayList<>((List<List<ConceptQuery.Filter>>) filters.get(0).value());
+        }
+        List<List<ConceptQuery.Filter>> single = new ArrayList<>();
+        single.add(new ArrayList<>(filters));
+        return single;
     }
 
     private static boolean matchesExact(ConceptRecord record, String field, String value) {

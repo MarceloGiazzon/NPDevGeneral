@@ -274,7 +274,7 @@ public class {{entityName}}ServiceBase {
 {{^hasCreateFlow}}
         {{entityTypeName}} e = new {{entityTypeName}}();
         runtimeSupport.assignGeneratedId("{{conceptName}}", e, generatedId);
-        runtimeSupport.applyCreateFields("{{conceptName}}", source, e);
+        runtimeSupport.applyCreateFields("{{conceptName}}", source, createPayload, e);
         // Tenant isolation: the row is owned by whoever creates it, from the verified auth
         // context — never from caller-supplied data, since CreateRequest DTOs never carry a
         // tenantId field (DtoEmitter only emits DSL-declared fields).

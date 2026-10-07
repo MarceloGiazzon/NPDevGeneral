@@ -26,6 +26,26 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
         assertEquals("null->draft", gateway.explain().get(0).lifecycleTransition());
     }
 
+    /** Pigmentampas 2026-10-07: "only a Curator approves a cap" -- a lifecycle guard naming $user. */
+    @Test
+    void lifecycleGuardNamingTheUserGatesTheTransitionByRole() {
+        ConceptGateway gateway = ConceptGateways.inMemory(expensePolicy("$user.roles.contains('Approver')"));
+        ExecutionContext clerk = new ExecutionContext("tenant-a", "clerk-1", Map.of(), java.util.Set.of("USER"));
+        ExecutionContext approver = new ExecutionContext("tenant-a", "boss-1", Map.of(), java.util.Set.of("approver"));
+        gateway.save(new ConceptWriteRequest("Expense", "expense-1", null, Map.of("amount", 25)), clerk);
+
+        ConceptGatewaySemanticException denied = assertThrows(
+                ConceptGatewaySemanticException.class,
+                () -> gateway.save(new ConceptWriteRequest("Expense", "expense-1", null,
+                        Map.of("amount", 25, "status", "submitted")), clerk)
+        );
+        assertEquals("CONCEPT_LIFECYCLE_GUARD_FAILED", denied.code());
+
+        ConceptRecord submitted = gateway.save(new ConceptWriteRequest("Expense", "expense-1", null,
+                Map.of("amount", 25, "status", "submitted")), approver);
+        assertEquals("submitted", submitted.data().get("status"));
+    }
+
     @Test
     void rejectsMissingRequiredFieldsBeforePersistence() {
         ConceptGateway gateway = ConceptGateways.inMemory(expensePolicy());
@@ -249,6 +269,20 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
                 new ConceptWriteRequest("Label", "label-3", null, Map.of("text", "hello")), curator));
     }
 
+    /** Pigmentampas 2026-10-07: model seeds load past caller-scoped row-write rules; the mark is identity, not a tag. */
+    @Test
+    void seedingContextBypassesRowWriteRulesButACopyDoesNot() {
+        ConceptGateway gateway = ConceptGateways.inMemory(curatedLabelPolicy("$user.roles.contains('Curator')"));
+        ExecutionContext seeding = ExecutionContext.seeding("tenant-a");
+
+        assertEquals("label-s1", gateway.save(
+                new ConceptWriteRequest("Label", "label-s1", null, Map.of("text", "seeded")), seeding).id());
+        ExecutionContext forged = seeding.withTag("trigger", "seed");
+        assertFalse(ExecutionContext.isSeeding(forged));
+        assertThrows(ConceptGatewayAccessDeniedException.class, () -> gateway.save(
+                new ConceptWriteRequest("Label", "label-s2", null, Map.of("text", "forged")), forged));
+    }
+
     /** contains() on RECORD data keeps exact, case-sensitive semantics -- only $user.roles folds case. */
     @Test
     void containsAccessRuleOnRecordDataStaysCaseSensitive() {
@@ -369,6 +403,10 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
     }
 
     private static ConfiguredConceptGatewaySemanticPolicy expensePolicy() {
+        return expensePolicy(null);
+    }
+
+    private static ConfiguredConceptGatewaySemanticPolicy expensePolicy(String submitUserGuard) {
         return new ConfiguredConceptGatewaySemanticPolicy(List.of(
                 ConfiguredConceptGatewaySemanticPolicy.ConceptDefinition.of(
                         "Expense",
@@ -407,7 +445,10 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
                                 "status",
                                 "draft",
                                 List.of("draft", "submitted", "paid"),
-                                List.of(new ConfiguredConceptGatewaySemanticPolicy.StateTransition("draft", "submitted"))
+                                List.of(new ConfiguredConceptGatewaySemanticPolicy.StateTransition("draft", "submitted")),
+                                submitUserGuard == null ? Map.of() : Map.of(
+                                        new ConfiguredConceptGatewaySemanticPolicy.StateTransition("draft", "submitted"),
+                                        submitUserGuard)
                         )
                 )
         ));

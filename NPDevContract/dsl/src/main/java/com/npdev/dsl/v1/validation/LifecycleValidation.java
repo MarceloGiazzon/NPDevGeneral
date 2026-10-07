@@ -321,6 +321,17 @@ final class LifecycleValidation {
         if ("true".equalsIgnoreCase(trimmed) || "false".equalsIgnoreCase(trimmed)) {
             return true;
         }
+        if (trimmed.contains("$user")) {
+            // Evaluated at runtime by the unified expression language (kernel UserScopedExpressions,
+            // the evaluator row access uses), so it must parse there: && / || / ! and
+            // $user.roles.contains('Role') all allowed.
+            try {
+                ComputedExpression.parse(trimmed);
+                return true;
+            } catch (ComputedExpression.ExpressionException malformed) {
+                return false;
+            }
+        }
         int notEqualsIndex = trimmed.indexOf("!=");
         if (notEqualsIndex >= 0) {
             return isSupportedLifecycleGuardToken(trimmed.substring(0, notEqualsIndex))

@@ -66,6 +66,22 @@ public interface ConceptGatewaySemanticPolicy {
         return false;
     }
 
+    /** The concept's raw {@code access.read} text, when it declares one -- what
+     *  {@link DefaultConceptGateway#aggregate} pushes down via {@code AccessReadPredicate}. */
+    default Optional<String> rowReadRule(String conceptName) {
+        return Optional.empty();
+    }
+
+    /**
+     * A field's {@code defaultExpression}, evaluated the way the gateway itself does --
+     * {@code nextNumber('seq')} allocates from the app's sequences. The generated CRUD path calls
+     * this too (2026-10-07: REST-created mosaics got code=null while seeded ones got PTM-2026-0001).
+     * {@code null} = no value (the default policy knows no sequences).
+     */
+    default Object evaluateFieldDefault(String expression, java.util.Map<String, Object> data, String tenantId) {
+        return null;
+    }
+
     /**
      * S4 (roadmap B27, ADR-0011 D1): resolves a declared {@code reference} field's join TARGET
      * concept name -- empty when {@code conceptName} is unknown or {@code fieldName} isn't a

@@ -111,8 +111,27 @@ public class NpdevCapabilityBindingConfig {
         return engine;
     }
 
+    /**
+     * The ONE governed semantic policy -- shared by {@link #conceptGateway} and
+     * {@link #generatedCrudRuntimeSupport} (field defaults, incl. nextNumber() sequence allocation),
+     * so both write paths allocate from the same counters. R5.3: degrades to an in-memory allocator
+     * when there is no DataSource (InMemory mode); with one, allocation SQL runs on the SAME ambient
+     * connection the write's transaction opened, so a nextNumber() default and its row commit or roll
+     * back together -- see JdbcSequenceAllocator's javadoc.
+     */
+    @Bean
+    public LiveConceptGatewaySemanticPolicy conceptGatewaySemanticPolicy(
+            ModelHolder modelHolder, ObjectProvider<DataSource> dataSourceProvider) {
+        var dataSource = dataSourceProvider.getIfAvailable();
+        com.npdev.kernel.ports.SequenceAllocator sequenceAllocator = dataSource == null
+                ? com.npdev.kernel.ports.SequenceAllocator.inMemory()
+                : new com.finalexec.db.JdbcSequenceAllocator(dataSource);
+        return new LiveConceptGatewaySemanticPolicy(modelHolder::get, sequenceAllocator);
+    }
+
     @Bean
     public ConceptGateway conceptGateway(
+            LiveConceptGatewaySemanticPolicy conceptGatewaySemanticPolicy,
             ModelHolder modelHolder,
             ConceptStore conceptStore,
             AuditLogStore auditLogStore,
@@ -147,7 +166,7 @@ public class NpdevCapabilityBindingConfig {
                 PermissionEvaluator.allowAll(),
                 com.npdev.kernel.ports.TenantIsolationPolicy.STRICT_EQUALS,
                 auditLogStore,
-                new LiveConceptGatewaySemanticPolicy(modelHolder::get, sequenceAllocator),
+                conceptGatewaySemanticPolicy,
                 new InMemoryConceptGatewayTraceSink(),
                 transactionRunner
         );
@@ -604,7 +623,8 @@ public class NpdevCapabilityBindingConfig {
             AuditLogStore auditLogStore,
             PermissionEvaluator permissionEvaluator,
             IdempotencyStore idempotencyStore,
-            ConceptGateway conceptGateway
+            ConceptGateway conceptGateway,
+            LiveConceptGatewaySemanticPolicy conceptGatewaySemanticPolicy
     ) {
         GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(
                 modelHolder::get,
@@ -619,7 +639,7 @@ public class NpdevCapabilityBindingConfig {
                 auditLogStore,
                 permissionEvaluator,
                 idempotencyStore
-        ).withConceptGateway(conceptGateway);
+        ).withConceptGateway(conceptGateway).withFieldDefaults(conceptGatewaySemanticPolicy);
         modelHolder.addReloadListener((before, after) -> support.reloadOrchestrationSubscribers(after));
         return support;
     }

@@ -52,9 +52,9 @@ class AggregateQueryValidationTest {
     }
 
     @Test
-    void groupByOnAConceptDeclaringAccessReadIsRefused() throws Exception {
+    void groupByOnAConceptDeclaringAnUntranslatableAccessReadIsRefused() throws Exception {
         List<String> errors = validate(modelWithConceptAndQuery(
-                "{\"read\": \"warehouseId == $user.id\"}", """
+                "{\"read\": \"warehouseId == $user.region\"}", """
             { "name": "UnitsByWarehouse", "concept": "ShipmentEvent",
               "groupBy": [ "warehouseId" ],
               "aggregates": [ { "name": "total", "fn": "sum", "field": "unitsShipped" } ] }
@@ -62,6 +62,19 @@ class AggregateQueryValidationTest {
         assertTrue(errors.stream().anyMatch(e -> e.contains("groupBy/aggregates are not supported")
                         && e.contains("access.read")),
                 "expected an access.read hard-stop error, got: " + errors);
+    }
+
+    /** 2026-10-07: an access.read inside AccessReadPredicate's subset is pushed down per caller, not refused. */
+    @Test
+    void groupByOnAConceptDeclaringATranslatableAccessReadIsAccepted() throws Exception {
+        List<String> errors = validate(modelWithConceptAndQuery(
+                "{\"read\": \"warehouseId == $user.id || $user.roles.contains('Auditor')\"}", """
+            { "name": "UnitsByWarehouse", "concept": "ShipmentEvent",
+              "groupBy": [ "warehouseId" ],
+              "aggregates": [ { "name": "total", "fn": "sum", "field": "unitsShipped" } ] }
+            """));
+        assertTrue(errors.stream().noneMatch(e -> e.contains("access.read")),
+                "expected no access.read error, got: " + errors);
     }
 
     @Test

@@ -2,10 +2,28 @@
   "$schema": "..\\..\\NPDevContract\\schemas\\model.schema.json",
   "namespace": "pigmentampas",
   "dslVersion": "1.0.0",
-  "version": "1.0",
+  "version": "2.0",
   "metadata": {
-    "purpose": "S6 (NPDEV_MEGA_ROADMAP.md): smallest honest end-to-end proof -- a greenfield pigment/paint store modeled from scratch, composed with the identity, workspace and tracing packs via explicit packs[] (not internal.tables -- see config.json's scenario.description for why), jwt-mode auth (Google signup/link/login + username/password) backed by a Credential concept referencing identity::User, and every screen generated declaratively with zero hand-authored HTML."
+    "purpose": "Pigmentampas -- paint with beer caps. A cap catalogue (curated), personal cap collections, hex cap mosaics (20x33 cells, edited as one aggregate), a gallery and a dashboard. Rebuilt 2026-10-07 from the original PHP Tampas app as the NPDev demo + maturity evaluation for non-CRUD, visual apps. jwt-mode auth (Google + username/password via Credential -> identity::User); row-level access keys on ownerUsername == $user.id."
   },
+  "settings": {
+    "locale": "en-US",
+    "ui": { "pageRows": 25, "dateFormat": "yyyy-MM-dd" }
+  },
+  "appShell": {
+    "defaultRoute": "Mosaic",
+    "navigation": [
+      { "label": "Mosaics", "target": "Mosaic", "group": "Studio" },
+      { "label": "My collection", "target": "CollectionItem", "group": "Studio" },
+      { "label": "Cap catalogue", "target": "Cap", "group": "Catalogue" },
+      { "label": "Breweries", "target": "Brewery", "group": "Catalogue" },
+      { "label": "Members", "target": "Member", "group": "Community" }
+    ]
+  },
+  "roles": [
+    { "name": "Member", "grants": ["EXECUTE_FLOW"] },
+    { "name": "Curator", "grants": ["EXECUTE_FLOW", "READ_EXECUTIONS"] }
+  ],
   "propertyScopes": [
     { "name": "user", "from": "$user.id" },
     { "name": "tenant" }
@@ -13,32 +31,35 @@
   "agentAccess": {
     "assistant": {
       "name": "Pigmentampas Assistant",
-      "instructions": "You help the staff of a pigment store check and update stock, and you help customers browse pigments and place or follow their own orders. Reply in the user's language. Prices are in BRL per kg. When a customer places an order, set customerUsername to their own username and status to OPEN.",
-      "language": "pt-BR"
+      "instructions": "You help beer-cap collectors who design cap mosaics. You can browse the cap catalogue and breweries, read and update the user's own cap collection, and read the user's mosaics. Reply in the user's language. When adding to a collection, set ownerUsername to the user's own username. A mosaic is a 20x33 hex grid of cells, each cell holding one cap (or empty).",
+      "language": "en"
     },
     "channels": {
       "mcp": { "enabled": true },
       "telegram": { "enabled": true },
-      "whatsapp": { "enabled": false }
+      "whatsapp": { "enabled": true }
     },
     "expose": [
       {
-        "concept": "Pigment",
+        "concept": "Cap",
         "operations": ["list", "get"],
-        "description": "The pigments the store sells: name, color code, price per kg, whether it is active."
+        "description": "The cap catalogue: label, brewery, dominant colour (#hex), finish, rarity, approval status."
       },
       {
-        "concept": "StockEntry",
-        "operations": ["list", "get", "update"],
-        "roles": ["Staff"],
-        "description": "How many kg of each pigment are in stock, and where."
+        "concept": "Brewery",
+        "operations": ["list", "get"],
+        "description": "Breweries whose caps are in the catalogue."
       },
       {
-        "concept": "Order",
-        "operations": ["list", "get", "create"],
-        "roles": ["Staff", "Customer"],
-        "description": "Customer orders. Customers only ever see their own.",
+        "concept": "CollectionItem",
+        "operations": ["list", "get", "create", "update"],
+        "description": "The caps a member owns: which cap, how many, condition, whether it is up for trade. Members only ever see and change their own.",
         "confirmWrites": true
+      },
+      {
+        "concept": "Mosaic",
+        "operations": ["list", "get"],
+        "description": "Cap mosaics: code, title, owner, size, status (DRAFT, PUBLISHED, BUILT)."
       }
     ]
   },
@@ -58,132 +79,192 @@
     { "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/tracing@tracing-1.0.2", "as": "tracing" },
     { "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/workspace@workspace-1.1.0", "as": "workspace" }
   ],
+  "sequences": [
+    { "name": "mosaicCode", "format": "PTM-{year}-{seq:4}", "scope": "tenant" }
+  ],
   "concepts": [
     {
-      "name": "PigmentCategory",
-      "ui": { "label": "Pigment category" },
+      "name": "Member",
+      "ui": { "label": "Member" },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "name", "type": "string", "required": true, "maxLength": 80, "unique": true,
-          "ui": { "label": "Name" } },
-        { "name": "description", "type": "string", "required": false, "maxLength": 280,
-          "ui": { "label": "Description" } }
-      ]
+        { "name": "username", "type": "string", "required": true, "maxLength": 120, "unique": true,
+          "ui": { "label": "Username" } },
+        { "name": "displayName", "type": "string", "required": true, "maxLength": 120,
+          "ui": { "label": "Display name" } },
+        { "name": "city", "type": "string", "required": false, "maxLength": 80,
+          "ui": { "label": "City" } },
+        { "name": "country", "type": "string", "required": false, "maxLength": 80,
+          "ui": { "label": "Country" } },
+        { "name": "avatar", "type": "file", "required": false,
+          "file": { "contentTypes": ["image/png", "image/jpeg"], "maxSizeBytes": 204800 },
+          "ui": { "label": "Avatar" } },
+        { "name": "bio", "type": "string", "required": false, "maxLength": 500,
+          "ui": { "label": "Bio" } }
+      ],
+      "access": {
+        "write": "$user.roles.contains('Curator') || username == $user.id"
+      }
     },
     {
-      "name": "Pigment",
-      "ui": { "label": "Pigment" },
+      "name": "Brewery",
+      "ui": { "label": "Brewery" },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "name", "type": "string", "required": true, "maxLength": 120, "unique": true,
           "ui": { "label": "Name" } },
-        { "name": "colorCode", "type": "string", "required": true, "maxLength": 9,
-          "ui": { "label": "Color code" } },
-        { "name": "categoryId", "type": "reference", "required": true,
-          "ui": { "label": "Category" },
-          "reference": { "target": "PigmentCategory", "displayField": "name" } },
-        { "name": "pricePerKg", "type": "decimal", "required": true,
-          "ui": { "label": "Price per kg" } },
-        { "name": "description", "type": "string", "required": false, "maxLength": 500,
-          "ui": { "label": "Description" } },
-        { "name": "active", "type": "boolean", "required": true,
-          "ui": { "label": "Active" } }
+        { "name": "country", "type": "string", "required": false, "maxLength": 80,
+          "ui": { "label": "Country" } },
+        { "name": "website", "type": "string", "required": false, "maxLength": 200,
+          "ui": { "label": "Website" } }
       ]
     },
     {
-      "name": "Supplier",
-      "ui": { "label": "Supplier" },
+      "name": "Cap",
+      "ui": { "label": "Cap" },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "companyName", "type": "string", "required": true, "maxLength": 120, "unique": true,
-          "ui": { "label": "Company name" } },
-        { "name": "contactEmail", "type": "string", "required": true, "maxLength": 200,
-          "ui": { "label": "Contact email" } },
-        { "name": "phone", "type": "string", "required": false, "maxLength": 40,
-          "ui": { "label": "Phone" } }
-      ]
-    },
-    {
-      "name": "PigmentSupplier",
-      "ui": { "label": "Pigment supplier" },
-      "fields": [
-        { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "pigmentId", "type": "reference", "required": true,
-          "ui": { "label": "Pigment" },
-          "reference": { "target": "Pigment", "displayField": "name" } },
-        { "name": "supplierId", "type": "reference", "required": true,
-          "ui": { "label": "Supplier" },
-          "reference": { "target": "Supplier", "displayField": "companyName" } }
-      ],
-      "indexes": [
-        { "name": "ux_pigment_supplier", "fields": ["pigmentId", "supplierId"], "unique": true }
-      ]
-    },
-    {
-      "name": "StockEntry",
-      "ui": { "label": "Stock entry" },
-      "fields": [
-        { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "pigmentId", "type": "reference", "required": true,
-          "ui": { "label": "Pigment" },
-          "reference": { "target": "Pigment", "displayField": "name" } },
-        { "name": "quantityKg", "type": "decimal", "required": true,
-          "ui": { "label": "Quantity (kg)" } },
-        { "name": "location", "type": "string", "required": false, "maxLength": 80,
-          "ui": { "label": "Location" } },
-        { "name": "updatedAt", "type": "datetime", "required": true,
-          "ui": { "label": "Updated at" } }
-      ],
-      "indexes": [
-        { "name": "idx_stock_pigment", "fields": ["pigmentId"] }
-      ]
-    },
-    {
-      "name": "Order",
-      "ui": { "label": "Order" },
-      "fields": [
-        { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "orderNumber", "type": "string", "required": true, "maxLength": 40, "unique": true,
-          "ui": { "label": "Order number" } },
-        { "name": "customerName", "type": "string", "required": true, "maxLength": 120,
-          "ui": { "label": "Customer" } },
+        { "name": "label", "type": "string", "required": true, "maxLength": 120, "unique": true,
+          "ui": { "label": "Label" } },
+        { "name": "breweryId", "type": "reference", "required": false,
+          "ui": { "label": "Brewery" },
+          "reference": { "target": "Brewery", "displayField": "name" } },
+        { "name": "image", "type": "file", "required": false,
+          "file": { "contentTypes": ["image/png", "image/jpeg"], "maxSizeBytes": 204800 },
+          "ui": { "label": "Image" } },
+        { "name": "dominantColor", "type": "string", "required": true, "maxLength": 9,
+          "ui": { "label": "Dominant colour" } },
+        { "name": "accentColor", "type": "string", "required": false, "maxLength": 9,
+          "ui": { "label": "Accent colour" } },
+        { "name": "finish", "type": "enum", "required": true,
+          "enumValues": ["GLOSSY", "MATTE", "METALLIC", "PRINTED"],
+          "ui": { "label": "Finish" } },
+        { "name": "rarity", "type": "enum", "required": true,
+          "enumValues": ["COMMON", "UNCOMMON", "RARE"],
+          "ui": { "label": "Rarity" } },
+        { "name": "tags", "type": "string", "required": false, "maxLength": 200,
+          "ui": { "label": "Tags" } },
         { "name": "status", "type": "enum", "required": true,
-          "enumValues": ["OPEN", "PAID", "SHIPPED", "CANCELLED"],
+          "enumValues": ["SUBMITTED", "APPROVED", "REJECTED"],
           "ui": { "label": "Status" } },
-        { "name": "totalAmount", "type": "decimal", "required": true, "min": 0,
-          "ui": { "label": "Total amount" } },
-        { "name": "placedAt", "type": "datetime", "required": true,
-          "ui": { "label": "Placed at" } },
-        { "name": "customerUsername", "type": "string", "required": false,
-          "ui": { "label": "Customer account" },
-          "description": "Username of the app user who placed the order. Set by the agent (or staff); row-level access below keys on it." }
+        { "name": "submittedBy", "type": "string", "required": false, "maxLength": 120,
+          "ui": { "label": "Submitted by" } }
       ],
-      "invariants": [
-        { "name": "PaidOrdersHaveAmount", "type": "expression", "expression": "status != 'PAID' || totalAmount > 0" }
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          { "value": "SUBMITTED", "label": "Submitted", "initial": true },
+          { "value": "APPROVED", "label": "Approved" },
+          { "value": "REJECTED", "label": "Rejected", "terminal": true }
+        ],
+        "transitions": [
+          { "from": "SUBMITTED", "to": "APPROVED", "event": "approve", "actionLabel": "Approve",
+            "guard": "$user.roles.contains('Curator')" },
+          { "from": "SUBMITTED", "to": "REJECTED", "event": "reject", "actionLabel": "Reject",
+            "guard": "$user.roles.contains('Curator')" }
+        ]
+      },
+      "indexes": [
+        { "name": "idx_cap_brewery", "fields": ["breweryId"] }
+      ]
+    },
+    {
+      "name": "CollectionItem",
+      "ui": { "label": "Collection item" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "ownerUsername", "type": "string", "required": true, "maxLength": 120,
+          "ui": { "label": "Owner" } },
+        { "name": "capId", "type": "reference", "required": true,
+          "ui": { "label": "Cap" },
+          "reference": { "target": "Cap", "displayField": "label" } },
+        { "name": "quantity", "type": "integer", "required": true, "min": 0,
+          "ui": { "label": "Quantity" } },
+        { "name": "condition", "type": "enum", "required": true,
+          "enumValues": ["MINT", "USED", "BENT"],
+          "ui": { "label": "Condition" } },
+        { "name": "forTrade", "type": "boolean", "required": true,
+          "ui": { "label": "For trade" } }
+      ],
+      "indexes": [
+        { "name": "ux_collection_owner_cap", "fields": ["ownerUsername", "capId"], "unique": true }
       ],
       "access": {
-        "read": "$user.roles.contains('Staff') || customerUsername == $user.id",
-        "write": "$user.roles.contains('Staff') || customerUsername == $user.id"
+        "read": "ownerUsername == $user.id || forTrade == true",
+        "write": "ownerUsername == $user.id"
       }
     },
     {
-      "name": "OrderItem",
-      "ui": { "label": "Order item" },
+      "name": "Mosaic",
+      "ui": { "label": "Mosaic" },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "orderId", "type": "reference", "required": true,
-          "ui": { "label": "Order" },
-          "reference": { "target": "Order", "displayField": "orderNumber" } },
-        { "name": "pigmentId", "type": "reference", "required": true,
-          "ui": { "label": "Pigment" },
-          "reference": { "target": "Pigment", "displayField": "name" } },
-        { "name": "quantityKg", "type": "decimal", "required": true,
-          "ui": { "label": "Quantity (kg)" } },
-        { "name": "unitPrice", "type": "decimal", "required": true,
-          "ui": { "label": "Unit price" } }
+        { "name": "code", "type": "string", "required": false, "maxLength": 20, "unique": true,
+          "defaultExpression": "nextNumber('mosaicCode')",
+          "ui": { "label": "Code" } },
+        { "name": "title", "type": "string", "required": true, "maxLength": 120,
+          "ui": { "label": "Title" } },
+        { "name": "ownerUsername", "type": "string", "required": true, "maxLength": 120,
+          "ui": { "label": "Owner" } },
+        { "name": "rows", "type": "integer", "required": true, "min": 1, "max": 60,
+          "ui": { "label": "Rows" } },
+        { "name": "cols", "type": "integer", "required": true, "min": 1, "max": 60,
+          "ui": { "label": "Columns" } },
+        { "name": "layout", "type": "enum", "required": true,
+          "enumValues": ["HEX_OFFSET", "SQUARE"],
+          "ui": { "label": "Layout" } },
+        { "name": "cellCount", "type": "integer", "required": false,
+          "derivedExpression": "rows * cols",
+          "ui": { "label": "Cells" } },
+        { "name": "sourceImage", "type": "file", "required": false,
+          "file": { "contentTypes": ["image/png", "image/jpeg"], "maxSizeBytes": 2097152 },
+          "ui": { "label": "Source image" } },
+        { "name": "builtPhoto", "type": "file", "required": false,
+          "file": { "contentTypes": ["image/png", "image/jpeg"], "maxSizeBytes": 2097152 },
+          "ui": { "label": "Photo of the built piece" } },
+        { "name": "description", "type": "string", "required": false, "maxLength": 1000,
+          "ui": { "label": "Description" } },
+        { "name": "status", "type": "enum", "required": true,
+          "enumValues": ["DRAFT", "PUBLISHED", "BUILT"],
+          "ui": { "label": "Status" } }
+      ],
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          { "value": "DRAFT", "label": "Draft", "initial": true },
+          { "value": "PUBLISHED", "label": "Published" },
+          { "value": "BUILT", "label": "Built", "terminal": true }
+        ],
+        "transitions": [
+          { "from": "DRAFT", "to": "PUBLISHED", "event": "publish", "actionLabel": "Publish" },
+          { "from": "PUBLISHED", "to": "DRAFT", "event": "unpublish", "actionLabel": "Back to draft" },
+          { "from": "PUBLISHED", "to": "BUILT", "event": "markBuilt", "actionLabel": "Mark as built" }
+        ]
+      },
+      "access": {
+        "read": "ownerUsername == $user.id || status != 'DRAFT'",
+        "write": "ownerUsername == $user.id"
+      }
+    },
+    {
+      "name": "MosaicCell",
+      "ui": { "label": "Mosaic cell" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "mosaicId", "type": "reference", "required": true,
+          "ui": { "label": "Mosaic" },
+          "reference": { "target": "Mosaic", "displayField": "title", "onDelete": "cascade" } },
+        { "name": "row", "type": "integer", "required": true, "min": 0,
+          "ui": { "label": "Row" } },
+        { "name": "col", "type": "integer", "required": true, "min": 0,
+          "ui": { "label": "Column" } },
+        { "name": "capId", "type": "reference", "required": false,
+          "ui": { "label": "Cap" },
+          "reference": { "target": "Cap", "displayField": "label" } }
       ],
       "indexes": [
-        { "name": "idx_order_item_order", "fields": ["orderId"] }
+        { "name": "ux_mosaic_cell_pos", "fields": ["mosaicId", "row", "col"], "unique": true },
+        { "name": "idx_mosaic_cell_cap", "fields": ["capId"] }
       ]
     },
     {
@@ -199,49 +280,110 @@
       ]
     }
   ],
+  "aggregates": [
+    {
+      "name": "MosaicAggregate",
+      "root": "Mosaic",
+      "collections": [
+        { "name": "cells", "concept": "MosaicCell", "childField": "mosaicId", "ownership": "owned", "orderBy": "row" }
+      ]
+    }
+  ],
+  "queries": [
+    { "name": "ApprovedCaps", "concept": "Cap", "where": "status == 'APPROVED'", "orderBy": ["label"] },
+    { "name": "CapsAwaitingReview", "concept": "Cap", "where": "status == 'SUBMITTED'", "orderBy": ["label"] },
+    { "name": "PublishedMosaics", "concept": "Mosaic", "where": "status != 'DRAFT'", "orderBy": ["code desc"] },
+    { "name": "TotalCaps", "concept": "Cap", "where": "status == 'APPROVED'",
+      "aggregates": [{ "name": "total", "fn": "count" }] },
+    { "name": "TotalMembers", "concept": "Member",
+      "aggregates": [{ "name": "total", "fn": "count" }] },
+    { "name": "TotalPublishedMosaics", "concept": "Mosaic", "where": "status != 'DRAFT'",
+      "aggregates": [{ "name": "total", "fn": "count" }] },
+    { "name": "TopBreweriesInMosaics", "concept": "MosaicCell", "where": "capId != null",
+      "groupBy": ["capId.breweryId.name"],
+      "aggregates": [{ "name": "caps", "fn": "count" }],
+      "orderBy": ["caps desc"], "limit": 10 },
+    { "name": "CapsNeededPerMosaic", "concept": "MosaicCell", "where": "capId != null",
+      "groupBy": ["mosaicId.code", "capId.label"],
+      "aggregates": [{ "name": "needed", "fn": "count" }],
+      "orderBy": ["needed desc"], "limit": 500,
+      "metadata": { "purpose": "The 'beers to drink' half that NPDev can express today: caps needed per mosaic. needed - owned needs a cross-concept subtraction -- friction log. Mosaic's row scope (drafts private) is pushed into the GROUP BY per caller." } }
+  ],
   "autoPanels": [
-    { "name": "Pigments", "concept": "Pigment", "route": "/pigments",
+    { "name": "Mosaics", "aggregate": "MosaicAggregate", "route": "/mosaics",
+      "surfaces": ["selection", "detail", "transaction"],
+      "selection": { "columns": ["code", "title", "ownerUsername", "rows", "cols", "status"] } },
+    { "name": "Collection", "concept": "CollectionItem", "route": "/collection",
       "surfaces": ["selection", "detail", "transaction"] },
-    { "name": "Categories", "concept": "PigmentCategory", "route": "/categories",
+    { "name": "Caps", "concept": "Cap", "route": "/caps",
+      "surfaces": ["selection", "detail", "transaction"],
+      "selection": { "columns": ["label", "breweryId", "dominantColor", "finish", "rarity", "status"] } },
+    { "name": "Breweries", "concept": "Brewery", "route": "/breweries",
       "surfaces": ["selection", "detail", "transaction"] },
-    { "name": "Suppliers", "concept": "Supplier", "route": "/suppliers",
-      "surfaces": ["selection", "detail", "transaction"] },
-    { "name": "Pigment suppliers", "concept": "PigmentSupplier", "route": "/pigment-suppliers",
-      "surfaces": ["selection", "detail", "transaction"] },
-    { "name": "Stock", "concept": "StockEntry", "route": "/stock",
-      "surfaces": ["selection", "detail", "transaction"] },
-    { "name": "Orders", "concept": "Order", "route": "/orders",
-      "surfaces": ["selection", "detail", "transaction"] },
-    { "name": "Order items", "concept": "OrderItem", "route": "/order-items",
+    { "name": "Members", "concept": "Member", "route": "/members",
       "surfaces": ["selection", "detail", "transaction"] }
   ],
-  "seeds": [
+  "documents": [
     {
-      "concept": "PigmentCategory",
-      "alias": "cat_organic",
-      "data": { "name": "Organic", "description": "Plant- and mineral-derived organic pigments" }
-    },
-    {
-      "concept": "PigmentCategory",
-      "alias": "cat_synthetic",
-      "data": { "name": "Synthetic", "description": "Chemically synthesized pigments" }
-    },
-    {
-      "concept": "PigmentCategory",
-      "alias": "cat_metallic",
-      "data": { "name": "Metallic", "description": "Metallic-effect pigments" }
-    },
-    {
-      "concept": "Pigment",
-      "data": { "name": "Ultramarine Blue", "colorCode": "#120A8F", "categoryId": "$ref:cat_organic", "pricePerKg": 42.5, "active": true }
-    },
-    {
-      "concept": "Pigment",
-      "data": { "name": "Cadmium Yellow", "colorCode": "#FFF600", "categoryId": "$ref:cat_synthetic", "pricePerKg": 38.0, "active": true }
-    },
-    {
-      "concept": "Pigment",
-      "data": { "name": "Titanium White", "colorCode": "#FFFFFF", "categoryId": "$ref:cat_metallic", "pricePerKg": 24.9, "active": true }
+      "name": "MosaicAssemblySheet",
+      "concept": "Mosaic",
+      "aggregate": "MosaicAggregate",
+      "title": "Mosaic assembly sheet",
+      "pageSize": "A4",
+      "marginMm": 15,
+      "bands": [
+        { "name": "header", "kind": "header", "label": "Mosaic",
+          "fields": [
+            { "field": "code", "ui": { "label": "Code" } },
+            { "field": "title", "ui": { "label": "Title" } },
+            { "field": "rows", "ui": { "label": "Rows" } },
+            { "field": "cols", "ui": { "label": "Columns" } }
+          ] },
+        { "name": "cells", "kind": "lineItems", "collection": "cells", "label": "Cells, row by row",
+          "fields": [
+            { "field": "row", "ui": { "label": "Row" } },
+            { "field": "col", "ui": { "label": "Col" } },
+            { "field": "capId", "ui": { "label": "Cap" } }
+          ] }
+      ]
     }
+  ],
+  "guidePages": [
+    {
+      "name": "Dashboard",
+      "default": true,
+      "theme": { "mode": "light", "accent": "#b5651d", "logoText": "Pigmentampas", "density": "comfortable" },
+      "gadgets": [
+        { "name": "kpiCaps", "type": "kpi", "title": "Caps catalogued", "query": "TotalCaps", "y": "total" },
+        { "name": "kpiMosaics", "type": "kpi", "title": "Mosaics published", "query": "TotalPublishedMosaics", "y": "total" },
+        { "name": "kpiMembers", "type": "kpi", "title": "Members", "query": "TotalMembers", "y": "total" },
+        { "name": "topBreweries", "type": "bar", "title": "Top breweries in mosaics", "query": "TopBreweriesInMosaics", "x": "capId.breweryId.name", "y": "caps" },
+        { "name": "capsNeeded", "type": "table", "title": "Caps needed per mosaic", "query": "CapsNeededPerMosaic" }
+      ]
+    }
+  ],
+  "seeds": [
+    { "concept": "Brewery", "alias": "br_branik", "data": { "name": "Branik", "country": "Czech Republic" } },
+    { "concept": "Brewery", "alias": "br_lech", "data": { "name": "Lech", "country": "Poland" } },
+    { "concept": "Brewery", "alias": "br_labierre", "data": { "name": "La Bierre", "country": "France" } },
+    { "concept": "Cap", "alias": "cap_branik",
+      "data": { "label": "Branik", "breweryId": "$ref:br_branik", "dominantColor": "#C8102E", "accentColor": "#FFFFFF", "finish": "PRINTED", "rarity": "COMMON", "status": "APPROVED", "tags": "red,white" } },
+    { "concept": "Cap", "alias": "cap_lech",
+      "data": { "label": "Lech Pils", "breweryId": "$ref:br_lech", "dominantColor": "#1B7A3A", "accentColor": "#F2C500", "finish": "GLOSSY", "rarity": "COMMON", "status": "APPROVED", "tags": "green,gold" } },
+    { "concept": "Cap", "alias": "cap_labierre",
+      "data": { "label": "La Bierre", "breweryId": "$ref:br_labierre", "dominantColor": "#1F3A93", "accentColor": "#E0E0E0", "finish": "METALLIC", "rarity": "UNCOMMON", "status": "APPROVED", "tags": "blue,silver" } },
+    { "concept": "Cap", "alias": "cap_plain",
+      "data": { "label": "Plain silver", "dominantColor": "#C0C0C0", "finish": "METALLIC", "rarity": "COMMON", "status": "SUBMITTED", "tags": "silver,blank" } },
+    { "concept": "Member", "data": { "username": "admin", "displayName": "Tito", "city": "Montevideo", "country": "Uruguay", "bio": "Started gluing caps on a board in 2009." } },
+    { "concept": "CollectionItem", "data": { "ownerUsername": "admin", "capId": "$ref:cap_branik", "quantity": 120, "condition": "USED", "forTrade": false } },
+    { "concept": "CollectionItem", "data": { "ownerUsername": "admin", "capId": "$ref:cap_lech", "quantity": 40, "condition": "MINT", "forTrade": true } },
+    { "concept": "Mosaic", "alias": "mz_demo",
+      "data": { "title": "First light", "ownerUsername": "admin", "rows": 20, "cols": 33, "layout": "HEX_OFFSET", "status": "PUBLISHED", "description": "The demo mosaic seeded with every fresh database." } },
+    { "concept": "MosaicCell", "data": { "mosaicId": "$ref:mz_demo", "row": 0, "col": 0, "capId": "$ref:cap_branik" } },
+    { "concept": "MosaicCell", "data": { "mosaicId": "$ref:mz_demo", "row": 0, "col": 1, "capId": "$ref:cap_branik" } },
+    { "concept": "MosaicCell", "data": { "mosaicId": "$ref:mz_demo", "row": 0, "col": 2, "capId": "$ref:cap_lech" } },
+    { "concept": "MosaicCell", "data": { "mosaicId": "$ref:mz_demo", "row": 1, "col": 0, "capId": "$ref:cap_lech" } },
+    { "concept": "MosaicCell", "data": { "mosaicId": "$ref:mz_demo", "row": 1, "col": 1, "capId": "$ref:cap_labierre" } },
+    { "concept": "MosaicCell", "data": { "mosaicId": "$ref:mz_demo", "row": 1, "col": 2, "capId": "$ref:cap_labierre" } }
   ]
 }

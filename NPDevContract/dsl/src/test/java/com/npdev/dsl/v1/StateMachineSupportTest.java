@@ -141,5 +141,38 @@ class StateMachineSupportTest {
                 "Expected initial-state validation error, got: " + errors
         );
     }
-}
 
+    /** Pigmentampas 2026-10-07: a guard naming $user (role-gated transition) validates; a malformed one does not. */
+    @Test
+    void semanticValidationAcceptsUserGuardsAndRejectsMalformedOnes() throws Exception {
+        assertTrue(guardErrors("$user.roles.contains('Curator') || $user.id == 'admin'").isEmpty());
+        assertTrue(guardErrors("$user.roles.contains('Curator'").stream()
+                .anyMatch(error -> error.contains("guard uses an unsupported expression format")));
+    }
+
+    private static List<String> guardErrors(String guard) throws Exception {
+        Path modelPath = Files.createTempFile("npdev-state-machine-guard-", ".json");
+        Files.writeString(modelPath, """
+                {
+                  "namespace": "state.machine.demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    {
+                      "name": "Cap",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "status", "type": "enum", "required": true, "enumValues": ["SUBMITTED", "APPROVED"] }
+                      ],
+                      "lifecycle": {
+                        "statusField": "status",
+                        "states": [ { "value": "SUBMITTED", "initial": true }, { "value": "APPROVED" } ],
+                        "transitions": [ { "from": "SUBMITTED", "to": "APPROVED", "guard": %s } ]
+                      }
+                    }
+                  ]
+                }
+                """.formatted(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(guard)));
+        return new SemanticValidator().validate(new JsonModelParser().parse(modelPath));
+    }
+}

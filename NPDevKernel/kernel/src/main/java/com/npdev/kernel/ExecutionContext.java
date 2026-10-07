@@ -61,6 +61,30 @@ public record ExecutionContext(
         return new ExecutionContext(tenantId, actorId, Map.of("trigger", "resume"), Set.of("ADMIN"));
     }
 
+    /**
+     * The principal model {@code seeds[]} load under (2026-10-07, Pigmentampas: a seeded Member was
+     * denied by its own {@code access.write: "username == $user.id"}). Seed rows are authored in the
+     * model by the app's owner, so row/field write rules and {@code $user} lifecycle guards -- which
+     * scope what a CALLER may write -- do not apply to them; permissions and invariants still do.
+     *
+     * <p>The mark is IDENTITY, never a tag: tags are caller-influenced (the JWT resolver copies
+     * {@code X-Tag-*} headers into them), so only an instance this factory created reports
+     * {@link #isSeeding(ExecutionContext)} -- any {@code withTag}/{@code withRoles} copy loses it (fails closed).
+     */
+    public static ExecutionContext seeding(String tenantId) {
+        ExecutionContext context = new ExecutionContext(tenantId, "system:seed", Map.of("trigger", "seed"), Set.of("ADMIN"));
+        SEEDING_CONTEXTS.add(context);
+        return context;
+    }
+
+    /** Static, not an accessor, so no serializer ever reports it as a property of a context. */
+    public static boolean isSeeding(ExecutionContext context) {
+        return context != null && SEEDING_CONTEXTS.contains(context);
+    }
+
+    private static final Set<ExecutionContext> SEEDING_CONTEXTS =
+            java.util.Collections.synchronizedSet(java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>()));
+
     public ExecutionContext withTag(String key, String value) {
         String normalizedKey = normalize(key);
         if (normalizedKey == null) {
