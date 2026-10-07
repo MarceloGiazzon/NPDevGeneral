@@ -10,6 +10,8 @@ import com.npdev.kernel.ports.ExternalAiCapabilityContract;
 import com.npdev.kernel.ports.ExternalAiPackSubmission;
 import com.npdev.kernel.ports.ExternalAiPayload;
 import com.npdev.kernel.ports.ExternalAiRunResult;
+import com.npdev.kernel.ports.ExternalAiStructuredRequest;
+import com.npdev.kernel.ports.ExternalAiStructuredResult;
 import com.npdev.kernel.ports.ExternalAiVerdictRecord;
 
 import java.io.IOException;
@@ -103,6 +105,23 @@ public final class InProcExternalAiCapabilityAdapter implements CapabilityAdapte
         ExternalAiVerdictRecord record = new ExternalAiVerdictRecord(missionId, null, vendorId, model, verdictJson);
         verdicts.add(record);
         return record;
+    }
+
+    /**
+     * P4 (G3): the offline answer -- a deterministic instance of the requested schema, never a network
+     * call. This is what lets an app with {@code npdev.externalai.provider} left at its {@code inproc}
+     * default run an AI-calling flow end to end (and what tests use), with zero tokens reported.
+     */
+    @Override
+    public ExternalAiStructuredResult generateStructured(ExternalAiStructuredRequest request) {
+        JsonNode schema;
+        try {
+            schema = objectMapper.readTree(request.responseSchemaJson());
+        } catch (IOException e) {
+            throw new IllegalArgumentException("responseSchemaJson is not valid JSON", e);
+        }
+        String model = request.model() == null || request.model().isBlank() ? "offline" : request.model();
+        return new ExternalAiStructuredResult(request.vendorId(), model, SchemaSampler.sample(schema).toString(), 0, 0);
     }
 
     public List<ExternalAiRunResult> runs() {

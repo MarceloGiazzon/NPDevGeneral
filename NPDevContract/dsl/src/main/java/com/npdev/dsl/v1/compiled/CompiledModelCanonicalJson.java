@@ -398,6 +398,34 @@ public final class CompiledModelCanonicalJson {
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         node.put("egress", safe(externalAi.getEgress()));
         node.set("vendors", toStringArray(externalAi.getVendors()));
+        if (!externalAi.getPrompts().isEmpty()) {
+            ArrayNode prompts = JsonNodeFactory.instance.arrayNode();
+            for (CompiledExternalAiPrompt prompt : externalAi.getPrompts()) {
+                ObjectNode promptNode = JsonNodeFactory.instance.objectNode();
+                promptNode.put("name", safe(prompt.name()));
+                if (prompt.description() != null) promptNode.put("description", prompt.description());
+                promptNode.put("vendor", safe(prompt.vendor()));
+                if (prompt.model() != null) promptNode.put("model", prompt.model());
+                promptNode.put("template", safe(prompt.template()));
+                if (prompt.image() != null) promptNode.put("image", prompt.image());
+                // Kept as the JSON text the compiler produced (validation already proved it parses):
+                // the runtime parses it once, and the round trip is exact by construction.
+                if (prompt.outputSchemaJson() != null) promptNode.put("outputSchemaJson", prompt.outputSchemaJson());
+                if (prompt.maxOutputTokens() != null) promptNode.put("maxOutputTokens", prompt.maxOutputTokens());
+                prompts.add(promptNode);
+            }
+            node.set("prompts", prompts);
+        }
+        if (externalAi.getCallsPerUserPerDayProperty() != null || externalAi.getMonthlyCostCapUsdProperty() != null) {
+            ObjectNode limits = JsonNodeFactory.instance.objectNode();
+            if (externalAi.getCallsPerUserPerDayProperty() != null) {
+                limits.put("callsPerUserPerDay", externalAi.getCallsPerUserPerDayProperty());
+            }
+            if (externalAi.getMonthlyCostCapUsdProperty() != null) {
+                limits.put("monthlyCostCapUsd", externalAi.getMonthlyCostCapUsdProperty());
+            }
+            node.set("limits", limits);
+        }
         return node;
     }
 

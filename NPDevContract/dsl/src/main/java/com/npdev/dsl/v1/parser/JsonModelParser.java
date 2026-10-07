@@ -972,7 +972,30 @@ public final class JsonModelParser {
         }
         String egress = readText(node, "egress");
         List<String> vendors = parseTextArray(node.get("vendors"));
-        return new ExternalAiAst(egress, vendors);
+        List<ExternalAiPromptAst> prompts = new ArrayList<>();
+        JsonNode promptsNode = node.get("prompts");
+        if (promptsNode != null && !promptsNode.isNull()) {
+            if (!promptsNode.isArray()) {
+                throw new IOException("externalAi.prompts must be an array");
+            }
+            for (JsonNode prompt : promptsNode) {
+                JsonNode outputSchema = prompt.get("outputSchema");
+                prompts.add(new ExternalAiPromptAst(
+                        readText(prompt, "name"),
+                        readText(prompt, "description"),
+                        readText(prompt, "vendor"),
+                        readText(prompt, "model"),
+                        readText(prompt, "template"),
+                        readText(prompt, "image"),
+                        outputSchema == null || outputSchema.isNull() ? null : outputSchema.toString(),
+                        readOptionalInt(prompt, "maxOutputTokens")
+                ));
+            }
+        }
+        JsonNode limits = node.get("limits");
+        String callsPerUserPerDay = limits == null ? null : readText(limits, "callsPerUserPerDay");
+        String monthlyCostCapUsd = limits == null ? null : readText(limits, "monthlyCostCapUsd");
+        return new ExternalAiAst(egress, vendors, prompts, callsPerUserPerDay, monthlyCostCapUsd);
     }
 
     /** Move 6 Move A: parses the optional app-level settings block; null if the model declares none. */

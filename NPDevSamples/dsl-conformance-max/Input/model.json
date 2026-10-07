@@ -5,7 +5,30 @@
   "version": "1.0",
 
   "externalAi": {
-    "egress": "denied"
+    "egress": "apiEnabled",
+    "vendors": ["gemini"],
+    "prompts": [
+      {
+        "name": "SuggestCatalogTags",
+        "description": "P4 (G3) coverage: a flow-callable prompt with {{field}} bindings, an optional image and a validated JSON answer. Runs against the offline inproc adapter unless npdev.externalai.provider=http.",
+        "vendor": "gemini",
+        "model": "gemini-3.5-flash",
+        "template": "Suggest at most {{maxTags}} short catalogue tags for the widget '{{entry.sku}}' (status {{entry.status}}).",
+        "image": "photo",
+        "outputSchema": {
+          "type": "object",
+          "required": ["tags"],
+          "properties": {
+            "tags": { "type": "array", "items": { "type": "string" }, "maxItems": 5 }
+          }
+        },
+        "maxOutputTokens": 256
+      }
+    ],
+    "limits": {
+      "callsPerUserPerDay": "aiCallsPerUserPerDay",
+      "monthlyCostCapUsd": "aiMonthlyBudgetUsd"
+    }
   },
 
   "settings": {
@@ -58,7 +81,11 @@
     { "name": "locale", "type": "string", "default": "en-US",
       "settableAt": ["tenant", "user"], "label": "Locale" },
     { "name": "dateFormat", "type": "string", "default": "yyyy-MM-dd",
-      "settableAt": ["tenant", "user"], "label": "Date format" }
+      "settableAt": ["tenant", "user"], "label": "Date format" },
+    { "name": "aiCallsPerUserPerDay", "type": "int", "default": 20,
+      "settableAt": ["tenant", "user"], "label": "AI calls per user per day" },
+    { "name": "aiMonthlyBudgetUsd", "type": "string", "default": "5.00",
+      "settableAt": ["tenant"], "label": "Monthly AI budget (USD)" }
   ],
 
   "packs": [
@@ -681,12 +708,18 @@
       "name": "notification",
       "type": "NotificationCapability",
       "operations": [ "send" ]
+    },
+    {
+      "name": "externalAi",
+      "type": "ExternalAiCapability",
+      "operations": [ "generate" ]
     }
   ],
 
   "bindings": [
     { "capability": "persistence", "adapter": "repository" },
     { "capability": "notification", "adapter": "notification-inproc" },
+    { "capability": "externalAi", "adapter": "externalAi" },
     { "capability": "eventBus", "adapter": "inproc" }
   ],
 
@@ -1419,6 +1452,15 @@
   ],
 
   "flows": [
+    {
+      "name": "SuggestCatalogTagsFlow",
+      "input": { "concept": "WidgetCatalogEntry", "mode": "query" },
+      "steps": [
+        { "name": "ask-ai", "type": "capabilityCall", "capability": "externalAi", "operation": "generate",
+          "args": [ "SuggestCatalogTags", "$input" ], "output": "$suggestion" },
+        { "name": "return-suggestion", "type": "return", "value": "$suggestion" }
+      ]
+    },
     {
       "name": "RenameOrderStatusViaFlow",
       "input": { "concept": "WidgetOrder", "mode": "update" },

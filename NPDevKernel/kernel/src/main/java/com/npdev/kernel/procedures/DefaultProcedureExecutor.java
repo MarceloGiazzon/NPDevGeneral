@@ -415,8 +415,19 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             // same asymmetry requireMap already works around for saveConcept's dataRef. Matching it
             // here means a readConcept result can be passed straight to a capability call.
             Object v = resolve(state, ref);
+            // P4 (G3): a bare (non-$) arg naming nothing in state is a literal -- the flow-step rule
+            // (KernelRunner.resolveReference), so capabilityCall args: ["PaintMosaic", "$input"] means
+            // the same thing in a procedure as in a flow.
+            if (v == null && ref != null && !ref.trim().startsWith("$") && !state.containsKey(ref.trim())) {
+                v = ref.trim();
+            }
             args.add(v instanceof ConceptRecord r ? r.data() : v);
         }
+        // The adapter sees the caller's identity the same way a flow-step adapter does (KernelRunner
+        // seeds tenantId/actorId into flow state): per-user quotas and tenant-scoped reads need it.
+        Map<String, Object> adapterState = new LinkedHashMap<>(state);
+        adapterState.putIfAbsent("tenantId", context.tenantId());
+        adapterState.putIfAbsent("actorId", context.actorId());
         CapabilityResult result = capabilityDispatcher.invoke(
                 new CapabilityCall(
                         step.capability(),
@@ -427,7 +438,7 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
                         correlationId(context),
                         context.idempotencyKey()
                 ),
-                state
+                adapterState
         );
         if (!result.ok()) {
             String code = result.error() == null ? "CAPABILITY_FAILED" : result.error().code();
