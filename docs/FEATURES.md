@@ -97,6 +97,8 @@ processes, screens, permissions, and how it all changes over time.
 | **`documents`** | generated documents and printable output |
 | **`guidePages` / `explainability`** | attach guidance to a screen so users are told what it is for — in the model, beside the thing it explains |
 | **Widget catalogue** | field types map to appropriate inputs, validated for compatibility at authoring time |
+| **Hand-made pages (`web/*.html`)** | when no declaration fits — a drawing board, a map — write the page yourself beside the model. It is copied into the app on every generate, wrapped by the shell (nav, sign-in, roles), listed in the menu from `pages.json`, and talks to the app through `NPDevShell.api` (`get`/`post`/`fileUrl`, same token and errors as the generated UI). Example: `NPDevSamples/pigmentampas/Input/web/studio.html` |
+| **Custom regions and widgets** | smaller escape hatches: an app-owned region inside a generated workbench (`regionMount`), or one field rendered by your own widget (`ui.widget: "custom"`) |
 
 ## 6. Security
 
@@ -147,8 +149,9 @@ the ease.
 **And it is a real Spring Boot application at the other end** — source you own, no runtime
 dependency on NPDev. That is the quality.
 
-**What is deliberately *not* here:** a designed consumer-facing UI, a microservice generator, hot
-reload without restart. Those and every other designed limit are in
+**What is deliberately *not* here:** a generated *designed* consumer-facing UI (the generated
+screens are functional; a bespoke screen is a hand-made `web/` page, above), a microservice
+generator, hot reload without restart. Those and every other designed limit are in
 `docs/ACCEPTED_BOUNDARIES.md` — **kept accurate on purpose, because a stale limitations page costs
 more trust than a short feature list.**
 
