@@ -1,20 +1,21 @@
 {
-  "closedAt": "2026-10-07T16:23:42.4134590Z",
+  "closedAt": "2026-10-07T19:50:36.7341321Z",
   "branch": "main",
-  "head": "181f384f",
-  "headSubject": "feat(ai): externalAi prompts as a model capability -- Identify/Paint with AI (Pigmentampas P4)",
-  "summary": "P4 (AI as a model capability) verified live and shipped at 181f384f: fixed procedure-arg alphabetical ordering in ExternalAiPromptRunner (match prompt/input by type) + validation, workbench full-patch now folds state.return (AI suggestion/cells land in the form), PaintMosaic prompt asks for exactly {{cellCount}} cells, suggestedFix markers on 5 ExternalAi messages. Identify/Paint with AI verified via API and in a real browser on gemini-3.5-flash-lite (3.5-flash was 503-overloaded).",
-  "nextStep": "Owner decision first: triage security-sweep hit 64bd0d0b9492 (swallowed-security-exception at NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/query/AccessReadPredicate.java:106, from P1 5c1c64d8) -- it fails closed (DefaultConceptGateway throws AGGREGATE_ACCESS_READ_UNSUPPORTED on empty); if owner agrees, add its entry to scripts/quality/security-pattern-sweep-allowlist.json and raise frozenCount 627->628, rerun run-all-gates.ps1 -Only aiKnowledge, commit+push. Then continue the Pigmentampas plan at P5 (see plan README). Optional: shorten external-ai-http retry budget for 503 (3x120s makes a UI button take 2-4 min to fail).",
+  "head": "b4ddcc73",
+  "headSubject": "feat(pigmentampas): photo -> mosaic via an app customCapability + fileStore.readImage (P5)",
+  "summary": "Allowlisted the owner-approved fail-closed AccessReadPredicate security-sweep hit (0f600f19, frozenCount 628). Shipped Pigmentampas P5 photo->mosaic (b4ddcc73): app customCapability mosaicPainter (CIELAB hex sampling, only-owned caps, cap colour extraction), platform fileStore.readImage capability with shared TenantFileReader, workbench header checkbox/file-upload widgets, seed cap colours corrected.",
+  "nextStep": "Start Pigmentampas P6 (public read, G4) per the plan README section 4: access.read: public, anonymous gallery route, never anonymous writes, rate-limited, then /security-review. App runs from D:\\WorkSpace\\NPDev\\Build\\samples\\pigmentampas\\Output (port 8084, login tito/demo-pass-1). Optional side items: shorten external-ai-http 503 retry budget; aggregate invoke echoes all procedure state (incl. photo data URI) -- see friction log.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
-  "blocked": "aiKnowledge gate red on security-sweep hit 64bd0d0b9492 until the owner approves allowlisting it (auto-mode classifier refused the edit). D5 Google OAuth client + Meta app must be created by the owner; D6 story names unanswered (only P8/P9 need them).",
-  "verified": "T2 run-all-gates: runtimeHost PASSED, kernel PASSED, generator FAILED then PASSED on rerun (twice, incl. after workbench template change), aiKnowledge FAILED only on untriaged security-pattern hit 64bd0d0b9492 (pre-existing P1 code). Narrow: runtimehost-core ExternalAiPromptRunnerTest 9/9, :NPDevContract:dsl:test DiagnosticSuggestedFixCoverageTest + *ExternalAi* pass. Live: p4-live-smoke Identify ok 68s, Paint 8x12 96 cells 12s, 20x33 660 cells; ScrapForAI browser screenshots show both buttons folding results into the workbench.",
-  "dirtyCount": 2,
+  "blocked": "D5 Google OAuth client + Meta app must be created by the owner (P8); D6 story names unanswered (P8/P9).",
+  "verified": "T2 run-all-gates on b4ddcc73: generator PASSED, runtimeHost PASSED, kernel PASSED, aiKnowledge PASSED (exit 0). Narrow: runtimehost-core FileStoreCapabilityHandlerTest 2/2, ExternalAiPromptRunnerTest 9/9. Live API smoke: 20x33 photo -> 660 cells ~100ms, only-owned palette restriction, capColors on 4 seed caps. ScrapForAI browser: upload via header file input, tick onlyOwnedCaps, Paint from photo -- all 24 steps passed (console errors only pre-existing theme.css/ShellCompanyName/identity 403 noise).",
+  "dirtyCount": 1,
   "dirtyFiles": [
-    " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl"
+    " M scripts/policy/coverage-baseline.json"
   ],
   "unpushed": 0,
   "landedCommits": [
-    "181f384f feat(ai): externalAi prompts as a model capability -- Identify/Paint with AI (Pigmentampas P4)"
+    "b4ddcc73 feat(pigmentampas): photo -> mosaic via an app customCapability + fileStore.readImage (P5)",
+    "0f600f19 chore(security): allowlist fail-closed AccessReadPredicate catch (64bd0d0b9492), frozenCount 627->628",
+    "5c48a7a5 chore(session): handoff after Pigmentampas P4 AI capability"
   ]
 }
