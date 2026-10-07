@@ -177,6 +177,9 @@
     return {
       aggregate: descriptor.aggregate || resp.aggregate,
       title: resp.title,
+      // P5: root concept + widget-relevant header field types (boolean/file) from loadWorkbench.
+      rootConcept: resp.rootConcept || "",
+      headerFieldTypes: resp.headerFieldTypes || {},
       descriptor: descriptor,
       isDirty: function () { var d = dirty.header; Object.keys(dirty.sections).forEach(function (k) { d = d || dirty.sections[k]; }); return d; },
       editHeader: function (f, v) { draft[f] = v; dirty.header = true; },
@@ -803,6 +806,43 @@
     return st.el;
   }
 
+  // P5: header widgets for the two field types a text box cannot hold -- a boolean (checkbox) and a
+  // stored file handle (thumbnail for images + an upload button that POSTs to /api/files/{concept}/{field}
+  // and puts the returned handle in the draft; nothing is persisted until Save).
+  function headerCheckbox(fld, value) {
+    var box = el('<input type="checkbox" data-fkey="h:' + fld + '">');
+    box.checked = value === true || value === "true";
+    if (!EDITABLE) box.disabled = true;
+    box.onchange = function () { store.editHeader(fld, box.checked); scheduleRecompute(); render(); };
+    return box;
+  }
+  function headerFile(fld, handle) {
+    var wrap = el('<span class="hdr-file" style="display:inline-flex;align-items:center;gap:8px"></span>');
+    var isHandle = handle && typeof handle === "object" && handle.key;
+    if (isHandle && String(handle.contentType || "").indexOf("image/") === 0) {
+      var img = el('<img alt="" style="height:48px;max-width:96px;object-fit:cover;border-radius:4px;border:1px solid #bbb">');
+      img.src = cellGridFileUrl(handle);
+      wrap.append(img);
+    }
+    wrap.append(el('<span class="sub"></span>'));
+    wrap.lastChild.textContent = isHandle ? (handle.originalName || handle.key) : "";
+    if (EDITABLE && store.rootConcept) {
+      var input = el('<input type="file" style="max-width:220px">');
+      input.onchange = function () {
+        var file = input.files && input.files[0];
+        if (!file) return;
+        var form = new FormData(); form.append("file", file);
+        fetch("/api/files/" + encodeURIComponent(store.rootConcept) + "/" + encodeURIComponent(fld),
+          { method: "POST", headers: authHeaders(), body: form })
+          .then(function (r) { return r.ok ? r.json() : r.text().then(function (t) { throw new Error(t || r.status); }); })
+          .then(function (uploaded) { store.editHeader(fld, uploaded); render(); })
+          .catch(function (e) { wrap.lastChild.textContent = "Upload failed: " + (e && e.message ? e.message : e); });
+      };
+      wrap.append(input);
+    }
+    return wrap;
+  }
+
   function cellGridFileUrl(handle) {
     if (!handle || !handle.key) return "";
     return "/api/files?" + new URLSearchParams({ storeId: handle.storeId || "", key: handle.key }).toString();
@@ -1025,7 +1065,15 @@
         })));
     } else {
       var f = el('<form class="grid2"></form>');
-      v.header.fields.forEach(function (fld) { f.append(el('<label>' + fld + ':</label>')); var d = el("<div></div>"); d.append(cell(v.header.values[fld], function (val) { store.editHeader(fld, val); }, "h:" + fld)); f.append(d); });
+      v.header.fields.forEach(function (fld) {
+        f.append(el('<label>' + fld + ':</label>'));
+        var d = el("<div></div>");
+        var ftype = store.headerFieldTypes[fld];
+        if (ftype === "boolean") d.append(headerCheckbox(fld, v.header.values[fld]));
+        else if (ftype === "file") d.append(headerFile(fld, v.header.values[fld]));
+        else d.append(cell(v.header.values[fld], function (val) { store.editHeader(fld, val); }, "h:" + fld));
+        f.append(d);
+      });
       hb.append(f);
     }
     head.append(hb); app.append(head);

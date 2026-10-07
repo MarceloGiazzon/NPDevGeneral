@@ -835,6 +835,37 @@ public class PanelRuntime {
         return procedureRunner.execute(procedureName, input, context);
     }
 
+    // P5: the root concept's widget-relevant field types -- "boolean" (header renders a checkbox) and
+    // "file" (thumbnail + upload button) -- so the workbench header is not a row of text boxes showing
+    // "[object Object]" for a stored file handle. Read live from the model, never baked into metadata.
+    private String rootConceptOf(String aggregateName) {
+        CompiledModel model = modelHolder.get();
+        if (model == null || aggregateName.isBlank()) {
+            return "";
+        }
+        return model.getAggregates().stream()
+                .filter(candidate -> aggregateName.equals(candidate.name()))
+                .map(found -> found.root() == null ? "" : found.root())
+                .findFirst()
+                .orElse("");
+    }
+
+    private Map<String, Object> headerFieldTypes(String rootConcept) {
+        Map<String, Object> types = new LinkedHashMap<>();
+        CompiledModel model = modelHolder.get();
+        if (model == null || rootConcept.isBlank()) {
+            return types;
+        }
+        model.findConcept(rootConcept)
+                .ifPresent(concept -> concept.getFields().forEach(field -> {
+                    String type = field.getDslType() == null ? "" : field.getDslType();
+                    if ("boolean".equals(type) || "file".equals(type)) {
+                        types.put(field.getName(), type);
+                    }
+                }));
+        return types;
+    }
+
     // Serve an aggregate Workbench: the metadata.workbench descriptor (header/sections/bands) plus,
     // when a root id is supplied, the nested aggregate tree loaded via AggregateRuntime (P0). With no
     // id (e.g. the "new" route) only the descriptor is returned so the client can render an empty shell.
@@ -854,6 +885,9 @@ public class PanelRuntime {
         response.put("actorId", context.actorId());
         response.put("aggregate", aggregate);
         response.put("workbench", workbench);
+        String rootConcept = rootConceptOf(aggregate);
+        response.put("rootConcept", rootConcept);
+        response.put("headerFieldTypes", headerFieldTypes(rootConcept));
 
         if (rootId.isBlank()) {
             response.put("data", Map.of());

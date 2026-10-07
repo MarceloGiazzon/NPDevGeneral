@@ -1,8 +1,10 @@
 package com.finalexec.config;
 
+import com.finalexec.filestore.FileStoreCapabilityHandler;
 import com.npdev.adapters.filestore.inproc.FileSystemFileStoreAdapter;
 import com.npdev.adapters.filestore.objectstore.S3ObjectStoreFileStoreAdapter;
 import com.npdev.kernel.ports.FileStoreContract;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -93,5 +95,15 @@ public class NpdevFileStoreConfig {
             builder.credentialsProvider(DefaultCredentialsProvider.create());
         }
         return new S3ObjectStoreFileStoreAdapter(builder.build(), bucket);
+    }
+
+    /**
+     * P5: the flow-facing {@code fileStore} capability ({@code readImage}) -- registered for a model
+     * binding {@code { "capability": "fileStore" }} by {@code NpdevCapabilityBindingConfig}, on top of
+     * whichever {@link FileStoreContract} above is active.
+     */
+    @Bean
+    public FileStoreCapabilityHandler fileStoreCapabilityHandler(ObjectProvider<FileStoreContract> fileStore) {
+        return new FileStoreCapabilityHandler(fileStore::getIfAvailable);
     }
 }

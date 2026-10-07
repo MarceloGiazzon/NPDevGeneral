@@ -51,6 +51,7 @@ import com.npdev.kernel.procedures.ProcedureExecutor;
 import com.npdev.kernel.security.PermissionGrant;
 import com.npdev.kernel.security.StaticPermissionEvaluator;
 import com.finalexec.ai.ExternalAiPromptRunner;
+import com.finalexec.filestore.FileStoreCapabilityHandler;
 import com.finalexec.npdev.service.ProcedureRunner;
 import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
 import com.npdev.runtime.support.InMemoryOrchestrationExecutionRegistry;
@@ -471,16 +472,17 @@ public class NpdevCapabilityBindingConfig {
             CapabilityAdapterResolver capabilityAdapterResolver,
             InProcMessagingCapabilityAdapter inProcMessagingCapabilityAdapter,
             ObjectProvider<HttpMessagingCapabilityAdapter> httpMessagingCapabilityAdapterProvider,
-            ObjectProvider<ExternalAiPromptRunner> externalAiPromptRunnerProvider
+            ObjectProvider<ExternalAiPromptRunner> externalAiPromptRunnerProvider,
+            ObjectProvider<FileStoreCapabilityHandler> fileStoreCapabilityHandlerProvider
     ) {
         CapabilityRegistry registry = new CapabilityRegistry();
         populateCapabilityRegistry(registry, modelHolder.get(), capabilityAdapterResolver,
                 inProcMessagingCapabilityAdapter, httpMessagingCapabilityAdapterProvider,
-                externalAiPromptRunnerProvider);
+                externalAiPromptRunnerProvider, fileStoreCapabilityHandlerProvider);
         modelHolder.addReloadListener((before, after) -> populateCapabilityRegistry(
                 registry, after, capabilityAdapterResolver,
                 inProcMessagingCapabilityAdapter, httpMessagingCapabilityAdapterProvider,
-                externalAiPromptRunnerProvider));
+                externalAiPromptRunnerProvider, fileStoreCapabilityHandlerProvider));
         return registry;
     }
 
@@ -490,7 +492,8 @@ public class NpdevCapabilityBindingConfig {
             CapabilityAdapterResolver capabilityAdapterResolver,
             InProcMessagingCapabilityAdapter inProcMessagingCapabilityAdapter,
             ObjectProvider<HttpMessagingCapabilityAdapter> httpMessagingCapabilityAdapterProvider,
-            ObjectProvider<ExternalAiPromptRunner> externalAiPromptRunnerProvider
+            ObjectProvider<ExternalAiPromptRunner> externalAiPromptRunnerProvider,
+            ObjectProvider<FileStoreCapabilityHandler> fileStoreCapabilityHandlerProvider
     ) {
         Map<String, CompiledCapability> capabilitiesByName = compiledModel.getCapabilities().stream()
                 .collect(Collectors.toMap(
@@ -530,6 +533,19 @@ public class NpdevCapabilityBindingConfig {
                             + "ExternalAiPromptRunner bean exists -- see NpdevExternalAiConfig#externalAiPromptRunner.");
                 }
                 registry.register(capability.getName(), capability.getType(), runner.adapterId(), runner);
+                continue;
+            }
+
+            // P5: fileStore.readImage hands a file field's bytes (tenant-checked) to a flow as a data:
+            // URI, so a sandboxed customCapabilities plugin can decode an uploaded image -- platform-
+            // served like externalAi above.
+            if ("filestore".equalsIgnoreCase(binding.getCapability())) {
+                FileStoreCapabilityHandler handler = fileStoreCapabilityHandlerProvider.getIfAvailable();
+                if (handler == null) {
+                    throw new IllegalStateException("Model binds capability 'fileStore' but no "
+                            + "FileStoreCapabilityHandler bean exists -- see NpdevFileStoreConfig#fileStoreCapabilityHandler.");
+                }
+                registry.register(capability.getName(), capability.getType(), handler.adapterId(), handler);
                 continue;
             }
 

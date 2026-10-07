@@ -125,7 +125,9 @@
   "bindings": [
     { "adapter": "repository", "capability": "persistence" },
     { "adapter": "inproc", "capability": "eventBus" },
-    { "adapter": "externalAi", "capability": "externalAi" }
+    { "adapter": "externalAi", "capability": "externalAi" },
+    { "adapter": "fileStore", "capability": "fileStore" },
+    { "adapter": "plugin:java-source", "capability": "mosaicPainter" }
   ],
   "capabilities": [
     {
@@ -137,6 +139,18 @@
       "name": "externalAi",
       "operations": ["generate"],
       "type": "ExternalAiCapability"
+    },
+    {
+      "name": "fileStore",
+      "operations": ["readImage"],
+      "type": "FileStoreCapability"
+    }
+  ],
+  "customCapabilities": [
+    {
+      "name": "mosaicPainter",
+      "operations": ["paintFromPhoto", "capColors"],
+      "type": "MosaicPainterCapability"
     }
   ],
   "packs": [
@@ -284,6 +298,8 @@
         { "name": "sourceImage", "type": "file", "required": false,
           "file": { "contentTypes": ["image/png", "image/jpeg"], "maxSizeBytes": 2097152 },
           "ui": { "label": "Source image" } },
+        { "name": "onlyOwnedCaps", "type": "boolean", "required": false,
+          "ui": { "label": "Paint from photo with only caps I own" } },
         { "name": "builtPhoto", "type": "file", "required": false,
           "file": { "contentTypes": ["image/png", "image/jpeg"], "maxSizeBytes": 2097152 },
           "ui": { "label": "Photo of the built piece" } },
@@ -361,6 +377,34 @@
   ],
   "procedures": [
     {
+      "name": "PaintMosaicFromPhoto",
+      "description": "P5: turns the mosaic's source image into a hex mosaic -- fileStore.readImage hands the photo to the app's own Java (customCapabilities mosaicPainter), which samples each cell and picks the nearest approved cap in CIELAB; with onlyOwnedCaps it uses only caps in the owner's collection. Returns {cells}, folded into the open draft; nothing is saved until Save.",
+      "steps": [
+        { "name": "read-photo", "type": "capabilityCall", "capability": "fileStore", "operation": "readImage",
+          "args": { "file": "$input.sourceImage" }, "target": "photo" },
+        { "name": "approved-caps", "type": "runQuery", "query": "ApprovedCaps", "concept": "Cap", "target": "approvedCaps" },
+        { "name": "palette", "type": "mapList", "items": "$approvedCaps", "as": "cap",
+          "select": { "id": "$cap.id", "color": "$cap.dominantColor" }, "target": "palette" },
+        { "name": "collection", "type": "runQuery", "query": "CollectionInStock", "concept": "CollectionItem", "target": "collection" },
+        { "name": "owned", "type": "mapList", "items": "$collection", "as": "item",
+          "select": { "capId": "$item.capId", "ownerUsername": "$item.ownerUsername", "quantity": "$item.quantity" }, "target": "owned" },
+        { "name": "paint", "type": "capabilityCall", "capability": "mosaicPainter", "operation": "paintFromPhoto",
+          "args": { "input": "$input", "owned": "$owned", "palette": "$palette", "photo": "$photo" }, "target": "painted" },
+        { "name": "return-painted", "type": "return", "value": "$painted" }
+      ]
+    },
+    {
+      "name": "ExtractCapColors",
+      "description": "P5: reads the cap's image and returns its dominant and accent colours (#RRGGBB) computed by the app's own Java -- deterministic, offline, no AI; folded into the open cap for review.",
+      "steps": [
+        { "name": "read-image", "type": "capabilityCall", "capability": "fileStore", "operation": "readImage",
+          "args": { "file": "$input.image" }, "target": "photo" },
+        { "name": "colours", "type": "capabilityCall", "capability": "mosaicPainter", "operation": "capColors",
+          "args": { "photo": "$photo" }, "target": "colours" },
+        { "name": "return-colours", "type": "return", "value": "$colours" }
+      ]
+    },
+    {
       "name": "PaintMosaicWithAi",
       "description": "P4 (G3): reads the approved-cap palette, asks the PaintMosaic prompt for a full cell layout, and returns {cells} -- the workbench folds it into the open draft for review; nothing is saved until the member clicks Save.",
       "steps": [
@@ -384,6 +428,8 @@
   ],
   "queries": [
     { "name": "ApprovedCaps", "concept": "Cap", "where": "status == 'APPROVED'", "orderBy": ["label"] },
+    { "name": "CollectionInStock", "concept": "CollectionItem", "where": "quantity > 0",
+      "metadata": { "purpose": "P5 photo-to-mosaic 'only caps I own': CollectionItem's row access already limits this to the caller's rows plus others' for-trade rows; the plugin keeps the mosaic owner's." } },
     { "name": "CapsAwaitingReview", "concept": "Cap", "where": "status == 'SUBMITTED'", "orderBy": ["label"] },
     { "name": "PublishedMosaics", "concept": "Mosaic", "where": "status != 'DRAFT'", "orderBy": ["code desc"] },
     { "name": "TotalCaps", "concept": "Cap", "where": "status == 'APPROVED'",
@@ -420,6 +466,8 @@
         },
         "actions": [
           { "procedure": "PaintMosaicWithAi", "label": "Paint with AI", "inputFields": ["aiPrompt"],
+            "visibleWhen": "$root.status == 'DRAFT'" },
+          { "procedure": "PaintMosaicFromPhoto", "label": "Paint from photo",
             "visibleWhen": "$root.status == 'DRAFT'" }
         ]
       } },
@@ -431,7 +479,8 @@
       "transaction": {
         "actions": [
           { "procedure": "IdentifyCapWithAi", "label": "Identify with AI",
-            "visibleWhen": "$root.status == 'SUBMITTED'" }
+            "visibleWhen": "$root.status == 'SUBMITTED'" },
+          { "procedure": "ExtractCapColors", "label": "Read colours from image" }
         ]
       } },
     { "name": "Breweries", "concept": "Brewery", "route": "/breweries",
@@ -483,11 +532,11 @@
     { "concept": "Brewery", "alias": "br_lech", "data": { "name": "Lech", "country": "Poland" } },
     { "concept": "Brewery", "alias": "br_labierre", "data": { "name": "La Bierre", "country": "France" } },
     { "concept": "Cap", "alias": "cap_branik",
-      "data": { "label": "Branik", "image": "$file:seed-files/branik.png", "breweryId": "$ref:br_branik", "dominantColor": "#C8102E", "accentColor": "#FFFFFF", "finish": "PRINTED", "rarity": "COMMON", "status": "APPROVED", "tags": "red,white" } },
+      "data": { "label": "Branik", "image": "$file:seed-files/branik.png", "breweryId": "$ref:br_branik", "dominantColor": "#253926", "accentColor": "#D5CAC6", "finish": "PRINTED", "rarity": "COMMON", "status": "APPROVED", "tags": "green,cream" } },
     { "concept": "Cap", "alias": "cap_lech",
-      "data": { "label": "Lech Pils", "image": "$file:seed-files/lech-pils.png", "breweryId": "$ref:br_lech", "dominantColor": "#1B7A3A", "accentColor": "#F2C500", "finish": "GLOSSY", "rarity": "COMMON", "status": "APPROVED", "tags": "green,gold" } },
+      "data": { "label": "Lech Pils", "image": "$file:seed-files/lech-pils.png", "breweryId": "$ref:br_lech", "dominantColor": "#886735", "accentColor": "#243826", "finish": "GLOSSY", "rarity": "COMMON", "status": "APPROVED", "tags": "gold,green" } },
     { "concept": "Cap", "alias": "cap_labierre",
-      "data": { "label": "La Bierre", "image": "$file:seed-files/la-bierre.png", "breweryId": "$ref:br_labierre", "dominantColor": "#1F3A93", "accentColor": "#E0E0E0", "finish": "METALLIC", "rarity": "UNCOMMON", "status": "APPROVED", "tags": "blue,silver" } },
+      "data": { "label": "La Bierre", "image": "$file:seed-files/la-bierre.png", "breweryId": "$ref:br_labierre", "dominantColor": "#D9D8D7", "accentColor": "#C52828", "finish": "METALLIC", "rarity": "UNCOMMON", "status": "APPROVED", "tags": "white,red" } },
     { "concept": "Cap", "alias": "cap_plain",
       "data": { "label": "Plain silver", "image": "$file:seed-files/plain-silver.png", "dominantColor": "#C0C0C0", "finish": "METALLIC", "rarity": "COMMON", "status": "SUBMITTED", "tags": "silver,blank" } },
     { "concept": "Member", "data": { "username": "admin", "displayName": "Tito", "city": "Montevideo", "country": "Uruguay", "bio": "Started gluing caps on a board in 2009." } },

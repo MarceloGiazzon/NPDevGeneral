@@ -82,7 +82,7 @@ processes, screens, permissions, and how it all changes over time.
 | **`procedures`** | reusable server-side logic with parameters, locals, and a return value |
 | **`orchestrationRules`** | react to events: when *this* happens, run *that* |
 | **`capabilities` / `bindings`** | name an operation, bind it to an implementation — swap adapters without touching the model |
-| **`customCapabilities`** | your own Java, called from a flow, when the declarative vocabulary runs out |
+| **`customCapabilities`** | your own Java, called from a flow, when the declarative vocabulary runs out — sandboxed (no files, network or DB), so a flow hands it what it needs: query results, and uploaded images through the built-in **`fileStore.readImage`** capability (a `file` field → tenant-checked `data:` URI). Pigmentampas' *Paint from photo* is the worked example |
 
 ## 5. Screens
 
