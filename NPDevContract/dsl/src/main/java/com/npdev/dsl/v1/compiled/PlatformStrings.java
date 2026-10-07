@@ -26,6 +26,7 @@ public final class PlatformStrings {
         d.put("workbench.revert", "revert");
         d.put("workbench.revertTitle", "Discard changes in this region");
         d.put("workbench.saved", "Saved");
+        d.put("workbench.saving", "Saving");
         d.put("state.phase", "Phase");
         d.put("action.select", "Select");
         d.put("action.add", "Add");

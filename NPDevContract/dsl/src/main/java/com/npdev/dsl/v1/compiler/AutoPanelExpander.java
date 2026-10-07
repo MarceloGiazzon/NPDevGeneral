@@ -7,6 +7,7 @@ import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
 import com.npdev.dsl.v1.ast.StateTransitionAst;
 import com.npdev.dsl.v1.compiled.CompiledAggregate;
+import com.npdev.dsl.v1.compiled.CompiledCellGrid;
 import com.npdev.dsl.v1.compiled.CompiledAggregateBalance;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollectionLookupField;
@@ -539,6 +540,40 @@ final class AutoPanelExpander {
             descriptor.put("render", "component");
             descriptor.put("component", region.component());
         }
+        if (region != null && "cellGrid".equals(region.render()) && region.cellGrid() != null) {
+            descriptor.put("render", "cellGrid");
+            descriptor.put("cellGrid", cellGridDescriptor(region.cellGrid()));
+        }
+    }
+
+    /** P3b: the client-side config of a built-in cellGrid region (workbench-page's renderCellGrid). */
+    private static Map<String, Object> cellGridDescriptor(CompiledCellGrid grid) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("rowField", grid.rowField());
+        out.put("colField", grid.colField());
+        out.put("valueField", grid.valueField());
+        if (grid.rowsField() != null) {
+            out.put("rowsField", grid.rowsField());
+        }
+        if (grid.colsField() != null) {
+            out.put("colsField", grid.colsField());
+        }
+        out.put("defaultRows", grid.defaultRows() == null ? 10 : grid.defaultRows());
+        out.put("defaultCols", grid.defaultCols() == null ? 10 : grid.defaultCols());
+        out.put("layout", grid.layout());
+        Map<String, Object> palette = new LinkedHashMap<>();
+        palette.put("query", grid.paletteQuery());
+        if (grid.paletteLabelField() != null) {
+            palette.put("labelField", grid.paletteLabelField());
+        }
+        if (grid.paletteImageField() != null) {
+            palette.put("imageField", grid.paletteImageField());
+        }
+        if (grid.paletteColorField() != null) {
+            palette.put("colorField", grid.paletteColorField());
+        }
+        out.put("palette", palette);
+        return out;
     }
 
     /**

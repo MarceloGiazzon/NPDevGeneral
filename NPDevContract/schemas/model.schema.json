@@ -743,6 +743,7 @@
               "workbench.revert",
               "workbench.revertTitle",
               "workbench.saved",
+              "workbench.saving",
               "state.phase",
               "action.select",
               "action.add",
@@ -1424,14 +1425,50 @@
           "type": "string",
           "enum": [
             "generated",
-            "component"
+            "component",
+            "cellGrid"
           ],
-          "description": "\"generated\" (the platform default; no need to declare it) renders the built-in grid/header. \"component\" mounts an app-owned JS component (see `component`) in place of the generated rendering for this region."
+          "description": "\"generated\" (the platform default; no need to declare it) renders the built-in grid/header. \"component\" mounts an app-owned JS component (see `component`) in place of the generated rendering for this region. \"cellGrid\" renders a collection region as the built-in paintable board configured by `cellGrid`."
         },
         "component": {
           "type": "string",
           "minLength": 1,
           "description": "Required when render is \"component\": the name registered via window.npdev.regions.register(name, {mount, update, unmount}) in the app's own web/regions/<name>.js (served the same way shell.js auto-injects an app-owned web/theme.css -- never inside npdev-generated/, which is hash-guarded)."
+        },
+        "cellGrid": {
+          "$ref": "#/$defs/cellGrid"
+        }
+      }
+    },
+    "cellGrid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rowField",
+        "colField",
+        "valueField",
+        "palette"
+      ],
+      "description": "Required when render is \"cellGrid\": paints a child collection as a board. Each child row is one painted cell at (rowField, colField) holding valueField; a cell with no row is empty, so erasing deletes the row. Edits go through the workbench store, so Save commits the board in the aggregate's single transaction.",
+      "properties": {
+        "rowField": { "type": "string", "minLength": 1, "description": "Integer field of the collection concept holding the cell's 0-based row." },
+        "colField": { "type": "string", "minLength": 1, "description": "Integer field of the collection concept holding the cell's 0-based column." },
+        "valueField": { "type": "string", "minLength": 1, "description": "Field of the collection concept that receives the painted palette row's id; when it is a reference it must target the palette query's concept." },
+        "rowsField": { "type": "string", "minLength": 1, "description": "Optional integer field of the aggregate root giving the board's row count." },
+        "colsField": { "type": "string", "minLength": 1, "description": "Optional integer field of the aggregate root giving the board's column count." },
+        "defaultRows": { "type": "integer", "minimum": 1, "description": "Row count when rowsField is absent or empty (default 10)." },
+        "defaultCols": { "type": "integer", "minimum": 1, "description": "Column count when colsField is absent or empty (default 10)." },
+        "layout": { "type": "string", "enum": ["square", "hexOffset"], "description": "\"square\" (default) or \"hexOffset\" (odd rows shifted half a cell, cells round -- a honeycomb)." },
+        "palette": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["query"],
+          "properties": {
+            "query": { "type": "string", "minLength": 1, "description": "Query whose rows are the paintable values (each row's id is what gets painted)." },
+            "labelField": { "type": "string", "minLength": 1, "description": "Palette row field shown as the swatch tooltip." },
+            "imageField": { "type": "string", "minLength": 1, "description": "Palette row file field drawn inside the swatch and the cell." },
+            "colorField": { "type": "string", "minLength": 1, "description": "Palette row #hex field used as the swatch/cell colour (and behind the image)." }
+          }
         }
       }
     },
