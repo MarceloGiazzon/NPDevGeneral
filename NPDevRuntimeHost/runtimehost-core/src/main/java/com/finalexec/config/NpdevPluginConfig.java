@@ -497,10 +497,12 @@ public class NpdevPluginConfig {
                 ));
 
         for (CompiledCapabilityBinding binding : modelHolder.get().getBindings()) {
-            // externalAi (P4/G3) is platform-served by ExternalAiPromptRunner, never a plugin
-            // contribution -- registered directly by NpdevCapabilityBindingConfig, like eventbus.
+            // externalAi (P4/G3) and fileStore (P5) are platform-served (ExternalAiPromptRunner,
+            // FileStoreCapabilityHandler), never a plugin contribution -- registered directly by
+            // NpdevCapabilityBindingConfig, like eventbus.
             if ("eventbus".equalsIgnoreCase(binding.getCapability())
-                    || "externalai".equalsIgnoreCase(binding.getCapability())) {
+                    || "externalai".equalsIgnoreCase(binding.getCapability())
+                    || "filestore".equalsIgnoreCase(binding.getCapability())) {
                 continue;
             }
             CompiledCapability capability = capabilitiesByName.get(binding.getCapability());

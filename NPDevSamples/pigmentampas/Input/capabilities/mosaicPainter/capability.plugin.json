@@ -1,0 +1,58 @@
+{
+  "$schema": "npdev/capability-plugin.schema.json",
+  "packageFormatVersion": "1.0",
+  "packageId": "pigmentampas-mosaicpainter-java-source-package",
+  "pluginId": "pigmentampas-mosaicpainter-java-source-plugin",
+  "displayName": "Pigmentampas mosaic painter",
+  "version": "1.0.0",
+  "description": "Photo -> hex mosaic (CIELAB nearest cap, per-cell sampling) and dominant/accent colour extraction from a cap image. Pure in-memory Java beside the model; the flow hands it the image as a data: URI via fileStore.readImage.",
+  "capability": "mosaicPainter",
+  "capabilityType": "MosaicPainterCapability",
+  "adapterId": "plugin:java-source",
+  "runtimeRef": "mosaicPainterJavaSourceHandler",
+  "implementation": {
+    "kind": "javaSource",
+    "sourceRoot": "capabilities/mosaicPainter/src/main/java",
+    "mainClass": "uy.pigmentampas.mosaic.MosaicPainterCapability",
+    "factory": {
+      "kind": "defaultConstructor"
+    }
+  },
+  "operationBindings": [
+    {
+      "operation": "paintFromPhoto",
+      "method": "paintFromPhoto",
+      "input": {
+        "mode": "firstArgument",
+        "expectedType": "java.util.Map"
+      },
+      "output": {
+        "mode": "returnValue",
+        "expectedType": "java.util.Map"
+      }
+    },
+    {
+      "operation": "capColors",
+      "method": "capColors",
+      "input": {
+        "mode": "firstArgument",
+        "expectedType": "java.util.Map"
+      },
+      "output": {
+        "mode": "returnValue",
+        "expectedType": "java.util.Map"
+      }
+    }
+  ],
+  "trust": {
+    "mode": "artifact-local-source",
+    "source": "external-artifact-bundle",
+    "level": "developer-supplied"
+  },
+  "generation": {
+    "mount": "compileIntoGeneratedApp",
+    "emitManifestContribution": true,
+    "emitPackageDescriptor": true,
+    "emitBinding": true
+  }
+}

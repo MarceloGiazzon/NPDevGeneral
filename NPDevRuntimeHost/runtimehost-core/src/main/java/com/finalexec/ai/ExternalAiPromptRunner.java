@@ -1,5 +1,6 @@
 package com.finalexec.ai;
 
+import com.finalexec.filestore.TenantFileReader;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.networknt.schema.JsonSchema;
@@ -21,24 +22,19 @@ import com.npdev.kernel.ports.ExternalAiCapabilityContract;
 import com.npdev.kernel.ports.ExternalAiEgressDeniedException;
 import com.npdev.kernel.ports.ExternalAiStructuredRequest;
 import com.npdev.kernel.ports.ExternalAiStructuredResult;
-import com.npdev.kernel.ports.FileHandle;
 import com.npdev.kernel.ports.FileStoreContract;
 import com.npdev.kernel.properties.PropertyResolver;
 
-import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.NoSuchElementException;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -86,7 +82,7 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
     private final ExternalAiCapabilityContract contract;
     private final Supplier<PropertyResolver> propertyResolver;
     private final AuditLogStore auditLogStore;
-    private final Supplier<FileStoreContract> fileStore;
+    private final TenantFileReader fileReader;
     private final Map<String, Price> pricesByVendor;
     private final Clock clock;
     private final Map<String, JsonSchema> compiledSchemas = new ConcurrentHashMap<>();
@@ -104,7 +100,7 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
         this.contract = Objects.requireNonNull(contract, "contract");
         this.propertyResolver = propertyResolver == null ? () -> null : propertyResolver;
         this.auditLogStore = auditLogStore == null ? AuditLogStore.noop() : auditLogStore;
-        this.fileStore = fileStore == null ? () -> null : fileStore;
+        this.fileReader = new TenantFileReader(fileStore);
         this.pricesByVendor = pricesByVendor == null ? Map.of() : Map.copyOf(pricesByVendor);
         this.clock = clock == null ? Clock.systemUTC() : clock;
     }
@@ -183,9 +179,9 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
         if (prompt.image() != null && !prompt.image().isBlank()) {
             Object imageValue = lookup(input, prompt.image());
             if (imageValue != null && !(imageValue instanceof String text && text.isBlank())) {
-                ImageInput image;
+                TenantFileReader.ImageInput image;
                 try {
-                    image = loadImage(imageValue, context.tenantId());
+                    image = fileReader.readImage(imageValue, context.tenantId(), MAX_IMAGE_BYTES);
                 } catch (IllegalArgumentException exception) {
                     return deny(context, promptName, prompt, "IMAGE_REJECTED", exception.getMessage(), Map.of());
                 }
@@ -387,76 +383,6 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
             current = map.get(segment);
         }
         return current;
-    }
-
-    record ImageInput(byte[] bytes, String mimeType) {
-    }
-
-    /**
-     * A {@code file} field's value: its stored handle (a map, or that map as JSON text), or an inline
-     * {@code data:image/...;base64,} URI. Never a URL -- nothing here fetches from the network. A handle
-     * is honoured only when its key sits under the caller's own tenant, so a crafted handle cannot
-     * send another tenant's file to a vendor.
-     */
-    private ImageInput loadImage(Object value, String tenantId) {
-        if (value instanceof String text && text.regionMatches(true, 0, "data:", 0, 5)) {
-            int comma = text.indexOf(',');
-            String header = comma < 0 ? "" : text.substring(5, comma);
-            if (comma < 0 || !header.toLowerCase(Locale.ROOT).endsWith(";base64")) {
-                throw new IllegalArgumentException("image data URI must be base64-encoded");
-            }
-            String mime = header.substring(0, header.length() - ";base64".length());
-            byte[] bytes = Base64.getDecoder().decode(text.substring(comma + 1));
-            return checkedImage(bytes, mime);
-        }
-        Map<String, Object> handleMap;
-        if (value instanceof Map<?, ?> map) {
-            handleMap = stringKeys(map);
-        } else if (value instanceof String text && text.trim().startsWith("{")) {
-            try {
-                handleMap = stringKeys(MAPPER.readValue(text, Map.class));
-            } catch (Exception exception) {
-                throw new IllegalArgumentException("image field holds unparseable file-handle JSON");
-            }
-        } else {
-            throw new IllegalArgumentException("image field must hold a stored file handle or a data: URI");
-        }
-        Object storeId = handleMap.get("storeId");
-        Object key = handleMap.get("key");
-        if (storeId == null || key == null) {
-            throw new IllegalArgumentException("image file handle needs storeId and key");
-        }
-        String keyText = String.valueOf(key);
-        String tenantSegment = keyText.contains("/") ? keyText.substring(0, keyText.indexOf('/')) : "";
-        if (!tenantSegment.equals(tenantId) && !tenantSegment.equals(tenantId.replaceAll("[^A-Za-z0-9._-]", "_"))) {
-            throw new IllegalArgumentException("image file handle does not belong to the caller's tenant");
-        }
-        FileStoreContract store = fileStore.get();
-        if (store == null) {
-            throw new IllegalArgumentException("no file store is configured to read the image from");
-        }
-        try {
-            FileHandle handle = store.head(String.valueOf(storeId), keyText);
-            if (handle.sizeBytes() > MAX_IMAGE_BYTES) {
-                throw new IllegalArgumentException("image is larger than " + MAX_IMAGE_BYTES + " bytes");
-            }
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            store.get(handle, out);
-            return checkedImage(out.toByteArray(), handle.contentType());
-        } catch (NoSuchElementException exception) {
-            throw new IllegalArgumentException("image file handle is no longer resolvable");
-        }
-    }
-
-    private static ImageInput checkedImage(byte[] bytes, String mime) {
-        String normalized = mime == null ? "" : mime.trim().toLowerCase(Locale.ROOT);
-        if (!Set.of("image/png", "image/jpeg", "image/webp", "image/gif", "image/heic").contains(normalized)) {
-            throw new IllegalArgumentException("image content type '" + mime + "' is not a supported image type");
-        }
-        if (bytes.length == 0 || bytes.length > MAX_IMAGE_BYTES) {
-            throw new IllegalArgumentException("image must be 1.." + MAX_IMAGE_BYTES + " bytes");
-        }
-        return new ImageInput(bytes, normalized);
     }
 
     // ------------------------------------------------------------------------------------------
