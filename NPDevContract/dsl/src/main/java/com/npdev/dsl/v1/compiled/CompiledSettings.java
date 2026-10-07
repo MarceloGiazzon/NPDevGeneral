@@ -19,6 +19,7 @@ public final class CompiledSettings {
     public CompiledSettings(String locale, Map<String, String> strings, Integer pageRows, String dateFormat) {
         this.locale = locale;
         Map<String, String> merged = new LinkedHashMap<>(PlatformStrings.DEFAULTS);
+        merged.putAll(PlatformStrings.localeDefaults(locale));
         if (strings != null) {
             merged.putAll(strings);
         }

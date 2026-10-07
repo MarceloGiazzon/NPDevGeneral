@@ -68,6 +68,11 @@ public class SeedDataService {
     private static final String KIND_RAW = "raw";
     private static final String REF_PREFIX = "$ref:";
     private static final String GEN_PREFIX = "$gen:";
+    /** {@code "$file:<path>"}: a file shipped with the model (copied by the generator to
+     *  {@link #SEED_FILES_PREFIX}), stored through the app's file store at seed time; the field gets
+     *  the resulting FileHandle -- the same JSON shape an upload through /api/files produces. */
+    private static final String FILE_PREFIX = "$file:";
+    public static final String SEED_FILES_PREFIX = "npdev-seed/files/";
     private static final Pattern GEN_TOKEN = Pattern.compile("^\\$gen:([a-zA-Z0-9_-]+)(?::(.*))?$", Pattern.DOTALL);
 
     // Small, fixed built-in corpora -- deterministic given the seeded Random's draw index, not
@@ -90,6 +95,12 @@ public class SeedDataService {
     private final ResourceLoader resourceLoader;
     private final ConceptGateway conceptGateway;
     private final ObjectMapper objectMapper;
+    private com.npdev.kernel.ports.FileStoreContract fileStore;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setFileStore(com.npdev.kernel.ports.FileStoreContract fileStore) {
+        this.fileStore = fileStore;
+    }
 
     public SeedDataService(ResourceLoader resourceLoader, ConceptGateway conceptGateway, ObjectMapper objectMapper) {
         this.resourceLoader = resourceLoader;
@@ -199,7 +210,8 @@ public class SeedDataService {
             for (ExpandedRecord record : expanded) {
                 try {
                     Map<String, Object> data = KIND_SMART.equals(kind)
-                            ? resolveReferences(resolveGenerators(record.data(), random, idsByConcept), aliasToId)
+                            ? resolveFiles(resolveReferences(resolveGenerators(record.data(), random, idsByConcept), aliasToId),
+                                    context == null ? null : context.tenantId())
                             : record.data();
                     String id = record.id() != null ? record.id() : UUID.randomUUID().toString();
                     // The concept schema declares "id" as a required field, and
@@ -416,6 +428,45 @@ public class SeedDataService {
         Map<String, Object> resolved = new LinkedHashMap<>();
         data.forEach((key, value) -> resolved.put(key, resolveValue(value, aliasToId)));
         return resolved;
+    }
+
+    private Map<String, Object> resolveFiles(Map<String, Object> data, String tenantId) {
+        Map<String, Object> resolved = new LinkedHashMap<>();
+        data.forEach((key, value) -> resolved.put(key,
+                value instanceof String text && text.startsWith(FILE_PREFIX) ? storeSeedFile(text, tenantId) : value));
+        return resolved;
+    }
+
+    private Map<String, Object> storeSeedFile(String token, String tenantId) {
+        String path = token.substring(FILE_PREFIX.length()).trim().replace('\\', '/');
+        if (path.isEmpty() || path.startsWith("/") || path.contains("..")) {
+            throw new IllegalArgumentException(token + " -- expected a relative path inside the model's seed files");
+        }
+        if (fileStore == null) {
+            throw new IllegalStateException(token + " -- this app has no file store bound, so a seed cannot carry a file");
+        }
+        Resource resource = resourceLoader.getResource("classpath:" + SEED_FILES_PREFIX + path);
+        if (!resource.exists()) {
+            throw new IllegalArgumentException(token + " -- not packaged with the app (expected classpath:"
+                    + SEED_FILES_PREFIX + path + "; the generator copies it from the model's directory)");
+        }
+        String originalName = path.substring(path.lastIndexOf('/') + 1);
+        String contentType = java.net.URLConnection.guessContentTypeFromName(originalName);
+        try (InputStream in = resource.getInputStream()) {
+            byte[] bytes = in.readAllBytes();
+            com.npdev.kernel.ports.FileHandle handle = fileStore.put(tenantId, originalName,
+                    contentType == null ? "application/octet-stream" : contentType,
+                    bytes.length, new java.io.ByteArrayInputStream(bytes));
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("storeId", handle.storeId());
+            out.put("key", handle.key());
+            out.put("contentType", handle.contentType());
+            out.put("sizeBytes", handle.sizeBytes());
+            out.put("originalName", handle.originalName());
+            return out;
+        } catch (IOException e) {
+            throw new IllegalStateException(token + " -- failed to read the packaged seed file", e);
+        }
     }
 
     private Object resolveValue(Object value, Map<String, String> aliasToId) {

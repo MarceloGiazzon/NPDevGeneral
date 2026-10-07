@@ -1420,6 +1420,31 @@ textarea.declared-panel-edit-input {
   font-size: 13px;
 }
 
+/* Image file fields: a thumbnail in list cells, a larger preview in detail and in the form. */
+.file-image-link {
+  display: inline-block;
+  line-height: 0;
+}
+
+.file-image {
+  max-width: 240px;
+  max-height: 180px;
+  border-radius: 6px;
+  border: 1px solid #d8dee6;
+  background: #f4f6f9;
+  object-fit: contain;
+}
+
+table.records td .file-image {
+  max-width: 48px;
+  max-height: 48px;
+}
+
+.file-control-preview {
+  max-width: 120px;
+  max-height: 120px;
+}
+
 /* Wave 2 (NPDEV_FEATURE_PLAN_2026-09-24.md): widget-catalogue controls. */
 
 .slider-control {

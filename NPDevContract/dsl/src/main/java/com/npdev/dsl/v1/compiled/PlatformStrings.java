@@ -16,6 +16,7 @@ import java.util.Map;
  */
 public final class PlatformStrings {
     public static final Map<String, String> DEFAULTS;
+    private static final Map<String, String> PORTUGUESE;
 
     static {
         Map<String, String> d = new LinkedHashMap<>();
@@ -32,6 +33,9 @@ public final class PlatformStrings {
         d.put("action.save", "Save");
         d.put("action.delete", "Delete");
         d.put("action.new", "New");
+        d.put("shell.signedInAs", "Signed in as");
+        d.put("shell.changePassword", "Change password");
+        d.put("shell.signOut", "Sign out");
         // REG-146: Map.copyOf(d) here (rather than Collections.unmodifiableMap) is what actually
         // made this nondeterministic -- JDK's ImmutableCollections implementation deliberately
         // randomizes iteration order per JVM run (a JEP 269 hash-flood mitigation), discarding the
@@ -43,6 +47,20 @@ public final class PlatformStrings {
         // Collections.unmodifiableMap preserves the LinkedHashMap's real insertion order while
         // staying just as immutable to callers.
         DEFAULTS = Collections.unmodifiableMap(d);
+
+        // settings.locale "pt*": the shell chrome was hard-coded Portuguese until 2026-10-07, so a
+        // pt app (WmsOffice) keeps exactly those words; every other locale gets the English above.
+        Map<String, String> pt = new LinkedHashMap<>();
+        pt.put("shell.signedInAs", "logado como");
+        pt.put("shell.changePassword", "Alterar senha");
+        pt.put("shell.signOut", "Sair");
+        PORTUGUESE = Collections.unmodifiableMap(pt);
+    }
+
+    /** Locale-specific defaults layered over {@link #DEFAULTS} before the app's own strings. */
+    public static Map<String, String> localeDefaults(String locale) {
+        return locale != null && locale.trim().toLowerCase(java.util.Locale.ROOT).startsWith("pt")
+                ? PORTUGUESE : Map.of();
     }
 
     private PlatformStrings() {

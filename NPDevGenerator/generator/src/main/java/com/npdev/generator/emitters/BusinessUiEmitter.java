@@ -369,6 +369,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         }
         auth.put("loginPath", loginPath.trim());
         root.put("auth", auth);
+        // The shell carries no model data (see shellCtx), so its own chrome strings travel here:
+        // PlatformStrings defaults (English) with the model's settings.strings merged on top.
+        if (model != null && model.getSettings() != null) {
+            root.put("strings", model.getSettings().getStrings());
+        }
 
         GuidePageDefaults.Result guidePages = GuidePageDefaults.withBuiltins(model == null ? List.of() : model.getGuidePages());
         Set<String> knownGuidePageNames = new LinkedHashSet<>();
@@ -405,6 +410,18 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             }
         }
 
+        // An autoPanel's declared selection.columns is the grid's column list, in the declared order
+        // (2026-10-07: it compiled but the manifest always listed every field, alphabetically).
+        Map<String, List<String>> declaredColumnsByConcept = new LinkedHashMap<>();
+        if (model != null) {
+            for (com.npdev.dsl.v1.compiled.CompiledAutoPanel autoPanel : model.getAutoPanels()) {
+                if (autoPanel.selection() != null && autoPanel.selection().columns() != null
+                        && !autoPanel.selection().columns().isEmpty() && autoPanel.concept() != null) {
+                    declaredColumnsByConcept.putIfAbsent(autoPanel.concept(), autoPanel.selection().columns());
+                }
+            }
+        }
+
         List<CompiledContext> contexts = model == null ? List.of() : model.getContexts();
         List<Map<String, Object>> conceptNodes = new ArrayList<>();
         for (CompiledConcept concept : concepts) {
@@ -427,7 +444,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("guidePage", resolveGuidePage(concept, settingResolver, knownGuidePageNames, guidePages.defaultGuidePage()));
             node.put("fields", manifestFields(concept, conceptsByName(concepts), settingResolver, contexts,
                     extensionFieldOrigins.getOrDefault(concept.getName(), Map.of())));
-            node.put("list", manifestList(concept, idField));
+            node.put("list", manifestList(concept, idField, declaredColumnsByConcept.get(concept.getName())));
             node.put("documents", documentsByConcept.getOrDefault(concept.getName(), List.of()));
             Map<String, Object> actions = new LinkedHashMap<>();
             actions.put("list", true);
@@ -603,11 +620,14 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         return tableDisplay;
     }
 
-    private static Map<String, Object> manifestList(CompiledConcept concept, CompiledField idField) {
-        List<String> columns = concept.getFields().stream()
+    private static Map<String, Object> manifestList(CompiledConcept concept, CompiledField idField, List<String> declaredColumns) {
+        List<String> shown = concept.getFields().stream()
                 .filter(BusinessUiEmitter::isShowInUi)
                 .map(CompiledField::getName)
                 .toList();
+        List<String> columns = declaredColumns == null || declaredColumns.isEmpty()
+                ? shown
+                : declaredColumns.stream().filter(shown::contains).toList();
         Map<String, Object> sort = new LinkedHashMap<>();
         sort.put("field", idField.getName());
         sort.put("direction", "asc");
@@ -1533,15 +1553,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         if (value == null || value.isBlank()) {
             return "";
         }
-        StringBuilder out = new StringBuilder();
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (i > 0 && Character.isUpperCase(c)) {
-                out.append(' ');
-            }
-            out.append(i == 0 ? Character.toUpperCase(c) : c);
-        }
-        return out.toString();
+        return com.npdev.dsl.v1.compiled.DisplayLabels.humanize(value);
     }
 
     private static String uncap(String value) {

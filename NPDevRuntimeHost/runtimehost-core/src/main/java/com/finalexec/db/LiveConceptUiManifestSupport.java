@@ -566,15 +566,7 @@ public final class LiveConceptUiManifestSupport {
         if (value == null || value.isBlank()) {
             return "";
         }
-        StringBuilder out = new StringBuilder();
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (i > 0 && Character.isUpperCase(c)) {
-                out.append(' ');
-            }
-            out.append(i == 0 ? Character.toUpperCase(c) : c);
-        }
-        return out.toString();
+        return com.npdev.dsl.v1.compiled.DisplayLabels.humanize(value);
     }
 
     private static String firstNonBlank(String first, String fallback) {

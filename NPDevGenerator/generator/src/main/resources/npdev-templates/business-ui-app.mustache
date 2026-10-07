@@ -4287,13 +4287,21 @@
       const link = document.createElement("a");
       link.target = "_blank";
       link.rel = "noopener";
-      link.textContent = value.originalName || "Download";
-      link.href = "/api/files?" + new URLSearchParams({
-        storeId: value.storeId || "",
-        key: value.key || "",
-        contentType: value.contentType || "",
-        originalName: value.originalName || ""
-      }).toString();
+      link.href = fileHandleUrl(value);
+      if (isImageFileValue(field, value)) {
+        // Images are first-class (Pigmentampas 2026-10-07): a thumbnail in lists, a preview in
+        // detail -- same-origin <img>, authenticated by the npdev_jwt session cookie login sets.
+        link.className = "file-image-link";
+        link.title = value.originalName || "";
+        const image = document.createElement("img");
+        image.className = "file-image";
+        image.loading = "lazy";
+        image.alt = value.originalName || field.label || field.name;
+        image.src = link.href;
+        link.appendChild(image);
+      } else {
+        link.textContent = value.originalName || "Download";
+      }
       target.appendChild(link);
       return;
     }
@@ -4815,6 +4823,28 @@
     fallback.value = value === null || value === undefined ? "" : String(value);
     fallback.title = "Custom widget \"" + field.customWidgetRef + "\" failed to load.";
     return fallback;
+  }
+
+  // A file field is an IMAGE field when every declared contentType is image/* (or, with none
+  // declared, when the stored handle itself is an image) -- no extra DSL needed for the common case.
+  function isImageField(field) {
+    const types = field && field.fileContentTypes;
+    return Array.isArray(types) && types.length > 0 && types.every(function (type) {
+      return String(type).toLowerCase().indexOf("image/") === 0;
+    });
+  }
+
+  function isImageFileValue(field, value) {
+    if (isImageField(field)) { return true; }
+    const declared = field && field.fileContentTypes;
+    return (!declared || !declared.length) && !!value && String(value.contentType || "").toLowerCase().indexOf("image/") === 0;
+  }
+
+  function fileHandleUrl(handle) {
+    return "/api/files?" + new URLSearchParams({
+      storeId: handle.storeId || "",
+      key: handle.key || ""
+    }).toString();
   }
 
   function createInput(field, value, recordId) {
@@ -5469,17 +5499,26 @@
     downloadLink.textContent = "Download";
     wrapper.appendChild(downloadLink);
 
+    const preview = document.createElement("img");
+    preview.className = "file-image file-control-preview";
+    preview.alt = field.label || field.name;
+    preview.style.display = "none";
+    if (isImageField(field) || isImageFileValue(field, value)) {
+      wrapper.insertBefore(preview, wrapper.firstChild);
+    }
+
     function refreshDownloadLink(handle) {
       if (handle && handle.key) {
-        downloadLink.href = "/api/files?" + new URLSearchParams({
-          storeId: handle.storeId || "",
-          key: handle.key || "",
-          contentType: handle.contentType || "",
-          originalName: handle.originalName || ""
-        }).toString();
+        downloadLink.href = fileHandleUrl(handle);
         downloadLink.style.display = "";
+        if (isImageFileValue(field, handle)) {
+          if (!preview.parentNode) { wrapper.insertBefore(preview, wrapper.firstChild); }
+          preview.src = downloadLink.href;
+          preview.style.display = "";
+        }
       } else {
         downloadLink.style.display = "none";
+        preview.style.display = "none";
       }
     }
     refreshDownloadLink(value);

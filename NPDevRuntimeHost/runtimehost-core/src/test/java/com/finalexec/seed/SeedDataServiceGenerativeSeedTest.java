@@ -76,6 +76,51 @@ class SeedDataServiceGenerativeSeedTest {
         assertEquals(List.of("Widget 1", "Widget 2", "Widget 3"), widgetLabels);
     }
 
+    /** G6 (Pigmentampas 2026-10-07): "$file:<path>" stores the packaged file and saves its handle. */
+    @Test
+    void fileTokenStoresThePackagedFileAndSavesItsHandle() {
+        String seedJson = """
+                {
+                  "id": "caps", "label": "Caps",
+                  "records": [ {"concept": "Cap", "data": {"label": "Branik", "image": "$file:caps/branik.png"}} ]
+                }""";
+        FakeConceptGateway gateway = new FakeConceptGateway();
+        SeedDataService service = serviceForMultiple(Map.of(
+                "classpath:npdev-seed/data-seeds/caps.json", seedJson,
+                "classpath:npdev-seed/files/caps/branik.png", "PNGBYTES"), gateway);
+        List<String> stored = new java.util.ArrayList<>();
+        service.setFileStore((com.npdev.kernel.ports.FileStoreContract) java.lang.reflect.Proxy.newProxyInstance(
+                getClass().getClassLoader(), new Class<?>[]{com.npdev.kernel.ports.FileStoreContract.class},
+                (proxy, method, args) -> {
+                    if (!method.getName().equals("put")) { throw new UnsupportedOperationException(method.getName()); }
+                    stored.add(args[0] + "|" + args[1] + "|" + args[2] + "|" + args[3]);
+                    return new com.npdev.kernel.ports.FileHandle("local", "default/k1", (String) args[2], (Long) args[3], (String) args[1]);
+                }));
+
+        SeedDataService.SeedRunResult result = service.run("caps", CONTEXT);
+
+        assertTrue(result.ok(), () -> "expected success, got: " + result.failureMessage());
+        assertEquals(List.of("default|branik.png|image/png|8"), stored);
+        Map<?, ?> handle = (Map<?, ?>) gateway.savedFor("Cap").get(0).data().get("image");
+        assertEquals("default/k1", handle.get("key"));
+        assertEquals("branik.png", handle.get("originalName"));
+    }
+
+    @Test
+    void fileTokenThatIsNotPackagedFailsWithANamedError() {
+        String seedJson = """
+                { "id": "caps2", "label": "Caps", "records": [ {"concept": "Cap", "data": {"image": "$file:missing.png"}} ] }""";
+        SeedDataService service = serviceFor(seedJson, new FakeConceptGateway());
+        service.setFileStore((com.npdev.kernel.ports.FileStoreContract) java.lang.reflect.Proxy.newProxyInstance(
+                getClass().getClassLoader(), new Class<?>[]{com.npdev.kernel.ports.FileStoreContract.class},
+                (proxy, method, args) -> { throw new AssertionError("must not store"); }));
+
+        SeedDataService.SeedRunResult result = service.run("caps2", CONTEXT);
+
+        assertTrue(!result.ok() && result.failureMessage().contains("not packaged with the app"),
+                () -> "expected a named packaging error, got: " + result.failureMessage());
+    }
+
     // ---------------------------------------------------------------------------------------
     // 'count' shorthand
     // ---------------------------------------------------------------------------------------
