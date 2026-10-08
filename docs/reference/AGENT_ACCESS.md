@@ -108,7 +108,9 @@ The generator writes `secrets/agent-access.env.example` into every app. Copy the
 - For WhatsApp, four secrets plus a display number: `NPDEV_WHATSAPP_PHONE_NUMBER_ID`,
   `NPDEV_WHATSAPP_ACCESS_TOKEN`, `NPDEV_WHATSAPP_APP_SECRET`, `NPDEV_WHATSAPP_VERIFY_TOKEN` (any long
   random text you choose), and `NPDEV_WHATSAPP_PHONE_DISPLAY` (shown on the Connect page). The channel
-  starts only when all four secrets are set; the boot log names any that are missing.
+  starts only when all four secrets are set; the boot log names any that are missing. Optional
+  `NPDEV_WHATSAPP_API_BASE` (e.g. `http://localhost:18556/`) replaces `https://graph.facebook.com/v21.0/`
+  for both sending and media downloads — a proxy, or a fake Graph API for a test without a Meta app.
 - `NPDEV_AGENT_MCP_TOKEN_DAYS` (default 30) — how long a "Create MCP token" button's token lasts.
 
 Restart the app after editing `agent-proxy.env`.
