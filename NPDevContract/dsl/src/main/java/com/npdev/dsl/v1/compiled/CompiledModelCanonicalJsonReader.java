@@ -403,7 +403,24 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalText(exposureNode, "description"),
                     booleanValue(exposureNode, "confirmWrites")));
         }
-        return new CompiledAgentAccess(assistant, channels, expose);
+        CompiledAgentAccessPhotoIntake photoIntake = null;
+        JsonNode intakeNode = node.get("photoIntake");
+        if (intakeNode != null && !intakeNode.isNull()) {
+            Map<String, String> defaults = new LinkedHashMap<>();
+            Iterator<Map.Entry<String, JsonNode>> entries = intakeNode.path("defaults").fields();
+            while (entries.hasNext()) {
+                Map.Entry<String, JsonNode> entry = entries.next();
+                defaults.put(entry.getKey(), entry.getValue().asText());
+            }
+            photoIntake = new CompiledAgentAccessPhotoIntake(
+                    optionalText(intakeNode, "concept"),
+                    optionalText(intakeNode, "imageField"),
+                    optionalText(intakeNode, "captionField"),
+                    optionalText(intakeNode, "procedure"),
+                    defaults,
+                    optionalText(intakeNode, "description"));
+        }
+        return new CompiledAgentAccess(assistant, channels, expose, photoIntake);
     }
 
     private static CompiledAgentAccessChannel toAgentAccessChannel(JsonNode node) {

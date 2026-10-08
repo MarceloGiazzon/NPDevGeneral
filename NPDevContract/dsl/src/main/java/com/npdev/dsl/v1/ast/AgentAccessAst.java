@@ -15,9 +15,17 @@ public final class AgentAccessAst {
     private final AgentAccessAssistantAst assistant;
     private final AgentAccessChannelsAst channels;
     private final List<AgentAccessExposureAst> expose;
+    private final AgentAccessPhotoIntakeAst photoIntake;
 
     public AgentAccessAst(AgentAccessAssistantAst assistant, AgentAccessChannelsAst channels,
             List<AgentAccessExposureAst> expose) {
+        this(assistant, channels, expose, null);
+    }
+
+    /** P8: with the optional {@code photoIntake} block (null = photos are not ingested). */
+    public AgentAccessAst(AgentAccessAssistantAst assistant, AgentAccessChannelsAst channels,
+            List<AgentAccessExposureAst> expose, AgentAccessPhotoIntakeAst photoIntake) {
+        this.photoIntake = photoIntake;
         this.assistant = assistant;
         this.channels = channels;
         this.expose = expose == null ? new ArrayList<>() : new ArrayList<>(expose);
@@ -26,6 +34,7 @@ public final class AgentAccessAst {
     public AgentAccessAssistantAst getAssistant() { return assistant; }
 
     public AgentAccessChannelsAst getChannels() { return channels; }
+    public AgentAccessPhotoIntakeAst getPhotoIntake() { return photoIntake; }
 
     public List<AgentAccessExposureAst> getExpose() {
         return Collections.unmodifiableList(expose);

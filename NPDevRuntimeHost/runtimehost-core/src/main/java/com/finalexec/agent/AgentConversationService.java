@@ -47,6 +47,13 @@ public final class AgentConversationService {
             ExternalAiToolCall call, Instant createdAt) {
     }
 
+    /** P8: a photo's assembled row, waiting for Confirm; not part of the LLM conversation. */
+    private record PendingPhoto(Speaker speaker, String route, String conceptLabel, Map<String, Object> draft,
+            Instant createdAt) {
+    }
+
+    private static final String PHOTO_PREFIX = "ph-";
+
     private static final int MAX_TURNS_KEPT = 24;
     private static final int MAX_TOOL_ROUNDS = 6;
     private static final Duration IDLE_RESET = Duration.ofMinutes(30);
@@ -55,6 +62,7 @@ public final class AgentConversationService {
     private final Map<String, List<ExternalAiChatTurn>> history = new ConcurrentHashMap<>();
     private final Map<String, Instant> lastSeen = new ConcurrentHashMap<>();
     private final Map<String, Pending> pending = new ConcurrentHashMap<>();
+    private final Map<String, PendingPhoto> pendingPhotos = new ConcurrentHashMap<>();
 
     private final Supplier<com.npdev.dsl.v1.compiled.CompiledModel> model;
     private final ExternalAiCapabilityContract ai;
@@ -91,6 +99,9 @@ public final class AgentConversationService {
 
     /** Called when the user presses Confirm (approved=true) or Cancel on a pending write. */
     public Reply handleConfirmation(Speaker speaker, String confirmId, boolean approved) {
+        if (confirmId.startsWith(PHOTO_PREFIX)) {
+            return confirmPhoto(speaker, confirmId, approved);
+        }
         Pending action = pending.remove(confirmId);
         if (action == null || !action.speaker().key().equals(speaker.key())
                 || action.createdAt().plus(PENDING_TTL).isBefore(Instant.now())) {
@@ -104,6 +115,105 @@ public final class AgentConversationService {
             turns.add(ExternalAiChatTurn.toolResult(action.call().id(), action.call().name(), resultJson));
             return runLoop(speaker, turns);
         }
+    }
+
+    /** P8: the image field's size limit (bytes), so a channel can pick a photo size that fits; null =
+     *  no limit declared or photo intake off. */
+    public Long photoMaxBytes() {
+        return AgentPhotoIntake.target(model.get())
+                .flatMap(t -> t.concept().getFields().stream()
+                        .filter(f -> f.getName().equalsIgnoreCase(t.intake().getImageField())).findFirst())
+                .map(f -> f.getFile() == null ? null : f.getFile().maxSizeBytes())
+                .orElse(null);
+    }
+
+    /**
+     * P8 (G5): a photo sent to the bot. Uploads it into the intake concept's image field, runs the
+     * intake procedure over the draft (AI identification), merges caption + defaults, and asks the user
+     * to confirm. Nothing is created until Confirm; a cancelled photo's upload is left to the orphan
+     * sweeper. Every call goes through the app's REST API as the linked user.
+     */
+    public Reply handlePhoto(Speaker speaker, byte[] bytes, String contentType, String fileName, String caption) {
+        AgentPhotoIntake.Target target = AgentPhotoIntake.target(model.get()).orElse(null);
+        if (target == null) {
+            return Reply.text("I can't do anything with photos in this app -- please send text.");
+        }
+        AgentApiExecutor.Credentials credentials = credentialsFor(speaker);
+        AgentApiExecutor.Outcome upload = executor.uploadFile(target.concept().getName(),
+                target.intake().getImageField(), bytes, contentType, fileName, credentials);
+        Map<String, Object> handle = readMap(upload.body());
+        if (!upload.ok() || handle == null) {
+            return Reply.text("I couldn't store that photo (" + upload.status() + "): " + errorText(upload.body()));
+        }
+        Map<String, Object> state = null;
+        String procedureNote = "";
+        if (target.intake().getProcedure() != null && target.aggregate() != null) {
+            AgentApiExecutor.Outcome invoked = executor.postJson(
+                    "/api/runtime/aggregate/" + enc(target.aggregate()) + "/invoke/" + enc(target.intake().getProcedure()),
+                    AgentPhotoIntake.procedureInput(target, handle, caption), credentials, false);
+            state = invoked.ok() ? readMap(invoked.body()) : null;
+            if (state == null) {
+                procedureNote = "\n(" + target.intake().getProcedure() + " did not answer: " + errorText(invoked.body()) + ")";
+            }
+        }
+        Map<String, Object> draft = AgentPhotoIntake.draft(target, speaker.username(), handle, caption, state);
+        String label = target.concept().getUi() != null && target.concept().getUi().getLabel() != null
+                ? target.concept().getUi().getLabel() : target.concept().getName();
+        List<String> missing = AgentPhotoIntake.missingRequired(target, draft);
+        if (!missing.isEmpty()) {
+            String hint = target.intake().getCaptionField() != null && missing.contains(target.intake().getCaptionField())
+                    ? " Send the photo again with a caption -- it becomes the " + target.intake().getCaptionField() + "." : "";
+            return Reply.text("I can't make a " + label + " from that photo yet: missing " + missing + "." + hint + procedureNote);
+        }
+        String id = PHOTO_PREFIX + UUID.randomUUID().toString().substring(0, 8);
+        pendingPhotos.put(id, new PendingPhoto(speaker, target.route(), label, draft, Instant.now()));
+        StringBuilder text = new StringBuilder("New " + label + " from your photo:\n");
+        draft.forEach((key, value) -> {
+            if (!key.equalsIgnoreCase(target.intake().getImageField())) {
+                text.append("- ").append(key).append(": ").append(value).append('\n');
+            }
+        });
+        return new Reply(text.append("Save it?").append(procedureNote).toString(), id);
+    }
+
+    private Reply confirmPhoto(Speaker speaker, String confirmId, boolean approved) {
+        PendingPhoto photo = pendingPhotos.remove(confirmId);
+        if (photo == null || !photo.speaker().key().equals(speaker.key())
+                || photo.createdAt().plus(PENDING_TTL).isBefore(Instant.now())) {
+            return Reply.text("That photo has expired. Please send it again.");
+        }
+        if (!approved) {
+            return Reply.text("Discarded.");
+        }
+        AgentApiExecutor.Outcome created = executor.postJson(
+                "/api/concepts/" + enc(photo.route()), photo.draft(), credentialsFor(speaker), true);
+        if (!created.ok()) {
+            return Reply.text(created.status() == 403
+                    ? "You are not allowed to add a " + photo.conceptLabel() + "."
+                    : "I couldn't save it (" + created.status() + "): " + errorText(created.body()));
+        }
+        return Reply.text("Saved -- the " + photo.conceptLabel() + " is in the app.");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> readMap(String body) {
+        try {
+            Object parsed = mapper.readValue(body == null ? "" : body, Object.class);
+            return parsed instanceof Map<?, ?> map ? (Map<String, Object>) map : null;
+        } catch (Exception notJson) {
+            return null;
+        }
+    }
+
+    private String errorText(String body) {
+        Map<String, Object> map = readMap(body);
+        Object message = map == null ? null : map.getOrDefault("message", map.get("error"));
+        String text = message != null ? String.valueOf(message) : body == null ? "" : body;
+        return text.length() > 300 ? text.substring(0, 300) + "..." : text;
+    }
+
+    private static String enc(String value) {
+        return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
     }
 
     private Reply runLoop(Speaker speaker, List<ExternalAiChatTurn> turns) {

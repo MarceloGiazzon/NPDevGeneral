@@ -169,6 +169,25 @@ public final class CompiledModelCanonicalJson {
             expose.add(exposureNode);
         }
         node.set("expose", expose);
+        CompiledAgentAccessPhotoIntake intake = agentAccess.getPhotoIntake();
+        if (intake != null) {
+            ObjectNode intakeNode = JsonNodeFactory.instance.objectNode();
+            intakeNode.put("concept", safe(intake.getConcept()));
+            intakeNode.put("imageField", safe(intake.getImageField()));
+            if (intake.getCaptionField() != null) {
+                intakeNode.put("captionField", safe(intake.getCaptionField()));
+            }
+            if (intake.getProcedure() != null) {
+                intakeNode.put("procedure", safe(intake.getProcedure()));
+            }
+            ObjectNode defaults = JsonNodeFactory.instance.objectNode();
+            new TreeMap<>(intake.getDefaults()).forEach(defaults::put);
+            intakeNode.set("defaults", defaults);
+            if (intake.getDescription() != null) {
+                intakeNode.put("description", safe(intake.getDescription()));
+            }
+            node.set("photoIntake", intakeNode);
+        }
         return node;
     }
 

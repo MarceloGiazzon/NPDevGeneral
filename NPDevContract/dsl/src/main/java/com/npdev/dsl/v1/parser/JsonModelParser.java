@@ -1114,7 +1114,42 @@ public final class JsonModelParser {
                     readOptionalBoolean(exposureNode, "confirmWrites")
             ));
         }
-        return new com.npdev.dsl.v1.ast.AgentAccessAst(assistant, channels, expose);
+        return new com.npdev.dsl.v1.ast.AgentAccessAst(assistant, channels, expose,
+                parseAgentPhotoIntake(node.get("photoIntake")));
+    }
+
+    /** P8 (G5): {@code agentAccess.photoIntake} -- what a photo sent to the bot becomes; null if absent. */
+    private static com.npdev.dsl.v1.ast.AgentAccessPhotoIntakeAst parseAgentPhotoIntake(JsonNode node)
+            throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("agentAccess.photoIntake must be an object");
+        }
+        Map<String, String> defaults = new LinkedHashMap<>();
+        JsonNode defaultsNode = node.get("defaults");
+        if (defaultsNode != null && !defaultsNode.isNull()) {
+            if (!defaultsNode.isObject()) {
+                throw new IOException("agentAccess.photoIntake.defaults must be an object of field -> value");
+            }
+            Iterator<Map.Entry<String, JsonNode>> entries = defaultsNode.fields();
+            while (entries.hasNext()) {
+                Map.Entry<String, JsonNode> entry = entries.next();
+                if (!entry.getValue().isValueNode() || entry.getValue().isNull()) {
+                    throw new IOException("agentAccess.photoIntake.defaults." + entry.getKey()
+                            + " must be a string, number or boolean");
+                }
+                defaults.put(entry.getKey(), entry.getValue().asText());
+            }
+        }
+        return new com.npdev.dsl.v1.ast.AgentAccessPhotoIntakeAst(
+                readText(node, "concept"),
+                readText(node, "imageField"),
+                readText(node, "captionField"),
+                readText(node, "procedure"),
+                defaults,
+                readText(node, "description"));
     }
 
     private static boolean readChannelEnabled(JsonNode channelsNode, String channelKey) throws IOException {
