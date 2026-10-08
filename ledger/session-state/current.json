@@ -1,17 +1,19 @@
 {
-  "closedAt": "2026-10-08T23:48:46.6965134Z",
+  "closedAt": "2026-10-08T23:52:53.1796116Z",
   "branch": "main",
-  "head": "5ba01415",
-  "headSubject": "chore(session): handoff after roles and users (cb2594ae)",
-  "summary": "Shipped roles and users at cb2594ae (owner chose close + roles and users): roles[].concepts per-concept CRUD grants, create-user roleNames[], tenant-ADMIN POST/DELETE /api/auth/users/{username}/roles; Pigmentampas Member/Curator + conformance-max SupplierViewer examples; friction #13/#21 fixed. Added the 'c..' shortcut (close, then user runs /clear + /prep) to memory.",
+  "head": "344166b1",
+  "headSubject": "chore(session): handoff after roles and users, c.. shortcut",
+  "summary": "Shipped roles and users at cb2594ae (roles[].concepts concept-CRUD grants, create-user roleNames[], tenant-ADMIN role assign/revoke API; live 15/15). Made 'c..' automatic: session-start-handoff.py now runs Prepare-Session.ps1 itself when a session starts from /clear, so /prep is no longer needed.",
   "nextStep": "Build the P9 story page for the Pigmentampas Mosaic demo per the plan README (P9 section). App runs at http://127.0.0.1:8084 from D:/WorkSpace/NPDev/Build/samples/pigmentampas/Output/App; to (re)boot set NPDEV_MAIL_SMTP_HOST=localhost NPDEV_MAIL_SMTP_PORT=1025 NPDEV_MAIL_SMTP_FROM=noreply@pigmentampas.local NPDEV_MAIL_SMTP_STARTTLS=false before _ops/Start-App.ps1. Logins admin/demo-admin-1, tito and tavo/demo-pass-1.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
   "blocked": "D5: Google OAuth client + Meta app (owner). Live Claude Desktop run is the owner's.",
-  "verified": "T2 all four gates green: generator first run; kernel+aiKnowledge rerun green after a flaky messaging-http test; runtimeHost rerun green after stale kernel coverage. Live Pigmentampas 15/15 role checks (evidence/roles-and-users-live-verify.txt); public gallery and existing tavo login unaffected.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "verified": "T2 all four gates green for cb2594ae; live Pigmentampas 15/15 role checks. Hook change: manual run with source=clear printed the prep output (15 s), source=startup unchanged (9 lines); no gate run for the hook edit.",
+  "dirtyCount": 1,
+  "dirtyFiles": [
+    " M scripts/hooks/session-start-handoff.py"
+  ],
   "unpushed": 0,
   "landedCommits": [
-    "5ba01415 chore(session): handoff after roles and users (cb2594ae)"
+    "344166b1 chore(session): handoff after roles and users, c.. shortcut"
   ]
 }
