@@ -1,18 +1,17 @@
 {
-  "closedAt": "2026-10-08T21:54:22.6727691Z",
+  "closedAt": "2026-10-08T23:48:46.6965134Z",
   "branch": "main",
-  "head": "cb2594ae",
-  "headSubject": "feat(roles): roles[].concepts concept-CRUD grants + multi-role users",
-  "summary": "Roles and users shipped at cb2594ae (owner chose close + roles and users): roles[].concepts per-concept CRUD grants (restricted concepts go only to naming roles; unnamed concepts open to USER + every declared role), create-user roleNames[], tenant-ADMIN POST/DELETE /api/auth/users/{username}/roles. Conformance-max + Pigmentampas Member/Curator examples. Friction #13/#21 marked fixed.",
-  "nextStep": "P9 story page for the Pigmentampas Mosaic demo (plan README). App runs at 127.0.0.1:8084 from Build/samples/pigmentampas (needs NPDEV_MAIL_SMTP_HOST/PORT/FROM/STARTTLS env to boot).",
+  "head": "5ba01415",
+  "headSubject": "chore(session): handoff after roles and users (cb2594ae)",
+  "summary": "Shipped roles and users at cb2594ae (owner chose close + roles and users): roles[].concepts per-concept CRUD grants, create-user roleNames[], tenant-ADMIN POST/DELETE /api/auth/users/{username}/roles; Pigmentampas Member/Curator + conformance-max SupplierViewer examples; friction #13/#21 fixed. Added the 'c..' shortcut (close, then user runs /clear + /prep) to memory.",
+  "nextStep": "Build the P9 story page for the Pigmentampas Mosaic demo per the plan README (P9 section). App runs at http://127.0.0.1:8084 from D:/WorkSpace/NPDev/Build/samples/pigmentampas/Output/App; to (re)boot set NPDEV_MAIL_SMTP_HOST=localhost NPDEV_MAIL_SMTP_PORT=1025 NPDEV_MAIL_SMTP_FROM=noreply@pigmentampas.local NPDEV_MAIL_SMTP_STARTTLS=false before _ops/Start-App.ps1. Logins admin/demo-admin-1, tito and tavo/demo-pass-1.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
   "blocked": "D5: Google OAuth client + Meta app (owner). Live Claude Desktop run is the owner's.",
-  "verified": "T2 all four gates green (kernel/aiKnowledge/runtimeHost reruns after a flaky messaging-http test + stale coverage). Live Pigmentampas 15/15 role checks (evidence/roles-and-users-live-verify.txt); public gallery + existing tavo login unaffected.",
+  "verified": "T2 all four gates green: generator first run; kernel+aiKnowledge rerun green after a flaky messaging-http test; runtimeHost rerun green after stale kernel coverage. Live Pigmentampas 15/15 role checks (evidence/roles-and-users-live-verify.txt); public gallery and existing tavo login unaffected.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "cb2594ae feat(roles): roles[].concepts concept-CRUD grants + multi-role users",
-    "b5f77070 chore(session): handoff after P10 verdict"
+    "5ba01415 chore(session): handoff after roles and users (cb2594ae)"
   ]
 }
