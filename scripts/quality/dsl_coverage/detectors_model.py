@@ -259,6 +259,15 @@ def _has_concept_temporal(model: dict) -> bool:
     )
 
 
+def _has_concept_rollups(model: dict) -> bool:
+    """P8 prelude (Pigmentampas Mosaic.likeCount): a concept declaring rollups[] -- a stored field the
+    platform keeps equal to count/sum/min/max/avg over a child concept's rows."""
+    return any(
+        isinstance(c, dict) and isinstance(c.get("rollups"), list) and len(c["rollups"]) > 0
+        for c in (model.get("concepts", None) or [])
+    )
+
+
 def _has_composite_index(model: dict) -> bool:
     for concept in (model.get("concepts", None) or []):
         if not isinstance(concept, dict):

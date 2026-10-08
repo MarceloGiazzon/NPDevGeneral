@@ -266,13 +266,16 @@ public class NpdevRuntimeModeConfig {
         // stored record survives (see InMemoryConceptStore.setModel's own javadoc); only the
         // delete-cascade rules a later delete enforces change.
         modelHolder.addReloadListener((before, after) -> store.setModel(after));
-        return store;
+        return new com.finalexec.db.RollupConceptStoreDecorator(store, modelHolder::get);
     }
 
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
     public ConceptStore jdbcConceptStore(DataSource dataSource, ModelHolder modelHolder) {
-        return new JdbcBusinessConceptStore(dataSource, modelHolder);
+        // P8 prelude: every ConceptStore write funnels through here, so concept rollups[] are
+        // maintained once for CRUD, flows, aggregate commits and agent writes alike.
+        return new com.finalexec.db.RollupConceptStoreDecorator(
+                new JdbcBusinessConceptStore(dataSource, modelHolder), modelHolder::get);
     }
 
     @Bean

@@ -313,6 +313,8 @@
         { "name": "cellCount", "type": "integer", "required": false,
           "derivedExpression": "rows * cols",
           "ui": { "label": "Cells" } },
+        { "name": "likeCount", "type": "integer", "required": false,
+          "ui": { "label": "Likes" } },
         { "name": "sourceImage", "type": "file", "required": false,
           "file": { "contentTypes": ["image/png", "image/jpeg"], "maxSizeBytes": 2097152 },
           "ui": { "label": "Source image" } },
@@ -326,6 +328,9 @@
         { "name": "status", "type": "enum", "required": true,
           "enumValues": ["DRAFT", "PUBLISHED", "BUILT"],
           "ui": { "label": "Status" } }
+      ],
+      "rollups": [
+        { "field": "likeCount", "from": "Like", "via": "mosaicId", "fn": "count" }
       ],
       "lifecycle": {
         "statusField": "status",
@@ -345,7 +350,7 @@
         "write": "ownerUsername == $user.id",
         "public": {
           "where": "status != 'DRAFT'",
-          "fields": ["code", "title", "rows", "cols", "layout", "description", "status", "builtPhoto"]
+          "fields": ["code", "title", "rows", "cols", "layout", "description", "status", "builtPhoto", "likeCount"]
         }
       }
     },
@@ -614,6 +619,7 @@
   "queries": [
     { "name": "ApprovedCaps", "concept": "Cap", "where": "status == 'APPROVED'", "orderBy": ["label"] },
     { "name": "OpenChallenges", "concept": "Challenge", "where": "status == 'OPEN'", "orderBy": ["month"] },
+    { "name": "MostLikedMosaics", "concept": "Mosaic", "where": "status != 'DRAFT'", "orderBy": ["likeCount desc", "title"], "limit": 20 },
     { "name": "LikesPerMosaic", "concept": "Like", "groupBy": ["mosaicId.code", "mosaicId.title"],
       "aggregates": [{ "name": "likes", "fn": "count" }], "orderBy": ["likes desc"], "limit": 50 },
     { "name": "CollectionInStock", "concept": "CollectionItem", "where": "quantity > 0",

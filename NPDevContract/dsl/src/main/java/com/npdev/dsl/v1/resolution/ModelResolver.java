@@ -247,7 +247,8 @@ public final class ModelResolver {
                 concept.getOrigin(),
                 concept.isSoftDelete(),
                 concept.isTemporal(),
-                concept.getUid()
+                concept.getUid(),
+                concept.getRollups()
         );
     }
 
@@ -344,7 +345,8 @@ public final class ModelResolver {
                 mergedOrigin,
                 mergedSoftDelete,
                 mergedTemporal,
-                specialization.getUid()
+                specialization.getUid(),
+                specialization.getRollups().isEmpty() ? base.getRollups() : specialization.getRollups()
         );
     }
 

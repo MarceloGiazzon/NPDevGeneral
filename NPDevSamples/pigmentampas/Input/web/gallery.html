@@ -117,7 +117,7 @@
       title.textContent = mosaic.title;
       var meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = [mosaic.code, mosaic.status].filter(Boolean).join(" - ");
+      meta.textContent = [mosaic.code, mosaic.status, (mosaic.likeCount || 0) + " likes"].filter(Boolean).join(" - ");
       a.appendChild(document.createElement("div"));
       a.appendChild(title);
       a.appendChild(meta);
@@ -137,7 +137,7 @@
       var signedIn = Boolean(api.token());
       Promise.all([
         allCaps(0),
-        api.get(PUBLIC + "/concepts/Mosaic?sort=code&direction=desc&limit=" + MAX_CARDS)
+        api.get(PUBLIC + "/concepts/Mosaic?sort=likeCount&direction=desc&limit=" + MAX_CARDS)
       ]).then(function (res) {
         var mosaics = (res[1] && res[1].items) || [];
         if (!mosaics.length) { setStatus("No published mosaics yet."); return; }

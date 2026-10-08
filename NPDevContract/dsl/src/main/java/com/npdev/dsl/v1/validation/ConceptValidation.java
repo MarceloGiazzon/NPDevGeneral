@@ -3,6 +3,7 @@ package com.npdev.dsl.v1.validation;
 import com.npdev.dsl.v1.ast.CapabilityAst;
 import com.npdev.dsl.v1.ast.ConceptAccessAst;
 import com.npdev.dsl.v1.ast.PublicReadAst;
+import com.npdev.dsl.v1.ast.RollupAst;
 import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
@@ -337,6 +338,7 @@ final class ConceptValidation {
 
             validateAccessRules(e.getName(), e.getAccess(), fieldNames, errors);
             validatePublicRead(e, effective.fields(), effectiveModel.getAggregates(), errors);
+            validateRollups(e, effective.fields(), entitiesByLower, effectiveCache, errors);
             validateLifecycle(e, effective, effectiveModel.getAutoPanels(), effectiveModel.getAggregates(), errors);
         }
     }
@@ -848,6 +850,93 @@ final class ConceptValidation {
         }
         validateAccessExpression(entityName, "read", access.getRead(), fieldNames, errors);
         validateAccessExpression(entityName, "write", access.getWrite(), fieldNames, errors);
+    }
+
+    private static final Set<String> ROLLUP_FUNCTIONS = Set.of("count", "sum", "min", "max", "avg");
+    private static final Set<String> NUMERIC_TYPES = Set.of("int", "integer", "long", "decimal");
+
+    /**
+     * P8 prelude: compile-time checks for {@code rollups[]}. The target {@code field} must be a
+     * numeric, non-id field of this concept, maintained by at most one rollup; {@code from} must be
+     * another concept whose {@code via} is a reference field pointing back at this one; {@code fn}
+     * must be count/sum/min/max/avg, and every function but count needs a numeric {@code of} on
+     * {@code from} (count takes none).
+     */
+    private static void validateRollups(
+            ConceptAst concept,
+            List<FieldAst> fields,
+            Map<String, ConceptAst> entitiesByLower,
+            Map<String, EffectiveEntity> effectiveCache,
+            List<String> errors
+    ) {
+        if (concept.getRollups().isEmpty()) {
+            return;
+        }
+        Map<String, FieldAst> byName = new HashMap<>();
+        for (FieldAst field : fields) {
+            byName.put(SemanticValidator.normalize(field.getName()), field);
+        }
+        Set<String> maintained = new HashSet<>();
+        for (int i = 0; i < concept.getRollups().size(); i++) {
+            RollupAst rollup = concept.getRollups().get(i);
+            String label = "Entity " + concept.getName() + " rollups[" + i + "]";
+            if (rollup.field() == null || rollup.from() == null || rollup.via() == null) {
+                errors.add(label + ": field, from and via are all required"
+                        + " -- suggestedFix: declare all three, e.g. { \"field\": \"likeCount\", \"from\": \"Like\", \"via\": \"mosaicId\" }");
+                continue;
+            }
+            FieldAst target = byName.get(SemanticValidator.normalize(rollup.field()));
+            if (target == null) {
+                errors.add(label + ".field: unknown field '" + rollup.field() + "'");
+            } else if (target.isId() || !NUMERIC_TYPES.contains(SemanticValidator.normalize(target.getType()))) {
+                errors.add(label + ".field: '" + rollup.field() + "' must be a non-id int/integer/long/decimal field");
+            }
+            if (!maintained.add(SemanticValidator.normalize(rollup.field()))) {
+                errors.add(label + ".field: '" + rollup.field() + "' is already maintained by another rollup"
+                        + " -- suggestedFix: give this rollup its own numeric field, or remove the duplicate entry");
+            }
+            String fn = SemanticValidator.normalize(rollup.fn());
+            if (!ROLLUP_FUNCTIONS.contains(fn)) {
+                errors.add(label + ".fn: must be one of count, sum, min, max, avg; got '" + rollup.fn() + "'");
+            }
+            ConceptAst child = entitiesByLower.get(SemanticValidator.normalize(rollup.from()));
+            if (child == null) {
+                errors.add(label + ".from: unknown concept '" + rollup.from() + "'");
+                continue;
+            }
+            List<FieldAst> childFields = resolveEffective(child, entitiesByLower, effectiveCache, new HashSet<>(), new ArrayList<>()).fields();
+            FieldAst via = null;
+            FieldAst of = null;
+            for (FieldAst childField : childFields) {
+                if (SemanticValidator.normalize(childField.getName()).equals(SemanticValidator.normalize(rollup.via()))) {
+                    via = childField;
+                }
+                if (rollup.of() != null && SemanticValidator.normalize(childField.getName()).equals(SemanticValidator.normalize(rollup.of()))) {
+                    of = childField;
+                }
+            }
+            if (via == null) {
+                errors.add(label + ".via: " + rollup.from() + " has no field '" + rollup.via() + "'");
+            } else if (via.getReferenceTarget() == null
+                    || !SemanticValidator.normalize(via.getReferenceTarget()).equals(SemanticValidator.normalize(concept.getName()))) {
+                errors.add(label + ".via: " + rollup.from() + "." + rollup.via() + " must be a reference to " + concept.getName());
+            }
+            if ("count".equals(fn)) {
+                if (rollup.of() != null) {
+                    errors.add(label + ".of: count counts rows and takes no 'of' field"
+                            + " -- suggestedFix: remove \"of\", or set \"fn\" to sum/min/max/avg");
+                }
+            } else if (ROLLUP_FUNCTIONS.contains(fn)) {
+                if (rollup.of() == null) {
+                    errors.add(label + ".of: fn '" + rollup.fn() + "' needs the numeric " + rollup.from() + " field it reads"
+                            + " -- suggestedFix: add \"of\": \"<numeric field of " + rollup.from() + ">\"");
+                } else if (of == null) {
+                    errors.add(label + ".of: " + rollup.from() + " has no field '" + rollup.of() + "'");
+                } else if (!NUMERIC_TYPES.contains(SemanticValidator.normalize(of.getType()))) {
+                    errors.add(label + ".of: " + rollup.from() + "." + rollup.of() + " must be int/integer/long/decimal");
+                }
+            }
+        }
     }
 
     /**

@@ -414,7 +414,8 @@ public final class JsonModelParser {
             boolean conceptSoftDelete = ent.has("softDelete") && ent.get("softDelete").asBoolean(false);
             boolean conceptTemporal = ent.has("temporal") && ent.get("temporal").asBoolean(false);
             String conceptUid = readText(ent, "uid");
-            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes, access, conceptRenamedFrom, conceptSatelliteOf, originFor(originByQualifiedMemberName, "concepts", name), conceptSoftDelete, conceptTemporal, conceptUid);
+            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes, access, conceptRenamedFrom, conceptSatelliteOf, originFor(originByQualifiedMemberName, "concepts", name), conceptSoftDelete, conceptTemporal, conceptUid,
+                    readRollups(name, ent.get("rollups")));
             concepts.add(concept);
             conceptsByLowerName.put(name.toLowerCase(Locale.ROOT), concept);
         }
@@ -2107,6 +2108,25 @@ public final class JsonModelParser {
         while (fieldNames.hasNext()) {
             String key = fieldNames.next();
             out.put(key, parseJsonValue(node.get(key)));
+        }
+        return out;
+    }
+
+    /** P8 prelude: {@code rollups: [{ field, from, via, fn, of }]}; empty when absent. */
+    private static List<RollupAst> readRollups(String conceptName, JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return List.of();
+        }
+        if (!node.isArray()) {
+            throw new IOException("Concept " + conceptName + " rollups must be an array");
+        }
+        List<RollupAst> out = new ArrayList<>();
+        for (JsonNode entry : node) {
+            if (!entry.isObject()) {
+                throw new IOException("Concept " + conceptName + " rollups[] entries must be objects");
+            }
+            out.add(new RollupAst(readText(entry, "field"), readText(entry, "from"), readText(entry, "via"),
+                    readText(entry, "fn"), readText(entry, "of")));
         }
         return out;
     }

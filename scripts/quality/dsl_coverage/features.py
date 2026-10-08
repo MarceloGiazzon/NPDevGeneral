@@ -19,7 +19,7 @@ from .detectors_model import (  # noqa: F401 - every name the table below refere
     _has_aggregate_invariants, _has_aggregate_on_commit, _has_aggregate_on_validate,
     _has_arithmetic_derived_expression,
     _has_capability_policy, _has_composite_index, _has_concept_access, _has_concept_extends,
-    _has_concept_soft_delete, _has_concept_temporal, _has_concept_uid, _has_field_access,
+    _has_concept_rollups, _has_concept_soft_delete, _has_concept_temporal, _has_concept_uid, _has_field_access,
     _has_field_uid, _has_locale_label,
     _has_conversion_java_hook, _has_conversion_op, _has_date_field, _has_decimal_field, _has_file_field,
     _has_flow_io_schema,
@@ -211,6 +211,9 @@ FEATURE_DETECTORS = {
     # as-of date against author-declared validFrom/validTo fields, instead of one current value per
     # logical entity (price lists, tax rates, assignments).
     "concept.temporal": _has_concept_temporal,
+    # P8 prelude (Pigmentampas Mosaic.likeCount): concept.rollups -- a stored, platform-maintained
+    # count/sum/min/max/avg over a child concept's rows, recomputed on every child write.
+    "concept.rollups": _has_concept_rollups,
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): an explicit "post" checkpoint on an
     # invariantCheck step -- step.invariantCheck itself has broad corpus coverage already, but every
     # existing declaration relies on JsonModelParser's implicit "pre" default (scope declared, no

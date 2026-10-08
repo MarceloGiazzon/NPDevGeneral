@@ -809,7 +809,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toOrigin(node.get("origin")),
                 booleanValue(node, "softDelete"),
                 booleanValue(node, "temporal"),
-                optionalText(node, "uid")
+                optionalText(node, "uid"),
+                toRollups(node.get("rollups"))
         );
     }
 
@@ -835,6 +836,19 @@ public final class CompiledModelCanonicalJsonReader {
     }
 
     /** LNCH-13: row-level authorization rule (access: {read, write}). */
+    /** P8 prelude: reads a concept's {@code rollups[]}; key absent means none. */
+    private static List<CompiledRollup> toRollups(JsonNode node) {
+        if (node == null || !node.isArray()) {
+            return List.of();
+        }
+        List<CompiledRollup> out = new ArrayList<>();
+        for (JsonNode entry : node) {
+            out.add(new CompiledRollup(optionalText(entry, "field"), optionalText(entry, "from"),
+                    optionalText(entry, "via"), optionalText(entry, "fn"), optionalText(entry, "of")));
+        }
+        return out;
+    }
+
     private static CompiledConceptAccess toConceptAccess(JsonNode node) {
         if (node == null || node.isNull()) {
             return null;

@@ -344,8 +344,14 @@
       "ui": {
         "label": "Widget catalog entry"
       },
+      "rollups": [
+        { "field": "slotCount", "from": "ShelfSlot", "via": "entryId", "fn": "count" },
+        { "field": "highestSlotRow", "from": "ShelfSlot", "via": "entryId", "fn": "max", "of": "row" }
+      ],
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "slotCount", "type": "integer", "required": false, "ui": { "label": "Shelf slots" } },
+        { "name": "highestSlotRow", "type": "integer", "required": false, "ui": { "label": "Highest slot row" } },
         {
           "name": "sku",
           "type": "string",
