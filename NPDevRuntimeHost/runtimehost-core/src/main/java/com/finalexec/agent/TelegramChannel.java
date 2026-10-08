@@ -150,7 +150,8 @@ public final class TelegramChannel {
         long chatId = message.path("chat").path("id").asLong();
         String telegramUserId = message.path("from").path("id").asText();
         String text = message.path("text").asText("").trim();
-        if (text.isEmpty()) {
+        boolean photo = message.has("photo") || message.path("document").path("mime_type").asText("").startsWith("image/");
+        if (text.isEmpty() && !photo) {
             return;
         }
         if (!allow(chatId)) {
@@ -177,6 +178,12 @@ public final class TelegramChannel {
         }
         AgentConversationService.Speaker speaker = new AgentConversationService.Speaker(
                 "telegram", telegramUserId, linked.get().tenantId(), linked.get().username(), linked.get().roles());
+        if (photo) {
+            call("sendChatAction", Map.of("chat_id", chatId, "action", "typing"), 10);
+            AgentConversationService.Reply reply = handlePhoto(speaker, message);
+            send(chatId, reply.text(), reply.confirmId());
+            return;
+        }
         if (text.equals("/whoami")) {
             send(chatId, "You are " + speaker.username() + " (roles: " + speaker.roles() + ").", null);
             return;
@@ -184,6 +191,54 @@ public final class TelegramChannel {
         call("sendChatAction", Map.of("chat_id", chatId, "action", "typing"), 10);
         AgentConversationService.Reply reply = conversations.handleText(speaker, text);
         send(chatId, reply.text(), reply.confirmId());
+    }
+
+    /** P8 (G5): picks the largest photo size within the intake field's limit (Telegram lists sizes
+     *  smallest first; an image sent "as file" arrives as a document), downloads it, and hands it on. */
+    private AgentConversationService.Reply handlePhoto(AgentConversationService.Speaker speaker, JsonNode message) {
+        Long limit = conversations.photoMaxBytes();
+        String caption = message.path("caption").asText("");
+        String fileId = null;
+        String contentType = "image/jpeg";
+        String fileName = "telegram-photo.jpg";
+        if (message.has("photo")) {
+            for (JsonNode size : message.path("photo")) {
+                long bytes = size.path("file_size").asLong(0);
+                if (fileId == null || limit == null || bytes == 0 || bytes <= limit) {
+                    fileId = size.path("file_id").asText();
+                }
+            }
+        } else {
+            JsonNode document = message.path("document");
+            fileId = document.path("file_id").asText();
+            contentType = document.path("mime_type").asText(contentType);
+            fileName = document.path("file_name").asText(fileName);
+        }
+        JsonNode file = call("getFile", Map.of("file_id", fileId == null ? "" : fileId), 15);
+        String filePath = file == null ? "" : file.path("result").path("file_path").asText("");
+        byte[] bytes = filePath.isEmpty() ? null : download(filePath);
+        if (bytes == null) {
+            return new AgentConversationService.Reply("I couldn't download that photo from Telegram -- please try again.", null);
+        }
+        return conversations.handlePhoto(speaker, bytes, contentType, fileName, caption);
+    }
+
+    /** Telegram serves files from {@code <api>/file/bot<token>/<file_path>}, next to {@code <api>/bot<token>}. */
+    private byte[] download(String filePath) {
+        String fileBase = apiBase.endsWith("/bot")
+                ? apiBase.substring(0, apiBase.length() - "bot".length()) + "file/bot" : apiBase + "file/";
+        try {
+            HttpResponse<byte[]> response = http.send(
+                    HttpRequest.newBuilder(URI.create(fileBase + token + "/" + filePath)).timeout(Duration.ofSeconds(30))
+                            .GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+            return response.statusCode() == 200 ? response.body() : null;
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return null;
+        } catch (Exception failed) {
+            LOG.fine("Telegram file download failed: " + failed.getClass().getSimpleName());
+            return null;
+        }
     }
 
     private void handleButton(JsonNode query) {

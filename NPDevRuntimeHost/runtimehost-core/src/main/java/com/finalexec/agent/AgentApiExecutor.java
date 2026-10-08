@@ -96,6 +96,48 @@ public final class AgentApiExecutor {
         }
     }
 
+    /** P8: POST a JSON body to one of this app's own paths (e.g. an aggregate procedure invoke or a
+     *  concept create) as {@code credentials}. {@code idempotent} adds a fresh X-Idempotency-Key. */
+    public Outcome postJson(String path, Map<String, Object> body, Credentials credentials, boolean idempotent) {
+        try {
+            // A procedure may call a vision model; 30 s (the tool-call default) is too short for that.
+            HttpRequest.Builder request = json(base() + path, "POST", body, credentials).timeout(Duration.ofSeconds(120));
+            if (idempotent) {
+                request.header("X-Idempotency-Key", UUID.randomUUID().toString());
+            }
+            HttpResponse<String> response = http.send(request.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            return new Outcome(response.statusCode(), response.body());
+        } catch (Exception failed) {
+            return new Outcome(502, "{\"error\":\"the app's own API could not be reached: "
+                    + failed.getClass().getSimpleName() + "\"}");
+        }
+    }
+
+    /** P8: multipart upload into {@code /api/files/{concept}/{field}} as {@code credentials} -- the
+     *  file controller enforces the field's content types and size limit and the caller's tenant. */
+    public Outcome uploadFile(String concept, String field, byte[] bytes, String contentType, String fileName,
+            Credentials credentials) {
+        String boundary = "npdev-" + UUID.randomUUID();
+        String safeName = fileName == null || fileName.isBlank() ? "photo" : fileName.replace("\"", "");
+        byte[] head = ("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + safeName
+                + "\"\r\nContent-Type: " + contentType + "\r\n\r\n").getBytes(StandardCharsets.UTF_8);
+        byte[] tail = ("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8);
+        byte[] body = new byte[head.length + bytes.length + tail.length];
+        System.arraycopy(head, 0, body, 0, head.length);
+        System.arraycopy(bytes, 0, body, head.length, bytes.length);
+        System.arraycopy(tail, 0, body, head.length + bytes.length, tail.length);
+        try {
+            HttpRequest request = builder(base() + "/api/files/" + enc(concept) + "/" + enc(field), credentials)
+                    .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(body)).build();
+            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            return new Outcome(response.statusCode(), response.body());
+        } catch (Exception failed) {
+            return new Outcome(502, "{\"error\":\"the app's own API could not be reached: "
+                    + failed.getClass().getSimpleName() + "\"}");
+        }
+    }
+
     private HttpRequest conceptRequest(AgentToolCatalog.AgentTool tool, Map<String, Object> args, Credentials creds) {
         String collection = base() + "/api/concepts/" + enc(tool.route());
         return switch (tool.operation()) {

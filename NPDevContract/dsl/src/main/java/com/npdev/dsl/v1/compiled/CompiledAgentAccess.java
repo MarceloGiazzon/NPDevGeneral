@@ -13,9 +13,17 @@ public final class CompiledAgentAccess {
     private final CompiledAgentAccessAssistant assistant;
     private final CompiledAgentAccessChannels channels;
     private final List<CompiledAgentAccessExposure> expose;
+    private final CompiledAgentAccessPhotoIntake photoIntake;
 
     public CompiledAgentAccess(CompiledAgentAccessAssistant assistant, CompiledAgentAccessChannels channels,
             List<CompiledAgentAccessExposure> expose) {
+        this(assistant, channels, expose, null);
+    }
+
+    /** P8: with the optional {@code photoIntake} block (null = photos are not ingested). */
+    public CompiledAgentAccess(CompiledAgentAccessAssistant assistant, CompiledAgentAccessChannels channels,
+            List<CompiledAgentAccessExposure> expose, CompiledAgentAccessPhotoIntake photoIntake) {
+        this.photoIntake = photoIntake;
         this.assistant = assistant;
         this.channels = channels;
         this.expose = expose == null ? new ArrayList<>() : new ArrayList<>(expose);
@@ -24,6 +32,7 @@ public final class CompiledAgentAccess {
     public CompiledAgentAccessAssistant getAssistant() { return assistant; }
 
     public CompiledAgentAccessChannels getChannels() { return channels; }
+    public CompiledAgentAccessPhotoIntake getPhotoIntake() { return photoIntake; }
 
     public List<CompiledAgentAccessExposure> getExpose() {
         return Collections.unmodifiableList(expose);

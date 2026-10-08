@@ -12,7 +12,7 @@ import java.util.Map;
  * P4 (G3): builds the smallest deterministic instance of a JSON Schema -- the offline "answer" the
  * inproc adapter gives a structured prompt, so a flow calling {@code externalAi.generate} runs end to
  * end in tests and air-gapped apps with no vendor. Honours the keywords a prompt schema realistically
- * uses (type, properties, items, enum, const, minimum, minItems, minLength); anything fancier still
+ * uses (type, properties, items, enum, const, examples, default, minimum, minItems, minLength); anything fancier still
  * yields a well-typed value, and the caller's real schema validation remains the judge.
  */
 final class SchemaSampler {
@@ -36,6 +36,14 @@ final class SchemaSampler {
         }
         if (schema.path("enum").isArray() && !schema.path("enum").isEmpty()) {
             return schema.path("enum").get(0);
+        }
+        // P8: the author's own valid instance wins -- the only way to satisfy a keyword this sampler
+        // does not model (pattern, format), e.g. "examples": ["#C0C0C0"] on a hex-colour string.
+        if (schema.path("examples").isArray() && !schema.path("examples").isEmpty()) {
+            return schema.path("examples").get(0);
+        }
+        if (schema.has("default")) {
+            return schema.get("default");
         }
         String type = schema.path("type").isArray()
                 ? schema.path("type").path(0).asText("")

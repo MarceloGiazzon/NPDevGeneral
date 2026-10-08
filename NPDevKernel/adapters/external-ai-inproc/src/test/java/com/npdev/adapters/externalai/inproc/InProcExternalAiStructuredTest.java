@@ -47,4 +47,22 @@ class InProcExternalAiStructuredTest {
         assertEquals(0, first.inputTokens());
         assertEquals(0, first.outputTokens());
     }
+
+    /** P8: a pattern the sampler cannot model is satisfied by the author's own examples/default. */
+    @Test
+    void prefersTheSchemasOwnExamplesThenDefault() throws Exception {
+        String schema = """
+                { "type": "object", "properties": {
+                    "dominantColor": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "examples": ["#C0C0C0", "#000000"] },
+                    "finish": { "type": "string", "default": "MATTE" },
+                    "tags": { "type": "string" } } }
+                """;
+        ExternalAiStructuredResult result = new InProcExternalAiCapabilityAdapter(packDir).generateStructured(
+                new ExternalAiStructuredRequest("gemini", null, "identify", schema, null, null, null));
+
+        JsonNode answer = new ObjectMapper().readTree(result.json());
+        assertEquals("#C0C0C0", answer.path("dominantColor").asText());
+        assertEquals("MATTE", answer.path("finish").asText());
+        assertEquals("offline", answer.path("tags").asText());
+    }
 }

@@ -840,6 +840,20 @@
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/agentAccessExposure" }
+        },
+        "photoIntake": {
+          "type": "object",
+          "description": "P8 (G5): what a photo sent to the bot (Telegram/WhatsApp) becomes. The image is uploaded into imageField of a new concept row; the optional procedure runs over that draft first (through an aggregate rooted at the concept, e.g. AI identification) and its answer pre-fills the row; captionField receives the photo caption; defaults fill the rest (\"$user.username\" = the linked user). The user confirms before the row is created; every step runs through the app REST API as that user.",
+          "properties": {
+            "concept": { "type": "string", "minLength": 1 },
+            "imageField": { "type": "string", "minLength": 1, "description": "A type:file field of concept." },
+            "captionField": { "type": "string", "minLength": 1, "description": "A string field that receives the photo caption. Optional." },
+            "procedure": { "type": "string", "minLength": 1, "description": "A procedure run over the draft {captionField, imageField} before confirmation; returned keys naming concept fields pre-fill the row. Optional." },
+            "defaults": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] }, "description": "field -> value for the new row; \"$user.username\" is the linked user." },
+            "description": { "type": "string" }
+          },
+          "required": ["concept", "imageField"],
+          "additionalProperties": false
         }
       },
       "required": ["expose"],

@@ -2,11 +2,13 @@ package com.npdev.dsl.v1.validation;
 
 import com.npdev.dsl.v1.ast.AgentAccessAst;
 import com.npdev.dsl.v1.ast.AgentAccessExposureAst;
+import com.npdev.dsl.v1.ast.AgentAccessPhotoIntakeAst;
 import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.ModelAst;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -94,6 +96,70 @@ final class AgentAccessValidation {
                 }
             }
             index++;
+        }
+        validatePhotoIntake(modelAst, agentAccess, entitiesByLower, errors);
+    }
+
+    /** P8 (G5): the photo-intake target is a real concept with a real file field, the procedure (if
+     *  any) is declared and reachable over an aggregate rooted at that concept, and a photo channel is on. */
+    private static void validatePhotoIntake(ModelAst modelAst, AgentAccessAst agentAccess,
+            Map<String, ConceptAst> entitiesByLower, List<String> errors) {
+        AgentAccessPhotoIntakeAst intake = agentAccess.getPhotoIntake();
+        if (intake == null) {
+            return;
+        }
+        String here = "agentAccess.photoIntake";
+        if (agentAccess.getChannels() == null
+                || !(agentAccess.getChannels().isTelegram() || agentAccess.getChannels().isWhatsapp())) {
+            errors.add(here + ": needs channels.telegram or channels.whatsapp enabled -- photos only arrive on a chat channel"
+                    + " -- suggestedFix: Enable a chat channel, or remove photoIntake.");
+        }
+        ConceptAst concept = hasText(intake.getConcept()) ? entitiesByLower.get(normalize(intake.getConcept())) : null;
+        if (concept == null) {
+            errors.add(here + ".concept: '" + intake.getConcept() + "' does not resolve to a declared concept"
+                    + " -- suggestedFix: Name the concept a photo should become.");
+            return;
+        }
+        Map<String, FieldAst> fields = new HashMap<>();
+        for (FieldAst field : concept.getFields()) {
+            fields.put(normalize(field.getName()), field);
+        }
+        FieldAst image = hasText(intake.getImageField()) ? fields.get(normalize(intake.getImageField())) : null;
+        if (image == null || !"file".equalsIgnoreCase(image.getType())) {
+            errors.add(here + ".imageField: '" + intake.getImageField() + "' must be a file field of " + concept.getName()
+                    + " -- suggestedFix: Name the concept's type:file field that holds the photo.");
+        }
+        if (hasText(intake.getCaptionField())) {
+            FieldAst caption = fields.get(normalize(intake.getCaptionField()));
+            if (caption == null || !"string".equalsIgnoreCase(caption.getType())) {
+                errors.add(here + ".captionField: '" + intake.getCaptionField() + "' must be a string field of "
+                        + concept.getName() + " -- suggestedFix: Name a string field, or drop captionField.");
+            }
+        }
+        for (String key : intake.getDefaults().keySet()) {
+            FieldAst field = fields.get(normalize(key));
+            if (field == null) {
+                errors.add(here + ".defaults: '" + key + "' is not a field of " + concept.getName()
+                        + " -- suggestedFix: Use a field name declared on this concept, or drop the entry.");
+            } else if (field.isSensitive()) {
+                errors.add(here + ".defaults: '" + key + "' is sensitive -- agents never write sensitive fields"
+                        + " -- suggestedFix: Remove this default.");
+            }
+        }
+        if (hasText(intake.getProcedure())) {
+            boolean declared = modelAst.getProcedures().stream()
+                    .anyMatch(procedure -> normalize(procedure.name()).equals(normalize(intake.getProcedure())));
+            if (!declared) {
+                errors.add(here + ".procedure: '" + intake.getProcedure() + "' does not resolve to a declared procedure"
+                        + " -- suggestedFix: Name a procedure declared in procedures[], or drop procedure.");
+            }
+            boolean rooted = modelAst.getAggregates().stream()
+                    .anyMatch(aggregate -> normalize(aggregate.root()).equals(normalize(concept.getName())));
+            if (!rooted) {
+                errors.add(here + ".procedure: runs over a draft through an aggregate, but no aggregate has root '"
+                        + concept.getName() + "' -- suggestedFix: Declare an aggregate rooted at " + concept.getName()
+                        + ", or drop procedure.");
+            }
         }
     }
 }

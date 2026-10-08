@@ -725,7 +725,14 @@ public final class ModelCompiler {
                     exposure.getDescription(),
                     confirmWrites));
         }
-        return new CompiledAgentAccess(assistant, channels, expose);
+        com.npdev.dsl.v1.compiled.CompiledAgentAccessPhotoIntake photoIntake = null;
+        if (agentAccessAst.getPhotoIntake() != null) {
+            com.npdev.dsl.v1.ast.AgentAccessPhotoIntakeAst intake = agentAccessAst.getPhotoIntake();
+            photoIntake = new com.npdev.dsl.v1.compiled.CompiledAgentAccessPhotoIntake(
+                    intake.getConcept(), intake.getImageField(), intake.getCaptionField(), intake.getProcedure(),
+                    intake.getDefaults(), intake.getDescription());
+        }
+        return new CompiledAgentAccess(assistant, channels, expose, photoIntake);
     }
 
     /** Path A P6.3: compiles the app-level appShell block, or null if the model declares none. */

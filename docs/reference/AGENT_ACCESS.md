@@ -47,6 +47,46 @@ what is *offered* to the agent.
   call regardless. `confirmWrites` (default `true`) makes chat channels pause for a human Confirm
   before a create/update/delete/flow run actually executes.
 
+### Photos: `photoIntake`
+
+A chat channel can also turn a **photo** into a new record. Declare which concept it becomes:
+
+```json
+"photoIntake": {
+  "concept": "Cap",
+  "imageField": "image",
+  "captionField": "label",
+  "procedure": "IdentifyCapWithAi",
+  "defaults": { "status": "SUBMITTED", "rarity": "COMMON", "submittedBy": "$user.username" }
+}
+```
+
+When a linked user sends a photo (Telegram: as a photo or as an image file):
+
+1. The bot picks the largest photo size within `imageField`'s `maxSizeBytes` and uploads it into
+   that `type: file` field (`POST /api/files/{concept}/{field}`), so the field's content types and
+   size limit still apply.
+2. If `procedure` is set, it runs over the draft `{captionField: <caption>, imageField: <handle>}`
+   through the aggregate rooted at `concept` (`POST /api/runtime/aggregate/{aggregate}/invoke/{procedure}`,
+   no persistence). Every returned key that names a field of `concept` — top-level, or one map deep
+   such as a step `target` — pre-fills the record. This is where an `externalAi.prompts[]` entry with
+   an `image` reads the photo (a `capabilityCall externalAi.generate` step in the procedure). Offline
+   (no AI vendor configured) the in-process adapter answers with a schema instance, taking each
+   property's first `examples` value (else its `default`) — give pattern-constrained properties an
+   `examples` entry, e.g. `"dominantColor": { "pattern": "^#[0-9A-Fa-f]{6}$", "examples": ["#C0C0C0"] }`.
+3. The draft is assembled, lowest precedence first: `defaults` (`"$user.username"` = the linked
+   user), the procedure's answer, the caption, the uploaded image.
+4. The bot shows the draft with **Save / Cancel** buttons. Nothing is created until Save, which runs
+   `POST /api/concepts/{route}` as the user — a user without create permission gets "not allowed".
+   If a required field is still empty (typically the caption), the bot asks for the photo again with
+   a caption instead of offering Save.
+
+If the procedure fails (AI quota, vendor down), the bot still offers the draft built from the caption
+and defaults, and says why the procedure did not answer. Validation refuses a `photoIntake` with no
+chat channel enabled, an `imageField` that is not a `type: file` field, a `procedure` with no
+aggregate rooted at `concept`, and defaults naming unknown or sensitive fields. A model with no
+`photoIntake` answers photos with a "send text" hint.
+
 ## 2. Filling in secrets
 
 The generator writes `secrets/agent-access.env.example` into every app. Copy the lines you need into
@@ -55,7 +95,9 @@ The generator writes `secrets/agent-access.env.example` into every app. Copy the
 - An AI vendor key for the built-in chat assistant (`NPDEV_EXTERNALAI_GEMINI_API_KEY` or similar) —
   only needed for Telegram/WhatsApp, never for MCP.
 - A Telegram bot token + username (`NPDEV_TELEGRAM_BOT_TOKEN`, `NPDEV_TELEGRAM_BOT_USERNAME`) — create
-  a bot by messaging **@BotFather** on Telegram, `/newbot`, follow the prompts.
+  a bot by messaging **@BotFather** on Telegram, `/newbot`, follow the prompts. Optional
+  `NPDEV_TELEGRAM_API_BASE` (e.g. `http://localhost:8081/bot`) points the bot at a self-hosted Bot API
+  server instead of `https://api.telegram.org/bot`.
 - For WhatsApp, four secrets plus a display number: `NPDEV_WHATSAPP_PHONE_NUMBER_ID`,
   `NPDEV_WHATSAPP_ACCESS_TOKEN`, `NPDEV_WHATSAPP_APP_SECRET`, `NPDEV_WHATSAPP_VERIFY_TOKEN` (any long
   random text you choose), and `NPDEV_WHATSAPP_PHONE_DISPLAY` (shown on the Connect page). The channel

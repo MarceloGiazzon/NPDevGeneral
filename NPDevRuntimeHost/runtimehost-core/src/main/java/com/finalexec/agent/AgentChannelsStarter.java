@@ -34,6 +34,7 @@ public final class AgentChannelsStarter {
     private final AgentApiExecutor executor;
     private final ObjectProvider<ExternalAiCapabilityContract> aiProvider;
     private final String telegramBotToken;
+    private final String telegramApiBase;
     private final String publicBaseUrl;
     private final String agentVendor;
     private final String agentModel;
@@ -53,6 +54,9 @@ public final class AgentChannelsStarter {
             AgentApiExecutor executor,
             ObjectProvider<ExternalAiCapabilityContract> aiProvider,
             @Value("${NPDEV_TELEGRAM_BOT_TOKEN:}") String telegramBotToken,
+            // P8: a self-hosted Bot API server (telegram-bot-api, no 20 MB download cap) or a test fake;
+            // blank = api.telegram.org. Shape: "<base>/bot" -- files are then served from "<base>/file/bot".
+            @Value("${NPDEV_TELEGRAM_API_BASE:}") String telegramApiBase,
             @Value("${NPDEV_PUBLIC_BASE_URL:}") String publicBaseUrl,
             @Value("${NPDEV_AGENT_VENDOR:gemini}") String agentVendor,
             @Value("${NPDEV_AGENT_MODEL:}") String agentModel,
@@ -67,6 +71,7 @@ public final class AgentChannelsStarter {
         this.executor = executor;
         this.aiProvider = aiProvider;
         this.telegramBotToken = telegramBotToken;
+        this.telegramApiBase = telegramApiBase;
         this.publicBaseUrl = publicBaseUrl;
         this.agentVendor = agentVendor == null || agentVendor.isBlank() ? "gemini" : agentVendor;
         this.agentModel = agentModel == null || agentModel.isBlank() ? null : agentModel;
@@ -86,7 +91,8 @@ public final class AgentChannelsStarter {
         boolean tokenPresent = present(telegramBotToken);
 
         if (telegramWanted && tokenPresent) {
-            TelegramChannel channel = new TelegramChannel(telegramBotToken, mapper, links, conversations(), publicBaseUrl);
+            TelegramChannel channel = new TelegramChannel(telegramBotToken, mapper, links, conversations(), publicBaseUrl,
+                    telegramApiBase);
             this.telegramChannel = channel;
             channel.start();
         } else if (telegramWanted) {
