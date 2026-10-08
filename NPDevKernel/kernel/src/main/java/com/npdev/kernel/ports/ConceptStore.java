@@ -10,6 +10,7 @@ import com.npdev.kernel.concepts.ConceptQueryEngine;
 import com.npdev.kernel.concepts.ConceptRecord;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public interface ConceptStore {
@@ -88,6 +89,25 @@ public interface ConceptStore {
      */
     default boolean restore(String tenantId, String conceptName, String id) {
         return false;
+    }
+
+    /**
+     * Rollups: writes PLATFORM-MAINTAINED field values (a concept's declared {@code rollups[]}
+     * targets) onto an existing row without touching anything else about it -- above all not its
+     * row version, so a like landing on a Mosaic never turns the owner's open edit into an
+     * optimistic-lock conflict. A missing row is a no-op. The default merges and re-saves the row
+     * unconditionally (good enough for the {@code *-inproc} store); a database-backed store
+     * overrides it with a narrow {@code UPDATE ... SET <those columns>}.
+     */
+    default void writeMaintainedFields(String tenantId, String conceptName, String id, Map<String, Object> values) {
+        if (values == null || values.isEmpty()) {
+            return;
+        }
+        findById(tenantId, conceptName, id).ifPresent(current -> {
+            Map<String, Object> merged = new java.util.LinkedHashMap<>(current.data());
+            merged.putAll(values);
+            save(new ConceptRecord(current.conceptName(), current.id(), current.tenantId(), merged, null));
+        });
     }
 
     /**

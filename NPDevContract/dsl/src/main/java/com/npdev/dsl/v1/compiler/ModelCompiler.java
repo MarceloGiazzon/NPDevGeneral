@@ -377,7 +377,10 @@ public final class ModelCompiler {
                             toCompiledOrigin(concept.getOrigin()),
                             concept.isSoftDelete(),
                             concept.isTemporal(),
-                            concept.getUid()
+                            concept.getUid(),
+                            concept.getRollups().stream()
+                                    .map(r -> new com.npdev.dsl.v1.compiled.CompiledRollup(r.field(), r.from(), r.via(), r.fn(), r.of()))
+                                    .toList()
                     )
             );
             List<String> invariantRefs = new ArrayList<>(invariantsByCanonicalRef.keySet());

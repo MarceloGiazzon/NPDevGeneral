@@ -46,6 +46,7 @@ One file per built-in feature.
 [OPTIMISTIC_LOCKING.md](reference/OPTIMISTIC_LOCKING.md) ·
 [PASSWORD_RESET.md](reference/PASSWORD_RESET.md) ·
 [ROW_LEVEL_AUTHORIZATION.md](reference/ROW_LEVEL_AUTHORIZATION.md) ·
+[ROLLUP_FIELDS.md](reference/ROLLUP_FIELDS.md) ·
 [SCHEDULED_FLOWS.md](reference/SCHEDULED_FLOWS.md) ·
 [BACKUP_RESTORE.md](reference/BACKUP_RESTORE.md) ·
 [USING_MYSQL_AND_SQL_SERVER.md](reference/USING_MYSQL_AND_SQL_SERVER.md) ·

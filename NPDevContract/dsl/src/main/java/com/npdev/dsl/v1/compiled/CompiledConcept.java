@@ -13,6 +13,7 @@ public final class CompiledConcept extends CompiledEntity {
     private final boolean softDelete;
     private final boolean temporal;
     private final String uid;
+    private final List<CompiledRollup> rollups;
 
     public CompiledConcept(String name, String className, String tableName, List<CompiledField> fields) {
         this(name, className, tableName, fields, List.of(), List.of(), null, null, null, null, List.of());
@@ -257,6 +258,31 @@ public final class CompiledConcept extends CompiledEntity {
             boolean temporal,
             String uid
     ) {
+        this(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel, module, indexes, access, renamedFrom, satelliteOf, origin, softDelete, temporal, uid, List.of());
+    }
+
+    /** P8 prelude: platform-maintained stored aggregates over a child concept -- see getRollups. */
+    public CompiledConcept(
+            String name,
+            String className,
+            String tableName,
+            List<CompiledField> fields,
+            List<String> expressionInvariants,
+            List<CompiledInvariant> invariants,
+            CompiledLifecycle lifecycle,
+            CompiledPresentationMetadata ui,
+            String truthLevel,
+            String module,
+            List<CompiledIndex> indexes,
+            CompiledConceptAccess access,
+            String renamedFrom,
+            String satelliteOf,
+            CompiledOrigin origin,
+            boolean softDelete,
+            boolean temporal,
+            String uid,
+            List<CompiledRollup> rollups
+    ) {
         super(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
@@ -267,6 +293,7 @@ public final class CompiledConcept extends CompiledEntity {
         this.softDelete = softDelete;
         this.temporal = temporal;
         this.uid = uid;
+        this.rollups = rollups == null ? List.of() : List.copyOf(rollups);
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
@@ -317,6 +344,12 @@ public final class CompiledConcept extends CompiledEntity {
      *  (npdev migrate assign-uids stamps one); null if the concept declares none. */
     public String getUid() {
         return uid;
+    }
+
+    /** P8 prelude: declared {@code rollups[]} -- stored fields of this concept the platform keeps
+     *  equal to an aggregate over a child concept's rows; empty if none. */
+    public List<CompiledRollup> getRollups() {
+        return rollups;
     }
 
     public static CompiledConcept fromLegacyEntity(CompiledEntity legacy) {

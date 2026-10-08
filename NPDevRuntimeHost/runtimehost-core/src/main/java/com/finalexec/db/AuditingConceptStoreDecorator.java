@@ -134,4 +134,11 @@ public final class AuditingConceptStoreDecorator implements ConceptStore {
         System.out.println("NPDev persistence adapter override [persistence-audited] concept=" + conceptName
                 + " op=" + operation + (id == null || id.isBlank() ? "" : " id=" + id));
     }
+
+    /** P8 prelude: forwards to the delegate's narrow, version-preserving override (see
+     *  {@link ConceptStore#writeMaintainedFields}) rather than the merge-and-save default. */
+    @Override
+    public void writeMaintainedFields(String tenantId, String conceptName, String id, java.util.Map<String, Object> values) {
+        delegate.writeMaintainedFields(tenantId, conceptName, id, values);
+    }
 }

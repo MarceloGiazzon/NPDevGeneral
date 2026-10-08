@@ -13,6 +13,7 @@ public final class ConceptAst extends EntityAst {
     private final boolean softDelete;
     private final boolean temporal;
     private final String uid;
+    private final List<RollupAst> rollups;
 
     public ConceptAst(String name, List<FieldAst> fields, List<InvariantAst> invariants) {
         this(name, null, null, fields, invariants, List.of(), null, null, null, null, List.of());
@@ -261,6 +262,31 @@ public final class ConceptAst extends EntityAst {
             boolean temporal,
             String uid
     ) {
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel, module, indexes, access, renamedFrom, satelliteOf, origin, softDelete, temporal, uid, List.of());
+    }
+
+    /** P8 prelude: platform-maintained stored aggregates over a child concept -- see getRollups. */
+    public ConceptAst(
+            String name,
+            String extendsName,
+            String specializesName,
+            List<FieldAst> fields,
+            List<InvariantAst> invariants,
+            List<EventAst> events,
+            LifecycleAst lifecycle,
+            PresentationMetadataAst ui,
+            TruthLevel truthLevel,
+            String module,
+            List<IndexAst> indexes,
+            ConceptAccessAst access,
+            String renamedFrom,
+            String satelliteOf,
+            OriginAst origin,
+            boolean softDelete,
+            boolean temporal,
+            String uid,
+            List<RollupAst> rollups
+    ) {
         super(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
@@ -271,6 +297,7 @@ public final class ConceptAst extends EntityAst {
         this.softDelete = softDelete;
         this.temporal = temporal;
         this.uid = uid;
+        this.rollups = rollups == null ? List.of() : List.copyOf(rollups);
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
@@ -321,6 +348,12 @@ public final class ConceptAst extends EntityAst {
      *  (npdev migrate assign-uids stamps one); null if the concept declares none. */
     public String getUid() {
         return uid;
+    }
+
+    /** P8 prelude: declared {@code rollups[]} -- stored fields of this concept the platform keeps
+     *  equal to an aggregate over a child concept's rows; empty if none. */
+    public List<RollupAst> getRollups() {
+        return rollups;
     }
 
     public static ConceptAst fromLegacyEntity(EntityAst legacy) {

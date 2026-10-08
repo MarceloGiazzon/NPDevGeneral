@@ -133,4 +133,11 @@ public final class TenantControlledConceptStoreDecorator implements ConceptStore
             return false;
         }
     }
+
+    /** P8 prelude: forwards to the delegate's narrow, version-preserving override (see
+     *  {@link ConceptStore#writeMaintainedFields}) rather than the merge-and-save default. */
+    @Override
+    public void writeMaintainedFields(String tenantId, String conceptName, String id, java.util.Map<String, Object> values) {
+        effectiveStore(tenantId).writeMaintainedFields(tenantId, conceptName, id, values);
+    }
 }

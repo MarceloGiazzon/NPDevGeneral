@@ -214,7 +214,8 @@ public final class PackExtensionComposer {
                 baseConcept.getOrigin(),
                 baseConcept.isSoftDelete(),
                 baseConcept.isTemporal(),
-                baseConcept.getUid()
+                baseConcept.getUid(),
+                baseConcept.getRollups()
         );
     }
 
@@ -520,7 +521,8 @@ public final class PackExtensionComposer {
                 concept.getOrigin(),
                 concept.isSoftDelete(),
                 concept.isTemporal(),
-                concept.getUid()
+                concept.getUid(),
+                concept.getRollups()
         );
     }
 

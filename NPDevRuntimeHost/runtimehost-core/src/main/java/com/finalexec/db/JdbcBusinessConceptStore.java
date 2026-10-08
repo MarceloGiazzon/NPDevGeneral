@@ -947,6 +947,54 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         }
     }
 
+    /**
+     * Rollups: a narrow {@code UPDATE} of only the platform-maintained columns -- never
+     * {@code row_version}, so a recomputed counter does not invalidate a user's in-flight edit of
+     * the same row (see {@link ConceptStore#writeMaintainedFields}). Plain portable SQL, no dialect
+     * method needed. Fields with no live column are skipped, like {@link #save}.
+     */
+    @Override
+    public void writeMaintainedFields(String tenantId, String conceptName, String id, Map<String, Object> values) {
+        if (values == null || values.isEmpty()) {
+            return;
+        }
+        ConceptShape shape = shape(conceptName);
+        Connection connection = openConnection();
+        try {
+            TableColumns columns = tableColumns(connection, shape.tableName());
+            Map<String, Object> byColumn = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> entry : values.entrySet()) {
+                String column = shape.columnByField().getOrDefault(entry.getKey().toLowerCase(Locale.ROOT), toDbColumn(entry.getKey()));
+                if (columns.has(column)) {
+                    byColumn.put(column, entry.getValue());
+                }
+            }
+            if (byColumn.isEmpty()) {
+                return;
+            }
+            List<String> setTerms = new ArrayList<>();
+            for (String column : byColumn.keySet()) {
+                setTerms.add(sqlId(column) + " = ?");
+            }
+            String sql = "UPDATE " + sqlId(shape.tableName()) + " SET " + String.join(", ", setTerms)
+                    + " WHERE " + sqlId(shape.idColumn()) + " = ? AND tenant_id = ?";
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                int index = 1;
+                for (Map.Entry<String, Object> entry : byColumn.entrySet()) {
+                    bindObject(statement, index++,
+                            coerceValue(entry.getKey(), entry.getValue(), shape.dslTypeByColumn().get(entry.getKey())));
+                }
+                bindObject(statement, index++, coerceId(id));
+                bindObject(statement, index, tenantId);
+                statement.executeUpdate();
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed writing maintained fields of " + conceptName + " to JDBC store", exception);
+        } finally {
+            releaseConnection(connection);
+        }
+    }
+
     private void executeUpsert(
             Connection connection, ConceptShape shape, Map<String, Object> dbRecord, TableColumns columns
     ) throws SQLException {
