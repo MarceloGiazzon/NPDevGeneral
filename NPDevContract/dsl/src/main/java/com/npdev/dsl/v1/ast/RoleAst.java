@@ -1,6 +1,9 @@
 package com.npdev.dsl.v1.ast;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 3 (RC-B1, {@code MOVE11_RUNTIME_CONFIGURATION_PLAN}
@@ -16,13 +19,27 @@ import java.util.List;
  * silently (the same "an input the evaluator cannot handle is an error" rule X0 established for
  * every other evaluator in the platform).
  */
-public record RoleAst(String name, List<String> grants, OriginAst origin) {
+public record RoleAst(String name, List<String> grants, Map<String, List<String>> concepts, OriginAst origin) {
+    /** Operations a role may be granted per concept under {@code concepts}; {@code read} also covers list. */
+    public static final List<String> CONCEPT_OPERATIONS = List.of("read", "create", "update", "delete");
+
     public RoleAst {
         grants = grants == null ? List.of() : List.copyOf(grants);
+        Map<String, List<String>> copied = new LinkedHashMap<>();
+        if (concepts != null) {
+            concepts.forEach((concept, operations) ->
+                    copied.put(concept, operations == null ? List.of() : List.copyOf(operations)));
+        }
+        concepts = Collections.unmodifiableMap(copied);
+    }
+
+    /** Pre-roles-and-users constructor -- no concept grants. */
+    public RoleAst(String name, List<String> grants, OriginAst origin) {
+        this(name, grants, Map.of(), origin);
     }
 
     /** Pre-PACK-2 convenience constructor -- origin defaults to null (not pack-contributed). */
     public RoleAst(String name, List<String> grants) {
-        this(name, grants, null);
+        this(name, grants, Map.of(), null);
     }
 }

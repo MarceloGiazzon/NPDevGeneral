@@ -978,7 +978,7 @@ public final class ModelCompiler {
         List<com.npdev.dsl.v1.compiled.CompiledRole> compiled = new ArrayList<>();
         for (com.npdev.dsl.v1.ast.RoleAst roleAst : roleAsts) {
             compiled.add(new com.npdev.dsl.v1.compiled.CompiledRole(
-                    roleAst.name(), roleAst.grants(), toCompiledOrigin(roleAst.origin())));
+                    roleAst.name(), roleAst.grants(), roleAst.concepts(), toCompiledOrigin(roleAst.origin())));
         }
         return compiled;
     }

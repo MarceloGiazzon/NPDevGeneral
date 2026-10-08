@@ -64,7 +64,12 @@
   "roles": [
     {
       "name": "WarehouseManager",
-      "grants": ["EXECUTE_FLOW", "READ_EXECUTIONS", "READ_FLOW_DEFINITIONS"]
+      "grants": ["EXECUTE_FLOW", "READ_EXECUTIONS", "READ_FLOW_DEFINITIONS"],
+      "concepts": { "WidgetSupplier": ["read", "create", "update", "delete"] }
+    },
+    {
+      "name": "SupplierViewer",
+      "concepts": { "WidgetSupplier": ["read"] }
     }
   ],
 

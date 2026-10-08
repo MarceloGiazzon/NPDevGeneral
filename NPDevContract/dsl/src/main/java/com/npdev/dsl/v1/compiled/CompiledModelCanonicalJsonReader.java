@@ -186,7 +186,14 @@ public final class CompiledModelCanonicalJsonReader {
 
     /** Wave 3 (RC-B1): reads a single app-defined role -> permission-ceiling declaration. */
     private static CompiledRole toRole(JsonNode node) {
-        return new CompiledRole(text(node, "name"), toStringList(node.get("grants")), toOrigin(node.get("origin")));
+        Map<String, List<String>> concepts = new LinkedHashMap<>();
+        JsonNode conceptsNode = node.get("concepts");
+        if (conceptsNode != null && conceptsNode.isObject()) {
+            conceptsNode.fields().forEachRemaining(
+                    field -> concepts.put(field.getKey(), toStringList(field.getValue())));
+        }
+        return new CompiledRole(text(node, "name"), toStringList(node.get("grants")), concepts,
+                toOrigin(node.get("origin")));
     }
 
     /** R6.2: reads a single model-declared inbound webhook door. */

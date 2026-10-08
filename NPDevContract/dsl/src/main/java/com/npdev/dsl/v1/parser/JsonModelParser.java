@@ -812,8 +812,30 @@ public final class JsonModelParser {
             out.add(new com.npdev.dsl.v1.ast.RoleAst(
                     name,
                     parseTextArray(roleNode.get("grants")),
+                    parseRoleConcepts(name, roleNode.get("concepts")),
                     toOriginAst(originByName.get(name))
             ));
+        }
+        return out;
+    }
+
+    /** Roles and users: a role's optional {@code concepts} object -- concept name -> operations
+     *  ({@code read}/{@code create}/{@code update}/{@code delete}), checked by RoleValidation. */
+    private static Map<String, List<String>> parseRoleConcepts(String roleName, JsonNode node) throws IOException {
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isObject()) {
+            throw new IOException("roles[" + roleName + "].concepts must be an object");
+        }
+        Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+        while (fields.hasNext()) {
+            Map.Entry<String, JsonNode> field = fields.next();
+            if (!field.getValue().isArray()) {
+                throw new IOException("roles[" + roleName + "].concepts." + field.getKey() + " must be an array");
+            }
+            out.put(field.getKey(), parseTextArray(field.getValue()));
         }
         return out;
     }

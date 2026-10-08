@@ -3,6 +3,7 @@ package com.finalexec.auth;
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledRole;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import org.junit.jupiter.api.BeforeEach;
@@ -79,6 +80,38 @@ class CreateUserControllerTest {
         concepts.put("identity::UserRolePermission",
                 new CompiledConcept("UserRolePermission", "UserRolePermission", "identity_user_role_permissions", List.of()));
         return new CompiledModel("test", "1.0.0", concepts);
+    }
+
+    /** Roles and users: the identity model plus app-declared roles, for the multi-role paths. */
+    private static CompiledModel identityModelWithRoles(CompiledRole... roles) {
+        Map<String, CompiledConcept> concepts = new LinkedHashMap<>();
+        concepts.put("identity::User", new CompiledConcept("User", "User", "identity_users", List.of()));
+        concepts.put("identity::Role", new CompiledConcept("Role", "Role", "identity_roles", List.of()));
+        concepts.put("identity::UserRole", new CompiledConcept("UserRole", "UserRole", "identity_user_roles", List.of()));
+        concepts.put("identity::UserRolePermission",
+                new CompiledConcept("UserRolePermission", "UserRolePermission", "identity_user_role_permissions", List.of()));
+        return new CompiledModel(
+                "test", "2.0", "1.0.0", concepts,
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(),
+                null, null,
+                List.of(roles)
+        );
+    }
+
+    private List<String> rolesInDb(String username) throws Exception {
+        List<String> roles = new java.util.ArrayList<>();
+        try (Connection c = dataSource.getConnection(); PreparedStatement ps = c.prepareStatement(
+                "SELECT r.name FROM identity_users u JOIN identity_user_roles ur ON ur.user_id = u.id "
+                        + "JOIN identity_roles r ON r.id = ur.role_id WHERE u.username = ? ORDER BY r.name")) {
+            ps.setString(1, username);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    roles.add(rs.getString(1));
+                }
+            }
+        }
+        return roles;
     }
 
     private void createSchema() throws Exception {
@@ -236,5 +269,72 @@ class CreateUserControllerTest {
         @Override public Logger getParentLogger() { return Logger.getLogger(getClass().getName()); }
         @Override public <T> T unwrap(Class<T> iface) throws SQLException { throw new SQLException("not a wrapper"); }
         @Override public boolean isWrapperFor(Class<?> iface) { return false; }
+    }
+
+    @Test
+    void roleNamesGivesTheNewLoginEveryRoleUnderTheModelsSpelling() throws Exception {
+        createSchema();
+        authenticateAs(TENANT, "ADMIN");
+        CompiledModel model = identityModelWithRoles(new CompiledRole("Member", List.of("EXECUTE_FLOW")));
+
+        var response = controller(model).createUser(new CreateUserController.CreateUserRequest(
+                "tavo", "Tavo", "pw-1", null, null, null, null, List.of("MEMBER", "user")), null);
+
+        assertEquals(201, response.getStatusCode().value());
+        assertEquals(List.of("Member", "USER"), response.getBody().get("roleNames"));
+        assertEquals(List.of("Member", "USER"), rolesInDb("tavo"));
+    }
+
+    @Test
+    void tenantAdminAssignsAndRevokesDeclaredRoles() throws Exception {
+        createSchema();
+        authenticateAs(TENANT, "ADMIN");
+        CompiledModel model = identityModelWithRoles(
+                new CompiledRole("Member", List.of("EXECUTE_FLOW")), new CompiledRole("Curator", List.of("READ_AUDIT")));
+        CreateUserController controller = controller(model);
+        controller.createUser(new CreateUserController.CreateUserRequest(
+                "tavo", "Tavo", "pw-1", null, "member", null, null), null);
+
+        var assigned = controller.assignRoles("tavo",
+                new CreateUserController.AssignRolesRequest(List.of("curator", "Member")), null);
+        assertEquals(200, assigned.getStatusCode().value());
+        assertEquals(List.of("Curator", "Member"), assigned.getBody().get("roleNames"),
+                "an already-held role is skipped, not duplicated");
+
+        var revoked = controller.revokeRole("tavo", "MEMBER", null);
+        assertEquals(200, revoked.getStatusCode().value());
+        assertEquals(List.of("Curator"), rolesInDb("tavo"));
+
+        assertEquals(404, controller.revokeRole("tavo", "Member", null).getStatusCode().value());
+        assertEquals(404, controller.assignRoles("nobody",
+                new CreateUserController.AssignRolesRequest(List.of("Member")), null).getStatusCode().value());
+    }
+
+    @Test
+    void assignRejectsRolesTheModelDoesNotDeclare() throws Exception {
+        createSchema();
+        authenticateAs(TENANT, "ADMIN");
+        CompiledModel model = identityModelWithRoles(new CompiledRole("Member", List.of("EXECUTE_FLOW")));
+        CreateUserController controller = controller(model);
+        controller.createUser(new CreateUserController.CreateUserRequest(
+                "tavo", "Tavo", "pw-1", null, "Member", null, null), null);
+
+        var response = controller.assignRoles("tavo",
+                new CreateUserController.AssignRolesRequest(List.of("Member", "Overlord")), null);
+
+        assertEquals(400, response.getStatusCode().value());
+        assertEquals("role_not_declared_by_model", response.getBody().get("error"));
+        assertEquals(List.of("Overlord"), response.getBody().get("rejected"));
+        assertEquals(List.of("Member"), rolesInDb("tavo"), "a rejected request changes nothing");
+    }
+
+    @Test
+    void roleEndpointsRequireAdmin() {
+        authenticateAs(TENANT, "USER");
+        CreateUserController controller = controller(identityModel());
+        assertThrows(org.springframework.web.server.ResponseStatusException.class, () -> controller.assignRoles(
+                "tavo", new CreateUserController.AssignRolesRequest(List.of("USER")), null));
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> controller.revokeRole("tavo", "USER", null));
     }
 }

@@ -24,8 +24,10 @@
     ]
   },
   "roles": [
-    { "name": "Member", "grants": ["EXECUTE_FLOW"] },
-    { "name": "Curator", "grants": ["EXECUTE_FLOW", "READ_EXECUTIONS"] }
+    { "name": "Member", "grants": ["EXECUTE_FLOW"],
+      "concepts": { "Mosaic": ["read", "create", "update"], "MosaicCell": ["read", "create", "update", "delete"] } },
+    { "name": "Curator", "grants": ["EXECUTE_FLOW", "READ_EXECUTIONS"],
+      "concepts": { "Mosaic": ["read", "create", "update", "delete"], "MosaicCell": ["read", "create", "update", "delete"] } }
   ],
   "propertyScopes": [
     { "name": "user", "from": "$user.id" },

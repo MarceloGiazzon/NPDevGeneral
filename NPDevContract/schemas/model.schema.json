@@ -482,13 +482,22 @@
     "role": {
       "type": "object",
       "required": [
-        "name",
-        "grants"
+        "name"
       ],
       "properties": {
         "name": {
           "type": "string",
           "minLength": 1
+        },
+        "concepts": {
+          "type": "object",
+          "description": "Roles and users: concept name -> the operations this role may perform on it (read also covers list). Once ANY role lists a concept here, that concept's CRUD is granted only to the roles listing it (plus the super-user) -- no longer to every authenticated user. A concept no role lists keeps the default: open to every authenticated user and every declared role. A role needs grants, concepts, or both.",
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "enum": ["read", "create", "update", "delete"] }
+          }
         },
         "grants": {
           "type": "array",
