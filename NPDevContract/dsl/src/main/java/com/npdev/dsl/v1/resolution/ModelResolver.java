@@ -346,7 +346,13 @@ public final class ModelResolver {
                 mergedSoftDelete,
                 mergedTemporal,
                 specialization.getUid(),
-                specialization.getRollups().isEmpty() ? base.getRollups() : specialization.getRollups()
+                // P8 prelude: NOT inherited. A rollup is keyed on a child reference whose target is the
+                // concept that declares it (ShelfSlot.entryId -> WidgetCatalogEntry); a specialization's
+                // rows are never that reference's target, so an inherited rollup would fail validation
+                // and could never be maintained. The rollup FIELD is still inherited (plain stored
+                // field); a specialization wanting it maintained declares its own rollup over a
+                // reference that targets it.
+                specialization.getRollups()
         );
     }
 

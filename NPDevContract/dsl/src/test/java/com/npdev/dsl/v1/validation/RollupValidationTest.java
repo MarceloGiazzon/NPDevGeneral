@@ -105,4 +105,25 @@ class RollupValidationTest {
               { "field": "likeCount", "from": "Like", "via": "mosaicId" } ]""")
                 .stream().anyMatch(e -> e.contains("already maintained by another rollup")));
     }
+
+    /** A specialization inherits the rollup FIELD but not the rollup: the child reference targets the
+     *  base, never the specialization (dsl-conformance-max PromotedWidgetCatalogEntry, T2 2026-10-08). */
+    @Test
+    void specializationInheritsTheFieldButNotTheRollup() throws Exception {
+        String json = model("[ { \"field\": \"likeCount\", \"from\": \"Like\", \"via\": \"mosaicId\" } ]")
+                .replace("\"concepts\": [", """
+                    "concepts": [
+                    { "name": "FeaturedMosaic", "extends": "Mosaic", "fields": [
+                      { "name": "featuredUntil", "type": "date" } ] },""");
+        assertEquals(List.of(), new SemanticValidator().validate(parse(json)));
+
+        CompiledModel compiled = new ModelCompiler().compile(parse(json));
+        CompiledConcept featured = compiled.getConcepts().stream()
+                .filter(c -> c.getName().equals("FeaturedMosaic")).findFirst().orElseThrow();
+        assertEquals(List.of(), featured.getRollups());
+        assertTrue(featured.getFields().stream().anyMatch(f -> f.getName().equals("likeCount")));
+        CompiledConcept mosaic = compiled.getConcepts().stream()
+                .filter(c -> c.getName().equals("Mosaic")).findFirst().orElseThrow();
+        assertEquals(1, mosaic.getRollups().size());
+    }
 }
