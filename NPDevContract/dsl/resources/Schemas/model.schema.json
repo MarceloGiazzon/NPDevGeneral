@@ -871,14 +871,15 @@
     },
     "agentAccessExposure": {
       "type": "object",
-      "description": "One concept or one flow offered to agents. Exactly one of concept / flow.",
+      "description": "One concept, flow or aggregate offered to agents. Exactly one of concept / flow / aggregate.",
       "properties": {
         "concept": { "type": "string", "minLength": 1 },
         "flow": { "type": "string", "minLength": 1 },
+        "aggregate": { "type": "string", "minLength": 1, "description": "An aggregate (root + owned collections) read and saved WHOLE in one tool call, through the same commit the workbench's Save uses. operations: get and/or save (default [\"get\"]); save replaces the tree -- children left out are deleted." },
         "operations": {
           "type": "array",
-          "description": "concept only. Default: [\"list\", \"get\"] (read-only).",
-          "items": { "type": "string", "enum": ["list", "get", "create", "update", "delete"] },
+          "description": "concept: list/get/create/update/delete, default [\"list\", \"get\"] (read-only). aggregate: get/save, default [\"get\"].",
+          "items": { "type": "string", "enum": ["list", "get", "create", "update", "delete", "save"] },
           "uniqueItems": true,
           "minItems": 1
         },
@@ -898,8 +899,9 @@
         "confirmWrites": { "type": "boolean", "description": "Chat channels only: ask the user to confirm create/update/delete/flow runs before executing. Default true." }
       },
       "oneOf": [
-        { "required": ["concept"], "not": { "required": ["flow"] } },
-        { "required": ["flow"], "not": { "required": ["concept"] } }
+        { "required": ["concept"], "not": { "anyOf": [{ "required": ["flow"] }, { "required": ["aggregate"] }] } },
+        { "required": ["flow"], "not": { "anyOf": [{ "required": ["concept"] }, { "required": ["aggregate"] }] } },
+        { "required": ["aggregate"], "not": { "anyOf": [{ "required": ["concept"] }, { "required": ["flow"] }] } }
       ],
       "additionalProperties": false
     },

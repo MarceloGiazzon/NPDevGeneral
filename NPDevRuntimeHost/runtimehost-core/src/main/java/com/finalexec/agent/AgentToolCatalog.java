@@ -2,6 +2,8 @@ package com.finalexec.agent;
 
 import com.npdev.dsl.v1.compiled.CompiledAgentAccess;
 import com.npdev.dsl.v1.compiled.CompiledAgentAccessExposure;
+import com.npdev.dsl.v1.compiled.CompiledAggregate;
+import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
@@ -28,9 +30,11 @@ import java.util.Set;
  */
 public final class AgentToolCatalog {
 
-    public enum Kind { CONCEPT, FLOW }
+    public enum Kind { CONCEPT, FLOW, AGGREGATE }
 
-    /** One tool. {@code inputSchema} is the JSON-Schema object sent to MCP clients and LLMs. */
+    /** One tool. {@code inputSchema} is the JSON-Schema object sent to MCP clients and LLMs. For an
+     *  AGGREGATE tool, {@code conceptName} is the root concept and {@code route} the aggregate name
+     *  (its path segment under {@code /api/runtime/aggregate/}). */
     public record AgentTool(String name, String title, String description, Map<String, Object> inputSchema,
             Kind kind, String conceptName, String route, String operation, String flowName,
             boolean write, boolean confirmWrites, List<String> exposedFields) {
@@ -54,6 +58,11 @@ public final class AgentToolCatalog {
                         .ifPresent(concept -> addConceptTools(model, concept, exposure, tools));
             } else if (exposure.getFlow() != null) {
                 model.findFlow(exposure.getFlow()).ifPresent(flow -> tools.add(flowTool(flow, exposure)));
+            } else if (exposure.getAggregate() != null) {
+                model.getAggregates().stream()
+                        .filter(aggregate -> aggregate.name().equalsIgnoreCase(exposure.getAggregate()))
+                        .findFirst()
+                        .ifPresent(aggregate -> addAggregateTools(model, aggregate, exposure, tools));
             }
         }
         return tools;
@@ -132,10 +141,81 @@ public final class AgentToolCatalog {
                 Kind.FLOW, null, null, "run", flow.getName(), true, confirm, List.of());
     }
 
+    /** P8: {@code get_<Aggregate>} reads the whole tree, {@code save_<Aggregate>} creates or REPLACES it
+     *  in one call -- e.g. a 20x33 mosaic is one tool call, not 661. */
+    private static void addAggregateTools(CompiledModel model, CompiledAggregate aggregate,
+            CompiledAgentAccessExposure exposure, List<AgentTool> out) {
+        Optional<CompiledConcept> root = model.findConcept(aggregate.root());
+        if (root.isEmpty()) {
+            return;
+        }
+        String label = root.get().getUi() != null && root.get().getUi().getLabel() != null
+                ? root.get().getUi().getLabel() : root.get().getName();
+        String about = exposure.getDescription() != null ? exposure.getDescription() : label;
+        List<String> collections = aggregate.collections().stream().map(CompiledAggregateCollection::name).toList();
+        String withChildren = collections.isEmpty() ? "" : " with its " + String.join(", ", collections);
+        List<String> operations = exposure.getOperations() == null || exposure.getOperations().isEmpty()
+                ? List.of("get") : exposure.getOperations();
+        String suffix = safeName(aggregate.name());
+        for (String op : operations) {
+            switch (op) {
+                case "get" -> out.add(new AgentTool("get_" + suffix, "Get " + label + withChildren,
+                        "Get one " + label + withChildren + ", whole, by the " + label + "'s id. " + about,
+                        objectSchema(Map.of("id", prop("string", "The " + label + " id")), List.of("id")),
+                        Kind.AGGREGATE, root.get().getName(), aggregate.name(), "get", null, false, false, List.of()));
+                case "save" -> out.add(new AgentTool("save_" + suffix, "Save " + label + withChildren,
+                        "Create or replace one " + label + withChildren + " in ONE call. Omit id to create a new "
+                                + label + "; send an existing id to replace it. Root fields you leave out keep their current"
+                                + " values, but lists are replaced whole: every row you leave out of a list is"
+                                + " deleted, so always send the complete lists. " + about,
+                        aggregateSaveSchema(model, root.get(), aggregate.collections()),
+                        Kind.AGGREGATE, root.get().getName(), aggregate.name(), "save", null, true,
+                        exposure.getConfirmWrites(), List.of()));
+                default -> { /* validation makes this unreachable */ }
+            }
+        }
+    }
+
+    private static Map<String, Object> aggregateSaveSchema(CompiledModel model, CompiledConcept root,
+            List<CompiledAggregateCollection> collections) {
+        Map<String, Object> schema = fieldsSchema(exposedFields(root, null), true, false);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> props = (Map<String, Object>) schema.get("properties");
+        Map<String, Object> withId = new LinkedHashMap<>();
+        withId.put("id", prop("string", "Omit to create; the existing id to replace it"));
+        withId.putAll(props);
+        schema.put("properties", withId);
+        addCollectionProps(model, collections, withId);
+        return schema;
+    }
+
+    private static void addCollectionProps(CompiledModel model, List<CompiledAggregateCollection> collections,
+            Map<String, Object> props) {
+        for (CompiledAggregateCollection collection : collections) {
+            Optional<CompiledConcept> child = model.findConcept(collection.concept());
+            if (child.isEmpty()) {
+                continue;
+            }
+            List<CompiledField> fields = exposedFields(child.get(), null).stream()
+                    .filter(field -> !field.getName().equals(collection.childField()))
+                    .toList();
+            Map<String, Object> item = fieldsSchema(fields, true, false);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> itemProps = (Map<String, Object>) item.get("properties");
+            addCollectionProps(model, collection.collections(), itemProps);
+            Map<String, Object> array = new LinkedHashMap<>();
+            array.put("type", "array");
+            array.put("description", "Every " + collection.concept() + " row of this tree (no ids needed; "
+                    + collection.childField() + " is set for you)");
+            array.put("items", item);
+            props.put(collection.name(), array);
+        }
+    }
+
     /** Never: sensitive fields, derived fields, object/array/file fields. Allow-list from
      *  exposure.fields when given. */
     static List<CompiledField> exposedFields(CompiledConcept concept, CompiledAgentAccessExposure exposure) {
-        List<String> allow = exposure.getFields();
+        List<String> allow = exposure == null ? null : exposure.getFields();
         List<CompiledField> out = new ArrayList<>();
         for (CompiledField field : concept.getFields()) {
             if (field.isSensitive()) {

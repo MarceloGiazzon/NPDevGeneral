@@ -195,7 +195,24 @@ public class AgentLinkController {
         body.put("mcpUrl", mcpUrl);
         body.put("claudeCodeCommand", "claude mcp add --transport http " + namespaceSlug()
                 + " " + mcpUrl + " --header \"Authorization: Bearer " + token + "\"");
+        body.put("claudeDesktopConfig", claudeDesktopConfig(mcpUrl, token));
         return ResponseEntity.ok(body);
+    }
+
+    /** P8: Claude Desktop's {@code claude_desktop_config.json} only launches local (stdio) servers, so
+     *  the HTTP endpoint is bridged by {@code mcp-remote}. The header travels through an env var because
+     *  a space inside an {@code args} entry is mangled on Windows. */
+    String claudeDesktopConfig(String mcpUrl, String token) {
+        Map<String, Object> server = new LinkedHashMap<>();
+        server.put("command", "npx");
+        server.put("args", List.of("-y", "mcp-remote", mcpUrl, "--header", "Authorization:${NPDEV_MCP_AUTH}"));
+        server.put("env", Map.of("NPDEV_MCP_AUTH", "Bearer " + token));
+        try {
+            return new ObjectMapper().writerWithDefaultPrettyPrinter()
+                    .writeValueAsString(Map.of("mcpServers", Map.of(namespaceSlug(), server)));
+        } catch (Exception impossible) {
+            return "";
+        }
     }
 
     /**

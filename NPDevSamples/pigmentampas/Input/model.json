@@ -93,7 +93,7 @@
   "agentAccess": {
     "assistant": {
       "name": "Pigmentampas Assistant",
-      "instructions": "You help beer-cap collectors who design cap mosaics. You can browse the cap catalogue and breweries, read and update the user's own cap collection, and read the user's mosaics. Reply in the user's language. When adding to a collection, set ownerUsername to the user's own username. A mosaic is a 20x33 hex grid of cells, each cell holding one cap (or empty).",
+      "instructions": "You help beer-cap collectors who design cap mosaics. You can browse the cap catalogue and breweries, read and update the user's own cap collection, and read and design mosaics -- save_MosaicAggregate writes a whole mosaic, every cell, in one call. Reply in the user's language. When adding to a collection, set ownerUsername to the user's own username. A mosaic is a 20x33 hex grid of cells, each cell holding one cap (or empty).",
       "language": "en"
     },
     "channels": {
@@ -120,8 +120,13 @@
       },
       {
         "concept": "Mosaic",
-        "operations": ["list", "get"],
-        "description": "Cap mosaics: code, title, owner, size, status (DRAFT, PUBLISHED, BUILT)."
+        "operations": ["list"],
+        "description": "Cap mosaics: code, title, owner, size, status (DRAFT, PUBLISHED, BUILT). Use get_MosaicAggregate to see one with its cells."
+      },
+      {
+        "aggregate": "MosaicAggregate",
+        "operations": ["get", "save"],
+        "description": "One mosaic WITH all its cells, read or written whole in one call. A cell is {row, col, capId}: row 0..rows-1 from the top, col 0..cols-1 from the left; HEX_OFFSET shifts odd rows half a cap right. capId is the id of an APPROVED cap (list_Cap, status eq APPROVED) whose dominantColor matches the colour wanted; omit capId (or the cell) to leave a hole. Create with status DRAFT, layout HEX_OFFSET and ownerUsername = the user's own username."
       }
     ],
     "photoIntake": {

@@ -492,22 +492,28 @@ public class AggregateRuntime {
                     grandKeys.add(normalize(lookupField.name()));
                 }
             }
-            Set<String> keptIds = new LinkedHashSet<>();
+            List<String> childIds = new ArrayList<>();
             for (Map<String, Object> row : draftRows) {
-                String childId = idOrNew(row.get("id"));
-                keptIds.add(childId);
-                Map<String, Object> fields = scalarFields(row, grandKeys, collection.childField(), parentId);
-                fields.put("id", childId); // the gateway requires the id field present in the write payload
-                gateway.save(new ConceptWriteRequest(collection.concept(), childId, ctx.tenantId(), fields), ctx);
-                commitCollections(collection.collections(), row, childId, gateway, ctx);
+                childIds.add(idOrNew(row.get("id")));
             }
-            // Reconcile: delete persisted children of this parent that are absent from the draft.
+            // Reconcile FIRST: delete persisted children of this parent that are absent from the draft.
+            // Deleting after the upserts made a draft that replaces a row with a new id-less one at the
+            // same unique key (e.g. a mosaic cell's (mosaicId,row,col)) fail on the unique index.
+            Set<String> keptIds = new LinkedHashSet<>(childIds);
             List<ConceptRecord> current = gateway.list(
                     new ConceptListRequest(collection.concept(), null, collection.childField(), parentId), ctx);
             for (ConceptRecord existing : current) {
                 if (!keptIds.contains(existing.id())) {
                     gateway.delete(new ConceptReadRequest(collection.concept(), existing.id(), null), ctx);
                 }
+            }
+            for (int i = 0; i < draftRows.size(); i++) {
+                Map<String, Object> row = draftRows.get(i);
+                String childId = childIds.get(i);
+                Map<String, Object> fields = scalarFields(row, grandKeys, collection.childField(), parentId);
+                fields.put("id", childId); // the gateway requires the id field present in the write payload
+                gateway.save(new ConceptWriteRequest(collection.concept(), childId, ctx.tenantId(), fields), ctx);
+                commitCollections(collection.collections(), row, childId, gateway, ctx);
             }
         }
     }

@@ -85,9 +85,14 @@ public final class AgentApiExecutor {
                 case CONCEPT -> conceptRequest(tool, args, credentials);
                 case FLOW -> json(base() + "/api/v1/flows/" + enc(tool.flowName()) + "/execute", "POST", args,
                         credentials).build();
+                case AGGREGATE -> aggregateRequest(tool, args, credentials);
             };
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            return new Outcome(response.statusCode(), response.body());
+            String body = response.body();
+            if (tool.kind() == AgentToolCatalog.Kind.AGGREGATE && response.statusCode() / 100 == 2) {
+                body = compactAggregate(body, "save".equals(tool.operation()));
+            }
+            return new Outcome(response.statusCode(), body);
         } catch (IllegalArgumentException badArgs) {
             return new Outcome(400, "{\"error\":\"" + badArgs.getMessage().replace("\"", "'") + "\"}");
         } catch (Exception failed) {
@@ -149,6 +154,88 @@ public final class AgentApiExecutor {
             case "delete" -> builder(collection + "/" + enc(requireId(args)), creds).DELETE().build();
             default -> throw new IllegalArgumentException("unknown operation " + tool.operation());
         };
+    }
+
+    /** P8: {@code get} loads the tree; {@code save} commits it whole (the workbench's Save path), so a
+     *  root plus hundreds of children is one transaction. */
+    private HttpRequest aggregateRequest(AgentToolCatalog.AgentTool tool, Map<String, Object> args, Credentials creds) {
+        String path = base() + "/api/runtime/aggregate/" + enc(tool.route());
+        return switch (tool.operation()) {
+            case "get" -> get(path + "/" + enc(requireId(args)), creds);
+            case "save" -> json(path, "POST", withCurrentRootFields(path, args, creds), creds)
+                    .timeout(Duration.ofSeconds(120)).build();
+            default -> throw new IllegalArgumentException("unknown operation " + tool.operation());
+        };
+    }
+
+    /** Replacing an existing tree: root fields the agent left out keep their stored values (otherwise
+     *  the commit would null them, and a defaulted field like a nextNumber code would be re-issued).
+     *  Lists are never filled in -- a save replaces children wholesale. */
+    private Map<String, Object> withCurrentRootFields(String path, Map<String, Object> args, Credentials creds) {
+        Object id = args.get("id");
+        if (id == null || String.valueOf(id).isBlank()) {
+            return args;
+        }
+        try {
+            HttpResponse<String> current = http.send(get(path + "/" + enc(String.valueOf(id)), creds),
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (current.statusCode() / 100 != 2 || !(mapper.readValue(current.body(), Object.class) instanceof Map<?, ?> stored)) {
+                return args;
+            }
+            Map<String, Object> merged = new LinkedHashMap<>(args);
+            for (Map.Entry<?, ?> entry : stored.entrySet()) {
+                String key = String.valueOf(entry.getKey());
+                if (!(entry.getValue() instanceof List<?>) && !key.equals("aggregate") && !merged.containsKey(key)) {
+                    merged.put(key, entry.getValue());
+                }
+            }
+            return merged;
+        } catch (Exception unreadable) {
+            return args;
+        }
+    }
+
+    /** A saved/loaded tree, shrunk for an LLM: child rows lose their id and the link back to their
+     *  parent (a save never needs either); after a save each list becomes just its row count. */
+    String compactAggregate(String body, boolean countsOnly) {
+        try {
+            Object tree = mapper.readValue(body, Object.class);
+            if (!(tree instanceof Map<?, ?> root)) {
+                return body;
+            }
+            return mapper.writeValueAsString(compactNode(root, countsOnly));
+        } catch (Exception notJson) {
+            return body;
+        }
+    }
+
+    private static Map<String, Object> compactNode(Map<?, ?> node, boolean countsOnly) {
+        Object parentId = node.get("id");
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : node.entrySet()) {
+            String key = String.valueOf(entry.getKey());
+            if (!(entry.getValue() instanceof List<?> rows)) {
+                out.put(key, entry.getValue());
+                continue;
+            }
+            if (countsOnly) {
+                out.put(key, rows.size() + " rows saved");
+                continue;
+            }
+            List<Object> compacted = new ArrayList<>();
+            for (Object row : rows) {
+                if (row instanceof Map<?, ?> child) {
+                    Map<String, Object> slim = compactNode(child, false);
+                    slim.remove("id");
+                    slim.values().removeIf(value -> value != null && value.equals(parentId));
+                    compacted.add(slim);
+                } else {
+                    compacted.add(row);
+                }
+            }
+            out.put(key, compacted);
+        }
+        return out;
     }
 
     private Map<String, Object> onlyExposed(AgentToolCatalog.AgentTool tool, Map<String, Object> args, boolean dropId) {

@@ -397,6 +397,7 @@ public final class CompiledModelCanonicalJsonReader {
             expose.add(new CompiledAgentAccessExposure(
                     optionalText(exposureNode, "concept"),
                     optionalText(exposureNode, "flow"),
+                    optionalText(exposureNode, "aggregate"),
                     toStringList(exposureNode.get("operations")),
                     toStringList(exposureNode.get("fields")),
                     toStringList(exposureNode.get("roles")),

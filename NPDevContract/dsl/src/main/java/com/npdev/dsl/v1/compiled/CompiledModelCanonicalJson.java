@@ -147,6 +147,9 @@ public final class CompiledModelCanonicalJson {
             if (exposure.getFlow() != null) {
                 exposureNode.put("flow", safe(exposure.getFlow()));
             }
+            if (exposure.getAggregate() != null) {
+                exposureNode.put("aggregate", safe(exposure.getAggregate()));
+            }
             ArrayNode operations = JsonNodeFactory.instance.arrayNode();
             for (String operation : exposure.getOperations()) {
                 operations.add(operation);

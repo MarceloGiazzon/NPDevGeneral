@@ -712,13 +712,17 @@ public final class ModelCompiler {
         List<CompiledAgentAccessExposure> expose = new ArrayList<>();
         for (AgentAccessExposureAst exposure : agentAccessAst.getExpose()) {
             List<String> operations = exposure.getOperations();
-            if ((exposure.getFlow() == null || exposure.getFlow().isBlank()) && operations.isEmpty()) {
+            boolean isAggregate = exposure.getAggregate() != null && !exposure.getAggregate().isBlank();
+            if (isAggregate && operations.isEmpty()) {
+                operations = List.of("get");
+            } else if ((exposure.getFlow() == null || exposure.getFlow().isBlank()) && operations.isEmpty()) {
                 operations = List.of("list", "get");
             }
             boolean confirmWrites = exposure.getConfirmWrites() == null || exposure.getConfirmWrites();
             expose.add(new CompiledAgentAccessExposure(
                     exposure.getConcept(),
                     exposure.getFlow(),
+                    exposure.getAggregate(),
                     operations,
                     exposure.getFields(),
                     exposure.getRoles(),
