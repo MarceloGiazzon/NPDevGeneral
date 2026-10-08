@@ -1,18 +1,18 @@
 {
-  "closedAt": "2026-10-07T20:57:48.9231213Z",
+  "closedAt": "2026-10-08T00:57:01.1082909Z",
   "branch": "main",
-  "head": "ad245850",
-  "headSubject": "feat(access): access.public -- anonymous read-only API + public Pigmentampas gallery (P6, G4)",
-  "summary": "Shipped Pigmentampas P6 public read (ad245850): DSL concept access.public {where, fields[], scope concept|aggregate} through 4 schema mirrors/parser/compiler/canonical JSON + validator; GET-only /api/public/** (PublicReadController over runtimehost-core PublicReadService: where pushed into the query, allow-list projection, file fields as {url} images-only, uniform 404, per-client rate limit, disabled tenant serves nothing, tenant npdev.public-read.tenant-id default dev); JWT + api-key filters exempt GET/HEAD /api/public only; shell <meta name=npdev-public-page> skips login redirect + identity/menu/gadget fetches; Pigmentampas Cap/Mosaic/MosaicCell grants, gallery.html works logged out; conformance WidgetCatalogEntry + ShelfLayout; docs/reference/ROW_LEVEL_AUTHORIZATION.md section. /security-review clean.",
-  "nextStep": "Run T2 (run-all-gates.ps1 via digest runner) on ad245850 -- P6 is a platform phase and only narrow tests ran; then start Pigmentampas P7 (community flows: trades lifecycle + awaitEvent 7-day timeout + MailHog email, likes -> likeCount, monthly challenge scheduled flow) per plan README section 4. App runs from D:\\WorkSpace\\NPDev\\Build\\samples\\pigmentampas\\Output (port 8084, tito/demo-pass-1); public gallery http://127.0.0.1:8084/gallery.html logged out.",
+  "head": "0d1273e1",
+  "headSubject": "fix(access): P6 T2 reds -- suggestedFix on access.public errors + PublicReadController test",
+  "summary": "Ran T2 on P6 (ad245850): 4/4 red from two P6 defects, both fixed in 0d1273e1 (pushed to main): suggestedFix markers on the three access.public ERROR messages in ConceptValidation, and new PublicReadControllerTest restoring RuntimeHost coverage above its floor (25.939 -> 26.35). Read-only P7 scoping: awaitEvent timeout+onTimeout (R2.5), mail-smtp + MailHog compose profile smtp, flowSchedule cron all exist; Pigmentampas has no Trade/Like/Challenge concepts, no flows yet.",
+  "nextStep": "Start Pigmentampas P7 in NPDevSamples/pigmentampas/Input/model.json: add Trade concept (lifecycle PROPOSED->ACCEPTED/DECLINED/EXPIRED) + trade flow with awaitEvent timeout 604800 + onTimeout -> EXPIRED (test with a shortened timeout); bind mail capability to mail-smtp and start MailHog via the generated app's docker compose --profile smtp (UI :8025); note in the friction log that capabilityCall args cannot hold literal text, so build subject/body into fields first (docs/reference/EMAIL_NOTIFICATIONS.md 'Known DSL limitation'). Then Like -> Cap/Mosaic likeCount, and a monthly Challenge closed by a flowSchedule cron flow (docs/SCHEDULED_FLOWS.md). App runs from D:\\WorkSpace\\NPDev\\Build\\samples\\pigmentampas\\Output (port 8084, tito/demo-pass-1).",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
   "blocked": "D5 Google OAuth client + Meta app must be created by the owner (P8); D6 story names unanswered (P8/P9).",
-  "verified": "Narrow: dsl PublicReadValidationTest + CompiledModelCanonicalJsonReaderTest + ConceptAccessValidationTest green; runtimehost-core publicread 9/9. check-dsl-coverage, twin-pair (39), schema-mirror OK. Live on regenerated app: catalog/page/get/image/aggregate 200 with projection, drafts 404 by id/aggregate and 0 via filter, non-public filter 400, POST/DELETE 401, /api/mosaics anon 401, stale bearer still 200 on public, path tricks (..; %2e%2e) 404, 240/min -> 30x429 of 260. Public aggregate cells == authenticated cells. ScrapForAI logged-out gallery: 7 cards, no studio links, no redirect, only theme.css/favicon 404 console noise. T2 NOT run.",
+  "verified": "T2 run-all-gates.ps1 on 0d1273e1 working tree: ALL 4 GATES GREEN (generator 252s, runtimeHost 618s, kernel 195s, aiKnowledge 623s); floors auto-ratcheted up (dsl 85.52, kernel 66.12, RuntimeHost 26.35). Narrow: DiagnosticSuggestedFixCoverageTest + PublicReadValidationTest green. P7: nothing built or verified.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "ad245850 feat(access): access.public -- anonymous read-only API + public Pigmentampas gallery (P6, G4)",
-    "8853cb13 chore(session): handoff after Pigmentampas P5 photo->mosaic; coverage floors auto-ratcheted up by T2"
+    "0d1273e1 fix(access): P6 T2 reds -- suggestedFix on access.public errors + PublicReadController test",
+    "8a24a656 chore(session): handoff after Pigmentampas P6 public read"
   ]
 }
