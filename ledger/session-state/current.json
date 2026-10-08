@@ -1,18 +1,21 @@
 {
-  "closedAt": "2026-10-08T13:57:47.0889224Z",
+  "closedAt": "2026-10-08T16:14:03.6235616Z",
   "branch": "main",
-  "head": "079991c2",
-  "headSubject": "feat(dsl): concept rollups[] -- platform-maintained stored aggregates (P8 prelude, Mosaic.likeCount)",
-  "summary": "Shipped DSL concept rollups[] (079991c2, pushed): stored count/sum/min/max/avg over a child concept, maintained by RollupConceptStoreDecorator around the ConceptStore bean (new port ConceptStore.writeMaintainedFields, no row_version bump); Pigmentampas Mosaic.likeCount + MostLikedMosaics query + gallery sorted by likes; conformance-max WidgetCatalogEntry.slotCount/highestSlotRow; docs/reference/ROLLUP_FIELDS.md.",
-  "nextStep": "Run T2 on 079991c2 (python scripts/ai/run_digest.py -- pwsh -NoProfile -File scripts/quality/run-all-gates.ps1); fix reds (watch RuntimeHost/kernel coverage ratchets). Then start P8 per the plan: Telegram photo ingestion -> Cap SUBMITTED + AI tags, then MCP 'design a mosaic' demo. App boot needs NPDEV_MAIL_SMTP_HOST=localhost _PORT=1025 _FROM=noreply@pigmentampas.local before Build/samples/pigmentampas/Output/App/_ops/Start-App.ps1 (port 8084). Optional rollup follow-ups: boot-time backfill (existing Mosaics show likeCount=null), where filter, PUT response echoes submitted value.",
+  "head": "10455123",
+  "headSubject": "chore(coverage): floors auto-ratcheted up by T2 on d68071a7 (all 4 gates green)",
+  "summary": "T2 on 079991c2 was red (extends-specializations inherited rollups -> conformance-max invalid); fixed ba905a45. Shipped P8 photo intake: DSL agentAccess.photoIntake (c7ce7ba6) -- Telegram photo -> upload -> procedure over aggregate draft -> Confirm -> create as linked user; NPDEV_TELEGRAM_API_BASE; offline SchemaSampler honours examples/default; Pigmentampas photo -> SUBMITTED Cap. WhatsApp photo intake (d68071a7). T2 all 4 green on d68071a7, floors ratcheted (10455123).",
+  "nextStep": "P8 remainder: write the MCP 'design a mosaic' demo script for Claude Desktop (owner runs it). Optional: rollup boot-time backfill (existing Mosaics likeCount=null). Live photo check without a real bot: NPDEV_TELEGRAM_BOT_TOKEN=1:fake + NPDEV_TELEGRAM_API_BASE=http://127.0.0.1:18555/bot + a fake Bot API (recipe in Pigmentampas memory).",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
-  "blocked": "D5 Google OAuth client + Meta (WhatsApp) app must be created by the owner (P8); D6 story names unanswered (P8/P9).",
-  "verified": "Narrow only, no T2: RollupValidationTest 6/6, PublicReadValidationTest 5/5, full :NPDevContract:dsl:test green after suggestedFix fix, RollupConceptStoreDecoratorTest 6/6 (runtimehost-core), ConceptStoreWriteMaintainedFieldsTest 2/2 (kernel); check-dsl-coverage, check-schema-mirror-consistency, check-doc-inventory, check-semantic-inventory OK; live REST on regenerated Pigmentampas: unlike 2->1, re-like 1->2, version unchanged, owner PUT likeCount=999 stored stays 2, public sort + MostLikedMosaics correct.",
+  "blocked": "D5 Google OAuth client + Meta (WhatsApp) app must be created by the owner (live WhatsApp photos, Google login); D6 story names unanswered.",
+  "verified": "T2 ALL 4 GATES GREEN on d68071a7. Narrow: AgentPhotoIntakeValidationTest 6/6, RollupValidationTest 7/7, agent pkg 18/18, InProcExternalAiStructuredTest 2/2. Live on regenerated Pigmentampas via fake Telegram Bot API: /start link, captioned photo -> Confirm -> SUBMITTED Cap (submittedBy=tavo, 10869-byte size chosen over 900 KB); uncaptioned photo -> asks for caption.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "079991c2 feat(dsl): concept rollups[] -- platform-maintained stored aggregates (P8 prelude, Mosaic.likeCount)",
-    "a7225879 chore(session): handoff after P7 T2 fixes (8abd9e34)"
+    "10455123 chore(coverage): floors auto-ratcheted up by T2 on d68071a7 (all 4 gates green)",
+    "d68071a7 feat(agent): WhatsApp photo intake (P8/G5)",
+    "c7ce7ba6 feat(agent): agentAccess.photoIntake -- a photo sent to the bot becomes a record (P8/G5)",
+    "ba905a45 fix(dsl): specializations do not inherit rollups[] (T2 red on 079991c2)",
+    "c6541f75 chore(session): handoff after rollups (079991c2)"
   ]
 }
