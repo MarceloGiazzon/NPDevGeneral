@@ -56,7 +56,8 @@
     "channels": { "mcp": { "enabled": true } },
     "expose": [
       { "concept": "WidgetOrder", "operations": ["list", "get"], "description": "Widget orders placed by customers." },
-      { "flow": "PlaceWidgetOrder", "description": "Place a new widget order." }
+      { "flow": "PlaceWidgetOrder", "description": "Place a new widget order." },
+      { "aggregate": "ShelfLayoutAggregate", "operations": ["get", "save"], "description": "A shelf map and every one of its slots, read or saved whole in one call." }
     ]
   },
 

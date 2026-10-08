@@ -41,11 +41,17 @@ what is *offered* to the agent.
   `telegram`/`whatsapp` additionally need `auth.mode: jwt` and the identity pack composed (account
   linking stores the Telegram/WhatsApp id in `identity::ExternalIdentity`) — the generator refuses to
   build otherwise, naming exactly what's missing. MCP works in every auth mode.
-- `expose` — one entry per concept or flow. A concept entry defaults to `operations: ["list", "get"]`
+- `expose` — one entry per concept, flow or aggregate. A concept entry defaults to `operations: ["list", "get"]`
   (read-only) and every non-sensitive field; narrow either with `operations`/`fields`. `roles` filters
   who is even OFFERED the tool (absent = every linked user) — the app's permissions still enforce every
   call regardless. `confirmWrites` (default `true`) makes chat channels pause for a human Confirm
-  before a create/update/delete/flow run actually executes.
+  before a create/update/delete/save/flow run actually executes.
+- An `aggregate` entry offers `get_<Aggregate>` / `save_<Aggregate>` (`operations: ["get", "save"]`,
+  default `["get"]`): the root plus every owned collection, read or written WHOLE in one call through
+  the same commit the workbench's Save uses (`/api/runtime/aggregate/{aggregate}`) — one transaction,
+  the same permissions and invariants. A save REPLACES the tree: child rows left out are deleted, and
+  rows need no ids. Use it when a record is mostly its children (a 660-cell mosaic is one tool call,
+  not 661).
 
 ### Photos: `photoIntake`
 

@@ -100,6 +100,9 @@
       <p class="note">Add to Claude Code:</p>
       <div class="cmd-box" id="mcpCommand"></div>
       <button class="secondary" id="mcpCopyCommand" type="button">Copy command</button>
+      <p class="note">Or add to Claude Desktop (Settings &gt; Developer &gt; Edit Config, merge into <code>claude_desktop_config.json</code>, restart; needs Node.js for <code>npx</code>):</p>
+      <div class="cmd-box" id="mcpDesktopConfig" style="white-space:pre"></div>
+      <button class="secondary" id="mcpCopyDesktopConfig" type="button">Copy config</button>
     </div>
     <p id="mcpError" class="banner error hidden"></p>
   </section>
@@ -209,6 +212,7 @@
         if (res.status !== 200) { showError("mcpError", "Could not create a token."); return; }
         document.getElementById("mcpToken").textContent = res.body.token;
         document.getElementById("mcpCommand").textContent = res.body.claudeCodeCommand;
+        document.getElementById("mcpDesktopConfig").textContent = res.body.claudeDesktopConfig || "";
         document.getElementById("mcpResult").classList.remove("hidden");
       });
     });
@@ -217,6 +221,9 @@
     });
     document.getElementById("mcpCopyCommand").addEventListener("click", function () {
       navigator.clipboard.writeText(document.getElementById("mcpCommand").textContent);
+    });
+    document.getElementById("mcpCopyDesktopConfig").addEventListener("click", function () {
+      navigator.clipboard.writeText(document.getElementById("mcpDesktopConfig").textContent);
     });
   }
 })();

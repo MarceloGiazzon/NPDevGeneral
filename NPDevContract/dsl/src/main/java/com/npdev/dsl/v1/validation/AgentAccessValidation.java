@@ -3,6 +3,7 @@ package com.npdev.dsl.v1.validation;
 import com.npdev.dsl.v1.ast.AgentAccessAst;
 import com.npdev.dsl.v1.ast.AgentAccessExposureAst;
 import com.npdev.dsl.v1.ast.AgentAccessPhotoIntakeAst;
+import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FlowAst;
@@ -19,9 +20,10 @@ import static com.npdev.dsl.v1.validation.SemanticValidator.normalize;
 
 /**
  * AGENT-1: structural checks for the optional top-level {@code agentAccess} block -- each exposure
- * names exactly one of a real concept / a real flow, never exposes a {@code sensitive} field, never
- * mixes concept-only ({@code operations}/{@code fields}) with a flow exposure, and no concept is
- * exposed twice. {@code roles} is deliberately never validated here: app roles are data (identity
+ * names exactly one of a real concept / a real flow / a real aggregate, never exposes a
+ * {@code sensitive} field, never mixes concept-only ({@code operations}/{@code fields}) with a flow
+ * exposure, an aggregate exposure only offers {@code get}/{@code save}, and no concept or aggregate
+ * is exposed twice. {@code roles} is deliberately never validated here: app roles are data (identity
  * pack {@code Role} rows), not model declarations.
  */
 final class AgentAccessValidation {
@@ -39,16 +41,32 @@ final class AgentAccessValidation {
             flowNames.add(normalize(flow.getName()));
         }
 
+        Set<String> aggregateNames = new HashSet<>();
+        for (AggregateAst aggregate : modelAst.getAggregates()) {
+            aggregateNames.add(normalize(aggregate.name()));
+        }
+
         Set<String> conceptsSeen = new HashSet<>();
+        Set<String> aggregatesSeen = new HashSet<>();
         int index = 0;
         for (AgentAccessExposureAst exposure : agentAccess.getExpose()) {
             String here = "agentAccess.expose[" + index + "]";
             boolean hasConcept = hasText(exposure.getConcept());
             boolean hasFlow = hasText(exposure.getFlow());
-            if (hasConcept == hasFlow) {
-                errors.add(here + ": exactly one of concept / flow must be set");
+            boolean hasAggregate = hasText(exposure.getAggregate());
+            if ((hasConcept ? 1 : 0) + (hasFlow ? 1 : 0) + (hasAggregate ? 1 : 0) != 1) {
+                errors.add(here + ": exactly one of concept / flow / aggregate must be set");
                 index++;
                 continue;
+            }
+            if (hasAggregate) {
+                validateAggregateExposure(exposure, here, aggregateNames, aggregatesSeen, errors);
+                index++;
+                continue;
+            }
+            if (hasConcept && exposure.getOperations().contains("save")) {
+                errors.add(here + ": operation 'save' is aggregate-only -- a concept exposure uses create/update"
+                        + " -- suggestedFix: Replace 'save' with 'create'/'update', or expose the aggregate instead.");
             }
             if (hasConcept) {
                 ConceptAst concept = entitiesByLower.get(normalize(exposure.getConcept()));
@@ -98,6 +116,29 @@ final class AgentAccessValidation {
             index++;
         }
         validatePhotoIntake(modelAst, agentAccess, entitiesByLower, errors);
+    }
+
+    /** P8: an aggregate exposure reads ({@code get}) or saves ({@code save}) the whole tree -- root plus
+     *  owned collections -- in one call, through the same commit path the workbench's Save uses. */
+    private static void validateAggregateExposure(AgentAccessExposureAst exposure, String here,
+            Set<String> aggregateNames, Set<String> aggregatesSeen, List<String> errors) {
+        if (!aggregateNames.contains(normalize(exposure.getAggregate()))) {
+            errors.add(here + ": aggregate '" + exposure.getAggregate() + "' does not resolve to a declared aggregate"
+                    + " -- suggestedFix: Name an aggregate declared in aggregates[], or remove this exposure.");
+        } else if (!aggregatesSeen.add(normalize(exposure.getAggregate()))) {
+            errors.add(here + ": aggregate '" + exposure.getAggregate() + "' is exposed more than once"
+                    + " -- suggestedFix: Merge the duplicate exposures of this aggregate into one entry.");
+        }
+        for (String operation : exposure.getOperations()) {
+            if (!operation.equals("get") && !operation.equals("save")) {
+                errors.add(here + ": operation '" + operation + "' is not valid on an aggregate exposure (get, save)"
+                        + " -- suggestedFix: Use 'get' and/or 'save', or expose the root concept for list/create/update/delete.");
+            }
+        }
+        if (!exposure.getFields().isEmpty()) {
+            errors.add(here + ": fields is concept-only, not valid on an aggregate exposure"
+                    + " -- suggestedFix: Remove 'fields' from this aggregate exposure.");
+        }
     }
 
     /** P8 (G5): the photo-intake target is a real concept with a real file field, the procedure (if

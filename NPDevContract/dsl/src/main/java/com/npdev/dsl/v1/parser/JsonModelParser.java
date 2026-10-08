@@ -1107,6 +1107,7 @@ public final class JsonModelParser {
             expose.add(new com.npdev.dsl.v1.ast.AgentAccessExposureAst(
                     readText(exposureNode, "concept"),
                     readText(exposureNode, "flow"),
+                    readText(exposureNode, "aggregate"),
                     parseTextArray(exposureNode.get("operations")),
                     parseTextArray(exposureNode.get("fields")),
                     parseTextArray(exposureNode.get("roles")),
