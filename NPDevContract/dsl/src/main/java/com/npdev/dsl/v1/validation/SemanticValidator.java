@@ -156,7 +156,7 @@ public final class SemanticValidator {
         // that were silent (panel layout.fields / fieldBindings, action inputFields, query orderBy
         // and where, interaction predicates, procedure $var.field reads).
         ReferenceIntegrityValidation.validate(effectiveModel, errors);
-        RoleValidation.validateRoles(effectiveModel, errors);
+        RoleValidation.validateRoles(effectiveModel, entitiesByLower, errors);
         WebhookValidation.validateWebhooks(effectiveModel, errors);
         SequenceValidation.validateSequences(effectiveModel, errors);
         SeedValidation.validateSeeds(effectiveModel, errors);

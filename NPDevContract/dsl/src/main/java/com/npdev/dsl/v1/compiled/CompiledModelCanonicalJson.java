@@ -406,6 +406,10 @@ public final class CompiledModelCanonicalJson {
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("name", safe(role.name()));
             node.set("grants", toStringArray(role.grants()));
+            ObjectNode concepts = JsonNodeFactory.instance.objectNode();
+            new java.util.TreeMap<>(role.concepts()).forEach(
+                    (concept, operations) -> concepts.set(concept, toStringArray(operations)));
+            node.set("concepts", concepts);
             node.set("origin", toOrigin(role.origin()));
             roles.add(node);
         }

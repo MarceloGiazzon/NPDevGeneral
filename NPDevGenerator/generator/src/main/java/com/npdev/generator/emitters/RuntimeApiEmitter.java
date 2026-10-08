@@ -33,6 +33,7 @@ import java.util.LinkedHashSet;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -480,6 +481,19 @@ writer.writeRelative(
         // Concepts contributed by built-in platform packs (identity/workspace) are reserved
         // to the configured super-user role; ordinary business concepts are also opened to
         // the generic "user" role so regular authenticated users can use the app.
+        //
+        // Roles and users: roles[].concepts narrows that default. A concept named by ANY role's
+        // concepts map is granted only to the roles naming it, per operation (plus the super-user);
+        // the generic "user" role no longer reaches it. A concept no role names keeps the default,
+        // which now also covers every declared role -- so a login holding only an app role (MEMBER,
+        // CURATOR) works without the built-in USER role being added beside it.
+        Map<String, Map<String, Set<String>>> restrictedConcepts = roleConceptGrants(model);
+        List<String> declaredRoleKeys = new ArrayList<>();
+        for (CompiledRole role : model.getRoles()) {
+            if (role != null && role.name() != null && !role.name().isBlank()) {
+                declaredRoleKeys.add(role.name().trim().toLowerCase(Locale.ROOT));
+            }
+        }
         for (CompiledConcept concept : model.getConcepts()) {
             if (concept == null || concept.getName() == null || concept.getName().isBlank()) {
                 continue;
@@ -511,15 +525,35 @@ writer.writeRelative(
                 if (openMenuRead && !"user".equals(superUserRoleKey)) {
                     grants.add(new PermissionGrantSpec(permission, "", "", "user"));
                 }
-                if (!adminOnly && !"user".equals(superUserRoleKey)) {
-                    grants.add(new PermissionGrantSpec(permission, "", "", "user"));
+                if (adminOnly) {
+                    // Built-in pack concepts stay super-user-only even if a role names one --
+                    // RoleValidation already rejects that as an unknown concept for app models.
+                    continue;
+                }
+                List<String> holders = new ArrayList<>();
+                Map<String, Set<String>> restriction = restrictedConcepts.get(conceptKey);
+                if (restriction == null) {
+                    holders.add("user");
+                    holders.addAll(declaredRoleKeys);
+                } else {
+                    restriction.forEach((roleKey, operations) -> {
+                        if (operations.contains(operation)) {
+                            holders.add(roleKey);
+                        }
+                    });
+                }
+                for (String holder : holders) {
+                    if (holder.equals(superUserRoleKey)) {
+                        continue;
+                    }
+                    grants.add(new PermissionGrantSpec(permission, "", "", holder));
                     // If this CRUD operation's mutation is delegated to a declared Flow (the
-                    // Flow-CRUD wrapper), a "user" granted the CRUD permission above must also be
+                    // Flow-CRUD wrapper), a holder granted the CRUD permission above must also be
                     // granted flow.execute, or the wrapper's kernelRunner.execute() call throws
                     // PERMISSION_DENIED even though the CRUD-level check just passed -- these are
                     // two separate gates on the same request. superUserRoleKey already gets
                     // flow.execute unconditionally (every collected permission is granted to it
-                    // below), so only the "user" role needs this alignment.
+                    // below), so only the non-super-user holders need this alignment.
                     //
                     // Wave 3 (NPDEV_FEATURE_PLAN_2026-09-24, live on Pigmentampa's RegisterArtist):
                     // flow.execute alone is not enough -- the Flow's OWN createConcept/updateConcept
@@ -531,8 +565,8 @@ writer.writeRelative(
                     // reasoning already covers for flow.execute.
                     if (("create".equals(operation) || "update".equals(operation) || "delete".equals(operation))
                             && model.findFlow(concept.getName(), operation).isPresent()) {
-                        grants.add(new PermissionGrantSpec("flow.execute", "", "", "user"));
-                        grants.add(new PermissionGrantSpec("capability.invoke", "", "", "user"));
+                        grants.add(new PermissionGrantSpec("flow.execute", "", "", holder));
+                        grants.add(new PermissionGrantSpec("capability.invoke", "", "", holder));
                     }
                 }
             }
@@ -594,6 +628,11 @@ writer.writeRelative(
         if (!"user".equals(superUserRoleKey)) {
             grants.add(new PermissionGrantSpec("event.publish", "", "", "user"));
         }
+        for (String roleKey : declaredRoleKeys) {
+            if (!roleKey.equals(superUserRoleKey)) {
+                grants.add(new PermissionGrantSpec("event.publish", "", "", roleKey));
+            }
+        }
         for (AiBetaUser user : aiSecurity.testUsers()) {
             Set<String> userPermissions = new LinkedHashSet<>(List.of(
                     "flow.execute",
@@ -644,6 +683,34 @@ writer.writeRelative(
   ]
 }
 """.formatted(grantsJson);
+    }
+
+    /**
+     * Roles and users: lowercased concept name -> lowercased role name -> the CRUD permission
+     * operations that role holds on it, from every role's {@code concepts} map. {@code read}
+     * expands to read + list, matching the two permissions the generated CRUD API checks.
+     */
+    private static Map<String, Map<String, Set<String>>> roleConceptGrants(CompiledModel model) {
+        Map<String, Map<String, Set<String>>> byConcept = new LinkedHashMap<>();
+        for (CompiledRole role : model.getRoles()) {
+            if (role == null || role.name() == null || role.name().isBlank()) {
+                continue;
+            }
+            String roleKey = role.name().trim().toLowerCase(Locale.ROOT);
+            role.concepts().forEach((concept, operations) -> {
+                Set<String> expanded = byConcept
+                        .computeIfAbsent(concept.toLowerCase(Locale.ROOT), key -> new LinkedHashMap<>())
+                        .computeIfAbsent(roleKey, key -> new LinkedHashSet<>());
+                for (String operation : operations) {
+                    String op = operation.toLowerCase(Locale.ROOT);
+                    expanded.add(op);
+                    if ("read".equals(op)) {
+                        expanded.add("list");
+                    }
+                }
+            });
+        }
+        return byConcept;
     }
 
     /** True for concepts contributed by a built-in platform pack (the internal NPDev tables). */

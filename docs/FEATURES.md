@@ -106,6 +106,8 @@ processes, screens, permissions, and how it all changes over time.
 | Feature | What it does for you |
 |---|---|
 | **`roles` + `grants`** | declare roles and what they may do |
+| **`roles[].concepts`** | per-concept CRUD by role — `{ "Mosaic": ["read", "create"] }`; once any role names a concept, only the roles naming it reach it |
+| **Multi-role users** | `POST /api/auth/create-user` takes `roleNames[]`; a tenant ADMIN adds/removes roles via `POST`/`DELETE /api/auth/users/{username}/roles` |
 | **`requiredRole`** | on flows, queries, panels — **enforced at the API, not just hidden in the UI** |
 | **Row-level authorization** | restrict *which rows* a user sees, under a real transaction |
 | **`access` per concept** | per-concept access rules |
