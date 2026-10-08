@@ -564,6 +564,10 @@ class DialectConformanceTierATest {
                 dialect.name() + ": `rank` is reserved on MySQL and nowhere else in this set");
         assertEquals("sqlserver".equals(dialect.name()), dialect.isReservedIdentifier("plan"),
                 dialect.name() + ": `plan` is reserved on SQL Server and nowhere else in this set");
+        if ("h2".equals(dialect.name())) {
+            assertTrue(dialect.isReservedIdentifier("month"),
+                    "h2: H2 2.x reserves the datetime-field words -- an unquoted `month` column fails CREATE TABLE");
+        }
 
         // Case-insensitive: a field named `Order` collides exactly as `order` does.
         assertNotEquals("Order", dialect.identifier("Order"),

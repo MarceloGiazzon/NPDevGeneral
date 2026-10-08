@@ -17,7 +17,10 @@
       { "label": "My collection", "target": "CollectionItem", "group": "Studio" },
       { "label": "Cap catalogue", "target": "Cap", "group": "Catalogue" },
       { "label": "Breweries", "target": "Brewery", "group": "Catalogue" },
-      { "label": "Members", "target": "Member", "group": "Community" }
+      { "label": "Members", "target": "Member", "group": "Community" },
+      { "label": "Trades", "target": "Trade", "group": "Community" },
+      { "label": "Likes", "target": "Like", "group": "Community" },
+      { "label": "Challenges", "target": "Challenge", "group": "Community" }
     ]
   },
   "roles": [
@@ -127,7 +130,8 @@
     { "adapter": "inproc", "capability": "eventBus" },
     { "adapter": "externalAi", "capability": "externalAi" },
     { "adapter": "fileStore", "capability": "fileStore" },
-    { "adapter": "plugin:java-source", "capability": "mosaicPainter" }
+    { "adapter": "plugin:java-source", "capability": "mosaicPainter" },
+    { "adapter": "mail-smtp", "capability": "mail" }
   ],
   "capabilities": [
     {
@@ -144,6 +148,11 @@
       "name": "fileStore",
       "operations": ["readImage"],
       "type": "FileStoreCapability"
+    },
+    {
+      "name": "mail",
+      "operations": ["send"],
+      "type": "EmailCapability"
     }
   ],
   "customCapabilities": [
@@ -159,7 +168,8 @@
     { "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/workspace@workspace-1.1.0", "as": "workspace" }
   ],
   "sequences": [
-    { "name": "mosaicCode", "format": "PTM-{year}-{seq:4}", "scope": "tenant" }
+    { "name": "mosaicCode", "format": "PTM-{year}-{seq:4}", "scope": "tenant" },
+    { "name": "tradeCode", "format": "TRD-{year}-{seq:4}", "scope": "tenant" }
   ],
   "concepts": [
     {
@@ -171,6 +181,8 @@
           "ui": { "label": "Username" } },
         { "name": "displayName", "type": "string", "required": true, "maxLength": 120,
           "ui": { "label": "Display name" } },
+        { "name": "email", "type": "string", "required": false, "maxLength": 200,
+          "ui": { "label": "Email (trade notifications)" } },
         { "name": "city", "type": "string", "required": false, "maxLength": 80,
           "ui": { "label": "City" } },
         { "name": "country", "type": "string", "required": false, "maxLength": 80,
@@ -372,6 +384,86 @@
         { "name": "passwordHash", "type": "string", "required": true, "maxLength": 200,
           "ui": { "label": "Password hash" } }
       ]
+    },
+    {
+      "name": "Trade",
+      "ui": { "label": "Trade" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "code", "type": "string", "required": false, "maxLength": 20, "unique": true,
+          "defaultExpression": "nextNumber('tradeCode')", "ui": { "label": "Code" } },
+        { "name": "proposerUsername", "type": "string", "required": true, "maxLength": 120,
+          "ui": { "label": "Proposed by" } },
+        { "name": "recipientId", "type": "reference", "required": true, "ui": { "label": "Proposed to" },
+          "reference": { "target": "Member", "displayField": "displayName" } },
+        { "name": "recipientUsername", "type": "string", "required": false, "maxLength": 120,
+          "ui": { "label": "Recipient username" } },
+        { "name": "offeredCapId", "type": "reference", "required": true, "ui": { "label": "I offer" },
+          "reference": { "target": "Cap", "displayField": "label" } },
+        { "name": "requestedCapId", "type": "reference", "required": true, "ui": { "label": "I want" },
+          "reference": { "target": "Cap", "displayField": "label" } },
+        { "name": "message", "type": "string", "required": false, "maxLength": 500,
+          "ui": { "label": "Message" } },
+        { "name": "status", "type": "enum", "required": true, "default": "PROPOSED",
+          "enumValues": ["PROPOSED", "ACCEPTED", "DECLINED", "EXPIRED"], "ui": { "label": "Status" } }
+      ],
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          { "value": "PROPOSED", "label": "Proposed", "initial": true },
+          { "value": "ACCEPTED", "label": "Accepted", "terminal": true },
+          { "value": "DECLINED", "label": "Declined", "terminal": true },
+          { "value": "EXPIRED", "label": "Expired", "terminal": true }
+        ],
+        "transitions": [
+          { "from": "PROPOSED", "to": "ACCEPTED", "event": "TradeAnswered", "actionLabel": "Accept" },
+          { "from": "PROPOSED", "to": "DECLINED", "event": "TradeAnswered", "actionLabel": "Decline" },
+          { "from": "PROPOSED", "to": "EXPIRED", "event": "TradeExpired" }
+        ]
+      },
+      "access": {
+        "read": "proposerUsername == $user.id || recipientUsername == $user.id || $user.roles.contains('Curator')",
+        "write": "proposerUsername == $user.id || recipientUsername == $user.id"
+      }
+    },
+    {
+      "name": "Like",
+      "ui": { "label": "Like" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "mosaicId", "type": "reference", "required": true, "ui": { "label": "Mosaic" },
+          "reference": { "target": "Mosaic", "displayField": "title" } },
+        { "name": "memberUsername", "type": "string", "required": true, "maxLength": 120,
+          "ui": { "label": "Liked by" } }
+      ],
+      "indexes": [
+        { "name": "ux_like_mosaic_member", "fields": ["mosaicId", "memberUsername"], "unique": true }
+      ],
+      "access": { "write": "memberUsername == $user.id" }
+    },
+    {
+      "name": "Challenge",
+      "ui": { "label": "Challenge" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "title", "type": "string", "required": true, "maxLength": 120, "ui": { "label": "Title" } },
+        { "name": "theme", "type": "string", "required": false, "maxLength": 500, "ui": { "label": "Theme" } },
+        { "name": "month", "type": "string", "required": true, "maxLength": 7, "ui": { "label": "Month (YYYY-MM)" } },
+        { "name": "status", "type": "enum", "required": true, "default": "OPEN",
+          "enumValues": ["OPEN", "CLOSED"], "ui": { "label": "Status" } }
+      ],
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          { "value": "OPEN", "label": "Open", "initial": true },
+          { "value": "CLOSED", "label": "Closed", "terminal": true }
+        ],
+        "transitions": [
+          { "from": "OPEN", "to": "CLOSED", "event": "ChallengeClosed", "actionLabel": "Close",
+            "guard": "$user.roles.contains('Curator') || $user.id == 'system:scheduler'" }
+        ]
+      },
+      "access": { "write": "$user.roles.contains('Curator') || $user.id == 'system:scheduler'" }
     }
   ],
   "aggregates": [
@@ -388,7 +480,87 @@
       "collections": []
     }
   ],
+  "events": [
+    { "name": "TradeAnswered", "payload": ["tradeId", "status"] },
+    { "name": "TradeExpired", "payload": ["tradeId", "status"] }
+  ],
+  "flows": [
+    {
+      "name": "ProposeTrade",
+      "input": { "concept": "Trade", "mode": "create" },
+      "steps": [
+        { "name": "save-trade", "type": "createConcept", "scope": "Trade", "input": "$input", "output": "$saved" },
+        { "name": "notify-recipient", "type": "callProcedure", "procedure": "NotifyTradeRecipient",
+          "input": "$saved", "output": "$notified" },
+        { "name": "await-answer", "type": "awaitEvent", "awaitEvent": "TradeAnswered", "awaitRef": "answer",
+          "match": { "correlation": false, "payload": { "tradeId": "$saved.id" } },
+          "timeout": 604800,
+          "onTimeout": [
+            { "name": "expire-trade", "type": "callProcedure", "procedure": "ExpireTrade",
+              "input": "$saved", "output": "$expired" }
+          ] },
+        { "name": "return-trade", "type": "return", "value": "$saved" }
+      ]
+    },
+    {
+      "name": "CloseMonthlyChallenges",
+      "concept": "Challenge",
+      "schedule": { "cron": "0 0 0 1 * *", "tenantScope": ["dev"] },
+      "steps": [
+        { "name": "close-open", "type": "callProcedure", "procedure": "CloseOpenChallenges",
+          "input": "$input", "output": "$closed" },
+        { "name": "return-closed", "type": "return", "value": "$closed" }
+      ]
+    }
+  ],
   "procedures": [
+    {
+      "name": "CloseOpenChallenges",
+      "description": "P7: run by the CloseMonthlyChallenges cron flow at 00:00 on the 1st of each month -- every challenge still OPEN moves to CLOSED.",
+      "steps": [
+        { "name": "open-challenges", "type": "runQuery", "query": "OpenChallenges", "concept": "Challenge", "target": "open" },
+        { "name": "close-each", "type": "forEach", "items": "$open", "as": "challenge",
+          "steps": [
+            { "name": "close", "type": "patchConcept", "concept": "Challenge", "id": "$challenge.id",
+              "set": { "status": "CLOSED" }, "target": "closedChallenge" }
+          ] },
+        { "name": "return-open", "type": "return", "value": "$open" }
+      ]
+    },
+    {
+      "name": "NotifyTradeRecipient",
+      "description": "P7: stamps the recipient's username on the new trade (so the row-access rule lets them see and answer it) and emails them through the mail capability when they have an address. A procedure's capabilityCall args are passed positionally in ALPHABETICAL key order (ModelCompiler.sortObjectMap), hence the arg1_..arg4_ keys for mail.send(to, subject, body, templateVars).",
+      "steps": [
+        { "name": "read-recipient", "type": "readConcept", "concept": "Member", "id": "$input.recipientId", "target": "recipient" },
+        { "name": "stamp-recipient", "type": "patchConcept", "concept": "Trade", "id": "$input.id",
+          "set": { "recipientUsername": "$recipient.username" }, "target": "trade" },
+        { "name": "has-email", "type": "if", "condition": "$recipient.email",
+          "then": [
+            { "name": "send-mail", "type": "capabilityCall", "capability": "mail", "operation": "send",
+              "args": {
+                "arg1_to": "$recipient.email",
+                "arg2_subject": "Pigmentampas: new trade proposal ${code}",
+                "arg3_body": "Hi! ${proposerUsername} proposed trade ${code} to you. Open Pigmentampas, Community > Trades, to accept or decline it within 7 days.",
+                "arg4_templateVars": "$trade"
+              },
+              "target": "mailDelivery" }
+          ] },
+        { "name": "return-trade", "type": "return", "value": "$trade" }
+      ]
+    },
+    {
+      "name": "ExpireTrade",
+      "description": "P7: the ProposeTrade flow's awaitEvent timeout path -- a trade still PROPOSED when its 7 days run out moves to EXPIRED.",
+      "steps": [
+        { "name": "read-trade", "type": "readConcept", "concept": "Trade", "id": "$input.id", "target": "trade" },
+        { "name": "still-open", "type": "if", "condition": "$trade.status == 'PROPOSED'",
+          "then": [
+            { "name": "expire", "type": "patchConcept", "concept": "Trade", "id": "$input.id",
+              "set": { "status": "EXPIRED" }, "target": "trade" }
+          ] },
+        { "name": "return-trade", "type": "return", "value": "$trade" }
+      ]
+    },
     {
       "name": "PaintMosaicFromPhoto",
       "description": "P5: turns the mosaic's source image into a hex mosaic -- fileStore.readImage hands the photo to the app's own Java (customCapabilities mosaicPainter), which samples each cell and picks the nearest approved cap in CIELAB; with onlyOwnedCaps it uses only caps in the owner's collection. Returns {cells}, folded into the open draft; nothing is saved until Save.",
@@ -441,6 +613,9 @@
   ],
   "queries": [
     { "name": "ApprovedCaps", "concept": "Cap", "where": "status == 'APPROVED'", "orderBy": ["label"] },
+    { "name": "OpenChallenges", "concept": "Challenge", "where": "status == 'OPEN'", "orderBy": ["month"] },
+    { "name": "LikesPerMosaic", "concept": "Like", "groupBy": ["mosaicId.code", "mosaicId.title"],
+      "aggregates": [{ "name": "likes", "fn": "count" }], "orderBy": ["likes desc"], "limit": 50 },
     { "name": "CollectionInStock", "concept": "CollectionItem", "where": "quantity > 0",
       "metadata": { "purpose": "P5 photo-to-mosaic 'only caps I own': CollectionItem's row access already limits this to the caller's rows plus others' for-trade rows; the plugin keeps the mosaic owner's." } },
     { "name": "CapsAwaitingReview", "concept": "Cap", "where": "status == 'SUBMITTED'", "orderBy": ["label"] },

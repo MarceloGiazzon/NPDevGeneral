@@ -884,6 +884,12 @@ public class {{entityName}}ServiceBase {
         Map<String, Object> flowInput = new LinkedHashMap<>(createPayload);
         flowInput.put(ID_FIELD_NAME, String.valueOf(generatedId));
         ExecutionResult result = kernelRunner.execute("{{createFlowName}}", flowInput, crudCtx);
+        // A create flow may persist the row and then durably park on an awaitEvent (e.g. a proposal
+        // waiting for an answer) -- the create itself succeeded. If it parked BEFORE persisting,
+        // the findById right after this call still fails loudly.
+        if (result != null && result.getStatus() == ExecutionStatus.WAITING_EVENT) {
+            return;
+        }
         requireFlowSucceeded("{{createFlowName}}", result);
     }
 
