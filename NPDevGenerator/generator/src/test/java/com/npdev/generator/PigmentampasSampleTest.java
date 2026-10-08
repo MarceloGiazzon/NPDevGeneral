@@ -82,12 +82,12 @@ class PigmentampasSampleTest {
         assertNotNull(mosaic, "Mosaic concept must compile");
         // PACK-23: identity/tracing/workspace are consumed by remote coordinate (S6's own design),
         // so this counts the REAL published packs' full concept sets, not a locally-trimmed stand-in:
-        // 7 domain concepts (Member, Brewery, Cap, CollectionItem, Mosaic, MosaicCell, Credential)
-        // + identity 1.2.0 (User, Role, UserRole, PasswordResetToken,
+        // 10 domain concepts (Member, Brewery, Cap, CollectionItem, Mosaic, MosaicCell, Credential,
+        // Trade, Like, Challenge) + identity 1.2.0 (User, Role, UserRole, PasswordResetToken,
         // UserRolePermission, ExternalIdentity = 6) + tracing 1.0.2 (TraceEntry = 1) + workspace 1.1.0
-        // (Menu, PropertyValue = 2) = 16.
-        assertEquals(16, compiled.getConcepts().size(),
-                "Pigmentampas must compile its 7 domain concepts plus the full identity+tracing+workspace pack sets (9)");
+        // (Menu, PropertyValue = 2) = 19.
+        assertEquals(19, compiled.getConcepts().size(),
+                "Pigmentampas must compile its 10 domain concepts plus the full identity+tracing+workspace pack sets (9)");
 
         Path out = Files.createTempDirectory("npdev-pigmentampas-");
         Path migrations = Files.createTempDirectory("npdev-pigmentampas-migrations-");
