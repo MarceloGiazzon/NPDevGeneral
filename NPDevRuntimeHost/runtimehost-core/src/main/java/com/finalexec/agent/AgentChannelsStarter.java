@@ -42,6 +42,7 @@ public final class AgentChannelsStarter {
     private final String whatsappAccessToken;
     private final String whatsappAppSecret;
     private final String whatsappVerifyToken;
+    private final String whatsappApiBase;
 
     private volatile TelegramChannel telegramChannel;
     private volatile WhatsAppChannel whatsappChannel;
@@ -63,7 +64,9 @@ public final class AgentChannelsStarter {
             @Value("${NPDEV_WHATSAPP_PHONE_NUMBER_ID:}") String whatsappPhoneNumberId,
             @Value("${NPDEV_WHATSAPP_ACCESS_TOKEN:}") String whatsappAccessToken,
             @Value("${NPDEV_WHATSAPP_APP_SECRET:}") String whatsappAppSecret,
-            @Value("${NPDEV_WHATSAPP_VERIFY_TOKEN:}") String whatsappVerifyToken
+            @Value("${NPDEV_WHATSAPP_VERIFY_TOKEN:}") String whatsappVerifyToken,
+            // P8: a Graph API stand-in (a test fake, or a proxy); blank = graph.facebook.com/v21.0.
+            @Value("${NPDEV_WHATSAPP_API_BASE:}") String whatsappApiBase
     ) {
         this.modelHolder = modelHolder;
         this.mapper = mapper;
@@ -79,6 +82,7 @@ public final class AgentChannelsStarter {
         this.whatsappAccessToken = whatsappAccessToken;
         this.whatsappAppSecret = whatsappAppSecret;
         this.whatsappVerifyToken = whatsappVerifyToken;
+        this.whatsappApiBase = whatsappApiBase;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -115,7 +119,8 @@ public final class AgentChannelsStarter {
             }
             if (missing.isEmpty()) {
                 this.whatsappChannel = new WhatsAppChannel(whatsappPhoneNumberId, whatsappAccessToken,
-                        whatsappAppSecret, whatsappVerifyToken, mapper, links, conversations(), publicBaseUrl);
+                        whatsappAppSecret, whatsappVerifyToken, mapper, links, conversations(), publicBaseUrl,
+                        whatsappApiBase);
                 LOG.info("WhatsApp channel ready: Meta must deliver to <public https address>/api/hooks/agent/whatsapp.");
             } else {
                 LOG.info("agentAccess.channels.whatsapp is enabled but " + String.join(", ", missing)
