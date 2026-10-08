@@ -1,21 +1,18 @@
 {
-  "closedAt": "2026-10-08T19:13:39.4386560Z",
+  "closedAt": "2026-10-08T19:33:10.1610490Z",
   "branch": "main",
-  "head": "36ace8c9",
-  "headSubject": "chore(coverage): floors auto-ratcheted up by T2 on the rollup-backfill tree (all 4 gates green)",
-  "summary": "Read T2 on f546e7ee (RED: RuntimeHost coverage - untested mcp-token endpoint; 2 security-sweep false positives on save_<Aggregate> tool prose; kernel timeout flake under pagefile pressure) and fixed all; shipped P8 rollup boot-time backfill (RollupConceptStoreDecorator.backfill + RollupBackfillRunner) as a1daa9ba + coverage ratchet 36ace8c9, both pushed.",
-  "nextStep": "Live-verify the rollup backfill on Pigmentampas: restage runtimehost-core jars (scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars, or the rebuild-app skill / scripts/appgen/Rebuild-And-Restage.ps1), regenerate+restart the app from Build/samples, confirm the boot log prints '[RollupBackfillRunner] Recomputed rollups on N record(s)' and that pre-existing Mosaics now show a numeric likeCount via GET /api/... as tito. Then pick the next plan item from the plan README.",
+  "head": "b408f2c6",
+  "headSubject": "feat(agent): NPDEV_WHATSAPP_API_BASE -- point the WhatsApp channel at a Graph API stand-in (P8)",
+  "summary": "Live-verified a1daa9ba rollup backfill on regenerated Pigmentampas (30 records filled at boot, 33/33 Mosaics numeric likeCount, idempotent re-boot). Added NPDEV_WHATSAPP_API_BASE (b408f2c6) and live-verified WhatsApp photo intake end to end against a fake Graph API: link, photo -> Confirm draft -> SUBMITTED Cap as tavo, duplicate label 409, forged signature 401.",
+  "nextStep": "All platform phases of the Pigmentampas plan are done; remaining owner-blocked items are D5 (Google OAuth + Meta app) and the live Claude Desktop run. Next is P9 story page (D6 default Tito & Tavo) then P10 maturity verdict from friction/log.jsonl (40 entries) -- confirm with the owner which first.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
-  "blocked": "D5: owner must create the Google OAuth client and the Meta (WhatsApp) app. D6 story names unanswered. Live Claude Desktop run is the owner's (MCP_DEMO_SCRIPT.md). Flag demo needs a blue and a yellow cap APPROVED first.",
-  "verified": "T2 all four gates green on the a1daa9ba tree: kernel + aiKnowledge PASSED in run 20261008T173508Z, generator + runtimeHost PASSED in -Only rerun 20261008T180937Z (first run's generator/runtimeHost reds were a self-inflicted stale kernel jacoco report from a filtered :kernel:test). Narrow: RollupConceptStoreDecoratorTest 7/7, com.finalexec.agent.* green, KernelRunnerCapabilityPolicyTest green in isolation; security-pattern-sweep 0 needing triage. Backfill NOT live-verified on a running app.",
-  "dirtyCount": 2,
-  "dirtyFiles": [
-    "M  ledger/session-state/current.json",
-    "M  ledger/session-state/history.jsonl"
-  ],
+  "blocked": "D5: owner must create the Google OAuth client and the Meta (WhatsApp) app. Live Claude Desktop run is the owner's (MCP_DEMO_SCRIPT.md). Flag demo needs a blue and a yellow cap APPROVED first.",
+  "verified": "Live on Pigmentampas (Build/samples, port 8084): backfill boot log line + GET /api/mosaics as tito 0 null likeCount; WhatsApp photo intake via signed webhook + fake Graph API on 18556. No gates run for b408f2c6 (env-var plumbing only; jar built and booted).",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "36ace8c9 chore(coverage): floors auto-ratcheted up by T2 on the rollup-backfill tree (all 4 gates green)",
-    "a1daa9ba feat(rollups): boot-time backfill fills rollup fields still NULL (P8)"
+    "b408f2c6 feat(agent): NPDEV_WHATSAPP_API_BASE -- point the WhatsApp channel at a Graph API stand-in (P8)",
+    "fba77d34 chore(session): handoff after rollup backfill (a1daa9ba, T2 green)"
   ]
 }
