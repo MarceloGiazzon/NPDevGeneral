@@ -1,21 +1,21 @@
 {
-  "closedAt": "2026-10-08T16:14:03.6235616Z",
+  "closedAt": "2026-10-08T19:13:39.4386560Z",
   "branch": "main",
-  "head": "10455123",
-  "headSubject": "chore(coverage): floors auto-ratcheted up by T2 on d68071a7 (all 4 gates green)",
-  "summary": "T2 on 079991c2 was red (extends-specializations inherited rollups -> conformance-max invalid); fixed ba905a45. Shipped P8 photo intake: DSL agentAccess.photoIntake (c7ce7ba6) -- Telegram photo -> upload -> procedure over aggregate draft -> Confirm -> create as linked user; NPDEV_TELEGRAM_API_BASE; offline SchemaSampler honours examples/default; Pigmentampas photo -> SUBMITTED Cap. WhatsApp photo intake (d68071a7). T2 all 4 green on d68071a7, floors ratcheted (10455123).",
-  "nextStep": "P8 remainder: write the MCP 'design a mosaic' demo script for Claude Desktop (owner runs it). Optional: rollup boot-time backfill (existing Mosaics likeCount=null). Live photo check without a real bot: NPDEV_TELEGRAM_BOT_TOKEN=1:fake + NPDEV_TELEGRAM_API_BASE=http://127.0.0.1:18555/bot + a fake Bot API (recipe in Pigmentampas memory).",
+  "head": "36ace8c9",
+  "headSubject": "chore(coverage): floors auto-ratcheted up by T2 on the rollup-backfill tree (all 4 gates green)",
+  "summary": "Read T2 on f546e7ee (RED: RuntimeHost coverage - untested mcp-token endpoint; 2 security-sweep false positives on save_<Aggregate> tool prose; kernel timeout flake under pagefile pressure) and fixed all; shipped P8 rollup boot-time backfill (RollupConceptStoreDecorator.backfill + RollupBackfillRunner) as a1daa9ba + coverage ratchet 36ace8c9, both pushed.",
+  "nextStep": "Live-verify the rollup backfill on Pigmentampas: restage runtimehost-core jars (scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars, or the rebuild-app skill / scripts/appgen/Rebuild-And-Restage.ps1), regenerate+restart the app from Build/samples, confirm the boot log prints '[RollupBackfillRunner] Recomputed rollups on N record(s)' and that pre-existing Mosaics now show a numeric likeCount via GET /api/... as tito. Then pick the next plan item from the plan README.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
-  "blocked": "D5 Google OAuth client + Meta (WhatsApp) app must be created by the owner (live WhatsApp photos, Google login); D6 story names unanswered.",
-  "verified": "T2 ALL 4 GATES GREEN on d68071a7. Narrow: AgentPhotoIntakeValidationTest 6/6, RollupValidationTest 7/7, agent pkg 18/18, InProcExternalAiStructuredTest 2/2. Live on regenerated Pigmentampas via fake Telegram Bot API: /start link, captioned photo -> Confirm -> SUBMITTED Cap (submittedBy=tavo, 10869-byte size chosen over 900 KB); uncaptioned photo -> asks for caption.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "blocked": "D5: owner must create the Google OAuth client and the Meta (WhatsApp) app. D6 story names unanswered. Live Claude Desktop run is the owner's (MCP_DEMO_SCRIPT.md). Flag demo needs a blue and a yellow cap APPROVED first.",
+  "verified": "T2 all four gates green on the a1daa9ba tree: kernel + aiKnowledge PASSED in run 20261008T173508Z, generator + runtimeHost PASSED in -Only rerun 20261008T180937Z (first run's generator/runtimeHost reds were a self-inflicted stale kernel jacoco report from a filtered :kernel:test). Narrow: RollupConceptStoreDecoratorTest 7/7, com.finalexec.agent.* green, KernelRunnerCapabilityPolicyTest green in isolation; security-pattern-sweep 0 needing triage. Backfill NOT live-verified on a running app.",
+  "dirtyCount": 2,
+  "dirtyFiles": [
+    "M  ledger/session-state/current.json",
+    "M  ledger/session-state/history.jsonl"
+  ],
   "unpushed": 0,
   "landedCommits": [
-    "10455123 chore(coverage): floors auto-ratcheted up by T2 on d68071a7 (all 4 gates green)",
-    "d68071a7 feat(agent): WhatsApp photo intake (P8/G5)",
-    "c7ce7ba6 feat(agent): agentAccess.photoIntake -- a photo sent to the bot becomes a record (P8/G5)",
-    "ba905a45 fix(dsl): specializations do not inherit rollups[] (T2 red on 079991c2)",
-    "c6541f75 chore(session): handoff after rollups (079991c2)"
+    "36ace8c9 chore(coverage): floors auto-ratcheted up by T2 on the rollup-backfill tree (all 4 gates green)",
+    "a1daa9ba feat(rollups): boot-time backfill fills rollup fields still NULL (P8)"
   ]
 }
