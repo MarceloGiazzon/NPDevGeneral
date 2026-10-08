@@ -56,9 +56,14 @@ public final class WhatsAppChannel {
     /** Meta's challenge is a number; anything else is never echoed back. */
     private static final Pattern CHALLENGE = Pattern.compile("[0-9A-Za-z_-]{1,128}");
 
-    /** One incoming message: free text, a Confirm/Cancel button press, or neither (an image, a
-     *  sticker...) -- both null. */
-    record Inbound(String from, String messageId, String text, String buttonId) {
+    /** One incoming message: free text, a Confirm/Cancel button press, an image (P8: {@code mediaId}
+     *  + {@code mediaType} + optional {@code caption}; an image sent as a document counts), or none
+     *  of these (a sticker, audio...) -- all null. */
+    record Inbound(String from, String messageId, String text, String buttonId, String mediaId, String mediaType,
+            String caption) {
+        Inbound(String from, String messageId, String text, String buttonId) {
+            this(from, messageId, text, buttonId, null, null, null);
+        }
     }
 
     private final String phoneNumberId;
@@ -198,13 +203,23 @@ public final class WhatsAppChannel {
                     String type = message.path("type").asText("");
                     String text = null;
                     String buttonId = null;
+                    JsonNode media = null;
                     if ("text".equals(type)) {
                         text = message.path("text").path("body").asText("");
                     } else if ("interactive".equals(type)
                             && "button_reply".equals(message.path("interactive").path("type").asText())) {
                         buttonId = message.path("interactive").path("button_reply").path("id").asText("");
+                    } else if ("image".equals(type)
+                            || ("document".equals(type)
+                                && message.path("document").path("mime_type").asText("").startsWith("image/"))) {
+                        media = message.path(type);
                     }
-                    out.add(new Inbound(from, id, text, buttonId));
+                    if (media != null && media.hasNonNull("id")) {
+                        out.add(new Inbound(from, id, null, null, media.path("id").asText(),
+                                media.path("mime_type").asText("image/jpeg"), media.path("caption").asText("")));
+                    } else {
+                        out.add(new Inbound(from, id, text, buttonId));
+                    }
                 }
             }
         }
@@ -235,8 +250,12 @@ public final class WhatsAppChannel {
             handleButton(from, message.buttonId());
             return;
         }
+        if (message.mediaId() != null) {
+            handlePhoto(message);
+            return;
+        }
         if (message.text() == null) {
-            send(from, "I can only read text messages.", null);
+            send(from, "I can only read text messages and photos.", null);
             return;
         }
         String text = message.text().trim();
@@ -276,6 +295,55 @@ public final class WhatsAppChannel {
         }
         AgentConversationService.Reply reply = conversations.handleText(speaker, lower.equals("reset") ? "/reset" : text);
         send(from, reply.text(), reply.confirmId());
+    }
+
+    /** P8 (G5): a linked user's photo -- fetched from the Graph media endpoint (a short-lived URL that
+     *  itself needs the access token) and handed to {@link AgentConversationService#handlePhoto}. */
+    private void handlePhoto(Inbound message) {
+        String from = message.from();
+        if (!allow(from)) {
+            send(from, "Too many messages -- please wait a minute.", null);
+            return;
+        }
+        Optional<AgentLinkService.Speaker> linked = links.speakerFor("whatsapp", from);
+        if (linked.isEmpty()) {
+            send(from, "Hi! I only talk to registered users. Link your account first, then send the photo again.", null);
+            return;
+        }
+        byte[] bytes = downloadMedia(message.mediaId(), conversations.photoMaxBytes());
+        if (bytes == null) {
+            send(from, "I couldn't download that photo from WhatsApp (or it is too large) -- please try again.", null);
+            return;
+        }
+        AgentConversationService.Reply reply = conversations.handlePhoto(speaker(from, linked.get()), bytes,
+                message.mediaType(), "whatsapp-photo." + (message.mediaType().endsWith("png") ? "png" : "jpg"),
+                message.caption());
+        send(from, reply.text(), reply.confirmId());
+    }
+
+    /** {@code GET <graph>/<media-id>} -> {@code {url, file_size}}, then {@code GET url}, both with the
+     *  access token. Null on any failure, or when the declared size exceeds {@code limit}. */
+    private byte[] downloadMedia(String mediaId, Long limit) {
+        try {
+            HttpResponse<String> meta = http.send(HttpRequest.newBuilder(URI.create(apiBase + mediaId))
+                    .timeout(Duration.ofSeconds(15)).header("Authorization", "Bearer " + accessToken).GET().build(),
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            JsonNode info = meta.statusCode() == 200 ? mapper.readTree(meta.body()) : null;
+            String url = info == null ? "" : info.path("url").asText("");
+            if (url.isEmpty() || (limit != null && info.path("file_size").asLong(0) > limit)) {
+                return null;
+            }
+            HttpResponse<byte[]> file = http.send(HttpRequest.newBuilder(URI.create(url))
+                    .timeout(Duration.ofSeconds(30)).header("Authorization", "Bearer " + accessToken).GET().build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            return file.statusCode() == 200 ? file.body() : null;
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return null;
+        } catch (Exception failed) {
+            LOG.fine("WhatsApp media download failed: " + failed.getClass().getSimpleName());
+            return null;
+        }
     }
 
     private void handleButton(String from, String buttonId) {

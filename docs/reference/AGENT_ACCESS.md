@@ -61,9 +61,10 @@ A chat channel can also turn a **photo** into a new record. Declare which concep
 }
 ```
 
-When a linked user sends a photo (Telegram: as a photo or as an image file):
+When a linked user sends a photo (as a photo or as an image file, on Telegram or WhatsApp):
 
-1. The bot picks the largest photo size within `imageField`'s `maxSizeBytes` and uploads it into
+1. The bot fetches the photo — on Telegram the largest size within `imageField`'s `maxSizeBytes`; on
+   WhatsApp the one image, refused up front when its declared size is over the limit — and uploads it into
    that `type: file` field (`POST /api/files/{concept}/{field}`), so the field's content types and
    size limit still apply.
 2. If `procedure` is set, it runs over the draft `{captionField: <caption>, imageField: <handle>}`

@@ -112,7 +112,8 @@ class WhatsAppChannelTest {
         assertEquals(3, messages.size());
         assertEquals(new WhatsAppChannel.Inbound(USER, "wamid.t", "how many pigments?", null), messages.get(0));
         assertEquals(new WhatsAppChannel.Inbound(USER, "wamid.b", null, "c:p-81f2"), messages.get(1));
-        assertEquals(new WhatsAppChannel.Inbound(USER, "wamid.i", null, null), messages.get(2));
+        assertEquals(new WhatsAppChannel.Inbound(USER, "wamid.i", null, null, "media-1", "image/jpeg", ""),
+                messages.get(2), "P8: an image is parsed as media, not dropped");
         assertEquals(List.of(), channel.parse("not json".getBytes(StandardCharsets.UTF_8)));
     }
 
@@ -207,8 +208,60 @@ class WhatsAppChannelTest {
     void nonTextMessageGetsAPlainExplanation() {
         channel.handle(new WhatsAppChannel.Inbound(USER, "wamid.1", null, null));
 
-        assertEquals("I can only read text messages.", sent.get(0).path("text").path("body").asText());
+        assertEquals("I can only read text messages and photos.", sent.get(0).path("text").path("body").asText());
         verify(links, never()).speakerFor(any(), any());
+    }
+
+    /** P8 (G5): media id -> Graph media lookup -> authenticated download -> handlePhoto -> buttons. */
+    @Test
+    void photoIsFetchedFromTheMediaEndpointAndOfferedForConfirm() {
+        byte[] photo = {(byte) 0xFF, (byte) 0xD8, 9, 9};
+        String base = "http://127.0.0.1:" + graph.getAddress().getPort();
+        graph.createContext("/v21.0/media-7", exchange -> {
+            authHeaders.add(exchange.getRequestHeaders().getFirst("Authorization"));
+            byte[] info = ("{\"url\":\"" + base + "/blob/media-7\",\"mime_type\":\"image/jpeg\",\"file_size\":4}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, info.length);
+            exchange.getResponseBody().write(info);
+            exchange.close();
+        });
+        graph.createContext("/blob/media-7", exchange -> {
+            authHeaders.add(exchange.getRequestHeaders().getFirst("Authorization"));
+            exchange.sendResponseHeaders(200, photo.length);
+            exchange.getResponseBody().write(photo);
+            exchange.close();
+        });
+        AgentLinkService.Speaker linked = new AgentLinkService.Speaker("t1", "bernard", Set.of("Customer"));
+        when(links.speakerFor("whatsapp", USER)).thenReturn(Optional.of(linked));
+        when(conversations.photoMaxBytes()).thenReturn(204800L);
+        AgentConversationService.Speaker speaker = new AgentConversationService.Speaker(
+                "whatsapp", USER, "t1", "bernard", Set.of("Customer"));
+        when(conversations.handlePhoto(eq(speaker), eq(photo), eq("image/jpeg"), any(), eq("Lech")))
+                .thenReturn(new AgentConversationService.Reply("New Cap from your photo", "ph-1"));
+
+        channel.handle(new WhatsAppChannel.Inbound(USER, "wamid.p", null, null, "media-7", "image/jpeg", "Lech"));
+
+        assertEquals("c:ph-1", sent.get(0).at("/interactive/action/buttons/0/reply/id").asText());
+        assertEquals(List.of("Bearer access-token", "Bearer access-token"), authHeaders.subList(0, 2),
+                "both the media lookup and the download carry the access token");
+    }
+
+    @Test
+    void photoOverTheFieldLimitIsRefusedBeforeDownloading() {
+        graph.createContext("/v21.0/media-big", exchange -> {
+            byte[] info = "{\"url\":\"http://127.0.0.1:1/never\",\"file_size\":9000000}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, info.length);
+            exchange.getResponseBody().write(info);
+            exchange.close();
+        });
+        when(links.speakerFor("whatsapp", USER))
+                .thenReturn(Optional.of(new AgentLinkService.Speaker("t1", "bernard", Set.of())));
+        when(conversations.photoMaxBytes()).thenReturn(204800L);
+
+        channel.handle(new WhatsAppChannel.Inbound(USER, "wamid.p", null, null, "media-big", "image/jpeg", ""));
+
+        assertTrue(sent.get(0).path("text").path("body").asText().contains("too large"));
+        verify(conversations, never()).handlePhoto(any(), any(), any(), any(), any());
     }
 
     private static String textDelivery(String id, String text) {
