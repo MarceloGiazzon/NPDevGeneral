@@ -154,6 +154,37 @@ public final class RollupConceptStoreDecorator implements ConceptStore {
         delegate.writeMaintainedFields(tenantId, conceptName, id, values);
     }
 
+    /**
+     * Boot-time backfill: a parent whose rollup field is still NULL -- it predates the rollup, or the
+     * column was just added -- is recomputed once, so a {@code likeCount} reads 0 (or the real count)
+     * before any Like ever touches it. Ids are collected before anything is written, so an
+     * empty-set min/max/avg that legitimately stays NULL cannot keep a page from advancing.
+     *
+     * @return how many parent rows were examined
+     */
+    public int backfill(String tenantId) {
+        int examined = 0;
+        for (List<Sourced> entries : index().sources().values()) {
+            for (Sourced entry : entries) {
+                List<String> ids = new ArrayList<>();
+                ConceptQuery.Filter isNull = ConceptQuery.Filter.isNull(entry.rollup().field());
+                for (int offset = 0; ; offset += ConceptQuery.MAX_LIMIT) {
+                    ConceptPage page = delegate.query(tenantId, entry.parentConcept(),
+                            new ConceptQuery(List.of(isNull), List.of(), offset, ConceptQuery.MAX_LIMIT));
+                    page.items().forEach(parent -> ids.add(parent.id()));
+                    if (!page.hasMore() || page.items().isEmpty()) {
+                        break;
+                    }
+                }
+                for (String id : ids) {
+                    recompute(tenantId, entry, id);
+                }
+                examined += ids.size();
+            }
+        }
+        return examined;
+    }
+
     private void recomputeParentsOf(String tenantId, List<Sourced> sourced, Optional<ConceptRecord> child) {
         if (child.isEmpty()) {
             return;

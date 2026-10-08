@@ -164,7 +164,7 @@ public final class AgentToolCatalog {
                         objectSchema(Map.of("id", prop("string", "The " + label + " id")), List.of("id")),
                         Kind.AGGREGATE, root.get().getName(), aggregate.name(), "get", null, false, false, List.of()));
                 case "save" -> out.add(new AgentTool("save_" + suffix, "Save " + label + withChildren,
-                        "Create or replace one " + label + withChildren + " in ONE call. Omit id to create a new "
+                        "Save one " + label + withChildren + ", new or existing, in ONE call. Omit id to add a new "
                                 + label + "; send an existing id to replace it. Root fields you leave out keep their current"
                                 + " values, but lists are replaced whole: every row you leave out of a list is"
                                 + " deleted, so always send the complete lists. " + about,
