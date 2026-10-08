@@ -520,6 +520,10 @@ public final class DockerDeploymentEmitter {
                     profiles: ["smtp"]
                     ports:
                       - "8025:8025"
+                      # SMTP too, so an app started on the host (_ops/Start-App.ps1, with
+                      # NPDEV_MAIL_SMTP_HOST=localhost) can reach the catcher, not only the
+                      # compose app service.
+                      - "1025:1025"
                     logging:
                       driver: json-file
                       options:
@@ -705,6 +709,10 @@ public final class DockerDeploymentEmitter {
                     profiles: ["smtp"]
                     ports:
                       - "8025:8025"
+                      # SMTP too, so an app started on the host (_ops/Start-App.ps1, with
+                      # NPDEV_MAIL_SMTP_HOST=localhost) can reach the catcher, not only the
+                      # compose app service.
+                      - "1025:1025"
                     logging:
                       driver: json-file
                       options:

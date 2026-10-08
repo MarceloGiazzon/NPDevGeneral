@@ -88,16 +88,22 @@ view it at `http://localhost:8025`. `NPDEV_MAIL_SMTP_HOST` defaults to `mailhog`
 service's DNS name), so an app whose model bound `mail-smtp` reaches it automatically once the
 profile is up; the app ignores the service entirely if unbound.
 
-## Known DSL limitation
+## Literal subject/body text
 
-A flow's `capabilityCall` step args are pure value-refs (`$state.path`), never literal strings —
-`resolveReferenceStrict`/`resolvePath` (`KernelRunner`) treat every arg the same way regardless of
-its `$`-prefix. This means a flow cannot construct a natural-language subject/body with embedded
-`${var}` placeholders purely from DSL syntax; either the field value itself already IS the final
-text (positional form, most common), or the caller building the payload programmatically supplies
-literal template text with placeholders (single-map form). Not a bug — a fair description of what
-the existing flow DSL can and can't express; documented rather than worked around, since fixing it
-would mean adding string-literal syntax to the DSL, well beyond this item's scope.
+An arg that does not resolve to anything in flow/procedure state is passed through as the literal
+string (`KernelRunner.resolveReference`; `DefaultProcedureExecutor.callCapability` for procedures).
+So the positional form can carry real template text, filled from a `templateVars` ref:
+
+```json
+"args": ["$recipient.email", "New trade proposal ${code}", "${proposerUsername} proposed ${code}.", "$trade"]
+```
+
+Avoid literal text that happens to equal a state key, or starts with `$`.
+
+**In a procedure, `args` is an object, and its values are passed positionally in ALPHABETICAL key
+order** (`ModelCompiler.sortObjectMap`), not declaration order. Name the keys so they sort into
+`to, subject, body, templateVars` — e.g. `arg1_to`, `arg2_subject`, `arg3_body`,
+`arg4_templateVars` (`NPDevSamples/pigmentampas`, procedure `NotifyTradeRecipient`).
 
 ## Verification
 

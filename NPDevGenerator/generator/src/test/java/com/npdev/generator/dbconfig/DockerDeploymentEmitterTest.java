@@ -126,6 +126,22 @@ class DockerDeploymentEmitterTest {
         assertLogCapPerService(standaloneCompose);
     }
 
+    @Test
+    void mailhogPublishesSmtpForAHostRunApp(@TempDir Path tempDir) throws Exception {
+        // Pigmentampas P7: an app started on the host (_ops/Start-App.ps1) reaches MailHog only
+        // through a published 1025 -- the UI port alone left mail-smtp with nothing to connect to.
+        Path serverSrc = Files.createDirectories(tempDir.resolve("server-src"));
+        String serverCompose = Files.readString(emitCompose(tempDir.resolve("server-app"),
+                loadPlan(serverSrc, "Postgres", 5432)));
+        assertTrue(serverCompose.contains("- \"1025:1025\""), serverCompose);
+
+        Path standaloneSrc = Files.createDirectories(tempDir.resolve("standalone-src"));
+        GeneratedDatabasePlan standalonePlan = new UserDatabaseDefinitionLoader()
+                .load(writeDefinition(standaloneSrc, "H2Local", "", 0), null);
+        String standaloneCompose = Files.readString(emitCompose(tempDir.resolve("standalone-app"), standalonePlan));
+        assertTrue(standaloneCompose.contains("- \"1025:1025\""), standaloneCompose);
+    }
+
     private static Path emitCompose(Path appRoot, GeneratedDatabasePlan plan) throws Exception {
         new DockerDeploymentEmitter().emit(null, appRoot, plan);
         return appRoot.resolve("docker-compose.yml");

@@ -158,5 +158,8 @@ class ServiceBaseFlowRowLevelAuthzTest {
         assertTrue(generated.contains("persistence.findById(generatedId)"),
                 "a Flow-backed create must fetch the row the flow already persisted, not re-write it: "
                         + generated);
+        assertTrue(generated.contains("result.getStatus() == ExecutionStatus.WAITING_EVENT"),
+                "a create flow that persists and then parks on an awaitEvent must not fail the CRUD "
+                        + "create (Pigmentampas P7 trade proposal): " + generated);
     }
 }
