@@ -67,6 +67,33 @@ class RollupConceptStoreDecoratorTest {
     }
 
     @Test
+    void backfillFillsParentsWrittenBeforeTheRollupExisted() throws Exception {
+        CompiledModel model = new ModelCompiler().compile(new JsonModelParser().parse(new ObjectMapper().readTree(MODEL)));
+        InMemoryConceptStore raw = new InMemoryConceptStore(model);
+        // Written straight to the inner store -- as rows that predate the rollup declaration were.
+        raw.save(new ConceptRecord("Mosaic", "old", "default", new LinkedHashMap<>(Map.of("id", "old", "title", "Before"))));
+        raw.save(new ConceptRecord("Mosaic", "lonely", "default", new LinkedHashMap<>(Map.of("id", "lonely"))));
+        for (String like : new String[] {"a", "b", "c"}) {
+            raw.save(new ConceptRecord("Like", like, "default", new LinkedHashMap<>(Map.of("id", like, "mosaicId", "old", "weight", 4))));
+        }
+        RollupConceptStoreDecorator decorated = new RollupConceptStoreDecorator(raw, () -> model);
+        assertNull(raw.findById("default", "Mosaic", "old").orElseThrow().data().get("likeCount"));
+
+        assertTrue(decorated.backfill("default") > 0);
+
+        Map<String, Object> old = raw.findById("default", "Mosaic", "old").orElseThrow().data();
+        assertEquals(3L, ((Number) old.get("likeCount")).longValue());
+        assertEquals(0, new java.math.BigDecimal(String.valueOf(old.get("totalWeight"))).compareTo(new java.math.BigDecimal(12)));
+        assertEquals(0, new java.math.BigDecimal(String.valueOf(old.get("maxWeight"))).compareTo(new java.math.BigDecimal(4)));
+        Map<String, Object> lonely = raw.findById("default", "Mosaic", "lonely").orElseThrow().data();
+        assertEquals(0L, ((Number) lonely.get("likeCount")).longValue());
+        assertNull(lonely.get("maxWeight"), "max of no likes stays null -- and backfill still terminates");
+
+        decorated.backfill("default");
+        assertEquals(3L, ((Number) raw.findById("default", "Mosaic", "old").orElseThrow().data().get("likeCount")).longValue());
+    }
+
+    @Test
     void aNewParentStartsAtZeroAndEmptyMinMaxStayNull() {
         assertEquals(0L, likes("m1"));
         assertEquals(0, new java.math.BigDecimal(String.valueOf(field("m1", "totalWeight"))).signum());
