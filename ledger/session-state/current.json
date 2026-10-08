@@ -1,18 +1,18 @@
 {
-  "closedAt": "2026-10-08T01:59:07.8332345Z",
+  "closedAt": "2026-10-08T03:43:53.5089559Z",
   "branch": "main",
-  "head": "736d485e",
-  "headSubject": "feat(pigmentampas): P7 community flows -- trades, likes, monthly challenge",
-  "summary": "Shipped Pigmentampas P7 (736d485e, pushed): Trade create flow with mail-smtp->MailHog email, awaitEvent TradeAnswered (payload tradeId) + 7-day timeout -> ExpireTrade, Like + LikesPerMosaic query, Challenge closed by monthly cron flow; platform fixes: create flow may end WAITING_EVENT, compose MailHog publishes 1025, H2 reserved words day..year, EMAIL_NOTIFICATIONS literal-args section corrected.",
-  "nextStep": "Run T2 (pwsh -NoProfile -File scripts/quality/run-all-gates.ps1 via run_digest) on 736d485e and fix any red; then ask the owner whether P8 should add a declarative rollup/counter field (stored Mosaic.likeCount) before starting P8 per the plan. To demo P7: docker run -d --name pigmentampas-mailhog -p 1025:1025 -p 8025:8025 mailhog/mailhog:v1.0.1 (container may already exist: docker start pigmentampas-mailhog), start the app with NPDEV_MAIL_SMTP_HOST=localhost NPDEV_MAIL_SMTP_PORT=1025 NPDEV_MAIL_SMTP_FROM=trades@pigmentampas.local NPDEV_MAIL_SMTP_STARTTLS=false via Build/samples/pigmentampas/Output/App/_ops/Start-App.ps1 (port 8084).",
+  "head": "8abd9e34",
+  "headSubject": "fix(test): P7 T2 reds -- Pigmentampas concept count, RuntimeHost + kernel coverage floors",
+  "summary": "T2 on P7 (736d485e): aiKnowledge green; generator/runtimeHost/kernel red, fixed in 8abd9e34 (pushed): PigmentampasSampleTest 16->19 concepts; RuntimeHost+kernel coverage ~1-line noise covered by new RuntimeDtoMappingTest + MailMessageTest (RuntimeHost floor ratcheted 26.3518->26.5277). Rerun of the 3 gates ALL GREEN.",
+  "nextStep": "Owner decision pending: should P8 first add a declarative rollup/counter field (stored Mosaic.likeCount)? Then start P8 per the plan. P7 demo recipe unchanged (MailHog on 1025/8025, NPDEV_MAIL_SMTP_* env, Build/samples/pigmentampas/Output/App/_ops/Start-App.ps1, port 8084).",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
   "blocked": "D5 Google OAuth client + Meta app must be created by the owner (P8); D6 story names unanswered (P8/P9).",
-  "verified": "Narrow only, all green: ServiceBaseFlowRowLevelAuthzTest + DockerDeploymentEmitterTest (generator), DialectConformanceTierATest (kernel); npdev validate model 0 errors; live on rebuilt app: propose->MailHog email, accept resumes flow COMPLETED, 90 s test timeout -> EXPIRED, every-minute test cron -> challenge CLOSED, likes 201/409/403 + LikesPerMosaic count; final real-values build booted and proposal+mail re-verified. T2 NOT run for P7.",
+  "verified": "T2 all four gates green for 8abd9e34 (aiKnowledge in full run on 736d485e; generator/runtimeHost/kernel rerun with fixes).",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "736d485e feat(pigmentampas): P7 community flows -- trades, likes, monthly challenge",
-    "608d370c chore(session): handoff after P6 T2 fixes (0d1273e1)"
+    "8abd9e34 fix(test): P7 T2 reds -- Pigmentampas concept count, RuntimeHost + kernel coverage floors",
+    "4c5e102b chore(session): handoff after Pigmentampas P7 (736d485e)"
   ]
 }
