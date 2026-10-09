@@ -553,7 +553,7 @@ Tracked as accepted boundaries B15(A) (closed, Move 16) / B15(B) (closed, S6, th
 
 **Flow-level cron scheduling (LNCH-12)** is a completely different, model-top-level feature: a
 `flowSchedule` declaration with a `cron` expression and a `tenantScope`. Full doc:
-`docs/SCHEDULED_FLOWS.md`. Implementation: `NpdevCronSchedulerService`
+`docs/reference/SCHEDULED_FLOWS.md`. Implementation: `NpdevCronSchedulerService`
 (`NPDevRuntimeHost/src/main/java/com/finalexec/scheduler/`) registers one Spring `CronTrigger` per
 `(flow, tenant)` pair; an empty `tenantScope` defaults to `["default"]`. A scheduled run goes through
 `kernelRunner.execute(flowName, Map.of(), context)` — **the exact same entrypoint an HTTP-triggered
@@ -705,6 +705,6 @@ text: `docs/archive/programme-history/REG16_FLOW_ORCHESTRATION_ADVERSARIAL_REVIE
 ---
 
 *See also: `docs/architecture/FLOW_TRANSACTION_CONTRACT.md` (compensation, full spec) ·
-`docs/SCHEDULED_FLOWS.md` (cron scheduling, full spec) · `docs/BOUNDARY_LIFT_ROADMAP.md` (LIFT-LOOP-P1/P2) ·
+`docs/reference/SCHEDULED_FLOWS.md` (cron scheduling, full spec) · `docs/BOUNDARY_LIFT_ROADMAP.md` (LIFT-LOOP-P1/P2) ·
 `docs/ACCEPTED_BOUNDARIES.md` (B15(A)/B15(B), sequential-vs-parallel await-in-loop) · `FlowEngine.java`'s own javadoc
 (T1.16) for the port/implementation split.*

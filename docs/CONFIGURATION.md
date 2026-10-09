@@ -60,7 +60,7 @@ All default to a sane value and must be `> 0` if you override them (`StartupVali
 
 ## Scheduler settings
 
-Only checked when `npdev.scheduler.enabled` (default `true`) — see `docs/SCHEDULED_FLOWS.md` for
+Only checked when `npdev.scheduler.enabled` (default `true`) — see `docs/reference/SCHEDULED_FLOWS.md` for
 what a scheduled flow actually does.
 
 | Property | Default | Notes |

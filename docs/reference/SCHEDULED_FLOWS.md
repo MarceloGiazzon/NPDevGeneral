@@ -41,6 +41,12 @@ what lets an event/audit trail tell a scheduled run apart from one a real admin 
 — every event/log line the flow produces carries it (see `PermissionDebugConfig`/`KernelRunner`
 outcome logs).
 
+**Row-level rules and lifecycle guards** still apply to a scheduled run. A rule that names people
+(`$user.roles.contains('Curator')`) denies the scheduler unless it also says `|| $user.isSystem`,
+which is true only for the scheduler (and model seeding). Do not compare `$user.id` to
+`'system:scheduler'`: that id is not reserved, so a real login can carry it. See
+[ROW_LEVEL_AUTHORIZATION.md](ROW_LEVEL_AUTHORIZATION.md).
+
 ## Missed-window policy: skip, don't catch up
 
 This falls out of `CronTrigger`'s own semantics for free — it always computes the next fire time
