@@ -11,7 +11,8 @@ import java.util.TreeSet;
 
 /**
  * The ONE evaluator for a model expression that may name the acting user -- {@code $user.id},
- * {@code $user.actorId}, {@code $user.tenantId}, {@code $user.roles.contains('Curator')} -- over a
+ * {@code $user.actorId}, {@code $user.tenantId}, {@code $user.roles.contains('Curator')},
+ * {@code $user.isSystem} -- over a
  * record's own fields. Row/field access rules (LNCH-13, R5.5) and lifecycle transition guards both
  * call it, so "who may" reads the same everywhere it is written (extracted from
  * {@link ConfiguredConceptGatewaySemanticPolicy}'s private access-rule evaluator, 2026-10-07, when
@@ -65,6 +66,8 @@ public final class UserScopedExpressions {
         SortedSet<String> roles = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         roles.addAll(effectiveContext.roles());
         scope.put("$user.roles", roles);
+        // #37: lets a rule admit the cron scheduler (and seeding) without naming its actor id.
+        scope.put("$user.isSystem", ExecutionContext.isSystem(effectiveContext));
         try {
             return ComputedExpression.evaluateBoolean(expression, scope, FUNCTIONS);
         } catch (ComputedExpression.ExpressionException malformed) {

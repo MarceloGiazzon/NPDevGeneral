@@ -42,10 +42,32 @@ public record ExecutionContext(
      * broad enough to run any flow a trusted internal job needs), deliberately NOT a bypass like
      * the ControlPanel superuser key. The distinct actorId lets an event/audit trail tell a
      * scheduled run apart from one a real admin triggered by hand.
+     *
+     * <p>One instance per tenant, so {@link #isSystem(ExecutionContext)} can recognise it by identity
+     * without an ever-growing registry.
      */
     public static ExecutionContext system(String tenantId) {
-        return new ExecutionContext(tenantId, "system:scheduler", Map.of("trigger", "schedule"), Set.of("ADMIN"));
+        ExecutionContext candidate = new ExecutionContext(tenantId, "system:scheduler", Map.of("trigger", "schedule"), Set.of("ADMIN"));
+        return SCHEDULER_CONTEXTS.computeIfAbsent(candidate.tenantId(), ignored -> candidate);
     }
+
+    /**
+     * Pigmentampas friction #37: true for a principal the PLATFORM created -- the cron scheduler
+     * ({@link #system(String)}) or model seeding ({@link #seeding(String)}) -- exposed to rules and
+     * guards as {@code $user.isSystem}. Decided by instance IDENTITY, never by the
+     * {@code system:} actor id: usernames, IdP subjects and trusted-source JWT subjects are not
+     * barred from that prefix, so {@code $user.id == 'system:scheduler'} is spoofable and this is
+     * not. Any {@code withTag}/{@code withRoles} copy, and a flow resumed after {@code awaitEvent}
+     * ({@link #resuming}), is not system (fails closed). Static, not an accessor, so no serializer
+     * reports it.
+     */
+    public static boolean isSystem(ExecutionContext context) {
+        return context != null
+                && (SCHEDULER_CONTEXTS.get(context.tenantId()) == context || isSeeding(context));
+    }
+
+    private static final java.util.concurrent.ConcurrentMap<String, ExecutionContext> SCHEDULER_CONTEXTS =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * REG-56: the trust level a flow resumes under after parking on {@code awaitEvent} -- whether
