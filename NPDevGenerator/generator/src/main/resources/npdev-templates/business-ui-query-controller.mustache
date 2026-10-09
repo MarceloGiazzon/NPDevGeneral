@@ -150,7 +150,7 @@ public class GeneratedQueryController {
     private Map<String, Object> runAggregate(
             CompiledQuery query, ExecutionContext context, Map<String, Object> bound) {
         List<ConceptQuery.Filter> filters = ConceptQueryPredicateCompiler.compileToConceptQueryFilters(
-                query.where(), query.parameters(), bound);
+                query.where(), query.parameters(), bound, context);
         List<ConceptAggregateQuery.GroupByField> groupBy = new ArrayList<>();
         for (CompiledGroupByField field : query.groupBy()) {
             groupBy.add(new ConceptAggregateQuery.GroupByField(field.field(), field.bucket()));
@@ -161,7 +161,7 @@ public class GeneratedQueryController {
                     aggregate.name(), aggregate.fn(), aggregate.field()));
         }
         List<ConceptQuery.Filter> having = ConceptQueryPredicateCompiler.compileToConceptQueryFilters(
-                query.having(), query.parameters(), bound);
+                query.having(), query.parameters(), bound, context);
         List<ConceptQuery.Sort> sorts = ConceptQueryPredicateCompiler.compileOrderBy(query.orderBy());
 
         ConceptAggregateQuery aggregateQuery = new ConceptAggregateQuery(
@@ -196,7 +196,7 @@ public class GeneratedQueryController {
     private Map<String, Object> runPlain(
             CompiledQuery query, ExecutionContext context, Map<String, Object> bound, HttpServletRequest request) {
         List<ConceptQuery.Filter> filters = ConceptQueryPredicateCompiler.compileToConceptQueryFilters(
-                query.where(), query.parameters(), bound);
+                query.where(), query.parameters(), bound, context);
         List<ConceptQuery.Sort> sorts = ConceptQueryPredicateCompiler.compileOrderBy(query.orderBy());
         int declaredLimit = query.limit() != null && query.limit() > 0 ? query.limit() : ConceptQuery.DEFAULT_LIMIT;
         int offset = parseOffset(request);

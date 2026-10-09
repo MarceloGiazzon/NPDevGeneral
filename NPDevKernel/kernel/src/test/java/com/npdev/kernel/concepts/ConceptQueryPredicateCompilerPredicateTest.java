@@ -103,4 +103,34 @@ class ConceptQueryPredicateCompilerPredicateTest {
         assertEquals(List.of(), ConceptQueryPredicateCompiler.compilePredicate(null));
         assertEquals(List.of(), ConceptQueryPredicateCompiler.compilePredicate("  "));
     }
+
+    @Test
+    void userReferenceResolvesToTheCallerAndAnonymousBecomesIsNull() {
+        com.npdev.kernel.ExecutionContext tito = com.npdev.kernel.ExecutionContext.of("t1", "tito");
+        ConceptQueryPredicateCompiler.ResolvedClause mine = ConceptQueryPredicateCompiler.compilePredicate(
+                "ownerUsername == $user.id", List.of(), Map.of(), tito).get(0).get(0);
+        assertEquals(PredicateOperator.EQ, mine.operator());
+        assertEquals("tito", mine.value());
+        assertEquals("t1", ConceptQueryPredicateCompiler.compilePredicate(
+                "tenantCode == $user.tenantId", List.of(), Map.of(), tito).get(0).get(0).value());
+
+        com.npdev.kernel.ExecutionContext anonymous = com.npdev.kernel.ExecutionContext.anonymous();
+        assertEquals(PredicateOperator.IS_NULL, ConceptQueryPredicateCompiler.compilePredicate(
+                "ownerUsername == $user.id", List.of(), Map.of(), anonymous).get(0).get(0).operator());
+        assertEquals(PredicateOperator.IS_NOT_NULL, ConceptQueryPredicateCompiler.compilePredicate(
+                "ownerUsername != $user.id", List.of(), Map.of(), anonymous).get(0).get(0).operator());
+    }
+
+    @Test
+    void userReferenceWithNoCallerIsRefusedNotGuessed() {
+        ConceptQueryPredicateCompiler.UnsupportedPredicateException thrown = assertThrows(
+                ConceptQueryPredicateCompiler.UnsupportedPredicateException.class,
+                () -> ConceptQueryPredicateCompiler.compileToConceptQueryFilters("ownerUsername == $user.id"));
+        assertTrue(thrown.getMessage().contains("acting user"), thrown.getMessage());
+        List<com.npdev.kernel.concepts.ConceptQuery.Filter> filters =
+                ConceptQueryPredicateCompiler.compileToConceptQueryFilters("ownerUsername == $user.id",
+                        List.of(), Map.of(), com.npdev.kernel.ExecutionContext.of("t1", "tito"));
+        assertEquals(List.of(new com.npdev.kernel.concepts.ConceptQuery.Filter(
+                "ownerUsername", com.npdev.kernel.concepts.ConceptQuery.Operator.EQ, "tito")), filters);
+    }
 }

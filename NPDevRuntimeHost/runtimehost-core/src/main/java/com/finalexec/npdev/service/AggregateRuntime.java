@@ -416,7 +416,8 @@ public class AggregateRuntime {
             }
             List<ConceptQuery.Filter> filters;
             try {
-                filters = ConceptQueryPredicateCompiler.compileToConceptQueryFilters(query.where());
+                filters = ConceptQueryPredicateCompiler.compileToConceptQueryFilters(
+                        query.where(), List.of(), Map.of(), context);
             } catch (ConceptQueryPredicateCompiler.UnsupportedPredicateException unsupported) {
                 out.put(queryName, List.of());
                 continue;

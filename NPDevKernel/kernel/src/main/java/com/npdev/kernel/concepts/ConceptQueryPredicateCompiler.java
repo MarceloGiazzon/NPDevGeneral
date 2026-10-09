@@ -8,6 +8,7 @@ import com.npdev.dsl.v1.query.QueryPredicateGrammar.Literal;
 import com.npdev.dsl.v1.query.QueryPredicateGrammar.PredicateClause;
 import com.npdev.dsl.v1.query.QueryPredicateGrammar.PredicateLiteral;
 import com.npdev.dsl.v1.query.QueryPredicateGrammar.PredicateOperator;
+import com.npdev.kernel.ExecutionContext;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -231,6 +232,22 @@ public final class ConceptQueryPredicateCompiler {
      */
     public static List<List<ResolvedClause>> compilePredicate(
             String where, List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters) {
+        return compilePredicate(where, parameters, boundParameters, null);
+    }
+
+    /**
+     * Pigmentampas friction #24: the caller-aware sibling -- a {@code $user.id}/{@code $user.actorId}/
+     * {@code $user.tenantId} right-hand side resolves to {@code caller}'s value ("caps I own":
+     * {@code ownerUsername == $user.id}). An anonymous caller has no id: {@code == $user.id} becomes
+     * {@code is null} and {@code != $user.id} {@code is not null}, the same convention
+     * {@code AccessReadPredicate} uses for {@code access.read}.
+     *
+     * @param caller the acting context; {@code null} means "no caller is known here" and a
+     *               {@code $user} reference is then refused, never guessed
+     */
+    public static List<List<ResolvedClause>> compilePredicate(
+            String where, List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters,
+            ExecutionContext caller) {
         List<List<PredicateClause>> groups;
         try {
             groups = QueryPredicateGrammar.parseGroups(where);
@@ -241,7 +258,7 @@ public final class ConceptQueryPredicateCompiler {
         for (List<PredicateClause> group : groups) {
             List<ResolvedClause> resolvedClauses = new ArrayList<>();
             for (PredicateClause clause : group) {
-                resolvedClauses.add(resolvePredicateClause(where, clause, parameters, boundParameters));
+                resolvedClauses.add(resolvePredicateClause(where, clause, parameters, boundParameters, caller));
             }
             resolvedGroups.add(List.copyOf(resolvedClauses));
         }
@@ -250,7 +267,8 @@ public final class ConceptQueryPredicateCompiler {
 
     private static ResolvedClause resolvePredicateClause(
             String where, PredicateClause clause,
-            List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters) {
+            List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters,
+            ExecutionContext caller) {
         if (clause.operator().isUnary()) {
             return new ResolvedClause(clause.path(), clause.operator(), null);
         }
@@ -258,20 +276,41 @@ public final class ConceptQueryPredicateCompiler {
         if (clause.literal() instanceof PredicateLiteral.Values values) {
             List<Object> resolvedValues = new ArrayList<>();
             for (PredicateLiteral element : values.values()) {
-                resolvedValues.add(resolvePredicateLiteral(where, clause, element, parameters, boundParameters));
+                resolvedValues.add(resolvePredicateLiteral(where, clause, element, parameters, boundParameters, caller));
             }
-            value = List.copyOf(resolvedValues);
+            value = java.util.Collections.unmodifiableList(resolvedValues);
         } else {
-            value = resolvePredicateLiteral(where, clause, clause.literal(), parameters, boundParameters);
+            value = resolvePredicateLiteral(where, clause, clause.literal(), parameters, boundParameters, caller);
+            if (value == null && clause.literal() instanceof PredicateLiteral.UserRef) {
+                if (clause.operator() == PredicateOperator.EQ) {
+                    return new ResolvedClause(clause.path(), PredicateOperator.IS_NULL, null);
+                }
+                if (clause.operator() == PredicateOperator.NEQ) {
+                    return new ResolvedClause(clause.path(), PredicateOperator.IS_NOT_NULL, null);
+                }
+            }
         }
         return new ResolvedClause(clause.path(), clause.operator(), value);
     }
 
     private static Object resolvePredicateLiteral(
             String where, PredicateClause clause, PredicateLiteral literal,
-            List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters) {
+            List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters,
+            ExecutionContext caller) {
         if (literal instanceof PredicateLiteral.Value value) {
             return value.value();
+        }
+        if (literal instanceof PredicateLiteral.UserRef user) {
+            if (caller == null) {
+                throw new UnsupportedPredicateException(where,
+                        predicatePathText(clause.path()) + " " + clause.operator().token() + " " + user.reference(),
+                        user.reference() + " needs the acting user, and this call site has none "
+                                + "(only a query run for a request, procedure or workbench resolves it)");
+            }
+            if ("$user.tenantId".equals(user.reference())) {
+                return caller.tenantId();
+            }
+            return caller.hasActor() ? caller.actorId() : null;
         }
         String name = ((PredicateLiteral.Placeholder) literal).name();
         String describedClause = predicatePathText(clause.path()) + " " + clause.operator().token() + " :" + name;
@@ -323,7 +362,14 @@ public final class ConceptQueryPredicateCompiler {
      */
     public static List<ConceptQuery.Filter> compileToConceptQueryFilters(
             String where, List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters) {
-        List<List<ResolvedClause>> groups = compilePredicate(where, parameters, boundParameters);
+        return compileToConceptQueryFilters(where, parameters, boundParameters, null);
+    }
+
+    /** {@link #compileToConceptQueryFilters(String, List, Map)} resolving {@code $user.*} against {@code caller}. */
+    public static List<ConceptQuery.Filter> compileToConceptQueryFilters(
+            String where, List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters,
+            ExecutionContext caller) {
+        List<List<ResolvedClause>> groups = compilePredicate(where, parameters, boundParameters, caller);
         if (groups.isEmpty()) {
             return List.of();
         }
