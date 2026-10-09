@@ -1,19 +1,17 @@
 {
-  "closedAt": "2026-10-08T23:52:53.1796116Z",
+  "closedAt": "2026-10-09T04:07:57.1983329Z",
   "branch": "main",
-  "head": "344166b1",
-  "headSubject": "chore(session): handoff after roles and users, c.. shortcut",
-  "summary": "Shipped roles and users at cb2594ae (roles[].concepts concept-CRUD grants, create-user roleNames[], tenant-ADMIN role assign/revoke API; live 15/15). Made 'c..' automatic: session-start-handoff.py now runs Prepare-Session.ps1 itself when a session starts from /clear, so /prep is no longer needed.",
-  "nextStep": "Build the P9 story page for the Pigmentampas Mosaic demo per the plan README (P9 section). App runs at http://127.0.0.1:8084 from D:/WorkSpace/NPDev/Build/samples/pigmentampas/Output/App; to (re)boot set NPDEV_MAIL_SMTP_HOST=localhost NPDEV_MAIL_SMTP_PORT=1025 NPDEV_MAIL_SMTP_FROM=noreply@pigmentampas.local NPDEV_MAIL_SMTP_STARTTLS=false before _ops/Start-App.ps1. Logins admin/demo-admin-1, tito and tavo/demo-pass-1.",
+  "head": "cf4a5367",
+  "headSubject": "feat(hooks): /clear auto-runs the session prep (c.. = close, clear, done)",
+  "summary": "P9 story page published: https://claude.ai/artifact/RKtMGx5td8uCYUekjfCuPv (source/images/capture scripts in plan dir p9/). Live Gemini paint PTM-2026-0035 (216 cells, 24 s); published 0035/0026/0034 so the public gallery shows real work. 5 new friction entries (49 total): duplicate 'First light' seeds (7 copies), REST create ignores lifecycle initial state + owner, stale business-UI status banner, 'nao autenticado' string, capture-capability-docs.py cannot log in. No repo code changes.",
+  "nextStep": "Fix the P9 friction items, starting with the duplicate seeds (seeded 'First light' Mosaic re-inserted against a kept DB -> 7 PUBLISHED copies); then REST create applying lifecycle initial state, the stale status banner, the 'nao autenticado' string, and login support in scripts/docs/capture-capability-docs.py. App runs at http://127.0.0.1:8084 (live Gemini env + SMTP env, see memory).",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
-  "blocked": "D5: Google OAuth client + Meta app (owner). Live Claude Desktop run is the owner's.",
-  "verified": "T2 all four gates green for cb2594ae; live Pigmentampas 15/15 role checks. Hook change: manual run with source=clear printed the prep output (15 s), source=startup unchanged (9 lines); no gate run for the hook edit.",
-  "dirtyCount": 1,
-  "dirtyFiles": [
-    " M scripts/hooks/session-start-handoff.py"
-  ],
+  "blocked": "D5: Google OAuth client + Meta app (owner). Real-phone bot runs and the Claude Desktop MCP run are the owner's.",
+  "verified": "P9 page rendered locally at 1280 and 400 px (no horizontal scroll) before publish; heart mosaic 216/216 cells read back via API; three mosaics PUBLISHED via API; no gate run (no repo code changed).",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "344166b1 chore(session): handoff after roles and users, c.. shortcut"
+    "cf4a5367 feat(hooks): /clear auto-runs the session prep (c.. = close, clear, done)"
   ]
 }
