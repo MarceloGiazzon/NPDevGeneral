@@ -2971,10 +2971,14 @@ public final class GeneratedCrudRuntimeSupport {
                     if (sequenceDefault && !allocateSequences) {
                         continue;
                     }
-                    Object evaluated = fieldDefaults == null
-                            ? null
-                            : fieldDefaults.evaluateFieldDefault(schema.getDefaultExpression(), values, tenantForDefaults(values));
-                    if (evaluated == null) {
+                    boolean userDefault = UserScopedExpressions.referencesUser(schema.getDefaultExpression());
+                    Object evaluated = userDefault
+                            ? com.npdev.kernel.concepts.ValueExpressionEvaluator.evaluate(
+                                    schema.getDefaultExpression(), values, resolveCurrentExecutionContext())
+                            : fieldDefaults == null
+                                    ? null
+                                    : fieldDefaults.evaluateFieldDefault(schema.getDefaultExpression(), values, tenantForDefaults(values));
+                    if (evaluated == null && !userDefault) {
                         evaluated = evaluateSchemaExpression(schema.getDefaultExpression(), values);
                     }
                     if (evaluated != null) {

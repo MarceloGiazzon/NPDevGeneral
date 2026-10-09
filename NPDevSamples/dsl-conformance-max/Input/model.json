@@ -176,6 +176,13 @@
           "ui": { "label": "Order number" }
         },
         {
+          "name": "placedBy",
+          "type": "string",
+          "required": false,
+          "defaultExpression": "$user.id",
+          "ui": { "label": "Placed by" }
+        },
+        {
           "name": "customerEmail",
           "renamedFrom": "email",
           "type": "string",

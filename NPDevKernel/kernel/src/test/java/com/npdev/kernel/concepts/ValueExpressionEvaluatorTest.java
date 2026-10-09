@@ -1,6 +1,7 @@
 package com.npdev.kernel.concepts;
 
 import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.kernel.ExecutionContext;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -18,6 +19,21 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * ratchet never saw either method run.
  */
 class ValueExpressionEvaluatorTest {
+
+    @Test
+    void userDefaultResolvesFromTheActingContextAndIsNullForAnonymous() {
+        ExecutionContext tito = ExecutionContext.of("t1", "tito");
+        assertEquals("tito", ValueExpressionEvaluator.evaluate("$user.id", Map.of(), tito));
+        assertEquals("tito", ValueExpressionEvaluator.evaluate(" $user.actorId ", Map.of(), tito));
+        assertEquals("t1", ValueExpressionEvaluator.evaluate("$user.tenantId", Map.of(), tito));
+        // Anonymous: no owner forged -- the required check downstream still fires.
+        assertNull(ValueExpressionEvaluator.evaluate("$user.id", Map.of(), ExecutionContext.anonymous()));
+        assertNull(ValueExpressionEvaluator.evaluate("$user.id", Map.of(), null));
+        // Unresolvable $user expression is null, never the raw text written into the column.
+        assertNull(ValueExpressionEvaluator.evaluate("bogus($user.id)", Map.of(), tito));
+        // No $user: the context-free path, unchanged.
+        assertEquals("alpha", ValueExpressionEvaluator.evaluate("$name", Map.of("name", "alpha"), tito));
+    }
 
     @Test
     void evaluateDispatchesEverySpecialFormAndFallsBackToRawTextWhenUnparseable() {

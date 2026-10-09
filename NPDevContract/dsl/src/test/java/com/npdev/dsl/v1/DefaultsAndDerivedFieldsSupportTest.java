@@ -59,6 +59,38 @@ class DefaultsAndDerivedFieldsSupportTest {
     }
 
     @Test
+    void userValueIsAllowedInDefaultExpressionOnly() throws Exception {
+        Path modelPath = Files.createTempFile("npdev-defaults-user-", ".json");
+        Files.writeString(modelPath, """
+                {
+                  "namespace": "value.behavior.user",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    {
+                      "name": "Mosaic",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "owner", "type": "string", "defaultExpression": "$user.id" },
+                        { "name": "ownerTenant", "type": "string", "defaultExpression": "$user.tenantId" },
+                        { "name": "lastEditor", "type": "string", "derivedExpression": "$user.id" },
+                        { "name": "badUser", "type": "string", "defaultExpression": "$user.email" }
+                      ]
+                    }
+                  ]
+                }
+                """);
+
+        List<String> errors = new SemanticValidator().validate(new JsonModelParser().parse(modelPath));
+        assertTrue(errors.stream().noneMatch(error -> error.contains("field owner:") || error.contains("field ownerTenant:")),
+                "$user.id / $user.tenantId are valid defaults: " + errors);
+        assertTrue(errors.stream().anyMatch(error -> error.contains("field lastEditor: derivedExpression cannot reference $user.id")),
+                "derivedExpression must refuse $user: " + errors);
+        assertTrue(errors.stream().anyMatch(error -> error.contains("field badUser: defaultExpression references unknown user value $user.email")),
+                "unknown $user value must be refused: " + errors);
+    }
+
+    @Test
     void semanticValidationRejectsUnknownSelfReferentialAndCyclicValueBehaviors() throws Exception {
         Path modelPath = Files.createTempFile("npdev-defaults-derived-error-", ".json");
         Files.writeString(modelPath, """

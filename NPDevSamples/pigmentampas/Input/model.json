@@ -285,7 +285,7 @@
       "ui": { "label": "Collection item" },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "ownerUsername", "type": "string", "required": true, "maxLength": 120,
+        { "name": "ownerUsername", "type": "string", "required": true, "maxLength": 120, "defaultExpression": "$user.id",
           "ui": { "label": "Owner" } },
         { "name": "capId", "type": "reference", "required": true,
           "ui": { "label": "Cap" },
@@ -316,7 +316,7 @@
           "ui": { "label": "Code" } },
         { "name": "title", "type": "string", "required": true, "maxLength": 120,
           "ui": { "label": "Title" } },
-        { "name": "ownerUsername", "type": "string", "required": true, "maxLength": 120,
+        { "name": "ownerUsername", "type": "string", "required": true, "maxLength": 120, "defaultExpression": "$user.id",
           "ui": { "label": "Owner" } },
         { "name": "rows", "type": "integer", "required": true, "min": 1, "max": 60,
           "ui": { "label": "Rows" } },
