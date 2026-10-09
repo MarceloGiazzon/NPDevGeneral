@@ -1,17 +1,17 @@
 {
-  "closedAt": "2026-10-09T06:11:24.3975149Z",
+  "closedAt": "2026-10-09T15:14:38.6169469Z",
   "branch": "main",
-  "head": "9b781085",
-  "headSubject": "fix(pigmentampas-p9): seeds re-ran on kept DBs, REST create skipped lifecycle initial state, stale UI banner",
-  "summary": "Fixed the P9 friction items in 9b781085 (pushed to main): seeding context now bypasses access.read (seeds no longer re-run on kept DBs), REST create applies lifecycle initial state, business-UI status banner only reports the on-screen concept, 403 reference-label lookups are quiet, nao autenticado -> shell.notSignedIn, capture-capability-docs.py gained --capabilities and --username/--password-env sign-in. Friction log entries marked with the hash; new entry 50 (identity::User label 403) logged and fixed.",
-  "nextStep": "Ask the owner whether to delete 6 of the 7 duplicate First light mosaics in the live Pigmentampas DB (keep PTM-2026-0005); then build $user support in field defaultExpression (e.g. defaultExpression \"$user.id\" on Mosaic/CollectionItem ownerUsername) across kernel ValueExpressionEvaluator + GeneratedCrudRuntimeSupport.applySchemaValueBehaviors + SemanticValidator, with a dsl-conformance-max example, so REST create defaults the owner. App runs at http://127.0.0.1:8084 (start with AI + SMTP env per memory).",
+  "head": "f8315a0c",
+  "headSubject": "feat(dsl): $user.id / $user.actorId / $user.tenantId in field defaultExpression",
+  "summary": "Shipped f8315a0c (pushed to main): $user.id/$user.actorId/$user.tenantId in field defaultExpression on both the kernel gateway and generated CRUD paths (anonymous -> null via ExecutionContext.hasActor(); $user refused in derivedExpression). Pigmentampas Mosaic/CollectionItem ownerUsername default to $user.id; owner-approved deletion of 6 duplicate First light mosaics (kept PTM-2026-0005, no orphan cells).",
+  "nextStep": "Run T2 via python scripts/ai/run_digest.py -- pwsh -NoProfile -File scripts/quality/run-all-gates.ps1 (never run for 9b781085 or f8315a0c) and fix any red; then pick the next platform gap from the P10 verdict / friction log open entries. Pigmentampas runs at http://127.0.0.1:8084, rebuilt at f8315a0c.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
   "blocked": "D5: Google OAuth client + Meta app (owner). Real-phone bot runs and the Claude Desktop MCP run are the owner's.",
-  "verified": "run-kernel-quality-gate.ps1 PASS (incl. aggregate coverage ratchet); run-generator-gate.ps1 PASS (incl. determinism); narrow tests ConfiguredConceptGatewaySemanticPolicyTest 16/16 and GeneratedCrudRuntimeSupportStateMachineTest 3/3; live on 8084: no seed re-run on boot, POST /api/mosaics without status -> DRAFT, banner probe via Playwright, signed-in capture. runtimehost + aiKnowledge gates NOT run (T2 incomplete).",
+  "verified": "Narrow tests only: ValueExpressionEvaluatorTest, ConfiguredConceptGatewaySemanticPolicyTest, DefaultsAndDerivedFieldsSupportTest, runtime-support GeneratedCrudRuntimeSupport* all pass; conformance-max validateModel passed; live on 8084: POST /api/mosaics as tito without owner -> ownerUsername tito, explicit owner kept, anonymous 401. No T2 gate run.",
   "dirtyCount": 2,
   "dirtyFiles": [
-    " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl"
+    "M  ledger/session-state/current.json",
+    "M  ledger/session-state/history.jsonl"
   ],
   "unpushed": 0,
   "landedCommits": []
