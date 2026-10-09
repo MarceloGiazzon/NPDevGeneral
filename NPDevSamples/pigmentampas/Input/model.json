@@ -480,10 +480,10 @@
         ],
         "transitions": [
           { "from": "OPEN", "to": "CLOSED", "event": "ChallengeClosed", "actionLabel": "Close",
-            "guard": "$user.roles.contains('Curator') || $user.id == 'system:scheduler'" }
+            "guard": "$user.roles.contains('Curator') || $user.isSystem" }
         ]
       },
-      "access": { "write": "$user.roles.contains('Curator') || $user.id == 'system:scheduler'" }
+      "access": { "write": "$user.roles.contains('Curator') || $user.isSystem" }
     }
   ],
   "aggregates": [

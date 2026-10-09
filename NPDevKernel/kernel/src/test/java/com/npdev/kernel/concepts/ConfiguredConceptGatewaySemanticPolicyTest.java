@@ -304,6 +304,27 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
     }
 
     /**
+     * Pigmentampas friction #37: a cron flow writes a row whose rule otherwise names people, via
+     * {@code || $user.isSystem}. A human whose actor id is literally {@code system:scheduler} (a
+     * username, IdP or JWT subject can be) and a tagged copy of the scheduler context are denied.
+     */
+    @Test
+    void isSystemAdmitsTheSchedulerButNotAnActorMerelyNamedLikeIt() {
+        ConceptGateway gateway = ConceptGateways.inMemory(curatedLabelPolicy("$user.roles.contains('Curator') || $user.isSystem"));
+        ExecutionContext scheduler = ExecutionContext.system("tenant-a");
+
+        assertEquals("label-c1", gateway.save(
+                new ConceptWriteRequest("Label", "label-c1", null, Map.of("text", "closed")), scheduler).id());
+
+        ExecutionContext impostor = new ExecutionContext("tenant-a", "system:scheduler", Map.of("trigger", "schedule"), java.util.Set.of("ADMIN"));
+        assertThrows(ConceptGatewayAccessDeniedException.class, () -> gateway.save(
+                new ConceptWriteRequest("Label", "label-c2", null, Map.of("text", "spoofed")), impostor));
+        assertThrows(ConceptGatewayAccessDeniedException.class, () -> gateway.save(
+                new ConceptWriteRequest("Label", "label-c3", null, Map.of("text", "copied")),
+                scheduler.withTag("correlationId", "x")));
+    }
+
+    /**
      * Pigmentampas 2026-10-08: ModelSeedRunner's insert-if-empty probe lists as the seeder, so an
      * owner-scoped access.read hid every seeded row from it and the seeds re-ran on each boot.
      */

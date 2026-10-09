@@ -31,6 +31,7 @@ the row's own field values plus a set of `$`-prefixed pseudo-variables describin
 | `$user.id` / `$user.actorId` | the caller's actor id from `ExecutionContext` |
 | `$user.tenantId` | the caller's tenant id |
 | `$user.roles` | the caller's role list |
+| `$user.isSystem` | `true` when the platform itself is acting: a scheduled (cron) flow or model seeding. Write `... \|\| $user.isSystem` to let a scheduled flow write rows a rule otherwise limits to people. Never compare `$user.id` to `'system:scheduler'` instead: a real login can carry that id. A flow resumed after `awaitEvent` runs as its original actor and is not system. |
 
 `$` is a valid leading character for an expression identifier specifically to support this sigil
 (see `ComputedExpression`'s tokenizer) — it's not a general-purpose prefix operator.
