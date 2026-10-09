@@ -339,7 +339,7 @@ jobs:
 
       - name: On failure, upload integration-test hang diagnostics and results
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: integration-test-diagnostics
           path: |
@@ -471,7 +471,7 @@ jobs:
 
       - name: Upload Linux maturity evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: npdev-linux-maturity-validation-evidence
           path: |
@@ -727,7 +727,7 @@ jobs:
 
       - name: Upload generator coverage evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: npdev-generator-coverage-evidence
           path: |
@@ -760,7 +760,7 @@ jobs:
 
       - name: Upload CI evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: npdev-ci-validation-evidence
           path: |
