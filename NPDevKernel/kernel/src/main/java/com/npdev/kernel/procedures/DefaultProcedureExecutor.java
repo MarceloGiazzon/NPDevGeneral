@@ -383,7 +383,8 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         List<ConceptRecord> records;
         try {
             List<ConceptQuery.Filter> filters = query == null
-                    ? List.of() : ConceptQueryPredicateCompiler.compileToConceptQueryFilters(query.where());
+                    ? List.of() : ConceptQueryPredicateCompiler.compileToConceptQueryFilters(
+                            query.where(), List.of(), Map.of(), context);
             List<ConceptQuery.Sort> sorts = query == null
                     ? List.of() : ConceptQueryPredicateCompiler.compileOrderBy(query.orderBy());
             Integer declaredLimit = query == null ? null : query.limit();

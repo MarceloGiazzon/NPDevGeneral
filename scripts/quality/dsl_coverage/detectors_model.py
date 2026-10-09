@@ -388,6 +388,17 @@ def _has_query_where_v2(model: dict) -> bool:
     return False
 
 
+def _has_query_where_user(model: dict) -> bool:
+    """Pigmentampas friction #24: a query.where naming the caller ($user.id / $user.actorId /
+    $user.tenantId), resolved per request by ConceptQueryPredicateCompiler with the caller's
+    ExecutionContext -- 'orders I placed' without a plugin or a hand-bound parameter."""
+    for q in (model.get("queries", None) or []):
+        where = q.get("where")
+        if isinstance(where, str) and any(ref in where for ref in ("$user.id", "$user.actorId", "$user.tenantId")):
+            return True
+    return False
+
+
 def _has_aggregate_on_validate(model: dict) -> bool:
     return any(
         isinstance(a, dict) and a.get("onValidate")

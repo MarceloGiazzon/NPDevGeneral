@@ -639,6 +639,8 @@
       "aggregates": [{ "name": "likes", "fn": "count" }], "orderBy": ["likes desc"], "limit": 50 },
     { "name": "CollectionInStock", "concept": "CollectionItem", "where": "quantity > 0",
       "metadata": { "purpose": "P5 photo-to-mosaic 'only caps I own': CollectionItem's row access already limits this to the caller's rows plus others' for-trade rows; the plugin keeps the mosaic owner's." } },
+    { "name": "MyCollection", "concept": "CollectionItem", "where": "ownerUsername == $user.id && quantity > 0",
+      "metadata": { "purpose": "Friction #24: the caller's own caps only (no other members' for-trade rows), via $user in where." } },
     { "name": "CapsAwaitingReview", "concept": "Cap", "where": "status == 'SUBMITTED'", "orderBy": ["label"] },
     { "name": "PublishedMosaics", "concept": "Mosaic", "where": "status != 'DRAFT'", "orderBy": ["code desc"] },
     { "name": "TotalCaps", "concept": "Cap", "where": "status == 'APPROVED'",

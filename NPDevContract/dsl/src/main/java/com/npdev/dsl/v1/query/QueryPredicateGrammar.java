@@ -325,6 +325,14 @@ public final class QueryPredicateGrammar {
         record Placeholder(String name) implements PredicateLiteral {
         }
 
+        /**
+         * Pigmentampas friction #24: {@code $user.id} / {@code $user.actorId} / {@code $user.tenantId}
+         * -- the CALLER's value, resolved per request by the caller (kernel
+         * {@code ConceptQueryPredicateCompiler} with an {@code ExecutionContext}), never at compile time.
+         */
+        record UserRef(String reference) implements PredicateLiteral {
+        }
+
         /** The right-hand side of an {@link PredicateOperator#IN} clause. */
         record Values(List<PredicateLiteral> values) implements PredicateLiteral {
             public Values {
@@ -606,6 +614,9 @@ public final class QueryPredicateGrammar {
         if (text.length() >= 2 && text.charAt(0) == ':' && isPlainName(text.substring(1))) {
             return new PredicateLiteral.Placeholder(text.substring(1));
         }
+        if (USER_REFERENCES.contains(text)) {
+            return new PredicateLiteral.UserRef(text);
+        }
         try {
             if (text.indexOf('.') >= 0) {
                 return new PredicateLiteral.Value(Double.parseDouble(text));
@@ -614,11 +625,16 @@ public final class QueryPredicateGrammar {
         } catch (NumberFormatException ignored) {
             throw new UnsupportedPredicateException(where, clauseText,
                     "literal " + quoteForMessage(text) + " is neither a quoted string, a number, a boolean, "
-                            + "nor a ':name' bind placeholder"
+                            + "a ':name' bind placeholder, nor one of " + USER_REFERENCES
                             + (text.startsWith("$")
-                            ? " -- a $-reference (context/parameter substitution) is not resolved here; "
-                              + "substitute it before compiling the predicate"
+                            ? " -- no other $-reference is resolved in a where; declare a parameter and "
+                              + "bind it as ':name' instead"
                             : ""));
         }
     }
+
+    /** The caller values a v2 {@code where} may name on the right-hand side ({@link PredicateLiteral.UserRef}). */
+    public static final java.util.Set<String> USER_REFERENCES =
+            java.util.Collections.unmodifiableSet(new java.util.TreeSet<>(
+                    java.util.Set.of("$user.id", "$user.actorId", "$user.tenantId")));
 }

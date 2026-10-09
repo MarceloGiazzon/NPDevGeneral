@@ -26,7 +26,7 @@ from .detectors_model import (  # noqa: F401 - every name the table below refere
     _has_flow_start_endpoint, _has_groupby_cross_context_join, _has_groupby_join,
     _has_groupby_multi_hop_join, _has_await_timeout, _has_on_failure, _has_parallel_await_foreach,
     _has_parallel_await_multistep_foreach, _has_post_checkpoint,
-    _has_procedure_create_if_missing, _has_procedure_step_type, _has_query_where_v2, _has_renamed_field,
+    _has_procedure_create_if_missing, _has_procedure_step_type, _has_query_where_v2, _has_query_where_user, _has_renamed_field,
     _has_schedule_event_with_delay, _has_sensitive_field, _has_settings, _has_step_type,
     _has_widened_branch_condition, _nonempty,
 )
@@ -89,6 +89,8 @@ FEATURE_DETECTORS = {
     # in, contains/startsWith, is-null, reference-path joins) -- see _has_query_where_v2's own
     # docstring for why this needed its own tracked feature, distinct from plain "queries" above.
     "query.where.v2": _has_query_where_v2,
+    # Pigmentampas friction #24: $user.* on a where's right-hand side, bound from the caller.
+    "query.where.user": _has_query_where_user,
     "procedures": lambda m: _nonempty(m, "procedures"),
     "panels": lambda m: _nonempty(m, "panels"),
     "ruleProfiles": lambda m: _nonempty(m, "ruleProfiles"),

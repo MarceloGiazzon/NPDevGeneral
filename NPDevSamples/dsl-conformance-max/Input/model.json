@@ -849,6 +849,12 @@
 
   "queries": [
     {
+      "name": "OrdersIPlaced",
+      "concept": "WidgetOrder",
+      "where": "placedBy == $user.id",
+      "orderBy": [ "orderNumber desc" ]
+    },
+    {
       "name": "ActiveCatalogEntries",
       "concept": "WidgetCatalogEntry",
       "where": "discontinued == false",

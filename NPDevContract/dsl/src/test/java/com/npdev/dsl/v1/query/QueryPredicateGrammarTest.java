@@ -227,4 +227,16 @@ class QueryPredicateGrammarTest {
                 () -> QueryPredicateGrammar.parseGroups("upper(status) 'ACTIVE'"));
         assertTrue(ex.getMessage().contains("no supported"), ex.getMessage());
     }
+
+    @Test
+    void userReferenceParsesAsAUserRefLiteralAndOtherDollarReferencesStayRefused() {
+        PredicateClause clause = QueryPredicateGrammar.parseGroups("ownerUsername == $user.id").get(0).get(0);
+        assertEquals(new PredicateLiteral.UserRef("$user.id"), clause.literal());
+        PredicateClause inList = QueryPredicateGrammar.parseGroups("tenant in ($user.tenantId, 'shared')").get(0).get(0);
+        assertEquals(new PredicateLiteral.UserRef("$user.tenantId"),
+                ((PredicateLiteral.Values) inList.literal()).values().get(0));
+        UnsupportedPredicateException refused = assertThrows(UnsupportedPredicateException.class,
+                () -> QueryPredicateGrammar.parseGroups("ownerUsername == $user.roles"));
+        assertTrue(refused.getMessage().contains("$user.id"), refused.getMessage());
+    }
 }
