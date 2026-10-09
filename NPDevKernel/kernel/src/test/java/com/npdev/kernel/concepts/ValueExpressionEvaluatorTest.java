@@ -29,8 +29,11 @@ class ValueExpressionEvaluatorTest {
         // Anonymous: no owner forged -- the required check downstream still fires.
         assertNull(ValueExpressionEvaluator.evaluate("$user.id", Map.of(), ExecutionContext.anonymous()));
         assertNull(ValueExpressionEvaluator.evaluate("$user.id", Map.of(), null));
-        // Unresolvable $user expression is null, never the raw text written into the column.
-        assertNull(ValueExpressionEvaluator.evaluate("bogus($user.id)", Map.of(), tito));
+        // Unresolvable $user expression: never the raw text written into the column. A real actor
+        // gets a loud refusal (authoring bug); only the anonymous actor's "no value" is null.
+        assertThrows(ComputedExpression.ExpressionException.class,
+                () -> ValueExpressionEvaluator.evaluate("bogus($user.id)", Map.of(), tito));
+        assertNull(ValueExpressionEvaluator.evaluate("bogus($user.id)", Map.of(), ExecutionContext.anonymous()));
         // No $user: the context-free path, unchanged.
         assertEquals("alpha", ValueExpressionEvaluator.evaluate("$name", Map.of("name", "alpha"), tito));
     }
