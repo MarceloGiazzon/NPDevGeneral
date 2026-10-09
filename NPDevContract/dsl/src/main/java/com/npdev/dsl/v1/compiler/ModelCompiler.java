@@ -2062,7 +2062,9 @@ public final class ModelCompiler {
                     step.capability(),
                     step.operation(),
                     step.event(),
-                    sortObjectMap(step.args()),
+                    // #34: args binds POSITIONALLY to a capability method's parameters, so it
+                    // keeps the author's declared order -- never sortObjectMap's alphabetical one.
+                    declaredOrderObjectMap(step.args()),
                     compileProcedureSteps(step.thenSteps()),
                     compileProcedureSteps(step.elseSteps()),
                     compileProcedureSteps(step.steps()),
@@ -2207,6 +2209,13 @@ public final class ModelCompiler {
         List<String> out = copyStrings(values);
         out.sort(String.CASE_INSENSITIVE_ORDER);
         return out;
+    }
+
+    private static Map<String, Object> declaredOrderObjectMap(Map<String, Object> source) {
+        if (source == null || source.isEmpty()) {
+            return Map.of();
+        }
+        return new LinkedHashMap<>(source);
     }
 
     private static Map<String, Object> sortObjectMap(Map<String, Object> source) {

@@ -128,10 +128,9 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
                     CapabilityErrorKind.CONTRACT, Map.of("operation", String.valueOf(call.operation())));
         }
         List<Object> args = call.args() == null ? List.of() : call.args();
-        // Args are matched by TYPE, not position: a flow passes ["Prompt", "$input"], but a procedure's
-        // args object is positional in ALPHABETICAL key order (CompiledProcedureStep), so
-        // { "prompt": .., "input": .. } arrives as [input, prompt]. The name is the one string arg,
-        // the input the one map arg.
+        // Args are matched by TYPE, not position: a flow passes ["Prompt", "$input"], and a procedure's
+        // args object arrives in whatever key order its author declared. The name is the one string
+        // arg, the input the one map arg.
         String promptName = "";
         Map<String, Object> input = Map.of();
         for (Object arg : args) {

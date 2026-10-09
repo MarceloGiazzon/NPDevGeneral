@@ -5,6 +5,19 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-09 — procedure step `args` bind in declared key order, not alphabetical
+
+**What changes.** A procedure step's `args` object is passed positionally to the capability method.
+It used to be sorted alphabetically (case-insensitive) on compile, so `{to, subject, body}` arrived
+as `[body, subject, to]`; it now arrives in the order the keys are declared. Flow steps (whose
+`args` is already an array) are unaffected.
+
+**Who is affected.** Models with a multi-key procedure `args` object not already declared in
+alphabetical order, bound to a capability that reads its arguments by position.
+
+**Codemod.** `npdev migrate procedure-args-order --input <model-dir> --write` (run once: it rewrites
+each `args` into the old alphabetical order, so the model binds exactly as before).
+
 ## 2026-09-30 — supported-core RuntimeHost classes leave `api.internal` / `npdev.service.internal`
 
 **What changes.** The 14 controllers and 24 services that `runtime-supported-controllers.json`
