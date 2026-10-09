@@ -63,6 +63,21 @@ class GeneratedCrudRuntimeSupportStateMachineTest {
         );
     }
 
+    /** Pigmentampas P9: a REST create omitting the status field failed required(status) instead of starting in the initial state. */
+    @Test
+    void createPayloadStartsInLifecycleInitialStateButUpdateKeepsExistingStatus() {
+        GeneratedCrudRuntimeSupport support = supportWithPreviousStatus("Scheduled");
+
+        Map<String, Object> created = support.buildCreateInvariantPayload("Appointment", Map.of("checkInTime", "2026-03-30T10:30:00Z"));
+        assertEquals("Scheduled", created.get("status"));
+        Map<String, Object> explicit = support.buildCreateInvariantPayload("Appointment", Map.of("status", "CheckedIn"));
+        assertEquals("CheckedIn", explicit.get("status"));
+
+        Map<String, Object> updated = support.buildUpdateInvariantPayload(
+                "Appointment", UUID.randomUUID(), Map.of("status", "Completed"), Map.of("checkOutTime", "2026-03-30T11:00:00Z"));
+        assertEquals("Completed", updated.get("status"));
+    }
+
     private static GeneratedCrudRuntimeSupport supportWithPreviousStatus(String previousStatus) {
         CompiledEntity appointment = new CompiledEntity(
                 "Appointment",

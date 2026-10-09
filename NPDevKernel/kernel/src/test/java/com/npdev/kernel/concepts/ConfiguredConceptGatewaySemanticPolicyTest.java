@@ -283,6 +283,22 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
                 new ConceptWriteRequest("Label", "label-s2", null, Map.of("text", "forged")), forged));
     }
 
+    /**
+     * Pigmentampas 2026-10-08: ModelSeedRunner's insert-if-empty probe lists as the seeder, so an
+     * owner-scoped access.read hid every seeded row from it and the seeds re-ran on each boot.
+     */
+    @Test
+    void seedingContextBypassesRowReadRulesButACopyDoesNot() {
+        ConceptGateway gateway = ConceptGateways.inMemory(labelPolicy("text == $user.id", null));
+        ExecutionContext owner = new ExecutionContext("tenant-a", "tito", Map.of(), java.util.Set.of("USER"));
+        gateway.save(new ConceptWriteRequest("Label", "label-r1", null, Map.of("text", "tito")), owner);
+
+        ExecutionContext seeding = ExecutionContext.seeding("tenant-a");
+        assertEquals(1, gateway.listCapped(new ConceptListRequest("Label", "tenant-a"), seeding, 1).records().size());
+        ExecutionContext forged = seeding.withTag("trigger", "seed");
+        assertEquals(0, gateway.listCapped(new ConceptListRequest("Label", "tenant-a"), forged, 1).records().size());
+    }
+
     /** contains() on RECORD data keeps exact, case-sensitive semantics -- only $user.roles folds case. */
     @Test
     void containsAccessRuleOnRecordDataStaysCaseSensitive() {
@@ -320,6 +336,10 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
     }
 
     private static ConfiguredConceptGatewaySemanticPolicy curatedLabelPolicy(String writeRule) {
+        return labelPolicy(null, writeRule);
+    }
+
+    private static ConfiguredConceptGatewaySemanticPolicy labelPolicy(String readRule, String writeRule) {
         return new ConfiguredConceptGatewaySemanticPolicy(List.of(
                 new ConfiguredConceptGatewaySemanticPolicy.ConceptDefinition(
                         "Label",
@@ -338,7 +358,7 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
                         null,
                         java.util.Set.of(),
                         new ConfiguredConceptGatewaySemanticPolicy.AccessRules(
-                                null,
+                                readRule,
                                 writeRule
                         )
                 )

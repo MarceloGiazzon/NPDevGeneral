@@ -2909,9 +2909,44 @@ public final class GeneratedCrudRuntimeSupport {
     private static final java.util.regex.Pattern NEXT_NUMBER_DEFAULT =
             java.util.regex.Pattern.compile("^\\s*nextNumber\\(.*\\)\\s*$");
 
+    /** The lifecycle's initial state when {@code fieldName} is its status field: the state flagged
+     *  {@code initial}, else the first declared one (the kernel gateway's own rule). */
+    private static String lifecycleInitialState(CompiledConcept entity, String fieldName) {
+        com.npdev.dsl.v1.compiled.CompiledLifecycle lifecycle = entity.getLifecycle();
+        if (lifecycle == null || !fieldName.equals(lifecycle.getStatusField())) {
+            return null;
+        }
+        String first = null;
+        for (com.npdev.dsl.v1.compiled.CompiledStateMachineState state : lifecycle.getStates()) {
+            if (state == null || state.getValue() == null || state.getValue().isBlank()) {
+                continue;
+            }
+            if (state.isInitial()) {
+                return state.getValue();
+            }
+            if (first == null) {
+                first = state.getValue();
+            }
+        }
+        return first;
+    }
+
     private void applySchemaValueBehaviors(CompiledConcept entity, Map<String, Object> values, boolean allocateSequences) {
         if (entity == null || values == null) {
             return;
+        }
+        // Pigmentampas P9: a create that omits the lifecycle status field starts in the
+        // lifecycle's initial state, as the kernel gateway already does -- without this the REST
+        // invariant check rejected it first with required(status). Updates never get here with the
+        // field null: materializeEntityValues merged the existing record's value first.
+        for (CompiledField field : entity.getFields()) {
+            if (field == null || field.getName() == null || readMapValue(values, field.getName()) != null) {
+                continue;
+            }
+            String initialState = lifecycleInitialState(entity, field.getName());
+            if (initialState != null) {
+                values.put(field.getName(), normalizeFieldValue(entity, field, initialState));
+            }
         }
         int maxPasses = Math.max(1, entity.getFields().size() * 2);
         for (int pass = 0; pass < maxPasses; pass++) {

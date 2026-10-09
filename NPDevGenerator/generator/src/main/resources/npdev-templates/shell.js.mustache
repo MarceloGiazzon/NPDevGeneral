@@ -528,7 +528,7 @@
       });
       el.identity.appendChild(logoutBtn);
     } else {
-      el.identity.textContent = "nao autenticado";
+      el.identity.textContent = shellString("shell.notSignedIn", "Not signed in");
     }
   }
 
@@ -1447,7 +1447,7 @@
   // -------------------------------------------------------------- login ----
 
   // When the app declares auth.loginPath (jwt mode only), an unauthenticated visitor is bounced to
-  // it with ?next=<original path> instead of silently seeing "nao autenticado" chrome around an
+  // it with ?next=<original path> instead of silently seeing "Not signed in" chrome around an
   // API-error-riddled page. apiKey-mode apps keep today's inline notice (dev ergonomics -- there's
   // no login flow to redirect to). A visitor already on the login page is never redirected (loop
   // guard), whether or not it happens to include this script.

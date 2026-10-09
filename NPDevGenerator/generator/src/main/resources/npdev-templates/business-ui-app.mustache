@@ -302,6 +302,16 @@
   function setStatus(message, error) {
     el.status.textContent = message || "";
     el.status.classList.toggle("is-error", Boolean(error));
+    state.statusIsLoadChatter = false;
+  }
+
+  // Pigmentampas P9: boot loads every visible concept at once, so "<concept> loaded." from
+  // whichever finished last sat on an unrelated screen. Only the concept on screen announces its
+  // load, and showConcept clears that chatter on navigation -- never a real action/error message.
+  function announceLoaded(concept) {
+    if (state.activeConcept && state.activeConcept !== concept) { return; }
+    setStatus(concept.displayName + " loaded.", false);
+    state.statusIsLoadChatter = true;
   }
 
   // R7.1. setStatus writes into el.status, which lives in the authbar strip at the top of #app --
@@ -1429,7 +1439,7 @@
       panel.records = Array.isArray(payload.content) ? payload.content : [];
       panel.totalElements = Number(payload.totalElements || panel.records.length);
       panel.loading = false;
-      setStatus(concept.displayName + " loaded.", false);
+      announceLoaded(concept);
       render();
       await hydrateReferenceLabels(concept, panel.records);
     } catch (error) {
@@ -1551,6 +1561,7 @@
   // deep link that carries one), it rides along in the published hash so a page reload or a second
   // click on the same slice reproduces the identical URL rather than losing the filter.
   function showConcept(concept, whereParam) {
+    if (state.statusIsLoadChatter && state.activeConcept !== concept) { setStatus("", false); }
     state.activeConcept = concept;
     el.app.querySelectorAll(".concept-panel").forEach(function (p) { p.style.display = "none"; });
     const section = document.getElementById(sectionId(concept));
@@ -4237,12 +4248,16 @@
       return state.referenceLabels[key].label;
     }).catch(function (error) {
       const missing = /not found|404/i.test(error.message || "");
+      // Pigmentampas 2026-10-09: a member may hold a reference to a row they may not read
+      // (identity::User). That is access working, not a failure -- show the raw value quietly
+      // instead of an error banner on every screen.
+      const forbidden = !missing && /forbidden|403/i.test(error.message || "");
       state.referenceLabels[key] = {
-        status: missing ? "missing" : "failed",
+        status: missing ? "missing" : (forbidden ? "forbidden" : "failed"),
         label: missing ? "<missing: " + rawId + ">" : rawId,
         error: error.message || "Reference label lookup failed."
       };
-      if (!missing) {
+      if (!missing && !forbidden) {
         setStatus("Reference label lookup failed for " + (field.label || field.name) + ": " + state.referenceLabels[key].error, true);
       }
       return state.referenceLabels[key].label;
