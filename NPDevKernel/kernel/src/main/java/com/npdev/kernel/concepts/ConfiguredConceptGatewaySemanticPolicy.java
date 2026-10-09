@@ -466,6 +466,13 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
     @Override
     public boolean isRowReadable(ConceptRecord record, ConceptGatewayRequestContext request) {
         ConceptDefinition concept = concept(request);
+        // Symmetric with isRowWritable: the seeder writes rows owned by real users, so its
+        // insert-if-empty probe (ModelSeedRunner) must see them too -- under an owner-scoped read
+        // rule every seeded row was invisible to "system:seed", the concept looked empty on every
+        // boot, and the seeds were inserted again (7 copies of Pigmentampas' demo mosaic).
+        if (ExecutionContext.isSeeding(request.executionContext())) {
+            return true;
+        }
         if (concept == null || concept.access() == null || !hasText(concept.access().read())) {
             return true;
         }

@@ -8,6 +8,12 @@ in the capability definitions below.
 
     python capture-capability-docs.py --base-url http://localhost:8084
     python capture-capability-docs.py --base-url http://localhost:8084 --out <dir> --no-browser
+    python capture-capability-docs.py --base-url http://localhost:8084         --capabilities my-app-capabilities.json --username tito --password-env APP_PASSWORD
+
+--capabilities replaces the built-in three with a JSON list of {id, title, definition, routes}.
+--username signs in through POST /api/auth/login (password read from the environment variable
+--password-env names, never argv) and seeds the token where the generated login page puts it, so
+routes behind jwt auth capture as the signed-in user instead of the login redirect.
 
 Captures through Playwright when it is importable; when it is not (or --no-browser), the doc is
 still emitted with an honest "not captured" placeholder and a note naming the exact command that
@@ -21,7 +27,10 @@ from __future__ import annotations
 
 import argparse
 import base64
+import json
+import os
 import sys
+import urllib.request
 from pathlib import Path
 
 CAPABILITIES = [
@@ -67,7 +76,35 @@ def try_import_playwright():
         return False
 
 
-def capture_screens(base_url: str, routes: list[str], out_dir: Path, use_browser: bool) -> list[tuple[str, bool, str]]:
+# Where the generated login page stores the session token (login-page.html.mustache).
+TOKEN_STORAGE_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"]
+
+
+def login(base_url: str, username: str, password: str) -> str:
+    request = urllib.request.Request(
+        base_url.rstrip("/") + "/api/auth/login",
+        data=json.dumps({"username": username, "password": password}).encode("utf-8"),
+        headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(request, timeout=20) as response:
+        token = json.loads(response.read().decode("utf-8")).get("token")
+    if not token:
+        raise RuntimeError(f"login as {username!r} returned no token")
+    return token
+
+
+def load_capabilities(path: str | None) -> list[dict]:
+    if not path:
+        return CAPABILITIES
+    capabilities = json.loads(Path(path).read_text(encoding="utf-8"))
+    for capability in capabilities:
+        missing = [key for key in ("id", "title", "definition", "routes") if key not in capability]
+        if missing:
+            raise ValueError(f"capability {capability.get('id', '?')!r} in {path} lacks {missing}")
+    return capabilities
+
+
+def capture_screens(base_url: str, routes: list[str], out_dir: Path, use_browser: bool,
+                    prefix: str = "shot", token: str | None = None) -> list[tuple[str, bool, str]]:
     """Captures one screenshot per route. Returns [(route, captured, html_note)]. Never raises:
     a route that 404s or times out is recorded as not captured with the HTTP status in the note."""
     if not use_browser:
@@ -85,6 +122,10 @@ def capture_screens(base_url: str, routes: list[str], out_dir: Path, use_browser
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": 1280, "height": 800})
+        if token:
+            page.add_init_script(
+                "".join(f"localStorage.setItem({json.dumps(key)}, {json.dumps(token)});"
+                        for key in TOKEN_STORAGE_KEYS))
         for index, route in enumerate(routes):
             url = base_url.rstrip("/") + ("/" + route.lstrip("/") if route != "/" else "/")
             try:
@@ -93,7 +134,7 @@ def capture_screens(base_url: str, routes: list[str], out_dir: Path, use_browser
                 if status and status >= 400:
                     results.append((route, False, f"HTTP {status} for {url}"))
                     continue
-                shot = out_dir / f"shot-{index}.png"
+                shot = out_dir / f"{prefix}-{index}.png"
                 page.screenshot(path=str(shot), full_page=True)
                 results.append((route, True, f"HTTP {status}, {shot.name}"))
             except Exception as error:
@@ -102,12 +143,13 @@ def capture_screens(base_url: str, routes: list[str], out_dir: Path, use_browser
     return results
 
 
-def render_doc(capability: dict, base_url: str, results: list[tuple[str, bool, str]], shots_dir: Path) -> str:
+def render_doc(capability: dict, base_url: str, results: list[tuple[str, bool, str]], shots_dir: Path,
+               prefix: str = "shot") -> str:
     blocks = []
     for (route, captured, note), index in zip(results, range(len(results))):
         if captured:
             data_uri = "data:image/png;base64," + base64.b64encode(
-                (shots_dir / f"shot-{index}.png").read_bytes()).decode("ascii")
+                (shots_dir / f"{prefix}-{index}.png").read_bytes()).decode("ascii")
             image = f'<img src="{data_uri}" alt="screenshot of {route}" style="max-width:100%;border:1px solid #ccc;border-radius:6px" />'
             badge = '<span style="color:#1f7a33;font-weight:700">captured</span>'
         else:
@@ -135,9 +177,21 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--base-url", required=True)
     ap.add_argument("--out", default=None, help="output directory (default: scripts/reports/out/capability-docs)")
     ap.add_argument("--no-browser", action="store_true", help="never launch a browser; emit placeholder docs")
+    ap.add_argument("--capabilities", default=None,
+                    help="JSON list of {id, title, definition, routes} (default: the built-in three)")
+    ap.add_argument("--username", default=None, help="sign in as this user before capturing")
+    ap.add_argument("--password-env", default="NPDEV_CAPTURE_PASSWORD",
+                    help="environment variable holding --username's password (default: NPDEV_CAPTURE_PASSWORD)")
     args = ap.parse_args(argv[1:])
 
-    import json as _json
+    capabilities = load_capabilities(args.capabilities)
+    token = None
+    if args.username:
+        password = os.environ.get(args.password_env)
+        if not password:
+            print(f"--username needs the password in ${args.password_env}", file=sys.stderr)
+            return 2
+        token = login(args.base_url, args.username, password)
     repo_root = Path(__file__).resolve().parents[2]
     out = Path(args.out).expanduser().resolve() if args.out else \
         repo_root / "scripts" / "reports" / "out" / "capability-docs"
@@ -150,9 +204,10 @@ def main(argv: list[str]) -> int:
               "Install it to capture real screenshots.", file=sys.stderr)
 
     manifest = []
-    for capability in CAPABILITIES:
-        results = capture_screens(args.base_url, capability["routes"], shots, use_browser)
-        doc = render_doc(capability, args.base_url, results, shots)
+    for capability in capabilities:
+        results = capture_screens(args.base_url, capability["routes"], shots, use_browser,
+                                  prefix=capability["id"], token=token)
+        doc = render_doc(capability, args.base_url, results, shots, prefix=capability["id"])
         target = out / f"{capability['id']}.html"
         target.write_text(doc, encoding="utf-8")
         captured = sum(1 for _, ok, _ in results if ok)
@@ -161,7 +216,7 @@ def main(argv: list[str]) -> int:
             "routes": len(capability["routes"]), "captured": captured,
         })
         print(f"  {capability['id']}: {captured}/{len(capability['routes'])} screenshot(s) -> {target.name}")
-    (out / "manifest.json").write_text(_json.dumps(manifest, indent=2), encoding="utf-8")
+    (out / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(f"Capability docs written to {out}")
     return 0
 
