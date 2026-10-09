@@ -27,6 +27,11 @@ public record ExecutionContext(
         return new ExecutionContext(DEFAULT_TENANT_ID, DEFAULT_ACTOR_ID, Map.of(), Set.of(DEFAULT_ROLE));
     }
 
+    /** False for {@link #anonymous()} (and any context built with no actor): there is no real user. */
+    public boolean hasActor() {
+        return !DEFAULT_ACTOR_ID.equals(actorId);
+    }
+
     public static ExecutionContext of(String tenantId, String actorId) {
         return new ExecutionContext(tenantId, actorId, Map.of(), Set.of(DEFAULT_ROLE));
     }

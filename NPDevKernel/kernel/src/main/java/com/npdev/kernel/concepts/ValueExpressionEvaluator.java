@@ -1,8 +1,10 @@
 package com.npdev.kernel.concepts;
 
 import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.kernel.ExecutionContext;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -69,6 +71,39 @@ public final class ValueExpressionEvaluator {
             }
         }
     }
+
+    /**
+     * Pigmentampas P9: a {@code defaultExpression} naming the acting user -- {@code $user.id},
+     * {@code $user.actorId}, {@code $user.tenantId}, bare or inside a larger expression
+     * ({@code coalesce($user.id, 'system')}) -- so a REST create defaults its owner field the way a
+     * hand-written controller would. Anything not naming {@code $user} takes the plain
+     * {@link #evaluate(String, Map)} path unchanged. An anonymous actor resolves to {@code null}:
+     * no value, so a required owner field still fails its required check instead of being forged.
+     */
+    public static Object evaluate(String expression, Map<String, Object> data, ExecutionContext context) {
+        if (!UserScopedExpressions.referencesUser(expression)) {
+            return evaluate(expression, data);
+        }
+        String text = expression.trim();
+        ExecutionContext actor = context == null ? ExecutionContext.anonymous() : context;
+        Map<String, Object> scope = new LinkedHashMap<>(data == null ? Map.of() : data);
+        String actorId = actor.hasActor() ? actor.actorId() : null;
+        scope.put("$user.id", actorId);
+        scope.put("$user.actorId", actorId);
+        scope.put("$user.tenantId", actor.tenantId());
+        if (USER_VALUE_REFERENCES.contains(text)) {
+            return scope.get(text);
+        }
+        try {
+            return ComputedExpression.evaluate(text, scope, ValueExpressionFunctions.base());
+        } catch (ComputedExpression.ExpressionException unresolvable) {
+            return null;
+        }
+    }
+
+    /** The {@code $user} values a {@code defaultExpression} may name (FieldValueValidation mirrors it). */
+    public static final java.util.Set<String> USER_VALUE_REFERENCES =
+            java.util.Set.of("$user.id", "$user.actorId", "$user.tenantId");
 
     /**
      * STOR-26 (B2 lift): a STRICT sibling of {@link #evaluate(String, Map)}

@@ -301,6 +301,10 @@ final class FieldValueValidation {
         visited.add(fieldName);
     }
 
+    /** Mirrors the kernel's {@code ValueExpressionEvaluator.USER_VALUE_REFERENCES} (dsl cannot depend on kernel). */
+    static final java.util.Set<String> USER_VALUE_REFERENCES =
+            new java.util.TreeSet<>(java.util.Set.of("$user.id", "$user.actorId", "$user.tenantId"));
+
     private static void validateValueBehaviorExpression(
             String entityName,
             String fieldName,
@@ -319,6 +323,20 @@ final class FieldValueValidation {
             return;
         }
         for (String ref : analysis.references()) {
+            if (ref.startsWith("$user")) {
+                // Pigmentampas P9: the acting user is a CREATE-time fact. A defaultExpression may
+                // name it (owner = $user.id); a derivedExpression is recomputed on every save, so
+                // it would silently re-own the record to whoever edited it last.
+                if (!"defaultExpression".equals(kind)) {
+                    errors.add("Entity " + entityName + " field " + fieldName + ": " + kind
+                            + " cannot reference " + ref + " -- the acting user is only known at create;"
+                            + " suggestedFix: use defaultExpression instead");
+                } else if (!USER_VALUE_REFERENCES.contains(ref)) {
+                    errors.add("Entity " + entityName + " field " + fieldName + ": " + kind
+                            + " references unknown user value " + ref + " (allowed: " + USER_VALUE_REFERENCES + ")");
+                }
+                continue;
+            }
             String normalizedRef = normalize(ref);
             if (!fieldNames.contains(normalizedRef)) {
                 errors.add("Entity " + entityName + " field " + fieldName + ": "

@@ -257,7 +257,9 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
             if (isBlankValue(data.get(field.name()))) {
                 Object defaultValue = field.defaultValue();
                 if (defaultValue == null && hasText(field.defaultExpression())) {
-                    defaultValue = evaluateFieldDefault(field.defaultExpression(), data, request.tenantId());
+                    defaultValue = UserScopedExpressions.referencesUser(field.defaultExpression())
+                            ? ValueExpressionEvaluator.evaluate(field.defaultExpression(), data, request.executionContext())
+                            : evaluateFieldDefault(field.defaultExpression(), data, request.tenantId());
                 }
                 if (defaultValue != null) {
                     data.put(field.name(), defaultValue);

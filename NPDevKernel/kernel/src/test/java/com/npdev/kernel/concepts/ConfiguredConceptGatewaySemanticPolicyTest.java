@@ -26,6 +26,26 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
         assertEquals("null->draft", gateway.explain().get(0).lifecycleTransition());
     }
 
+    /** Pigmentampas P9: defaultExpression "$user.id" owns a new record by its creator; an explicit value wins. */
+    @Test
+    void userDefaultExpressionOwnsTheRecordByTheActingUser() {
+        ConceptGateway gateway = ConceptGateways.inMemory(new ConfiguredConceptGatewaySemanticPolicy(List.of(
+                ConfiguredConceptGatewaySemanticPolicy.ConceptDefinition.of(
+                        "Mosaic",
+                        List.of(new ConfiguredConceptGatewaySemanticPolicy.FieldDefinition(
+                                "ownerUsername", false, List.of(), null, "$user.id", null)),
+                        List.of(),
+                        null))));
+
+        ConceptRecord owned = gateway.save(new ConceptWriteRequest("Mosaic", "m-1", null, Map.of()),
+                ExecutionContext.of("tenant-a", "tito"));
+        assertEquals("tito", owned.data().get("ownerUsername"));
+
+        ConceptRecord explicit = gateway.save(new ConceptWriteRequest("Mosaic", "m-2", null,
+                Map.of("ownerUsername", "tavo")), ExecutionContext.of("tenant-a", "tito"));
+        assertEquals("tavo", explicit.data().get("ownerUsername"));
+    }
+
     /** Pigmentampas 2026-10-07: "only a Curator approves a cap" -- a lifecycle guard naming $user. */
     @Test
     void lifecycleGuardNamingTheUserGatesTheTransitionByRole() {
