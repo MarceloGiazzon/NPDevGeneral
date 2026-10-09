@@ -132,6 +132,11 @@ class ScheduledEventDrainRunnerIT {
                     "The due scheduled event should have been drained by the timer within "
                             + DRAIN_DEADLINE.toSeconds() + "s at a " + FAST_TICK_MILLIS + "ms tick, but it is still "
                             + readColumn(dueId, "status"));
+            // The drain marks the row PROCESSED before it publishes its evidence event, so seeing the
+            // status first and reading the event list immediately raced that publish (T2 2026-10-09).
+            assertTrue(awaitEventName(events, "OrchestrationScheduleProcessed"),
+                    "The drain should have published its evidence event within "
+                            + DRAIN_DEADLINE.toSeconds() + "s, got: " + events.eventNames());
         }
 
         assertTrue(drainCalls.get() > 0, "The scheduler should have invoked the drain at least once");
@@ -167,6 +172,17 @@ class ScheduledEventDrainRunnerIT {
         long deadline = System.nanoTime() + DRAIN_DEADLINE.toNanos();
         while (System.nanoTime() < deadline) {
             if (expectedStatus.equals(readColumn(scheduleId, "status"))) {
+                return true;
+            }
+            Thread.sleep(FAST_TICK_MILLIS);
+        }
+        return false;
+    }
+
+    private boolean awaitEventName(RecordingEventStore events, String eventName) throws Exception {
+        long deadline = System.nanoTime() + DRAIN_DEADLINE.toNanos();
+        while (System.nanoTime() < deadline) {
+            if (events.eventNames().contains(eventName)) {
                 return true;
             }
             Thread.sleep(FAST_TICK_MILLIS);
