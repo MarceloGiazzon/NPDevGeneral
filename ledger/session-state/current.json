@@ -1,18 +1,20 @@
 {
-  "closedAt": "2026-10-09T15:14:38.6169469Z",
+  "closedAt": "2026-10-09T18:51:14.5684791Z",
   "branch": "main",
-  "head": "f8315a0c",
-  "headSubject": "feat(dsl): $user.id / $user.actorId / $user.tenantId in field defaultExpression",
-  "summary": "Shipped f8315a0c (pushed to main): $user.id/$user.actorId/$user.tenantId in field defaultExpression on both the kernel gateway and generated CRUD paths (anonymous -> null via ExecutionContext.hasActor(); $user refused in derivedExpression). Pigmentampas Mosaic/CollectionItem ownerUsername default to $user.id; owner-approved deletion of 6 duplicate First light mosaics (kept PTM-2026-0005, no orphan cells).",
-  "nextStep": "Run T2 via python scripts/ai/run_digest.py -- pwsh -NoProfile -File scripts/quality/run-all-gates.ps1 (never run for 9b781085 or f8315a0c) and fix any red; then pick the next platform gap from the P10 verdict / friction log open entries. Pigmentampas runs at http://127.0.0.1:8084, rebuilt at f8315a0c.",
+  "head": "1d908c81",
+  "headSubject": "fix(gates): T2 follow-ups for 2912dcf1 -- contract test, drain IT race, partial-aggregate ratchet",
+  "summary": "T2 for f8315a0c: fixed the one aiKnowledge red (ec2be8ac, $user defaultExpression now throws for a real actor instead of swallowing to null). Shipped friction #24 (2912dcf1): $user.id/actorId/tenantId in query where, resolved from the caller in the generated query controller, procedure runQuery and aggregate lookups; Pigmentampas MyCollection query. T2 follow-ups (1d908c81): query-controller contract test, ScheduledEventDrainRunnerIT event-publish race, coverage ratchet refuses ratchet-up from a partial aggregate (reportCount), kernel floor 66.3876.",
+  "nextStep": "Pick the next Pigmentampas friction gap: #34/#25 procedure capabilityCall args arrive positionally in ALPHABETICAL key order (ModelCompiler.sortObjectMap) -- fix to declared order or named args, which is breaking: ship the npdev migrate codemod (NPDevCli) + BREAKING.md line in the same commit and migrate WmsOffice FiscalImportCapability + Pigmentampas arg1_..arg4_ keys. Alternatives: #37 first-class system principal for cron flows, #18 field declaration order in compiled model. Pigmentampas runs at http://127.0.0.1:8084 rebuilt at 2912dcf1.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
   "blocked": "D5: Google OAuth client + Meta app (owner). Real-phone bot runs and the Claude Desktop MCP run are the owner's.",
-  "verified": "Narrow tests only: ValueExpressionEvaluatorTest, ConfiguredConceptGatewaySemanticPolicyTest, DefaultsAndDerivedFieldsSupportTest, runtime-support GeneratedCrudRuntimeSupport* all pass; conformance-max validateModel passed; live on 8084: POST /api/mosaics as tito without owner -> ownerUsername tito, explicit owner kept, anonymous 401. No T2 gate run.",
-  "dirtyCount": 2,
-  "dirtyFiles": [
-    "M  ledger/session-state/current.json",
-    "M  ledger/session-state/history.jsonl"
-  ],
+  "verified": "T2 at 2912dcf1: runtimeHost PASS, aiKnowledge PASS (sweep 0 untriaged); generator+kernel rerun with 1d908c81 fixes: generator PASS, kernel tests PASS (drain IT ran 18:27, passed) with only the ratchet red, fixed by the corrected floor (check-coverage-ratchet matches 66.3876, --calibrate exit 0). Narrow: QueryPredicateGrammarTest, ConceptQueryPredicateCompilerPredicateTest, ValueExpressionEvaluatorTest, check-dsl-coverage OK, conformance-max validateModel passed. Live on 8084: MyCollection tito 2 own rows (CollectionInStock 3), admin 2, tavo 0, anonymous 401. No full T2 run after 1d908c81 itself.",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
   "unpushed": 0,
-  "landedCommits": []
+  "landedCommits": [
+    "1d908c81 fix(gates): T2 follow-ups for 2912dcf1 -- contract test, drain IT race, partial-aggregate ratchet",
+    "2912dcf1 feat(dsl): $user.id / $user.actorId / $user.tenantId in query where",
+    "ec2be8ac fix(kernel): unresolvable $user defaultExpression fails loudly for a real actor",
+    "e579a844 chore(session): handoff after $user defaultExpression (f8315a0c)"
+  ]
 }
