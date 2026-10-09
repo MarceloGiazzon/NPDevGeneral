@@ -215,7 +215,9 @@ public final class PackExtensionComposer {
                 baseConcept.isSoftDelete(),
                 baseConcept.isTemporal(),
                 baseConcept.getUid(),
-                baseConcept.getRollups()
+                baseConcept.getRollups(),
+                // #18: fields the extension added are not named here, so they follow the base's.
+                baseConcept.getFieldOrder()
         );
     }
 
@@ -522,7 +524,9 @@ public final class PackExtensionComposer {
                 concept.isSoftDelete(),
                 concept.isTemporal(),
                 concept.getUid(),
-                concept.getRollups()
+                concept.getRollups(),
+                // #18: the app's explicit metadata.fieldOrder IS the order people should see.
+                fields.stream().map(CompiledField::getName).toList()
         );
     }
 

@@ -258,7 +258,7 @@ public final class ModelResolver {
         for (FieldAst field : mergedFields) {
             fieldsByName.put(normalize(field.getName()), field);
         }
-        for (FieldAst localField : sortedFields(specialization.getFields())) {
+        for (FieldAst localField : specialization.getFields()) {
             String fieldKey = normalize(localField.getName());
             if (fieldsByName.containsKey(fieldKey)) {
                 throw diagnostic(
@@ -271,7 +271,8 @@ public final class ModelResolver {
             fieldsByName.put(fieldKey, localField);
             mergedFields.add(localField);
         }
-        mergedFields = sortedFields(mergedFields);
+        // #18: base fields then the specialization's own, both in declaration order -- every
+        // canonical writer sorts by name itself, and ModelCompiler records this order as fieldOrder.
 
         List<InvariantAst> mergedInvariants = mergeInvariants(base.getInvariants(), specialization.getInvariants(), specialization.getName());
         List<EventAst> mergedEvents = new ArrayList<>(base.getEvents());
@@ -1149,7 +1150,7 @@ public final class ModelResolver {
 
     private static List<FieldAst> uniqueFields(List<FieldAst> fields, String conceptName) {
         Map<String, FieldAst> unique = new LinkedHashMap<>();
-        for (FieldAst field : sortedFields(fields)) {
+        for (FieldAst field : fields) {
             String key = normalize(field.getName());
             if (unique.containsKey(key)) {
                 throw diagnostic(
@@ -1307,12 +1308,6 @@ public final class ModelResolver {
             unique.put(key, new EventPayloadAst(payloadField.getName(), payloadField.getType()));
         }
         return List.copyOf(unique.values());
-    }
-
-    private static List<FieldAst> sortedFields(List<FieldAst> fields) {
-        List<FieldAst> out = new ArrayList<>(fields);
-        out.sort(Comparator.comparing(field -> normalize(field.getName())));
-        return out;
     }
 
     private static List<EventAst> sortedEvents(List<EventAst> events) {
