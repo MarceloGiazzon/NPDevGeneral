@@ -1502,6 +1502,60 @@ def run_migrate_label_locales(args: argparse.Namespace) -> int:
     return 1 if invalid_count > 0 else 0
 
 
+def run_migrate_procedure_args_order(args: argparse.Namespace) -> int:
+    """#34: wires `dsl_v2_migration.migrate_procedure_args_order` to `npdev migrate
+    procedure-args-order`. Procedure step `args` used to bind in alphabetical key order and now
+    binds in declared order; this rewrites existing models into the old order once so they keep
+    binding exactly as before. Same scan/report/write shape as `run_migrate_label_locales`."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from dsl_v2_migration import _looks_compiled, migrate_procedure_args_order  # local import: optional dep
+
+    files: list[Path] = []
+    for p in (Path(raw_path).expanduser().resolve() for raw_path in args.input):
+        if p.is_dir():
+            files.extend(sorted(p.rglob("*.json")))
+        elif p.is_file():
+            files.append(p)
+        else:
+            print(f"npdev migrate procedure-args-order: input not found: {p}", file=sys.stderr)
+            return 2
+
+    changed_count = 0
+    invalid_count = 0
+    report_entries = []
+    for f in files:
+        try:
+            doc = read_json(f)
+        except CliError as exc:
+            invalid_count += 1
+            print(f"  [SKIP] {f}: {exc}", file=sys.stderr)
+            continue
+        if not isinstance(doc, dict) or _looks_compiled(doc):
+            continue
+        result = migrate_procedure_args_order(doc)
+        report_entries.append({"file": str(f), "changed": result.changed, "changes": result.changes})
+        if result.changed:
+            changed_count += 1
+            verb = "CHANGED" if args.write else "WOULD CHANGE"
+            for c in result.changes:
+                print(f"  [{verb}] {f}: {c}")
+            if args.write:
+                text = json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
+                if b"\r\n" in f.read_bytes():
+                    text = text.replace("\n", "\r\n")
+                f.write_bytes(text.encode("utf-8"))
+
+    print(f"\n{len(files)} file(s) scanned: {changed_count} changed, {invalid_count} invalid JSON (skipped)")
+    if not args.write and changed_count > 0:
+        print("Dry run -- pass --write to apply.")
+    if args.report:
+        report_path = Path(args.report).expanduser()
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report_entries, indent=2) + "\n", encoding="utf-8")
+        print(f"Report written: {report_path}")
+    return 1 if invalid_count > 0 else 0
+
+
 def run_migrate_dsl2(args: argparse.Namespace) -> int:
     """2.A.3 (docs/DSL2_AND_DECOMPOSITION_PLAN.md): rewrite flowStep.type spellings and field
     aliases to their DSL 2.0 canonical form, across one or more files/directories. Dry-run by
@@ -15983,6 +16037,23 @@ def build_parser() -> argparse.ArgumentParser:
     migrate_label_locales.add_argument(
         "--report", help="write a JSON report of every file's outcome to this path")
 
+    # #34: procedure step args bind in declared order now; this one-shot pass keeps an existing
+    # model's alphabetical binding.
+    migrate_procedure_args = migrate_sub.add_parser(
+        "procedure-args-order",
+        help="Rewrite procedure step args into the alphabetical order they bound in before #34 (run once).",
+    )
+    migrate_procedure_args.add_argument(
+        "--input", required=True, nargs="+",
+        help="one or more files or directories (searched recursively for *.json) to migrate",
+    )
+    migrate_procedure_args.add_argument(
+        "--write", action="store_true",
+        help="apply changes in place; without this flag, reports what would change and exits",
+    )
+    migrate_procedure_args.add_argument(
+        "--report", help="write a JSON report of every file's outcome to this path")
+
     # PK-3: transitive pack dependency resolution -- add/update both resolve the live pack graph
     # and (re)write npdev.lock (same operation, two names for UX clarity); list reads the
     # committed lock (or a live dry-run if none exists); why explains a version selection.
@@ -17443,6 +17514,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_migrate_bounded_contexts(args)
         if args.command == "migrate" and args.migrate_command == "label-locales":
             return run_migrate_label_locales(args)
+        if args.command == "migrate" and args.migrate_command == "procedure-args-order":
+            return run_migrate_procedure_args_order(args)
         if args.command == "migration" and args.migration_command == "diff":
             run_migration_diff(args)
             return 0

@@ -1414,7 +1414,8 @@ public final class CompiledModelCanonicalJson {
             node.put("capability", safe(step.capability()));
             node.put("operation", safe(step.operation()));
             node.put("event", safe(step.event()));
-            node.set("args", toObjectMap(step.args()));
+            // #34: positional -- written in declared order, unlike every sibling map here.
+            node.set("args", toDeclaredOrderObjectMap(step.args()));
             node.set("thenSteps", toProcedureSteps(step.thenSteps()));
             node.set("elseSteps", toProcedureSteps(step.elseSteps()));
             node.set("steps", toProcedureSteps(step.steps()));
@@ -2006,6 +2007,17 @@ public final class CompiledModelCanonicalJson {
         TreeMap<String, Object> sorted = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         sorted.putAll(values);
         for (Map.Entry<String, Object> entry : sorted.entrySet()) {
+            node.set(entry.getKey(), toAnyValueNode(entry.getValue()));
+        }
+        return node;
+    }
+
+    private static ObjectNode toDeclaredOrderObjectMap(Map<String, Object> values) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        if (values == null) {
+            return node;
+        }
+        for (Map.Entry<String, Object> entry : values.entrySet()) {
             node.set(entry.getKey(), toAnyValueNode(entry.getValue()));
         }
         return node;

@@ -549,7 +549,7 @@
     },
     {
       "name": "NotifyTradeRecipient",
-      "description": "P7: stamps the recipient's username on the new trade (so the row-access rule lets them see and answer it) and emails them through the mail capability when they have an address. A procedure's capabilityCall args are passed positionally in ALPHABETICAL key order (ModelCompiler.sortObjectMap), hence the arg1_..arg4_ keys for mail.send(to, subject, body, templateVars).",
+      "description": "P7: stamps the recipient's username on the new trade (so the row-access rule lets them see and answer it) and emails them through the mail capability when they have an address. A procedure's capabilityCall args are passed positionally in declared key order, matching mail.send(to, subject, body, templateVars).",
       "steps": [
         { "name": "read-recipient", "type": "readConcept", "concept": "Member", "id": "$input.recipientId", "target": "recipient" },
         { "name": "stamp-recipient", "type": "patchConcept", "concept": "Trade", "id": "$input.id",
@@ -558,10 +558,10 @@
           "then": [
             { "name": "send-mail", "type": "capabilityCall", "capability": "mail", "operation": "send",
               "args": {
-                "arg1_to": "$recipient.email",
-                "arg2_subject": "Pigmentampas: new trade proposal ${code}",
-                "arg3_body": "Hi! ${proposerUsername} proposed trade ${code} to you. Open Pigmentampas, Community > Trades, to accept or decline it within 7 days.",
-                "arg4_templateVars": "$trade"
+                "to": "$recipient.email",
+                "subject": "Pigmentampas: new trade proposal ${code}",
+                "body": "Hi! ${proposerUsername} proposed trade ${code} to you. Open Pigmentampas, Community > Trades, to accept or decline it within 7 days.",
+                "templateVars": "$trade"
               },
               "target": "mailDelivery" }
           ] },

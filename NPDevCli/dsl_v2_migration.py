@@ -866,3 +866,50 @@ def migrate_untrusted_extension_manifest(doc: dict) -> MigrationResult:
         result.changed = True
         result.changes.append(f"schemaVersion: renamed '{_OLD_MANIFEST_SCHEMA_VERSION}' -> '{_NEW_MANIFEST_SCHEMA_VERSION}'")
     return result
+
+
+# =================================================================================================
+# #34 (Pigmentampas friction log): procedure step `args` now binds in DECLARED key order.
+#
+# A procedure step's `args` object is passed POSITIONALLY to the capability method. Until #34,
+# ModelCompiler and the canonical-JSON writer sorted it alphabetically (case-insensitive) like every
+# other map, so `{to, subject, body, templateVars}` reached mail.send as [body, subject,
+# templateVars, to] and every multi-arg method had to declare its parameters in alphabetical-by-key
+# order. This pass rewrites each `args` object into that alphabetical order once, so an existing
+# model binds exactly as before under the new rule. Run it ONCE per model: re-running it after an
+# author has deliberately ordered a step's args would undo that ordering.
+# =================================================================================================
+
+
+def _migrate_procedure_step_args(step, where: str, result: MigrationResult) -> None:
+    if not isinstance(step, dict):
+        return
+    args = step.get("args")
+    if isinstance(args, dict) and len(args) > 1:
+        ordered = sorted(args, key=lambda key: key.strip().lower())
+        if ordered != list(args):
+            step["args"] = {key: args[key] for key in ordered}
+            result.changed = True
+            result.changes.append(f"{where}.args: {list(args)} -> {ordered}")
+    for nested_key in ("then", "else", "steps"):
+        nested = step.get(nested_key)
+        if isinstance(nested, list):
+            for i, nested_step in enumerate(nested):
+                _migrate_procedure_step_args(nested_step, f"{where}.{nested_key}[{i}]", result)
+
+
+def migrate_procedure_args_order(doc: dict) -> MigrationResult:
+    """Rewrites every `procedures[].steps[]` `args` object (recursing into then/else/steps) into
+    the alphabetical key order the compiler used to impose, IN PLACE. Behavior-preserving for any
+    model written before #34; a one-shot pass, never part of `migrate_document`."""
+    result = MigrationResult()
+    if _looks_compiled(doc):
+        result.is_compiled = True
+        return result
+    for i, procedure in enumerate(doc.get("procedures", None) or []):
+        if not isinstance(procedure, dict):
+            continue
+        where = f"procedures[{i}] ({procedure.get('name', '?')})"
+        for j, step in enumerate(procedure.get("steps", None) or []):
+            _migrate_procedure_step_args(step, f"{where}.steps[{j}]", result)
+    return result

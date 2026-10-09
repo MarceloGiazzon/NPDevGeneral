@@ -54,10 +54,10 @@ public record CompiledProcedureStep(
         // callCapability (mapList-populated produtosConhecidos/chavesJaImportadas into
         // ParseNfeProcedure) worked on some app starts and failed with a reflection "argument type
         // mismatch" on others, from the exact same jar. An unmodifiable LinkedHashMap preserves the
-        // insertion order the caller already normalized (ModelCompiler's alphabetical sortObjectMap,
-        // itself needed only for canonical-JSON determinism, not because alphabetical order is
-        // special -- any Java author declaring a multi-arg capability method must declare its
-        // parameters in THAT alphabetical-by-args-key order, documented on the method itself).
+        // insertion order the caller built: the model's DECLARED key order (#34 -- ModelCompiler and
+        // the canonical writer used to sort args alphabetically like every other map here, so a
+        // multi-arg capability method had to declare its parameters in alphabetical-by-key order;
+        // `npdev migrate procedure-args-order` rewrote existing models into that order once).
         args = args == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(args));
         thenSteps = thenSteps == null ? List.of() : List.copyOf(thenSteps);
         elseSteps = elseSteps == null ? List.of() : List.copyOf(elseSteps);

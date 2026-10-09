@@ -100,10 +100,9 @@ So the positional form can carry real template text, filled from a `templateVars
 
 Avoid literal text that happens to equal a state key, or starts with `$`.
 
-**In a procedure, `args` is an object, and its values are passed positionally in ALPHABETICAL key
-order** (`ModelCompiler.sortObjectMap`), not declaration order. Name the keys so they sort into
-`to, subject, body, templateVars` — e.g. `arg1_to`, `arg2_subject`, `arg3_body`,
-`arg4_templateVars` (`NPDevSamples/pigmentampas`, procedure `NotifyTradeRecipient`).
+**In a procedure, `args` is an object, and its values are passed positionally in the order its
+keys are declared.** The key names are yours; declare them as `to, subject, body, templateVars`
+(`NPDevSamples/pigmentampas`, procedure `NotifyTradeRecipient`).
 
 ## Verification
 
