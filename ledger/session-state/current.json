@@ -1,17 +1,18 @@
 {
-  "closedAt": "2026-10-09T04:07:57.1983329Z",
+  "closedAt": "2026-10-09T06:11:24.3975149Z",
   "branch": "main",
-  "head": "cf4a5367",
-  "headSubject": "feat(hooks): /clear auto-runs the session prep (c.. = close, clear, done)",
-  "summary": "P9 story page published: https://claude.ai/artifact/RKtMGx5td8uCYUekjfCuPv (source/images/capture scripts in plan dir p9/). Live Gemini paint PTM-2026-0035 (216 cells, 24 s); published 0035/0026/0034 so the public gallery shows real work. 5 new friction entries (49 total): duplicate 'First light' seeds (7 copies), REST create ignores lifecycle initial state + owner, stale business-UI status banner, 'nao autenticado' string, capture-capability-docs.py cannot log in. No repo code changes.",
-  "nextStep": "Fix the P9 friction items, starting with the duplicate seeds (seeded 'First light' Mosaic re-inserted against a kept DB -> 7 PUBLISHED copies); then REST create applying lifecycle initial state, the stale status banner, the 'nao autenticado' string, and login support in scripts/docs/capture-capability-docs.py. App runs at http://127.0.0.1:8084 (live Gemini env + SMTP env, see memory).",
+  "head": "9b781085",
+  "headSubject": "fix(pigmentampas-p9): seeds re-ran on kept DBs, REST create skipped lifecycle initial state, stale UI banner",
+  "summary": "Fixed the P9 friction items in 9b781085 (pushed to main): seeding context now bypasses access.read (seeds no longer re-run on kept DBs), REST create applies lifecycle initial state, business-UI status banner only reports the on-screen concept, 403 reference-label lookups are quiet, nao autenticado -> shell.notSignedIn, capture-capability-docs.py gained --capabilities and --username/--password-env sign-in. Friction log entries marked with the hash; new entry 50 (identity::User label 403) logged and fixed.",
+  "nextStep": "Ask the owner whether to delete 6 of the 7 duplicate First light mosaics in the live Pigmentampas DB (keep PTM-2026-0005); then build $user support in field defaultExpression (e.g. defaultExpression \"$user.id\" on Mosaic/CollectionItem ownerUsername) across kernel ValueExpressionEvaluator + GeneratedCrudRuntimeSupport.applySchemaValueBehaviors + SemanticValidator, with a dsl-conformance-max example, so REST create defaults the owner. App runs at http://127.0.0.1:8084 (start with AI + SMTP env per memory).",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
   "blocked": "D5: Google OAuth client + Meta app (owner). Real-phone bot runs and the Claude Desktop MCP run are the owner's.",
-  "verified": "P9 page rendered locally at 1280 and 400 px (no horizontal scroll) before publish; heart mosaic 216/216 cells read back via API; three mosaics PUBLISHED via API; no gate run (no repo code changed).",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "verified": "run-kernel-quality-gate.ps1 PASS (incl. aggregate coverage ratchet); run-generator-gate.ps1 PASS (incl. determinism); narrow tests ConfiguredConceptGatewaySemanticPolicyTest 16/16 and GeneratedCrudRuntimeSupportStateMachineTest 3/3; live on 8084: no seed re-run on boot, POST /api/mosaics without status -> DRAFT, banner probe via Playwright, signed-in capture. runtimehost + aiKnowledge gates NOT run (T2 incomplete).",
+  "dirtyCount": 2,
+  "dirtyFiles": [
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl"
+  ],
   "unpushed": 0,
-  "landedCommits": [
-    "cf4a5367 feat(hooks): /clear auto-runs the session prep (c.. = close, clear, done)"
-  ]
+  "landedCommits": []
 }
