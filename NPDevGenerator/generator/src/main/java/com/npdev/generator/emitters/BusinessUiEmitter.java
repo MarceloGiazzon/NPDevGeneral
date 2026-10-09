@@ -315,7 +315,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             List<CompiledContext> contexts
     ) {
         List<Map<String, Object>> out = new ArrayList<>();
-        for (CompiledField field : concept.getFields()) {
+        // #18: forms and detail views follow the author's declaration order, not the sorted list.
+        for (CompiledField field : concept.getFieldsInDeclaredOrder()) {
             Map<String, Object> view = new LinkedHashMap<>();
             view.put("name", javaString(field.getName()));
             view.put("label", javaString(fieldLabel(field)));
@@ -523,7 +524,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             Map<String, String> extensionFieldOrigins
     ) {
         List<Map<String, Object>> fields = new ArrayList<>();
-        for (CompiledField field : concept.getFields()) {
+        for (CompiledField field : concept.getFieldsInDeclaredOrder()) {
             Map<String, Object> node = new LinkedHashMap<>();
             node.put("name", field.getName());
             node.put("concept", concept.getName());
@@ -621,7 +622,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     }
 
     private static Map<String, Object> manifestList(CompiledConcept concept, CompiledField idField, List<String> declaredColumns) {
-        List<String> shown = concept.getFields().stream()
+        List<String> shown = concept.getFieldsInDeclaredOrder().stream()
                 .filter(BusinessUiEmitter::isShowInUi)
                 .map(CompiledField::getName)
                 .toList();

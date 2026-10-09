@@ -835,7 +835,8 @@ public final class CompiledModelCanonicalJsonReader {
                 booleanValue(node, "softDelete"),
                 booleanValue(node, "temporal"),
                 optionalText(node, "uid"),
-                toRollups(node.get("rollups"))
+                toRollups(node.get("rollups")),
+                toStringList(node.get("fieldOrder"))
         );
     }
 

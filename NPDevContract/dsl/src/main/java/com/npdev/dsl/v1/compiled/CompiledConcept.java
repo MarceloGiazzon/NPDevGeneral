@@ -14,6 +14,7 @@ public final class CompiledConcept extends CompiledEntity {
     private final boolean temporal;
     private final String uid;
     private final List<CompiledRollup> rollups;
+    private final List<String> fieldOrder;
 
     public CompiledConcept(String name, String className, String tableName, List<CompiledField> fields) {
         this(name, className, tableName, fields, List.of(), List.of(), null, null, null, null, List.of());
@@ -283,6 +284,32 @@ public final class CompiledConcept extends CompiledEntity {
             String uid,
             List<CompiledRollup> rollups
     ) {
+        this(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel, module, indexes, access, renamedFrom, satelliteOf, origin, softDelete, temporal, uid, rollups, List.of());
+    }
+
+    /** Pigmentampas friction #18: the author's field declaration order -- see getFieldOrder. */
+    public CompiledConcept(
+            String name,
+            String className,
+            String tableName,
+            List<CompiledField> fields,
+            List<String> expressionInvariants,
+            List<CompiledInvariant> invariants,
+            CompiledLifecycle lifecycle,
+            CompiledPresentationMetadata ui,
+            String truthLevel,
+            String module,
+            List<CompiledIndex> indexes,
+            CompiledConceptAccess access,
+            String renamedFrom,
+            String satelliteOf,
+            CompiledOrigin origin,
+            boolean softDelete,
+            boolean temporal,
+            String uid,
+            List<CompiledRollup> rollups,
+            List<String> fieldOrder
+    ) {
         super(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
@@ -294,6 +321,7 @@ public final class CompiledConcept extends CompiledEntity {
         this.temporal = temporal;
         this.uid = uid;
         this.rollups = rollups == null ? List.of() : List.copyOf(rollups);
+        this.fieldOrder = fieldOrder == null ? List.of() : List.copyOf(fieldOrder);
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
@@ -350,6 +378,36 @@ public final class CompiledConcept extends CompiledEntity {
      *  equal to an aggregate over a child concept's rows; empty if none. */
     public List<CompiledRollup> getRollups() {
         return rollups;
+    }
+
+    /** Pigmentampas friction #18: field names in the order the author declared them (inherited
+     *  fields first). {@link #getFields()} stays sorted by name -- the canonical, deterministic
+     *  layout every schema/codegen consumer relies on -- so this is the ONLY place declaration order
+     *  survives compilation. Empty for a concept compiled before it existed. */
+    public List<String> getFieldOrder() {
+        return fieldOrder;
+    }
+
+    /** {@link #getFields()} in declaration order, for anything a person reads (forms, detail, list
+     *  columns): fields named in {@link #getFieldOrder()} first, in that order, then any others in
+     *  their {@code getFields()} order (e.g. a field an extension pack added). */
+    public List<CompiledField> getFieldsInDeclaredOrder() {
+        if (fieldOrder.isEmpty()) {
+            return getFields();
+        }
+        java.util.Map<String, CompiledField> byName = new java.util.LinkedHashMap<>();
+        for (CompiledField field : getFields()) {
+            byName.putIfAbsent(field.getName(), field);
+        }
+        List<CompiledField> out = new java.util.ArrayList<>(byName.size());
+        for (String name : fieldOrder) {
+            CompiledField field = byName.remove(name);
+            if (field != null) {
+                out.add(field);
+            }
+        }
+        out.addAll(byName.values());
+        return List.copyOf(out);
     }
 
     public static CompiledConcept fromLegacyEntity(CompiledEntity legacy) {

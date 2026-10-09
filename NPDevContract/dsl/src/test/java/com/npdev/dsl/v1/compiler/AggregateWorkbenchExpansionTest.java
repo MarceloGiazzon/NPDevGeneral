@@ -104,7 +104,8 @@ class AggregateWorkbenchExpansionTest {
         assertNotNull(wb);
         assertEquals("Expedicao", wb.get("aggregate"));
         assertEquals("Expedicao", wb.get("root"));
-        assertEquals(List.of("cliente", "estagio", "id"), ((Map<String, Object>) wb.get("header")).get("fields"));
+        // #18: declaration order, no longer alphabetical.
+        assertEquals(List.of("id", "cliente", "estagio"), ((Map<String, Object>) wb.get("header")).get("fields"));
 
         // The root concept's lifecycle drives the status chip + per-state editability gating.
         Map<String, Object> lifecycle = (Map<String, Object>) wb.get("lifecycle");

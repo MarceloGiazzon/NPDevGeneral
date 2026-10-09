@@ -234,7 +234,7 @@ public final class LiveConceptUiManifestSupport {
 
     private static Map<String, Object> listNode(CompiledConcept concept, CompiledField idField) {
         List<String> columns = new ArrayList<>();
-        for (CompiledField field : concept.getFields()) {
+        for (CompiledField field : concept.getFieldsInDeclaredOrder()) {
             if (isShowInUi(field)) {
                 columns.add(field.getName());
             }
@@ -256,7 +256,7 @@ public final class LiveConceptUiManifestSupport {
             CompiledConcept concept, CompiledModel model, List<CompiledContext> contexts
     ) {
         List<Map<String, Object>> fields = new ArrayList<>();
-        for (CompiledField field : concept.getFields()) {
+        for (CompiledField field : concept.getFieldsInDeclaredOrder()) {
             Map<String, Object> node = new LinkedHashMap<>();
             node.put("name", field.getName());
             node.put("concept", concept.getName());

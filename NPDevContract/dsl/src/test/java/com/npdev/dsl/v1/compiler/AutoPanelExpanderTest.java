@@ -122,7 +122,8 @@ class AutoPanelExpanderTest {
         assertEquals("table", selection.layout().type());
         assertEquals("/cliente", selection.route());
         // Columns follow the concept's normalized (alphabetical) field order.
-        assertEquals(List.of("email", "id", "nome"), selection.layout().fields());
+        // #18: declaration order, no longer alphabetical.
+        assertEquals(List.of("id", "nome", "email"), selection.layout().fields());
         assertEquals("Cliente", selection.dataSources().get(0).concept());
         assertEquals("autoPanel", selection.metadata().get("generatedBy"));
         assertTrue(selection.actions().stream().anyMatch(a -> "new".equals(a.name())));
@@ -136,7 +137,7 @@ class AutoPanelExpanderTest {
         // Transaction: an editable form; the id field is dropped from the editable set.
         assertEquals("form", form.layout().type());
         assertEquals("/cliente/edit", form.route());
-        assertEquals(List.of("email", "nome"), form.layout().fields());
+        assertEquals(List.of("nome", "email"), form.layout().fields());
         assertTrue(form.fieldBindings().stream().allMatch(b -> b.editable()));
         assertTrue(form.actions().stream().anyMatch(a -> "save".equals(a.name())));
         assertTrue(form.actions().stream().anyMatch(a -> "delete".equals(a.name())));
@@ -213,7 +214,8 @@ class AutoPanelExpanderTest {
         assertEquals("/cliente/prompt", prompt.route());
         assertEquals("prompt", prompt.metadata().get("surface"));
         // Default labelField = first non-id field; returnField = the id.
-        assertEquals("email", prompt.metadata().get("labelField"));
+        // #18: the first DECLARED non-id field labels the picker (was the first alphabetically).
+        assertEquals("nome", prompt.metadata().get("labelField"));
         assertEquals("id", prompt.metadata().get("returnField"));
         assertEquals(Boolean.FALSE, prompt.metadata().get("multiSelect"));
         assertTrue(prompt.actions().isEmpty(), "a prompt is a read-only picker");

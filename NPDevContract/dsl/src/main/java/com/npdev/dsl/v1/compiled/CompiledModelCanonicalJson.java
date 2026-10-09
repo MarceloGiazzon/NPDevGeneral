@@ -955,6 +955,8 @@ public final class CompiledModelCanonicalJson {
                 fieldsNode.add(fieldNode);
             }
             node.set("fields", fieldsNode);
+            // #18: fields above are sorted by name; declaration order is kept as data, unsorted.
+            node.set("fieldOrder", toStringArray(concept.getFieldOrder()));
 
             List<String> expressionInvariants = new ArrayList<>(concept.getExpressionInvariants());
             expressionInvariants.sort(String.CASE_INSENSITIVE_ORDER);

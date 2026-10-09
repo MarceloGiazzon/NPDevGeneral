@@ -380,7 +380,9 @@ public final class ModelCompiler {
                             concept.getUid(),
                             concept.getRollups().stream()
                                     .map(r -> new com.npdev.dsl.v1.compiled.CompiledRollup(r.field(), r.from(), r.via(), r.fn(), r.of()))
-                                    .toList()
+                                    .toList(),
+                            // #18: `fields` is sorted by name just above; keep the declared order beside it.
+                            effective.fields().stream().map(FieldAst::getName).toList()
                     )
             );
             List<String> invariantRefs = new ArrayList<>(invariantsByCanonicalRef.keySet());

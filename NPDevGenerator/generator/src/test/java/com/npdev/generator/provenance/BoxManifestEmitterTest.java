@@ -134,8 +134,8 @@ final class BoxManifestEmitterTest {
 
         assertEquals("Invoice", specializes.path("parent").asText());
         assertEquals(List.of("doctorId"), toList(specializes.path("adds")));
-        // ModelResolver sorts fields by normalized name -- "code" < "id".
-        assertEquals(List.of("code", "id"), toList(specializes.path("inherits")));
+        // #18: ModelResolver keeps the parent's declaration order (it used to sort by name).
+        assertEquals(List.of("id", "code"), toList(specializes.path("inherits")));
         assertTrue(specializes.path("removes").isEmpty());
     }
 
