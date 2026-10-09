@@ -36,7 +36,7 @@ class GeneratedQueryControllerTemplateContractTest {
     void plainPathUsesV2CompilerWithBoundParameters() {
         String source = compact(renderedController());
         assertTrue(source.contains(
-                        "compileToConceptQueryFilters(query.where(),query.parameters(),bound)"),
+                        "compileToConceptQueryFilters(query.where(),query.parameters(),bound,context)"),
                 "runPlain must compile v2 filters with declared-parameter binding:\n" + source);
     }
 
@@ -44,10 +44,10 @@ class GeneratedQueryControllerTemplateContractTest {
     void aggregateAndHavingAlsoUseV2CompilerWithBoundParameters() {
         String source = compact(renderedController());
         assertTrue(source.contains(
-                        "compileToConceptQueryFilters(query.where(),query.parameters(),bound)"),
+                        "compileToConceptQueryFilters(query.where(),query.parameters(),bound,context)"),
                 "runAggregate where must bind v2 parameters:\n" + source);
         assertTrue(source.contains(
-                        "compileToConceptQueryFilters(query.having(),query.parameters(),bound)"),
+                        "compileToConceptQueryFilters(query.having(),query.parameters(),bound,context)"),
                 "runAggregate having must bind v2 parameters:\n" + source);
     }
 

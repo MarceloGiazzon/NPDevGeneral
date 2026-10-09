@@ -74,6 +74,7 @@ import datetime
 import glob
 import json
 import os
+import re
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
@@ -373,6 +374,33 @@ def measure_module(
     return parse_line_coverage_percent(newest, report_format), str(newest)
 
 
+def aggregate_ratchet_up_refusal(module_cfg: dict, evidence: str | None) -> str | None:
+    """2026-10-09: a ratchet-UP from a partial aggregate is refused. A gate whose tests failed stops
+    Gradle before every adapter writes its report; the survivors (38 of kernel's 44) cleared
+    minReportCount=30 and their aggregate read HIGHER (66.67% vs the real 66.39%) because the
+    missing adapters were lower-covered -- so the floor was raised to a number no complete run can
+    reach, and the next green run failed as a "regression". A drop is still reported from a
+    partial aggregate (it never hides a regression); only raising the floor needs at least as many
+    reports as the last ratchet-up recorded in `reportCount`.
+
+    @return why the ratchet-up is refused, or None when it may proceed."""
+    if not module_cfg.get("aggregate", False):
+        return None
+    match = re.match(r"(\d+) report\(s\)", evidence or "")
+    recorded = module_cfg.get("reportCount")
+    if match is None or recorded is None:
+        return None
+    if int(match.group(1)) >= int(recorded):
+        return None
+    return (f"only {match.group(1)} report(s) this run, fewer than the {recorded} the current floor "
+            "was measured from -- a partial aggregate may not raise the floor")
+
+
+def _aggregate_report_count(evidence: str | None) -> int | None:
+    match = re.match(r"(\d+) report\(s\)", evidence or "")
+    return int(match.group(1)) if match else None
+
+
 def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -465,9 +493,15 @@ def main(argv: list[str]) -> int:
                     f"silently broken this floor before."
                 )
                 continue
+            refusal = aggregate_ratchet_up_refusal(cfg, evidence)
+            if refusal is not None:
+                print(f"  - {name}: {pct}% is ABOVE floor {recorded}%, but {refusal} (floor stays {recorded}%)")
+                continue
             print(f"  - {name}: {pct}% (ratcheting floor up from {recorded}%, {evidence})")
             cfg["coveragePercent"] = pct
             cfg["measuredOn"] = _now_iso()
+            if cfg.get("aggregate", False) and _aggregate_report_count(evidence) is not None:
+                cfg["reportCount"] = _aggregate_report_count(evidence)
             changed = True
         else:
             print(f"  - {name}: {pct}% (matches recorded floor, {evidence})")
@@ -610,6 +644,16 @@ def run_calibration() -> int:
         pass4f_unset = pct_agg3_unset is not None and abs(pct_agg3_unset - 90.0) < 1e-6
         print(f"  [{'PASS' if pass4f_unset else 'FAIL'}] an aggregate module with no minReportCount declared is unaffected (measured: {pct_agg3_unset})")
         ok = ok and pass4f_unset
+
+        # Control 4g (2026-10-09): a partial aggregate (fewer reports than the floor was measured
+        # from) may not RAISE the floor; the same count, or a module with no reportCount yet, may.
+        agg_cfg = {"aggregate": True, "reportCount": 44}
+        pass4g_refused = aggregate_ratchet_up_refusal(agg_cfg, "38 report(s), e.g. x.xml") is not None
+        pass4g_allowed = aggregate_ratchet_up_refusal(agg_cfg, "44 report(s), e.g. x.xml") is None
+        pass4g_unset = aggregate_ratchet_up_refusal({"aggregate": True}, "38 report(s), e.g. x.xml") is None
+        pass4g = pass4g_refused and pass4g_allowed and pass4g_unset
+        print(f"  [{'PASS' if pass4g else 'FAIL'}] a 38-of-44-report aggregate may not ratchet the floor up; 44 of 44, or no recorded reportCount, may")
+        ok = ok and pass4g
 
         # Control 4c (Track C C8): the editor's `istanbul-json-summary` format (vitest
         # coverage-v8's json-summary reporter) parses covered/total from total.lines, not from a
