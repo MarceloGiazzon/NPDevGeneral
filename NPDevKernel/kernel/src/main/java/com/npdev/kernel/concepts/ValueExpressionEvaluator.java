@@ -97,7 +97,13 @@ public final class ValueExpressionEvaluator {
         try {
             return ComputedExpression.evaluate(text, scope, ValueExpressionFunctions.base());
         } catch (ComputedExpression.ExpressionException unresolvable) {
-            return null;
+            // Only the anonymous case has a legitimate "no value" answer ($user.id + '-x' over a
+            // null id). For a real actor an unresolvable default is an authoring bug: refuse it
+            // loudly rather than silently writing a null owner.
+            if (actorId == null) {
+                return null;
+            }
+            throw unresolvable;
         }
     }
 
