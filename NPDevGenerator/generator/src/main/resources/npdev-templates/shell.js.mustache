@@ -670,7 +670,8 @@
   function buildNavIcon(label) {
     var icon = document.createElement("span");
     icon.className = "npdev-shell-nav-icon";
-    icon.textContent = (label || "?").trim().charAt(0).toUpperCase() || "?";
+    icon.setAttribute("data-icon", (label || "?").trim().charAt(0).toUpperCase() || "?");
+    icon.setAttribute("aria-hidden", "true");
     return icon;
   }
 
@@ -810,7 +811,8 @@
     if (!items || !items.length) return;
     addSectionHeader(container, label);
     items.forEach(function (item) {
-      addLeafLink(container, "#" + item.hash, item.label, null);
+      // #20: an aggregate's workbench entry links straight to its served page (item.href).
+      addLeafLink(container, item.href || "#" + item.hash, item.label, null);
     });
   }
 
