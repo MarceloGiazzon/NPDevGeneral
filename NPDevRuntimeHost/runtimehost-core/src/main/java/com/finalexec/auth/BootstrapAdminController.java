@@ -14,6 +14,7 @@ import java.sql.Connection;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import com.finalexec.config.DefaultTenant;
 
 /**
  * Creates the first admin user on a fresh database, replacing manual SQL-shell seeding.
@@ -63,7 +64,7 @@ public class BootstrapAdminController {
 
     @PostMapping("/api/auth/bootstrap-admin")
     public ResponseEntity<Map<String, Object>> bootstrapAdmin(@RequestBody BootstrapRequest request) {
-        String tenantId = (request.tenantId() == null || request.tenantId().isBlank()) ? "dev" : request.tenantId().trim();
+        String tenantId = DefaultTenant.orDefault(request.tenantId());
         String username = request.username() == null ? null : request.username().trim();
         String displayName = request.displayName() == null ? null : request.displayName().trim();
         String password = request.password();

@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.finalexec.config.DefaultTenant;
 
 /**
  * The browser-facing half of the external identity-provider abstraction (SEC-11,
@@ -213,7 +214,7 @@ public class OAuthGoogleController {
             return handleLinkCallback(authService, code, target, request, provider);
         }
         OAuthGoogleAuthService.SessionTicket ticket =
-                authService.resolveAndSignIn(code, callbackUrl(request, provider), "dev");
+                authService.resolveAndSignIn(code, callbackUrl(request, provider), DefaultTenant.id());
         if (ticket.token() == null) {
             return redirectWithError(target, ticket.errorCode());
         }
@@ -234,7 +235,7 @@ public class OAuthGoogleController {
         }
         String tenant = claimAsString(claims, "tenant_id");
         if (tenant == null) {
-            tenant = "dev";
+            tenant = DefaultTenant.id();
         }
         OAuthGoogleAuthService.SessionTicket ticket =
                 authService.linkToAuthenticatedUser(code, callbackUrl(request, provider), tenant, actor);

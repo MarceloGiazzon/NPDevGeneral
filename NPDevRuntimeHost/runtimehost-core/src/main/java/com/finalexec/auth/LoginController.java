@@ -31,6 +31,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import com.finalexec.config.DefaultTenant;
 
 /**
  * Real login for the built-in identity pack (identity_users/identity_roles/identity_user_roles).
@@ -129,7 +130,7 @@ public class LoginController {
 
     @PostMapping("/api/auth/login")
     public ResponseEntity<Map<String, Object>> login(@RequestBody LoginRequest request, HttpServletRequest httpRequest) {
-        String tenantId = (request.tenantId() == null || request.tenantId().isBlank()) ? "dev" : request.tenantId().trim();
+        String tenantId = DefaultTenant.orDefault(request.tenantId());
         String username = request.username() == null ? null : request.username().trim();
         String password = request.password();
         // REG-20: the source IP is the second throttle dimension -- one password sprayed across many

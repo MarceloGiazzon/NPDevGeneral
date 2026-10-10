@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import com.finalexec.config.DefaultTenant;
 
 /**
  * NPDev's first genuinely automatic (no human/curl trigger) data-seeding mechanism: on every
@@ -89,13 +90,13 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
             ResourceLoader resourceLoader,
             ObjectMapper objectMapper,
             ModelHolder modelHolder,
-            @Value("${npdev.workspace.menu-seed.tenant-id:dev}") String tenantId,
+            @Value("${npdev.workspace.menu-seed.tenant-id:${npdev.tenant.default-id:dev}}") String tenantId,
             @Value("${npdev.workspace.menu-seed.mode:reconcile}") String seedMode
     ) {
         this.dataSource = dataSource;
         this.resourceLoader = resourceLoader;
         this.objectMapper = objectMapper;
-        this.tenantId = (tenantId == null || tenantId.isBlank()) ? "dev" : tenantId.trim();
+        this.tenantId = DefaultTenant.orDefault(tenantId);
         String trimmedMode = seedMode == null ? null : seedMode.trim();
         if (MODE_UPSERT_IF_FINGERPRINT_CHANGED.equals(trimmedMode)) {
             this.seedMode = MODE_UPSERT_IF_FINGERPRINT_CHANGED;

@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
+import com.finalexec.config.DefaultTenant;
 
 /**
  * P6 (Pigmentampas public gallery, G4): the anonymous, read-only data surface behind
@@ -87,7 +88,7 @@ public final class PublicReadService {
         this.model = model;
         this.gateway = gateway;
         this.fileReader = fileReader;
-        this.tenantId = tenantId == null || tenantId.isBlank() ? "default" : tenantId.trim();
+        this.tenantId = DefaultTenant.orDefault(tenantId);
         this.basePath = basePath == null ? "/api/public" : basePath;
     }
 

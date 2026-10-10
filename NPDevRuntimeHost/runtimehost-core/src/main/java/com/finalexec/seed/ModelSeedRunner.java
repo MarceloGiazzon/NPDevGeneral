@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.finalexec.config.DefaultTenant;
 
 /**
  * R8.8 (Roadmap Wave 2, 2026-08-19): the boot-time, automatic, idempotent executor for
@@ -70,13 +71,13 @@ public class ModelSeedRunner implements ApplicationRunner {
             ConceptGateway conceptGateway,
             SeedDataService seedDataService,
             ObjectMapper objectMapper,
-            @Value("${npdev.seed.model-seed.tenant-id:dev}") String tenantId
+            @Value("${npdev.seed.model-seed.tenant-id:${npdev.tenant.default-id:dev}}") String tenantId
     ) {
         this.modelHolder = modelHolder;
         this.conceptGateway = conceptGateway;
         this.seedDataService = seedDataService;
         this.objectMapper = objectMapper;
-        this.tenantId = (tenantId == null || tenantId.isBlank()) ? "dev" : tenantId.trim();
+        this.tenantId = DefaultTenant.orDefault(tenantId);
     }
 
     @Override

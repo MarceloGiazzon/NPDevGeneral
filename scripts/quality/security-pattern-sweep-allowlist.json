@@ -3013,10 +3013,10 @@
       "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/OAuthGoogleAuthService.java:339 (findUserByEmailOrUsername, setString(3, email.toLowerCase(Locale.ROOT)))",
       "why": "SEC-12: same reasoning as fingerprint f0c95f976870 above -- the second half of the same OR'd WHERE clause, same bounded columns."
     },
-    "6a4704a2be29": {
+    "81557da41edc": {
       "rule": "unbounded-caller-input",
-      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/OAuthGoogleAuthService.java:398 (insertLink, setString(2, tenantId))",
-      "why": "SEC-12: same class as fingerprint 7f6fd636bf90 above. tenantId is persisted into the platform's own uniformly-injected tenant_id column, emitted as VARCHAR(120) for every business table by SchemaRealizationEmitter regardless of the concept's own declared fields -- the same bounded-by-construction posture, not merely a pack-declared field."
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/OAuthGoogleAuthService.java:399 (insertLink, setString(2, DefaultTenant.orDefault(tenantId)))",
+      "why": "SEC-12: same class as fingerprint 7f6fd636bf90 above. tenantId (blank -> DefaultTenant.orDefault, friction #29; re-keyed from 6a4704a2be29) is persisted into the platform's own uniformly-injected tenant_id column, emitted as VARCHAR(120) for every business table by SchemaRealizationEmitter regardless of the concept's own declared fields -- the same bounded-by-construction posture, not merely a pack-declared field."
     },
     "2f308d5375f5": {
       "rule": "unbounded-caller-input",

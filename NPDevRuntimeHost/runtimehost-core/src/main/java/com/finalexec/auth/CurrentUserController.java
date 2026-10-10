@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import com.finalexec.config.DefaultTenant;
 
 /**
  * Wave 3 (NPDEV_FEATURE_PLAN_2026-09-24): the one primitive a "complete your profile" flow needs
@@ -66,8 +67,7 @@ public class CurrentUserController {
     @GetMapping("/api/auth/me")
     public ResponseEntity<Map<String, Object>> me(HttpServletRequest httpRequest) {
         ExecutionContext callerContext = currentContext(httpRequest);
-        String tenantId = callerContext == null || callerContext.tenantId() == null || callerContext.tenantId().isBlank()
-                ? "dev" : callerContext.tenantId().trim();
+        String tenantId = DefaultTenant.orDefault(callerContext == null ? null : callerContext.tenantId());
         String username = callerContext == null ? null : callerContext.actorId();
         if (username == null || username.isBlank()) {
             return ResponseEntity.status(401).body(Map.of("error", "unauthenticated"));

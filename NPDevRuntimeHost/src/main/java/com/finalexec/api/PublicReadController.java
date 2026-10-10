@@ -58,7 +58,7 @@ public class PublicReadController {
             ObjectProvider<ConceptGateway> conceptGateway,
             ObjectProvider<FileStoreContract> fileStore,
             ObjectProvider<TenantRegistryService> tenantRegistry,
-            @Value("${npdev.public-read.tenant-id:dev}") String tenantId,
+            @Value("${npdev.public-read.tenant-id:${npdev.tenant.default-id:dev}}") String tenantId,
             @Value("${npdev.public-read.rate-limit-per-minute:240}") int rateLimitPerMinute,
             @Value("${npdev.public-read.trust-forwarded-for:false}") boolean trustForwardedFor
     ) {
