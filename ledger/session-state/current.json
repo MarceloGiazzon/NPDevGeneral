@@ -1,19 +1,18 @@
 {
-  "closedAt": "2026-10-10T07:44:03.9623357Z",
+  "closedAt": "2026-10-10T17:15:48.7475121Z",
   "branch": "main",
-  "head": "ef6d0cee",
-  "headSubject": "fix(ui): side nav lists one entry per screen (#20)",
-  "summary": "Full T2 on 5dc35a94 all 4 gates PASS (coverage floors ratcheted, committed in 3f0ed081). Pigmentampas friction #29: npdev.tenant.default-id (default dev) via runtimehost-core DefaultTenant.orDefault at every tenant-less entry point (login/bootstrap/OAuth/change-password/me/password-reset/external identity/auth-disabled dev context/seeders/public read); public-read/seed/menu-seed props fall back to it; PublicReadService no longer falls back to 'default' (3f0ed081). #20: UI manifest panels carry surface/concept/navEntry; only an aggregate Workbench is a generated nav entry and replaces its root concept entry (links /npdev-workbench/*.html); other autoPanel surfaces never listed; nav icon glyph is CSS ::before (ef6d0cee). Friction log #29/#20 marked fixed.",
-  "nextStep": "Next Pigmentampas friction gap #28 (aggregate invoke response perf, no fix yet): read entry #28 in D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\friction\\log.jsonl, measure the aggregate invoke round trip on Pigmentampas (http://127.0.0.1:8084, tito/demo-pass-1, MosaicsWorkbench) before changing anything, then fix. After that #5 (needed-minus-owned query, currently workaround CapsNeededPerMosaic) and #1 (docs for hand-made screens). Housekeeping: many friction entries say FIXED in 'fix' but lack state=fixed. No T2 since ef6d0cee (generator template/emitter change) -- run it at the next milestone. Pigmentampas runs rebuilt at ef6d0cee (rebuild: Stop-App, NPDevSamples/scripts/generate-sample-app.ps1 -SampleId pigmentampas -OutputRoot D:/WorkSpace/NPDev/Build/samples/pigmentampas/Output, _ops/Build-FinalApp.ps1 -SkipTests, Start-App with NPDEV_MAIL_SMTP_* env).",
+  "head": "0e47da9a",
+  "headSubject": "perf(aggregate): invoke of a procedure ending in return answers with only that value (#28)",
+  "summary": "Pigmentampas friction #28 fixed (0e47da9a): aggregate invoke of a procedure ending in a return step answers with only the returned value (non-map as {return:v}), callProcedure's rule; no-return procedures unchanged. Workbench action branch folds response as-is; applyTo resolves against the returned value. BREAKING.md entry, no codemod. New AggregateRuntimeCommitTest case. Friction log #28 state=fixed.",
+  "nextStep": "Pigmentampas friction #5 (needed-minus-owned query; workaround CapsNeededPerMosaic) then #1 (docs for hand-made screens). Housekeeping: friction entries with FIXED in 'fix' but no state=fixed. Run full T2 (run-all-gates) at next milestone -- none since ef6d0cee (two template changes: ef6d0cee, 0e47da9a). Pigmentampas runs at 0e47da9a on 8084 (started with NPDEV_MAIL_SMTP_HOST=localhost/_PORT=1025/_FROM=noreply@pigmentampas.local; external AI env NOT set this time).",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
   "blocked": "D5: Google OAuth client + Meta app (owner). Real-phone bot runs and the Claude Desktop MCP run are the owner's.",
-  "verified": "Full T2 (run-all-gates) on 5dc35a94: generator 690s, runtimeHost 794s, kernel 422s, aiKnowledge 896s -- all PASS. After #29: runtimehost-core full test PASS incl. new DefaultTenantTest 5/5; security-pattern-sweep 0 new; generator UntrustedExtensionEmitterGeneratedActionTest PASS. After #20: full :generator:test PASS incl. BusinessUiEmitterAppShellManifestTest 3/3. Live on Pigmentampas 8084 (jar contains DefaultTenant): tenant-less login tito + /api/auth/me OK, /api/public/concepts/Mosaic 4 items; Playwright sidebar read: 13 entries no repeats, Mosaics/Cap catalogue -> workbench pages. No T2 after 3f0ed081/ef6d0cee.",
+  "verified": "Live Pigmentampas 8084: PaintMosaicFromPhoto invoke 206 KB -> 43.7 KB, body identical to old return; Playwright workbench Paint from photo paints 660/660, next invoke body has no scratch keys (one unexplained 403 console error). AggregateRuntimeCommitTest 3/3 in app incl. new case. No T2 since ef6d0cee.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "ef6d0cee fix(ui): side nav lists one entry per screen (#20)",
-    "3f0ed081 feat(runtimehost): one home-tenant property, npdev.tenant.default-id (#29)",
-    "5dc35a94 chore(session): handoff after #34/#25, #37, #18 (6944ed39, e406e474, c6e09abe, 670dc625)"
+    "0e47da9a perf(aggregate): invoke of a procedure ending in return answers with only that value (#28)",
+    "08151fb8 chore(session): handoff after T2 PASS, #29 (3f0ed081), #20 (ef6d0cee)"
   ]
 }
