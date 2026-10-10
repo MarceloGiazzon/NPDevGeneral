@@ -90,4 +90,52 @@ public class BusinessUiEmitterAppShellManifestTest {
         String manifest = emitAndReadManifest(model);
         assertFalse(manifest.contains("\"defaultRoute\""), manifest);
     }
+
+    /**
+     * Pigmentampas friction #20: every generated surface used to land in the nav, so one concept
+     * showed 3-4 times. The manifest now says which generated panel is an entry point (only an
+     * aggregate's Workbench page) and which concept it stands for; the UI lists only those.
+     */
+    @Test
+    void onlyAnAggregateWorkbenchIsAGeneratedNavEntryAndItNamesItsRootConcept() throws Exception {
+        CompiledModel model = compile("""
+                {
+                  "namespace": "autopanel.nav.demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    { "name": "Order", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true },
+                      { "name": "code", "type": "string" }
+                    ] },
+                    { "name": "Board", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true },
+                      { "name": "title", "type": "string" }
+                    ] }
+                  ],
+                  "aggregates": [ { "name": "BoardAggregate", "root": "Board", "collections": [] } ],
+                  "autoPanels": [
+                    { "name": "Orders", "concept": "Order", "route": "/orders",
+                      "surfaces": ["selection", "detail", "transaction"] },
+                    { "name": "Boards", "aggregate": "BoardAggregate", "route": "/boards",
+                      "surfaces": ["selection", "detail", "transaction"] }
+                  ]
+                }
+                """);
+
+        com.fasterxml.jackson.databind.JsonNode panels =
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree(emitAndReadManifest(model)).get("panels");
+        java.util.Map<String, com.fasterxml.jackson.databind.JsonNode> byName = new java.util.HashMap<>();
+        panels.forEach(panel -> byName.put(panel.get("name").asText(), panel));
+
+        com.fasterxml.jackson.databind.JsonNode workbench = byName.get("BoardsWorkbench");
+        assertTrue(workbench != null && workbench.get("navEntry").asBoolean(), String.valueOf(byName.keySet()));
+        org.junit.jupiter.api.Assertions.assertEquals("Board", workbench.get("concept").asText());
+        org.junit.jupiter.api.Assertions.assertEquals("/npdev-workbench/BoardsWorkbench.html", workbench.get("workbenchUrl").asText());
+        for (String subSurface : java.util.List.of("OrdersSelection", "OrdersDetail", "OrdersForm", "BoardsSelection")) {
+            com.fasterxml.jackson.databind.JsonNode panel = byName.get(subSurface);
+            assertTrue(panel != null, subSurface + " missing from " + byName.keySet());
+            assertFalse(panel.get("navEntry").asBoolean(), subSurface + " must not be a nav entry");
+        }
+    }
 }

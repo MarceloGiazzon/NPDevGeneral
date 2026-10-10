@@ -1636,6 +1636,22 @@
   // the same concept/panelSectionRef shape resolveHashTarget() produces from a hash, so nav
   // building (deriveNativeGroups) and default-route activation (bootstrap) share one
   // target-resolution rule instead of two.
+  // Pigmentampas friction #20: an aggregate's Workbench page IS the screen for its root concept (it
+  // lists the roots with the declared columns, opens one, and creates new), so the nav entry for
+  // that concept links there -- one entry per screen, not one per generated surface.
+  function workbenchPanelFor(conceptName) {
+    return (state.manifest.panels || []).find(function (p) {
+      return p.navEntry === true && p.workbenchUrl && p.concept === conceptName;
+    }) || null;
+  }
+
+  function conceptNavItem(label, concept) {
+    const workbench = workbenchPanelFor(concept.conceptName);
+    return workbench
+      ? { label: label, hash: sectionId(panelSectionRef(workbench)), href: workbench.workbenchUrl, panelName: workbench.name }
+      : { label: label, hash: sectionId(concept) };
+  }
+
   function resolveNavTarget(name) {
     if (!name || !state.manifest) return null;
     const concept = visibleConcepts().find(function (c) { return c.conceptName === name; });
@@ -6754,7 +6770,10 @@
   // shape shell.js.mustache's renderSidebar() now iterates, instead of the old fixed {data, panels}.
   function deriveNativeGroups() {
     const concepts = visibleConcepts().filter(function (c) { return !conceptIsAdmin(c); });
+    // #20: a generated sub-surface (navEntry false: Detail/Form/Workbench/picker) is reached from
+    // its Selection, never listed on its own.
     const panels = (state.manifest.panels || [])
+      .filter(function (panelMeta) { return panelMeta.navEntry !== false; })
       .filter(function (panelMeta) { return evaluateWhen(panelMeta.visibility, panelContextValues()); });
     const appShell = state.manifest.appShell;
     const usedConceptNames = {};
@@ -6780,18 +6799,26 @@
         }
         const resolved = resolveNavTarget(item.target);
         if (!resolved) return; // SemanticValidator refuses this at compile time; defensive only.
+        let navItem;
         if (resolved.declaredPanel) {
           usedPanelNames[item.target] = true;
+          navItem = { label: item.label, hash: sectionId(resolved) };
         } else {
           usedConceptNames[item.target] = true;
+          navItem = conceptNavItem(item.label, resolved);
+          if (navItem.panelName) usedPanelNames[navItem.panelName] = true;
         }
-        ensureGroup(item.group).items.push({ label: item.label, hash: sectionId(resolved) });
+        ensureGroup(item.group).items.push(navItem);
       });
     }
 
     const leftoverData = concepts
       .filter(function (c) { return !usedConceptNames[c.conceptName]; })
-      .map(function (c) { return { label: c.displayName, hash: sectionId(c) }; });
+      .map(function (c) {
+        const navItem = conceptNavItem(c.displayName, c);
+        if (navItem.panelName) usedPanelNames[navItem.panelName] = true;
+        return navItem;
+      });
     const leftoverPanels = panels
       .filter(function (p) { return !usedPanelNames[p.name]; })
       .map(function (p) { return { label: p.title, hash: sectionId(panelSectionRef(p)) }; });

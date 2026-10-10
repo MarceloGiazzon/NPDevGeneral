@@ -773,8 +773,23 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("guidePage", resolvePanelGuidePage(panel, knownGuidePageNames));
             // Aggregate Workbench panels are rendered by their own served page, not the generic
             // panel renderer; the nav links straight to it (ADR-0005).
-            if (panel.metadata() != null && "aggregate".equals(panel.metadata().get("dataVia"))) {
+            boolean aggregateWorkbench = panel.metadata() != null && "aggregate".equals(panel.metadata().get("dataVia"));
+            if (aggregateWorkbench) {
                 node.put("workbenchUrl", "/npdev-workbench/" + panel.name() + ".html");
+            }
+            // Pigmentampas friction #20: a generated surface carries its origin so the nav shows ONE
+            // entry per screen. The only generated entry point is an aggregate's Workbench page (it
+            // lists the roots itself and opens one), which stands in for its root concept's section
+            // (deriveNativeGroups). Every other surface -- Selection/Detail/Form of a concept-bound
+            // autoPanel, the aggregate's own Selection, a selector's picker -- is reached from a
+            // screen and never listed; the concept's own section is the better list for those.
+            Object generatedBy = panel.metadata() == null ? null : panel.metadata().get("generatedBy");
+            if (generatedBy != null) {
+                Object surface = panel.metadata().get("surface");
+                Object concept = panel.metadata().get("concept");
+                node.put("surface", surface == null ? "" : String.valueOf(surface));
+                node.put("concept", concept == null ? "" : String.valueOf(concept));
+                node.put("navEntry", "autoPanel".equals(generatedBy) && aggregateWorkbench);
             }
             // REG-216: an aggregate root's Selection panel carries a link to its paired Workbench
             // (AutoPanelExpander's metadata.workbenchPanel) -- the client uses this to route the
