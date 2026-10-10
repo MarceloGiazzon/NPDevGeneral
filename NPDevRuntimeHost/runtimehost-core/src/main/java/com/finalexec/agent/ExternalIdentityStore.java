@@ -12,6 +12,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import com.finalexec.config.DefaultTenant;
 
 /**
  * AGENT-1 (A6.1): reads/writes the identity pack's {@code identity::ExternalIdentity} table --
@@ -90,7 +91,7 @@ public final class ExternalIdentityStore {
                                 + " (id, tenant_id, user_id, provider, provider_subject, linked_at)"
                                 + " VALUES (?, ?, ?, ?, ?, ?)")) {
             ps.setObject(1, UUID.randomUUID());
-            ps.setString(2, tenantId == null || tenantId.isBlank() ? "dev" : tenantId.trim());
+            ps.setString(2, DefaultTenant.orDefault(tenantId));
             ps.setObject(3, UUID.fromString(userId));
             ps.setString(4, provider);
             ps.setString(5, subject);
@@ -196,7 +197,7 @@ public final class ExternalIdentityStore {
                 PreparedStatement ps = connection.prepareStatement(
                         "SELECT id FROM " + tables.usersTable() + " WHERE username = ? AND tenant_id = ?")) {
             ps.setString(1, username);
-            ps.setString(2, tenantId == null || tenantId.isBlank() ? "dev" : tenantId.trim());
+            ps.setString(2, DefaultTenant.orDefault(tenantId));
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? Optional.of(rs.getString("id")) : Optional.empty();
             }

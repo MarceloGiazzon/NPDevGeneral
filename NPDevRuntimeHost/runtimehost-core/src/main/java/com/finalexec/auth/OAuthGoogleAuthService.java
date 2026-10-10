@@ -20,6 +20,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import com.finalexec.config.DefaultTenant;
 
 /**
  * The account-linking semantics of the external identity-provider abstraction (SEC-11,
@@ -114,7 +115,7 @@ public final class OAuthGoogleAuthService {
         if (!isUsableEmail(verified)) {
             return SessionTicket.error(Outcome.UNVERIFIED_OR_MISSING_EMAIL, "oauth_unverified_email");
         }
-        String normalizedTenant = (tenantId == null || tenantId.isBlank()) ? "dev" : tenantId.trim();
+        String normalizedTenant = DefaultTenant.orDefault(tenantId);
 
         Tables tables = Tables.resolve(modelHolder.get());
         if (tables == null || tables.externalIdentityTable() == null) {
@@ -156,7 +157,7 @@ public final class OAuthGoogleAuthService {
         if (!isUsableEmail(verified)) {
             return SessionTicket.error(Outcome.UNVERIFIED_OR_MISSING_EMAIL, "oauth_unverified_email");
         }
-        String normalizedTenant = (tenantId == null || tenantId.isBlank()) ? "dev" : tenantId.trim();
+        String normalizedTenant = DefaultTenant.orDefault(tenantId);
         if (actorUsername == null || actorUsername.isBlank()) {
             return SessionTicket.error(Outcome.LINK_ACCOUNT_UNRESOLVED, "oauth_link_account_unresolved");
         }
@@ -395,7 +396,7 @@ public final class OAuthGoogleAuthService {
                         + " (id, tenant_id, user_id, provider, provider_subject, linked_at)"
                         + " VALUES (?, ?, ?, ?, ?, ?)")) {
             ps.setObject(1, UUID.randomUUID());
-            ps.setString(2, tenantId == null || tenantId.isBlank() ? "dev" : tenantId.trim());
+            ps.setString(2, DefaultTenant.orDefault(tenantId));
             ps.setObject(3, UUID.fromString(userId));
             ps.setString(4, identityProvider.providerId());
             ps.setString(5, subject);

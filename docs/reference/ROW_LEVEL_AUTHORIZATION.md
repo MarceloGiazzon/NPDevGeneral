@@ -156,7 +156,8 @@ Guarantees:
 - **No file handles are exposed.** A `file` field is served as `{ "url": "/api/public/.../image/<field>" }`.
 - **Public read only narrows.** Reads go through the concept gateway as the principal
   `public:anonymous`, so the concept's own `access.read` still applies.
-- **One tenant.** Public data is read from `npdev.public-read.tenant-id`. The default is `dev`, the same tenant a login without a tenant uses. If that
+- **One tenant.** Public data is read from `npdev.public-read.tenant-id`. It defaults to `npdev.tenant.default-id` (itself `dev`), the same tenant a login, OAuth sign-in,
+  seeder or menu seeder without a tenant uses, so setting that one property moves them all. If that
   tenant is disabled, nothing is served.
 - **Rate-limited.** `npdev.public-read.rate-limit-per-minute` (default 240) per client address.
   Over the limit returns 429 with `Retry-After`. `X-Forwarded-For` is ignored unless

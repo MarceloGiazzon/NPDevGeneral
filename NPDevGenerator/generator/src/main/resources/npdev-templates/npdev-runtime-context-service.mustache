@@ -35,7 +35,7 @@ public class RuntimeContextService {
 
     public ExecutionContext currentContext(HttpServletRequest request) {
         if (runtimeSettings != null && !runtimeSettings.authEnabled()) {
-            ExecutionContext devContext = ExecutionContext.of("dev", "developer")
+            ExecutionContext devContext = ExecutionContext.of(com.finalexec.config.DefaultTenant.id(), "developer")
                     .withRoles(java.util.Set.of("USER", "DEBUG", "ADMIN"));
             String requestedLocale = request == null ? null : resolveRequestedLocale(request);
             return requestedLocale == null ? devContext : devContext.withTag("locale", requestedLocale);

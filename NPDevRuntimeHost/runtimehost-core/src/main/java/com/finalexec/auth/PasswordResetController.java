@@ -30,6 +30,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import com.finalexec.config.DefaultTenant;
 
 /**
  * LNCH-4 P1: self-service password reset, built on LNCH-11's mail capability -- "request" emails a
@@ -314,7 +315,7 @@ public class PasswordResetController {
     }
 
     private static String normalizeTenant(String tenantId) {
-        return tenantId == null || tenantId.isBlank() ? "dev" : tenantId.trim();
+        return DefaultTenant.orDefault(tenantId);
     }
 
     /** REG-21: best-effort client IP for rate limiting (X-Forwarded-For first hop, else socket peer). */

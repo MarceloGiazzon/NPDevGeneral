@@ -30,6 +30,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import com.finalexec.config.DefaultTenant;
 
 /**
  * WMS-9 N6: logged-in self-service "change my password" -- {@link PasswordResetController} is a
@@ -112,8 +113,7 @@ public class ChangePasswordController {
     public ResponseEntity<Map<String, Object>> changePassword(
             @RequestBody ChangePasswordRequest request, HttpServletRequest httpRequest) {
         ExecutionContext callerContext = currentContext(httpRequest);
-        String tenantId = callerContext == null || callerContext.tenantId() == null || callerContext.tenantId().isBlank()
-                ? "dev" : callerContext.tenantId().trim();
+        String tenantId = DefaultTenant.orDefault(callerContext == null ? null : callerContext.tenantId());
         String username = callerContext == null ? null : callerContext.actorId();
 
         if (username == null || username.isBlank()) {
