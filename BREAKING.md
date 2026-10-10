@@ -5,6 +5,20 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-10 — aggregate `invoke` of a procedure ending in `return` answers with only the returned value
+
+**What changes.** `POST /api/runtime/aggregate/{name}/invoke/{procedure}` used to answer with the
+procedure's whole state: the echoed draft, every scratch step target and `return`. When the
+procedure runs a `return` step it now answers with that value alone (a non-map value as
+`{"return": value}`), the rule a nested `callProcedure` already applied. Procedures without a
+`return` step answer as before. A workbench action's `applyTo` `$result.x` paths now resolve
+against the returned value, which is what `$resultado.x` always meant.
+
+**Who is affected.** A direct API caller that read a scratch target or the echoed draft off the
+response of a procedure ending in `return`. No shipped model or generated page did.
+
+**Codemod.** None: no model text changes. To get a field back, include it in the returned value.
+
 ## 2026-10-09 — procedure step `args` bind in declared key order, not alphabetical
 
 **What changes.** A procedure step's `args` object is passed positionally to the capability method.

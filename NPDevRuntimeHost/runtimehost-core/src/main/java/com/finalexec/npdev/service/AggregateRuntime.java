@@ -286,8 +286,12 @@ public class AggregateRuntime {
     /**
      * Invoke a declared procedure over an in-flight aggregate draft and return the patched draft
      * (procedure-over-aggregate, e.g. "Gerar Demanda"/recompute). The draft is passed as the procedure
-     * input; the procedure's resulting state — its top-level fields plus any step targets, minus the
-     * internal {@code input} echo — is returned as the new draft. This does NOT persist: the client
+     * input. A procedure that ends in a {@code return} step answers with exactly that value -- the same
+     * rule a nested {@code callProcedure} applies -- as the patch the client folds into the draft (a
+     * non-map value comes back as {@code {"return": value}}); its scratch step targets (query results,
+     * a photo read for a capability, ...) and the echoed draft stay on the server. Without a
+     * {@code return}, the resulting state -- its top-level fields plus any step targets, minus the
+     * internal {@code input} echo -- is returned as the new draft. This does NOT persist: the client
      * re-renders the returned draft and the user commits (or discards) it explicitly.
      *
      * @throws IllegalArgumentException if the aggregate or procedure is unknown
@@ -309,6 +313,16 @@ public class AggregateRuntime {
             throw new IllegalStateException(
                     "Procedure " + procedureName + " failed: "
                             + result.failureCode() + " " + result.failureMessage());
+        }
+        if (result.state().containsKey("return")) {
+            Object returned = result.state().get("return");
+            Map<String, Object> patch = new LinkedHashMap<>();
+            if (returned instanceof Map<?, ?> map) {
+                map.forEach((key, value) -> patch.put(String.valueOf(key), value));
+            } else {
+                patch.put("return", returned);
+            }
+            return patch;
         }
         Map<String, Object> patched = new LinkedHashMap<>(result.state());
         patched.remove("input"); // drop the executor's echo of the initial input
