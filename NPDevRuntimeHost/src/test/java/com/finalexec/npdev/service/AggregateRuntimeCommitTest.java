@@ -51,6 +51,14 @@ class AggregateRuntimeCommitTest {
           "procedures": [
             { "name": "GerarDemanda", "steps": [
               { "type": "assign", "value": "$cliente", "target": "clienteEcho" }
+            ] },
+            { "name": "ProporDraft", "steps": [
+              { "type": "assign", "value": "$cliente", "target": "scratch" },
+              { "type": "return", "value": "$input" }
+            ] },
+            { "name": "LerCliente", "steps": [
+              { "type": "assign", "value": "$cliente", "target": "scratch" },
+              { "type": "return", "value": "$cliente" }
             ] }
           ]
         }
@@ -166,5 +174,24 @@ class AggregateRuntimeCommitTest {
         // Unknown procedure / aggregate are rejected distinctly.
         assertThrows(IllegalArgumentException.class, () -> runtime.invoke("Expedicao", "Nope", draft, ctx));
         assertThrows(IllegalArgumentException.class, () -> runtime.invoke("Nope", "GerarDemanda", draft, ctx));
+    }
+
+    /**
+     * Pigmentampas friction #28: a procedure ending in a {@code return} step answers with just that
+     * value -- its scratch targets and the echoed draft never ride back (PaintMosaicFromPhoto sent
+     * ~206 KB per call, the photo, query results and the old cells included, for a 48 KB result).
+     */
+    @Test
+    void invokeOfAProcedureWithAReturnStepAnswersWithOnlyTheReturnedValue() throws Exception {
+        CompiledModel model = compiledModel();
+        AggregateRuntime runtime = new AggregateRuntime(model, new Store(), new ProcedureRunner(model, new Store(), null, null));
+        ExecutionContext ctx = ExecutionContext.anonymous();
+        Map<String, Object> draft = new java.util.LinkedHashMap<>(Map.of("id", "E9", "cliente", "Alimentos"));
+
+        Map<String, Object> proposed = runtime.invoke("Expedicao", "ProporDraft", draft, ctx);
+        assertEquals(draft, proposed, "a map return is the whole answer -- no scratch target, no 'return' wrapper");
+
+        Map<String, Object> scalar = runtime.invoke("Expedicao", "LerCliente", draft, ctx);
+        assertEquals(Map.of("return", "Alimentos"), scalar, "a non-map return comes back under 'return' alone");
     }
 }
