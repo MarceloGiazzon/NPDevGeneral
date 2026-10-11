@@ -88,6 +88,17 @@ view it at `http://localhost:8025`. `NPDEV_MAIL_SMTP_HOST` defaults to `mailhog`
 service's DNS name), so an app whose model bound `mail-smtp` reaches it automatically once the
 profile is up; the app ignores the service entirely if unbound.
 
+**App running on the host (`Start-App.ps1`, `bootRun`), not in compose?** Don't use the compose
+profile: compose interpolates the whole file before starting any service, so even
+`docker compose --profile smtp up -d mailhog` refuses to start until the app service's required
+secrets (`NPDEV_AUTH_APIKEYS`, `DB_PASSWORD`, …) are set. Those `:?` checks are deliberate
+fail-fast guards for a real deploy and stay. Run the catcher directly instead, and point the app at it:
+
+```powershell
+docker run -d --name mailhog -p 1025:1025 -p 8025:8025 mailhog/mailhog:v1.0.1
+$env:NPDEV_MAIL_SMTP_HOST = "localhost"; $env:NPDEV_MAIL_SMTP_PORT = "1025"
+```
+
 ## Literal subject/body text
 
 An arg that does not resolve to anything in flow/procedure state is passed through as the literal
