@@ -1214,7 +1214,9 @@ public final class JsonModelParser {
                     parseAggregateFunctions(queryNode.get("aggregates")),
                     readText(queryNode, "having"),
                     toOriginAst(originByName.get(name)),
-                    readText(queryNode, "uid")
+                    readText(queryNode, "uid"),
+                    parseQueryLookups(queryNode.get("lookups")),
+                    parseQueryComputedColumns(queryNode.get("computed"))
             ));
         }
         return out;
@@ -1256,6 +1258,44 @@ public final class JsonModelParser {
         for (JsonNode entry : node) {
             out.add(new com.npdev.dsl.v1.ast.AggregateFunctionAst(
                     requiredText(entry, "name"), requiredText(entry, "fn"), readText(entry, "field")));
+        }
+        return out;
+    }
+
+    /** Friction #5: query.lookups[] -- {name, concept, fn, field?, on, where?}. */
+    private static List<com.npdev.dsl.v1.ast.QueryLookupAst> parseQueryLookups(JsonNode node) throws IOException {
+        List<com.npdev.dsl.v1.ast.QueryLookupAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("query.lookups must be an array");
+        }
+        for (JsonNode entry : node) {
+            out.add(new com.npdev.dsl.v1.ast.QueryLookupAst(
+                    requiredText(entry, "name"),
+                    requiredText(entry, "concept"),
+                    requiredText(entry, "fn"),
+                    readText(entry, "field"),
+                    parseStringMap(entry.get("on")),
+                    readText(entry, "where")));
+        }
+        return out;
+    }
+
+    /** Friction #5: query.computed[] -- {name, expression}. */
+    private static List<com.npdev.dsl.v1.ast.QueryComputedColumnAst> parseQueryComputedColumns(JsonNode node)
+            throws IOException {
+        List<com.npdev.dsl.v1.ast.QueryComputedColumnAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("query.computed must be an array");
+        }
+        for (JsonNode entry : node) {
+            out.add(new com.npdev.dsl.v1.ast.QueryComputedColumnAst(
+                    requiredText(entry, "name"), requiredText(entry, "expression")));
         }
         return out;
     }

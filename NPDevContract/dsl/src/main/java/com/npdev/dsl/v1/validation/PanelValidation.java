@@ -1179,6 +1179,9 @@ final class PanelValidation {
         for (AggregateFunctionAst aggregate : query.aggregates()) {
             aggregateOutputNames.add(normalize(aggregate.name()));
         }
+        // Friction #5: lookup and computed columns are per-row numeric outputs a gadget may plot.
+        query.lookups().forEach(lookup -> aggregateOutputNames.add(normalize(lookup.name())));
+        query.computed().forEach(column -> aggregateOutputNames.add(normalize(column.name())));
 
         if ("kpi".equals(type)) {
             requireAggregateOutput(here, "y", gadget.y(), query, aggregateOutputNames, errors);

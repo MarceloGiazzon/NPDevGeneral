@@ -77,6 +77,8 @@ FEATURE_DETECTORS = {
     "query.groupBy": lambda m: any(q.get("groupBy") for q in (m.get("queries", None) or [])),
     "query.aggregates": lambda m: any(q.get("aggregates") for q in (m.get("queries", None) or [])),
     "query.having": lambda m: any(q.get("having") for q in (m.get("queries", None) or [])),
+    "query.lookups": lambda m: any(q.get("lookups") for q in (m.get("queries", None) or [])),
+    "query.computed": lambda m: any(q.get("computed") for q in (m.get("queries", None) or [])),
     # S4 (roadmap B27, ADR-0011 D1): groupBy JOIN paths -- distinct from the plain "query.groupBy"
     # feature above (a bare field name), and split same-context vs cross-context so a regression to
     # just the D3 import-gate/context-qualification half independently fails the build.

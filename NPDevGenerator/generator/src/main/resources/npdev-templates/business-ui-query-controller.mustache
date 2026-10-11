@@ -5,8 +5,12 @@ import com.npdev.dsl.v1.compiled.CompiledAggregateFunction;
 import com.npdev.dsl.v1.compiled.CompiledGroupByField;
 import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
+import com.npdev.dsl.v1.compiled.CompiledQueryComputedColumn;
+import com.npdev.dsl.v1.compiled.CompiledQueryLookup;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.concepts.ConceptAggregateEngine;
+import com.npdev.kernel.concepts.ConceptAggregateLookups;
 import com.npdev.kernel.concepts.ConceptAggregateQuery;
 import com.npdev.kernel.concepts.ConceptAggregateRequest;
 import com.npdev.kernel.concepts.ConceptAggregateResult;
@@ -164,10 +168,32 @@ public class GeneratedQueryController {
                 query.having(), query.parameters(), bound, context);
         List<ConceptQuery.Sort> sorts = ConceptQueryPredicateCompiler.compileOrderBy(query.orderBy());
 
-        ConceptAggregateQuery aggregateQuery = new ConceptAggregateQuery(
-                filters, groupBy, aggregates, having, sorts, query.limit());
+        // Friction #5: lookups[]/computed[] add columns AFTER grouping, so having/orderBy/limit are
+        // applied once those columns exist (they may name them) instead of inside the store.
+        boolean enriched = !query.lookups().isEmpty() || !query.computed().isEmpty();
+        ConceptAggregateQuery aggregateQuery = enriched
+                ? new ConceptAggregateQuery(filters, groupBy, aggregates, List.of(), List.of(), null)
+                : new ConceptAggregateQuery(filters, groupBy, aggregates, having, sorts, query.limit());
         ConceptAggregateResult result = conceptGateway.aggregate(
                 new ConceptAggregateRequest(query.concept(), aggregateQuery), context);
+        if (enriched) {
+            List<ConceptAggregateLookups.Lookup> lookups = new ArrayList<>();
+            for (CompiledQueryLookup lookup : query.lookups()) {
+                lookups.add(new ConceptAggregateLookups.Lookup(
+                        lookup.name(), lookup.concept(), lookup.fn(), lookup.field(), lookup.on(),
+                        ConceptQueryPredicateCompiler.compileToConceptQueryFilters(
+                                lookup.where(), query.parameters(), bound, context)));
+            }
+            List<ConceptAggregateLookups.Computed> computed = new ArrayList<>();
+            for (CompiledQueryComputedColumn column : query.computed()) {
+                computed.add(new ConceptAggregateLookups.Computed(column.name(), column.expression()));
+            }
+            List<Map<String, Object>> rows = ConceptAggregateLookups.apply(result.rows(), lookups, computed,
+                    (concept, lookupQuery) -> conceptGateway.aggregate(
+                            new ConceptAggregateRequest(concept, lookupQuery), context));
+            result = new ConceptAggregateResult(
+                    ConceptAggregateEngine.applyHavingSortAndLimit(rows, having, sorts, query.limit()));
+        }
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("query", query.name());

@@ -883,6 +883,29 @@
       }
     },
     {
+      "name": "WarehouseMonthShareOfAllTime",
+      "concept": "WidgetShipmentEvent",
+      "groupBy": [
+        "warehouseId",
+        { "field": "shippedAt", "bucket": "month" }
+      ],
+      "aggregates": [
+        { "name": "monthUnits", "fn": "sum", "field": "unitsShipped" }
+      ],
+      "lookups": [
+        { "name": "allTimeUnits", "concept": "WidgetShipmentEvent", "fn": "sum", "field": "unitsShipped",
+          "on": { "warehouseId": "warehouseId" }, "where": "unitsShipped > 0" }
+      ],
+      "computed": [
+        { "name": "sharePercent", "expression": "monthUnits * 100 / allTimeUnits" }
+      ],
+      "having": "sharePercent > 0",
+      "orderBy": [ "sharePercent desc" ],
+      "metadata": {
+        "purpose": "Coverage for query.lookups/computed (Pigmentampas friction #5): a per-key aggregate merged into each grouped row (on a bare groupBy field, with its own where) and an arithmetic column over it; having/orderBy name the computed column."
+      }
+    },
+    {
       "name": "AvailableQuantityQuery",
       "concept": "StockLocation",
       "where": "disponivel >= 0",

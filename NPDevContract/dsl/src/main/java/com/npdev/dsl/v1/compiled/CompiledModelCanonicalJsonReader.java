@@ -1351,8 +1351,30 @@ public final class CompiledModelCanonicalJsonReader {
                 toAggregateFunctions(node),
                 optionalText(node, "having"),
                 toOrigin(node.get("origin")),
-                optionalText(node, "uid")
+                optionalText(node, "uid"),
+                toQueryLookups(node),
+                toQueryComputedColumns(node)
         );
+    }
+
+    /** Friction #5: reads query.lookups[] (absent when none were declared). */
+    private static List<CompiledQueryLookup> toQueryLookups(JsonNode queryNode) {
+        List<CompiledQueryLookup> out = new ArrayList<>();
+        for (JsonNode entry : array(queryNode, "lookups")) {
+            out.add(new CompiledQueryLookup(
+                    text(entry, "name"), text(entry, "concept"), text(entry, "fn"),
+                    optionalText(entry, "field"), toStringMap(entry.get("on")), optionalText(entry, "where")));
+        }
+        return out;
+    }
+
+    /** Friction #5: reads query.computed[] (absent when none were declared). */
+    private static List<CompiledQueryComputedColumn> toQueryComputedColumns(JsonNode queryNode) {
+        List<CompiledQueryComputedColumn> out = new ArrayList<>();
+        for (JsonNode entry : array(queryNode, "computed")) {
+            out.add(new CompiledQueryComputedColumn(text(entry, "name"), text(entry, "expression")));
+        }
+        return out;
     }
 
     /** Move 10 B1: reads query.groupBy[] -- the canonical form is always the object shape. */

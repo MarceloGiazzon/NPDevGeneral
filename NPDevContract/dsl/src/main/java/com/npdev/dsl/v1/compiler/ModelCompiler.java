@@ -517,7 +517,16 @@ public final class ModelCompiler {
                     toCompiledAggregateFunctions(queryAst.aggregates()),
                     queryAst.having(),
                     toCompiledOrigin(queryAst.origin()),
-                    queryAst.uid()
+                    queryAst.uid(),
+                    queryAst.lookups().stream()
+                            .map(lookup -> new com.npdev.dsl.v1.compiled.CompiledQueryLookup(
+                                    lookup.name(), lookup.concept(), lookup.fn(), lookup.field(),
+                                    lookup.on(), lookup.where()))
+                            .toList(),
+                    queryAst.computed().stream()
+                            .map(column -> new com.npdev.dsl.v1.compiled.CompiledQueryComputedColumn(
+                                    column.name(), column.expression()))
+                            .toList()
             ));
         }
 

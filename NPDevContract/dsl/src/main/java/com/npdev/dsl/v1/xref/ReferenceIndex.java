@@ -755,6 +755,26 @@ public final class ReferenceIndex {
                         aliases.add(lower(aggregate.name()));
                     }
                 }
+                // Friction #5: lookup and computed columns are output aliases too -- having/orderBy
+                // may name them. A lookup's own concept, field and `on` keys are edges into ITS concept.
+                int lookupPosition = 0;
+                for (com.npdev.dsl.v1.ast.QueryLookupAst lookup : nullSafe(query.lookups())) {
+                    String lookupBase = base + ".lookups[" + lookupPosition++ + "]";
+                    aliases.add(lower(lookup.name()));
+                    String lookupConcept = safe(lookup.concept());
+                    concept(owner, SITE_QUERY_CONCEPT, lookupBase + ".concept", lookupConcept, KIND_QUERY);
+                    if (hasText(lookup.field())) {
+                        fieldOf(KIND_QUERY, owner, SITE_QUERY_AGGREGATE_FIELD, lookupBase + ".field",
+                                lookupConcept, lookup.field());
+                    }
+                    for (String key : lookup.on().keySet()) {
+                        fieldOf(KIND_QUERY, owner, SITE_QUERY_AGGREGATE_FIELD, lookupBase + ".on." + key,
+                                lookupConcept, key);
+                    }
+                }
+                for (com.npdev.dsl.v1.ast.QueryComputedColumnAst column : nullSafe(query.computed())) {
+                    aliases.add(lower(column.name()));
+                }
                 int position = 0;
                 for (GroupByFieldAst groupBy : nullSafe(query.groupBy())) {
                     if (groupBy != null && hasText(groupBy.field())) {
@@ -1239,6 +1259,16 @@ public final class ReferenceIndex {
             }
             for (GroupByFieldAst groupBy : nullSafe(query.groupBy())) {
                 if (groupBy != null && lower(groupBy.field()).equals(lower(axis))) {
+                    return;
+                }
+            }
+            for (com.npdev.dsl.v1.ast.QueryLookupAst lookup : nullSafe(query.lookups())) {
+                if (lower(lookup.name()).equals(lower(axis))) {
+                    return;
+                }
+            }
+            for (com.npdev.dsl.v1.ast.QueryComputedColumnAst column : nullSafe(query.computed())) {
+                if (lower(column.name()).equals(lower(axis))) {
                     return;
                 }
             }
