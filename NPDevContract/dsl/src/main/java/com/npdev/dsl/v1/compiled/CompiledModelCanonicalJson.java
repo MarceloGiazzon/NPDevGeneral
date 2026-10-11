@@ -1264,6 +1264,28 @@ public final class CompiledModelCanonicalJson {
             node.put("having", safe(query.having()));
             node.set("origin", toOrigin(query.origin()));
             node.put("uid", safe(query.uid()));
+            // Friction #5: written only when declared, so a query without them keeps its
+            // canonical bytes (and every golden compiled-metadata fixture) unchanged.
+            if (!query.lookups().isEmpty()) {
+                ArrayNode lookups = node.putArray("lookups");
+                for (CompiledQueryLookup lookup : query.lookups()) {
+                    ObjectNode lookupNode = lookups.addObject();
+                    lookupNode.put("name", safe(lookup.name()));
+                    lookupNode.put("concept", safe(lookup.concept()));
+                    lookupNode.put("fn", safe(lookup.fn()));
+                    lookupNode.put("field", safe(lookup.field()));
+                    lookupNode.set("on", toStringMap(lookup.on()));
+                    lookupNode.put("where", safe(lookup.where()));
+                }
+            }
+            if (!query.computed().isEmpty()) {
+                ArrayNode computed = node.putArray("computed");
+                for (CompiledQueryComputedColumn column : query.computed()) {
+                    ObjectNode columnNode = computed.addObject();
+                    columnNode.put("name", safe(column.name()));
+                    columnNode.put("expression", safe(column.expression()));
+                }
+            }
             queries.add(node);
         }
         return queries;

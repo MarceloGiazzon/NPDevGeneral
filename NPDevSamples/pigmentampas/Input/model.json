@@ -653,11 +653,15 @@
       "groupBy": ["capId.breweryId.name"],
       "aggregates": [{ "name": "caps", "fn": "count" }],
       "orderBy": ["caps desc"], "limit": 10 },
-    { "name": "CapsNeededPerMosaic", "concept": "MosaicCell", "where": "capId != null",
-      "groupBy": ["mosaicId.code", "capId.label"],
+    { "name": "BeersToDrink", "concept": "MosaicCell", "where": "capId != null",
+      "groupBy": ["mosaicId.code", "capId", "capId.label"],
       "aggregates": [{ "name": "needed", "fn": "count" }],
-      "orderBy": ["needed desc"], "limit": 500,
-      "metadata": { "purpose": "The 'beers to drink' half that NPDev can express today: caps needed per mosaic. needed - owned needs a cross-concept subtraction -- friction log. Mosaic's row scope (drafts private) is pushed into the GROUP BY per caller." } }
+      "lookups": [{ "name": "owned", "concept": "CollectionItem", "fn": "sum", "field": "quantity",
+                    "on": { "capId": "capId" }, "where": "ownerUsername == $user.id" }],
+      "computed": [{ "name": "toDrink", "expression": "needed - owned" }],
+      "having": "toDrink > 0",
+      "orderBy": ["toDrink desc"], "limit": 500,
+      "metadata": { "purpose": "Friction #5: caps still missing per mosaic -- cells needing each cap minus the caller's own CollectionItem quantity. Mosaic's row scope (drafts private) is pushed into the GROUP BY per caller; the lookup runs through CollectionItem's own access.read." } }
   ],
   "autoPanels": [
     { "name": "Mosaics", "aggregate": "MosaicAggregate", "route": "/mosaics",
@@ -734,7 +738,7 @@
         { "name": "kpiMosaics", "type": "kpi", "title": "Mosaics published", "query": "TotalPublishedMosaics", "y": "total" },
         { "name": "kpiMembers", "type": "kpi", "title": "Members", "query": "TotalMembers", "y": "total" },
         { "name": "topBreweries", "type": "bar", "title": "Top breweries in mosaics", "query": "TopBreweriesInMosaics", "x": "capId.breweryId.name", "y": "caps" },
-        { "name": "capsNeeded", "type": "table", "title": "Caps needed per mosaic", "query": "CapsNeededPerMosaic" }
+        { "name": "capsNeeded", "type": "table", "title": "Beers to drink", "query": "BeersToDrink" }
       ]
     }
   ],

@@ -4268,6 +4268,91 @@
         "having": {
           "type": "string",
           "minLength": 1
+        },
+        "lookups": {
+          "description": "Friction #5 (Pigmentampas 'beers to drink'): per-key aggregates over ANOTHER concept, merged into each grouped row of this aggregate query as extra output columns -- e.g. the caller's owned quantity per cap beside the cells-needed count. Runs through the same gateway (the lookup concept's access.read applies). Requires groupBy/aggregates.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/queryLookup"
+          }
+        },
+        "computed": {
+          "description": "Friction #5: output columns computed per grouped row from groupBy, aggregate, lookup and earlier computed columns, e.g. {\"name\": \"toDrink\", \"expression\": \"needed - owned\"}. having/orderBy/limit apply after lookups and computed columns, so they may name them.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/queryComputedColumn"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "queryLookup": {
+      "type": "object",
+      "required": [
+        "name",
+        "concept",
+        "fn",
+        "on"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Output column this lookup is bound as."
+        },
+        "concept": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The concept aggregated by this lookup."
+        },
+        "fn": {
+          "type": "string",
+          "enum": [
+            "count",
+            "sum",
+            "avg",
+            "min",
+            "max"
+          ],
+          "description": "Aggregate function; a row with no matching lookup group gets 0 for count/sum and null otherwise."
+        },
+        "field": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Field of the lookup concept the function applies to (not used by count)."
+        },
+        "on": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Join keys: lookup-concept field -> a bare groupBy field of this query, e.g. {\"capId\": \"capId\"}."
+        },
+        "where": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Filter on the lookup concept's rows, same grammar as query.where (incl. $user.id)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "queryComputedColumn": {
+      "type": "object",
+      "required": [
+        "name",
+        "expression"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expression": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Arithmetic/comparison expression over this row's output columns (+ - * / %, parentheses, numeric literals)."
         }
       },
       "additionalProperties": false

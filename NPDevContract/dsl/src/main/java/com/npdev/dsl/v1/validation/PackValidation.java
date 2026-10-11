@@ -28,6 +28,8 @@ import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.ast.GroupByFieldAst;
 import com.npdev.dsl.v1.ast.AggregateFunctionAst;
+import com.npdev.dsl.v1.ast.QueryComputedColumnAst;
+import com.npdev.dsl.v1.ast.QueryLookupAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
@@ -140,6 +142,10 @@ final class PackValidation {
             validateQueryWhereCompiles(query, concept, entitiesByLower, errors);
             if (query.isAggregate() && concept != null) {
                 validateAggregateQuery(query, concept, entitiesByLower, errors);
+            } else if (!query.isAggregate() && (!query.lookups().isEmpty() || !query.computed().isEmpty())) {
+                errors.add("Query " + query.name() + ": lookups/computed need an aggregate query (groupBy or "
+                        + "aggregates) -- they add columns to grouped rows, not to concept records"
+                        + " -- suggestedFix: add a groupBy or aggregates[] to this query, or remove lookups/computed");
             }
         }
     }
@@ -196,18 +202,26 @@ final class PackValidation {
      */
     private static void validateQueryWhereCompiles(
             QueryAst query, ConceptAst concept, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
-        if (!hasText(query.where())) {
+        validateWhereCompiles("Query " + query.name(), query.where(), query.parameters(), concept,
+                entitiesByLower, errors);
+    }
+
+    /** The body of {@link #validateQueryWhereCompiles}, shared with a lookup's own {@code where}
+     *  (friction #5), which is compiled against the LOOKUP concept with the query's parameters. */
+    private static void validateWhereCompiles(
+            String here, String where, List<ProcedureParameterAst> parameters, ConceptAst concept,
+            Map<String, ConceptAst> entitiesByLower, List<String> errors) {
+        if (!hasText(where)) {
             return;
         }
-        String here = "Query " + query.name();
         List<List<QueryPredicateGrammar.PredicateClause>> groups;
         try {
-            groups = QueryPredicateGrammar.parseGroups(query.where());
+            groups = QueryPredicateGrammar.parseGroups(where);
         } catch (QueryPredicateGrammar.UnsupportedPredicateException unsupported) {
             errors.add(here + ": where cannot be compiled -- " + unsupported.getMessage());
             return;
         }
-        Set<String> declaredParameters = query.parameters().stream()
+        Set<String> declaredParameters = parameters.stream()
                 .map(ProcedureParameterAst::name)
                 .map(SemanticValidator::normalize)
                 .collect(Collectors.toSet());
@@ -444,6 +458,107 @@ final class PackValidation {
                     && !AGGREGATE_NUMERIC_TYPES.contains(normalize(field.getType()))) {
                 errors.add(here + ": aggregate " + aggregate.name() + " (fn=" + fn + ") requires a numeric "
                         + "field, but " + aggregate.field() + " has type " + field.getType());
+            }
+        }
+        validateLookupsAndComputed(query, entitiesByLower, errors);
+    }
+
+    /**
+     * Friction #5: {@code lookups[]} and {@code computed[]} add output columns to each grouped row.
+     * Every output name is unique across groupBy fields, aggregates, lookups and computed columns;
+     * a lookup's {@code on} values must be bare groupBy fields of this query (the row keys the merge
+     * matches on), and a computed expression may only name columns declared before it.
+     */
+    private static void validateLookupsAndComputed(
+            QueryAst query, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
+        String here = "Query " + query.name();
+        Set<String> outputs = new HashSet<>();
+        Set<String> bareGroupBy = new HashSet<>();
+        for (GroupByFieldAst groupByField : query.groupBy()) {
+            outputs.add(groupByField.field());
+            if (!hasText(groupByField.bucket())) {
+                bareGroupBy.add(groupByField.field());
+            }
+        }
+        for (AggregateFunctionAst aggregate : query.aggregates()) {
+            outputs.add(aggregate.name());
+        }
+        for (QueryLookupAst lookup : query.lookups()) {
+            String where = here + " lookup " + lookup.name();
+            if (!outputs.add(lookup.name())) {
+                errors.add(where + ": output name already used by another column of this query"
+                        + " -- suggestedFix: rename it so groupBy, aggregates, lookups and computed names are all distinct");
+            }
+            ConceptAst lookupConcept = entitiesByLower.get(normalize(lookup.concept()));
+            if (lookupConcept == null) {
+                errors.add(where + ": concept not found: " + lookup.concept());
+                continue;
+            }
+            if (lookupConcept.getAccess() != null && hasText(lookupConcept.getAccess().getRead())
+                    && !AccessReadPredicate.isTranslatable(lookupConcept.getAccess().getRead(), "")) {
+                errors.add(where + ": concept " + lookupConcept.getName() + " has an access.read outside the "
+                        + "SQL-translatable subset, so it cannot be aggregated per caller -- suggestedFix: write its access.read as "
+                        + "||/&& of field comparisons, field == $user.id, or $user.roles.contains('Role')");
+                continue;
+            }
+            Map<String, FieldAst> lookupFields = new HashMap<>();
+            for (FieldAst field : lookupConcept.getFields()) {
+                lookupFields.put(normalize(field.getName()), field);
+            }
+            String fn = normalize(lookup.fn());
+            if (!AGGREGATE_FUNCTIONS.contains(fn)) {
+                errors.add(where + ": unsupported fn: " + lookup.fn() + " (supported: " + AGGREGATE_FUNCTIONS + ")");
+            } else if (!"count".equals(fn)) {
+                FieldAst field = hasText(lookup.field()) ? lookupFields.get(normalize(lookup.field())) : null;
+                if (!hasText(lookup.field())) {
+                    errors.add(where + ": fn=" + fn + " requires a field");
+                } else if (field == null) {
+                    errors.add(where + ": field not found on concept " + lookupConcept.getName() + ": " + lookup.field());
+                } else if (("sum".equals(fn) || "avg".equals(fn))
+                        && !AGGREGATE_NUMERIC_TYPES.contains(normalize(field.getType()))) {
+                    errors.add(where + ": fn=" + fn + " requires a numeric field, but " + lookup.field()
+                            + " has type " + field.getType());
+                }
+            }
+            if (lookup.on().isEmpty()) {
+                errors.add(where + ": on must map at least one " + lookupConcept.getName()
+                        + " field to a groupBy field of this query"
+                        + " -- suggestedFix: add on: {\"<lookupField>\": \"<groupByField>\"}");
+            }
+            for (Map.Entry<String, String> join : lookup.on().entrySet()) {
+                if (!lookupFields.containsKey(normalize(join.getKey()))) {
+                    errors.add(where + ": on names " + join.getKey() + ", which is not a field of "
+                            + lookupConcept.getName() + " -- suggestedFix: use a field declared on "
+                            + lookupConcept.getName());
+                }
+                if (!bareGroupBy.contains(join.getValue())) {
+                    errors.add(where + ": on maps " + join.getKey() + " to " + join.getValue()
+                            + ", which is not an unbucketed groupBy field of this query (groupBy: "
+                            + new TreeSet<>(bareGroupBy) + ") -- suggestedFix: add " + join.getValue()
+                            + " to this query's groupBy, or map to a groupBy field already there");
+                }
+            }
+            validateWhereCompiles(where, lookup.where(), query.parameters(), lookupConcept, entitiesByLower, errors);
+        }
+        for (QueryComputedColumnAst column : query.computed()) {
+            String where = here + " computed " + column.name();
+            Set<String> referenced = new TreeSet<>();
+            try {
+                ComputedExpression.parse(column.expression()).collectFields(referenced);
+            } catch (ComputedExpression.ExpressionException invalid) {
+                errors.add(where + ": expression cannot be parsed -- " + invalid.getMessage()
+                        + " -- suggestedFix: use + - * / %, comparisons, parentheses and column names only");
+            }
+            for (String name : referenced) {
+                if (!outputs.contains(name)) {
+                    errors.add(where + ": expression names " + name + ", which is not a groupBy, aggregate, "
+                            + "lookup or earlier computed column of this query -- suggestedFix: declare " + name
+                            + " as an aggregate or lookup, or move this computed column after the one that defines it");
+                }
+            }
+            if (!outputs.add(column.name())) {
+                errors.add(where + ": output name already used by another column of this query"
+                        + " -- suggestedFix: rename it so groupBy, aggregates, lookups and computed names are all distinct");
             }
         }
     }
