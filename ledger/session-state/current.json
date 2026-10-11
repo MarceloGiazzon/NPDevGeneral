@@ -1,18 +1,20 @@
 {
-  "closedAt": "2026-10-10T17:15:48.7475121Z",
+  "closedAt": "2026-10-11T23:21:28.6728074Z",
   "branch": "main",
-  "head": "0e47da9a",
-  "headSubject": "perf(aggregate): invoke of a procedure ending in return answers with only that value (#28)",
-  "summary": "Pigmentampas friction #28 fixed (0e47da9a): aggregate invoke of a procedure ending in a return step answers with only the returned value (non-map as {return:v}), callProcedure's rule; no-return procedures unchanged. Workbench action branch folds response as-is; applyTo resolves against the returned value. BREAKING.md entry, no codemod. New AggregateRuntimeCommitTest case. Friction log #28 state=fixed.",
-  "nextStep": "Pigmentampas friction #5 (needed-minus-owned query; workaround CapsNeededPerMosaic) then #1 (docs for hand-made screens). Housekeeping: friction entries with FIXED in 'fix' but no state=fixed. Run full T2 (run-all-gates) at next milestone -- none since ef6d0cee (two template changes: ef6d0cee, 0e47da9a). Pigmentampas runs at 0e47da9a on 8084 (started with NPDEV_MAIL_SMTP_HOST=localhost/_PORT=1025/_FROM=noreply@pigmentampas.local; external AI env NOT set this time).",
+  "head": "6e1a5668",
+  "headSubject": "test(runtimehost): generated query controller lookups/computed path (#5); ratchet floors",
+  "summary": "Pigmentampas friction #5 fixed (8fda5fb1): grouped queries gain lookups[] (per-key aggregate over another concept via ConceptGateway) + computed[] (ComputedExpression columns), having/orderBy/limit applied after; Pigmentampas BeersToDrink replaces CapsNeededPerMosaic. Friction #1 closed with docs/reference/HAND_MADE_PAGES.md (9543a171). Coverage test for the generated query controller + ratcheted floors (6e1a5668). Friction log: #1, #5 + 19 'FIXED' entries marked state=fixed.",
+  "nextStep": "Triage the 22 friction-log entries with no state (D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\friction\\log.jsonl): mark the ones citing a commit as fixed, ask the owner about #6/#33/#38 (workarounds/app-side). Then pick the next open Pigmentampas friction/P-phase item from the plan README. Before the next app regenerate, restage jars (scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars) -- Build/runtimehost-libs predates the ReferenceIndex/PanelValidation lookup-alias fix. Pigmentampas runs at 8fda5fb1 on 8084 (NPDEV_MAIL_SMTP_HOST=localhost/_PORT=1025/_FROM=noreply@pigmentampas.local).",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
   "blocked": "D5: Google OAuth client + Meta app (owner). Real-phone bot runs and the Claude Desktop MCP run are the owner's.",
-  "verified": "Live Pigmentampas 8084: PaintMosaicFromPhoto invoke 206 KB -> 43.7 KB, body identical to old return; Playwright workbench Paint from photo paints 660/660, next invoke body has no scratch keys (one unexplained 403 console error). AggregateRuntimeCommitTest 3/3 in app incl. new case. No T2 since ef6d0cee.",
+  "verified": "T2 run-all-gates at 8fda5fb1: generator PASS, aiKnowledge PASS, runtimeHost FAIL (RuntimeHost coverage 27.70 < 27.75 floor), kernel FAIL as that ratchet's cascade (kernel 66.48 up). After adding GeneratedQueryControllerLookupTest: -Only runtimeHost PASS (RuntimeHost 28.31%); kernel gate not rerun. Full DSL suite (1094) + generator suite PASS. Live Pigmentampas 8084: /api/queries/BeersToDrink as tito owned=50 Branik -> toDrink=needed-50, having drops toDrink<=0; tavo owned=0, drafts hidden.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "0e47da9a perf(aggregate): invoke of a procedure ending in return answers with only that value (#28)",
-    "08151fb8 chore(session): handoff after T2 PASS, #29 (3f0ed081), #20 (ef6d0cee)"
+    "6e1a5668 test(runtimehost): generated query controller lookups/computed path (#5); ratchet floors",
+    "9543a171 docs(reference): HAND_MADE_PAGES -- web/ pages, NPDevShell.api, pages.json, sidecars (#1)",
+    "8fda5fb1 feat(query): lookups[] + computed[] on grouped queries (#5)",
+    "154306fa chore(session): handoff after #28 (0e47da9a)"
   ]
 }
