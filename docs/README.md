@@ -43,6 +43,7 @@ One file per built-in feature.
 [AGENT_ACCESS.md](reference/AGENT_ACCESS.md) ·
 [CSV_EXPORT.md](reference/CSV_EXPORT.md) ·
 [EMAIL_NOTIFICATIONS.md](reference/EMAIL_NOTIFICATIONS.md) ·
+[HAND_MADE_PAGES.md](reference/HAND_MADE_PAGES.md) ·
 [OPTIMISTIC_LOCKING.md](reference/OPTIMISTIC_LOCKING.md) ·
 [PASSWORD_RESET.md](reference/PASSWORD_RESET.md) ·
 [ROW_LEVEL_AUTHORIZATION.md](reference/ROW_LEVEL_AUTHORIZATION.md) ·
