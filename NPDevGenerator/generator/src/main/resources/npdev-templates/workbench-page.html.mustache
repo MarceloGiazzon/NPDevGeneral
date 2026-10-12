@@ -1647,6 +1647,19 @@
     var neu = el('<button class="btn">' + STRINGS['action.new'] + '</button>'); neu.onclick = function () { openRow("new"); };
     barDiv.append(neu); app.append(barDiv);
   }
+  // One selection-list cell, table or grid: an image file handle is a thumbnail, any other file
+  // handle its name, everything else text (never innerHTML -- the value is row data).
+  function listCell(v) {
+    if (v && typeof v === "object" && v.key) {
+      if (String(v.contentType || "").indexOf("image/") === 0) {
+        var img = el('<img alt="" style="height:64px;max-width:120px;object-fit:cover;border-radius:4px;vertical-align:middle">');
+        img.src = cellGridFileUrl(v); img.alt = v.originalName || "";
+        return img;
+      }
+      return document.createTextNode(v.originalName || v.key);
+    }
+    return document.createTextNode(v == null ? "" : (typeof v === "object" ? JSON.stringify(v) : String(v)));
+  }
   function renderTableOnly() {
     var host = document.getElementById("listtable"); if (!host) return; host.innerHTML = "";
     var rows = filteredRows();
@@ -1658,7 +1671,7 @@
         listState.columns.forEach(function (c) {
           var v = (r.data || {})[c]; var line = el("<div></div>");
           var label = el("<b></b>"); label.textContent = c + ": "; line.append(label);
-          line.append(document.createTextNode(v == null ? "" : String(v))); card.append(line);
+          line.append(listCell(v)); card.append(line);
         });
         card.onclick = function () { openRow(r.id); };
         grid.append(card);
@@ -1670,7 +1683,7 @@
     tbl.append(el("<tr>" + listState.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "</tr>"));
     rows.forEach(function (r) {
       var tr = el('<tr class="master"></tr>');
-      listState.columns.forEach(function (c) { var v = (r.data || {})[c]; tr.append(el("<td>" + (v == null ? "" : String(v)) + "</td>")); });
+      listState.columns.forEach(function (c) { var td = el("<td></td>"); td.append(listCell((r.data || {})[c])); tr.append(td); });
       tr.onclick = function () { openRow(r.id); };
       tbl.append(tr);
     });
