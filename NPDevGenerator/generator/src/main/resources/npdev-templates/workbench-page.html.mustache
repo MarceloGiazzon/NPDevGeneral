@@ -1614,7 +1614,7 @@
 
   // List mode: with no ?id, show the root records (from the Selection panel), filter client-side on
   // the declared filter fields, and open one in the editor by navigating to ?id=<rowId>.
-  var listState = { rows: [], columns: [], filters: {} };
+  var listState = { rows: [], columns: [], filters: {}, fieldMeta: {} };
   function openRow(id) { location.search = "?id=" + encodeURIComponent(id); }
   function filteredRows() {
     return listState.rows.filter(function (r) {
@@ -1647,9 +1647,47 @@
     var neu = el('<button class="btn">' + STRINGS['action.new'] + '</button>'); neu.onclick = function () { openRow("new"); };
     barDiv.append(neu); app.append(barDiv);
   }
-  // One selection-list cell, table or grid: an image file handle is a thumbnail, any other file
-  // handle its name, everything else text (never innerHTML -- the value is row data).
-  function listCell(v) {
+  // One selection-list cell, table or grid: a reference shows its target's label, an enum its option
+  // label, an image file handle a thumbnail, any other file handle its name, everything else text
+  // (never innerHTML -- the value is row data).
+  // Column labels and reference display come from the business UI's own manifest (same labels,
+  // same lookupLabel rules), so the two UIs never disagree; without it the raw field name shows.
+  function columnLabel(c) { var m = listState.fieldMeta[c]; return (m && m.label) || c; }
+  var refLabelCache = {};
+  function referenceLabel(ref, row) {
+    var text = function (x) { return x == null ? "" : String(x); };
+    if (ref.displayTemplate) {
+      return ref.displayTemplate.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, function (_, n) { return text(row[n]); })
+        .replace(/\{\s*([A-Za-z0-9_]+)\s*\}/g, function (_, n) { return text(row[n]); });
+    }
+    var names = (ref.displayFields && ref.displayFields.length) ? ref.displayFields : [ref.displayField || ref.targetIdField];
+    var parts = names.map(function (n) { return text(row[n]); }).filter(Boolean);
+    return parts.length ? parts.join(" / ") : text(row[ref.targetIdField]);
+  }
+  function resolveReference(ref, id) {
+    var key = ref.endpointBase + "|" + id;
+    if (!refLabelCache[key]) {
+      refLabelCache[key] = fetch(ref.endpointBase + "/" + encodeURIComponent(id), { headers: authHeaders() })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (row) { return row ? (referenceLabel(ref, row) || String(id)) : String(id); })
+        .catch(function () { return String(id); });
+    }
+    return refLabelCache[key];
+  }
+  function listCell(v, c) {
+    var meta = c ? listState.fieldMeta[c] : null;
+    var ref = meta && meta.reference;
+    // A plain (non-via) reference: show the id now, swap in the target's display label once resolved.
+    // A forbidden/missing target keeps the raw id quietly, as the business UI does.
+    if (ref && ref.endpointBase && !ref.via && v != null && v !== "" && typeof v !== "object") {
+      var node = document.createTextNode(String(v));
+      resolveReference(ref, v).then(function (label) { node.textContent = label; });
+      return node;
+    }
+    if (meta && Array.isArray(meta.enumOptions) && v != null) {
+      var opt = meta.enumOptions.filter(function (o) { return o.value === v; })[0];
+      if (opt && opt.label) return document.createTextNode(opt.label);
+    }
     if (v && typeof v === "object" && v.key) {
       if (String(v.contentType || "").indexOf("image/") === 0) {
         var img = el('<img alt="" style="height:64px;max-width:120px;object-fit:cover;border-radius:4px;vertical-align:middle">');
@@ -1670,8 +1708,8 @@
         var card = el('<div class="master" style="border:1px solid #d0d7de;border-radius:8px;padding:10px;cursor:pointer"></div>');
         listState.columns.forEach(function (c) {
           var v = (r.data || {})[c]; var line = el("<div></div>");
-          var label = el("<b></b>"); label.textContent = c + ": "; line.append(label);
-          line.append(listCell(v)); card.append(line);
+          var label = el("<b></b>"); label.textContent = columnLabel(c) + ": "; line.append(label);
+          line.append(listCell(v, c)); card.append(line);
         });
         card.onclick = function () { openRow(r.id); };
         grid.append(card);
@@ -1680,10 +1718,12 @@
       return;
     }
     var tbl = el("<table></table>");
-    tbl.append(el("<tr>" + listState.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "</tr>"));
+    var head = el("<tr></tr>");
+    listState.columns.forEach(function (c) { var th = el("<th></th>"); th.textContent = columnLabel(c); head.append(th); });
+    tbl.append(head);
     rows.forEach(function (r) {
       var tr = el('<tr class="master"></tr>');
-      listState.columns.forEach(function (c) { var td = el("<td></td>"); td.append(listCell((r.data || {})[c])); tr.append(td); });
+      listState.columns.forEach(function (c) { var td = el("<td></td>"); td.append(listCell((r.data || {})[c], c)); tr.append(td); });
       tr.onclick = function () { openRow(r.id); };
       tbl.append(tr);
     });
@@ -1691,8 +1731,21 @@
   }
   function loadList() {
     if (!SELECTION_PANEL) { document.getElementById("app").innerHTML = '<p class="sub">No selection panel configured.</p>'; return; }
+    var manifest = fetch("/npdev-business-ui/generated-ui-manifest.json")
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .catch(function () { return null; });
     fetch("/api/runtime/metadata/ui/panels/" + encodeURIComponent(SELECTION_PANEL), { headers: authHeaders() })
       .then(function (r) { return r.json(); })
+      .then(function (p) {
+        return manifest.then(function (m) {
+          var concept = (p.metadata && p.metadata.concept) || "";
+          var found = m && Array.isArray(m.concepts)
+            ? m.concepts.filter(function (x) { return x.conceptName === concept; })[0] : null;
+          listState.fieldMeta = {};
+          ((found && found.fields) || []).forEach(function (f) { listState.fieldMeta[f.name] = f; });
+          return p;
+        });
+      })
       .then(function (p) {
         var rows = null; var data = p.data || {};
         Object.keys(data).forEach(function (k) { if (Array.isArray(data[k]) && rows === null) rows = data[k]; });
