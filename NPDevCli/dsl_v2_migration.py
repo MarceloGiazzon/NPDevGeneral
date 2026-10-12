@@ -541,6 +541,24 @@ def _migrate_query_or_procedure_audit_policy(entries, kind: str, result: Migrati
         )
 
 
+# 2026-10-12: `panelLayout.type` narrowed to `table` and `grid`. `form`, `detail`, `dashboard` and
+# `stack` were accepted by the schema but no renderer ever read them -- each drew the default
+# table -- so rewriting them to `table` keeps every panel rendering exactly as before.
+RETIRED_PANEL_LAYOUT_TYPES = frozenset({"form", "detail", "dashboard", "stack"})
+
+
+def _migrate_panel_layout(layout, where: str, result: MigrationResult) -> None:
+    if not isinstance(layout, dict):
+        return
+    layout_type = layout.get("type")
+    if isinstance(layout_type, str) and layout_type in RETIRED_PANEL_LAYOUT_TYPES:
+        layout["type"] = "table"
+        result.changed = True
+        result.changes.append(f"{where}.type: {layout_type!r} -> 'table' (retired, rendered as table)")
+    for i, child in enumerate(layout.get("children", None) or []):
+        _migrate_panel_layout(child, f"{where}.children[{i}]", result)
+
+
 def _migrate_autopanel(autopanel: dict, where: str, result: MigrationResult) -> None:
     if not isinstance(autopanel, dict):
         return
@@ -733,6 +751,10 @@ def migrate_document(doc: dict) -> MigrationResult:
 
     _migrate_untrusted_extension_entrypoint(doc.get("panels", None) or [], "panels", result)
     _migrate_untrusted_extension_entrypoint(doc.get("procedures", None) or [], "procedures", result)
+
+    for i, panel in enumerate(doc.get("panels", None) or []):
+        if isinstance(panel, dict):
+            _migrate_panel_layout(panel.get("layout"), f"panels[{i}] ({panel.get('name', '?')}).layout", result)
 
     return result
 

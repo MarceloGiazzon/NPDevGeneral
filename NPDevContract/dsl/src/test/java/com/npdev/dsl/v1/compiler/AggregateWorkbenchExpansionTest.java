@@ -93,7 +93,7 @@ class AggregateWorkbenchExpansionTest {
                 .orElseThrow(() -> new AssertionError("expected ExpedicaoWorkbench among "
                         + model.getPanels().stream().map(CompiledPanel::name).toList()));
 
-        assertEquals("stack", workbench.layout().type());
+        assertEquals("table", workbench.layout().type());
         assertEquals("/expedicao/{id}", workbench.route());
         assertEquals("Expedicao", workbench.dataSources().get(0).concept());
         assertEquals("aggregate", workbench.metadata().get("dataVia"));
