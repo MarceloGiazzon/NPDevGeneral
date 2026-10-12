@@ -1,20 +1,18 @@
 {
-  "closedAt": "2026-10-11T23:21:28.6728074Z",
+  "closedAt": "2026-10-12T03:13:29.5858254Z",
   "branch": "main",
-  "head": "6e1a5668",
-  "headSubject": "test(runtimehost): generated query controller lookups/computed path (#5); ratchet floors",
-  "summary": "Pigmentampas friction #5 fixed (8fda5fb1): grouped queries gain lookups[] (per-key aggregate over another concept via ConceptGateway) + computed[] (ComputedExpression columns), having/orderBy/limit applied after; Pigmentampas BeersToDrink replaces CapsNeededPerMosaic. Friction #1 closed with docs/reference/HAND_MADE_PAGES.md (9543a171). Coverage test for the generated query controller + ratcheted floors (6e1a5668). Friction log: #1, #5 + 19 'FIXED' entries marked state=fixed.",
-  "nextStep": "Triage the 22 friction-log entries with no state (D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\friction\\log.jsonl): mark the ones citing a commit as fixed, ask the owner about #6/#33/#38 (workarounds/app-side). Then pick the next open Pigmentampas friction/P-phase item from the plan README. Before the next app regenerate, restage jars (scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars) -- Build/runtimehost-libs predates the ReferenceIndex/PanelValidation lookup-alias fix. Pigmentampas runs at 8fda5fb1 on 8084 (NPDEV_MAIL_SMTP_HOST=localhost/_PORT=1025/_FROM=noreply@pigmentampas.local).",
+  "head": "da5a1047",
+  "headSubject": "feat(ui): panelLayout.type grid renders rows as cards (Pigmentampas G1d)",
+  "summary": "Pigmentampas friction log fully triaged (all 50 entries have a state; #33 closed via host-run MailHog doc f05e6739). G1a-G1c found already done; G1d fixed in da5a1047: panelLayout.type grid renders panel rows as cards in the business UI and workbench selection list (conformance example WidgetCatalogGalleryPanel, live-verified on dsl-conformance-max). Plan README section 8 records the G1 closure.",
+  "nextStep": "Ask the owner for the Pigmentampas P10 decision: close the demo, or name the next gap. Open option if they want more: give the other five panelLayout types (form/table/detail/dashboard/stack) real rendering, or drop them from the enum with an npdev migrate codemod + BREAKING.md entry. The workbench grid card path (workbench-page.html.mustache renderTableOnly) is untested live - no grid-layout workbench selection panel exists in the corpus.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
   "blocked": "D5: Google OAuth client + Meta app (owner). Real-phone bot runs and the Claude Desktop MCP run are the owner's.",
-  "verified": "T2 run-all-gates at 8fda5fb1: generator PASS, aiKnowledge PASS, runtimeHost FAIL (RuntimeHost coverage 27.70 < 27.75 floor), kernel FAIL as that ratchet's cascade (kernel 66.48 up). After adding GeneratedQueryControllerLookupTest: -Only runtimeHost PASS (RuntimeHost 28.31%); kernel gate not rerun. Full DSL suite (1094) + generator suite PASS. Live Pigmentampas 8084: /api/queries/BeersToDrink as tito owned=50 Branik -> toDrink=needed-50, having drops toDrink<=0; tavo owned=0, drafts hidden.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "verified": "T2 run-all-gates at da5a1047 ALL GREEN: generator PASS (785s), runtimeHost PASS (1088s), kernel PASS (78s), aiKnowledge PASS (1679s). Also generator :test, validateModel dsl-conformance-max, docs --check, check-dsl-coverage clean. Live Playwright on generated dsl-conformance-max: WidgetCatalogGalleryPanel renders 2 .panel-card in a CSS grid, no page errors.",
+  "dirtyCount": 2,
+  "dirtyFiles": [
+    "M  ledger/session-state/current.json",
+    "M  ledger/session-state/history.jsonl"
+  ],
   "unpushed": 0,
-  "landedCommits": [
-    "6e1a5668 test(runtimehost): generated query controller lookups/computed path (#5); ratchet floors",
-    "9543a171 docs(reference): HAND_MADE_PAGES -- web/ pages, NPDevShell.api, pages.json, sidecars (#1)",
-    "8fda5fb1 feat(query): lookups[] + computed[] on grouped queries (#5)",
-    "154306fa chore(session): handoff after #28 (0e47da9a)"
-  ]
+  "landedCommits": []
 }
