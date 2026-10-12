@@ -1650,6 +1650,22 @@
   function renderTableOnly() {
     var host = document.getElementById("listtable"); if (!host) return; host.innerHTML = "";
     var rows = filteredRows();
+    if (listState.layoutType === "grid") {
+      // panelLayout.type "grid" (G1d): the selection list as cards, one per root row.
+      var grid = el('<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px"></div>');
+      rows.forEach(function (r) {
+        var card = el('<div class="master" style="border:1px solid #d0d7de;border-radius:8px;padding:10px;cursor:pointer"></div>');
+        listState.columns.forEach(function (c) {
+          var v = (r.data || {})[c]; var line = el("<div></div>");
+          var label = el("<b></b>"); label.textContent = c + ": "; line.append(label);
+          line.append(document.createTextNode(v == null ? "" : String(v))); card.append(line);
+        });
+        card.onclick = function () { openRow(r.id); };
+        grid.append(card);
+      });
+      host.append(grid);
+      return;
+    }
     var tbl = el("<table></table>");
     tbl.append(el("<tr>" + listState.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "</tr>"));
     rows.forEach(function (r) {
@@ -1669,6 +1685,7 @@
         Object.keys(data).forEach(function (k) { if (Array.isArray(data[k]) && rows === null) rows = data[k]; });
         listState.rows = rows || [];
         listState.columns = (p.layout && p.layout.fields) || [];
+        listState.layoutType = (p.layout && p.layout.type) || "";
         renderList();
       })
       .catch(function (e) { renderLoadError(document.getElementById("app"), "Failed to load list", e); });

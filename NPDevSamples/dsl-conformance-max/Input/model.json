@@ -1215,6 +1215,21 @@
 
   "panels": [
     {
+      "name": "WidgetCatalogGalleryPanel",
+      "route": "/widget-catalog-gallery",
+      "title": "Widget catalog gallery",
+      "layout": { "type": "grid", "fields": ["sku", "displayName", "unitPrice"] },
+      "dataSources": [
+        {
+          "name": "entries",
+          "concept": "WidgetCatalogEntry"
+        }
+      ],
+      "metadata": {
+        "purpose": "panelLayout.type grid (Pigmentampas G1d): a read-only panel whose rows render as cards, not a table."
+      }
+    },
+    {
       "name": "WidgetOrderReviewPanel",
       "route": "/widget-order-review",
       "title": "Widget order review",
