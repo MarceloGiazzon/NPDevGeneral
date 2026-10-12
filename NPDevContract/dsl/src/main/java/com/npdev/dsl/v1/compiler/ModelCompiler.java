@@ -1226,7 +1226,8 @@ public final class ModelCompiler {
                 new LinkedHashMap<>(surface.visibleWhen()),
                 bandPickers,
                 toCompiledAutoPanelDataSource(surface.dataSource()),
-                uiState
+                uiState,
+                surface.layout()
         );
     }
 

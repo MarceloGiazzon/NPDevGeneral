@@ -595,6 +595,10 @@ public final class CompiledModelCanonicalJson {
         node.set("bandPickers", toBandPickers(surface.bandPickers()));
         node.set("dataSource", toAutoPanelDataSource(surface.dataSource()));
         node.set("uiState", toUiState(surface.uiState()));
+        // Written only when declared, so models that never set it keep byte-identical output.
+        if (surface.layout() != null) {
+            node.put("layout", surface.layout());
+        }
         return node;
     }
 

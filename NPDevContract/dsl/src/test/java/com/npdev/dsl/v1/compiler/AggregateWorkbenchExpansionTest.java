@@ -23,6 +23,31 @@ class AggregateWorkbenchExpansionTest {
     }
 
     @Test
+    void selectionLayoutReachesTheGeneratedSelectionPanel() throws Exception {
+        String template = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
+              "concepts": [ { "name": "Pedido", "fields": [
+                { "name": "id", "type": "uuid", "id": true, "required": true },
+                { "name": "cliente", "type": "string" } ] } ],
+              "aggregates": [ { "name": "Pedido", "root": "Pedido" } ],
+              "autoPanels": [ { "aggregate": "Pedido"%s } ]
+            }
+            """;
+        CompiledModel grid = compile(template.formatted(", \"selection\": { \"layout\": \"grid\" }"));
+        CompiledModel plain = compile(template.formatted(""));
+        assertEquals("grid", selectionLayoutType(grid));
+        assertEquals("table", selectionLayoutType(plain));
+    }
+
+    private static String selectionLayoutType(CompiledModel model) {
+        return model.getPanels().stream()
+                .filter(p -> "PedidoSelection".equals(p.name())).findFirst()
+                .orElseThrow(() -> new AssertionError("expected a root PedidoSelection panel"))
+                .layout().type();
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void aggregateAutoPanelExpandsToWorkbenchDescriptor() throws Exception {
         String json = """

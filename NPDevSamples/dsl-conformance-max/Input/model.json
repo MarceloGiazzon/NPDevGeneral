@@ -1025,7 +1025,8 @@
       "name": "ShelfLayoutWorkbench",
       "aggregate": "ShelfLayoutAggregate",
       "route": "/shelf-layouts",
-      "metadata": { "purpose": "P3b: corpus witness for transaction.regions render \"cellGrid\" -- the slots collection painted as a square board sized by the root's rows/cols, palette from ActiveCatalogEntries." },
+      "metadata": { "purpose": "P3b: corpus witness for transaction.regions render \"cellGrid\" -- the slots collection painted as a square board sized by the root's rows/cols, palette from ActiveCatalogEntries. Also the witness for selection.layout grid: the workbench list renders root rows as cards." },
+      "selection": { "layout": "grid" },
       "transaction": {
         "regions": {
           "slots": {

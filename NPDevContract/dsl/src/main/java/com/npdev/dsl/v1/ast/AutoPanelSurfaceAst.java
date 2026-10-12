@@ -26,7 +26,9 @@ public record AutoPanelSurfaceAst(
         Map<String, WorkbenchBandPickerAst> bandPickers,
         AutoPanelDataSourceAst dataSource,
         /** Move 11 W6: declared transient UI state a {@code $ui.<name>} visibleWhen predicate reads. */
-        Map<String, UiStateControlAst> uiState
+        Map<String, UiStateControlAst> uiState,
+        /** Selection surface only: the generated Selection panel's layout type, {@code table} (default) or {@code grid}. */
+        String layout
 ) {
     public AutoPanelSurfaceAst {
         filters = filters == null ? List.of() : List.copyOf(filters);
