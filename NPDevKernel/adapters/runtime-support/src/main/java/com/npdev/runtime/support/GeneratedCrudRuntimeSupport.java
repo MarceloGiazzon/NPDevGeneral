@@ -531,9 +531,18 @@ public final class GeneratedCrudRuntimeSupport {
      * target row exists AND its tenant_id matches the caller's tenant; otherwise throws the same
      * InvariantViolationException shape every other CRUD validation failure uses, deliberately worded
      * like a not-found rather than a forbidden, so it never confirms a row exists in another tenant.
+     * <p>
+     * Engine-aware, on the same predicate {@link #existsByAnchor} uses: with no EntityManager
+     * (npdev.storage.mode=in-memory) business rows live only in the ConceptGateway/ConceptStore, and
+     * {@code dataSource} -- still non-null there, it is the kernel's own JDBC store -- holds no
+     * business tables at all, so a {@code SELECT ... FROM <target table>} against it failed with
+     * "Table not found" and turned every in-memory create/update carrying a reference into a 500.
+     * The in-memory store is tenant-keyed, so a gateway read under the caller's context keeps the
+     * same existence-plus-tenant guarantee.
      */
     public void enforceBondTargetTenant(String entityName, Map<String, Object> payload, ExecutionContext context) {
-        if (payload == null || dataSource == null) {
+        boolean inMemoryBusinessData = entityManager == null && conceptGateway != null;
+        if (payload == null || (!inMemoryBusinessData && dataSource == null)) {
             return;
         }
         CompiledConcept entity = requireEntity(entityName);
@@ -562,9 +571,14 @@ public final class GeneratedCrudRuntimeSupport {
             if (anchor == null) {
                 continue;
             }
-            String table = SqlIdentifierSupport.tableName(targetEntity);
-            String column = SqlIdentifierSupport.columnName(anchor);
-            if (!bondTargetExistsForTenant(table, column, rawValue, callerTenant)) {
+            boolean exists = inMemoryBusinessData
+                    ? existsByAnchorViaConceptGateway(targetEntity, anchor, rawValue, context)
+                    : bondTargetExistsForTenant(
+                            SqlIdentifierSupport.tableName(targetEntity),
+                            SqlIdentifierSupport.columnName(anchor),
+                            rawValue,
+                            callerTenant);
+            if (!exists) {
                 throw new InvariantViolationException(List.of(new InvariantViolationDetail(
                         "bond_target_not_found",
                         entityName,
@@ -3662,11 +3676,22 @@ public final class GeneratedCrudRuntimeSupport {
     // Reference-existence fallback for npdev.storage.mode=in-memory, where there is no
     // EntityManager and the referenced concept lives only in the ConceptGateway/ConceptStore.
     private boolean existsByAnchorViaConceptGateway(CompiledConcept entity, CompiledField anchor, Object value) {
+        return existsByAnchorViaConceptGateway(entity, anchor, value, null);
+    }
+
+    // explicitContext: the caller's context when it has one (enforceBondTargetTenant), so the
+    // tenant-keyed store read is scoped to THAT tenant; null falls back to the current CRUD context.
+    private boolean existsByAnchorViaConceptGateway(
+            CompiledConcept entity,
+            CompiledField anchor,
+            Object value,
+            ExecutionContext explicitContext
+    ) {
         if (conceptGateway == null) {
             return false;
         }
         try {
-            ExecutionContext context = resolveCurrentCrudContext();
+            ExecutionContext context = explicitContext != null ? explicitContext : resolveCurrentCrudContext();
             String anchorName = anchor.getName();
             if ("id".equalsIgnoreCase(anchorName)) {
                 return conceptGateway.read(

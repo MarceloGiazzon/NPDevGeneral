@@ -6,6 +6,9 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledReferenceSemantics;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.KernelRunner;
+import com.npdev.kernel.concepts.ConceptRecord;
+import com.npdev.kernel.concepts.DefaultConceptGateway;
+import com.npdev.kernel.inproc.InMemoryConceptStore;
 import com.npdev.kernel.ports.EventBus;
 import com.npdev.kernel.ports.InvariantEngine;
 import org.h2.jdbcx.JdbcDataSource;
@@ -64,6 +67,49 @@ class GeneratedCrudRuntimeSupportBondTenantScopeTest {
         // A null/absent reference (optional bond, not set) is not this check's concern.
         assertDoesNotThrow(() -> support.enforceBondTargetTenant(
                 "StaffMember", Map.of(), ExecutionContext.of("tenant-a", "alice")));
+    }
+
+    /**
+     * In-memory engine (npdev.storage.mode=in-memory): no EntityManager, business rows live only in
+     * the ConceptGateway/ConceptStore, yet {@code dataSource} is still non-null (the kernel's own
+     * JDBC store, with NO business tables). The check used to run its SELECT against that
+     * dataSource and fail with "Table tenants not found" -> IllegalStateException -> HTTP 500 on
+     * every create/update carrying a reference. It must consult the tenant-keyed in-memory store
+     * instead, keeping the cross-tenant guarantee.
+     */
+    @Test
+    void inMemoryEngineChecksTheConceptStoreNotTheKernelDataSource() {
+        JdbcDataSource kernelOnlyDataSource = new JdbcDataSource();
+        kernelOnlyDataSource.setURL("jdbc:h2:mem:runtime_bond_tenant_scope_in_memory;DB_CLOSE_DELAY=-1");
+
+        UUID tenantARowId = UUID.randomUUID();
+        UUID tenantBRowId = UUID.randomUUID();
+        InMemoryConceptStore store = new InMemoryConceptStore();
+        store.save(new ConceptRecord("Tenant", tenantARowId.toString(), "tenant-a", Map.of("id", tenantARowId.toString())));
+        store.save(new ConceptRecord("Tenant", tenantBRowId.toString(), "tenant-b", Map.of("id", tenantBRowId.toString())));
+
+        GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(
+                () -> compiledModel(), kernelRunner(), null, null, null, kernelOnlyDataSource)
+                .withConceptGateway(new DefaultConceptGateway(store));
+        ExecutionContext tenantA = ExecutionContext.of("tenant-a", "alice");
+
+        // Target exists in memory, same tenant: allowed (was: IllegalStateException, table not found).
+        assertDoesNotThrow(() -> support.enforceBondTargetTenant(
+                "StaffMember", Map.of("tenantRef", tenantARowId), tenantA));
+
+        // Target belongs to another tenant: the same not-found violation the JDBC path raises.
+        GeneratedCrudRuntimeSupport.InvariantViolationException crossTenant = assertThrows(
+                GeneratedCrudRuntimeSupport.InvariantViolationException.class,
+                () -> support.enforceBondTargetTenant(
+                        "StaffMember", Map.of("tenantRef", tenantBRowId), tenantA));
+        assertEquals("bond_target_not_found", crossTenant.violations().get(0).code());
+
+        // Target missing entirely: not-found too.
+        GeneratedCrudRuntimeSupport.InvariantViolationException missing = assertThrows(
+                GeneratedCrudRuntimeSupport.InvariantViolationException.class,
+                () -> support.enforceBondTargetTenant(
+                        "StaffMember", Map.of("tenantRef", UUID.randomUUID()), tenantA));
+        assertEquals("bond_target_not_found", missing.violations().get(0).code());
     }
 
     private static void initializeSchema(DataSource dataSource) throws Exception {
