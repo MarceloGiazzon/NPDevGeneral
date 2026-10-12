@@ -323,7 +323,12 @@ queue with specific columns, a console mixing several data sources.
 }
 ```
 
-`layout.type` can be `form`, `table`, `detail`, `dashboard`, `stack`, or `grid`. An action's
+`layout.type` can be `form`, `table`, `detail`, `dashboard`, `stack`, or `grid`. Only `grid`
+changes the rendering today: each row of a dataSource becomes a card (`layout.fields`, or the
+declared `fieldBindings`, one line per field; an image file field as a thumbnail), in the
+business UI and in a workbench's selection list. A dataSource with editable bindings or
+row-scoped actions keeps the table, since that is where those controls live. Every other type
+renders the default table; `layout.fields` picks its columns. An action's
 `binding` says what happens on click: `flow` (call a Flow), `procedure` (call a Procedure —
 see §8), `conceptQuery` (re-run a query), or `conceptMutation` (a direct create/update/delete).
 

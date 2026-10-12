@@ -471,6 +471,35 @@ textarea {
   background: var(--np-row-hover, rgba(23, 105, 170, .05));
 }
 
+/* panelLayout.type "grid": one card per row (renderDeclaredPanelGrid). */
+.panel-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.panel-card {
+  border: 1px solid var(--np-border, #e7ebf0);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: var(--np-row-font-size, 13.5px);
+  overflow-wrap: anywhere;
+}
+
+.panel-card-image {
+  display: block;
+  width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+  margin-bottom: 8px;
+}
+
+.panel-card-label {
+  color: var(--np-grid-head-text, #4c5a69);
+  font-weight: 600;
+  margin-right: 6px;
+}
+
 .records th.sortable {
   cursor: pointer;
 }
