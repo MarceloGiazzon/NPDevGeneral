@@ -17,9 +17,7 @@ Required fields:
 Supported layout types:
 
 - `table`
-- `detail`
-- `form`
-- `summary`
+- `grid`
 
 Supported widget types:
 

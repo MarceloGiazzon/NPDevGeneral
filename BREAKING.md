@@ -5,6 +5,18 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-12 — `panelLayout.type` accepts only `table` and `grid`
+
+**What changes.** A panel's `layout.type` used to accept `form`, `table`, `detail`, `dashboard`,
+`stack` and `grid`, but only `grid` changed the rendering; the other five all drew the default
+table. The schema now rejects `form`, `detail`, `dashboard` and `stack`. `table` stays as the
+explicit name for the default rendering.
+
+**Who is affected.** Models that declare one of the four dropped values. No shipped model did.
+
+**Codemod.** `npdev migrate dsl-2 --input <model-dir> --write` rewrites each to `table`, which is
+how it already rendered.
+
 ## 2026-10-10 — aggregate `invoke` of a procedure ending in `return` answers with only the returned value
 
 **What changes.** `POST /api/runtime/aggregate/{name}/invoke/{procedure}` used to answer with the

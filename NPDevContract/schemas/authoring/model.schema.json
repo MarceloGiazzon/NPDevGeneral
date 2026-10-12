@@ -4921,11 +4921,7 @@
         "type": {
           "type": "string",
           "enum": [
-            "form",
             "table",
-            "detail",
-            "dashboard",
-            "stack",
             "grid"
           ]
         },

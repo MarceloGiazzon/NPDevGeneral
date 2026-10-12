@@ -228,7 +228,7 @@ final class AutoPanelExpander {
         metadata.put("selectionPanel", selectionPanelName);
         metadata.put("filters", new ArrayList<>(filters));
 
-        CompiledPanelLayout layout = new CompiledPanelLayout("stack", List.of(), List.of(), Map.of());
+        CompiledPanelLayout layout = new CompiledPanelLayout("table", List.of(), List.of(), Map.of());
         CompiledPanel workbenchPanel = new CompiledPanel(
                 base + "Workbench", baseRoute + "/{id}", rootConcept,
                 List.of(conceptDataSource(rootConcept)), layout, List.of(), null, null,

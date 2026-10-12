@@ -701,5 +701,27 @@ class UntrustedExtensionManifestMigrationTest(unittest.TestCase):
         self.assertFalse(looks_like_untrusted_extension_manifest(doc))
 
 
+class PanelLayoutTypeMigrationTest(unittest.TestCase):
+    def _model(self, layout: dict) -> dict:
+        return {"namespace": "test", "dslVersion": "1.0.0", "version": "1.0",
+                "panels": [{"name": "P", "route": "/p", "layout": layout}]}
+
+    def test_retired_types_become_table_including_children(self):
+        doc = self._model({"type": "dashboard", "children": [{"type": "form"}, {"type": "grid"}]})
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        layout = doc["panels"][0]["layout"]
+        self.assertEqual("table", layout["type"])
+        self.assertEqual(["table", "grid"], [c["type"] for c in layout["children"]])
+        self.assertEqual(2, len(result.changes))
+
+    def test_table_and_grid_untouched_and_idempotent(self):
+        for kept in ("table", "grid"):
+            self.assertFalse(migrate_document(self._model({"type": kept})).changed)
+        doc = self._model({"type": "stack"})
+        migrate_document(doc)
+        self.assertFalse(migrate_document(doc).changed)
+
+
 if __name__ == "__main__":
     unittest.main()
