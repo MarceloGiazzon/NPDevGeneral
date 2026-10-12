@@ -1664,11 +1664,26 @@
     var parts = names.map(function (n) { return text(row[n]); }).filter(Boolean);
     return parts.length ? parts.join(" / ") : text(row[ref.targetIdField]);
   }
+  // A via-reference stores the target's anchor field, not its id: find the target row by listing the
+  // endpoint filtered on the raw value and matching the anchor -- the business UI's loadReferenceLabel.
+  function isViaReference(ref) { return !!(ref.via && ref.anchorField && ref.anchorField !== ref.targetIdField); }
+  function fetchReferenceRow(ref, id) {
+    if (!isViaReference(ref)) {
+      return fetch(ref.endpointBase + "/" + encodeURIComponent(id), { headers: authHeaders() })
+        .then(function (r) { return r.ok ? r.json() : null; });
+    }
+    var q = new URLSearchParams({ page: "0", size: "20", filter: String(id) });
+    return fetch(ref.endpointBase + "?" + q.toString(), { headers: authHeaders() })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (p) {
+        var rows = (p && Array.isArray(p.content)) ? p.content : [];
+        return rows.filter(function (x) { return String(x[ref.anchorField]) === String(id); })[0] || null;
+      });
+  }
   function resolveReference(ref, id) {
-    var key = ref.endpointBase + "|" + id;
+    var key = ref.endpointBase + "|" + (isViaReference(ref) ? ref.anchorField : "") + "|" + id;
     if (!refLabelCache[key]) {
-      refLabelCache[key] = fetch(ref.endpointBase + "/" + encodeURIComponent(id), { headers: authHeaders() })
-        .then(function (r) { return r.ok ? r.json() : null; })
+      refLabelCache[key] = fetchReferenceRow(ref, id)
         .then(function (row) { return row ? (referenceLabel(ref, row) || String(id)) : String(id); })
         .catch(function () { return String(id); });
     }
@@ -1677,9 +1692,9 @@
   function listCell(v, c) {
     var meta = c ? listState.fieldMeta[c] : null;
     var ref = meta && meta.reference;
-    // A plain (non-via) reference: show the id now, swap in the target's display label once resolved.
-    // A forbidden/missing target keeps the raw id quietly, as the business UI does.
-    if (ref && ref.endpointBase && !ref.via && v != null && v !== "" && typeof v !== "object") {
+    // A reference (plain or via): show the raw value now, swap in the target's display label once
+    // resolved. A forbidden/missing target keeps the raw value quietly, as the business UI does.
+    if (ref && ref.endpointBase && v != null && v !== "" && typeof v !== "object") {
       var node = document.createTextNode(String(v));
       resolveReference(ref, v).then(function (label) { node.textContent = label; });
       return node;
