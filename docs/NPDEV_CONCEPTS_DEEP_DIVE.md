@@ -326,7 +326,8 @@ queue with specific columns, a console mixing several data sources.
 `layout.type` is `table` (the default rendering) or `grid`. With `grid`, each row of a
 dataSource becomes a card (`layout.fields`, or the
 declared `fieldBindings`, one line per field; an image file field as a thumbnail), in the
-business UI and in a workbench's selection list. A dataSource with editable bindings or
+business UI and in a workbench's selection list (set `selection: { "layout": "grid" }` on the
+aggregate's auto panel, since that list panel is generated). A dataSource with editable bindings or
 row-scoped actions keeps the table, since that is where those controls live. With `table`,
 `layout.fields` picks its columns. An action's
 `binding` says what happens on click: `flow` (call a Flow), `procedure` (call a Procedure —

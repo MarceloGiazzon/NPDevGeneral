@@ -237,7 +237,9 @@ final class AutoPanelExpander {
         // A Selection over the root concept supplies the list rows to the workbench page.
         List<String> rootColumns = override(autoPanel.selection(), CompiledAutoPanelSurface::columns,
                 columnsFor(fieldsByConcept, rootConcept));
-        CompiledPanelLayout selLayout = new CompiledPanelLayout("table", List.of(), rootColumns, Map.of());
+        String selLayoutType = autoPanel.selection() != null && autoPanel.selection().layout() != null
+                ? autoPanel.selection().layout() : "table";
+        CompiledPanelLayout selLayout = new CompiledPanelLayout(selLayoutType, List.of(), rootColumns, Map.of());
         Map<String, Object> selectionMetadata = surfaceMetadata(base, "selection", rootConcept);
         // REG-216: a blank conceptMutation create can never satisfy an aggregate root once it has a
         // required field beyond id -- point the Selection panel's "New" button at the paired

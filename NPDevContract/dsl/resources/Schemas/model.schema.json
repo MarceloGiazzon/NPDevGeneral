@@ -1377,6 +1377,14 @@
         "dataSource": {
           "$ref": "#/$defs/autoPanelDataSource"
         },
+        "layout": {
+          "type": "string",
+          "enum": [
+            "table",
+            "grid"
+          ],
+          "description": "Selection surface only: the layout type of the generated Selection panel, which also lists rows on the workbench page. `grid` renders each row as a card (the selection columns, one line each); `table` is the default."
+        },
         "metadata": {
           "type": "object"
         }

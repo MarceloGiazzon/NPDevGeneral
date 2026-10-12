@@ -519,7 +519,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toStringMap(node.get("visibleWhen")),
                 toBandPickers(node.get("bandPickers")),
                 toAutoPanelDataSource(node.get("dataSource")),
-                toUiState(node.get("uiState"))
+                toUiState(node.get("uiState")),
+                optionalText(node, "layout")
         );
     }
 

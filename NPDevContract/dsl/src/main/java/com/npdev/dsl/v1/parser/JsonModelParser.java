@@ -1762,7 +1762,8 @@ public final class JsonModelParser {
                 parseVisibleWhen(node.get("visibleWhen")),
                 parseBandPickers(node.get("bandPickers")),
                 parseAutoPanelDataSource(node.get("dataSource")),
-                parseUiState(node.get("uiState"))
+                parseUiState(node.get("uiState")),
+                readText(node, "layout")
         );
     }
 
