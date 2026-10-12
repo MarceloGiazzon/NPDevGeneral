@@ -1,21 +1,20 @@
 {
-  "closedAt": "2026-10-12T13:54:15.9915702Z",
+  "closedAt": "2026-10-12T18:10:18.2200899Z",
   "branch": "main",
-  "head": "1ef5d74a",
-  "headSubject": "feat(dsl): autoPanel selection.layout picks the workbench list layout",
-  "summary": "P10 option-3: panelLayout.type narrowed to table|grid (bbaa2d5a; form/detail/dashboard/stack retired, npdev migrate dsl-2 rewrites them to table, BREAKING.md entry; workbench expander default stack->table). Then owner picked option 1 for the unreachable workbench grid path: new autoPanel selection.layout (table|grid) threaded through 4 schema mirrors/AST/compiled/parser/compiler/canonical writer+reader (1ef5d74a), witness ShelfLayoutWorkbench in dsl-conformance-max, live-verified.",
-  "nextStep": "Ask the owner for the Pigmentampas P10 decision: close the demo (mark P10 done in the plan README section 8, citing bbaa2d5a + 1ef5d74a) or name the next gap. Optional follow-up if they want Pigmentampas to use it: set selection.layout grid on its mosaic aggregate autoPanel in NPDevSamples/pigmentampas/Input/model.json and live-check the workbench list.",
+  "head": "b61b8ef3",
+  "headSubject": "feat(ui): workbench list shows manifest labels, reference names and enum labels",
+  "summary": "Pigmentampas P10 closed (option 2): Caps+Mosaics autoPanels use selection.layout grid; workbench list renders image handles as thumbnails (5c25906a) and shows manifest column labels, enum option labels and resolved reference names (b61b8ef3); coverage ratchet 820c7b50. P10 verdict regenerated from the friction log's own states and republished v2 (https://claude.ai/artifact/83pujUSz4BiToU1nwC7nnh): all 7 gaps + all 50 friction entries closed; plan README section 9 records P10 done.",
+  "nextStep": "No open ledger items and Pigmentampas is closed. Ask the owner what to work on next. Small known leftover if wanted: workbench list via-references (reference.via) still show the raw value; the table layout of the workbench list (listCell in workbench-page.html.mustache) was not browser-exercised, only the grid layout.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
-  "blocked": "D5: Google OAuth client + Meta app (owner). Real-phone bot runs and the Claude Desktop MCP run are the owner's.",
-  "verified": "T2 run-all-gates at 1ef5d74a ALL 4 GREEN: generator 438s, runtimeHost 822s, kernel 365s, aiKnowledge 880s. At bbaa2d5a: generator+runtimeHost green; kernel ratchet blip 66.4742 vs floor 66.4789 did not reproduce on --rerun-tasks kernelQualityGate (66.4789), kernel and aiKnowledge then green on rerun. NPDevCli test_dsl_v2_migration 55/55. Live Playwright on generated dsl-conformance-max port 8187: ShelfLayout workbench list renders 2 cards in display:grid, no table, click opens record, no page errors.",
-  "dirtyCount": 1,
-  "dirtyFiles": [
-    " M scripts/policy/coverage-baseline.json"
-  ],
+  "blocked": "D5 Google OAuth client, Meta app + phone number for WhatsApp, real Telegram bot token runs, Claude Desktop MCP flag run - all owner-only.",
+  "verified": "run-generator-gate.ps1 green twice (after 5c25906a change and after b61b8ef3 change). Not run: runtimeHost, kernel, aiKnowledge gates (template-only + sample change). Live Playwright on regenerated Pigmentampas port 8084 as tito: CapsWorkbench 6 grid cards with 6/6 thumbnails loaded, labels Brewery: Lech / Poland, Finish: Glossy, Status: Approved; MosaicsWorkbench 28 cards; card click opens record; no page errors.",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "1ef5d74a feat(dsl): autoPanel selection.layout picks the workbench list layout",
-    "bbaa2d5a feat(dsl)!: panelLayout.type accepts only table and grid",
-    "e233e35b chore(session): handoff after G1d grid layout (da5a1047) + friction triage; T2 green"
+    "b61b8ef3 feat(ui): workbench list shows manifest labels, reference names and enum labels",
+    "820c7b50 chore(coverage): ratchet scripts coverage floor 67.7644 -> 67.824 (generator gate run)",
+    "5c25906a feat(ui): workbench list renders image handles as thumbnails; Pigmentampas lists use grid",
+    "12f13107 chore(session): handoff after panelLayout table|grid (bbaa2d5a) + selection.layout (1ef5d74a); T2 green; dsl coverage floor 85.8164"
   ]
 }
