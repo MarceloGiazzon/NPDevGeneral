@@ -1,18 +1,21 @@
 {
-  "closedAt": "2026-10-12T03:13:29.5858254Z",
+  "closedAt": "2026-10-12T13:54:15.9915702Z",
   "branch": "main",
-  "head": "da5a1047",
-  "headSubject": "feat(ui): panelLayout.type grid renders rows as cards (Pigmentampas G1d)",
-  "summary": "Pigmentampas friction log fully triaged (all 50 entries have a state; #33 closed via host-run MailHog doc f05e6739). G1a-G1c found already done; G1d fixed in da5a1047: panelLayout.type grid renders panel rows as cards in the business UI and workbench selection list (conformance example WidgetCatalogGalleryPanel, live-verified on dsl-conformance-max). Plan README section 8 records the G1 closure.",
-  "nextStep": "Ask the owner for the Pigmentampas P10 decision: close the demo, or name the next gap. Open option if they want more: give the other five panelLayout types (form/table/detail/dashboard/stack) real rendering, or drop them from the enum with an npdev migrate codemod + BREAKING.md entry. The workbench grid card path (workbench-page.html.mustache renderTableOnly) is untested live - no grid-layout workbench selection panel exists in the corpus.",
+  "head": "1ef5d74a",
+  "headSubject": "feat(dsl): autoPanel selection.layout picks the workbench list layout",
+  "summary": "P10 option-3: panelLayout.type narrowed to table|grid (bbaa2d5a; form/detail/dashboard/stack retired, npdev migrate dsl-2 rewrites them to table, BREAKING.md entry; workbench expander default stack->table). Then owner picked option 1 for the unreachable workbench grid path: new autoPanel selection.layout (table|grid) threaded through 4 schema mirrors/AST/compiled/parser/compiler/canonical writer+reader (1ef5d74a), witness ShelfLayoutWorkbench in dsl-conformance-max, live-verified.",
+  "nextStep": "Ask the owner for the Pigmentampas P10 decision: close the demo (mark P10 done in the plan README section 8, citing bbaa2d5a + 1ef5d74a) or name the next gap. Optional follow-up if they want Pigmentampas to use it: set selection.layout grid on its mosaic aggregate autoPanel in NPDevSamples/pigmentampas/Input/model.json and live-check the workbench list.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
   "blocked": "D5: Google OAuth client + Meta app (owner). Real-phone bot runs and the Claude Desktop MCP run are the owner's.",
-  "verified": "T2 run-all-gates at da5a1047 ALL GREEN: generator PASS (785s), runtimeHost PASS (1088s), kernel PASS (78s), aiKnowledge PASS (1679s). Also generator :test, validateModel dsl-conformance-max, docs --check, check-dsl-coverage clean. Live Playwright on generated dsl-conformance-max: WidgetCatalogGalleryPanel renders 2 .panel-card in a CSS grid, no page errors.",
-  "dirtyCount": 2,
+  "verified": "T2 run-all-gates at 1ef5d74a ALL 4 GREEN: generator 438s, runtimeHost 822s, kernel 365s, aiKnowledge 880s. At bbaa2d5a: generator+runtimeHost green; kernel ratchet blip 66.4742 vs floor 66.4789 did not reproduce on --rerun-tasks kernelQualityGate (66.4789), kernel and aiKnowledge then green on rerun. NPDevCli test_dsl_v2_migration 55/55. Live Playwright on generated dsl-conformance-max port 8187: ShelfLayout workbench list renders 2 cards in display:grid, no table, click opens record, no page errors.",
+  "dirtyCount": 1,
   "dirtyFiles": [
-    "M  ledger/session-state/current.json",
-    "M  ledger/session-state/history.jsonl"
+    " M scripts/policy/coverage-baseline.json"
   ],
   "unpushed": 0,
-  "landedCommits": []
+  "landedCommits": [
+    "1ef5d74a feat(dsl): autoPanel selection.layout picks the workbench list layout",
+    "bbaa2d5a feat(dsl)!: panelLayout.type accepts only table and grid",
+    "e233e35b chore(session): handoff after G1d grid layout (da5a1047) + friction triage; T2 green"
+  ]
 }
