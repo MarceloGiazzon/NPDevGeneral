@@ -73,6 +73,10 @@ public class BootstrapAdminController {
                 || password == null || password.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "missing_required_field"));
         }
+        String policyViolation = PasswordPolicy.violation(password, username);
+        if (policyViolation != null) {
+            return ResponseEntity.badRequest().body(PasswordPolicy.errorBody(policyViolation));
+        }
         Optional<IdentityPackTableNames> resolvedIdentityTables = IdentityPackTableNames.tryResolve(modelHolder.get());
         if (resolvedIdentityTables.isEmpty()) {
             return ResponseEntity.status(503).body(Map.of("error", "identity_pack_not_composed"));

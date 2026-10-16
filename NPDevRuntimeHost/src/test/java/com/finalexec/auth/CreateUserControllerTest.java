@@ -136,7 +136,7 @@ class CreateUserControllerTest {
         var exception = assertThrows(org.springframework.web.server.ResponseStatusException.class,
                 () -> controller(identityModel()).createUser(
                         new CreateUserController.CreateUserRequest(
-                                "bob", "Bob", "s3cret!", null, null, null, null),
+                                "bob", "Bob", "s3cret!-horse", null, null, null, null),
                         null));
 
         assertEquals(403, exception.getStatusCode().value());
@@ -153,7 +153,7 @@ class CreateUserControllerTest {
         var exception = assertThrows(org.springframework.web.server.ResponseStatusException.class,
                 () -> controller(modelWithoutIdentityPack()).createUser(
                         new CreateUserController.CreateUserRequest(
-                                "bob", "Bob", "s3cret!", null, null, null, null),
+                                "bob", "Bob", "s3cret!-horse", null, null, null, null),
                         null));
 
         assertEquals(503, exception.getStatusCode().value());
@@ -165,11 +165,26 @@ class CreateUserControllerTest {
 
         var response = controller(identityModel()).createUser(
                 new CreateUserController.CreateUserRequest(
-                        "  ", "Bob", "s3cret!", null, null, null, null),
+                        "  ", "Bob", "s3cret!-horse", null, null, null, null),
                 null);
 
         assertEquals(400, response.getStatusCode().value());
         assertEquals("missing_required_field", response.getBody().get("error"));
+    }
+
+    @Test
+    void weakPasswordIsRejectedByThePolicy() {
+        authenticateAs(TENANT, "ADMIN");
+
+        var tooShort = controller(identityModel()).createUser(
+                new CreateUserController.CreateUserRequest("bob", "Bob", "abc", null, null, null, null), null);
+        assertEquals(400, tooShort.getStatusCode().value());
+        assertEquals("password_too_short", tooShort.getBody().get("error"));
+        assertEquals(8, tooShort.getBody().get("minLength"));
+
+        var common = controller(identityModel()).createUser(
+                new CreateUserController.CreateUserRequest("bob", "Bob", "password123", null, null, null, null), null);
+        assertEquals("password_too_common", common.getBody().get("error"));
     }
 
     @Test
@@ -185,7 +200,7 @@ class CreateUserControllerTest {
 
         var response = controller(identityModel()).createUser(
                 new CreateUserController.CreateUserRequest(
-                        "ada", "Ada Two", "s3cret!", null, null, null, null),
+                        "ada", "Ada Two", "s3cret!-horse", null, null, null, null),
                 null);
 
         assertEquals(409, response.getStatusCode().value());
@@ -199,7 +214,7 @@ class CreateUserControllerTest {
 
         var response = controller(identityModel()).createUser(
                 new CreateUserController.CreateUserRequest(
-                        "bob", "Bob", "s3cret!", "bob@example.test", null, null, null),
+                        "bob", "Bob", "s3cret!-horse", "bob@example.test", null, null, null),
                 null);
 
         assertEquals(201, response.getStatusCode().value());
@@ -234,7 +249,7 @@ class CreateUserControllerTest {
                 ps.setString(1, TENANT);
                 try (ResultSet rs = ps.executeQuery()) {
                     assertTrue(rs.next(), "credential row must exist");
-                    assertTrue(PasswordHasher.verify("s3cret!", rs.getString(1)),
+                    assertTrue(PasswordHasher.verify("s3cret!-horse", rs.getString(1)),
                             "the stored hash must verify against the plaintext password submitted");
                 }
             }
@@ -278,7 +293,7 @@ class CreateUserControllerTest {
         CompiledModel model = identityModelWithRoles(new CompiledRole("Member", List.of("EXECUTE_FLOW")));
 
         var response = controller(model).createUser(new CreateUserController.CreateUserRequest(
-                "tavo", "Tavo", "pw-1", null, null, null, null, List.of("MEMBER", "user")), null);
+                "tavo", "Tavo", "pw-1-correct-horse", null, null, null, null, List.of("MEMBER", "user")), null);
 
         assertEquals(201, response.getStatusCode().value());
         assertEquals(List.of("Member", "USER"), response.getBody().get("roleNames"));
@@ -293,7 +308,7 @@ class CreateUserControllerTest {
                 new CompiledRole("Member", List.of("EXECUTE_FLOW")), new CompiledRole("Curator", List.of("READ_AUDIT")));
         CreateUserController controller = controller(model);
         controller.createUser(new CreateUserController.CreateUserRequest(
-                "tavo", "Tavo", "pw-1", null, "member", null, null), null);
+                "tavo", "Tavo", "pw-1-correct-horse", null, "member", null, null), null);
 
         var assigned = controller.assignRoles("tavo",
                 new CreateUserController.AssignRolesRequest(List.of("curator", "Member")), null);
@@ -317,7 +332,7 @@ class CreateUserControllerTest {
         CompiledModel model = identityModelWithRoles(new CompiledRole("Member", List.of("EXECUTE_FLOW")));
         CreateUserController controller = controller(model);
         controller.createUser(new CreateUserController.CreateUserRequest(
-                "tavo", "Tavo", "pw-1", null, "Member", null, null), null);
+                "tavo", "Tavo", "pw-1-correct-horse", null, "Member", null, null), null);
 
         var response = controller.assignRoles("tavo",
                 new CreateUserController.AssignRolesRequest(List.of("Member", "Overlord")), null);

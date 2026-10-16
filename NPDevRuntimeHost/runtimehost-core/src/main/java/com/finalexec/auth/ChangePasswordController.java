@@ -54,7 +54,6 @@ import com.finalexec.config.DefaultTenant;
 public class ChangePasswordController {
 
     private static final Logger LOG = Logger.getLogger(ChangePasswordController.class.getName());
-    private static final int MIN_PASSWORD_LENGTH = 8;
 
     /** Mirrors the generated {@code RuntimeApiKeyAuthFilter.CLAIMS_ATTRIBUTE} constant's string
      * value (npdev-runtime-api-key-auth-filter.mustache) -- this class lives in runtimehost-core,
@@ -122,9 +121,12 @@ public class ChangePasswordController {
 
         String oldPassword = request == null ? null : request.oldPassword();
         String newPassword = request == null ? null : request.newPassword();
-        if (oldPassword == null || oldPassword.isBlank()
-                || newPassword == null || newPassword.length() < MIN_PASSWORD_LENGTH) {
+        if (oldPassword == null || oldPassword.isBlank() || newPassword == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "invalid_request"));
+        }
+        String policyViolation = PasswordPolicy.violation(newPassword, username);
+        if (policyViolation != null) {
+            return ResponseEntity.badRequest().body(PasswordPolicy.errorBody(policyViolation));
         }
 
         if (privateKey == null) {
