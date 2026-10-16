@@ -417,8 +417,8 @@ sections:
           "concept": "Note",
           "input": { "concept": "Note", "mode": "create" },
           "steps": [
-            { "name": "validate-note", "type": "validate", "invariants": ["TitleRequired"] },
-            { "name": "save-note", "type": "createConcept", "scope": "Note", "input": "$input", "out": "$saved" },
+            { "name": "validate-note", "type": "invariantCheck", "scope": "Note", "invariants": ["TitleRequired"] },
+            { "name": "save-note", "type": "createConcept", "scope": "Note", "input": "$input", "output": "$saved" },
             { "name": "return-note", "type": "return", "value": "$saved" }
           ]
         }
@@ -512,8 +512,8 @@ sections:
           "name": "CreateUser",
           "input": { "concept": "User", "mode": "create" },
           "steps": [
-            { "name": "validate-user", "type": "enforceInvariants", "scope": "User", "invariants": ["EmailRequired", "NameRequired", "EmailUnique"] },
-            { "name": "save-user", "type": "capabilityCall", "cap": "persistence", "op": "save", "args": ["$input"], "out": "$saved" },
+            { "name": "validate-user", "type": "invariantCheck", "scope": "User", "invariants": ["EmailRequired", "NameRequired", "EmailUnique"] },
+            { "name": "save-user", "type": "capabilityCall", "capability": "persistence", "operation": "save", "args": ["$input"], "output": "$saved" },
             { "name": "emit-user-created", "type": "emitEvent", "event": "UserCreated", "from": "$saved" },
             { "name": "return-user", "type": "return", "value": "$saved" }
           ]
@@ -604,17 +604,19 @@ sections:
           "concept": "Invoice",
           "input": { "concept": "Invoice", "mode": "update" },
           "steps": [
-            { "name": "mark-issued", "type": "updateConcept", "scope": "Invoice", "input": "$input", "out": "$issued" },
+            { "name": "mark-issued", "type": "updateConcept", "scope": "Invoice", "input": "$input", "output": "$issued" },
             { "name": "announce", "type": "emitEvent", "event": "InvoiceIssued", "from": "$issued" },
             { "name": "return-issued", "type": "return", "value": "$issued" }
           ]
         }
       ],
-      "orchestrations": [
+      "orchestrationRules": [
         {
           "name": "NotifyOnInvoiceIssued",
           "trigger": { "type": "event", "event": "InvoiceIssued" },
-          "action": { "type": "create", "concept": "InvoiceNotification", "map": { "invoiceId": "id", "message": "invoiceNumber" } }
+          "actions": [
+            { "type": "create", "concept": "InvoiceNotification", "map": { "invoiceId": "id", "message": "invoiceNumber" } }
+          ]
         }
       ]
     }
@@ -650,7 +652,7 @@ sections:
     **What you learn:** writing your own capability in Java when built-in behavior isn't enough,
     authoring a hand-designed panel instead of the automatic one, and a flow that *pauses* and
     waits for a real-world event before continuing. **New vocabulary:** `customCapabilities`
-    (`plugin:java-source`), `panel` authoring, `waitForEvent` (resumable flow), multi-tenant data.
+    (`plugin:java-source`), `panel` authoring, `awaitEvent` (resumable flow), multi-tenant data.
 
     This is where NPDev stops being "just JSON" and starts being a real development platform: you
     can drop in a few lines of Java for logic that has no generic built-in equivalent (like
@@ -734,7 +736,7 @@ sections:
     immediately:
 
     ```json
-    { "type": "waitForEvent", "awaitEvent": "TicketResolved", "match": { "correlationId": "$saved.id" } }
+    { "type": "awaitEvent", "awaitEvent": "TicketResolved", "match": { "correlation": true }, "awaitRef": "resolution" }
     ```
 
     Once this step runs, the flow instance is parked. It comes back to life — from exactly where
@@ -765,7 +767,7 @@ sections:
     | Reference app | (`notes-app`, write it yourself) | `simple-user-registry-inmemory` | `invoice-bonds-demo` | `Claude` |
     | Concepts | 1, standalone | 1, standalone | Several, linked by `reference` | Several, linked, multi-tenant |
     | Web UI | None (`ui.generateBusinessUi: false`) | Automatic (table + form) | Automatic | Automatic + hand-authored panels |
-    | Behavior | One flow, one invariant | Flow + uniqueness rule | Flow + event + orchestration rule + query | + custom Java capability + resumable (`waitForEvent`) flow |
+    | Behavior | One flow, one invariant | Flow + uniqueness rule | Flow + event + orchestration rule + query | + custom Java capability + resumable (`awaitEvent`) flow |
     | Database | InMemory | InMemory | Persistent (H2Server) | Persistent (H2Server) |
     | You write Java? | No | No | No | Yes — one small plain class |
     | Talk to it via | REST only | Browser + REST | Browser + REST + smoke test | Browser (custom panel) + REST + smoke test |

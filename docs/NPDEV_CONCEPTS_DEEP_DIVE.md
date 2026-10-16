@@ -142,18 +142,18 @@ flow is public API automatically; there's no extra wiring to expose it.
 
 | Step `type` | What it does |
 | --- | --- |
-| `validate` / `enforceInvariants` | Checks the invariants you name; stops the flow with an error if any fail. |
-| `capabilityCall` (`cap`+`op`, or `capability`+`operation`) | Calls a capability operation — save something, send a notification, run custom logic. |
+| `invariantCheck` | Checks the invariants you name; stops the flow with an error if any fail. |
+| `capabilityCall` (`capability`+`operation`) | Calls a capability operation — save something, send a notification, run custom logic. |
 | `createConcept` / `updateConcept` | Persists a concept record (the "obvious" built-in way to save data, simpler than calling the `persistence` capability yourself). |
 | `emitEvent` | Broadcasts an event with data taken `from` a variable. |
 | `scheduleEvent` | Same as `emitEvent`, but delayed (`delaySeconds`/`delayMinutes`/`delayMs`). |
-| `if` / `branch` | Conditional: `condition`, then `then: [...]`, optional `else: [...]`. |
-| `waitForEvent` (aka `awaitEvent`) | Pauses the flow until a matching event arrives — see §5/§6. |
+| `branch` | Conditional: `condition`, then `then: [...]`, optional `else: [...]`. |
+| `awaitEvent` | Pauses the flow until a matching event arrives — see §5/§6. |
 | `generatedAction` | Invokes a specific generated action by name. |
 | `return` | Ends the flow, producing `value` as the result. |
 
 Steps pass data to each other through simple named variables, conventionally prefixed with
-`$`: `$input` is always the incoming request body; a step can write `out: "$saved"` and a
+`$`: `$input` is always the incoming request body; a step can write `output: "$saved"` and a
 later step can read `"$saved"`.
 
 ### Real example (from `simple-user-registry-inmemory`)
@@ -163,10 +163,10 @@ later step can read `"$saved"`.
   "name": "CreateUser",
   "input": { "concept": "User", "mode": "create" },
   "steps": [
-    { "name": "validate-user", "type": "enforceInvariants", "scope": "User",
+    { "name": "validate-user", "type": "invariantCheck", "scope": "User",
       "invariants": ["EmailRequired", "NameRequired", "EmailUnique"] },
-    { "name": "save-user", "type": "capabilityCall", "cap": "persistence", "op": "save",
-      "args": ["$input"], "out": "$saved" },
+    { "name": "save-user", "type": "capabilityCall", "capability": "persistence", "operation": "save",
+      "args": ["$input"], "output": "$saved" },
     { "name": "emit-user-created", "type": "emitEvent", "event": "UserCreated", "from": "$saved" },
     { "name": "return-user", "type": "return", "value": "$saved" }
   ]
@@ -185,7 +185,7 @@ the saved record back to whoever called the flow.*
   `config.json`'s `trialDefaults.apiKey` is only a pre-generation placeholder, not a working
   credential once the app has actually been launched.
 
-**Going deeper:** `waitForEvent` above is the entry point to a full durable workflow engine — a flow
+**Going deeper:** `awaitEvent` above is the entry point to a full durable workflow engine — a flow
 paused on it survives a JVM restart and resumes exactly where it left off, with event correlation,
 compensation on failure, and resumable loops. See `docs/FLOWS.md` for the complete mechanics.
 
@@ -279,8 +279,8 @@ public final class TriageAssistantCapability {
 Your flow then calls it exactly like any built-in capability:
 
 ```json
-{ "name": "score-ticket", "type": "capabilityCall", "cap": "triageAssistant", "op": "score",
-  "args": ["$input"], "out": "$triage" }
+{ "name": "score-ticket", "type": "capabilityCall", "capability": "triageAssistant", "operation": "score",
+  "args": ["$input"], "output": "$triage" }
 ```
 
 ### Gotchas
@@ -372,7 +372,7 @@ The sibling `InvoiceConsolePanel` above binds its button to a **flow** instead, 
 
 An Event is a fact that something happened, broadcast for anyone interested to react to.
 Nobody "calls" an event the way you call a flow — a flow **emits** it, and zero or more
-**orchestration rules** (§6) or paused **flows** (`waitForEvent`, §2) may be listening.
+**orchestration rules** (§6) or paused **flows** (`awaitEvent`, §2) may be listening.
 
 ### Anatomy
 
@@ -398,8 +398,9 @@ A flow step broadcasts one with:
 - `InvoiceIssued` (`invoice-bonds-demo`) — fired by the `IssueInvoice` flow, and consumed by
   the `NotifyOnInvoiceIssued` orchestration rule (§6).
 - `TicketResolved` (`Claude` Support Desk) — fired independently, hours after a ticket was
-  submitted, and it's what wakes up the `SubmitTicket` flow's `waitForEvent` step (§2), matched
-  by a correlation id so the *right* paused flow instance resumes.
+  submitted, and it's what wakes up the `SubmitTicket` flow's `awaitEvent` step (§2; nested in
+  the `escalation-gate` branch, so only High-priority tickets park there), matched by
+  `match: { "correlation": true }` so the *right* paused flow instance resumes.
 
 ### Gotchas
 
@@ -428,17 +429,18 @@ something the *platform* decides to run, because a condition (an event) became t
 {
   "name": "NotifyOnInvoiceIssued",
   "trigger": { "type": "event", "event": "InvoiceIssued" },
-  "action": {
-    "type": "create",                          // create | callCapability | scheduleEvent
-    "concept": "InvoiceNotification",
-    "map": { "invoiceId": "id", "message": "invoiceNumber" }   // target field -> source event field
-  }
+  "actions": [                                  // REQUIRED, at least 1; run in order
+    {
+      "type": "create",                         // create | callCapability | scheduleEvent
+      "concept": "InvoiceNotification",
+      "map": { "invoiceId": "id", "message": "invoiceNumber" }   // target field -> source event field
+    }
+  ]
 }
 ```
 
-`action.type` can be:
-- `create` — make a new record of some concept, populated from the event's payload via `map`
-  (or `fieldMap`).
+Each entry in `actions` has a `type`, which can be:
+- `create` — make a new record of some concept, populated from the event's payload via `map`.
 - `callCapability` — call a capability operation in reaction to the event.
 - `scheduleEvent` — chain into emitting a further (possibly delayed) event.
 
@@ -448,11 +450,13 @@ something the *platform* decides to run, because a condition (an event) became t
 {
   "name": "NotifyOnInvoiceIssued",
   "trigger": { "type": "event", "event": "InvoiceIssued" },
-  "action": {
-    "type": "create",
-    "concept": "InvoiceNotification",
-    "map": { "invoiceId": "id", "message": "invoiceNumber" }
-  }
+  "actions": [
+    {
+      "type": "create",
+      "concept": "InvoiceNotification",
+      "map": { "invoiceId": "id", "message": "invoiceNumber" }
+    }
+  ]
 }
 ```
 
