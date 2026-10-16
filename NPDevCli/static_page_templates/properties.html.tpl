@@ -48,7 +48,7 @@
 let token = '';
 
 function authHeaders() {
-  return token ? { 'Authorization': 'Bearer ' + token } : {};
+  return token ? { 'Authorization': 'Bearer ' + token, 'X-NPDev-Request': '1' } : { 'X-NPDev-Request': '1' };
 }
 
 async function login() {

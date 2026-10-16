@@ -29,9 +29,13 @@ import java.util.UUID;
  * writing the literal string {@code "quantity * unitPrice"} into a decimal column (measured live: H2
  * then threw parsing that string as {@code BigDecimal}, "Character array is missing 'e' notation
  * exponential mark"). Only the final fallback changes; every existing special form above it ({@code
- * now()}/{@code uuid()}'s deterministic values, the {@code $field} sigil, quoted literals, true/
+ * now()}/{@code uuid()}'s live values, the {@code $field} sigil, quoted literals, true/
  * false, a bare number) keeps its exact prior behavior unchanged -- {@code ComputedExpression} is
  * tried only for text none of those already claimed.
+ *
+ * <p>ENG-8: on a live write {@code now()} is the real current instant and {@code uuid()} a fresh
+ * random UUID per call (they used to be the epoch and one constant UUID for every record).
+ * {@link #evaluateStrict} deliberately stays deterministic -- see its javadoc.
  */
 public final class ValueExpressionEvaluator {
 
@@ -44,10 +48,10 @@ public final class ValueExpressionEvaluator {
             return null;
         }
         if (isNowLiteral(text)) {
-            return Instant.EPOCH.toString();
+            return Instant.now().toString();
         }
         if (isUuidLiteral(text)) {
-            return UUID.nameUUIDFromBytes("npdev-deterministic-concept-default".getBytes()).toString();
+            return UUID.randomUUID().toString();
         }
         if (isFieldReference(text)) {
             return data.get(text.substring(1));
@@ -118,6 +122,11 @@ public final class ValueExpressionEvaluator {
      * fallback would itself be the bug: the expression-default backfill shadow proof
      * ({@code ExpressionBackfillPreview}, RuntimeHost) must fail loudly, never treat unresolved
      * text as though it were a successfully computed value.
+     *
+     * <p>{@code now()}/{@code uuid()} stay DETERMINISTIC here (epoch / one constant UUID), unlike
+     * {@link #evaluate(String, Map)}: the backfill shadow proof ({@code ExpressionBackfillShadowProof})
+     * evaluates twice and refuses a backfill whose two passes disagree, so a backfilled
+     * {@code now()} column gets the documented epoch sentinel rather than silently random values.
      */
     public static Object evaluateStrict(String expression, Map<String, Object> data, ComputedExpression.FunctionRegistry functions) {
         String text = expression == null ? "" : expression.trim();

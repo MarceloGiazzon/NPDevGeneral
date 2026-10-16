@@ -5,8 +5,8 @@
 
 > ## Implementation status (2026-07-13)
 > All five phases are built and verified:
-> - **Phase 1** — `schemas/ai/knowledge-card.schema.json`, 9 seed cards in `knowledge/cards/`,
->   `scripts/ai/extract_platform_status.py` → `knowledge/platform-status.json` (33 items),
+> - **Phase 1** — `schemas/ai/knowledge-card.schema.json`, 9 seed cards in `NPDevMcp/knowledge/cards/`,
+>   `scripts/ai/extract_platform_status.py` → `NPDevMcp/knowledge/platform-status.json` (33 items),
 >   `scripts/ai/build_knowledge.py`, gate `scripts/quality/run-ai-knowledge-gate.ps1` (green).
 > - **Phase 2** — `build_rag_index.py` now chunks cards; server ranker boosts them ×1.5. Verified:
 >   `npdev_search_examples "tenant default 403"` returns the card #1.
@@ -22,7 +22,7 @@
 >   Verified end-to-end on synthetic cycles: failed→passed emits a candidate with the right signature +
 >   diff; two occurrences of a novel signature promote to a schema-valid draft card; an already-carded
 >   signature is correctly skipped as "covered".
-> - **Phase 4** — `npdev_check_support` tool over `capabilities.json`. Verified: `ARCH-10b`→DONE
+> - **Phase 4** — `npdev_check_support` tool over `capabilities.json`. Verified: `REG-244`→DONE
 >   (exact), `panel orderBy`→orderBy items (keyword), nonsense→explicit `unknown`.
 > - **Phase 5** — `scripts/appgen/Rebuild-And-Restage.ps1` + tracked skills `rebuild-app` /
 >   `verify-in-browser` under `.claude/skills/` (un-ignored). Wrapper not yet run against a live app.
@@ -40,8 +40,7 @@
 > (so they function as real Claude Code skills and are tracked). Live error→fix pair capture is now
 > built (Phase 3+ above). **CI trigger resolved:** rather than flip the heavy ~120-min
 > `workflow_dispatch`-only workflows (the `BOND-B4` tension), the fast pure-Python gate runs
-> automatically on PRs via `.github/workflows/ai-knowledge-gate.yml` (path-filtered to the knowledge
-> substrate). **Real-path proof:** the capture path was exercised through the real Gradle validator
+> on every push to `main` (no path filter) and on demand via `.github/workflows/ai-knowledge-gate.yml`. **Real-path proof:** the capture path was exercised through the real Gradle validator
 > (fail→fix on a sample model) — which surfaced that the validator emits a generic
 > `semantic_validation_error` code with unquoted identifiers in the message; the normalizer now falls
 > back to a keyword-templatized message signature for generic codes, so real diagnostics cluster
@@ -174,7 +173,7 @@ runnable by a human too and can't drift from prose. Build the script first; the 
 
 ### Cross-cutting recommendation
 Ideas 1–3 all read/write the same durable findings. Give them **one pipeline**: a single
-`knowledge/` source-of-truth directory + one builder that fans out into (RAG chunks, failure-signature
+`NPDevMcp/knowledge/` source-of-truth directory + one builder that fans out into (RAG chunks, failure-signature
 index, capability projection). Don't build three independent readers of three formats.
 
 ---
@@ -186,9 +185,9 @@ index, capability projection). Don't build three independent readers of three fo
    │  ~/.claude/.../memory/*.md   │  ───────────────────────────────────┐
    └─────────────────────────────┘                                      │  promote durable findings
                                                                         ▼
-   docs/OPEN_GAPS_AND_ROADMAP.md ──(machine table §1)──►  knowledge/platform-status.json
+   docs/OPEN_GAPS_AND_ROADMAP.md ──(machine table §1)──►  NPDevMcp/knowledge/platform-status.json
                                                                         │
-   knowledge/cards/*.json  (structured findings: gotcha│gap│constraint│error-fix)
+   NPDevMcp/knowledge/cards/*.json  (structured findings: gotcha│gap│constraint│error-fix)
                                                                         │
                                     scripts/ai/build_knowledge.py  (single fan-out builder)
                                                                         │
@@ -202,7 +201,7 @@ index, capability projection). Don't build three independent readers of three fo
 ```
 
 Everything under `<Build>/npdev-ai/` is a build artifact (never committed — Build-output policy). The
-committed sources of truth are `knowledge/cards/*.json`, `knowledge/platform-status.json`, and the
+committed sources of truth are `NPDevMcp/knowledge/cards/*.json`, `NPDevMcp/knowledge/platform-status.json`, and the
 ledger. A CI gate asserts the derived artifacts are reproducible and the status projection matches the
 ledger's §1 table.
 
@@ -229,11 +228,11 @@ status projection, plus a single builder skeleton.
      `status` (`active|superseded`), `supersededBy` (nullable id).
    - Register it the same way other `schemas/ai/*.schema.json` are (no code change needed;
      `npdev_list_schemas` auto-discovers by glob).
-2. **Seed cards.** Create `knowledge/cards/` and author ~10 seed cards by *promoting existing memory*:
+2. **Seed cards.** Create `NPDevMcp/knowledge/cards/` and author ~10 seed cards by *promoting existing memory*:
    at minimum `tenant-default-403` (ARCH-15), `runtimehost-libs-dir-mismatch`, `generator-runtime-cache-refresh`,
    `hash-guarded-npdev-generated`, the widget-compatibility rules, `scrapforai-localhost-127` gotcha.
    Each cites its `sourceRefs` (ledger ID and/or memory slug).
-3. **Platform-status projection.** Add `knowledge/platform-status.json`: one entry per ledger §1 row
+3. **Platform-status projection.** Add `NPDevMcp/knowledge/platform-status.json`: one entry per ledger §1 row
    `{id, title, category, status, priority, notes}`. Author a generator
    `scripts/ai/extract_platform_status.py` that parses the §1 markdown table of
    `docs/OPEN_GAPS_AND_ROADMAP.md` into this JSON, so it can be regenerated (not hand-drifted). The
@@ -257,7 +256,7 @@ status projection, plus a single builder skeleton.
 
 **Tasks**
 1. In [build_rag_index.py](../../scripts/ai/build_rag_index.py), add a `chunk_cards()` pass that reads
-   `knowledge/cards/*.json` (skip `status:superseded`) and emits chunks with
+   `NPDevMcp/knowledge/cards/*.json` (skip `status:superseded`) and emits chunks with
    `objectType:"knowledge-card"`, `title`, `keywords` (card `keywords[]` + tokenized title),
    `text` (card `body`), `source` (card path). Keep the existing doc/sample passes unchanged.
 2. Fold this into `build_knowledge.py` so one command builds both indexes (call `build_rag_index.main()`),
@@ -318,7 +317,7 @@ a model shape.
    `DONE`/`BOUNDARY` are as authoritative as `OPEN`.
 
 **Acceptance / verify**
-- `npdev_check_support {feature:"ARCH-10b"}` → returns `DONE` with the orderBy note.
+- `npdev_check_support {feature:"REG-244"}` → returns `DONE` with its resolution note.
 - `npdev_check_support {feature:"panel orderBy"}` → keyword-resolves to the same entry.
 - `npdev_check_support {feature:"something totally unrelated"}` → explicit "unknown / not tracked".
 
@@ -375,7 +374,7 @@ exists.
   both indexes) must be regenerated by a script and CI-checked against its source. No hand-edited
   derived files. The Phase-1 gate is non-negotiable.
 - **Don't let `npdev_check_support` lie by omission.** "Unknown" must never render as "supported."
-- **Build-output policy.** All indexes/artifacts under `<Build>/npdev-ai/`; only `knowledge/` sources
+- **Build-output policy.** All indexes/artifacts under `<Build>/npdev-ai/`; only `NPDevMcp/knowledge/` sources
   and the ledger are committed. (`docs/BUILD_OUTPUT_LOCATION_POLICY.md`.)
 - **Schema-mirror rule does *not* apply here** — `knowledge-card.schema.json` is an `schemas/ai/` doc,
   not `model.schema.json`, so it lives in one place. Do not fan it into the four model-schema mirrors.

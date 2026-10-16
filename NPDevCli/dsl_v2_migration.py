@@ -759,7 +759,10 @@ def migrate_document(doc: dict) -> MigrationResult:
     return result
 
 # =================================================================================================
-# STOR-16: db.definition.json's schemaLifecycle.strategy -- RecreateOnAppStart -> Ephemeral.
+# STOR-16 / ENG-2: db.definition.json's schemaLifecycle.strategy -- RecreateOnAppStart is REMOVED.
+# The rewrite target depends on the engine: InMemory (or an explicit Ephemeral confirmation) ->
+# Ephemeral; a physical engine -> KeepExistingIfCompatible, which is what the old spelling actually
+# did there (nothing was ever dropped).
 #
 # A DIFFERENT document from everything above. The functions above migrate model.json; this one
 # migrates db.definition.json, and `migrate_document`'s `_looks_compiled` guard would have nothing
@@ -771,11 +774,14 @@ def migrate_document(doc: dict) -> MigrationResult:
 # Why the rename is safe rather than merely convenient: `RecreateOnAppStart` never had a code path.
 # `SchemaLifecycleExecutor` read `strategy` at exactly one line and compared it to
 # `DropAndRecreateOnStructureChange`, so an app declaring the old name recreated nothing, whatever
-# the name promised. `Ephemeral` is the behaviour the name always claimed.
+# the name promised. On InMemory that is indistinguishable from `Ephemeral` (memory is empty on
+# boot); on a physical engine the faithful translation is `KeepExistingIfCompatible`.
 # =================================================================================================
 
 DEPRECATED_LIFECYCLE_STRATEGY = "RecreateOnAppStart"
 EPHEMERAL_LIFECYCLE_STRATEGY = "Ephemeral"
+KEEP_LIFECYCLE_STRATEGY = "KeepExistingIfCompatible"
+EPHEMERAL_CONFIRMATION = "I_UNDERSTAND_ALL_DATA_IS_DELETED_ON_EVERY_START"
 
 
 def looks_like_db_definition(doc: dict) -> bool:
@@ -799,8 +805,11 @@ def migrate_db_definition(doc: dict) -> MigrationResult:
 
     Two independent checks, run unconditionally (neither is gated behind the other firing):
 
-    1. STOR-16: `schemaLifecycle.strategy: RecreateOnAppStart` -> `Ephemeral`. Only the strategy
-       STRING changes. `allowDestructiveRecreate`, the confirmation and the scope are deliberately
+    1. STOR-16 / ENG-2: `schemaLifecycle.strategy: RecreateOnAppStart` (removed) -> `Ephemeral` when
+       the engine is InMemory or the definition already carries the Ephemeral confirmation
+       `I_UNDERSTAND_ALL_DATA_IS_DELETED_ON_EVERY_START`; otherwise (a physical engine) ->
+       `KeepExistingIfCompatible`, with an ambiguity note, because that is what the old spelling
+       actually did there. Only the strategy STRING changes. `allowDestructiveRecreate`, the confirmation and the scope are deliberately
        left exactly as they are: every in-corpus user of the old spelling is InMemory and already
        carries the `I_UNDERSTAND_INMEMORY_DATA_IS_EPHEMERAL` + `NpdevOwnedLogicalStoresOnly` pair,
        which `SchemaLifecyclePolicy.ephemeralConfirmedFor` accepts for that engine. Rewriting a
@@ -821,23 +830,23 @@ def migrate_db_definition(doc: dict) -> MigrationResult:
     lifecycle = doc["schemaLifecycle"]
     strategy = lifecycle.get("strategy")
     if isinstance(strategy, str) and strategy.strip() == DEPRECATED_LIFECYCLE_STRATEGY:
-        lifecycle["strategy"] = EPHEMERAL_LIFECYCLE_STRATEGY
+        engine = (doc.get("database") or {}).get("engine")
+        confirmed_ephemeral = (lifecycle.get("destructiveRecreateConfirmation")
+                               == EPHEMERAL_CONFIRMATION)
+        if (isinstance(engine, str) and engine.strip().lower() == "inmemory") or confirmed_ephemeral:
+            target = EPHEMERAL_LIFECYCLE_STRATEGY
+        else:
+            target = KEEP_LIFECYCLE_STRATEGY
+            result.ambiguities.append(
+                f"engine is {engine}: rewritten to {KEEP_LIFECYCLE_STRATEGY}, which is what "
+                f"{DEPRECATED_LIFECYCLE_STRATEGY} actually did on a physical database (nothing was "
+                f"ever dropped). If you want every start to wipe the data, use "
+                f"{EPHEMERAL_LIFECYCLE_STRATEGY} with the confirmation {EPHEMERAL_CONFIRMATION} and "
+                f"scope NpdevOwnedTablesOnly.")
+        lifecycle["strategy"] = target
         result.changed = True
         result.changes.append(
-            f"schemaLifecycle.strategy '{DEPRECATED_LIFECYCLE_STRATEGY}' -> "
-            f"'{EPHEMERAL_LIFECYCLE_STRATEGY}'")
-        engine = (doc.get("database") or {}).get("engine")
-        if engine and str(engine) != "InMemory":
-            # Not a refusal: the definition is valid either way, and `ephemeralConfirmedFor` will say
-            # so precisely at generation time. But a physical engine moving to Ephemeral is a real
-            # change in what happens to real rows, and the author should hear it from the tool that
-            # made the edit.
-            result.ambiguities.append(
-                f"engine is {engine}, not InMemory -- on a physical engine Ephemeral means this app "
-                f"DROPS its tables on every start. Confirm that is what you want, and set "
-                f"destructiveRecreateConfirmation to "
-                f"\"I_UNDERSTAND_ALL_DATA_IS_DELETED_ON_EVERY_START\" with scope "
-                f"\"NpdevOwnedTablesOnly\".")
+            f"schemaLifecycle.strategy '{DEPRECATED_LIFECYCLE_STRATEGY}' -> '{target}'")
 
     database = doc.get("database") or {}
     engine = database.get("engine")

@@ -243,7 +243,7 @@
   }
 
   function headers() {
-    const result = { "Content-Type": "application/json" };
+    const result = { "Content-Type": "application/json", "X-NPDev-Request": "1" };
     const apiKey = normalizeText(el.apiKey.value);
     if (apiKey) {
       result["X-Api-Key"] = apiKey;

@@ -4,6 +4,7 @@ import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowSchedule;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CronSchedules;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.ExecutionResult;
 import com.npdev.kernel.ExecutionStatus;
@@ -199,14 +200,21 @@ public class NpdevCronSchedulerService {
             List<String> tenants = schedule.getTenantScope().isEmpty()
                     ? List.of(DEFAULT_TENANT_ID)
                     : schedule.getTenantScope();
+            String cron = CronSchedules.normalize(schedule.getCron());
             CronTrigger trigger;
             CronExpression cronExpression;
             try {
-                trigger = new CronTrigger(schedule.getCron());
-                cronExpression = CronExpression.parse(schedule.getCron());
+                trigger = new CronTrigger(cron);
+                cronExpression = CronExpression.parse(cron);
             } catch (IllegalArgumentException malformedCron) {
                 LOG.log(Level.SEVERE, "Flow " + flow.getName() + " has an invalid schedule.cron '"
-                        + schedule.getCron() + "' -- not registered", malformedCron);
+                        + cron + "' -- not registered", malformedCron);
+                for (String tenantId : tenants) {
+                    String failedTenant = tenantId == null || tenantId.isBlank() ? DEFAULT_TENANT_ID : tenantId.trim();
+                    tracker.registerPending(flow.getName(), failedTenant, cron);
+                    tracker.recordFailure(flow.getName(), failedTenant,
+                            "invalid schedule.cron '" + cron + "': " + malformedCron.getMessage());
+                }
                 continue;
             }
             for (String tenantId : tenants) {
@@ -214,7 +222,7 @@ public class NpdevCronSchedulerService {
                 String key = scheduleKey(flow.getName(), normalizedTenant);
                 cronExpressionsByKey.put(key, cronExpression);
                 fireAnchorByKey.put(key, new AtomicReference<>(Instant.now()));
-                tracker.registerPending(flow.getName(), normalizedTenant, schedule.getCron());
+                tracker.registerPending(flow.getName(), normalizedTenant, cron);
                 ScheduledFuture<?> future = taskScheduler.schedule(
                         () -> runScheduledFlow(flow.getName(), normalizedTenant, key), trigger);
                 scheduledFutures.add(future);

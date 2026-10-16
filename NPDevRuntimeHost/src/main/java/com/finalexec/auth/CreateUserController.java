@@ -117,6 +117,10 @@ public class CreateUserController {
                 || password == null || password.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "missing_required_field"));
         }
+        String policyViolation = PasswordPolicy.violation(password, username);
+        if (policyViolation != null) {
+            return ResponseEntity.badRequest().body(PasswordPolicy.errorBody(policyViolation));
+        }
         Optional<IdentityPackTableNames> resolvedIdentityTables = IdentityPackTableNames.tryResolve(modelHolder.get());
         if (resolvedIdentityTables.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,

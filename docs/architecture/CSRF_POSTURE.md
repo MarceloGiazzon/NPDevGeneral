@@ -1,7 +1,17 @@
 # CSRF posture (LNCH-4)
 
-**Claim: cross-site request forgery does not apply to a generated NPDev FinalApp, because it
-never authenticates a request using an ambient credential a browser attaches automatically.**
+**Claim: a cross-site page cannot make a generated NPDev FinalApp perform a state-changing action,
+because a request authenticated only by an ambient credential (the `npdev_jwt` session cookie) is
+refused unless it also carries the `X-NPDev-Request` header, which only same-origin script can add.**
+
+`npdev_jwt` is an HttpOnly, SameSite=Lax cookie set on jwt-mode login and OAuth sign-in
+(`LoginController`, `OAuthGoogleController`). It exists so a top-level page navigation (which can
+carry no custom header) still authenticates, and it is the ONLY credential after an OAuth sign-in.
+`JwtBearerAuthFilter` therefore treats it as ambient: for `POST`/`PUT`/`PATCH`/`DELETE` it answers
+`403 {"error":"csrf_header_required"}` unless `X-NPDev-Request` is present. Safe methods
+(`GET`/`HEAD`/`OPTIONS`/`TRACE`) and requests authenticated by an `Authorization: Bearer` header are
+unaffected. Every first-party page sends the header on every call. The rest of this document
+explains why the header-based credentials below were never CSRF-exposed.
 
 ## Why the claim holds
 
@@ -31,10 +41,15 @@ work, which exists precisely to bound the blast radius of a stolen token).
 
 ## What backs the claim, structurally (not just by argument)
 
-- **No session-based auth anywhere.** Nothing in `NPDevRuntimeHost` calls
+- **The cookie is gated by a custom header (SEC-1).** `JwtBearerAuthFilter` requires
+  `X-NPDev-Request` (`JwtBearerAuthFilter.CSRF_HEADER`) when the `npdev_jwt` cookie is the credential
+  on an unsafe method. A cross-site form or link cannot add it, and a cross-site `fetch()` that adds
+  it needs a CORS preflight that `CorsConfig`/`DevCorsPreflightFilterConfig` never grant (credentials
+  are never allowed). Pinned by `JwtBearerAuthFilterCsrfTest`.
+- **No server-side session.** Nothing in `NPDevRuntimeHost` calls
   `HttpServletRequest.getSession(...)`, constructs an `HttpSession`, or calls
-  `HttpServletResponse.addCookie(...)`. There is no login-time `Set-Cookie` to forge in the first
-  place.
+  `HttpServletResponse.addCookie(...)`; the only cookie is the stateless `npdev_jwt`, issued through
+  `ResponseCookie` and expired by `POST /api/auth/logout` (SEC-2).
 - **No Spring Security on the classpath.** `NPDevRuntimeHost/build.gradle.template` does not
   depend on `spring-boot-starter-security`, so there is no default session-cookie/CSRF-filter
   machinery a misconfiguration could silently leave half-enabled.
@@ -43,10 +58,10 @@ work, which exists precisely to bound the blast radius of a stolen token).
   `Access-Control-Allow-Credentials: false` unconditionally. Even if a browser *did* hold an
   ambient credential (it doesn't, per above), cross-origin credentialed requests are refused by
   policy.
-- **Guarded by `scripts/hygiene/check-csrf-posture.ps1`.** A structural regression check: if a
-  future change introduces `HttpSession`/`addCookie`/`spring-boot-starter-security` into
-  `NPDevRuntimeHost`, the check fails and this document's claim must be revisited before the
-  change ships, rather than silently going stale.
+- **Guarded by `scripts/hygiene/check-csrf-posture.ps1`.** A structural regression check: it fails
+  if a future change introduces `HttpSession`/`addCookie`/`spring-boot-starter-security` into
+  `NPDevRuntimeHost`, or if `JwtBearerAuthFilter` reads cookies (`getCookies(`) without
+  `CSRF_HEADER`, so this document's claim cannot silently go stale.
 
 ## What this claim does *not* cover
 

@@ -62,9 +62,8 @@
       "required": ["strategy", "allowDestructiveRecreate", "destructiveRecreateConfirmation", "scope"],
       "properties": {
         "strategy": {
-          "enum": ["DropAndRecreateOnStructureChange", "Ephemeral", "KeepExistingIfCompatible",
-                     "RecreateOnAppStart"],
-          "description": "STOR-16. `Ephemeral` discards this app's data on every start: NPDev drops the tables the manifest declares it owns and recreates them from the model, with no diff, no impact report and no acknowledgment token. `RecreateOnAppStart` is the DEPRECATED spelling of it -- still accepted, warned about at generation time, and rewritten by `npdev migrate db-lifecycle`. It never had a code path of its own; despite the name it recreated nothing."
+          "enum": ["DropAndRecreateOnStructureChange", "Ephemeral", "KeepExistingIfCompatible"],
+          "description": "STOR-16. `Ephemeral` discards this app's data on every start: NPDev drops the tables the manifest declares it owns and recreates them from the model, with no diff, no impact report and no acknowledgment token. The old spelling `RecreateOnAppStart` was removed: generation refuses it and `npdev migrate db-lifecycle --input <dir> --write` rewrites it (InMemory -> Ephemeral, physical -> KeepExistingIfCompatible)."
         },
         "allowDestructiveRecreate": { "type": "boolean" },
         "destructiveRecreateConfirmation": { "type": "string" },
