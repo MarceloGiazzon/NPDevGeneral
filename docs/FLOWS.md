@@ -193,7 +193,9 @@ Two collapsing passes turn these into the 9 real kinds:
    as concept-persistence steps, and `resolveCapabilityNameForStep`/`resolveOperationNameForStep`
    (`:1549-1567`) resolve them unconditionally to capability `"persistence"`, operation `"save"`. So
    this is genuinely **(a) sugar, not (b) a distinct behavior**: the "9 step kinds" count above is
-   correct as stated, not understated.
+   correct as stated, not understated. A `createConcept` that creates a record gets the same defaults
+   as the CRUD API (literal and `defaultExpression` defaults, `nextNumber` sequences, lifecycle
+   initial state), and an `updateConcept` never re-applies defaults (ENG-6).
 
 ### Worked examples, from real sample models
 
