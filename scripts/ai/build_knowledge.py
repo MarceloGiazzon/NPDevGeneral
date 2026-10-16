@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import build_rag_index
+import yaml
 from failure_signatures import normalize
 from npdev_ai_common import KNOWLEDGE_REL, ai_out_dir, cards_dir, knowledge_dir, repo_root
 
@@ -148,11 +149,65 @@ def build_failure_index(root: Path, cards: list[dict[str, Any]]) -> dict[str, An
 # Artifact 3: capabilities (platform status + constraint/gap cards)
 # ---------------------------------------------------------------------------
 
+def _flat(text: Any) -> str:
+    return " ".join(str(text or "").split())
+
+
+def ledger_capability_items(root: Path) -> list[dict[str, Any]]:
+    """Project ledger/items/*.yml and ledger/boundaries/*.yml into capability items.
+
+    npdev_check_support scores these on id/title/notes/category. platform-status.json cannot carry
+    them (it projects ledger/gaps.yml, which is empty by design), so the projection lives here and
+    only reaches <Build>/npdev-ai/capabilities.json, never a committed file.
+    """
+    items: list[dict[str, Any]] = []
+
+    def load(sub: str) -> list[tuple[Path, dict[str, Any]]]:
+        out: list[tuple[Path, dict[str, Any]]] = []
+        for path in sorted((root / "ledger" / sub).glob("*.yml")):
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and data.get("id"):
+                out.append((path, data))
+        return out
+
+    for path, d in load("items"):
+        items.append({
+            "id": d["id"],
+            "title": _flat(d.get("title")),
+            "status": d.get("status"),
+            "category": f"{d.get('type', '')}/{d.get('surface', '')}",
+            "priority": d.get("severity"),
+            "notes": _flat(d.get("resolution") or d.get("detail"))[:400],
+            "source": path.relative_to(root).as_posix(),
+        })
+    for path, d in load("boundaries"):
+        lifted = str(d.get("classification", "")).upper().startswith("LIFTED")
+        items.append({
+            "id": d["id"],
+            "title": _flat(d.get("title")),
+            "status": "LIFTED" if lifted else "BOUNDARY",
+            "category": "boundary",
+            "priority": None,
+            "notes": _flat(d.get("codeLinkedNote"))[:400],
+            "source": path.relative_to(root).as_posix(),
+        })
+    if not items:
+        raise RuntimeError("ledger projection is empty -- ledger/items moved?")
+    return items
+
+
 def build_capabilities(root: Path, cards: list[dict[str, Any]]) -> dict[str, Any]:
     status_path = knowledge_dir(root) / "platform-status.json"
     if not status_path.exists():
         raise FileNotFoundError(status_path)
     status = json.loads(status_path.read_text(encoding="utf-8"))
+    items: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in list(status.get("items", [])) + ledger_capability_items(root):
+        if item.get("id") in seen:
+            continue
+        seen.add(item.get("id"))
+        items.append(item)
     constraint_cards = [
         {
             "id": c["id"],
@@ -168,8 +223,13 @@ def build_capabilities(root: Path, cards: list[dict[str, Any]]) -> dict[str, Any
     ]
     return {
         "schemaVersion": "capabilities.v1",
-        "generatedFrom": ["NPDevMcp/knowledge/platform-status.json", "NPDevMcp/knowledge/cards/*.json"],
-        "items": status.get("items", []),
+        "generatedFrom": [
+            "NPDevMcp/knowledge/platform-status.json",
+            "NPDevMcp/knowledge/cards/*.json",
+            "ledger/items/*.yml",
+            "ledger/boundaries/*.yml",
+        ],
+        "items": items,
         "cards": constraint_cards,
     }
 
