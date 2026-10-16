@@ -2896,6 +2896,9 @@
           "type": "string",
           "minLength": 1
         },
+        "http": {
+          "$ref": "#/$defs/httpConnector"
+        },
         "operations": {
           "type": "array",
           "items": {
@@ -2956,6 +2959,56 @@
         },
         "auth": {
           "$ref": "#/$defs/capabilityAuth"
+        },
+        "http": {
+          "$ref": "#/$defs/httpConnectorOperation"
+        }
+      },
+      "additionalProperties": false
+    },
+    "httpConnector": {
+      "type": "object",
+      "description": "INT-1: declarative outbound HTTP connector settings on a capability bound to adapter http-connector. baseUrl or baseUrlProperty (a properties[] entry, tenant-overridable) names the remote API; auth names environment variables, never secret values.",
+      "properties": {
+        "baseUrl": { "type": "string", "pattern": "^https?://" },
+        "baseUrlProperty": { "type": "string", "minLength": 1 },
+        "auth": { "$ref": "#/$defs/httpConnectorAuth" },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+        "timeoutMs": { "type": "integer", "minimum": 1, "maximum": 120000 },
+        "maxRetries": { "type": "integer", "minimum": 0, "maximum": 5 }
+      },
+      "additionalProperties": false
+    },
+    "httpConnectorAuth": {
+      "type": "object",
+      "description": "INT-1: how an http-connector authenticates. secretEnvVar/usernameEnvVar are environment variable NAMES resolved server-side at call time; the value never appears in the model.",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "enum": ["none", "bearer", "basic", "apiKeyHeader", "apiKeyQuery"] },
+        "secretEnvVar": { "type": "string", "minLength": 1 },
+        "usernameEnvVar": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "httpConnectorOperation": {
+      "type": "object",
+      "description": "INT-1: the HTTP request an http-connector capability operation performs. {name} placeholders in path/query/headers/body are bound from params in declared order.",
+      "required": ["method", "path"],
+      "properties": {
+        "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+        "path": { "type": "string", "pattern": "^/" },
+        "params": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "query": { "type": "object", "additionalProperties": { "type": "string" } },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+        "body": { "oneOf": [ { "type": "object" }, { "type": "string" } ] },
+        "bodyEncoding": { "type": "string", "enum": ["json", "form"] },
+        "response": {
+          "type": "object",
+          "properties": {
+            "pointer": { "type": "string", "pattern": "^(/.*)?$" }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
