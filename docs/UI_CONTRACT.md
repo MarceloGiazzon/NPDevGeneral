@@ -299,6 +299,18 @@ concept node of `generated-ui-manifest.json`.
   default): a user without it sees "Change history is visible to users with the audit permission."
   rather than an error. Widening it to every record reader needs its own endpoint that first runs the
   record's read authorization, and is deliberately not done.
+- **Board (`views/board.js`).** Appears (concept `views` gains `"board"`, manifest gains `concept.board`
+  from `BoardManifestBuilder`) for any concept with a `lifecycle` whose status field is an enum, or any
+  concept whose existing `ui.defaultGroup` names an enum field. No new DSL key. Columns are the
+  lifecycle states (declaration order) or the enum values; rows with an empty/unknown value go to a
+  trailing "—" column. A card moves by drag-and-drop or its "Move to" select (the touch/keyboard
+  path). Illegal drop targets are greyed out from the declared lifecycle transitions, but that is UX
+  only: every move is `POST {endpointBase}/batch` `setField`, so the server still enforces
+  `status_transition_not_allowed`, `status_transition_requires_field` and
+  `status_transition_guard_failed`, and the refusal surfaces as a red toast with the card unmoved. A
+  transition that declares `requiredPayload` opens the edit form pre-set to the target instead. The
+  board loads at most 100 rows (the CRUD controller's `MAX_PAGE_SIZE`) and shows "Showing N of M" when
+  the filter matches more; it does not page inside columns.
 
 ## Breadcrumbs and default route (W1.6)
 
