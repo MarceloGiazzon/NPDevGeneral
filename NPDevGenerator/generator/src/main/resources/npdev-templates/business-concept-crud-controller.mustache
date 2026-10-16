@@ -659,6 +659,7 @@ public class GeneratedConceptCrudController {
             }
             if (!field.enumValues().isEmpty()
                     && !"contains".equals(parsed.operator())
+                    && !RANGE_WHERE_OPERATORS.contains(parsed.operator())
                     && field.enumValues().stream().noneMatch(value -> value.equals(parsed.value()))) {
                 return new WhereClausesResult(clauses, "Invalid enum value for where field " + parsed.field()
                         + ": " + parsed.value() + " (allowed: " + field.enumValues() + ")");
@@ -668,11 +669,18 @@ public class GeneratedConceptCrudController {
         return new WhereClausesResult(clauses, null);
     }
 
+    /** UI-6: the ordered where-operators, exempt from the enum-value guard like {@code contains}. */
+    private static final List<String> RANGE_WHERE_OPERATORS = List.of("gt", "gte", "lt", "lte");
+
     private static com.npdev.kernel.concepts.ConceptQuery.Operator toConceptQueryOperator(String whereOperator) {
         return switch (whereOperator) {
             case "eq" -> com.npdev.kernel.concepts.ConceptQuery.Operator.EQ;
             case "ne" -> com.npdev.kernel.concepts.ConceptQuery.Operator.NEQ;
             case "contains" -> com.npdev.kernel.concepts.ConceptQuery.Operator.CONTAINS;
+            case "gt" -> com.npdev.kernel.concepts.ConceptQuery.Operator.GT;
+            case "gte" -> com.npdev.kernel.concepts.ConceptQuery.Operator.GTE;
+            case "lt" -> com.npdev.kernel.concepts.ConceptQuery.Operator.LT;
+            case "lte" -> com.npdev.kernel.concepts.ConceptQuery.Operator.LTE;
             default -> throw new IllegalStateException("Unhandled where operator: " + whereOperator);
         };
     }
@@ -695,7 +703,7 @@ public class GeneratedConceptCrudController {
             operator = "eq";
             value = rawClause.substring(equalsIndex + 1).trim();
         }
-        if (field.isBlank() || value.isBlank() || !List.of("eq", "ne", "contains").contains(operator)) {
+        if (field.isBlank() || value.isBlank() || !List.of("eq", "ne", "contains", "gt", "gte", "lt", "lte").contains(operator)) {
             return null;
         }
         return new WhereClause(field, operator, value);
@@ -707,7 +715,41 @@ public class GeneratedConceptCrudController {
             case "eq" -> actual.equalsIgnoreCase(expected);
             case "ne" -> !actual.equalsIgnoreCase(expected);
             case "contains" -> actual.toLowerCase(Locale.ROOT).contains(expected.toLowerCase(Locale.ROOT));
+            // UI-6: ordered comparison (calendar view range queries, column filters, integrators).
+            // A null value never satisfies a range operator, same as the pushdown evaluator.
+            case "gt" -> orderedMatch(rawValue, expected, "gt");
+            case "gte" -> orderedMatch(rawValue, expected, "gte");
+            case "lt" -> orderedMatch(rawValue, expected, "lt");
+            case "lte" -> orderedMatch(rawValue, expected, "lte");
             default -> false;
+        };
+    }
+
+    /**
+     * Ordering for the range where-operators. Numbers compare numerically ('10' must sort after
+     * '9', which the string fallback of {@link #compareValues} gets wrong); everything else
+     * (ISO dates and datetimes, text) goes through compareValues' case-insensitive string
+     * compare, which is correct for ISO-8601. A null value or an unparsable number never matches.
+     */
+    private static boolean orderedMatch(Object rawValue, String expected, String operator) {
+        if (rawValue == null) {
+            return false;
+        }
+        int cmp;
+        if (rawValue instanceof Number) {
+            try {
+                cmp = new java.math.BigDecimal(String.valueOf(rawValue)).compareTo(new java.math.BigDecimal(expected));
+            } catch (NumberFormatException e) {
+                return false;
+            }
+        } else {
+            cmp = compareValues(String.valueOf(rawValue), expected);
+        }
+        return switch (operator) {
+            case "gt" -> cmp > 0;
+            case "gte" -> cmp >= 0;
+            case "lt" -> cmp < 0;
+            default -> cmp <= 0;
         };
     }
 

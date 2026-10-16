@@ -175,3 +175,74 @@
   bottom: 16px;
   z-index: 999;
 }
+/* UI-6: calendar (month) view (views/calendar.js). */
+.calendar-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--np-border);
+  border: 1px solid var(--np-border);
+}
+
+.calendar-dow {
+  background: var(--np-grid-head-bg);
+  color: var(--np-grid-head-text);
+  padding: 4px;
+  font-size: 12px;
+}
+
+.calendar-day {
+  background: var(--np-surface);
+  min-height: 88px;
+  padding: 4px;
+  overflow: hidden;
+}
+
+.calendar-other {
+  opacity: .5;
+}
+
+.calendar-today .calendar-num {
+  color: var(--np-accent);
+  font-weight: 700;
+}
+
+.calendar-chip {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-size: 12px;
+  border: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--np-accent) 14%, var(--np-surface));
+  color: var(--np-text);
+  margin-top: 2px;
+  padding: 1px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.calendar-more,
+.calendar-truncated {
+  color: var(--np-text-muted);
+  font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  .calendar-day {
+    min-height: 56px;
+  }
+
+  .calendar-chip {
+    font-size: 11px;
+  }
+}
