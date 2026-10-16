@@ -7422,7 +7422,17 @@ def _run_one_scenario(base_url: str, scenario: dict, filename: str, api_key: str
                      "assertions": [], "error": None}
     auth_headers = {"X-Api-Key": api_key} if api_key else {}
 
+    # AI-8: a procedure/flow-form scenario (when.procedure / when.flow, no when.path) has no HTTP
+    # shape -- it only runs under `acceptance run --in-process`. Reported, never a KeyError.
+    if "path" not in (scenario.get("when") or {}):
+        result["outcome"] = "SKIPPED"
+        result["error"] = "in-process scenario -- run with --in-process"
+        return result
+
     for given in scenario.get("given", []):
+        if "path" not in given:
+            result["error"] = "given[] entry has no 'path' (concept-seeded rows are in-process only)"
+            return result
         seed_path = given["path"]
         for row in given.get("rows", []):
             body = json.dumps(row).encode("utf-8")
@@ -7483,7 +7493,12 @@ def run_acceptance(args: argparse.Namespace) -> dict:
     -- for a caller (e.g. the T1 fast gate) that already paid for a generate+build+boot cycle for
     its own smoke check and does not want a SECOND one just to add behavioural assertions.
     --model/--config/--output are meaningless in that mode and are not required.
+
+    AI-8: --in-process (getattr, same reason) runs the procedure-form scenarios against the compiled
+    model in a JVM with an in-memory store -- no generate/build/boot; see _run_acceptance_in_process.
     """
+    if getattr(args, "in_process", False):
+        return _run_acceptance_in_process(args)
     base_url = getattr(args, "base_url", None)
     if base_url:
         boot_result = {"ok": True, "baseUrl": base_url, "skipped": "boot skipped -- --base-url was supplied"}
@@ -7535,20 +7550,106 @@ def run_acceptance(args: argparse.Namespace) -> dict:
         _run_one_scenario(base_url, json.loads(sf.read_text(encoding="utf-8")), sf.name, api_key)
         for sf in scenario_files
     ]
-    approved = [r for r in results if r["approved"]]
+    return {
+        "schemaVersion": "npdev-acceptance-report.v1",
+        "baseUrl": base_url,
+        "boot": boot_result,
+        **_acceptance_verdict(results, boot_result.get("ok", False)),
+    }
+
+
+def _acceptance_verdict(results: list[dict], boot_ok: bool) -> dict:
+    """ok/scenarios/summary for a list of per-scenario results. SKIPPED scenarios (the other
+    execution mode's) are counted under 'skipped' and, like unapproved ones, never affect pass/fail."""
+    ran = [r for r in results if r["outcome"] != "SKIPPED"]
+    approved = [r for r in ran if r["approved"]]
     passed = sum(1 for r in approved if r["outcome"] == "PASS")
     failed = len(approved) - passed
     return {
-        "schemaVersion": "npdev-acceptance-report.v1",
-        "ok": failed == 0 and boot_result.get("ok", False),
-        "baseUrl": base_url,
-        "boot": boot_result,
+        "ok": failed == 0 and boot_ok,
         "scenarios": results,
         "summary": {
             "total": len(results), "approvedTotal": len(approved),
-            "passed": passed, "failed": failed, "excludedUnapproved": len(results) - len(approved),
+            "passed": passed, "failed": failed, "excludedUnapproved": len(ran) - len(approved),
+            "skipped": len(results) - len(ran),
         },
     }
+
+
+def _run_acceptance_in_process(args: argparse.Namespace) -> dict:
+    """AI-8: `acceptance run --in-process`. Procedure-form scenarios (when.procedure) run against the
+    compiled model through runtimehost-core's InProcessAcceptanceRunner (the SAME ProcedureRunner a
+    generated app uses, an in-memory store, capability answers stubbed from the scenario) -- seconds,
+    no generate/build/boot. The JVM only OBSERVES ({ok, result, concepts, ...}); the `then` assertions
+    are evaluated here by _eval_assertion, so there is one assertion grammar for both modes. HTTP
+    scenarios (when.path) are SKIPPED; flow scenarios report ERROR (not supported in-process yet)."""
+    if not args.model:
+        raise CliError("acceptance run --in-process: --model is required.")
+    model = Path(args.model).expanduser().resolve()
+    scenarios_dir = Path(args.scenarios).expanduser().resolve()
+    if not model.is_file():
+        raise CliError(f"acceptance run --in-process: model not found: {model}")
+    if not scenarios_dir.is_dir():
+        raise CliError(f"acceptance run --in-process: scenarios directory not found: {scenarios_dir}")
+
+    build_root = _ai_build_root()
+    libs_dir = _default_runtimehost_libs_dir() or (build_root / "runtimehost-libs")
+    core_root = repo_root() / "NPDevRuntimeHost" / "runtimehost-core"
+    wrapper = gradle_wrapper(core_root)
+    if not wrapper.exists():
+        raise CliError(f"runtimehost-core Gradle wrapper not found: {wrapper}")
+    out_file = build_root / "npdev-acceptance" / f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}-observed.json"
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+
+    command = [
+        str(wrapper), "runAcceptanceInProcess",
+        f"-PmodelPath={model}", f"-PscenariosDir={scenarios_dir}", f"-PoutFile={out_file}",
+        f"-PnpdevBuildRoot={build_root}", f"-PnpdevRuntimeHostLibsDir={libs_dir}",
+        *gradle_project_cache_args("runtimehost-core"), "--console=plain", "-q",
+    ]
+    if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+        command = ["cmd.exe", "/c"] + command
+    completed = subprocess.run(command, cwd=core_root, capture_output=True, text=True)
+    boot = {"ok": completed.returncode == 0 and out_file.is_file(), "skipped": "in-process",
+            "observedFile": str(out_file)}
+    if not boot["ok"]:
+        boot["error"] = ((completed.stderr or "") + (completed.stdout or "")).strip()[-2000:] or \
+            f"runAcceptanceInProcess exited {completed.returncode} without writing {out_file}"
+        return {
+            "schemaVersion": "npdev-acceptance-report.v1", "ok": False, "boot": boot, "scenarios": [],
+            "summary": {"total": 0, "approvedTotal": 0, "passed": 0, "failed": 0,
+                        "excludedUnapproved": 0, "skipped": 0},
+        }
+
+    observed_rows = {row["file"]: row for row in
+                     json.loads(out_file.read_text(encoding="utf-8")).get("scenarios", [])}
+    results = []
+    for scenario_file in sorted(scenarios_dir.glob("*.scenario.json")):
+        scenario = json.loads(scenario_file.read_text(encoding="utf-8"))
+        result = {"name": scenario.get("name", scenario_file.name), "file": scenario_file.name,
+                  "approved": bool(scenario.get("approved", False)), "outcome": "ERROR",
+                  "assertions": [], "error": None}
+        row = observed_rows.get(scenario_file.name)
+        if row is None:
+            result["error"] = "the in-process runner reported nothing for this scenario"
+        elif "skipped" in row:
+            result["outcome"] = "SKIPPED"
+            result["error"] = row["skipped"]
+        elif "error" in row:
+            result["error"] = row["error"]
+        else:
+            all_passed = True
+            try:
+                for assertion in scenario.get("then", []):
+                    evaluated = _eval_assertion(row["observed"], assertion)
+                    result["assertions"].append(evaluated)
+                    all_passed = all_passed and evaluated["passed"]
+                result["outcome"] = "PASS" if all_passed else "FAIL"
+            except (ValueError, KeyError) as exc:
+                result["error"] = f"assertion could not be evaluated: {exc}"
+        results.append(result)
+    return {"schemaVersion": "npdev-acceptance-report.v1", "boot": boot,
+            **_acceptance_verdict(results, True)}
 
 
 # ---------------------------------------------------------------------------
@@ -16609,6 +16710,15 @@ def build_parser() -> argparse.ArgumentParser:
              "instead of booting one -- for a caller that already has one up (e.g. the T1 fast gate "
              "reusing its own canary boot) and does not want a second generate+build+boot cycle. "
              "When given, --model/--config/--output are not required and are ignored.",
+    )
+    acceptance_run.add_argument(
+        "--in-process", action="store_true",
+        help="Run procedure-form scenarios (when.procedure, given[].concept rows, stubs{capability.operation}) "
+             "against the compiled --model in-process: in-memory store, the app's own ProcedureRunner, "
+             "stubbed capability answers -- no generate/build/boot (seconds). Seed rows bypass invariants and "
+             "permissions (like a DB fixture); the procedure's own writes are validated. HTTP scenarios "
+             "(when.path) are SKIPPED; flow scenarios (when.flow) report ERROR. Only --model and "
+             "--scenarios are needed.",
     )
     acceptance_run.add_argument("--model", required=False)
     acceptance_run.add_argument("--config", required=False)
