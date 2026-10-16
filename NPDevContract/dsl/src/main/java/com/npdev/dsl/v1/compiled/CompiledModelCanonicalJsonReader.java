@@ -1592,7 +1592,8 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalText(gadgetNode, "query"),
                     optionalText(gadgetNode, "x"),
                     optionalText(gadgetNode, "y"),
-                    optionalText(gadgetNode, "series")
+                    optionalText(gadgetNode, "series"),
+                    optionalText(gadgetNode, "url")
             ));
         }
         return out;

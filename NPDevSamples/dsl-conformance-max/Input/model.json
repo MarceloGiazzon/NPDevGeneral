@@ -1372,7 +1372,20 @@
   "guidePages": [
     {
       "name": "WidgetOrderGuide",
-      "default": true
+      "default": true,
+      "regions": {
+        "right": {
+          "enabled": true
+        }
+      },
+      "gadgets": [
+        {
+          "name": "orderHelp",
+          "type": "page-fragment",
+          "title": "How orders work",
+          "url": "/npdev-help/widget-order.html"
+        }
+      ]
     }
   ],
 
