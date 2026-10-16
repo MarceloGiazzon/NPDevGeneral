@@ -75,6 +75,15 @@ public final class HttpWebhookCapabilityAdapter implements CapabilityAdapter {
     private static final String HMAC_ALGORITHM = "HmacSHA256";
     private static final String SIGNATURE_HEADER = "X-Npdev-Webhook-Signature";
     private static final String DELIVERY_ID_HEADER = "X-Npdev-Webhook-Delivery";
+    private static final String EVENT_HEADER = "X-Npdev-Webhook-Event";
+
+    /** INT-4: a validated, serialized delivery ready to be queued. Holds NO secret (it is re-resolved at send time). */
+    public record PreparedDelivery(String host, String url, String bodyJson) {
+    }
+
+    /** INT-4: the outcome of ONE send attempt; {@code retryable} = transport failure, 429 or 5xx. */
+    public record DeliveryAttempt(boolean delivered, int httpStatus, String error, boolean retryable) {
+    }
 
     private final Map<String, WebhookDestinationProfile> destinationsByHost;
     private final HttpClient httpClient;
@@ -184,22 +193,11 @@ public final class HttpWebhookCapabilityAdapter implements CapabilityAdapter {
      *                the body is signed and sent -- it is routing metadata, not application data.
      */
     public Map<String, Object> post(Object payload) {
-        Map<String, Object> request = normalizePayload(payload);
-        Object rawUrl = request.remove("url");
-        if (!(rawUrl instanceof String url) || url.isBlank()) {
-            throw new IllegalArgumentException("webhook.post payload must contain a non-blank 'url' field");
-        }
-
-        String host = extractHost(url);
-        WebhookDestinationProfile destination = requireAllowedDestination(host);
-        String secret = requireHmacSecret(destination);
-
-        String bodyJson;
-        try {
-            bodyJson = objectMapper.writeValueAsString(request);
-        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-            throw new IllegalStateException("Failed serializing webhook payload to JSON", e);
-        }
+        PreparedDelivery prepared = prepare(payload);
+        String url = prepared.url();
+        String host = prepared.host();
+        String bodyJson = prepared.bodyJson();
+        String secret = requireHmacSecret(requireAllowedDestination(host));
 
         String deliveryId = UUID.randomUUID().toString();
         String signature = hmacHex(secret, bodyJson.getBytes(StandardCharsets.UTF_8));
@@ -230,6 +228,73 @@ public final class HttpWebhookCapabilityAdapter implements CapabilityAdapter {
         result.put("url", url);
         result.put("deliveredAt", Instant.now().toString());
         return result;
+    }
+
+    /**
+     * INT-4 validation half of {@link #post}: strips {@code url} from the payload, checks the host against
+     * the allowlist, checks an HMAC secret is configured (fail-closed, nothing is kept), serializes the body.
+     * Throws {@link WebhookEgressDeniedException} or {@link IllegalArgumentException} exactly like post().
+     */
+    public PreparedDelivery prepare(Object payload) {
+        Map<String, Object> request = normalizePayload(payload);
+        Object rawUrl = request.remove("url");
+        if (!(rawUrl instanceof String url) || url.isBlank()) {
+            throw new IllegalArgumentException("webhook.post payload must contain a non-blank 'url' field");
+        }
+        String host = extractHost(url);
+        requireHmacSecret(requireAllowedDestination(host));
+        String bodyJson;
+        try {
+            bodyJson = objectMapper.writeValueAsString(request);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException("Failed serializing webhook payload to JSON", e);
+        }
+        return new PreparedDelivery(host, url, bodyJson);
+    }
+
+    /**
+     * INT-4: ONE signed send attempt of a previously queued delivery -- no in-line retry (the outbox owns
+     * rescheduling). Re-validates the host and re-resolves the secret now, since configuration may have
+     * changed since enqueue. Never throws; an egress denial or a 4xx is {@code retryable=false}.
+     */
+    public DeliveryAttempt deliverOnce(String deliveryId, String url, String bodyJson, String eventName) {
+        String host;
+        String secret;
+        try {
+            host = extractHost(url);
+            secret = requireHmacSecret(requireAllowedDestination(host));
+        } catch (WebhookEgressDeniedException | IllegalArgumentException denied) {
+            return new DeliveryAttempt(false, 0, denied.getMessage(), false);
+        }
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Content-Type", "application/json")
+                .header(SIGNATURE_HEADER, "sha256=" + hmacHex(secret, bodyJson.getBytes(StandardCharsets.UTF_8)))
+                .header(DELIVERY_ID_HEADER, deliveryId)
+                .timeout(requestTimeout)
+                .POST(HttpRequest.BodyPublishers.ofString(bodyJson, StandardCharsets.UTF_8));
+        if (eventName != null && !eventName.isBlank()) {
+            builder.header(EVENT_HEADER, eventName);
+        }
+        try {
+            HttpResponse<String> response =
+                    httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            int status = response.statusCode();
+            if (status / 100 == 2) {
+                return new DeliveryAttempt(true, status, null, false);
+            }
+            String body = response.body() == null ? "" : response.body();
+            return new DeliveryAttempt(false, status,
+                    "Webhook destination " + host + " returned HTTP " + status + ": "
+                            + body.substring(0, Math.min(body.length(), 300)),
+                    isRetryableStatus(status));
+        } catch (IOException e) {
+            return new DeliveryAttempt(false, 0,
+                    "Webhook HTTP call failed for host " + host + ": " + e.getClass().getSimpleName(), true);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return new DeliveryAttempt(false, 0, "Webhook HTTP call interrupted for host " + host, true);
+        }
     }
 
     private String extractHost(String url) {
