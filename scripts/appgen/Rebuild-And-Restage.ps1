@@ -15,10 +15,12 @@
       3. the app itself      -- generate + assemble + build
                                (scripts/appgen/Build-NpdevApp.ps1)
 
-    A 4th step then builds the jar, starts the app, and runs the panel-provenance impact gate (F4,
-    docs/REMEDIATION_PLAN.md R-G1) against its live bundle -- a rebuild is precisely the moment a
-    field rename would silently break a hand-written screen, so the check runs here by default
-    rather than needing a separately remembered step.
+    A 4th step then (4a) builds the jar, (4b) starts the app, and (4c) runs the panel-provenance
+    impact gate (F4, docs/REMEDIATION_PLAN.md R-G1) against its live bundle -- a rebuild is precisely
+    the moment a field rename would silently break a hand-written screen, so the check runs here by
+    default rather than needing a separately remembered step. The three are independently skippable:
+    -SkipProvenanceCheck skips ONLY 4c (the jar is still built and the app still started); -NoStart
+    skips 4b and 4c (jar built, app not started); -GenerateOnly skips all of step 4.
 
     This wrapper threads ONE shared -RuntimeHostLibsDir through steps 1 and 3 so the sync writes to,
     and the build reads from, the same directory -- the single most common cause of "my change had
@@ -26,7 +28,8 @@
 
     Skip caches you don't need with -SkipLibs / -SkipGeneratorRuntime (e.g. a pure model change needs
     neither; a kernel change needs libs; a generator change needs generator-runtime). Skip the
-    provenance check with -SkipProvenanceCheck.
+    provenance check with -SkipProvenanceCheck (still builds and starts); build without starting
+    with -NoStart. The final DONE line states exactly what ran and what was skipped.
 
     Fast Lane plan item 8 (2026-08-01): -TryFastPath makes the METADATA_ONLY win (item 1a) automatic
     rather than remembered. When the app is already built, classifies the candidate model
@@ -53,6 +56,14 @@
     pwsh -File scripts/appgen/Rebuild-And-Restage.ps1 -AppFolder ...\wmsoffice -SkipLibs
 
 .EXAMPLE
+    # skip ONLY the provenance check: still builds the jar and starts the app
+    pwsh -File scripts/appgen/Rebuild-And-Restage.ps1 -AppFolder ...\wmsoffice -SkipProvenanceCheck
+
+.EXAMPLE
+    # build the jar but do not start the app (no provenance check either)
+    pwsh -File scripts/appgen/Rebuild-And-Restage.ps1 -AppFolder ...\wmsoffice -NoStart
+
+.EXAMPLE
     # let the script decide: fast path if the diff is METADATA_ONLY, full rebuild otherwise
     pwsh -File scripts/appgen/Rebuild-And-Restage.ps1 -AppFolder ...\wmsoffice -TryFastPath
 #>
@@ -70,6 +81,8 @@ param(
     # precisely the moment the check has to fire." Opt out for a generate/build-only pass (CI, or
     # an app with no web/ manifests to check -- Check-Provenance.ps1 itself is a no-op then anyway).
     [switch]$SkipProvenanceCheck,
+    # OPS-6: build the jar but do not start the app (implies no provenance check, which needs a live app).
+    [switch]$NoStart,
     [switch]$TryFastPath
 )
 
@@ -186,14 +199,17 @@ try {
     & (Join-Path $repoRoot 'scripts/appgen/Build-NpdevApp.ps1') @buildArgs
     if ($LASTEXITCODE -ne 0) { throw "Build-NpdevApp failed (exit $LASTEXITCODE)" }
 
-    # Step 4: start the app and run the panel-provenance impact gate (F4) against its live bundle.
+    # Step 4: build the jar, start the app, and run the panel-provenance impact gate (F4) against its
+    # live bundle. Three INDEPENDENT sub-steps (OPS-6): -SkipProvenanceCheck skips only 4c; -NoStart
+    # skips 4b and 4c (the check needs a live app); -GenerateOnly skips all three (no jar to run).
     # R-G1 (docs/REMEDIATION_PLAN.md): the gate was proven live on a real field rename but never had
     # anywhere it actually ran -- "a protection nobody runs is a protection that does not exist."
     # This is precisely the moment it has to fire, so it runs by default rather than needing a
     # separate remembered step.
-    if ($SkipProvenanceCheck -or $GenerateOnly) {
-        $reason = if ($GenerateOnly) { '-GenerateOnly, no jar to run' } else { '-SkipProvenanceCheck' }
-        Write-Stage "SKIP step 4/4: panel-provenance impact gate ($reason)"
+    $summary = @()
+    if ($GenerateOnly) {
+        Write-Stage "SKIP step 4/4 (4a build, 4b start, 4c provenance): -GenerateOnly, no jar to run"
+        $summary += 'generated only (-GenerateOnly)'
     } else {
         $cfg = Get-Content -Raw -LiteralPath (Join-Path $AppFolder 'definition/config.json') | ConvertFrom-Json
         $appId = $cfg.scenario.name
@@ -201,27 +217,49 @@ try {
         $checkScript = Join-Path $opsDir 'Check-Provenance.ps1'
         $buildScript = Join-Path $opsDir 'Build-App.ps1'
         $startScript = Join-Path $opsDir 'Start-App.ps1'
-        if (-not (Test-Path -LiteralPath $checkScript)) {
-            Write-Stage "SKIP step 4/4: panel-provenance impact gate (Check-Provenance.ps1 not found at $opsDir -- rebuild with a current Build-NpdevApp.ps1)"
+        $summary += 'generated'
+
+        # 4a BUILD: Build-NpdevApp.ps1 (step 3 above) only GENERATES the app -- it does not compile
+        # the jar. Build-App.ps1 is the separate, actual `gradle build` step.
+        Write-Stage "Step 4a: building the jar for '$appId'"
+        & $buildScript
+        if ($LASTEXITCODE -ne 0) { throw "Build-App failed (exit $LASTEXITCODE)" }
+        $summary += 'jar built'
+
+        # 4b START
+        if ($NoStart) {
+            Write-Stage "SKIP step 4b: start app (-NoStart)"
+            $summary += 'app not started (-NoStart)'
         } else {
-            # Build-NpdevApp.ps1 (step 3 above) only GENERATES the app -- it does not compile the
-            # jar. Build-App.ps1 is the separate, actual `gradle build` step (same recipe the _ops
-            # README itself documents: Build-App -> Start-App -> Check-Provenance).
-            Write-Stage "Step 4/4: building, starting '$appId', and running the panel-provenance impact gate"
-            & $buildScript
-            if ($LASTEXITCODE -ne 0) { throw "Build-App failed (exit $LASTEXITCODE) -- cannot run the provenance check without a runnable jar" }
+            Write-Stage "Step 4b: starting '$appId'"
             & $startScript
-            if ($LASTEXITCODE -ne 0) { throw "Start-App failed (exit $LASTEXITCODE) -- cannot run the provenance check against a down app" }
+            if ($LASTEXITCODE -ne 0) { throw "Start-App failed (exit $LASTEXITCODE)" }
+            $summary += 'app started'
+        }
+
+        # 4c PROVENANCE
+        if ($NoStart) {
+            Write-Stage "SKIP step 4c: panel-provenance impact gate (-NoStart, needs a live app)"
+            $summary += 'provenance check skipped (-NoStart)'
+        } elseif ($SkipProvenanceCheck) {
+            Write-Stage "SKIP step 4c: panel-provenance impact gate (-SkipProvenanceCheck)"
+            $summary += 'provenance check skipped (-SkipProvenanceCheck)'
+        } elseif (-not (Test-Path -LiteralPath $checkScript)) {
+            Write-Stage "SKIP step 4c: panel-provenance impact gate (Check-Provenance.ps1 not found at $opsDir -- rebuild with a current Build-NpdevApp.ps1)"
+            $summary += 'provenance check skipped (Check-Provenance.ps1 missing)'
+        } else {
+            Write-Stage "Step 4c: running the panel-provenance impact gate for '$appId'"
             & $checkScript
             $provenanceExit = $LASTEXITCODE
             if ($provenanceExit -ne 0) {
                 throw "Panel-provenance impact gate FAILED (exit $provenanceExit) -- see $opsDir\Check-Provenance.ps1 output above. Either regenerate the named screen(s) against the current bundle, or update the model."
             }
+            $summary += 'provenance check passed'
         }
     }
 
     Write-Host ""
-    Write-Stage "DONE: all requested caches refreshed and app rebuilt."
+    Write-Stage ("DONE: " + ($summary -join '; '))
 }
 finally {
     Pop-Location
