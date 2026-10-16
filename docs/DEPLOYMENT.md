@@ -185,7 +185,7 @@ has a real, operator-supplied key, never the dev default.
 
 ## Known gaps (deliberately out of scope for LNCH-7)
 
-- **Backup/restore**: not covered here — see LNCH-9.
+- **Backup/restore**: see [`reference/BACKUP_RESTORE.md`](reference/BACKUP_RESTORE.md) (compose `backup` profile for Postgres/MySQL, nightly in-app backup for H2).
 - **CI-driven image publishing**: this doc covers building/running locally; a registry-push
   pipeline is not part of LNCH-7.
 - **`docs/CONFIGURATION.md`** (referenced by `StartupValidator`'s config-error messages, e.g.
