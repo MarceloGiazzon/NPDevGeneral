@@ -143,5 +143,36 @@ class DevLoopBootProvisionsKeyTest(unittest.TestCase):
                               "before the java -jar Popen call")
 
 
+class RunAppHumanHintTest(unittest.TestCase):
+    """OPS-1: `npdev run app` prints where to log in (stderr; stdout stays pure JSON)."""
+
+    def test_ready_result_names_url_and_key_file_but_never_the_key(self):
+        hint = npdev_cli._run_app_human_hint({
+            "ok": True, "openUrl": "http://localhost:8080/", "apiKeyFile": "/x/app/secrets/api-key.env",
+        })
+        self.assertEqual(
+            "Open http://localhost:8080/ -- paste the X-Api-Key from /x/app/secrets/api-key.env", hint)
+
+    def test_failed_or_incomplete_result_has_no_hint(self):
+        self.assertIsNone(npdev_cli._run_app_human_hint({"ok": False, "openUrl": "http://localhost:8080/"}))
+        self.assertIsNone(npdev_cli._run_app_human_hint({"ok": True}))
+
+
+class DevLoopReadyKeyHintTest(unittest.TestCase):
+    def test_ready_note_includes_the_key_file_path_when_given(self):
+        lines: list[str] = []
+        reporter = dev_loop.Output.__new__(dev_loop.Output)
+        reporter.note = lines.append  # type: ignore[method-assign]
+        reporter.event = lambda **kw: None  # type: ignore[method-assign]
+        result = type("R", (), {"elapsed": 1.5, "fast": False})()
+
+        reporter.ready(result, 8080, Path("/x/secrets/api-key.env"))
+        reporter.ready(result, 8080)
+
+        self.assertIn("(API key: ", lines[0])
+        self.assertIn("api-key.env", lines[0])
+        self.assertNotIn("API key", lines[1])
+
+
 if __name__ == "__main__":
     unittest.main()
