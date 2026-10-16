@@ -123,6 +123,13 @@ public class PasswordResetController {
             return ResponseEntity.ok(GENERIC_REQUEST_RESPONSE);
         }
         IdentityPackTableNames identityTables = resolvedIdentityTables.get();
+        // SEC-4: the token table is composed under a versioned name (identity_v1_password_reset_tokens),
+        // so it is resolved from the model like the users table -- never a hardcoded literal.
+        String tokensTable = resetTokensTable(modelHolder.get());
+        if (tokensTable == null) {
+            LOG.log(Level.WARNING, "Password reset request: identity::PasswordResetToken not composed for this app");
+            return ResponseEntity.ok(GENERIC_REQUEST_RESPONSE);
+        }
 
         try (Connection connection = dataSource.getConnection()) {
             UserLookup user = findActiveUserWithEmail(connection, identityTables, tenantId, username);
@@ -133,7 +140,7 @@ public class PasswordResetController {
             String rawToken = generateToken();
             String tokenHash = sha256Hex(rawToken);
             Instant expiresAt = Instant.now().plusSeconds(TOKEN_EXPIRY_MINUTES * 60);
-            insertResetToken(connection, user.userId(), tokenHash, expiresAt, tenantId);
+            insertResetToken(connection, tokensTable, user.userId(), tokenHash, expiresAt, tenantId);
             sendResetEmail(user.email(), rawToken);
         } catch (Exception exception) {
             LOG.log(Level.WARNING, "Password reset request failed", exception);
@@ -163,10 +170,14 @@ public class PasswordResetController {
             return ResponseEntity.status(503).body(Map.of("error", "identity_pack_not_composed"));
         }
         IdentityPackTableNames identityTables = resolvedIdentityTables.get();
+        String tokensTable = resetTokensTable(modelHolder.get());
+        if (tokensTable == null) {
+            return ResponseEntity.status(503).body(Map.of("error", "identity_pack_not_composed"));
+        }
 
         String tokenHash = sha256Hex(token);
         try (Connection connection = dataSource.getConnection()) {
-            ResetTokenRecord record = findValidToken(connection, tokenHash, tenantId);
+            ResetTokenRecord record = findValidToken(connection, tokensTable, tokenHash, tenantId);
             if (record == null) {
                 return ResponseEntity.status(400).body(Map.of("error", "invalid_or_expired_token"));
             }
@@ -184,7 +195,7 @@ public class PasswordResetController {
                 return ResponseEntity.status(400).body(Map.of("error", "invalid_or_expired_token"));
             }
 
-            markTokenUsed(connection, record.tokenId());
+            markTokenUsed(connection, tokensTable, record.tokenId());
             bumpTokenVersion(connection, identityTables.usersTable(), record.userId(), tenantId);
             return ResponseEntity.ok(Map.of("ok", true));
         } catch (IdentityPackSchemaException schemaException) {
@@ -232,9 +243,17 @@ public class PasswordResetController {
         }
     }
 
-    private void insertResetToken(Connection connection, UUID userId, String tokenHash, Instant expiresAt, String tenantId)
+    /** Resolved table of the identity pack's PasswordResetToken concept, or null when not composed. */
+    private static String resetTokensTable(com.npdev.dsl.v1.compiled.CompiledModel model) {
+        return model.findConcept("identity::PasswordResetToken")
+                .map(com.npdev.dsl.v1.compiled.CompiledConcept::getTableName)
+                .filter(name -> name != null && !name.isBlank())
+                .orElse(null);
+    }
+
+    private void insertResetToken(Connection connection, String tokensTable, UUID userId, String tokenHash, Instant expiresAt, String tenantId)
             throws Exception {
-        String sql = "INSERT INTO identity_password_reset_tokens (id, user_id, token_hash, expires_at, tenant_id) "
+        String sql = "INSERT INTO " + tokensTable + " (id, user_id, token_hash, expires_at, tenant_id) "
                 + "VALUES (?, ?, ?, ?, ?)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setObject(1, UUID.randomUUID());
@@ -246,8 +265,8 @@ public class PasswordResetController {
         }
     }
 
-    private ResetTokenRecord findValidToken(Connection connection, String tokenHash, String tenantId) throws Exception {
-        String sql = "SELECT id, user_id, expires_at, used_at FROM identity_password_reset_tokens "
+    private ResetTokenRecord findValidToken(Connection connection, String tokensTable, String tokenHash, String tenantId) throws Exception {
+        String sql = "SELECT id, user_id, expires_at, used_at FROM " + tokensTable + " "
                 + "WHERE token_hash = ? AND tenant_id = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, tokenHash);
@@ -266,8 +285,8 @@ public class PasswordResetController {
         }
     }
 
-    private void markTokenUsed(Connection connection, UUID tokenId) throws Exception {
-        String sql = "UPDATE identity_password_reset_tokens SET used_at = ? WHERE id = ?";
+    private void markTokenUsed(Connection connection, String tokensTable, UUID tokenId) throws Exception {
+        String sql = "UPDATE " + tokensTable + " SET used_at = ? WHERE id = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setTimestamp(1, Timestamp.from(Instant.now()));
             ps.setObject(2, tokenId);
