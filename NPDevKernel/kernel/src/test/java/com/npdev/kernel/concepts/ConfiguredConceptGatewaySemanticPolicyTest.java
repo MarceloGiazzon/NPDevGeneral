@@ -9,6 +9,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfiguredConceptGatewaySemanticPolicyTest {
 
@@ -173,6 +174,78 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
         );
 
         assertEquals("CONCEPT_INVARIANT_REJECTED", exception.code());
+    }
+
+    // ENG-7: the gateway evaluates invariants with ComputedExpression (the CRUD path's grammar).
+
+    private static void saveAccepted(String expression, Map<String, Object> data) {
+        ConceptGateway gateway = ConceptGateways.inMemory(invariantPolicy(expression));
+        gateway.save(new ConceptWriteRequest("Thing", "thing-1", null, data),
+                ExecutionContext.of("tenant-a", "operator-a"));
+    }
+
+    private static void assertRejected(String expression, Map<String, Object> data) {
+        ConceptGateway gateway = ConceptGateways.inMemory(invariantPolicy(expression));
+        ConceptGatewaySemanticException exception = assertThrows(
+                ConceptGatewaySemanticException.class,
+                () -> gateway.save(new ConceptWriteRequest("Thing", "thing-1", null, data),
+                        ExecutionContext.of("tenant-a", "operator-a")));
+        assertEquals("CONCEPT_INVARIANT_REJECTED", exception.code());
+    }
+
+    @Test
+    void negatedParenthesizedInvariantIsEnforced() {
+        String rule = "!(amount > 100 && approver == null)";
+        assertRejected(rule, Map.of("amount", 150));
+        saveAccepted(rule, Map.of("amount", 150, "approver", "x"));
+    }
+
+    @Test
+    void arithmeticInvariantIsComparedNumerically() {
+        String rule = "total >= subtotal * 0.9";
+        saveAccepted(rule, Map.of("subtotal", 100, "total", 95));
+        assertRejected(rule, Map.of("subtotal", 100, "total", 80));
+    }
+
+    @Test
+    void matchesFunctionInvariantIsEnforced() {
+        String rule = "email.matches('.+@.+')";
+        saveAccepted(rule, Map.of("email", "a@b.com"));
+        assertRejected(rule, Map.of("email", "nope"));
+    }
+
+    @Test
+    void allQuantifierInvariantIsEnforced() {
+        String rule = "lines.all(l => l.qty > 0)";
+        saveAccepted(rule, Map.of("lines", List.of(Map.of("qty", 2), Map.of("qty", 1))));
+        assertRejected(rule, Map.of("lines", List.of(Map.of("qty", 2), Map.of("qty", 0))));
+    }
+
+    @Test
+    void storeDependentFunctionIsStillSkippedNotDenied() {
+        ConceptGatewayRequestContext request = new ConceptGatewayRequestContext(
+                ConceptGatewayOperation.SAVE, "Thing", "thing-1", "tenant-a",
+                Map.of("resource", "r1", "startsAt", "2026-01-01T10:00:00Z", "duration", 60),
+                ExecutionContext.of("tenant-a", "operator-a"), java.util.Optional.empty());
+
+        ConceptSemanticDecision decision = invariantPolicy("!conflicts(resource, startsAt, duration)")
+                .evaluateRuleProfiles(request, List.of());
+
+        assertTrue(decision.allowed());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rules = (List<Map<String, Object>>) decision.details().get("rulesEvaluated");
+        assertEquals("skippedUnsupportedExpression", rules.get(0).get("outcome"));
+    }
+
+    private static ConfiguredConceptGatewaySemanticPolicy invariantPolicy(String expression) {
+        return new ConfiguredConceptGatewaySemanticPolicy(List.of(
+                ConfiguredConceptGatewaySemanticPolicy.ConceptDefinition.of(
+                        "Thing",
+                        List.of(),
+                        List.of(new ConfiguredConceptGatewaySemanticPolicy.InvariantDefinition("rule", expression)),
+                        null
+                )
+        ));
     }
 
     /**
