@@ -59,7 +59,7 @@ class UserDatabaseDefinitionLoaderOwnershipTest {
                 {
                   "database": { "engine": "H2Local", "username": "test", "password": "test",
                                  "createInternalTables": true, "createBusinessTables": true },
-                  "schemaLifecycle": { "strategy": "RecreateOnAppStart", "allowDestructiveRecreate": false,
+                  "schemaLifecycle": { "strategy": "Ephemeral", "allowDestructiveRecreate": false,
                                         "destructiveRecreateConfirmation": "", "scope": "NpdevOwnedTablesOnly",
                                         "ownership": "ExternallyManaged" }
                 }

@@ -32,7 +32,7 @@ body {
   width: 200px;
   flex-shrink: 0;
   overflow-y: auto;
-  border-right: 1px solid var(--np-border, #d8dee7);
+  border-right: 1px solid var(--np-border, var(--np-border));
   background: var(--np-surface, #ffffff);
   padding: var(--np-pad, 12px) 8px;
 }
@@ -111,7 +111,7 @@ select {
 }
 
 button {
-  border: 1px solid var(--np-border, #c8d0da);
+  border: 1px solid var(--np-border, var(--np-border));
   background: var(--np-surface, #ffffff);
   color: var(--np-text, #18202a);
   border-radius: var(--np-radius, 6px);
@@ -144,9 +144,9 @@ button:disabled {
 .panel-actions a {
   display: inline-flex;
   align-items: center;
-  border: 1px solid #c8d0da;
-  background: #ffffff;
-  color: #18202a;
+  border: 1px solid var(--np-border);
+  background: var(--np-surface);
+  color: var(--np-text);
   border-radius: 6px;
   min-height: 34px;
   padding: 0 12px;
@@ -160,19 +160,19 @@ button:disabled {
 
 .export-filter-notice {
   font-size: 0.85em;
-  color: #8a97a8;
+  color: var(--np-text-muted);
   margin: 4px 0 8px;
 }
 
 input,
 select,
 textarea {
-  border: 1px solid #c8d0da;
+  border: 1px solid var(--np-border);
   border-radius: 6px;
   min-height: 36px;
   padding: 6px 10px;
-  background: #ffffff;
-  color: #18202a;
+  background: var(--np-surface);
+  color: var(--np-text);
 }
 
 input:focus-visible,
@@ -197,8 +197,8 @@ textarea {
   gap: 24px;
   align-items: center;
   padding: 16px 24px;
-  border-bottom: 1px solid #d8dee7;
-  background: #ffffff;
+  border-bottom: 1px solid var(--np-border);
+  background: var(--np-surface);
 }
 
 .app-bar-brand {
@@ -222,12 +222,12 @@ textarea {
 .status {
   min-height: 20px;
   margin-top: 4px;
-  color: #4c5a69;
+  color: var(--np-text-muted);
   font-size: 14px;
 }
 
 .status.is-error {
-  color: #a32424;
+  color: var(--np-negative);
 }
 
 /* R7.1. The toast host must outrank .modal-backdrop (z-index 10): the .status line above lives
@@ -250,12 +250,12 @@ textarea {
   align-items: flex-start;
   gap: 10px;
   padding: 11px 10px 11px 13px;
-  border: 1px solid #d8dee7;
+  border: 1px solid var(--np-border);
   border-left: 4px solid #4c5a69;
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--np-surface);
   box-shadow: 0 12px 32px rgba(24, 32, 42, .22);
-  color: #1c2333;
+  color: var(--np-text);
   font-size: 14px;
   pointer-events: auto;
 }
@@ -306,22 +306,22 @@ textarea {
   border: none;
   border-radius: 4px;
   background: transparent;
-  color: #4c5a69;
+  color: var(--np-text-muted);
   font-size: 17px;
   line-height: 1;
 }
 
 .toast-close:hover {
   border-color: transparent;
-  background: #eef1f5;
-  color: #1c2333;
+  background: var(--np-bg);
+  color: var(--np-text);
 }
 
 .api-key-field {
   display: grid;
   gap: 4px;
   min-width: 260px;
-  color: #4c5a69;
+  color: var(--np-text-muted);
   font-size: 13px;
 }
 
@@ -335,8 +335,8 @@ textarea {
   justify-content: space-between;
   gap: 16px;
   padding: 10px 20px;
-  border-bottom: 1px solid #d8dee7;
-  background: #ffffff;
+  border-bottom: 1px solid var(--np-border);
+  background: var(--np-surface);
 }
 
 .workspace {
@@ -349,8 +349,8 @@ textarea {
 }
 
 .concept-panel {
-  background: #ffffff;
-  border: 1px solid #d8dee7;
+  background: var(--np-surface);
+  border: 1px solid var(--np-border);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -366,7 +366,7 @@ textarea {
 }
 
 .panel-header {
-  border-bottom: 1px solid #e7ebf0;
+  border-bottom: 1px solid var(--np-border);
 }
 
 .panel-header h2 {
@@ -384,7 +384,7 @@ textarea {
 
 .filters {
   justify-content: flex-start;
-  border-bottom: 1px solid #e7ebf0;
+  border-bottom: 1px solid var(--np-border);
 }
 
 .filters input {
@@ -399,13 +399,13 @@ textarea {
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  border-bottom: 1px solid #e7ebf0;
+  border-bottom: 1px solid var(--np-border);
 }
 
 .views-bar-label {
   font-size: 12.5px;
   font-weight: 600;
-  color: #4c5a69;
+  color: var(--np-text-muted);
 }
 
 .views-select {
@@ -422,7 +422,7 @@ textarea {
   cursor: pointer;
   font-size: 12.5px;
   font-weight: 600;
-  color: #4c5a69;
+  color: var(--np-text-muted);
 }
 
 .columns-toggle-list {
@@ -449,7 +449,7 @@ textarea {
 .records th,
 .records td {
   padding: var(--np-row-pad-v, 8px) var(--np-row-pad-h, 10px);
-  border-bottom: 1px solid var(--np-border, #e7ebf0);
+  border-bottom: 1px solid var(--np-border, var(--np-border));
   text-align: left;
   vertical-align: top;
   overflow-wrap: anywhere;
@@ -479,7 +479,7 @@ textarea {
 }
 
 .panel-card {
-  border: 1px solid var(--np-border, #e7ebf0);
+  border: 1px solid var(--np-border, var(--np-border));
   border-radius: 8px;
   padding: 10px;
   font-size: var(--np-row-font-size, 13.5px);
@@ -520,13 +520,13 @@ textarea {
   gap: 10px;
   padding: var(--np-row-pad-v, 10px) 16px;
   background: var(--np-grid-head-bg, #f9fafc);
-  border-bottom: 1px solid var(--np-border, #e7ebf0);
+  border-bottom: 1px solid var(--np-border, var(--np-border));
 }
 
 .bulk-actions-count {
   font-size: 13px;
   font-weight: 600;
-  color: #4c5a69;
+  color: var(--np-text-muted);
 }
 
 /* R7.3: the per-column filter row rendered directly under the header row -- kept visually
@@ -535,7 +535,7 @@ textarea {
 .records tr.filter-row td {
   padding: 6px var(--np-row-pad-h, 10px);
   background: var(--np-grid-head-bg, #f9fafc);
-  border-bottom: 1px solid var(--np-border, #e7ebf0);
+  border-bottom: 1px solid var(--np-border, var(--np-border));
   vertical-align: middle;
 }
 
@@ -566,7 +566,7 @@ textarea {
 
 .empty {
   padding: 24px;
-  color: #6b7786;
+  color: var(--np-text-muted);
   text-align: center;
 }
 
@@ -591,7 +591,7 @@ textarea {
 
 .pager {
   justify-content: flex-end;
-  color: #4c5a69;
+  color: var(--np-text-muted);
 }
 
 .modal-backdrop {
@@ -608,7 +608,7 @@ textarea {
   width: min(720px, 100%);
   max-height: min(760px, 92vh);
   overflow: auto;
-  background: #ffffff;
+  background: var(--np-surface);
   border-radius: 8px;
   box-shadow: 0 24px 70px rgba(24, 32, 42, .25);
 }
@@ -621,8 +621,8 @@ textarea {
   gap: 12px;
   align-items: center;
   padding: 16px;
-  background: #ffffff;
-  border-bottom: 1px solid #e7ebf0;
+  background: var(--np-surface);
+  border-bottom: 1px solid var(--np-border);
 }
 
 .modal-header h3 {
@@ -643,12 +643,10 @@ textarea {
   gap: 6px;
 }
 
-/* Explicit (not inherited) color + weight, independent of whatever --np-text the shell's theme
-   happens to resolve to -- field labels are the primary reading target of a form and must stay
-   legible even if a surrounding surface's background doesn't track dark mode (see shell.js.mustache
-   theme.mode fix: this used to silently go near-white-on-white under prefers-color-scheme:dark). */
+/* Field labels are the primary reading target of a form: --np-text on a --np-surface panel, so
+   they stay legible in light, dark and system modes alike. */
 .field-label-text {
-  color: #1c2333;
+  color: var(--np-text);
   font-weight: 600;
   font-size: 13px;
 }
@@ -711,7 +709,7 @@ textarea {
 .reference-raw {
   display: block;
   margin-top: 3px;
-  color: #617085;
+  color: var(--np-text-muted);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
@@ -724,7 +722,7 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  border-bottom: 1px solid #e7ebf0;
+  border-bottom: 1px solid var(--np-border);
 }
 
 .form-tab {
@@ -732,13 +730,13 @@ textarea {
   border-bottom: 2px solid transparent;
   border-radius: 0;
   background: transparent;
-  color: #4c5a69;
+  color: var(--np-text-muted);
   padding: 8px 4px;
   min-height: 32px;
 }
 
 .form-tab:hover {
-  border-bottom-color: #c8d0da;
+  border-bottom-color: var(--np-border);
 }
 
 .form-tab.active {
@@ -785,12 +783,12 @@ textarea {
 }
 
 .form-field.has-error .field-label-text {
-  color: #a32424;
+  color: var(--np-negative);
 }
 
 .field-error {
   margin-top: 2px;
-  color: #a32424;
+  color: var(--np-negative);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
@@ -807,7 +805,7 @@ textarea {
 
 .import-intro {
   margin: 0;
-  color: #4c5a69;
+  color: var(--np-text-muted);
   font-size: 13px;
 }
 
@@ -817,7 +815,7 @@ textarea {
   gap: 6px;
   font-weight: 600;
   font-size: 13px;
-  color: #1c2333;
+  color: var(--np-text);
 }
 
 .import-paste-area {
@@ -829,19 +827,19 @@ textarea {
 .import-preview-wrap {
   max-height: 320px;
   overflow: auto;
-  border: 1px solid #e7ebf0;
+  border: 1px solid var(--np-border);
   border-radius: 6px;
 }
 
 .import-error {
   padding: 10px 12px;
-  color: #a32424;
+  color: var(--np-negative);
   font-size: 13px;
 }
 
 .import-summary {
   font-size: 13px;
-  color: #4c5a69;
+  color: var(--np-text-muted);
 }
 
 .import-preview-table {
@@ -853,7 +851,7 @@ textarea {
 .import-preview-table th,
 .import-preview-table td {
   padding: 6px 8px;
-  border-bottom: 1px solid #e7ebf0;
+  border-bottom: 1px solid var(--np-border);
   text-align: left;
   white-space: nowrap;
 }
@@ -876,12 +874,12 @@ textarea {
 
 .import-row-skipped td {
   background: rgba(163, 114, 15, .05);
-  color: #8a97a8;
+  color: var(--np-text-muted);
 }
 
 .import-row-note td {
   white-space: normal;
-  color: #a32424;
+  color: var(--np-negative);
   font-size: 11px;
   padding-top: 0;
 }
@@ -895,8 +893,8 @@ textarea {
 .enum-badge {
   padding: 2px 8px;
   border-radius: 12px;
-  background: #eef2f7;
-  color: #34404e;
+  background: color-mix(in srgb, var(--np-text-muted) 18%, var(--np-surface));
+  color: var(--np-text);
   font-size: 12px;
   font-weight: 600;
 }
@@ -907,40 +905,40 @@ textarea {
 }
 
 .badge-info {
-  background: #e3f0fc;
+  background: color-mix(in srgb, var(--np-accent, #1769aa) 16%, var(--np-surface));
   color: var(--np-accent, #1769aa);
 }
 
 .badge-success {
-  background: #e6f6ea;
+  background: color-mix(in srgb, var(--np-positive, #1e7a34) 16%, var(--np-surface));
   color: var(--np-positive, #1e7a34);
 }
 
 .badge-warning {
-  background: #fff3da;
+  background: color-mix(in srgb, var(--np-warning, #95620a) 16%, var(--np-surface));
   color: var(--np-warning, #95620a);
 }
 
 .badge-danger {
-  background: #fbe4e4;
+  background: color-mix(in srgb, var(--np-negative, #9f1d1d) 16%, var(--np-surface));
   color: var(--np-negative, #9f1d1d);
 }
 
 .badge-progress {
-  background: #eae6fb;
-  color: #5b3aa0;
+  background: color-mix(in srgb, #5b3aa0 22%, var(--np-surface));
+  color: var(--np-text);
 }
 
 .badge-neutral {
-  background: #eef2f7;
-  color: #4c5a69;
+  background: color-mix(in srgb, var(--np-text-muted) 18%, var(--np-surface));
+  color: var(--np-text-muted);
 }
 
 .pack-detail-cell {
-  background: #f7f9fb;
+  background: var(--np-bg);
   padding: 10px 16px;
   font-size: 13px;
-  color: #455263;
+  color: var(--np-text-muted);
 }
 
 .pack-detail-cell > div {
@@ -1084,13 +1082,13 @@ textarea {
   .records tbody tr {
     margin-bottom: 10px;
     padding: 10px 12px;
-    border: 1px solid #d8dee7;
+    border: 1px solid var(--np-border);
     border-radius: 8px;
-    background: #ffffff;
+    background: var(--np-surface);
   }
 
   .records tbody tr:nth-child(even) {
-    background: #ffffff;
+    background: var(--np-surface);
   }
 
   .records tbody td {
@@ -1099,7 +1097,7 @@ textarea {
     justify-content: space-between;
     gap: 10px;
     padding: 7px 0;
-    border-bottom: 1px solid #f1f3f6;
+    border-bottom: 1px solid var(--np-border);
     text-align: right;
     overflow-wrap: anywhere;
   }
@@ -1133,7 +1131,7 @@ textarea {
   .records tbody td.bulk-select-col {
     padding-bottom: 8px;
     margin-bottom: 4px;
-    border-bottom: 1px solid #f1f3f6;
+    border-bottom: 1px solid var(--np-border);
   }
 
   .records tbody td.row-actions {
@@ -1170,10 +1168,10 @@ textarea {
 .multiselect-list {
   max-height: 220px;
   overflow-y: auto;
-  border: 1px solid #d8dee7;
+  border: 1px solid var(--np-border);
   border-radius: 6px;
   padding: 6px;
-  background: #fff;
+  background: var(--np-surface);
 }
 
 .multiselect-item {
@@ -1186,7 +1184,7 @@ textarea {
 }
 
 .multiselect-item:hover {
-  background: #f5f7fa;
+  background: var(--np-bg);
 }
 
 .multiselect-item input[type="checkbox"] {
@@ -1212,16 +1210,16 @@ textarea {
   align-items: center;
   gap: 6px;
   padding: 8px;
-  border: 1px solid #d8dee7;
+  border: 1px solid var(--np-border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--np-surface);
   cursor: pointer;
   font-size: 12px;
   text-align: center;
 }
 
 .image-select-card:hover {
-  background: #f5f7fa;
+  background: var(--np-bg);
 }
 
 .image-select-card.selected {
@@ -1242,9 +1240,9 @@ textarea {
 
 .pack-graph-container {
   position: relative;
-  border: 1px solid #d8dee7;
+  border: 1px solid var(--np-border);
   border-radius: 6px;
-  background: #fafbfc;
+  background: var(--np-bg);
   overflow: auto;
   margin-top: 8px;
   min-height: 280px;
@@ -1263,7 +1261,7 @@ textarea {
 }
 
 .pack-graph-edge-label {
-  fill: #5b6675;
+  fill: var(--np-text-muted);
   font-size: 10px;
 }
 
@@ -1272,7 +1270,7 @@ textarea {
   width: 190px;
   border: 1px solid #2f6fed;
   border-radius: 6px;
-  background: #fff;
+  background: var(--np-surface);
   box-shadow: 0 1px 3px rgba(0,0,0,0.12);
   font-size: 12px;
 }
@@ -1295,14 +1293,14 @@ textarea {
 
 .lookup-display {
   flex: 1;
-  background: #f5f7fa;
+  background: var(--np-bg);
   cursor: default;
 }
 
 .lookup-clear {
   min-height: 34px;
   padding: 0 10px;
-  color: #9f1d1d;
+  color: var(--np-negative);
   flex-shrink: 0;
 }
 
@@ -1329,9 +1327,9 @@ textarea {
   z-index: 20;
   max-height: 220px;
   overflow-y: auto;
-  border: 1px solid #d8dee7;
+  border: 1px solid var(--np-border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--np-surface);
   box-shadow: 0 2px 8px rgba(0,0,0,0.12);
 }
 
@@ -1342,7 +1340,7 @@ textarea {
 }
 
 .autocomplete-suggestion:hover {
-  background: #f5f7fa;
+  background: var(--np-bg);
 }
 
 .picker-dialog {
@@ -1362,14 +1360,14 @@ textarea {
 .picker-table-wrapper {
   max-height: 360px;
   overflow-y: auto;
-  border: 1px solid #d8dee7;
+  border: 1px solid var(--np-border);
   border-radius: 6px;
 }
 
 .pack-export-form {
   margin-top: 20px;
   padding-top: 16px;
-  border-top: 1px solid #d8dee7;
+  border-top: 1px solid var(--np-border);
 }
 
 .pack-export-form h3 {
@@ -1399,14 +1397,14 @@ textarea {
 .declared-panel-datasource h4 {
   margin: 0 0 6px 0;
   font-size: 13px;
-  color: #5b6675;
+  color: var(--np-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
 .declared-panel-json {
-  background: #f5f7fa;
-  border: 1px solid #d8dee7;
+  background: var(--np-bg);
+  border: 1px solid var(--np-border);
   border-radius: 6px;
   padding: 10px;
   font-size: 12px;
@@ -1445,7 +1443,7 @@ textarea.declared-panel-edit-input {
 }
 
 .file-control-status {
-  color: #5b6675;
+  color: var(--np-text-muted);
   font-size: 13px;
 }
 
@@ -1459,8 +1457,8 @@ textarea.declared-panel-edit-input {
   max-width: 240px;
   max-height: 180px;
   border-radius: 6px;
-  border: 1px solid #d8dee6;
-  background: #f4f6f9;
+  border: 1px solid var(--np-border);
+  background: var(--np-bg);
   object-fit: contain;
 }
 
@@ -1486,7 +1484,7 @@ table.records td .file-image {
   min-width: 2.5em;
   text-align: right;
   font-variant-numeric: tabular-nums;
-  color: #5b6675;
+  color: var(--np-text-muted);
 }
 
 .toggle-switch-input {
@@ -1509,7 +1507,7 @@ table.records td .file-image {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--np-surface);
   transition: left 0.15s ease-in-out;
 }
 
@@ -1547,7 +1545,7 @@ table.records td .file-image {
 }
 
 .currency-control-symbol {
-  color: #5b6675;
+  color: var(--np-text-muted);
   font-size: 13px;
 }
 
@@ -1563,12 +1561,12 @@ table.records td .file-image {
 
 .password-control-toggle {
   background: none;
-  border: 1px solid #c7ccd1;
+  border: 1px solid var(--np-border);
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
   padding: 2px 8px;
-  color: #5b6675;
+  color: var(--np-text-muted);
 }
 
 .uuid-control {
@@ -1580,18 +1578,18 @@ table.records td .file-image {
 .uuid-control-input {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 12px;
-  background: #f4f5f7;
-  color: #5b6675;
+  background: var(--np-bg);
+  color: var(--np-text-muted);
 }
 
 .uuid-control-copy {
   background: none;
-  border: 1px solid #c7ccd1;
+  border: 1px solid var(--np-border);
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
   padding: 2px 8px;
-  color: #5b6675;
+  color: var(--np-text-muted);
 }
 
 .richtext-control-toolbar {
@@ -1601,8 +1599,8 @@ table.records td .file-image {
 }
 
 .richtext-control-tool {
-  background: #f4f5f7;
-  border: 1px solid #c7ccd1;
+  background: var(--np-bg);
+  border: 1px solid var(--np-border);
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
@@ -1611,7 +1609,7 @@ table.records td .file-image {
 }
 
 .richtext-control-editor {
-  border: 1px solid #c7ccd1;
+  border: 1px solid var(--np-border);
   border-radius: 4px;
   min-height: 4.5em;
   padding: 6px 8px;
@@ -1668,14 +1666,14 @@ table.records td .file-image {
 .array-editor-table th,
 .array-editor-table td {
   padding: 6px 8px;
-  border: 1px solid #e7ebf0;
+  border: 1px solid var(--np-border);
   font-size: 13px;
   vertical-align: middle;
 }
 
 .array-editor-table th {
-  background: #f9fafc;
-  color: #4c5a69;
+  background: var(--np-grid-head-bg);
+  color: var(--np-text-muted);
   font-weight: 600;
   font-size: 12px;
   white-space: nowrap;
@@ -1686,7 +1684,7 @@ table.records td .file-image {
   min-height: 30px;
   padding: 4px 6px;
   font-size: 13px;
-  border: 1px solid #c8d0da;
+  border: 1px solid var(--np-border);
   border-radius: 4px;
 }
 
@@ -1706,10 +1704,10 @@ table.records td .file-image {
 }
 
 .object-group-editor {
-  border: 1px solid #e7ebf0;
+  border: 1px solid var(--np-border);
   border-radius: 6px;
   padding: 10px;
-  background: #f9fafc;
+  background: var(--np-grid-head-bg);
 }
 
 .object-group-grid {

@@ -5,6 +5,7 @@ package com.npdev.dsl.v1.ast;
  * {@code series} bind a chart-type gadget ({@code kpi}/{@code bar}/{@code line}/{@code table}) to
  * a named {@link QueryAst} -- null for the pre-existing rail gadget types
  * ({@code recent-items}/{@code context-info}/{@code page-fragment}), which need none.
+ * {@code url} (UI-2) is used only by {@code page-fragment}: a same-origin absolute path.
  */
 public record GuidePageGadgetAst(
         String name,
@@ -13,6 +14,7 @@ public record GuidePageGadgetAst(
         String query,
         String x,
         String y,
-        String series
+        String series,
+        String url
 ) {
 }

@@ -19,6 +19,22 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+KNOWLEDGE_REL = "NPDevMcp/knowledge"  # moved from <repo>/knowledge by 5037a47a (2026-09-24)
+
+
+def knowledge_dir(root: Path | None = None) -> Path:
+    """The committed AI knowledge source directory (cards/, platform-status.json, gate-manifest.json).
+
+    The ONE place that knows where it lives. Every reader (build_knowledge, build_rag_index,
+    promote_candidates) joins through this -- never `root / "knowledge"` again.
+    """
+    return (root if root is not None else repo_root()) / "NPDevMcp" / "knowledge"
+
+
+def cards_dir(root: Path | None = None) -> Path:
+    return knowledge_dir(root) / "cards"
+
+
 def build_root() -> Path:
     """External build root, mirroring dsl/build.gradle's resolveNpdevBuildRoot."""
     env_root = os.environ.get("NPDEV_BUILD_ROOT")

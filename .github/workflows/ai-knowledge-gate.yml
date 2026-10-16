@@ -18,6 +18,9 @@ name: AI Knowledge Gate
 # measured wall clock (B23: 1m21s for the pre-T1/T2 15 checks) leaves enormous headroom under the
 # 20-minute cap even unconditionally on every PR.
 on:
+  # Direct-to-main is the only landing path (CLAUDE.md: never open a PR), so without push this gate never ran in CI.
+  push:
+    branches: [main]
   pull_request: {}
   workflow_dispatch:
 

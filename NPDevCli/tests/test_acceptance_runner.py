@@ -308,6 +308,31 @@ class RunAcceptanceSummaryTest(unittest.TestCase):
         self.assertEqual("http://127.0.0.1:8103", report["baseUrl"])
         self.assertTrue(report["ok"])
 
+    def test_base_url_without_api_key_is_a_clean_error_naming_the_flag(self):
+        # OPS-4: the old static "dev-key" default sent a long-dead key and every scenario 401'd.
+        args = self._acceptance_args(".", base_url="http://127.0.0.1:8103")
+        args.api_key = None
+        with patch("npdev_cli._run_one_scenario") as mock_run_one:
+            with self.assertRaises(npdev_cli.CliError) as ctx:
+                npdev_cli.run_acceptance(args)
+        mock_run_one.assert_not_called()
+        self.assertIn("--api-key", str(ctx.exception))
+
+    def test_base_url_with_empty_api_key_sends_no_header_value(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._scenario_file(tmp_path, "01-approved-pass.scenario.json", approved=True)
+            fake_result = {"name": "01", "file": "01-approved-pass.scenario.json", "approved": True,
+                           "outcome": "PASS", "assertions": [], "error": None}
+            args = self._acceptance_args(str(tmp_path), base_url="http://127.0.0.1:8103")
+            args.api_key = ""
+            with patch("npdev_cli._run_one_scenario", return_value=fake_result) as mock_run_one:
+                npdev_cli.run_acceptance(args)
+        mock_run_one.assert_called_once_with("http://127.0.0.1:8103", ANY,
+                                              "01-approved-pass.scenario.json", "")
+
     def test_missing_model_config_output_without_base_url_is_a_clean_error(self):
         args = self._acceptance_args(".")
         args.model = None
@@ -315,6 +340,162 @@ class RunAcceptanceSummaryTest(unittest.TestCase):
         args.output = None
         with self.assertRaises(npdev_cli.CliError):
             npdev_cli.run_acceptance(args)
+
+
+class ResolveAcceptanceApiKeyTest(unittest.TestCase):
+    """OPS-4: an explicit --api-key wins; otherwise the boot phase's secrets/api-key.env."""
+
+    def _key_file(self, tmp: str, content: str) -> str:
+        path = Path(tmp) / "api-key.env"
+        path.write_bytes(content.encode("utf-8"))
+        return str(path)
+
+    def test_explicit_value_wins_over_the_key_file(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            kf = self._key_file(tmp, "NPDEV_AUTH_API_KEYS=abc=dev:developer:admin")
+            self.assertEqual("mine", npdev_cli._resolve_acceptance_api_key("mine", kf))
+
+    def test_empty_string_stays_empty_meaning_no_header(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            kf = self._key_file(tmp, "NPDEV_AUTH_API_KEYS=abc=dev:developer:admin")
+            self.assertEqual("", npdev_cli._resolve_acceptance_api_key("", kf))
+
+    def test_key_file_mapping_yields_the_key_part(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            kf = self._key_file(tmp, "# comment\nNPDEV_AUTH_API_KEYS=abc=dev:developer:admin")
+            self.assertEqual("abc", npdev_cli._resolve_acceptance_api_key(None, kf))
+
+    def test_bom_prefixed_key_file_is_read(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            kf = self._key_file(tmp, "\ufeffNPDEV_AUTH_API_KEYS=abc=dev:developer:admin\r\n")
+            self.assertEqual("abc", npdev_cli._resolve_acceptance_api_key(None, kf))
+
+    def test_missing_file_or_no_file_is_none(self):
+        self.assertIsNone(npdev_cli._resolve_acceptance_api_key(None, None))
+        self.assertIsNone(npdev_cli._resolve_acceptance_api_key(None, "Z:/definitely/not/here.env"))
+
+class InProcessAcceptanceTest(unittest.TestCase):
+    """AI-8: `acceptance run --in-process`. The JVM (runtimehost-core's InProcessAcceptanceRunner,
+    covered by its own Java test) only OBSERVES; here subprocess.run is replaced by a stub that writes
+    a canned observed.json, and the CLI side -- argument plumbing, PASS/FAIL/SKIPPED/ERROR mapping,
+    shared `then` grammar, summary -- is what is asserted."""
+
+    OBSERVED = {
+        "schemaVersion": "npdev-acceptance-inprocess-observed.v1",
+        "scenarios": [
+            {"file": "01-pass.scenario.json", "observed": {
+                "ok": True, "result": {"finish": "METALLIC"}, "concepts": {"Cap": [{"status": "SUBMITTED"}]}}},
+            {"file": "02-fail.scenario.json", "observed": {"ok": True, "result": {"finish": "GLOSSY"}}},
+            {"file": "03-http.scenario.json", "skipped": "HTTP scenario (when.path) -- run without --in-process"},
+            {"file": "04-flow.scenario.json", "error": "flow scenarios not supported in-process yet (when.flow)"},
+        ],
+    }
+
+    @staticmethod
+    def _write(directory: Path, filename: str, scenario: dict) -> None:
+        import json as _json
+
+        (directory / filename).write_text(_json.dumps(scenario), encoding="utf-8")
+
+    def _run(self, observed: dict | None = None, returncode: int = 0, args_overrides: dict | None = None):
+        import argparse
+        import json as _json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            scenarios = tmp_path / "scenarios"
+            scenarios.mkdir()
+            model = tmp_path / "model.json"
+            model.write_text("{}", encoding="utf-8")
+            procedure = {"approved": True, "when": {"procedure": "P"}}
+            self._write(scenarios, "01-pass.scenario.json", {**procedure, "then": [
+                {"path": "$.ok", "equals": True}, {"path": "$.result.finish", "equals": "METALLIC"},
+                {"path": "$.concepts.Cap[*].status", "allEqual": "SUBMITTED"}]})
+            self._write(scenarios, "02-fail.scenario.json", {**procedure, "then": [
+                {"path": "$.result.finish", "equals": "METALLIC"}]})
+            self._write(scenarios, "03-http.scenario.json", {
+                "approved": True, "when": {"method": "GET", "path": "/x"}, "then": [{"path": "$status", "equals": 200}]})
+            self._write(scenarios, "04-flow.scenario.json", {"approved": True, "when": {"flow": "F"}, "then": []})
+            seen: dict = {}
+
+            def fake_run(command, **kwargs):
+                seen["command"] = command
+                seen["cwd"] = kwargs.get("cwd")
+                out_arg = next(c for c in command if c.startswith("-PoutFile="))
+                if returncode == 0:
+                    Path(out_arg.split("=", 1)[1]).write_text(_json.dumps(observed or self.OBSERVED), encoding="utf-8")
+                return type("Completed", (), {"returncode": returncode, "stdout": "", "stderr": "boom"})()
+
+            args = argparse.Namespace(**{"model": str(model), "scenarios": str(scenarios),
+                                         "in_process": True, **(args_overrides or {})})
+            with patch("npdev_cli._ai_build_root", return_value=tmp_path / "Build"), \
+                 patch("npdev_cli.subprocess.run", side_effect=fake_run), \
+                 patch("npdev_cli.run_app") as mock_run_app:
+                report = npdev_cli.run_acceptance(args)
+            mock_run_app.assert_not_called()
+            return report, seen
+
+    def test_outcomes_map_pass_fail_skipped_and_error(self):
+        report, _ = self._run()
+        outcomes = {s["file"]: s["outcome"] for s in report["scenarios"]}
+        self.assertEqual({"01-pass.scenario.json": "PASS", "02-fail.scenario.json": "FAIL",
+                          "03-http.scenario.json": "SKIPPED", "04-flow.scenario.json": "ERROR"}, outcomes)
+        fail = next(s for s in report["scenarios"] if s["outcome"] == "FAIL")
+        self.assertEqual("GLOSSY", fail["assertions"][0]["actual"])
+        self.assertIn("flow scenarios not supported", report["scenarios"][3]["error"])
+
+    def test_summary_counts_skipped_separately_and_errors_fail_the_run(self):
+        report, _ = self._run()
+        self.assertEqual({"total": 4, "approvedTotal": 3, "passed": 1, "failed": 2,
+                          "excludedUnapproved": 0, "skipped": 1}, report["summary"])
+        self.assertFalse(report["ok"])
+        self.assertEqual({"ok": True, "skipped": "in-process"},
+                         {k: report["boot"][k] for k in ("ok", "skipped")})
+
+    def test_only_passing_and_skipped_scenarios_make_the_run_ok(self):
+        observed = {"scenarios": [
+            {"file": "01-pass.scenario.json", "observed": {
+                "ok": True, "result": {"finish": "METALLIC"}, "concepts": {"Cap": [{"status": "SUBMITTED"}]}}},
+            {"file": "02-fail.scenario.json", "observed": {"ok": True, "result": {"finish": "METALLIC"}}},
+            {"file": "03-http.scenario.json", "skipped": "HTTP scenario"},
+            {"file": "04-flow.scenario.json", "skipped": "n/a"},
+        ]}
+        report, _ = self._run(observed)
+        self.assertTrue(report["ok"], report["scenarios"])
+        self.assertEqual(2, report["summary"]["passed"])
+
+    def test_gradle_task_gets_model_scenarios_and_out_file(self):
+        _, seen = self._run()
+        command = seen["command"]
+        self.assertIn("runAcceptanceInProcess", command)
+        for prefix in ("-PmodelPath=", "-PscenariosDir=", "-PoutFile="):
+            self.assertTrue(any(c.startswith(prefix) for c in command), prefix)
+        self.assertTrue(str(seen["cwd"]).replace("\\", "/").endswith("NPDevRuntimeHost/runtimehost-core"))
+
+    def test_jvm_failure_is_reported_as_a_failed_run_not_an_exception(self):
+        report, _ = self._run(returncode=1)
+        self.assertFalse(report["ok"])
+        self.assertFalse(report["boot"]["ok"])
+        self.assertIn("boom", report["boot"]["error"])
+        self.assertEqual([], report["scenarios"])
+
+    def test_model_is_required(self):
+        with self.assertRaises(npdev_cli.CliError):
+            self._run(args_overrides={"model": None})
+
+    def test_http_runner_skips_a_procedure_scenario_instead_of_raising_keyerror(self):
+        result = _run_one_scenario("http://127.0.0.1:1", {"approved": True, "when": {"procedure": "P"}}, "x.scenario.json")
+        self.assertEqual("SKIPPED", result["outcome"])
+        self.assertIn("--in-process", result["error"])
 
 
 if __name__ == "__main__":

@@ -573,6 +573,116 @@
     return state.panels[concept.conceptName];
   }
 
+  // UI-0: list view registry glue (window.NPDevViews, views/registry.js). New views are plain
+  // files under views/ -- this template only owns the switcher and the dispatch in renderPanel.
+  const VIEW_STORAGE_PREFIX = "npdev.businessUi.view.";
+
+  // concept.views comes from the manifest: always starts with "table"; "board"/"calendar" only
+  // when the concept qualifies and the view's script registered itself.
+  function availableViews(concept) {
+    const declared = Array.isArray(concept.views) && concept.views.length ? concept.views : ["table"];
+    return declared.filter(function (name) {
+      return name === "table" || Boolean(window.NPDevViews && window.NPDevViews.get(name));
+    });
+  }
+
+  function activeViewName(concept) {
+    const views = availableViews(concept);
+    let stored = "";
+    try { stored = localStorage.getItem(VIEW_STORAGE_PREFIX + concept.conceptName) || ""; } catch (ignored) { stored = ""; }
+    return views.indexOf(stored) >= 0 ? stored : views[0];
+  }
+
+  function setActiveView(concept, name) {
+    try { localStorage.setItem(VIEW_STORAGE_PREFIX + concept.conceptName, name); } catch (ignored) { /* private mode */ }
+    const panel = panelState(concept);
+    const view = name === "table" ? null : window.NPDevViews.get(name);
+    // Non-table views want more rows per fetch than the grid's page; the server caps at 100
+    // (business-concept-crud-controller.mustache MAX_PAGE_SIZE).
+    panel.size = view ? Math.min(100, view.pageSize || 100)
+        : (concept.list && concept.list.pageSize ? concept.list.pageSize : 20);
+    panel.page = 0;
+    loadPanel(concept);
+  }
+
+  function buildViewSwitcher(concept) {
+    const views = availableViews(concept);
+    if (views.length < 2) { return null; }
+    const active = activeViewName(concept);
+    const wrap = document.createElement("div");
+    wrap.className = "view-switcher";
+    wrap.setAttribute("role", "tablist");
+    views.forEach(function (name) {
+      const impl = name === "table" ? null : window.NPDevViews.get(name);
+      const label = impl && impl.label ? impl.label : (name === "table" ? "Table" : name.charAt(0).toUpperCase() + name.slice(1));
+      const b = button(label, name === active ? "primary" : "", function () { setActiveView(concept, name); });
+      b.dataset.view = name;
+      b.setAttribute("role", "tab");
+      b.setAttribute("aria-selected", name === active ? "true" : "false");
+      wrap.appendChild(b);
+    });
+    return wrap;
+  }
+
+  function viewContext(concept, panel) {
+    function field(name) {
+      return (concept.fields || []).find(function (f) { return f.name === name; }) || null;
+    }
+    return {
+      concept: concept,
+      records: panel.records,
+      totalElements: panel.totalElements,
+      helpers: {
+        openDetails: function (record) { openDetails(concept, record); },
+        openForm: function (mode, record) { openForm(concept, mode, record); },
+        setField: async function (record, fieldName, value) {
+          const response = await postConceptBatch(concept, "setField", [record[concept.idField]], { field: fieldName, value: value });
+          const row = Array.isArray(response.results) ? response.results[0] : null;
+          const ok = Boolean(row && row.ok);
+          if (!ok) { notify((row && (row.message || row.error)) || "Update refused.", true); }
+          await reloadAfterMutation(concept);
+          return { ok: ok, message: row ? (row.message || "") : "" };
+        },
+        reload: function () { return loadPanel(concept); },
+        notify: notify,
+        // Views that fetch their own data window (calendar) start from the grid's current
+        // filter/where/sort so the toolbar's filters still apply.
+        listParams: function () { return baseQueryParams(concept, panel); },
+        fetchJson: fetchJson,
+        headers: headers,
+        field: field,
+        renderValue: function (target, f, value) { renderFieldValue(target, f, value, false); },
+        recordTitle: function (record) {
+          const firstColumn = concept.list && Array.isArray(concept.list.columns) ? concept.list.columns.find(function (c) { return c !== concept.idField; }) : null;
+          const value = firstColumn ? record[firstColumn] : null;
+          return value === null || value === undefined || value === "" ? String(record[concept.idField]) : String(value);
+        }
+      }
+    };
+  }
+
+  // Detail-section context (NPDevViews.registerDetailSection). setField closes the modal before
+  // reloading so the user never edits a stale details view.
+  function detailContext(concept, record) {
+    const listCtx = viewContext(concept, panelState(concept)).helpers;
+    return {
+      concept: concept,
+      record: record,
+      helpers: {
+        fetchJson: fetchJson,
+        headers: headers,
+        field: listCtx.field,
+        renderValue: listCtx.renderValue,
+        notify: notify,
+        setField: async function (fieldName, value) {
+          closeModal();
+          return listCtx.setField(record, fieldName, value);
+        },
+        close: closeModal
+      }
+    };
+  }
+
   // R7.3: per-column structured filters ride the SAME `where` DSL (field:op:value, comma-joined
   // clauses, AND-combined) the generated CRUD controller already parses for both its SQL-pushdown
   // list path and its legacy free-text-filter path (see business-concept-crud-controller.mustache's
@@ -3370,6 +3480,12 @@
     header.appendChild(actions);
     section.appendChild(header);
 
+    // UI-0: Table | Board | Calendar switcher; null (nothing rendered) when only "table" is available.
+    const viewSwitcher = buildViewSwitcher(concept);
+    if (viewSwitcher) {
+      section.appendChild(viewSwitcher);
+    }
+
     // R7.3: previously this disclosed that Export CSV IGNORED the filter -- now that exportPanelCsv
     // reuses the grid's own request, the honest thing to surface is confirmation of what's active,
     // not a warning about a mismatch that no longer exists.
@@ -3427,6 +3543,26 @@
     const bulkBar = buildBulkActionsBar(concept, panel);
     if (bulkBar) {
       section.appendChild(bulkBar);
+    }
+    // UI-0: a registered view (window.NPDevViews, views/*.js) replaces the grid when it is the
+    // concept's active view. A view that throws falls back to the table; the grid path below is
+    // unchanged when concept.views is just ["table"].
+    const activeView = activeViewName(concept);
+    const viewImpl = activeView === "table" ? null : window.NPDevViews.get(activeView);
+    if (viewImpl) {
+      let viewElement = null;
+      try {
+        viewElement = viewImpl.render(viewContext(concept, panel));
+      } catch (error) {
+        console.error("NPDevViews." + activeView + " failed", error);
+        notify("The " + activeView + " view failed to render; showing the table.", true);
+        viewElement = null;
+      }
+      if (viewElement) {
+        section.appendChild(viewElement);
+        section.appendChild(renderPager(concept, panel));
+        return section;
+      }
     }
     section.appendChild(renderTable(concept, panel));
     section.appendChild(renderPager(concept, panel));
@@ -4545,6 +4681,16 @@
       row.appendChild(label);
       row.appendChild(value);
       content.appendChild(row);
+    });
+    // UI-0: detail sections registered through NPDevViews.registerDetailSection (e.g. UI-4 history)
+    // render below the field rows; a failing section never breaks the dialog.
+    (window.NPDevViews ? window.NPDevViews.detailSections() : []).forEach(function (section) {
+      try {
+        const element = section.impl.render(detailContext(concept, record));
+        if (element) { content.appendChild(element); }
+      } catch (error) {
+        console.error("NPDevViews detail section " + section.name + " failed", error);
+      }
     });
     openModal(concept.displayName, content);
   }

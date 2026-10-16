@@ -5279,11 +5279,11 @@
         },
         "logoText": {
           "type": "string",
-          "minLength": 1
+          "minLength": 0
         },
         "logoUrl": {
           "type": "string",
-          "minLength": 1
+          "minLength": 0
         }
       },
       "additionalProperties": false
@@ -5330,6 +5330,11 @@
         "series": {
           "type": "string",
           "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^/[^/]",
+          "description": "page-fragment only: same-origin absolute path of a static HTML fragment; fetched and inserted without running scripts."
         }
       },
       "additionalProperties": false
