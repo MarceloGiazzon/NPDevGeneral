@@ -540,8 +540,10 @@ class Output:
     def note(self, text: str) -> None:
         self._w(f"  {time.strftime('%H:%M:%S')}  {text}")
 
-    def ready(self, r: CycleResult, port: int) -> None:
-        self.note(f"ready in {r.elapsed:.1f}s   http://localhost:{port}")
+    def ready(self, r: CycleResult, port: int, key_file: Path | None = None) -> None:
+        # OPS-1: say where to log in -- the key file's PATH, never the key itself.
+        key_hint = f"   (API key: {key_file})" if key_file else ""
+        self.note(f"ready in {r.elapsed:.1f}s   http://localhost:{port}{key_hint}")
         self.event(kind="ready", seconds=round(r.elapsed, 1), metadataOnly=r.fast)
 
     def build_timing(self, seconds: float, previous: float | None) -> None:
@@ -683,7 +685,7 @@ def dev(args: argparse.Namespace, cli) -> int:
             out.build_timing(result.build_seconds, previous_build_seconds)
             previous_build_seconds = result.build_seconds
         if result.ok:
-            out.ready(result, options.port)
+            out.ready(result, options.port, options.output / 'secrets' / 'api-key.env')
             # Printed once, on the first successful boot only -- every later cycle in this same
             # `npdev dev` process reuses the same secrets/api-key.env, so repeating it on every save
             # would just be noise. Same "print once, X-Api-Key: <key>" courtesy every other launcher
@@ -706,7 +708,7 @@ def dev(args: argparse.Namespace, cli) -> int:
                 out.build_timing(result.build_seconds, previous_build_seconds)
                 previous_build_seconds = result.build_seconds
             if result.ok:
-                out.ready(result, options.port)
+                out.ready(result, options.port, options.output / 'secrets' / 'api-key.env')
         return 0
     except KeyboardInterrupt:
         return 0

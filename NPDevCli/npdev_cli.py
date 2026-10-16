@@ -2247,9 +2247,9 @@ def run_init(args: argparse.Namespace) -> int:
         f"```\n\n"
         f"(`npdev run app` with no flags looks for `model.json`/`config.json` in the current "
         f"directory and generates the app into a sibling `{target.name}-app` folder.)\n\n"
-        f"Open http://localhost:8080 and use API key `dev-key` (the `dev` profile's built-in "
-        f"convenience credential -- see docs/YOUR_FIRST_APP.md for what that means and why "
-        f"SUPER_USER_KEY.txt is a different, unrelated thing).\n\n"
+        f"Open http://localhost:8080 and paste the API key printed on first boot (it is saved in "
+        f"`{target.name}-app/secrets/api-key.env`). SUPER_USER_KEY.txt is a different key, for "
+        f"/control-panel.html only.\n\n"
         f"## Next\n\n"
         f"Edit `model.json` -- add a field, add a concept -- then `npdev run app` again; it "
         f"regenerates the SAME app in place rather than starting over. See docs/YOUR_FIRST_APP.md "
@@ -3034,6 +3034,7 @@ def run_app(args: argparse.Namespace) -> dict:
         # the file this names -- the same file every other launcher on this platform already
         # provisions into, so nothing new is exposed that `secrets/api-key.env` didn't already hold.
         result["apiKeyFile"] = str(final_app_out / "secrets" / "api-key.env")
+        result["openUrl"] = base_url + "/"
         _write_run_app_progress(final_app_out, result["phase"])
         _RUN_APP_CHILD_PROCESS = None  # READY: intentionally leave it running, not this run's to kill
         return result
@@ -7488,6 +7489,14 @@ def _resolve_acceptance_api_key(explicit: str | None, key_file: str | None) -> s
                 return mapping.split("=", 1)[0]
             break
     return None
+
+
+def _run_app_human_hint(result: dict) -> str | None:
+    """OPS-1: the one human line `npdev run app` prints (to stderr) after its JSON -- where to log
+    in. None unless the app is READY. Never contains the key itself, only the file that holds it."""
+    if not result.get("ok") or not result.get("openUrl"):
+        return None
+    return f"Open {result['openUrl']} -- paste the X-Api-Key from {result.get('apiKeyFile')}"
 
 
 def run_acceptance(args: argparse.Namespace) -> dict:
@@ -17673,6 +17682,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "run" and args.run_command == "app":
             result = run_app(args)
             print(json.dumps(result, indent=2))
+            # OPS-1: stdout stays pure JSON (the Manager and MCP parse it); the human hint goes to stderr.
+            hint = _run_app_human_hint(result)
+            if hint:
+                print(hint, file=sys.stderr)
             # Matches the platform's established run_cli convention (0 = fully ok, 2 = ran fine and
             # reported a real, structured problem -- never exit 1 for a diagnosed failure, only for
             # a genuinely unexpected exception, which the except clauses below still catch).

@@ -3,4 +3,5 @@ com.finalexec.boundary.BoundaryBootExceptionFailureAnalyzer
 
 org.springframework.boot.env.EnvironmentPostProcessor=\
 com.finalexec.db.H2LocalBootLockEnvironmentPostProcessor,\
-com.finalexec.auth.JwtKeyPairEnvironmentPostProcessor
+com.finalexec.auth.JwtKeyPairEnvironmentPostProcessor,\
+com.finalexec.auth.ApiKeyFirstBootEnvironmentPostProcessor
