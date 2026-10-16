@@ -158,6 +158,7 @@ public final class SemanticValidator {
         ReferenceIntegrityValidation.validate(effectiveModel, errors);
         RoleValidation.validateRoles(effectiveModel, entitiesByLower, errors);
         WebhookValidation.validateWebhooks(effectiveModel, errors);
+        HttpConnectorValidation.validate(effectiveModel, errors);
         SequenceValidation.validateSequences(effectiveModel, errors);
         SeedValidation.validateSeeds(effectiveModel, errors);
         PropertyValidation.validatePropertyScopesAndProperties(effectiveModel, errors);

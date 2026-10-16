@@ -1164,11 +1164,17 @@ public final class CompiledModelCanonicalJson {
                 operationNode.set("errors", toOperationErrors(operation.getErrors()));
                 operationNode.put("sideEffects", safe(operation.getSideEffects()));
                 operationNode.set("auth", toAuth(operation.getAuth()));
+                if (!operation.getHttp().isEmpty()) {
+                    operationNode.set("http", toObjectMap(operation.getHttp()));
+                }
                 operationsNode.add(operationNode);
             }
             node.set("operations", operationsNode);
             node.set("origin", toOrigin(capability.getOrigin()));
             node.put("uid", safe(capability.getUid()));
+            if (!capability.getHttp().isEmpty()) {
+                node.set("http", toObjectMap(capability.getHttp()));
+            }
             capabilities.add(node);
         }
         return capabilities;
