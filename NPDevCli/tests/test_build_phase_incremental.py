@@ -143,5 +143,44 @@ class BuildPhaseIncrementalTest(unittest.TestCase):
             self.assertEqual(1, len(calls))
 
 
+class RunAppBuildChoiceTest(unittest.TestCase):
+    """OPS-5: `run app` builds incrementally (warm daemon) when a previous run left a jar, and keeps the
+    original `--no-daemon clean build` on a first build or with --clean."""
+
+    def _clean_flag_passed(self, *, with_jar: bool, clean_arg: bool) -> bool:
+        import argparse
+        with TemporaryDirectory() as tmp:
+            out = Path(tmp) / "out"
+            out.mkdir()
+            if with_jar:
+                libs = out / "build" / "libs"
+                libs.mkdir(parents=True)
+                (libs / "FinalExec-0.1.0.jar").write_bytes(b"")
+            args = argparse.Namespace(
+                output=str(out), timeout=60, port=8190, keep_running=True, baseline_model=None,
+                model=str(Path(tmp) / "model.json"), clean=clean_arg)
+            seen: dict = {}
+
+            def fake_build(app_root, deadline, *, clean=True):
+                seen["clean"] = clean
+                return False, "stub: stop after the build choice", None, False
+
+            with mock.patch.object(npdev_cli, "_infer_run_app_paths", return_value=None), \
+                    mock.patch.object(npdev_cli, "_generate_phase_captured", return_value=(True, "")), \
+                    mock.patch.object(npdev_cli, "_write_run_app_progress"), \
+                    mock.patch.object(npdev_cli, "_build_phase", side_effect=fake_build):
+                npdev_cli.run_app(args)
+            return seen["clean"]
+
+    def test_first_build_stays_clean(self):
+        self.assertTrue(self._clean_flag_passed(with_jar=False, clean_arg=False))
+
+    def test_rebuild_with_an_existing_jar_is_incremental(self):
+        self.assertFalse(self._clean_flag_passed(with_jar=True, clean_arg=False))
+
+    def test_clean_flag_forces_a_clean_build(self):
+        self.assertTrue(self._clean_flag_passed(with_jar=True, clean_arg=True))
+
+
 if __name__ == "__main__":
     unittest.main()

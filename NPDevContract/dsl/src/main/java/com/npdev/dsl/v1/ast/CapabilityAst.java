@@ -2,7 +2,9 @@ package com.npdev.dsl.v1.ast;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class CapabilityAst {
     private final String name;
@@ -11,6 +13,7 @@ public final class CapabilityAst {
     private final List<CapabilityOperationAst> operations;
     private final OriginAst origin;
     private final String uid;
+    private final Map<String, Object> http;
 
     public CapabilityAst(String name, List<CapabilityOperationAst> operations) {
         this(name, null, null, operations);
@@ -50,12 +53,26 @@ public final class CapabilityAst {
             OriginAst origin,
             String uid
     ) {
+        this(name, type, specializesName, operations, origin, uid, Map.of());
+    }
+
+    /** INT-1: declarative HTTP connector settings (baseUrl, auth, headers, ...) -- see getHttp. */
+    public CapabilityAst(
+            String name,
+            String type,
+            String specializesName,
+            List<CapabilityOperationAst> operations,
+            OriginAst origin,
+            String uid,
+            Map<String, Object> http
+    ) {
         this.name = name;
         this.type = type;
         this.specializesName = specializesName;
         this.operations = new ArrayList<>(operations);
         this.origin = origin;
         this.uid = uid;
+        this.http = http == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(http));
     }
 
     public String getName() { return name; }
@@ -75,6 +92,12 @@ public final class CapabilityAst {
      *  (npdev migrate assign-uids stamps one); null if the capability declares none. */
     public String getUid() {
         return uid;
+    }
+
+    /** INT-1: the opaque {@code http} block of a capability bound to adapter http-connector
+     *  (empty if none); shape validated by the schema and HttpConnectorValidation. */
+    public Map<String, Object> getHttp() {
+        return http;
     }
 
     public List<CapabilityOperationAst> getOperations() {

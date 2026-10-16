@@ -41,6 +41,7 @@ public final class StepAst {
     private final Boolean parallelAwait;
     private final Long timeoutSeconds;
     private final List<StepAst> onTimeoutSteps;
+    private final HumanTaskAst task;
 
     public StepAst(
             String name,
@@ -339,6 +340,52 @@ public final class StepAst {
             Long timeoutSeconds,
             List<StepAst> onTimeoutSteps
     ) {
+        this(name, type, checkpoint, scope, invariants, capability, operation, capabilityPolicy, input, output, args,
+                event, payload, data, condition, thenSteps, elseSteps, awaitEvent, awaitRef, awaitMatchCorrelation,
+                awaitPayloadMatch, delaySeconds, returnValue, action, generatedActionName, collectionRef, itemKey,
+                loopSteps, maxLoopIterations, onFailureSteps, procedure, parallelAwait, timeoutSeconds,
+                onTimeoutSteps, null);
+    }
+
+    /** PROC-1 (human tasks): canonical constructor, adding {@code task} -- an {@code awaitEvent}
+     * step's optional human-task metadata. {@code null} means a plain machine await. */
+    public StepAst(
+            String name,
+            String type,
+            String checkpoint,
+            String scope,
+            List<String> invariants,
+            String capability,
+            String operation,
+            CapabilityPolicyAst capabilityPolicy,
+            String input,
+            String output,
+            List<String> args,
+            String event,
+            String payload,
+            Map<String, String> data,
+            String condition,
+            List<StepAst> thenSteps,
+            List<StepAst> elseSteps,
+            String awaitEvent,
+            String awaitRef,
+            Boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatch,
+            Long delaySeconds,
+            String returnValue,
+            ActionMetadataAst action,
+            String generatedActionName,
+            String collectionRef,
+            String itemKey,
+            List<StepAst> loopSteps,
+            Integer maxLoopIterations,
+            List<StepAst> onFailureSteps,
+            String procedure,
+            Boolean parallelAwait,
+            Long timeoutSeconds,
+            List<StepAst> onTimeoutSteps,
+            HumanTaskAst task
+    ) {
         this.name = name;
         this.type = type;
         this.checkpoint = checkpoint;
@@ -373,6 +420,7 @@ public final class StepAst {
         this.parallelAwait = parallelAwait;
         this.timeoutSeconds = timeoutSeconds;
         this.onTimeoutSteps = onTimeoutSteps == null ? List.of() : new ArrayList<>(onTimeoutSteps);
+        this.task = task;
     }
 
     public String getName() { return name; }
@@ -468,4 +516,7 @@ public final class StepAst {
     public List<StepAst> getOnTimeoutSteps() {
         return Collections.unmodifiableList(onTimeoutSteps);
     }
+
+    /** PROC-1: human-task metadata of an {@code awaitEvent} step; {@code null} when not a human task. */
+    public HumanTaskAst getTask() { return task; }
 }

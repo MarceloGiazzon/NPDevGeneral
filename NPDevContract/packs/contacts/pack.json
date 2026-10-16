@@ -1,0 +1,105 @@
+{
+  "$schema": "../../schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "contacts",
+  "version": "1.0.0",
+  "namespace": "com.npdev.contacts",
+  "description": "Built-in NPDev contacts pack: organizations (customers, suppliers, partners), the people who work there, and their postal addresses -- with list/detail/edit screens and the common queries. Reference it from any business app instead of re-modelling a CRM-lite by hand.",
+  "category": "other",
+  "author": "NPDev",
+  "concepts": [
+    {
+      "name": "Organization",
+      "ui": { "label": "Organization" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "name", "type": "string", "required": true, "maxLength": 200, "ui": { "label": "Name" } },
+        { "name": "legalName", "type": "string", "required": false, "maxLength": 200, "ui": { "label": "Legal name" } },
+        { "name": "taxId", "type": "string", "required": false, "maxLength": 40, "ui": { "label": "Tax id" } },
+        { "name": "kind", "type": "enum", "required": true, "default": "CUSTOMER",
+          "enumValues": ["CUSTOMER", "SUPPLIER", "PARTNER", "OTHER"], "ui": { "label": "Kind" } },
+        { "name": "email", "type": "string", "required": false, "maxLength": 254, "ui": { "label": "Email" } },
+        { "name": "phone", "type": "string", "required": false, "maxLength": 40, "ui": { "label": "Phone" } },
+        { "name": "website", "type": "string", "required": false, "maxLength": 300, "ui": { "label": "Website" } },
+        { "name": "notes", "type": "string", "required": false, "maxLength": 2000, "ui": { "label": "Notes" } },
+        { "name": "active", "type": "boolean", "required": true, "default": true, "ui": { "label": "Active" } }
+      ],
+      "indexes": [
+        { "name": "idx_contacts_org_name", "fields": ["name"] },
+        { "name": "idx_contacts_org_kind", "fields": ["kind"] },
+        { "name": "idx_contacts_org_tax", "fields": ["taxId"] }
+      ]
+    },
+    {
+      "name": "Contact",
+      "ui": { "label": "Contact" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "firstName", "type": "string", "required": true, "maxLength": 100, "ui": { "label": "First name" } },
+        { "name": "lastName", "type": "string", "required": true, "maxLength": 100, "ui": { "label": "Last name" } },
+        { "name": "email", "type": "string", "required": false, "maxLength": 254, "ui": { "label": "Email" } },
+        { "name": "phone", "type": "string", "required": false, "maxLength": 40, "ui": { "label": "Phone" } },
+        { "name": "jobTitle", "type": "string", "required": false, "maxLength": 120, "ui": { "label": "Job title" } },
+        { "name": "organizationId", "type": "reference", "required": false, "ui": { "label": "Organization" },
+          "reference": { "target": "Organization", "displayField": "name", "onDelete": "restrict" } },
+        { "name": "isPrimary", "type": "boolean", "required": true, "default": false, "ui": { "label": "Primary contact" } },
+        { "name": "active", "type": "boolean", "required": true, "default": true, "ui": { "label": "Active" } }
+      ],
+      "indexes": [
+        { "name": "idx_contacts_contact_org", "fields": ["organizationId"] },
+        { "name": "idx_contacts_contact_email", "fields": ["email"] },
+        { "name": "idx_contacts_contact_last", "fields": ["lastName"] }
+      ]
+    },
+    {
+      "name": "Address",
+      "ui": { "label": "Address" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "organizationId", "type": "reference", "required": true, "ui": { "label": "Organization" },
+          "reference": { "target": "Organization", "displayField": "name", "onDelete": "cascade" } },
+        { "name": "kind", "type": "enum", "required": true, "default": "BILLING",
+          "enumValues": ["BILLING", "SHIPPING", "OTHER"], "ui": { "label": "Kind" } },
+        { "name": "line1", "type": "string", "required": true, "maxLength": 200, "ui": { "label": "Address line 1" } },
+        { "name": "line2", "type": "string", "required": false, "maxLength": 200, "ui": { "label": "Address line 2" } },
+        { "name": "city", "type": "string", "required": true, "maxLength": 100, "ui": { "label": "City" } },
+        { "name": "region", "type": "string", "required": false, "maxLength": 100, "ui": { "label": "State / region" } },
+        { "name": "postalCode", "type": "string", "required": false, "maxLength": 20, "ui": { "label": "Postal code" } },
+        { "name": "country", "type": "string", "required": true, "minLength": 2, "maxLength": 2, "ui": { "label": "Country (ISO-2)" } },
+        { "name": "isDefault", "type": "boolean", "required": true, "default": false, "ui": { "label": "Default for its kind" } }
+      ],
+      "indexes": [
+        { "name": "idx_contacts_address_org", "fields": ["organizationId"] }
+      ]
+    }
+  ],
+  "queries": [
+    { "name": "ActiveOrganizations", "concept": "Organization", "where": "active == true", "orderBy": ["name"] },
+    { "name": "Customers", "concept": "Organization", "where": "kind == 'CUSTOMER' && active == true", "orderBy": ["name"] },
+    { "name": "Suppliers", "concept": "Organization", "where": "kind == 'SUPPLIER' && active == true", "orderBy": ["name"] },
+    { "name": "ActiveContacts", "concept": "Contact", "where": "active == true", "orderBy": ["lastName", "firstName"] }
+  ],
+  "autoPanels": [
+    {
+      "name": "Organizations",
+      "concept": "Organization",
+      "route": "/organizations",
+      "surfaces": ["selection", "detail", "transaction"],
+      "selection": { "columns": ["name", "kind", "email", "phone", "active"] }
+    },
+    {
+      "name": "Contacts",
+      "concept": "Contact",
+      "route": "/contacts",
+      "surfaces": ["selection", "detail", "transaction"],
+      "selection": { "columns": ["lastName", "firstName", "organizationId", "email", "phone"] }
+    },
+    {
+      "name": "Addresses",
+      "concept": "Address",
+      "route": "/addresses",
+      "surfaces": ["selection", "detail", "transaction"],
+      "selection": { "columns": ["organizationId", "kind", "city", "country", "isDefault"] }
+    }
+  ]
+}

@@ -616,7 +616,10 @@ else {
 }
 
 # ---- 6. emit _ops toolbox --------------------------------------------------
-$OpsDir = Join-Path $OutRoot '_ops'
+# OPS-2: ONE real toolbox -- App\_ops, the same folder the Java OperationalRunbookEmitter writes
+# into. The wrapper folder $LegacyOpsDir (a sibling of App) only forwards old script names to it.
+$OpsDir = Join-Path $GeneratedAppRoot '_ops'
+$LegacyOpsDir = Join-Path $OutRoot '_ops'
 New-Item -ItemType Directory -Force -Path $OpsDir | Out-Null
 $Plan = [ordered]@{
   appId = $AppId; appName = $AppId; outRoot = $OutRoot; appRoot = $GeneratedAppRoot
@@ -672,91 +675,28 @@ if ($NpdevManagerExe) {
   $KeyringPassword = & $NpdevManagerExe '--get-secret-env' 'db' $SecretEnv $AppId 2>$null
   if ($LASTEXITCODE -eq 0 -and $KeyringPassword) { $Password = $KeyringPassword }
 }
-if ($Password) { $DbPlan['password'] = $Password }
-# MON-9. THIS FILE HAS TWO WRITERS and this one runs last.
+# MON-9 / OPS-2. THIS FILE HAS TWO WRITERS and this one runs last.
 #
-# `OperationalRunbookEmitter.toPlanJson()` (Java) builds a much richer plan -- storageMode,
-# physicalDatabase, schemaFingerprint, profile, dbeaver, smoke -- and writes it to the same
-# path during generation. This script then overwrites it with the ordered map above, which is
-# why an app built through Build-NpdevApp.ps1 has a 10-key plan while the Java emitter's has
-# roughly 25.
-#
-# Measured 2026-08-18, by adding `schemaLifecycle` to the Java emitter and then finding it
-# absent from a freshly generated app: a field added to only the Java seam is silently
-# discarded on the primary AppGen path. Same shape as the spared-directories list CLAUDE.md
-# already warns about, pointed at a different file. So the posture is written HERE too, read
-# straight from the definition this script has already loaded.
-$Lifecycle = $DbDef.schemaLifecycle
-if ($null -ne $Lifecycle) {
-  $Strategy = "$($Lifecycle.strategy)"
-  # ENG-2: `RecreateOnAppStart` was removed (the generator refuses it before this line can
-  # matter), so only the literal `Ephemeral` is an ephemeral data policy.
-  $DataPolicy = 'preserved'
-  if ($Strategy -eq 'Ephemeral') { $DataPolicy = 'ephemeral' }
-  $Ownership = 'NpdevManaged'
-  if ($Lifecycle.PSObject.Properties.Name -contains 'ownership' -and $Lifecycle.ownership) {
-    $Ownership = "$($Lifecycle.ownership)"
-  }
-  $DbPlan['schemaLifecycle'] = [ordered]@{
-    strategy = $Strategy
-    dataPolicy = $DataPolicy
-    allowDestructiveRecreate = [bool]$Lifecycle.allowDestructiveRecreate
-    scope = "$($Lifecycle.scope)"
-    ownership = $Ownership
-  }
+# `OperationalRunbookEmitter.toPlanJson()` (Java) builds the rich plan (storageMode, physicalDatabase,
+# schemaFingerprint, profile, dbeaver, smoke, schemaLifecycle, password, ...) and writes it to
+# App\_ops\resolved-db-plan.json during generation -- the SAME folder $OpsDir now names. This script
+# must therefore MERGE into it (only the keyring-resolved password), never overwrite it with the
+# 10-key map above: that overwrite is what made an AppGen app's plan lose physicalDatabase/profile.
+# The map above is kept only as the fallback when the Java emitter did not write a plan at all.
+$JavaPlanPath = Join-Path $OpsDir 'resolved-db-plan.json'
+if (Test-Path -LiteralPath $JavaPlanPath) {
+  $JavaPlan = Read-JsonFile $JavaPlanPath
+  if ($Password) { $JavaPlan | Add-Member -NotePropertyName password -NotePropertyValue $Password -Force }
+  Write-JsonFile $JavaPlan $JavaPlanPath
 }
-Write-JsonFile $DbPlan (Join-Path $OpsDir 'resolved-db-plan.json')
+else {
+  Write-Host "WARNING: no Java-emitted resolved-db-plan.json at $JavaPlanPath; writing the minimal AppGen plan." -ForegroundColor Yellow
+  if ($Password) { $DbPlan['password'] = $Password }
+  Write-JsonFile $DbPlan $JavaPlanPath
+}
 
-$StartEnv = @'
-$ErrorActionPreference = 'Stop'
-$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
-if ($plan.engine -eq 'InMemory') { Write-Host 'InMemory: no environment to start.'; exit 0 }
-if ($plan.engine -eq 'H2Server') {
-  New-Item -ItemType Directory -Force -Path $plan.resolvedDataRoot | Out-Null
-  # REG-144's family again: this used to search a literal 'D:\WorkSpace\NPDev\Build'. The libs
-  # directory THIS app was staged against travels in the plan; the gradle cache stays as the
-  # fallback, since that is where the jar actually comes from on a fresh machine.
-  $h2SearchRoots = @($plan.runtimeHostLibsDir, (Join-Path $env:USERPROFILE '.gradle\caches')) |
-                   Where-Object { $_ -and (Test-Path -LiteralPath $_) }
-  $jar = @(Get-ChildItem -Path $h2SearchRoots -Recurse -Filter 'h2-2*.jar' -ErrorAction SilentlyContinue) |
-         Where-Object { $_.FullName -notlike '*\gradle-8*\lib\*' -and $_.Name -notlike '*-sources.jar' -and $_.Name -notlike '*-javadoc.jar' } |
-         Sort-Object LastWriteTime -Descending | Select-Object -First 1
-  if ($null -eq $jar) { throw 'No standalone h2-2*.jar (binary, non-sources/javadoc) found under Build or ~/.gradle. Build an app once to populate the gradle cache.' }
-  $pidFile = Join-Path $PSScriptRoot 'h2server.pid'
-  $logFile = Join-Path $PSScriptRoot 'h2server.log'
-  if (Test-Path -LiteralPath $pidFile) {
-    $p = Get-Process -Id ([int](Get-Content -Raw -LiteralPath $pidFile)) -ErrorAction SilentlyContinue
-    if ($null -ne $p) { Write-Host "H2Server already running (PID $($p.Id))."; exit 0 }
-  }
-  $args = @('-cp', $jar.FullName, 'org.h2.tools.Server', '-tcp', '-tcpPort', [string]$plan.hostPort, '-tcpAllowOthers', '-ifNotExists', '-baseDir', $plan.appRoot)
-  $proc = Start-Process -FilePath 'java' -ArgumentList $args -WorkingDirectory $plan.appRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $logFile -RedirectStandardError (Join-Path $PSScriptRoot 'h2server.err.log')
-  $proc.Id | Set-Content -LiteralPath $pidFile -Encoding ascii
-  Start-Sleep -Seconds 2
-  Write-Host "H2Server started on tcp port $($plan.hostPort) (PID $($proc.Id)), data $($plan.resolvedDataRoot), jar $($jar.Name)"
-  exit 0
-}
-Write-Host "Engine $($plan.engine): no environment starter implemented."
-exit 0
-'@
-Set-Content -LiteralPath (Join-Path $OpsDir 'Start-Environment.ps1') -Value $StartEnv -Encoding UTF8
-
-$StopEnv = @'
-$ErrorActionPreference = 'Stop'
-$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
-if ($plan.engine -eq 'H2Server') {
-  $pidFile = Join-Path $PSScriptRoot 'h2server.pid'
-  if (Test-Path -LiteralPath $pidFile) {
-    $procId = [int](Get-Content -Raw -LiteralPath $pidFile)
-    $p = Get-Process -Id $procId -ErrorAction SilentlyContinue
-    if ($null -ne $p) { Stop-Process -Id $procId -Force; Write-Host "H2Server stopped (PID $procId)." }
-    Remove-Item -LiteralPath $pidFile -Force
-  } else { Write-Host 'No h2server.pid; nothing to stop.' }
-  exit 0
-}
-Write-Host "Engine $($plan.engine): no environment to stop."
-exit 0
-'@
-Set-Content -LiteralPath (Join-Path $OpsDir 'Stop-Environment.ps1') -Value $StopEnv -Encoding UTF8
+# OPS-2: Start-Environment.ps1 / Stop-Environment.ps1 are the Java-emitted ones already in App\_ops;
+# writing them here would overwrite them.
 
 $BuildApp = @'
 param([switch]$Force)
@@ -799,21 +739,10 @@ try {
   $npdevProgress = [ordered]@{ schemaVersion = 'npdev-run-app-progress.v1'; phase = 'BUILD'; updatedAt = (Get-Date).ToUniversalTime().ToString('o'); pid = $PID }
   ($npdevProgress | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $plan.appRoot 'npdev-run-app-progress.json') -Encoding UTF8
 } catch { }
-Set-Location $plan.appRoot
 Write-Host "Building $($plan.appName) at $($plan.appRoot)"
-$env:NPDEV_RUNTIMEHOST_LIBS_DIR = $plan.runtimeHostLibsDir
-# REG-11: pick the OS-appropriate wrapper so this builder runs on Linux/macOS CI too. Mirrors
-# scripts/npdev-common.ps1's Get-NPDevGradleWrapperExecutable inline rather than dot-sourcing that
-# file, which sets `Set-StrictMode -Version Latest` at file scope and would impose strict mode on
-# this legacy builder that was never written for it. Generated apps always ship both wrappers.
-$gradleWrapper = if ($IsWindows) { Join-Path $plan.appRoot 'gradlew.bat' } else { Join-Path $plan.appRoot 'gradlew' }
-& $gradleWrapper --no-daemon --console=plain "-PnpdevRuntimeHostLibsDir=$($plan.runtimeHostLibsDir)" clean build -x test
-if ($LASTEXITCODE -ne 0) { Write-Host 'Build FAILED.' -ForegroundColor Red; exit $LASTEXITCODE }
-$jar = Get-ChildItem -LiteralPath $plan.appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
-       Where-Object { $_.FullName -like '*\build\libs\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
-if ($null -eq $jar) { Write-Host 'Build OK but runnable jar not found.' -ForegroundColor Yellow; exit 1 }
-Write-Host "Build OK. Runnable jar: $($jar.FullName)"
-exit 0
+# OPS-2: ONE build recipe -- the Java-emitted Build-FinalApp.ps1 in this same folder.
+& (Join-Path $PSScriptRoot 'Build-FinalApp.ps1') -SkipTests
+exit $LASTEXITCODE
 '@
 Set-Content -LiteralPath (Join-Path $OpsDir 'Build-App.ps1') -Value $BuildApp -Encoding UTF8
 
@@ -871,24 +800,8 @@ function Ensure-NpdevApiKey {
 
 '@
 
-# R9.4: Start-App.ps1 and Stop-App.ps1 used to be emitted HERE, as this pipeline's own separate
-# PowerShell text blocks -- the duplicate-PID guard, port-conflict guard and log-archiving behaviour
-# existed only on this one pipeline. They are now emitted by OperationalRunbookEmitter itself
-# (startAppScript()/stopAppScript(), called from GeneratorMain before this script ever runs) --
-# but INSIDE the app, at $GeneratedAppRoot\_ops (App\_ops), not here at $OutRoot\_ops. Those are two
-# genuinely different directories (QUAL-3/PORT-2: the Java toolbox lives inside the FinalApp it
-# operates; this pipeline's own $OpsDir is a SIBLING of App, not inside it), so simply deleting this
-# pipeline's copies would leave every caller that invokes '_ops\Start-App.ps1'/'Stop-App.ps1' AT
-# THIS ($OutRoot\_ops) PATH -- Rebuild-And-Restage.ps1 step 4, New-AppConsole.ps1's Start/Stop
-# buttons, Update-AppMetadata.ps1's METADATA_ONLY fast path, $ReissueSuperUserKey below -- pointed at
-# a filename that no longer exists here. Delegating shims close that gap the same way the
-# Run-FinalApp.ps1/Build-FinalApp.ps1 shims below already do: the guard LOGIC lives in exactly one
-# place (the Java-emitted, guarded script inside App\_ops), and every caller of either name, at
-# either path, ends up running it.
-$StartAppShim = "# R9.4: delegates to the guarded launcher OperationalRunbookEmitter emits inside the app itself (duplicate-PID guard, port-conflict guard, restart-safe logs).`n& (Join-Path (Split-Path -Parent `$PSScriptRoot) 'App\_ops\Start-App.ps1') @args`nexit `$LASTEXITCODE`n"
-Set-Content -LiteralPath (Join-Path $OpsDir 'Start-App.ps1') -Value $StartAppShim -Encoding UTF8
-$StopAppShim = "# R9.4: delegates to the guarded stopper OperationalRunbookEmitter emits inside the app itself.`n& (Join-Path (Split-Path -Parent `$PSScriptRoot) 'App\_ops\Stop-App.ps1') @args`nexit `$LASTEXITCODE`n"
-Set-Content -LiteralPath (Join-Path $OpsDir 'Stop-App.ps1') -Value $StopAppShim -Encoding UTF8
+# OPS-2: Start-App.ps1/Stop-App.ps1 are the Java-emitted guarded scripts that already live in this
+# folder (App\_ops). Never write a shim here: it would overwrite them with a script that calls itself.
 
 # SER-P6.4 (Surface 2): sibling of Build-App.ps1/Start-App.ps1 -- same jar-lookup pattern as
 # Start-App.ps1, but runs the jar ONCE in the FOREGROUND (not Start-Process/backgrounded) so this
@@ -1000,20 +913,13 @@ exit 0
 '@
 Set-Content -LiteralPath (Join-Path $OpsDir 'Reissue-SuperUserKey.ps1') -Value $ReissueSuperUserKey -Encoding UTF8
 
-$StatusApp = @'
-$ErrorActionPreference = 'Stop'
-$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
-try { $h = Invoke-RestMethod -Method GET -Uri "$($plan.baseUrl)/actuator/health" -TimeoutSec 3; if ($h.status -eq 'UP') { Write-Host "UP   - $($plan.baseUrl)/actuator/health reports UP" } else { Write-Host "DOWN - $($plan.baseUrl)/actuator/health reports $($h.status)" } }
-catch { Write-Host "DOWN - $($plan.baseUrl)/actuator/health not reachable" }
-exit 0
-'@
-Set-Content -LiteralPath (Join-Path $OpsDir 'Status-App.ps1') -Value $StatusApp -Encoding UTF8
+# Status-App.ps1 is emitted by OperationalRunbookEmitter into this same folder (OPS-2); it exits 1 when DOWN.
 
 # Data-driven smoke test: reads ..\Input\smoke-plan.json if present.
 $TestApp = $ApiKeyProvisioner + @'
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
-$inputRoot = Join-Path (Split-Path -Parent $PSScriptRoot) 'Input'
+$inputRoot = Join-Path $plan.outRoot 'Input'
 $inputDir = Join-Path $inputRoot 'input'
 $base = $plan.baseUrl
 Ensure-NpdevApiKey -AppRoot $plan.appRoot
@@ -1114,17 +1020,23 @@ exit $LASTEXITCODE
 '@
 Set-Content -LiteralPath (Join-Path $OpsDir 'Check-Provenance.ps1') -Value $CheckProvenance -Encoding UTF8
 
-# Make the generator's older convenience scripts delegate to the guarded ops scripts,
-# so running either name (Build-FinalApp.ps1 / Run-FinalApp.ps1) is safe.
-$buildShim = "# Deprecated name -> delegates to the guarded Build-App.ps1 (detects a running app first).`n& (Join-Path `$PSScriptRoot 'Build-App.ps1') @args`nexit `$LASTEXITCODE`n"
-$runShim   = "# Deprecated name -> delegates to Start-App.ps1 (starts the DB environment, guards duplicates).`n& (Join-Path `$PSScriptRoot 'Start-App.ps1') @args`nexit `$LASTEXITCODE`n"
-foreach ($shimPair in @(@('Build-FinalApp.ps1', $buildShim), @('Run-FinalApp.ps1', $runShim))) {
-  $shimTarget = Join-Path $OpsDir $shimPair[0]
-  if (Test-Path -LiteralPath $shimTarget) { Set-Content -LiteralPath $shimTarget -Value $shimPair[1] -Encoding UTF8 }
-}
-
-$OpsReadme = "# $AppId - operations toolbox`n`nAll scripts read app-plan.json and run with no arguments. Port $ServerPort, base http://localhost:$ServerPort.`n`n| Script | Purpose |`n| --- | --- |`n| Build-App.ps1 | gradle clean build -> FinalExec jar |`n| Start-App.ps1 | start in background, wait for /api/flows |`n| Stop-App.ps1 | stop background app |`n| Status-App.ps1 | report up/down |`n| Test-App.ps1 | data-driven smoke (reads Input\smoke-plan.json) |`n| Check-Provenance.ps1 | panel-provenance impact gate against the live bundle (docs/REMEDIATION_PLAN.md R-G1); needs the app running (Start-App.ps1 first) |`n`n``````powershell`n.\Build-App.ps1; .\Start-App.ps1; .\Test-App.ps1; .\Check-Provenance.ps1; .\Stop-App.ps1`n```````n`nREG-111: while a step above is running, `App\npdev-run-app-progress.json` (schemaVersion npdev-run-app-progress.v1: phase/updatedAt/pid) advances GENERATE -> BUILD -> BOOT -> READY -- the same shape and file 'npdev run app' writes, so one 'tail -f' works regardless of which entry point is driving the run. Best-effort only; a stalled file that stops updating for longer than the step normally takes is the 'stuck, not just slow' signal.`n"
+$OpsReadme = "# $AppId - operations toolbox`n`nThis is the ONE toolbox (App\_ops); the sibling _ops folder only forwards old names here. All scripts read app-plan.json / resolved-db-plan.json and run with no arguments. Port $ServerPort, base http://localhost:$ServerPort.`n`n| Script | Purpose |`n| --- | --- |`n| Build-App.ps1 | gradle clean build -> FinalExec jar |`n| Start-App.ps1 | start in background, wait for /api/flows |`n| Stop-App.ps1 | stop background app |`n| Status-App.ps1 | report up/down |`n| Test-App.ps1 | data-driven smoke (reads Input\smoke-plan.json) |`n| Check-Provenance.ps1 | panel-provenance impact gate against the live bundle (docs/REMEDIATION_PLAN.md R-G1); needs the app running (Start-App.ps1 first) |`n`n``````powershell`n.\Build-App.ps1; .\Start-App.ps1; .\Test-App.ps1; .\Check-Provenance.ps1; .\Stop-App.ps1`n```````n`nREG-111: while a step above is running, `App\npdev-run-app-progress.json` (schemaVersion npdev-run-app-progress.v1: phase/updatedAt/pid) advances GENERATE -> BUILD -> BOOT -> READY -- the same shape and file 'npdev run app' writes, so one 'tail -f' works regardless of which entry point is driving the run. Best-effort only; a stalled file that stops updating for longer than the step normally takes is the 'stuck, not just slow' signal.`n"
 Set-Content -LiteralPath (Join-Path $OpsDir 'README.md') -Value $OpsReadme -Encoding UTF8
+
+# OPS-2: the wrapper folder ($OutRoot\_ops) is forwarding-only. Removing its two JSON files is what stops
+# `npdev monitor scan` from listing it as a SECOND app (it matches the resolved-plan discovery rule).
+New-Item -ItemType Directory -Force -Path $LegacyOpsDir | Out-Null
+foreach ($stale in 'resolved-db-plan.json', 'app-plan.json') {
+  Remove-Item -LiteralPath (Join-Path $LegacyOpsDir $stale) -Force -ErrorAction SilentlyContinue
+}
+foreach ($name in @('Build-App.ps1', 'Build-FinalApp.ps1', 'Run-FinalApp.ps1', 'Start-App.ps1', 'Stop-App.ps1',
+                    'Status-App.ps1', 'Test-App.ps1', 'Smoke-Test.ps1', 'Impact-Only.ps1', 'Migrate-Only.ps1',
+                    'Reissue-SuperUserKey.ps1', 'Check-Provenance.ps1', 'Start-Environment.ps1',
+                    'Stop-Environment.ps1', 'Status-Environment.ps1')) {
+  $shim = "# Moved: the toolbox lives in App\_ops. This forwards.`n& (Join-Path (Split-Path -Parent `$PSScriptRoot) 'App\_ops\$name') @args`nexit `$LASTEXITCODE`n"
+  Set-Content -LiteralPath (Join-Path $LegacyOpsDir $name) -Value $shim -Encoding UTF8
+}
+Set-Content -LiteralPath (Join-Path $LegacyOpsDir 'README.md') -Value 'This folder only forwards. The toolbox is ..\App\_ops.' -Encoding UTF8
 
 # ---- emit interactive app-info page (Property/Value table + copy/open) -----
 $companionFiles = @()
