@@ -2080,7 +2080,8 @@ public final class JsonModelParser {
                     readText(gadgetNode, "query"),
                     readText(gadgetNode, "x"),
                     readText(gadgetNode, "y"),
-                    readText(gadgetNode, "series")
+                    readText(gadgetNode, "series"),
+                    readText(gadgetNode, "url")
             ));
         }
         return out;
