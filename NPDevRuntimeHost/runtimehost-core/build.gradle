@@ -167,3 +167,18 @@ tasks.register('verifyNpdevRuntimeHostLibs') {
 tasks.named('compileJava') {
     dependsOn tasks.named('verifyNpdevRuntimeHostLibs')
 }
+
+// AI-8: `npdev acceptance run --in-process` -- procedure-form *.scenario.json run against the compiled
+// model with an in-memory store and stubbed capabilities (no app generate/build/boot). A developer /
+// AI fast path; deliberately not part of any gate.
+tasks.register('runAcceptanceInProcess', JavaExec) {
+    group = 'verification'
+    description = 'Runs procedure-form *.scenario.json in-process (no app generate/build/boot).'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.finalexec.acceptance.InProcessAcceptanceRunner'
+    doFirst {
+        args '--model', project.property('modelPath'),
+             '--scenarios', project.property('scenariosDir'),
+             '--out', project.property('outFile')
+    }
+}

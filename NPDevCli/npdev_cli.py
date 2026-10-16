@@ -1272,7 +1272,8 @@ def _cascade_rename(model: dict, model_path: Path, concept_name: str,
 
 
 def run_migrate_db_lifecycle(args: argparse.Namespace) -> int:
-    """STOR-16: rewrite `schemaLifecycle.strategy: RecreateOnAppStart` to `Ephemeral`.
+    """STOR-16 / ENG-2: rewrite the removed `schemaLifecycle.strategy: RecreateOnAppStart`:
+    InMemory -> `Ephemeral`, a physical engine -> `KeepExistingIfCompatible` (what it really did).
 
     Ships in the same commit as the deprecation, per the standing convention that a breaking change
     to the model DSL, generated code layout or internal APIs carries its `npdev migrate` codemod
@@ -1319,7 +1320,7 @@ def run_migrate_db_lifecycle(args: argparse.Namespace) -> int:
         if result.changed and args.write:
             target.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
-    print(f"{changed} of {len(targets)} definition(s) use the deprecated spelling.")
+    print(f"{changed} of {len(targets)} definition(s) use the removed spelling.")
     print(f"{flagged} of {len(targets)} definition(s) flagged for manual review (see [NOTE] above).")
     if changed and not args.write:
         print("Dry run -- pass --write to apply.")
@@ -2247,9 +2248,9 @@ def run_init(args: argparse.Namespace) -> int:
         f"```\n\n"
         f"(`npdev run app` with no flags looks for `model.json`/`config.json` in the current "
         f"directory and generates the app into a sibling `{target.name}-app` folder.)\n\n"
-        f"Open http://localhost:8080 and use API key `dev-key` (the `dev` profile's built-in "
-        f"convenience credential -- see docs/YOUR_FIRST_APP.md for what that means and why "
-        f"SUPER_USER_KEY.txt is a different, unrelated thing).\n\n"
+        f"Open http://localhost:8080 and paste the API key printed on first boot (it is saved in "
+        f"`{target.name}-app/secrets/api-key.env`). SUPER_USER_KEY.txt is a different key, for "
+        f"/control-panel.html only.\n\n"
         f"## Next\n\n"
         f"Edit `model.json` -- add a field, add a concept -- then `npdev run app` again; it "
         f"regenerates the SAME app in place rather than starting over. See docs/YOUR_FIRST_APP.md "
@@ -2665,9 +2666,10 @@ def run_generate(args: argparse.Namespace) -> None:
         f"Your app is ready:  {final_app_out}\n"
         f"\n"
         f"  1. Build:   cd {final_app_out} && ./gradlew bootJar\n"
-        f"  2. Run:     java -jar build/libs/{jar_name} --spring.profiles.active=dev\n"
-        f"  3. Open:    http://localhost:8080\n"
-        f"  4. Log in:  the key in SUPER_USER_KEY.txt (created in this folder on first start)\n"
+        f"  2. Run:     java -jar build/libs/{jar_name} --spring.profiles.active=dev   (or: npdev run app)\n"
+        f"  3. Open:    http://localhost:8080  -- paste the API key printed on first boot "
+        f"(saved in secrets/api-key.env)\n"
+        f"  4. Admin:   /control-panel.html takes a different key, SUPER_USER_KEY.txt\n"
         f"\n"
         f"  Docker instead? cp .env.example .env && docker compose up\n"
     )
@@ -3033,6 +3035,7 @@ def run_app(args: argparse.Namespace) -> dict:
         # the file this names -- the same file every other launcher on this platform already
         # provisions into, so nothing new is exposed that `secrets/api-key.env` didn't already hold.
         result["apiKeyFile"] = str(final_app_out / "secrets" / "api-key.env")
+        result["openUrl"] = base_url + "/"
         _write_run_app_progress(final_app_out, result["phase"])
         _RUN_APP_CHILD_PROCESS = None  # READY: intentionally leave it running, not this run's to kill
         return result
@@ -6846,11 +6849,10 @@ def run_doctor(args: argparse.Namespace) -> int:
 
     pwsh_path = shutil.which("pwsh")
     if pwsh_path is None:
-        # A5 (Cold Clone Audit 2026-08-28): this used to say "optional, fine for the portable
-        # npdev path" -- but `npdev run app` and `npdev verify --tier T1+` shell out to a generated
-        # app's _ops/*.ps1 toolbox, so a Linux/macOS user told "optional" got a hard "no PowerShell
-        # found" at the moment they tried to run the app they just built. Authoring genuinely needs
-        # no PowerShell; those two do. Say both.
+        # A5 (Cold Clone Audit 2026-08-28) said `npdev run app` shells out to the _ops/*.ps1
+        # toolbox. OPS-4: that is false -- run_app runs gradlew and `java -jar` directly and has no
+        # pwsh/.ps1 call. What does need PowerShell is `npdev verify --tier T1+` and a generated
+        # app's own _ops/*.ps1 toolbox (which has *.sh twins). Authoring needs none.
         #
         # D2 (Cold Clone Audit, same item): `npdev db *` is deliberately NOT listed here any more --
         # OperationalRunbookEmitter now emits a POSIX `.sh` twin of every _ops/*.ps1 script, and
@@ -6858,16 +6860,16 @@ def run_doctor(args: argparse.Namespace) -> int:
         # test_db_operation_posix_fallback.py). Keeping the old wording after that fallback shipped
         # would be exactly the false-pessimism this line exists to avoid in the other direction.
         checks.append(_check(
-            "pwsh-present", "PowerShell 7", "warn", expected="required to run an app on this OS",
-            detail="PowerShell 7 (pwsh) not found. Authoring (validate/generate/init) needs no "
-                   "PowerShell, and `npdev db *` now falls back to a POSIX script when none is "
-                   "found -- but `npdev run app` and `npdev verify --tier T1+` still shell out to "
-                   "the generated app's _ops/*.ps1 toolbox and will fail without it.",
+            "pwsh-present", "PowerShell 7", "warn", expected="needed for verify --tier T1+ and _ops/*.ps1",
+            detail="PowerShell 7 (pwsh) not found. Authoring and `npdev run app` need no "
+                   "PowerShell, and `npdev db *` falls back to POSIX scripts -- but "
+                   "`npdev verify --tier T1+` and the app's _ops/*.ps1 toolbox (use the *.sh "
+                   "twins instead) do.",
             fix="Install PowerShell 7: https://aka.ms/powershell",
         ))
     else:
         checks.append(_check("pwsh-present", "PowerShell 7", "pass", found=pwsh_path,
-                             expected="required to run an app on this OS"))
+                             expected="needed for verify --tier T1+ and _ops/*.ps1"))
 
     checks.extend(_database_checks(getattr(args, "app", None)))
     checks.append(_scrapforai_check())
@@ -7422,7 +7424,17 @@ def _run_one_scenario(base_url: str, scenario: dict, filename: str, api_key: str
                      "assertions": [], "error": None}
     auth_headers = {"X-Api-Key": api_key} if api_key else {}
 
+    # AI-8: a procedure/flow-form scenario (when.procedure / when.flow, no when.path) has no HTTP
+    # shape -- it only runs under `acceptance run --in-process`. Reported, never a KeyError.
+    if "path" not in (scenario.get("when") or {}):
+        result["outcome"] = "SKIPPED"
+        result["error"] = "in-process scenario -- run with --in-process"
+        return result
+
     for given in scenario.get("given", []):
+        if "path" not in given:
+            result["error"] = "given[] entry has no 'path' (concept-seeded rows are in-process only)"
+            return result
         seed_path = given["path"]
         for row in given.get("rows", []):
             body = json.dumps(row).encode("utf-8")
@@ -7472,6 +7484,32 @@ def _run_one_scenario(base_url: str, scenario: dict, filename: str, api_key: str
     return result
 
 
+def _resolve_acceptance_api_key(explicit: str | None, key_file: str | None) -> str | None:
+    """OPS-4: the X-Api-Key acceptance scenarios send. An explicit value wins (an empty string
+    means 'send no header' and is kept as-is); otherwise the first mapping in the boot phase's
+    secrets/api-key.env (``NPDEV_AUTH_API_KEYS=<key>=<user>:<roles>``); otherwise None."""
+    if explicit is not None:
+        return explicit
+    if key_file and Path(key_file).exists():
+        for raw_line in Path(key_file).read_text(encoding="utf-8-sig").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            _, mapping = line.split("=", 1)
+            if mapping:
+                return mapping.split("=", 1)[0]
+            break
+    return None
+
+
+def _run_app_human_hint(result: dict) -> str | None:
+    """OPS-1: the one human line `npdev run app` prints (to stderr) after its JSON -- where to log
+    in. None unless the app is READY. Never contains the key itself, only the file that holds it."""
+    if not result.get("ok") or not result.get("openUrl"):
+        return None
+    return f"Open {result['openUrl']} -- paste the X-Api-Key from {result.get('apiKeyFile')}"
+
+
 def run_acceptance(args: argparse.Namespace) -> dict:
     """Move 10 D2 (LC-D2): boots via D1 (run_app), then runs every *.scenario.json under
     --scenarios against the live app. Unapproved scenarios still execute (informational -- an
@@ -7483,11 +7521,20 @@ def run_acceptance(args: argparse.Namespace) -> dict:
     -- for a caller (e.g. the T1 fast gate) that already paid for a generate+build+boot cycle for
     its own smoke check and does not want a SECOND one just to add behavioural assertions.
     --model/--config/--output are meaningless in that mode and are not required.
+
+    AI-8: --in-process (getattr, same reason) runs the procedure-form scenarios against the compiled
+    model in a JVM with an in-memory store -- no generate/build/boot; see _run_acceptance_in_process.
     """
+    if getattr(args, "in_process", False):
+        return _run_acceptance_in_process(args)
     base_url = getattr(args, "base_url", None)
     if base_url:
         boot_result = {"ok": True, "baseUrl": base_url, "skipped": "boot skipped -- --base-url was supplied"}
-        api_key = getattr(args, "api_key", "dev-key")
+        api_key = getattr(args, "api_key", None)
+        if api_key is None:
+            raise CliError(
+                "acceptance run --base-url needs --api-key (the app's X-Api-Key; it is in "
+                "<app>/secrets/api-key.env)")
     else:
         if not (args.model and args.config and args.output):
             raise CliError("acceptance run: --model/--config/--output are required unless --base-url is given.")
@@ -7509,46 +7556,118 @@ def run_acceptance(args: argparse.Namespace) -> dict:
                 "summary": {"total": 0, "approvedTotal": 0, "passed": 0, "failed": 0, "excludedUnapproved": 0},
             }
         base_url = boot_result["baseUrl"]
-        api_key = getattr(args, "api_key", "dev-key")
         # T1/C2 removed the 'dev' profile's fixed admin key -- StartupValidator now refuses to boot
         # without one supplied externally, so run_app's own BOOT phase already provisioned (or
         # reused) a real per-app credential via ensure_api_key and named its file as apiKeyFile.
-        # The CLI's static --api-key default ("dev-key") can never match a freshly generated key
-        # anymore, so read that SAME file here instead of trusting the default -- guarded by
-        # existence (never present on the mocked run_app() unit tests) so nothing here writes to
-        # disk, only reads what BOOT already wrote. Found live while proving npdev_close_loop end
-        # to end (P7.2): every scenario failed with HTTP 401 invalid_api_key against a freshly
-        # generated app before this fix, because this line still hard-coded the pre-C2 key.
-        key_file = boot_result.get("apiKeyFile")
-        if key_file and Path(key_file).exists():
-            for raw_line in Path(key_file).read_text(encoding="utf-8").splitlines():
-                line = raw_line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                _, mapping = line.split("=", 1)
-                if mapping:
-                    api_key = mapping.split("=", 1)[0]
-                break
+        # An explicit --api-key wins; otherwise read that SAME file (OPS-4: the old static
+        # "dev-key" default could not be told apart from an explicit value, so it overrode it).
+        api_key = _resolve_acceptance_api_key(getattr(args, "api_key", None), boot_result.get("apiKeyFile"))
     scenarios_dir = Path(args.scenarios).expanduser().resolve()
     scenario_files = sorted(scenarios_dir.glob("*.scenario.json"))
     results = [
         _run_one_scenario(base_url, json.loads(sf.read_text(encoding="utf-8")), sf.name, api_key)
         for sf in scenario_files
     ]
-    approved = [r for r in results if r["approved"]]
+    return {
+        "schemaVersion": "npdev-acceptance-report.v1",
+        "baseUrl": base_url,
+        "boot": boot_result,
+        **_acceptance_verdict(results, boot_result.get("ok", False)),
+    }
+
+
+def _acceptance_verdict(results: list[dict], boot_ok: bool) -> dict:
+    """ok/scenarios/summary for a list of per-scenario results. SKIPPED scenarios (the other
+    execution mode's) are counted under 'skipped' and, like unapproved ones, never affect pass/fail."""
+    ran = [r for r in results if r["outcome"] != "SKIPPED"]
+    approved = [r for r in ran if r["approved"]]
     passed = sum(1 for r in approved if r["outcome"] == "PASS")
     failed = len(approved) - passed
     return {
-        "schemaVersion": "npdev-acceptance-report.v1",
-        "ok": failed == 0 and boot_result.get("ok", False),
-        "baseUrl": base_url,
-        "boot": boot_result,
+        "ok": failed == 0 and boot_ok,
         "scenarios": results,
         "summary": {
             "total": len(results), "approvedTotal": len(approved),
-            "passed": passed, "failed": failed, "excludedUnapproved": len(results) - len(approved),
+            "passed": passed, "failed": failed, "excludedUnapproved": len(ran) - len(approved),
+            "skipped": len(results) - len(ran),
         },
     }
+
+
+def _run_acceptance_in_process(args: argparse.Namespace) -> dict:
+    """AI-8: `acceptance run --in-process`. Procedure-form scenarios (when.procedure) run against the
+    compiled model through runtimehost-core's InProcessAcceptanceRunner (the SAME ProcedureRunner a
+    generated app uses, an in-memory store, capability answers stubbed from the scenario) -- seconds,
+    no generate/build/boot. The JVM only OBSERVES ({ok, result, concepts, ...}); the `then` assertions
+    are evaluated here by _eval_assertion, so there is one assertion grammar for both modes. HTTP
+    scenarios (when.path) are SKIPPED; flow scenarios report ERROR (not supported in-process yet)."""
+    if not args.model:
+        raise CliError("acceptance run --in-process: --model is required.")
+    model = Path(args.model).expanduser().resolve()
+    scenarios_dir = Path(args.scenarios).expanduser().resolve()
+    if not model.is_file():
+        raise CliError(f"acceptance run --in-process: model not found: {model}")
+    if not scenarios_dir.is_dir():
+        raise CliError(f"acceptance run --in-process: scenarios directory not found: {scenarios_dir}")
+
+    build_root = _ai_build_root()
+    libs_dir = _default_runtimehost_libs_dir() or (build_root / "runtimehost-libs")
+    core_root = repo_root() / "NPDevRuntimeHost" / "runtimehost-core"
+    wrapper = gradle_wrapper(core_root)
+    if not wrapper.exists():
+        raise CliError(f"runtimehost-core Gradle wrapper not found: {wrapper}")
+    out_file = build_root / "npdev-acceptance" / f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}-observed.json"
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+
+    command = [
+        str(wrapper), "runAcceptanceInProcess",
+        f"-PmodelPath={model}", f"-PscenariosDir={scenarios_dir}", f"-PoutFile={out_file}",
+        f"-PnpdevBuildRoot={build_root}", f"-PnpdevRuntimeHostLibsDir={libs_dir}",
+        *gradle_project_cache_args("runtimehost-core"), "--console=plain", "-q",
+    ]
+    if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+        command = ["cmd.exe", "/c"] + command
+    completed = subprocess.run(command, cwd=core_root, capture_output=True, text=True)
+    boot = {"ok": completed.returncode == 0 and out_file.is_file(), "skipped": "in-process",
+            "observedFile": str(out_file)}
+    if not boot["ok"]:
+        boot["error"] = ((completed.stderr or "") + (completed.stdout or "")).strip()[-2000:] or \
+            f"runAcceptanceInProcess exited {completed.returncode} without writing {out_file}"
+        return {
+            "schemaVersion": "npdev-acceptance-report.v1", "ok": False, "boot": boot, "scenarios": [],
+            "summary": {"total": 0, "approvedTotal": 0, "passed": 0, "failed": 0,
+                        "excludedUnapproved": 0, "skipped": 0},
+        }
+
+    observed_rows = {row["file"]: row for row in
+                     json.loads(out_file.read_text(encoding="utf-8")).get("scenarios", [])}
+    results = []
+    for scenario_file in sorted(scenarios_dir.glob("*.scenario.json")):
+        scenario = json.loads(scenario_file.read_text(encoding="utf-8"))
+        result = {"name": scenario.get("name", scenario_file.name), "file": scenario_file.name,
+                  "approved": bool(scenario.get("approved", False)), "outcome": "ERROR",
+                  "assertions": [], "error": None}
+        row = observed_rows.get(scenario_file.name)
+        if row is None:
+            result["error"] = "the in-process runner reported nothing for this scenario"
+        elif "skipped" in row:
+            result["outcome"] = "SKIPPED"
+            result["error"] = row["skipped"]
+        elif "error" in row:
+            result["error"] = row["error"]
+        else:
+            all_passed = True
+            try:
+                for assertion in scenario.get("then", []):
+                    evaluated = _eval_assertion(row["observed"], assertion)
+                    result["assertions"].append(evaluated)
+                    all_passed = all_passed and evaluated["passed"]
+                result["outcome"] = "PASS" if all_passed else "FAIL"
+            except (ValueError, KeyError) as exc:
+                result["error"] = f"assertion could not be evaluated: {exc}"
+        results.append(result)
+    return {"schemaVersion": "npdev-acceptance-report.v1", "boot": boot,
+            **_acceptance_verdict(results, True)}
 
 
 # ---------------------------------------------------------------------------
@@ -7606,7 +7725,7 @@ def run_closed_loop(args: argparse.Namespace) -> dict:
         require_db_definition=getattr(args, "require_db_definition", False),
         port=args.port, timeout=args.timeout, profile=getattr(args, "profile", "dev"),
         baseline_model=args.previous, keep_running=getattr(args, "keep_running", False),
-        scenarios=args.scenarios, api_key=getattr(args, "api_key", "dev-key"),
+        scenarios=args.scenarios, api_key=getattr(args, "api_key", None),
     )
     acceptance_report = run_acceptance(acceptance_args)
     report["run"] = acceptance_report.get("boot")
@@ -8049,9 +8168,14 @@ def _acceptance_layer(app_record: dict) -> dict:
         return layer
 
     layer["scenariosDir"] = str(chosen)
+    api_key = app_record.get("apiKey")
+    if api_key is None:
+        layer.update(status="empty", green=None, detail=(
+            "no API key known for this app yet -- start it once so secrets/api-key.env exists"))
+        return layer
     report = run_acceptance(argparse.Namespace(
         base_url=app_record["probeBaseUrl"], scenarios=str(chosen),
-        api_key=app_record.get("apiKey") or "dev-key",
+        api_key=api_key,
         model=None, config=None, output=None, port=None, timeout=None,
     ))
     layer["report"] = report
@@ -13938,9 +14062,13 @@ def run_host_check(args: argparse.Namespace) -> int:
     deployed app has no local files this process can read."""
     import npdev_host
 
-    app_dir = Path(args.app).expanduser().resolve()
-    as_json = bool(getattr(args, "json", False))
     remote = getattr(args, "target", None)
+    if not remote and not getattr(args, "app", None):
+        raise CliError("npdev host check needs --app <dir> (local check) or --target <url> (deployed app)")
+    if remote and getattr(args, "fix", False):
+        raise CliError("--fix applies to a local app only")
+    app_dir = Path(args.app).expanduser().resolve() if getattr(args, "app", None) else Path(".").resolve()
+    as_json = bool(getattr(args, "json", False))
 
     if remote:
         changes, findings = [], npdev_host.run_checks(app_dir, plan={}, remote=remote)
@@ -15989,8 +16117,9 @@ def build_parser() -> argparse.ArgumentParser:
     # a server-engine definition with no database.externallyProvisioned declared at all.
     migrate_db_lifecycle = migrate_sub.add_parser(
         "db-lifecycle",
-        help="Rewrite deprecated schemaLifecycle.strategy=RecreateOnAppStart to Ephemeral, and flag "
-             "a server-engine definition missing database.externallyProvisioned.",
+        help="Rewrite the removed schemaLifecycle.strategy=RecreateOnAppStart (InMemory -> Ephemeral, "
+             "physical engine -> KeepExistingIfCompatible), and flag a server-engine definition "
+             "missing database.externallyProvisioned.",
     )
     migrate_db_lifecycle.add_argument(
         "--input", required=True, nargs="+",
@@ -16610,6 +16739,15 @@ def build_parser() -> argparse.ArgumentParser:
              "reusing its own canary boot) and does not want a second generate+build+boot cycle. "
              "When given, --model/--config/--output are not required and are ignored.",
     )
+    acceptance_run.add_argument(
+        "--in-process", action="store_true",
+        help="Run procedure-form scenarios (when.procedure, given[].concept rows, stubs{capability.operation}) "
+             "against the compiled --model in-process: in-memory store, the app's own ProcedureRunner, "
+             "stubbed capability answers -- no generate/build/boot (seconds). Seed rows bypass invariants and "
+             "permissions (like a DB fixture); the procedure's own writes are validated. HTTP scenarios "
+             "(when.path) are SKIPPED; flow scenarios (when.flow) report ERROR. Only --model and "
+             "--scenarios are needed.",
+    )
     acceptance_run.add_argument("--model", required=False)
     acceptance_run.add_argument("--config", required=False)
     acceptance_run.add_argument("--output", required=False)
@@ -16622,9 +16760,9 @@ def build_parser() -> argparse.ArgumentParser:
     acceptance_run.add_argument("--timeout", type=int, default=420)
     acceptance_run.add_argument("--profile", default="dev")
     acceptance_run.add_argument(
-        "--api-key", default="dev-key",
-        help="X-Api-Key header value used for every seed/when HTTP call (default 'dev-key', which "
-             "the 'dev' profile maps to a developer/admin identity). Empty string sends no header.",
+        "--api-key", default=None,
+        help="X-Api-Key for every seed/when call. Default: the key in <output>/secrets/api-key.env "
+             "written by the boot phase. Required with --base-url. Empty string sends no header.",
     )
     acceptance_run.add_argument("--baseline-model")
     acceptance_run.add_argument("--keep-running", action="store_true")
@@ -16648,7 +16786,9 @@ def build_parser() -> argparse.ArgumentParser:
     loop_run.add_argument("--port", type=int, default=8080)
     loop_run.add_argument("--timeout", type=int, default=420)
     loop_run.add_argument("--profile", default="dev")
-    loop_run.add_argument("--api-key", default="dev-key")
+    loop_run.add_argument("--api-key", default=None,
+                          help="X-Api-Key for acceptance scenarios. Default: the key the boot phase "
+                               "provisioned in <output>/secrets/api-key.env.")
     loop_run.add_argument("--keep-running", action="store_true")
 
     # Wave 7.1: headless eval harness over NPDevSamples/ai-scenarios/*/. Reuses
@@ -16870,7 +17010,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="What would a real user hit right now? Every finding states the consequence before "
              "the property, and --fix repairs whatever it safely can.",
     )
-    host_check.add_argument("--app", required=True)
+    host_check.add_argument("--app", default=None,
+                            help="a generated NPDev app directory (not needed with --target)")
     host_check.add_argument("--fix", action="store_true")
     host_check.add_argument("--target", default=None, help="check a deployed URL instead of the local app")
     host_check.add_argument("--json", action="store_true")
@@ -17653,6 +17794,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "run" and args.run_command == "app":
             result = run_app(args)
             print(json.dumps(result, indent=2))
+            # OPS-1: stdout stays pure JSON (the Manager and MCP parse it); the human hint goes to stderr.
+            hint = _run_app_human_hint(result)
+            if hint:
+                print(hint, file=sys.stderr)
             # Matches the platform's established run_cli convention (0 = fully ok, 2 = ran fine and
             # reported a real, structured problem -- never exit 1 for a diagnosed failure, only for
             # a genuinely unexpected exception, which the except clauses below still catch).

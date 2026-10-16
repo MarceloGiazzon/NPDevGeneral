@@ -5,6 +5,20 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-16 — `schemaLifecycle.strategy: RecreateOnAppStart` is removed (was deprecated 2026-08-18, STOR-16)
+
+**What changes.** Generation now refuses the old spelling with an error that names the fixing
+command, instead of accepting it as an alias of `Ephemeral`. The 2026-08-18 entry's promise that it
+is "warned about" was never wired to anything. The runtime never treats the old spelling as a wipe
+any more: a manifest baked by an older generator that still carries it boots as
+`KeepExistingIfCompatible` (what it always did) with a console warning, and no table is dropped.
+
+**Who is affected.** Any `db.definition.json` still saying `RecreateOnAppStart`.
+
+**Codemod.** `npdev migrate db-lifecycle --input <dir> --write` rewrites it: InMemory definitions
+(or ones already carrying the `Ephemeral` confirmation) become `Ephemeral`, physical engines become
+`KeepExistingIfCompatible`, with a note explaining how to opt in to `Ephemeral` deliberately.
+
 ## 2026-10-12 — `panelLayout.type` accepts only `table` and `grid`
 
 **What changes.** A panel's `layout.type` used to accept `form`, `table`, `detail`, `dashboard`,

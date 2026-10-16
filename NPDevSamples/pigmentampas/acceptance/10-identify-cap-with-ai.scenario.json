@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "npdev-acceptance-scenario.v1",
+  "name": "IdentifyCapWithAi returns the stubbed vision answer unchanged as the proposal",
+  "approved": true,
+  "given": [
+    {
+      "concept": "Cap",
+      "rows": [
+        { "id": "cap-1", "label": "Silver Star", "status": "SUBMITTED" }
+      ]
+    }
+  ],
+  "stubs": {
+    "externalAi.generate": { "dominantColor": "#C0C0C0", "finish": "METALLIC", "tags": "silver, star" }
+  },
+  "when": {
+    "procedure": "IdentifyCapWithAi",
+    "input": { "label": "Silver Star" },
+    "roles": ["Curator"]
+  },
+  "then": [
+    { "path": "$.ok", "equals": true },
+    { "path": "$.result.finish", "equals": "METALLIC" },
+    { "path": "$.concepts.Cap[*].status", "allEqual": "SUBMITTED" }
+  ]
+}

@@ -88,8 +88,9 @@ cd ../my-library-app
 java -jar build/libs/FinalExec-0.1.0.jar --spring.profiles.active=dev
 ```
 
-Open **http://localhost:8080**. The `dev` profile ships a fixed convenience key for exactly this
-moment — type **`dev-key`** into the API Key field on the page that greets you.
+Open **http://localhost:8080**. The first boot generates an admin API key, prints it once in the
+console and saves it to `secrets/api-key.env` in the app folder. Paste it into the API Key field on
+the page that greets you.
 
 **You should see Book and Member as real screens** — list, create, edit — with a database and a
 REST API behind them. (There is a second, separate key file — `SUPER_USER_KEY.txt` — but that is

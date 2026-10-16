@@ -1,6 +1,7 @@
 package com.npdev.dsl.v1.validation;
 
 import com.npdev.dsl.v1.ast.CapabilityAst;
+import com.npdev.dsl.v1.compiled.CronSchedules;
 import com.npdev.dsl.v1.ast.ConceptAccessAst;
 import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
@@ -142,7 +143,7 @@ final class FlowValidation {
             errors.add("Flow " + flow.getName() + ": schedule.cron must not be blank");
             return;
         }
-        int fieldCount = cron.trim().split("\\s+").length;
+        int fieldCount = CronSchedules.fieldCount(cron);
         if (fieldCount != 5 && fieldCount != 6) {
             errors.add("Flow " + flow.getName() + ": schedule.cron must have 5 or 6 space-separated fields, got "
                     + fieldCount + " (\"" + cron + "\")");
