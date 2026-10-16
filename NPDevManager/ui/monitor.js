@@ -599,7 +599,11 @@ function infoRow(record, probe) {
   // the page still advertises the default, rather than silently replacing one string with another.
   if (probe.apiKey && probe.authHeader && String(record.value || "").startsWith(probe.authHeader + ":")) {
     const advertised = String(record.value).slice(probe.authHeader.length + 1).trim();
-    if (advertised !== probe.apiKey) {
+    // OPS-1: info.html now advertises a placeholder ("<key from secrets/api-key.env>"), not a
+    // fixed default, so there is nothing stale to point out; show the app's own key plainly.
+    if (advertised.startsWith("<")) {
+      value = `${probe.authHeader}: ${probe.apiKey}`;
+    } else if (advertised !== probe.apiKey) {
       value = `${probe.authHeader}: ${probe.apiKey}   (info.html still advertises "${advertised}")`;
     }
   }
