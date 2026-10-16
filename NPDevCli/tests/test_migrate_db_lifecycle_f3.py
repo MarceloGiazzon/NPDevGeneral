@@ -80,9 +80,44 @@ class MigrateDbLifecycleF3Test(unittest.TestCase):
         result = migrate_db_definition(doc)
 
         self.assertTrue(result.changed)
-        self.assertEqual("Ephemeral", doc["schemaLifecycle"]["strategy"])
+        self.assertEqual("KeepExistingIfCompatible", doc["schemaLifecycle"]["strategy"])
         f3_notes = [n for n in result.ambiguities if "externallyProvisioned" in n]
         self.assertEqual(1, len(f3_notes), result.ambiguities)
+
+    def test_physical_recreate_on_app_start_becomes_keep_existing(self):
+        """ENG-2: on a physical engine the removed spelling never dropped anything, so the faithful
+        rewrite is KeepExistingIfCompatible (never Ephemeral, which would start wiping data)."""
+        doc = _definition("H2Server", externallyProvisioned=False)
+        doc["schemaLifecycle"]["strategy"] = "RecreateOnAppStart"
+
+        result = migrate_db_definition(doc)
+
+        self.assertTrue(result.changed)
+        self.assertEqual("KeepExistingIfCompatible", doc["schemaLifecycle"]["strategy"])
+        self.assertEqual(1, len(result.ambiguities), result.ambiguities)
+        self.assertIn("H2Server", result.ambiguities[0])
+        self.assertIn("what RecreateOnAppStart actually did", result.ambiguities[0])
+
+    def test_inmemory_recreate_on_app_start_becomes_ephemeral(self):
+        doc = _definition("InMemory")
+        doc["schemaLifecycle"]["strategy"] = "RecreateOnAppStart"
+
+        result = migrate_db_definition(doc)
+
+        self.assertTrue(result.changed)
+        self.assertEqual("Ephemeral", doc["schemaLifecycle"]["strategy"])
+        self.assertEqual([], result.ambiguities)
+
+    def test_physical_recreate_on_app_start_with_ephemeral_confirmation_becomes_ephemeral(self):
+        doc = _definition("H2Server", externallyProvisioned=False)
+        doc["schemaLifecycle"]["strategy"] = "RecreateOnAppStart"
+        doc["schemaLifecycle"]["destructiveRecreateConfirmation"] = (
+            "I_UNDERSTAND_ALL_DATA_IS_DELETED_ON_EVERY_START")
+
+        result = migrate_db_definition(doc)
+
+        self.assertEqual("Ephemeral", doc["schemaLifecycle"]["strategy"])
+        self.assertEqual([], result.ambiguities)
 
     def test_non_db_definition_documents_are_left_alone(self):
         result = migrate_db_definition({"not": "a db definition"})

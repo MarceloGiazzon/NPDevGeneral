@@ -93,9 +93,10 @@ public final class InfoPageEmitter extends AbstractEmitter {
         records.add(url("URLs", "Agent Prompter", "/agent-prompter.html"));
         records.add(url("URLs", "App tree", "/app-tree.html"));
         records.add(url("URLs", "Info page (this page)", "/info.html"));
-        // The header NAME plus the development default, which the generated UI manifest already
-        // publishes. Not the app's real key: this file is served unauthenticated.
-        records.add(literal("URLs", "API key header", "X-Api-Key: dev-key", false));
+        // OPS-1: the header NAME plus where the key lives -- never a key value. There is no fixed
+        // dev credential any more (T1/C2); the first boot generates one into secrets/api-key.env.
+        // This file is served unauthenticated, so the real key must never appear here.
+        records.add(literal("URLs", "API key header", "X-Api-Key: <key from secrets/api-key.env>", false));
 
         records.add(url("Monitoring", "Health", "/actuator/health"));
         // AMBIGUOUS row settled (helpers/info-field-partition.md): a ROUTE is generated; a COUNT

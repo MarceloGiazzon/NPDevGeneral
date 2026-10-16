@@ -9,8 +9,10 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Direct coverage of the two public entry points ({@code evaluate}/{@code evaluateStrict}) --
@@ -42,9 +44,15 @@ class ValueExpressionEvaluatorTest {
     void evaluateDispatchesEverySpecialFormAndFallsBackToRawTextWhenUnparseable() {
         assertNull(ValueExpressionEvaluator.evaluate(null, Map.of()));
         assertNull(ValueExpressionEvaluator.evaluate("  ", Map.of()));
-        assertEquals(Instant.EPOCH.toString(), ValueExpressionEvaluator.evaluate("now()", Map.of()));
-        assertEquals(UUID.nameUUIDFromBytes("npdev-deterministic-concept-default".getBytes()).toString(),
-                ValueExpressionEvaluator.evaluate("uuid()", Map.of()));
+        Instant before = Instant.now();
+        Instant stamped = Instant.parse((String) ValueExpressionEvaluator.evaluate("now()", Map.of()));
+        assertTrue(!stamped.isBefore(before.minusSeconds(5)) && stamped.isBefore(Instant.now().plusSeconds(5)),
+                "now() must be the real current time, got " + stamped);
+        String firstUuid = (String) ValueExpressionEvaluator.evaluate("uuid()", Map.of());
+        String secondUuid = (String) ValueExpressionEvaluator.evaluate("uuid()", Map.of());
+        assertEquals(firstUuid, UUID.fromString(firstUuid).toString());
+        assertEquals(secondUuid, UUID.fromString(secondUuid).toString());
+        assertNotEquals(firstUuid, secondUuid);
         assertEquals("alpha", ValueExpressionEvaluator.evaluate("$name", Map.of("name", "alpha")));
         assertEquals("draft", ValueExpressionEvaluator.evaluate("'draft'", Map.of()));
         assertEquals(true, ValueExpressionEvaluator.evaluate("true", Map.of()));

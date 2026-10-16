@@ -39,6 +39,10 @@ final class CompensationRunner {
     static final String COMPENSATION_ERROR_KIND_KEY = "__npdev_compensationErrorKind__";
     static final String COMPENSATION_ERROR_CODE_KEY = "__npdev_compensationErrorCode__";
     static final String COMPENSATION_ERROR_MESSAGE_KEY = "__npdev_compensationErrorMessage__";
+    /** PROC-8: how many {@code onFailure} blocks ran (best-effort: a block that threw still counts).
+     * Deliberately NOT cleared by {@link #finalizeCompensatedFailure} -- it is the durable record
+     * a settled instance keeps so the execution card can say COMPENSATED. Absent when none ran. */
+    static final String COMPENSATED_COUNT_KEY = "__npdev_compensatedSteps__";
 
     /** Whether any top-level step in this flow declares compensation -- lets every failure path
      * skip compensation entirely (zero extra durable writes, zero behavior change) for the vast
@@ -107,6 +111,9 @@ final class CompensationRunner {
                             step.getName(), flow.getName(), executionId, compensationException.getMessage()
                     ));
                 }
+                // Count BEFORE the per-step checkpoint below, so a crash-resume never double counts.
+                Object previous = state.get(COMPENSATED_COUNT_KEY);
+                state.put(COMPENSATED_COUNT_KEY, (previous instanceof Number number ? number.intValue() : 0) + 1);
             }
             state.put(COMPENSATION_NEXT_INDEX_KEY, index - 1);
             FlowInstance checkpoint = currentInstance[0].markRunning(currentInstance[0].currentStepIndex(), state, KernelRunner.nowEpochMillis());

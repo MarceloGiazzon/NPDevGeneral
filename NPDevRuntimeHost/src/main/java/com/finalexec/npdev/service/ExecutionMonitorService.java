@@ -212,6 +212,7 @@ public class ExecutionMonitorService {
                 nestedValue(directExecution, "result", "error")
         ));
         item.put("compensationStatus", compensationStatus(execution));
+        item.put("compensatedSteps", compensatedSteps(execution));
         item.put("directExecutionReference", stringValue(directExecution.get("directExecutionReference")));
         item.put("governanceReference", stringValue(nestedValue(directExecution, "governanceRecord", "governanceReference")));
         item.put("detailPath", "/api/executions/" + execution.executionId());
@@ -227,10 +228,11 @@ public class ExecutionMonitorService {
      * declared {@code onFailure} compensation steps. {@code "__npdev_compensating__"} mirrors
      * {@code KernelRunner}'s own private reserved flow-state key (not importable -- it's an
      * internal detail of the execution engine, this is just reading the same durable marker back).
-     * {@code COMPENSATING} means a crash left compensation mid-run (see
-     * docs/architecture/FLOW_TRANSACTION_CONTRACT.md); a normal in-process failure always finishes
-     * compensating (or decides there's nothing to compensate) before the execution is persisted as
-     * terminal, so callers reading a fully-settled execution will only ever see NONE or COMPENSATED.
+     * {@code COMPENSATING} means compensation is mid-run (see
+     * docs/architecture/FLOW_TRANSACTION_CONTRACT.md); {@code COMPENSATED} means the execution is
+     * FAILED/FAILED_PERMANENT/STUCK and at least one {@code onFailure} block ran (PROC-8: the
+     * durable {@code "__npdev_compensatedSteps__"} count, written by {@code CompensationRunner});
+     * everything else, including executions that failed before PROC-8 existed, is {@code NONE}.
      */
     private static String compensationStatus(FlowInstance execution) {
         Object marker = execution.state() == null ? null : execution.state().get("__npdev_compensating__");
@@ -239,7 +241,13 @@ public class ExecutionMonitorService {
         }
         String status = execution.status() == null ? "" : execution.status().name();
         boolean terminalFailure = "FAILED".equals(status) || "FAILED_PERMANENT".equals(status) || "STUCK".equals(status);
-        return terminalFailure ? "COMPENSATED_OR_NONE" : "NONE";
+        return terminalFailure && compensatedSteps(execution) > 0 ? "COMPENSATED" : "NONE";
+    }
+
+    /** PROC-8: number of {@code onFailure} blocks that ran, from the durable flow-state counter. */
+    private static int compensatedSteps(FlowInstance execution) {
+        Object count = execution.state() == null ? null : execution.state().get("__npdev_compensatedSteps__");
+        return count instanceof Number number ? number.intValue() : 0;
     }
 
     private List<Map<String, Object>> recommendedActions(

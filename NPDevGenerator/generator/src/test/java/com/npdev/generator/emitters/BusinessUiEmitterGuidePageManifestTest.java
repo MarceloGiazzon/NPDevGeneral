@@ -121,6 +121,31 @@ public class BusinessUiEmitterGuidePageManifestTest {
     }
 
     @Test
+    void pageFragmentGadgetUrlReachesTheManifest() throws Exception {
+        CompiledModel model = compile("""
+                {
+                  "namespace": "guidepage.manifest.demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
+                  ],
+                  "guidePages": [
+                    {
+                      "name": "Default",
+                      "default": true,
+                      "regions": { "right": { "enabled": true } },
+                      "gadgets": [ { "name": "help", "type": "page-fragment", "title": "Help", "url": "/npdev-help/x.html" } ]
+                    }
+                  ]
+                }
+                """);
+
+        String manifest = emitAndReadManifest(model, new SettingResolver(SettingStore.empty()));
+        assertTrue(manifest.contains("\"url\" : \"/npdev-help/x.html\""), manifest);
+    }
+
+    @Test
     void frameModeMinimalMapsToBuiltinMinimalGuidePage() throws Exception {
         CompiledModel model = compile("""
                 {

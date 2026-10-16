@@ -133,9 +133,9 @@ cd NPDevSamples\simple-contact-intake\Output\App
 java -jar build\libs\FinalExec-0.1.0.jar --spring.profiles.active=dev --server.port=8080
 ```
 
-`--spring.profiles.active=dev` is required, not optional: an un-profiled boot lands on Spring's own
-reserved `default` profile instead, which seeds no API key at all, and the app refuses to start
-(`npdev.auth.api-keys must define at least one mapping when auth is enabled`).
+On first boot the app generates an admin API key, prints it once in the console and saves it to
+`secrets/api-key.env` in the app folder (a later boot reuses that file). You need it in step 4. Only the
+`prod` profile refuses to start without a key you supply yourself.
 
 The cross-platform CLI equivalent produces the same buildable app tree — use `./npdev` on
 Linux/macOS, `npdev.bat` on Windows, and point `--output` at a directory **outside the repo** (per
@@ -154,13 +154,13 @@ the request body in a file and post that:
 
 ```sh
 echo '{"name":"Ada","email":"ada@example.test","message":"Hello","status":"New"}' > body.json
-curl -s -X POST http://127.0.0.1:8080/api/contact_messages -H "Content-Type: application/json" -H "X-Api-Key: dev-key" --data "@body.json"
+curl -s -X POST http://127.0.0.1:8080/api/contact_messages -H "Content-Type: application/json" -H "X-Api-Key: <your key from secrets/api-key.env>" --data "@body.json"
 ```
 
 On bash you can also inline the body with `-d '{…}'`. **On Windows PowerShell do not** — the inline
 single quotes get mangled and the server returns a misleading `400 Bad Request` (a JSON-parse error,
 not a real app failure); use the `--data "@body.json"` form above, or `Invoke-RestMethod -Method Post
--Uri http://127.0.0.1:8080/api/contact_messages -Headers @{ "X-Api-Key" = "dev-key" } -ContentType
+-Uri http://127.0.0.1:8080/api/contact_messages -Headers @{ "X-Api-Key" = "<your key from secrets/api-key.env>" } -ContentType
 "application/json" -Body (Get-Content body.json -Raw)`.
 
 You should get back the saved record with a generated `id` (plus platform-managed fields such as

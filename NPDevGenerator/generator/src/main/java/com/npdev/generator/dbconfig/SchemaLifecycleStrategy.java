@@ -5,7 +5,7 @@ import java.util.Locale;
 /**
  * How an app's schema is reconciled with its model at boot.
  *
- * <h2>STOR-16: why {@link #EPHEMERAL} exists and {@link #RECREATE_ON_APP_START} does not</h2>
+ * <h2>STOR-16: why {@link #EPHEMERAL} exists and {@code RecreateOnAppStart} does not</h2>
  * Measured 2026-08-17: {@code SchemaLifecycleExecutor} read {@code strategy} at exactly one line,
  * comparing it to {@code "DropAndRecreateOnStructureChange"}. {@code RecreateOnAppStart} had NO code
  * path at all -- despite the name, it recreated nothing. Meanwhile
@@ -20,11 +20,11 @@ import java.util.Locale;
  * be checked at every refusal site and will eventually be missed at one of them -- and it is
  * greppable: {@code grep Ephemeral} finds every site that reasons about it.
  *
- * <p>{@code RecreateOnAppStart} is DEPRECATED to an alias rather than deleted, and that is safe by
- * measurement rather than by assumption: all 7 corpus definitions using it are {@code InMemory},
- * where "drop and recreate on boot" and "memory is empty on boot" are the same thing. The alias is
- * accepted, resolves to {@code EPHEMERAL}, and {@link #isDeprecatedSpelling(String)} lets callers
- * warn and name the new spelling.
+ * <p>{@code RecreateOnAppStart} was first deprecated to an alias (2026-08-18) and is now REMOVED
+ * (ENG-2): {@link #parse(String)} refuses it with {@link #removalMessage()}, which names the
+ * {@code npdev migrate db-lifecycle} codemod. An alias that could mean {@code Ephemeral} was a path
+ * to silently wiping a physical database, and the "warned about at generation time" promise was
+ * never wired to anything.
  */
 public enum SchemaLifecycleStrategy {
 
@@ -48,8 +48,8 @@ public enum SchemaLifecycleStrategy {
      *  posture valid for a database NPDev does not own. */
     KEEP_EXISTING_IF_COMPATIBLE("KeepExistingIfCompatible");
 
-    /** The retired spelling {@link #EPHEMERAL} replaced. Accepted, warned about, never emitted. */
-    public static final String DEPRECATED_RECREATE_ON_APP_START = "RecreateOnAppStart";
+    /** The retired spelling {@link #EPHEMERAL} replaced. Refused by {@link #parse(String)}, never emitted. */
+    public static final String REMOVED_RECREATE_ON_APP_START = "RecreateOnAppStart";
 
     private final String externalName;
 
@@ -61,29 +61,30 @@ public enum SchemaLifecycleStrategy {
         return externalName;
     }
 
-    /** True when {@code value} is the retired {@code RecreateOnAppStart} spelling. Callers use this
-     *  to emit a deprecation warning naming {@code Ephemeral}; parsing itself still succeeds. */
-    public static boolean isDeprecatedSpelling(String value) {
+    /** True when {@code value} is the removed {@code RecreateOnAppStart} spelling (case- and
+     *  whitespace-insensitive, like {@link #parse(String)}). */
+    public static boolean isRemovedSpelling(String value) {
         return value != null
-                && DEPRECATED_RECREATE_ON_APP_START.toLowerCase(Locale.ROOT)
+                && REMOVED_RECREATE_ON_APP_START.toLowerCase(Locale.ROOT)
                         .equals(value.trim().toLowerCase(Locale.ROOT));
     }
 
-    /** The warning text for a definition still using the retired spelling. One place, so the CLI,
+    /** The refusal text for a definition still using the removed spelling. One place, so the CLI,
      *  the generator and any future caller say the same thing. */
-    public static String deprecationWarning() {
-        return "schemaLifecycle.strategy=" + DEPRECATED_RECREATE_ON_APP_START + " is deprecated and "
-                + "now means '" + EPHEMERAL.externalName() + "' (STOR-16). The old name never had a "
-                + "code path of its own -- it recreated nothing. Run `npdev migrate db-lifecycle "
-                + "--input <dir> --write` to update your db.definition.json.";
+    public static String removalMessage() {
+        return "schemaLifecycle.strategy=" + REMOVED_RECREATE_ON_APP_START + " was removed (it was "
+                + "deprecated 2026-08-18, STOR-16). Run `npdev migrate db-lifecycle --input <dir> "
+                + "--write`: InMemory definitions become " + EPHEMERAL.externalName() + ", physical ones "
+                + "become " + KEEP_EXISTING_IF_COMPATIBLE.externalName() + " (what the old spelling "
+                + "actually did).";
     }
 
     public static SchemaLifecycleStrategy parse(String value) {
         if (value == null || value.trim().isEmpty()) {
             throw new IllegalArgumentException("schemaLifecycle.strategy is required");
         }
-        if (isDeprecatedSpelling(value)) {
-            return EPHEMERAL;
+        if (isRemovedSpelling(value)) {
+            throw new IllegalArgumentException(removalMessage());
         }
         String normalized = value.trim().toLowerCase(Locale.ROOT);
         for (SchemaLifecycleStrategy strategy : values()) {
