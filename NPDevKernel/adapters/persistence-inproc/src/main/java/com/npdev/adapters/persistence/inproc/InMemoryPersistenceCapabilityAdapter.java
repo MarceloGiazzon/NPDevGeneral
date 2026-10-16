@@ -3,7 +3,11 @@ package com.npdev.adapters.persistence.inproc;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.kernel.concepts.ConceptGatewayOperation;
+import com.npdev.kernel.concepts.ConceptGatewayRequestContext;
+import com.npdev.kernel.concepts.ConceptGatewaySemanticPolicy;
 import com.npdev.kernel.concepts.ConceptRecord;
+import com.npdev.kernel.concepts.ConceptSemanticDecision;
 import com.npdev.kernel.ports.ConceptStore;
 import com.npdev.kernel.ports.PersistenceCapabilityContract;
 import com.npdev.kernel.ports.TenantScope;
@@ -15,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -30,6 +35,7 @@ public final class InMemoryPersistenceCapabilityAdapter
     // service's post-flow findById under InMemory. Null keeps the legacy isolated Map (unit tests /
     // non-runtime wiring).
     private final ConceptStore conceptStore;
+    private volatile ConceptGatewaySemanticPolicy semanticPolicy;
 
     public InMemoryPersistenceCapabilityAdapter() {
         this(null);
@@ -49,6 +55,11 @@ public final class InMemoryPersistenceCapabilityAdapter
         this.conceptStore = conceptStore;
     }
 
+    /** ENG-6: the CRUD defaulting pass for flow creates; see PostgresPersistenceCapabilityAdapter. */
+    public void setSemanticPolicy(ConceptGatewaySemanticPolicy policy) {
+        this.semanticPolicy = policy;
+    }
+
     @Override
     public Object save(Object entity) {
         return save("default", entity);
@@ -57,15 +68,21 @@ public final class InMemoryPersistenceCapabilityAdapter
     public Object save(Object concept, Object entity) {
         String conceptKey = normalizeConcept(concept);
         Map<String, Object> record = mutableRecord(entity);
-        applyFieldDefaults(concept, record);
         String conceptIdField = inferredRuntimeIdField(concept);
 
         Object id = record.get("id");
         if (id == null && conceptIdField != null) {
             id = record.get(conceptIdField);
         }
+        boolean idWasGenerated = false;
         if (id == null) {
             id = UUID.randomUUID().toString();
+            idWasGenerated = true;
+        }
+        // ENG-6: defaults are a CREATE-time concern -- a minted id, or an explicit id with no stored
+        // record yet. An update never re-defaults (a partial payload must not reset untouched fields).
+        if (idWasGenerated || !recordExists(conceptKey, record, id)) {
+            applyCreateDefaults(concept, record, id);
         }
         // The in-memory store is keyed on the canonical "id" field. Always expose it
         // so callers, findById, and delete all agree on the same key. Any concept-specific
@@ -235,8 +252,51 @@ public final class InMemoryPersistenceCapabilityAdapter
         return !exists;
     }
 
-    // Scoped to literal defaultValue only, matching PostgresPersistenceCapabilityAdapter's pass --
-    // defaultExpression (computed from other fields) is not evaluated here.
+    private static String tenantOf(Map<String, Object> record) {
+        Object tenant = record.get("tenantId");
+        if (tenant == null) {
+            tenant = record.get("tenant_id");
+        }
+        return tenant == null || String.valueOf(tenant).isBlank() ? "default" : String.valueOf(tenant);
+    }
+
+    private boolean recordExists(String conceptKey, Map<String, Object> record, Object id) {
+        if (conceptStore != null) {
+            return conceptStore.findById(tenantOf(record), conceptKey, String.valueOf(id)).isPresent();
+        }
+        Map<Object, Map<String, Object>> byId = storeByConcept.get(conceptKey);
+        return byId != null && byId.containsKey(id);
+    }
+
+    // ENG-6: same shape as PostgresPersistenceCapabilityAdapter#applyCreateDefaults -- with a
+    // semantic policy wired, the full CRUD defaulting pass; without one, the legacy literal pass.
+    private void applyCreateDefaults(Object concept, Map<String, Object> record, Object id) {
+        ConceptGatewaySemanticPolicy policy = semanticPolicy;
+        if (policy == null) {
+            applyFieldDefaults(concept, record);
+            return;
+        }
+        ConceptGatewayRequestContext context = new ConceptGatewayRequestContext(
+                ConceptGatewayOperation.SAVE,
+                String.valueOf(concept),
+                String.valueOf(id),
+                tenantOf(record),
+                record,
+                null,
+                Optional.empty());
+        ConceptSemanticDecision defaults = policy.applyDefaultsAndDerivedValues(context);
+        if (!defaults.allowed()) {
+            throw new IllegalArgumentException(defaults.code() + ": " + defaults.message());
+        }
+        ConceptSemanticDecision lifecycle = policy.validateLifecycleTransition(context.withData(defaults.data()));
+        if (!lifecycle.allowed()) {
+            throw new IllegalArgumentException(lifecycle.code() + ": " + lifecycle.message());
+        }
+        record.clear();
+        record.putAll(lifecycle.data());
+    }
+
+    // Legacy literal-defaultValue-only pass (no semantic policy wired).
     private void applyFieldDefaults(Object concept, Map<String, Object> record) {
         if (compiledModel == null) {
             return;

@@ -2812,6 +2812,29 @@ public final class GeneratedCrudRuntimeSupport {
         return IdentityPackTableNames.tryResolve(modelSupplier.get());
     }
 
+    /**
+     * ENG-4: the live counterpart of the generated service's baked {@code ENUM_VALUES_BY_FIELD}.
+     * Reads {@code modelSupplier.get()} fresh, so an enum option added by a live model reload is
+     * accepted by the generated CRUD service without a rebuild. Empty when the concept or field is
+     * unknown to the live model or declares no enum values (the caller falls back to its baked set).
+     */
+    public Optional<Set<String>> liveEnumValues(String conceptName, String fieldName) {
+        if (conceptName == null || fieldName == null) {
+            return Optional.empty();
+        }
+        Optional<CompiledConcept> concept = modelSupplier.get().findConcept(conceptName);
+        if (concept.isEmpty()) {
+            return Optional.empty();
+        }
+        for (CompiledField field : concept.get().getFields()) {
+            if (fieldName.equals(field.getName())) {
+                List<String> values = field.getEnumValues();
+                return values.isEmpty() ? Optional.empty() : Optional.of(new LinkedHashSet<>(values));
+            }
+        }
+        return Optional.empty();
+    }
+
     private Map<String, Object> normalizePayloadForValidation(
             CompiledConcept entity,
             Map<String, Object> payload

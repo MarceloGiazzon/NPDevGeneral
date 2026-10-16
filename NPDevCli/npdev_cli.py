@@ -13174,6 +13174,46 @@ def _run_monitor_clone_remove(args: argparse.Namespace) -> int:
     return 0
 
 
+def _patch_enum_options(field_node: dict, catalog_items: list[dict]) -> bool:
+    """ENG-4: bring one served manifest field's `enumValues`/`enumOptions` in line with the
+    `enums.manifest.json` items for that (concept, field). Compares as SETS (the catalog's `values`
+    list is sorted, the served list keeps model order, so a list compare would patch on every run),
+    keeps the served order for values that survive, appends new values in catalog order, and
+    reuses the served option dict for a value it already had. Returns True when anything changed."""
+    catalog_values: list[str] = []
+    for item in catalog_items:
+        for value in item.get("values") or [item.get("value")]:
+            if value is not None and value not in catalog_values:
+                catalog_values.append(value)
+    current_values = list(field_node.get("enumValues") or [])
+    if not catalog_values or set(catalog_values) == set(current_values):
+        return False
+    merged = [v for v in current_values if v in catalog_values]
+    merged += [v for v in catalog_values if v not in merged]
+    options_by_value = {option.get("value"): option for option in field_node.get("enumOptions") or []}
+    items_by_value = {item.get("value"): item for item in catalog_items}
+    options = []
+    for value in merged:
+        if value in options_by_value:
+            options.append(options_by_value[value])
+            continue
+        item = items_by_value.get(value) or {}
+        options.append({
+            "value": value,
+            "label": item.get("label") or value,
+            "order": item.get("order"),
+            "group": item.get("group", ""),
+            "default": item.get("default", False),
+            "deprecated": item.get("deprecated", False),
+            "iconHint": item.get("iconHint", ""),
+            "badgeHint": item.get("badgeHint", ""),
+            "description": item.get("description", ""),
+        })
+    field_node["enumValues"] = merged
+    field_node["enumOptions"] = options
+    return True
+
+
 def _patch_generated_ui_manifest(app_root: Path, metadata_source_root: Path) -> dict:
     """RUN-24 gap 2. `MetadataHotSwapController#apply` only refreshes the descriptive REST catalogs
     `RuntimeMetadataService` serves -- the actual rendered grid at `/npdev-business-ui/` is built
@@ -13184,7 +13224,9 @@ def _patch_generated_ui_manifest(app_root: Path, metadata_source_root: Path) -> 
     at boot -- verified live 2026-08-02) but nothing writes to it automatically; RUN-22's own
     browser-routine proof had to hand-patch it to reach the served grid.
 
-    Patches the field labels AND widgets the just-emitted `fields.manifest.json` (the SAME
+    Patches the field labels, widgets AND enum options (ENG-4: the dropdown values/options, from
+    the optional sibling `enums.manifest.json`; a missing file skips enum patching) the just-emitted
+    `fields.manifest.json` (the SAME
     `metadata_source_root` the REST call above was already given, from `--emitMetadataTo`)
     disagrees with -- deliberately never regenerates the whole manifest from a bare model.json
     compile, which has no access to the settings (`superUserRole`, auth mode, ...) the real
@@ -13231,6 +13273,21 @@ def _patch_generated_ui_manifest(app_root: Path, metadata_source_root: Path) -> 
             if item.get("widget"):
                 widgets[key] = item["widget"]
 
+    # ENG-4: enum options. `enums.manifest.json` has one item per (concept, fieldPath, value); an
+    # option added by the model edit must reach the served dropdown too. Optional file.
+    enum_items: dict[tuple[str, str], list[dict]] = {}
+    enums_manifest_path = fields_manifest_path.with_name("enums.manifest.json")
+    if enums_manifest_path.is_file():
+        try:
+            enums_catalog = json.loads(enums_manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            enums_catalog = {}
+        for item in enums_catalog.get("items") or []:
+            concept = item.get("concept")
+            field_path = item.get("fieldPath")
+            if concept and field_path and "." not in field_path and item.get("value") is not None:
+                enum_items.setdefault((concept, field_path), []).append(item)
+
     changed: list[str] = []
     for concept_node in manifest.get("concepts") or []:
         concept_name = concept_node.get("conceptName")
@@ -13243,11 +13300,14 @@ def _patch_generated_ui_manifest(app_root: Path, metadata_source_root: Path) -> 
             if key in widgets and field_node.get("widget") != widgets[key]:
                 field_node["widget"] = widgets[key]
                 field_changed = True
+            if key in enum_items and _patch_enum_options(field_node, enum_items[key]):
+                field_changed = True
             if field_changed:
                 changed.append(f"{concept_name}.{field_node.get('name')}")
 
     if not changed:
-        return {"patched": False, "reason": "no field label or widget differed from the served manifest"}
+        return {"patched": False,
+                "reason": "no field label, widget or enum option differed from the served manifest"}
 
     tmp = manifest_path.with_name(manifest_path.name + ".tmp")
     tmp.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

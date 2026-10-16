@@ -57,7 +57,8 @@ def make_app(root: Path, *, with_super_key: bool = True) -> Path:
     return app
 
 
-def make_metadata_source_root(root: Path, *, fields_catalog: dict | None = None) -> Path:
+def make_metadata_source_root(root: Path, *, fields_catalog: dict | None = None,
+                              enums_catalog: dict | None = None) -> Path:
     """The directory shape `--emitMetadataTo` writes -- only its existence matters for the plain
     hot-swap tests below; `fields_catalog`, when given, is written as `metadata/fields.manifest.json`
     for the RUN-24 gap 2 (`_patch_generated_ui_manifest`) tests, in the same shape
@@ -70,6 +71,10 @@ def make_metadata_source_root(root: Path, *, fields_catalog: dict | None = None)
         (npdev_dir / "metadata").mkdir(parents=True, exist_ok=True)
         (npdev_dir / "metadata" / "fields.manifest.json").write_text(
             json.dumps(fields_catalog), encoding="utf-8")
+    if enums_catalog is not None:
+        (npdev_dir / "metadata").mkdir(parents=True, exist_ok=True)
+        (npdev_dir / "metadata" / "enums.manifest.json").write_text(
+            json.dumps(enums_catalog), encoding="utf-8")
     return scratch
 
 
@@ -319,6 +324,60 @@ class PatchGeneratedUiManifest(unittest.TestCase):
             fields_by_name = {f["name"]: f for f in written["concepts"][0]["fields"]}
             self.assertEqual(fields_by_name["warehouseId"]["label"], "Warehouse (new)")
             self.assertEqual(fields_by_name["units"]["label"], "Units")  # unchanged field untouched
+
+    def test_patches_new_enum_value_into_served_manifest(self):
+        """ENG-4: an option added by a model edit reaches the served dropdown; the options the field
+        already had are reused untouched, and the catalog's sorted `values` list does not reorder
+        the served (model-order) one."""
+        with TemporaryDirectory() as tmp:
+            app_root = Path(tmp) / "App"
+            option_a = {"value": "A", "label": "Alpha", "order": None, "group": "", "default": False,
+                        "deprecated": False, "iconHint": "", "badgeHint": "", "description": ""}
+            option_b = dict(option_a, value="B", label="Beta")
+            manifest_path = make_generated_ui_manifest(app_root, [
+                {"conceptName": "Cap", "fields": [
+                    {"name": "finish", "label": "Finish", "enumValues": ["B", "A"],
+                     "enumOptions": [option_b, option_a]},
+                ]},
+            ])
+            values = ["A", "B", "C"]
+            catalog_item = {"concept": "Cap", "fieldPath": "finish", "order": None, "group": "",
+                            "default": False, "deprecated": False, "iconHint": "", "badgeHint": "",
+                            "description": "", "values": values}
+            source_root = make_metadata_source_root(
+                Path(tmp),
+                fields_catalog={"items": [{"concept": "Cap", "fieldPath": "finish", "label": "Finish"}]},
+                enums_catalog={"items": [
+                    dict(catalog_item, value="A", label="Alpha"),
+                    dict(catalog_item, value="B", label="Beta"),
+                    dict(catalog_item, value="C", label="Gamma"),
+                ]})
+
+            result = npdev_cli._patch_generated_ui_manifest(app_root, source_root)
+
+            self.assertTrue(result["patched"])
+            self.assertEqual(result["fieldsChanged"], ["Cap.finish"])
+            field = json.loads(manifest_path.read_text(encoding="utf-8"))["concepts"][0]["fields"][0]
+            self.assertEqual(field["enumValues"], ["B", "A", "C"])
+            self.assertEqual(field["enumOptions"][0], option_b)
+            self.assertEqual(field["enumOptions"][1], option_a)
+            self.assertEqual(field["enumOptions"][2]["value"], "C")
+            self.assertEqual(field["enumOptions"][2]["label"], "Gamma")
+
+            # Idempotent: the same catalog against the patched manifest changes nothing.
+            again = npdev_cli._patch_generated_ui_manifest(app_root, source_root)
+            self.assertFalse(again["patched"])
+
+    def test_missing_enums_manifest_skips_enum_patching(self):
+        with TemporaryDirectory() as tmp:
+            app_root = Path(tmp) / "App"
+            make_generated_ui_manifest(app_root, [
+                {"conceptName": "Cap", "fields": [
+                    {"name": "finish", "label": "Finish", "enumValues": ["A"], "enumOptions": []}]},
+            ])
+            source_root = make_metadata_source_root(Path(tmp), fields_catalog={"items": [
+                {"concept": "Cap", "fieldPath": "finish", "label": "Finish"}]})
+            self.assertFalse(npdev_cli._patch_generated_ui_manifest(app_root, source_root)["patched"])
 
     def test_never_touches_fields_other_than_label(self):
         """Confirms the fix does NOT regenerate the whole manifest (which would need settings this

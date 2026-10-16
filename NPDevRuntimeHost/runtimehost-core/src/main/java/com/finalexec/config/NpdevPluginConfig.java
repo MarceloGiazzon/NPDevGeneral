@@ -49,6 +49,7 @@ import com.npdev.adapters.webhook.inproc.InProcWebhookCapabilityAdapter;
 import com.npdev.dsl.v1.compiled.CompiledCapability;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityBinding;
 import com.npdev.kernel.capabilities.CapabilityBindingResolver;
+import com.npdev.kernel.concepts.ConceptGatewaySemanticPolicy;
 import com.npdev.kernel.ports.ConceptStore;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
@@ -370,13 +371,20 @@ public class NpdevPluginConfig {
     @Bean
     public RuntimePluginRealizationProvider persistenceInMemoryRuntimePluginRealizationProvider(
             ModelHolder modelHolder,
-            ConceptStore conceptStore
+            ConceptStore conceptStore,
+            ObjectProvider<ConceptGatewaySemanticPolicy> semanticPolicyProvider
     ) {
         return namedRuntimePluginRealizationProvider(
                 "persistenceInMemoryCapabilityAdapter",
                 // REG-187: inject the SAME ConceptStore the generated service's CRUD reads, so a
                 // flow-driven create is visible to the service's post-flow findById under InMemory.
-                () -> new InMemoryPersistenceCapabilityAdapter(modelHolder.get(), conceptStore)
+                () -> {
+                    InMemoryPersistenceCapabilityAdapter adapter =
+                            new InMemoryPersistenceCapabilityAdapter(modelHolder.get(), conceptStore);
+                    // ENG-6: flow creates get the same defaulting pass as the CRUD API.
+                    adapter.setSemanticPolicy(semanticPolicyProvider.getIfAvailable());
+                    return adapter;
+                }
         );
     }
 
@@ -385,14 +393,18 @@ public class NpdevPluginConfig {
             ObjectProvider<DataSource> dataSourceProvider,
             @Value("${npdev.storage.mode:in-memory}") String storageMode,
             ModelHolder modelHolder,
-            ConceptStore conceptStore
+            ConceptStore conceptStore,
+            ObjectProvider<ConceptGatewaySemanticPolicy> semanticPolicyProvider
     ) {
         return namedRuntimePluginRealizationProvider(
                 "persistencePostgresCapabilityAdapter",
                 () -> {
                     DataSource dataSource = dataSourceProvider.getIfAvailable();
                     if ("in-memory".equalsIgnoreCase(storageMode)) {
-                        return new InMemoryPersistenceCapabilityAdapter(modelHolder.get(), conceptStore);
+                        InMemoryPersistenceCapabilityAdapter inMemory =
+                                new InMemoryPersistenceCapabilityAdapter(modelHolder.get(), conceptStore);
+                        inMemory.setSemanticPolicy(semanticPolicyProvider.getIfAvailable());
+                        return inMemory;
                     }
                     if (dataSource == null) {
                         throw new IllegalStateException("DataSource is required for postgres persistence adapter");
@@ -403,8 +415,11 @@ public class NpdevPluginConfig {
                     // here, not inside the adapter itself, because persistence-postgres is a deliberately
                     // Spring-free module (see its build.gradle). Only takes effect once the capability
                     // dispatch that calls this adapter also runs synchronously on that same thread.
-                    return new PostgresPersistenceCapabilityAdapter(
+                    PostgresPersistenceCapabilityAdapter postgres = new PostgresPersistenceCapabilityAdapter(
                             new TransactionAwareDataSourceProxy(dataSource), modelHolder.get());
+                    // ENG-6: flow creates get the same defaulting pass as the CRUD API.
+                    postgres.setSemanticPolicy(semanticPolicyProvider.getIfAvailable());
+                    return postgres;
                 }
         );
     }
