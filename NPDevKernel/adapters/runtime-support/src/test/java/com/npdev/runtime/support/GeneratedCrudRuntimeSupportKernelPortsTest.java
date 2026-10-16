@@ -333,6 +333,88 @@ class GeneratedCrudRuntimeSupportKernelPortsTest {
         assertFalse(diff.contains("id:"), "unchanged field must not appear in the diff: " + diff);
     }
 
+    /**
+     * UI-4: the audit meta carries the changes as structured JSON (meta.fieldChanges) next to the
+     * legacy fieldDiff string, and both redact sensitive / password-widget fields.
+     */
+    @Test
+    void auditCrudMutation_recordsStructuredChangesAndRedactsSensitiveFields() throws Exception {
+        java.nio.file.Path modelPath = java.nio.file.Files.createTempFile("npdev-audit-redact-", ".json");
+        java.nio.file.Files.writeString(modelPath, """
+                {
+                  "namespace": "audit.redact.demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    {
+                      "name": "Ticket",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "status", "type": "string" },
+                        { "name": "apiSecret", "type": "string", "sensitive": true },
+                        { "name": "pin", "type": "string", "ui": { "widget": "password" } }
+                      ]
+                    }
+                  ]
+                }
+                """);
+        CompiledModel model = new com.npdev.dsl.v1.compiler.ModelCompiler()
+                .compile(new com.npdev.dsl.v1.parser.JsonModelParser().parse(modelPath));
+
+        List<AuditRecord> captured = new ArrayList<>();
+        AuditLogStore capturingStore = new AuditLogStore() {
+            @Override
+            public void append(AuditRecord record) {
+                captured.add(record);
+            }
+
+            @Override
+            public List<AuditRecord> search(AuditQuery query) {
+                return List.of();
+            }
+        };
+        GeneratedCrudRuntimeSupport support = supportWithModel(
+                model, capturingStore, PermissionEvaluator.allowAll(), IdempotencyStore.noop());
+
+        Map<String, Object> before = new LinkedHashMap<>();
+        before.put("id", "t-1");
+        before.put("status", "OPEN");
+        before.put("apiSecret", "old-secret-value");
+        before.put("pin", "1111");
+        Map<String, Object> after = new LinkedHashMap<>(before);
+        after.put("status", "CLOSED");
+        after.put("apiSecret", "new-secret-value");
+        after.put("pin", "2222");
+
+        support.auditCrudMutation("Ticket", "UPDATE", "t-1", "ALLOW", ExecutionContext.anonymous(), before, after);
+
+        assertEquals(1, captured.size());
+        Map<String, String> meta = captured.get(0).meta();
+        String fieldChanges = meta.get("fieldChanges");
+        assertTrue(fieldChanges != null && !fieldChanges.isEmpty(), "meta.fieldChanges must be present: " + meta);
+        com.fasterxml.jackson.databind.JsonNode parsed = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(fieldChanges);
+        assertEquals(3, parsed.size(), fieldChanges);
+        // sorted by field name: apiSecret, pin, status
+        assertEquals("apiSecret", parsed.get(0).get("field").asText());
+        assertEquals("***", parsed.get(0).get("before").asText());
+        assertEquals("***", parsed.get(0).get("after").asText());
+        assertEquals("pin", parsed.get(1).get("field").asText());
+        assertEquals("***", parsed.get(1).get("after").asText());
+        assertEquals("status", parsed.get(2).get("field").asText());
+        assertEquals("OPEN", parsed.get(2).get("before").asText());
+        assertEquals("CLOSED", parsed.get(2).get("after").asText());
+
+        String diff = meta.get("fieldDiff");
+        assertTrue(diff.contains("status: OPEN -> CLOSED"), diff);
+        assertTrue(diff.contains("apiSecret: *** -> ***"), diff);
+        assertTrue(diff.contains("pin: *** -> ***"), diff);
+        for (String clear : List.of("old-secret-value", "new-secret-value", "1111", "2222")) {
+            assertFalse(diff.contains(clear), "diff leaked " + clear);
+            assertFalse(fieldChanges.contains(clear), "fieldChanges leaked " + clear);
+        }
+    }
+
     @Test
     void auditCrudMutation_createHasNoBefore_everyAfterFieldShowsAsNullToValue() {
         List<AuditRecord> captured = new ArrayList<>();
@@ -451,8 +533,15 @@ class GeneratedCrudRuntimeSupportKernelPortsTest {
             AuditLogStore auditLogStore,
             PermissionEvaluator permissionEvaluator,
             IdempotencyStore idempotencyStore) {
+        return supportWithModel(new CompiledModel("demo", "1.0.0", "v1", new LinkedHashMap<>()),
+                auditLogStore, permissionEvaluator, idempotencyStore);
+    }
 
-        CompiledModel compiledModel = new CompiledModel("demo", "1.0.0", "v1", new LinkedHashMap<>());
+    private static GeneratedCrudRuntimeSupport supportWithModel(
+            CompiledModel compiledModel,
+            AuditLogStore auditLogStore,
+            PermissionEvaluator permissionEvaluator,
+            IdempotencyStore idempotencyStore) {
         KernelRunner kernelRunner = new KernelRunner(
                 (EventBus) event -> {},
                 new InvariantEngine() {
