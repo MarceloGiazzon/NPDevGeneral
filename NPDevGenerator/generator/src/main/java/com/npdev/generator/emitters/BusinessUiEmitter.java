@@ -18,6 +18,8 @@ import com.npdev.dsl.v1.compiled.CompiledGuidePageRegions;
 import com.npdev.dsl.v1.compiled.CompiledGuidePageTheme;
 import com.npdev.dsl.v1.compiled.GuidePageDefaults;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
+import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
@@ -403,7 +405,13 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         for (CompiledGuidePage page : guidePages.guidePages()) {
             knownGuidePageNames.add(page.name());
         }
-        root.put("guidePages", guidePageNodes(guidePages.guidePages()));
+        Map<String, CompiledQuery> queriesByName = new LinkedHashMap<>();
+        if (model != null && model.getQueries() != null) {
+            for (CompiledQuery query : model.getQueries()) {
+                queriesByName.put(query.name(), query);
+            }
+        }
+        root.put("guidePages", guidePageNodes(guidePages.guidePages(), queriesByName));
         root.put("defaultGuidePage", guidePages.defaultGuidePage());
         // Path A W1.1 (NPDEV_ROADMAP_2026-09-12.md Wave 1): appShell was compiled/resolved/threaded
         // through the model but never consumed by the generator (grep for it anywhere under
@@ -873,7 +881,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         return trimmed;
     }
 
-    private static List<Map<String, Object>> guidePageNodes(List<CompiledGuidePage> guidePages) {
+    private static List<Map<String, Object>> guidePageNodes(
+            List<CompiledGuidePage> guidePages, Map<String, CompiledQuery> queriesByName) {
         List<Map<String, Object>> nodes = new ArrayList<>();
         for (CompiledGuidePage page : guidePages) {
             Map<String, Object> node = new LinkedHashMap<>();
@@ -894,6 +903,20 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 gadgetNode.put("y", blankToNull(gadget.y()));
                 gadgetNode.put("series", blankToNull(gadget.series()));
                 gadgetNode.put("url", blankToNull(gadget.url()));
+                // UI-9: the bound query's declared parameters, so shell.js can show one dashboard
+                // filter input per distinct parameter instead of calling the query bare (a 400).
+                List<Map<String, Object>> gadgetParameters = new ArrayList<>();
+                CompiledQuery boundQuery = gadget.query() == null ? null : queriesByName.get(gadget.query());
+                if (boundQuery != null) {
+                    for (CompiledProcedureParameter parameter : boundQuery.parameters()) {
+                        Map<String, Object> parameterNode = new LinkedHashMap<>();
+                        parameterNode.put("name", parameter.name());
+                        parameterNode.put("type", parameter.type() == null ? "string" : parameter.type());
+                        parameterNode.put("required", parameter.required());
+                        gadgetParameters.add(parameterNode);
+                    }
+                }
+                gadgetNode.put("parameters", gadgetParameters);
                 gadgetNodes.add(gadgetNode);
             }
             node.put("gadgets", gadgetNodes);
