@@ -243,6 +243,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             "history.js",
             "board.js",
             "search.js",
+            "calendar.js",
             "views.css"
     );
 
@@ -477,6 +478,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             if (board != null) {
                 node.put("board", board);
                 views.add("board");
+            }
+            // UI-6: calendar (month) view for any concept with a visible date/datetime field.
+            if (concept.getFieldsInDeclaredOrder().stream().anyMatch(f -> isShowInUi(f)
+                    && ("date".equals(manifestType(f)) || "datetime".equals(manifestType(f))))) {
+                views.add("calendar");
             }
             node.put("views", views);
             Map<String, Object> actions = new LinkedHashMap<>();

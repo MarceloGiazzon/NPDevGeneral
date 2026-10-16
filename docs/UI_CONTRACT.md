@@ -312,6 +312,19 @@ concept node of `generated-ui-manifest.json`.
   board loads at most 100 rows (the CRUD controller's `MAX_PAGE_SIZE`) and shows "Showing N of M" when
   the filter matches more; it does not page inside columns.
 
+- **Calendar (`views/calendar.js`).** Appears (concept `views` gains `"calendar"`) for any concept with at
+  least one visible `date` or `datetime` field. A Monday-first 6x7 month grid with prev / Today / next;
+  each record is a chip on its day (click opens details), three chips per day plus "+N more", and a
+  field picker when the concept has several date fields (remembered per concept in `localStorage`; the
+  default is the first declared one). No DSL key. The view fetches its own window per visible month:
+  the grid's current `filter` / `where` / sort are kept and `<field>:gte:<first grid day>` and
+  `<field>:lte:<last grid day>` clauses are appended (`datetime` bounds get `T00:00:00` / `T23:59:59`),
+  `size=100` sorted by that field, so a column filter set in Table view still applies. A day is the
+  viewer's local day. The list API's `where` DSL (`field:operator:value`, clauses joined by `,` or `;`,
+  so never a comma inside a value) accepts `eq`, `ne`, `contains` and, since this view, the range
+  operators `gt`, `gte`, `lt`, `lte`: ISO dates and datetimes compare as text, numbers numerically on
+  the in-memory (free-text `filter`) path, and a row with no value never matches a range operator.
+  More than 100 records in the window shows "Showing N of M in this range".
 - **Global features (`views/search.js`).** `NPDevViews.registerGlobal(name, { init(appCtx) })`;
   `bootstrap()` calls every registered global's `init` once, right after `NPDevShell.mount`, with
   `appCtx = { manifest, visibleConcepts(), fetchJson, headers, openDetails(conceptName, record) }`. The
