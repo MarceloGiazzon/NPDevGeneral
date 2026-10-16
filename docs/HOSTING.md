@@ -41,6 +41,9 @@ trusting a table here to stay current.
   (`render.yaml`/`koyeb.yaml` + `.env.<target>.example`). Refuses — writing nothing — on an
   engine/target mismatch, naming the three fix steps. On success, prints the split: which variables
   NPDev already resolved, and which the operator must supply.
+- **`npdev host deploy --app <dir> --ssh user@host [--domain d --acme-email e] [--dry-run]`** — the
+  `vps` target in one command: ships the built app to your own Linux server and starts it behind
+  HTTPS (see "Deploying to your own server" below). No `npdev host plan` step needed.
 
 ## The three files
 
@@ -70,6 +73,34 @@ NPDEV_RUNTIME_MODE=postgres              # selects which adapter beans wire
 Both are resolved automatically from the app's baked-in engine — never hand-set unless you know
 why. Environment variable names strip the hyphen from their property name; they do NOT gain an
 underscore (`npdev.auth.api-keys` → `NPDEV_AUTH_APIKEYS`, not `NPDEV_AUTH_API_KEYS`).
+
+## Deploying to your own server (rung 4, `vps`)
+
+```
+npdev host deploy --app <dir> --ssh me@203.0.113.7 --domain app.example.com --acme-email me@example.com
+```
+
+It ships only what the emitted `Dockerfile` needs (`Dockerfile`, `docker-compose.yml`, `deploy/`,
+`npdev-generated/` and the built `build/libs/FinalExec-*.jar`; never `data/` or `secrets/`) to
+`~/npdev-apps/<appId>/` on the server over plain OpenSSH, then runs `docker compose --profile proxy up
+-d --build` there — plus the nightly `backup` sidecar for Postgres and MySQL apps (H2 apps back
+themselves up, see `docs/reference/BACKUP_RESTORE.md`). With `--domain`, it finishes by running the
+remote checks against `https://<domain>` and prints them like `npdev host check --target`.
+
+Prerequisites:
+
+- the app is built (`_ops/Build-FinalApp.ps1`), so `build/libs/` holds the jar;
+- the server has Docker with Compose v2, and you can `ssh user@host` with a key (the command uses
+  `BatchMode`, so a password prompt fails fast instead of hanging);
+- for `--domain`: a DNS A record pointing at the server, and ports 80 and 443 open to the internet
+  (Caddy obtains the Let's Encrypt certificate itself; `--domain` and `--acme-email` go together).
+  Without them the proxy serves a self-signed certificate on :443.
+
+The server's `.env` is created **once**, with a random API key (`NPDEV_AUTH_APIKEYS`) and database
+password, plus `NPDEV_PUBLIC_HOST`/`NPDEV_ACME_EMAIL` when given. A copy is saved locally at
+`<app>/secrets/deploy-<user@host>.env` (the command prints that path, never the values). Later
+deploys never overwrite the server's `.env`: it holds the password the database volume was initialised
+with. `--dry-run` prints the files that would ship and the exact `ssh` command and contacts nothing.
 
 ## Deploying with no persistent disk
 

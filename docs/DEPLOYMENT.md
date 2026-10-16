@@ -130,10 +130,20 @@ local LocalStack service, set
 
 ## TLS
 
-The `proxy` profile's `deploy/Caddyfile` uses `tls internal` by default — Caddy issues its own
+The `proxy` profile (`docker compose --profile proxy up -d`) runs Caddy in front of the app. By
+default (nothing set) `deploy/Caddyfile` listens on `:443` with `tls internal` — Caddy issues its own
 locally-trusted self-signed certificate, so HTTPS termination is provable without owning a domain.
-Replace `:443` with a real hostname once you have one; Caddy then obtains a real Let's Encrypt
-certificate automatically, no further config needed.
+
+For a real, browser-trusted Let's Encrypt certificate, point a DNS name at the server and set two
+lines in `.env` (no edit to the generated Caddyfile, so regeneration never overwrites anything):
+
+```
+NPDEV_PUBLIC_HOST=app.example.com
+NPDEV_ACME_EMAIL=you@example.com
+```
+
+then `docker compose --profile proxy up -d`. Ports 80 and 443 must be reachable from the internet
+for the ACME challenge. Set both, or neither.
 
 ## Concurrent instances and external databases
 
@@ -175,7 +185,7 @@ has a real, operator-supplied key, never the dev default.
 
 ## Known gaps (deliberately out of scope for LNCH-7)
 
-- **Backup/restore**: not covered here — see LNCH-9.
+- **Backup/restore**: see [`reference/BACKUP_RESTORE.md`](reference/BACKUP_RESTORE.md) (compose `backup` profile for Postgres/MySQL, nightly in-app backup for H2).
 - **CI-driven image publishing**: this doc covers building/running locally; a registry-push
   pipeline is not part of LNCH-7.
 - **`docs/CONFIGURATION.md`** (referenced by `StartupValidator`'s config-error messages, e.g.
