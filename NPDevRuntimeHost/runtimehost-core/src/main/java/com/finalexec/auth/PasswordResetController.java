@@ -52,7 +52,6 @@ public class PasswordResetController {
     private static final Logger LOG = Logger.getLogger(PasswordResetController.class.getName());
     private static final long TOKEN_EXPIRY_MINUTES = 30;
     private static final int TOKEN_BYTES = 32;
-    private static final int MIN_PASSWORD_LENGTH = 8;
     /** REG-21 (REG-16 finding F4): reset requests per (tenant,username) per window before further ones
      * are silently no-op'd -- low, because a real user needs one, and it caps email-bombing. */
     private static final int RESET_MAX_PER_USER = 5;
@@ -150,8 +149,13 @@ public class PasswordResetController {
         String token = request == null ? null : request.token();
         String newPassword = request == null ? null : request.newPassword();
 
-        if (token == null || token.isBlank() || newPassword == null || newPassword.length() < MIN_PASSWORD_LENGTH) {
+        if (token == null || token.isBlank() || newPassword == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "invalid_request"));
+        }
+        // SEC-3: username is unknown before the token lookup, so the not-the-username rule is skipped here.
+        String policyViolation = PasswordPolicy.violation(newPassword, null);
+        if (policyViolation != null) {
+            return ResponseEntity.badRequest().body(PasswordPolicy.errorBody(policyViolation));
         }
 
         Optional<IdentityPackTableNames> resolvedIdentityTables = IdentityPackTableNames.tryResolve(modelHolder.get());
