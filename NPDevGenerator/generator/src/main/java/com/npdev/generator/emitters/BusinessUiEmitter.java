@@ -19,6 +19,7 @@ import com.npdev.dsl.v1.compiled.CompiledGuidePageTheme;
 import com.npdev.dsl.v1.compiled.GuidePageDefaults;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
+import com.npdev.dsl.v1.compiled.PlatformStrings;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
@@ -246,6 +247,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             "board.js",
             "search.js",
             "calendar.js",
+            "locale.js",
             "views.css"
     );
 
@@ -399,6 +401,10 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         if (model != null && model.getSettings() != null) {
             root.put("strings", model.getSettings().getStrings());
         }
+        // UI-8: the languages the model declares labels for (drives the top-bar language switch) and the
+        // shell chrome catalogue per language. `strings` above stays for old shells / "Auto".
+        root.put("locales", declaredLocales(model));
+        root.put("stringsByLocale", stringsByLocale(model));
 
         GuidePageDefaults.Result guidePages = GuidePageDefaults.withBuiltins(model == null ? List.of() : model.getGuidePages());
         Set<String> knownGuidePageNames = new LinkedHashSet<>();
@@ -923,6 +929,71 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             nodes.add(node);
         }
         return nodes;
+    }
+
+    /**
+     * Sorted, de-duplicated union of every locale tag a label map in the model uses (concept/field ui
+     * label + shortLabel maps, enum option labels) plus {@code settings.locale} when set. The server's
+     * LabelResolver owns resolution; this list only tells the UI which languages to offer.
+     */
+    static List<String> declaredLocales(CompiledModel model) {
+        java.util.TreeSet<String> locales = new java.util.TreeSet<>();
+        if (model == null) {
+            return new ArrayList<>();
+        }
+        for (CompiledConcept concept : model.getConcepts()) {
+            collectLocales(locales, concept.getUi());
+            for (CompiledField field : concept.getFields()) {
+                collectLocales(locales, field.getUi());
+                for (CompiledEnumOption option : field.getEnumOptions()) {
+                    addLocaleKeys(locales, option.getLabelLocales());
+                }
+            }
+        }
+        if (model.getSettings() != null && model.getSettings().getLocale() != null
+                && !model.getSettings().getLocale().isBlank()) {
+            locales.add(model.getSettings().getLocale().trim());
+        }
+        return new ArrayList<>(locales);
+    }
+
+    private static void collectLocales(java.util.Set<String> locales, CompiledPresentationMetadata ui) {
+        if (ui == null) {
+            return;
+        }
+        addLocaleKeys(locales, ui.getLabelLocales());
+        addLocaleKeys(locales, ui.getShortLabelLocales());
+    }
+
+    private static void addLocaleKeys(java.util.Set<String> locales, Map<String, String> labelLocales) {
+        if (labelLocales == null) {
+            return;
+        }
+        for (String tag : labelLocales.keySet()) {
+            if (tag != null && !tag.isBlank() && !"default".equalsIgnoreCase(tag.trim())) {
+                locales.add(tag.trim());
+            }
+        }
+    }
+
+    /**
+     * Shell chrome strings per language: English and Portuguese catalogues (PlatformStrings), with the
+     * model's settings.strings overrides layered onto the one matching settings.locale.
+     */
+    static Map<String, Map<String, String>> stringsByLocale(CompiledModel model) {
+        Map<String, String> en = new LinkedHashMap<>(PlatformStrings.DEFAULTS);
+        en.putAll(PlatformStrings.localeDefaults("en"));
+        Map<String, String> pt = new LinkedHashMap<>(PlatformStrings.DEFAULTS);
+        pt.putAll(PlatformStrings.localeDefaults("pt"));
+        if (model != null && model.getSettings() != null) {
+            String locale = model.getSettings().getLocale();
+            boolean portuguese = locale != null && locale.trim().toLowerCase(Locale.ROOT).startsWith("pt");
+            (portuguese ? pt : en).putAll(model.getSettings().getStrings());
+        }
+        Map<String, Map<String, String>> byLocale = new LinkedHashMap<>();
+        byLocale.put("en", en);
+        byLocale.put("pt", pt);
+        return byLocale;
     }
 
     private static String blankToNull(String value) {
