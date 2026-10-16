@@ -11,10 +11,10 @@ Required fields:
 - `visibleFields`
 - `actions`
 - `layout`
-- `validationHints`
-- optional `metadata`
 
-Supported layout types:
+Optional fields: `requiredRole`, `tenantScoped`, `metadata`, `validationHints`, `widgets`, `implementation`.
+
+Supported layout types (the DSL's `panelLayout.type` enum):
 
 - `table`
 - `grid`
@@ -22,10 +22,17 @@ Supported layout types:
 Supported widget types:
 
 - `text`
-- `number`
-- `status`
-- `action`
+- `integer`
+- `date`
+- `email`
+- `boolean`
 - `table`
+- `detail-card`
+- `form`
+- `action`
+- `status`
+- `workflow-status-badge`
+- `procedure-result-block`
 
 Supported metadata fields:
 
@@ -35,6 +42,6 @@ Supported metadata fields:
 - `icon`: `table`, `form`, `summary`, `workflow`, or `status`
 - `variant`: `default`, `compact`, or `readonly`
 
-The Minimal support contract rejects `implementation`, `script`, `customHtml`, `externalUrl`, `dynamicComponent`, `componentUrl`, and equivalent dynamic behavior. Trusted-source panels remain governed by the separate trusted-source admission path and are not enabled broadly by CP12.
+An `implementation` block is allowed only as mode `untrustedExtension`, pointing at a hash-pinned `html` or `js` file listed in `untrusted-extension-manifest.json`. `script`, `customHtml`, `externalUrl`, `dynamicComponent`, `componentUrl`, and equivalent dynamic behavior stay rejected. Untrusted-extension panels remain governed by the separate admission path and are not enabled broadly by CP12.
 
 Runtime rendering must use the declarative panel contract. If panel data cannot be hydrated, the runtime returns a structured fallback block instead of crashing or attempting dynamic component loading.

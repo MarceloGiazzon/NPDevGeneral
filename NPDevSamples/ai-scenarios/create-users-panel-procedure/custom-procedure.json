@@ -30,7 +30,11 @@
       "type": "array"
     }
   ],
-  "sideEffects": ["concept:User:create:3"],
+  "sideEffects": ["concept:User"],
+  "sideEffectType": "bulk",
+  "requiredRole": "admin",
+  "tenantScoped": true,
+  "maxAffectedRows": 3,
   "steps": [
     {
       "type": "saveConcept",
