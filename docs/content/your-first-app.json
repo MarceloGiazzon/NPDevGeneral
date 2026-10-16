@@ -89,7 +89,7 @@
         },
         {
           "type": "prose",
-          "text": "\nOpen **http://localhost:8080**. The `dev` profile ships a fixed convenience key for exactly this\nmoment — type **`dev-key`** into the API Key field on the page that greets you.\n\n**You should see Book and Member as real screens** — list, create, edit — with a database and a\nREST API behind them. (There is a second, separate key file — `SUPER_USER_KEY.txt` — but that is\nfor the platform ControlPanel, not for using your own app; ignore it for now.)\n"
+          "text": "\nOpen **http://localhost:8080**. The first boot generates an admin API key, prints it once in the\nconsole and saves it to `secrets/api-key.env` in the app folder. Paste it into the API Key field on\nthe page that greets you.\n\n**You should see Book and Member as real screens** — list, create, edit — with a database and a\nREST API behind them. (There is a second, separate key file — `SUPER_USER_KEY.txt` — but that is\nfor the platform ControlPanel, not for using your own app; ignore it for now.)\n"
         }
       ]
     },

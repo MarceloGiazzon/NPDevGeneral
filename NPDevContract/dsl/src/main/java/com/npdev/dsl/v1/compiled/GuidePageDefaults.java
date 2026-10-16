@@ -31,7 +31,9 @@ public final class GuidePageDefaults {
                         new CompiledGuidePageRegion(left, left, false, 0),
                         new CompiledGuidePageRegion(right, right, true, 280)
                 ),
-                new CompiledGuidePageTheme("light", "", "comfortable", "", ""),
+                // Built-ins never pin mode/density, so the app-wide ui.theme.mode/ui.density
+                // (shell.js applyAppTheme) wins -- see W1.4.
+                new CompiledGuidePageTheme(null, "", null, "", ""),
                 List.of()
         );
     }

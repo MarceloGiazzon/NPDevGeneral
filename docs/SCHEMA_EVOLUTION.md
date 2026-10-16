@@ -517,10 +517,9 @@ blanket-only app. Use one of these instead, in order of preference:
 2. **Use a `freshdb`-style app definition** (several ship already, e.g.
    `simple-user-registry-h2local-freshdb`).
 
-> Note: `strategy: RecreateOnAppStart` is **not** an escape hatch. Despite the name it has no
-> distinct runtime behaviour — the strategy string is only read to evaluate the blanket posture
-> above, so `RecreateOnAppStart` behaves exactly like `KeepExistingIfCompatible` and recreates
-> nothing.
+> Note: `strategy: RecreateOnAppStart` was removed; generation refuses it and names the codemod
+> (`npdev migrate db-lifecycle --input <dir> --write`). For a throwaway dataset use `Ephemeral` (see
+> the STOR-16 section).
 - Every use prints a loud deprecation warning (`NPDev schema lifecycle: DEPRECATION WARNING`) naming
   exactly what is about to be executed, plus a one-line `NOTICE` on **every** boot of an app
   configured this way — so the posture is visible before the day it matters.
@@ -542,7 +541,7 @@ keep working unchanged.
 > - **2 still on the blanket posture, both DELIBERATELY** — `lnch1-rehearsal` (exists to rehearse
 >   upgrades on a shipped-shaped definition) and `simple-user-registry-h2local-freshdb` (the cited
 >   "freshdb" CI pattern). Flipping either would defeat the scenario it exists to test.
-> - **5 `InMemory` + `RecreateOnAppStart`** (`_official\Claude`, `pack-sample`, `simple-user-registry-inmemory`,
+> - **5 `InMemory` + `Ephemeral`** (formerly the removed `RecreateOnAppStart`; `_official\Claude`, `pack-sample`, `simple-user-registry-inmemory`,
 >   `canonical-demo`, `simple-contact-intake`) — non-persistent, so the posture does not apply.
 >
 > Every remaining blanket-posture definition is now blanket **for a documented reason**, not by

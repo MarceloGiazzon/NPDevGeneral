@@ -12,8 +12,8 @@ via environment variables, nothing environment-specific baked into the image.
 
 ## Two shapes, chosen by the model's `db.definition.json` engine
 
-- **`db.engine: Postgres`** → the **Postgres-first** compose: an `app` service + a `postgres`
-  service (`postgres:16-alpine`), both healthchecked, `app` waiting on `postgres` before starting.
+- **`db.engine: Postgres`** → the **Postgres-first** compose: an `app` service + a `database`
+  service (`postgres:16-alpine`), both healthchecked, `app` waiting on `database` before starting.
   This is the production-grade path — Postgres is a durable, separately-operable service.
 - **`InMemory` / `H2Local` / `H2Server`** → a **standalone** compose: just the `app` service. These
   are dev/test storage engines, embedded in the app process itself — there is nothing to run
@@ -43,13 +43,19 @@ other NPDev build step works; Docker's job here is packaging and orchestration, 
 ## Retrieving the Super User (ControlPanel) key
 
 `SuperUserBootstrapper` auto-issues a credential on first boot (if none is active) and writes the
-raw key to `SUPER_USER_KEY.txt` in the app's working directory — there is no config property for
-it. The compose file mounts a named volume (`app-data:/app`) over the whole app directory so the
-key persists across container recreation; retrieve it with:
+raw key to `SUPER_USER_KEY.txt` in the directory named by `npdev.superuser.key-file-dir` (default:
+the working directory). The generated compose file sets `NPDEV_SUPERUSER_KEYFILEDIR=/app/secrets`
+and bind-mounts `./secrets` there, so the key is `/app/secrets/SUPER_USER_KEY.txt` in the
+container and `./secrets/SUPER_USER_KEY.txt` on the host (it survives container recreation).
+Retrieve it with:
 
 ```
-docker compose exec app cat SUPER_USER_KEY.txt
+cat ./secrets/SUPER_USER_KEY.txt
+# or, from inside the running container:
+docker compose exec app cat /app/secrets/SUPER_USER_KEY.txt
 ```
+
+This key opens `/control-panel.html` only; it is not the business-API `X-Api-Key`.
 
 Note: `SuperUserBootstrapper` skips issuing a key entirely when there is no physical database
 configured (`InMemory` engine) — Super User credentials require `H2Local`/`H2Server`/`Postgres`.

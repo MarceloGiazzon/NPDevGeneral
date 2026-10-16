@@ -8,4 +8,8 @@ dependencies {
     // does), and until now this was the one *-postgres adapter with real-catalog-lookup logic that
     // had never been tested against Postgres at all.
     testImplementation project(':adapters:postgres-test-support')
+    // ENG-6: the flow-create defaults proof runs against H2 locally (CI's container matrix covers
+    // the real engines); jackson parses the test model JSON into a CompiledModel.
+    testImplementation 'com.h2database:h2:2.4.240'
+    testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
 }

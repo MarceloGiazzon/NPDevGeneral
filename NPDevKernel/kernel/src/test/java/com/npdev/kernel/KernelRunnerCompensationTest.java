@@ -59,6 +59,64 @@ class KernelRunnerCompensationTest {
     }
 
     @Test
+    void settledFailureKeepsADurableCountOfCompensatedBlocks() {
+        List<String> log = new CopyOnWriteArrayList<>();
+        InMemoryFlowInstanceStore flowInstanceStore = new InMemoryFlowInstanceStore();
+        KernelRunner runner = new KernelRunner(
+                new RecordingEventInfrastructure(),
+                (entityName, payload) -> List.of(),
+                flowProviderForOrderFlow(),
+                failFinalStepDispatcher(log),
+                new RecordingEventInfrastructure(),
+                flowInstanceStore
+        );
+
+        ExecutionResult result = runner.execute("PlaceOrder", Map.of("correlationId", "corr-comp-count-1"));
+
+        FlowInstance failed = flowInstanceStore.findByExecutionId(result.getExecutionId()).orElseThrow();
+        assertEquals(FlowInstanceStatus.FAILED_PERMANENT, failed.status());
+        assertEquals(null, failed.state().get("__npdev_compensating__"), "in-progress marker is cleared");
+        assertEquals(2, failed.state().get(CompensationRunner.COMPENSATED_COUNT_KEY),
+                "steps 1 and 2 declared onFailure and both ran");
+        assertEquals("__npdev_compensatedSteps__", CompensationRunner.COMPENSATED_COUNT_KEY);
+    }
+
+    @Test
+    void firstStepFailureLeavesNoCompensatedCount() {
+        List<String> log = new CopyOnWriteArrayList<>();
+        InMemoryFlowInstanceStore flowInstanceStore = new InMemoryFlowInstanceStore();
+        InMemoryFlowDefinitionProvider provider = new InMemoryFlowDefinitionProvider()
+                .register(new FlowDefinition(
+                        "ShipFirst",
+                        "Order",
+                        List.of(
+                                FlowStepDefinition.capabilityCall(
+                                        "ship-order", "shipping", "ship", "input", "shipped"
+                                ).withOnFailure(List.of(
+                                        FlowStepDefinition.capabilityCall(
+                                                "release-inventory", "inventory", "release", "input", "released"
+                                        )
+                                ))
+                        )
+                ));
+        KernelRunner runner = new KernelRunner(
+                new RecordingEventInfrastructure(),
+                (entityName, payload) -> List.of(),
+                provider,
+                failFinalStepDispatcher(log),
+                new RecordingEventInfrastructure(),
+                flowInstanceStore
+        );
+
+        ExecutionResult result = runner.execute("ShipFirst", Map.of("correlationId", "corr-comp-count-2"));
+
+        FlowInstance failed = flowInstanceStore.findByExecutionId(result.getExecutionId()).orElseThrow();
+        assertEquals(FlowInstanceStatus.FAILED_PERMANENT, failed.status());
+        assertEquals(List.of("ship"), log, "nothing completed before the failure, so nothing is compensated");
+        assertEquals(null, failed.state().get(CompensationRunner.COMPENSATED_COUNT_KEY));
+    }
+
+    @Test
     void crashMidCompensationThenResumeOnFreshRunnerFinishesRemainingCompensationsExactlyOnce()
             throws InterruptedException {
         List<String> log = new CopyOnWriteArrayList<>();
@@ -124,6 +182,8 @@ class KernelRunnerCompensationTest {
         FlowInstance finalInstance = flowInstanceStore.findByExecutionId(executionId).orElseThrow();
         assertEquals(FlowInstanceStatus.FAILED_PERMANENT, finalInstance.status());
         assertEquals(null, finalInstance.state().get("__npdev_compensating__"), "compensation marker must be cleared");
+        assertEquals(2, finalInstance.state().get(CompensationRunner.COMPENSATED_COUNT_KEY),
+                "count after resume must equal the number of distinct compensated steps (no double count)");
     }
 
     private static CapabilityDispatcher failFinalStepDispatcher(List<String> log) {

@@ -565,6 +565,14 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // combination of the existing flags could express the difference. Placing the branch here
         // means Ephemeral bypasses that machinery BY CONSTRUCTION rather than by each refusal site
         // remembering to check a flag -- one of which would eventually not.
+        if (manifest.retiredRecreateOnAppStart()) {
+            // ENG-2: never a wipe. This spelling never dropped anything before STOR-16; fall through
+            // to the normal non-destructive path rather than refusing to boot an assembled app.
+            System.out.println("NPDev schema lifecycle: WARNING -- this app's manifest uses the removed "
+                    + "strategy 'RecreateOnAppStart'. It is treated as KeepExistingIfCompatible (what it "
+                    + "always did); NO tables are dropped. Regenerate after `npdev migrate db-lifecycle "
+                    + "--input <definition dir> --write`.");
+        }
         if (manifest.ephemeral()) {
             DestructiveRecreationPass.executeEphemeralWipe(dataSource, manifest);
             // Same follow-up the acknowledged path performs after a full wipe: without clearing the
@@ -3123,15 +3131,18 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         /**
          * STOR-16: true when this app declares its data is discarded on every start.
          *
-         * <p>Accepts the retired {@code RecreateOnAppStart} spelling too. A generator built after
-         * STOR-16 always writes {@code Ephemeral} -- {@code SchemaLifecycleStrategy.parse} maps the
-         * old name to the new enum and every emission goes through {@code externalName()} -- but a
-         * manifest baked by an OLDER generator is still on disk in already-assembled apps, and the
-         * runtime reads whatever string is there. Refusing to honour it would change those apps'
-         * behaviour on a rebuild-free restart.
+         * <p>ENG-2: only the literal {@code Ephemeral}. A manifest baked before STOR-16 by an older
+         * generator carries the retired {@code RecreateOnAppStart}; for those apps that spelling was
+         * always a no-op, so it is honoured as the normal non-destructive path (see
+         * {@link #retiredRecreateOnAppStart()}), never as a wipe.
          */
         boolean ephemeral() {
-            return "Ephemeral".equals(strategy) || "RecreateOnAppStart".equals(strategy);
+            return "Ephemeral".equals(strategy);
+        }
+
+        /** ENG-2: true for a manifest baked with the removed {@code RecreateOnAppStart} spelling. */
+        boolean retiredRecreateOnAppStart() {
+            return "RecreateOnAppStart".equals(strategy);
         }
 
         /**
