@@ -38,27 +38,18 @@ class SchemaLifecycleEphemeralTest {
     }
 
     @Test
-    void theRetiredSpellingIsAcceptedAsAnAliasAndReportedAsDeprecated() {
-        // Safe by measurement, not assumption: all 7 corpus definitions using the old name are
-        // InMemory, where "drop and recreate on boot" and "memory is empty on boot" are the same
-        // statement.
-        assertEquals(SchemaLifecycleStrategy.EPHEMERAL,
-                SchemaLifecycleStrategy.parse("RecreateOnAppStart"));
-        assertTrue(SchemaLifecycleStrategy.isDeprecatedSpelling("RecreateOnAppStart"));
-        assertTrue(SchemaLifecycleStrategy.isDeprecatedSpelling("  recreateonappstart  "),
-                "parse is case- and whitespace-insensitive, so the deprecation probe must be too");
-        assertFalse(SchemaLifecycleStrategy.isDeprecatedSpelling("Ephemeral"));
-        assertTrue(SchemaLifecycleStrategy.deprecationWarning().contains("Ephemeral"),
-                "the warning has to name the replacement, or it is just a complaint");
-        assertTrue(SchemaLifecycleStrategy.deprecationWarning().contains("npdev migrate db-lifecycle"),
-                "and it has to name the codemod that fixes it");
-    }
-
-    @Test
-    void anAliasedDefinitionIsEmittedUnderTheNewNameNotTheOld() throws Exception {
-        // externalName() is the only serialization path, so an alias resolves once at parse time and
-        // every downstream artifact -- manifest, application.properties -- says "Ephemeral".
-        assertEquals("Ephemeral", SchemaLifecycleStrategy.parse("RecreateOnAppStart").externalName());
+    void theRemovedSpellingIsRefusedWithTheCodemodNamed() {
+        // ENG-2: the alias is gone. A refusal at generation time that names the one fixing command
+        // replaces both the false "warned about" promise and the runtime wipe it could lead to.
+        for (String spelling : new String[] {"RecreateOnAppStart", "  recreateonappstart "}) {
+            IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+                    () -> SchemaLifecycleStrategy.parse(spelling));
+            assertTrue(refused.getMessage().contains("npdev migrate db-lifecycle"), refused.getMessage());
+            assertTrue(refused.getMessage().contains("KeepExistingIfCompatible"), refused.getMessage());
+            assertTrue(refused.getMessage().contains("Ephemeral"), refused.getMessage());
+        }
+        assertTrue(SchemaLifecycleStrategy.isRemovedSpelling("  recreateonappstart  "));
+        assertFalse(SchemaLifecycleStrategy.isRemovedSpelling("Ephemeral"));
     }
 
     // -- confirmation ----------------------------------------------------------------------------

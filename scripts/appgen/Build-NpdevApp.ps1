@@ -689,11 +689,10 @@ if ($Password) { $DbPlan['password'] = $Password }
 $Lifecycle = $DbDef.schemaLifecycle
 if ($null -ne $Lifecycle) {
   $Strategy = "$($Lifecycle.strategy)"
-  # `RecreateOnAppStart` is STOR-16's deprecated alias of `Ephemeral`, so it means the same
-  # thing here. An app generated before the codemod ran still discards its data, and the card
-  # has to say so rather than reading the retired spelling as "not ephemeral".
+  # ENG-2: `RecreateOnAppStart` was removed (the generator refuses it before this line can
+  # matter), so only the literal `Ephemeral` is an ephemeral data policy.
   $DataPolicy = 'preserved'
-  if ($Strategy -eq 'Ephemeral' -or $Strategy -eq 'RecreateOnAppStart') { $DataPolicy = 'ephemeral' }
+  if ($Strategy -eq 'Ephemeral') { $DataPolicy = 'ephemeral' }
   $Ownership = 'NpdevManaged'
   if ($Lifecycle.PSObject.Properties.Name -contains 'ownership' -and $Lifecycle.ownership) {
     $Ownership = "$($Lifecycle.ownership)"
