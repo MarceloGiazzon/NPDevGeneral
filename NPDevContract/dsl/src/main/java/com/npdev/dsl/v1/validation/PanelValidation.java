@@ -1079,6 +1079,15 @@ final class PanelValidation {
                 if (QUERY_BOUND_GADGET_TYPES.contains(normalize(gadget.type()))) {
                     validateGuidePageGadgetQueryBinding(guidePage.name(), gadget, queriesByName, errors);
                 }
+                boolean pageFragment = "page-fragment".equals(normalize(gadget.type()));
+                if (pageFragment && !hasText(gadget.url())) {
+                    errors.add("GuidePage " + guidePage.name() + " gadget " + gadget.name()
+                            + ": page-fragment gadgets must declare url -- suggestedFix: add \"url\": \"/path/to/fragment.html\" (same-origin)");
+                }
+                if (!pageFragment && hasText(gadget.url())) {
+                    errors.add("GuidePage " + guidePage.name() + " gadget " + gadget.name()
+                            + ": url is only valid on page-fragment gadgets -- suggestedFix: remove \"url\" or change the gadget type to page-fragment");
+                }
             }
         }
 

@@ -912,13 +912,24 @@
   function renderPageFragmentGadget(container, config) {
     var url = config && config.url;
     if (!url) return;
-    fetch(url).then(function (res) { return res.ok ? res.text() : ""; }).then(function (html) {
+    if (!/^\/(?!\/)/.test(url)) {
+      gadgetMessage(container, "page-fragment url must be a same-origin path");
+      return;
+    }
+    fetch(url).then(function (res) {
+      if (!res.ok) {
+        gadgetMessage(container, "Fragment unavailable (" + res.status + ")");
+        return null;
+      }
+      return res.text();
+    }).then(function (html) {
+      if (html === null) return;
       // Same-origin static HTML fragment only; scripts inside are intentionally not executed
       // (innerHTML never runs <script> tags) -- this is a display-only gadget, not a mini-app host.
       var holder = document.createElement("div");
       holder.innerHTML = html;
       container.appendChild(holder);
-    }).catch(function () { /* best-effort */ });
+    }).catch(function () { gadgetMessage(container, "Fragment unavailable"); });
   }
 
   gadgetRenderers["recent-items"] = function (container) { renderRecentItemsGadget(container); };
