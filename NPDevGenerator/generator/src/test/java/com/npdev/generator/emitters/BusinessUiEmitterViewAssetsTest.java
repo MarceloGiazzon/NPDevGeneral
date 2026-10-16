@@ -136,6 +136,52 @@ public class BusinessUiEmitterViewAssetsTest {
     }
 
     @Test
+    void searchPaletteIsEmittedLoadedBeforeAppJsAndInitialisedAfterShellMount() throws Exception {
+        Path out = emit();
+        Path search = out.resolve(STATIC + "views/search.js");
+        assertTrue(Files.exists(search), "views/search.js must be emitted");
+        String index = Files.readString(out.resolve(STATIC + "index.html"));
+        assertTrue(index.indexOf("./views/registry.js") < index.indexOf("./views/search.js"));
+        assertTrue(index.indexOf("./views/search.js") < index.indexOf("./app.js"));
+        String appJs = Files.readString(out.resolve(STATIC + "app.js"));
+        assertTrue(appJs.indexOf("NPDevShell.mount(") < appJs.indexOf("NPDevViews.globals()"),
+                "globals must init after the shell mounted");
+        assertTrue(Files.readString(out.resolve(STATIC + "views/views.css")).contains(".global-search-overlay"));
+    }
+
+    @Test
+    void freeTextFilterOverConceptWithNoFilterableFieldMatchesNothing() throws Exception {
+        String controller = Files.readString(emit().resolve(
+                "src/main/java/com/npdev/generated/controllers/GeneratedConceptCrudController.java"));
+        int at = controller.indexOf("if (filterableFields.isEmpty())");
+        assertTrue(at > 0, "filterRows must special-case an empty filterable list");
+        String body = controller.substring(at, controller.indexOf('}', at));
+        assertTrue(body.contains("return List.of();"), body);
+    }
+
+    @Test
+    void searchHelperSkipsConceptsWithNoFilterableField() throws Exception {
+        Assumptions.assumeTrue(nodeOnPath(), "node is not on PATH");
+        Path out = emit();
+        Path script = out.resolve("search-check.js");
+        Files.writeString(script, """
+                const vm = require("vm"); const fs = require("fs"); const assert = require("assert");
+                globalThis.window = globalThis;
+                vm.runInThisContext(fs.readFileSync(process.argv[2], "utf8"));
+                vm.runInThisContext(fs.readFileSync(process.argv[3], "utf8"));
+                const g = NPDevViews.globals();
+                assert.strictEqual(g.length, 1);
+                assert.strictEqual(g[0].name, "search");
+                const sc = g[0].impl._searchableConcepts;
+                assert.strictEqual(sc([{ fields: [{ filterable: false }] }, { fields: [{ filterable: true }] }]).length, 1);
+                assert.strictEqual(sc(null).length, 0);
+                """);
+        assertEquals(0, run(out, "node", script.toString(),
+                out.resolve(STATIC + "views/registry.js").toString(),
+                out.resolve(STATIC + "views/search.js").toString()));
+    }
+
+    @Test
     void manifestListsTheTableViewForEveryConcept() throws Exception {
         String manifest = Files.readString(emit().resolve(STATIC + "generated-ui-manifest.json"));
         assertTrue(manifest.contains("\"views\" : [ \"table\" ]"), manifest);

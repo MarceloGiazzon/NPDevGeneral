@@ -312,6 +312,19 @@ concept node of `generated-ui-manifest.json`.
   board loads at most 100 rows (the CRUD controller's `MAX_PAGE_SIZE`) and shows "Showing N of M" when
   the filter matches more; it does not page inside columns.
 
+- **Global features (`views/search.js`).** `NPDevViews.registerGlobal(name, { init(appCtx) })`;
+  `bootstrap()` calls every registered global's `init` once, right after `NPDevShell.mount`, with
+  `appCtx = { manifest, visibleConcepts(), fetchJson, headers, openDetails(conceptName, record) }`. The
+  built-in global is the **search palette** (Ctrl+K / Cmd+K, `/` outside an input, or the top-bar
+  button). It needs no server endpoint: for each visible concept that has at least one `filterable`
+  field it calls the concept's own list endpoint with `filter=<q>&page=0&size=5` (debounced 300 ms, at
+  least 2 characters, at most 6 requests in flight, a superseded query is dropped, a 403 or error on one
+  concept just yields no hits there), so permissions and row-level access are exactly the grid's.
+  Each concept's free-text filter is bounded by `ConceptQuery.MAX_LIMIT` (1000 rows scanned per
+  concept), so a hit may be missing in a very large table: refine the query. A concept with no
+  `filterable` field is not searchable, and the server's `filterRows` returns no rows for a non-blank
+  `filter` on such a concept (it used to return the whole table).
+
 ## Breadcrumbs and default route (W1.6)
 
 The topbar breadcrumb is a projection of the same nav tree `renderSidebar()` already draws
