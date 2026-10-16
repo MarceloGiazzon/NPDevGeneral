@@ -145,11 +145,18 @@
       ".npdev-shell-topbar .npdev-shell-collapse-toggle{width:44px;height:44px;}" +
       ".npdev-shell-sidebar a,.npdev-shell-sidebar .npdev-shell-nav-group-header{min-height:44px;}" +
       ".npdev-shell-body{position:relative;}" +
-      /* The right gadget rail has no drawer of its own (out of scope for this pass) -- at this
-         width it would otherwise squeeze the content column to near-nothing alongside the sidebar
-         drawer, so it and its topbar toggle are simply hidden rather than left half-broken. */
-      ".npdev-shell-rightbar{display:none;}" +
-      ".npdev-shell-topbar button.npdev-shell-rightbar-toggle{display:none;}" +
+      /* UI-7: the right gadget rail is a drawer from the right at this width (mirror of the left
+         nav drawer) so KPI/chart/table gadgets stay reachable on a phone instead of being hidden.
+         It must not stay in the flex flow (it would squeeze the content column). The desktop
+         "collapsed" state means nothing on a drawer. A page with no right region
+         (body.npdev-shell-no-right) keeps shell.css's display:none and loses the toggle too. */
+      ".npdev-shell-rightbar{position:fixed;top:var(--np-topbar-h,52px);bottom:0;right:0;z-index:40;" +
+      "width:min(90vw,340px);padding:14px;transform:translateX(100%);transition:transform .18s ease;" +
+      "box-shadow:0 12px 32px rgba(24,32,42,.28);}" +
+      "body.npdev-shell-rightbar-collapsed .npdev-shell-rightbar{width:min(90vw,340px);padding:14px;overflow-y:auto;}" +
+      "body.npdev-shell-rightbar-mobile-open .npdev-shell-rightbar{transform:translateX(0);}" +
+      "body.npdev-shell-rightbar-mobile-open .npdev-shell-sidebar-backdrop{display:block;}" +
+      "body.npdev-shell-no-right .npdev-shell-topbar button.npdev-shell-rightbar-toggle{display:none;}" +
       "}";
     document.head.appendChild(style);
   })();
@@ -285,7 +292,19 @@
     if (el.sidebarToggle) el.sidebarToggle.setAttribute("aria-expanded", "false");
   }
 
+  // UI-7: the right gadget rail's phone drawer; never open together with the left nav drawer.
+  function closeMobileRightbar() {
+    document.body.classList.remove("npdev-shell-rightbar-mobile-open");
+    if (el.rightbarToggle) el.rightbarToggle.setAttribute("aria-expanded", "false");
+  }
+
+  function closeMobileDrawers() {
+    closeMobileSidebar();
+    closeMobileRightbar();
+  }
+
   function openMobileSidebar() {
+    closeMobileRightbar();
     document.body.classList.add("npdev-shell-sidebar-mobile-open");
     if (el.sidebarToggle) el.sidebarToggle.setAttribute("aria-expanded", "true");
   }
@@ -431,7 +450,15 @@
     rightbarToggle.type = "button";
     rightbarToggle.title = "Mostrar/ocultar painel lateral";
     rightbarToggle.textContent = "▤";
+    rightbarToggle.setAttribute("aria-expanded", "false");
     rightbarToggle.addEventListener("click", function () {
+      if (isMobileViewport()) {
+        var open = !document.body.classList.contains("npdev-shell-rightbar-mobile-open");
+        if (open) closeMobileSidebar();
+        document.body.classList.toggle("npdev-shell-rightbar-mobile-open", open);
+        rightbarToggle.setAttribute("aria-expanded", String(open));
+        return;
+      }
       var collapsed = !document.body.classList.contains("npdev-shell-rightbar-collapsed");
       document.body.classList.toggle("npdev-shell-rightbar-collapsed", collapsed);
       writeJsonStorage(localStorage, RIGHTBAR_COLLAPSED_KEY, collapsed);
@@ -456,7 +483,7 @@
     // on every viewport crossing.
     var sidebarBackdrop = document.createElement("div");
     sidebarBackdrop.className = "npdev-shell-sidebar-backdrop";
-    sidebarBackdrop.addEventListener("click", closeMobileSidebar);
+    sidebarBackdrop.addEventListener("click", closeMobileDrawers);
 
     var bodyRow = document.createElement("div");
     bodyRow.className = "npdev-shell-body";
@@ -486,13 +513,15 @@
     // open on a phone, then the same page resized wide (devtools, foldable, external monitor),
     // would keep the off-canvas transform applied under styles no longer meant for it.
     document.addEventListener("keydown", function (event) {
-      if (event.key === "Escape" && document.body.classList.contains("npdev-shell-sidebar-mobile-open")) {
-        closeMobileSidebar();
+      if (event.key === "Escape" && (document.body.classList.contains("npdev-shell-sidebar-mobile-open")
+          || document.body.classList.contains("npdev-shell-rightbar-mobile-open"))) {
+        closeMobileDrawers();
       }
     });
     window.addEventListener("resize", function () {
-      if (!isMobileViewport() && document.body.classList.contains("npdev-shell-sidebar-mobile-open")) {
-        closeMobileSidebar();
+      if (!isMobileViewport() && (document.body.classList.contains("npdev-shell-sidebar-mobile-open")
+          || document.body.classList.contains("npdev-shell-rightbar-mobile-open"))) {
+        closeMobileDrawers();
       }
     });
   }
