@@ -2666,9 +2666,10 @@ def run_generate(args: argparse.Namespace) -> None:
         f"Your app is ready:  {final_app_out}\n"
         f"\n"
         f"  1. Build:   cd {final_app_out} && ./gradlew bootJar\n"
-        f"  2. Run:     java -jar build/libs/{jar_name} --spring.profiles.active=dev\n"
-        f"  3. Open:    http://localhost:8080\n"
-        f"  4. Log in:  the key in SUPER_USER_KEY.txt (created in this folder on first start)\n"
+        f"  2. Run:     java -jar build/libs/{jar_name} --spring.profiles.active=dev   (or: npdev run app)\n"
+        f"  3. Open:    http://localhost:8080  -- paste the API key printed on first boot "
+        f"(saved in secrets/api-key.env)\n"
+        f"  4. Admin:   /control-panel.html takes a different key, SUPER_USER_KEY.txt\n"
         f"\n"
         f"  Docker instead? cp .env.example .env && docker compose up\n"
     )
@@ -6847,11 +6848,10 @@ def run_doctor(args: argparse.Namespace) -> int:
 
     pwsh_path = shutil.which("pwsh")
     if pwsh_path is None:
-        # A5 (Cold Clone Audit 2026-08-28): this used to say "optional, fine for the portable
-        # npdev path" -- but `npdev run app` and `npdev verify --tier T1+` shell out to a generated
-        # app's _ops/*.ps1 toolbox, so a Linux/macOS user told "optional" got a hard "no PowerShell
-        # found" at the moment they tried to run the app they just built. Authoring genuinely needs
-        # no PowerShell; those two do. Say both.
+        # A5 (Cold Clone Audit 2026-08-28) said `npdev run app` shells out to the _ops/*.ps1
+        # toolbox. OPS-4: that is false -- run_app runs gradlew and `java -jar` directly and has no
+        # pwsh/.ps1 call. What does need PowerShell is `npdev verify --tier T1+` and a generated
+        # app's own _ops/*.ps1 toolbox (which has *.sh twins). Authoring needs none.
         #
         # D2 (Cold Clone Audit, same item): `npdev db *` is deliberately NOT listed here any more --
         # OperationalRunbookEmitter now emits a POSIX `.sh` twin of every _ops/*.ps1 script, and
@@ -6859,16 +6859,16 @@ def run_doctor(args: argparse.Namespace) -> int:
         # test_db_operation_posix_fallback.py). Keeping the old wording after that fallback shipped
         # would be exactly the false-pessimism this line exists to avoid in the other direction.
         checks.append(_check(
-            "pwsh-present", "PowerShell 7", "warn", expected="required to run an app on this OS",
-            detail="PowerShell 7 (pwsh) not found. Authoring (validate/generate/init) needs no "
-                   "PowerShell, and `npdev db *` now falls back to a POSIX script when none is "
-                   "found -- but `npdev run app` and `npdev verify --tier T1+` still shell out to "
-                   "the generated app's _ops/*.ps1 toolbox and will fail without it.",
+            "pwsh-present", "PowerShell 7", "warn", expected="needed for verify --tier T1+ and _ops/*.ps1",
+            detail="PowerShell 7 (pwsh) not found. Authoring and `npdev run app` need no "
+                   "PowerShell, and `npdev db *` falls back to POSIX scripts -- but "
+                   "`npdev verify --tier T1+` and the app's _ops/*.ps1 toolbox (use the *.sh "
+                   "twins instead) do.",
             fix="Install PowerShell 7: https://aka.ms/powershell",
         ))
     else:
         checks.append(_check("pwsh-present", "PowerShell 7", "pass", found=pwsh_path,
-                             expected="required to run an app on this OS"))
+                             expected="needed for verify --tier T1+ and _ops/*.ps1"))
 
     checks.extend(_database_checks(getattr(args, "app", None)))
     checks.append(_scrapforai_check())
@@ -7473,6 +7473,24 @@ def _run_one_scenario(base_url: str, scenario: dict, filename: str, api_key: str
     return result
 
 
+def _resolve_acceptance_api_key(explicit: str | None, key_file: str | None) -> str | None:
+    """OPS-4: the X-Api-Key acceptance scenarios send. An explicit value wins (an empty string
+    means 'send no header' and is kept as-is); otherwise the first mapping in the boot phase's
+    secrets/api-key.env (``NPDEV_AUTH_API_KEYS=<key>=<user>:<roles>``); otherwise None."""
+    if explicit is not None:
+        return explicit
+    if key_file and Path(key_file).exists():
+        for raw_line in Path(key_file).read_text(encoding="utf-8-sig").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            _, mapping = line.split("=", 1)
+            if mapping:
+                return mapping.split("=", 1)[0]
+            break
+    return None
+
+
 def run_acceptance(args: argparse.Namespace) -> dict:
     """Move 10 D2 (LC-D2): boots via D1 (run_app), then runs every *.scenario.json under
     --scenarios against the live app. Unapproved scenarios still execute (informational -- an
@@ -7488,7 +7506,11 @@ def run_acceptance(args: argparse.Namespace) -> dict:
     base_url = getattr(args, "base_url", None)
     if base_url:
         boot_result = {"ok": True, "baseUrl": base_url, "skipped": "boot skipped -- --base-url was supplied"}
-        api_key = getattr(args, "api_key", "dev-key")
+        api_key = getattr(args, "api_key", None)
+        if api_key is None:
+            raise CliError(
+                "acceptance run --base-url needs --api-key (the app's X-Api-Key; it is in "
+                "<app>/secrets/api-key.env)")
     else:
         if not (args.model and args.config and args.output):
             raise CliError("acceptance run: --model/--config/--output are required unless --base-url is given.")
@@ -7510,26 +7532,12 @@ def run_acceptance(args: argparse.Namespace) -> dict:
                 "summary": {"total": 0, "approvedTotal": 0, "passed": 0, "failed": 0, "excludedUnapproved": 0},
             }
         base_url = boot_result["baseUrl"]
-        api_key = getattr(args, "api_key", "dev-key")
         # T1/C2 removed the 'dev' profile's fixed admin key -- StartupValidator now refuses to boot
         # without one supplied externally, so run_app's own BOOT phase already provisioned (or
         # reused) a real per-app credential via ensure_api_key and named its file as apiKeyFile.
-        # The CLI's static --api-key default ("dev-key") can never match a freshly generated key
-        # anymore, so read that SAME file here instead of trusting the default -- guarded by
-        # existence (never present on the mocked run_app() unit tests) so nothing here writes to
-        # disk, only reads what BOOT already wrote. Found live while proving npdev_close_loop end
-        # to end (P7.2): every scenario failed with HTTP 401 invalid_api_key against a freshly
-        # generated app before this fix, because this line still hard-coded the pre-C2 key.
-        key_file = boot_result.get("apiKeyFile")
-        if key_file and Path(key_file).exists():
-            for raw_line in Path(key_file).read_text(encoding="utf-8").splitlines():
-                line = raw_line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                _, mapping = line.split("=", 1)
-                if mapping:
-                    api_key = mapping.split("=", 1)[0]
-                break
+        # An explicit --api-key wins; otherwise read that SAME file (OPS-4: the old static
+        # "dev-key" default could not be told apart from an explicit value, so it overrode it).
+        api_key = _resolve_acceptance_api_key(getattr(args, "api_key", None), boot_result.get("apiKeyFile"))
     scenarios_dir = Path(args.scenarios).expanduser().resolve()
     scenario_files = sorted(scenarios_dir.glob("*.scenario.json"))
     results = [
@@ -7607,7 +7615,7 @@ def run_closed_loop(args: argparse.Namespace) -> dict:
         require_db_definition=getattr(args, "require_db_definition", False),
         port=args.port, timeout=args.timeout, profile=getattr(args, "profile", "dev"),
         baseline_model=args.previous, keep_running=getattr(args, "keep_running", False),
-        scenarios=args.scenarios, api_key=getattr(args, "api_key", "dev-key"),
+        scenarios=args.scenarios, api_key=getattr(args, "api_key", None),
     )
     acceptance_report = run_acceptance(acceptance_args)
     report["run"] = acceptance_report.get("boot")
@@ -8050,9 +8058,14 @@ def _acceptance_layer(app_record: dict) -> dict:
         return layer
 
     layer["scenariosDir"] = str(chosen)
+    api_key = app_record.get("apiKey")
+    if api_key is None:
+        layer.update(status="empty", green=None, detail=(
+            "no API key known for this app yet -- start it once so secrets/api-key.env exists"))
+        return layer
     report = run_acceptance(argparse.Namespace(
         base_url=app_record["probeBaseUrl"], scenarios=str(chosen),
-        api_key=app_record.get("apiKey") or "dev-key",
+        api_key=api_key,
         model=None, config=None, output=None, port=None, timeout=None,
     ))
     layer["report"] = report
@@ -16624,9 +16637,9 @@ def build_parser() -> argparse.ArgumentParser:
     acceptance_run.add_argument("--timeout", type=int, default=420)
     acceptance_run.add_argument("--profile", default="dev")
     acceptance_run.add_argument(
-        "--api-key", default="dev-key",
-        help="X-Api-Key header value used for every seed/when HTTP call (default 'dev-key', which "
-             "the 'dev' profile maps to a developer/admin identity). Empty string sends no header.",
+        "--api-key", default=None,
+        help="X-Api-Key for every seed/when call. Default: the key in <output>/secrets/api-key.env "
+             "written by the boot phase. Required with --base-url. Empty string sends no header.",
     )
     acceptance_run.add_argument("--baseline-model")
     acceptance_run.add_argument("--keep-running", action="store_true")
@@ -16650,7 +16663,9 @@ def build_parser() -> argparse.ArgumentParser:
     loop_run.add_argument("--port", type=int, default=8080)
     loop_run.add_argument("--timeout", type=int, default=420)
     loop_run.add_argument("--profile", default="dev")
-    loop_run.add_argument("--api-key", default="dev-key")
+    loop_run.add_argument("--api-key", default=None,
+                          help="X-Api-Key for acceptance scenarios. Default: the key the boot phase "
+                               "provisioned in <output>/secrets/api-key.env.")
     loop_run.add_argument("--keep-running", action="store_true")
 
     # Wave 7.1: headless eval harness over NPDevSamples/ai-scenarios/*/. Reuses
