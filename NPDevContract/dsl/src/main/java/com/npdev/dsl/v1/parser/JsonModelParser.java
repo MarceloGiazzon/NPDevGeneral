@@ -1763,7 +1763,8 @@ public final class JsonModelParser {
                 parseBandPickers(node.get("bandPickers")),
                 parseAutoPanelDataSource(node.get("dataSource")),
                 parseUiState(node.get("uiState")),
-                readText(node, "layout")
+                readText(node, "layout"),
+                readText(node, "panel")
         );
     }
 
