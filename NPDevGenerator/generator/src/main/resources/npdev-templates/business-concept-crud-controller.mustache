@@ -587,7 +587,9 @@ public class GeneratedConceptCrudController {
                 .map(FieldMetadata::name)
                 .toList();
         if (filterableFields.isEmpty()) {
-            return rows;
+            // A free-text search over a concept with nothing searchable used to return the whole
+            // table (every row "matched"); with no filterable field nothing can match.
+            return List.of();
         }
         List<Map<String, Object>> filtered = new ArrayList<>();
         for (Map<String, Object> row : rows) {

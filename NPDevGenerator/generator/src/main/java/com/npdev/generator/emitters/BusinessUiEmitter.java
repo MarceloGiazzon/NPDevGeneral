@@ -242,6 +242,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             "registry.js",
             "history.js",
             "board.js",
+            "search.js",
             "views.css"
     );
 
