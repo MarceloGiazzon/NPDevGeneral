@@ -1,17 +1,22 @@
 # AI Custom Procedure Contract
 
-A custom procedure beta asset can be either a declarative business routine or an explicit trusted-source routine.
+A custom procedure beta asset can be either a declarative business routine or an explicit untrusted-extension routine.
 
 Required fields:
 
 - `schemaVersion`: `ai-custom-procedure.v1`
 - `procedureId`
 - `executionMode`: `governed`
-- `trust`: `trusted` or `inproc`
+- `trust`: `untrustedExtension` or `inproc`
 - `inputs`
-- `outputs`
-- `sideEffects`
+- `outputs` (field types: `string`, `text`, `email`, `integer`, `number`, `boolean`, `date`, `datetime`, `uuid`, `array`, `object`)
+- `sideEffectType`: `none`, `single-entity`, `bulk`, or `workflow`
+- `requiredRole`
+- `tenantScoped`
+- `maxAffectedRows`
 - either `steps` or `implementation`
+
+Optional fields: `type`, `sideEffects` (`none`, `concept:<Concept>`, or `workflow:<id>`), `allowedEntities`, `idempotency`.
 
 Allowed step types:
 
@@ -22,9 +27,9 @@ Allowed step types:
 - `callProcedure`
 - `return`
 
-Trusted-source procedures use an `implementation` block:
+Untrusted-extension procedures use an `implementation` block:
 
-- `mode`: `trustedSource`
+- `mode`: `untrustedExtension`
 - `language`: `java`
 - `entrypoint`: local `.java` source file inside the scenario directory
 - `className`: Java class name to compile and load
