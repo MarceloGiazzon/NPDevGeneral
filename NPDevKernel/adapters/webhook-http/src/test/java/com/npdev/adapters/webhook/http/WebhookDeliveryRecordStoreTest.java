@@ -104,6 +104,90 @@ class WebhookDeliveryRecordStoreTest {
         assertEquals(1, row.attemptCount);
     }
 
+    @Test
+    void queuedRowIsDueOnlyOnceItsNextAttemptArrives() throws SQLException {
+        Instant now = Instant.parse("2026-10-16T12:00:00Z");
+        String id = UUID.randomUUID().toString();
+        store.insertQueued(connection, id, "hooks.example.com", "https://hooks.example.com/x", "{\"n\":1}", "WidgetCreated", now);
+
+        java.util.List<WebhookDeliveryRecordStore.DueDelivery> due = store.findDue(connection, now, 10);
+        assertEquals(1, due.size());
+        assertEquals(id, due.get(0).id());
+        assertEquals("WidgetCreated", due.get(0).eventName());
+        assertEquals("{\"n\":1}", due.get(0).payloadJson());
+        assertTrue(store.findDue(connection, now.minusSeconds(1), 10).isEmpty());
+    }
+
+    @Test
+    void claimForSendCountsTheAttemptAndRescheduleMovesTheNextAttempt() throws SQLException {
+        Instant now = Instant.parse("2026-10-16T12:00:00Z");
+        String id = UUID.randomUUID().toString();
+        store.insertQueued(connection, id, "hooks.example.com", "https://hooks.example.com/x", "{}", null, now);
+
+        assertTrue(store.claimForSend(connection, id, now));
+        assertFalse(store.claimForSend(connection, id, now), "a second worker must lose the claim");
+        assertTrue(store.findDue(connection, now.plusSeconds(3600), 10).isEmpty(), "SENDING rows are not due");
+
+        store.reschedule(connection, id, "HTTP 503", now.plusSeconds(30), now);
+        assertTrue(store.findDue(connection, now.plusSeconds(29), 10).isEmpty());
+        assertEquals(1, store.findDue(connection, now.plusSeconds(30), 10).size());
+        Row row = readRow(id);
+        assertEquals(WebhookDeliveryRecordStore.STATUS_PENDING, row.status);
+        assertEquals(1, row.attemptCount);
+        assertEquals("HTTP 503", row.lastError);
+    }
+
+    @Test
+    void releaseStaleReturnsACrashedWorkersRowToPending() throws SQLException {
+        Instant now = Instant.parse("2026-10-16T12:00:00Z");
+        String id = UUID.randomUUID().toString();
+        store.insertQueued(connection, id, "hooks.example.com", "https://hooks.example.com/x", "{}", null, now);
+        assertTrue(store.claimForSend(connection, id, now));
+
+        assertEquals(0, store.releaseStale(connection, now.minusSeconds(600), now.plusSeconds(1)));
+        assertEquals(1, store.releaseStale(connection, now.plusSeconds(600), now.plusSeconds(601)));
+        assertEquals(1, store.findDue(connection, now.plusSeconds(601), 10).size());
+    }
+
+    @Test
+    void redeliverRequeuesAFailedRowWithTheSameIdAndRefusesPendingOnes() throws SQLException {
+        Instant now = Instant.parse("2026-10-16T12:00:00Z");
+        String id = UUID.randomUUID().toString();
+        store.insertQueued(connection, id, "hooks.example.com", "https://hooks.example.com/x", "{}", "E", now);
+        assertFalse(store.redeliver(connection, id, now), "a PENDING row is already queued");
+
+        assertTrue(store.claimForSend(connection, id, now));
+        store.finishFailed(connection, id, 400, "HTTP 400", now);
+        assertEquals(WebhookDeliveryRecordStore.STATUS_FAILED, readRow(id).status);
+        assertTrue(store.findDue(connection, now.plusSeconds(99999), 10).isEmpty(), "dead letters are never due");
+
+        assertTrue(store.redeliver(connection, id, now.plusSeconds(5)));
+        java.util.List<WebhookDeliveryRecordStore.DueDelivery> due = store.findDue(connection, now.plusSeconds(5), 10);
+        assertEquals(1, due.size());
+        assertEquals(id, due.get(0).id(), "redelivery keeps the delivery id so receivers can de-duplicate");
+
+        assertTrue(store.claimForSend(connection, id, now.plusSeconds(6)));
+        store.finishDelivered(connection, id, 200, now.plusSeconds(7));
+        assertTrue(store.redeliver(connection, id, now.plusSeconds(8)), "a DELIVERED row can be replayed on demand");
+    }
+
+    @Test
+    void listNeverExposesThePayloadAndFiltersByStatus() throws SQLException {
+        Instant now = Instant.parse("2026-10-16T12:00:00Z");
+        String id = UUID.randomUUID().toString();
+        store.insertQueued(connection, id, "hooks.example.com", "https://hooks.example.com/x", "{\"email\":\"a@b.c\"}", "E", now);
+
+        java.util.List<java.util.Map<String, Object>> all = store.list(connection, null, 10);
+        assertEquals(1, all.size());
+        assertFalse(all.get(0).containsKey("payload"));
+        assertFalse(all.toString().contains("a@b.c"));
+        assertEquals("E", all.get(0).get("event_name"));
+        assertEquals(1, store.list(connection, WebhookDeliveryRecordStore.STATUS_PENDING, 10).size());
+        assertTrue(store.list(connection, WebhookDeliveryRecordStore.STATUS_FAILED, 10).isEmpty());
+        assertEquals("{\"email\":\"a@b.c\"}", store.payload(connection, id).orElseThrow());
+        assertTrue(store.payload(connection, "missing").isEmpty());
+    }
+
     private Row readRow(String id) throws SQLException {
         String sql = "SELECT status, attempt_count, destination_host, response_status, last_error FROM "
                 + WebhookDeliveryRecordStore.TABLE + " WHERE id = ?";
