@@ -27,7 +27,7 @@ from typing import Any
 
 import build_rag_index
 from failure_signatures import normalize
-from npdev_ai_common import ai_out_dir, repo_root
+from npdev_ai_common import KNOWLEDGE_REL, ai_out_dir, cards_dir, knowledge_dir, repo_root
 
 CARD_TYPES = {"gotcha", "gap", "constraint", "error-fix", "recipe"}
 CARD_STATUS = {"active", "superseded"}
@@ -38,13 +38,15 @@ CARD_STATUS = {"active", "superseded"}
 # ---------------------------------------------------------------------------
 
 def load_cards(root: Path) -> tuple[list[dict[str, Any]], list[str]]:
-    cards_dir = root / "knowledge" / "cards"
+    directory = cards_dir(root)
     cards: list[dict[str, Any]] = []
     errors: list[str] = []
-    if not cards_dir.exists():
+    if not directory.is_dir():
+        errors.append(f"knowledge cards directory not found: {directory} "
+                      f"(expected {KNOWLEDGE_REL}/cards -- did it move again?)")
         return cards, errors
     ids: set[str] = set()
-    for path in sorted(cards_dir.glob("*.json")):
+    for path in sorted(directory.glob("*.json")):
         rel = path.relative_to(root).as_posix()
         try:
             card = json.loads(path.read_text(encoding="utf-8"))
@@ -59,6 +61,9 @@ def load_cards(root: Path) -> tuple[list[dict[str, Any]], list[str]]:
         if isinstance(cid, str):
             ids.add(cid)
         cards.append(card)
+    if not cards and not errors:
+        errors.append(f"0 knowledge cards loaded from {directory} -- an empty card set is a "
+                      "broken path, not a valid state (every consumer would index nothing)")
     return cards, errors
 
 
@@ -144,8 +149,10 @@ def build_failure_index(root: Path, cards: list[dict[str, Any]]) -> dict[str, An
 # ---------------------------------------------------------------------------
 
 def build_capabilities(root: Path, cards: list[dict[str, Any]]) -> dict[str, Any]:
-    status_path = root / "knowledge" / "platform-status.json"
-    status = json.loads(status_path.read_text(encoding="utf-8")) if status_path.exists() else {"items": []}
+    status_path = knowledge_dir(root) / "platform-status.json"
+    if not status_path.exists():
+        raise FileNotFoundError(status_path)
+    status = json.loads(status_path.read_text(encoding="utf-8"))
     constraint_cards = [
         {
             "id": c["id"],
