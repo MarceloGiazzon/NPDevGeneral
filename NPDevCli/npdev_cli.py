@@ -13343,6 +13343,11 @@ def _run_monitor_hotswap(args: argparse.Namespace) -> int:
     return 0 if result["ok"] else 2
 
 
+# ENG-3: refusal codes MetadataHotSwapController#modelReload returns (HTTP 422) from its preflight.
+_RELOAD_PREFLIGHT_REFUSALS = frozenset(
+    {"RELOAD_REMOVES_CONCEPTS", "MODEL_INVALID", "NEW_CONCEPT_PROVISIONING_DISABLED"})
+
+
 def _model_reload_apply(base_url: str, super_user_key: str, model_path: str, timeout: float) -> dict:
     """Wave 6 (the Manager's Studio tab, NPDEV_FEATURE_PLAN_2026-09-24.md 6.1): the HTTP core behind
     `npdev studio apply-live`'s live-swap step -- one POST to
@@ -13379,6 +13384,9 @@ def _model_reload_apply(base_url: str, super_user_key: str, model_path: str, tim
             return result
         result["code"] = payload.get("code") or f"HTTP_{exc.code}"
         result["message"] = payload.get("message") or f"HTTP {exc.code}: {raw_body[:300]}"
+        if payload.get("details"):
+            # ENG-3: the reload preflight's named reasons (missing concepts, validator errors, ...).
+            result["details"] = payload["details"]
         return result
     except urllib.error.URLError as exc:
         result["code"] = "UNREACHABLE"
@@ -13553,6 +13561,17 @@ def _run_monitor_studio_apply(args: argparse.Namespace) -> int:
 
         reload_result = _model_reload_apply(base_url, raw_key, str(model_path), args.timeout)
         result["modelReload"] = reload_result
+        if not reload_result.get("ok") and reload_result.get("code") in _RELOAD_PREFLIGHT_REFUSALS:
+            # ENG-3: the running app refused the reload BEFORE swapping anything (the file on disk is
+            # fine, the app just cannot take it live): same outcome as the classifier's needs-rebuild.
+            result["ok"] = True
+            result["code"] = "NEEDS_REBUILD"
+            details = reload_result.get("details") or []
+            result["message"] = (
+                f"the running app refused a live reload ({reload_result.get('code')}): "
+                f"{reload_result.get('message')}" + (f" -- {'; '.join(details)}" if details else ""))
+            _print_result(result, args)
+            return 0
         if not reload_result.get("ok"):
             result["code"] = reload_result.get("code") or "RELOAD_FAILED"
             result["message"] = reload_result.get("message")

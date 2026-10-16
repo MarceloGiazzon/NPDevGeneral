@@ -247,6 +247,19 @@ class HotswapApply(unittest.TestCase):
             self.assertEqual(result["code"], "ENDPOINT_NOT_FOUND")
 
 
+class ModelReloadPreflightRefusal(unittest.TestCase):
+    def test_reload_apply_surfaces_the_preflight_details(self):
+        """ENG-3: a 422 from /model-reload carries the named reasons; they must reach the caller."""
+        refusal = {"ok": False, "code": "RELOAD_REMOVES_CONCEPTS", "message": "needs a rebuild",
+                   "details": ["identity::User (from pack identity)"]}
+        with mock.patch("urllib.request.urlopen", failing_urlopen(422, refusal)):
+            result = npdev_cli._model_reload_apply("http://127.0.0.1:1", "key", "model.json", 5.0)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "RELOAD_REMOVES_CONCEPTS")
+        self.assertEqual(result["details"], ["identity::User (from pack identity)"])
+        self.assertIn(result["code"], npdev_cli._RELOAD_PREFLIGHT_REFUSALS)
+
+
 class HotswapCliExitCodes(unittest.TestCase):
     def test_main_exits_zero_on_success(self):
         with TemporaryDirectory() as tmp:
