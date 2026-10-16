@@ -14424,6 +14424,93 @@ def run_host_keys(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_host_deploy_vps(args: argparse.Namespace, app_dir: Path) -> int:
+    """`npdev host deploy --ssh user@host` (OPS-9): ship the built app to a Linux server with Docker
+    and start it behind the Caddy proxy (plus the backup sidecar for Postgres/MySQL). The server's
+    .env is created once with generated secrets and never overwritten. Secret values are never
+    printed -- only the path of the local copy."""
+    import shutil
+    import npdev_host
+    import npdev_vps
+
+    host = args.ssh
+    dry_run = bool(getattr(args, "dry_run", False))
+    domain = getattr(args, "domain", None)
+    acme_email = getattr(args, "acme_email", None)
+    if bool(domain) != bool(acme_email):
+        raise CliError("--domain and --acme-email go together (a Let's Encrypt certificate needs both). "
+                        "nothing was shipped.")
+    if not shutil.which("ssh") and not dry_run:
+        raise CliError("ssh was not found on PATH (install OpenSSH). nothing was shipped.")
+    plan_path = app_dir / "_ops" / "resolved-db-plan.json"
+    if not plan_path.is_file():
+        raise CliError(f"{app_dir} has not been generated yet (no _ops/resolved-db-plan.json). "
+                        "nothing was shipped.")
+    db_plan = read_json(plan_path)
+    engine = db_plan.get("engine")
+    if npdev_vps.find_jar(app_dir) is None:
+        raise CliError(f"{app_dir} has no build/libs/FinalExec-*.jar -- run _ops/Build-FinalApp.ps1 first. "
+                        "nothing was shipped.")
+    if not (app_dir / "docker-compose.yml").is_file():
+        raise CliError(f"{app_dir} has no docker-compose.yml -- regenerate the app. nothing was shipped.")
+    app_id = npdev_vps.safe_app_id(str(db_plan.get("appId") or app_dir.name))
+    backup = engine in npdev_vps.SERVER_ENGINES_WITH_BACKUP
+    script = npdev_vps.remote_script(app_id, ["proxy"], backup_service=backup)
+
+    if dry_run:
+        print(f"npdev host deploy --ssh {host} (dry run -- nothing is contacted or written)")
+        print("Would ship:")
+        names = npdev_vps.bundle_names(app_dir)
+        generated = [n for n in names if n.startswith("npdev-generated/")]
+        for name in names:
+            if not name.startswith("npdev-generated/"):
+                print(f"  {name}")
+        if generated:
+            print(f"  npdev-generated/  ({len(generated)} files)")
+        print("  .env  (only if the server has none yet: random API key and database password)")
+        print("Would run:")
+        print("  " + " ".join(shlex.quote(part) for part in npdev_vps.ssh(host, script, dry_run=True)))
+        return 0
+
+    try:
+        has_env = npdev_vps.remote_has_env(host, app_id)
+        env_text = None if has_env else npdev_vps.first_env(app_dir, public_host=domain, acme_email=acme_email)
+        if env_text is not None:
+            safe_host = "".join(c if c.isalnum() or c in "-._" else "_" for c in host)
+            secrets_dir = app_dir / "secrets"
+            secrets_dir.mkdir(parents=True, exist_ok=True)
+            local_copy = secrets_dir / f"deploy-{safe_host}.env"
+            local_copy.write_bytes(env_text.encode("utf-8"))
+            print(f"Generated a new server .env; local copy (keep it safe): {local_copy}")
+        else:
+            print("The server already has a .env -- left untouched"
+                  + (" (--domain/--acme-email ignored; edit it on the server)." if domain else "."))
+        result = npdev_vps.ssh(host, script, stdin=npdev_vps.build_bundle(app_dir, env_text))
+    except (RuntimeError, ValueError, OSError) as failure:
+        print(f"npdev host deploy: {failure}", file=sys.stderr)
+        return 1
+    if result.returncode != 0:
+        tail = (result.stderr or b"").decode("utf-8", "replace").strip()[-1200:]
+        print(f"npdev host deploy: the remote command failed (exit {result.returncode}):\n{tail}", file=sys.stderr)
+        return 1
+    print((result.stdout or b"").decode("utf-8", "replace").rstrip())
+
+    if not domain:
+        print(f"Deployed to {host}. No --domain given, so the proxy serves a self-signed certificate on :443.")
+        return 0
+    findings = npdev_host.run_remote_checks(f"https://{domain}")
+    print(f"remote: https://{domain}")
+    for finding in findings:
+        print(f"  [{_HOST_CHECK_STATUS_LABEL[finding['status']]}] {finding['title']}")
+        if finding["status"] != "ok":
+            print(f"        {finding['detail']}")
+    fixes = sum(1 for finding in findings if finding["status"] == "fix")
+    if fixes:
+        print("Resolve the FIX rows above (a fresh Let's Encrypt certificate can take a minute: "
+              f"re-run `npdev host check --target https://{domain}`).")
+    return 0 if fixes == 0 else 1
+
+
 def run_host_deploy(args: argparse.Namespace) -> int:
     """`npdev host deploy` (H14) -- the refusal matters more than the success path. On an
     engine/target mismatch: write NOTHING, exit non-zero, name the three fix steps. On success:
@@ -14433,6 +14520,10 @@ def run_host_deploy(args: argparse.Namespace) -> int:
 
     app_dir = Path(args.app).expanduser().resolve()
     as_json = bool(getattr(args, "json", False))
+
+    if getattr(args, "ssh", None):
+        # OPS-9: the vps target ships the built app over SSH; it has no host.definition.json step.
+        return _run_host_deploy_vps(args, app_dir)
 
     definition = npdev_host.read_definition(app_dir)
     if definition is None:
@@ -17102,6 +17193,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     host_deploy.add_argument("--app", required=True)
     host_deploy.add_argument("--json", action="store_true")
+    host_deploy.add_argument("--ssh", metavar="USER@HOST", default=None,
+                             help="deploy to this server over SSH (Docker + Compose v2 on the server, key "
+                                  "login); implies target vps and needs no `host plan` first.")
+    host_deploy.add_argument("--domain", default=None,
+                             help="--ssh only: public DNS name pointing at the server; enables a Let's "
+                                  "Encrypt certificate (needs --acme-email).")
+    host_deploy.add_argument("--acme-email", dest="acme_email", default=None,
+                             help="--ssh only: e-mail for the Let's Encrypt registration.")
+    host_deploy.add_argument("--dry-run", dest="dry_run", action="store_true",
+                             help="--ssh only: print what would be shipped and run; touch nothing.")
 
     host_keys = host_sub.add_parser("keys", help="List, mint or surface the API keys this app accepts.")
     host_keys.add_argument("--app", required=True)
