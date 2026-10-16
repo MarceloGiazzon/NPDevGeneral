@@ -2,7 +2,9 @@ package com.npdev.dsl.v1.compiled;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class CompiledCapabilityOperation {
     private final String name;
@@ -14,6 +16,7 @@ public final class CompiledCapabilityOperation {
     private final List<CompiledCapabilityOperationError> errors;
     private final String sideEffects;
     private final CompiledCapabilityAuth auth;
+    private final Map<String, Object> http;
 
     public CompiledCapabilityOperation(String name, List<String> input, List<String> output) {
         this(name, input, output, null, null, CompiledCapabilityExecutionPolicy.defaults());
@@ -41,6 +44,22 @@ public final class CompiledCapabilityOperation {
             String sideEffects,
             CompiledCapabilityAuth auth
     ) {
+        this(name, input, output, inputSchema, outputSchema, executionPolicy, errors, sideEffects, auth, Map.of());
+    }
+
+    /** INT-1: attaches the operation's declarative HTTP request -- see getHttp. */
+    public CompiledCapabilityOperation(
+            String name,
+            List<String> input,
+            List<String> output,
+            CompiledSchema inputSchema,
+            CompiledSchema outputSchema,
+            CompiledCapabilityExecutionPolicy executionPolicy,
+            List<CompiledCapabilityOperationError> errors,
+            String sideEffects,
+            CompiledCapabilityAuth auth,
+            Map<String, Object> http
+    ) {
         this.name = name;
         this.input = new ArrayList<>(input);
         this.output = new ArrayList<>(output);
@@ -52,6 +71,7 @@ public final class CompiledCapabilityOperation {
         this.errors = new ArrayList<>(errors);
         this.sideEffects = sideEffects;
         this.auth = auth;
+        this.http = http == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(http));
     }
 
     public String getName() { return name; }
@@ -86,5 +106,10 @@ public final class CompiledCapabilityOperation {
 
     public CompiledCapabilityAuth getAuth() {
         return auth;
+    }
+
+    /** INT-1: the {@code http} request block of an http-connector operation (empty if none). */
+    public Map<String, Object> getHttp() {
+        return http;
     }
 }

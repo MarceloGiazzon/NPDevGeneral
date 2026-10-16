@@ -6912,6 +6912,23 @@
     if (window.NPDevShell) {
       window.NPDevShell.mount({ deriveNativeGroups: deriveNativeGroups });
     }
+    // UI-5: page-level features registered through NPDevViews.registerGlobal (views/search.js).
+    (window.NPDevViews ? window.NPDevViews.globals() : []).forEach(function (g) {
+      try {
+        g.impl.init({
+          manifest: state.manifest,
+          visibleConcepts: visibleConcepts,
+          fetchJson: fetchJson,
+          headers: headers,
+          openDetails: function (name, record) {
+            const c = findConcept(name);
+            if (c) { openDetails(c, record); }
+          }
+        });
+      } catch (error) {
+        console.error("NPDevViews global " + g.name + " failed", error);
+      }
+    });
     render();
     // A hash present at load (a deep link from a hand-authored page, or a bookmarked/shared URL)
     // overrides render()'s own index-0 default section. Otherwise, publish that default into the

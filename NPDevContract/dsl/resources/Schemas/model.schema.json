@@ -2898,6 +2898,9 @@
           "type": "string",
           "minLength": 1
         },
+        "http": {
+          "$ref": "#/$defs/httpConnector"
+        },
         "operations": {
           "type": "array",
           "items": {
@@ -2958,6 +2961,56 @@
         },
         "auth": {
           "$ref": "#/$defs/capabilityAuth"
+        },
+        "http": {
+          "$ref": "#/$defs/httpConnectorOperation"
+        }
+      },
+      "additionalProperties": false
+    },
+    "httpConnector": {
+      "type": "object",
+      "description": "INT-1: declarative outbound HTTP connector settings on a capability bound to adapter http-connector. baseUrl or baseUrlProperty (a properties[] entry, tenant-overridable) names the remote API; auth names environment variables, never secret values.",
+      "properties": {
+        "baseUrl": { "type": "string", "pattern": "^https?://" },
+        "baseUrlProperty": { "type": "string", "minLength": 1 },
+        "auth": { "$ref": "#/$defs/httpConnectorAuth" },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+        "timeoutMs": { "type": "integer", "minimum": 1, "maximum": 120000 },
+        "maxRetries": { "type": "integer", "minimum": 0, "maximum": 5 }
+      },
+      "additionalProperties": false
+    },
+    "httpConnectorAuth": {
+      "type": "object",
+      "description": "INT-1: how an http-connector authenticates. secretEnvVar/usernameEnvVar are environment variable NAMES resolved server-side at call time; the value never appears in the model.",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "enum": ["none", "bearer", "basic", "apiKeyHeader", "apiKeyQuery"] },
+        "secretEnvVar": { "type": "string", "minLength": 1 },
+        "usernameEnvVar": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "httpConnectorOperation": {
+      "type": "object",
+      "description": "INT-1: the HTTP request an http-connector capability operation performs. {name} placeholders in path/query/headers/body are bound from params in declared order.",
+      "required": ["method", "path"],
+      "properties": {
+        "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+        "path": { "type": "string", "pattern": "^/" },
+        "params": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "query": { "type": "object", "additionalProperties": { "type": "string" } },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+        "body": { "oneOf": [ { "type": "object" }, { "type": "string" } ] },
+        "bodyEncoding": { "type": "string", "enum": ["json", "form"] },
+        "response": {
+          "type": "object",
+          "properties": {
+            "pointer": { "type": "string", "pattern": "^(/.*)?$" }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -3596,6 +3649,10 @@
             "$ref": "#/$defs/flowStep"
           },
           "description": "R2.5: escalation steps run once timeout's deadline passes without the awaited event arriving -- e.g. notify a manager, then let the flow continue past the await. Requires timeout to be set."
+        },
+        "task": {
+          "$ref": "#/$defs/humanTask",
+          "description": "PROC-1: makes this awaitEvent a HUMAN task listed in the assignee's inbox (GET /api/tasks). Completing it publishes this step's awaitEvent with the form values, the chosen outcome (under outcomeField), completedBy and the step's match.payload values. Only valid on type awaitEvent. Due date = the step's own timeout."
         }
       },
       "allOf": [
@@ -5531,6 +5588,54 @@
           }
         }
       ],
+      "additionalProperties": false
+    },
+    "humanTask": {
+      "type": "object",
+      "required": ["title", "assignee", "outcomes"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "description": "Inbox title; ${path} placeholders resolve against flow state, e.g. ${saved.code}." },
+        "description": { "type": "string", "minLength": 1 },
+        "assignee": {
+          "type": "object",
+          "properties": {
+            "user": { "type": "string", "minLength": 1, "description": "Flow-state ref resolving to the assignee's username/actorId, e.g. $saved.recipientUsername." },
+            "roles": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+          },
+          "anyOf": [ { "required": ["user"] }, { "required": ["roles"] } ],
+          "additionalProperties": false
+        },
+        "outcomeField": { "type": "string", "minLength": 1, "description": "Payload key that receives the chosen outcome value. Default: outcome." },
+        "outcomes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["value"],
+            "properties": {
+              "value": { "type": "string", "minLength": 1 },
+              "label": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "type"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "type": { "type": "string", "enum": ["string", "text", "integer", "decimal", "boolean", "date"] },
+              "label": { "type": "string", "minLength": 1 },
+              "required": { "type": "boolean" },
+              "maxLength": { "type": "integer", "minimum": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "record": { "type": "string", "minLength": 1, "description": "Optional flow-state ref to the business record the task is about (must carry an id); the inbox links to it." }
+      },
       "additionalProperties": false
     },
     "awaitMatch": {

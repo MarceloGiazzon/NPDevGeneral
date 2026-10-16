@@ -674,6 +674,8 @@ npdev_resolve_app_relative() {
         writeExecutable(opsRoot.resolve("stop-environment.sh"), stopEnvironmentScriptPosix());
         write(opsRoot.resolve("Status-Environment.ps1"), statusEnvironmentScript());
         writeExecutable(opsRoot.resolve("status-environment.sh"), statusEnvironmentScriptPosix());
+        write(opsRoot.resolve("Status-App.ps1"), statusAppScript());
+        writeExecutable(opsRoot.resolve("status-app.sh"), statusAppScriptPosix());
         write(opsRoot.resolve("Build-FinalApp.ps1"), buildFinalAppScript());
         writeExecutable(opsRoot.resolve("build-final-app.sh"), buildFinalAppScriptPosix());
         write(opsRoot.resolve("Run-FinalApp.ps1"), runFinalAppScript(serverPort));
@@ -1825,15 +1827,62 @@ echo 'InMemory has no physical database service.'
     }
 
     /**
+     * OPS-2: the app-level health probe. {@code Status-Environment.ps1} answers "is the DATABASE up";
+     * this answers "is the APP up". ControlPanelHealthController runs {@code Status-App.ps1} by name,
+     * so it must exist in the one real toolbox and must exit non-zero when the app is down.
+     */
+    private static String statusAppScript() {
+        return """
+$ErrorActionPreference = 'Stop'
+$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+$base = "http://localhost:$($plan.serverPort)"
+try {
+  $health = Invoke-RestMethod -Method Get -Uri "$base/actuator/health" -TimeoutSec 3
+  if ($health.status -eq 'UP') {
+    Write-Host "UP   - $base"
+    exit 0
+  }
+  Write-Host "DOWN - $base reported status '$($health.status)'"
+  exit 1
+} catch {
+  Write-Host "DOWN - $base is not answering ($($_.Exception.Message))"
+  exit 1
+}
+""";
+    }
+
+    /** OPS-2: the POSIX twin of {@link #statusAppScript}. */
+    private static String statusAppScriptPosix() {
+        return """
+#!/bin/sh
+# NPDev generated FinalApp application status -- POSIX twin of Status-App.ps1.
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+PLAN_PATH="$SCRIPT_DIR/resolved-db-plan.json"
+""" + PLAN_JSON_HELPER_SH + """
+PORT=$(npdev_plan_get "$PLAN_PATH" serverPort 8080)
+BASE="http://localhost:$PORT"
+if curl -fsS --max-time 3 "$BASE/actuator/health" 2>/dev/null | grep -q '"status":"UP"'; then
+  echo "UP   - $BASE"
+  exit 0
+fi
+echo "DOWN - $BASE is not answering or not UP"
+exit 1
+""";
+    }
+
+    /**
      * PORT-2: this script used to open with {@code Set-Location '<absolute app path>'} and pass an
      * absolute {@code -PnpdevRuntimeHostLibsDir}. Copy the app anywhere and it kept building the
      * ORIGINAL -- silently, successfully, with the copy's edits nowhere in the result.
      */
     private static String buildFinalAppScript() {
         return """
-# -SkipTests: build the runnable jar without the app's own test suite (minutes, not ten) -- the
-# change-and-look loop. The default still runs everything.
-param([switch]$SkipTests)
+# Default (OPS-5): the fast change-and-look build -- incremental, warm Gradle daemon, NO test suite.
+# -Clean      full clean build (after a failed incremental build, or when in doubt)
+# -RunTests   the old default: clean build + the RuntimeHost template's own test suite (~10 min)
+# -NoDaemon   one-shot JVM (CI); also implied when $env:CI is set
+# -SkipTests  accepted for compatibility; it is the default now
+param([switch]$Clean, [switch]$RunTests, [switch]$NoDaemon, [switch]$SkipTests)
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
 """ + DATA_ROOT_HELPER + RUNTIMEHOST_LIBS_HELPER + """
@@ -1841,7 +1890,8 @@ Set-Location (Get-NpdevAppRoot -Plan $plan)
 # The -P flag is OMITTED, not passed empty, when no libs directory is known: the generated
 # build.gradle has its own resolution chain (env var, then this property, then a marker walk), and
 # an empty property would shadow it with nothing.
-$gradleArgs = @('--no-daemon')
+$baseArgs = @('--stacktrace', '--console=plain')
+if ($NoDaemon -or $env:CI) { $baseArgs += '--no-daemon' }
 $libs = Get-NpdevRuntimeHostLibs -Plan $plan
 # A cache recorded on the GENERATING machine is not a fact about THIS one. Passing it regardless is
 # how a recipient gets "Missing NPDev RuntimeHost libs manifest in D:/..." -- a drive they do not
@@ -1857,11 +1907,32 @@ if (-not [string]::IsNullOrWhiteSpace($libs) -and
   Write-Host "Ignoring it. If the build cannot find its jars, set `$env:NPDEV_RUNTIMEHOST_LIBS to yours."
   $libs = ''
 }
-if (-not [string]::IsNullOrWhiteSpace($libs)) { $gradleArgs += "-PnpdevRuntimeHostLibsDir=$libs" }
-$gradleArgs += @('clean', 'build', '--stacktrace', '--console=plain')
-if ($SkipTests) { $gradleArgs += @('-x', 'test') }
-& '.\\gradlew.bat' @gradleArgs
-exit $LASTEXITCODE
+if (-not [string]::IsNullOrWhiteSpace($libs)) { $baseArgs += "-PnpdevRuntimeHostLibsDir=$libs" }
+
+$packageTasks = @('enforceSingleSchemaRealizationSource', 'bootJar')
+if ($RunTests) {
+  $tasks = @('clean', 'build')
+} elseif ($Clean) {
+  $tasks = @('clean') + $packageTasks
+} else {
+  # processResources is a Copy: a static file deleted by regeneration would otherwise linger in
+  # build/resources/main and keep being served. Dropping just that folder is cheap (resources are
+  # re-copied in seconds) while Java compilation stays incremental.
+  $staleResources = Join-Path (Get-Location) 'build\\resources\\main'
+  if (Test-Path -LiteralPath $staleResources) { Remove-Item -LiteralPath $staleResources -Recurse -Force }
+  $tasks = $packageTasks
+}
+
+$watch = [System.Diagnostics.Stopwatch]::StartNew()
+& '.\\gradlew.bat' @baseArgs @tasks
+$code = $LASTEXITCODE
+if ($code -ne 0 -and -not $Clean -and -not $RunTests) {
+  Write-Host 'Incremental build failed -- retrying once with a clean build.'
+  & '.\\gradlew.bat' @baseArgs 'clean' @packageTasks
+  $code = $LASTEXITCODE
+}
+Write-Host ("Build finished in {0:N1} s (exit {1})" -f $watch.Elapsed.TotalSeconds, $code)
+exit $code
 """;
     }
 
@@ -1892,12 +1963,33 @@ if [ -n "$LIBS" ] && [ -z "${NPDEV_RUNTIMEHOST_LIBS:-}" ] && [ ! -d "$LIBS" ]; t
   echo 'Ignoring it. If the build cannot find its jars, set $NPDEV_RUNTIMEHOST_LIBS to yours.'
   LIBS=""
 fi
-set -- --no-daemon
+# OPS-5: default = incremental bootJar on a warm daemon, NO test suite.
+#   NPDEV_RUN_TESTS=1  clean build WITH the template's own test suite (the old default, ~10 min)
+#   NPDEV_CLEAN=1      clean + bootJar
+#   NPDEV_NO_DAEMON=1  one-shot JVM (also implied when CI is set)
+#   NPDEV_SKIP_TESTS=1 accepted for compatibility; it is the default now
+set -- --stacktrace --console=plain
+if [ "${NPDEV_NO_DAEMON:-}" = "1" ] || [ -n "${CI:-}" ]; then set -- "$@" --no-daemon; fi
 if [ -n "$LIBS" ]; then set -- "$@" "-PnpdevRuntimeHostLibsDir=$LIBS"; fi
-set -- "$@" clean build --stacktrace --console=plain
-# NPDEV_SKIP_TESTS=1: the POSIX spelling of Build-FinalApp.ps1 -SkipTests.
-if [ "${NPDEV_SKIP_TESTS:-}" = "1" ]; then set -- "$@" -x test; fi
-exec ./gradlew "$@"
+if [ "${NPDEV_RUN_TESTS:-}" = "1" ]; then
+  ./gradlew "$@" clean build
+  exit $?
+fi
+if [ "${NPDEV_CLEAN:-}" = "1" ]; then
+  ./gradlew "$@" clean enforceSingleSchemaRealizationSource bootJar
+  exit $?
+fi
+# processResources is a Copy: drop only build/resources/main so a regenerated-away static file does
+# not linger, while Java compilation stays incremental.
+rm -rf build/resources/main
+code=0
+./gradlew "$@" enforceSingleSchemaRealizationSource bootJar || code=$?
+if [ "$code" -ne 0 ]; then
+  echo 'Incremental build failed -- retrying once with a clean build.'
+  code=0
+  ./gradlew "$@" clean enforceSingleSchemaRealizationSource bootJar || code=$?
+fi
+exit $code
 """;
     }
 
@@ -3120,6 +3212,13 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File ./Build-FinalApp.ps1
 ./build-final-app.sh
 ```
 
+The default build is fast: an incremental `bootJar` on a warm Gradle daemon, with NO test suite
+(seconds once warm). Flags: `-Clean` forces a clean build, `-RunTests` is the old full run (clean build
+plus the template's own test suite, ~10 minutes), `-NoDaemon` uses a one-shot JVM (also implied when
+`CI` is set); `-SkipTests` is accepted and is now a no-op. POSIX twin: `NPDEV_CLEAN=1`,
+`NPDEV_RUN_TESTS=1`, `NPDEV_NO_DAEMON=1`. A warm daemon can hold a lock on `build/`: if regenerating
+the app fails with a file-in-use error, run `gradlew --stop` first.
+
 3. Run FinalApp
 
 ```powershell
@@ -3166,6 +3265,9 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File ./Stop-App.ps1
 
 Same log handling as step 3: each run gets its own `logs/app-<timestamp>.log`, pruned to the newest
 20 across BOTH launchers -- a background run and a foreground run share one bounded pool.
+
+`Status-App.ps1` / `status-app.sh` probe `/actuator/health` on this app's port and print `UP` (exit 0)
+or `DOWN` (exit 1); `Status-Environment.ps1` answers the separate question of whether the DATABASE is up.
 
 3b. Supervise as a service (optional -- survives a crash or a reboot, no Docker required)
 

@@ -3,10 +3,11 @@
 Three independent mechanisms, covering the two storage engines and the "just give me my data
 back" escape hatch:
 
-## 1. Postgres compose stack — `deploy/backup.sh` / `deploy/restore.sh`
+## 1. Postgres and MySQL compose stack — `deploy/backup.sh` / `deploy/restore.sh`
 
-Only emitted for FinalApps generated with `db.engine: Postgres` (see `docs/DEPLOYMENT.md`) — the
-scripts live at the app root alongside `docker-compose.yml`.
+Emitted for FinalApps generated with `db.engine: Postgres` or `MySQL` (see `docs/DEPLOYMENT.md`) —
+the scripts live under `deploy/` alongside `docker-compose.yml`. SQL Server has no backup script
+yet (its engine profile declares no backup command).
 
 ```bash
 # Backup (writes to ./backups/<db>-<UTC timestamp>.sql):
@@ -18,7 +19,7 @@ bash deploy/restore.sh backups/<file>.sql --yes
 docker compose restart app   # re-validate the app's DatabaseIdentityStartupValidator against it
 ```
 
-Both scripts run `pg_dump`/`psql` INSIDE the `postgres` container via `docker compose exec`, so
+Both scripts run `pg_dump`/`psql` INSIDE the `database` container via `docker compose exec`, so
 they work identically whether or not a Postgres client is installed on the host. `backup.sh`
 dumps with `--clean --if-exists`: a restore target normally already has this app's schema
 (Flyway/schema-realization already ran against it), so the dump must include `DROP ... IF
@@ -26,31 +27,47 @@ EXISTS` statements for every object or the restore fails with a flood of "alread
 duplicate-key errors instead of cleanly replacing the data — confirmed live during this feature's
 own verification (see project memory for the exact failure before this fix).
 
+**Scheduled backups and the restore drill** (opt-in compose profile `backup`):
+
+```bash
+docker compose --profile backup up -d backup          # nightly sidecar (deploy/backup-sidecar.sh)
+docker compose --profile backup run --rm backup-verify  # restore drill (deploy/backup-verify.sh)
+```
+
+The sidecar dumps every `BACKUP_INTERVAL_SECONDS` (default 86400, nightly) into `./backups/` and
+keeps the newest `BACKUP_RETENTION_COUNT` dumps (default 14); set both in `.env`. `backup-verify`
+restores the newest dump into a scratch database and checks it, so a restore is proven before you
+need it.
+
 **Proven live**: created 2 records → `backup.sh` → `DROP SCHEMA public CASCADE` (simulating total
 data loss, app health goes 503) → `restore.sh` → `docker compose restart app` → both records
 present again via the REST API.
 
-## 2. H2Local / H2Server — file-copy semantics
+## 2. H2Local / H2Server — nightly in-app backup
 
-These engines have no separate service to `exec` into — the database is either an embedded file
-(`H2Local`) or a file served over TCP by a local `H2Server` process (see the per-app `_ops`
-toolbox's `Start-Environment.ps1`). Backup is a **file copy**, with one constraint: H2 must not
-have the file open for a consistent copy.
+These engines have no separate service to `exec` into, so the app backs itself up
+(`ScheduledH2Backup`, OPS-10). Every night at 03:00 it runs H2's `BACKUP TO` — an online, consistent
+copy with no downtime — into `data/backups/db-<UTC timestamp>.zip` and keeps the newest 14. `data/`
+is one of the directories regeneration never deletes, so the backups survive a rebuild. Nothing to
+set up; it is on by default for `H2Local` and `H2Server` and never runs for `InMemory` or server
+engines. Tune it through properties or environment variables:
 
-- **Simplest (recommended)**: stop the app (and `H2Server` if used), copy the `.mv.db` file
-  (path is `db.definition.json`'s `resolvedDataRoot`/`resolvedDatabaseName`, also printed at
-  generation time as `Schema realization: ...`), restart.
-- **Online backup (no downtime)**: H2 supports `BACKUP TO 'target.zip'` as a SQL statement,
-  executable via any JDBC client connected to the running database — a live database can be
-  backed up while running by connecting an H2 client/DBeaver (whose connection details the
-  generator already prints as `dbeaverHost`/`dbeaverPort`/`dbeaverDatabase`) and running
-  `BACKUP TO 'target.zip';`.
-- **Restore**: stop the app, replace the `.mv.db` file with the backed-up copy (or unzip the
-  `BACKUP TO` output over it), restart.
+| Property | Environment variable | Default |
+|---|---|---|
+| `npdev.backup.enabled` | `NPDEV_BACKUP_ENABLED` | `true` |
+| `npdev.backup.cron` | `NPDEV_BACKUP_CRON` | `0 0 3 * * *` |
+| `npdev.backup.retention-count` | `NPDEV_BACKUP_RETENTION_COUNT` | `14` |
+| `npdev.backup.dir` | `NPDEV_BACKUP_DIR` | `data/backups` |
 
-This is documented procedure, not scripted — H2Local/H2Server are the platform's dev/test
-engines (see `docs/DEPLOYMENT.md`'s engine split), so a restore drill here is a lower bar than
-the Postgres-first production path.
+A failed backup is logged at SEVERE (`OPS-10: scheduled database backup FAILED`) and the next
+night tries again. For `H2Server` the path is written by the H2 server process, so keep the app and
+the H2 server on the same machine (the default `_ops` toolbox does).
+
+**Restore**: stop the app (and `H2Server` if used), unzip the chosen `data/backups/db-*.zip` over
+the database directory under `data/` (replacing the `.mv.db` file), start the app again.
+
+You can still take an extra backup by hand: stop the app and copy the `.mv.db` file, or run
+`BACKUP TO 'target.zip';` from any JDBC client.
 
 ## 3. Tenant data export — `GET /api/admin/export`
 

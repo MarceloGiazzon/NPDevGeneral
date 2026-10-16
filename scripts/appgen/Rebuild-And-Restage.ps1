@@ -132,7 +132,7 @@ try {
         if ((Test-Path -LiteralPath $candidateModelPath) -and (Test-Path -LiteralPath $configPath)) {
             $cfg = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
             $appId = $cfg.scenario.name
-            $opsDir = Join-Path $BuildRoot "$appId\_ops"
+            $opsDir = Join-Path $BuildRoot "$appId\App\_ops"
             $appPlanPath = Join-Path $opsDir 'app-plan.json'
             if (Test-Path -LiteralPath $appPlanPath) {
                 $fastPathAttempted = $true
@@ -213,7 +213,7 @@ try {
     } else {
         $cfg = Get-Content -Raw -LiteralPath (Join-Path $AppFolder 'definition/config.json') | ConvertFrom-Json
         $appId = $cfg.scenario.name
-        $opsDir = Join-Path $BuildRoot "$appId\_ops"
+        $opsDir = Join-Path $BuildRoot "$appId\App\_ops"
         $checkScript = Join-Path $opsDir 'Check-Provenance.ps1'
         $buildScript = Join-Path $opsDir 'Build-App.ps1'
         $startScript = Join-Path $opsDir 'Start-App.ps1'
