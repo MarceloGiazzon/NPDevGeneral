@@ -124,7 +124,8 @@
   var TOKEN_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"];
 
   function token() { for (var i = 0; i < TOKEN_KEYS.length; i++) { var t = localStorage.getItem(TOKEN_KEYS[i]); if (t) return t; } return null; }
-  function authHeaders() { var t = token(); return t ? { "Authorization": "Bearer " + t, "X-Api-Key": t } : {}; }
+  // SEC-1: X-NPDev-Request is sent on every call (cookie-authenticated writes require it).
+  function authHeaders() { var h = { "X-NPDev-Request": "1" }; var t = token(); if (t) { h.Authorization = "Bearer " + t; h["X-Api-Key"] = t; } return h; }
 
   var clone = function (v) { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); };
   var pick = function (o, fs) { var r = {}; (fs || []).forEach(function (f) { r[f] = o == null ? undefined : o[f]; }); return r; };

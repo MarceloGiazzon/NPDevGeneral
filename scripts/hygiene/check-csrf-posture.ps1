@@ -19,15 +19,18 @@ if ([string]::IsNullOrWhiteSpace($ReportPath)) {
 }
 
 <#
-LNCH-4: structural regression guard for docs/architecture/CSRF_POSTURE.md's claim -- CSRF does not
-apply because no generated FinalApp authenticates via an ambient browser-attached credential
-(session cookie, cached Basic auth). If any of these patterns appear in NPDevRuntimeHost's own
-source (the template every FinalApp is assembled from, NOT a generated app's own output), the
+LNCH-4 / SEC-1: structural regression guard for docs/architecture/CSRF_POSTURE.md's claim -- a
+cookie-authenticated (ambient credential) state-changing request needs the X-NPDev-Request header.
+Fails if (a) a server-side session / Spring Security CSRF pattern appears in NPDevRuntimeHost's own
+source (the template every FinalApp is assembled from, NOT a generated app's own output), or
+(b) JwtBearerAuthFilter reads cookies (getCookies() without referencing CSRF_HEADER. Either way the
 claim in that document must be revisited before the change ships.
 #>
 $runtimeHostMainRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\main"
+$runtimeHostCoreMainRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\runtimehost-core\src\main"
 $buildTemplatePath = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\build.gradle.template"
 Ensure-NPDevDirectory $runtimeHostMainRoot "RuntimeHost main source root"
+Ensure-NPDevDirectory $runtimeHostCoreMainRoot "runtimehost-core main source root"
 Ensure-NPDevFile $buildTemplatePath "RuntimeHost build template"
 
 $forbiddenPatterns = @(
@@ -38,7 +41,8 @@ $forbiddenPatterns = @(
 )
 
 $violations = @()
-$javaFiles = @(Get-ChildItem -LiteralPath $runtimeHostMainRoot -Recurse -Filter "*.java" -File)
+$javaFiles = @(Get-ChildItem -LiteralPath $runtimeHostMainRoot -Recurse -Filter "*.java" -File) +
+    @(Get-ChildItem -LiteralPath $runtimeHostCoreMainRoot -Recurse -Filter "*.java" -File)
 foreach ($file in $javaFiles) {
     $content = Get-Content -LiteralPath $file.FullName -Raw
     foreach ($pattern in $forbiddenPatterns) {
@@ -47,6 +51,19 @@ foreach ($file in $javaFiles) {
                 file = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $file.FullName
                 pattern = $pattern
             }
+        }
+    }
+}
+
+# SEC-1: the npdev_jwt cookie is an ambient credential, so the filter that reads it must gate unsafe
+# methods on the CSRF header.
+$jwtFilterPath = Join-Path $runtimeHostMainRoot "java\com\finalexec\config\JwtBearerAuthFilter.java"
+if (Test-Path -LiteralPath $jwtFilterPath) {
+    $jwtFilterText = Get-Content -LiteralPath $jwtFilterPath -Raw
+    if ($jwtFilterText.Contains("getCookies(") -and -not $jwtFilterText.Contains("CSRF_HEADER")) {
+        $violations += [pscustomobject]@{
+            file = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $jwtFilterPath
+            pattern = "getCookies( without CSRF_HEADER"
         }
     }
 }

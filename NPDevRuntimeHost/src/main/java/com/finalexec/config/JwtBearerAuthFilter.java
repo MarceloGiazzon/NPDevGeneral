@@ -34,6 +34,16 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
     };
     private static final long CLOCK_SKEW_SECONDS = 60L;
 
+    /**
+     * SEC-1 (CSRF): the header every first-party script sends on every request. A cookie-carried
+     * credential (npdev_jwt, no Authorization header) is accepted for a state-changing method ONLY
+     * when this header is present. A cross-site page cannot add a custom header without a CORS
+     * preflight, and CorsConfig / DevCorsPreflightFilterConfig never allow credentials, so the
+     * header is proof the request came from a same-origin script, not from a forged form/link.
+     */
+    public static final String CSRF_HEADER = "X-NPDev-Request";
+    private static final Set<String> SAFE_METHODS = Set.of("GET", "HEAD", "OPTIONS", "TRACE");
+
     private final ObjectMapper objectMapper;
     private final ResourceLoader resourceLoader;
     private final String issuer;
@@ -180,6 +190,7 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
         String authorization = normalize(request.getHeader("Authorization"));
         String token;
+        boolean cookieCredential = false;
         if (authorization != null) {
             if (!authorization.regionMatches(true, 0, "Bearer ", 0, 7)) {
                 unauthorized(response, "missing_bearer_token");
@@ -192,9 +203,16 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
             // panel's own declared path) never carries a custom header, only a cookie -- this is what
             // makes such a route reachable at all via ordinary browsing, not just fetch()-driven calls.
             token = sessionCookieValue(request);
+            cookieCredential = token != null;
         }
         if (token == null) {
             unauthorized(response, "missing_bearer_token");
+            return;
+        }
+        // SEC-1: an ambient (cookie) credential must not authorize a state-changing request unless
+        // the caller also proves it is same-origin script by sending the custom CSRF header.
+        if (cookieCredential && requiresCsrfProof(request)) {
+            forbidden(response, "csrf_header_required");
             return;
         }
 
@@ -414,6 +432,21 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
 
     private static void unauthorized(HttpServletResponse response, String code) throws IOException {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType("application/json");
+        response.getWriter().write("{\"error\":\"" + code + "\"}");
+    }
+
+    /** Package-private so JwtBearerAuthFilterCsrfTest can pin it without reflection. */
+    static boolean requiresCsrfProof(HttpServletRequest request) {
+        String method = request.getMethod() == null ? "GET" : request.getMethod().toUpperCase(Locale.ROOT);
+        if (SAFE_METHODS.contains(method)) {
+            return false;
+        }
+        return !StringUtils.hasText(request.getHeader(CSRF_HEADER));
+    }
+
+    private static void forbidden(HttpServletResponse response, String code) throws IOException {
+        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
         response.setContentType("application/json");
         response.getWriter().write("{\"error\":\"" + code + "\"}");
     }
