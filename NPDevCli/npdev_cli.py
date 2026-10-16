@@ -12062,18 +12062,75 @@ def run_add_member(args: argparse.Namespace, kind: str) -> int:
 _ACCEPTED_BOUNDARIES_CACHE: list | None = None
 
 
+def _ledger_boundary_classifications() -> dict:
+    """{id: {"classification": ..., "title": ...}} read from every `ledger/boundaries/B*.yml` --
+    the ledger is the single source of truth for a boundary's classification (HITTABLE / POSTURAL /
+    LIFTED[, PARTIAL]) and title. A minimal top-level-key line parser, not a YAML library: the CLI
+    has no PyYAML dependency, and these two keys are always single-line top-level scalars. Empty
+    when the ledger directory is absent (a CLI run from somewhere `ledger/` does not ship)."""
+    directory = repo_root() / "ledger" / "boundaries"
+    found: dict = {}
+    if not directory.is_dir():
+        return found
+    for path in sorted(directory.glob("B*.yml")):
+        fields: dict = {}
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            match = re.match(r"^(id|title|classification):\s*(.*?)\s*$", line)
+            if not match or match.group(1) in fields:
+                continue
+            value = match.group(2)
+            if value.startswith('"') and value.endswith('"') and len(value) >= 2:
+                try:
+                    value = json.loads(value)
+                except ValueError:
+                    value = value[1:-1]
+            elif value.startswith("'") and value.endswith("'") and len(value) >= 2:
+                value = value[1:-1].replace("''", "'")
+            fields[match.group(1)] = value
+        if fields.get("id"):
+            found[fields["id"]] = {
+                "classification": fields.get("classification", ""),
+                "title": fields.get("title", ""),
+            }
+    return found
+
+
+def _boundary_sort_key(boundary_id: str) -> tuple:
+    digits = "".join(ch for ch in boundary_id if ch.isdigit())
+    return (int(digits) if digits else 0, boundary_id)
+
+
 def _load_accepted_boundaries() -> list:
-    """The shipped, user-facing half of the accepted-boundaries register: id/kind/userFacingText/
+    """The shipped, user-facing half of the accepted-boundaries register: userFacingText/
     workaround/enforcingDiagnosticCodes (item 2, SUPPORT_FEATURES_PLAN_2026-08-26, Blocker A).
-    `ledger/boundaries/*.yml` keeps provenance only (title/ref/codeLinkedNote) and does not repeat
-    these fields -- this file is their ONLY home, so there is nothing to keep in sync."""
+    `accepted-boundaries.json` is the ONLY home of those three fields. `kind` is NOT hand-kept:
+    it comes from `ledger/boundaries/*.yml`'s `classification` (AUD-4 -- the JSON copy drifted: B6
+    POSTURAL vs LIFTED, B28, B32 absent), and the JSON's own `kind` is only the fallback for a CLI
+    run where `ledger/` does not exist. A ledger boundary the JSON has no entry for is returned
+    with the ledger title as its text, so `npdev why <id>` never claims it does not exist."""
     global _ACCEPTED_BOUNDARIES_CACHE
     if _ACCEPTED_BOUNDARIES_CACHE is not None:
         return _ACCEPTED_BOUNDARIES_CACHE
     path = repo_root() / "NPDevContract" / "schemas" / "accepted-boundaries.json"
     if not path.is_file():
         raise CliError(f"accepted-boundaries.json not found at {path}")
-    boundaries = read_json(path).get("boundaries") or []
+    boundaries = [dict(entry) for entry in (read_json(path).get("boundaries") or [])]
+    ledger = _ledger_boundary_classifications()
+    known = set()
+    for boundary in boundaries:
+        known.add(boundary["id"])
+        classification = (ledger.get(boundary["id"]) or {}).get("classification")
+        if classification:
+            boundary["kind"] = classification
+    for boundary_id in sorted(set(ledger) - known, key=_boundary_sort_key):
+        entry = ledger[boundary_id]
+        boundaries.append({
+            "id": boundary_id,
+            "kind": entry["classification"],
+            "userFacingText": entry["title"],
+            "workaround": "None recorded -- see ledger/boundaries/" + boundary_id + ".yml.",
+            "enforcingDiagnosticCodes": [],
+        })
     _ACCEPTED_BOUNDARIES_CACHE = boundaries
     return boundaries
 
@@ -13612,6 +13669,73 @@ def _studio_route_for(report: dict) -> str:
     return "needs-rebuild"
 
 
+def _live_apply(base_url: str, super_user_key: str, baseline_path: Path, model_path: Path,
+                final_app_root: Path, deadline: float, timeout: float) -> dict:
+    """ENG-5: THE live-vs-rebuild router, shared by `npdev monitor studio-apply` (Manager Studio) and
+    `npdev dev`'s inner loop (`dev_loop._try_hot_swap`). Classifies `model_path` against
+    `baseline_path` (`_studio_classify_and_route`), routes it (`_studio_route_for`), and for a
+    live-able change swaps the running app's compiled model via `/model-reload` (B28; brand-new
+    concepts are provisioned there too when the app opted in to REG-244). For a METADATA_ONLY diff it
+    additionally refreshes the descriptive catalogs + served UI manifest (`_metadata_hotswap_apply`,
+    RUN-24) -- a failure of that second half is reported under `metadataHotswap` but never flips the
+    result, the behaviour-affecting model swap already succeeded.
+
+    Never prints and never raises for an ordinary outcome. Returns `{ok, code, message, route,
+    classification, classificationReasons, modelReload, metadataHotswap}` with `code` one of
+    CLASSIFY_FAILED (ok False), NEEDS_REBUILD (ok True: the file is fine, the change just cannot go
+    live -- classifier verdict or an ENG-3 reload preflight refusal), the reload's own failure code
+    (ok False), or APPLIED_LIVE (ok True)."""
+    live: dict = {"ok": False, "code": None, "message": None, "route": None}
+    with tempfile.TemporaryDirectory(prefix="npdev-studio-metadata-") as emit_dir:
+        emit_to = Path(emit_dir)
+        try:
+            report = _studio_classify_and_route(repo_root(), baseline_path, model_path, deadline, emit_to)
+        except CliError as exc:
+            live["code"] = "CLASSIFY_FAILED"
+            live["message"] = str(exc)
+            return live
+
+        live["classification"] = report.get("classification")
+        live["classificationReasons"] = report.get("classificationReasons")
+        route = _studio_route_for(report)
+        live["route"] = route
+
+        if route == "needs-rebuild":
+            live["ok"] = True
+            live["code"] = "NEEDS_REBUILD"
+            live["message"] = (
+                "this change needs a full regenerate + rebuild to take effect live -- classification="
+                f"{report.get('classification')}: {'; '.join(report.get('classificationReasons') or [])}")
+            return live
+
+        reload_result = _model_reload_apply(base_url, super_user_key, str(model_path), timeout)
+        live["modelReload"] = reload_result
+        if not reload_result.get("ok") and reload_result.get("code") in _RELOAD_PREFLIGHT_REFUSALS:
+            # ENG-3: the running app refused the reload BEFORE swapping anything (the file on disk is
+            # fine, the app just cannot take it live): same outcome as the classifier's needs-rebuild.
+            live["ok"] = True
+            live["code"] = "NEEDS_REBUILD"
+            details = reload_result.get("details") or []
+            live["message"] = (
+                f"the running app refused a live reload ({reload_result.get('code')}): "
+                f"{reload_result.get('message')}" + (f" -- {'; '.join(details)}" if details else ""))
+            return live
+        if not reload_result.get("ok"):
+            live["code"] = reload_result.get("code") or "RELOAD_FAILED"
+            live["message"] = reload_result.get("message")
+            return live
+
+        if report.get("classification") == "METADATA_ONLY" and report.get("emitted"):
+            live["metadataHotswap"] = _metadata_hotswap_apply(
+                base_url, super_user_key, "METADATA_ONLY", report.get("classificationReasons") or [],
+                emit_to, final_app_root, timeout)
+
+    live["ok"] = True
+    live["code"] = "APPLIED_LIVE"
+    live["message"] = f"applied live via {route}"
+    return live
+
+
 def _run_monitor_studio_apply(args: argparse.Namespace) -> int:
     """`npdev monitor studio-apply` -- Wave 6.1 (NPDEV_FEATURE_PLAN_2026-09-24.md, the Manager's
     Studio tab). Sits alongside `monitor hotswap` (same probe_app + SUPER_USER_KEY discovery shape,
@@ -13681,56 +13805,11 @@ def _run_monitor_studio_apply(args: argparse.Namespace) -> int:
     base_url = app_record.get("probeBaseUrl")
     final_app_root = Path(app_record.get("finalAppRoot") or app_dir)
 
-    with tempfile.TemporaryDirectory(prefix="npdev-studio-metadata-") as emit_dir:
-        emit_to = Path(emit_dir)
-        try:
-            report = _studio_classify_and_route(repo_root(), baseline_path, model_path, deadline, emit_to)
-        except CliError as exc:
-            return _refuse("CLASSIFY_FAILED", str(exc))
-
-        result["classification"] = report.get("classification")
-        result["classificationReasons"] = report.get("classificationReasons")
-        route = _studio_route_for(report)
-        result["route"] = route
-
-        if route == "needs-rebuild":
-            result["ok"] = True
-            result["code"] = "NEEDS_REBUILD"
-            result["message"] = (
-                "this change needs a full regenerate + rebuild to take effect live -- classification="
-                f"{report.get('classification')}: {'; '.join(report.get('classificationReasons') or [])}")
-            _print_result(result, args)
-            return 0
-
-        reload_result = _model_reload_apply(base_url, raw_key, str(model_path), args.timeout)
-        result["modelReload"] = reload_result
-        if not reload_result.get("ok") and reload_result.get("code") in _RELOAD_PREFLIGHT_REFUSALS:
-            # ENG-3: the running app refused the reload BEFORE swapping anything (the file on disk is
-            # fine, the app just cannot take it live): same outcome as the classifier's needs-rebuild.
-            result["ok"] = True
-            result["code"] = "NEEDS_REBUILD"
-            details = reload_result.get("details") or []
-            result["message"] = (
-                f"the running app refused a live reload ({reload_result.get('code')}): "
-                f"{reload_result.get('message')}" + (f" -- {'; '.join(details)}" if details else ""))
-            _print_result(result, args)
-            return 0
-        if not reload_result.get("ok"):
-            result["code"] = reload_result.get("code") or "RELOAD_FAILED"
-            result["message"] = reload_result.get("message")
-            _print_result(result, args)
-            return 2
-
-        if report.get("classification") == "METADATA_ONLY" and report.get("emitted"):
-            result["metadataHotswap"] = _metadata_hotswap_apply(
-                base_url, raw_key, "METADATA_ONLY", report.get("classificationReasons") or [],
-                emit_to, final_app_root, args.timeout)
-
-    result["ok"] = True
-    result["code"] = "APPLIED_LIVE"
-    result["message"] = f"applied live via {route}"
+    live = _live_apply(base_url, raw_key, baseline_path, model_path, final_app_root, deadline,
+                       args.timeout)
+    result.update(live)
     _print_result(result, args)
-    return 0
+    return 0 if live["ok"] else 2
 
 
 def _run_monitor_logs(args: argparse.Namespace) -> int:

@@ -1090,7 +1090,7 @@ listen("dev-event", (event) => {
       }
       break;
     case "classification":
-      line = payload.metadataOnly ? "metadata-only change -- fast path" : "structural change -- full rebuild";
+      line = payload.appliedLive ? "change applied live (model-reload)" : `needs a rebuild -- ${payload.detail || "full regenerate + build"}`;
       break;
     case "diagnostics":
       line = `${payload.errorCount} error(s) -- see the banner above`;

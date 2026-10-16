@@ -299,6 +299,44 @@ concept node of `generated-ui-manifest.json`.
   default): a user without it sees "Change history is visible to users with the audit permission."
   rather than an error. Widening it to every record reader needs its own endpoint that first runs the
   record's read authorization, and is deliberately not done.
+- **Board (`views/board.js`).** Appears (concept `views` gains `"board"`, manifest gains `concept.board`
+  from `BoardManifestBuilder`) for any concept with a `lifecycle` whose status field is an enum, or any
+  concept whose existing `ui.defaultGroup` names an enum field. No new DSL key. Columns are the
+  lifecycle states (declaration order) or the enum values; rows with an empty/unknown value go to a
+  trailing "—" column. A card moves by drag-and-drop or its "Move to" select (the touch/keyboard
+  path). Illegal drop targets are greyed out from the declared lifecycle transitions, but that is UX
+  only: every move is `POST {endpointBase}/batch` `setField`, so the server still enforces
+  `status_transition_not_allowed`, `status_transition_requires_field` and
+  `status_transition_guard_failed`, and the refusal surfaces as a red toast with the card unmoved. A
+  transition that declares `requiredPayload` opens the edit form pre-set to the target instead. The
+  board loads at most 100 rows (the CRUD controller's `MAX_PAGE_SIZE`) and shows "Showing N of M" when
+  the filter matches more; it does not page inside columns.
+
+- **Calendar (`views/calendar.js`).** Appears (concept `views` gains `"calendar"`) for any concept with at
+  least one visible `date` or `datetime` field. A Monday-first 6x7 month grid with prev / Today / next;
+  each record is a chip on its day (click opens details), three chips per day plus "+N more", and a
+  field picker when the concept has several date fields (remembered per concept in `localStorage`; the
+  default is the first declared one). No DSL key. The view fetches its own window per visible month:
+  the grid's current `filter` / `where` / sort are kept and `<field>:gte:<first grid day>` and
+  `<field>:lte:<last grid day>` clauses are appended (`datetime` bounds get `T00:00:00` / `T23:59:59`),
+  `size=100` sorted by that field, so a column filter set in Table view still applies. A day is the
+  viewer's local day. The list API's `where` DSL (`field:operator:value`, clauses joined by `,` or `;`,
+  so never a comma inside a value) accepts `eq`, `ne`, `contains` and, since this view, the range
+  operators `gt`, `gte`, `lt`, `lte`: ISO dates and datetimes compare as text, numbers numerically on
+  the in-memory (free-text `filter`) path, and a row with no value never matches a range operator.
+  More than 100 records in the window shows "Showing N of M in this range".
+- **Global features (`views/search.js`).** `NPDevViews.registerGlobal(name, { init(appCtx) })`;
+  `bootstrap()` calls every registered global's `init` once, right after `NPDevShell.mount`, with
+  `appCtx = { manifest, visibleConcepts(), fetchJson, headers, openDetails(conceptName, record) }`. The
+  built-in global is the **search palette** (Ctrl+K / Cmd+K, `/` outside an input, or the top-bar
+  button). It needs no server endpoint: for each visible concept that has at least one `filterable`
+  field it calls the concept's own list endpoint with `filter=<q>&page=0&size=5` (debounced 300 ms, at
+  least 2 characters, at most 6 requests in flight, a superseded query is dropped, a 403 or error on one
+  concept just yields no hits there), so permissions and row-level access are exactly the grid's.
+  Each concept's free-text filter is bounded by `ConceptQuery.MAX_LIMIT` (1000 rows scanned per
+  concept), so a hit may be missing in a very large table: refine the query. A concept with no
+  `filterable` field is not searchable, and the server's `filterRows` returns no rows for a non-blank
+  `filter` on such a concept (it used to return the whole table).
 
 ## Breadcrumbs and default route (W1.6)
 

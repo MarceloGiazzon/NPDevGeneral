@@ -241,6 +241,9 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     static final List<String> BUSINESS_UI_VIEW_ASSETS = List.of(
             "registry.js",
             "history.js",
+            "board.js",
+            "search.js",
+            "calendar.js",
             "views.css"
     );
 
@@ -470,6 +473,17 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             // (UI-3/UI-6) append their name when the concept qualifies.
             List<String> views = new ArrayList<>();
             views.add("table");
+            // UI-3: board (kanban) for lifecycle / enum-defaultGroup concepts. No new DSL.
+            Map<String, Object> board = BoardManifestBuilder.build(concept);
+            if (board != null) {
+                node.put("board", board);
+                views.add("board");
+            }
+            // UI-6: calendar (month) view for any concept with a visible date/datetime field.
+            if (concept.getFieldsInDeclaredOrder().stream().anyMatch(f -> isShowInUi(f)
+                    && ("date".equals(manifestType(f)) || "datetime".equals(manifestType(f))))) {
+                views.add("calendar");
+            }
             node.put("views", views);
             Map<String, Object> actions = new LinkedHashMap<>();
             actions.put("list", true);
