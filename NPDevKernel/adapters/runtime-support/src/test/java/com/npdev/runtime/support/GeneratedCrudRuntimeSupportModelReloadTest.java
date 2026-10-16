@@ -1,6 +1,7 @@
 package com.npdev.runtime.support;
 
 import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.kernel.KernelRunner;
@@ -18,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -72,6 +74,32 @@ class GeneratedCrudRuntimeSupportModelReloadTest {
                 "a concept added by a LIVE model reload must be visible without reconstructing "
                         + "GeneratedCrudRuntimeSupport: " + after
         );
+    }
+
+    /**
+     * ENG-4: an enum option added by a live model reload must be accepted by the generated CRUD
+     * service, whose baked ENUM_VALUES_BY_FIELD used to reject it with a 400.
+     */
+    @Test
+    void anEnumValueAddedByAReloadIsAllowedWithoutRebuildingTheInstance() {
+        AtomicReference<CompiledModel> currentModel = new AtomicReference<>(ticketModel("OPEN", "CLOSED"));
+        GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(currentModel::get, kernelRunner());
+
+        assertEquals(Set.of("OPEN", "CLOSED"), support.liveEnumValues("Ticket", "status").orElseThrow());
+
+        currentModel.set(ticketModel("OPEN", "CLOSED", "PARKED"));
+
+        assertEquals(Set.of("OPEN", "CLOSED", "PARKED"), support.liveEnumValues("Ticket", "status").orElseThrow(),
+                "the SAME support instance must see the enum option added by the reload");
+        assertTrue(support.liveEnumValues("Ticket", "nope").isEmpty());
+        assertTrue(support.liveEnumValues("Nope", "status").isEmpty());
+    }
+
+    private static CompiledModel ticketModel(String... statuses) {
+        CompiledField status = new CompiledField(
+                "status", "enum", "String", false, false, false, List.of(statuses), null);
+        CompiledConcept ticket = new CompiledConcept("Ticket", "Ticket", "tickets", List.of(status));
+        return new CompiledModel("demo", "1.0.1", "v1", Map.of("Ticket", ticket));
     }
 
     /**

@@ -646,7 +646,7 @@ public class {{entityName}}ServiceBase {
         return values;
     }
 
-    private static Map<String, Object> validateMapRequest(Map<String, Object> request, boolean update, UUID pathId) {
+    private Map<String, Object> validateMapRequest(Map<String, Object> request, boolean update, UUID pathId) {
         if (request == null) {
             throw new IllegalArgumentException("Request body is required");
         }
@@ -683,8 +683,10 @@ public class {{entityName}}ServiceBase {
         return normalized;
     }
 
-    private static void validateEnumValue(String fieldName, Object value) {
-        Set<String> allowedValues = ENUM_VALUES_BY_FIELD.get(fieldName);
+    // ENG-4: the LIVE model's enum values win, so an option added by a model-reload is saveable at
+    // once; the baked set is only the fallback (concept/field unknown to the live model).
+    private void validateEnumValue(String fieldName, Object value) {
+        Set<String> allowedValues = runtimeSupport.liveEnumValues(CONCEPT_NAME, fieldName).orElse(ENUM_VALUES_BY_FIELD.get(fieldName));
         if (allowedValues == null || allowedValues.isEmpty() || value == null) {
             return;
         }
