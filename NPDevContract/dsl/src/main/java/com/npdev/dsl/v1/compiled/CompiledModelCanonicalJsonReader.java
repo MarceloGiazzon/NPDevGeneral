@@ -1222,8 +1222,35 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "procedureName"),
                 optionalBoolean(node.get("parallelAwait")),
                 optionalLongObject(node.get("timeoutSeconds")),
-                onTimeoutSteps
+                onTimeoutSteps,
+                toHumanTask(node.get("task"))
         );
+    }
+
+    /** PROC-1: reads the optional human-task block; absent/null => null (plain machine await). */
+    private static CompiledHumanTask toHumanTask(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        JsonNode assignee = node.get("assignee");
+        List<CompiledHumanTask.Outcome> outcomes = new ArrayList<>();
+        for (JsonNode o : array(node, "outcomes")) {
+            outcomes.add(new CompiledHumanTask.Outcome(text(o, "value"), optionalText(o, "label")));
+        }
+        List<CompiledHumanTask.Field> fields = new ArrayList<>();
+        for (JsonNode f : array(node, "fields")) {
+            fields.add(new CompiledHumanTask.Field(text(f, "name"), text(f, "type"), optionalText(f, "label"),
+                    f.path("required").asBoolean(false), optionalIntegerObject(f.get("maxLength"))));
+        }
+        return new CompiledHumanTask(
+                text(node, "title"),
+                optionalText(node, "description"),
+                assignee == null ? null : optionalText(assignee, "user"),
+                assignee == null ? List.of() : toStringList(assignee.get("roles")),
+                optionalText(node, "outcomeField"),
+                outcomes,
+                fields,
+                optionalText(node, "record"));
     }
 
     private static CompiledCapabilityCall toCapabilityCall(JsonNode node) {
