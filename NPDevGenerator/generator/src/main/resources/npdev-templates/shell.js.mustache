@@ -1582,7 +1582,29 @@
     }
   }
 
+  // SEC-5: after an OAuth round trip (or any flow that ends in the HttpOnly npdev_jwt cookie) the
+  // browser holds the session only as a cookie JavaScript cannot read. Ask the server to hand the
+  // cookie's (already validated) token back so it is stored exactly like a password login stores it.
+  // Silent on failure: a logged-out visitor simply gets a 401 and falls through to the normal flow.
+  function adoptCookieSession() {
+    var cachedAuth = readJsonStorage(localStorage, AUTH_CONFIG_KEY, null);
+    if (cachedAuth && cachedAuth.mode && cachedAuth.mode !== "jwt") return Promise.resolve();
+    return fetch("/api/auth/session-token", { method: "POST", headers: { "X-NPDev-Request": "1" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (b) {
+        if (b && b.token) {
+          TOKEN_STORAGE_KEYS.forEach(function (k) { localStorage.setItem(k, b.token); });
+        }
+      })
+      .catch(function () {});
+  }
+
   function init() {
+    if (findToken()) { initWithToken(); return; }
+    adoptCookieSession().then(initWithToken);
+  }
+
+  function initWithToken() {
     if (maybeRedirectToLoginSync()) return;
 
     paintSkeleton();
