@@ -49,3 +49,63 @@
 .history-changes td {
   padding: 2px 8px;
 }
+
+/* UI-3: board (kanban) view (views/board.js). */
+.board-view {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  align-items: flex-start;
+}
+
+.board-column {
+  flex: 0 0 260px;
+  background: var(--np-bg);
+  border: 1px solid var(--np-border);
+  border-radius: var(--np-radius);
+  padding: 8px;
+  min-height: 120px;
+}
+
+.board-column-head {
+  font-weight: 600;
+  color: var(--np-text-muted);
+}
+
+.board-card {
+  background: var(--np-surface);
+  border: 1px solid var(--np-border);
+  border-radius: var(--np-radius);
+  padding: 8px;
+  margin-top: 8px;
+  cursor: grab;
+  box-shadow: var(--np-shadow);
+}
+
+.board-card.dragging {
+  opacity: .5;
+}
+
+.board-drop-ok {
+  outline: 2px dashed var(--np-accent);
+}
+
+.board-drop-blocked {
+  opacity: .45;
+}
+
+.board-card-move {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.board-truncated {
+  color: var(--np-text-muted);
+  padding: 8px;
+}
+
+@media (max-width: 768px) {
+  .board-column {
+    flex-basis: 85vw;
+  }
+}
