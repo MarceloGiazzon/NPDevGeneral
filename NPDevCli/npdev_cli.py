@@ -1272,7 +1272,8 @@ def _cascade_rename(model: dict, model_path: Path, concept_name: str,
 
 
 def run_migrate_db_lifecycle(args: argparse.Namespace) -> int:
-    """STOR-16: rewrite `schemaLifecycle.strategy: RecreateOnAppStart` to `Ephemeral`.
+    """STOR-16 / ENG-2: rewrite the removed `schemaLifecycle.strategy: RecreateOnAppStart`:
+    InMemory -> `Ephemeral`, a physical engine -> `KeepExistingIfCompatible` (what it really did).
 
     Ships in the same commit as the deprecation, per the standing convention that a breaking change
     to the model DSL, generated code layout or internal APIs carries its `npdev migrate` codemod
@@ -1319,7 +1320,7 @@ def run_migrate_db_lifecycle(args: argparse.Namespace) -> int:
         if result.changed and args.write:
             target.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
-    print(f"{changed} of {len(targets)} definition(s) use the deprecated spelling.")
+    print(f"{changed} of {len(targets)} definition(s) use the removed spelling.")
     print(f"{flagged} of {len(targets)} definition(s) flagged for manual review (see [NOTE] above).")
     if changed and not args.write:
         print("Dry run -- pass --write to apply.")
@@ -15989,8 +15990,9 @@ def build_parser() -> argparse.ArgumentParser:
     # a server-engine definition with no database.externallyProvisioned declared at all.
     migrate_db_lifecycle = migrate_sub.add_parser(
         "db-lifecycle",
-        help="Rewrite deprecated schemaLifecycle.strategy=RecreateOnAppStart to Ephemeral, and flag "
-             "a server-engine definition missing database.externallyProvisioned.",
+        help="Rewrite the removed schemaLifecycle.strategy=RecreateOnAppStart (InMemory -> Ephemeral, "
+             "physical engine -> KeepExistingIfCompatible), and flag a server-engine definition "
+             "missing database.externallyProvisioned.",
     )
     migrate_db_lifecycle.add_argument(
         "--input", required=True, nargs="+",

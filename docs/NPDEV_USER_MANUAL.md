@@ -297,7 +297,7 @@ InMemory example:
 {
   "database": { "engine": "InMemory", "createInternalTables": true, "createBusinessTables": true },
   "schemaLifecycle": {
-    "strategy": "RecreateOnAppStart",
+    "strategy": "Ephemeral",
     "allowDestructiveRecreate": true,
     "destructiveRecreateConfirmation": "I_UNDERSTAND_INMEMORY_DATA_IS_EPHEMERAL",
     "scope": "NpdevOwnedLogicalStoresOnly"
