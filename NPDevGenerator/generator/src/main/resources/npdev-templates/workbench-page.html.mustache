@@ -4,13 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{title}} — Workbench</title>
+<!-- UI-10: the shell's design tokens (light, dark via prefers-color-scheme / data-np-theme) come from
+     /shell.css; the page-local names below are aliases of them, so one app /theme.css (linked last)
+     restyles the workbench exactly like the business UI. shell.js is deliberately NOT loaded. -->
+<link rel="stylesheet" href="/shell.css">
 <style>
   :root{
-    --np-bg:#eef1f5; --np-ink:#1c2733; --np-muted:#5a6b7b; --np-line:#c9d3de;
-    --np-header:#c0c0ff; --np-l2:#d9dde2; --np-l3:#d6f0d6; --np-accent:#2b6cb0;
-    --np-grid-head:#34506b; --np-danger:#b23; --np-ok:#227a34; --np-chip:#5a6b7b;
-    --np-font:"Segoe UI",Roboto,system-ui,sans-serif;
-    --np-surface:#fff; --np-border:#e6ebf0;
+    --np-ink:var(--np-text); --np-muted:var(--np-text-muted); --np-line:var(--np-border);
+    --np-header:color-mix(in srgb, #c0c0ff 55%, var(--np-surface));
+    --np-l2:color-mix(in srgb, #d9dde2 55%, var(--np-surface));
+    --np-l3:color-mix(in srgb, #d6f0d6 55%, var(--np-surface));
+    --np-grid-head:#34506b; --np-danger:var(--np-negative); --np-ok:var(--np-positive); --np-chip:#5a6b7b;
+    --np-sel:color-mix(in srgb, var(--np-accent) 18%, var(--np-surface));
   }
   *{box-sizing:border-box}
   body{margin:0;font:13px/1.4 var(--np-font);color:var(--np-ink);background:var(--np-bg)}
@@ -34,7 +39,7 @@
   table{border-collapse:collapse;width:100%;font-size:12px;background:var(--np-surface)}
   th{background:var(--np-grid-head);color:#fff;text-align:left;padding:3px 7px;font-weight:600;white-space:nowrap}
   td{border-bottom:1px solid var(--np-border);padding:1px 4px;white-space:nowrap}
-  tr.sel td{background:#dcecff}
+  tr.sel td{background:var(--np-sel)}
   tr.master{cursor:pointer}
   /* R7.9: .rowbtn/.addrow/.pick were plain <span onclick> -- unreachable by keyboard. Now real
      <button> elements (see workbench render()/openBandPicker); these resets keep the SAME look a
@@ -44,7 +49,7 @@
   .addrow{color:var(--np-accent);cursor:pointer;font-size:12px;display:inline-block;margin-top:4px;background:none;border:0;font:inherit}
   .grids{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
   .gwrap{min-width:220px;max-width:100%}
-  .gwrap h4{margin:0 0 3px;font-size:12px;color:#456}
+  .gwrap h4{margin:0 0 3px;font-size:12px;color:var(--np-muted)}
   /* R7.10: each band grid scrolls in its OWN box instead of growing the whole page -- with several
      bands side by side (see .grids above) an unbounded table here used to push page height past
      several screens for one long band, dragging every sibling band's rows off-screen with it. The
@@ -54,7 +59,7 @@
   .gwrap-scroll{max-height:280px;overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--np-line);border-radius:4px}
   .gwrap-scroll table{border:0}
   .gwrap-scroll th{position:sticky;top:0;z-index:1}
-  .btn{background:var(--np-accent);color:#fff;border:0;border-radius:4px;padding:5px 14px;font:12px var(--np-font);cursor:pointer}
+  .btn{background:var(--np-accent);color:var(--np-on-accent,#fff);border:0;border-radius:4px;padding:5px 14px;font:12px var(--np-font);cursor:pointer}
   .msg{margin-left:10px;font-size:12px}
   .msg.ok{color:var(--np-ok)}.msg.err{color:var(--np-danger)}
   .rev{cursor:pointer;color:#fff;font-size:11px;opacity:.85;text-decoration:underline;background:none;border:0}
@@ -69,8 +74,8 @@
   .modal-hd{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--np-line);font-weight:600}
   .modal-bd{padding:6px 14px}
   .modal-ft{display:flex;gap:8px;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--np-line)}
-  .modal tr.master.sel td{background:#dcecff}
-  .btn.ghost{background:#e6ebf0;color:var(--np-ink)}
+  .modal tr.master.sel td{background:var(--np-sel)}
+  .btn.ghost{background:var(--np-border);color:var(--np-ink)}
   /* P3b: built-in cellGrid region (renderCellGrid). */
   .cg-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}
   .cg-bar .btn.ghost[aria-pressed=true]{outline:2px solid var(--np-accent)}
@@ -107,6 +112,8 @@
     .rev{min-height:32px}
   }
 </style>
+<!-- App-owned theme (404-harmless); last, so it overrides shell and workbench tokens alike. -->
+<link rel="stylesheet" href="/theme.css" onerror="this.remove()">
 </head>
 <body>
 <div class="app" id="app"><p class="sub">Loading workbench…</p></div>

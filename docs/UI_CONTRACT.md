@@ -213,6 +213,13 @@ literal string `"system"`) — that is what lets the `prefers-color-scheme` medi
 `applyThemeMode()`/`applyDensity()` in `shell.js.mustache` are the one place this logic lives; extend
 them rather than re-deriving the cascade elsewhere.
 
+**Aggregate Workbench pages** (`static/npdev-workbench/<Panel>.html`) are standalone pages that do not
+load `shell.js`, but they link `/shell.css` (before their inline style) and `/theme.css` (last, harmless
+when the app has none), and their page-local names (`--np-ink`, `--np-line`, `--np-danger`, ...) are
+aliases of the shared tokens. So an app `/theme.css` and the OS dark mode (`prefers-color-scheme`)
+restyle them like every other screen. An explicit app-wide `ui.theme.mode` of `dark` or `light` is
+applied by `shell.js`, so it does not reach a workbench page; only the OS preference does.
+
 ## Shared global states (W1.5 + S10)
 
 Six states every surface needs -- loading, empty, error, permission-denied, no-results, offline --
