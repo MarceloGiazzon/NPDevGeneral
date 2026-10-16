@@ -39,6 +39,39 @@ a `StrictExecutionViolationException`, not a soft warning — this is the mechan
 `mapa-armazem.html`-class "signature mismatch" incidents already logged in
 `NPDevMcp/knowledge/cards/hash-guarded-npdev-generated.json`.
 
+## `npdev upgrade --app` — a guarded in-place upgrade (OPS-12)
+
+```
+npdev upgrade --app <generated-app-dir> [--model m.json] [--config c.json] [--port N] [--profile dev]
+              [--stop] [--allow-destructive] [--skip-db-backup] [--timeout 900]
+```
+
+Takes the (edited) model, regenerates and rebuilds the app **in place**, and either ends READY on the new
+version or puts the previous version back and boots it again. The model/config are inferred like
+`npdev run app` (`--model` wins, then `model.json` in the CWD, then the model the app was generated from).
+The JSON result's `outcome` is `UPGRADED`, `REFUSED` (nothing was applied), `ROLLED_BACK` (new version failed,
+old one healthy again) or `ROLLBACK_FAILED` (the message names the backup directory); exit code 0 only for
+`UPGRADED`. `npdev upgrade --package ... --target ...` (installing a packaged artifact) is a separate mode and
+is unchanged.
+
+| Phase | What happens | Refuses / rolls back when |
+|---|---|---|
+| PREFLIGHT | the directory must be a generated app; the app must be stopped (`--stop` runs its `_ops` stop script and waits for the port) | something listens on the port without `--stop`; a Scheduled Task / systemd unit `npdev-<appId>` is installed (it would restart the old jar mid-upgrade) |
+| VALIDATE | full structural + semantic validation of the model, before anything is copied | errors: `REFUSED`, with `npdev migrate dsl-2 --input <model> --write` suggested for retired syntax |
+| BACKUP | `<app>/data/backups/pre-upgrade-<UTC>/` gets `code/` (the jar, `npdev-generated/`, `_ops/`) and the data (below) | a Postgres/MySQL app with no `deploy/backup.sh` (or no `bash`) and no `--skip-db-backup`: `REFUSED` before any build |
+| BUILD | the same GENERATE + BUILD phases as `npdev run app` | build failure: rollback |
+| IMPACT | the new jar runs once with `-Dnpdev.schema.lifecycle.mode=REPORT_ONLY` (writes nothing): exit 0 safe, 2 needs attention (reported, continues), 3 destructive | 3 without `--allow-destructive`: old version restored, `REFUSED`; any other exit: rollback |
+| BOOT / READY | the same BOOT + `/actuator/health` loop as `npdev run app`; this is where the schema migration is applied for real. On success the JVM is left running | not healthy: rollback |
+| ROLLBACK | restores the previous jar, `npdev-generated/` and `_ops/` (and embedded data), boots the old jar and health-checks it | old version does not boot either: `ROLLBACK_FAILED` |
+
+What is backed up, per engine:
+
+| Engine | Backup | Restored on rollback |
+|---|---|---|
+| H2 (`H2Local` / `H2Server` file databases) | a copy of the data directory (the app is stopped, so the copy is consistent; `data/backups/` is never copied into itself) | automatically |
+| Postgres / MySQL (compose) | `deploy/backup.sh` dump, copied into `pre-upgrade-<UTC>/db-dump/` | **not** automatically: the migration may be fine and the failure elsewhere. The result prints the exact `bash deploy/restore.sh <dump> --yes` command instead |
+| InMemory | nothing | n/a |
+
 ## Platform version pairing
 
 Every generated FinalApp already carries `npdev.generator.version` in `npdev-build-info.properties`
