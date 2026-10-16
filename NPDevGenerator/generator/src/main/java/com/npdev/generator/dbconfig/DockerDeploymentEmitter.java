@@ -465,6 +465,11 @@ public final class DockerDeploymentEmitter {
                       # (the right-hand side, matching deploy/Caddyfile's ':443') are unaffected.
                       - "${PROXY_HTTP_PORT:-80}:80"
                       - "${PROXY_HTTPS_PORT:-443}:443"
+                    environment:
+                      # Real HTTPS: set both in .env and Caddy obtains a Let's Encrypt certificate.
+                      # Leave unset for the self-signed ':443' (see deploy/Caddyfile).
+                      NPDEV_PUBLIC_HOST: ${NPDEV_PUBLIC_HOST:-}
+                      NPDEV_ACME_EMAIL: ${NPDEV_ACME_EMAIL:-}
                     volumes:
                       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
                       - caddy-data:/data
@@ -690,6 +695,11 @@ public final class DockerDeploymentEmitter {
                       # dockerComposeServer's proxy service for why.
                       - "${PROXY_HTTP_PORT:-80}:80"
                       - "${PROXY_HTTPS_PORT:-443}:443"
+                    environment:
+                      # Real HTTPS: set both in .env and Caddy obtains a Let's Encrypt certificate.
+                      # Leave unset for the self-signed ':443' (see deploy/Caddyfile).
+                      NPDEV_PUBLIC_HOST: ${NPDEV_PUBLIC_HOST:-}
+                      NPDEV_ACME_EMAIL: ${NPDEV_ACME_EMAIL:-}
                     volumes:
                       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
                       - caddy-data:/data
@@ -743,6 +753,10 @@ public final class DockerDeploymentEmitter {
                 # entirely and let the shared ingress reverse-proxy straight to APP_PORT above.
                 # PROXY_HTTP_PORT=80
                 # PROXY_HTTPS_PORT=443
+                # Real HTTPS (Let's Encrypt) for the `proxy` profile: point a DNS name at this server,
+                # set both lines, make ports 80 and 443 reachable from the internet. Unset = self-signed.
+                # NPDEV_PUBLIC_HOST=app.example.com
+                # NPDEV_ACME_EMAIL=you@example.com
                 SPRING_PROFILES_ACTIVE=prod
                 NPDEV_AUTH_MODE=apikey
                 # Format: key=tenant:actor:ROLE1|ROLE2;another-key=tenant:actor:ROLE
@@ -813,6 +827,10 @@ public final class DockerDeploymentEmitter {
                 # entirely and let the shared ingress reverse-proxy straight to APP_PORT above.
                 # PROXY_HTTP_PORT=80
                 # PROXY_HTTPS_PORT=443
+                # Real HTTPS (Let's Encrypt) for the `proxy` profile: point a DNS name at this server,
+                # set both lines, make ports 80 and 443 reachable from the internet. Unset = self-signed.
+                # NPDEV_PUBLIC_HOST=app.example.com
+                # NPDEV_ACME_EMAIL=you@example.com
                 SPRING_PROFILES_ACTIVE=prod,postgres
                 NPDEV_AUTH_MODE=apikey
                 # Format: key=tenant:actor:ROLE1|ROLE2;another-key=tenant:actor:ROLE
@@ -863,11 +881,15 @@ public final class DockerDeploymentEmitter {
     private static String caddyfile(int serverPort) {
         return """
                 # LNCH-7: TLS-terminating reverse proxy recipe for THIS app alone -- generated apps
-                # never terminate TLS themselves (see docs/DEPLOYMENT.md). Replace ':443' with your
-                # real domain once you have one; Caddy then obtains a real Let's Encrypt certificate
-                # automatically with no further config. Until then, 'tls internal' issues Caddy's own
-                # locally-trusted certificate, so HTTPS termination itself is provable without owning
-                # a domain.
+                # never terminate TLS themselves (see docs/DEPLOYMENT.md).
+                #
+                # Both NPDEV_PUBLIC_HOST and NPDEV_ACME_EMAIL unset (the default): Caddy listens on
+                # ':443' with 'tls internal' -- its own locally-trusted, self-signed certificate, so
+                # HTTPS termination itself is provable without owning a domain.
+                #
+                # Set NPDEV_PUBLIC_HOST to a DNS name pointing at this server and NPDEV_ACME_EMAIL to
+                # your e-mail (both in .env) and Caddy obtains a real Let's Encrypt certificate
+                # automatically. Ports 80 and 443 must be reachable from the internet.
                 #
                 # R9.7: running MORE THAN ONE generated app on the same box? Exactly one app can bind
                 # host ports 80/443 this way. `npdev monitor ingress` (see npdev_monitor.py) generates
@@ -875,8 +897,8 @@ public final class DockerDeploymentEmitter {
                 # fronts every healthy app at once by hostname-or-path -- use that instead of this
                 # per-app recipe when more than one app needs to be reachable simultaneously.
 
-                :443 {
-                	tls internal
+                {$NPDEV_PUBLIC_HOST::443} {
+                	tls {$NPDEV_ACME_EMAIL:internal}
                 	reverse_proxy app:%d
                 }
                 """.formatted(serverPort);

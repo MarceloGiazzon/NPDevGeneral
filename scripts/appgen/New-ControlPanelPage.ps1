@@ -29,7 +29,7 @@ param(
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $StaticDir | Out-Null
 $base = "http://localhost:$Port"
-$keyFilePath = Join-Path $OutRoot '_ops\SUPER_USER_KEY.txt'
+$keyFilePath = Join-Path $OutRoot 'App\_ops\SUPER_USER_KEY.txt'
 
 $tpl = @'
 <!DOCTYPE html>

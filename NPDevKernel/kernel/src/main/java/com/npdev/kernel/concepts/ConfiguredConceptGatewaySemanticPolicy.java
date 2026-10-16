@@ -11,6 +11,7 @@ import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.CompiledSequence;
 import com.npdev.dsl.v1.compiled.CompiledStateMachineState;
 import com.npdev.dsl.v1.compiled.CompiledStateTransition;
+import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.dsl.v1.expr.SequenceNumberFormat;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.ports.SequenceAllocator;
@@ -392,16 +393,17 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         List<Map<String, Object>> rulesEvaluated = new ArrayList<>();
         for (InvariantDefinition invariant : concept.invariants()) {
             String expression = invariant.expression();
-            if (!isSupportedBooleanExpression(expression)) {
-                // This policy only understands a small comparison/uniqueBy grammar; richer
-                // invariants (e.g. conflict-detection functions like overlapsProvider(...))
-                // are already fully validated by the kernel's CEL invariant engine before this
-                // gateway-side check runs (see GeneratedCrudRuntimeSupport.enforceWithKernel),
-                // so we skip rather than deny instead of double-rejecting on syntax we can't parse.
+            // ENG-7: the same ComputedExpression grammar the CRUD path's kernel CEL engine uses. Only
+            // a store-dependent function (conflicts/overlapsProvider, scope.exists, ...) or a
+            // non-boolean/unparseable expression yields no verdict; those stay enforced by the kernel
+            // CEL engine (see GeneratedCrudRuntimeSupport.enforceWithKernel), so we skip rather than
+            // deny instead of double-rejecting on something this gateway cannot evaluate.
+            Boolean verdict = evaluateInvariant(expression, facts);
+            if (verdict == null) {
                 rulesEvaluated.add(ruleDetail(invariant, "skippedUnsupportedExpression", true));
                 continue;
             }
-            boolean passed = evaluateBooleanExpression(expression, facts);
+            boolean passed = verdict;
             rulesEvaluated.add(ruleDetail(invariant, passed ? "passed" : "failed", passed));
             if (!passed) {
                 return ConceptSemanticDecision.deny(
@@ -635,91 +637,23 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
     private static final Pattern NEXT_NUMBER_PATTERN =
             Pattern.compile("^nextNumber\\(\\s*['\"]([^'\"]*)['\"]\\s*\\)$");
 
-    private static final Pattern UNIQUE_BY_PATTERN =
-            Pattern.compile("^([A-Za-z_][A-Za-z0-9_]*)\\.uniqueBy\\(([A-Za-z_][A-Za-z0-9_]*)\\)$");
+    /** ENG-7: pure subset of the CRUD path's CEL function registry (no store access). */
+    private static final ComputedExpression.FunctionRegistry INVARIANT_FUNCTIONS =
+            GatewayInvariantFunctions.registry();
 
-    private static boolean evaluateBooleanExpression(String expression, Map<String, Object> facts) {
+    /** TRUE/FALSE verdict, or null when the expression has no verdict here (unknown/store-dependent
+     *  function, unparseable, or a non-boolean result). A blank expression passes. */
+    private static Boolean evaluateInvariant(String expression, Map<String, Object> facts) {
         String text = expression == null ? "" : expression.trim();
         if (text.isEmpty()) {
-            return true;
+            return Boolean.TRUE;
         }
-        Matcher uniqueByMatcher = UNIQUE_BY_PATTERN.matcher(text);
-        if (uniqueByMatcher.matches()) {
-            return evaluateUniqueBy(uniqueByMatcher.group(1), uniqueByMatcher.group(2), facts);
+        try {
+            Object result = ComputedExpression.evaluate(text, facts, INVARIANT_FUNCTIONS);
+            return result instanceof Boolean verdict ? verdict : null;
+        } catch (ComputedExpression.ExpressionException unsupported) {
+            return null;
         }
-        for (String disjunct : text.split("\\s+\\|\\|\\s+")) {
-            boolean all = true;
-            for (String conjunct : disjunct.split("\\s+&&\\s+")) {
-                all = all && evaluateComparison(conjunct.trim(), facts);
-            }
-            if (all) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean evaluateUniqueBy(String fieldName, String subfield, Map<String, Object> facts) {
-        Object value = facts.get(fieldName);
-        if (!(value instanceof List<?> list)) {
-            return true;
-        }
-        Set<Object> seen = new LinkedHashSet<>();
-        for (Object element : list) {
-            if (!(element instanceof Map<?, ?> elementMap)) {
-                continue;
-            }
-            Object subValue = elementMap.get(subfield);
-            if (subValue == null) {
-                continue;
-            }
-            if (!seen.add(normalizeComparable(subValue))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static boolean evaluateComparison(String expression, Map<String, Object> facts) {
-        Matcher matcher = Pattern.compile("^([A-Za-z_][A-Za-z0-9_.-]*)\\s*(==|!=|>=|<=|>|<)\\s*(.+)$").matcher(expression);
-        if (!matcher.matches()) {
-            return false;
-        }
-        Object left = facts.get(matcher.group(1));
-        String operator = matcher.group(2);
-        Object right = literal(matcher.group(3), facts);
-        int comparison = compare(left, right);
-        return switch (operator) {
-            case "==" -> Objects.equals(normalizeComparable(left), normalizeComparable(right));
-            case "!=" -> !Objects.equals(normalizeComparable(left), normalizeComparable(right));
-            case ">=" -> comparison >= 0;
-            case "<=" -> comparison <= 0;
-            case ">" -> comparison > 0;
-            case "<" -> comparison < 0;
-            default -> false;
-        };
-    }
-
-    private static boolean isSupportedBooleanExpression(String expression) {
-        String text = expression == null ? "" : expression.trim();
-        if (text.isEmpty()) {
-            return true;
-        }
-        if (UNIQUE_BY_PATTERN.matcher(text).matches()) {
-            return true;
-        }
-        for (String disjunct : text.split("\\s+\\|\\|\\s+")) {
-            for (String conjunct : disjunct.split("\\s+&&\\s+")) {
-                String item = conjunct.trim();
-                if (item.isEmpty()) {
-                    continue;
-                }
-                if (!Pattern.compile("^([A-Za-z_][A-Za-z0-9_.-]*)\\s*(==|!=|>=|<=|>|<)\\s*(.+)$").matcher(item).matches()) {
-                    return false;
-                }
-            }
-        }
-        return true;
     }
 
     private static ConceptSemanticDecision allowWithSemanticDetails(
@@ -753,36 +687,6 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         detail.put("outcome", outcome);
         detail.put("allowed", allowed);
         return Map.copyOf(detail);
-    }
-
-    private static Object literal(String raw, Map<String, Object> facts) {
-        String text = raw == null ? "" : raw.trim();
-        if ("null".equalsIgnoreCase(text)) {
-            return null;
-        }
-        if ((text.startsWith("'") && text.endsWith("'")) || (text.startsWith("\"") && text.endsWith("\""))) {
-            return text.substring(1, text.length() - 1);
-        }
-        if (facts.containsKey(text)) {
-            return facts.get(text);
-        }
-        if ("true".equalsIgnoreCase(text) || "false".equalsIgnoreCase(text)) {
-            return Boolean.parseBoolean(text);
-        }
-        try {
-            return Double.parseDouble(text);
-        } catch (NumberFormatException ignored) {
-            return text;
-        }
-    }
-
-    private static int compare(Object left, Object right) {
-        Object normalizedLeft = normalizeComparable(left);
-        Object normalizedRight = normalizeComparable(right);
-        if (normalizedLeft instanceof Number leftNumber && normalizedRight instanceof Number rightNumber) {
-            return Double.compare(leftNumber.doubleValue(), rightNumber.doubleValue());
-        }
-        return String.valueOf(normalizedLeft).compareTo(String.valueOf(normalizedRight));
     }
 
     private static Object normalizeComparable(Object value) {

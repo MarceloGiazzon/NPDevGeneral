@@ -46,7 +46,7 @@ override yet -- tracked separately as REG-109, not attempted here.
 Refuses (exit 1, no file touched, no restart) unless the classification is METADATA_ONLY.
 
 .PARAMETER AppOpsRoot
-Path to the running app's _ops directory (e.g. ...\wmsoffice\_ops). Read for app-plan.json
+Path to the running app's _ops directory (e.g. ...\wmsoffice\App\_ops). Read for app-plan.json
 (appRoot, baseUrl) and used to invoke Stop-App.ps1 / Start-App.ps1.
 
 .PARAMETER CurrentModelPath

@@ -240,7 +240,11 @@ def boot(options: DevOptions, jar: Path, cli) -> AppProcess | None:
     proc = subprocess.Popen(
         [java, "-jar", str(jar),
          f"--server.port={options.port}",
-         f"--spring.profiles.active={options.profile}"],
+         f"--spring.profiles.active={options.profile}",
+         # ENG-5: dev-loop-only opt-in to REG-244 live table creation, so a brand-new concept saved
+         # while `npdev dev` runs is provisioned by /model-reload with no restart. Apps started any
+         # other way (Start-App.ps1, the Manager) keep the default-off posture.
+         "--npdev.runtime.hotswap.new-concept-provisioning-enabled=true"],
         cwd=str(options.output), stdout=log, stderr=subprocess.STDOUT,
     )
     app = AppProcess(proc, jar, log)
@@ -287,43 +291,36 @@ def _super_user_key(app_root: Path) -> str | None:
 
 
 def _try_hot_swap(options: DevOptions, current: AppProcess, out: "Output", cli, deadline: float) -> tuple[bool, str]:
-    """RUN-24 gap 1: METADATA_ONLY's own fast path -- push the change straight into the
-    ALREADY-RUNNING app via `MetadataHotSwapController#apply` (through `cli._metadata_hotswap_apply`,
-    the same core `npdev monitor hotswap` uses) instead of the unconditional stop/generate/build/boot
-    cycle `run_cycle` falls back to below. RUN-24 gap 2 rides along for free: `_metadata_hotswap_apply`
-    also patches `generated-ui-manifest.json` so the SERVED business-ui grid picks up the change, not
-    just the REST metadata catalogs.
+    """Apply the saved model to the ALREADY-RUNNING app instead of the stop/generate/build/boot cycle
+    `run_cycle` falls back to below. ENG-5: this is the SAME router Manager Studio uses
+    (`cli._live_apply`): it classifies the change and, when it is live-able, swaps the compiled model
+    through `/model-reload` (B28) -- so a new flow, invariant, role grant, query or enum value really
+    takes effect, and (with the opt-in `boot()` passes) a brand-new concept is provisioned live too.
+    Only for a METADATA_ONLY diff does it additionally refresh the descriptive catalogs and patch
+    `generated-ui-manifest.json` so the SERVED business-ui grid follows (RUN-24 gap 2). A change the
+    router cannot take live (a column on an existing concept, a removed concept, ...) comes back as
+    NEEDS_REBUILD.
 
-    Same safe-fallback-never-silent contract `npdev monitor hotswap`/`Update-AppMetadata.ps1` already
-    follow: ANY refusal -- no key issued (e.g. the default in-memory dev DB never issues one), the
-    classifier not reporting METADATA_ONLY (it is asked fresh here rather than trusting the earlier
-    `fast` flag, which could theoretically go stale if the model changed again mid-cycle), the
-    endpoint missing (an app generated before R1.7), a 409 from the endpoint itself, or any I/O
-    failure -- returns `(False, reason)` and NEVER raises, so the caller can fall back to a full
-    restart exactly as before this item existed."""
+    Same safe-fallback-never-silent contract `npdev monitor hotswap` follows: ANY refusal -- no key
+    issued (the default in-memory dev DB never issues one), the endpoint missing (an app generated
+    before R1.7), a rebuild-only change, or any I/O failure -- returns `(False, reason)` and NEVER
+    raises, so the caller falls back to a full restart. Success returns `(True, route)`."""
     key = _super_user_key(options.output)
     if key is None:
         return False, ("no SUPER_USER_KEY.txt found -- an in-memory dev database never issues one; "
                         "set database.engine to H2Local in db.definition.json to enable hot swap")
-    root = cli.repo_root()
-    scratch = Path(tempfile.mkdtemp(prefix="npdev-dev-hotswap-"))
     try:
-        classification, emitted, detail = cli._emit_metadata_only_catalogs(
-            root, options.baseline, options.model, deadline, scratch)
-        if not emitted:
-            return False, detail or f"classifier did not report METADATA_ONLY (got {classification!r})"
-        base_url = f"http://127.0.0.1:{options.port}"
-        remaining = max(1.0, min(15.0, deadline - time.monotonic()))
-        result = cli._metadata_hotswap_apply(
-            base_url, key, "METADATA_ONLY", [], scratch, options.output, remaining)
-        if not result.get("ok"):
-            return False, f"{result.get('code')}: {result.get('message')}"
-        patch = result.get("uiManifestPatch") or {}
-        if patch.get("patched"):
-            out.note(f"served UI manifest patched: {', '.join(patch.get('fieldsChanged') or [])}")
-        return True, "applied"
-    finally:
-        shutil.rmtree(scratch, ignore_errors=True)
+        live = cli._live_apply(
+            f"http://127.0.0.1:{options.port}", key, options.baseline, options.model, options.output,
+            deadline, max(1.0, min(15.0, deadline - time.monotonic())))
+    except Exception as exc:  # noqa: BLE001  (the contract above: never raises)
+        return False, f"live apply failed: {exc}"
+    if live.get("code") != "APPLIED_LIVE":
+        return False, f"{live.get('code')}: {live.get('message')}"
+    patch = (live.get("metadataHotswap") or {}).get("uiManifestPatch") or {}
+    if patch.get("patched"):
+        out.note(f"served UI manifest patched: {', '.join(patch.get('fieldsChanged') or [])}")
+    return True, str(live.get("route") or "model-reload")
 
 
 # =====================================================================================
@@ -360,33 +357,25 @@ def run_cycle(options: DevOptions, current: AppProcess | None, out: "Output", cl
         return CycleResult(False, "VALIDATE", elapsed=time.monotonic() - started), current
     out.result("ok")
 
-    # --- classify: take the metadata-only fast path automatically ---------------------
+    # --- ENG-5: an app already running -> apply live through the shared router, no restart -
+    # `cli._live_apply` classifies (one classifier JVM per save) and routes exactly like Manager
+    # Studio: model-reload for anything the runtime can take live, NEEDS_REBUILD otherwise. Tried
+    # FIRST, before GENERATE/BUILD (which this path skips entirely) and before the Windows
+    # stop-first special case just below -- a failed live apply must not already have killed the
+    # app. Any refusal falls through to the unchanged generate+build+restart path beneath it, with
+    # the reason printed, never silent.
     fast = False
-    if options.baseline.exists() and options.output.exists():
-        try:
-            fast = cli._classify_model_change(root, options.baseline, options.model, deadline) == "METADATA_ONLY"
-        except Exception:  # noqa: BLE001
-            fast = False
-    out.classification(fast)
-
-    # --- RUN-24 gap 1: METADATA_ONLY + an app already running -> hot swap, no restart -
-    # Previously `fast` fed only `out.classification()`/`CycleResult.fast` -- the swap below ran
-    # unconditionally regardless of it, so `npdev dev` restarted (new PID) on EVERY save, the exact
-    # opposite of R1.7's own done-when ("... updates the served UI with the same app PID"). Tried
-    # FIRST, before GENERATE/BUILD (which this path skips entirely -- a metadata-only change needs
-    # neither), and before the Windows stop-first special case just below (irrelevant here: a hot
-    # swap never touches the built jar). Any refusal falls through to the unchanged
-    # generate+build+restart path beneath it, with the reason printed, never silent.
-    if fast and current is not None and current.alive():
+    if current is not None and current.alive() and options.baseline.exists():
         out.phase("hotswap")
         swapped, swap_detail = _try_hot_swap(options, current, out, cli, deadline)
+        out.classification(swapped, swap_detail)
         if swapped:
             out.result("ok")
             options.state_dir.mkdir(parents=True, exist_ok=True)
             options.baseline.write_bytes(options.model.read_bytes())
             return CycleResult(True, "READY", True, time.monotonic() - started), current
         out.result("skipped")
-        out.note(f"hot swap not applied -- falling back to restart: {swap_detail}")
+        out.note("falling back to a full regenerate + build + restart")
 
     # --- generate + build ------------------------------------------------------------
     # On POSIX the old app keeps serving through GENERATE and BUILD, and only dies at the
@@ -509,10 +498,10 @@ class Output:
             self._open = False
         self.event(kind="result", result=text)
 
-    def classification(self, fast: bool) -> None:
-        self.note("change is METADATA_ONLY -- taking the fast path" if fast
-                  else "structural change -- full rebuild")
-        self.event(kind="classification", metadataOnly=fast)
+    def classification(self, applied_live: bool, detail: str = "") -> None:
+        self.note("change applied live (model-reload)" if applied_live
+                  else f"needs a rebuild -- {detail}")
+        self.event(kind="classification", appliedLive=applied_live, detail=detail)
 
     def diagnostics(self, report: Path) -> None:
         try:

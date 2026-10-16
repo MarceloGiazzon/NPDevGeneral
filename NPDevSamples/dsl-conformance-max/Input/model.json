@@ -1968,7 +1968,21 @@
           "match": {
             "correlation": true
           },
-          "awaitRef": "catalogApproval"
+          "awaitRef": "catalogApproval",
+          "task": {
+            "title": "Approve catalog entry ${input.id}",
+            "description": "Approve or reject the submitted widget catalog entry.",
+            "assignee": { "roles": ["WarehouseManager"] },
+            "outcomeField": "decision",
+            "outcomes": [
+              { "value": "APPROVED", "label": "Approve" },
+              { "value": "REJECTED", "label": "Reject" }
+            ],
+            "fields": [
+              { "name": "comment", "type": "text", "label": "Comment", "required": false, "maxLength": 500 }
+            ],
+            "record": "$input"
+          }
         },
         {
           "name": "return-catalog-approval",

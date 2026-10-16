@@ -1,13 +1,11 @@
 package com.finalexec.api;
 
 import com.finalexec.config.ModelHolder;
+import com.finalexec.config.ModelReloadPreflight;
 import com.finalexec.db.LiveConceptUiManifestSupport;
 import com.finalexec.db.NewConceptSchemaProvisioner;
 import com.finalexec.npdev.service.RuntimeMetadataService;
-import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.compiled.CompiledModel;
-import com.npdev.dsl.v1.compiler.ModelCompiler;
-import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
@@ -50,6 +48,9 @@ import java.util.Map;
  * {@link ModelHolder}, atomically. Every consumer that reads {@link ModelHolder#get()} fresh per use
  * (most controllers/services in this template -- panels, procedures, aggregates, schedules, seeds,
  * the capability registry's own routing table, ...) observes the new model immediately, no restart.
+ * ENG-3: the reload first refuses (HTTP 422, nothing swapped) a model that fails semantic
+ * validation and any reload that would remove a live concept, including ones the generator
+ * composed from config.json (identity/workspace/tracing packs).
  *
  * <p>As of D1 Phase 2 (REG-236/REG-237/REG-239, 2026-09-21), every residual this list had ever
  * NAMED was closed -- but an exhaustive sweep the next day found three more it had never named
@@ -279,14 +280,29 @@ public class MetadataHotSwapController {
         }
 
         try {
-            ModelAst ast = new JsonModelParser().parse(modelFile);
-            CompiledModel newModel = new ModelCompiler().compile(ast);
+            // ENG-3: preflight BEFORE any swap -- validate like the generator does, refuse a reload
+            // that would drop a live concept (incl. generator-composed pack concepts), and refuse new
+            // concepts this app cannot create tables for. A refusal leaves ModelHolder untouched.
+            DataSource preflightDataSource = dataSourceProvider.getIfAvailable();
+            boolean newConceptsServable = preflightDataSource == null || newConceptProvisioningEnabled;
+            ModelReloadPreflight.Outcome preflight =
+                    ModelReloadPreflight.prepare(modelFile, modelHolder.get(), newConceptsServable);
+            if (!preflight.ok()) {
+                Map<String, Object> refusal = new LinkedHashMap<>();
+                refusal.put("ok", false);
+                refusal.put("code", preflight.code());
+                refusal.put("message", preflight.message());
+                refusal.put("details", preflight.details());
+                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(refusal);
+            }
+            CompiledModel newModel = preflight.model();
             CompiledModel oldModel = modelHolder.swap(newModel);
             LOG.info("B28 hot model reload: swapped successfully (old concepts={}, new concepts={})",
                     oldModel.getConcepts().size(), newModel.getConcepts().size());
 
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("ok", true);
+            response.put("validationWarnings", preflight.details());
             response.put("concepts", newModel.getConcepts().size());
             response.put("flows", newModel.getFlows().size());
             response.put("procedures", newModel.getProcedures().size());
@@ -308,7 +324,7 @@ public class MetadataHotSwapController {
             List<String> conceptsProvisioned = List.of();
             Map<String, String> conceptsProvisioningFailed = Map.of();
             if (newConceptProvisioningEnabled) {
-                DataSource dataSource = dataSourceProvider.getIfAvailable();
+                DataSource dataSource = preflightDataSource;
                 if (dataSource != null) {
                     NewConceptSchemaProvisioner.Result result =
                             NewConceptSchemaProvisioner.provision(dataSource, oldModel, newModel);

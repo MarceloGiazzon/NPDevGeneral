@@ -80,3 +80,11 @@ grammar happens to *parse* this shape now (dotted function-call syntax is generi
 `Call.looksBoolean()` is deliberately permissive for exactly this reason — an unrecognized
 function name at the top level of an invariant is assumed intentional rather than flagged as a
 shape error.
+
+The concept gateway (`ConfiguredConceptGatewaySemanticPolicy`) no longer has a grammar of its own
+either: it evaluates invariants with `ComputedExpression` (ENG-7), so a rule such as
+`!(qty > 0 && price == 0)`, `total >= subtotal * 0.9` or `email.matches('.+@.+')` holds on every
+write path that reaches the gateway, not only on the CRUD service's kernel CEL pass. Only the
+store-dependent functions (`conflicts`/`overlapsProvider`, `scope.exists`) are left to the kernel
+CEL engine, because the gateway has no store access; the gateway reports those as
+`skippedUnsupportedExpression`.

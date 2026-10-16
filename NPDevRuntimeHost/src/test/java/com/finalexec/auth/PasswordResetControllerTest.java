@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * LNCH-4 P1: hermetic proof of the self-service password-reset flow -- H2-backed
- * identity_users/identity_password_reset_tokens/usuarios tables (mirroring
+ * identity_users/identity_v1_password_reset_tokens/usuarios tables (mirroring
  * IdentityAwareContextResolverTest's pattern) plus a real InProcMailCapabilityAdapter wired through
  * the real CapabilityRegistry/RegistryCapabilityDispatcher production classes, no Spring context.
  */
@@ -51,7 +51,7 @@ class PasswordResetControllerTest {
         try (Connection c = dataSource.getConnection(); Statement s = c.createStatement()) {
             s.execute("CREATE TABLE identity_users (id UUID PRIMARY KEY, username VARCHAR(120), "
                     + "email VARCHAR(200), active BOOLEAN, tenant_id VARCHAR(120), token_version INT)");
-            s.execute("CREATE TABLE identity_password_reset_tokens (id UUID PRIMARY KEY, user_id UUID, "
+            s.execute("CREATE TABLE identity_v1_password_reset_tokens (id UUID PRIMARY KEY, user_id UUID, "
                     + "token_hash VARCHAR(64), expires_at TIMESTAMP, used_at TIMESTAMP, tenant_id VARCHAR(120))");
             s.execute("CREATE TABLE usuarios (id UUID PRIMARY KEY, user_id UUID, senha_hash VARCHAR(200), "
                     + "tenant_id VARCHAR(120))");
@@ -85,12 +85,20 @@ class PasswordResetControllerTest {
     // Same hand-built-CompiledModel pattern ChangePasswordControllerTest uses (REG-226: table names
     // resolve from the model, not a hardcoded literal).
     private static CompiledModel identityModel() {
+        return identityModel(true);
+    }
+
+    private static CompiledModel identityModel(boolean withTokenConcept) {
         Map<String, CompiledConcept> concepts = new LinkedHashMap<>();
         concepts.put("identity::User", new CompiledConcept("User", "User", "identity_users", List.of()));
         concepts.put("identity::Role", new CompiledConcept("Role", "Role", "identity_roles", List.of()));
         concepts.put("identity::UserRole", new CompiledConcept("UserRole", "UserRole", "identity_user_roles", List.of()));
         concepts.put("identity::UserRolePermission",
                 new CompiledConcept("UserRolePermission", "UserRolePermission", "identity_user_role_permissions", List.of()));
+        if (withTokenConcept) {
+            concepts.put("identity::PasswordResetToken", new CompiledConcept("PasswordResetToken",
+                    "PasswordResetToken", "identity_v1_password_reset_tokens", List.of()));
+        }
         return new CompiledModel("test", "1.0.0", concepts);
     }
 
@@ -167,7 +175,7 @@ class PasswordResetControllerTest {
         String rawToken = "expired-raw-token";
         try (Connection c = dataSource.getConnection();
              PreparedStatement ps = c.prepareStatement(
-                     "INSERT INTO identity_password_reset_tokens VALUES (?, ?, ?, ?, NULL, ?)")) {
+                     "INSERT INTO identity_v1_password_reset_tokens VALUES (?, ?, ?, ?, NULL, ?)")) {
             ps.setObject(1, tokenId);
             ps.setObject(2, USER_ID);
             ps.setString(3, sha256Hex(rawToken));
@@ -186,6 +194,21 @@ class PasswordResetControllerTest {
         var resp = controller.confirmReset(
                 new PasswordResetController.ConfirmResetRequest("not-a-real-token", "new-password-1", TENANT));
         assertEquals(400, resp.getStatusCode().value());
+    }
+
+    @Test
+    void confirmReports503WhenTheTokenConceptIsNotComposed() {
+        CapabilityRegistry registry = new CapabilityRegistry();
+        PasswordResetController controller = new PasswordResetController(
+                dataSource, registry, new RegistryCapabilityDispatcher(registry),
+                new ModelHolder(identityModel(false)),
+                "usuarios", "user_id", "senha_hash", "");
+
+        var resp = controller.confirmReset(
+                new PasswordResetController.ConfirmResetRequest("any-token", "new-password-1", TENANT));
+
+        assertEquals(503, resp.getStatusCode().value());
+        assertEquals("identity_pack_not_composed", resp.getBody().get("error"));
     }
 
     @Test
@@ -226,7 +249,7 @@ class PasswordResetControllerTest {
             // No token_version column -- the pre-LNCH-4 shape.
             s.execute("CREATE TABLE identity_users (id UUID PRIMARY KEY, username VARCHAR(120), "
                     + "email VARCHAR(200), active BOOLEAN, tenant_id VARCHAR(120))");
-            s.execute("CREATE TABLE identity_password_reset_tokens (id UUID PRIMARY KEY, user_id UUID, "
+            s.execute("CREATE TABLE identity_v1_password_reset_tokens (id UUID PRIMARY KEY, user_id UUID, "
                     + "token_hash VARCHAR(64), expires_at TIMESTAMP, used_at TIMESTAMP, tenant_id VARCHAR(120))");
             s.execute("CREATE TABLE usuarios (id UUID PRIMARY KEY, user_id UUID, senha_hash VARCHAR(200), "
                     + "tenant_id VARCHAR(120))");
