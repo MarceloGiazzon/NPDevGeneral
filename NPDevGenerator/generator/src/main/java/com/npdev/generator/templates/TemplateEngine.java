@@ -44,6 +44,14 @@ public final class TemplateEngine {
         return out;
     }
 
+    /**
+     * Returns a classpath asset under the base path verbatim: no Mustache compilation, so
+     * double braces are safe inside it. Used for plain static JS/CSS assets (UI-0).
+     */
+    public String raw(String assetName) {
+        return loadTemplate(assetName);
+    }
+
     private String loadTemplate(String templateName) {
         String full = basePath + templateName;
         InputStream in = TemplateEngine.class.getClassLoader().getResourceAsStream(full);

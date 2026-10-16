@@ -1,0 +1,19 @@
+/* NPDev business UI -- view renderer styles (UI-0). Copied verbatim (NOT Mustache) to
+   static/npdev-business-ui/views/views.css. Tokens come from shell.css. */
+.view-switcher {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.view-switcher button {
+  background: var(--np-surface);
+  border: 1px solid var(--np-border);
+  color: var(--np-text);
+}
+
+.view-switcher button[aria-selected="true"] {
+  background: var(--np-accent);
+  border-color: var(--np-accent);
+  color: #fff;
+}
