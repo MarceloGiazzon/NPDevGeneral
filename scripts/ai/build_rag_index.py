@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from npdev_ai_common import ai_out_dir, repo_root
+from npdev_ai_common import ai_out_dir, cards_dir, repo_root
 
 CONTENT_FILES = [
     "docs/content/npdev-concepts-deep-dive.json",
@@ -70,11 +70,11 @@ def chunk_cards(root: Path) -> list[dict[str, Any]]:
     Cards live in NPDevMcp/knowledge/cards/*.json; superseded ones are skipped. The card body is already
     capped at 4000 chars (knowledge-card.schema.json) to index whole, matching the doc/sample cap.
     """
-    cards_dir = root / "knowledge" / "cards"
+    directory = cards_dir(root)
     chunks: list[dict[str, Any]] = []
-    if not cards_dir.exists():
+    if not directory.exists():
         return chunks
-    for path in sorted(cards_dir.glob("*.json")):
+    for path in sorted(directory.glob("*.json")):
         try:
             card = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
@@ -162,6 +162,10 @@ def main(_argv: list[str]) -> int:
         chunks.extend(chunk_content_doc(rel, doc))
 
     chunks.extend(chunk_cards(root))
+    if not any(c.get("objectType") == "knowledge-card" for c in chunks):
+        print(f"FAIL: 0 knowledge-card chunks from {cards_dir(root)} -- the AI context would "
+              f"silently lose every curated card.", file=sys.stderr)
+        return 1
 
     samples_dir = root / "NPDevSamples"
     if samples_dir.exists():

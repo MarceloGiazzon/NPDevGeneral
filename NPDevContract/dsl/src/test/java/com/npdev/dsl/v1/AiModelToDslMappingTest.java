@@ -19,6 +19,8 @@ import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import com.npdev.dsl.v1.validation.JsonModelSchemaValidator;
+import com.npdev.dsl.v1.validation.ValidationResult;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -136,6 +138,10 @@ class AiModelToDslMappingTest {
             assertEquals("passed", result.path("status").asText(), "normalizer must pass for " + scenarioId);
 
             JsonNode officialModel = readJson(TEST_OUTPUT_ROOT.resolve(scenarioId).resolve("model.json"));
+            ValidationResult schema = new JsonModelSchemaValidator()
+                    .validateWithDiagnostics(officialModel, scenarioId + "/model.json");
+            assertFalse(schema.hasErrors(),
+                    scenarioId + " normalized model.json violates model.schema.json: " + schema.getErrors());
             assertEntityConceptMapping(aiModel, officialModel, scenarioId);
             assertFlowMapping(aiModel, officialModel, scenarioId);
             assertExpandedSurfaceMapping(aiModel, officialModel, scenarioId);
