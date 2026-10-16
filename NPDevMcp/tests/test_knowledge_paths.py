@@ -47,6 +47,15 @@ class KnowledgePathsTest(unittest.TestCase):
             self.assertNotIn('root / "knowledge"', text, name)
             self.assertNotIn("root / 'knowledge'", text, name)
 
+    def test_capabilities_project_ledger_items_and_boundaries(self):
+        cards, _ = build_knowledge.load_cards(_REPO)
+        caps = build_knowledge.build_capabilities(_REPO, cards)
+        ids = {i["id"]: i for i in caps["items"]}
+        self.assertGreaterEqual(len(caps["items"]), 500)
+        self.assertIn("REG-244", ids)
+        self.assertEqual("boundary", ids["B1"]["category"])
+        self.assertTrue(all("\n" not in i["title"] for i in caps["items"]))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22,7 +22,7 @@
 >   Verified end-to-end on synthetic cycles: failed→passed emits a candidate with the right signature +
 >   diff; two occurrences of a novel signature promote to a schema-valid draft card; an already-carded
 >   signature is correctly skipped as "covered".
-> - **Phase 4** — `npdev_check_support` tool over `capabilities.json`. Verified: `ARCH-10b`→DONE
+> - **Phase 4** — `npdev_check_support` tool over `capabilities.json`. Verified: `REG-244`→DONE
 >   (exact), `panel orderBy`→orderBy items (keyword), nonsense→explicit `unknown`.
 > - **Phase 5** — `scripts/appgen/Rebuild-And-Restage.ps1` + tracked skills `rebuild-app` /
 >   `verify-in-browser` under `.claude/skills/` (un-ignored). Wrapper not yet run against a live app.
@@ -318,7 +318,7 @@ a model shape.
    `DONE`/`BOUNDARY` are as authoritative as `OPEN`.
 
 **Acceptance / verify**
-- `npdev_check_support {feature:"ARCH-10b"}` → returns `DONE` with the orderBy note.
+- `npdev_check_support {feature:"REG-244"}` → returns `DONE` with its resolution note.
 - `npdev_check_support {feature:"panel orderBy"}` → keyword-resolves to the same entry.
 - `npdev_check_support {feature:"something totally unrelated"}` → explicit "unknown / not tracked".
 
