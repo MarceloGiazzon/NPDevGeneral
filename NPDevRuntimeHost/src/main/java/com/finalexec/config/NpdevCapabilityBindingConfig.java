@@ -473,16 +473,19 @@ public class NpdevCapabilityBindingConfig {
             InProcMessagingCapabilityAdapter inProcMessagingCapabilityAdapter,
             ObjectProvider<HttpMessagingCapabilityAdapter> httpMessagingCapabilityAdapterProvider,
             ObjectProvider<ExternalAiPromptRunner> externalAiPromptRunnerProvider,
-            ObjectProvider<FileStoreCapabilityHandler> fileStoreCapabilityHandlerProvider
+            ObjectProvider<FileStoreCapabilityHandler> fileStoreCapabilityHandlerProvider,
+            ObjectProvider<com.finalexec.connector.HttpConnectorCapabilityHandler> httpConnectorCapabilityHandlerProvider
     ) {
         CapabilityRegistry registry = new CapabilityRegistry();
         populateCapabilityRegistry(registry, modelHolder.get(), capabilityAdapterResolver,
                 inProcMessagingCapabilityAdapter, httpMessagingCapabilityAdapterProvider,
-                externalAiPromptRunnerProvider, fileStoreCapabilityHandlerProvider);
+                externalAiPromptRunnerProvider, fileStoreCapabilityHandlerProvider,
+                httpConnectorCapabilityHandlerProvider);
         modelHolder.addReloadListener((before, after) -> populateCapabilityRegistry(
                 registry, after, capabilityAdapterResolver,
                 inProcMessagingCapabilityAdapter, httpMessagingCapabilityAdapterProvider,
-                externalAiPromptRunnerProvider, fileStoreCapabilityHandlerProvider));
+                externalAiPromptRunnerProvider, fileStoreCapabilityHandlerProvider,
+                httpConnectorCapabilityHandlerProvider));
         return registry;
     }
 
@@ -493,7 +496,8 @@ public class NpdevCapabilityBindingConfig {
             InProcMessagingCapabilityAdapter inProcMessagingCapabilityAdapter,
             ObjectProvider<HttpMessagingCapabilityAdapter> httpMessagingCapabilityAdapterProvider,
             ObjectProvider<ExternalAiPromptRunner> externalAiPromptRunnerProvider,
-            ObjectProvider<FileStoreCapabilityHandler> fileStoreCapabilityHandlerProvider
+            ObjectProvider<FileStoreCapabilityHandler> fileStoreCapabilityHandlerProvider,
+            ObjectProvider<com.finalexec.connector.HttpConnectorCapabilityHandler> httpConnectorCapabilityHandlerProvider
     ) {
         Map<String, CompiledCapability> capabilitiesByName = compiledModel.getCapabilities().stream()
                 .collect(Collectors.toMap(
@@ -510,6 +514,21 @@ public class NpdevCapabilityBindingConfig {
             CompiledCapability capability = capabilitiesByName.get(binding.getCapability());
             if (capability == null) {
                 throw new IllegalStateException("Binding references unknown capability: " + binding.getCapability());
+            }
+
+            // INT-2: every capability bound to adapter 'http-connector' is served by the ONE platform
+            // handler (keyed on the ADAPTER id, since many capabilities share it); it reads each
+            // connector's http blocks live from the model.
+            if (com.finalexec.connector.HttpConnectorCapabilityHandler.ADAPTER_ID.equalsIgnoreCase(binding.getAdapter())) {
+                com.finalexec.connector.HttpConnectorCapabilityHandler handler =
+                        httpConnectorCapabilityHandlerProvider.getIfAvailable();
+                if (handler == null) {
+                    throw new IllegalStateException("Model binds capability '" + capability.getName()
+                            + "' to adapter 'http-connector' but no HttpConnectorCapabilityHandler bean exists "
+                            + "-- see NpdevConnectorConfig.");
+                }
+                registry.register(capability.getName(), capability.getType(), handler.adapterId(), handler);
+                continue;
             }
 
             if ("messaging".equalsIgnoreCase(binding.getCapability())) {

@@ -2785,7 +2785,8 @@ public final class JsonModelParser {
                                 operationPolicy,
                                 operationErrors,
                                 sideEffects,
-                                operationAuth
+                                operationAuth,
+                                parseObjectMap(op.get("http"))
                         ));
                     } else {
                         throw new IOException("Capability " + name + " operation must be a string or object");
@@ -2793,7 +2794,8 @@ public final class JsonModelParser {
                 }
             }
             target.add(new CapabilityAst(name, type, specializes, operations,
-                    originFor(originByQualifiedMemberName, sourceLabel, name), capabilityUid));
+                    originFor(originByQualifiedMemberName, sourceLabel, name), capabilityUid,
+                    parseObjectMap(cap.get("http"))));
         }
         return target;
     }
