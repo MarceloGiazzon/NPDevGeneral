@@ -132,8 +132,20 @@
               "string",
               "number",
               "boolean",
+              "object",
               "null"
             ]
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
           }
         },
         "additionalProperties": false
@@ -196,7 +208,10 @@
             "boolean",
             "date",
             "datetime",
-            "uuid"
+            "uuid",
+            "number",
+            "array",
+            "object"
           ]
         },
         "required": {
@@ -226,5 +241,17 @@
       }
     ]
   },
+  "anyOf": [
+    {
+      "required": [
+        "steps"
+      ]
+    },
+    {
+      "required": [
+        "implementation"
+      ]
+    }
+  ],
   "additionalProperties": false
 }
