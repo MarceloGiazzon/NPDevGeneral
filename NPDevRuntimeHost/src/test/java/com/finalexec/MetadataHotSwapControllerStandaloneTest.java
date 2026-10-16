@@ -203,6 +203,34 @@ class MetadataHotSwapControllerStandaloneTest {
         org.junit.jupiter.api.Assertions.assertEquals(1, modelHolder.get().getConcepts().size());
     }
 
+    /** ENG-3: a reload whose model lacks a concept the running app has is refused with 422 and
+     *  NOTHING is swapped (this is what keeps generator-composed pack concepts from vanishing). */
+    @Test
+    void modelReloadRefusesAModelThatDropsALiveConcept() throws Exception {
+        String twoConcepts = "{\"dslVersion\":\"1.0.0\",\"namespace\":\"hotswap.test\",\"version\":\"1.0\","
+                + "\"concepts\":["
+                + "{\"name\":\"Thing\",\"fields\":[{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true}]},"
+                + "{\"name\":\"Other\",\"fields\":[{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true}]}]}";
+        Path modelPath = appExternalRoot.resolve("model-one-concept.json");
+        writeFixture(modelPath, minimalModelJson());
+        com.finalexec.config.ModelHolder modelHolder =
+                new com.finalexec.config.ModelHolder(compiledModel(twoConcepts));
+        MetadataHotSwapController enabledController = new MetadataHotSwapController(
+                runtimeMetadataService, runtimeContextService, modelHolder, true,
+                dataSourceProvider(null), false, staticUiPath());
+        MockMvc enabledMockMvc = MockMvcBuilders.standaloneSetup(enabledController).build();
+        when(executionContext.hasRole("SUPERUSER")).thenReturn(true);
+
+        enabledMockMvc.perform(post("/api/admin/runtime/metadata-hotswap/model-reload")
+                        .contentType("application/json")
+                        .content("{\"modelPath\":\"" + escapeJson(modelPath.toString()) + "\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.ok").value(false))
+                .andExpect(jsonPath("$.code").value("RELOAD_REMOVES_CONCEPTS"));
+
+        org.junit.jupiter.api.Assertions.assertEquals(2, modelHolder.get().getConcepts().size());
+    }
+
     /** REG-244 Phase 4B/4D: enabling the property with a real (H2) DataSource available makes a
      *  reload that adds a brand-new, bond-free concept both create its table (4B) AND append a
      *  manifest node for it to the on-disk {@code generated-ui-manifest.json} (4D), both named in
