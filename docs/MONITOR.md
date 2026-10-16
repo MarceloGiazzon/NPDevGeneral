@@ -39,6 +39,12 @@ an empty assertion. Every record reports which rule matched, in `discoveredBy`.
 
 A directory with `.npdev-root` and no `_ops` is **not** an app and is not listed.
 
+**One toolbox per app.** The only real `_ops` toolbox is `<out>\App\_ops` (Build-FinalApp, Status-App,
+Smoke-Test, Start/Stop-App, `resolved-db-plan.json`, and the AppGen extras Build-App / Test-App /
+Impact-Only / Migrate-Only / Reissue-SuperUserKey / Check-Provenance, plus `SUPER_USER_KEY.txt`).
+An AppGen build also leaves a sibling `<out>\_ops` that holds forwarding shims only (no plan JSON, so
+it is never listed as a second app); old script paths keep working through it.
+
 ### Generated facts vs probed facts
 
 `info.json` (emitted with the app) carries only what survives being copied to another machine: URLs,

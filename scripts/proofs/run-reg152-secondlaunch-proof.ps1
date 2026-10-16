@@ -88,7 +88,7 @@ $buildScript = Join-Path $WorkspaceRoot 'scripts\appgen\Build-NpdevApp.ps1'
 & $buildScript -AppFolder $AppFolder -BuildRoot $BuildRoot 2>&1 | ForEach-Object { Log $_ }
 if ($LASTEXITCODE -ne 0) { throw "Build-NpdevApp.ps1 generation failed with exit code $LASTEXITCODE" }
 
-$opsDir = Join-Path (Join-Path $BuildRoot $appId) '_ops'
+$opsDir = Join-Path (Join-Path $BuildRoot $appId) 'App\_ops'
 $secretsFile = Join-Path (Join-Path $BuildRoot $appId) 'App\secrets\api-key.env'
 
 Log '===== Building the app ====='

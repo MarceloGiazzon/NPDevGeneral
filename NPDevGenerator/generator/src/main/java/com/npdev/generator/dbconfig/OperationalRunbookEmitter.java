@@ -674,6 +674,8 @@ npdev_resolve_app_relative() {
         writeExecutable(opsRoot.resolve("stop-environment.sh"), stopEnvironmentScriptPosix());
         write(opsRoot.resolve("Status-Environment.ps1"), statusEnvironmentScript());
         writeExecutable(opsRoot.resolve("status-environment.sh"), statusEnvironmentScriptPosix());
+        write(opsRoot.resolve("Status-App.ps1"), statusAppScript());
+        writeExecutable(opsRoot.resolve("status-app.sh"), statusAppScriptPosix());
         write(opsRoot.resolve("Build-FinalApp.ps1"), buildFinalAppScript());
         writeExecutable(opsRoot.resolve("build-final-app.sh"), buildFinalAppScriptPosix());
         write(opsRoot.resolve("Run-FinalApp.ps1"), runFinalAppScript(serverPort));
@@ -1821,6 +1823,50 @@ if [ "$ENGINE" = "H2Local" ]; then
   exit 0
 fi
 echo 'InMemory has no physical database service.'
+""";
+    }
+
+    /**
+     * OPS-2: the app-level health probe. {@code Status-Environment.ps1} answers "is the DATABASE up";
+     * this answers "is the APP up". ControlPanelHealthController runs {@code Status-App.ps1} by name,
+     * so it must exist in the one real toolbox and must exit non-zero when the app is down.
+     */
+    private static String statusAppScript() {
+        return """
+$ErrorActionPreference = 'Stop'
+$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+$base = "http://localhost:$($plan.serverPort)"
+try {
+  $health = Invoke-RestMethod -Method Get -Uri "$base/actuator/health" -TimeoutSec 3
+  if ($health.status -eq 'UP') {
+    Write-Host "UP   - $base"
+    exit 0
+  }
+  Write-Host "DOWN - $base reported status '$($health.status)'"
+  exit 1
+} catch {
+  Write-Host "DOWN - $base is not answering ($($_.Exception.Message))"
+  exit 1
+}
+""";
+    }
+
+    /** OPS-2: the POSIX twin of {@link #statusAppScript}. */
+    private static String statusAppScriptPosix() {
+        return """
+#!/bin/sh
+# NPDev generated FinalApp application status -- POSIX twin of Status-App.ps1.
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+PLAN_PATH="$SCRIPT_DIR/resolved-db-plan.json"
+""" + PLAN_JSON_HELPER_SH + """
+PORT=$(npdev_plan_get "$PLAN_PATH" serverPort 8080)
+BASE="http://localhost:$PORT"
+if curl -fsS --max-time 3 "$BASE/actuator/health" 2>/dev/null | grep -q '"status":"UP"'; then
+  echo "UP   - $BASE"
+  exit 0
+fi
+echo "DOWN - $BASE is not answering or not UP"
+exit 1
 """;
     }
 
@@ -3166,6 +3212,9 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File ./Stop-App.ps1
 
 Same log handling as step 3: each run gets its own `logs/app-<timestamp>.log`, pruned to the newest
 20 across BOTH launchers -- a background run and a foreground run share one bounded pool.
+
+`Status-App.ps1` / `status-app.sh` probe `/actuator/health` on this app's port and print `UP` (exit 0)
+or `DOWN` (exit 1); `Status-Environment.ps1` answers the separate question of whether the DATABASE is up.
 
 3b. Supervise as a service (optional -- survives a crash or a reboot, no Docker required)
 
