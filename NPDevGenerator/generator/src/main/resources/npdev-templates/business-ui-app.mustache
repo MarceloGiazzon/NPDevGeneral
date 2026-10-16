@@ -433,6 +433,7 @@
 
   function headers() {
     const result = { "Content-Type": "application/json" };
+    result["X-NPDev-Request"] = "1"; // SEC-1: required for cookie-authenticated writes
     const apiKey = el.apiKey.value.trim();
     if (apiKey) {
       const scheme = (state.manifest.auth && state.manifest.auth.scheme) || "";
