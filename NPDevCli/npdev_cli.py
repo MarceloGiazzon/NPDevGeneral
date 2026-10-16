@@ -13951,9 +13951,13 @@ def run_host_check(args: argparse.Namespace) -> int:
     deployed app has no local files this process can read."""
     import npdev_host
 
-    app_dir = Path(args.app).expanduser().resolve()
-    as_json = bool(getattr(args, "json", False))
     remote = getattr(args, "target", None)
+    if not remote and not getattr(args, "app", None):
+        raise CliError("npdev host check needs --app <dir> (local check) or --target <url> (deployed app)")
+    if remote and getattr(args, "fix", False):
+        raise CliError("--fix applies to a local app only")
+    app_dir = Path(args.app).expanduser().resolve() if getattr(args, "app", None) else Path(".").resolve()
+    as_json = bool(getattr(args, "json", False))
 
     if remote:
         changes, findings = [], npdev_host.run_checks(app_dir, plan={}, remote=remote)
@@ -16885,7 +16889,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="What would a real user hit right now? Every finding states the consequence before "
              "the property, and --fix repairs whatever it safely can.",
     )
-    host_check.add_argument("--app", required=True)
+    host_check.add_argument("--app", default=None,
+                            help="a generated NPDev app directory (not needed with --target)")
     host_check.add_argument("--fix", action="store_true")
     host_check.add_argument("--target", default=None, help="check a deployed URL instead of the local app")
     host_check.add_argument("--json", action="store_true")
