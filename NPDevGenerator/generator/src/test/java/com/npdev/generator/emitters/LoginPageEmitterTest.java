@@ -73,6 +73,7 @@ class LoginPageEmitterTest {
         assertTrue(html.contains("npdev.shell.token"), "a successful login must write the shell's own token key");
         assertTrue(html.contains("email_exists_requires_link"),
                 "the settled collision policy must surface in business language on the page");
+        assertTrue(html.contains("reset-password.html"), "the sign-in form must link to the forgot-password page");
     }
 
     @Test
