@@ -308,6 +308,31 @@ class RunAcceptanceSummaryTest(unittest.TestCase):
         self.assertEqual("http://127.0.0.1:8103", report["baseUrl"])
         self.assertTrue(report["ok"])
 
+    def test_base_url_without_api_key_is_a_clean_error_naming_the_flag(self):
+        # OPS-4: the old static "dev-key" default sent a long-dead key and every scenario 401'd.
+        args = self._acceptance_args(".", base_url="http://127.0.0.1:8103")
+        args.api_key = None
+        with patch("npdev_cli._run_one_scenario") as mock_run_one:
+            with self.assertRaises(npdev_cli.CliError) as ctx:
+                npdev_cli.run_acceptance(args)
+        mock_run_one.assert_not_called()
+        self.assertIn("--api-key", str(ctx.exception))
+
+    def test_base_url_with_empty_api_key_sends_no_header_value(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._scenario_file(tmp_path, "01-approved-pass.scenario.json", approved=True)
+            fake_result = {"name": "01", "file": "01-approved-pass.scenario.json", "approved": True,
+                           "outcome": "PASS", "assertions": [], "error": None}
+            args = self._acceptance_args(str(tmp_path), base_url="http://127.0.0.1:8103")
+            args.api_key = ""
+            with patch("npdev_cli._run_one_scenario", return_value=fake_result) as mock_run_one:
+                npdev_cli.run_acceptance(args)
+        mock_run_one.assert_called_once_with("http://127.0.0.1:8103", ANY,
+                                              "01-approved-pass.scenario.json", "")
+
     def test_missing_model_config_output_without_base_url_is_a_clean_error(self):
         args = self._acceptance_args(".")
         args.model = None
@@ -315,6 +340,47 @@ class RunAcceptanceSummaryTest(unittest.TestCase):
         args.output = None
         with self.assertRaises(npdev_cli.CliError):
             npdev_cli.run_acceptance(args)
+
+
+class ResolveAcceptanceApiKeyTest(unittest.TestCase):
+    """OPS-4: an explicit --api-key wins; otherwise the boot phase's secrets/api-key.env."""
+
+    def _key_file(self, tmp: str, content: str) -> str:
+        path = Path(tmp) / "api-key.env"
+        path.write_bytes(content.encode("utf-8"))
+        return str(path)
+
+    def test_explicit_value_wins_over_the_key_file(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            kf = self._key_file(tmp, "NPDEV_AUTH_API_KEYS=abc=dev:developer:admin")
+            self.assertEqual("mine", npdev_cli._resolve_acceptance_api_key("mine", kf))
+
+    def test_empty_string_stays_empty_meaning_no_header(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            kf = self._key_file(tmp, "NPDEV_AUTH_API_KEYS=abc=dev:developer:admin")
+            self.assertEqual("", npdev_cli._resolve_acceptance_api_key("", kf))
+
+    def test_key_file_mapping_yields_the_key_part(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            kf = self._key_file(tmp, "# comment\nNPDEV_AUTH_API_KEYS=abc=dev:developer:admin")
+            self.assertEqual("abc", npdev_cli._resolve_acceptance_api_key(None, kf))
+
+    def test_bom_prefixed_key_file_is_read(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            kf = self._key_file(tmp, "\ufeffNPDEV_AUTH_API_KEYS=abc=dev:developer:admin\r\n")
+            self.assertEqual("abc", npdev_cli._resolve_acceptance_api_key(None, kf))
+
+    def test_missing_file_or_no_file_is_none(self):
+        self.assertIsNone(npdev_cli._resolve_acceptance_api_key(None, None))
+        self.assertIsNone(npdev_cli._resolve_acceptance_api_key(None, "Z:/definitely/not/here.env"))
 
 
 if __name__ == "__main__":
