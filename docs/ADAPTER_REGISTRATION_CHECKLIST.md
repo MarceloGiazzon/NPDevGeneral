@@ -10,7 +10,7 @@
 >
 > Do all of these in the same change. Then run the RuntimeHost gate and, if possible, a clean CI run.
 
-## The four places to update
+## The five places to update
 
 1. `NPDevGenerator\generator\src\test\java\com\npdev\generator\emitters\UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest.java`
    — add `":adapters:<your-adapter>:jar"` to the adapter-jar build list (kept in alphabetical order).
@@ -18,14 +18,16 @@
    — same list, same entry.
 3. `NPDevGenerator\generator\src\test\java\com\npdev\generator\emitters\HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest.java`
    — same list, same entry.
-4. `scripts\runtimehost\sync-runtimehost-libs.ps1` — the local jar-staging path; make sure the new
+4. `NPDevGenerator\generator\src\test\java\com\npdev\generator\packs\SealedPackAppLinkingPackagedGeneratedAppRuntimeProofTest.java`
+   — same list, same entry.
+5. `scripts\runtimehost\sync-runtimehost-libs.ps1` — the local jar-staging path; make sure the new
    adapter's jar is staged into the runtimehost-libs directory the generated app compiles against.
 
 ## Also check (if the adapter is imported by the RuntimeHost template)
 
 - `NPDevRuntimeHost\src\main\java\com\finalexec\config\NpdevPluginConfig.java` imports some adapters
   (e.g. the mail adapters) unconditionally. If yours is imported there, its jar MUST exist or every
-  generated app fails to compile — the same reason the three proof-test lists above exist.
+  generated app fails to compile — the same reason the four proof-test lists above exist.
 
 ## How to verify you got all of them
 
@@ -37,8 +39,8 @@
 
 `NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/AdapterRegistrationConsistencyTest.java`
 now enforces this checklist mechanically: every `NPDevKernel/settings.gradle` adapter must appear in
-ALL three proof-test lists (or in the test's explicit `KNOWN_NOT_PACKAGED` set, with the reason
-recorded here), and the three lists must stay identical. It caught a real drift on arrival
+ALL four proof-test lists (or in the test's explicit `KNOWN_NOT_PACKAGED` set, with the reason
+recorded here), and the four lists must stay identical. It caught a real drift on arrival
 (`UntrustedExtensionEmitter...` was missing `file-store-objectstore`). The sync script needs no guard —
 verified list-free (jar discovery). If you consciously exclude a new adapter, add it to
 `KNOWN_NOT_PACKAGED` AND record the reason below:
@@ -49,7 +51,7 @@ verified list-free (jar discovery). If you consciously exclude a new adapter, ad
 
 ## For a capable agent (future work, not part of this checklist)
 
-Replace these three hand-maintained lists with a single source of truth — e.g. a test that enumerates
-the directories under `NPDevKernel\adapters\` and asserts each appears in all three proof tests — so a
+Replace these four hand-maintained lists with a single source of truth — e.g. a test that enumerates
+the directories under `NPDevKernel\adapters\` and asserts each appears in all four proof tests — so a
 new adapter cannot be added without the guard failing loudly. Tracked as the "adapter-list fragility"
 latent item in `docs/NPDEV_OPEN_ITEMS_REGISTER.md`.

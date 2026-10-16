@@ -46,9 +46,10 @@ class AdapterRegistrationConsistencyTest {
             "tracing-inproc");
 
     private static final List<String> PROOF_TESTS = List.of(
-            "UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest.java",
-            "HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest.java",
-            "HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest.java");
+            "emitters/UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest.java",
+            "emitters/HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest.java",
+            "emitters/HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest.java",
+            "packs/SealedPackAppLinkingPackagedGeneratedAppRuntimeProofTest.java");
 
     @Test
     void everySettingsGradleAdapterIsInEveryProofTestListOrConsciouslyExcluded() throws IOException {
@@ -70,7 +71,7 @@ class AdapterRegistrationConsistencyTest {
     }
 
     @Test
-    void theThreeProofTestListsAreIdentical() throws IOException {
+    void everyProofTestListIsIdentical() throws IOException {
         Path repoRoot = findRepoRoot();
         Set<String> reference = null;
         String referenceName = null;
@@ -115,7 +116,7 @@ class AdapterRegistrationConsistencyTest {
 
     private static Path proofTestPath(Path repoRoot, String testFile) {
         return repoRoot.resolve(
-                "NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/" + testFile);
+                "NPDevGenerator/generator/src/test/java/com/npdev/generator/" + testFile);
     }
 
     private static Set<String> extract(Path file, Pattern pattern) throws IOException {
