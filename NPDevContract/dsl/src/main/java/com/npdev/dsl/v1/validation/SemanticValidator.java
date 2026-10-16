@@ -160,6 +160,7 @@ public final class SemanticValidator {
         WebhookValidation.validateWebhooks(effectiveModel, errors);
         SequenceValidation.validateSequences(effectiveModel, errors);
         SeedValidation.validateSeeds(effectiveModel, errors);
+        ConversionValidation.validateConversions(effectiveModel, entitiesByLower, errors);
         PropertyValidation.validatePropertyScopesAndProperties(effectiveModel, errors);
         AgentAccessValidation.validateAgentAccess(effectiveModel, entitiesByLower, errors);
         errors = canonicalizeConceptTerminology(errors);
