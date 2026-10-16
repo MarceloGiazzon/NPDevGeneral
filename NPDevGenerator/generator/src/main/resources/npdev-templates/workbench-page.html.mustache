@@ -10,6 +10,7 @@
     --np-header:#c0c0ff; --np-l2:#d9dde2; --np-l3:#d6f0d6; --np-accent:#2b6cb0;
     --np-grid-head:#34506b; --np-danger:#b23; --np-ok:#227a34; --np-chip:#5a6b7b;
     --np-font:"Segoe UI",Roboto,system-ui,sans-serif;
+    --np-surface:#fff; --np-border:#e6ebf0;
   }
   *{box-sizing:border-box}
   body{margin:0;font:13px/1.4 var(--np-font);color:var(--np-ink);background:var(--np-bg)}
@@ -26,13 +27,13 @@
   .chip.dirty{background:#c9761d}
   form.grid2{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:5px 8px;align-items:center}
   label{color:var(--np-muted)}
-  input{font:12px var(--np-font);padding:2px 5px;border:1px solid var(--np-line);border-radius:3px;background:#fff}
+  input{font:12px var(--np-font);padding:2px 5px;border:1px solid var(--np-line);border-radius:3px;background:var(--np-surface)}
   input.cell{width:100%;border-color:transparent;background:transparent}
-  input.cell:focus{border-color:var(--np-accent);background:#fff}
+  input.cell:focus{border-color:var(--np-accent);background:var(--np-surface)}
   input.cell:focus-visible{outline:2px solid var(--np-accent);outline-offset:-1px}
-  table{border-collapse:collapse;width:100%;font-size:12px;background:#fff}
+  table{border-collapse:collapse;width:100%;font-size:12px;background:var(--np-surface)}
   th{background:var(--np-grid-head);color:#fff;text-align:left;padding:3px 7px;font-weight:600;white-space:nowrap}
-  td{border-bottom:1px solid #e6ebf0;padding:1px 4px;white-space:nowrap}
+  td{border-bottom:1px solid var(--np-border);padding:1px 4px;white-space:nowrap}
   tr.sel td{background:#dcecff}
   tr.master{cursor:pointer}
   /* R7.9: .rowbtn/.addrow/.pick were plain <span onclick> -- unreachable by keyboard. Now real
@@ -58,13 +59,13 @@
   .msg.ok{color:var(--np-ok)}.msg.err{color:var(--np-danger)}
   .rev{cursor:pointer;color:#fff;font-size:11px;opacity:.85;text-decoration:underline;background:none;border:0}
   .rev:hover{opacity:1}
-  .derived{display:flex;gap:16px;flex-wrap:wrap;padding:5px 12px;font-size:12px;background:#fff;border:1px solid var(--np-line);border-radius:6px;margin-bottom:10px}
+  .derived{display:flex;gap:16px;flex-wrap:wrap;padding:5px 12px;font-size:12px;background:var(--np-surface);border:1px solid var(--np-line);border-radius:6px;margin-bottom:10px}
   .derived .item{display:flex;gap:5px;align-items:baseline}
   .derived .item .lbl{color:var(--np-muted)}
   .derived .item .val{font-weight:600}
   .pick{cursor:pointer;color:var(--np-accent);font-size:12px;display:inline-block;margin-top:4px;margin-left:12px;background:none;border:0;font:inherit}
   .modal{position:fixed;inset:0;background:rgba(20,28,38,.45);display:flex;align-items:center;justify-content:center;z-index:50}
-  .modal-card{background:#fff;border-radius:8px;max-width:640px;width:92%;max-height:80vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+  .modal-card{background:var(--np-surface);border-radius:8px;max-width:640px;width:92%;max-height:80vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.3)}
   .modal-hd{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--np-line);font-weight:600}
   .modal-bd{padding:6px 14px}
   .modal-ft{display:flex;gap:8px;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--np-line)}
