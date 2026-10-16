@@ -142,13 +142,14 @@ class ChangePasswordControllerTest {
     }
 
     @Test
-    void tooShortNewPasswordIsRejectedAsInvalidRequest() throws Exception {
+    void tooShortNewPasswordIsRejectedWithPolicyCode() throws Exception {
         mockMvc().perform(post("/api/auth/change-password")
                         .requestAttr("npdev.auth.claims", Map.of("sub", "ada"))
                         .contentType("application/json")
                         .content("{\"oldPassword\":\"old-password\",\"newPassword\":\"short\"}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("invalid_request"));
+                .andExpect(jsonPath("$.error").value("password_too_short"))
+                .andExpect(jsonPath("$.minLength").value(8));
     }
 
     @Test

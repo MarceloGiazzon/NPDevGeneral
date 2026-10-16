@@ -108,7 +108,7 @@ class ControlPanelAdminUserControllerTest {
         var exception = assertThrows(org.springframework.web.server.ResponseStatusException.class,
                 () -> controller(dataSource, identityModel()).create(
                         new ControlPanelAdminUserController.CreateTenantAdminRequest(
-                                TENANT, "bob", "Bob", "s3cret!", null),
+                                TENANT, "bob", "Bob", "s3cret!-horse", null),
                         null));
 
         assertEquals(403, exception.getStatusCode().value());
@@ -121,7 +121,7 @@ class ControlPanelAdminUserControllerTest {
         var exception = assertThrows(org.springframework.web.server.ResponseStatusException.class,
                 () -> controller(null, identityModel()).create(
                         new ControlPanelAdminUserController.CreateTenantAdminRequest(
-                                TENANT, "bob", "Bob", "s3cret!", null),
+                                TENANT, "bob", "Bob", "s3cret!-horse", null),
                         null));
 
         assertEquals(503, exception.getStatusCode().value());
@@ -138,7 +138,7 @@ class ControlPanelAdminUserControllerTest {
         var exception = assertThrows(org.springframework.web.server.ResponseStatusException.class,
                 () -> controller(dataSource, modelWithoutIdentityPack()).create(
                         new ControlPanelAdminUserController.CreateTenantAdminRequest(
-                                TENANT, "bob", "Bob", "s3cret!", null),
+                                TENANT, "bob", "Bob", "s3cret!-horse", null),
                         null));
 
         assertEquals(503, exception.getStatusCode().value());
@@ -150,7 +150,7 @@ class ControlPanelAdminUserControllerTest {
 
         var response = controller(dataSource, identityModel()).create(
                 new ControlPanelAdminUserController.CreateTenantAdminRequest(
-                        TENANT, "  ", "Bob", "s3cret!", null),
+                        TENANT, "  ", "Bob", "s3cret!-horse", null),
                 null);
 
         assertEquals(400, response.getStatusCode().value());
@@ -170,7 +170,7 @@ class ControlPanelAdminUserControllerTest {
 
         var response = controller(dataSource, identityModel()).create(
                 new ControlPanelAdminUserController.CreateTenantAdminRequest(
-                        TENANT, "ada", "Ada Two", "s3cret!", null),
+                        TENANT, "ada", "Ada Two", "s3cret!-horse", null),
                 null);
 
         assertEquals(409, response.getStatusCode().value());
@@ -184,7 +184,7 @@ class ControlPanelAdminUserControllerTest {
 
         var response = controller(dataSource, identityModel()).create(
                 new ControlPanelAdminUserController.CreateTenantAdminRequest(
-                        TENANT, "bob", "Bob", "s3cret!", "bob@example.test"),
+                        TENANT, "bob", "Bob", "s3cret!-horse", "bob@example.test"),
                 null);
 
         assertEquals(201, response.getStatusCode().value());
@@ -209,7 +209,7 @@ class ControlPanelAdminUserControllerTest {
                 ps.setString(1, TENANT);
                 try (ResultSet rs = ps.executeQuery()) {
                     assertTrue(rs.next(), "credential row must exist");
-                    assertTrue(PasswordHasher.verify("s3cret!", rs.getString(1)));
+                    assertTrue(PasswordHasher.verify("s3cret!-horse", rs.getString(1)));
                 }
             }
             try (PreparedStatement ps = c.prepareStatement(
