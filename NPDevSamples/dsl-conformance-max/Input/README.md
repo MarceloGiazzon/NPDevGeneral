@@ -23,7 +23,7 @@ A schema, parser, or compiler change that broke any of those would have passed t
 
 ## What it covers
 
-`externalAi` (`egress: "denied"` — declared, inert, no vendor opt-in) · `domainTypes` · `selectors` ·
+`externalAi` (`egress: "apiEnabled"`, one prompt, limits) · `selfApi` http-connector (loopback `ConnectorSelfCheckFlow`, INT-3) · `domainTypes` · `selectors` ·
 `aggregates` · `autoPanels` · `documents` · `guidePages` · `queries` · `procedures` · `panels` ·
 `ruleProfiles` · `flow.schedule` (cron) · `flow.specializes` + `flow.hooks` · steps `forEach`
 (with `maxLoopIterations`), `onFailure`, `map`, `scheduleEvent` (BOTH delivery modes — R2.4 made
