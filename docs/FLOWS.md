@@ -313,6 +313,18 @@ can actually be found, applying exponential backoff (base 5s, cap 300s) to anyth
 special. The instance was already durable before the crash; boot finds it and tries to resume it,
 exactly like the poller would have on its next tick anyway.
 
+### Human tasks — the optional `task` block (PROC-1)
+
+An `awaitEvent` step may carry a `task` block that turns the wait into a *human* task: who answers
+(`assignee.user` — a flow-state ref such as `$saved.recipientUsername` — and/or `assignee.roles`), the
+inbox `title`/`description` (`${path}` placeholders over flow state), the form `fields`, and the
+`outcomes` (buttons) whose chosen `value` lands in the event payload under `outcomeField` (default
+`outcome`). It is pure model metadata riding the compiled model: the durable await above is reused
+unchanged, so in-flight instances and the resume guard are unaffected, and the runtime reads the task by
+`(flowName, stepName)`. The step's own `timeout` is the task's due date. Validation refuses a `task` on a
+non-await step, empty/duplicate outcomes, field names clashing with `outcomeField`/`completedBy`, and a
+`task` inside a `parallelAwait` forEach. The runtime half (inbox listing and completion) lands in PROC-2.
+
 ### Resuming across a reshaped flow — the REG-238 guard
 
 A restart is only "nothing special" when the flow comes back the *same shape*. A restart is usually a
