@@ -423,6 +423,8 @@ final class SealedPackAppLinkingPackagedGeneratedAppRuntimeProofTest {
                         ":adapters:file-store-inproc:jar",
                         ":adapters:file-store-objectstore:jar",
                         ":adapters:flow-compiled:jar",
+                        ":adapters:idp-github:jar",
+                        ":adapters:idp-google:jar",
                         ":adapters:json-jackson:jar",
                         ":adapters:metrics-micrometer:jar",
                         ":adapters:notification-inproc:jar",
