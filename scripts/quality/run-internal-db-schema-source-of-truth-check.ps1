@@ -89,22 +89,18 @@ if (-not (Test-Path -LiteralPath $registry)) {
   Add-Failure "NpdevInternalTables.java not found: $registry"
 }
 
+# The per-table classes are DERIVED from the registry itself (every `NpdevXxxTable.definition()` it
+# registers), so a new internal table needs no edit here. The exact registered set is additionally
+# pinned by NpdevInternalTablesSourceOfTruthTest.
+$registryText = if (Test-Path -LiteralPath $registry) { Get-Content -LiteralPath $registry -Raw } else { '' }
 $expectedClasses = @(
-  'InternalColumnType.java',
-  'InternalSchemaValidator.java',
-  'NpdevAuditLogTable.java',
-  'NpdevCircuitBreakerTable.java',
-  'NpdevCorrelationOwnerTable.java',
-  'NpdevEventStoreTable.java',
-  'NpdevFlowInstanceTable.java',
-  'NpdevIdempotencyTable.java',
-  'NpdevPublicationAuditTable.java',
-  'NpdevPublicationExecutionTable.java',
-  'NpdevScheduledEventTable.java',
-  'NpdevSchemaMetadataTable.java',
-  'NpdevTraceTable.java',
-  'NpdevInternalTables.java'
+  @([regex]::Matches($registryText, '(Npdev\w+Table)\.definition\(\)') |
+    ForEach-Object { $_.Groups[1].Value + '.java' } | Sort-Object -Unique) +
+  @('InternalColumnType.java', 'InternalSchemaValidator.java', 'NpdevInternalTables.java')
 )
+if ((Test-Path -LiteralPath $registry) -and @($expectedClasses).Count -le 3) {
+  Add-Failure "No NpdevXxxTable.definition() entries parsed from $registry"
+}
 
 foreach ($className in $expectedClasses) {
   $classPath = Join-Path $dbschemaDir $className
@@ -170,8 +166,8 @@ foreach ($sourceRoot in $sourceRoots) {
   }
 }
 
+# npdev_tenant is deliberately absent: it is a registered table now (NpdevTenantTable).
 $futureScopeTables = @(
-  'npdev_tenant',
   'npdev_tenant_alias',
   'npdev_tenant_app_entitlement',
   'npdev_tenant_coda_entitlement',
@@ -198,7 +194,9 @@ if (Test-Path -LiteralPath $dbschemaDir) {
   foreach ($file in $dbschemaFiles) {
     $text = Get-Content -LiteralPath $file.FullName -Raw
     foreach ($tableName in $futureScopeTables) {
-      if ($text -match [regex]::Escape($tableName)) {
+      # Quoted-name match: only a real table-name literal counts, never a longer identifier that
+      # merely contains this name.
+      if ($text -match ('"' + [regex]::Escape($tableName) + '"')) {
         Add-Failure "Future-scope table name found in Kernel dbschema: $tableName in $(Get-RelativePath -Root $WorkspaceRoot -Path $file.FullName)"
       }
     }
