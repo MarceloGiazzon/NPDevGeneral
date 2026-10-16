@@ -301,6 +301,11 @@ final class PanelValidation {
                     }
                 }
             }
+            if (action.review()
+                    && (action.applyTo() != null || hasText(action.afterAction()) || hasCheckBalances)) {
+                errors.add(panelLabel
+                        + " transaction.actions: review cannot be combined with applyTo, afterAction or checkBalances");
+            }
             if (hasText(action.afterAction()) && !procedureNames.contains(normalize(action.afterAction()))) {
                 errors.add(panelLabel + " transaction.actions: afterAction names a procedure not found: "
                         + action.afterAction());

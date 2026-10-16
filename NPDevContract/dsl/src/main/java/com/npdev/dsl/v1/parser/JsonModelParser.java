@@ -1827,7 +1827,8 @@ public final class JsonModelParser {
                     readText(actionNode, "afterAction"),
                     readText(actionNode, "visibleWhen"),
                     readLabelLocales(actionNode, "label"),
-                    parseTextArray(actionNode.get("checkBalances"))
+                    parseTextArray(actionNode.get("checkBalances")),
+                    actionNode.path("review").asBoolean(false)
             ));
         }
         return out;

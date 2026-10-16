@@ -1126,7 +1126,8 @@
           {
             "procedure": "RenameOrderStatusProcedure",
             "label": "Apply status (typed)",
-            "inputFields": ["newStatus"]
+            "inputFields": ["newStatus"],
+            "review": true
           },
           {
             "procedure": "SuggestLineProcedure",

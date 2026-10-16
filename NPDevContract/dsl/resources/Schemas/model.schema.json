@@ -1477,6 +1477,11 @@
           "type": "string",
           "minLength": 1,
           "description": "Client-tier predicate, e.g. \"$root.tipo == 'Expedicao'\"."
+        },
+        "review": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true the procedure's result is shown as a field-by-field \"proposed changes\" dialog; only the ticked fields are folded into the draft (nothing is saved until Save). Not combinable with applyTo, afterAction or checkBalances."
         }
       }
     },

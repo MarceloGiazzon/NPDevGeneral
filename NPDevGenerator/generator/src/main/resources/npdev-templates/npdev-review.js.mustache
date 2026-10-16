@@ -1,0 +1,72 @@
+/* AI-7: field-by-field "review proposed changes" dialog for workbench actions declared with
+ * review: true. Emitted by BusinessUiEmitter next to shell.js as static/npdev-review.js.
+ * Plain JS, NO mustache tags (a literal double-brace would be eaten by the renderer).
+ *
+ * window.NPDevReview.open({ title, current, proposed, onApply })
+ *   current  : the working draft (store.toDraft())
+ *   proposed : the action's result patch (top-level keys only are reviewed; arrays/objects are
+ *              shown as "N rows" / "{...}" and offered as one all-or-nothing line)
+ *   onApply  : function (acceptedPatch) -- called with ONLY the ticked keys; nothing is saved,
+ *              the user still clicks Save on the workbench.
+ */
+(function () {
+  'use strict';
+
+  function show(value) {
+    if (value === null || value === undefined || value === '') return '—';
+    if (Array.isArray(value)) return value.length + ' row(s)';
+    if (typeof value === 'object') return '{…}';
+    return String(value);
+  }
+
+  function same(a, b) {
+    return JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
+  }
+
+  function open(opts) {
+    var current = opts.current || {};
+    var proposed = opts.proposed || {};
+    var keys = Object.keys(proposed).filter(function (k) {
+      return k !== 'id' && k.indexOf('__') !== 0 && !same(current[k], proposed[k]);
+    });
+    if (keys.length === 0) { if (opts.onEmpty) opts.onEmpty(); return; }
+
+    var dlg = document.createElement('dialog');
+    dlg.className = 'npdev-review';
+    var html = '<form method="dialog"><h3></h3><table><thead><tr><th></th><th>Field</th>'
+      + '<th>Now</th><th>Proposed</th></tr></thead><tbody></tbody></table>'
+      + '<p class="npdev-review-actions"><button value="cancel" type="submit">Discard</button> '
+      + '<button value="apply" type="submit" class="primary">Apply selected</button></p></form>';
+    dlg.innerHTML = html;
+    dlg.querySelector('h3').textContent = opts.title || 'Review proposed changes';
+    var body = dlg.querySelector('tbody');
+    keys.forEach(function (k) {
+      var tr = document.createElement('tr');
+      var tdBox = document.createElement('td');
+      var box = document.createElement('input');
+      box.type = 'checkbox'; box.checked = true; box.dataset.key = k;
+      tdBox.appendChild(box);
+      var tdKey = document.createElement('td'); tdKey.textContent = (opts.labels && opts.labels[k]) || k;
+      var tdNow = document.createElement('td'); tdNow.textContent = show(current[k]);
+      var tdNew = document.createElement('td'); tdNew.textContent = show(proposed[k]);
+      tr.appendChild(tdBox); tr.appendChild(tdKey); tr.appendChild(tdNow); tr.appendChild(tdNew);
+      body.appendChild(tr);
+    });
+    dlg.addEventListener('close', function () {
+      if (dlg.returnValue === 'apply') {
+        var accepted = {};
+        Array.prototype.forEach.call(dlg.querySelectorAll('input[type=checkbox]'), function (b) {
+          if (b.checked) accepted[b.dataset.key] = proposed[b.dataset.key];
+        });
+        opts.onApply(accepted);
+      } else if (opts.onDiscard) {
+        opts.onDiscard();
+      }
+      dlg.remove();
+    });
+    document.body.appendChild(dlg);
+    dlg.showModal();
+  }
+
+  window.NPDevReview = { open: open };
+})();
