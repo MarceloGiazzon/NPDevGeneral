@@ -4159,9 +4159,16 @@ public final class GeneratedCrudRuntimeSupport {
             String safeOperation = (operation == null || operation.isBlank()) ? "UNKNOWN" : operation;
             Map<String, String> meta = new LinkedHashMap<>();
             meta.put("operation", safeOperation);
-            String fieldDiff = describeFieldDiff(before, after);
+            Set<String> redacted = redactedAuditFields(conceptName);
+            String fieldDiff = describeFieldDiff(before, after, redacted);
             if (!fieldDiff.isEmpty()) {
                 meta.put("fieldDiff", fieldDiff);
+            }
+            // UI-4: the same changes as structured JSON, so a reader never has to parse the ambiguous
+            // "a: x -> y; b: p -> q" string (a value may itself contain "; " or " -> ").
+            String fieldChanges = describeFieldChangesJson(before, after, redacted);
+            if (!fieldChanges.isEmpty()) {
+                meta.put("fieldChanges", fieldChanges);
             }
             auditLogStore.append(AuditRecord.create(
                     safeCtx.tenantId(),
@@ -4189,7 +4196,8 @@ public final class GeneratedCrudRuntimeSupport {
      * sorted alphabetically so output is deterministic regardless of the entity's declared field
      * order.
      */
-    private static String describeFieldDiff(Map<String, Object> before, Map<String, Object> after) {
+    private static String describeFieldDiff(Map<String, Object> before, Map<String, Object> after,
+                                            Set<String> redacted) {
         if (before == null && after == null) {
             return "";
         }
@@ -4214,11 +4222,91 @@ public final class GeneratedCrudRuntimeSupport {
             if (oldText.equals(newText)) {
                 continue;
             }
+            if (redacted.contains(field)) {
+                oldText = REDACTED_AUDIT_VALUE;
+                newText = REDACTED_AUDIT_VALUE;
+            }
             if (builder.length() > 0) {
                 builder.append("; ");
             }
             builder.append(field).append(": ").append(oldText).append(" -> ").append(newText);
         }
         return builder.toString();
+    }
+
+    private static final String REDACTED_AUDIT_VALUE = "***";
+
+    /**
+     * UI-4: names of the concept's fields whose values must never reach the audit trail in clear:
+     * {@code sensitive: true} fields and password-widget fields. Empty for an unknown concept or
+     * an empty model.
+     */
+    private Set<String> redactedAuditFields(String conceptName) {
+        try {
+            if (conceptName == null || conceptName.isBlank()) {
+                return Set.of();
+            }
+            Optional<CompiledConcept> concept = findEntity(conceptName);
+            if (concept.isEmpty()) {
+                return Set.of();
+            }
+            Set<String> redacted = new HashSet<>();
+            for (CompiledField field : concept.get().getFields()) {
+                boolean password = field.getUi() != null && "password".equals(field.getUi().getWidget());
+                if (field.isSensitive() || password) {
+                    redacted.add(field.getName());
+                }
+            }
+            return redacted;
+        } catch (RuntimeException ignored) {
+            return Set.of();
+        }
+    }
+
+    /**
+     * UI-4: JSON array of {@code {field, before, after}} for every field that differs between two
+     * snapshots, sorted by field name, with the same redaction and stringification as
+     * {@link #describeFieldDiff}. Empty string when nothing changed or serialization fails.
+     */
+    private static String describeFieldChangesJson(Map<String, Object> before, Map<String, Object> after,
+                                                   Set<String> redacted) {
+        if (before == null && after == null) {
+            return "";
+        }
+        List<String> fields = new ArrayList<>();
+        if (before != null) {
+            fields.addAll(before.keySet());
+        }
+        if (after != null) {
+            for (String key : after.keySet()) {
+                if (!fields.contains(key)) {
+                    fields.add(key);
+                }
+            }
+        }
+        fields.sort(Comparator.naturalOrder());
+        List<Map<String, String>> changes = new ArrayList<>();
+        for (String field : fields) {
+            Object oldValue = before == null ? null : before.get(field);
+            Object newValue = after == null ? null : after.get(field);
+            String oldText = oldValue == null ? "null" : String.valueOf(oldValue);
+            String newText = newValue == null ? "null" : String.valueOf(newValue);
+            if (oldText.equals(newText)) {
+                continue;
+            }
+            Map<String, String> change = new LinkedHashMap<>();
+            change.put("field", field);
+            change.put("before", redacted.contains(field) ? REDACTED_AUDIT_VALUE : oldText);
+            change.put("after", redacted.contains(field) ? REDACTED_AUDIT_VALUE : newText);
+            changes.add(change);
+        }
+        if (changes.isEmpty()) {
+            return "";
+        }
+        try {
+            return OBJECT_MAPPER.writeValueAsString(changes);
+        } catch (Exception e) {
+            return "";
+        }
     }
 }

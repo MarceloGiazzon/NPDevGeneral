@@ -1,0 +1,51 @@
+/* NPDev business UI -- view renderer styles (UI-0). Copied verbatim (NOT Mustache) to
+   static/npdev-business-ui/views/views.css. Tokens come from shell.css. */
+.view-switcher {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.view-switcher button {
+  background: var(--np-surface);
+  border: 1px solid var(--np-border);
+  color: var(--np-text);
+}
+
+.view-switcher button[aria-selected="true"] {
+  background: var(--np-accent);
+  border-color: var(--np-accent);
+  color: #fff;
+}
+
+/* UI-4: record history detail section (views/history.js). */
+.detail-history {
+  margin-top: 16px;
+  border-top: 1px solid var(--np-border);
+  padding-top: 8px;
+}
+
+.history-list {
+  list-style: none;
+  padding: 0;
+}
+
+.history-entry {
+  margin: 8px 0;
+}
+
+.history-head {
+  color: var(--np-text-muted);
+  font-size: 12.5px;
+}
+
+.history-changes th {
+  text-align: left;
+  padding-right: 12px;
+  color: var(--np-text-muted);
+  font-weight: 500;
+}
+
+.history-changes td {
+  padding: 2px 8px;
+}
