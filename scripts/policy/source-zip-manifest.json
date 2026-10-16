@@ -17,7 +17,7 @@
     },
     {
       "pattern": "^NPDevContract/packs/",
-      "note": "Built-in packs shipped into every generated app: workspace, identity, project-tracker-demo."
+      "note": "Built-in packs shipped into every generated app: workspace, identity, contacts, project-tracker-demo."
     },
     {
       "pattern": "\\.gradle$",

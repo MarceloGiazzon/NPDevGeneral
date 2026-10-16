@@ -268,8 +268,8 @@ Builds your app, starts it, and watches the model file. Save a change and it reb
 ### The first start takes longer
 
 Two to four minutes the first time — it is building an entire application. After that, saving a
-change rebuilds in seconds when the change is cosmetic, or under a minute when it changes the
-database.
+change applies live in seconds when the running app can take it, or rebuilds in under a
+minute when it changes the database.
 
 ### Signing in
 
@@ -288,8 +288,8 @@ your app keeps running on the last version that worked. Fix it and save again.
 | `changed: model.json` | A save was noticed. |
 | `validate ... ok` | The model is valid; rebuilding. |
 | `validate ... FAILED` | Something is wrong. The error follows. The app stays up. |
-| `METADATA_ONLY` | A cosmetic change — the fast path, a few seconds. |
-| `structural change` | The database changed too — a full rebuild. |
+| `change applied live (model-reload)` | The running app took the change without a restart — flows, rules, roles, queries, enum values and brand-new concepts, in seconds. Needs a database that keeps a key (`H2Local`). |
+| `needs a rebuild -- ...` | The change cannot go live (for example a new column on an existing concept), or the app has no key to apply it with. The reason follows; a full rebuild and restart come next. |
 | `ready in 45.2s` | Running again. Refresh your browser. |
 
 ## 5 · Share
