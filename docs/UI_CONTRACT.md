@@ -368,6 +368,22 @@ query string, and changing it re-runs every gadget. A required parameter left em
 "Set <name> above" in the gadget instead of the endpoint's 400. A page with no parameterized gadgets
 is unchanged.
 
+## Language switch (UI-8)
+
+A model may declare labels per language (`"label": {"default": "Status", "pt-BR": "Situação"}`). The
+manifest's top-level `locales` lists every tag used by a concept/field/enum-option label map (plus
+`settings.locale`); with two or more, `views/locale.js` adds a language `<select>` (Auto + each tag) to
+the top bar. The choice is stored in `localStorage` key `npdev.ui.locale` and sent as `X-Tag-locale` on
+every call (`app.js` `headers()`, `shell.js` `authHeaders()`); picking one reloads the page. The server
+resolves labels (kernel `LabelResolver`: exact tag, then language, then default) and the UI copies the
+already-resolved `label` / `shortLabel` from `GET /api/v1/runtime/metadata/ui/bundle` onto the manifest
+fields; the client never interprets a locale map. Shell chrome strings come from the manifest's
+`stringsByLocale` (`en`, `pt`; `settings.strings` overrides are layered onto the entry matching
+`settings.locale`), looked up by the language part of the chosen tag, then `strings`, then the English
+fallback. "Auto" clears the key, so `Accept-Language` decides server-side and `strings` (the app's
+generation-time catalogue) decides the chrome. Known gap: the Aggregate Workbench page bakes its
+strings at generation and does not follow the switch.
+
 ## Breadcrumbs and default route (W1.6)
 
 The topbar breadcrumb is a projection of the same nav tree `renderSidebar()` already draws

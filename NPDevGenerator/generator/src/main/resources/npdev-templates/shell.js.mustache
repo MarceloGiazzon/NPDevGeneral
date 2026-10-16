@@ -186,8 +186,17 @@
 
   // SEC-1: X-NPDev-Request is always sent (even with no token: after an OAuth sign-in the HttpOnly
   // cookie is the only credential) -- the server requires it for cookie-authenticated writes.
+  function readUiLocale() {
+    try { return localStorage.getItem("npdev.ui.locale") || ""; } catch (ignored) { return ""; }
+  }
+
   function authHeaders(token) {
     var headers = { "X-NPDev-Request": "1" };
+    // UI-8: the user's language choice (views/locale.js); empty = Auto, the server falls back to Accept-Language.
+    var uiLocale = readUiLocale();
+    if (uiLocale) {
+      headers["X-Tag-locale"] = uiLocale;
+    }
     if (token) {
       headers["Authorization"] = "Bearer " + token;
       headers["X-Api-Key"] = token;
@@ -331,8 +340,8 @@
     var sidebarToggle = document.createElement("button");
     sidebarToggle.className = "npdev-shell-collapse-toggle";
     sidebarToggle.type = "button";
-    sidebarToggle.title = "Recolher/expandir menu";
-    sidebarToggle.setAttribute("aria-label", "Recolher/expandir menu");
+    sidebarToggle.title = shellString("shell.toggleMenu", "Collapse/expand menu");
+    sidebarToggle.setAttribute("aria-label", shellString("shell.toggleMenu", "Collapse/expand menu"));
     sidebarToggle.textContent = "☰";
     sidebarToggle.setAttribute("aria-expanded", "false");
     // R7.10: ties the toggle to the drawer it controls for assistive tech, on both the desktop
@@ -377,8 +386,8 @@
     var quickAccessToggle = document.createElement("button");
     quickAccessToggle.className = "npdev-shell-quickaccess-toggle";
     quickAccessToggle.type = "button";
-    quickAccessToggle.title = "Acesso rapido";
-    quickAccessToggle.setAttribute("aria-label", "Acesso rapido");
+    quickAccessToggle.title = shellString("shell.quickAccess", "Quick access");
+    quickAccessToggle.setAttribute("aria-label", shellString("shell.quickAccess", "Quick access"));
     quickAccessToggle.textContent = "★";
     quickAccessToggle.addEventListener("click", function () {
       renderQuickAccessPanel();
@@ -390,7 +399,7 @@
     var quickAccessPanel = document.createElement("div");
     quickAccessPanel.className = "npdev-shell-quickaccess-panel";
     quickAccessPanel.setAttribute("role", "region");
-    quickAccessPanel.setAttribute("aria-label", "Acesso rapido");
+    quickAccessPanel.setAttribute("aria-label", shellString("shell.quickAccess", "Quick access"));
     bar.appendChild(quickAccessPanel);
     el.quickAccessPanel = quickAccessPanel;
 
@@ -448,7 +457,7 @@
     var rightbarToggle = document.createElement("button");
     rightbarToggle.className = "npdev-shell-rightbar-toggle";
     rightbarToggle.type = "button";
-    rightbarToggle.title = "Mostrar/ocultar painel lateral";
+    rightbarToggle.title = shellString("shell.toggleRightbar", "Show/hide side panel");
     rightbarToggle.textContent = "▤";
     rightbarToggle.setAttribute("aria-expanded", "false");
     rightbarToggle.addEventListener("click", function () {
@@ -531,7 +540,13 @@
   // Chrome strings come from the app's manifest (PlatformStrings defaults + settings.strings);
   // the English fallback covers an app generated before the manifest carried them.
   function shellString(key, fallback) {
-    var strings = state.manifest && state.manifest.strings;
+    // UI-8: the per-locale catalogue for the user's chosen language ("pt-BR" -> "pt") wins, then the
+    // app-default catalogue (generation-time settings.locale), then the English fallback.
+    var manifest = state.manifest;
+    var language = readUiLocale().split("-")[0].toLowerCase();
+    var byLocale = manifest && manifest.stringsByLocale && language ? manifest.stringsByLocale[language] : null;
+    if (byLocale && byLocale[key]) return byLocale[key];
+    var strings = manifest && manifest.strings;
     return (strings && strings[key]) || fallback;
   }
 
