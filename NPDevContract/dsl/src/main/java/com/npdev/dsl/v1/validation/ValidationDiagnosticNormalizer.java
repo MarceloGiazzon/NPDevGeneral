@@ -12,6 +12,9 @@ final class ValidationDiagnosticNormalizer {
 
     private static final String SEMANTIC_SOURCE_MODULE = "dsl:semantic-validator";
     private static final String STRUCTURAL_SOURCE_MODULE = "dsl:json-model-schema-validator";
+    /** B13 conversions: {@code conversions[i].claims[j] conversion_unknown_field: detail} (ConversionValidation). */
+    private static final Pattern CONVERSION_PATTERN =
+            Pattern.compile("^(conversions\\[\\d+\\][^\\s:]*)\\s+(conversion_[a-z_]+)\\s*:\\s*(.+)$", Pattern.DOTALL);
     private static final Pattern CONCEPT_FIELD_PATTERN =
             Pattern.compile("^Concept\\s+([^\\s:]+)\\s+field\\s+([^\\s:]+)\\s*:\\s*(.+)$");
     private static final Pattern CONCEPT_INVARIANT_PATTERN =
@@ -117,6 +120,26 @@ final class ValidationDiagnosticNormalizer {
                 safeMessage = safeMessage.substring(entry.getKey().length());
                 break;
             }
+        }
+
+        Matcher conversionMatcher = CONVERSION_PATTERN.matcher(safeMessage);
+        if (conversionMatcher.matches()) {
+            String code = conversionMatcher.group(2);
+            return new ValidationDiagnostic(
+                    ValidationLayer.SEMANTIC,
+                    severity,
+                    code,
+                    safeMessage,
+                    SEMANTIC_SOURCE_MODULE,
+                    conversionMatcher.group(1),
+                    null,
+                    null,
+                    "conversions",
+                    null,
+                    suggestedFixFor(safeMessage, code, null, null, null),
+                    helpKeyFor(safeMessage, "validation.semantic." + code),
+                    boundaryId
+            );
         }
 
         Matcher conceptFieldMatcher = CONCEPT_FIELD_PATTERN.matcher(safeMessage);
