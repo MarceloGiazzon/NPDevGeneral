@@ -127,6 +127,10 @@ DEFAULT_BUILD_ROOT = _default_build_root()
 METADATA_CANDIDATES = (
     Path("..") / "ArtifactNP" / "src" / "main" / "resources" / "npdev" / "compiled-metadata.json",
     Path("..") / "App" / "npdev-generated" / "src" / "main" / "resources" / "npdev" / "compiled-metadata.json",
+    # OPS-2: the toolbox now lives in <out>/App/_ops, so the same two sources are one level deeper /
+    # one level shallower than the pre-OPS-2 wrapper layout above.
+    Path("..") / ".." / "ArtifactNP" / "src" / "main" / "resources" / "npdev" / "compiled-metadata.json",
+    Path("..") / "npdev-generated" / "src" / "main" / "resources" / "npdev" / "compiled-metadata.json",
     Path("ui-contract-bundle.json"),
 )
 
@@ -160,7 +164,8 @@ def discover(build_root: Path) -> int:
         except (json.JSONDecodeError, OSError):
             skip("unreadable app-plan.json")
             continue
-        app_id = plan.get("appId") or plan_path.parent.parent.name
+        app_id = plan.get("appId") or (plan_path.parent.parent.parent.name
+                                       if plan_path.parent.parent.name == "App" else plan_path.parent.parent.name)
         web_source = plan.get("webSourceDir") or ""
         if not web_source or not Path(web_source).exists():
             skip("app-plan.json declares no existing webSourceDir (pre-R-G1 build output)")

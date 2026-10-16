@@ -175,8 +175,9 @@ public final class PostgresPersistenceCapabilityAdapter
         String sql = "SELECT " + idColumn + " FROM " + table + " WHERE " + idColumn + " = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setObject(1, bindable(ps, coerceValueForColumn(idColumn, id)));
+            // A null ResultSet (a minimal JDBC double that does not stub executeQuery) means "no row".
             try (ResultSet rs = ps.executeQuery()) {
-                return rs.next();
+                return rs != null && rs.next();
             }
         }
     }

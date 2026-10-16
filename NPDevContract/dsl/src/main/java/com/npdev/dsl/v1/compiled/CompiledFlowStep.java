@@ -38,6 +38,7 @@ public final class CompiledFlowStep {
     private final Boolean parallelAwait;
     private final Long timeoutSeconds;
     private final List<CompiledFlowStep> onTimeoutSteps;
+    private final CompiledHumanTask task;
 
     public CompiledFlowStep(
             String name,
@@ -288,6 +289,49 @@ public final class CompiledFlowStep {
             Long timeoutSeconds,
             List<CompiledFlowStep> onTimeoutSteps
     ) {
+        this(name, type, checkpoint, scope, invariants, eventName, payloadRef, eventDataRefs, condition, thenSteps,
+                elseSteps, awaitEventName, awaitRef, awaitMatchCorrelation, awaitPayloadMatch, delaySeconds,
+                mapFromRef, mapToRef, returnValueRef, capabilityCall, action, generatedActionName, collectionRef,
+                itemKey, loopSteps, maxLoopIterations, onFailureSteps, procedureName, parallelAwait, timeoutSeconds,
+                onTimeoutSteps, null);
+    }
+
+    /** PROC-1 (human tasks): canonical constructor, adding {@code task} -- compiled counterpart of
+     * {@link com.npdev.dsl.v1.ast.StepAst#getTask()}. {@code null} means a plain machine await. */
+    public CompiledFlowStep(
+            String name,
+            String type,
+            String checkpoint,
+            String scope,
+            List<String> invariants,
+            String eventName,
+            String payloadRef,
+            Map<String, String> eventDataRefs,
+            String condition,
+            List<CompiledFlowStep> thenSteps,
+            List<CompiledFlowStep> elseSteps,
+            String awaitEventName,
+            String awaitRef,
+            Boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatch,
+            Long delaySeconds,
+            String mapFromRef,
+            String mapToRef,
+            String returnValueRef,
+            CompiledCapabilityCall capabilityCall,
+            CompiledActionMetadata action,
+            String generatedActionName,
+            String collectionRef,
+            String itemKey,
+            List<CompiledFlowStep> loopSteps,
+            Integer maxLoopIterations,
+            List<CompiledFlowStep> onFailureSteps,
+            String procedureName,
+            Boolean parallelAwait,
+            Long timeoutSeconds,
+            List<CompiledFlowStep> onTimeoutSteps,
+            CompiledHumanTask task
+    ) {
         this.name = name;
         this.type = type;
         this.checkpoint = checkpoint;
@@ -319,6 +363,7 @@ public final class CompiledFlowStep {
         this.parallelAwait = parallelAwait;
         this.timeoutSeconds = timeoutSeconds;
         this.onTimeoutSteps = onTimeoutSteps == null ? List.of() : new ArrayList<>(onTimeoutSteps);
+        this.task = task;
     }
 
     public String getName() { return name; }
@@ -404,4 +449,7 @@ public final class CompiledFlowStep {
     public List<CompiledFlowStep> getOnTimeoutSteps() {
         return Collections.unmodifiableList(onTimeoutSteps);
     }
+
+    /** PROC-1: human-task metadata of an {@code awaitEvent} step; {@code null} when not a human task. */
+    public CompiledHumanTask getTask() { return task; }
 }

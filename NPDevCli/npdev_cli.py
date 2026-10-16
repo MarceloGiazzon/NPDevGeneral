@@ -2928,6 +2928,12 @@ def run_app(args: argparse.Namespace) -> dict:
                 ))
                 return result
 
+            # OPS-5: remember whether a previous run left a runnable jar. Regeneration wipes the app
+            # tree (only data/logs/secrets are spared), so this must be sampled BEFORE GENERATE. What it
+            # buys is the warm Gradle daemon (no --no-daemon): a repeated `run app` reuses it, while a
+            # first-ever build, or --clean, keeps today's exact `--no-daemon clean build`.
+            had_previous_jar = final_app_out.is_dir() and _find_jar(final_app_out) is not None
+
             # --- GENERATE --------------------------------------------------------------------
             gen_ok, gen_output = _generate_phase_captured(root, args, final_app_out, deadline)
             if not gen_ok:
@@ -2941,7 +2947,8 @@ def run_app(args: argparse.Namespace) -> dict:
             # --- BUILD ---------------------------------------------------------------------
             result["phase"] = "BUILD"
             _write_run_app_progress(final_app_out, result["phase"])
-            build_ok, build_output, jar_path, _ = _build_phase(final_app_out, deadline)
+            incremental = had_previous_jar and not getattr(args, "clean", False)
+            build_ok, build_output, jar_path, _ = _build_phase(final_app_out, deadline, clean=not incremental)
             if not build_ok:
                 classified = _classify_build_failure(build_output)
                 result["diagnostics"].append(classified or _diag(
@@ -12043,18 +12050,75 @@ def run_add_member(args: argparse.Namespace, kind: str) -> int:
 _ACCEPTED_BOUNDARIES_CACHE: list | None = None
 
 
+def _ledger_boundary_classifications() -> dict:
+    """{id: {"classification": ..., "title": ...}} read from every `ledger/boundaries/B*.yml` --
+    the ledger is the single source of truth for a boundary's classification (HITTABLE / POSTURAL /
+    LIFTED[, PARTIAL]) and title. A minimal top-level-key line parser, not a YAML library: the CLI
+    has no PyYAML dependency, and these two keys are always single-line top-level scalars. Empty
+    when the ledger directory is absent (a CLI run from somewhere `ledger/` does not ship)."""
+    directory = repo_root() / "ledger" / "boundaries"
+    found: dict = {}
+    if not directory.is_dir():
+        return found
+    for path in sorted(directory.glob("B*.yml")):
+        fields: dict = {}
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            match = re.match(r"^(id|title|classification):\s*(.*?)\s*$", line)
+            if not match or match.group(1) in fields:
+                continue
+            value = match.group(2)
+            if value.startswith('"') and value.endswith('"') and len(value) >= 2:
+                try:
+                    value = json.loads(value)
+                except ValueError:
+                    value = value[1:-1]
+            elif value.startswith("'") and value.endswith("'") and len(value) >= 2:
+                value = value[1:-1].replace("''", "'")
+            fields[match.group(1)] = value
+        if fields.get("id"):
+            found[fields["id"]] = {
+                "classification": fields.get("classification", ""),
+                "title": fields.get("title", ""),
+            }
+    return found
+
+
+def _boundary_sort_key(boundary_id: str) -> tuple:
+    digits = "".join(ch for ch in boundary_id if ch.isdigit())
+    return (int(digits) if digits else 0, boundary_id)
+
+
 def _load_accepted_boundaries() -> list:
-    """The shipped, user-facing half of the accepted-boundaries register: id/kind/userFacingText/
+    """The shipped, user-facing half of the accepted-boundaries register: userFacingText/
     workaround/enforcingDiagnosticCodes (item 2, SUPPORT_FEATURES_PLAN_2026-08-26, Blocker A).
-    `ledger/boundaries/*.yml` keeps provenance only (title/ref/codeLinkedNote) and does not repeat
-    these fields -- this file is their ONLY home, so there is nothing to keep in sync."""
+    `accepted-boundaries.json` is the ONLY home of those three fields. `kind` is NOT hand-kept:
+    it comes from `ledger/boundaries/*.yml`'s `classification` (AUD-4 -- the JSON copy drifted: B6
+    POSTURAL vs LIFTED, B28, B32 absent), and the JSON's own `kind` is only the fallback for a CLI
+    run where `ledger/` does not exist. A ledger boundary the JSON has no entry for is returned
+    with the ledger title as its text, so `npdev why <id>` never claims it does not exist."""
     global _ACCEPTED_BOUNDARIES_CACHE
     if _ACCEPTED_BOUNDARIES_CACHE is not None:
         return _ACCEPTED_BOUNDARIES_CACHE
     path = repo_root() / "NPDevContract" / "schemas" / "accepted-boundaries.json"
     if not path.is_file():
         raise CliError(f"accepted-boundaries.json not found at {path}")
-    boundaries = read_json(path).get("boundaries") or []
+    boundaries = [dict(entry) for entry in (read_json(path).get("boundaries") or [])]
+    ledger = _ledger_boundary_classifications()
+    known = set()
+    for boundary in boundaries:
+        known.add(boundary["id"])
+        classification = (ledger.get(boundary["id"]) or {}).get("classification")
+        if classification:
+            boundary["kind"] = classification
+    for boundary_id in sorted(set(ledger) - known, key=_boundary_sort_key):
+        entry = ledger[boundary_id]
+        boundaries.append({
+            "id": boundary_id,
+            "kind": entry["classification"],
+            "userFacingText": entry["title"],
+            "workaround": "None recorded -- see ledger/boundaries/" + boundary_id + ".yml.",
+            "enforcingDiagnosticCodes": [],
+        })
     _ACCEPTED_BOUNDARIES_CACHE = boundaries
     return boundaries
 
@@ -13467,6 +13531,11 @@ def _run_monitor_hotswap(args: argparse.Namespace) -> int:
     return 0 if result["ok"] else 2
 
 
+# ENG-3: refusal codes MetadataHotSwapController#modelReload returns (HTTP 422) from its preflight.
+_RELOAD_PREFLIGHT_REFUSALS = frozenset(
+    {"RELOAD_REMOVES_CONCEPTS", "MODEL_INVALID", "NEW_CONCEPT_PROVISIONING_DISABLED"})
+
+
 def _model_reload_apply(base_url: str, super_user_key: str, model_path: str, timeout: float) -> dict:
     """Wave 6 (the Manager's Studio tab, NPDEV_FEATURE_PLAN_2026-09-24.md 6.1): the HTTP core behind
     `npdev studio apply-live`'s live-swap step -- one POST to
@@ -13503,6 +13572,9 @@ def _model_reload_apply(base_url: str, super_user_key: str, model_path: str, tim
             return result
         result["code"] = payload.get("code") or f"HTTP_{exc.code}"
         result["message"] = payload.get("message") or f"HTTP {exc.code}: {raw_body[:300]}"
+        if payload.get("details"):
+            # ENG-3: the reload preflight's named reasons (missing concepts, validator errors, ...).
+            result["details"] = payload["details"]
         return result
     except urllib.error.URLError as exc:
         result["code"] = "UNREACHABLE"
@@ -13585,6 +13657,73 @@ def _studio_route_for(report: dict) -> str:
     return "needs-rebuild"
 
 
+def _live_apply(base_url: str, super_user_key: str, baseline_path: Path, model_path: Path,
+                final_app_root: Path, deadline: float, timeout: float) -> dict:
+    """ENG-5: THE live-vs-rebuild router, shared by `npdev monitor studio-apply` (Manager Studio) and
+    `npdev dev`'s inner loop (`dev_loop._try_hot_swap`). Classifies `model_path` against
+    `baseline_path` (`_studio_classify_and_route`), routes it (`_studio_route_for`), and for a
+    live-able change swaps the running app's compiled model via `/model-reload` (B28; brand-new
+    concepts are provisioned there too when the app opted in to REG-244). For a METADATA_ONLY diff it
+    additionally refreshes the descriptive catalogs + served UI manifest (`_metadata_hotswap_apply`,
+    RUN-24) -- a failure of that second half is reported under `metadataHotswap` but never flips the
+    result, the behaviour-affecting model swap already succeeded.
+
+    Never prints and never raises for an ordinary outcome. Returns `{ok, code, message, route,
+    classification, classificationReasons, modelReload, metadataHotswap}` with `code` one of
+    CLASSIFY_FAILED (ok False), NEEDS_REBUILD (ok True: the file is fine, the change just cannot go
+    live -- classifier verdict or an ENG-3 reload preflight refusal), the reload's own failure code
+    (ok False), or APPLIED_LIVE (ok True)."""
+    live: dict = {"ok": False, "code": None, "message": None, "route": None}
+    with tempfile.TemporaryDirectory(prefix="npdev-studio-metadata-") as emit_dir:
+        emit_to = Path(emit_dir)
+        try:
+            report = _studio_classify_and_route(repo_root(), baseline_path, model_path, deadline, emit_to)
+        except CliError as exc:
+            live["code"] = "CLASSIFY_FAILED"
+            live["message"] = str(exc)
+            return live
+
+        live["classification"] = report.get("classification")
+        live["classificationReasons"] = report.get("classificationReasons")
+        route = _studio_route_for(report)
+        live["route"] = route
+
+        if route == "needs-rebuild":
+            live["ok"] = True
+            live["code"] = "NEEDS_REBUILD"
+            live["message"] = (
+                "this change needs a full regenerate + rebuild to take effect live -- classification="
+                f"{report.get('classification')}: {'; '.join(report.get('classificationReasons') or [])}")
+            return live
+
+        reload_result = _model_reload_apply(base_url, super_user_key, str(model_path), timeout)
+        live["modelReload"] = reload_result
+        if not reload_result.get("ok") and reload_result.get("code") in _RELOAD_PREFLIGHT_REFUSALS:
+            # ENG-3: the running app refused the reload BEFORE swapping anything (the file on disk is
+            # fine, the app just cannot take it live): same outcome as the classifier's needs-rebuild.
+            live["ok"] = True
+            live["code"] = "NEEDS_REBUILD"
+            details = reload_result.get("details") or []
+            live["message"] = (
+                f"the running app refused a live reload ({reload_result.get('code')}): "
+                f"{reload_result.get('message')}" + (f" -- {'; '.join(details)}" if details else ""))
+            return live
+        if not reload_result.get("ok"):
+            live["code"] = reload_result.get("code") or "RELOAD_FAILED"
+            live["message"] = reload_result.get("message")
+            return live
+
+        if report.get("classification") == "METADATA_ONLY" and report.get("emitted"):
+            live["metadataHotswap"] = _metadata_hotswap_apply(
+                base_url, super_user_key, "METADATA_ONLY", report.get("classificationReasons") or [],
+                emit_to, final_app_root, timeout)
+
+    live["ok"] = True
+    live["code"] = "APPLIED_LIVE"
+    live["message"] = f"applied live via {route}"
+    return live
+
+
 def _run_monitor_studio_apply(args: argparse.Namespace) -> int:
     """`npdev monitor studio-apply` -- Wave 6.1 (NPDEV_FEATURE_PLAN_2026-09-24.md, the Manager's
     Studio tab). Sits alongside `monitor hotswap` (same probe_app + SUPER_USER_KEY discovery shape,
@@ -13654,45 +13793,11 @@ def _run_monitor_studio_apply(args: argparse.Namespace) -> int:
     base_url = app_record.get("probeBaseUrl")
     final_app_root = Path(app_record.get("finalAppRoot") or app_dir)
 
-    with tempfile.TemporaryDirectory(prefix="npdev-studio-metadata-") as emit_dir:
-        emit_to = Path(emit_dir)
-        try:
-            report = _studio_classify_and_route(repo_root(), baseline_path, model_path, deadline, emit_to)
-        except CliError as exc:
-            return _refuse("CLASSIFY_FAILED", str(exc))
-
-        result["classification"] = report.get("classification")
-        result["classificationReasons"] = report.get("classificationReasons")
-        route = _studio_route_for(report)
-        result["route"] = route
-
-        if route == "needs-rebuild":
-            result["ok"] = True
-            result["code"] = "NEEDS_REBUILD"
-            result["message"] = (
-                "this change needs a full regenerate + rebuild to take effect live -- classification="
-                f"{report.get('classification')}: {'; '.join(report.get('classificationReasons') or [])}")
-            _print_result(result, args)
-            return 0
-
-        reload_result = _model_reload_apply(base_url, raw_key, str(model_path), args.timeout)
-        result["modelReload"] = reload_result
-        if not reload_result.get("ok"):
-            result["code"] = reload_result.get("code") or "RELOAD_FAILED"
-            result["message"] = reload_result.get("message")
-            _print_result(result, args)
-            return 2
-
-        if report.get("classification") == "METADATA_ONLY" and report.get("emitted"):
-            result["metadataHotswap"] = _metadata_hotswap_apply(
-                base_url, raw_key, "METADATA_ONLY", report.get("classificationReasons") or [],
-                emit_to, final_app_root, args.timeout)
-
-    result["ok"] = True
-    result["code"] = "APPLIED_LIVE"
-    result["message"] = f"applied live via {route}"
+    live = _live_apply(base_url, raw_key, baseline_path, model_path, final_app_root, deadline,
+                       args.timeout)
+    result.update(live)
     _print_result(result, args)
-    return 0
+    return 0 if live["ok"] else 2
 
 
 def _run_monitor_logs(args: argparse.Namespace) -> int:
@@ -14424,6 +14529,93 @@ def run_host_keys(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_host_deploy_vps(args: argparse.Namespace, app_dir: Path) -> int:
+    """`npdev host deploy --ssh user@host` (OPS-9): ship the built app to a Linux server with Docker
+    and start it behind the Caddy proxy (plus the backup sidecar for Postgres/MySQL). The server's
+    .env is created once with generated secrets and never overwritten. Secret values are never
+    printed -- only the path of the local copy."""
+    import shutil
+    import npdev_host
+    import npdev_vps
+
+    host = args.ssh
+    dry_run = bool(getattr(args, "dry_run", False))
+    domain = getattr(args, "domain", None)
+    acme_email = getattr(args, "acme_email", None)
+    if bool(domain) != bool(acme_email):
+        raise CliError("--domain and --acme-email go together (a Let's Encrypt certificate needs both). "
+                        "nothing was shipped.")
+    if not shutil.which("ssh") and not dry_run:
+        raise CliError("ssh was not found on PATH (install OpenSSH). nothing was shipped.")
+    plan_path = app_dir / "_ops" / "resolved-db-plan.json"
+    if not plan_path.is_file():
+        raise CliError(f"{app_dir} has not been generated yet (no _ops/resolved-db-plan.json). "
+                        "nothing was shipped.")
+    db_plan = read_json(plan_path)
+    engine = db_plan.get("engine")
+    if npdev_vps.find_jar(app_dir) is None:
+        raise CliError(f"{app_dir} has no build/libs/FinalExec-*.jar -- run _ops/Build-FinalApp.ps1 first. "
+                        "nothing was shipped.")
+    if not (app_dir / "docker-compose.yml").is_file():
+        raise CliError(f"{app_dir} has no docker-compose.yml -- regenerate the app. nothing was shipped.")
+    app_id = npdev_vps.safe_app_id(str(db_plan.get("appId") or app_dir.name))
+    backup = engine in npdev_vps.SERVER_ENGINES_WITH_BACKUP
+    script = npdev_vps.remote_script(app_id, ["proxy"], backup_service=backup)
+
+    if dry_run:
+        print(f"npdev host deploy --ssh {host} (dry run -- nothing is contacted or written)")
+        print("Would ship:")
+        names = npdev_vps.bundle_names(app_dir)
+        generated = [n for n in names if n.startswith("npdev-generated/")]
+        for name in names:
+            if not name.startswith("npdev-generated/"):
+                print(f"  {name}")
+        if generated:
+            print(f"  npdev-generated/  ({len(generated)} files)")
+        print("  .env  (only if the server has none yet: random API key and database password)")
+        print("Would run:")
+        print("  " + " ".join(shlex.quote(part) for part in npdev_vps.ssh(host, script, dry_run=True)))
+        return 0
+
+    try:
+        has_env = npdev_vps.remote_has_env(host, app_id)
+        env_text = None if has_env else npdev_vps.first_env(app_dir, public_host=domain, acme_email=acme_email)
+        if env_text is not None:
+            safe_host = "".join(c if c.isalnum() or c in "-._" else "_" for c in host)
+            secrets_dir = app_dir / "secrets"
+            secrets_dir.mkdir(parents=True, exist_ok=True)
+            local_copy = secrets_dir / f"deploy-{safe_host}.env"
+            local_copy.write_bytes(env_text.encode("utf-8"))
+            print(f"Generated a new server .env; local copy (keep it safe): {local_copy}")
+        else:
+            print("The server already has a .env -- left untouched"
+                  + (" (--domain/--acme-email ignored; edit it on the server)." if domain else "."))
+        result = npdev_vps.ssh(host, script, stdin=npdev_vps.build_bundle(app_dir, env_text))
+    except (RuntimeError, ValueError, OSError) as failure:
+        print(f"npdev host deploy: {failure}", file=sys.stderr)
+        return 1
+    if result.returncode != 0:
+        tail = (result.stderr or b"").decode("utf-8", "replace").strip()[-1200:]
+        print(f"npdev host deploy: the remote command failed (exit {result.returncode}):\n{tail}", file=sys.stderr)
+        return 1
+    print((result.stdout or b"").decode("utf-8", "replace").rstrip())
+
+    if not domain:
+        print(f"Deployed to {host}. No --domain given, so the proxy serves a self-signed certificate on :443.")
+        return 0
+    findings = npdev_host.run_remote_checks(f"https://{domain}")
+    print(f"remote: https://{domain}")
+    for finding in findings:
+        print(f"  [{_HOST_CHECK_STATUS_LABEL[finding['status']]}] {finding['title']}")
+        if finding["status"] != "ok":
+            print(f"        {finding['detail']}")
+    fixes = sum(1 for finding in findings if finding["status"] == "fix")
+    if fixes:
+        print("Resolve the FIX rows above (a fresh Let's Encrypt certificate can take a minute: "
+              f"re-run `npdev host check --target https://{domain}`).")
+    return 0 if fixes == 0 else 1
+
+
 def run_host_deploy(args: argparse.Namespace) -> int:
     """`npdev host deploy` (H14) -- the refusal matters more than the success path. On an
     engine/target mismatch: write NOTHING, exit non-zero, name the three fix steps. On success:
@@ -14433,6 +14625,10 @@ def run_host_deploy(args: argparse.Namespace) -> int:
 
     app_dir = Path(args.app).expanduser().resolve()
     as_json = bool(getattr(args, "json", False))
+
+    if getattr(args, "ssh", None):
+        # OPS-9: the vps target ships the built app over SSH; it has no host.definition.json step.
+        return _run_host_deploy_vps(args, app_dir)
 
     definition = npdev_host.read_definition(app_dir)
     if definition is None:
@@ -16784,6 +16980,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not stop a pre-existing instance already listening on --port before attempting to boot "
              "(default: PORT_IN_USE is refused outright, matching a fresh CI-style run's expectations).",
     )
+    run_app.add_argument(
+        "--clean", action="store_true",
+        help="Force a clean --no-daemon build. Default: when a previous run left a jar, build "
+             "incrementally on the warm Gradle daemon.",
+    )
 
     acceptance = subparsers.add_parser(
         "acceptance", help="Run the acceptance suite against a running app."
@@ -17102,6 +17303,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     host_deploy.add_argument("--app", required=True)
     host_deploy.add_argument("--json", action="store_true")
+    host_deploy.add_argument("--ssh", metavar="USER@HOST", default=None,
+                             help="deploy to this server over SSH (Docker + Compose v2 on the server, key "
+                                  "login); implies target vps and needs no `host plan` first.")
+    host_deploy.add_argument("--domain", default=None,
+                             help="--ssh only: public DNS name pointing at the server; enables a Let's "
+                                  "Encrypt certificate (needs --acme-email).")
+    host_deploy.add_argument("--acme-email", dest="acme_email", default=None,
+                             help="--ssh only: e-mail for the Let's Encrypt registration.")
+    host_deploy.add_argument("--dry-run", dest="dry_run", action="store_true",
+                             help="--ssh only: print what would be shipped and run; touch nothing.")
 
     host_keys = host_sub.add_parser("keys", help="List, mint or surface the API keys this app accepts.")
     host_keys.add_argument("--app", required=True)

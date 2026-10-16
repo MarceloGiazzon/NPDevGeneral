@@ -1126,7 +1126,8 @@ public final class ModelResolver {
                 step.getProcedure(),
                 step.getParallelAwait(),
                 step.getTimeoutSeconds(),
-                cloneSteps(step.getOnTimeoutSteps())
+                cloneSteps(step.getOnTimeoutSteps()),
+                step.getTask()
         );
     }
 

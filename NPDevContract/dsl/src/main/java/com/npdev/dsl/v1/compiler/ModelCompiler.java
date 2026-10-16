@@ -81,6 +81,7 @@ import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
 import com.npdev.dsl.v1.ast.RuleProfileAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
 import com.npdev.dsl.v1.ast.StateTransitionAst;
+import com.npdev.dsl.v1.ast.HumanTaskAst;
 import com.npdev.dsl.v1.ast.StepAst;
 import com.npdev.dsl.v1.compiled.CompiledAgentAccess;
 import com.npdev.dsl.v1.compiled.CronSchedules;
@@ -89,6 +90,7 @@ import com.npdev.dsl.v1.compiled.CompiledAgentAccessChannel;
 import com.npdev.dsl.v1.compiled.CompiledAgentAccessChannels;
 import com.npdev.dsl.v1.compiled.CompiledAgentAccessExposure;
 import com.npdev.dsl.v1.compiled.CompiledAppShell;
+import com.npdev.dsl.v1.compiled.CompiledHumanTask;
 import com.npdev.dsl.v1.compiled.CompiledAppShellNavItem;
 import com.npdev.dsl.v1.compiled.CompiledConversion;
 import com.npdev.dsl.v1.compiled.CompiledFileMetadata;
@@ -1989,10 +1991,28 @@ public final class ModelCompiler {
                     stepAst.getProcedure(),
                     stepAst.getParallelAwait(),
                     stepAst.getTimeoutSeconds(),
-                    onTimeoutSteps
+                    onTimeoutSteps,
+                    toCompiledHumanTask(stepAst.getTask())
             ));
         }
         return out;
+    }
+
+    /** PROC-1: 1:1 copy of the human-task block; no resolution needed. */
+    private static CompiledHumanTask toCompiledHumanTask(HumanTaskAst task) {
+        if (task == null) {
+            return null;
+        }
+        List<CompiledHumanTask.Outcome> outcomes = new ArrayList<>();
+        for (HumanTaskAst.Outcome o : task.getOutcomes()) {
+            outcomes.add(new CompiledHumanTask.Outcome(o.value(), o.label()));
+        }
+        List<CompiledHumanTask.Field> fields = new ArrayList<>();
+        for (HumanTaskAst.Field f : task.getFields()) {
+            fields.add(new CompiledHumanTask.Field(f.name(), f.type(), f.label(), f.required(), f.maxLength()));
+        }
+        return new CompiledHumanTask(task.getTitle(), task.getDescription(), task.getAssigneeUser(),
+                task.getAssigneeRoles(), task.getOutcomeField(), outcomes, fields, task.getRecord());
     }
 
     private static CompiledActionMetadata toCompiledActionMetadata(ActionMetadataAst actionMetadata) {

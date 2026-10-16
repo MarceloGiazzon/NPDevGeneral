@@ -39,7 +39,7 @@
     },
     {
       "id": "B6",
-      "kind": "POSTURAL",
+      "kind": "LIFTED",
       "userFacingText": "mark-done tells NPDev to stop trying to converge the schema and trust that you already fixed it by hand -- nothing verifies that you actually did.",
       "workaround": "Use -ImpactOnly first to see what NPDev thinks differs, then mark done knowingly. `npdev db verify` can also check the result independently before you mark done.",
       "enforcingDiagnosticCodes": []
@@ -88,7 +88,7 @@
     },
     {
       "id": "B13",
-      "kind": "HITTABLE",
+      "kind": "LIFTED",
       "userFacingText": "This conversion references a concept or field that does not exist in the pack.",
       "workaround": "Declare a conversions[] entry (copy/split/lookup/merge/convert/coalesce/case) instead of hand-writing convert.sql; for the uncovered case (retyping an EXISTING column in place), fall back to an operator-authored SQL hook.",
       "enforcingDiagnosticCodes": ["B13:unresolvable_join_path"]
@@ -151,7 +151,7 @@
     },
     {
       "id": "B28",
-      "kind": "LIFTED, PARTIAL",
+      "kind": "LIFTED",
       "userFacingText": "A full model reload (enabled by default) applies most changes without a restart: every panel, procedure, aggregate, and anything read through the concept gateway directly observes the new model immediately, and capabilities/bindings, the in-memory concept store, sensitive-field policy, and cron schedules all rebuild themselves in place. Two things still need a restart: a change requiring newly generated Java code (a brand-new concept's generated controller), and a change to something the generated CRUD REST surface itself caches once (a new invariant rule, a new capability binding, or a new field's CRUD-write reachability).",
       "workaround": "Use POST /api/admin/runtime/metadata-hotswap/model-reload (SUPERUSER-gated) for a live reload -- most changes take effect immediately. Restart the app (~30s) only when the change adds a new concept (needs generated code), a new invariant/capability binding, or when a newly added field needs to be CRUD-writable through the generated REST surface specifically. Opt out entirely with npdev.runtime.hotswap.full-model-reload-enabled=false.",
       "enforcingDiagnosticCodes": ["FULL_MODEL_RELOAD_DISABLED"]

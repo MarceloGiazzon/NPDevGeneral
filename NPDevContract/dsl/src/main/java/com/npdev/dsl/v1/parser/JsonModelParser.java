@@ -2667,6 +2667,9 @@ public final class JsonModelParser {
             onTimeoutSteps = parseStepList(flowName + "." + stepName + ".onTimeout", onTimeoutNode);
         }
 
+        // PROC-1: optional human-task metadata (who answers, form, outcomes) on an awaitEvent step.
+        HumanTaskAst task = parseHumanTask(stepNode.get("task"));
+
         if ("invariant".equals(type)) {
             if ((checkpoint == null || checkpoint.isBlank()) && scope != null && !scope.isBlank()) {
                 checkpoint = "pre";
@@ -2724,8 +2727,36 @@ public final class JsonModelParser {
                 procedure,
                 parallelAwait,
                 timeoutSeconds,
-                onTimeoutSteps
+                onTimeoutSteps,
+                task
         );
+    }
+
+    private static HumanTaskAst parseHumanTask(JsonNode node) {
+        if (node == null || !node.isObject()) {
+            return null;
+        }
+        JsonNode assignee = node.get("assignee");
+        List<HumanTaskAst.Outcome> outcomes = new ArrayList<>();
+        JsonNode outcomesNode = node.get("outcomes");
+        if (outcomesNode != null && outcomesNode.isArray()) {
+            for (JsonNode o : outcomesNode) {
+                outcomes.add(new HumanTaskAst.Outcome(readText(o, "value"), readText(o, "label")));
+            }
+        }
+        List<HumanTaskAst.Field> fields = new ArrayList<>();
+        JsonNode fieldsNode = node.get("fields");
+        if (fieldsNode != null && fieldsNode.isArray()) {
+            for (JsonNode f : fieldsNode) {
+                JsonNode max = f.get("maxLength");
+                fields.add(new HumanTaskAst.Field(readText(f, "name"), readText(f, "type"), readText(f, "label"),
+                        f.path("required").asBoolean(false), max != null && max.isInt() ? max.asInt() : null));
+            }
+        }
+        return new HumanTaskAst(readText(node, "title"), readText(node, "description"),
+                assignee == null ? null : readText(assignee, "user"),
+                assignee == null ? List.of() : parseTextArray(assignee.get("roles")),
+                readText(node, "outcomeField"), outcomes, fields, readText(node, "record"));
     }
 
     private List<CapabilityAst> parseCapabilitiesArray(

@@ -3647,6 +3647,10 @@
             "$ref": "#/$defs/flowStep"
           },
           "description": "R2.5: escalation steps run once timeout's deadline passes without the awaited event arriving -- e.g. notify a manager, then let the flow continue past the await. Requires timeout to be set."
+        },
+        "task": {
+          "$ref": "#/$defs/humanTask",
+          "description": "PROC-1: makes this awaitEvent a HUMAN task listed in the assignee's inbox (GET /api/tasks). Completing it publishes this step's awaitEvent with the form values, the chosen outcome (under outcomeField), completedBy and the step's match.payload values. Only valid on type awaitEvent. Due date = the step's own timeout."
         }
       },
       "allOf": [
@@ -5582,6 +5586,54 @@
           }
         }
       ],
+      "additionalProperties": false
+    },
+    "humanTask": {
+      "type": "object",
+      "required": ["title", "assignee", "outcomes"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "description": "Inbox title; ${path} placeholders resolve against flow state, e.g. ${saved.code}." },
+        "description": { "type": "string", "minLength": 1 },
+        "assignee": {
+          "type": "object",
+          "properties": {
+            "user": { "type": "string", "minLength": 1, "description": "Flow-state ref resolving to the assignee's username/actorId, e.g. $saved.recipientUsername." },
+            "roles": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+          },
+          "anyOf": [ { "required": ["user"] }, { "required": ["roles"] } ],
+          "additionalProperties": false
+        },
+        "outcomeField": { "type": "string", "minLength": 1, "description": "Payload key that receives the chosen outcome value. Default: outcome." },
+        "outcomes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["value"],
+            "properties": {
+              "value": { "type": "string", "minLength": 1 },
+              "label": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "type"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "type": { "type": "string", "enum": ["string", "text", "integer", "decimal", "boolean", "date"] },
+              "label": { "type": "string", "minLength": 1 },
+              "required": { "type": "boolean" },
+              "maxLength": { "type": "integer", "minimum": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "record": { "type": "string", "minLength": 1, "description": "Optional flow-state ref to the business record the task is about (must carry an id); the inbox links to it." }
+      },
       "additionalProperties": false
     },
     "awaitMatch": {
