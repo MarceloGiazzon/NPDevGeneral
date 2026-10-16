@@ -6,6 +6,10 @@ import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
+import com.npdev.kernel.concepts.ConceptGatewayOperation;
+import com.npdev.kernel.concepts.ConceptGatewayRequestContext;
+import com.npdev.kernel.concepts.ConceptGatewaySemanticPolicy;
+import com.npdev.kernel.concepts.ConceptSemanticDecision;
 import com.npdev.kernel.ports.PersistenceCapabilityContract;
 import com.npdev.kernel.storage.sql.H2Dialect;
 import com.npdev.kernel.storage.sql.PostgresDialect;
@@ -37,6 +41,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -55,6 +60,7 @@ public final class PostgresPersistenceCapabilityAdapter
     private final CompiledModel compiledModel;
     private final Map<String, TableColumns> tableColumnsCache = new ConcurrentHashMap<>();
     private final SqlDialect dialect;
+    private volatile ConceptGatewaySemanticPolicy semanticPolicy;
 
     public PostgresPersistenceCapabilityAdapter(DataSource dataSource) {
         this(dataSource, null);
@@ -78,6 +84,16 @@ public final class PostgresPersistenceCapabilityAdapter
         this.dialect = Objects.requireNonNull(dialect, "dialect");
     }
 
+    /**
+     * ENG-6: the same defaulting pass generic CRUD create runs (defaults, defaultExpression incl.
+     * sequences, derived values, lifecycle initial state). Set by the host after construction
+     * (a setter, not a constructor argument, so every existing call site keeps compiling);
+     * {@code null} keeps the legacy literal-default-only behaviour. Applied on create only.
+     */
+    public void setSemanticPolicy(ConceptGatewaySemanticPolicy policy) {
+        this.semanticPolicy = policy;
+    }
+
     @Override
     public Object save(Object entity) {
         return save("default", entity);
@@ -86,15 +102,16 @@ public final class PostgresPersistenceCapabilityAdapter
     public Object save(Object concept, Object entity) {
         String table = tableName(concept);
         Map<String, Object> runtimeRecord = mutableRecord(entity);
-        applyFieldDefaults(concept, runtimeRecord);
         String conceptIdField = inferredRuntimeIdField(concept, table);
 
         Object id = runtimeRecord.get("id");
         if (id == null && conceptIdField != null) {
             id = runtimeRecord.get(conceptIdField);
         }
+        boolean idWasGenerated = false;
         if (id == null || String.valueOf(id).isBlank()) {
             id = UUID.randomUUID().toString();
+            idWasGenerated = true;
         }
         // Always normalize the id onto the canonical runtime "id" key. The schema-aware
         // resolveColumn maps "id" to whatever the table's real primary-key column is (e.g.
@@ -104,9 +121,16 @@ public final class PostgresPersistenceCapabilityAdapter
 
         try (Connection connection = dataSource.getConnection()) {
             TableColumns tableColumns = resolveTableColumns(connection, table);
+            String idColumn = resolveIdColumn(table, tableColumns);
+            // ENG-6: defaults are a CREATE-time concern. A freshly minted id is always a create; an
+            // explicit id is a create only when no row carries it yet. An update never re-defaults
+            // (a partial updateConcept payload must not reset untouched fields).
+            boolean creating = idWasGenerated || !rowExists(connection, table, idColumn, id);
+            if (creating) {
+                applyCreateDefaults(concept, runtimeRecord);
+            }
             enforceLifecycleTransition(connection, concept, table, tableColumns, id, runtimeRecord);
             Map<String, Object> sqlRecord = normalizeRecordForSave(table, runtimeRecord, tableColumns);
-            String idColumn = resolveIdColumn(table, tableColumns);
 
             List<String> columns = new ArrayList<>(sqlRecord.keySet());
             ensureColumnFirst(columns, idColumn);
@@ -143,6 +167,17 @@ public final class PostgresPersistenceCapabilityAdapter
                         "Referential/constraint violation persisting table " + table + ": " + e.getMessage(), e);
             }
             throw new IllegalStateException("Postgres persistence save failed for table " + table + ": " + e.getMessage(), e);
+        }
+    }
+
+    private boolean rowExists(Connection connection, String table, String idColumn, Object id)
+            throws SQLException {
+        String sql = "SELECT " + idColumn + " FROM " + table + " WHERE " + idColumn + " = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setObject(1, bindable(ps, coerceValueForColumn(idColumn, id)));
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
         }
     }
 
@@ -242,8 +277,43 @@ public final class PostgresPersistenceCapabilityAdapter
     // constructor note above), bypassing ConceptGatewaySemanticPolicy.applyDefaultsAndDerivedValues
     // -- the pass generic CRUD create goes through. Without this, a flow create that omits a field
     // with a declared default persisted it as null/missing instead of the default (ARCH-8b).
-    // Scoped to literal defaultValue only, matching the CRUD path's simplest/most common case --
-    // defaultExpression (computed from other fields) is not evaluated here.
+    // ENG-6: with a semantic policy wired (the live runtime), a flow create runs the SAME pass as
+    // generic CRUD create -- literal and defaultExpression defaults (incl. nextNumber sequences),
+    // derived values, lifecycle initialState. Without one (unit tests, bare hosts) the legacy
+    // literal-defaultValue-only loop below stays. Called on CREATE only.
+    private void applyCreateDefaults(Object concept, Map<String, Object> runtimeRecord) {
+        ConceptGatewaySemanticPolicy policy = semanticPolicy;
+        if (policy == null) {
+            applyFieldDefaults(concept, runtimeRecord);
+            return;
+        }
+        Object idValue = runtimeRecord.get("id");
+        Object tenant = runtimeRecord.get("tenantId");
+        if (tenant == null) {
+            tenant = runtimeRecord.get("tenant_id");
+        }
+        String tenantId = tenant == null || String.valueOf(tenant).isBlank() ? "default" : String.valueOf(tenant);
+        ConceptGatewayRequestContext context = new ConceptGatewayRequestContext(
+                ConceptGatewayOperation.SAVE,
+                String.valueOf(concept),
+                idValue == null ? null : String.valueOf(idValue),
+                tenantId,
+                runtimeRecord,
+                null,
+                Optional.empty());
+        ConceptSemanticDecision defaults = policy.applyDefaultsAndDerivedValues(context);
+        if (!defaults.allowed()) {
+            throw new IllegalArgumentException(defaults.code() + ": " + defaults.message());
+        }
+        ConceptSemanticDecision lifecycle = policy.validateLifecycleTransition(context.withData(defaults.data()));
+        if (!lifecycle.allowed()) {
+            throw new IllegalArgumentException(lifecycle.code() + ": " + lifecycle.message());
+        }
+        runtimeRecord.clear();
+        runtimeRecord.putAll(lifecycle.data());
+    }
+
+    // Legacy literal-defaultValue-only pass (no semantic policy wired).
     private void applyFieldDefaults(Object concept, Map<String, Object> runtimeRecord) {
         CompiledConcept compiledConcept = findCompiledConcept(concept);
         if (compiledConcept == null) {
