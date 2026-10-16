@@ -136,14 +136,16 @@ reseeds from scratch on the next boot regardless of mode.
 
 ## Shell gadgets
 
-The right rail renders one card per gadget declared on the active GuidePage. Three built-in types:
+The right rail renders one card per gadget declared on the active GuidePage. Seven built-in types (`recent-items`, `context-info`, `page-fragment` below; `kpi`, `bar`, `line`, `table` are query-bound chart gadgets):
 
 - **`recent-items`** — the last 10 sections/pages visited, tracked client-side in `localStorage`.
 - **`context-info`** — freeform rows supplied by `NPDevShell.setContext({ title, rows })`; the
   generic business UI calls this on every section switch (`title` also drives the topbar
   breadcrumb).
-- **`page-fragment`** — fetches a same-origin URL (`{"type":"page-fragment","url":"..."}`) and
-  injects the HTML via `innerHTML` (display-only; embedded `<script>` tags never execute).
+- **`page-fragment`** — fetches the model-declared `url` (`{"type":"page-fragment","url":"/npdev-help/orders.html"}`;
+  required, and it must be a same-origin absolute path starting with a single `/`) and injects
+  the HTML via `innerHTML` (display-only; embedded `<script>` tags never execute). A failed fetch
+  renders "Fragment unavailable (<status>)" on the card.
 
 Register a custom type at runtime from any page's own script, after `shell.js` has loaded:
 

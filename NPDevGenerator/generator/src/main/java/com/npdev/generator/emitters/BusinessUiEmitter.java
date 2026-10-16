@@ -855,6 +855,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 gadgetNode.put("x", blankToNull(gadget.x()));
                 gadgetNode.put("y", blankToNull(gadget.y()));
                 gadgetNode.put("series", blankToNull(gadget.series()));
+                gadgetNode.put("url", blankToNull(gadget.url()));
                 gadgetNodes.add(gadgetNode);
             }
             node.put("gadgets", gadgetNodes);

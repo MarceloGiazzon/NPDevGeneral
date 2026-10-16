@@ -1416,7 +1416,8 @@ public final class ModelCompiler {
         for (GuidePageGadgetAst gadgetAst : gadgetAsts) {
             out.add(new CompiledGuidePageGadget(
                     gadgetAst.name(), gadgetAst.type(), gadgetAst.title(),
-                    gadgetAst.query(), gadgetAst.x(), gadgetAst.y(), gadgetAst.series()));
+                    gadgetAst.query(), gadgetAst.x(), gadgetAst.y(), gadgetAst.series(),
+                    gadgetAst.url()));
         }
         return out;
     }
