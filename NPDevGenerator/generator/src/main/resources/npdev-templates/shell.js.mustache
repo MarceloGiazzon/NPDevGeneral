@@ -177,9 +177,15 @@
     return null;
   }
 
+  // SEC-1: X-NPDev-Request is always sent (even with no token: after an OAuth sign-in the HttpOnly
+  // cookie is the only credential) -- the server requires it for cookie-authenticated writes.
   function authHeaders(token) {
-    if (!token) return {};
-    return { "Authorization": "Bearer " + token, "X-Api-Key": token };
+    var headers = { "X-NPDev-Request": "1" };
+    if (token) {
+      headers["Authorization"] = "Bearer " + token;
+      headers["X-Api-Key"] = token;
+    }
+    return headers;
   }
 
   function fetchJson(path, token) {
@@ -522,9 +528,16 @@
       logoutBtn.type = "button";
       logoutBtn.textContent = shellString("shell.signOut", "Sign out");
       logoutBtn.addEventListener("click", function () {
-        TOKEN_STORAGE_KEYS.forEach(function (key) { localStorage.removeItem(key); });
-        sessionStorage.clear();
-        window.location.reload();
+        // SEC-2: the npdev_jwt cookie is HttpOnly, so only the server can expire it. Reload after
+        // the call settles (success, failure or an apiKey app with no logout endpoint alike).
+        var headers = authHeaders(findToken());
+        fetch("/api/auth/logout", { method: "POST", headers: headers })
+          .catch(function () {})
+          .then(function () {
+            TOKEN_STORAGE_KEYS.forEach(function (key) { localStorage.removeItem(key); });
+            sessionStorage.clear();
+            window.location.reload();
+          });
       });
       el.identity.appendChild(logoutBtn);
     } else {
@@ -912,13 +925,24 @@
   function renderPageFragmentGadget(container, config) {
     var url = config && config.url;
     if (!url) return;
-    fetch(url).then(function (res) { return res.ok ? res.text() : ""; }).then(function (html) {
+    if (!/^\/(?!\/)/.test(url)) {
+      gadgetMessage(container, "page-fragment url must be a same-origin path");
+      return;
+    }
+    fetch(url).then(function (res) {
+      if (!res.ok) {
+        gadgetMessage(container, "Fragment unavailable (" + res.status + ")");
+        return null;
+      }
+      return res.text();
+    }).then(function (html) {
+      if (html === null) return;
       // Same-origin static HTML fragment only; scripts inside are intentionally not executed
       // (innerHTML never runs <script> tags) -- this is a display-only gadget, not a mini-app host.
       var holder = document.createElement("div");
       holder.innerHTML = html;
       container.appendChild(holder);
-    }).catch(function () { /* best-effort */ });
+    }).catch(function () { gadgetMessage(container, "Fragment unavailable"); });
   }
 
   gadgetRenderers["recent-items"] = function (container) { renderRecentItemsGadget(container); };

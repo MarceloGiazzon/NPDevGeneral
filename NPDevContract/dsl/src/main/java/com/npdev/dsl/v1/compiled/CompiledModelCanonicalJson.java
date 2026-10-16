@@ -1556,6 +1556,9 @@ public final class CompiledModelCanonicalJson {
             node.put("x", safe(gadget.x()));
             node.put("y", safe(gadget.y()));
             node.put("series", safe(gadget.series()));
+            if (gadget.url() != null && !gadget.url().isBlank()) {
+                node.put("url", gadget.url());
+            }
             out.add(node);
         }
         return out;

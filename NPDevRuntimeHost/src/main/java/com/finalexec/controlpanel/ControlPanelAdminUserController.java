@@ -104,6 +104,10 @@ public class ControlPanelAdminUserController {
                 || displayName == null || displayName.isBlank() || password == null || password.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "missing_required_field"));
         }
+        String policyViolation = com.finalexec.auth.PasswordPolicy.violation(password, username);
+        if (policyViolation != null) {
+            return ResponseEntity.badRequest().body(com.finalexec.auth.PasswordPolicy.errorBody(policyViolation));
+        }
 
         try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);

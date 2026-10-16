@@ -38,9 +38,6 @@ do not repeat either half of this:
    6h22m in this session. For anything the user is actively waiting on, pair `run_in_background` with
    a `Monitor` poll on the real log path (or a short bounded re-check), never a bare notification with
    no fallback.
-3. **`-SkipProvenanceCheck` on `Rebuild-And-Restage.ps1` skips step 4 ENTIRELY** — build + start + the
-   gate, not just the gate check. It leaves you with no built jar and no running app. Confirmed live
-   2026-09-26; build the jar and start the app as separate explicit steps afterward.
 
 ## Session economics
 

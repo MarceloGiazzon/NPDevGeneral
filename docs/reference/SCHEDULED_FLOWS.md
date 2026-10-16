@@ -20,10 +20,13 @@ system principal, never the ControlPanel superuser key.
 
 - `cron` — a 5-field classic cron (minute hour day month weekday) or Spring's 6-field
   seconds-first form (`second minute hour day month weekday`), parsed by
-  `org.springframework.scheduling.support.CronTrigger`. `SemanticValidator` only checks field
-  count at compile time (5 or 6 space-separated fields) — full cron-grammar validation happens at
-  boot, when the scheduler actually constructs each `CronTrigger`; a malformed expression logs and
-  skips that one schedule rather than failing the whole app's startup.
+  `org.springframework.scheduling.support.CronTrigger`. A 5-field cron is normalized to the 6-field
+  form at compile time by prefixing a `0` seconds field (`0 2 * * *` becomes `0 0 2 * * *`). Unlike
+  classic crontab, when both day-of-month and day-of-week are restricted Spring ANDs them rather than
+  ORing. `SemanticValidator` only checks field count (5 or 6 space-separated fields); full
+  cron-grammar validation happens at boot, when the scheduler constructs each `CronTrigger` — a
+  malformed expression is logged, skipped, and shown as a `FAILURE` schedule in the ControlPanel
+  rather than failing the whole app's startup.
 - `tenantScope` — a tenant id, or an array of them. Omitted/empty defaults to `["default"]`. One
   `CronTrigger` registration exists per (flow, tenant) pair, so the same flow runs once per
   declared tenant on the same cron, each independently tracked (own outcome, own run count).

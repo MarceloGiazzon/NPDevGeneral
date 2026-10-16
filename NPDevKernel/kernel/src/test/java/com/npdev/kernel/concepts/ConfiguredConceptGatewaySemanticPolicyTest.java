@@ -26,6 +26,26 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
         assertEquals("null->draft", gateway.explain().get(0).lifecycleTransition());
     }
 
+    /** ENG-8: defaultExpression "now()" stamps the real time (it used to store 1970-01-01T00:00:00Z). */
+    @Test
+    void nowDefaultExpressionStampsTheRealTime() {
+        ConceptGateway gateway = ConceptGateways.inMemory(new ConfiguredConceptGatewaySemanticPolicy(List.of(
+                ConfiguredConceptGatewaySemanticPolicy.ConceptDefinition.of(
+                        "Note",
+                        List.of(new ConfiguredConceptGatewaySemanticPolicy.FieldDefinition(
+                                "createdAt", false, List.of(), null, "now()", null)),
+                        List.of(),
+                        null))));
+        java.time.Instant start = java.time.Instant.now().minusSeconds(1);
+
+        ConceptRecord saved = gateway.save(new ConceptWriteRequest("Note", "n-1", null, Map.of()),
+                ExecutionContext.of("tenant-a", "tito"));
+
+        String createdAt = (String) saved.data().get("createdAt");
+        assertFalse("1970-01-01T00:00:00Z".equals(createdAt));
+        assertFalse(java.time.Instant.parse(createdAt).isBefore(start));
+    }
+
     /** Pigmentampas P9: defaultExpression "$user.id" owns a new record by its creator; an explicit value wins. */
     @Test
     void userDefaultExpressionOwnsTheRecordByTheActingUser() {

@@ -141,7 +141,7 @@ finding out the hard way.
   ✗ NPDev jars           not staged                    [ Fix this ]
   ! AI knowledge index   not built
   ! Docker               not found -- optional
-  ! PowerShell 7         not found -- required to run an app on this OS
+  ! PowerShell 7         not found -- needed for verify --tier T1+ and _ops/*.ps1
   ! Browser exploration  not found -- optional
 ```
 

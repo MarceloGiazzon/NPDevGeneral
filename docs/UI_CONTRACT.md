@@ -204,7 +204,9 @@ sources feed it, in cascade order:
 2. **Per-GuidePage override** — a GuidePage's own `theme.mode`/`theme.density` (model-declared,
    `guidePages[].theme`), applied by `applyGuidePage()` immediately after. Left `null` in the
    manifest when the GuidePage doesn't declare them, so the app-wide default is what actually shows
-   for every page that hasn't opted into a page-specific override.
+   for every page that hasn't opted into a page-specific override. The three built-in GuidePages
+   (`Default`, `Minimal`, `None`) declare no theme at all (`GuidePageDefaults`), so they always follow
+   the app-wide default; only an app-declared GuidePage with its own `theme.mode` pins a mode.
 
 `mode: "system"` is applied as the ABSENCE of the `data-np-theme` attribute (removed, not set to the
 literal string `"system"`) — that is what lets the `prefers-color-scheme` media query decide. Both
@@ -262,6 +264,41 @@ NOT consumed: the manifest's own concept `actions` are a different, simpler conc
 create/display/update/delete flags), not the same catalog, so overlaying one onto the other would
 conflate two unrelated concerns — left as a known, accepted boundary rather than force a shoehorned
 merge. Declared Panels/Store/Box View sections are likewise not covered (no concept to scope by).
+
+## View renderers (`window.NPDevViews`)
+
+New business-UI list views and detail-dialog sections do NOT grow `business-ui-app.mustache`. They
+are plain static files under `NPDevGenerator/generator/src/main/resources/npdev-templates/static-assets/business-ui/views/`,
+listed in `BusinessUiEmitter.BUSINESS_UI_VIEW_ASSETS`, copied verbatim (`TemplateEngine.raw`, so they
+are NOT Mustache and `{{` is safe in them) to `static/npdev-business-ui/views/`, and loaded by one
+`<script src="./views/<name>.js">` tag in `business-ui-index.mustache` after `./views/registry.js` and
+before `./app.js`. The index carries no model data; whatever a view needs per concept goes in the
+concept node of `generated-ui-manifest.json`.
+
+- **List views.** `NPDevViews.register(name, { render(ctx), pageSize, label })`. A concept's manifest
+  node carries `views`, always starting with `"table"`; a name is offered in the Table | ... switcher
+  only if it is in that list AND its script registered it. With `views: ["table"]` there is no
+  switcher and the grid is unchanged. The chosen view is remembered per concept in `localStorage`.
+  A view that throws falls back to the table with a toast. `render(ctx)` returns an HTMLElement;
+  `ctx` is documented at the top of `views/registry.js`: `concept`, `records`, `totalElements`, and
+  `helpers.{openDetails, openForm, setField, reload, notify, listParams, fetchJson, headers, field,
+  renderValue, recordTitle}`. Writes go through `helpers.setField`, i.e. `POST {endpointBase}/batch`
+  `setField`, so permissions, invariants and audit apply (read `results[0].ok`: the endpoint answers
+  200 even when a row fails).
+- **Detail sections.** `NPDevViews.registerDetailSection(name, { render(ctx) })`; every registered
+  section is rendered by `openDetails` below the field rows, in registration order, and a section that
+  throws is logged and skipped. `ctx = { concept, record, helpers: { fetchJson, headers, field,
+  renderValue, setField(fieldName, value), notify, close } }`. The built-in section is **History**
+  (`views/history.js`): a "Show history" button that loads
+  `GET /api/audit?resourceType=<CONCEPT UPPERCASED>&resourceId=<id>&limit=50` on click and lists each
+  change (time, actor, Created/Updated/Deleted, and a field / before / after table using the concept's
+  field labels). The data is the CRUD audit trail: `GeneratedCrudRuntimeSupport.appendCrudAudit`
+  writes `meta.fieldChanges` (a JSON string of `{field, before, after}`, sorted by field name) next to
+  the legacy `meta.fieldDiff` string, and `***` replaces both sides of any `sensitive: true` or
+  password-widget field. Reading `/api/audit` needs the audit permission (`READ_AUDIT`, ADMIN by
+  default): a user without it sees "Change history is visible to users with the audit permission."
+  rather than an error. Widening it to every record reader needs its own endpoint that first runs the
+  record's read authorization, and is deliberately not done.
 
 ## Breadcrumbs and default route (W1.6)
 

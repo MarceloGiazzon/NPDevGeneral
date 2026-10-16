@@ -118,10 +118,13 @@ before the fix.
 (`ExecutionMonitorController`/`ExecutionMonitorService`, pre-existing) already surface a failed
 execution's `currentStepIndex`, terminal status, and `lastErrorKind`/`lastErrorCode`/
 `lastErrorMessage` per execution card. LNCH-17 adds compensation visibility to the same card: a
-`compensationStatus` (`NONE`/`COMPENSATED`) derived from whether the flow-state compensation
-marker is present in the persisted `FlowInstance.state()` at the time it's read (cleared once
-compensation finishes, so a fully-compensated failure and a still-in-progress one are both
-distinguishable from a flow that had no `onFailure` steps to run at all).
+`compensationStatus` (`NONE`/`COMPENSATING`/`COMPENSATED`) plus `compensatedSteps`. `COMPENSATING`
+is the in-progress marker (`__npdev_compensating__`) still set in the persisted
+`FlowInstance.state()`. `COMPENSATED` means the execution is FAILED/FAILED_PERMANENT/STUCK and the
+durable counter `__npdev_compensatedSteps__` (how many `onFailure` blocks ran, incremented before
+each per-step checkpoint and kept after compensation finishes) is greater than 0; `compensatedSteps`
+reports that number. Everything else is `NONE`, including instances that failed before this counter
+existed.
 
 ## Explicitly out of scope
 
