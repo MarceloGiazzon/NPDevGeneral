@@ -139,6 +139,7 @@ public final class SemanticValidator {
                 effectiveModel, entitiesByLower, domainTypesByLower, effectiveCache, errors, semanticWarnings);
 
         FlowValidation.validateFlows(effectiveModel, entitiesByLower, effectiveCache, allowUnboundFlowCapabilities, errors, semanticWarnings);
+        HumanTaskValidation.validate(effectiveModel, errors, semanticWarnings);
         OrchestrationValidation.validateOrchestrationRules(effectiveModel, errors);
         PackValidation.validateQueries(effectiveModel, entitiesByLower, errors);
         PackValidation.validateRuleProfiles(effectiveModel, entitiesByLower, errors);
