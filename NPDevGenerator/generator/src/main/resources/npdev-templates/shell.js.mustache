@@ -177,9 +177,15 @@
     return null;
   }
 
+  // SEC-1: X-NPDev-Request is always sent (even with no token: after an OAuth sign-in the HttpOnly
+  // cookie is the only credential) -- the server requires it for cookie-authenticated writes.
   function authHeaders(token) {
-    if (!token) return {};
-    return { "Authorization": "Bearer " + token, "X-Api-Key": token };
+    var headers = { "X-NPDev-Request": "1" };
+    if (token) {
+      headers["Authorization"] = "Bearer " + token;
+      headers["X-Api-Key"] = token;
+    }
+    return headers;
   }
 
   function fetchJson(path, token) {

@@ -127,6 +127,7 @@
     options.headers = Object.assign({
       "Authorization": "Bearer " + token,
       "X-Api-Key": token,
+      "X-NPDev-Request": "1",
       "Content-Type": "application/json"
     }, options.headers || {});
     return fetch(url, options).then(function (r) {
