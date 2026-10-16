@@ -58,12 +58,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GRADLEW = REPO_ROOT / ("gradlew.bat" if sys.platform == "win32" else "gradlew")
 
-# The two real built-in packs (CLAUDE.md's own source-of-truth layer 1). A third corpus pack,
+# The real built-in packs (CLAUDE.md's own source-of-truth layer 1). A third corpus pack,
 # NPDevContract/packs/project-tracker-demo/pack.json, is sample/demo content rather than a built-in
 # platform pack with a stability contract to enforce, so it is deliberately not checked here.
 CHECKED_PACKS = (
     REPO_ROOT / "NPDevContract" / "packs" / "identity" / "pack.json",
     REPO_ROOT / "NPDevContract" / "packs" / "workspace" / "pack.json",
+    REPO_ROOT / "NPDevContract" / "packs" / "contacts" / "pack.json",
 )
 
 

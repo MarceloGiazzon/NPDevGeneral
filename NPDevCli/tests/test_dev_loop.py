@@ -68,7 +68,6 @@ def make_cli(**overrides) -> mock.MagicMock:
     cli = mock.MagicMock()
     cli.repo_root.return_value = Path("/repo")
     cli.run_validate_semantic.return_value = 0
-    cli._classify_model_change.return_value = "METADATA_ONLY"
     for key, value in overrides.items():
         setattr(cli, key, value)
     return cli
@@ -78,130 +77,147 @@ def silent_output() -> dev_loop.Output:
     return dev_loop.Output(json_events=False)
 
 
+APPLIED_LIVE = {"ok": True, "code": "APPLIED_LIVE", "route": "model-reload",
+                "metadataHotswap": {"uiManifestPatch": {
+                    "patched": True, "fieldsChanged": ["WidgetShipmentEvent.warehouseId"]}}}
+NEEDS_REBUILD = {"ok": True, "code": "NEEDS_REBUILD", "route": "needs-rebuild",
+                 "message": "this change needs a full regenerate + rebuild"}
+
+
+def failing_generate_cli(**overrides) -> mock.MagicMock:
+    return make_cli(
+        _generate_phase_captured=mock.MagicMock(return_value=(False, "stub generate failure")),
+        _log_excerpt=mock.MagicMock(return_value="stub generate failure"),
+        **overrides)
+
+
 class HotSwapFastPath(unittest.TestCase):
-    def test_metadata_only_change_against_a_running_app_hot_swaps_with_no_restart(self):
+    """ENG-5: `run_cycle` applies a change to a running app through `cli._live_apply` (the router
+    Manager Studio shares) and only falls back to generate+build+restart when that says otherwise."""
+
+    def test_live_applied_change_against_a_running_app_swaps_with_no_restart(self):
         with TemporaryDirectory() as tmp:
             options = make_options(Path(tmp))
             current = FakeAppProcess()
-            cli = make_cli(
-                _classify_model_change=mock.MagicMock(return_value="METADATA_ONLY"),
-                _emit_metadata_only_catalogs=mock.MagicMock(return_value=("METADATA_ONLY", True, "")),
-                _metadata_hotswap_apply=mock.MagicMock(return_value={
-                    "ok": True, "code": "APPLIED", "metadataGeneration": 3,
-                    "uiManifestPatch": {"patched": True, "fieldsChanged": ["WidgetShipmentEvent.warehouseId"]},
-                }),
-            )
-            out = silent_output()
+            cli = make_cli(_live_apply=mock.MagicMock(return_value=APPLIED_LIVE))
             buf = io.StringIO()
             with mock.patch.object(dev_loop, "_super_user_key", return_value="a-key"), \
                     redirect_stderr(buf):
-                result, app = dev_loop.run_cycle(options, current, out, cli)
+                result, app = dev_loop.run_cycle(options, current, silent_output(), cli)
 
             self.assertTrue(result.ok)
             self.assertEqual(result.phase, "READY")
             self.assertTrue(result.fast)
-            # SAME app object -- no restart, no new process, same PID (RUN-24's whole point).
+            # SAME app object -- no restart, no new process, same PID.
             self.assertIs(app, current)
             self.assertFalse(current.stopped)
-            # GENERATE/BUILD must never run for a hot-swapped cycle -- that is what "fast path"
-            # means; running them anyway would defeat the entire point of this item.
             cli._generate_phase_captured.assert_not_called()
             cli._build_phase.assert_not_called()
-            cli._metadata_hotswap_apply.assert_called_once()
-            # The baseline is still advanced on a successful hot swap, exactly as a normal
-            # successful cycle would, so the NEXT save classifies against the right prior state.
+            cli._live_apply.assert_called_once()
+            args = cli._live_apply.call_args.args
+            self.assertEqual(args[0], "http://127.0.0.1:18099")
+            self.assertEqual(args[1], "a-key")
+            self.assertEqual(args[2], options.baseline)
+            self.assertEqual(args[3], options.model)
+            self.assertIn("change applied live (model-reload)", buf.getvalue())
+            self.assertIn("served UI manifest patched", buf.getvalue())
+            # The baseline advances exactly as on a normal successful cycle.
             self.assertEqual(options.baseline.read_bytes(), options.model.read_bytes())
 
-    def test_hot_swap_refusal_falls_back_to_the_existing_restart_path(self):
-        """Never silent: a refused/failed hot swap must still reach GENERATE (the pre-RUN-24
-        behavior), not just quietly do nothing."""
+    def test_new_concept_change_is_applied_live(self):
+        """A brand-new concept (all-ADD_TABLE diff) comes back from the shared router as a live
+        model-reload too: no generate, no build, no restart."""
         with TemporaryDirectory() as tmp:
             options = make_options(Path(tmp))
             current = FakeAppProcess()
-            cli = make_cli(
-                _classify_model_change=mock.MagicMock(return_value="METADATA_ONLY"),
-                _emit_metadata_only_catalogs=mock.MagicMock(
-                    return_value=(None, False, "no Gradle wrapper and no staged npdev-ai-tools.jar")),
-                _generate_phase_captured=mock.MagicMock(return_value=(False, "stub generate failure")),
-                _log_excerpt=mock.MagicMock(return_value="stub generate failure"),
-            )
-            out = silent_output()
+            cli = make_cli(_live_apply=mock.MagicMock(
+                return_value={"ok": True, "code": "APPLIED_LIVE", "route": "model-reload"}))
+            with mock.patch.object(dev_loop, "_super_user_key", return_value="a-key"), \
+                    redirect_stderr(io.StringIO()):
+                result, app = dev_loop.run_cycle(options, current, silent_output(), cli)
+
+            self.assertTrue(result.ok)
+            self.assertIs(app, current)
+            self.assertFalse(current.stopped)
+            cli._generate_phase_captured.assert_not_called()
+            cli._build_phase.assert_not_called()
+
+    def test_needs_rebuild_falls_back_to_the_existing_restart_path(self):
+        """Never silent: a change the router cannot take live must still reach GENERATE."""
+        with TemporaryDirectory() as tmp:
+            options = make_options(Path(tmp))
+            current = FakeAppProcess()
+            cli = failing_generate_cli(_live_apply=mock.MagicMock(return_value=NEEDS_REBUILD))
             buf = io.StringIO()
             with mock.patch.object(dev_loop, "_super_user_key", return_value="a-key"), \
                     redirect_stderr(buf):
-                result, app = dev_loop.run_cycle(options, current, out, cli)
+                result, app = dev_loop.run_cycle(options, current, silent_output(), cli)
 
-            # The hot swap was attempted (classify-emit ran) and refused, so this cycle fell through
-            # to the ordinary GENERATE path -- proven by GENERATE actually having been called, not
-            # merely by the cycle failing (which could also happen for an unrelated reason).
-            cli._emit_metadata_only_catalogs.assert_called_once()
-            cli._metadata_hotswap_apply.assert_not_called()
+            cli._live_apply.assert_called_once()
             cli._generate_phase_captured.assert_called_once()
             self.assertFalse(result.ok)
             self.assertEqual(result.phase, "GENERATE")
-            self.assertIn("hot swap not applied -- falling back to restart", buf.getvalue())
+            self.assertIn("needs a rebuild -- NEEDS_REBUILD", buf.getvalue())
 
-    def test_no_super_user_key_falls_back_without_calling_the_classifier_or_the_endpoint(self):
+    def test_live_apply_failure_falls_back_to_the_restart_path(self):
+        with TemporaryDirectory() as tmp:
+            options = make_options(Path(tmp))
+            cli = failing_generate_cli(_live_apply=mock.MagicMock(
+                return_value={"ok": False, "code": "UNREACHABLE", "message": "connection refused"}))
+            with mock.patch.object(dev_loop, "_super_user_key", return_value="a-key"), \
+                    redirect_stderr(io.StringIO()):
+                result, _ = dev_loop.run_cycle(options, FakeAppProcess(), silent_output(), cli)
+
+            cli._generate_phase_captured.assert_called_once()
+            self.assertEqual(result.phase, "GENERATE")
+
+    def test_no_super_user_key_falls_back_without_calling_the_router(self):
         """The ordinary case for the default in-memory dev database (SuperUserBootstrapper never
         issues a credential without a physical database) -- refused BEFORE spending a classifier
         run or an HTTP call on a swap that could never authenticate."""
         with TemporaryDirectory() as tmp:
             options = make_options(Path(tmp))
-            current = FakeAppProcess()
-            cli = make_cli(
-                _classify_model_change=mock.MagicMock(return_value="METADATA_ONLY"),
-                _generate_phase_captured=mock.MagicMock(return_value=(False, "stub generate failure")),
-                _log_excerpt=mock.MagicMock(return_value="stub generate failure"),
-            )
-            out = silent_output()
+            cli = failing_generate_cli()
             buf = io.StringIO()
             with mock.patch.object(dev_loop, "_super_user_key", return_value=None), \
                     redirect_stderr(buf):
-                dev_loop.run_cycle(options, current, out, cli)
+                dev_loop.run_cycle(options, FakeAppProcess(), silent_output(), cli)
 
-            cli._emit_metadata_only_catalogs.assert_not_called()
-            cli._metadata_hotswap_apply.assert_not_called()
+            cli._live_apply.assert_not_called()
             cli._generate_phase_captured.assert_called_once()
+            self.assertIn("no SUPER_USER_KEY.txt found", buf.getvalue())
 
-    def test_structural_change_never_attempts_a_hot_swap(self):
-        """`fast=False` (anything other than METADATA_ONLY) must take the untouched full path --
-        the hot-swap branch is gated on `fast`, and this proves the gate actually holds."""
+    def test_first_cycle_with_no_running_app_never_attempts_a_live_apply(self):
+        """`current is None` on the very first cycle (nothing to apply into) -- straight to the full
+        path with no crash and no router call."""
         with TemporaryDirectory() as tmp:
             options = make_options(Path(tmp))
-            current = FakeAppProcess()
-            cli = make_cli(
-                _classify_model_change=mock.MagicMock(return_value="SAFE_ADDITIVE"),
-                _generate_phase_captured=mock.MagicMock(return_value=(False, "stub generate failure")),
-                _log_excerpt=mock.MagicMock(return_value="stub generate failure"),
-            )
-            out = silent_output()
-            buf = io.StringIO()
-            with redirect_stderr(buf):
-                dev_loop.run_cycle(options, current, out, cli)
+            cli = failing_generate_cli()
+            with redirect_stderr(io.StringIO()):
+                dev_loop.run_cycle(options, None, silent_output(), cli)
 
-            cli._emit_metadata_only_catalogs.assert_not_called()
-            cli._metadata_hotswap_apply.assert_not_called()
+            cli._live_apply.assert_not_called()
             cli._generate_phase_captured.assert_called_once()
 
-    def test_first_cycle_with_no_running_app_never_attempts_a_hot_swap(self):
-        """`current is None` on the very first cycle (nothing to swap into) -- must go straight to
-        the full path with no crash and no hot-swap attempt, even if classification somehow reports
-        METADATA_ONLY (it will not in practice: `fast` is only evaluated once a baseline exists)."""
+
+class BootOptsIntoLiveConceptProvisioning(unittest.TestCase):
+    def test_boot_enables_live_concept_provisioning(self):
+        """REG-244's live table creation is default-off; the dev loop (and only it) opts in so a new
+        concept saved while `npdev dev` runs is provisioned by /model-reload."""
         with TemporaryDirectory() as tmp:
             options = make_options(Path(tmp))
-            cli = make_cli(
-                _classify_model_change=mock.MagicMock(return_value="METADATA_ONLY"),
-                _generate_phase_captured=mock.MagicMock(return_value=(False, "stub generate failure")),
-                _log_excerpt=mock.MagicMock(return_value="stub generate failure"),
-            )
-            out = silent_output()
-            buf = io.StringIO()
-            with redirect_stderr(buf):
-                dev_loop.run_cycle(options, None, out, cli)
+            cli = make_cli(java_launcher=mock.MagicMock(return_value="java"))
+            fake_proc = mock.MagicMock()
+            fake_proc.pid = 4242
+            fake_proc.poll.return_value = None
+            with mock.patch.object(dev_loop.subprocess, "Popen", return_value=fake_proc) as popen, \
+                    mock.patch.object(dev_loop, "_health_ok", return_value=True):
+                app = dev_loop.boot(options, Path("app.jar"), cli)
 
-            cli._emit_metadata_only_catalogs.assert_not_called()
-            cli._metadata_hotswap_apply.assert_not_called()
-            cli._generate_phase_captured.assert_called_once()
+            self.assertIsNotNone(app)
+            argv = popen.call_args.args[0]
+            app._log.close()
+            self.assertIn("--npdev.runtime.hotswap.new-concept-provisioning-enabled=true", argv)
 
 
 class SuperUserKeyDiscovery(unittest.TestCase):

@@ -6,6 +6,10 @@ the same way `NPDevSamples/pack9-role-binding-a` and `-b` both import the identi
 pack. This doc covers the three design decisions that determine whether a pack stays reusable or
 quietly forks: what to expose, how to wire behavior, and how a consumer should adapt it.
 
+## Built-in business packs
+
+- `contacts` (`NPDevContract/packs/contacts/pack.json`) — `Organization` (customer / supplier / partner), `Contact` and `Address`, with list/detail/edit screens at `/organizations`, `/contacts`, `/addresses` and the queries `ActiveOrganizations`, `Customers`, `Suppliers`, `ActiveContacts`. Consume it with `packs: [{"$ref": "packs/contacts/pack.json", "as": "contacts"}]` and point your own references at `contacts::Organization`.
+
 ## Public surface vs `private` vs `extensionPoints`
 
 Every member a pack declares (concept, capability, procedure, event, domain type, …) is **public by
