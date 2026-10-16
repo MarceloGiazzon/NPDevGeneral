@@ -240,6 +240,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
      */
     static final List<String> BUSINESS_UI_VIEW_ASSETS = List.of(
             "registry.js",
+            "history.js",
             "views.css"
     );
 
