@@ -173,5 +173,71 @@ class RunWidgetsTest(unittest.TestCase):
         self.assertIn("unknown type", err)
 
 
+class LiveApplyTest(unittest.TestCase):
+    """ENG-5: `_live_apply` is the router both `npdev monitor studio-apply` and `npdev dev` call."""
+
+    def _run(self, report, reload_result=None):
+        calls = {}
+
+        def fake_hotswap(*a, **k):
+            calls["hotswap"] = a
+            return {"ok": True, "code": "APPLIED"}
+
+        with patch.object(npdev_cli, "repo_root", return_value=Path(".")), \
+                patch.object(npdev_cli, "_studio_classify_and_route", return_value=report), \
+                patch.object(npdev_cli, "_model_reload_apply",
+                             return_value=reload_result or {"ok": True, "code": "RELOADED"}) as reload, \
+                patch.object(npdev_cli, "_metadata_hotswap_apply", side_effect=fake_hotswap):
+            live = npdev_cli._live_apply("http://x", "key", Path("b.json"), Path("m.json"),
+                                         Path("app"), time.monotonic() + 5, 5.0)
+        return live, reload, calls
+
+    def test_metadata_only_reloads_the_model_and_refreshes_catalogs(self):
+        live, reload, calls = self._run({"classification": "METADATA_ONLY", "emitted": True})
+        self.assertEqual("APPLIED_LIVE", live["code"])
+        self.assertTrue(live["ok"])
+        self.assertEqual("model-reload", live["route"])
+        reload.assert_called_once()
+        self.assertIn("hotswap", calls)
+        self.assertEqual("APPLIED", live["metadataHotswap"]["code"])
+
+    def test_new_concept_reloads_without_the_catalog_refresh(self):
+        live, reload, calls = self._run(
+            {"classification": "SAFE_ADDITIVE", "items": [{"kind": "ADD_TABLE"}]})
+        self.assertEqual("APPLIED_LIVE", live["code"])
+        reload.assert_called_once()
+        self.assertNotIn("hotswap", calls)
+
+    def test_structural_change_needs_a_rebuild_and_never_calls_the_app(self):
+        live, reload, _ = self._run({"classification": "SAFE_ADDITIVE",
+                                      "items": [{"kind": "ADD_COLUMN"}]})
+        self.assertTrue(live["ok"])
+        self.assertEqual("NEEDS_REBUILD", live["code"])
+        reload.assert_not_called()
+
+    def test_eng3_preflight_refusal_becomes_needs_rebuild(self):
+        live, _, _ = self._run(
+            {"classification": "METADATA_ONLY"},
+            {"ok": False, "code": "NEW_CONCEPT_PROVISIONING_DISABLED", "message": "flag off"})
+        self.assertTrue(live["ok"])
+        self.assertEqual("NEEDS_REBUILD", live["code"])
+        self.assertIn("flag off", live["message"])
+
+    def test_other_reload_failure_is_a_failure(self):
+        live, _, _ = self._run({"classification": "METADATA_ONLY"},
+                               {"ok": False, "code": "UNREACHABLE", "message": "down"})
+        self.assertFalse(live["ok"])
+        self.assertEqual("UNREACHABLE", live["code"])
+
+    def test_classifier_failure_is_classify_failed(self):
+        with patch.object(npdev_cli, "repo_root", return_value=Path(".")), \
+                patch.object(npdev_cli, "_studio_classify_and_route",
+                             side_effect=npdev_cli.CliError("no jar")):
+            live = npdev_cli._live_apply("http://x", "key", Path("b.json"), Path("m.json"),
+                                         Path("app"), time.monotonic() + 5, 5.0)
+        self.assertFalse(live["ok"])
+        self.assertEqual("CLASSIFY_FAILED", live["code"])
+
+
 if __name__ == "__main__":
     unittest.main()
