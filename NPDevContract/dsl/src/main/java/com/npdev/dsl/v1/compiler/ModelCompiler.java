@@ -83,6 +83,7 @@ import com.npdev.dsl.v1.ast.StateMachineStateAst;
 import com.npdev.dsl.v1.ast.StateTransitionAst;
 import com.npdev.dsl.v1.ast.StepAst;
 import com.npdev.dsl.v1.compiled.CompiledAgentAccess;
+import com.npdev.dsl.v1.compiled.CronSchedules;
 import com.npdev.dsl.v1.compiled.CompiledAgentAccessAssistant;
 import com.npdev.dsl.v1.compiled.CompiledAgentAccessChannel;
 import com.npdev.dsl.v1.compiled.CompiledAgentAccessChannels;
@@ -2013,7 +2014,7 @@ public final class ModelCompiler {
         if (schedule == null) {
             return null;
         }
-        return new CompiledFlowSchedule(schedule.getCron(), schedule.getTenantScope());
+        return new CompiledFlowSchedule(CronSchedules.normalize(schedule.getCron()), schedule.getTenantScope());
     }
 
     private static List<CompiledProcedureParameter> compileProcedureParameters(List<ProcedureParameterAst> parameters) {
