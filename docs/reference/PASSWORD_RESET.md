@@ -20,7 +20,9 @@ POST /api/auth/password-reset/request
 Always returns the same response — unknown username, inactive account, no email on file, or no
 `mail` capability bound all look identical from the outside, so this can't be used to enumerate
 accounts. A matching token (32 random bytes, base64url) is generated, its SHA-256 hash + a 30-minute
-expiry stored in `identity_password_reset_tokens`, and — only if the app's model declared *and*
+expiry stored in the identity pack's `PasswordResetToken` table (resolved from the compiled model, so
+`identity_v1_password_reset_tokens` in a real app; an app that does not compose the concept gets the
+generic response and a logged warning), and — only if the app's model declared *and*
 bound a `mail` capability (`CapabilityRegistry.has("mail")`) — an email is dispatched through it.
 
 ```
@@ -28,7 +30,9 @@ POST /api/auth/password-reset/confirm
 { "token": "...", "newPassword": "...", "tenantId": "dev" }
 → 200 { "ok": true }                              (valid, unused, unexpired token)
 → 400 { "error": "invalid_or_expired_token" }     (unknown/expired/already-used token)
-→ 400 { "error": "invalid_request" }              (blank token, or password under 8 chars)
+→ 400 { "error": "invalid_request" }              (blank token or password)
+→ 400 { "error": "password_too_short", "minLength": 8 }   (or password_too_long / password_too_common; SEC-3 policy)
+→ 503 { "error": "identity_pack_not_composed" }   (no PasswordResetToken concept in the model)
 ```
 
 On success: the credential table's password hash is overwritten (same `npdev.auth.login.*`
@@ -40,7 +44,7 @@ under the old password, mirroring `ControlPanelTenantUsersController`'s admin-fo
 
 1. **`packs: ["identity"]`** — `PasswordResetToken` is a new concept in the identity pack
    (`id`, `userId` → `User` cascade, `tokenHash` unique, `expiresAt`, `usedAt`), schema-realized
-   into `identity_password_reset_tokens` the same way `identity_users` etc. already are.
+   into `identity_v1_password_reset_tokens` the same way `identity_users` etc. already are.
 2. **A populated `identity_users.email`** — previously always `NULL` at every registration path
    (`BootstrapAdminController`, `CreateUserController`, `ControlPanelAdminUserController`); all
    three now accept an optional `email` field and thread it through
@@ -58,6 +62,20 @@ under the old password, mirroring `ControlPanelTenantUsersController`'s admin-fo
 /api/admin/tenants/{tenantId}/users/{username}/password`) also gained a best-effort notification
 email (same `mail`-capability-bound check, silently skipped if unbound or no email on file) — an
 admin overwriting someone's password now tells them, when the app can.
+
+## The page and the "Forgot password?" link (SEC-4)
+
+Every jwt-mode app also gets `static/reset-password.html` (`ResetPasswordPageEmitter`) and a
+"Forgot password?" link under the Sign in button of `login.html`. The page has two panes: ask for a
+reset link by username (always shows the same generic confirmation), then set the new password from
+the mailed link (`?token=<code>` opens the second pane directly) or by typing the code ("I have a
+code"). It sends the `X-NPDev-Request` header (SEC-1) on both calls.
+
+**Production must set the link base explicitly**:
+`npdev.auth.password-reset.link-base-url=https://<host>/reset-password.html?token=` — the emailed link is
+that value followed by the token. Never derive it from the request's `Host` header: that enables
+reset-link poisoning. With the property unset the mail carries only the bare code, which the user
+types into the page's "I have a code" pane.
 
 ## Verification
 
