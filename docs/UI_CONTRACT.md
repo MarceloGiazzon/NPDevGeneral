@@ -355,6 +355,19 @@ one closes the other), and the shared backdrop, Escape, or growing the viewport 
 them. The desktop collapsed state (and its `localStorage` key) is untouched above the breakpoint. A
 page whose GuidePage has no right region still hides both the rail and its toggle.
 
+## Dashboard filter bar
+
+A GuidePage gadget (`kpi` / `bar` / `line` / `table`) bound to a query that declares `parameters`
+carries them in its manifest node (`gadgets[].parameters`: `name`, `type`, `required`). When any
+gadget on the page has parameters, `shell.js` shows one `.npdev-shell-gadget-filters` bar above the
+gadgets with one input per distinct parameter name (date picker for `date`, number for
+`integer`/`decimal`, text otherwise). A `date` parameter defaults to the first day of the current
+month for names starting with `from` / `start` / `since` and to today otherwise. The value is
+remembered in `localStorage` (`npdev.dashboard.<guidePage>.<param>`), sent as an ISO `?name=value`
+query string, and changing it re-runs every gadget. A required parameter left empty shows
+"Set <name> above" in the gadget instead of the endpoint's 400. A page with no parameterized gadgets
+is unchanged.
+
 ## Breadcrumbs and default route (W1.6)
 
 The topbar breadcrumb is a projection of the same nav tree `renderSidebar()` already draws

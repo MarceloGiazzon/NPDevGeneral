@@ -985,7 +985,72 @@
 
   function fetchGadgetQuery(gadget) {
     if (!gadget || !gadget.query) return Promise.reject(new Error("gadget has no query binding"));
-    return fetchJson("/api/queries/" + encodeURIComponent(gadget.query), state.token);
+    // UI-9: a query that declares parameters needs them on the call (the endpoint answers 400
+    // "Query parameter X is required" otherwise); values come from the dashboard filter bar.
+    var params = new URLSearchParams();
+    var missing = null;
+    (gadget.parameters || []).forEach(function (p) {
+      var value = dashboardParams[p.name];
+      if (value === undefined || value === null || String(value) === "") {
+        if (p.required && !missing) missing = p.name;
+        return;
+      }
+      params.append(p.name, String(value));
+    });
+    if (missing) return Promise.reject(new Error("Set " + missing + " above"));
+    var qs = params.toString();
+    return fetchJson("/api/queries/" + encodeURIComponent(gadget.query) + (qs ? "?" + qs : ""), state.token);
+  }
+
+  // UI-9 dashboard filter bar: one input per distinct query parameter across the page's gadgets.
+  var dashboardParams = {};
+
+  function gadgetParamDefault(p) {
+    if (p.type !== "date") return "";
+    var now = new Date();
+    var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+    var day = /^(from|start|since)/i.test(p.name) ? 1 : now.getDate();
+    return now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(day);
+  }
+
+  function distinctGadgetParams(gadgets) {
+    var seen = {};
+    var list = [];
+    (gadgets || []).forEach(function (g) {
+      (g.parameters || []).forEach(function (p) {
+        if (!seen[p.name]) { seen[p.name] = true; list.push(p); }
+      });
+    });
+    return list;
+  }
+
+  function buildGadgetFilters(gadgets, pageName) {
+    var params = distinctGadgetParams(gadgets);
+    if (!params.length) return null;
+    var bar = document.createElement("div");
+    bar.className = "npdev-shell-gadget-filters";
+    params.forEach(function (p) {
+      var key = "npdev.dashboard." + (pageName || "page") + "." + p.name;
+      var stored = null;
+      try { stored = localStorage.getItem(key); } catch (ignored) { stored = null; }
+      var value = stored !== null ? stored : gadgetParamDefault(p);
+      dashboardParams[p.name] = value;
+      var label = document.createElement("label");
+      label.textContent = p.name;
+      var input = document.createElement("input");
+      input.type = p.type === "date" ? "date" : (p.type === "integer" || p.type === "decimal" ? "number" : "text");
+      if (p.type === "decimal") input.step = "any";
+      input.value = value;
+      input.setAttribute("aria-label", p.name);
+      input.addEventListener("change", function () {
+        dashboardParams[p.name] = input.value;
+        try { localStorage.setItem(key, input.value); } catch (ignored) { /* private mode */ }
+        renderGadgets(gadgets, pageName);
+      });
+      label.appendChild(input);
+      bar.appendChild(label);
+    });
+    return bar;
   }
 
   function gadgetMessage(container, message) {
@@ -1288,8 +1353,10 @@
   gadgetRenderers["bar"] = function (container, gadget) { renderXyChartGadget(container, gadget, "bar"); };
   gadgetRenderers["line"] = function (container, gadget) { renderXyChartGadget(container, gadget, "line"); };
 
-  function renderGadgets(gadgets) {
+  function renderGadgets(gadgets, pageName) {
     el.rightbar.innerHTML = "";
+    var filterBar = buildGadgetFilters(gadgets, pageName);
+    if (filterBar) el.rightbar.appendChild(filterBar);
     (gadgets || []).forEach(function (gadget) {
       var card = document.createElement("div");
       card.className = "npdev-shell-gadget";
@@ -1496,7 +1563,7 @@
       el.logo.appendChild(img);
     }
 
-    renderGadgets(page.gadgets);
+    renderGadgets(page.gadgets, page.name);
   }
 
   // -------------------------------------------------------------- login ----
