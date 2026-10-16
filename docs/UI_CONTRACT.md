@@ -338,6 +338,16 @@ concept node of `generated-ui-manifest.json`.
   `filterable` field is not searchable, and the server's `filterRows` returns no rows for a non-blank
   `filter` on such a concept (it used to return the whole table).
 
+## Mobile layout (768 px breakpoint)
+
+At 768 px and below the shell injects one responsive block (`injectResponsiveShellStyle` in
+`shell.js`): the left nav becomes an off-canvas drawer opened by the top-bar menu button, and, since
+UI-7, the right gadget rail (KPIs, charts, tables, recents, fragments) becomes a drawer from the
+right, opened by the rail toggle, which stays visible. Only one drawer is open at a time (opening
+one closes the other), and the shared backdrop, Escape, or growing the viewport past 768 px closes
+them. The desktop collapsed state (and its `localStorage` key) is untouched above the breakpoint. A
+page whose GuidePage has no right region still hides both the rail and its toggle.
+
 ## Breadcrumbs and default route (W1.6)
 
 The topbar breadcrumb is a projection of the same nav tree `renderSidebar()` already draws
