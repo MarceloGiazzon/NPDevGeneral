@@ -456,7 +456,8 @@ class _FakeRemoteApp:
     against genuine sockets/responses, never mocked HTTP internals."""
 
     def __enter__(self):
-        state = {"health": {"status": "UP"}, "login_location": None, "login_body": "sign in"}
+        state = {"health": {"status": "UP"}, "login_location": None, "login_body": "sign in",
+                 "flows_status": 401, "flows_redirect": None}
         self.state = state
 
         class Handler(BaseHTTPRequestHandler):
@@ -467,6 +468,22 @@ class _FakeRemoteApp:
                     self.send_header("Content-Type", "application/json")
                     self.end_headers()
                     self.wfile.write(body)
+                elif self.path.startswith("/api/flows"):
+                    # OPS-3: an unkeyed call. Default 401 = fail-closed; tests flip it to 200.
+                    if state["flows_redirect"]:
+                        self.send_response(302)
+                        self.send_header("Location", state["flows_redirect"])
+                        self.end_headers()
+                    else:
+                        self.send_response(state["flows_status"])
+                        self.send_header("Content-Type", "application/json")
+                        self.end_headers()
+                        self.wfile.write(b"{}")
+                elif self.path.startswith("/signin"):
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html")
+                    self.end_headers()
+                    self.wfile.write(b"sign in")
                 elif self.path.startswith("/login"):
                     if state["login_location"]:
                         self.send_response(302)
@@ -540,16 +557,85 @@ class RemoteCheckTest(unittest.TestCase):
             findings = _findings_by_id(npdev_host.run_remote_checks(app.url))
             self.assertEqual(findings["remote-health-details"]["status"], "fix")
 
-    def test_auth_fail_closed_is_always_unknown_from_outside(self):
+    def test_auth_fail_closed_ok_when_unkeyed_call_is_refused(self):
         with _FakeRemoteApp() as app:
             findings = _findings_by_id(npdev_host.run_remote_checks(app.url))
+            self.assertEqual(findings["remote-auth-fail-closed"]["status"], "ok")
+            self.assertIn("401", findings["remote-auth-fail-closed"]["detail"])
+
+    def test_auth_fail_closed_ok_for_403_too(self):
+        with _FakeRemoteApp() as app:
+            app.state["flows_status"] = 403
+            findings = _findings_by_id(npdev_host.run_remote_checks(app.url))
+            self.assertEqual(findings["remote-auth-fail-closed"]["status"], "ok")
+
+    def test_auth_fail_closed_fix_when_unkeyed_call_succeeds(self):
+        with _FakeRemoteApp() as app:
+            app.state["flows_status"] = 200
+            findings = _findings_by_id(npdev_host.run_remote_checks(app.url))
+            self.assertEqual(findings["remote-auth-fail-closed"]["status"], "fix")
+            self.assertTrue(findings["remote-auth-fail-closed"]["fix"])
+
+    def test_auth_fail_closed_ok_when_unkeyed_call_redirects_to_sign_in(self):
+        with _FakeRemoteApp() as app:
+            app.state["flows_redirect"] = "/signin"
+            findings = _findings_by_id(npdev_host.run_remote_checks(app.url))
+            self.assertEqual(findings["remote-auth-fail-closed"]["status"], "ok")
+
+    def test_auth_fail_closed_unknown_on_an_unexpected_status(self):
+        with _FakeRemoteApp() as app:
+            app.state["flows_status"] = 500
+            findings = _findings_by_id(npdev_host.run_remote_checks(app.url))
             self.assertEqual(findings["remote-auth-fail-closed"]["status"], "unknown")
+            self.assertIn("500", findings["remote-auth-fail-closed"]["detail"])
+
+    def test_auth_fail_closed_unknown_when_unreachable(self):
+        findings = _findings_by_id(npdev_host.run_remote_checks("http://127.0.0.1:1/"))
+        self.assertEqual(findings["remote-auth-fail-closed"]["status"], "unknown")
 
     def test_run_checks_dispatches_to_remote_when_remote_is_given(self):
         with _FakeRemoteApp() as app:
             findings = _findings_by_id(npdev_host.run_checks(Path("."), plan={}, remote=app.url))
             self.assertIn("remote-reachable", findings)
             self.assertNotIn("app-running", findings)
+
+
+class HostCheckCliTargetTest(unittest.TestCase):
+    """OPS-3: `npdev host check --target <url>` needs only a URL; --app is for the local check."""
+
+    def test_target_without_app_runs_and_probes_auth(self):
+        import io
+        from contextlib import redirect_stdout
+
+        with _FakeRemoteApp() as app:
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                code = npdev_cli.main(["host", "check", "--target", app.url, "--json"])
+            self.assertIn(code, (0, 1))  # plain http -> remote-tls is FIX -> 1; never argparse's 2
+            result = json.loads(buffer.getvalue())
+            by_id = _findings_by_id(result["findings"])
+            self.assertEqual(by_id["remote-auth-fail-closed"]["status"], "ok")
+            self.assertEqual(result["remote"], app.url)
+
+    def test_neither_app_nor_target_is_a_clear_error_not_an_argparse_usage_dump(self):
+        import io
+        from contextlib import redirect_stderr
+
+        err = io.StringIO()
+        with redirect_stderr(err):
+            code = npdev_cli.main(["host", "check"])
+        self.assertEqual(code, 1)
+        self.assertIn("needs --app <dir> (local check) or --target <url>", err.getvalue())
+
+    def test_fix_with_target_is_refused(self):
+        import io
+        from contextlib import redirect_stderr
+
+        err = io.StringIO()
+        with redirect_stderr(err):
+            code = npdev_cli.main(["host", "check", "--target", "http://127.0.0.1:1", "--fix"])
+        self.assertEqual(code, 1)
+        self.assertIn("--fix applies to a local app only", err.getvalue())
 
 
 if __name__ == "__main__":
