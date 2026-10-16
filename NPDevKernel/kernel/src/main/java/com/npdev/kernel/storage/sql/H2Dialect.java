@@ -440,4 +440,10 @@ public final class H2Dialect implements SqlDialect {
                     "engine 'h2': generated keys come back inline. Check isInline() and use inlineClause(...).");
         }
     }
+
+    // OPS-10: H2's online, consistent backup. The path is embedded as a SQL string literal (H2 does not
+    // accept a bind parameter for BACKUP TO); single quotes are doubled.
+    public static String onlineBackupStatement(String zipPath) {
+        return "BACKUP TO '" + zipPath.replace("'", "''") + "'";
+    }
 }
