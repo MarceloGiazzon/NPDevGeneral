@@ -51,7 +51,8 @@ version or puts the previous version back and boots it again. The model/config a
 `npdev run app` (`--model` wins, then `model.json` in the CWD, then the model the app was generated from).
 The JSON result's `outcome` is `UPGRADED`, `REFUSED` (nothing was applied), `ROLLED_BACK` (new version failed,
 old one healthy again) or `ROLLBACK_FAILED` (the message names the backup directory); exit code 0 only for
-`UPGRADED`. `npdev upgrade --package ... --target ...` (installing a packaged artifact) is a separate mode and
+`UPGRADED`. `--stop` runs the app's own `_ops` stop script (it needs `_ops/app.pid`), so an app started by
+`npdev run app` rather than `_ops/Start-App.ps1` must be stopped by hand. `npdev upgrade --package ... --target ...` (installing a packaged artifact) is a separate mode and
 is unchanged.
 
 | Phase | What happens | Refuses / rolls back when |
