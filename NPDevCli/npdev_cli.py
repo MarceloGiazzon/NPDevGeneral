@@ -2928,6 +2928,12 @@ def run_app(args: argparse.Namespace) -> dict:
                 ))
                 return result
 
+            # OPS-5: remember whether a previous run left a runnable jar. Regeneration wipes the app
+            # tree (only data/logs/secrets are spared), so this must be sampled BEFORE GENERATE. What it
+            # buys is the warm Gradle daemon (no --no-daemon): a repeated `run app` reuses it, while a
+            # first-ever build, or --clean, keeps today's exact `--no-daemon clean build`.
+            had_previous_jar = final_app_out.is_dir() and _find_jar(final_app_out) is not None
+
             # --- GENERATE --------------------------------------------------------------------
             gen_ok, gen_output = _generate_phase_captured(root, args, final_app_out, deadline)
             if not gen_ok:
@@ -2941,7 +2947,8 @@ def run_app(args: argparse.Namespace) -> dict:
             # --- BUILD ---------------------------------------------------------------------
             result["phase"] = "BUILD"
             _write_run_app_progress(final_app_out, result["phase"])
-            build_ok, build_output, jar_path, _ = _build_phase(final_app_out, deadline)
+            incremental = had_previous_jar and not getattr(args, "clean", False)
+            build_ok, build_output, jar_path, _ = _build_phase(final_app_out, deadline, clean=not incremental)
             if not build_ok:
                 classified = _classify_build_failure(build_output)
                 result["diagnostics"].append(classified or _diag(
@@ -16783,6 +16790,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--keep-running", action="store_true",
         help="Do not stop a pre-existing instance already listening on --port before attempting to boot "
              "(default: PORT_IN_USE is refused outright, matching a fresh CI-style run's expectations).",
+    )
+    run_app.add_argument(
+        "--clean", action="store_true",
+        help="Force a clean --no-daemon build. Default: when a previous run left a jar, build "
+             "incrementally on the warm Gradle daemon.",
     )
 
     acceptance = subparsers.add_parser(
