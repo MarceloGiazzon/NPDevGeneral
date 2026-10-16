@@ -1872,9 +1872,54 @@ public final class CompiledModelCanonicalJson {
                 stepNode.put("timeoutSeconds", flowStep.getTimeoutSeconds());
             }
             stepNode.set("onTimeoutSteps", toFlowSteps(flowStep.getOnTimeoutSteps()));
+            // PROC-1: human-task metadata. Emitted ONLY when declared so every existing app's
+            // canonical JSON stays byte-identical (deterministic-generation baseline).
+            if (flowStep.getTask() != null) {
+                stepNode.set("task", humanTaskNode(flowStep.getTask()));
+            }
             steps.add(stepNode);
         }
         return steps;
+    }
+
+    private static ObjectNode humanTaskNode(CompiledHumanTask task) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("title", task.getTitle());
+        if (task.getDescription() != null) {
+            node.put("description", task.getDescription());
+        }
+        ObjectNode assignee = node.putObject("assignee");
+        if (task.getAssigneeUser() != null) {
+            assignee.put("user", task.getAssigneeUser());
+        }
+        com.fasterxml.jackson.databind.node.ArrayNode roles = assignee.putArray("roles");
+        task.getAssigneeRoles().forEach(roles::add);
+        node.put("outcomeField", task.getOutcomeField());
+        com.fasterxml.jackson.databind.node.ArrayNode outcomes = node.putArray("outcomes");
+        for (CompiledHumanTask.Outcome o : task.getOutcomes()) {
+            ObjectNode on = outcomes.addObject();
+            on.put("value", o.value());
+            if (o.label() != null) {
+                on.put("label", o.label());
+            }
+        }
+        com.fasterxml.jackson.databind.node.ArrayNode fields = node.putArray("fields");
+        for (CompiledHumanTask.Field f : task.getFields()) {
+            ObjectNode fn = fields.addObject();
+            fn.put("name", f.name());
+            fn.put("type", f.type());
+            if (f.label() != null) {
+                fn.put("label", f.label());
+            }
+            fn.put("required", f.required());
+            if (f.maxLength() != null) {
+                fn.put("maxLength", f.maxLength());
+            }
+        }
+        if (task.getRecord() != null) {
+            node.put("record", task.getRecord());
+        }
+        return node;
     }
 
     private static ObjectNode toActionMetadata(CompiledActionMetadata action) {
