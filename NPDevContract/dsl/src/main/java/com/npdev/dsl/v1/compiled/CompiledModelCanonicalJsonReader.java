@@ -1119,11 +1119,12 @@ public final class CompiledModelCanonicalJsonReader {
                     toExecutionPolicy(operationNode.get("executionPolicy")),
                     toOperationErrors(operationNode),
                     optionalText(operationNode, "sideEffects"),
-                    toAuth(operationNode.get("auth"))
+                    toAuth(operationNode.get("auth")),
+                    toObjectMap(operationNode.get("http"))
             ));
         }
         return new CompiledCapability(text(node, "name"), optionalText(node, "type"), operations,
-                toOrigin(node.get("origin")), optionalText(node, "uid"));
+                toOrigin(node.get("origin")), optionalText(node, "uid"), toObjectMap(node.get("http")));
     }
 
     private static CompiledEvent toEvent(JsonNode node) {

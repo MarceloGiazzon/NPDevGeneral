@@ -655,7 +655,8 @@ public final class ModelResolver {
                 null,
                 operations,
                 capability.getOrigin(),
-                capability.getUid()
+                capability.getUid(),
+                capability.getHttp()
         );
     }
 
@@ -699,7 +700,9 @@ public final class ModelResolver {
                 null,
                 mergedOperations,
                 mergedOrigin,
-                specialization.getUid()
+                specialization.getUid(),
+                // INT-1: a specialization may add operations to a base connector and inherit its baseUrl/auth.
+                specialization.getHttp().isEmpty() ? base.getHttp() : specialization.getHttp()
         );
     }
 
@@ -1291,7 +1294,8 @@ public final class ModelResolver {
                 operation.getExecutionPolicy(),
                 operation.getErrors(),
                 operation.getSideEffects(),
-                operation.getAuth()
+                operation.getAuth(),
+                operation.getHttp()
         );
     }
 

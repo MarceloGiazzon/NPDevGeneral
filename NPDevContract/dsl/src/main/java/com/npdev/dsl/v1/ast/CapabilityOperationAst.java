@@ -2,7 +2,9 @@ package com.npdev.dsl.v1.ast;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class CapabilityOperationAst {
     private final String name;
@@ -14,6 +16,7 @@ public final class CapabilityOperationAst {
     private final List<CapabilityOperationErrorAst> errors;
     private final String sideEffects;
     private final CapabilityAuthAst auth;
+    private final Map<String, Object> http;
 
     public CapabilityOperationAst(String name, List<String> input, List<String> output) {
         this(name, input, output, null, null, null);
@@ -41,6 +44,22 @@ public final class CapabilityOperationAst {
             String sideEffects,
             CapabilityAuthAst auth
     ) {
+        this(name, input, output, inputSchema, outputSchema, executionPolicy, errors, sideEffects, auth, Map.of());
+    }
+
+    /** INT-1: attaches the operation's declarative HTTP request -- see getHttp. */
+    public CapabilityOperationAst(
+            String name,
+            List<String> input,
+            List<String> output,
+            SchemaAst inputSchema,
+            SchemaAst outputSchema,
+            CapabilityPolicyAst executionPolicy,
+            List<CapabilityOperationErrorAst> errors,
+            String sideEffects,
+            CapabilityAuthAst auth,
+            Map<String, Object> http
+    ) {
         this.name = name;
         this.input = new ArrayList<>(input);
         this.output = new ArrayList<>(output);
@@ -50,6 +69,7 @@ public final class CapabilityOperationAst {
         this.errors = new ArrayList<>(errors);
         this.sideEffects = sideEffects;
         this.auth = auth;
+        this.http = http == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(http));
     }
 
     public String getName() { return name; }
@@ -84,5 +104,11 @@ public final class CapabilityOperationAst {
 
     public CapabilityAuthAst getAuth() {
         return auth;
+    }
+
+    /** INT-1: the opaque {@code http} request block (method, path, params, query, body, response)
+     *  of an http-connector operation; empty if none. */
+    public Map<String, Object> getHttp() {
+        return http;
     }
 }

@@ -406,12 +406,13 @@ public final class ModelCompiler {
                         toCompiledPolicy(operationAst.getExecutionPolicy()),
                         toCompiledOperationErrors(operationAst.getErrors()),
                         operationAst.getSideEffects(),
-                        toCompiledAuth(operationAst.getAuth())
+                        toCompiledAuth(operationAst.getAuth()),
+                        operationAst.getHttp()
                 ));
             }
             operations.sort(Comparator.comparing(operation -> normalize(operation.getName())));
             capabilities.add(new CompiledCapability(capabilityAst.getName(), capabilityAst.getType(), operations,
-                    toCompiledOrigin(capabilityAst.getOrigin()), capabilityAst.getUid()));
+                    toCompiledOrigin(capabilityAst.getOrigin()), capabilityAst.getUid(), capabilityAst.getHttp()));
             capabilityTypesByName.put(normalize(capabilityAst.getName()), capabilityAst.getType());
             Map<String, CompiledCapabilityOperation> operationMap = new LinkedHashMap<>();
             for (CompiledCapabilityOperation operation : operations) {
