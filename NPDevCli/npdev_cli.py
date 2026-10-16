@@ -13600,6 +13600,73 @@ def _studio_route_for(report: dict) -> str:
     return "needs-rebuild"
 
 
+def _live_apply(base_url: str, super_user_key: str, baseline_path: Path, model_path: Path,
+                final_app_root: Path, deadline: float, timeout: float) -> dict:
+    """ENG-5: THE live-vs-rebuild router, shared by `npdev monitor studio-apply` (Manager Studio) and
+    `npdev dev`'s inner loop (`dev_loop._try_hot_swap`). Classifies `model_path` against
+    `baseline_path` (`_studio_classify_and_route`), routes it (`_studio_route_for`), and for a
+    live-able change swaps the running app's compiled model via `/model-reload` (B28; brand-new
+    concepts are provisioned there too when the app opted in to REG-244). For a METADATA_ONLY diff it
+    additionally refreshes the descriptive catalogs + served UI manifest (`_metadata_hotswap_apply`,
+    RUN-24) -- a failure of that second half is reported under `metadataHotswap` but never flips the
+    result, the behaviour-affecting model swap already succeeded.
+
+    Never prints and never raises for an ordinary outcome. Returns `{ok, code, message, route,
+    classification, classificationReasons, modelReload, metadataHotswap}` with `code` one of
+    CLASSIFY_FAILED (ok False), NEEDS_REBUILD (ok True: the file is fine, the change just cannot go
+    live -- classifier verdict or an ENG-3 reload preflight refusal), the reload's own failure code
+    (ok False), or APPLIED_LIVE (ok True)."""
+    live: dict = {"ok": False, "code": None, "message": None, "route": None}
+    with tempfile.TemporaryDirectory(prefix="npdev-studio-metadata-") as emit_dir:
+        emit_to = Path(emit_dir)
+        try:
+            report = _studio_classify_and_route(repo_root(), baseline_path, model_path, deadline, emit_to)
+        except CliError as exc:
+            live["code"] = "CLASSIFY_FAILED"
+            live["message"] = str(exc)
+            return live
+
+        live["classification"] = report.get("classification")
+        live["classificationReasons"] = report.get("classificationReasons")
+        route = _studio_route_for(report)
+        live["route"] = route
+
+        if route == "needs-rebuild":
+            live["ok"] = True
+            live["code"] = "NEEDS_REBUILD"
+            live["message"] = (
+                "this change needs a full regenerate + rebuild to take effect live -- classification="
+                f"{report.get('classification')}: {'; '.join(report.get('classificationReasons') or [])}")
+            return live
+
+        reload_result = _model_reload_apply(base_url, super_user_key, str(model_path), timeout)
+        live["modelReload"] = reload_result
+        if not reload_result.get("ok") and reload_result.get("code") in _RELOAD_PREFLIGHT_REFUSALS:
+            # ENG-3: the running app refused the reload BEFORE swapping anything (the file on disk is
+            # fine, the app just cannot take it live): same outcome as the classifier's needs-rebuild.
+            live["ok"] = True
+            live["code"] = "NEEDS_REBUILD"
+            details = reload_result.get("details") or []
+            live["message"] = (
+                f"the running app refused a live reload ({reload_result.get('code')}): "
+                f"{reload_result.get('message')}" + (f" -- {'; '.join(details)}" if details else ""))
+            return live
+        if not reload_result.get("ok"):
+            live["code"] = reload_result.get("code") or "RELOAD_FAILED"
+            live["message"] = reload_result.get("message")
+            return live
+
+        if report.get("classification") == "METADATA_ONLY" and report.get("emitted"):
+            live["metadataHotswap"] = _metadata_hotswap_apply(
+                base_url, super_user_key, "METADATA_ONLY", report.get("classificationReasons") or [],
+                emit_to, final_app_root, timeout)
+
+    live["ok"] = True
+    live["code"] = "APPLIED_LIVE"
+    live["message"] = f"applied live via {route}"
+    return live
+
+
 def _run_monitor_studio_apply(args: argparse.Namespace) -> int:
     """`npdev monitor studio-apply` -- Wave 6.1 (NPDEV_FEATURE_PLAN_2026-09-24.md, the Manager's
     Studio tab). Sits alongside `monitor hotswap` (same probe_app + SUPER_USER_KEY discovery shape,
@@ -13669,56 +13736,11 @@ def _run_monitor_studio_apply(args: argparse.Namespace) -> int:
     base_url = app_record.get("probeBaseUrl")
     final_app_root = Path(app_record.get("finalAppRoot") or app_dir)
 
-    with tempfile.TemporaryDirectory(prefix="npdev-studio-metadata-") as emit_dir:
-        emit_to = Path(emit_dir)
-        try:
-            report = _studio_classify_and_route(repo_root(), baseline_path, model_path, deadline, emit_to)
-        except CliError as exc:
-            return _refuse("CLASSIFY_FAILED", str(exc))
-
-        result["classification"] = report.get("classification")
-        result["classificationReasons"] = report.get("classificationReasons")
-        route = _studio_route_for(report)
-        result["route"] = route
-
-        if route == "needs-rebuild":
-            result["ok"] = True
-            result["code"] = "NEEDS_REBUILD"
-            result["message"] = (
-                "this change needs a full regenerate + rebuild to take effect live -- classification="
-                f"{report.get('classification')}: {'; '.join(report.get('classificationReasons') or [])}")
-            _print_result(result, args)
-            return 0
-
-        reload_result = _model_reload_apply(base_url, raw_key, str(model_path), args.timeout)
-        result["modelReload"] = reload_result
-        if not reload_result.get("ok") and reload_result.get("code") in _RELOAD_PREFLIGHT_REFUSALS:
-            # ENG-3: the running app refused the reload BEFORE swapping anything (the file on disk is
-            # fine, the app just cannot take it live): same outcome as the classifier's needs-rebuild.
-            result["ok"] = True
-            result["code"] = "NEEDS_REBUILD"
-            details = reload_result.get("details") or []
-            result["message"] = (
-                f"the running app refused a live reload ({reload_result.get('code')}): "
-                f"{reload_result.get('message')}" + (f" -- {'; '.join(details)}" if details else ""))
-            _print_result(result, args)
-            return 0
-        if not reload_result.get("ok"):
-            result["code"] = reload_result.get("code") or "RELOAD_FAILED"
-            result["message"] = reload_result.get("message")
-            _print_result(result, args)
-            return 2
-
-        if report.get("classification") == "METADATA_ONLY" and report.get("emitted"):
-            result["metadataHotswap"] = _metadata_hotswap_apply(
-                base_url, raw_key, "METADATA_ONLY", report.get("classificationReasons") or [],
-                emit_to, final_app_root, args.timeout)
-
-    result["ok"] = True
-    result["code"] = "APPLIED_LIVE"
-    result["message"] = f"applied live via {route}"
+    live = _live_apply(base_url, raw_key, baseline_path, model_path, final_app_root, deadline,
+                       args.timeout)
+    result.update(live)
     _print_result(result, args)
-    return 0
+    return 0 if live["ok"] else 2
 
 
 def _run_monitor_logs(args: argparse.Namespace) -> int:
