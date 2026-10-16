@@ -6,6 +6,7 @@ import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.dsl.v1.settings.SettingResolver;
 import com.npdev.dsl.v1.settings.SettingScope;
 import com.npdev.dsl.v1.settings.SettingStore;
+import com.npdev.dsl.v1.settings.SettingTarget;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.strategy.RegenerationPolicy;
 import com.npdev.generator.templates.TemplateEngine;
@@ -63,6 +64,32 @@ public class BusinessUiEmitterGuidePageManifestTest {
         assertTrue(manifest.contains("\"name\" : \"None\""), manifest);
         assertTrue(manifest.contains("\"defaultGuidePage\" : \"Default\""), manifest);
         assertTrue(manifest.contains("\"guidePage\" : \"Default\""), manifest);
+    }
+
+    @Test
+    void builtinGuidePagesDoNotPinThemeSoAppSettingWins() throws Exception {
+        CompiledModel model = compile("""
+                {
+                  "namespace": "guidepage.manifest.demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
+                  ]
+                }
+                """);
+
+        SettingResolver resolver = new SettingResolver(SettingStore.builder()
+                .layer(SettingScope.APP, SettingTarget.APP_SELECTOR,
+                        java.util.Map.of("ui.theme.mode", "dark"), "test")
+                .build());
+        String manifest = emitAndReadManifest(model, resolver);
+
+        assertTrue(!manifest.contains("\"mode\" : \"light\""), manifest);
+        // The three built-in pages carry null mode/density; the app-wide theme block carries the setting.
+        assertTrue(manifest.split("\"mode\" : null", -1).length - 1 >= 3, manifest);
+        assertTrue(manifest.split("\"density\" : null", -1).length - 1 >= 3, manifest);
+        assertTrue(manifest.contains("\"mode\" : \"dark\""), manifest);
     }
 
     @Test

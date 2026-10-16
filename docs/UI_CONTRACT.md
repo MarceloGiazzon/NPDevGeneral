@@ -204,7 +204,9 @@ sources feed it, in cascade order:
 2. **Per-GuidePage override** — a GuidePage's own `theme.mode`/`theme.density` (model-declared,
    `guidePages[].theme`), applied by `applyGuidePage()` immediately after. Left `null` in the
    manifest when the GuidePage doesn't declare them, so the app-wide default is what actually shows
-   for every page that hasn't opted into a page-specific override.
+   for every page that hasn't opted into a page-specific override. The three built-in GuidePages
+   (`Default`, `Minimal`, `None`) declare no theme at all (`GuidePageDefaults`), so they always follow
+   the app-wide default; only an app-declared GuidePage with its own `theme.mode` pins a mode.
 
 `mode: "system"` is applied as the ABSENCE of the `data-np-theme` attribute (removed, not set to the
 literal string `"system"`) — that is what lets the `prefers-color-scheme` media query decide. Both
