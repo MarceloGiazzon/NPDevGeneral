@@ -263,6 +263,31 @@ create/display/update/delete flags), not the same catalog, so overlaying one ont
 conflate two unrelated concerns — left as a known, accepted boundary rather than force a shoehorned
 merge. Declared Panels/Store/Box View sections are likewise not covered (no concept to scope by).
 
+## View renderers (`window.NPDevViews`)
+
+New business-UI list views and detail-dialog sections do NOT grow `business-ui-app.mustache`. They
+are plain static files under `NPDevGenerator/generator/src/main/resources/npdev-templates/static-assets/business-ui/views/`,
+listed in `BusinessUiEmitter.BUSINESS_UI_VIEW_ASSETS`, copied verbatim (`TemplateEngine.raw`, so they
+are NOT Mustache and `{{` is safe in them) to `static/npdev-business-ui/views/`, and loaded by one
+`<script src="./views/<name>.js">` tag in `business-ui-index.mustache` after `./views/registry.js` and
+before `./app.js`. The index carries no model data; whatever a view needs per concept goes in the
+concept node of `generated-ui-manifest.json`.
+
+- **List views.** `NPDevViews.register(name, { render(ctx), pageSize, label })`. A concept's manifest
+  node carries `views`, always starting with `"table"`; a name is offered in the Table | ... switcher
+  only if it is in that list AND its script registered it. With `views: ["table"]` there is no
+  switcher and the grid is unchanged. The chosen view is remembered per concept in `localStorage`.
+  A view that throws falls back to the table with a toast. `render(ctx)` returns an HTMLElement;
+  `ctx` is documented at the top of `views/registry.js`: `concept`, `records`, `totalElements`, and
+  `helpers.{openDetails, openForm, setField, reload, notify, listParams, fetchJson, headers, field,
+  renderValue, recordTitle}`. Writes go through `helpers.setField`, i.e. `POST {endpointBase}/batch`
+  `setField`, so permissions, invariants and audit apply (read `results[0].ok`: the endpoint answers
+  200 even when a row fails).
+- **Detail sections.** `NPDevViews.registerDetailSection(name, { render(ctx) })`; every registered
+  section is rendered by `openDetails` below the field rows, in registration order, and a section that
+  throws is logged and skipped. `ctx = { concept, record, helpers: { fetchJson, headers, field,
+  renderValue, setField(fieldName, value), notify, close } }`.
+
 ## Breadcrumbs and default route (W1.6)
 
 The topbar breadcrumb is a projection of the same nav tree `renderSidebar()` already draws

@@ -151,6 +151,13 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 "src/main/resources/static/npdev-business-ui/style.css",
                 templates.render("business-ui-style.mustache", shellCtx)
         );
+        // UI-0: plain (non-Mustache) view assets, copied verbatim; see BUSINESS_UI_VIEW_ASSETS.
+        for (String asset : BUSINESS_UI_VIEW_ASSETS) {
+            writer.writeRelative(
+                    "src/main/resources/static/npdev-business-ui/views/" + asset,
+                    templates.raw("static-assets/business-ui/views/" + asset)
+            );
+        }
         writer.writeRelative(
                 "src/main/resources/static/npdev-business-ui/generated-ui-manifest.json",
                 manifestJson(model, persistedConcepts, superUserRole, resolver, fieldOrigins)
@@ -224,6 +231,17 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     }
 
     private static final String MENU_CONCEPT_NAME = "workspace::Menu";
+
+    /**
+     * Plain JS/CSS assets under static-assets/business-ui/views/, emitted verbatim to
+     * static/npdev-business-ui/views/. Order is documentation only; the load order is the
+     * script tags in business-ui-index.mustache (registry.js first). Each new view appends its
+     * file here AND adds the matching tag there.
+     */
+    static final List<String> BUSINESS_UI_VIEW_ASSETS = List.of(
+            "registry.js",
+            "views.css"
+    );
 
     /**
      * {@code workspace::Menu} starts with zero seeded rows from the generator side -- deliberately.
@@ -447,6 +465,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                     extensionFieldOrigins.getOrDefault(concept.getName(), Map.of())));
             node.put("list", manifestList(concept, idField, declaredColumnsByConcept.get(concept.getName())));
             node.put("documents", documentsByConcept.getOrDefault(concept.getName(), List.of()));
+            // UI-0: list views the concept offers. Always starts with "table"; board/calendar views
+            // (UI-3/UI-6) append their name when the concept qualifies.
+            List<String> views = new ArrayList<>();
+            views.add("table");
+            node.put("views", views);
             Map<String, Object> actions = new LinkedHashMap<>();
             actions.put("list", true);
             actions.put("create", true);
