@@ -522,9 +522,16 @@
       logoutBtn.type = "button";
       logoutBtn.textContent = shellString("shell.signOut", "Sign out");
       logoutBtn.addEventListener("click", function () {
-        TOKEN_STORAGE_KEYS.forEach(function (key) { localStorage.removeItem(key); });
-        sessionStorage.clear();
-        window.location.reload();
+        // SEC-2: the npdev_jwt cookie is HttpOnly, so only the server can expire it. Reload after
+        // the call settles (success, failure or an apiKey app with no logout endpoint alike).
+        var headers = authHeaders(findToken());
+        fetch("/api/auth/logout", { method: "POST", headers: headers })
+          .catch(function () {})
+          .then(function () {
+            TOKEN_STORAGE_KEYS.forEach(function (key) { localStorage.removeItem(key); });
+            sessionStorage.clear();
+            window.location.reload();
+          });
       });
       el.identity.appendChild(logoutBtn);
     } else {

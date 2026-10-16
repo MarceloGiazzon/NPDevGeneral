@@ -66,6 +66,11 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
         if (uri.equals("/api/auth/login") || uri.equals("/api/v1/auth/login")) {
             return true;
         }
+        // SEC-2: logout must work with an expired/invalid cookie (that is when a stale session most
+        // needs clearing), and forging a call to it only signs the victim out.
+        if (uri.equals("/api/auth/logout") || uri.equals("/api/v1/auth/logout")) {
+            return true;
+        }
         // Self-disabling: BootstrapAdminController only succeeds while identity_users is empty for
         // the target tenant, so exempting it here doesn't widen the attack surface beyond a one-time
         // first-admin creation -- same chicken-and-egg reasoning as the login exemption above.
