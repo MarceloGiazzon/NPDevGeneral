@@ -93,6 +93,49 @@ public class BusinessUiEmitterViewAssetsTest {
     }
 
     @Test
+    void historySectionIsEmittedAndLoadedBeforeAppJs() throws Exception {
+        Path out = emit();
+        Path history = out.resolve(STATIC + "views/history.js");
+        assertTrue(Files.exists(history), "views/history.js must be emitted");
+        assertEquals(new TemplateEngine("npdev-templates/").raw("static-assets/business-ui/views/history.js"),
+                Files.readString(history));
+        String index = Files.readString(out.resolve(STATIC + "index.html"));
+        assertTrue(index.indexOf("./views/registry.js") < index.indexOf("./views/history.js"),
+                "history.js registers into NPDevViews, so registry.js must come first");
+        assertTrue(index.indexOf("./views/history.js") < index.indexOf("./app.js"));
+        assertTrue(Files.readString(out.resolve(STATIC + "views/views.css")).contains(".detail-history"));
+    }
+
+    @Test
+    void historyParsesStructuredChangesAndFallsBackToFieldDiff() throws Exception {
+        Assumptions.assumeTrue(nodeOnPath(), "node is not on PATH");
+        Path out = emit();
+        Path script = out.resolve("history-check.js");
+        Files.writeString(script, """
+                const vm = require("vm"); const fs = require("fs"); const assert = require("assert");
+                globalThis.window = globalThis;
+                vm.runInThisContext(fs.readFileSync(process.argv[2], "utf8"));
+                vm.runInThisContext(fs.readFileSync(process.argv[3], "utf8"));
+                const sections = NPDevViews.detailSections();
+                assert.strictEqual(sections.length, 1);
+                assert.strictEqual(sections[0].name, "history");
+                const parse = sections[0].impl._parseChanges;
+                const legacy = parse({ fieldDiff: "status: OPEN -> CLOSED; qty: 1 -> 2" });
+                assert.strictEqual(legacy.length, 2);
+                assert.deepStrictEqual(legacy[0], { field: "status", before: "OPEN", after: "CLOSED" });
+                const structured = parse({
+                  fieldDiff: "status: OPEN -> CLOSED; qty: 1 -> 2",
+                  fieldChanges: JSON.stringify([{ field: "note", before: "a; b -> c", after: "d" }])
+                });
+                assert.deepStrictEqual(structured, [{ field: "note", before: "a; b -> c", after: "d" }]);
+                assert.deepStrictEqual(parse(null), []);
+                """);
+        assertEquals(0, run(out, "node", script.toString(),
+                out.resolve(STATIC + "views/registry.js").toString(),
+                out.resolve(STATIC + "views/history.js").toString()));
+    }
+
+    @Test
     void manifestListsTheTableViewForEveryConcept() throws Exception {
         String manifest = Files.readString(emit().resolve(STATIC + "generated-ui-manifest.json"));
         assertTrue(manifest.contains("\"views\" : [ \"table\" ]"), manifest);
