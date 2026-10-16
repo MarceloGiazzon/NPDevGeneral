@@ -914,12 +914,31 @@ def _check_remote_health_details(url: str) -> Finding:
 
 
 def _check_remote_auth_fail_closed(url: str) -> Finding:
-    # Cannot be determined without knowing one of this app's own API routes -- reporting a guessed
-    # ok/fix here would be exactly the false confidence H15's own warning forbids.
-    return _finding("remote-auth-fail-closed", "unknown", "Auth rejects an unkeyed call",
-                     "Cannot verify from outside without knowing one of this app's API routes -- "
-                     "run `npdev host check` locally, or call a known endpoint by hand with no key "
-                     "and confirm it is rejected.")
+    # OPS-3: every generated app serves GET /api/flows behind the API-key filter (it is also the
+    # default smoke check), so an unkeyed call to it is a real probe. 401/403 (apikey or JWT mode)
+    # is fail-closed; a 200 means anyone can read and run the app's flows. urllib follows
+    # redirects, so a final 200 on a DIFFERENT url is a redirect to a sign-in page -- also a refusal.
+    probe = url.rstrip("/") + "/api/flows"
+    title = "Auth rejects an unkeyed call"
+    status, _body, _headers, final_url = _http_get(probe)
+    if status is None:
+        return _finding("remote-auth-fail-closed", "unknown", title,
+                         f"Could not reach {probe} -- see the reachability check.")
+    if status in (401, 403):
+        return _finding("remote-auth-fail-closed", "ok", title,
+                         f"GET /api/flows with no key was refused with HTTP {status}.")
+    if status == 200 and final_url and final_url.rstrip("/") != probe:
+        return _finding("remote-auth-fail-closed", "ok", title,
+                         f"GET /api/flows with no key was redirected to {final_url} (sign-in).")
+    if status == 200:
+        return _finding("remote-auth-fail-closed", "fix", title,
+                         "GET /api/flows answered 200 with NO credential -- anyone can read and run "
+                         "this app's flows.",
+                         fix="Set NPDEV_AUTH_APIKEYS / npdev.auth.enabled=true and redeploy")
+    return _finding("remote-auth-fail-closed", "unknown", title,
+                     f"GET /api/flows with no key answered HTTP {status} -- cannot tell whether "
+                     "auth is fail-closed; call a known endpoint by hand with no key and confirm "
+                     "it is rejected.")
 
 
 def run_remote_checks(url: str) -> list[Finding]:
