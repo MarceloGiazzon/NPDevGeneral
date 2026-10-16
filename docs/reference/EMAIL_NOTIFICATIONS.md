@@ -115,6 +115,27 @@ Avoid literal text that happens to equal a state key, or starts with `$`.
 keys are declared.** The key names are yours; declare them as `to, subject, body, templateVars`
 (`NPDevSamples/pigmentampas`, procedure `NotifyTradeRecipient`).
 
+## Operator alerts
+
+Independent of the `mail` capability a model declares, every generated app can e-mail its operator
+when something needs attention. Set one variable and the app mails a short digest, using the SMTP
+settings it already has (`npdev.mail.smtp.*`, the `NPDEV_MAIL_SMTP_*` variables):
+
+| Environment variable | Property | Meaning |
+|---|---|---|
+| `NPDEV_ALERTS_MAIL_TO` | `npdev.alerts.mail-to` | Recipient(s), comma separated. Blank (default) = alerts off. |
+| `NPDEV_ALERTS_BASE_URL` | `npdev.alerts.base-url` | Public URL of the app, used to build links in the mail (optional). |
+| `NPDEV_ALERTS_INTERVAL_MS` | `npdev.alerts.interval-ms` | Check interval, default 300000 (5 minutes). |
+
+What triggers a mail: a flow execution that is `FAILED`, `FAILED_PERMANENT` or `STUCK` (reported once
+per execution; failures are read from the recent 100-execution window of the execution monitor, stuck
+ones from the stuck queue), and the app's health leaving UP or returning to UP. Only the home tenant
+is watched. The mail carries ids, flow names, status and error codes, never row data or keys. With no
+recipient or no SMTP host the app logs one `operator alerts are off` line and sends nothing.
+
+An app cannot report that its own process is down: for that, the Docker observability profile's
+Prometheus/Alertmanager rule (`NPDevAppDown`, see `docs/DEPLOYMENT.md`) still applies.
+
 ## Verification
 
 - `InProcMailCapabilityAdapterTest` / `SmtpMailCapabilityAdapterTest` (the latter against a real
