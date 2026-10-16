@@ -568,7 +568,8 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalText(actionNode, "afterAction"),
                     optionalText(actionNode, "visibleWhen"),
                     readLabelLocales(actionNode, "label"),
-                    toStringList(actionNode.get("checkBalances"))));
+                    toStringList(actionNode.get("checkBalances")),
+                    actionNode.path("review").asBoolean(false)));
         }
         return out;
     }

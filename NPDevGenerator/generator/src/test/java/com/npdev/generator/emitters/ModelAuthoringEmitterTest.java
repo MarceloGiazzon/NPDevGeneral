@@ -164,6 +164,35 @@ class ModelAuthoringEmitterTest {
     }
 
     /**
+     * AI-6: a maker can author a choice list (enum), a relationship (reference) and a file field
+     * from the Add-field, Add-concept and Change-field-type forms instead of hand-editing JSON. The
+     * DSL requires enumValues for an enum and reference.target for a reference; the page must produce
+     * exactly those, and refuse an enum with no values / a reference with no target.
+     */
+    @Test
+    void emitsEnumReferenceAndFileFieldKinds() throws Exception {
+        Path generated = temp.resolve("generated-field-kinds");
+        new ModelAuthoringEmitter(new TemplateEngine("npdev-templates/"),
+                new GeneratedSourceWriter(generated, new RegenerationPolicy())).emit(compile(writeSimpleModel()));
+        String html = Files.readString(generated.resolve("src/main/resources/static/model-authoring.html"));
+
+        assertTrue(html.contains("'enum', 'reference', 'file'"),
+                "The field-type pickers must offer enum, reference and file:\n" + html);
+        assertTrue(html.contains("function applyFieldKind"),
+                "Expected one helper turning the extras inputs into DSL-valid field shapes:\n" + html);
+        assertTrue(html.contains("field.reference = { target: targetName }"),
+                "A reference field must carry reference.target:\n" + html);
+        assertTrue(html.contains("field.enumValues = list"),
+                "An enum field must carry enumValues:\n" + html);
+        assertTrue(html.contains("An enum field needs at least one value."),
+                "An enum with no values must be refused rather than exported:\n" + html);
+        assertTrue(html.contains("id=\"np-new-field-extras\"") && html.contains("id=\"np-retype-extras\""),
+                "Both the Add-field and Change-field-type forms need the type-specific inputs:\n" + html);
+        assertFalse(html.contains("reference-typed and enum fields in the Add-field forms"),
+                "The deferred note must no longer claim enum/reference authoring is missing:\n" + html);
+    }
+
+    /**
      * Every button the page renders must actually be wired to a handler. This guard exists because
      * slice 2 shipped an Export button with no {@code addEventListener} for one revision: the page
      * looked complete, every unit assertion still passed (the markup and the handler function both

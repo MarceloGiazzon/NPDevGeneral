@@ -13,7 +13,9 @@ public record CompiledWorkbenchAction(
         String visibleWhen,
         Map<String, String> labelLocales,
         // Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): see WorkbenchActionAst's javadoc.
-        List<String> checkBalances
+        List<String> checkBalances,
+        // AI-7: see WorkbenchActionAst#review.
+        boolean review
 ) {
     public CompiledWorkbenchAction {
         labelLocales = (labelLocales == null || labelLocales.isEmpty()) ? Map.of() : Map.copyOf(labelLocales);
@@ -31,6 +33,20 @@ public record CompiledWorkbenchAction(
             String visibleWhen,
             Map<String, String> labelLocales
     ) {
-        this(procedure, label, inputFields, applyTo, afterAction, visibleWhen, labelLocales, List.of());
+        this(procedure, label, inputFields, applyTo, afterAction, visibleWhen, labelLocales, List.of(), false);
+    }
+
+    /** Pre-AI-7 8-arg shape (no review dialog). */
+    public CompiledWorkbenchAction(
+            String procedure,
+            String label,
+            List<String> inputFields,
+            CompiledWorkbenchActionApplyTo applyTo,
+            String afterAction,
+            String visibleWhen,
+            Map<String, String> labelLocales,
+            List<String> checkBalances
+    ) {
+        this(procedure, label, inputFields, applyTo, afterAction, visibleWhen, labelLocales, checkBalances, false);
     }
 }

@@ -308,6 +308,9 @@ final class AutoPanelExpander {
                 if (hasText(typedAction.visibleWhen())) {
                     action.put("visibleWhen", typedAction.visibleWhen().trim());
                 }
+                if (typedAction.review()) {
+                    action.put("review", true);
+                }
                 actions.add(action);
             }
             return actions;
