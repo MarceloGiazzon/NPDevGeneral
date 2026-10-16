@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from failure_signatures import diagnostic_signature, normalize
-from npdev_ai_common import build_root, repo_root
+from npdev_ai_common import build_root, cards_dir, repo_root
 
 
 def _load_candidates(root: Path) -> list[dict[str, Any]]:
@@ -47,11 +47,11 @@ def _load_candidates(root: Path) -> list[dict[str, Any]]:
 
 
 def _existing_card_signatures(root: Path) -> set[str]:
-    cards_dir = root / "knowledge" / "cards"
+    directory = cards_dir(root)
     sigs: set[str] = set()
-    if not cards_dir.exists():
+    if not directory.exists():
         return sigs
-    for path in cards_dir.glob("*.json"):  # non-recursive: _drafts/ excluded by design
+    for path in directory.glob("*.json"):  # non-recursive: _drafts/ excluded by design
         try:
             card = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
@@ -185,7 +185,7 @@ def main(argv: list[str]) -> int:
     for w in written:
         print(f"  {w}")
     print("\nReview each, then promote the good ones into the repo, e.g.:")
-    print(f"  <review> && move a draft into {root / 'knowledge' / 'cards'} && python scripts/ai/build_knowledge.py")
+    print(f"  <review> && move a draft into {cards_dir(root)} && python scripts/ai/build_knowledge.py")
     return 0
 
 

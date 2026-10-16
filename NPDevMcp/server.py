@@ -439,7 +439,7 @@ def tool_check_support(arguments: dict[str, Any]) -> dict[str, Any]:
     """Cheap pre-check: is a feature a KNOWN gap/constraint/lifted item? Never fabricates a positive."""
     feature = (arguments.get("feature") or "").strip()
     if not feature:
-        return _text_error("feature is required (a ledger id like 'ARCH-10b' or free text like 'panel orderBy')")
+        return _text_error("feature is required (a ledger id like 'REG-244' or free text like 'panel orderBy')")
     caps_path = build_root() / "npdev-ai" / "capabilities.json"
     if not caps_path.exists():
         return _text_error(
@@ -1305,7 +1305,7 @@ TOOLS: list[dict[str, Any]] = [
         "name": "npdev_check_support",
         "description": (
             "Cheap pre-check BEFORE committing to a model shape: is a feature a KNOWN gap, "
-            "constraint, or already-lifted boundary? Accepts a ledger id ('ARCH-10b') or free text "
+            "constraint, or already-lifted boundary? Accepts a ledger id ('REG-244') or free text "
             "('panel orderBy', 'file upload'). Returns the tracked status (DONE/LIFTED/OPEN/PARTIAL/"
             "BOUNDARY) with notes, or an explicit 'unknown' -- it never fabricates a 'supported'. "
             "For whether a shape is AUTHORABLE at all, use npdev_get_schema instead."
