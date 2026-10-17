@@ -359,12 +359,12 @@ public final class H2Dialect implements SqlDialect {
         // that re-runs whenever its checksum changes (any model edit regenerates it). A bare
         // "ADD CONSTRAINT" is not idempotent -- the re-run against a DB that already has the
         // constraint fails with "Constraint already exists" and refuses the whole boot. H2 supports
-        // "DROP CONSTRAINT IF EXISTS", so drop-then-add makes the statement idempotent the same way
-        // Postgres's catalog-guarded DO $$ block is. Genuinely a different shape, not a reworded one,
-        // which is why this is a dialect method rather than a shared template.
+        // "ADD CONSTRAINT IF NOT EXISTS", an existence guard like Postgres's catalog-guarded DO $$
+        // block. It used to drop-then-add instead, and H2 refuses to drop a UNIQUE constraint that a
+        // foreign key depends on -- exactly the anchor of a `via` reference -- so any model with a
+        // via-reference failed to boot on H2.
         String statement = ddlStatement.endsWith(";") ? ddlStatement : ddlStatement + ";";
-        return "ALTER TABLE " + tableName + " DROP CONSTRAINT IF EXISTS " + constraintName + ";\n"
-                + statement + "\n";
+        return SqlDdlGuards.insertAfter(statement, "ADD CONSTRAINT", "IF NOT EXISTS") + "\n";
     }
 
     private static String schemaPredicate(String schema) {

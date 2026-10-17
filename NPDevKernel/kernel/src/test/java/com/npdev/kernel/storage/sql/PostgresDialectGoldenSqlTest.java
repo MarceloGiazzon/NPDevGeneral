@@ -223,9 +223,10 @@ class PostgresDialectGoldenSqlTest {
         @Test
         @DisplayName("SchemaRealizationEmitter.addConstraintIfMissing, H2 arm (REG-38 idempotence)")
         void h2GuardedConstraintDdlIsUnchanged() {
+            // Existence-guarded, never drop-then-add: H2 refuses to drop a UNIQUE constraint a
+            // foreign key depends on (a via-reference's anchor), which failed every such boot.
             assertEquals(
-                    "ALTER TABLE t DROP CONSTRAINT IF EXISTS ux_t_a;\n"
-                            + "ALTER TABLE t ADD CONSTRAINT ux_t_a UNIQUE (a);\n",
+                    "ALTER TABLE t ADD CONSTRAINT IF NOT EXISTS ux_t_a UNIQUE (a);\n",
                     h2.guardedConstraintDdl("ux_t_a", "t", "ALTER TABLE t ADD CONSTRAINT ux_t_a UNIQUE (a);"));
         }
 
@@ -233,7 +234,26 @@ class PostgresDialectGoldenSqlTest {
         @DisplayName("a DDL statement missing its semicolon still gets one, as before")
         void guardedDdlTerminatesTheStatement() {
             assertTrue(h2.guardedConstraintDdl("c", "t", "ALTER TABLE t ADD CONSTRAINT c UNIQUE (a)")
-                    .endsWith("ALTER TABLE t ADD CONSTRAINT c UNIQUE (a);\n"));
+                    .endsWith("ALTER TABLE t ADD CONSTRAINT IF NOT EXISTS c UNIQUE (a);\n"));
+        }
+
+        @Test
+        @DisplayName("H2 guarded constraint DDL re-runs on a live DB where an FK depends on the unique anchor")
+        void h2GuardedConstraintDdlRerunsWithDependentForeignKey() throws Exception {
+            String uniqueDdl = h2.guardedConstraintDdl("uq_p_sku", "p", "ALTER TABLE p ADD CONSTRAINT uq_p_sku UNIQUE (sku)");
+            String fkDdl = h2.guardedConstraintDdl("fk_c_sku", "c",
+                    "ALTER TABLE c ADD CONSTRAINT fk_c_sku FOREIGN KEY (sku) REFERENCES p (sku)");
+            try (java.sql.Connection connection = java.sql.DriverManager.getConnection(
+                    "jdbc:h2:mem:guarded_ddl_" + System.nanoTime() + ";DB_CLOSE_DELAY=-1");
+                 java.sql.Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE p (id INT PRIMARY KEY, sku VARCHAR(20))");
+                statement.execute("CREATE TABLE c (id INT PRIMARY KEY, sku VARCHAR(20))");
+                // Twice: the Flyway repeatable migration re-runs after any model edit.
+                for (int run = 0; run < 2; run++) {
+                    statement.execute(uniqueDdl);
+                    statement.execute(fkDdl);
+                }
+            }
         }
 
         @Test

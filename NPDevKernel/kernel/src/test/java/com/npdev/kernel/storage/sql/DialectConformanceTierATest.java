@@ -771,7 +771,9 @@ class DialectConformanceTierATest {
     void guardedConstraintDdl(SqlDialect dialect) {
         String ddl = "ALTER TABLE t ADD CONSTRAINT ux_t_a UNIQUE (a)";
         String guarded = dialect.guardedConstraintDdl("ux_t_a", "t", ddl);
-        assertTrue(guarded.contains(ddl), dialect.name() + " dropped the statement: " + guarded);
+        // Verbatim for wrapper engines; a keyword engine (H2) guards in place as ADD CONSTRAINT IF NOT EXISTS.
+        assertTrue(guarded.contains(ddl) || guarded.contains("ADD CONSTRAINT IF NOT EXISTS ux_t_a UNIQUE (a)"),
+                dialect.name() + " dropped the statement: " + guarded);
         assertTrue(guarded.contains("ux_t_a") && guarded.contains("t"), dialect.name());
         // REG-38: this lands in a Flyway *repeatable* migration that re-runs on any checksum change,
         // so a bare ADD CONSTRAINT fails the whole boot the second time. Every engine must guard.

@@ -62,7 +62,7 @@ final class SchemaRealizationEmitterExplicitIndexTest {
                 "CREATE INDEX IF NOT EXISTS idxx_shipments_carrier_warehouse_id ON shipments (tenant_id, carrier, warehouse_id);"),
                 v1Sql);
         assertTrue(v1Sql.contains(
-                "ADD CONSTRAINT uqx_shipments_ux_shipment_tracking UNIQUE (tenant_id, tracking_code)"), v1Sql);
+                "ADD CONSTRAINT IF NOT EXISTS uqx_shipments_ux_shipment_tracking UNIQUE (tenant_id, tracking_code)"), v1Sql);
         assertFalse(v1Sql.contains("dead"), "an index with no resolvable fields must be skipped entirely: " + v1Sql);
     }
 

@@ -42,7 +42,7 @@ final class SchemaRealizationEmitterCompoundUniqueTest {
         Path schemaDir = outRoot.resolve("src/main/resources/db/schema-realization");
         String v1Sql = Files.readString(schemaDir.resolve("V1__npdev_schema_realization.sql"));
         assertTrue(
-                v1Sql.contains("ADD CONSTRAINT uq_memberships_org_id_email UNIQUE (tenant_id, org_id, email)"),
+                v1Sql.contains("ADD CONSTRAINT IF NOT EXISTS uq_memberships_org_id_email UNIQUE (tenant_id, org_id, email)"),
                 v1Sql
         );
     }

@@ -1424,7 +1424,7 @@ public final class SchemaRealizationEmitter {
     ) {
         // Both arms of the engine switch this method used to hold are now dialect methods: Postgres
         // guards with a DO $$ ... $$ catalog check over INFORMATION_SCHEMA.TABLE_CONSTRAINTS, H2 with
-        // DROP CONSTRAINT IF EXISTS then ADD (REG-38 -- this lands in a Flyway *repeatable* migration,
+        // ADD CONSTRAINT IF NOT EXISTS (REG-38 -- this lands in a Flyway *repeatable* migration,
         // so the statement has to be idempotent). Those are different SHAPES, not different keywords,
         // which is exactly the kind of difference an emitter should not be carrying. MySQL and SQL
         // Server, neither of which has an anonymous DO block, now extend one dialect method instead
