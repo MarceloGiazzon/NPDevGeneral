@@ -284,6 +284,93 @@ public class KernelFacade {
         }
     }
 
+    /**
+     * PROC-7: the audited wrapper over {@link KernelRunner#retryFailedExecution}: re-run a FAILED
+     * execution from the step that failed. Same authorization stance as {@link #unstickExecution}
+     * -- the SUPERUSER gate at the controller IS the authorization (the super-key lives under tenant
+     * {@code __system__}, so no tenant/actor policy predicate could ever admit it).
+     *
+     * @return empty when no such execution exists, else the re-entered run's result
+     * @throws IllegalStateException {@code NOT_RETRYABLE...} -- surfaced by the controller as a 409
+     */
+    public Optional<ExecutionResult> retryExecution(String executionId, ExecutionContext requesterContext) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        metricInc("npdev.api.admin.retry", requester, Map.of("outcome", "ATTEMPT"));
+        Optional<FlowInstance> before = flowInstanceStore.findByExecutionId(executionId);
+        if (before.isEmpty()) {
+            audit(requester, "ADMIN_RETRY_EXECUTION", "EXECUTION", executionId, OUTCOME_ALLOW, "not_found", Map.of());
+            metricInc("npdev.api.admin.retry", requester, Map.of("outcome", "NOT_FOUND"));
+            return Optional.empty();
+        }
+        try {
+            // The kernel re-enters the flow as the instance's own tenant/actor (the resume role),
+            // not as the operator; the operator is only the audited requester.
+            Optional<ExecutionResult> result = kernelRunner.retryFailedExecution(executionId, requester);
+            audit(requester, "ADMIN_RETRY_EXECUTION", "EXECUTION", executionId, OUTCOME_ALLOW, "ok",
+                    Map.of("flowName", safe(before.get().flowName())));
+            metricInc("npdev.api.admin.retry", requester, Map.of("outcome", "ALLOW"));
+            metricObserveMs("npdev.api.admin.retry.duration_ms", startedAtMs, requester, Map.of("outcome", "ALLOW"));
+            return result;
+        } catch (IllegalStateException notRetryable) {
+            audit(requester, "ADMIN_RETRY_EXECUTION", "EXECUTION", executionId, OUTCOME_DENY, "not_retryable",
+                    Map.of("status", safe(before.get().status() == null ? null : before.get().status().name())));
+            metricInc("npdev.api.admin.retry", requester, Map.of("outcome", "NOT_RETRYABLE"));
+            throw notRetryable;
+        }
+    }
+
+    /**
+     * PROC-7: the audited wrapper over {@link KernelRunner#cancelExecution}: park a WAITING_EVENT or
+     * STUCK execution as FAILED_PERMANENT / {@code CANCELLED_BY_OPERATOR}. Same authorization stance
+     * as {@link #unstickExecution}.
+     *
+     * @return the persisted instance, or empty when no such execution exists
+     * @throws IllegalStateException {@code NOT_CANCELLABLE...} -- surfaced by the controller as a 409
+     */
+    public Optional<FlowInstance> cancelExecution(String executionId, ExecutionContext requesterContext) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        metricInc("npdev.api.admin.cancel", requester, Map.of("outcome", "ATTEMPT"));
+        Optional<FlowInstance> before = flowInstanceStore.findByExecutionId(executionId);
+        if (before.isEmpty()) {
+            audit(requester, "ADMIN_CANCEL_EXECUTION", "EXECUTION", executionId, OUTCOME_ALLOW, "not_found", Map.of());
+            metricInc("npdev.api.admin.cancel", requester, Map.of("outcome", "NOT_FOUND"));
+            return Optional.empty();
+        }
+        try {
+            Optional<FlowInstance> cancelled = kernelRunner.cancelExecution(executionId, requester.actorId());
+            audit(requester, "ADMIN_CANCEL_EXECUTION", "EXECUTION", executionId, OUTCOME_ALLOW, "ok",
+                    Map.of("flowName", safe(before.get().flowName())));
+            metricInc("npdev.api.admin.cancel", requester, Map.of("outcome", "ALLOW"));
+            metricObserveMs("npdev.api.admin.cancel.duration_ms", startedAtMs, requester, Map.of("outcome", "ALLOW"));
+            return cancelled;
+        } catch (IllegalStateException notCancellable) {
+            audit(requester, "ADMIN_CANCEL_EXECUTION", "EXECUTION", executionId, OUTCOME_DENY, "not_cancellable",
+                    Map.of("status", safe(before.get().status() == null ? null : before.get().status().name())));
+            metricInc("npdev.api.admin.cancel", requester, Map.of("outcome", "NOT_CANCELLABLE"));
+            throw notCancellable;
+        }
+    }
+
+    /**
+     * PROC-7: the operator's attention list for ONE tenant -- FAILED plus STUCK summaries. The
+     * super-key is issued under tenant {@code __system__}, so the tenant-scoped {@code /active},
+     * {@code /history} and {@code /stuck} reads show it nothing; this one takes the tenant explicitly.
+     * Gated by the controller's SUPERUSER check, like the other PROC-7 operations.
+     */
+    public List<ExecutionSummary> listAttentionExecutions(
+            String tenantId, int limit, ExecutionContext requesterContext) {
+        ExecutionContext requester = normalizeContext(requesterContext);
+        int bounded = normalizeLimit(limit);
+        List<ExecutionSummary> rows = new java.util.ArrayList<>(
+                executionSummaryStore.listFailureSummaries(tenantId, bounded, 0));
+        rows.addAll(executionSummaryStore.listStuckSummaries(tenantId, bounded, 0));
+        audit(requester, "ADMIN_LIST_ATTENTION", "EXECUTION", "<attention>", OUTCOME_ALLOW, "ok",
+                Map.of("tenant", safe(tenantId), "count", String.valueOf(rows.size())));
+        return rows;
+    }
+
     public EventEnvelope publishExternalEvent(
             String eventName,
             String correlationId,

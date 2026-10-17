@@ -171,6 +171,13 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                     templates.raw("static-assets/collab/" + asset)
             );
         }
+        // PROC-7: model-free operator pages (served at /npdev-business-ui/ops/...), verbatim copies.
+        for (String asset : BUSINESS_UI_OPS_ASSETS) {
+            writer.writeRelative(
+                    "src/main/resources/static/npdev-business-ui/ops/" + asset,
+                    templates.raw("static-assets/ops/" + asset)
+            );
+        }
         writer.writeRelative(
                 "src/main/resources/static/npdev-business-ui/generated-ui-manifest.json",
                 manifestJson(model, persistedConcepts, superUserRole, resolver, fieldOrigins)
@@ -256,6 +263,12 @@ public final class BusinessUiEmitter extends AbstractEmitter {
      * file here AND adds the matching tag there.
      */
     static final List<String> COLLAB_ASSETS = List.of("tasks.html", "tasks.js", "collab.css");
+
+    /** PROC-7: the Executions operator page, linked from the shell's super-user NPDev section. */
+    static final List<String> BUSINESS_UI_OPS_ASSETS = List.of(
+            "executions.html",
+            "executions.js"
+    );
 
     static final List<String> BUSINESS_UI_VIEW_ASSETS = List.of(
             "registry.js",
