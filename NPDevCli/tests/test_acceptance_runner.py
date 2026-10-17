@@ -380,7 +380,11 @@ class ResolveAcceptanceApiKeyTest(unittest.TestCase):
 
     def test_missing_file_or_no_file_is_none(self):
         self.assertIsNone(npdev_cli._resolve_acceptance_api_key(None, None))
-        self.assertIsNone(npdev_cli._resolve_acceptance_api_key(None, "Z:/definitely/not/here.env"))
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "definitely-not-here.env"
+            self.assertIsNone(npdev_cli._resolve_acceptance_api_key(None, str(missing)))
 
 class InProcessAcceptanceTest(unittest.TestCase):
     """AI-8: `acceptance run --in-process`. The JVM (runtimehost-core's InProcessAcceptanceRunner,
