@@ -3,7 +3,7 @@
 Every expression an app author writes — an invariant, a computed column, a field default, a
 derived field — parses through the **same grammar**: `com.npdev.dsl.v1.expr.ComputedExpression`.
 There is one parser, one syntax error vocabulary, and one set of compile-time checks
-(`SemanticValidator`'s unknown-field and boolean-shape validation) across all of them.
+(unknown-field validation, and the boolean-shape check `ConceptValidation.validateInvariantExpressionShape`, both orchestrated by `SemanticValidator`) across all of them.
 
 ## Syntax
 
@@ -34,7 +34,7 @@ There is one parser, one syntax error vocabulary, and one set of compile-time ch
 | `conflicts(resourceField, startsAtField, durationField[, excludeIdField])` (alias: `overlapsProvider`) | true if a scheduling conflict exists — almost always used negated: `!conflicts(...)` |
 | `scope.exists("ConceptName", "fieldPath", valueOrPath)` | true if a matching record exists elsewhere in the tenant's data |
 
-**Schema default/derived expressions** (`GeneratedCrudRuntimeSupport`) get a different, smaller
+**Schema default/derived expressions** (`SchemaExpressionSupport`, in `NPDevKernel/adapters/runtime-support/.../crud/schemaexpr/`) get a different, smaller
 set — pure value functions, no boolean logic needed:
 
 | Form | Meaning |
@@ -44,8 +44,8 @@ set — pure value functions, no boolean logic needed:
 | `trim(x)` / `uppercase(x)` / `lowercase(x)` | string transforms |
 
 Both function sets are `ComputedExpression.FunctionRegistry` instances, built by their respective
-callers (`CelInvariantEngine.buildFunctionRegistry`, `GeneratedCrudRuntimeSupport`'s
-`SCHEMA_EXPRESSION_FUNCTIONS`) — a function registry is just a `Map<String, ExprFunction>`, so a
+callers (`CelInvariantEngine.buildFunctionRegistry`, `SchemaExpressionSupport`'s
+`SCHEMA_EXPRESSION_FUNCTIONS`, which is `ValueExpressionFunctions.base()`) — a function registry is just a `Map<String, ExprFunction>`, so a
 future call site can register its own without touching the grammar itself.
 
 ## Design notes for anyone extending this
@@ -64,7 +64,7 @@ future call site can register its own without touching the grammar itself.
   the right field path, even though the negation happens one level up in the AST from where the
   function itself runs.
 - **The legacy CEL regex matcher (in `CelInvariantEngine`) and the legacy schema-expr evaluator
-  (in `GeneratedCrudRuntimeSupport`) are still in the code, unused in practice, as defensive
+  (in `SchemaExpressionSupport`) are still in the code, unused in practice, as defensive
   fallbacks** — each call site tries `ComputedExpression` first and only falls through to the old
   implementation on a genuine `ExpressionException` (syntax this grammar still doesn't recognize).
   They were deliberately not deleted: removing a working fallback the moment its callers are
@@ -72,14 +72,12 @@ future call site can register its own without touching the grammar itself.
 
 ## What's still two grammars, deliberately
 
-`GeneratedCrudRuntimeSupport` also has a separate `cap.<capability>.<operation>(args)`
-capability-invocation expression form (e.g. `cap.persistence.unique('User','email', email)`) that
-this unification did NOT touch — it dispatches into the capability system, not field/value logic,
-and is a different concern from "compute a value" or "check an invariant". `ComputedExpression`'s
-grammar happens to *parse* this shape now (dotted function-call syntax is generic), and
-`Call.looksBoolean()` is deliberately permissive for exactly this reason — an unrecognized
-function name at the top level of an invariant is assumed intentional rather than flagged as a
-shape error.
+There used to be a separate `cap.<capability>.<operation>(args)` capability-invocation expression form
+(e.g. `cap.persistence.unique('User','email', email)`) that this unification did NOT touch. No evaluator for
+it exists any more: at runtime an unknown function call throws `unknown function`. `ComputedExpression`'s
+grammar still *parses* the dotted call shape (dotted function-call syntax is generic), and
+`Call.looksBoolean()` is deliberately permissive — an unrecognized function name at the top level of an
+invariant is assumed intentional rather than flagged as a shape error.
 
 The concept gateway (`ConfiguredConceptGatewaySemanticPolicy`) no longer has a grammar of its own
 either: it evaluates invariants with `ComputedExpression` (ENG-7), so a rule such as

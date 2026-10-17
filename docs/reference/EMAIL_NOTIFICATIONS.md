@@ -33,19 +33,20 @@ for that shape and `docs/DEPLOYMENT.md` for the object-store adapter that uses i
 {
   "name": "send-welcome-email",
   "type": "capabilityCall",
-  "cap": "mail",
-  "op": "send",
+  "capability": "mail",
+  "operation": "send",
   "args": ["$input.email", "$input.name", "$input.message"],
-  "out": "$mailDelivery"
+  "output": "$mailDelivery"
 }
 ```
 
 Two payload shapes are accepted:
 
 - **Positional** (`to, subject, body[, templateVars]`) — the shape above. This is the shape a flow
-  author actually needs: the DSL's `args` can only pass through existing state/input values (or a
-  dotted sub-path into one, e.g. `$saved.email`), it cannot construct a literal string inline, so
-  there is no way to build a single `{"to":...,"subject":...}` map from within the flow itself.
+  author actually needs: the DSL's `args` pass through existing state/input values (or a dotted
+  sub-path into one, e.g. `$saved.email`), and an arg that resolves to nothing is passed as a literal
+  string (see "Literal subject/body text" below), but there is no way to build a single
+  `{"to":...,"subject":...}` map from within the flow itself.
 - **Single map** (`{"to":..., "subject":..., "body":..., "templateVars":{...}}`) — used when
   calling the capability programmatically (not from a flow's `args` list), e.g. a single `$input`
   ref whose value already has this shape.
@@ -56,11 +57,10 @@ payload contract is defined once.
 ## Templating
 
 `subject`/`body` may contain `${varName}` placeholders, substituted from `templateVars` via
-`MailTemplateRenderer` before send/record. In the positional form, since the DSL can't compose a
-literal templated string, put the already-final text directly in the `subject`/`body` refs (pull
-it from a prior step's output field) rather than relying on placeholder substitution — templating
-is most useful for the single-map form, where a caller controls the literal template text and
-just needs field values interpolated in.
+`MailTemplateRenderer` before send/record. In the positional form, literal text with `${var}` placeholders can be
+passed as the `subject`/`body` args and filled from a `templateVars` ref (see "Literal subject/body
+text" below); templating is equally useful for the single-map form, where a caller controls the
+literal template text and just needs field values interpolated in.
 
 ## Adapters
 

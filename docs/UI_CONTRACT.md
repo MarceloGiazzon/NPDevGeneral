@@ -149,8 +149,8 @@ will disagree with the server.
 ## Provenance — required if you generate a screen
 
 Any screen built from this contract should ship a provenance manifest recording the `modelHash` it
-was built against and which fields/invocations it uses (see F3 in `docs/NEXT_EXECUTION_PLAN.md`
-once that manifest format ships). `modelHash` here is `SchemaLifecycleExecutor`'s own schema
+was built against and which fields/invocations it uses (the format has shipped: `schemas/panel-provenance.schema.json`, ADR-0010, checked by
+`scripts/quality/check-panel-provenance-impact.py`; design history in F3 of `docs/archive/NEXT_EXECUTION_PLAN.md`). `modelHash` here is `SchemaLifecycleExecutor`'s own schema
 fingerprint, reused verbatim — it changes when table/column/type/required/unique shape changes
 (e.g. a field rename), but **not** for a panel-action/permission-hint/flow/lifecycle-only edit. A
 provenance check against this hash is therefore a precise drift signal for schema-shaped changes and
@@ -164,7 +164,7 @@ see `BREAKING.md`.
 ## Shell versioning
 
 The browser shell (`business-ui-index.mustache` + `business-ui-app.mustache` + `business-ui-style.mustache`
-+ `shell.js.mustache` + `shell.css.mustache`, ~9,300 lines total) carries no model data and is emitted
++ `shell.js.mustache` + `shell.css.mustache`, ~11,200 lines total) carries no model data and is emitted
 byte-identical into every generated app — see Path A finding 1.3(a). `NpdevUiShellVersion`
 (`NPDevGenerator/generator/.../emitters/`) is the single source of truth for its version
 (`npdev-ui-shell.v1`) and its declared compatibility range against this contract's `schemaVersion`
@@ -179,10 +179,12 @@ included by any other template, so it does not carry a version stamp.
 ## Design tokens — density and theme mode (W1.4)
 
 `shell.css.mustache`'s `:root` block is the single declaration site for every `--np-*` custom
-property; `business-ui-style.mustache` consumes them (never re-declares its own base colors) via
+property of the shell and business UI; `business-ui-style.mustache` consumes them (never re-declares its own base colors) via
 `var(--np-token, <fallback>)`, so an app-owned `/theme.css` (injected by `shell.js` when present)
 restyles both the shell chrome and every generated business-UI screen by overriding one token in one
-place. This is a public surface: an app author's own theme override should target these tokens, not
+place. **Exception:** the Aggregate Workbench page (`workbench-page.html.mustache`, emitted to
+`static/npdev-workbench/<Panel>.html`) declares its own `:root` block with different values and links
+neither `shell.css` nor `/theme.css`, so a token override does not reach it. This is a public surface: an app author's own theme override should target these tokens, not
 guess at the underlying literal colors/spacing they resolve to today.
 
 **Density.** `--np-density-scale` plus a matching set of row/control tokens
@@ -203,10 +205,11 @@ sources feed it, in cascade order:
    `shell.js`'s `applyAppTheme()` on every boot, before any GuidePage is resolved.
 2. **Per-GuidePage override** — a GuidePage's own `theme.mode`/`theme.density` (model-declared,
    `guidePages[].theme`), applied by `applyGuidePage()` immediately after. Left `null` in the
-   manifest when the GuidePage doesn't declare them, so the app-wide default is what actually shows
-   for every page that hasn't opted into a page-specific override. The three built-in GuidePages
-   (`Default`, `Minimal`, `None`) declare no theme at all (`GuidePageDefaults`), so they always follow
-   the app-wide default; only an app-declared GuidePage with its own `theme.mode` pins a mode.
+   manifest when a model-declared GuidePage doesn't declare them, so the app-wide default shows for
+   every such page. The three built-in GuidePages (`Default`, `Minimal`, `None`) are the exception: they
+   are built with a hard-coded theme (`mode: "light"`, `density: "comfortable"`, `GuidePageDefaults.builtin()`),
+   so the manifest carries those values for them and `applyGuidePage()` applies them after the app-wide
+   default.
 
 `mode: "system"` is applied as the ABSENCE of the `data-np-theme` attribute (removed, not set to the
 literal string `"system"`) — that is what lets the `prefers-color-scheme` media query decide. Both
@@ -245,7 +248,7 @@ its own placeholder:
   surface. `message` and `retry` are caller-supplied; this only gives the notice a consistent,
   visually-distinct box (dashed border, muted), never guesses the network condition.
 
-All four render through `stateBox`/`appendStateLine` helpers that only ever set `textContent`, and
+All five render through `stateBox`/`appendStateLine` helpers that only ever set `textContent`, and
 are styled purely from the density/theme tokens documented above (`.npdev-shell-state*` in
 `shell.css.mustache`) -- a caller passing a server- or user-composed string can't reintroduce an XSS
 sink by construction.
