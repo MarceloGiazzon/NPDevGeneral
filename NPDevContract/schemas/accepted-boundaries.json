@@ -40,8 +40,8 @@
     {
       "id": "B6",
       "kind": "LIFTED",
-      "userFacingText": "mark-done tells NPDev to stop trying to converge the schema and trust that you already fixed it by hand -- nothing verifies that you actually did.",
-      "workaround": "Use -ImpactOnly first to see what NPDev thinks differs, then mark done knowingly. `npdev db verify` can also check the result independently before you mark done.",
+      "userFacingText": "mark-done tells NPDev to stop trying to converge the schema because you say it is already at this fingerprint. `npdev db mark-done` verifies against the live database first and records only on a strict NO_CHANGES diff (otherwise it refuses with an itemized diff; --force overrides and stamps the mark forced). The REST /mark-done endpoint is not a verification -- it still trusts the operator.",
+      "workaround": "Use `npdev db mark-done` rather than the REST endpoint (it verifies before recording); `npdev db verify` can also check the result independently.",
       "enforcingDiagnosticCodes": []
     },
     {
