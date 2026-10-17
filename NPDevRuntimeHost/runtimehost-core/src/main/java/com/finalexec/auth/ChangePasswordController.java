@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ResourceLoader;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -199,13 +200,7 @@ public class ChangePasswordController {
             JwtSigner signer = new JwtSigner(objectMapper, privateKey, issuer, audience, expirySeconds);
             String token = signer.sign(tenantId, username, roles, newTokenVersion);
 
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("ok", true);
-            body.put("token", token);
-            body.put("tokenType", "Bearer");
-            body.put("expiresInSeconds", expirySeconds);
-            body.put("roles", roles);
-            return ResponseEntity.ok(body);
+            return freshSession(token, roles, httpRequest);
         } catch (IdentityPackSchemaException schemaException) {
             // REG-39 shape (same as PasswordResetController.confirmReset): the credential update
             // above already committed, so the password DID change -- but failing to report the
@@ -222,6 +217,90 @@ public class ChangePasswordController {
             LOG.log(Level.WARNING, "Change password failed", exception);
             return ResponseEntity.status(500).body(Map.of("error", "password_change_failed"));
         }
+    }
+
+    /**
+     * SEC-15: "sign out of all other devices". Bumps the caller's own token_version (every token
+     * minted before the bump stops validating, in every other browser) and answers with a fresh
+     * token carrying the new version, both in the JSON body and as the {@code npdev_jwt} cookie --
+     * returning only one of the two would sign the caller out here too. No password is asked: the
+     * caller already holds a valid session, and the endpoint only ever ends sessions.
+     */
+    @PostMapping({"/api/auth/sessions/revoke-others", "/api/v1/auth/sessions/revoke-others"})
+    public ResponseEntity<Map<String, Object>> revokeOtherSessions(HttpServletRequest httpRequest) {
+        ExecutionContext callerContext = currentContext(httpRequest);
+        String tenantId = DefaultTenant.orDefault(callerContext == null ? null : callerContext.tenantId());
+        String username = callerContext == null ? null : callerContext.actorId();
+        if (username == null || username.isBlank()) {
+            return ResponseEntity.status(401).body(Map.of("error", "unauthenticated"));
+        }
+        if (privateKey == null) {
+            return ResponseEntity.status(503).body(Map.of(
+                    "error", "token_issuance_unavailable",
+                    "detail", "This deployment validates externally-issued JWTs only; no signing key "
+                            + "(npdev.auth.jwt.private-key-path) is configured, so sessions/revoke-others "
+                            + "cannot mint a replacement token."));
+        }
+        Optional<IdentityPackTableNames> resolvedIdentityTables = IdentityPackTableNames.tryResolve(modelHolder.get());
+        if (resolvedIdentityTables.isEmpty()) {
+            return ResponseEntity.status(503).body(Map.of("error", "identity_pack_not_composed"));
+        }
+        IdentityPackTableNames identityTables = resolvedIdentityTables.get();
+
+        try (Connection connection = dataSource.getConnection()) {
+            String userSql = "SELECT id, active, token_version FROM " + identityTables.usersTable()
+                    + " WHERE username = ? AND tenant_id = ?";
+            String userId;
+            int tokenVersion;
+            try (PreparedStatement ps = connection.prepareStatement(userSql)) {
+                ps.setString(1, username);
+                ps.setString(2, tenantId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next() || !rs.getBoolean("active")) {
+                        return ResponseEntity.status(401).body(Map.of("error", "unauthenticated"));
+                    }
+                    userId = rs.getString("id");
+                    tokenVersion = rs.getInt("token_version");
+                    if (rs.wasNull()) {
+                        tokenVersion = 0;
+                    }
+                }
+            }
+            int newTokenVersion = tokenVersion + 1;
+            bumpTokenVersionTo(connection, identityTables.usersTable(), userId, tenantId, newTokenVersion);
+
+            Set<String> roles = IdentityRoleLookup.rolesFor(dataSource, identityTables, tenantId, username);
+            JwtSigner signer = new JwtSigner(objectMapper, privateKey, issuer, audience, expirySeconds);
+            String token = signer.sign(tenantId, username, roles, newTokenVersion);
+            return freshSession(token, roles, httpRequest);
+        } catch (IdentityPackSchemaException schemaException) {
+            LOG.log(Level.SEVERE, "Revoke other sessions: identity pack schema mismatch bumping token_version",
+                    schemaException);
+            return ResponseEntity.status(500).body(Map.of(
+                    "error", "identity_pack_schema_error",
+                    "detail", "Sessions were not revoked because this app's identity pack copy is out of "
+                            + "date. See docs/CONFIGURATION.md#identity-pack-freshness-checked-at-boot. Cause: "
+                            + schemaException.getMessage()));
+        } catch (Exception exception) {
+            LOG.log(Level.WARNING, "Revoke other sessions failed", exception);
+            return ResponseEntity.status(500).body(Map.of("error", "revoke_sessions_failed"));
+        }
+    }
+
+    /** The success response shared by both endpoints: the JSON token for fetch()-driven callers AND
+     * the refreshed {@code npdev_jwt} cookie, so cookie-authenticated page/image requests in this
+     * browser keep working after the token_version bump. */
+    private ResponseEntity<Map<String, Object>> freshSession(String token, Set<String> roles, HttpServletRequest httpRequest) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ok", true);
+        body.put("token", token);
+        body.put("tokenType", "Bearer");
+        body.put("expiresInSeconds", expirySeconds);
+        body.put("roles", roles);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE,
+                        SessionCookies.session(token, expirySeconds, httpRequest != null && httpRequest.isSecure()).toString())
+                .body(body);
     }
 
     /** Resolves the CURRENT caller's identity from the claims the JWT (or api-key) auth filter

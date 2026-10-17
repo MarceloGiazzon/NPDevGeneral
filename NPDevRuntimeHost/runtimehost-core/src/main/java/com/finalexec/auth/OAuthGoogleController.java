@@ -357,13 +357,7 @@ public class OAuthGoogleController {
         // top-level navigation browsers treat as cross-site-initiated even though the destination
         // is same-origin. With Strict, the cookie set here on a prior login never rode along on
         // that hop and the link leg failed with oauth_link_requires_session every time.
-        ResponseCookie sessionCookie = ResponseCookie.from("npdev_jwt", ticket.token())
-                .httpOnly(true)
-                .secure(request.isSecure())
-                .sameSite("Lax")
-                .path("/")
-                .maxAge(expirySeconds)
-                .build();
+        ResponseCookie sessionCookie = SessionCookies.session(ticket.token(), expirySeconds, request.isSecure());
         return ResponseEntity.status(HttpServletResponse.SC_FOUND)
                 .header(HttpHeaders.SET_COOKIE, sessionCookie.toString())
                 .header(HttpHeaders.LOCATION, target)

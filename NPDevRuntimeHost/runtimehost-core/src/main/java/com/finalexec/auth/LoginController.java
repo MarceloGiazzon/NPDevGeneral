@@ -390,13 +390,8 @@ public class LoginController {
         // and Strict silently dropped the cookie on that hop. Secure mirrors the inbound
         // request's own scheme so local http dev still works while a TLS-terminated deployment
         // gets the flag automatically.
-        ResponseCookie sessionCookie = ResponseCookie.from("npdev_jwt", token)
-                .httpOnly(true)
-                .secure(httpRequest != null && httpRequest.isSecure())
-                .sameSite("Lax")
-                .path("/")
-                .maxAge(expirySeconds)
-                .build();
+        ResponseCookie sessionCookie = SessionCookies.session(
+                token, expirySeconds, httpRequest != null && httpRequest.isSecure());
         return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, sessionCookie.toString()).body(body);
     }
 
