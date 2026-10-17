@@ -33,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -101,7 +102,12 @@ class ChangePasswordControllerTest {
                         .content("{\"oldPassword\":\"old-password\",\"newPassword\":\"brand-new-password\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ok").value(true))
-                .andExpect(jsonPath("$.token").exists());
+                .andExpect(jsonPath("$.token").exists())
+                .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.startsWith("npdev_jwt="),
+                        org.hamcrest.Matchers.containsString("HttpOnly"),
+                        org.hamcrest.Matchers.containsString("SameSite=Lax"),
+                        org.hamcrest.Matchers.containsString("Path=/"))));
 
         try (Connection c = dataSource.getConnection()) {
             try (PreparedStatement ps = c.prepareStatement("SELECT senha_hash FROM usuarios WHERE user_id = ?")) {
@@ -171,6 +177,49 @@ class ChangePasswordControllerTest {
         String tokenAfter = new ObjectMapper().readTree(responseJson).get("token").asText();
         assertNotEquals(tokenBefore, tokenAfter,
                 "the response token must be freshly minted with the bumped token_version, not the pre-change one");
+    }
+
+    @Test
+    void revokeOthersBumpsTokenVersionAndReturnsFreshTokenAndCookie() throws Exception {
+        String responseJson = mockMvc().perform(post("/api/auth/sessions/revoke-others")
+                        .requestAttr("npdev.auth.claims", Map.of("sub", "ada")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.token").exists())
+                .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.startsWith("npdev_jwt="),
+                        org.hamcrest.Matchers.containsString("SameSite=Lax"))))
+                .andReturn().getResponse().getContentAsString();
+
+        String token = new ObjectMapper().readTree(responseJson).get("token").asText();
+        String payload = new String(java.util.Base64.getUrlDecoder().decode(token.split("\\.")[1]),
+                java.nio.charset.StandardCharsets.UTF_8);
+        assertEquals(1, new ObjectMapper().readTree(payload).get("tv").asInt(),
+                "the replacement token must carry the bumped token_version (old + 1)");
+        assertEquals(1, tokenVersionInDb(), "the DB token_version must be old + 1");
+
+        mockMvc().perform(post("/api/v1/auth/sessions/revoke-others")
+                        .requestAttr("npdev.auth.claims", Map.of("sub", "ada")))
+                .andExpect(status().isOk());
+        assertEquals(2, tokenVersionInDb(), "each call bumps once more");
+    }
+
+    @Test
+    void revokeOthersWithoutASessionIs401AndChangesNothing() throws Exception {
+        mockMvc().perform(post("/api/auth/sessions/revoke-others"))
+                .andExpect(status().isUnauthorized());
+        assertEquals(0, tokenVersionInDb());
+    }
+
+    private int tokenVersionInDb() throws Exception {
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT token_version FROM identity_users WHERE id = ?")) {
+            ps.setObject(1, USER_ID);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next());
+                return rs.getInt(1);
+            }
+        }
     }
 
     private static final class SingleConnectionUrlDataSource implements DataSource {

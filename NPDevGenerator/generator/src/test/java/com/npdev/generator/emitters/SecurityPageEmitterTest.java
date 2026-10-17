@@ -29,8 +29,13 @@ class SecurityPageEmitterTest {
         assertTrue(html.contains("/api/auth/mfa/recovery-codes"));
         assertTrue(html.contains("X-NPDev-Request"), "state-changing calls must carry the CSRF header");
         assertTrue(html.contains("Two-step sign-in is not available in this app."));
-        assertFalse(html.contains("localStorage.setItem") || html.contains("sessionStorage"),
-                "recovery codes and secrets must never be written to web storage");
+        assertFalse(html.contains("sessionStorage"), "no session storage on the security page");
+        assertTrue(html.indexOf("localStorage.setItem") == html.lastIndexOf("localStorage.setItem")
+                        && html.contains("function storeToken(token)"),
+                "the only web-storage write is the replacement session token; recovery codes and "
+                        + "secrets must never be written to web storage");
+        assertTrue(html.contains("/api/auth/sessions/revoke-others"), "sign out of all other devices");
+        assertTrue(html.contains("Sign out of all other devices"));
         assertFalse(html.contains("<script src"), "no external scripts: generated apps work offline");
     }
 

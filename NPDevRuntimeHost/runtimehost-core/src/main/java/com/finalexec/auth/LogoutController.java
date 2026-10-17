@@ -26,13 +26,7 @@ public class LogoutController {
 
     @PostMapping({"/api/auth/logout", "/api/v1/auth/logout"})
     public ResponseEntity<Void> logout(HttpServletRequest request) {
-        ResponseCookie expired = ResponseCookie.from("npdev_jwt", "")
-                .httpOnly(true)
-                .secure(request != null && request.isSecure())
-                .sameSite("Lax")
-                .path("/")
-                .maxAge(0)
-                .build();
+        ResponseCookie expired = SessionCookies.expired(request != null && request.isSecure());
         return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, expired.toString()).build();
     }
 }

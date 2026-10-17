@@ -137,6 +137,12 @@
     </form>
   </section>
 
+  <section id="sessionsCard" class="hidden">
+    <h2>Sessions</h2>
+    <p class="note">Lost a phone or used a shared computer? Sign out everywhere else. You stay signed in here.</p>
+    <div class="row"><button class="danger" id="revokeOthersBtn" type="button">Sign out of all other devices</button></div>
+  </section>
+
   <p id="errorBanner" class="banner error hidden"></p>
   <p id="okBanner" class="banner ok hidden"></p>
 </main>
@@ -155,7 +161,9 @@
     mfa_enroll_not_started: "Start again: the setup was not started.",
     mfa_not_enabled: "Two-step sign-in is not on.",
     too_many_attempts: "Too many attempts. Wait a few minutes and try again.",
-    mfa_not_available: "Two-step sign-in is not available in this app."
+    mfa_not_available: "Two-step sign-in is not available in this app.",
+    token_issuance_unavailable: "This app cannot sign other devices out.",
+    revoke_sessions_failed: "Could not sign out the other devices. Try again."
   };
 
   function $(id) { return document.getElementById(id); }
@@ -165,6 +173,11 @@
       if (v) { return v; }
     }
     return null;
+  }
+  // The ONLY write to web storage on this page: the replacement session token (same two keys
+  // change-password-page stores). Recovery codes and TOTP secrets never touch storage.
+  function storeToken(token) {
+    TOKEN_KEYS.forEach(function (key) { localStorage.setItem(key, token); });
   }
   function show(name) {
     SECTIONS.forEach(function (s) { $(s).classList.toggle("hidden", s !== name); });
@@ -202,6 +215,7 @@
 
   function loadStatus() {
     clearBanners();
+    $("sessionsCard").classList.toggle("hidden", !currentToken());
     if (!currentToken()) { show("signedOut"); return; }
     show("loading");
     api("GET", "/api/auth/mfa/status").then(function (res) {
@@ -310,6 +324,20 @@
         loadStatus();
         showOk("Two-step sign-in is off.");
       }).catch(function () { showError("request_failed"); });
+  });
+
+  // SEC-15: bumps this user's token_version server-side; the answer carries a fresh token (and the
+  // refreshed session cookie), so this browser stays signed in while every other session ends.
+  $("revokeOthersBtn").addEventListener("click", function () {
+    clearBanners();
+    $("revokeOthersBtn").disabled = true;
+    api("POST", "/api/auth/sessions/revoke-others").then(function (res) {
+      $("revokeOthersBtn").disabled = false;
+      if (res.status === 401) { show("signedOut"); return; }
+      if (res.status !== 200 || !res.body.token) { showError(errorCode(res)); return; }
+      storeToken(res.body.token);
+      showOk("Other sessions were signed out.");
+    }).catch(function () { $("revokeOthersBtn").disabled = false; showError("request_failed"); });
   });
 
   loadStatus();
