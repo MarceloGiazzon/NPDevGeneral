@@ -4,6 +4,7 @@ import com.finalexec.auth.PasswordHasher;
 import com.finalexec.config.DefaultTenant;
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.ports.AuthenticatedContextResolver;
 import jakarta.servlet.http.HttpServletRequest;
@@ -253,7 +254,8 @@ public class MfaController {
 
     private static UUID findActiveUserId(Connection connection, String usersTable, String username, String tenantId)
             throws Exception {
-        String sql = "SELECT id, active FROM " + usersTable + " WHERE username = ? AND tenant_id = ?";
+        String sql = SqlIdentifierSupport.sqlWithIdentifiers(
+                "SELECT id, active FROM {0} WHERE username = ? AND tenant_id = ?", usersTable);
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, username);
             ps.setString(2, tenantId);
@@ -274,8 +276,9 @@ public class MfaController {
         if (password == null || password.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "invalid_password"));
         }
-        String sql = "SELECT " + credentialPasswordColumn + " FROM " + credentialTable
-                + " WHERE " + credentialUserIdColumn + " = ? AND tenant_id = ?";
+        String sql = SqlIdentifierSupport.sqlWithIdentifiers(
+                "SELECT {0} FROM {1} WHERE {2} = ? AND tenant_id = ?",
+                credentialPasswordColumn, credentialTable, credentialUserIdColumn);
         String storedHash;
         try (PreparedStatement ps = caller.connection().prepareStatement(sql)) {
             ps.setObject(1, caller.userId());

@@ -2,6 +2,7 @@ package com.finalexec.auth.mfa;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -41,8 +42,9 @@ public final class MfaStore {
 
     public static Optional<Row> find(Connection connection, String table, UUID userId, String tenantId)
             throws SQLException {
-        String sql = "SELECT id, secret, enabled_at, last_used_step, recovery_codes FROM " + table
-                + " WHERE user_id = ? AND tenant_id = ?";
+        String sql = SqlIdentifierSupport.sqlWithIdentifiers(
+                "SELECT id, secret, enabled_at, last_used_step, recovery_codes FROM {0}"
+                        + " WHERE user_id = ? AND tenant_id = ?", table);
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setObject(1, userId);
             ps.setString(2, tenantId);
@@ -68,8 +70,8 @@ public final class MfaStore {
     /** True only for an ENABLED (confirmed) enrollment; a pending row is not enabled. */
     public static boolean isEnabled(Connection connection, String mfaTable, UUID userId, String tenantId)
             throws SQLException {
-        String sql = "SELECT 1 FROM " + mfaTable
-                + " WHERE user_id = ? AND tenant_id = ? AND enabled_at IS NOT NULL";
+        String sql = SqlIdentifierSupport.sqlWithIdentifiers(
+                "SELECT 1 FROM {0} WHERE user_id = ? AND tenant_id = ? AND enabled_at IS NOT NULL", mfaTable);
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setObject(1, userId);
             ps.setString(2, tenantId);
@@ -82,8 +84,10 @@ public final class MfaStore {
     /** {@link #isEnabled} for a caller that only knows the username (provider sign-in). */
     public static boolean isEnabledForUsername(Connection connection, String usersTable, String mfaTable,
                                                String username, String tenantId) throws SQLException {
-        String sql = "SELECT 1 FROM " + mfaTable + " m JOIN " + usersTable + " u ON u.id = m.user_id"
-                + " WHERE u.username = ? AND u.tenant_id = ? AND m.tenant_id = ? AND m.enabled_at IS NOT NULL";
+        String sql = SqlIdentifierSupport.sqlWithIdentifiers(
+                "SELECT 1 FROM {0} m JOIN {1} u ON u.id = m.user_id"
+                        + " WHERE u.username = ? AND u.tenant_id = ? AND m.tenant_id = ? AND m.enabled_at IS NOT NULL",
+                mfaTable, usersTable);
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, username);
             ps.setString(2, tenantId);
@@ -97,13 +101,15 @@ public final class MfaStore {
     /** Replaces any PENDING row of the user with a fresh one holding the (already encoded) secret. */
     public static void upsertPending(Connection connection, String table, UUID userId, String tenantId,
                                      String storedSecret) throws SQLException {
-        String delete = "DELETE FROM " + table + " WHERE user_id = ? AND tenant_id = ? AND enabled_at IS NULL";
+        String delete = SqlIdentifierSupport.sqlWithIdentifiers(
+                "DELETE FROM {0} WHERE user_id = ? AND tenant_id = ? AND enabled_at IS NULL", table);
         try (PreparedStatement ps = connection.prepareStatement(delete)) {
             ps.setObject(1, userId);
             ps.setString(2, tenantId);
             ps.executeUpdate();
         }
-        String insert = "INSERT INTO " + table + " (id, user_id, secret, tenant_id) VALUES (?, ?, ?, ?)";
+        String insert = SqlIdentifierSupport.sqlWithIdentifiers(
+                "INSERT INTO {0} (id, user_id, secret, tenant_id) VALUES (?, ?, ?, ?)", table);
         try (PreparedStatement ps = connection.prepareStatement(insert)) {
             ps.setObject(1, UUID.randomUUID());
             ps.setObject(2, userId);
@@ -116,8 +122,9 @@ public final class MfaStore {
     /** Confirms a pending row. Returns false when there was no pending row to confirm. */
     public static boolean enable(Connection connection, String table, UUID userId, String tenantId,
                                  long step, List<String> recoveryHashes) throws SQLException {
-        String sql = "UPDATE " + table + " SET enabled_at = ?, last_used_step = ?, recovery_codes = ?"
-                + " WHERE user_id = ? AND tenant_id = ? AND enabled_at IS NULL";
+        String sql = SqlIdentifierSupport.sqlWithIdentifiers(
+                "UPDATE {0} SET enabled_at = ?, last_used_step = ?, recovery_codes = ?"
+                        + " WHERE user_id = ? AND tenant_id = ? AND enabled_at IS NULL", table);
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setTimestamp(1, Timestamp.from(Instant.now()));
             ps.setInt(2, Math.toIntExact(step));
@@ -135,9 +142,10 @@ public final class MfaStore {
      */
     public static boolean setLastUsedStep(Connection connection, String table, UUID userId, String tenantId,
                                           long step) throws SQLException {
-        String sql = "UPDATE " + table + " SET last_used_step = ?"
-                + " WHERE user_id = ? AND tenant_id = ? AND enabled_at IS NOT NULL"
-                + " AND (last_used_step IS NULL OR last_used_step < ?)";
+        String sql = SqlIdentifierSupport.sqlWithIdentifiers(
+                "UPDATE {0} SET last_used_step = ?"
+                        + " WHERE user_id = ? AND tenant_id = ? AND enabled_at IS NOT NULL"
+                        + " AND (last_used_step IS NULL OR last_used_step < ?)", table);
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             int s = Math.toIntExact(step);
             ps.setInt(1, s);
@@ -150,8 +158,9 @@ public final class MfaStore {
 
     public static void replaceRecoveryCodes(Connection connection, String table, UUID userId, String tenantId,
                                             List<String> recoveryHashes) throws SQLException {
-        String sql = "UPDATE " + table + " SET recovery_codes = ?"
-                + " WHERE user_id = ? AND tenant_id = ? AND enabled_at IS NOT NULL";
+        String sql = SqlIdentifierSupport.sqlWithIdentifiers(
+                "UPDATE {0} SET recovery_codes = ?"
+                        + " WHERE user_id = ? AND tenant_id = ? AND enabled_at IS NOT NULL", table);
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, toJson(recoveryHashes));
             ps.setObject(2, userId);
@@ -174,8 +183,10 @@ public final class MfaStore {
         List<String> remaining = new ArrayList<>(row.get().recoveryCodeHashes());
         remaining.remove(hash);
         String previous = toJson(row.get().recoveryCodeHashes());
-        String sql = "UPDATE " + table + " SET recovery_codes = ?"
-                + " WHERE user_id = ? AND tenant_id = ? AND enabled_at IS NOT NULL AND recovery_codes = ?";
+        String sql = SqlIdentifierSupport.sqlWithIdentifiers(
+                "UPDATE {0} SET recovery_codes = ?"
+                        + " WHERE user_id = ? AND tenant_id = ? AND enabled_at IS NOT NULL AND recovery_codes = ?",
+                table);
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, toJson(remaining));
             ps.setObject(2, userId);
@@ -187,7 +198,8 @@ public final class MfaStore {
 
     public static void delete(Connection connection, String table, UUID userId, String tenantId)
             throws SQLException {
-        String sql = "DELETE FROM " + table + " WHERE user_id = ? AND tenant_id = ?";
+        String sql = SqlIdentifierSupport.sqlWithIdentifiers(
+                "DELETE FROM {0} WHERE user_id = ? AND tenant_id = ?", table);
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setObject(1, userId);
             ps.setString(2, tenantId);

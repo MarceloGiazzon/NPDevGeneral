@@ -271,6 +271,41 @@ _CANARY_EDGES = [
 ]
 
 
+class ToolGraphLoadingTest(_WithSemanticGraph):
+    """The load-and-validate step both graph tools share: every way the file can be wrong is an
+    actionable error, and a relative graph_path resolves against the repo root."""
+
+    def test_graph_path_is_required(self):
+        result = server.tool_graph_explain({"name": "CanaryTask"})
+
+        self.assertTrue(result["isError"])
+        self.assertIn("graph_path is required", result["content"][0]["text"])
+
+    def test_unparseable_graph_is_reported_not_raised(self):
+        self.graph_path.write_text("{ not json", encoding="utf-8")
+
+        result = server.tool_graph_explain({"graph_path": str(self.graph_path), "name": "CanaryTask"})
+
+        self.assertTrue(result["isError"])
+        self.assertIn("could not read/parse", result["content"][0]["text"])
+
+    def test_json_that_is_not_a_semantic_graph_is_rejected(self):
+        self.graph_path.write_text(json.dumps({"hello": "world"}), encoding="utf-8")
+
+        result = server.tool_graph_explain({"graph_path": str(self.graph_path), "name": "CanaryTask"})
+
+        self.assertTrue(result["isError"])
+        self.assertIn("does not look like a semantic-graph.json", result["content"][0]["text"])
+
+    def test_relative_graph_path_resolves_against_the_repo_root(self):
+        self.write_graph(_CANARY_NODES, _CANARY_EDGES)
+
+        with patch.dict(os.environ, {"NPDEV_ROOT": self._tmp.name}):
+            result = server.tool_graph_explain({"graph_path": "semantic-graph.json", "name": "CanaryTask"})
+
+        self.assertFalse(result.get("isError"), result)
+
+
 class ToolGraphExplainTest(_WithSemanticGraph):
     def test_missing_graph_returns_actionable_error_not_a_crash(self):
         result = server.tool_graph_explain({"graph_path": str(self.graph_path), "name": "CanaryTask"})

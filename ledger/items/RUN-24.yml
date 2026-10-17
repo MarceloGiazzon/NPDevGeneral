@@ -201,7 +201,7 @@ detail: |
 guard:
   kind: test
   ref: >-
-    NPDevCli/tests/test_dev_loop.py#test_metadata_only_change_against_a_running_app_hot_swaps_with_no_restart
+    NPDevCli/tests/test_dev_loop.py#test_live_applied_change_against_a_running_app_swaps_with_no_restart
     (gap 1's core proof; sibling methods in the same HotSwapFastPath class cover every fallback edge --
     refusal, no key, non-METADATA_ONLY, first-cycle-no-app; NPDevCli/tests/test_monitor_hotswap.py's
     PatchGeneratedUiManifest and HotswapUiManifestPatchIntegration classes cover gap 2's manifest-patch
