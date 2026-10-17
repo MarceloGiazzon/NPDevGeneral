@@ -515,9 +515,28 @@
         { "name": "await-answer", "type": "awaitEvent", "awaitEvent": "TradeAnswered", "awaitRef": "answer",
           "match": { "correlation": false, "payload": { "tradeId": "$saved.id" } },
           "timeout": 604800,
+          "task": {
+            "title": "Trade ${saved.code} from ${saved.proposerUsername}",
+            "description": "Accept or decline within 7 days.",
+            "assignee": { "user": "$notified.data.recipientUsername" },
+            "outcomeField": "status",
+            "outcomes": [
+              { "value": "ACCEPTED", "label": "Accept" },
+              { "value": "DECLINED", "label": "Decline" }
+            ],
+            "fields": [
+              { "name": "comment", "type": "text", "label": "Comment", "required": false, "maxLength": 500 }
+            ],
+            "record": "$saved"
+          },
           "onTimeout": [
             { "name": "expire-trade", "type": "callProcedure", "procedure": "ExpireTrade",
               "input": "$saved", "output": "$expired" }
+          ] },
+        { "name": "has-answer", "type": "branch", "condition": "$answer.status",
+          "then": [
+            { "name": "apply-answer", "type": "callProcedure", "procedure": "ApplyTradeAnswer",
+              "input": "$answer", "output": "$applied" }
           ] },
         { "name": "return-trade", "type": "return", "value": "$saved" }
       ]
@@ -564,6 +583,19 @@
                 "templateVars": "$trade"
               },
               "target": "mailDelivery" }
+          ] },
+        { "name": "return-trade", "type": "return", "value": "$trade" }
+      ]
+    },
+    {
+      "name": "ApplyTradeAnswer",
+      "description": "PROC-2: a human task answered from the My tasks inbox only publishes TradeAnswered {tradeId, status}; this moves the Trade itself to the chosen status unless the lifecycle action (or the timeout path) already did.",
+      "steps": [
+        { "name": "read-trade", "type": "readConcept", "concept": "Trade", "id": "$input.tradeId", "target": "trade" },
+        { "name": "still-open", "type": "if", "condition": "$trade.status == 'PROPOSED'",
+          "then": [
+            { "name": "apply", "type": "patchConcept", "concept": "Trade", "id": "$input.tradeId",
+              "set": { "status": "$input.status" }, "target": "trade" }
           ] },
         { "name": "return-trade", "type": "return", "value": "$trade" }
       ]
