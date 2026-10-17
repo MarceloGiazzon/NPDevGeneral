@@ -2,7 +2,7 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "1.0.0",
   "pack": "identity",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "namespace": "com.npdev.identity",
   "description": "Built-in NPDev identity model: users, roles, and their assignments. Intended as the persistent backing for in-app super-user administration and per-user preferences.",
   "category": "security",
@@ -78,6 +78,21 @@
       ],
       "indexes": [
         { "name": "ux_external_identity_provider_subject", "fields": ["provider", "providerSubject"], "unique": true }
+      ]
+    },
+    {
+      "name": "UserMfa",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "userId", "type": "reference", "required": true,
+          "reference": { "target": "User", "onDelete": "cascade" } },
+        { "name": "secret", "type": "string", "required": true, "maxLength": 200 },
+        { "name": "enabledAt", "type": "datetime", "required": false },
+        { "name": "lastUsedStep", "type": "int", "required": false },
+        { "name": "recoveryCodes", "type": "string", "required": false, "maxLength": 2000 }
+      ],
+      "indexes": [
+        { "name": "ux_user_mfa_user", "fields": ["userId"], "unique": true }
       ]
     }
   ]
