@@ -310,7 +310,12 @@ concept node of `generated-ui-manifest.json`.
   rather than an error. Widening it to every record reader needs its own endpoint that first runs the
   record's read authorization, and is deliberately not done.
 - **Comments (`views/comments.js`, PROC-5).** Rendered only for a concept whose manifest node carries
-  `collaboration.comments` (model: `"collaboration": { "comments": true }`; `attachments` is PROC-6).
+  `collaboration.comments` (model: `"collaboration": { "comments": true, "attachments": true }`). With
+  `attachments`, an "Attach file" control uploads into the same thread
+  (`POST .../attachments`, multipart; limit `npdev.collab.attachments.max-bytes` 10 MiB, types
+  `npdev.collab.attachments.content-types`) and each file downloads from
+  `GET .../attachments/{commentId}`, gated by the record's read access (not `/api/files`). The orphan
+  sweeper treats live attachment keys as referenced.
   A list (author, time, plain-text body) plus a box to post; `@username` in a comment notifies that
   user when the in-app notification bell is installed. Served by
   `/api/records/{concept}/{id}/comments`, gated by the record's own read access: a caller who cannot
