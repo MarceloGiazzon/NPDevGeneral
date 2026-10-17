@@ -1,16 +1,22 @@
 # NPDev Official Beta Release Runbook
 
+> **Historical Beta 0 runbook.** This records the 2026-04 official beta baseline and the release path as it stood then
+> (`run-portable-tooling-check.ps1` classifies it the same way). The current tag -> gate -> changelog flow is in
+> [`docs/RELEASE_PROCESS.md`](../RELEASE_PROCESS.md); the release workflow is manual-dispatch only; and the repository and
+> evidence directories are `D:\WorkSpace\NPDev\NPDev_General` and `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo`.
+> Releases since the baseline below run from `beta0` (2026-05-09) to `beta1.20` (2026-08-26); see `CHANGELOG.md`.
+
 Current AI-only Beta 0 readiness is determined by the canonical traceable release wrapper, `scripts\quality\run-traceable-local-release.ps1`, and the closure helper, `scripts\quality\run-roadmap-closure-check.ps1`, using fresh reports from the current workspace fingerprint.
 
 ## Purpose
 
 This runbook defines the official local and GitHub/CI release path for NPDev after the RuntimeHost convergence roadmap.
 
-It must be treated as the release source of truth for the current official beta baseline.
+It was the release source of truth for the 2026-04 official beta baseline (see the banner above for what replaced it).
 
 ---
 
-## Current official baseline
+## Official baseline (2026-04-28, the oldest of the release tags)
 
 | Field | Value |
 |---|---|
@@ -34,11 +40,15 @@ NPDev uses one monorepo.
 ```text
 NPDev_General
 ├─ NPDevContract
-├─ NPDevEditor
 ├─ NPDevGenerator
 ├─ NPDevKernel
 ├─ NPDevRuntimeHost
 ├─ NPDevSamples
+├─ NPDevCli
+├─ NPDevMcp
+├─ NPDevManager
+├─ ledger
+├─ schemas
 ├─ docs
 ├─ scripts
 ├─ README.md
@@ -96,41 +106,41 @@ After creating a release tag:
 Run from the monorepo root.
 
 ```powershell
-Set-Location 'D:\WorkSpace\NPDev_General'
+Set-Location 'D:\WorkSpace\NPDev\NPDev_General'
 
 git status --short
 git rev-parse HEAD
 git tag --list 'npdev-official-beta-*'
 
 & 'C:\Program Files (x86)\PowerShell\7\pwsh.exe' -NoProfile -ExecutionPolicy Bypass `
-  -File 'D:\WorkSpace\NPDev_General\scripts\quality\run-traceable-local-release.ps1' `
-  -WorkspaceRoot 'D:\WorkSpace\NPDev_General'
+  -File 'D:\WorkSpace\NPDev\NPDev_General\scripts\quality\run-traceable-local-release.ps1' `
+  -WorkspaceRoot 'D:\WorkSpace\NPDev\NPDev_General'
 
 & 'C:\Program Files (x86)\PowerShell\7\pwsh.exe' -NoProfile -ExecutionPolicy Bypass `
-  -File 'D:\WorkSpace\NPDev_General\scripts\tests\Test-ReleaseTraceability.ps1' `
-  -WorkspaceRoot 'D:\WorkSpace\NPDev_General' `
+  -File 'D:\WorkSpace\NPDev\NPDev_General\scripts\tests\Test-ReleaseTraceability.ps1' `
+  -WorkspaceRoot 'D:\WorkSpace\NPDev\NPDev_General' `
   -RequireOfficialEligibility
 
 & 'C:\Program Files (x86)\PowerShell\7\pwsh.exe' -NoProfile -ExecutionPolicy Bypass `
-  -File 'D:\WorkSpace\NPDev_General\scripts\statezip-npdev-general.ps1' `
-  -WorkspaceRoot 'D:\WorkSpace\NPDev_General' `
-  -OutDir 'D:\WorkSpace\NPDev_General__OutsideRepo\state-zips' `
+  -File 'D:\WorkSpace\NPDev\NPDev_General\scripts\statezip-npdev-general.ps1' `
+  -WorkspaceRoot 'D:\WorkSpace\NPDev\NPDev_General' `
+  -OutDir 'D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\state-zips' `
   -ReleaseReady `
   -ExistingEvidenceRoot last
 
 & 'C:\Program Files (x86)\PowerShell\7\pwsh.exe' -NoProfile -ExecutionPolicy Bypass `
-  -File 'D:\WorkSpace\NPDev_General\scripts\quality\fix-statezip-visible-timestamps.ps1' `
-  -ZipRoot 'D:\WorkSpace\NPDev_General__OutsideRepo\state-zips'
+  -File 'D:\WorkSpace\NPDev\NPDev_General\scripts\quality\fix-statezip-visible-timestamps.ps1' `
+  -ZipRoot 'D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\state-zips'
 
 & 'C:\Program Files (x86)\PowerShell\7\pwsh.exe' -NoProfile -ExecutionPolicy Bypass `
-  -File 'D:\WorkSpace\NPDev_General\scripts\tests\Test-CiReleaseEvidenceFreshness.ps1' `
-  -WorkspaceRoot 'D:\WorkSpace\NPDev_General' `
-  -StateZipOut 'D:\WorkSpace\NPDev_General__OutsideRepo\state-zips'
+  -File 'D:\WorkSpace\NPDev\NPDev_General\scripts\tests\Test-CiReleaseEvidenceFreshness.ps1' `
+  -WorkspaceRoot 'D:\WorkSpace\NPDev\NPDev_General' `
+  -StateZipOut 'D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\state-zips'
 
 & 'C:\Program Files (x86)\PowerShell\7\pwsh.exe' -NoProfile -ExecutionPolicy Bypass `
-  -File 'D:\WorkSpace\NPDev_General\scripts\quality\run-roadmap-closure-check.ps1' `
-  -WorkspaceRoot 'D:\WorkSpace\NPDev_General' `
-  -StateZipRoot 'D:\WorkSpace\NPDev_General__OutsideRepo\state-zips'
+  -File 'D:\WorkSpace\NPDev\NPDev_General\scripts\quality\run-roadmap-closure-check.ps1' `
+  -WorkspaceRoot 'D:\WorkSpace\NPDev\NPDev_General' `
+  -StateZipRoot 'D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\state-zips'
 ```
 
 Expected result:
@@ -153,25 +163,16 @@ The GitHub workflow is:
 .github/workflows/npdev-release-gate.yml
 ```
 
-It should run on:
-
-- pull requests;
-- pushes to `main`;
-- pushes of tags matching `npdev-official-beta-*`;
-- manual workflow dispatch.
+It runs on manual workflow dispatch only (`workflow_dispatch`); it does not run on pull requests, pushes or tag pushes.
 
 The CI path must:
 
 1. check out the repository with full history;
-2. set up Java 21;
-3. set up Node 22;
-4. cache Gradle;
-5. cache npm;
-6. cache Playwright browsers;
-7. install Playwright Chromium;
-8. run `run-traceable-local-release.ps1 -WorkspaceRoot .`, which calls the canonical final release script and records command, log, report, hash, commit, and branch evidence;
-9. run `run-roadmap-closure-check.ps1 -WorkspaceRoot .` so CI verifies the same official runbook and workflow alignment checks used locally;
-10. upload release evidence as workflow artifacts.
+2. set up Java 17 and 21 (Temurin);
+3. set up Node 20;
+4. run `run-traceable-local-release.ps1 -WorkspaceRoot .`, which calls the canonical final release script and records command, log, report, hash, commit, and branch evidence;
+5. run `run-roadmap-closure-check.ps1 -WorkspaceRoot .` so CI verifies the same official runbook and workflow alignment checks used locally;
+6. upload release evidence as workflow artifacts.
 
 ---
 
@@ -182,7 +183,7 @@ Create an empty GitHub repository first.
 Then run:
 
 ```powershell
-Set-Location 'D:\WorkSpace\NPDev_General'
+Set-Location 'D:\WorkSpace\NPDev\NPDev_General'
 
 git branch --show-current
 git status --short
@@ -236,7 +237,6 @@ Attach:
 ```text
 NPDev_General_State_ALL_20260428_062512.zip
 NPDev_General_State_NPDevContract_20260428_062512.zip
-NPDev_General_State_NPDevEditor_20260428_062512.zip
 NPDev_General_State_NPDevGenerator_20260428_062512.zip
 NPDev_General_State_NPDevKernel_20260428_062512.zip
 NPDev_General_State_NPDevRuntimeHost_20260428_062512.zip
@@ -265,7 +265,7 @@ Suggested release notes:
 ### Verify release-ready summary inside latest state zip
 
 ```powershell
-$zipRoot = 'D:\WorkSpace\NPDev_General__OutsideRepo\state-zips'
+$zipRoot = 'D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\state-zips'
 $allZip = Get-ChildItem -LiteralPath $zipRoot -Filter 'NPDev_General_State_ALL_*.zip' |
   Sort-Object Name -Descending |
   Select-Object -First 1
@@ -296,7 +296,7 @@ finally {
 ### Verify Git traceability
 
 ```powershell
-Set-Location 'D:\WorkSpace\NPDev_General'
+Set-Location 'D:\WorkSpace\NPDev\NPDev_General'
 
 git rev-parse HEAD
 git status --short
@@ -328,7 +328,7 @@ commitIdentity.available=false
 Fix:
 
 ```powershell
-Set-Location 'D:\WorkSpace\NPDev_General'
+Set-Location 'D:\WorkSpace\NPDev\NPDev_General'
 
 git status
 git rev-parse --is-inside-work-tree
@@ -360,8 +360,8 @@ Fix:
 
 ```powershell
 & 'C:\Program Files (x86)\PowerShell\7\pwsh.exe' -NoProfile -ExecutionPolicy Bypass `
-  -File 'D:\WorkSpace\NPDev_General\scripts\quality\fix-statezip-visible-timestamps.ps1' `
-  -ZipRoot 'D:\WorkSpace\NPDev_General__OutsideRepo\state-zips'
+  -File 'D:\WorkSpace\NPDev\NPDev_General\scripts\quality\fix-statezip-visible-timestamps.ps1' `
+  -ZipRoot 'D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\state-zips'
 ```
 
 ### Problem: stale release evidence
@@ -376,9 +376,9 @@ Fix:
 
 ```powershell
 & 'C:\Program Files (x86)\PowerShell\7\pwsh.exe' -NoProfile -ExecutionPolicy Bypass `
-  -File 'D:\WorkSpace\NPDev_General\scripts\statezip-npdev-general.ps1' `
-  -WorkspaceRoot 'D:\WorkSpace\NPDev_General' `
-  -OutDir 'D:\WorkSpace\NPDev_General__OutsideRepo\state-zips' `
+  -File 'D:\WorkSpace\NPDev\NPDev_General\scripts\statezip-npdev-general.ps1' `
+  -WorkspaceRoot 'D:\WorkSpace\NPDev\NPDev_General' `
+  -OutDir 'D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\state-zips' `
   -ReleaseReady `
   -ExistingEvidenceRoot last
 ```
@@ -432,7 +432,7 @@ The roadmap is closed when all are true:
 - Local official beta baseline: complete.
 - RuntimeHost convergence: complete.
 - Release evidence and state zip: release-ready and traceable.
-- Roadmap closure: ~97% locally, ~98% after GitHub Actions is green.
+- Roadmap closure: ~97% locally at the 2026-04 baseline (historical figure).
 
 Remaining future-hardening items:
 
