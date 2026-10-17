@@ -22,7 +22,8 @@
   & '..\_shared\Build-NpdevApp.ps1' -AppFolder $PSScriptRoot
 
 .NOTES
-  Output goes to D:\WorkSpace\NPDev\Build\generated-finalapps\<scenario.name>
+  Output goes to <Build root>\generated-finalapps\<scenario.name> (Get-NPDevBuildRoot: NPDEV_BUILD_ROOT,
+  else <repo-parent>\Build)
   (never inside the NPDev_General source repo).
 #>
 [CmdletBinding()]
@@ -34,9 +35,13 @@ param(
   # levels up, correct under any clone name. The AppGen/Build defaults below are deliberately NOT
   # derived: they point outside the repo, into a layout that is genuinely per-machine.
   [string]$ProductRepo = '',
-  [string]$RuntimeCurrent = 'D:\WorkSpace\NPDev\AppGen\generator-runtime\current',
-  [string]$BuildRoot = 'D:\WorkSpace\NPDev\Build\generated-finalapps',
-  [string]$RuntimeHostLibsDir = 'D:\WorkSpace\NPDev\Build\runtimehost-libs',
+  # OPS-7 (REG-144): empty = resolved below from the shared helpers / repo layout, never from a
+  # drive letter. RuntimeCurrent -> <repo-parent>\AppGen\generator-runtime\current;
+  # BuildRoot -> <Get-NPDevBuildRoot>\generated-finalapps; RuntimeHostLibsDir ->
+  # Get-NPDevRuntimeHostLibsDir (NPDEV_RUNTIMEHOST_LIBS_DIR, else <Build root>\runtimehost-libs).
+  [string]$RuntimeCurrent = '',
+  [string]$BuildRoot = '',
+  [string]$RuntimeHostLibsDir = '',
   [switch]$GenerateOnly,
   [switch]$SkipRuntimeHostLibs,
   # LNCH-1 P6 (task 6.2c). -PlanOnly: compute + print the migration plan (SAFE items plainly,
@@ -92,6 +97,21 @@ $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($ProductRepo)) {
   $ProductRepo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+}
+
+# OPS-7: resolve the three roots by CALLING the shared helpers in a child scope -- npdev-common.ps1
+# sets Set-StrictMode -Version Latest at file scope and this script deliberately does not run under
+# it (see the comment further down), so the dot-source must not leak out of this block.
+if ([string]::IsNullOrWhiteSpace($BuildRoot) -or [string]::IsNullOrWhiteSpace($RuntimeHostLibsDir)) {
+  $sharedRoots = & {
+    . (Join-Path $ProductRepo 'scripts\npdev-common.ps1')
+    [pscustomobject]@{ Build = (Get-NPDevBuildRoot $ProductRepo); Libs = (Get-NPDevRuntimeHostLibsDir $ProductRepo) }
+  }
+  if ([string]::IsNullOrWhiteSpace($BuildRoot)) { $BuildRoot = Join-Path $sharedRoots.Build 'generated-finalapps' }
+  if ([string]::IsNullOrWhiteSpace($RuntimeHostLibsDir)) { $RuntimeHostLibsDir = $sharedRoots.Libs }
+}
+if ([string]::IsNullOrWhiteSpace($RuntimeCurrent)) {
+  $RuntimeCurrent = Join-Path (Split-Path -Parent $ProductRepo) 'AppGen\generator-runtime\current'
 }
 
 function Write-Step { param([string]$m) Write-Host "[$(Get-Date -Format 'HH:mm:ss')] $m" }

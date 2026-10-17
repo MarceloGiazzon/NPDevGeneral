@@ -15,6 +15,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
 import javax.sql.DataSource;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -43,13 +44,16 @@ public class ScheduledH2Backup {
 
     @Autowired
     public ScheduledH2Backup(
-            DataSource dataSource,
+            ObjectProvider<DataSource> dataSource,
             @Value("${npdev.database.engine:InMemory}") String engine,
             @Value("${npdev.backup.enabled:true}") boolean enabledFlag,
             @Value("${npdev.backup.dir:data/backups}") String backupDir,
             @Value("${npdev.backup.retention-count:14}") int retentionCount,
             @Value("${npdev.backup.file-prefix:db}") String filePrefix) {
-        this(dataSource, enabledFlag && ("H2Local".equalsIgnoreCase(engine) || "H2Server".equalsIgnoreCase(engine)),
+        // InMemory (and other DataSource-less) apps have no DataSource bean: resolve it lazily so they still boot.
+        this(dataSource.getIfAvailable(),
+                enabledFlag && ("H2Local".equalsIgnoreCase(engine) || "H2Server".equalsIgnoreCase(engine))
+                        && dataSource.getIfAvailable() != null,
                 Path.of(backupDir), Math.max(1, retentionCount), filePrefix, Clock.systemUTC());
     }
 

@@ -2917,6 +2917,12 @@ def run_app(args: argparse.Namespace) -> dict:
                         "GENERATE", "METADATA_ONLY_FAST_PATH_FAILED", fast_message))
                     return result
 
+        # OPS-12 (`npdev upgrade --app`): jump straight to BOOT with the jar already on disk -- used
+        # to boot the NEW build after the impact check and, on rollback, the RESTORED old jar. Same
+        # BOOT/READY code below, never a second copy of the health loop.
+        if getattr(args, "skip_generate_and_build", False) and result["phase"] == "GENERATE":
+            result["phase"] = "BOOT"
+
         if result["phase"] == "GENERATE":
             # --- PORT_IN_USE pre-flight (before spending any time generating/building) ----------
             if not args.keep_running and _is_port_in_use(args.port):
@@ -2964,6 +2970,12 @@ def run_app(args: argparse.Namespace) -> dict:
                     suggested_fix="Check for a bootJar/assemble task misconfiguration.",
                 ))
                 result["logExcerpt"] = _log_excerpt(build_output)
+                return result
+            if getattr(args, "stop_after_build", False):
+                # OPS-12: GENERATE+BUILD only -- the upgrade orchestrator runs its schema-impact check
+                # against this jar BEFORE anything is booted against the real data.
+                result["ok"] = True
+                result["jarPath"] = str(jar_path)
                 return result
 
         else:
@@ -17356,16 +17368,47 @@ def build_parser() -> argparse.ArgumentParser:
              "(R9.5), WITHOUT touching data/logs/secrets -- the same three directories a "
              "regeneration spares.",
     )
-    upgrade_parser.add_argument("--package", required=True,
-                                help="a package directory or .zip produced by `npdev package`")
+    upgrade_parser.add_argument("--package", default=None,
+                                help="a package directory or .zip produced by `npdev package` "
+                                     "(with --target; not used with --app)")
     upgrade_parser.add_argument(
-        "--target", required=True,
+        "--target", default=None,
         help="the app directory to install into (created fresh if it does not yet exist) or "
              "upgrade in place (if it does)")
     upgrade_parser.add_argument(
         "--force", action="store_true",
         help="upgrade even though the target looks like it is still running (NOT recommended -- "
              "stop it first with _ops/Stop-App.ps1)")
+    # OPS-12: the guarded in-place upgrade -- backup, validate, regenerate, build, impact check, boot,
+    # health, and an automatic rollback if any step after the backup fails.
+    upgrade_parser.add_argument(
+        "--app", default=None,
+        help="OPS-12: a generated app directory to upgrade IN PLACE from its (edited) model: backup -> "
+             "validate -> regenerate -> build -> schema-impact check -> boot -> health, with automatic "
+             "rollback. Prints a JSON result whose `outcome` is UPGRADED, REFUSED, ROLLED_BACK or "
+             "ROLLBACK_FAILED.")
+    upgrade_parser.add_argument("--model", default=None,
+                                help="with --app: the edited model.json (default: model.json in the CWD, "
+                                     "else the model the app was generated from)")
+    upgrade_parser.add_argument("--config", default=None,
+                                help="with --app: config.json (default: beside --model)")
+    upgrade_parser.add_argument("--port", type=int, default=None,
+                                help="with --app: port to boot on (default: the app's own configured port, else 8080)")
+    upgrade_parser.add_argument("--profile", default="dev",
+                                help="with --app: Spring profile to boot with (default dev)")
+    upgrade_parser.add_argument("--stop", action="store_true",
+                                help="with --app: stop the running app first (via its _ops stop script) "
+                                     "instead of refusing")
+    upgrade_parser.add_argument("--allow-destructive", action="store_true",
+                                help="with --app: proceed even when the schema impact check reports a "
+                                     "destructive change (dropped data)")
+    upgrade_parser.add_argument("--skip-db-backup", action="store_true",
+                                help="with --app: do not require a Postgres/MySQL dump (you backed the "
+                                     "database up yourself)")
+    upgrade_parser.add_argument("--timeout", type=int, default=900,
+                                help="with --app: overall wall-clock budget in seconds (default 900)")
+    upgrade_parser.add_argument("--json", action="store_true",
+                                help="with --app: accepted for symmetry; the result is always JSON")
 
     report = subparsers.add_parser(
         "report", help="Produce or bootstrap the evidence and status reports."
@@ -17964,6 +18007,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "package":
             return run_package(args)
         if args.command == "upgrade":
+            if getattr(args, "app", None):
+                import npdev_app_upgrade  # local import, as elsewhere (dev_loop does the same)
+                result = npdev_app_upgrade.upgrade_app(args, sys.modules[__name__])
+                print(json.dumps(result, indent=2, ensure_ascii=False))
+                return 0 if result.get("ok") else 2
+            if not (args.package and args.target):
+                raise CliError("upgrade needs --app <dir>, or --package and --target")
             return run_upgrade(args)
         if args.command == "add" and args.add_command == "concept":
             return run_add_member(args, "concept")

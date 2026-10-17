@@ -694,7 +694,7 @@
       "transaction": {
         "actions": [
           { "procedure": "IdentifyCapWithAi", "label": "Identify with AI",
-            "visibleWhen": "$root.status == 'SUBMITTED'" },
+            "visibleWhen": "$root.status == 'SUBMITTED'", "review": true },
           { "procedure": "ExtractCapColors", "label": "Read colours from image" }
         ]
       } },
