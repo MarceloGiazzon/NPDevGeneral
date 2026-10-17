@@ -857,8 +857,11 @@ public final class JsonModelParser {
             out.add(new com.npdev.dsl.v1.ast.WebhookAst(
                     requiredText(webhookNode, "source"),
                     requiredText(webhookNode, "hmacSecretEnvVar"),
-                    requiredText(webhookNode, "eventName"),
-                    parseStringMap(webhookNode.get("fieldMapping"))
+                    readText(webhookNode, "eventName"),
+                    parseStringMap(webhookNode.get("fieldMapping")),
+                    readText(webhookNode, "startFlow"),
+                    readText(webhookNode, "idempotencyKey"),
+                    parseObjectMap(webhookNode.get("signature"))
             ));
         }
         return out;
