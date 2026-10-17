@@ -89,11 +89,13 @@ class KernelRunnerCapabilityPolicyTest {
     void abortsWhenCapabilityCallTimesOut() {
         AtomicInteger attempts = new AtomicInteger();
         KernelRunner runner = runnerWithCapabilityStep(
-                new CapabilityExecutionPolicy(3, 0, 40, 0, 0, 0, null, null),
+                // 300 ms budget vs a 3 s call: a 40 ms budget raced the worker thread's start under a loaded
+                // machine, so the timeout fired before the call ran at all (attempts == 0).
+                new CapabilityExecutionPolicy(3, 0, 300, 0, 0, 0, null, null),
                 (call, state) -> {
                     attempts.incrementAndGet();
                     try {
-                        Thread.sleep(150);
+                        Thread.sleep(3000);
                     } catch (InterruptedException interruptedException) {
                         Thread.currentThread().interrupt();
                     }

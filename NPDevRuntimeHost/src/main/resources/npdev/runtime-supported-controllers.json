@@ -98,7 +98,9 @@
     "RuntimeTopologyExplorerService",
     "FlowBuilderService",
     "GovernanceWorkspaceService",
-    "CapabilityIntegrationPanelService"
+    "CapabilityIntegrationPanelService",
+    "CredentialAdminPolicy",
+    "OpsAlertScheduler"
   ],
   "supportedCoreServicePatterns": [
     "*ArtifactRealizationProvider",
