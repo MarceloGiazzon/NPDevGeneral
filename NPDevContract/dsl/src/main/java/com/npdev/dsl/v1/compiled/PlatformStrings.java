@@ -39,6 +39,9 @@ public final class PlatformStrings {
         d.put("shell.inviteUser", "Invite user");
         d.put("shell.signOut", "Sign out");
         d.put("shell.notSignedIn", "Not signed in");
+        d.put("shell.toggleMenu", "Collapse/expand menu");
+        d.put("shell.quickAccess", "Quick access");
+        d.put("shell.toggleRightbar", "Show/hide side panel");
         // REG-146: Map.copyOf(d) here (rather than Collections.unmodifiableMap) is what actually
         // made this nondeterministic -- JDK's ImmutableCollections implementation deliberately
         // randomizes iteration order per JVM run (a JEP 269 hash-flood mitigation), discarding the
@@ -59,6 +62,9 @@ public final class PlatformStrings {
         pt.put("shell.inviteUser", "Convidar usuario");
         pt.put("shell.signOut", "Sair");
         pt.put("shell.notSignedIn", "nao autenticado");
+        pt.put("shell.toggleMenu", "Recolher/expandir menu");
+        pt.put("shell.quickAccess", "Acesso rápido");
+        pt.put("shell.toggleRightbar", "Mostrar/ocultar painel lateral");
         PORTUGUESE = Collections.unmodifiableMap(pt);
     }
 

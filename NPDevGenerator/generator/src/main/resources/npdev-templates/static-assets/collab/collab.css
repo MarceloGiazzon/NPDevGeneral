@@ -1,0 +1,14 @@
+/* PROC-3: styles for the collaboration pages (My tasks). Shell tokens only (--np-*), so light/dark
+   themes and an app's own /theme.css apply. Emitted verbatim (not Mustache). */
+.npdev-collab-page { max-width: 960px; margin: 0 auto; padding: 16px; font-family: var(--np-font, system-ui, sans-serif); color: var(--np-text, #1c2333); }
+.npdev-task-list { list-style: none; padding: 0; }
+.npdev-task { border: 1px solid var(--np-border, #e3e6ec); border-radius: 8px; margin: 8px 0; background: var(--np-surface, #fff); }
+.npdev-task-head { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; padding: 10px 12px; background: none; border: 0; cursor: pointer; color: inherit; font: inherit; }
+.npdev-task-title { font-weight: 600; }
+.npdev-task-meta { opacity: .75; font-size: 12px; margin-left: auto; }
+.npdev-task-overdue { border-color: var(--np-danger, #b3261e); }
+.npdev-task-badge { background: var(--np-danger, #b3261e); color: var(--np-on-accent, #fff); border-radius: 9px; padding: 0 8px; font-size: 11px; line-height: 18px; }
+.npdev-task-body { padding: 0 12px 12px; }
+.npdev-task-field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.npdev-task-actions { display: flex; gap: 8px; margin-top: 8px; }
+.npdev-task-status { margin-top: 8px; font-size: 13px; color: var(--np-text-muted, #6b7280); }
