@@ -599,6 +599,9 @@ public final class CompiledModelCanonicalJson {
         if (surface.layout() != null) {
             node.put("layout", surface.layout());
         }
+        if (surface.panel() != null) {
+            node.put("panel", surface.panel());
+        }
         return node;
     }
 

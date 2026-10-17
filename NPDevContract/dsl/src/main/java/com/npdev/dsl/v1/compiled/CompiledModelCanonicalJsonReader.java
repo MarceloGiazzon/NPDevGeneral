@@ -520,7 +520,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toBandPickers(node.get("bandPickers")),
                 toAutoPanelDataSource(node.get("dataSource")),
                 toUiState(node.get("uiState")),
-                optionalText(node, "layout")
+                optionalText(node, "layout"),
+                optionalText(node, "panel")
         );
     }
 
