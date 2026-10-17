@@ -12,12 +12,14 @@ via environment variables, nothing environment-specific baked into the image.
 
 ## Two shapes, chosen by the model's `db.definition.json` engine
 
-- **`db.engine: Postgres`** → the **Postgres-first** compose: an `app` service + a `database`
-  service (`postgres:16-alpine`), both healthchecked, `app` waiting on `database` before starting.
-  This is the production-grade path — Postgres is a durable, separately-operable service.
+- **A container-backed engine (`Postgres`, `MySQL` or `SqlServer`)** → the **server** compose: an `app` service + a
+  `database` service (`postgres:16-alpine`, `mysql:8.4` or SQL Server 2022 respectively; the service is always named
+  `database`), both healthchecked, `app` waiting on `database` before starting. This is the production-grade path —
+  the database is a durable, separately-operable service. (MySQL and SqlServer apps also run with the `postgres` JDBC
+  storage profile: `SPRING_PROFILES_ACTIVE=prod,postgres`.)
 - **`InMemory` / `H2Local` / `H2Server`** → a **standalone** compose: just the `app` service. These
   are dev/test storage engines, embedded in the app process itself — there is nothing to run
-  alongside them. To get the Postgres-first path, regenerate the app with `db.engine: Postgres` in
+  alongside them. To get the server compose, regenerate the app with `db.engine: Postgres` (or `MySQL` / `SqlServer`) in
   `db.definition.json` (and set `databaseName` explicitly — see below).
 
 Both shapes optionally add a `proxy` service (`docker compose --profile proxy up`) — a Caddy
@@ -58,7 +60,7 @@ docker compose exec app cat /app/secrets/SUPER_USER_KEY.txt
 This key opens `/control-panel.html` only; it is not the business-API `X-Api-Key`.
 
 Note: `SuperUserBootstrapper` skips issuing a key entirely when there is no physical database
-configured (`InMemory` engine) — Super User credentials require `H2Local`/`H2Server`/`Postgres`.
+configured (`InMemory` engine) — Super User credentials require a physical database (`H2Local`, `H2Server`, `Postgres`, `MySQL` or `SqlServer`).
 This is existing, correct platform behavior, not a Docker-specific limitation.
 
 ## JWT authentication: supplying keys without baking them into the image (REG-9)
@@ -66,8 +68,8 @@ This is existing, correct platform behavior, not a Docker-specific limitation.
 `NPDEV_AUTH_MODE=jwt` needs a token **verification** (public) key, and — only if this instance also
 **mints** tokens via `POST /api/auth/login` — a **signing** (private) key. Supply both by path via
 environment variable so no key material is baked into the image. The generated `docker-compose.yml`
-and `.env.example` already carry the four variables (commented out; uncomment and point them at
-mounted files):
+and `.env.example` already carry the four variables (live in `docker-compose.yml` with empty defaults; commented out in
+`.env.example` — uncomment and point them at mounted files):
 
 ```
 NPDEV_AUTH_MODE=jwt
@@ -87,7 +89,8 @@ lands them at those paths. Two deployment shapes are supported:
 
 **Env-var name gotcha** (identical to `NPDEV_AUTH_APIKEYS`): Spring Boot's relaxed binding strips
 hyphens, so `npdev.auth.jwt.private-key-path` binds from `NPDEV_AUTH_JWT_PRIVATEKEYPATH` — **no**
-underscore before `KEYPATH`. `NPDEV_AUTH_JWT_PRIVATE_KEY_PATH` silently does nothing.
+underscore before `KEYPATH`. Use that canonical spelling; the underscore spelling `NPDEV_AUTH_JWT_PRIVATE_KEY_PATH` was
+not re-tested for this property (Spring's `@Value` reads may accept it, see `CONFIGURATION.md`).
 
 `StartupValidator` fails fast at boot with a message linking `docs/CONFIGURATION.md#authentication`
 if `jwt` mode is active and the public key path (always) or a *set* private key path points at a
@@ -101,7 +104,7 @@ timestamp to the resolved database name on every regeneration. `DatabaseIdentity
 refuses to start if the database it connects to doesn't match what the model was generated
 against ("Configured database is 'X', but connected database is 'Y'"), so an unset `databaseName`
 means every regeneration needs a matching new Postgres database. For a stable production identity
-across redeploys, set `database.databaseName` explicitly. `.env.example`'s `POSTGRES_DB` default
+across redeploys, set `database.databaseName` explicitly. `.env.example`'s `DB_NAME` default
 is generated to match the model's resolved database name either way.
 
 ## Object storage (LNCH-14, Postgres-first shape only)
@@ -175,10 +178,9 @@ NPDev then issues zero schema DDL against it and only verifies compatibility at 
 ## The `prod` Spring profile (R7 Stage B, SEC-1)
 
 `SPRING_PROFILES_ACTIVE` above defaults to `prod` (or `prod,postgres` for a Postgres-engine app),
-backed by `application-prod.properties` — deliberately minimal: it does not seed a storage mode (that
-comes from the `postgres` Spring profile + env vars, see `docs/CONFIGURATION.md
-#mode-and-profile-contract`) and does not seed an admin API key (unlike `application-dev.yml`'s known
-`api-dev`/`dev-key` pair, meant only for a local dev boot). Startup refuses to proceed until
+backed by `application-prod.properties` — deliberately minimal: it does not seed a storage mode (the storage mode is baked at generation into
+`application-npdev-db.properties`; see `docs/CONFIGURATION.md#mode-and-profile-contract`) and does not seed an admin API key
+(neither does `application-dev.yml` any more — T1/C2 removed its known `api-dev`/`dev-key` pair). Startup refuses to proceed until
 `NPDEV_AUTH_APIKEYS` is supplied — this compose file already enforces that
 (`${NPDEV_AUTH_APIKEYS:?NPDEV_AUTH_APIKEYS must be set in .env}`), so a container that boots at all
 has a real, operator-supplied key, never the dev default.
