@@ -28,7 +28,9 @@ public record AutoPanelSurfaceAst(
         /** Move 11 W6: declared transient UI state a {@code $ui.<name>} visibleWhen predicate reads. */
         Map<String, UiStateControlAst> uiState,
         /** Selection surface only: the generated Selection panel's layout type, {@code table} (default) or {@code grid}. */
-        String layout
+        String layout,
+        /** AutoPanel surface override: name of a declared panel that REPLACES this surface's synthesized panel. */
+        String panel
 ) {
     public AutoPanelSurfaceAst {
         filters = filters == null ? List.of() : List.copyOf(filters);

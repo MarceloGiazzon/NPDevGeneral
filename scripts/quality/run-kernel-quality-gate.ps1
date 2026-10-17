@@ -34,6 +34,22 @@ $kernelRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevKernel"
 Ensure-NPDevDirectory $kernelRoot "NPDevKernel root"
 $kernelGradleWrapper = Get-NPDevGradleWrapperExecutable $kernelRoot
 
+# ENG-9: the internal-DB source-of-truth static check (no V5001..V5014 resources, no hand-written
+# CREATE TABLE npdev_*, no generated output under source, registry-derived class list) is declared
+# `ci-gate` in script-invocation-declarations.json; this is the gate that runs it. It takes seconds
+# and runs first so a violation is reported even when the long Gradle run below is red too. The exact
+# registered table set is pinned separately by NpdevInternalTablesSourceOfTruthTest, which
+# kernelQualityGate (:kernel:test) runs.
+Write-NPDevInfo "Checking the internal DB schema source of truth (static)"
+$pwshExe = (Get-Command pwsh -ErrorAction Stop).Source
+$schemaSotOutput = & $pwshExe -NoProfile -File (Join-Path $PSScriptRoot "run-internal-db-schema-source-of-truth-check.ps1") 2>&1 | ForEach-Object { $_.ToString() }
+$schemaSotExitCode = $LASTEXITCODE
+$schemaSotEvidence = [pscustomobject]@{
+    overallStatus = if ($schemaSotExitCode -eq 0) { "passed" } else { "failed" }
+    exitCode = $schemaSotExitCode
+    output = @($schemaSotOutput | Select-Object -Last 30)
+}
+
 Write-NPDevInfo "Running kernelQualityGate (:kernel:test + all :adapters:*:test)"
 $kernelLogPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\kernel-quality-gate-build.log"
 $kernelCommand = Invoke-NPDevCommandEvidence `
@@ -56,7 +72,7 @@ if ([string]$kernelCommand.status -eq "passed") {
     }
 }
 
-$status = if ([string]$kernelCommand.status -eq "passed" -and $null -ne $coverageRatchetEvidence -and [string]$coverageRatchetEvidence.overallStatus -eq "passed") {
+$status = if ([string]$schemaSotEvidence.overallStatus -eq "passed" -and [string]$kernelCommand.status -eq "passed" -and $null -ne $coverageRatchetEvidence -and [string]$coverageRatchetEvidence.overallStatus -eq "passed") {
     "passed"
 }
 else {
@@ -70,6 +86,7 @@ $report = [pscustomobject]@{
     workspaceRoot = $WorkspaceRoot
     overallStatus = $status
     kernelRoot = $kernelRoot
+    internalDbSchemaSourceOfTruth = $schemaSotEvidence
     kernelCommand = $kernelCommand
     coverageRatchet = $coverageRatchetEvidence
 }
@@ -80,6 +97,10 @@ if ($status -eq "passed") {
     return
 }
 
+if ([string]$schemaSotEvidence.overallStatus -ne "passed") {
+    Write-NPDevWarn "  reason: internal DB schema source-of-truth check failed:"
+    $schemaSotEvidence.output | ForEach-Object { Write-Host ("    " + $_) }
+}
 if ([string]$kernelCommand.status -ne "passed") {
     Write-NPDevWarn ("  reason: kernelQualityGate failed -- see " + $kernelLogPath)
 }
@@ -89,6 +110,9 @@ if ($null -ne $coverageRatchetEvidence -and $coverageRatchetEvidence.overallStat
     $coverageRatchetEvidence.output | ForEach-Object { Write-Host ("    " + $_) }
 }
 Write-NPDevWarn "NPDevKernel quality gate failed."
+if ([string]$schemaSotEvidence.overallStatus -ne "passed") {
+    throw "Internal DB schema source-of-truth check failed -- see output above (scripts/quality/run-internal-db-schema-source-of-truth-check.ps1)."
+}
 if ([string]$kernelCommand.status -ne "passed") {
     throw "kernelQualityGate failed -- see $kernelLogPath"
 }

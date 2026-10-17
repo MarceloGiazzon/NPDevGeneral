@@ -67,6 +67,15 @@ function Resolve-LastExistingEvidenceRoot {
     )
 
     $releasesRoot = Join-Path $WorkspaceRootValue "scripts\reports\releases"
+    if (-not (Test-Path -LiteralPath $releasesRoot -PathType Container)) {
+        # OPS-7: nothing creates scripts\reports\releases any more; the beta release gate writes its
+        # evidence flat under scripts\reports\out. Use that when it holds a manifest.
+        $flatRoot = Join-Path $WorkspaceRootValue "scripts\reports\out"
+        if ((Test-Path -LiteralPath (Join-Path $flatRoot "beta-release-evidence-manifest.json") -PathType Leaf) -or
+            (Test-Path -LiteralPath (Join-Path $flatRoot "evidence-manifest.json") -PathType Leaf)) {
+            return $flatRoot
+        }
+    }
     Assert-PathExists -PathValue $releasesRoot -Label "Release evidence releases root"
 
     $candidates = @(
@@ -210,12 +219,14 @@ if ($ReleaseReady) {
     }
 
     if ([string]::IsNullOrWhiteSpace($releaseEvidenceRoot)) {
-        $releaseEvidenceRootValue = [string]$releaseEvidenceReport.evidenceRoot
-        if ([string]::IsNullOrWhiteSpace($releaseEvidenceRootValue)) {
-            throw "Beta release gate report is missing evidenceRoot."
+        $releaseEvidenceRootValue = [string](Get-OptionalObjectProperty -ObjectValue $releaseEvidenceReport -PropertyName "evidenceRoot")
+        $releaseEvidenceRoot = if ([string]::IsNullOrWhiteSpace($releaseEvidenceRootValue)) {
+            # OPS-7: the beta release gate now writes a FLAT layout (scripts\reports\out holds the
+            # report and beta-release-evidence-manifest.json) and no evidenceRoot. The manifest
+            # existence check below still throws when neither manifest is there.
+            $reportsOutRoot
         }
-
-        $releaseEvidenceRoot = if ([System.IO.Path]::IsPathRooted($releaseEvidenceRootValue)) {
+        elseif ([System.IO.Path]::IsPathRooted($releaseEvidenceRootValue)) {
             $releaseEvidenceRootValue
         }
         else {

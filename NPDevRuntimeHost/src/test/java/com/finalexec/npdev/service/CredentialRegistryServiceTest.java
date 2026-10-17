@@ -42,6 +42,9 @@ class CredentialRegistryServiceTest {
             s.execute("CREATE TABLE npdev_api_credential (credential_id VARCHAR(64) PRIMARY KEY, "
                     + "key_hash VARCHAR(64), tenant_id VARCHAR(120), actor_id VARCHAR(120), "
                     + "roles VARCHAR(255), status VARCHAR(32), created_at_ms BIGINT)");
+            // INT-8: every issued credential also gets a policy row (label/expiry/last-used).
+            s.execute("CREATE TABLE npdev_api_credential_policy (credential_id VARCHAR(64) PRIMARY KEY, "
+                    + "label VARCHAR(255), expires_at_ms BIGINT, last_used_at_ms BIGINT, created_by VARCHAR(255))");
         }
         service = new CredentialRegistryService(new FixedProvider(dataSource));
     }

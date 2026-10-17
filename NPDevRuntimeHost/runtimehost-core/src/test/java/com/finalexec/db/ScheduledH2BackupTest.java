@@ -76,15 +76,29 @@ class ScheduledH2BackupTest {
     void nonH2EngineIsDisabledThroughThePublicConstructor() throws Exception {
         Path backups = tmp.resolve("pg");
         DriverManagerDataSource dataSource = fileDataSource();
-        new ScheduledH2Backup(dataSource, "Postgres", true, backups.toString(), 14, "db").scheduledRun();
-        new ScheduledH2Backup(dataSource, "InMemory", true, backups.toString(), 14, "db").scheduledRun();
+        new ScheduledH2Backup(providerOf(dataSource), "Postgres", true, backups.toString(), 14, "db").scheduledRun();
+        new ScheduledH2Backup(providerOf(dataSource), "InMemory", true, backups.toString(), 14, "db").scheduledRun();
         assertTrue(!Files.exists(backups));
     }
 
     @Test
     void h2LocalEngineThroughThePublicConstructorIsEnabled() throws Exception {
         Path backups = tmp.resolve("local");
-        new ScheduledH2Backup(fileDataSource(), "H2Local", true, backups.toString(), 14, "db").scheduledRun();
+        new ScheduledH2Backup(providerOf(fileDataSource()), "H2Local", true, backups.toString(), 14, "db").scheduledRun();
         assertEquals(1, zipNames(backups).size());
+    }
+
+    private static org.springframework.beans.factory.ObjectProvider<javax.sql.DataSource> providerOf(javax.sql.DataSource ds) {
+        org.springframework.beans.factory.support.StaticListableBeanFactory factory =
+                new org.springframework.beans.factory.support.StaticListableBeanFactory();
+        if (ds != null) {
+            factory.addBean("ds", ds);
+        }
+        return factory.getBeanProvider(javax.sql.DataSource.class);
+    }
+
+    @Test
+    void appWithoutADataSourceBeanStillConstructsAndDoesNothing() {
+        new ScheduledH2Backup(providerOf(null), "InMemory", true, "unused", 14, "db").scheduledRun();
     }
 }

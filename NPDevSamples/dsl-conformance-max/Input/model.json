@@ -1156,7 +1156,8 @@
           {
             "procedure": "RenameOrderStatusProcedure",
             "label": "Apply status (typed)",
-            "inputFields": ["newStatus"]
+            "inputFields": ["newStatus"],
+            "review": true
           },
           {
             "procedure": "SuggestLineProcedure",
@@ -1224,6 +1225,18 @@
         "dataSource": {
           "procedure": "ListActiveWidgetCatalogEntriesProcedure"
         }
+      }
+    },
+    {
+      "name": "WidgetCatalogEntryOverrideBrowser",
+      "concept": "WidgetCatalogEntry",
+      "route": "/widget-catalog-override",
+      "surfaces": ["selection", "detail"],
+      "metadata": {
+        "purpose": "AUD-6: witness for autoPanelSurface.panel (AutoPanel surface override) -- the Selection surface is REPLACED by the declared WidgetCatalogReviewPanel, so only the Detail surface of this AutoPanel is synthesized."
+      },
+      "selection": {
+        "panel": "WidgetCatalogReviewPanel"
       }
     },
     {

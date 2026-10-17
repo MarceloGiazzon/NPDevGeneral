@@ -24,7 +24,10 @@ public record WorkbenchActionAst(
         // report, WITHOUT invoking any procedure or persisting anything (an on-demand "Recalcular
         // Saldos" affordance). Exactly one of procedure/checkBalances must be declared -- see
         // PanelValidation#validateWorkbenchActions.
-        List<String> checkBalances
+        List<String> checkBalances,
+        // AI-7: when true the procedure's result is shown as a field-by-field "proposed changes"
+        // dialog and only the ticked fields are folded into the draft. Plain-patch branch only.
+        boolean review
 ) {
     public WorkbenchActionAst {
         inputFields = inputFields == null ? List.of() : List.copyOf(inputFields);
@@ -43,6 +46,20 @@ public record WorkbenchActionAst(
             String visibleWhen,
             Map<String, String> labelLocales
     ) {
-        this(procedure, label, inputFields, applyTo, afterAction, visibleWhen, labelLocales, List.of());
+        this(procedure, label, inputFields, applyTo, afterAction, visibleWhen, labelLocales, List.of(), false);
+    }
+
+    /** Pre-AI-7 8-arg shape (no review dialog). */
+    public WorkbenchActionAst(
+            String procedure,
+            String label,
+            List<String> inputFields,
+            WorkbenchActionApplyToAst applyTo,
+            String afterAction,
+            String visibleWhen,
+            Map<String, String> labelLocales,
+            List<String> checkBalances
+    ) {
+        this(procedure, label, inputFields, applyTo, afterAction, visibleWhen, labelLocales, checkBalances, false);
     }
 }
