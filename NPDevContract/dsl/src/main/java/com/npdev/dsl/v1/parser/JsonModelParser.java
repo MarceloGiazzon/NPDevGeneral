@@ -415,7 +415,7 @@ public final class JsonModelParser {
             boolean conceptTemporal = ent.has("temporal") && ent.get("temporal").asBoolean(false);
             String conceptUid = readText(ent, "uid");
             ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes, access, conceptRenamedFrom, conceptSatelliteOf, originFor(originByQualifiedMemberName, "concepts", name), conceptSoftDelete, conceptTemporal, conceptUid,
-                    readRollups(name, ent.get("rollups")));
+                    readRollups(name, ent.get("rollups")), readCollaboration(name, ent.get("collaboration")));
             concepts.add(concept);
             conceptsByLowerName.put(name.toLowerCase(Locale.ROOT), concept);
         }
@@ -2212,6 +2212,19 @@ public final class JsonModelParser {
             out.put(key, parseJsonValue(node.get(key)));
         }
         return out;
+    }
+
+    /** PROC-5/PROC-6: {@code collaboration: { comments, attachments }}; null when absent. */
+    private static CollaborationAst readCollaboration(String conceptName, JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("Concept " + conceptName + " collaboration must be an object");
+        }
+        return new CollaborationAst(
+                node.has("comments") && node.get("comments").asBoolean(false),
+                node.has("attachments") && node.get("attachments").asBoolean(false));
     }
 
     /** P8 prelude: {@code rollups: [{ field, from, via, fn, of }]}; empty when absent. */

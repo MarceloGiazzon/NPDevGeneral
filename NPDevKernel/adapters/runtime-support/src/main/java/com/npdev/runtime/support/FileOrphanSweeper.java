@@ -60,6 +60,23 @@ public final class FileOrphanSweeper {
             Instant now,
             BiConsumer<String, RuntimeException> onDeleteFailure
     ) {
+        return sweep(fileStore, conceptStore, model, graceWindow, now, onDeleteFailure, tenant -> Set.of());
+    }
+
+    /**
+     * PROC-6: as above, plus {@code extraReferencedKeys} -- per tenant, store keys that are referenced by
+     * something other than a concept FILE FIELD (record-thread attachments) and so must never be reaped.
+     * The sweep still only runs for models that declare at least one file field, as before.
+     */
+    public static SweepResult sweep(
+            FileStoreContract fileStore,
+            ConceptStore conceptStore,
+            CompiledModel model,
+            Duration graceWindow,
+            Instant now,
+            BiConsumer<String, RuntimeException> onDeleteFailure,
+            java.util.function.Function<String, Set<String>> extraReferencedKeys
+    ) {
         if (model == null) {
             return new SweepResult(0, 0, 0);
         }
@@ -74,6 +91,10 @@ public final class FileOrphanSweeper {
         int failed = 0;
         for (String tenantId : fileStore.listTenants()) {
             Set<String> referencedKeys = referencedKeysForTenant(conceptStore, tenantId, fileFieldsByConcept);
+            Set<String> extra = extraReferencedKeys == null ? null : extraReferencedKeys.apply(tenantId);
+            if (extra != null) {
+                referencedKeys.addAll(extra);
+            }
             for (FileStoreContract.StoredObject stored : fileStore.list(tenantId)) {
                 scanned++;
                 if (referencedKeys.contains(stored.key())) {

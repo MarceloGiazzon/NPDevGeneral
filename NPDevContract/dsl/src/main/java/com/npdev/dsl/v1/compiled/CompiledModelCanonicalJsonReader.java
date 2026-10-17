@@ -839,7 +839,8 @@ public final class CompiledModelCanonicalJsonReader {
                 booleanValue(node, "temporal"),
                 optionalText(node, "uid"),
                 toRollups(node.get("rollups")),
-                toStringList(node.get("fieldOrder"))
+                toStringList(node.get("fieldOrder")),
+                toCollaboration(node.get("collaboration"))
         );
     }
 
@@ -866,6 +867,13 @@ public final class CompiledModelCanonicalJsonReader {
 
     /** LNCH-13: row-level authorization rule (access: {read, write}). */
     /** P8 prelude: reads a concept's {@code rollups[]}; key absent means none. */
+    private static CompiledCollaboration toCollaboration(JsonNode node) {
+        if (node == null || !node.isObject()) {
+            return null;
+        }
+        return new CompiledCollaboration(booleanValue(node, "comments"), booleanValue(node, "attachments"));
+    }
+
     private static List<CompiledRollup> toRollups(JsonNode node) {
         if (node == null || !node.isArray()) {
             return List.of();

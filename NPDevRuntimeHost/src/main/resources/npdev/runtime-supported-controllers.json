@@ -8,6 +8,7 @@
     "AgentMcpController",
     "AggregateApiController",
     "PublicReadController",
+    "RecordCommentController",
     "WebhookInboundController",
     "MessagingDeliveryController",
     "ConceptQueryController",

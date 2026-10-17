@@ -7,6 +7,7 @@ public final class ConceptAst extends EntityAst {
     private final String module;
     private final List<IndexAst> indexes;
     private final ConceptAccessAst access;
+    private final CollaborationAst collaboration;
     private final String renamedFrom;
     private final String satelliteOf;
     private final OriginAst origin;
@@ -287,6 +288,32 @@ public final class ConceptAst extends EntityAst {
             String uid,
             List<RollupAst> rollups
     ) {
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel, module, indexes, access, renamedFrom, satelliteOf, origin, softDelete, temporal, uid, rollups, null);
+    }
+
+    /** PROC-5/PROC-6: record collaboration (comments / attachments) -- see getCollaboration. */
+    public ConceptAst(
+            String name,
+            String extendsName,
+            String specializesName,
+            List<FieldAst> fields,
+            List<InvariantAst> invariants,
+            List<EventAst> events,
+            LifecycleAst lifecycle,
+            PresentationMetadataAst ui,
+            TruthLevel truthLevel,
+            String module,
+            List<IndexAst> indexes,
+            ConceptAccessAst access,
+            String renamedFrom,
+            String satelliteOf,
+            OriginAst origin,
+            boolean softDelete,
+            boolean temporal,
+            String uid,
+            List<RollupAst> rollups,
+            CollaborationAst collaboration
+    ) {
         super(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
@@ -298,6 +325,12 @@ public final class ConceptAst extends EntityAst {
         this.temporal = temporal;
         this.uid = uid;
         this.rollups = rollups == null ? List.of() : List.copyOf(rollups);
+        this.collaboration = collaboration;
+    }
+
+    /** PROC-5/PROC-6: declared {@code collaboration} (comment thread / attachments on every record); null if none. */
+    public CollaborationAst getCollaboration() {
+        return collaboration;
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
