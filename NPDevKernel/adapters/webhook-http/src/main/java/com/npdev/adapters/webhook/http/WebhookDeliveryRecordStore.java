@@ -64,7 +64,8 @@ public final class WebhookDeliveryRecordStore {
                 + "updated_at " + dialect.timestampColumnType() + " NOT NULL, "
                 + "delivered_at " + dialect.timestampColumnType() + ", "
                 + "event_name " + dialect.keyableTextColumnType() + ", "
-                + "next_attempt_at " + dialect.timestampColumnType()
+                + "next_attempt_at " + dialect.timestampColumnType() + ", "
+                + "tenant_id " + dialect.keyableTextColumnType()
                 + ")";
         String createIndex = "CREATE INDEX ix_npdev_webhook_delivery_status ON " + TABLE + " (status)";
         try (java.sql.Statement statement = connection.createStatement()) {
@@ -72,9 +73,13 @@ public final class WebhookDeliveryRecordStore {
             statement.execute(dialect.guardedCreateIndex("ix_npdev_webhook_delivery_status", TABLE, createIndex));
             // INT-4: a table created by an earlier build lacks the outbox columns.
             statement.execute(dialect.guardedAddColumn(TABLE, "event_name",
-                    "ALTER TABLE " + TABLE + " ADD COLUMN event_name " + dialect.keyableTextColumnType()));
+                    ADD_COLUMN.replace("{COLUMN}", "event_name").replace("{TYPE}", dialect.keyableTextColumnType())));
             statement.execute(dialect.guardedAddColumn(TABLE, "next_attempt_at",
-                    "ALTER TABLE " + TABLE + " ADD COLUMN next_attempt_at " + dialect.timestampColumnType()));
+                    ADD_COLUMN.replace("{COLUMN}", "next_attempt_at").replace("{TYPE}", dialect.timestampColumnType())));
+            // Rows queued before this column existed keep tenant_id NULL: no tenant's admin view sees them,
+            // the platform-wide worker still delivers them.
+            statement.execute(dialect.guardedAddColumn(TABLE, "tenant_id",
+                    ADD_COLUMN.replace("{COLUMN}", "tenant_id").replace("{TYPE}", dialect.keyableTextColumnType())));
             statement.execute(dialect.guardedCreateIndex("ix_npdev_webhook_delivery_due", TABLE,
                     "CREATE INDEX ix_npdev_webhook_delivery_due ON " + TABLE + " (status, next_attempt_at)"));
         }
@@ -146,19 +151,26 @@ public final class WebhookDeliveryRecordStore {
     /** INT-4: claimed by a delivery worker; a row stuck here is returned to PENDING by {@link #releaseStale}. */
     public static final String STATUS_SENDING = "SENDING";
 
+    /** Dialect column types are fixed per engine (never caller input); filled in by {@link #ensureSchema}. */
+    /** Fits the keyable text column on every engine; a longer tenant id is refused rather than truncated (scope!). */
+    private static final int MAX_TENANT_ID_LENGTH = 191;
+
+    private static final String ADD_COLUMN = "ALTER TABLE " + TABLE + " ADD COLUMN {COLUMN} {TYPE}";
+
     /** INT-4: a queued delivery that is due now. The payload is the already-serialized body, signed at send time. */
-    public record DueDelivery(String id, String url, String payloadJson, int attemptCount, String eventName) {
+    public record DueDelivery(String id, String url, String payloadJson, int attemptCount, String eventName,
+            String tenantId) {
     }
 
     /**
      * INT-4: queue a delivery durably -- {@link #STATUS_PENDING}, {@code attempt_count = 0}, due at
      * {@code now}. A background worker (see {@link #findDue}) sends it; the caller never waits on the remote.
      */
-    public void insertQueued(Connection connection, String id, String destinationHost, String url, String payloadJson,
-            String eventName, Instant now) throws SQLException {
+    public void insertQueued(Connection connection, String id, String tenantId, String destinationHost, String url,
+            String payloadJson, String eventName, Instant now) throws SQLException {
         String sql = "INSERT INTO " + TABLE + " ("
-                + "id, destination_host, url, payload, status, attempt_count, event_name, next_attempt_at, created_at, updated_at"
-                + ") VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)";
+                + "id, destination_host, url, payload, status, attempt_count, event_name, next_attempt_at, created_at, "
+                + "updated_at, tenant_id) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, id);
             statement.setString(2, destinationHost);
@@ -169,13 +181,20 @@ public final class WebhookDeliveryRecordStore {
             statement.setTimestamp(7, Timestamp.from(now));
             statement.setTimestamp(8, Timestamp.from(now));
             statement.setTimestamp(9, Timestamp.from(now));
+            requireWithin(tenantId, MAX_TENANT_ID_LENGTH);
+            statement.setString(10, tenantId);
             statement.executeUpdate();
         }
     }
 
-    /** INT-4: PENDING rows whose {@code next_attempt_at} has arrived, oldest first. */
+    /**
+     * INT-4: PENDING rows whose {@code next_attempt_at} has arrived, oldest first, ACROSS ALL TENANTS. This is the
+     * platform delivery worker's queue scan (it sends on behalf of every tenant and never returns rows to a
+     * caller); tenant-facing reads are {@link #list}, {@link #payload} and {@link #redeliver}, which all take a
+     * tenant id.
+     */
     public java.util.List<DueDelivery> findDue(Connection connection, Instant now, int limit) throws SQLException {
-        String sql = dialect.rowLimited("SELECT id, url, payload, attempt_count, event_name FROM " + TABLE
+        String sql = dialect.rowLimited("SELECT id, url, payload, attempt_count, event_name, tenant_id FROM " + TABLE
                 + " WHERE status = ? AND next_attempt_at <= ? ORDER BY next_attempt_at ", limit);
         java.util.List<DueDelivery> due = new java.util.ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -184,7 +203,7 @@ public final class WebhookDeliveryRecordStore {
             try (java.sql.ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
                     due.add(new DueDelivery(rows.getString(1), rows.getString(2), unwrapJsonText(rows.getString(3)),
-                            rows.getInt(4), rows.getString(5)));
+                            rows.getInt(4), rows.getString(5), rows.getString(6)));
                 }
             }
         }
@@ -261,31 +280,33 @@ public final class WebhookDeliveryRecordStore {
      * INT-4: put a FAILED or DELIVERED delivery back in the queue, due now. The id is NOT changed --
      * receivers de-duplicate on {@code X-Npdev-Webhook-Delivery}.
      */
-    public boolean redeliver(Connection connection, String id, Instant now) throws SQLException {
+    public boolean redeliver(Connection connection, String tenantId, String id, Instant now) throws SQLException {
         String sql = "UPDATE " + TABLE + " SET status = ?, next_attempt_at = ?, last_error = NULL, updated_at = ? "
-                + "WHERE id = ? AND status IN (?, ?)";
+                + "WHERE id = ? AND tenant_id = ? AND status IN (?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, STATUS_PENDING);
             statement.setTimestamp(2, Timestamp.from(now));
             statement.setTimestamp(3, Timestamp.from(now));
             statement.setString(4, id);
-            statement.setString(5, STATUS_FAILED);
-            statement.setString(6, STATUS_DELIVERED);
+            statement.setString(5, tenantId);
+            statement.setString(6, STATUS_FAILED);
+            statement.setString(7, STATUS_DELIVERED);
             return statement.executeUpdate() == 1;
         }
     }
 
     /** INT-4: delivery log, newest first. NEVER includes the payload (it may hold personal data); see {@link #payload}. */
-    public java.util.List<java.util.Map<String, Object>> list(Connection connection, String statusOrNull, int limit)
-            throws SQLException {
+    public java.util.List<java.util.Map<String, Object>> list(Connection connection, String tenantId,
+            String statusOrNull, int limit) throws SQLException {
         String base = "SELECT id, destination_host, url, event_name, status, attempt_count, response_status, last_error, "
-                + "created_at, delivered_at, next_attempt_at FROM " + TABLE
-                + (statusOrNull == null || statusOrNull.isBlank() ? "" : " WHERE status = ?")
+                + "created_at, delivered_at, next_attempt_at FROM " + TABLE + " WHERE tenant_id = ?"
+                + (statusOrNull == null || statusOrNull.isBlank() ? "" : " AND status = ?")
                 + " ORDER BY created_at DESC ";
         java.util.List<java.util.Map<String, Object>> out = new java.util.ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement(dialect.rowLimited(base, limit))) {
+            statement.setString(1, tenantId);
             if (statusOrNull != null && !statusOrNull.isBlank()) {
-                statement.setString(1, statusOrNull);
+                statement.setString(2, statusOrNull);
             }
             try (java.sql.ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
@@ -310,9 +331,11 @@ public final class WebhookDeliveryRecordStore {
     }
 
     /** INT-4: the stored body of one delivery, for a detail view. */
-    public java.util.Optional<String> payload(Connection connection, String id) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("SELECT payload FROM " + TABLE + " WHERE id = ?")) {
+    public java.util.Optional<String> payload(Connection connection, String tenantId, String id) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT payload FROM " + TABLE + " WHERE id = ? AND tenant_id = ?")) {
             statement.setString(1, id);
+            statement.setString(2, tenantId);
             try (java.sql.ResultSet rows = statement.executeQuery()) {
                 return rows.next() ? java.util.Optional.ofNullable(unwrapJsonText(rows.getString(1))) : java.util.Optional.empty();
             }
@@ -332,6 +355,12 @@ public final class WebhookDeliveryRecordStore {
             return new com.fasterxml.jackson.databind.ObjectMapper().readValue(stored, String.class);
         } catch (java.io.IOException notAJsonString) {
             return stored;
+        }
+    }
+
+    private static void requireWithin(String value, int maxLength) {
+        if (value == null || value.isBlank() || value.length() > maxLength) {
+            throw new IllegalArgumentException("tenantId must be 1.." + maxLength + " characters");
         }
     }
 

@@ -81,13 +81,13 @@ class WebhookDeliveryWorkerTest {
     private CapabilityResult post(String targetUrl) {
         return handler.invoke(new CapabilityCall("webhook", "WebhookCapability", "webhook-http", "post",
                         List.of(Map.of("url", targetUrl, "event", "WidgetOrderPlaced", "orderId", "o-1", "status", "NEW"))),
-                Map.of("eventName", "WidgetOrderPlaced"));
+                Map.of("eventName", "WidgetOrderPlaced", "tenantId", "t1"));
     }
 
     private List<Map<String, Object>> rows() throws Exception {
         try (Connection connection = dataSource.getConnection()) {
             store.ensureSchema(connection);
-            return store.list(connection, null, 50);
+            return store.list(connection, "t1", null, 50);
         }
     }
 
@@ -140,7 +140,7 @@ class WebhookDeliveryWorkerTest {
 
         status = 200;
         try (Connection connection = dataSource.getConnection()) {
-            assertTrue(store.redeliver(connection, id, Instant.now()));
+            assertTrue(store.redeliver(connection, "t1", id, Instant.now()));
         }
         assertEquals(1, worker.drainOnce(Instant.now().plusSeconds(1)));
         assertEquals(id, seen.get(seen.size() - 1).headers().getFirst("X-Npdev-Webhook-Delivery"),
