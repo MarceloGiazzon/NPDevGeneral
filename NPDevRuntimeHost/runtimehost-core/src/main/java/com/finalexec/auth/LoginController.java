@@ -1,6 +1,11 @@
 package com.finalexec.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.auth.mfa.MfaChallengeStore;
+import com.finalexec.auth.mfa.MfaSecretCodec;
+import com.finalexec.auth.mfa.MfaStore;
+import com.finalexec.auth.mfa.MfaTables;
+import com.finalexec.auth.mfa.Totp;
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
@@ -25,10 +30,12 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import com.finalexec.config.DefaultTenant;
@@ -212,40 +219,18 @@ public class LoginController {
                 return unauthorized(tenantId, username, clientIp);
             }
 
-            throttle.recordSuccess(tenantId, username);
-            Set<String> roles = IdentityRoleLookup.rolesFor(dataSource, identityTables, tenantId, username);
-            JwtSigner signer = new JwtSigner(objectMapper, privateKey, issuer, audience, expirySeconds);
-            String token = signer.sign(tenantId, username, roles, tokenVersion);
-
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("token", token);
-            body.put("tokenType", "Bearer");
-            body.put("expiresInSeconds", expirySeconds);
-            body.put("roles", roles);
-            // A plain browser page navigation (typing a URL, clicking a link) never carries a
-            // custom Authorization header -- only a cookie rides along automatically. Without this,
-            // an arbitrary role-gated page route (a trusted-source panel's own declared route,
-            // which this shared controller cannot special-case) had no way to ever authenticate a
-            // top-level GET, even though the JSON token above already made fetch()-driven calls
-            // work fine. HttpOnly so client JS/XSS can't read it (the JSON token above still covers
-            // that use case). SameSite=Lax, not Strict (REG-233): Lax still blocks the cookie from
-            // riding along on cross-site subrequests and form posts -- CSRF protection is preserved
-            // -- but it permits the cookie on a top-level GET navigation that lands here via a
-            // cross-site redirect, which Strict does not. That distinction matters because the
-            // Google OAuth account-LINK callback (OAuthGoogleController) needs this exact cookie
-            // to survive a top-level redirect FROM accounts.google.com back to our own callback URL;
-            // browsers treat that as cross-site-initiated even though the destination is same-origin,
-            // and Strict silently dropped the cookie on that hop. Secure mirrors the inbound
-            // request's own scheme so local http dev still works while a TLS-terminated deployment
-            // gets the flag automatically.
-            ResponseCookie sessionCookie = ResponseCookie.from("npdev_jwt", token)
-                    .httpOnly(true)
-                    .secure(httpRequest != null && httpRequest.isSecure())
-                    .sameSite("Lax")
-                    .path("/")
-                    .maxAge(expirySeconds)
-                    .build();
-            return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, sessionCookie.toString()).body(body);
+            // SEC-13: a user with a CONFIRMED authenticator enrollment has only passed the first factor.
+            // No token, no cookie and no throttle.recordSuccess until the second factor passes.
+            // MfaTables == null (identity pack older than 1.3.0) behaves exactly as before.
+            String mfaTable = MfaTables.userMfaTable(modelHolder.get());
+            if (mfaTable != null && MfaStore.isEnabled(connection, mfaTable, UUID.fromString(userId), tenantId)) {
+                Map<String, Object> pending = new LinkedHashMap<>();
+                pending.put("mfaRequired", true);
+                pending.put("challenge", MfaChallengeStore.shared().create(tenantId, username, null));
+                pending.put("expiresInSeconds", MfaChallengeStore.TTL_MILLIS / 1000);
+                return ResponseEntity.ok(pending);
+            }
+            return issueSession(tenantId, username, identityTables, tokenVersion, null, httpRequest);
         } catch (SQLException schemaCandidate) {
             // REG-39: a stale built-in-pack copy of the identity pack (missing the token_version
             // column platform code reads unconditionally, or any other column it depends on) must
@@ -262,6 +247,157 @@ public class LoginController {
         } catch (Exception exception) {
             return unauthorized(tenantId, username, clientIp);
         }
+    }
+
+    public record MfaLoginRequest(String challenge, String code, String recoveryCode) {
+    }
+
+    /**
+     * SEC-13: second step of a sign-in for a user with two-step sign-in on. The challenge id (from
+     * {@link #login} or the OAuth callback) is the only credential; this path is exempt from the JWT
+     * filter exactly like {@code /api/auth/login}. Wrong codes count against BOTH the challenge (5) and
+     * the same per-username/per-IP throttle the password step uses, so the 6-digit space cannot be
+     * walked across many challenges. {@code active} and {@code token_version} are re-read here, never
+     * carried in the challenge: an admin disabling the account or revoking sessions in between wins.
+     */
+    @PostMapping("/api/auth/login/mfa")
+    public ResponseEntity<Map<String, Object>> loginMfa(@RequestBody MfaLoginRequest request,
+                                                        HttpServletRequest httpRequest) {
+        if (privateKey == null) {
+            return ResponseEntity.status(503).body(Map.of(
+                    "error", "token_issuance_unavailable",
+                    "detail", "This deployment validates externally-issued JWTs only; no signing key "
+                            + "(npdev.auth.jwt.private-key-path) is configured, so /api/auth/login/mfa cannot mint tokens."));
+        }
+        String challengeId = request == null ? null : request.challenge();
+        MfaChallengeStore.Challenge challenge = MfaChallengeStore.shared().peek(challengeId).orElse(null);
+        if (challenge == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "mfa_challenge_expired"));
+        }
+        String tenantId = challenge.tenantId();
+        String username = challenge.username();
+        String clientIp = clientIp(httpRequest);
+        if (throttle.isLocked(tenantId, username, clientIp)) {
+            return tooManyAttempts(tenantId, username, clientIp);
+        }
+        Optional<IdentityPackTableNames> resolvedIdentityTables = IdentityPackTableNames.tryResolve(modelHolder.get());
+        String mfaTable = MfaTables.userMfaTable(modelHolder.get());
+        if (resolvedIdentityTables.isEmpty() || mfaTable == null) {
+            return ResponseEntity.status(503).body(Map.of("error", "mfa_not_available"));
+        }
+        IdentityPackTableNames identityTables = resolvedIdentityTables.get();
+
+        try (Connection connection = dataSource.getConnection()) {
+            String userSql = "SELECT id, active, token_version FROM " + identityTables.usersTable()
+                    + " WHERE username = ? AND tenant_id = ?";
+            UUID userId;
+            int tokenVersion;
+            try (PreparedStatement ps = connection.prepareStatement(userSql)) {
+                ps.setString(1, username);
+                ps.setString(2, tenantId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next() || !rs.getBoolean("active")) {
+                        MfaChallengeStore.shared().consume(challengeId);
+                        return ResponseEntity.status(401).body(Map.of("error", "invalid_credentials"));
+                    }
+                    userId = UUID.fromString(String.valueOf(rs.getObject("id")));
+                    tokenVersion = rs.getInt("token_version");
+                    if (rs.wasNull()) {
+                        tokenVersion = 0;
+                    }
+                }
+            }
+            Optional<MfaStore.Row> row = MfaStore.find(connection, mfaTable, userId, tenantId);
+            if (row.isEmpty() || !row.get().enabled()) {
+                // The second factor was switched off after the password step: restart the sign-in.
+                MfaChallengeStore.shared().consume(challengeId);
+                return ResponseEntity.status(401).body(Map.of("error", "mfa_challenge_expired"));
+            }
+            boolean accepted = false;
+            String code = request.code();
+            String recoveryCode = request.recoveryCode();
+            if (code != null && !code.isBlank()) {
+                long step = -1L;
+                try {
+                    step = Totp.verify(MfaSecretCodec.decode(row.get().secretStored()), code, Instant.now(),
+                            row.get().lastUsedStep());
+                } catch (RuntimeException unreadableSecret) {
+                    // e.g. the secret was stored encrypted and npdev.auth.mfa.secret-key is gone: the TOTP
+                    // path is unusable, recovery codes (hash-based) still work.
+                    LOG.log(Level.SEVERE, "MFA secret unreadable for a user; only recovery codes can sign in",
+                            unreadableSecret);
+                }
+                accepted = step >= 0
+                        && MfaStore.setLastUsedStep(connection, mfaTable, userId, tenantId, step);
+            } else if (recoveryCode != null && !recoveryCode.isBlank()) {
+                accepted = MfaStore.consumeRecoveryCode(connection, mfaTable, userId, tenantId,
+                        Totp.recoveryCodeHash(recoveryCode));
+            }
+            if (!accepted) {
+                MfaChallengeStore.shared().recordFailure(challengeId);
+                throttle.recordFailure(tenantId, username, clientIp);
+                return ResponseEntity.status(401).body(Map.of("error", "invalid_mfa_code"));
+            }
+            MfaChallengeStore.shared().consume(challengeId);
+            return issueSession(tenantId, username, identityTables, tokenVersion, challenge.next(), httpRequest);
+        } catch (SQLException schemaCandidate) {
+            if (SqlSchemaErrors.isSchemaMismatch(schemaCandidate)) {
+                LOG.log(Level.SEVERE, "MFA login failed: identity pack schema mismatch", schemaCandidate);
+                return identityPackSchemaError(schemaCandidate);
+            }
+            LOG.log(Level.WARNING, "MFA login failed", schemaCandidate);
+            return ResponseEntity.status(500).body(Map.of("error", "mfa_login_failed"));
+        } catch (Exception exception) {
+            LOG.log(Level.WARNING, "MFA login failed", exception);
+            return ResponseEntity.status(500).body(Map.of("error", "mfa_login_failed"));
+        }
+    }
+
+    /**
+     * The success tail of a sign-in, shared by the password step and the MFA second step: resets the
+     * throttle, mints the JWT and sets the session cookie. {@code next} (an already-sanitized post-login
+     * target) is put into the body only when non-null.
+     */
+    private ResponseEntity<Map<String, Object>> issueSession(String tenantId, String username,
+                                                             IdentityPackTableNames identityTables, int tokenVersion,
+                                                             String next, HttpServletRequest httpRequest) {
+        throttle.recordSuccess(tenantId, username);
+        Set<String> roles = IdentityRoleLookup.rolesFor(dataSource, identityTables, tenantId, username);
+        JwtSigner signer = new JwtSigner(objectMapper, privateKey, issuer, audience, expirySeconds);
+        String token = signer.sign(tenantId, username, roles, tokenVersion);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("token", token);
+        body.put("tokenType", "Bearer");
+        body.put("expiresInSeconds", expirySeconds);
+        body.put("roles", roles);
+        if (next != null) {
+            body.put("next", next);
+        }
+        // A plain browser page navigation (typing a URL, clicking a link) never carries a
+        // custom Authorization header -- only a cookie rides along automatically. Without this,
+        // an arbitrary role-gated page route (a trusted-source panel's own declared route,
+        // which this shared controller cannot special-case) had no way to ever authenticate a
+        // top-level GET, even though the JSON token above already made fetch()-driven calls
+        // work fine. HttpOnly so client JS/XSS can't read it (the JSON token above still covers
+        // that use case). SameSite=Lax, not Strict (REG-233): Lax still blocks the cookie from
+        // riding along on cross-site subrequests and form posts -- CSRF protection is preserved
+        // -- but it permits the cookie on a top-level GET navigation that lands here via a
+        // cross-site redirect, which Strict does not. That distinction matters because the
+        // Google OAuth account-LINK callback (OAuthGoogleController) needs this exact cookie
+        // to survive a top-level redirect FROM accounts.google.com back to our own callback URL;
+        // browsers treat that as cross-site-initiated even though the destination is same-origin,
+        // and Strict silently dropped the cookie on that hop. Secure mirrors the inbound
+        // request's own scheme so local http dev still works while a TLS-terminated deployment
+        // gets the flag automatically.
+        ResponseCookie sessionCookie = ResponseCookie.from("npdev_jwt", token)
+                .httpOnly(true)
+                .secure(httpRequest != null && httpRequest.isSecure())
+                .sameSite("Lax")
+                .path("/")
+                .maxAge(expirySeconds)
+                .build();
+        return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, sessionCookie.toString()).body(body);
     }
 
     private ResponseEntity<Map<String, Object>> identityPackSchemaError(SQLException exception) {

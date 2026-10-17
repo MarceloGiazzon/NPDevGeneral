@@ -49,6 +49,17 @@ class JwtBearerAuthFilterOauthPathExemptionTest {
     }
 
     @Test
+    void exemptsTheMfaSecondStepOfSignInButNotTheMfaManagementEndpoints() throws Exception {
+        // SEC-13: the caller has no token yet; the challenge id is the credential.
+        assertTrue(shouldNotFilter("/api/auth/login/mfa"));
+        assertTrue(shouldNotFilter("/api/v1/auth/login/mfa"));
+        // enrollment/disable need an authenticated caller
+        assertFalse(shouldNotFilter("/api/auth/mfa/status"));
+        assertFalse(shouldNotFilter("/api/auth/mfa/enroll/start"));
+        assertFalse(shouldNotFilter("/api/auth/login/mfa/extra"));
+    }
+
+    @Test
     void doesNotExemptUnrelatedOauthPaths() throws Exception {
         assertFalse(shouldNotFilter("/api/auth/oauth/config-typo"));
         assertFalse(shouldNotFilter("/api/auth/oauth/github/"));

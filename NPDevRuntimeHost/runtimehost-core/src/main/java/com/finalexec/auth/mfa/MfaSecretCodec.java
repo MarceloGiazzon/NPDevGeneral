@@ -16,7 +16,7 @@ import java.util.Base64;
  *   <li>{@code p1:} + base32 secret when it is not (a WARNING is logged once at boot).</li>
  * </ul>
  * {@link #decode} accepts both, so setting a key later keeps old rows readable; a row written with a
- * key cannot be read without it (an admin MFA reset is the recovery path).
+ * key cannot be read without it (recovery codes, which are hash-based, still sign the user in so they can re-enroll).
  */
 public final class MfaSecretCodec {
 

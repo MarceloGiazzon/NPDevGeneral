@@ -79,6 +79,21 @@ public final class MfaStore {
         }
     }
 
+    /** {@link #isEnabled} for a caller that only knows the username (provider sign-in). */
+    public static boolean isEnabledForUsername(Connection connection, String usersTable, String mfaTable,
+                                               String username, String tenantId) throws SQLException {
+        String sql = "SELECT 1 FROM " + mfaTable + " m JOIN " + usersTable + " u ON u.id = m.user_id"
+                + " WHERE u.username = ? AND u.tenant_id = ? AND m.tenant_id = ? AND m.enabled_at IS NOT NULL";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, username);
+            ps.setString(2, tenantId);
+            ps.setString(3, tenantId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
     /** Replaces any PENDING row of the user with a fresh one holding the (already encoded) secret. */
     public static void upsertPending(Connection connection, String table, UUID userId, String tenantId,
                                      String storedSecret) throws SQLException {

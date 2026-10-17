@@ -22,7 +22,7 @@
   .tab { flex: 1; padding: .45rem .5rem; border: 1px solid var(--line); background: #f9fafb;
          border-radius: 7px; cursor: pointer; color: var(--muted); font-size: .9rem; }
   .tab.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-  .pane.hidden, .hidden { display: none; }
+  .pane.hidden, .hidden, .divider.hidden { display: none; }
   label { display: block; margin-bottom: .85rem; font-size: .85rem; color: var(--muted); }
   input { width: 100%; margin-top: .3rem; padding: .55rem .6rem; border: 1px solid var(--line);
           border-radius: 7px; font-size: .95rem; }
@@ -64,6 +64,15 @@
     <p class="note" style="margin-top:.9rem"><a href="/reset-password.html">Forgot password?</a></p>
   </form>
 
+  <form id="mfaForm" class="pane hidden" autocomplete="off">
+    <p class="note" id="mfaNote">Enter the 6-digit code from your authenticator app.</p>
+    <label><span id="mfaLabel">Authentication code</span>
+      <input id="mfaCode" name="mfaCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required>
+    </label>
+    <button class="primary" type="submit">Verify</button>
+    <p class="note" style="margin-top:.9rem"><a href="#" id="mfaToggle">Use a recovery code</a></p>
+  </form>
+
   <section id="signupPane" class="pane hidden">
     <p class="note">Or continue with an external identity provider below — its verified email becomes your username.</p>
   </section>
@@ -80,10 +89,13 @@
 (function () {
   "use strict";
   var params = new URLSearchParams(window.location.search);
-  var returnUrl = params.get("next") || "/";
   // Mirror of the server's open-redirect guard: only same-origin relative paths survive.
-  if (returnUrl.charAt(0) !== "/" || returnUrl.charAt(1) === "/" || returnUrl.indexOf("://") !== -1
-      || returnUrl.indexOf("\\") !== -1) { returnUrl = "/"; }
+  function safeNext(value) {
+    if (!value || value.charAt(0) !== "/" || value.charAt(1) === "/" || value.indexOf("://") !== -1
+        || value.indexOf("\\") !== -1) { return "/"; }
+    return value;
+  }
+  var returnUrl = safeNext(params.get("next"));
 
   var errorBanner = document.getElementById("errorBanner");
   var linkedBanner = document.getElementById("linkedBanner");
@@ -110,7 +122,10 @@
     oauth_link_email_mismatch: "The provider's email does not match this account's email.",
     oauth_inactive_user: "This account is disabled. Contact the administrator.",
     oauth_missing_email: "The provider did not provide a usable email address for this account.",
-    oauth_domain_not_allowed: "This sign-in is limited to approved email domains."
+    oauth_domain_not_allowed: "This sign-in is limited to approved email domains.",
+    invalid_mfa_code: "That code is not valid. Try again.",
+    mfa_challenge_expired: "Sign-in timed out. Start again.",
+    oauth_login_failed: "The provider sign-in could not be completed. Try again."
   };
 
   // Inline, stroke-based, no icon font -- a provider absent from this map still gets a plain
@@ -126,6 +141,80 @@
   }
   var initialError = params.get("error");
   if (initialError) { showError(initialError); }
+
+  // SEC-13: second step of a two-step sign-in. Reached from the password step (mfaRequired) or, after a
+  // provider sign-in, with ?mfa=<challenge> on load.
+  var mfaForm = document.getElementById("mfaForm");
+  var mfaCodeInput = document.getElementById("mfaCode");
+  var mfaChallenge = null;
+  var mfaNext = null;
+  var mfaActive = false;
+  var useRecovery = false;
+  function setRecoveryMode(on) {
+    useRecovery = on;
+    document.getElementById("mfaNote").textContent = on
+      ? "Enter one of your recovery codes. Each code works once."
+      : "Enter the 6-digit code from your authenticator app.";
+    document.getElementById("mfaLabel").textContent = on ? "Recovery code" : "Authentication code";
+    document.getElementById("mfaToggle").textContent = on ? "Use the authenticator app code" : "Use a recovery code";
+    mfaCodeInput.setAttribute("inputmode", on ? "text" : "numeric");
+    mfaCodeInput.setAttribute("maxlength", on ? "20" : "7");
+    mfaCodeInput.value = "";
+  }
+  function showMfa(challenge, next) {
+    mfaChallenge = challenge;
+    mfaNext = next || null;
+    mfaActive = true;
+    document.querySelector(".tabs").classList.add("hidden");
+    signinPane.classList.add("hidden");
+    signupPane.classList.add("hidden");
+    divider.classList.add("hidden");
+    oauthButtons.classList.add("hidden");
+    setRecoveryMode(false);
+    mfaForm.classList.remove("hidden");
+    mfaCodeInput.focus();
+  }
+  function leaveMfa() {
+    mfaChallenge = null;
+    mfaActive = false;
+    mfaForm.classList.add("hidden");
+    document.querySelector(".tabs").classList.remove("hidden");
+    oauthButtons.classList.remove("hidden");
+    if (oauthButtons.children.length > 0) { divider.classList.remove("hidden"); }
+    setTabs("signin");
+  }
+  document.getElementById("mfaToggle").addEventListener("click", function (ev) {
+    ev.preventDefault();
+    setRecoveryMode(!useRecovery);
+  });
+  mfaForm.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var value = mfaCodeInput.value.trim();
+    if (!value || !mfaChallenge) { return; }
+    var payload = { challenge: mfaChallenge };
+    if (useRecovery) { payload.recoveryCode = value; } else { payload.code = value; }
+    fetch("/api/auth/login/mfa", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-NPDev-Request": "1" },
+      body: JSON.stringify(payload)
+    }).then(function (r) {
+      return r.json().then(function (body) { return { status: r.status, body: body }; });
+    }).then(function (res) {
+      if (res.status === 200 && res.body.token) {
+        localStorage.setItem("npdev.shell.token", res.body.token);
+        localStorage.setItem("npdev.businessUi.apiKey", res.body.token);
+        window.location.href = safeNext(res.body.next || mfaNext || returnUrl);
+      } else {
+        var code = res.body && res.body.error ? res.body.error : "sign_in_failed";
+        if (code === "mfa_challenge_expired" || code === "too_many_attempts" || code === "invalid_credentials") {
+          leaveMfa();
+        }
+        mfaCodeInput.value = "";
+        showError(code);
+      }
+    }).catch(function () { showError("sign_in_failed"); });
+  });
+  if (params.get("mfa")) { showMfa(params.get("mfa"), returnUrl); }
   if (params.has("linked")) {
     linkedBanner.textContent = "Account linked successfully.";
     linkedBanner.classList.remove("hidden");
@@ -150,7 +239,7 @@
   fetch("/api/auth/oauth/config").then(function (r) { return r.json(); }).then(function (cfg) {
     var providers = (cfg && cfg.providers) || [];
     if (providers.length === 0) { return; }
-    divider.classList.remove("hidden");
+    if (!mfaActive) { divider.classList.remove("hidden"); }
     providers.forEach(function (p) {
       var button = document.createElement("button");
       button.type = "button";
@@ -178,7 +267,11 @@
     }).then(function (r) {
       return r.json().then(function (body) { return { status: r.status, body: body }; });
     }).then(function (res) {
-      if (res.status === 200 && res.body.token) {
+      if (res.status === 200 && res.body.mfaRequired && res.body.challenge) {
+        errorBanner.classList.add("hidden");
+        document.getElementById("password").value = "";
+        showMfa(res.body.challenge, null);
+      } else if (res.status === 200 && res.body.token) {
         // Same keys shell.js's findToken() reads: a login lands directly in the SPA session.
         localStorage.setItem("npdev.shell.token", res.body.token);
         localStorage.setItem("npdev.businessUi.apiKey", res.body.token);

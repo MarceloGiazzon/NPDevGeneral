@@ -10,7 +10,7 @@ import java.util.logging.Logger;
 /**
  * SEC-10: pushes {@code npdev.auth.mfa.secret-key} (base64 of exactly 32 bytes) into
  * {@link MfaSecretCodec} at boot. Unset = authenticator secrets are stored unencrypted (one WARNING).
- * Losing the key means every user with MFA must re-enroll (admin MFA reset).
+ * Losing the key means every user with MFA must re-enroll (recovery codes still work).
  */
 @Configuration
 public class MfaConfig {
