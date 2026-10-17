@@ -1,7 +1,7 @@
 # Flows — NPDev's durable workflow engine
 
 > **Status:** first documentation pass for this surface (T1.10,
-> `docs/TREE1_LAUNCH_UNBLOCK_PLAN.md`, CORE C-1). Every claim below cites the code that makes it
+> `docs/archive/programme-history/TREE1_LAUNCH_UNBLOCK_PLAN.md`, CORE C-1). Every claim below cites the code that makes it
 > true — `FlowStepDefinition.java`, `KernelRunner.java`, `FlowInstance.java`,
 > `FlowInstanceStatus.java` — not a description of intent. Where the engine's real behavior differs
 > from what you might expect, that's called out explicitly rather than smoothed over.
@@ -118,7 +118,7 @@ EVENT_PERSIST_FAILED, FAILED                                        → FAILED
 **`COMPLETED` and `FAILED_PERMANENT` are true dead ends**, and `FAILED` is only recoverable by the
 operator action below (PROC-7) — nothing in the automatic paths of `KernelRunner.java` ever
 transitions an instance back out of them. **`STUCK` does not self-heal**: `resumeExecution`'s
-status guard (`KernelRunner.java:882`) accepts `RUNNING` and `WAITING_EVENT` but not `STUCK`, so no
+status guard (`KernelRunner.java:963-971`, the table above) accepts `RUNNING` and `WAITING_EVENT` but not `STUCK`, so no
 sweep will ever pick a stuck instance back up on its own.
 
 **But `STUCK` is no longer a dead end (R2.2).** `KernelRunner.unstickExecution(executionId)` returns
@@ -147,9 +147,9 @@ see §9). Refuses with `NOT_STUCK` on any other status, and refuses a `STUCK` ro
   outside the resume sweep and an awaited event published later does not resume it. Refused with
   `NOT_CANCELLABLE` otherwise. `POST /api/executions/{id}/cancel`.
 
-## 3. The 9 step kinds
+## 3. The 10 step kinds
 
-The runtime enum is `FlowStepDefinition.Type` (`FlowStepDefinition.java:13-26`) — exactly these 9
+The runtime enum is `FlowStepDefinition.Type` (`FlowStepDefinition.java`) — exactly these 10
 values, each with its own factory method:
 
 | Kind | Factory | What it does |
@@ -163,54 +163,47 @@ values, each with its own factory method:
 | `MAP` | `map(name, fromRef, toRef)` | Copies a value from one flow-state reference to another |
 | `RETURN` | `returnValue(name, returnRef)` | Ends the flow, producing a value |
 | `FOR_EACH` | `forEach(name, collectionRef, itemKey, loopSteps, maxLoopIterations, parallelAwait)` | Bounded iteration over a collection; `parallelAwait` (default `false`) opts a loop body (exactly one top-level `AWAIT_EVENT` step, plus any number of other non-`FOR_EACH` steps before/after it, since Wave 3) into N-way parallel waiting (B15(B)) instead of one-at-a-time (B15(A)) — §6 |
+| `CALL_PROCEDURE` | `callProcedure(...)` | Calls a declared `procedure` and stores its output in flow state (a concept-record output nests the record's fields under `data`) |
 
 Any step, regardless of kind, can additionally carry `onFailureSteps` (`withOnFailure`,
-`FlowStepDefinition.java:257-308`) — used only for compensation, §5.
+`FlowStepDefinition`) — used only for compensation, §5.
 
-**A correction worth naming.** An earlier internal estimate of this list (repeated in
-`docs/EXECUTION_TREES.md`) included `PRE` as a 9th step kind. That's wrong: `PRE`/`POST` are the two
-values of the *checkpoint* field on an `INVARIANT_CHECK` step, not a step kind of their own. The real
-9th kind is `FOR_EACH`. This document is the corrected version; `EXECUTION_TREES.md` was fixed to
-match in the same session.
+**A correction worth naming.** An earlier internal estimate of this list (repeated in a since-removed `EXECUTION_TREES.md`) included `PRE` as a
+step kind. That's wrong: `PRE`/`POST` are the two values of the *checkpoint* field on an `INVARIANT_CHECK` step,
+not a step kind of their own. `FOR_EACH` is the real kind it was mistaken for, and `CALL_PROCEDURE` was added
+later. This document is the corrected version.
 
-### The 23 schema-level synonyms, and how they collapse to 9
+### The author-facing step names, and how they map to the 10 kinds
 
-Authors don't write `FOR_EACH` in JSON — the schema's `flowStep.type` enum accepts **23** synonym
-strings (`model.schema.json:2173-2200`, the copy actually loaded at
-`NPDevContract/dsl/src/main/resources/schema/model.schema.json`):
+Authors don't write `FOR_EACH` in JSON — the schema's `flowStep.type` enum (`$defs.flowStep` in
+`NPDevContract/dsl/src/main/resources/schema/model.schema.json`) accepts exactly 13 canonical names:
 
 ```
-validate · invariant · enforceInvariants
-capability · capabilityCall · callCapability
-generatedAction · generated_action
-event · emitEvent · scheduleEvent
-return
-branch · if
-await · awaitEvent · waitForEvent
-createConcept · updateConcept
-assign
-evaluateInvariant
-forEach · loop
+invariantCheck · capabilityCall · generatedAction
+emitEvent · scheduleEvent · return · branch · awaitEvent
+createConcept · updateConcept · map · forEach · callProcedure
 ```
 
-Two collapsing passes turn these into the 9 real kinds:
+The 23-synonym DSL-1 vocabulary (`validate`, `assign`, `callCapability`, `if`, `await`, `waitForEvent`, ...) is
+retired (DSL 2.0, `BREAKING.md`; the `npdev migrate` codemod rewrites old models). Two passes turn the 13 names
+into the 10 real kinds:
 
 1. **Parse-time canonicalization** — `JsonModelParser.normalizeStepType`
-   (`NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java:2085-2103`) collapses
-   the 23 strings to 12 AST-level names.
+   (`NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java`) maps each canonical name to
+   its 13 AST-level names (it no longer collapses aliases).
 2. **Compile-to-kernel mapping** —
    `CompiledModelFlowDefinitionProvider.toFlowSteps`
-   (`NPDevKernel/adapters/flow-compiled/.../CompiledModelFlowDefinitionProvider.java:94-193`) maps those
-   12 down to the 9 `FlowStepDefinition.Type` values. Notably, `generatedAction`, `createConcept`, and
+   (`NPDevKernel/adapters/flow-compiled/.../CompiledModelFlowDefinitionProvider.java`) maps those
+   13 names down to the 10 `FlowStepDefinition.Type` values. Notably, `generatedAction`, `createConcept`, and
    `updateConcept` are **all author-facing sugar for `CAPABILITY_CALL`** — they compile to a call
    against the concept's own generated CRUD capability, not a distinct runtime behavior.
 
-   **Resolved (2026-07-27, the DSL 2.0 planning gate in `docs/DSL2_AND_DECOMPOSITION_PLAN.md` §2.A.0):**
+   **Resolved (2026-07-27, the DSL 2.0 planning gate in the retired DSL 2.0 plan §2.A.0):**
    confirmed directly in `ModelCompiler.java` — `isConceptPersistenceStep`/`isCapabilityLikeStep`
    (`:1539-1547`, `:1587-1592`) both name `createEntity`/`updateEntity`/`createConcept`/`updateConcept`
    as concept-persistence steps, and `resolveCapabilityNameForStep`/`resolveOperationNameForStep`
    (`:1549-1567`) resolve them unconditionally to capability `"persistence"`, operation `"save"`. So
-   this is genuinely **(a) sugar, not (b) a distinct behavior**: the "9 step kinds" count above is
+   this is genuinely **(a) sugar, not (b) a distinct behavior**: the step-kind count above is
    correct as stated, not understated. A `createConcept` that creates a record gets the same defaults
    as the CRUD API (literal and `defaultExpression` defaults, `nextNumber` sequences, lifecycle
    initial state), and an `updateConcept` never re-applies defaults (ENG-6).
@@ -218,7 +211,7 @@ Two collapsing passes turn these into the 9 real kinds:
 ### Worked examples, from real sample models
 
 `NPDevSamples/medium-expense-approval/Input/model.json`'s one flow, `SubmitExpense` (`:260-340`),
-exercises 6 of the 9 kinds in sequence:
+exercises 6 of the 10 kinds in sequence:
 
 ```jsonc
 { "type": "invariantCheck", ... }                               // → INVARIANT_CHECK
@@ -239,15 +232,15 @@ exercises 6 of the 9 kinds in sequence:
 `NPDevSamples/user-minimal/Input/model.json`'s `AwaitDemo` flow is a minimal, dedicated
 `AWAIT_EVENT` example — two steps, nothing else.
 
-> **DSL 2.0 (2026-07-27, `docs/DSL2_AND_DECOMPOSITION_PLAN.md` §2.A):** the spellings above are the
+> **DSL 2.0 (2026-07-27, the retired DSL 2.0 plan §2.A):** the spellings above are the
 > canonical ones as of this writing — `model.schema.json`'s `flowStep.type` enum now accepts exactly
-> these 12 names (the 9 kinds above, plus `createConcept`/`updateConcept`/`generatedAction` sugar);
+> these names (the kinds above, plus `createConcept`/`updateConcept`/`generatedAction` sugar; `callProcedure` came later);
 > the 23-alias v1 vocabulary (`validate`, `assign`, `callCapability`, `if`, `await`, `waitForEvent`,
 > `cap`/`op`/`out` field shorthands, etc.) is retired. Line numbers against these two files are
 > intentionally omitted above since the migration renumbered their content slightly; the flow/step
 > names quoted are stable.
 
-**Resolved (2026-07-29, `docs/FINAL_OPEN_ITEMS_PLAN.md` F3):** the gap noted here — no real sample
+**Resolved (2026-07-29, `docs/archive/programme-history/FINAL_OPEN_ITEMS_PLAN.md` F3):** the gap noted here — no real sample
 model used `FOR_EACH` or `onFailure` (compensation) — is closed by `NPDevSamples/dsl-conformance-max`,
 a DSL surface-coverage fixture (validated, not run as a demo) that exercises both, alongside six other
 schema sections a corpus-wide measurement found at zero or near-zero coverage. Its own `README.md`
@@ -269,8 +262,8 @@ This is the reason the engine exists, so it gets the most space.
 ### Suspending
 
 When `executeSteps` hits an `AWAIT_EVENT` step whose event hasn't arrived
-(`KernelRunner.java:1883-1925`), it stamps a wait descriptor into flow state under the key
-`_npdev.await` (`buildAwaitState`, `KernelRunner.java:2512-2525`) — the awaited event name, whether
+(`AwaitEventStep`), it stamps a wait descriptor into flow state under the key
+`_npdev.await` (`FlowStateCodec.buildAwaitState`) — the awaited event name, whether
 correlation matching applies, any payload-match refs, and the step's own index — then returns a
 `WAITING_EVENT` result. `executeFlowInstance` turns that into `FlowInstance.markWaiting(...)`, and the
 whole thing is written to the `npdev_flow_instance` table
@@ -285,20 +278,20 @@ An arriving event has to find the *right* waiting instance, not just *an* instan
 same event name. The match, all inside `KernelRunner.java`, requires **every** one of:
 
 - the instance is still `WAITING_EVENT`;
-- same tenant (`sameTenant`, `KernelRunner.java:4313-4321` — a blank tenant on either side is a
+- same tenant (`sameTenant`, `KernelRunner.java` — a blank tenant on either side is a
   wildcard, otherwise exact match);
 - the wait descriptor's event name equals the arriving event's name;
 - if the descriptor recorded a step index, it matches the instance's current step index;
-- **correlation id matches**, unless the step explicitly opted out (`matchCorrelation: false`) —
-  `matchesCorrelation`, `KernelRunner.java:2760-2765`. A blank/null correlation id never matches
+- **correlation id matches**, unless the step explicitly opted out (authored as `"match": {"correlation": false}`) —
+  `matchesCorrelation`, `KernelRunner.java`. A blank/null correlation id never matches
   (F9, FIRST_IMPRESSION_SPEC.md I7 -- fails closed, not a wildcard); otherwise a plain
   string-equality check;
 - **payload match**, if the step declared `payloadMatchRefs`
-  (`matchesAwaitPayload`, `KernelRunner.java:4070-4092`) — this is how a step waits for, say, "the
+  (`matchesAwaitPayload`, `KernelRunner.java`) — this is how a step waits for, say, "the
   approval event whose `expenseId` equals mine," not just any event of that name;
 - the event hasn't already been consumed by *this* execution (next section).
 
-`resumeWaitingExecutionsFor` (`KernelRunner.java:2300-2357`) is what runs this match, whether
+`ResumeCoordinator.resumeWaitingExecutionsFor` (which `KernelRunner` delegates to) is what runs this match, whether
 triggered by a live event just published or by the resume poller finding a persisted one.
 
 ### Ownership — two separate mechanisms, solving two separate problems
@@ -306,17 +299,17 @@ triggered by a live event just published or by the resume poller finding a persi
 **(i) Correlation-id ownership** stops two different tenants' flows from colliding on the same
 correlation id. `CorrelationOwnershipStore` (`JdbcCorrelationOwnershipStore` /
 `InProcCorrelationOwnershipStore`) is claimed via `enforceCorrelationOwnership`
-(`KernelRunner.java:4296-4311`) on every flow start and every external event. The JDBC adapter's real
+(`KernelRunner.java`) on every flow start and every external event. The JDBC adapter's real
 safety net isn't the initial read — it's the database's own unique-constraint violation on
 `npdev_correlation_owner` (`isDuplicateKey`, SQLState `23505`); the initial lookup is an optimization,
 not the race-safety mechanism.
 
 **(ii) Exactly-once event consumption per execution** stops one event — or one duplicate delivery —
 from resuming the same instance twice. `isResumeEventAlreadyProcessed`/`markResumeEventProcessed`
-(`KernelRunner.java:2483-2510`) is backed by the generic `IdempotencyStore` under a reserved
+(`ResumeCoordinator`) is backed by the generic `IdempotencyStore` under a reserved
 capability name (`__flow_resume`), keyed by `(tenant, executionId, eventId)`. The moment
 `findAwaitedEvent` selects a candidate event for an instance, it's marked processed
-(`KernelRunner.java:2475-2477`) — and the match logic refuses to re-match an already-processed event
+(`ResumeCoordinator.findAwaitedEvent`) — and the match logic refuses to re-match an already-processed event
 for that execution.
 
 ### Surviving a restart — `ResumeBootstrapRunner`
@@ -417,11 +410,12 @@ operator and deploy accidents, not a defence against a hostile model.
 Full spec: `docs/architecture/FLOW_TRANSACTION_CONTRACT.md`. This section is the guarantee, stated
 plainly.
 
-A flow with **zero** `onFailure` declarations anywhere takes the exact pre-LNCH-17 failure path — a
-failing step just picks a terminal status (§2) and stops. A flow with **any** `onFailure` declared,
-anywhere, changes what happens on failure: `beginCompensation` (`KernelRunner.java:2208-2214`) stamps
-five reserved state keys (compensation-active flag, next-index, terminal status, error kind/code/
-message), then `runCompensations` (`KernelRunner.java:2216-2268`) runs every already-completed step's
+A flow with **no** top-level `onFailure` declaration takes the exact pre-LNCH-17 failure path — a
+failing step just picks a terminal status (§2) and stops. A flow with **any top-level step** declaring `onFailure` changes what happens on failure
+(`CompensationRunner.hasAnyOnFailure` looks at top-level steps only — an `onFailure` declared solely on a nested
+branch/`forEach` step does not switch the flow onto the compensation path): `CompensationRunner.beginCompensation`
+stamps five reserved state keys (compensation-active flag, terminal status, error kind/code/message; a sixth,
+next-index, is maintained as compensation advances), then `runCompensations` runs every already-completed step's
 declared `onFailure` block, **in reverse order**, from the failed step back to step 0 — durably
 checkpointing after *each* compensated step, not just at the end. The step that itself failed does
 **not** run its own `onFailure` — only the steps before it are compensated. A compensation block that
@@ -431,7 +425,7 @@ all-or-nothing). Once compensation finishes, the terminal status is applied via 
 a different outcome shape just because compensation ran.
 
 **The crash-mid-compensation guarantee.** The very first thing a resumed execution checks
-(`KernelRunner.java:1063-1084`) is whether the compensation-active flag is set. If it is, the resumed
+(`KernelRunner.java`, via `CompensationRunner.COMPENSATION_ACTIVE_KEY`) is whether the compensation-active flag is set. If it is, the resumed
 execution **skips the forward step loop entirely** and jumps straight into the reverse-compensation
 loop at its recorded resume point. A crash mid-compensation leaves the instance in status `RUNNING`
 (never finalized) with that flag still set; resuming it re-enters compensation, not the forward flow.
@@ -450,26 +444,26 @@ there is no per-nested-step compensation yet.
 A `forEach` loop occupies exactly **one flat position** in the step trace — like `MAP` or
 `CAPABILITY_CALL` — it does not expand the trace the way `BRANCH`'s nested steps do. Durability is at
 **iteration granularity**: after each iteration's nested steps all succeed, a step-scoped progress key
-(`"__forEachProgress." + stepName"`, `KernelRunner.java:2122`) records "next iteration to run" into
+(`"__forEachProgress." + stepName"`, `ForEachStep`) records "next iteration to run" into
 flow state, checkpointed at the **same** outer step index — not `+1` — because the loop itself hasn't
 finished; a crash-and-resume here must re-enter this step, not skip past it
-(`KernelRunner.java:2162-2165`). On (re-)entry, the loop simply starts at the recorded index
-(`KernelRunner.java:2123,2129`), so **completed iterations are skipped on resume** — no replay, no
+(`ForEachStep`). On (re-)entry, the loop simply starts at the recorded index
+(`ForEachStep`), so **completed iterations are skipped on resume** — no replay, no
 special-casing beyond "start where the counter says." `maxLoopIterations` (default 10,000,
 `ProcedureExecutionLimits.java:10`) is checked against the collection's resolved size before iterating
 — note the collection is fully materialized into memory first, so the cap bounds iteration count, not
 memory (a known INFO-severity finding, `R4-F2`, §11).
 
 Proven by `KernelRunnerForEachDurabilityTest.crashMidLoopThenResumeOnFreshRunnerProcessesEachItemExactlyOnce`
-(`NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerForEachDurabilityTest.java:41-110`) — same
+(`NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerForEachDurabilityTest.java`) — same
 crash-injection technique as the compensation test, resumed on a fresh runner with no shared state,
 asserts every item ran exactly once in order.
 
 **B15(A), lifted (Move 16 Phase B, 2026-08-03): a SEQUENTIAL `AWAIT_EVENT` nested in a `forEach` loop
 body — at most one outstanding await at a time — is now durably supported.** `FlowValidation`
 (`NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FlowValidation.java`) now accepts a
-loop body with exactly one reachable `await` step (`countAwaitSteps`, `:518-531`) and rejects only
-two-or-more (`:470-478`) — that broader shape was never exercised by this Move's own restart-proof
+loop body with exactly one reachable `await` step (`countAwaitSteps`) and rejects only
+two-or-more — that broader shape was never exercised by this Move's own restart-proof
 tests, so it stays rejected rather than accepted-but-unproven.
 
 Move 9 A5 (2026-07-31) had investigated this boundary and correctly found a structural wall — but for
@@ -481,7 +475,7 @@ new in the schema — `state` is already a flexible JSON blob. Three mechanisms,
 existing single-slot shape:
 
 1. **Per-iteration correlation** (`FlowStateCodec.deriveForEachIterationCorrelationId`,
-   `NPDevKernel/kernel/.../ForEachStep.java`): a deterministic, non-blank id —
+   defined in `FlowStateCodec`, used by `ForEachStep`): a deterministic, non-blank id —
    `executionId + "::forEach:" + awaitStepName + ":" + iterationIndex` — OVERWRITES the same
    `state.correlationId` slot before each iteration's body runs (restored on exit). Deliberately
    derived from `executionId` (globally unique per instance), not the flow's own business
@@ -612,13 +606,13 @@ Tracked as accepted boundaries B15(A) (closed, Move 16) / B15(B) (closed, S6, th
 
   **Fixed 2026-08-20 (RUN-10):** the drain now publishes with the SAME correlation id AND tenant the
   event was scheduled under (`npdev_scheduled_event` gained a `tenant_id` column), so a deferred
-  event correctly satisfies an `AWAIT_EVENT` declaring `matchCorrelation: true`. A delayed self-wake
+  event correctly satisfies an `AWAIT_EVENT` declaring `"match": {"correlation": true}`. A delayed self-wake
   against a correlated await is safe to model.
 
 **Flow-level cron scheduling (LNCH-12)** is a completely different, model-top-level feature: a
 `flowSchedule` declaration with a `cron` expression and a `tenantScope`. Full doc:
 `docs/reference/SCHEDULED_FLOWS.md`. Implementation: `NpdevCronSchedulerService`
-(`NPDevRuntimeHost/src/main/java/com/finalexec/scheduler/`) registers one Spring `CronTrigger` per
+(`NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/scheduler/`) registers one Spring `CronTrigger` per
 `(flow, tenant)` pair; an empty `tenantScope` defaults to `["default"]`. A scheduled run goes through
 `kernelRunner.execute(flowName, Map.of(), context)` — **the exact same entrypoint an HTTP-triggered
 flow uses** — running as a real system principal (`ExecutionContext.system(tenantId)`, actor
@@ -636,11 +630,11 @@ Two independent mechanisms, both configured at the model's top level rather than
 **Before/after step hooks** apply only to a flow that `specializes` a base flow
 (`Flow.hooks`, schema `flowHook` `$defs`). A plain flow is forbidden from declaring `hooks` at all; a
 specializing flow is forbidden from redefining `steps` — it must use `hooks` instead
-(`ModelResolver.java:809-841`). `applyHooks` (`ModelResolver.java:888-935`) splices each hook's steps
+(`ModelResolver`). `applyHooks` (`ModelResolver`) splices each hook's steps
 immediately before or after its named `targetStep`, in the **base** flow's own step list, before
 compilation ever sees the result. In practice: you never touch the base flow's file; a new
-specializing flow adds only the incremental behavior. Worked example (the only one in the repo):
-`NPDevContract/dsl/src/test/resources/specialization/valid-specialization.json:195-208`
+specializing flow adds only the incremental behavior. Worked examples: `NPDevSamples/dsl-conformance-max/Input/model.json` (a real flow `hooks` entry) and
+`NPDevContract/dsl/src/test/resources/specialization/valid-specialization.json`
 (`SubmitMedicalInvoice specializes SubmitInvoice`, a `before`/`return-base` hook emitting
 `MedicalInvoiceCreated`).
 
@@ -649,13 +643,13 @@ flow at all. Each has a trigger event, an optional condition expression over `$e
 actions (`create`, `callCapability`, `scheduleEvent`). The runtime is a **genuinely separate mechanism**
 from `KernelRunner`'s flow-step execution: `GeneratedCrudRuntimeSupport.initializeOrchestrationSubscribers`
 subscribes directly to the event bus per orchestration
-(`NPDevKernel/adapters/runtime-support/.../GeneratedCrudRuntimeSupport.java:1188-1210`), sitting alongside
+(`NPDevKernel/adapters/runtime-support/.../GeneratedCrudRuntimeSupport.java`), sitting alongside
 the flow engine's own subscribers, not routed through `FlowStepDefinition`/`executeSteps`. Each firing
 claims an exactly-once execution slot (`OrchestrationExecutionRegistry`, keyed by orchestration name +
 source event id) before running its actions. Worked example:
 `NPDevSamples/canonical-demo/Input/model.json`'s `orchestrationRules` entry `CompleteAppointmentFlow`
 — triggered on `AppointmentCompleted`, conditioned on `$event.status`, creating an `InsuranceClaim`
-and calling `notification.send`. Since DSL 2.0 (`docs/DSL2_AND_DECOMPOSITION_PLAN.md` §2.A), an
+and calling `notification.send`. Since DSL 2.0 (the retired DSL 2.0 plan §2.A), an
 orchestration rule's actions are always the `actions` array (a single-element list here) — the
 scalar `action` field this example originally used has been retired.
 
@@ -665,9 +659,8 @@ but they gate *when a concept's own write-semantics rules apply* (interactive UI
 procedure vs. commit phase vs. read), independent of any flow. Worked example:
 `NPDevSamples/medium-expense-approval/Input/model.json:150-173`.
 
-None of the three is currently covered by `docs/DSL_REFERENCE.md`'s own table of contents (an
-auto-generated doc, `scripts/docs/generate_dsl_reference.py`) — genuinely undocumented surface until
-now.
+The generated DSL reference (`scripts/docs/generate_dsl_reference.py`, written to the Build root and no longer
+committed under `docs/`) is the schema-level companion to this section.
 
 ## 9. Operations
 
@@ -733,8 +726,9 @@ adapter that has not opted in; only `JdbcFlowInstanceStore` claims for real toda
 
 **A documented authorization gap, already dispositioned:** resume authorization is tenant-scoped, and
 — after `REG-45`'s disposition — also actor-scoped (the owner chose "require the originating actor").
-Identity does not survive suspension itself: event-driven and scheduler-triggered resumes run as
-`ExecutionContext.anonymous()`; only the HTTP resume path runs as the resuming caller's own context.
+Identity survives suspension (REG-56): event-driven and scheduler-triggered resumes run as
+`ExecutionContext.resuming(tenantId, actorId)` — the flow's own tenant and actor, role ADMIN, tagged
+`trigger=resume` — while the HTTP resume path runs as the resuming caller's own context.
 See §11 for the review that found this.
 
 ## 10. Honest limits
@@ -749,9 +743,8 @@ See §11 for the review that found this.
   boundaries B15(A)/B15(B), both closed).
 - `forEach` materializes its whole collection into memory before iterating; `maxLoopIterations` bounds
   iteration count, not memory (§6, `R4-F2`, INFO).
-- No real sample model exercises `FOR_EACH`, `onFailure`/compensation, or hooks — only test code and
-  hand-written spec snippets do (§3, §5, §8). If you're authoring one of these for the first time,
-  there's no worked model to copy from yet.
+- `NPDevSamples/dsl-conformance-max/Input/model.json` exercises `forEach`, `onFailure` compensation and flow
+  `hooks` (parse/compile-time coverage, not a runnable demo — §3, §5, §8); the runtime proof is in the kernel tests.
 - ~~`STUCK` has no coded "un-stick" operation; `listStuckSummaries` exists at the store layer with
   no wired REST endpoint~~ — **closed by R2.2**: both are now wired (§2, §9). What remains is a
   smaller wart: listing and un-sticking need different credentials (ADMIN and SUPERUSER
@@ -781,6 +774,6 @@ text: `docs/archive/programme-history/REG16_FLOW_ORCHESTRATION_ADVERSARIAL_REVIE
 ---
 
 *See also: `docs/architecture/FLOW_TRANSACTION_CONTRACT.md` (compensation, full spec) ·
-`docs/reference/SCHEDULED_FLOWS.md` (cron scheduling, full spec) · `docs/BOUNDARY_LIFT_ROADMAP.md` (LIFT-LOOP-P1/P2) ·
+`docs/reference/SCHEDULED_FLOWS.md` (cron scheduling, full spec) · `docs/archive/programme-history/BOUNDARY_LIFT_ROADMAP.md` (LIFT-LOOP-P1/P2) ·
 `docs/ACCEPTED_BOUNDARIES.md` (B15(A)/B15(B), sequential-vs-parallel await-in-loop) · `FlowEngine.java`'s own javadoc
 (T1.16) for the port/implementation split.*
