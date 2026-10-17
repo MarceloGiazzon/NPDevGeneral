@@ -1,0 +1,22 @@
+id: OWN-1
+title: Revoke the exposed classic GitHub personal access token (owner-only, flagged in four consecutive plans)
+type: PROCESS
+severity: HIGH
+status: OPEN
+opened: 2026-10-17
+closed: null
+source: >-
+  Carried out of the four archived plans that each listed it as owner-only and never closed it
+  (docs/archive/RECORD_SURFACES_PLAN.md P7, INVOCATION_TOPOLOGY_PLAN.md T6, FAIL_OPEN_PLAN.md R5),
+  moved here by product-readiness task DOC-1 so archiving them loses nothing open.
+surface: process/github-token
+detail: |
+  A classic GitHub PAT was exposed in plaintext in an old AI conversation history and is a
+  public-repo credential. There is no API/CLI path to revoke a classic PAT -- only the web UI -- so
+  it was always the owner's to do. The SECURITY.md convention prevents the next exposure; it does
+  nothing about this one.
+resolution: >-
+  Owner action: GitHub -> Settings -> Developer settings -> Personal access tokens -> delete the
+  token; create a replacement only if needed, narrowly scoped, set in the environment and never
+  typed into a chat; check Settings -> Security log for unrecognised use. Done when the token is
+  absent from the token list and the security log has been checked.

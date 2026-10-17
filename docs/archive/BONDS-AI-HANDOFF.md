@@ -2,7 +2,7 @@
 
 > **Audience:** an AI agent (Cursor) continuing the Bonds/Relations feature.
 > **Status at handoff:** Phases 0–2 complete and build-verified. Phases 3–9 remain.
-> **Companion docs:** [`BONDS.md`](BONDS.md) (design + full roadmap), `MODEL-CONTRACT.md` (DSL contract).
+> **Companion docs:** [`BONDS.md`](../../NPDevContract/docs/BONDS.md) (design + full roadmap), `MODEL-CONTRACT.md` (DSL contract).
 > Read this file first, then `BONDS.md` for the phase-by-phase roadmap detail.
 
 ---
@@ -14,7 +14,7 @@ exact pipeline seams, what is already implemented (with file paths + tests), whe
 stopped, and what each remaining phase must do. Treat the **Locked Decisions** (§3) as
 binding — they were agreed with the project owner; do not relitigate them, just implement.
 
-When you finish a phase: update the matching "Phase N" section in [`BONDS.md`](BONDS.md)
+When you finish a phase: update the matching "Phase N" section in [`BONDS.md`](../../NPDevContract/docs/BONDS.md)
 to **DONE** with the files touched + the test that proves it, and keep this digest's
 §6 "Status board" in sync.
 
@@ -260,7 +260,7 @@ with evidence stored outside the repo.
 
 ## 8. Remaining phases (what each must do)
 
-> Full detail is in [`BONDS.md`](BONDS.md) under "Roadmap to full support". Summary here.
+> Full detail is in [`BONDS.md`](../../NPDevContract/docs/BONDS.md) under "Roadmap to full support". Summary here.
 
 ### Phase 3 — Persistence + DTO + repository wiring — DONE
 - Added shared `BondModelSupport`; entity/DTO/service emitters use resolved anchor Java
