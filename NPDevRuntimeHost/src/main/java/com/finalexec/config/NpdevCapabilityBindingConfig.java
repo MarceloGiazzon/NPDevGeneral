@@ -474,18 +474,19 @@ public class NpdevCapabilityBindingConfig {
             ObjectProvider<HttpMessagingCapabilityAdapter> httpMessagingCapabilityAdapterProvider,
             ObjectProvider<ExternalAiPromptRunner> externalAiPromptRunnerProvider,
             ObjectProvider<FileStoreCapabilityHandler> fileStoreCapabilityHandlerProvider,
+            ObjectProvider<com.finalexec.notify.NotifyCapabilityHandler> notifyCapabilityHandlerProvider,
             ObjectProvider<com.finalexec.connector.HttpConnectorCapabilityHandler> httpConnectorCapabilityHandlerProvider
     ) {
         CapabilityRegistry registry = new CapabilityRegistry();
         populateCapabilityRegistry(registry, modelHolder.get(), capabilityAdapterResolver,
                 inProcMessagingCapabilityAdapter, httpMessagingCapabilityAdapterProvider,
                 externalAiPromptRunnerProvider, fileStoreCapabilityHandlerProvider,
-                httpConnectorCapabilityHandlerProvider);
+                notifyCapabilityHandlerProvider, httpConnectorCapabilityHandlerProvider);
         modelHolder.addReloadListener((before, after) -> populateCapabilityRegistry(
                 registry, after, capabilityAdapterResolver,
                 inProcMessagingCapabilityAdapter, httpMessagingCapabilityAdapterProvider,
                 externalAiPromptRunnerProvider, fileStoreCapabilityHandlerProvider,
-                httpConnectorCapabilityHandlerProvider));
+                notifyCapabilityHandlerProvider, httpConnectorCapabilityHandlerProvider));
         return registry;
     }
 
@@ -497,6 +498,7 @@ public class NpdevCapabilityBindingConfig {
             ObjectProvider<HttpMessagingCapabilityAdapter> httpMessagingCapabilityAdapterProvider,
             ObjectProvider<ExternalAiPromptRunner> externalAiPromptRunnerProvider,
             ObjectProvider<FileStoreCapabilityHandler> fileStoreCapabilityHandlerProvider,
+            ObjectProvider<com.finalexec.notify.NotifyCapabilityHandler> notifyCapabilityHandlerProvider,
             ObjectProvider<com.finalexec.connector.HttpConnectorCapabilityHandler> httpConnectorCapabilityHandlerProvider
     ) {
         Map<String, CompiledCapability> capabilitiesByName = compiledModel.getCapabilities().stream()
@@ -563,6 +565,18 @@ public class NpdevCapabilityBindingConfig {
                 if (handler == null) {
                     throw new IllegalStateException("Model binds capability 'fileStore' but no "
                             + "FileStoreCapabilityHandler bean exists -- see NpdevFileStoreConfig#fileStoreCapabilityHandler.");
+                }
+                registry.register(capability.getName(), capability.getType(), handler.adapterId(), handler);
+                continue;
+            }
+
+            // PROC-4: notify.send writes a per-user in-app notification (the shell bell) -- platform-
+            // served like fileStore above, never a plugin contribution.
+            if ("notify".equalsIgnoreCase(binding.getCapability())) {
+                com.finalexec.notify.NotifyCapabilityHandler handler = notifyCapabilityHandlerProvider.getIfAvailable();
+                if (handler == null) {
+                    throw new IllegalStateException("Model binds capability 'notify' but no "
+                            + "NotifyCapabilityHandler bean exists -- see NpdevNotificationConfig.");
                 }
                 registry.register(capability.getName(), capability.getType(), handler.adapterId(), handler);
                 continue;
