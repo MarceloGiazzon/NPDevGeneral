@@ -22,16 +22,17 @@
   .app{max-width:1200px;margin:0 auto;padding:14px}
   h1{font-size:15px;margin:0 0 2px}
   .sub{color:var(--np-muted);font-size:12px;margin:0 0 12px}
+  .sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
   .region{border:1px solid var(--np-line);border-radius:6px;margin-bottom:10px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.05)}
   .bar{display:flex;align-items:center;gap:12px;color:#fff;padding:5px 12px;font-weight:600;font-size:12.5px}
-  .bar.head{background:#778899}.bar.items{background:#8894a0}.bar.band{background:#5a8a5a}
+  .bar.head{background:#566677}.bar.items{background:#5f6b77}.bar.band{background:#4a7a4a}
   .body{padding:10px 12px}
   .r-head{background:var(--np-header)}.r-items{background:var(--np-l2)}.r-band{background:var(--np-l3)}
   .grow{flex:1}
   .chip{background:var(--np-chip);color:#fff;border-radius:10px;padding:1px 9px;font-size:11px}
-  .chip.dirty{background:#c9761d}
+  .chip.dirty{background:#9a5412}
   form.grid2{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:5px 8px;align-items:center}
-  label{color:var(--np-muted)}
+  label{color:var(--np-ink)}
   input{font:12px var(--np-font);padding:2px 5px;border:1px solid var(--np-line);border-radius:3px;background:var(--np-surface)}
   input.cell{width:100%;border-color:transparent;background:transparent}
   input.cell:focus{border-color:var(--np-accent);background:var(--np-surface)}
@@ -46,10 +47,10 @@
      bare span had (no native button border/background/font), matching the existing .rev button's
      own reset below. Native :focus-visible outline is left alone -- nothing here suppresses it. */
   .rowbtn{color:var(--np-danger);cursor:pointer;font-weight:700;padding:0 5px;background:none;border:0;font:inherit}
-  .addrow{color:var(--np-accent);cursor:pointer;font-size:12px;display:inline-block;margin-top:4px;background:none;border:0;font:inherit}
+  .addrow{color:color-mix(in srgb, var(--np-accent) 80%, #000);cursor:pointer;font-size:12px;display:inline-block;margin-top:4px;background:none;border:0;font:inherit}
   .grids{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
   .gwrap{min-width:220px;max-width:100%}
-  .gwrap h4{margin:0 0 3px;font-size:12px;color:var(--np-muted)}
+  .gwrap h2{margin:0 0 3px;font-size:12px;color:var(--np-muted)}
   /* R7.10: each band grid scrolls in its OWN box instead of growing the whole page -- with several
      bands side by side (see .grids above) an unbounded table here used to push page height past
      several screens for one long band, dragging every sibling band's rows off-screen with it. The
@@ -62,13 +63,13 @@
   .btn{background:var(--np-accent);color:var(--np-on-accent,#fff);border:0;border-radius:4px;padding:5px 14px;font:12px var(--np-font);cursor:pointer}
   .msg{margin-left:10px;font-size:12px}
   .msg.ok{color:var(--np-ok)}.msg.err{color:var(--np-danger)}
-  .rev{cursor:pointer;color:#fff;font-size:11px;opacity:.85;text-decoration:underline;background:none;border:0}
-  .rev:hover{opacity:1}
+  .rev{cursor:pointer;color:#fff;font-size:11px;text-decoration:underline;background:none;border:0}
+  .rev:hover{text-decoration:none}
   .derived{display:flex;gap:16px;flex-wrap:wrap;padding:5px 12px;font-size:12px;background:var(--np-surface);border:1px solid var(--np-line);border-radius:6px;margin-bottom:10px}
   .derived .item{display:flex;gap:5px;align-items:baseline}
   .derived .item .lbl{color:var(--np-muted)}
   .derived .item .val{font-weight:600}
-  .pick{cursor:pointer;color:var(--np-accent);font-size:12px;display:inline-block;margin-top:4px;margin-left:12px;background:none;border:0;font:inherit}
+  .pick{cursor:pointer;color:color-mix(in srgb, var(--np-accent) 80%, #000);font-size:12px;display:inline-block;margin-top:4px;margin-left:12px;background:none;border:0;font:inherit}
   .modal{position:fixed;inset:0;background:rgba(20,28,38,.45);display:flex;align-items:center;justify-content:center;z-index:50}
   .modal-card{background:var(--np-surface);border-radius:8px;max-width:640px;width:92%;max-height:80vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.3)}
   .modal-hd{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--np-line);font-weight:600}
@@ -121,7 +122,7 @@
 <link rel="stylesheet" href="/theme.css" onerror="this.remove()">
 </head>
 <body>
-<div class="app" id="app"><p class="sub">Loading workbench…</p></div>
+<main class="app" id="app"><p class="sub">Loading workbench…</p></main>
 
 <script>
 /* Generated Aggregate Workbench page for panel "{{panelName}}" (aggregate {{aggregateName}}).
@@ -428,6 +429,9 @@
   var cell = function (val, on, key, forceReadOnly) {
     var i = el('<input class="cell">');
     i.value = val == null ? "" : String(val);
+    // a11y: the grid/header cell has no <label>; name it by its column/field (the last segment of
+    // the key: "h:<field>" or "s:<collection>:<rowId>:<column>").
+    i.setAttribute("aria-label", key ? String(key).split(":").pop() : "value");
     if (key) { i.setAttribute("data-fkey", key); i.addEventListener("focus", function () { activeFocusKey = key; }); }
     i.oninput = function (e) { on(e.target.value); scheduleRecompute(); };
     i.addEventListener("keydown", cellKeydown);
@@ -825,6 +829,7 @@
   // and puts the returned handle in the draft; nothing is persisted until Save).
   function headerCheckbox(fld, value) {
     var box = el('<input type="checkbox" data-fkey="h:' + fld + '">');
+    box.setAttribute("aria-label", fld);
     box.checked = value === true || value === "true";
     if (!EDITABLE) box.disabled = true;
     box.onchange = function () { store.editHeader(fld, box.checked); scheduleRecompute(); render(); };
@@ -842,6 +847,7 @@
     wrap.lastChild.textContent = isHandle ? (handle.originalName || handle.key) : "";
     if (EDITABLE && store.rootConcept) {
       var input = el('<input type="file" style="max-width:220px">');
+      input.setAttribute("aria-label", fld);
       input.onchange = function () {
         var file = input.files && input.files[0];
         if (!file) return;
@@ -1138,7 +1144,7 @@
         })));
       } else {
         var tbl = el("<table></table>");
-        tbl.append(el("<tr>" + sec.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "<th></th></tr>"));
+        tbl.append(el("<tr>" + sec.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + '<th><span class="sr-only">Actions</span></th></tr>'));
         sec.rows.forEach(function (r) {
           var tr = el('<tr class="master ' + (r.id === selected ? "sel" : "") + '"></tr>');
           sec.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(r.values[c], function (val) { store.editRow(sec.collection, r.id, c, val); }, "s:" + sec.collection + ":" + r.id + ":" + c, isReadOnlyColumn(sec, c))); tr.append(td); });
@@ -1175,7 +1181,7 @@
         var bb = el('<div class="body"></div>'); var grids = el('<div class="grids"></div>');
         sec.bandDefs.forEach(function (bd) {
           if (!evaluateVisibleWhen(draftNow, bd.visibleWhen)) return;
-          var g = el('<div class="gwrap"></div>'); g.append(el("<h4>" + bd.collection + "</h4>"));
+          var g = el('<div class="gwrap"></div>'); g.append(el("<h2>" + bd.collection + "</h2>"));
           if (bd.render === "component") {
             var bandRows = selRow.bands[bd.collection] || [];
             g.append(mountRegion(bd, regionApi(bandRows, bd.columns, {
@@ -1186,7 +1192,7 @@
               revert: function () { store.revertRegion("section", sec.collection); render(); }
             })));
           } else {
-            var gt = el("<table></table>"); gt.append(el("<tr>" + bd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "<th></th></tr>"));
+            var gt = el("<table></table>"); gt.append(el("<tr>" + bd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + '<th><span class="sr-only">Actions</span></th></tr>'));
             (selRow.bands[bd.collection] || []).forEach(function (br) {
               var tr = el("<tr></tr>");
               bd.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(br.values[c], function (val) { store.editBandRow(sec.collection, selRow.id, bd.collection, br.id, c, val); }, "b:" + sec.collection + ":" + selRow.id + ":" + bd.collection + ":" + br.id + ":" + c, isReadOnlyColumn(bd, c))); tr.append(td); });
@@ -1195,7 +1201,7 @@
               tr.append(del); gt.append(tr);
             });
             // R7.10: the table sits inside its own scroll box (.gwrap-scroll) rather than under
-            // the h4 title directly -- so the title stays put while a tall band's rows scroll,
+            // the h2 title directly -- so the title stays put while a tall band's rows scroll,
             // and this band's scroll never spills into the page or a sibling band's.
             var gtWrap = el('<div class="gwrap-scroll"></div>'); gtWrap.append(gt); g.append(gtWrap);
             if (EDITABLE) {
@@ -1591,7 +1597,7 @@
       body.innerHTML = "";
       if (!rows.length) { body.append(el('<p class="sub">No records available.</p>')); return; }
       var tbl = el("<table></table>");
-      tbl.append(el("<tr><th></th>" + cols.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "</tr>"));
+      tbl.append(el('<tr><th><span class="sr-only">Row</span></th>' + cols.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "</tr>"));
       rows.forEach(function (row) {
         var id = row.id, d = row.data;
         var tr = el('<tr class="master"></tr>');

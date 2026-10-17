@@ -2143,7 +2143,7 @@
       Object.keys(entry.data || {}).forEach(function (dataSourceName) {
         const block = document.createElement("div");
         block.className = "declared-panel-datasource";
-        const label = document.createElement("h4");
+        const label = document.createElement("h3");
         label.textContent = dataSourceName;
         block.appendChild(label);
         block.appendChild(renderDeclaredPanelValue(entry.data[dataSourceName], entry, dataSourceName, panelMeta));
@@ -2152,7 +2152,7 @@
       if (entry.lastActionResult !== null && entry.lastActionResult !== undefined) {
         const resultBlock = document.createElement("div");
         resultBlock.className = "declared-panel-datasource";
-        const label = document.createElement("h4");
+        const label = document.createElement("h3");
         label.textContent = "Last action result (" + entry.lastActionName + ")";
         resultBlock.appendChild(label);
         resultBlock.appendChild(renderDeclaredPanelValueGeneric(entry.lastActionResult));
@@ -2215,6 +2215,8 @@
     }
     const pre = document.createElement("pre");
     pre.className = "declared-panel-json";
+    // a11y: a horizontally scrollable region must be keyboard-focusable (axe scrollable-region-focusable).
+    pre.tabIndex = 0;
     pre.textContent = JSON.stringify(value, null, 2);
     return pre;
   }
@@ -3668,6 +3670,7 @@
     if (operators.length > 1) {
       const opSelect = document.createElement("select");
       opSelect.className = "column-filter-op";
+      opSelect.setAttribute("aria-label", (field.label || field.name) + " filter operator");
       operators.forEach(function (op) {
         const option = document.createElement("option");
         option.value = op;
@@ -3687,7 +3690,9 @@
     } else {
       entry.operator = operators[0];
     }
-    wrap.appendChild(buildColumnFilterValueControl(field, entry, apply));
+    const valueControl = buildColumnFilterValueControl(field, entry, apply);
+    valueControl.setAttribute("aria-label", (field.label || field.name) + " filter value");
+    wrap.appendChild(valueControl);
     return wrap;
   }
 
@@ -3933,7 +3938,8 @@
       headRow.appendChild(th);
     });
     const actionHead = document.createElement("th");
-    actionHead.textContent = "";
+    // a11y: an empty <th> fails axe `empty-table-header`; the visually hidden text names the column.
+    actionHead.appendChild(srOnlyLabel("Actions"));
     headRow.appendChild(actionHead);
     thead.appendChild(headRow);
     thead.appendChild(buildColumnFilterRow(concept, panel, fields));
@@ -6874,11 +6880,24 @@
     return b;
   }
 
+  // a11y: visually hidden text for an icon/action column header (shell.css `.npdev-sr-only`).
+  function srOnlyLabel(text) {
+    const span = document.createElement("span");
+    span.className = "npdev-sr-only";
+    span.textContent = text;
+    return span;
+  }
+
   function headerRow(labels) {
     const row = document.createElement("tr");
     labels.forEach(function (label) {
       const th = document.createElement("th");
-      th.textContent = label;
+      if (label === "") {
+        // a11y: an empty <th> fails axe `empty-table-header` (the row-delete column passes "").
+        th.appendChild(srOnlyLabel("Actions"));
+      } else {
+        th.textContent = label;
+      }
       row.appendChild(th);
     });
     return row;
