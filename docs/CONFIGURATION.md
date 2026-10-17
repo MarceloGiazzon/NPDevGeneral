@@ -139,7 +139,7 @@ Two-step sign-in (authenticator app, identity pack 1.3.0+, `identity::UserMfa`):
 
 | Property | Environment variable | Meaning |
 |---|---|---|
-| `npdev.auth.mfa.secret-key` | `NPDEV_AUTH_MFA_SECRET_KEY` | **Optional but recommended.** Base64 of exactly 32 random bytes; encrypts each user's authenticator secret at rest (AES-256-GCM). Unset = secrets are stored unencrypted and a boot WARNING is logged. A malformed value fails startup. **Losing the key means every user with MFA must re-enroll** (an admin MFA reset clears the enrollment). Setting a key later keeps already-stored unencrypted secrets readable. |
+| `npdev.auth.mfa.secret-key` | `NPDEV_AUTH_MFA_SECRET_KEY` | **Optional but recommended.** Base64 of exactly 32 random bytes; encrypts each user's authenticator secret at rest (AES-256-GCM). Unset = secrets are stored unencrypted and a boot WARNING is logged. A malformed value fails startup. **Losing the key means every user with MFA must re-enroll** (a user can still sign in with a recovery code, turn two-step sign-in off and re-enroll; a user without codes needs an operator to delete their `identity::UserMfa` row). Setting a key later keeps already-stored unencrypted secrets readable. |
 | `npdev.auth.mfa.issuer` | `NPDEV_AUTH_MFA_ISSUER` | Name shown in the authenticator app (default `NPDev`). |
 
 Apps that keep a private copy of the identity pack older than 1.3.0 have no `identity::UserMfa` table;

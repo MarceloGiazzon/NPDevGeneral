@@ -76,6 +76,11 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
         if (uri.equals("/api/auth/login") || uri.equals("/api/v1/auth/login")) {
             return true;
         }
+        // SEC-13: the second step of a two-step sign-in. The caller has no token yet; the unguessable,
+        // short-lived, attempt-limited challenge id returned by the password step is the credential.
+        if (uri.equals("/api/auth/login/mfa") || uri.equals("/api/v1/auth/login/mfa")) {
+            return true;
+        }
         // SEC-2: logout must work with an expired/invalid cookie (that is when a stale session most
         // needs clearing), and forging a call to it only signs the victim out.
         if (uri.equals("/api/auth/logout") || uri.equals("/api/v1/auth/logout")) {

@@ -56,6 +56,19 @@ class LoginPageEmitterTest {
             """;
 
     @Test
+    void loginPageCarriesTheMfaSecondStep(@TempDir Path tempDir) throws Exception {
+        Path out = emitPage(tempDir, "Login Demo", true);
+        String html = Files.readString(out.resolve("src/main/resources/static/login.html"));
+        assertTrue(html.contains("/api/auth/login/mfa"), "second step posts to the MFA endpoint");
+        assertTrue(html.contains("mfaRequired"), "the password response switches to the second step");
+        assertTrue(html.contains("params.get(\"mfa\")"), "a provider sign-in lands here with ?mfa=<challenge>");
+        assertTrue(html.contains("one-time-code") && html.contains("recoveryCode"),
+                "code input plus a recovery-code alternative");
+        assertTrue(html.contains("X-NPDev-Request"));
+        assertTrue(html.contains("invalid_mfa_code") && html.contains("mfa_challenge_expired"));
+    }
+
+    @Test
     void jwtModeEmitsLoginPageWithOAuthSurface(@TempDir Path tempDir) throws Exception {
         Path out = emitPage(tempDir, "Login Demo", true);
         Path page = out.resolve("src/main/resources/static/login.html");

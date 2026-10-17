@@ -299,7 +299,13 @@ public class MfaController {
         if (code == null || code.isBlank()) {
             return false;
         }
-        long step = Totp.verify(MfaSecretCodec.decode(row.secretStored()), code, Instant.now(), row.lastUsedStep());
+        long step = -1L;
+        try {
+            step = Totp.verify(MfaSecretCodec.decode(row.secretStored()), code, Instant.now(), row.lastUsedStep());
+        } catch (RuntimeException unreadableSecret) {
+            // e.g. the secret was stored encrypted and the key is gone: only a recovery code can work.
+            LOG.log(Level.SEVERE, "MFA secret unreadable; only a recovery code can be accepted", unreadableSecret);
+        }
         if (step >= 0) {
             return MfaStore.setLastUsedStep(caller.connection(), caller.mfaTable(), caller.userId(),
                     caller.tenantId(), step);
