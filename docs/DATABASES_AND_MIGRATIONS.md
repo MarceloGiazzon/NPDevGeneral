@@ -489,7 +489,8 @@ The clearest evidence for §16 is that the *same shape* of bug keeps recurring, 
 - **T-B2** — passes disagreed about `version`. (fixed + guarded)
 - **REG-38** (2026-07-24) — the additive migration re-added a constraint it couldn't tell already
   existed; non-idempotent `ADD CONSTRAINT` on H2 broke *any* re-deploy against an existing database.
-  (found + fixed: now emits `DROP CONSTRAINT IF EXISTS` first; verified live)
+  (found + fixed: now emits `ADD CONSTRAINT IF NOT EXISTS`; it first used drop-then-add, which H2
+  refuses for a unique constraint a `via` reference's FK depends on, fixed 2026-10-12)
 - **REG-40** (2026-07-24) — the additive migration never created a *new* table, so adding a new
   concept and re-deploying against an existing database failed at boot. (found + fixed tactically:
   R__ now also emits `CREATE TABLE IF NOT EXISTS` for business/junction tables, before its `ALTER`

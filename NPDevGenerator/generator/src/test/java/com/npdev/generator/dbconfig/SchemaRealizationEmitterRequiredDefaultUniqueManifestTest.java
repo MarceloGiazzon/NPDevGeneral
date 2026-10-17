@@ -112,8 +112,8 @@ final class SchemaRealizationEmitterRequiredDefaultUniqueManifestTest {
             // appendExplicitIndexes (DDL-emission) despite being a deliberately parallel
             // implementation. An ordinary (non-anchor) single-field unique emits a
             // CREATE UNIQUE INDEX; every other kind (anchor, compound, explicit-index) emits an
-            // ADD CONSTRAINT ... UNIQUE.
-            String asConstraint = "ADD CONSTRAINT " + name + " UNIQUE (" + expectedColumnList + ")";
+            // ADD CONSTRAINT IF NOT EXISTS ... UNIQUE (H2 guards it in place).
+            String asConstraint = "ADD CONSTRAINT IF NOT EXISTS " + name + " UNIQUE (" + expectedColumnList + ")";
             String asUniqueIndex = "CREATE UNIQUE INDEX IF NOT EXISTS " + name + " ON memberships (" + expectedColumnList + ")";
             assertTrue(v1Sql.contains(asConstraint) || v1Sql.contains(asUniqueIndex),
                     "manifest-declared constraint '" + name + "' on (" + expectedColumnList
