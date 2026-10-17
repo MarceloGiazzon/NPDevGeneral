@@ -1618,11 +1618,19 @@ public final class GeneratedCrudRuntimeSupport {
                 envelope.correlationId(),
                 null
         );
-        CapabilityResult result = capabilityDispatcher.invoke(call, Map.of(
-                "orchestration", orchestrationName,
-                "eventName", envelope.eventName(),
-                "eventId", envelope.eventId()
-        ));
+        // INT-5: tenantId/actorId ride along (when the event carries them) so a capability handler can
+        // resolve tenant-scoped settings; Map.of rejects nulls, hence the LinkedHashMap.
+        Map<String, Object> callContext = new LinkedHashMap<>();
+        callContext.put("orchestration", orchestrationName);
+        callContext.put("eventName", envelope.eventName());
+        callContext.put("eventId", envelope.eventId());
+        if (envelope.tenantId() != null) {
+            callContext.put("tenantId", envelope.tenantId());
+        }
+        if (envelope.actorId() != null) {
+            callContext.put("actorId", envelope.actorId());
+        }
+        CapabilityResult result = capabilityDispatcher.invoke(call, callContext);
 
         Map<String, Object> evidencePayload = new LinkedHashMap<>();
         evidencePayload.put("orchestration", orchestrationName);
