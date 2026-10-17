@@ -2,11 +2,13 @@ package com.finalexec.collab;
 
 import com.npdev.kernel.storage.sql.H2Dialect;
 import com.npdev.kernel.storage.sql.SqlDialects;
-import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import javax.sql.DataSource;
 import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 import java.util.UUID;
@@ -21,8 +23,7 @@ class JdbcRecordCommentStoreH2Test {
     @BeforeEach
     void setUp() throws Exception {
         SqlDialects.setActive(H2Dialect.INSTANCE);
-        JdbcDataSource dataSource = new JdbcDataSource();
-        dataSource.setURL("jdbc:h2:mem:comments-" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
+        DataSource dataSource = new UrlDataSource("jdbc:h2:mem:comments-" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE npdev_record_comment (comment_id VARCHAR(64) PRIMARY KEY, tenant_id VARCHAR(64) NOT NULL,"
                     + " concept_name VARCHAR(128) NOT NULL, record_id VARCHAR(128) NOT NULL, author VARCHAR(128) NOT NULL,"
@@ -30,6 +31,25 @@ class JdbcRecordCommentStoreH2Test {
                     + " deleted_at_ms BIGINT)");
         }
         store = new JdbcRecordCommentStore(dataSource);
+    }
+
+    /** The same minimal DataSource the other runtimehost-core H2 tests use. */
+    private static final class UrlDataSource implements DataSource {
+        private final String url;
+
+        private UrlDataSource(String url) {
+            this.url = url;
+        }
+
+        @Override public Connection getConnection() throws SQLException { return DriverManager.getConnection(url); }
+        @Override public Connection getConnection(String u, String p) throws SQLException { return DriverManager.getConnection(url, u, p); }
+        @Override public java.io.PrintWriter getLogWriter() { return null; }
+        @Override public void setLogWriter(java.io.PrintWriter out) { }
+        @Override public void setLoginTimeout(int seconds) { }
+        @Override public int getLoginTimeout() { return 0; }
+        @Override public java.util.logging.Logger getParentLogger() { return java.util.logging.Logger.getLogger(getClass().getName()); }
+        @Override public <T> T unwrap(Class<T> iface) { return null; }
+        @Override public boolean isWrapperFor(Class<?> iface) { return false; }
     }
 
     private static RecordComment row(String id, String tenant, String record, long at) {

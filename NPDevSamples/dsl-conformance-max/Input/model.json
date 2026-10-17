@@ -136,6 +136,7 @@
       "name": "ShelfLayout",
       "truthLevel": "T2",
       "ui": { "label": "Shelf layout" },
+      "collaboration": { "comments": true, "attachments": false },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "name", "type": "string", "required": true, "ui": { "label": "Name" } },

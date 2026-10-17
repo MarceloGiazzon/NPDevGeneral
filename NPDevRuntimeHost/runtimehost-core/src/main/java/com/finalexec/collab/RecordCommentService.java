@@ -135,9 +135,8 @@ public final class RecordCommentService {
      */
     CompiledConcept requireReadable(String conceptName, String recordId, ExecutionContext ctx, boolean attachments) {
         CompiledModel current = model.get();
-        Optional<CompiledConcept> found = current == null || conceptName == null || recordId == null
-                ? Optional.empty() : current.findConcept(conceptName);
-        CompiledConcept concept = found.orElse(null);
+        CompiledConcept concept = current == null || conceptName == null || recordId == null
+                ? null : findConcept(current, conceptName);
         if (concept == null || concept.getCollaboration() == null
                 || !(attachments ? concept.getCollaboration().attachments() : concept.getCollaboration().comments())) {
             throw notFound();
@@ -157,6 +156,20 @@ public final class RecordCommentService {
             throw notFound();
         }
         return concept;
+    }
+
+    /** Exact name first, then the URL's spelling ignoring case. */
+    private static CompiledConcept findConcept(CompiledModel current, String name) {
+        Optional<CompiledConcept> exact = current.findConcept(name);
+        if (exact.isPresent()) {
+            return exact.get();
+        }
+        for (CompiledConcept candidate : current.getConcepts()) {
+            if (candidate.getName().equalsIgnoreCase(name)) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     private static CommentException notFound() {
