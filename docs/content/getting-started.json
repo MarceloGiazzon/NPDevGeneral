@@ -109,7 +109,7 @@
       "blocks": [
         {
           "type": "prose",
-          "text": "\nThe browser-based authoring UI (concepts, fields, flows, panels) as an alternative to hand-editing\nmodel JSON is already built into every app you generate -- open **`/model-authoring.html`** on\nyour running app (e.g. `http://localhost:8080/model-authoring.html`). No separate install or\nserver needed; it covers the starter templates and the common scaffolding and editing actions.\n\nThis page replaced the old React bundle at `/npdev-ui-react/`, which was removed on 2026-08-20\n(EDIT-12) -- a generated app returns 404 for that route. See `BREAKING.md` for the full history.\n"
+          "text": "\nThe browser-based authoring UI (concepts, fields -- including enum, reference and file fields -- flows, panels) as an alternative to hand-editing\nmodel JSON is already built into every app you generate -- open **`/model-authoring.html`** on\nyour running app (e.g. `http://localhost:8080/model-authoring.html`). No separate install or\nserver needed; it covers the starter templates and the common scaffolding and editing actions.\n\nThis page replaced the old React bundle at `/npdev-ui-react/`, which was removed on 2026-08-20\n(EDIT-12) -- a generated app returns 404 for that route. See `BREAKING.md` for the full history.\n"
         }
       ]
     },

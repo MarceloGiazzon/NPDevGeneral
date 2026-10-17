@@ -520,7 +520,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toBandPickers(node.get("bandPickers")),
                 toAutoPanelDataSource(node.get("dataSource")),
                 toUiState(node.get("uiState")),
-                optionalText(node, "layout")
+                optionalText(node, "layout"),
+                optionalText(node, "panel")
         );
     }
 
@@ -568,7 +569,8 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalText(actionNode, "afterAction"),
                     optionalText(actionNode, "visibleWhen"),
                     readLabelLocales(actionNode, "label"),
-                    toStringList(actionNode.get("checkBalances"))));
+                    toStringList(actionNode.get("checkBalances")),
+                    actionNode.path("review").asBoolean(false)));
         }
         return out;
     }

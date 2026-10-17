@@ -599,6 +599,9 @@ public final class CompiledModelCanonicalJson {
         if (surface.layout() != null) {
             node.put("layout", surface.layout());
         }
+        if (surface.panel() != null) {
+            node.put("panel", surface.panel());
+        }
         return node;
     }
 
@@ -657,6 +660,10 @@ public final class CompiledModelCanonicalJson {
             // Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): the on-demand-balance-check alternate
             // to `procedure` -- see WorkbenchActionAst's javadoc.
             node.set("checkBalances", toStringArray(action.checkBalances()));
+            // AI-7: written only when true so existing compiled output stays byte-identical.
+            if (action.review()) {
+                node.put("review", true);
+            }
             array.add(node);
         }
         return array;

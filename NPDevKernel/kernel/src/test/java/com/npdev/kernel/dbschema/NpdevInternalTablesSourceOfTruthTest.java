@@ -29,6 +29,7 @@ final class NpdevInternalTablesSourceOfTruthTest {
             "npdev_promotion_state",
             "npdev_tenant",
             "npdev_api_credential",
+            "npdev_api_credential_policy",
             "npdev_pack_install_intent",
             "npdev_cron_fire_claim",
             "npdev_sequence_counter",

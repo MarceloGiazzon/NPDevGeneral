@@ -1385,6 +1385,10 @@
           ],
           "description": "Selection surface only: the layout type of the generated Selection panel, which also lists rows on the workbench page. `grid` renders each row as a card (the selection columns, one line each); `table` is the default."
         },
+        "panel": {
+          "type": "string",
+          "description": "AutoPanel surface override: the name of a declared panel that REPLACES this surface's synthesized panel. The expander skips generating the surface and every reference to it (route, workbench wiring, Prompt picker) uses the declared panel instead; the other surfaces stay generated. The panel must exist and be bound to the same concept the surface would have used (the aggregate root for an aggregate-bound AutoPanel's selection/transaction)."
+        },
         "metadata": {
           "type": "object"
         }
@@ -1477,6 +1481,11 @@
           "type": "string",
           "minLength": 1,
           "description": "Client-tier predicate, e.g. \"$root.tipo == 'Expedicao'\"."
+        },
+        "review": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true the procedure's result is shown as a field-by-field \"proposed changes\" dialog; only the ticked fields are folded into the draft (nothing is saved until Save). Not combinable with applyTo, afterAction or checkBalances."
         }
       }
     },
