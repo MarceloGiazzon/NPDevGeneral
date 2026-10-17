@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import Any
 
 import build_rag_index
-import yaml
 from failure_signatures import normalize
 from npdev_ai_common import KNOWLEDGE_REL, ai_out_dir, cards_dir, knowledge_dir, repo_root
 
@@ -160,6 +159,14 @@ def ledger_capability_items(root: Path) -> list[dict[str, Any]]:
     them (it projects ledger/gaps.yml, which is empty by design), so the projection lives here and
     only reaches <Build>/npdev-ai/capabilities.json, never a committed file.
     """
+    try:
+        import yaml
+    except ImportError:
+        # PyYAML is a dev-only dependency (scripts/requirements.txt); `npdev setup` runs this script
+        # on machines that only have the stdlib, so the ledger projection degrades instead of failing.
+        print("build_knowledge: PyYAML not installed -- skipping the ledger capability projection", file=sys.stderr)
+        return []
+
     items: list[dict[str, Any]] = []
 
     def load(sub: str) -> list[tuple[Path, dict[str, Any]]]:
