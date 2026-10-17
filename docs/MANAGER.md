@@ -116,9 +116,9 @@ engine and you can ignore Docker entirely.
 > **Pointing NPDev at a database server you already run** connects and works — but read this before
 > pressing anything in the Database group. The refusal to Start, Stop or Reset (STOR-14) fires only
 > when the app's `db.definition.json` declares `"externallyProvisioned": true`. Tick **"This server is mine, not NPDev's"**
-> on the Apps screen (it passes `--externally-provisioned`; the CLI flag is the same) to set it. On an app created the
-> normal way the buttons act as if the server were NPDev's own, and `Reset` deletes the data root, so tick the box
-> before pointing an app at a server you run yourself.
+> on the Apps screen (it passes `--externally-provisioned`; the CLI flag is the same) to set it. A server-engine app must declare
+> the flag one way or the other (generation refuses a definition that omits it, F3); `false` means NPDev owns the
+> server and `Reset` deletes the data root, so tick the box before pointing an app at a server you run yourself.
 
 **First run creates one folder and touches nothing else.** Windows: `%LOCALAPPDATA%\NPDev`.
 Linux: `~/.local/share/npdev`. Everything the Manager downloads lives there.
@@ -199,8 +199,9 @@ Gets Java, Python, and NPDev itself. Run once per version.
 4. **Run setup**.
 
 **Setup takes either about a minute or about ten.** Released versions include prebuilt files it
-can download; anything else has to be built on your machine. The log says which happened — look
-for `Jars source: download` or `Jars source: build`. Both end in a working install.
+can download; anything else has to be built on your machine. The Install screen says which happened — it
+reports "jars downloaded (fast)" or "built locally (slow)" (the CLI's own narration says `Jars source: download` or
+`Jars source: build`). Both end in a working install.
 
 ### Running NPDev straight from a repo checkout
 

@@ -90,7 +90,7 @@ point of an export is that it leaves the machine.
 `schemas/ai/scrapforai-routine.schema.json` is a **pin** of what a running ScrapForAI engine served
 at `GET /v1/schema/routine.request.json`. It is never hand-written and never hand-edited.
 
-Why: the engine defines 32 actions; the 42-routine corpus uses 16. A schema induced from the corpus
+Why: the engine defines 32 actions; the 35-routine corpus uses 16. A schema induced from the corpus
 would reject the other 16 and would miss every constraint examples cannot show — `label` ≤ 160,
 `selector` ≤ 500, `value` ≤ 5000, `stepId` ≤ 80, `timeoutMs` ≤ `STEP_TIMEOUT_MS`, and `evaluate`/`watch`
 gated behind `ALLOW_EVALUATE`. All five were found by being **rejected at runtime**, never by reading
@@ -117,7 +117,7 @@ here" means "runs in the harness".
 
 Green = the routine's steps passed **and** zero console/page/external errors, minus a declared
 allowlist. It is implemented once, in the CLI, and applied to every driver: the PowerShell harness
-and the Playwright reporter record *through* `npdev explore record` rather than each judging for
+(and any other driver, e.g. `--driver playwright`) records *through* `npdev explore record` rather than each judging for
 itself. Two implementations of "green" is how green quietly comes to mean different things.
 
 The allowlist is mandatory — every NPDev app emits a `theme.css` 404 when it declares no custom theme
@@ -143,7 +143,7 @@ That last point is the whole design. An excuse nobody can see outlives the reaso
 <app>/_ops/exploration-runs/blobs/<sha256>    content-addressed screenshots
 ```
 
-Platform-scoped runs (the editor e2e suites, which test NPDev rather than an app) live under
+Platform-scoped runs (suites that test NPDev rather than an app; the editor e2e suites that used to produce them left with `NPDevEditor/ui-react`) live under
 `<Build>/npdev-explorations/platform/<suite>/` — same schema, same screen, a scope filter.
 
 **Records are never deleted.** `runs.jsonl` and every `run.json` are text and stay forever. Only
@@ -153,8 +153,8 @@ a silent prune is how evidence disappears without anyone deciding to lose it.
 
 ### Attribution
 
-Every run carries three hashes: `definition.contentSha256`, `target.modelSha256` and
-`target.platform`. With those, a red run is attributable rather than investigated — "same routine,
+Every run carries three identity fields: the hashes `definition.contentSha256` and `target.modelSha256`, and
+`target.platform` (the `git describe --tags --always` output — a tag name or short commit, not a hash). With those, a red run is attributable rather than investigated — "same routine,
 same model, new platform" names the culprit.
 
 ---
@@ -162,7 +162,7 @@ same model, new platform" names the culprit.
 ## 3. The Manager screens
 
 **Monitor** — a card per app (or a dense list; `⊞`/`☰` toggles). Status tint from `probe`. Per card:
-Open URL, Start/Stop, Test DB, the runbook strip, the inspector, Logs, and "Explore this app". Cards
+Open URL, Start/Stop, Logs, an Actions menu (the runbook scripts), the inspector, and "Explore this app". Cards
 are tagged with their `origin` — a registered Manager app, or one found by scanning an inspect path.
 Inspect paths are editable in the window and persist in `manager.json`.
 
@@ -182,7 +182,7 @@ not installed rather than failing silently. No path literal appears anywhere in 
 Two things cover the two halves, and neither covers the other:
 
 ```
-NPDevManager --selftest                              the Tauri commands, headless
+npdev-manager --selftest                              the Tauri commands, headless
 node scripts/quality/check-manager-ui-render.mjs     what the screens actually DRAW
 ```
 

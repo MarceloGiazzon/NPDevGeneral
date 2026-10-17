@@ -55,7 +55,7 @@ server image does not, and there the AppImage exits saying `Couldn't open libGLE
 ## Step 3 — Install the private runtimes
 
 The Manager opens on the **Ready** screen, which is a list of checks. Go to the **Install** tab and
-work down its four numbered steps **in order**:
+work down its first four numbered steps **in order** (a fifth, "Monitored App Paths", is optional and only feeds The Monitor):
 
 | | Button | What it does |
 |---|---|---|
@@ -101,12 +101,10 @@ as containers. If you have not got Docker and do not want it, **pick H2Local**. 
 
 > **Already run your own database server?** You can point NPDev at it and it will connect and work.
 > **Do not press Start, Stop or Reset.** NPDev only knows a server is yours when
-> `db.definition.json` declares `"externallyProvisioned": true`. **Since 2026-08-11 you can set
-> it:** tick *"This server is mine, not NPDev's"* when creating the app, or pass
-> `--externally-provisioned` to `npdev init`. Apps created BEFORE that still need the flag added by
-> hand — so on a normal setup those buttons still act as if the server were NPDev's own, and
-> **Reset deletes data**. If you want the protection today, add that flag to the app's
-> `db.definition.json` by hand.
+> `db.definition.json` declares `"externallyProvisioned": true`. **You always have to say which it is:** tick *"This server is
+> mine, not NPDev's"* when creating the app, or pass `--externally-provisioned` to `npdev init`. Since the Cold Clone Audit
+> (F3) a server-engine `db.definition.json` that omits `database.externallyProvisioned` is **refused at generation** (`false`
+> means NPDev manages the server's lifecycle and **Reset deletes data**; `true` makes Start, Stop and Reset refuse to touch it).
 
 ## Step 6 — Create, build, run
 
