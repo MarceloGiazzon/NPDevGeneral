@@ -37,7 +37,7 @@ jobs:
 
       - name: Upload Docker/Linux evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: docker-linux-proof-reports
           path: |
@@ -96,7 +96,7 @@ jobs:
 
       - name: Upload AI beta reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ai-beta-gate-reports
           path: scripts/reports/out
