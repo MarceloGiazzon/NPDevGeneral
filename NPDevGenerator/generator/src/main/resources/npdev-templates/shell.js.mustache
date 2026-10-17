@@ -562,6 +562,19 @@
     }).catch(function () { /* no ShellCompanyName query declared, or it failed -- show nothing */ });
   }
 
+  // PROC-4: the bell lives in a verbatim static file; the shell only loads it when the model binds the
+  // notify capability (manifest.collaboration.notifications). Idempotent, and never loads for a
+  // logged-out visitor.
+  function loadCollabScript(manifest) {
+    var collab = manifest && manifest.collaboration;
+    if (!collab || !collab.notifications || !state.token) return;
+    if (document.querySelector("script[data-npdev-bell]")) return;
+    var s = document.createElement("script");
+    s.src = "/npdev-business-ui/collab/bell.js";
+    s.setAttribute("data-npdev-bell", "1");
+    document.head.appendChild(s);
+  }
+
   // ------------------------------------------------------- executions rail ----
 
   // R7.7: the async progress surface docs/UI_CONTRACT.md's own words call for -- "a UI that shows
@@ -1592,6 +1605,7 @@
     applyIdentity();
     applyCompanyName();
     renderSidebar();
+    loadCollabScript(manifest);
     applyAppTheme(manifest);
     // P6: guide-page gadgets run authenticated queries -- not for a logged-out visitor of a public page.
     if (!(isPublicPage() && !token)) applyGuidePage(manifest, currentGuidePageName());

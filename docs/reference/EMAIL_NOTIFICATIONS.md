@@ -115,6 +115,51 @@ Avoid literal text that happens to equal a state key, or starts with `$`.
 keys are declared.** The key names are yours; declare them as `to, subject, body, templateVars`
 (`NPDevSamples/pigmentampas`, procedure `NotifyTradeRecipient`).
 
+## In-app notifications (notify.send)
+
+`mail.send` reaches people outside the app and needs SMTP. For people who are signed in, a step can
+instead store a per-user notification that the shell shows behind a bell in the topbar of every page
+(unread count, a list of recent items, click to follow the link and mark it read). Email stays an
+explicit, separate `mail.send` step: nothing falls back from one to the other.
+
+```json
+{
+  "capabilities": [ { "name": "notify", "type": "NotifyCapability", "operations": ["send"] } ],
+  "bindings":     [ { "capability": "notify", "adapter": "notify" } ]
+}
+```
+
+Procedure step (args is an object; they are passed positionally in declared key order):
+
+```json
+{ "name": "notify-in-app", "type": "capabilityCall", "capability": "notify", "operation": "send",
+  "args": { "to": "$recipient.username", "title": "New trade ${code} from ${proposerUsername}",
+            "body": "Answer it within 7 days.", "templateVars": "$trade",
+            "link": "/npdev-business-ui/collab/tasks.html" },
+  "target": "notified" }
+```
+
+Flow step (args is an array, result goes to `output`):
+
+```json
+{ "name": "notify-in-app", "type": "capabilityCall", "capability": "notify", "operation": "send",
+  "args": ["$saved.recipientUsername", "New trade ${code}", "Answer within 7 days.", "$saved",
+           "/npdev-business-ui/collab/tasks.html"],
+  "output": "$notified" }
+```
+
+- Argument order is `(to, title, body, templateVars, link)`, the same convention as `mail.send`.
+  `to` is a username or a list of usernames (one notification each). `${var}` placeholders in `title`
+  and `body` come from `templateVars`.
+- `link` must be site-relative (start with a single `/`); anything else is silently dropped.
+- The tenant comes from the flow context. The result is `{ "notified": <count> }`.
+- Storage: the `npdev_notification` internal table when `npdev.storage.mode=jdbc`, in memory otherwise.
+- REST (always the caller's own rows): `GET /api/notifications?unreadOnly=false&limit=20`,
+  `GET /api/notifications/unread-count`, `POST /api/notifications/{id}/read` (404 for anyone else's
+  row), `POST /api/notifications/read-all`. The bell polls the count every 60 s while the tab is visible.
+- Binding the capability is what switches the bell on (`collaboration.notifications` in the UI manifest).
+- No retention yet: read rows are kept.
+
 ## Operator alerts
 
 Independent of the `mail` capability a model declares, every generated app can e-mail its operator
