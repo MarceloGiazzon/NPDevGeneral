@@ -12,7 +12,7 @@ you to open a terminal.
 > version history — with git absent, `npdev init` says so and creates the app anyway, and the Ready
 > screen's `git-present` check warns rather than fails.
 
-**Windows · Linux · 8 screens · 55 actions · Private runtimes**
+**Windows · Linux · 17 tabs · Private runtimes**
 
 ## Contents
 
@@ -28,7 +28,7 @@ you to open a terminal.
 - [8 · Scrap Manager](#8--scrap-manager)
 - [9 · Packs](#9--packs)
 - [Files & folders](#files-and-folders)
-- [The eleven checks](#the-eleven-checks)
+- [The checks](#the-checks)
 - [Commands it runs](#commands-it-runs-for-you)
 - [Action reference](#action-reference)
 - [Progress events](#progress-events)
@@ -60,8 +60,9 @@ Java version on your machine cannot break it. Removing everything means deleting
 | **NPDev Editor** | Edits a model in the browser | Inside an app that is already running |
 
 Every button in the Manager runs a command that also works on its own in a terminal. The Manager
-adds no behaviour of its own beyond downloading runtimes and showing you output — so nothing you
-do here is a dead end if you later want the command line.
+adds little behaviour of its own — downloading runtimes, showing you output, keeping secret profiles in the OS
+credential store, and calling an AI provider from the Prompter — so nothing you do here is a dead end if you later
+want the command line.
 
 ## Installing it
 
@@ -107,30 +108,37 @@ and H2Local is the default. (Those are the names in the picker; there is no "H2 
 (`postgres:16`, `mysql:8.4`, `mcr.microsoft.com/mssql/server:2022-latest`), so `npdev db start` and
 the Start/Stop/Reset buttons cannot work without it.
 
-The doctor reports Docker as **warn / optional**, which is accurate for the embedded engines and
-understated for the other three. Pick an embedded engine and you can ignore Docker entirely.
+For an app on one of those three engines the doctor reports Docker as **required** and **fails** when it is absent and
+nothing listens on the database port (it passes with "not required" when the server is externally provisioned). It
+reports Docker as **warn / optional** only for the embedded engines or when no app is selected. Pick an embedded
+engine and you can ignore Docker entirely.
 
 > **Pointing NPDev at a database server you already run** connects and works — but read this before
 > pressing anything in the Database group. The refusal to Start, Stop or Reset (STOR-14) fires only
-> when the app's `db.definition.json` declares `"externallyProvisioned": true`, and **nothing in the
-> Manager or in `npdev init` can set that flag yet**. On an app created the normal way the buttons
-> act as if the server were NPDev's own, and `Reset` deletes the data root. Set the flag by hand to
-> get the protection, or simply do not press those three buttons.
+> when the app's `db.definition.json` declares `"externallyProvisioned": true`. Tick **"This server is mine, not NPDev's"**
+> on the Apps screen (it passes `--externally-provisioned`; the CLI flag is the same) to set it. On an app created the
+> normal way the buttons act as if the server were NPDev's own, and `Reset` deletes the data root, so tick the box
+> before pointing an app at a server you run yourself.
 
 **First run creates one folder and touches nothing else.** Windows: `%LOCALAPPDATA%\NPDev`.
 Linux: `~/.local/share/npdev`. Everything the Manager downloads lives there.
 
-### The eight screens, in the order you will use them
+### The screens, in the order you will use them
 
-The window has eight tabs across the top. A first run uses the first four, left to right: check the
-machine, install NPDev, create an app, run it. **Share** comes right after Run — you run an app,
-then you give it an address other people can open. **Versions** is for later, when you want to
-update; **The Monitor** and **Scrap Manager** are for once you have apps to watch.
+The window has seventeen tabs across the top: Ready, Install, The Monitor, Apps, Run, Share, Versions, Scrap Manager,
+Prompter, Verification, Packs, Impact, DB Import/Export, GPU Checks, Secrets, Studio and Evals. A first run uses
+**Ready** (check the machine), **Install** (install NPDev), **Apps** (create an app) and **Run** (run it); **The Monitor**
+sits third because it watches every app on the machine, and **Share** comes right after Run — you run an app, then
+you give it an address other people can open. **Versions** is for later, when you want to update. The numbered sections
+below cover the original screens in depth; **Prompter** (AI-assisted model authoring that writes `model.json`),
+**Studio** (edits a model node and applies it live), **Secrets** (profiles kept in the OS credential store) and the
+remaining tabs are listed in the action reference.
 
 ## 1 · Ready
 
-Eleven checks that tell you whether this machine can build an NPDev app — before you spend time
-finding out the hard way.
+Eleven machine checks that tell you whether this machine can build an NPDev app — before you spend time
+finding out the hard way. Pick an app in the Ready screen's app picker and the doctor adds that app's database checks
+(`database-reachable`, `database-credentials`, `database-exists`, `database-privileges`, `database-charset`, ...).
 
 ```
   ✓ Java 17+             17.0.11   (private JDK)
@@ -154,7 +162,7 @@ Each row carries a **mark**, not the word: the words below are the names used in
 |---|---|---|---|
 | **✓** | pass | Requirement met. | Nothing. |
 | **✗** | fail | You cannot build an app until this is resolved. | Follow the fix text on the row; the one **Fix this** button takes you to the Install screen. |
-| **!** | warn | Optional. Something is missing that only some paths need. | Usually nothing. git is never required. Docker is required only for the Postgres / MySQL / SqlServer engines — see "The one prerequisite" above. PowerShell is *not* optional in the same sense: it is needed to **run** an app (`npdev run app`, `npdev db`, `npdev verify`) though not to author one — install it when the run buttons are your next step. |
+| **!** | warn | Optional. Something is missing that only some paths need. | Usually nothing. git is never required. Docker is required only for the Postgres / MySQL / SqlServer engines — see "The one prerequisite" above. PowerShell is *not* optional in the same sense: it is needed to **run** an app (`npdev run app`, and `npdev verify` from tier T1 up) though not to author one (`npdev db *` falls back to a POSIX `.sh` twin when it is missing) — install it when the run buttons are your next step. |
 
 ### Controls
 
@@ -274,8 +282,9 @@ minute when it changes the database.
 ### Signing in
 
 Open the link. Your key is in a file called `SUPER_USER_KEY.txt`, written the first time the app
-starts — into the **generated** folder the app runs from (`<name>-app`), not the model folder beside
-it.
+starts — into the app's working directory — the generated `App` folder (the setting is
+`npdev.superuser.key-file-dir`, default `.`), which the app's `Start-App.ps1` relocates into `_ops` — not the model
+folder beside it.
 
 **A mistake will not cost you the running app.** The model is checked before anything is
 rebuilt. If you save something invalid, the log shows the error — naming the exact place — and
@@ -286,7 +295,7 @@ your app keeps running on the last version that worked. Fix it and save again.
 | Line | Meaning |
 |---|---|
 | `changed: model.json` | A save was noticed. |
-| `validate ... ok` | The model is valid; rebuilding. |
+| `validate ...` then `  -> ok` | The model is valid; rebuilding. |
 | `validate ... FAILED` | Something is wrong. The error follows. The app stays up. |
 | `change applied live (model-reload)` | The running app took the change without a restart — flows, rules, roles, queries, enum values and brand-new concepts, in seconds. Needs a database that keeps a key (`H2Local`). |
 | `needs a rebuild -- ...` | The change cannot go live (for example a new column on an existing concept), or the app has no key to apply it with. The reason follows; a full rebuild and restart come next. |
@@ -312,7 +321,7 @@ The primary button is never disabled. If sharing would be blocked, it reads **"F
 share"** — pressing it fixes what can be fixed automatically, shows what cannot be (usually: the app
 itself is not running, or its database is not reachable), and opens a tunnel the moment everything
 that can be fixed is fixed. Progress ticks through five steps as it goes; watch the log
-(`~/.local/share/npdev/manager.log` / `%LOCALAPPDATA%\NPDev\manager.log`) if a step reports an error.
+(`logs/manager.log` under the Manager's home folder — `%LOCALAPPDATA%\NPDev\logs\manager.log` on Windows, `~/.local/share/npdev/logs/manager.log` on Linux) if a step reports an error.
 
 ### Once it is live
 
@@ -338,9 +347,10 @@ Which NPDev versions you have, which one is in use, and how to add or remove one
 | Control | What it does |
 |---|---|
 | **Installed list** | Every version you have downloaded. The current one is marked. |
-| **Set current** | Chooses which version new builds use. |
-| **Install** | Downloads another version alongside the ones you have. |
+| **Use this version** | Chooses which version new builds use. |
 | **Remove** | Deletes that version's folder. |
+
+The Versions screen has no download control: to get another version, use the Install tab (the empty state points there).
 
 Versions sit side by side in separate folders, so switching is instant and nothing is overwritten.
 Your apps are stored separately and are never touched by any of this.
@@ -355,13 +365,13 @@ Every generated app on this machine, on one wall of screens. Full reference: [MO
 
 | Control | What it does |
 |---|---|
-| **Inspect paths** | Folders to search for apps. The Monitor also always shows the apps this Manager created. Empty by default — it will not guess where you keep things. |
+| **Inspect paths** | Read-only here ("✎ EDIT IN INSTALL"): the folders to search for apps are edited in Install step 5, "Monitored App Paths". The Monitor also always shows the apps this Manager created. Empty by default — it will not guess where you keep things. |
 | **⊞ / ☰** | Card wall, or a dense list with each app's details beside it. |
 | **Filters** | All · Running · Attention · Idle. |
 | **Open** | Opens the app in your browser. |
 | **Start / Stop** | Runs the app's own runbook. Stop kills the whole process tree when this window started it, and uses the app's own `Stop-Environment` when something else did. |
 | **Logs** | The app's own output, the ops scripts you ran, and the Manager's log — plus **Export support bundle**. |
-| **Actions** | Every `_ops` runbook script, the app and `_ops` folders, and "Explore this app". |
+| **Actions** | The card menu offers 7 `_ops` runbook scripts (the CLI allowlist, `npdev monitor ops --script`, has 9: `create-environment` is not in the menu and `run-finalapp` is reachable only through Start), the app and `_ops` folders, and "Explore this app". |
 | **Click a screen** | Opens the inspector: every URL, flow and concept from the app's own `info.json`, plus the paths, port, PID and health that only this machine knows. |
 
 A card is drawn from what `npdev monitor probe` just saw, never from what the window remembers — so
@@ -436,41 +446,41 @@ Everything the Manager creates lives in one place.
     beta1.6/              one downloaded version
     beta1.7/              another, side by side
   runtimehost-libs/      NPDev's internal build files
-  apps/                   apps created without choosing a folder
+  apps/                   reserved; created at startup, but apps are always created in the folder you choose
   logs/                   manager.log -- what the Manager itself did (send this if it will not start)
 ```
 
 Your own apps live wherever you chose when creating them. Nothing outside this folder is
 modified, and no system settings are changed.
 
-## The eleven checks
+## The checks
 
 What the Ready screen tests, and what makes each one fail.
 
 | Check | Needs | Fails when | Fix |
 |---|---|---|---|
 | `java-present` | Java installed | No Java found at all | Install private JDK |
-| `java-version` | Version 17 or newer | Java is present but older than 17 (a newer major version warns instead of failing — see below) | Install private JDK |
-| `java-home-agreement` | Consistent Java | **warn** Two different Javas in play | Use the private JDK |
+| `java-version` | Version 17 or newer | Java is present but older than 17 (a newer major version warns instead of failing up to Java 26, above which it fails — see below) | Install private JDK |
+| `java-home-agreement` | Consistent Java | A `JAVA_HOME`/`PATH` disagreement **fails** (it passes when `JAVA_HOME` is the Manager's own JDK; it only warns when `JAVA_HOME` is unset) | Use the private JDK |
 | `python-version` | Python 3.9+ | Older or missing | Install private Python |
 | `git-present` | Optional | **warn** Not found | Nothing — only your app's own version history |
 | `disk-space` | 5 GB free | Below 5 GB | Free up space |
 | `runtimehost-jars` | Setup has run | Not yet prepared | **Run setup** |
 | `ai-knowledge-index` | Setup has run | **warn** Not built | Run setup — only needed for AI authoring |
-| `docker-present` | Optional | **warn** Not found | Nothing — an alternative run path only |
+| `docker-present` | Required for Postgres / MySQL / SqlServer apps | **fail** for those engines when absent and nothing listens on the database port (**warn / optional** for embedded engines or no app) | Install Docker, or point at a server you provision and tick "This server is mine" |
 | `pwsh-present` | Needed to *run* an app | **warn** Not found | Install PowerShell 7 (https://aka.ms/powershell) when the run buttons are your next step — authoring (validate/generate/init) needs none |
 | `scrapforai-engine` | Optional | **warn** Not found | Nothing — browser explorations only |
 
 **Wrong-Java used to be the classic failure; the Manager mostly removes it now.** The private JDK
 is passed only to the programs NPDev starts, so whatever Java is on your machine is irrelevant —
-including none at all. A Java newer than 17 on your machine now **warns** rather than fails (the
+including none at all. A Java from 18 to 26 on your machine **warns** rather than fails (Java above 26 fails: it is past the Gradle 9.5.1 wrapper's ceiling) (the
 generated app's own build can target any Java version 17 or newer per-app, and Gradle's toolchain
 resolver can provision whichever one a given app needs), so a warn here is informational, not a
 blocker.
 
 ## Commands it runs for you
 
-Every button maps to a command that works on its own in a terminal. Nothing here is Manager-only.
+Every button maps to a command that works on its own in a terminal, with a few Manager-only exceptions: secret profiles in the OS credential store (`secrets.rs`), the Prompter / AI-loop provider calls (`ai_loop.rs`), and the Packs "export…" file copy.
 
 | Screen | Button | Command |
 |---|---|---|
@@ -485,13 +495,13 @@ there — the Manager is a convenience, not a dependency.
 
 ## Action reference
 
-The complete internal surface — useful when reporting a problem or reading the logs.
+The core internal surface (about two thirds of the 118 registered commands — the Prompter, Studio, Verification, Packs, GPU, DB Import/Export, Secrets and Evals commands are not all listed) — useful when reporting a problem or reading the logs.
 
 #### Checks and status
 
 | Action | Purpose |
 |---|---|
-| `check_doctor` | Run all eleven checks |
+| `check_doctor` | Run the eleven machine checks (plus the selected app's database checks) |
 | `jdk_status` | Is the private Java installed |
 | `python_status` | Is Python available or installed |
 | `is_fake_mode` | Whether preview mode is on |
@@ -594,7 +604,7 @@ counts as healthy, or where the engine lives is decided in the window.
 
 ## Progress events
 
-Long operations stream progress rather than freezing. These names appear in the logs.
+Long operations stream progress rather than freezing. These names appear in the logs (eight events in all).
 
 | Event | Emitted during |
 |---|---|
@@ -604,6 +614,8 @@ Long operations stream progress rather than freezing. These names appear in the 
 | `setup-event` | Each phase of setup |
 | `dev-event` | Every line of the run log |
 | `host-event` | Each step of "Fix N things, then share" (check, fix, ingress, tunnel, confirm) |
+| `ops-event` | Each `_ops` runbook script run from the Monitor |
+| `ai-loop-event` | Each step of an AI-loop run |
 
 **If a progress bar never moves, that is worth reporting.** These events are how the window
 knows anything is happening; silence means something upstream stopped, not that the operation is
@@ -627,10 +639,10 @@ Explore every screen without installing anything.
 
 ```bash
 # Windows
-set NPDEV_MANAGER_FAKE=1 && NPDevManager.exe
+set NPDEV_MANAGER_FAKE=1 && "NPDev Manager.exe"
 
 # Linux
-NPDEV_MANAGER_FAKE=1 ./NPDevManager.AppImage
+NPDEV_MANAGER_FAKE=1 ./NPDev.Manager_*_amd64.AppImage
 ```
 
 Nothing is downloaded and no commands are run. A banner marks the window as preview. The Ready
@@ -638,11 +650,11 @@ screen can be switched between prepared situations:
 
 | Scenario | Shows |
 |---|---|
-| `all-green` | A fully prepared machine |
-| `missing-java` | No Java at all |
-| `wrong-java` | An older Java than 17 installed |
-| `acceptable-newer-java` | A newer Java than 17 installed (warns, does not fail) |
-| `no-jars` | Setup has not been run yet |
+| `doctor-all-green` | A fully prepared machine |
+| `doctor-missing-java` | No Java at all |
+| `doctor-wrong-java` | An older Java than 17 installed |
+| `doctor-acceptable-newer-java` | A newer Java than 17 installed (warns, does not fail) |
+| `doctor-no-jars` | Setup has not been run yet |
 
 The Share screen has its own set, switched the same way (`fake_host_scenarios` /
 `set_fake_host_scenario`, or `NPDEV_MANAGER_FAKE_HOST` before launch):
@@ -675,7 +687,7 @@ and a release process rather than a defect.
 
 ### The Linux AppImage will not start
 
-Make sure it is executable: `chmod +x NPDevManager.AppImage`. If it still refuses, run it from a
+Make sure it is executable: `chmod +x NPDev.Manager_*_amd64.AppImage`. If it still refuses, run it from a
 terminal — the error printed there will name what is missing.
 
 ### "NPDev jars — not staged" after running setup
@@ -720,9 +732,9 @@ by installing NPDev again.
 
 | Not this | Use instead |
 |---|---|
-| Edit models | The NPDev Editor, inside your running app |
-| Deploy to a server | NPDev's deployment documentation |
-| Run several apps at once | One at a time; stop before starting another |
+| Replace a text editor for whole models | The Studio tab edits one model node and applies it live, and the Prompter writes `model.json`; for anything larger use your editor or the in-app model authoring page |
+| Push to a server | The Share screen's **Deploy** button writes the deployment manifest and hand-off (env vars) for an external target but does not push; see NPDev's deployment documentation |
+| Run several `npdev dev` loops at once | The Run screen's dev loop is one at a time; The Monitor starts and stops several apps, one runbook each |
 | Update itself | Download a newer Manager |
 | macOS | Not yet supported |
 
@@ -733,4 +745,4 @@ did is a command you could have typed yourself.
 ---
 
 NPDev Manager · Windows and Linux · Pre-1.0, under active development.
-Seven screens, forty-four actions, five progress events, eleven checks.
+Seventeen tabs, 118 registered commands, eight progress events, eleven machine checks.
