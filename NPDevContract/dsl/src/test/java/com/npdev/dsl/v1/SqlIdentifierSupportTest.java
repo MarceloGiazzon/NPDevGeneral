@@ -224,4 +224,26 @@ class SqlIdentifierSupportTest {
         assertEquals("shipping_orders", SqlIdentifierSupport.aliasPreservingTableName(isolating, contexts));
         assertEquals("invoices", SqlIdentifierSupport.aliasPreservingTableName(nonIsolating, contexts));
     }
+
+    @Test
+    void sqlWithIdentifiersSubstitutesValidatedNamesVerbatim() {
+        assertEquals("SELECT id FROM identity_v1_password_reset_tokens WHERE id = ? AND id IS NOT NULL",
+                SqlIdentifierSupport.sqlWithIdentifiers(
+                        "SELECT {0} FROM {1} WHERE {0} = ? AND {0} IS NOT NULL", "id", "identity_v1_password_reset_tokens"));
+        assertEquals("UPDATE app.usuarios SET x = ?",
+                SqlIdentifierSupport.sqlWithIdentifiers("UPDATE {0} SET x = ?", "app.usuarios"));
+        assertEquals("no placeholders", SqlIdentifierSupport.sqlWithIdentifiers("no placeholders"));
+    }
+
+    @Test
+    void sqlWithIdentifiersRejectsAnythingThatCouldCarrySql() {
+        for (String hostile : new String[] {"t; DROP TABLE x", "t\" OR 1=1", "a b", "t--", "", "1table", "a.b.c", "t'x", null}) {
+            org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                    () -> SqlIdentifierSupport.sqlWithIdentifiers("SELECT 1 FROM {0}", hostile), String.valueOf(hostile));
+        }
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> SqlIdentifierSupport.sqlWithIdentifiers("SELECT 1 FROM {1}", "only_one"));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> SqlIdentifierSupport.sqlWithIdentifiers("SELECT 1 FROM {x}", "only_one"));
+    }
 }
