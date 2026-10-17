@@ -1,9 +1,28 @@
-# Screen taxonomy (F1, `docs/FRONTEND_STRATEGY_PLAN.md` / `docs/NEXT_EXECUTION_PLAN.md` P4.1)
+# Screen taxonomy (F1, `docs/archive/FRONTEND_STRATEGY_PLAN.md` / `docs/archive/NEXT_EXECUTION_PLAN.md` P4.1)
 
 > **STATUS: EXECUTED.** Measured 2026-07-28 against `D:\WorkSpace\NPDev\AppGen\apps` (the five
 > official apps — WmsOffice, WordLab, AuxScreen, Pigmentampa, Claude Support Desk — live there under
-> `_official/`) plus every other AppGen sample, and `NPDev_General\NPDevSamples` (zero hand-written
-> `web/` folders found there — not reproduced in the table below).
+> `_official/`) plus every other AppGen sample, and `NPDev_General\NPDevSamples` (only four small hand-written
+> `web/*.html` pages found there today — `pigmentampas/Input` ×2, `probes/p11-handwritten-pages/Input` ×1,
+> `simple-user-registry/Input` ×1 — not reproduced in the table below).
+
+> **Corrections since this measurement** (checked 2026-10-17). The table and footnotes below are the
+> 2026-07-28..08-01 record, not a live inventory.
+>
+> - **Pigmentampa:** `pigmentampa-editor` and its panel manifest are gone; `Pigmentampa/web/` now holds
+>   `complete-profile.html` (2,731 B) and `index.html` (1,239 B) and no `*.panel.json`.
+> - **WmsOffice:** the `seed-data` page became `reset-ambiente` (`reset-ambiente.html`, 6,710 B, with
+>   `reset-ambiente.panel.json`, registered in `definition/pages.json` and `menu.json`); `relatorios` is 10,103 B;
+>   `web/` has 12 `*.panel.json`; the live non-`.original` hand-written HTML sums to 70,509 B (not 72,910 B);
+>   `centro-trabalho.original.html` is 31,330 B (not the 30,862 B recorded for the original).
+> - **Blockers cited below as open are closed:** REG-75, REG-91, REG-96 and REG-105 are DONE, and boundary B27
+>   (cross-concept `groupBy` join) is LIFTED, so the "Estoque por Produto" `cannot-express` verdict no longer holds.
+> - **Declared surfaces today:** WmsOffice has 11 panels (plus `EntidadesTrustedPanel`, `ProdutosTrustedPanel`) and
+>   6 autoPanels in `model.json` (plus a "Trace Viewer" from the tracing pack); Pigmentampa has 1 autoPanel and 2 panels.
+> - **Companion documents** cited below (`MOVE*_*.md`, `OPEN_ITEMS.md`, `CAPABILITY_ROADMAP.md`, ...) are archived under
+>   `docs/archive/programme-history/`, generated and not committed (`OPEN_ITEMS.md`) or no longer in the repo; the facts
+>   for ledger-tracked items are in `ledger/items/REG-*.yml`. The `classify-screens.py` measurement tool and the evidence
+>   files under `NPDev_General__OutsideRepo` were scratch and are not preserved.
 
 ## What this is
 
@@ -19,15 +38,15 @@ primitive candidate.
 
 ## Per-screen classification
 
-**Manifest column** (R-G2, `docs/REMEDIATION_PLAN.md`): `confirmed` = a reviewed `*.panel.json` exists
+**Manifest column** (R-G2, `docs/archive/programme-history/REMEDIATION_PLAN.md`): `confirmed` = a reviewed `*.panel.json` exists
 and the impact gate (F4) enforces it; `n/a` = no hand-written screen to manifest (fully generated).
-**15/15 hand-written screens confirmed** (13/13 WmsOffice 2026-07-29; AuxScreen/Pigmentampa closed
-2026-07-29 by `docs/CORPUS_INTEGRITY_PLAN.md` C2/C3, see below) — up from 3/15 at the start of R-G2.
+**15/15 hand-written screens confirmed** *as of 2026-07-29* (13/13 WmsOffice 2026-07-29; AuxScreen/Pigmentampa closed
+2026-07-29 by `docs/archive/programme-history/CORPUS_INTEGRITY_PLAN.md` C2/C3, see below) — up from 3/15 at the start of R-G2.
 
 | App | Screen | Bytes | Class | Primitive | Status | Manifest |
 |---|---|---|---|---|---|---|
 | AuxScreen | `aux-screen` | 6,071 | detail-form | AutoPanel Detail | generated-equivalent | confirmed ¹ |
-| Pigmentampa | `pigmentampa-editor` | 14,341 | detail-form | AutoPanel Detail | generated-equivalent | confirmed ¹ |
+| Pigmentampa | ~~`pigmentampa-editor`~~ | ~~14,341~~ | detail-form | AutoPanel Detail | generated-equivalent — page since removed (see the corrections note) | ~~confirmed~~ ¹ |
 | WmsOffice | ~~`analytics`~~ | ~~11,455~~ | **dashboard** | `guidePageGadget` ¹⁰ (kpi/bar/table) | **REPLACED 2026-08-01** (Move 10 B2, LC-B2) — now a ~1.1 KB thin host page (`<meta name="npdev-guide-page">` + shell.css/shell.js, zero page-specific JS). Behavioural parity: 2 of 3 original widgets replaced faithfully (Ocupacao por Rua → table gadget; Movimentos por Tipo e Situacao → bar gadget) + 1 new (Locais Ocupados kpi) · 1 named cannot-express (Estoque por Produto needs a cross-concept join B1's single-concept aggregate query does not support — **REG-105**, accepted boundary). Frozen reference kept as `analytics.original.html`. See `move10-b2-charts.txt` | confirmed |
 | WmsOffice | ~~`centro-trabalho`~~ | ~~30,862~~ | **operator-console** | `panel` ⁴ (Movimento header/item half, unchanged) + Aggregate Workbench ⁶ (2-level Movimento nesting + Sugerir, unchanged; NEW: `RecebimentoWorkbench`/`ExpedicaoWorkbench` with Planning-layer `lotes`/`itens` add-row, lifecycle transitions, `Criar Movimento`) | **REPLACED — hand-written page DELETED 2026-08-01** (Move 13 P1.2). C2 (Planning layer) CLOSED: `RecebimentoLote`/`ExpedicaoItem` add-row live-verified via REST+DB (create, invariant-gated lifecycle transitions) and real-browser screenshot on both aggregates — zero new platform primitive, exactly the "plain 1-level addable list" this doc's own prior entry predicted. C1 (record-type toggle) is now **moot by design**, not "closed by `transaction.uiState`" as this row previously claimed — that claim was itself imprecise: Move 11 W6/REG-99 shipped a DIFFERENT toggle (`Movimento`'s own `$ui.detalhe` Completo/Resumo control, confirmed against REG-99's own predicate/options in `docs/OPEN_ITEMS.md`), not a Recebimento/Expedicao record-type selector. Since Recebimento and Expedicao now live on two SEPARATE generated Workbench panels, no single surface ever needs a client-side toggle between them — the shape C1 worried about no longer exists. "Sugerir auto-apply" is CLOSED, not unclear: `Movimento`'s existing `SugerirDestino`/`SugerirOrigem` actions already declare `applyTo: {mode:"appendRow"}` (shipped Move 3 G2, confirmed by reading `model.json` directly), which auto-applies the suggestion into a new position row with no manual copy-paste step. Frozen reference kept as `centro-trabalho.original.html`. See `NPDev_General__OutsideRepo/move13/p1-console-conversion-report.md` | confirmed |
 | WmsOffice | ~~`conferencia-fiscal`~~ | ~~22,897~~ | **operator-console** | `panel` ⁴ (History halves) + Aggregate Workbench ⁷ ⁸ (both Import wizards) | **REPLACED — hand-written page DELETED 2026-07-31** (Move 10 W1.1). Behavioural parity: 10 works · 3 differs (cosmetic) · 1 n/a · **0 cannot-express**. Romaneio Import authored this move as a direct mirror of NF-e Import. Frozen reference kept as `conferencia-fiscal.original.html`. See `docs/MOVE10_W1_CHECKLISTS.md` | confirmed |
@@ -38,13 +57,13 @@ and the impact gate (F4) enforces it; `n/a` = no hand-written screen to manifest
 | WmsOffice | `mapa-armazem` | 19,650 | spatial-map | none | hand-written → contract (F2/F3) | confirmed |
 | WmsOffice | `movimentacao-livre` | 23,392 | operator-console | `panel` ⁴ (header+item half) + Aggregate Workbench ⁶ (2-level nesting + Sugerir + M6 banner) | **CONVERTED and DELETED 2026-07-31 (Move 11 W5 / Wave −1.3)** ⁹ — 0 `cannot-express`. M6's balanced-quantity banner was never an authoring gap: it was already declared and silently rendering 0 (REG-95). M11 is `differs`, not `cannot-express` — the flow IS reachable from `MovimentoLivrePanel.confirmarMovimentacao` | confirmed |
 | WmsOffice | `novo-estabelecimento` | 16,347 | detail-form | AutoPanel Detail | generated-equivalent | confirmed |
-| WmsOffice | `relatorios` | 10,540 | dashboard | none | hand-written → contract (F2/F3) | confirmed |
-| WmsOffice | `seed-data` | 8,674 | admin-tool | ControlPanel (partial) | hand-written | confirmed |
+| WmsOffice | `relatorios` | 10,103 | dashboard | none | hand-written → contract (F2/F3) | confirmed |
+| WmsOffice | ~~`seed-data`~~ → `reset-ambiente` | ~~8,674~~ 6,710 | admin-tool | ControlPanel (partial) | hand-written | confirmed |
 | WmsOffice | ~~`usuarios-roles`~~ | ~~9,500~~ | **auth** | ControlPanel Users section | **REPLACED — hand-written page DELETED, Move 11 W3 (RC-B2)** — the raw, ungoverned `identity_roles` picker (any table row, not just model-declared ones; a grant/revoke did not invalidate the user's live session) was replaced by the platform ControlPanel's Users section, which enforces the model's declared `roles[]` vocabulary and bumps `token_version` so a change is live on the user's very next request — a genuine security fix, not just a UI port. See `WmsOffice/README.md`. **Deleted without a frozen `.original.html` at the time** — restored retroactively, Move 12 P3.1 (item 9), from the pre-deletion backup at `NPDev_General__OutsideRepo/move11/wmsoffice-definition-backup-before-movlivre-deletion/web/usuarios-roles.html` (byte-identical, 9,500 B) | confirmed |
 | WordLab | *(none)* | — | — | — | **fully generated — no `web/` directory at all** | n/a |
 | Claude Support Desk | *(none)* | — | — | — | **fully generated — no `web/` directory at all** | n/a |
 
-¹ **Closed 2026-07-29 (`docs/CORPUS_INTEGRITY_PLAN.md` C2/C3).** Was blocked, R-G2's own 2026-07-29
+¹ **Closed 2026-07-29 (`docs/archive/programme-history/CORPUS_INTEGRITY_PLAN.md` C2/C3).** Was blocked, R-G2's own 2026-07-29
 finding: neither app could regenerate with the toolchain of the day (a pre-DSL-2.0 flow-step shape
 the schema rejected outright). Measuring the real scope found this was 17 of 29 corpus models, not
 2 (see REG-63) -- `npdev migrate dsl-2 --write` fixed all of them. Both apps now generate, build, and
@@ -155,7 +174,7 @@ via REST+DB (create, then invariant-gated lifecycle transitions through to the t
 real-browser screenshot showing the `+ add row` control, the lifecycle button, and a new
 `Criar Movimento` action on both aggregates' Workbench panels. **The "C1 is closed by
 `transaction.uiState`" line directly above is corrected, not just superseded**: re-checking what
-Move 11 W6/REG-99 actually shipped (`docs/OPEN_ITEMS.md`'s own REG-99 entry: predicate
+Move 11 W6/REG-99 actually shipped (`ledger/items/REG-99.yml`: predicate
 `$ui.detalhe == 'Completo'`, options `["Completo","Resumo"]`) shows it is `Movimento`'s own
 Completo/Resumo detail-density toggle, not a Recebimento/Expedicao record-type selector — this
 footnote conflated the two. The actual resolution for C1 is simpler: Recebimento and Expedicao now
@@ -231,7 +250,7 @@ create-only path unreachable from any model), **REG-93** (fixed — the panel-pr
 failed on manifests whose screen had been *deleted*, and had therefore been RED since Move 8's own
 crossdocking deletion, structurally punishing the bytes-deleted metric for succeeding), **REG-90**
 (fixed — `Rebuild-And-Restage.ps1` accepted `-BuildRoot` but never passed it to the build step),
-and **REG-91** (open — a claim table with NOT NULL columns makes an app permanently unbootable
+and **REG-91** (open at the time, closed 2026-07-31 — a claim table with NOT NULL columns makes an app permanently unbootable
 behind the opaque message "No data is available").
 
 **Superseded 2026-08-01 (Move 13 P1.1) — `inventario` DELETED, all three named blockers closed.**
@@ -405,8 +424,8 @@ M11 (`ConfirmarMovimentacao` flow vs. the Workbench's generic lifecycle transiti
 as Move 3 recorded it — the original console's Confirmar is reproduced by
 `MovimentoLivrePanel.confirmarMovimentacao`, which is flow-bound and does emit `MovimentoConfirmado`
 (verified live in Move 2 G4). The Workbench's generic transition is a second path that writes the
-status field without the event; making an `onCommit` hook emit it conditionally is blocked by
-**REG-96** (a procedure's branch predicate is truthiness-only), filed rather than half-built.
+status field without the event; making an `onCommit` hook emit it conditionally was blocked by
+**REG-96** (a procedure's branch predicate is truthiness-only; closed 2026-07-31), filed rather than half-built.
 
 What the deletion changed: `menu.json`'s flat `{"kind":"PAGE","target":"movimentacao-livre.html"}`
 became a submenu of two `{"kind":"BUSINESS","target":"__panel-<Name>__"}` children
@@ -418,11 +437,11 @@ crossdocking: every flow this console called (`ConfirmarMovimentacao`, `SugerirD
 `SugerirOrigem`, `SyncOcupacao`) is also called by `centro-trabalho.html`, which remains — checked
 before deleting, precisely because the crossdocking rule says to remove now-callerless flows.
 
-**Zero bytes deleted, across every gate this move ran (G1 through G4).** This is not a shortfall in
+*(Historical — written at the end of Move 3, before the later deletions in the table above.)* **Zero bytes deleted, across every gate this move ran (G1 through G4).** This is not a shortfall in
 execution — every console above gained real, live-verified capability across Move 2 and Move 3 — it
 is the metric doing exactly what §6 designed it to do: refuse to reward partial conversion. Four
 real platform bugs were found and fixed in the course of this work (REG-72, REG-73, REG-74, REG-76)
-and one real gap was found, precisely diagnosed, and left open rather than forced (REG-75) — that is
+and one real gap was found, precisely diagnosed, and left open at the time rather than forced (REG-75, since DONE) — that is
 this move's actual yield, and the bytes-deleted metric correctly reports that as "not yet realized
 in deletable form," which is the honest state of things: every remaining gap is either a genuinely
 new platform mechanism (REG-75's read-patch-write; a declarative cross-aggregate write hook) or
@@ -459,7 +478,7 @@ crossdocking.html   12,748 B    15 works · 4 differs (cosmetic) · 1 n/a · 0 c
 | Item | Was | Now | Closed by |
 |---|---|---|---|
 | **C10** — one action also writing two sibling records | `cannot-express` | **works** | Move 4 `patchConcept` + Move 5 Wave 1 `callProcedure` |
-| **C14–C16** residual — "doesn't yet override `situacao` on click" | works, with residual | **works**, residual closed | Move 5 Wave 6 (`b5abd2d`) |
+| **C14–C16** residual — "doesn't yet override `situacao` on click" | works, with residual | **works**, residual closed | Move 5 Wave 6 |
 
 All three console write paths now carry the full three-record write, verified at the declaration:
 
