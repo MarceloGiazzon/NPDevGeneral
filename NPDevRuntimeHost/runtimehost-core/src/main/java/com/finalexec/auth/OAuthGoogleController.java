@@ -1,7 +1,11 @@
 package com.finalexec.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.auth.mfa.MfaChallengeStore;
+import com.finalexec.auth.mfa.MfaStore;
+import com.finalexec.auth.mfa.MfaTables;
 import com.finalexec.config.ModelHolder;
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.adapters.idp.github.GitHubIdentityProvider;
 import com.npdev.adapters.idp.google.GoogleIdentityProvider;
 import com.npdev.adapters.idp.oidc.OidcIdentityProvider;
@@ -22,7 +26,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import javax.sql.DataSource;
 import java.net.http.HttpClient;
+import java.nio.charset.StandardCharsets;
+import java.net.URLEncoder;
 import java.security.PrivateKey;
+import java.sql.Connection;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -83,6 +90,9 @@ public class OAuthGoogleController {
     private final long expirySeconds;
     /** SEC-9: operator-supplied button labels for OIDC providers (google/github use the built-in names). */
     private final Map<String, String> labels;
+    /** SEC-13: used only to ask whether the signed-in user has two-step sign-in on; null in the test-only constructor. */
+    private final DataSource dataSource;
+    private final ModelHolder modelHolder;
 
     @Autowired
     public OAuthGoogleController(
@@ -108,6 +118,8 @@ public class OAuthGoogleController {
             Environment environment
     ) throws Exception {
         this.expirySeconds = expirySeconds;
+        this.dataSource = dataSource;
+        this.modelHolder = modelHolder;
         this.stateStore = new OAuthStateStore(Math.max(1L, stateTtlSeconds) * 1000L);
 
         PrivateKey privateKey = (privateKeyPath == null || privateKeyPath.isBlank())
@@ -173,11 +185,25 @@ public class OAuthGoogleController {
             OAuthGoogleAuthService authService,
             long expirySeconds
     ) {
+        this(stateStore, provider, authService, expirySeconds, null, null);
+    }
+
+    /** As above, plus the database/model the SEC-13 "does this user have two-step sign-in" check reads. */
+    OAuthGoogleController(
+            OAuthStateStore stateStore,
+            IdentityProvider provider,
+            OAuthGoogleAuthService authService,
+            long expirySeconds,
+            DataSource dataSource,
+            ModelHolder modelHolder
+    ) {
         this.stateStore = stateStore;
         this.providers = Map.of(provider.providerId(), provider);
         this.authServices = Map.of(provider.providerId(), authService);
         this.expirySeconds = expirySeconds;
         this.labels = Map.of();
+        this.dataSource = dataSource;
+        this.modelHolder = modelHolder;
     }
 
     /** Every provider this app currently offers a "Continue with ..." button for. */
@@ -248,7 +274,49 @@ public class OAuthGoogleController {
         if (ticket.token() == null) {
             return redirectWithError(target, ticket.errorCode());
         }
+        // SEC-13: a user with two-step sign-in on gets the same second step after a provider sign-in --
+        // otherwise linking a social account would be a way around it. The token minted above is
+        // discarded (never reaches the browser) and no cookie is set; only the login/signup leg is gated
+        // (the account-LINK leg runs for an already-signed-in user and returns above).
+        Boolean mfaRequired = mfaRequiredFor(ticket);
+        if (mfaRequired == null) {
+            return redirectWithError(target, "oauth_login_failed");
+        }
+        if (mfaRequired) {
+            String challenge = MfaChallengeStore.shared().create(ticket.tenantId(), ticket.username(), target);
+            return ResponseEntity.status(HttpServletResponse.SC_FOUND)
+                    .header(HttpHeaders.LOCATION, "/login.html?mfa=" + challenge + "&next="
+                            + URLEncoder.encode(target, StandardCharsets.UTF_8))
+                    .build();
+        }
         return redirectWithSession(ticket, target, request);
+    }
+
+    /**
+     * Whether the just-authenticated user has a CONFIRMED authenticator enrollment. {@code false} when the
+     * app has no {@code identity::UserMfa} (older identity pack). {@code null} = could not be determined
+     * (database error): the caller fails closed rather than minting a session without the check.
+     */
+    private Boolean mfaRequiredFor(OAuthGoogleAuthService.SessionTicket ticket) {
+        if (dataSource == null || modelHolder == null) {
+            return Boolean.FALSE;
+        }
+        String mfaTable = MfaTables.userMfaTable(modelHolder.get());
+        if (mfaTable == null) {
+            return Boolean.FALSE;
+        }
+        java.util.Optional<IdentityPackTableNames> tables = IdentityPackTableNames.tryResolve(modelHolder.get());
+        if (tables.isEmpty()) {
+            return Boolean.FALSE;
+        }
+        try (Connection connection = dataSource.getConnection()) {
+            return MfaStore.isEnabledForUsername(connection, tables.get().usersTable(), mfaTable,
+                    ticket.username(), ticket.tenantId());
+        } catch (Exception exception) {
+            java.util.logging.Logger.getLogger(OAuthGoogleController.class.getName())
+                    .log(java.util.logging.Level.WARNING, "Could not determine MFA state after provider sign-in", exception);
+            return null;
+        }
     }
 
     private ResponseEntity<Void> handleLinkCallback(

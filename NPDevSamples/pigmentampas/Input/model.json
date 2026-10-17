@@ -184,7 +184,7 @@
     }
   ],
   "packs": [
-    { "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/identity@identity-1.2.0", "as": "identity" },
+    { "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/identity@identity-1.3.0", "as": "identity" },
     { "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/tracing@tracing-1.0.2", "as": "tracing" },
     { "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/workspace@workspace-1.1.0", "as": "workspace" }
   ],

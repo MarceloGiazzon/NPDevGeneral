@@ -1,0 +1,56 @@
+package com.npdev.generator.emitters;
+
+import com.npdev.generator.output.GeneratedSourceWriter;
+import com.npdev.generator.strategy.RegenerationPolicy;
+import com.npdev.generator.templates.TemplateEngine;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/** SEC-12: the account security screen is emitted only for jwt-mode apps and drives the MFA endpoints. */
+class SecurityPageEmitterTest {
+
+    @Test
+    void jwtModeEmitsSecurityPage(@TempDir Path tempDir) throws Exception {
+        Path out = emitPage(tempDir, "Security Demo", true);
+        Path page = out.resolve("src/main/resources/static/security.html");
+        assertTrue(Files.isRegularFile(page));
+        String html = Files.readString(page);
+        assertTrue(html.contains("Security Demo"), "the page must carry the app name");
+        assertTrue(html.contains("/api/auth/mfa/status"));
+        assertTrue(html.contains("/api/auth/mfa/enroll/start"));
+        assertTrue(html.contains("/api/auth/mfa/enroll/confirm"));
+        assertTrue(html.contains("/api/auth/mfa/disable"));
+        assertTrue(html.contains("/api/auth/mfa/recovery-codes"));
+        assertTrue(html.contains("X-NPDev-Request"), "state-changing calls must carry the CSRF header");
+        assertTrue(html.contains("Two-step sign-in is not available in this app."));
+        assertFalse(html.contains("localStorage.setItem") || html.contains("sessionStorage"),
+                "recovery codes and secrets must never be written to web storage");
+        assertFalse(html.contains("<script src"), "no external scripts: generated apps work offline");
+    }
+
+    @Test
+    void apiKeyModeEmitsNoSecurityPage(@TempDir Path tempDir) throws Exception {
+        Path out = emitPage(tempDir, "Security Demo", false);
+        assertFalse(Files.exists(out.resolve("src/main/resources/static/security.html")));
+    }
+
+    @Test
+    void blankAppNameFallsBackToPlatformName(@TempDir Path tempDir) throws Exception {
+        Path out = emitPage(tempDir, "   ", true);
+        assertTrue(Files.readString(out.resolve("src/main/resources/static/security.html"))
+                .contains("NPDev Generated App"));
+    }
+
+    private static Path emitPage(Path tempDir, String appName, boolean jwtMode) throws Exception {
+        Path out = Files.createTempDirectory(tempDir, "npdev-security-page-out-");
+        new SecurityPageEmitter(new TemplateEngine("npdev-templates/"),
+                new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(appName, jwtMode);
+        return out;
+    }
+}

@@ -14,6 +14,7 @@ import com.npdev.generator.emitters.AgentLinkPageEmitter;
 import com.npdev.generator.emitters.ChangePasswordPageEmitter;
 import com.npdev.generator.emitters.InviteUserPageEmitter;
 import com.npdev.generator.emitters.ResetPasswordPageEmitter;
+import com.npdev.generator.emitters.SecurityPageEmitter;
 import com.npdev.generator.emitters.ControllerEmitter;
 import com.npdev.generator.emitters.DtoEmitter;
 import com.npdev.generator.emitters.EntityEmitter;
@@ -391,6 +392,10 @@ public final class GeneratorFacade {
                     "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())));
             // SEC-7: tenant-admin "Invite user" screen (backed by SEC-6's InvitationController), jwt-mode only.
             new InviteUserPageEmitter(templates, writer).emit(
+                    model == null ? "" : model.getNamespace(),
+                    "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())));
+            // SEC-12: signed-in account-security screen (authenticator-app second factor), same gating.
+            new SecurityPageEmitter(templates, writer).emit(
                     model == null ? "" : model.getNamespace(),
                     "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())));
             // SEC-4: logged-out "forgot password" screen (mailed single-use code), same jwt-mode gating.
