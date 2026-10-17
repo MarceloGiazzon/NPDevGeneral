@@ -65,6 +65,22 @@ class FileOrphanSweeperTest {
     }
 
     @Test
+    void objectReferencedOnlyThroughExtraReferencedKeysIsNeverReaped() {
+        // PROC-6: a record-thread attachment is pointed at by no concept FILE FIELD, only by the
+        // extra-keys callback; an equally old object it does not name is still reaped.
+        FakeFileStore fileStore = new FakeFileStore();
+        fileStore.add(TENANT, "tenant-a/attachment", NOW.minus(Duration.ofDays(365)));
+        fileStore.add(TENANT, "tenant-a/orphan", NOW.minus(Duration.ofDays(365)));
+
+        FileOrphanSweeper.SweepResult result = FileOrphanSweeper.sweep(
+                fileStore, new FakeConceptStore(), modelWithFileField(), GRACE, NOW, null,
+                tenant -> TENANT.equals(tenant) ? java.util.Set.of("tenant-a/attachment") : java.util.Set.of());
+
+        assertEquals(new FileOrphanSweeper.SweepResult(2, 1, 0), result);
+        assertEquals(List.of("tenant-a/orphan"), fileStore.deletedKeys);
+    }
+
+    @Test
     void unreferencedObjectWithinGraceWindowIsKept() {
         FakeFileStore fileStore = new FakeFileStore();
         // Uploaded 1h ago -- may be a create form that just hasn't saved its record yet.

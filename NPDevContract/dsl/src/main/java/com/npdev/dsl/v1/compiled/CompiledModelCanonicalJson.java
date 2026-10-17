@@ -936,6 +936,12 @@ public final class CompiledModelCanonicalJson {
                     rollupNode.put("of", safe(rollup.of()));
                 }
             }
+            if (concept.getCollaboration() != null) {
+                // PROC-5/PROC-6: key omitted when undeclared, so every existing canonical JSON stays byte-identical.
+                ObjectNode collaborationNode = node.putObject("collaboration");
+                collaborationNode.put("comments", concept.getCollaboration().comments());
+                collaborationNode.put("attachments", concept.getCollaboration().attachments());
+            }
             node.set("ui", toPresentationMetadata(concept.getUi()));
 
             List<CompiledField> fields = new ArrayList<>(concept.getFields());

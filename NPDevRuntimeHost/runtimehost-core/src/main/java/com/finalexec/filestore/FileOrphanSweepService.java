@@ -1,5 +1,6 @@
 package com.finalexec.filestore;
 
+import com.finalexec.collab.RecordCommentStore;
 import com.finalexec.config.ModelHolder;
 import com.npdev.kernel.ports.ConceptStore;
 import com.npdev.kernel.ports.FileStoreContract;
@@ -39,6 +40,7 @@ public class FileOrphanSweepService {
     private final ModelHolder modelHolder;
     private final ConceptStore conceptStore;
     private final Duration graceWindow;
+    private final org.springframework.beans.factory.ObjectProvider<RecordCommentStore> commentStore;
 
     /** Convenience overload for existing test call sites with an {@code ObjectProvider<CompiledModel>}
      * and no live {@link ModelHolder} -- wraps it in a non-reloading holder. */
@@ -52,17 +54,32 @@ public class FileOrphanSweepService {
                 conceptStore, graceHours);
     }
 
+    public FileOrphanSweepService(
+            FileStoreContract fileStore,
+            ModelHolder modelHolder,
+            ConceptStore conceptStore,
+            long graceHours
+    ) {
+        this(fileStore, modelHolder, conceptStore, graceHours, null);
+    }
+
+    /**
+     * PROC-6: {@code commentStore} is optional; when present its live attachment keys count as referenced,
+     * so record-thread attachments (which no concept file field points at) are not reaped after the grace window.
+     */
     @Autowired
     public FileOrphanSweepService(
             FileStoreContract fileStore,
             ModelHolder modelHolder,
             ConceptStore conceptStore,
-            @Value("${npdev.filestore.sweep.graceHours:24}") long graceHours
+            @Value("${npdev.filestore.sweep.graceHours:24}") long graceHours,
+            org.springframework.beans.factory.ObjectProvider<RecordCommentStore> commentStore
     ) {
         this.fileStore = fileStore;
         this.modelHolder = modelHolder;
         this.conceptStore = conceptStore;
         this.graceWindow = Duration.ofHours(graceHours);
+        this.commentStore = commentStore;
     }
 
     @Scheduled(
@@ -86,7 +103,11 @@ public class FileOrphanSweepService {
                 graceWindow,
                 Instant.now(),
                 (key, exception) -> LOG.log(Level.WARNING, "Orphan sweep failed to delete key=" + key
-                        + " (tolerated: retried on the next sweep pass)", exception)
+                        + " (tolerated: retried on the next sweep pass)", exception),
+                tenant -> {
+                    RecordCommentStore comments = commentStore == null ? null : commentStore.getIfAvailable();
+                    return comments == null ? java.util.Set.of() : comments.attachmentKeys(tenant);
+                }
         );
         LOG.info("Orphan sweep: scanned=" + result.scanned()
                 + " deleted=" + result.deleted() + " failed=" + result.failed());
