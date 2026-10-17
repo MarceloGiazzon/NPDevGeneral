@@ -29,7 +29,7 @@ keep moving. That said, the conventions below are stable and enforced by CI, not
 
 A plan, checklist, findings log, handoff, retrospective, session digest, snapshot or status register
 is **working state, not documentation**, and it may not enter this repo. `check-doc-inventory.py`
-(ai-knowledge gate `[45/45]`) fails the build on any new one.
+(run by the weekly paperwork gate, `run-weekly-paperwork-checks.ps1` / `-IncludePaperwork`, not by a bare `run-all-gates.ps1`) fails on any new one.
 
 Measured on 2026-08-11: of 302 tracked `.md` files (59,754 lines), **265 files / 39,705 lines were
 read by nothing** — no script, no gate, no reader. They accumulated one work-cycle at a time, and
@@ -46,12 +46,12 @@ Where it goes instead:
 
 If a document really is durable reference material whose *name* just happens to match a banned
 pattern, add it to `exempt` in `scripts/policy/doc-inventory-policy.json` **with a written reason**.
-The 57 pre-ban files are frozen in a `legacy` list that may only shrink.
+The pre-ban files still tracked (28 today) are frozen in a `legacy` list that may only shrink.
 
 ## Never make a script read a `.md` file
 
 Markdown is output for humans. Anything a script needs is a fact, and facts live in JSON/YAML.
-`check-no-markdown-reads.py` fails the build on any script that opens a `.md`.
+`check-no-markdown-reads.py` (weekly paperwork gate) fails on any script that opens a `.md`.
 
 This is not style. Parsing prose as data is what made 265 documents undeletable: a gate started
 reading one, and from that moment the document could not change. Inverting all 37 couplings removed
@@ -60,11 +60,11 @@ reading one, and from that moment the document could not change. Inverting all 3
 If you need a fact in a script, put it in `ledger/*.yml` or `scripts/policy/*.json` and render the
 document from it — `docs/content/*.yml` → `scripts/docs/generate_*.py` is the worked example.
 
-**The 5 exemptions are capped and may never grow.** They are markdown *linters* — scripts whose job
+**The 6 exemptions are capped and may never grow.** They are markdown *linters* — scripts whose job
 is validating hand-written prose (link integrity, doc classification, pinned download links,
-hardcoded paths). `markdown-read-exemptions.json` pins `frozenCount: 5`; the gate fails if the list
+hardcoded paths). `markdown-read-exemptions.json` pins `frozenCount: 6`; the gate fails if the list
 grows, and fails if it shrinks without lowering `frozenCount` in the same commit, so the ceiling
-only ever ratchets down. Adding a 6th is an owner decision, not a checker change.
+only ever ratchets down. Adding a 7th is an owner decision, not a checker change.
 
 ## Git hygiene
 
@@ -140,13 +140,13 @@ out by existing at all. The moment one gains entries, that stops being true unle
 each one is reviewed rather than pre-cleared speculatively. `corpus-parse-allowlist.json`,
 `test-task-coverage-allowlist.json`, and `dsl-coverage-allowlist.json` already say this in their own
 `_comment` header ("only for a genuine, reviewed exception with a REG id"); `scripts/quality/check-allowlist-citations.py`
-(wired in `run-ai-knowledge-gate.ps1`) is what actually checks it now — a new entry in any of those
+(run by the weekly paperwork gate; R4 Part C moved it out of `run-ai-knowledge-gate.ps1`) is what actually checks it now — a new entry in any of those
 three with no `REG-nn`/`B-nn` citation in its `why` fails the gate.
 
-`plan-deferral-citation-allowlist.json` and `security-pattern-sweep-allowlist.json` use a different,
-already-established citation shape (doc-paragraph narrative; a `docs/archive/SECURITY_PATTERN_SWEEP_2026-07.md`
-cross-reference) and are not held to this rule — `check-allowlist-citations.py` only reports their
-size every run, so growth is visible without retrofitting either one's existing entries.
+`security-pattern-sweep-allowlist.json` uses a different,
+already-established citation shape (a `docs/archive/SECURITY_PATTERN_SWEEP_2026-07.md`
+cross-reference) and is not held to this rule — `check-allowlist-citations.py` only reports its
+size every run, so growth is visible without retrofitting its existing entries (`plan-deferral-citation-allowlist.json` no longer exists).
 
 ## A test that hand-builds `CompiledModel` proves the compiled contract, not the authoring path
 
@@ -188,8 +188,9 @@ would go unnoticed indefinitely — see `docs/archive/programme-history/REMEDIAT
 
 These aren't optional CI noise — they catch real drift:
 
-`run-all-gates.ps1` runs the AI knowledge, generator and RuntimeHost gates in one pass and keeps
-going past a failure, so you see every red in one run. Budget ~25 minutes. For a fast inner loop
+`run-all-gates.ps1` runs four gates by default — generator, RuntimeHost, kernel quality and AI knowledge — in one pass and keeps
+going past a failure, so you see every red in one run. Budget ~25 minutes (see `CLAUDE.md` for the per-gate times; the release and
+paperwork gates are one flag away and not included). For a fast inner loop
 during editing, run the single `scripts/quality/check-*.py` that covers what you touched.
 
 ```powershell
@@ -204,7 +205,7 @@ core subset automatically; the full set is documented in `CLAUDE.md`.
 
 `docs/archive/INVOCATION_TOPOLOGY_PLAN.md` T2: every check exists to catch a bug, but a check nobody
 invokes is a check that exists only on paper — four separate real findings in this repo were
-exactly that shape. `scripts/quality/run-script-inventory-check.ps1` (step `[17/17]` of
+exactly that shape. `scripts/quality/run-script-inventory-check.ps1` (a numbered step of
 `run-ai-knowledge-gate.ps1`) fails if a script under `scripts/` has no entry in either policy file:
 
 - **Classification** (`scripts/policy/script-inventory-policy.json`, pattern-based): `canonical` /

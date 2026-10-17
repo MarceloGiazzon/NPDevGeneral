@@ -213,7 +213,7 @@ sections:
       | You write | You get |
       |---|---|
       | `roles` + `grants` | roles and what they may do |
-      | `requiredRole` | access **enforced at the API**, not just hidden in the UI |
+      | `permissionRequirements` on queries, procedures and panel actions; `visibility` on panels | the permissions a caller needs, declared next to the thing they protect |
       | row-level rules | control over *which rows* each user sees |
       | `sensitive` on a field | special handling in logs, traces, and exports |
       | — | JWT or API-key auth, a super-user key issued on first boot, and a built-in ControlPanel for users, roles and schedules |

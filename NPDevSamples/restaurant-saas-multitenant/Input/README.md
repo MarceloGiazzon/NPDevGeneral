@@ -21,7 +21,7 @@ This sample root follows the standard layout:
 
 ## Generate The App
 
-From `D:\WorkSpace\NPDev_General\NPDevSamples`, run:
+From `D:\WorkSpace\NPDev\NPDev_General\NPDevSamples`, run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\restaurant-saas-multitenant\generate-restaurant-saas-sample.ps1
