@@ -288,3 +288,12 @@
     font-size: 11px;
   }
 }
+/* UI-8: language switch in the shell top bar (views/locale.js). */
+.npdev-shell-locale {
+  height: var(--np-control-h);
+  margin-left: 8px;
+  border: 1px solid var(--np-border);
+  border-radius: var(--np-radius);
+  background: var(--np-surface);
+  color: var(--np-text);
+}

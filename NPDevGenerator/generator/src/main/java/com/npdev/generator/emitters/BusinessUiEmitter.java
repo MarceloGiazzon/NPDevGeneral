@@ -7,6 +7,8 @@ import com.npdev.dsl.v1.compiled.CompiledAppShellNavItem;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledContext;
 import com.npdev.dsl.v1.compiled.CompiledDocument;
+import com.npdev.dsl.v1.compiled.CompiledFlow;
+import com.npdev.dsl.v1.compiled.CompiledFlowStep;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledEnumOption;
@@ -18,6 +20,9 @@ import com.npdev.dsl.v1.compiled.CompiledGuidePageRegions;
 import com.npdev.dsl.v1.compiled.CompiledGuidePageTheme;
 import com.npdev.dsl.v1.compiled.GuidePageDefaults;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
+import com.npdev.dsl.v1.compiled.PlatformStrings;
+import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
@@ -158,6 +163,14 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                     templates.raw("static-assets/business-ui/views/" + asset)
             );
         }
+        // PROC-3: the "My tasks" page assets are static and model-free (identical for every app); only
+        // the manifest's collaboration.humanTasks flag below depends on the model.
+        for (String asset : COLLAB_ASSETS) {
+            writer.writeRelative(
+                    "src/main/resources/static/npdev-business-ui/collab/" + asset,
+                    templates.raw("static-assets/collab/" + asset)
+            );
+        }
         writer.writeRelative(
                 "src/main/resources/static/npdev-business-ui/generated-ui-manifest.json",
                 manifestJson(model, persistedConcepts, superUserRole, resolver, fieldOrigins)
@@ -242,6 +255,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
      * script tags in business-ui-index.mustache (registry.js first). Each new view appends its
      * file here AND adds the matching tag there.
      */
+    static final List<String> COLLAB_ASSETS = List.of("tasks.html", "tasks.js", "collab.css");
+
     static final List<String> BUSINESS_UI_VIEW_ASSETS = List.of(
             "registry.js",
             "history.js",
@@ -249,6 +264,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             "board.js",
             "search.js",
             "calendar.js",
+            "locale.js",
             "views.css"
     );
 
@@ -402,13 +418,23 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         if (model != null && model.getSettings() != null) {
             root.put("strings", model.getSettings().getStrings());
         }
+        // UI-8: the languages the model declares labels for (drives the top-bar language switch) and the
+        // shell chrome catalogue per language. `strings` above stays for old shells / "Auto".
+        root.put("locales", declaredLocales(model));
+        root.put("stringsByLocale", stringsByLocale(model));
 
         GuidePageDefaults.Result guidePages = GuidePageDefaults.withBuiltins(model == null ? List.of() : model.getGuidePages());
         Set<String> knownGuidePageNames = new LinkedHashSet<>();
         for (CompiledGuidePage page : guidePages.guidePages()) {
             knownGuidePageNames.add(page.name());
         }
-        root.put("guidePages", guidePageNodes(guidePages.guidePages()));
+        Map<String, CompiledQuery> queriesByName = new LinkedHashMap<>();
+        if (model != null && model.getQueries() != null) {
+            for (CompiledQuery query : model.getQueries()) {
+                queriesByName.put(query.name(), query);
+            }
+        }
+        root.put("guidePages", guidePageNodes(guidePages.guidePages(), queriesByName));
         root.put("defaultGuidePage", guidePages.defaultGuidePage());
         // Path A W1.1 (NPDEV_ROADMAP_2026-09-12.md Wave 1): appShell was compiled/resolved/threaded
         // through the model but never consumed by the generator (grep for it anywhere under
@@ -423,6 +449,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         // today's flat auto-derivation for anything appShell doesn't mention.
         root.put("appShell", appShellNode(model));
         root.put("theme", appThemeNode(settingResolver));
+        // PROC-3: absent unless the model declares a human task, so manifests of apps without one stay
+        // byte-identical. The shell shows "Work > My tasks" only when this flag is present.
+        if (declaresHumanTask(model)) {
+            root.put("collaboration", new LinkedHashMap<>(Map.of("humanTasks", true)));
+        }
 
         // REG-12 Slice 3: index declared `document`s by their bound concept so each concept node
         // below can carry its own (usually 0 or 1) documents -- the toolbar's "Download PDF"
@@ -885,7 +916,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         return trimmed;
     }
 
-    private static List<Map<String, Object>> guidePageNodes(List<CompiledGuidePage> guidePages) {
+    private static List<Map<String, Object>> guidePageNodes(
+            List<CompiledGuidePage> guidePages, Map<String, CompiledQuery> queriesByName) {
         List<Map<String, Object>> nodes = new ArrayList<>();
         for (CompiledGuidePage page : guidePages) {
             Map<String, Object> node = new LinkedHashMap<>();
@@ -906,12 +938,91 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 gadgetNode.put("y", blankToNull(gadget.y()));
                 gadgetNode.put("series", blankToNull(gadget.series()));
                 gadgetNode.put("url", blankToNull(gadget.url()));
+                // UI-9: the bound query's declared parameters, so shell.js can show one dashboard
+                // filter input per distinct parameter instead of calling the query bare (a 400).
+                List<Map<String, Object>> gadgetParameters = new ArrayList<>();
+                CompiledQuery boundQuery = gadget.query() == null ? null : queriesByName.get(gadget.query());
+                if (boundQuery != null) {
+                    for (CompiledProcedureParameter parameter : boundQuery.parameters()) {
+                        Map<String, Object> parameterNode = new LinkedHashMap<>();
+                        parameterNode.put("name", parameter.name());
+                        parameterNode.put("type", parameter.type() == null ? "string" : parameter.type());
+                        parameterNode.put("required", parameter.required());
+                        gadgetParameters.add(parameterNode);
+                    }
+                }
+                gadgetNode.put("parameters", gadgetParameters);
                 gadgetNodes.add(gadgetNode);
             }
             node.put("gadgets", gadgetNodes);
             nodes.add(node);
         }
         return nodes;
+    }
+
+    /**
+     * Sorted, de-duplicated union of every locale tag a label map in the model uses (concept/field ui
+     * label + shortLabel maps, enum option labels) plus {@code settings.locale} when set. The server's
+     * LabelResolver owns resolution; this list only tells the UI which languages to offer.
+     */
+    static List<String> declaredLocales(CompiledModel model) {
+        java.util.TreeSet<String> locales = new java.util.TreeSet<>();
+        if (model == null) {
+            return new ArrayList<>();
+        }
+        for (CompiledConcept concept : model.getConcepts()) {
+            collectLocales(locales, concept.getUi());
+            for (CompiledField field : concept.getFields()) {
+                collectLocales(locales, field.getUi());
+                for (CompiledEnumOption option : field.getEnumOptions()) {
+                    addLocaleKeys(locales, option.getLabelLocales());
+                }
+            }
+        }
+        if (model.getSettings() != null && model.getSettings().getLocale() != null
+                && !model.getSettings().getLocale().isBlank()) {
+            locales.add(model.getSettings().getLocale().trim());
+        }
+        return new ArrayList<>(locales);
+    }
+
+    private static void collectLocales(java.util.Set<String> locales, CompiledPresentationMetadata ui) {
+        if (ui == null) {
+            return;
+        }
+        addLocaleKeys(locales, ui.getLabelLocales());
+        addLocaleKeys(locales, ui.getShortLabelLocales());
+    }
+
+    private static void addLocaleKeys(java.util.Set<String> locales, Map<String, String> labelLocales) {
+        if (labelLocales == null) {
+            return;
+        }
+        for (String tag : labelLocales.keySet()) {
+            if (tag != null && !tag.isBlank() && !"default".equalsIgnoreCase(tag.trim())) {
+                locales.add(tag.trim());
+            }
+        }
+    }
+
+    /**
+     * Shell chrome strings per language: English and Portuguese catalogues (PlatformStrings), with the
+     * model's settings.strings overrides layered onto the one matching settings.locale.
+     */
+    static Map<String, Map<String, String>> stringsByLocale(CompiledModel model) {
+        Map<String, String> en = new LinkedHashMap<>(PlatformStrings.DEFAULTS);
+        en.putAll(PlatformStrings.localeDefaults("en"));
+        Map<String, String> pt = new LinkedHashMap<>(PlatformStrings.DEFAULTS);
+        pt.putAll(PlatformStrings.localeDefaults("pt"));
+        if (model != null && model.getSettings() != null) {
+            String locale = model.getSettings().getLocale();
+            boolean portuguese = locale != null && locale.trim().toLowerCase(Locale.ROOT).startsWith("pt");
+            (portuguese ? pt : en).putAll(model.getSettings().getStrings());
+        }
+        Map<String, Map<String, String>> byLocale = new LinkedHashMap<>();
+        byLocale.put("en", en);
+        byLocale.put("pt", pt);
+        return byLocale;
     }
 
     private static String blankToNull(String value) {
@@ -959,6 +1070,33 @@ public final class BusinessUiEmitter extends AbstractEmitter {
 
     /** W1.4: app-wide theme/density default, resolved from the ui.theme.mode/ui.density settings
      * (config defaults/overrides envelope) -- applied by shell.js before any per-GuidePage override. */
+    /** PROC-3: true when any flow step (at any nesting depth) declares a human {@code task}. */
+    private static boolean declaresHumanTask(CompiledModel model) {
+        if (model == null) {
+            return false;
+        }
+        for (CompiledFlow flow : model.getFlows()) {
+            if (anyHumanTask(flow.getSteps())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean anyHumanTask(List<CompiledFlowStep> steps) {
+        for (CompiledFlowStep step : steps) {
+            if (step.getTask() != null
+                    || anyHumanTask(step.getThenSteps())
+                    || anyHumanTask(step.getElseSteps())
+                    || anyHumanTask(step.getLoopSteps())
+                    || anyHumanTask(step.getOnFailureSteps())
+                    || anyHumanTask(step.getOnTimeoutSteps())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static Map<String, Object> appThemeNode(SettingResolver settingResolver) {
         Map<String, Object> node = new LinkedHashMap<>();
         node.put("mode", settingResolver.value(NpdevSettings.UI_THEME_MODE, SettingTarget.app()));

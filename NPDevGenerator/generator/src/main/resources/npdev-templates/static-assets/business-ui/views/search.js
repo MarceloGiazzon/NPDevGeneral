@@ -116,7 +116,22 @@
     trigger.textContent = "🔍";
     trigger.addEventListener("click", open);
     var topbar = document.querySelector(".npdev-shell-topbar");
-    if (topbar) { topbar.appendChild(trigger); } else { trigger.classList.add("global-search-trigger-floating"); document.body.appendChild(trigger); }
+    if (topbar) { topbar.appendChild(trigger); } else {
+      trigger.classList.add("global-search-trigger-floating"); document.body.appendChild(trigger);
+      // The shell may paint its top bar after globals are initialised: move the trigger into it then.
+      if (window.MutationObserver) {
+        var observer = new MutationObserver(function () {
+          var late = document.querySelector(".npdev-shell-topbar");
+          if (late) {
+            trigger.classList.remove("global-search-trigger-floating");
+            late.appendChild(trigger);
+            observer.disconnect();
+          }
+        });
+        observer.observe(document.body, { childList: true });
+        setTimeout(function () { observer.disconnect(); }, 15000);
+      }
+    }
   }
 
   window.NPDevViews.registerGlobal("search", { init: init, _searchableConcepts: searchableConcepts });

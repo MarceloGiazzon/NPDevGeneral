@@ -15,6 +15,7 @@
     "PropertyResolverController",
     "DirectExecutionGatewayController",
     "ExecutionMonitorController",
+    "HumanTaskController",
     "RuntimeMetadataController",
     "RuntimeMetadataValidationController",
     "MetadataHotSwapController",
