@@ -514,8 +514,19 @@
       "type": "object",
       "required": [
         "source",
-        "hmacSecretEnvVar",
-        "eventName"
+        "hmacSecretEnvVar"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "eventName"
+          ]
+        },
+        {
+          "required": [
+            "startFlow"
+          ]
+        }
       ],
       "properties": {
         "source": {
@@ -540,6 +551,48 @@
             "minLength": 1
           },
           "description": "Target event-payload field name -> dot-path into the inbound JSON body. Absent/empty means the raw parsed JSON body becomes the event payload unchanged."
+        },
+        "startFlow": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of a flow (flows[].name) started with the mapped payload as its input once the signature verifies. Either eventName, startFlow, or both must be declared. The flow runs synchronously inside the provider's request, so keep it short."
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Replay de-dupe key: a dot-path into the inbound JSON body, or '$header.<Name>' for a request header. A delivery whose key was already processed successfully is acknowledged with 200 {duplicate:true} and nothing is published or started."
+        },
+        "signature": {
+          "type": "object",
+          "properties": {
+            "scheme": {
+              "type": "string",
+              "enum": [
+                "npdev",
+                "hmac-sha256-hex",
+                "hmac-sha256-base64",
+                "stripe-v1"
+              ],
+              "description": "npdev (default): X-Npdev-Webhook-Signature, hex HMAC of the raw body, optional sha256= prefix. hmac-sha256-hex: GitHub style. hmac-sha256-base64: Shopify style. stripe-v1: Stripe-Signature 't=<unix>,v1=<hex>' over 't.body' with a timestamp tolerance."
+            },
+            "header": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Request header carrying the signature. Required for every scheme except npdev."
+            },
+            "prefix": {
+              "type": "string",
+              "description": "Literal prefix stripped from the header value before decoding (e.g. 'sha256=' for GitHub). Not valid for stripe-v1."
+            },
+            "toleranceSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3600,
+              "description": "stripe-v1 only: maximum allowed difference between the signed timestamp and now (default 300)."
+            }
+          },
+          "additionalProperties": false,
+          "description": "Provider signature scheme for this door. Absent means {scheme: npdev}."
         }
       },
       "additionalProperties": false
