@@ -21,12 +21,12 @@ class CompiledAutoPanelCanonicalJsonTest {
                 new CompiledAutoPanelSurface(List.of("cliente", "situacao"), List.of("id", "cliente"),
                         List.of(), List.of(new CompiledAutoPanelComputed("total", "pos*cxPad + cxAvulsas")), null,
                         Map.of(), null, List.of(), Map.of(), List.of(), Map.of(), Map.of(),
-                        new CompiledAutoPanelDataSource("ListarExpedicoesAtivas"), Map.of(), "grid"),
+                        new CompiledAutoPanelDataSource("ListarExpedicoesAtivas"), Map.of(), "grid", null),
                 null,
                 new CompiledAutoPanelSurface(List.of(), List.of(), List.of("cliente", "veiculo", "observacao"),
-                        List.of(), null, Map.of(), null, List.of(), Map.of(), List.of(), Map.of(), Map.of(), null, Map.of(), null),
+                        List.of(), null, Map.of(), null, List.of(), Map.of(), List.of(), Map.of(), Map.of(), null, Map.of(), null, null),
                 new CompiledAutoPanelSurface(List.of(), List.of(), List.of(), List.of(), "cliente", Map.of(), null,
-                        List.of(), Map.of(), List.of(), Map.of(), Map.of(), null, Map.of(), null),
+                        List.of(), Map.of(), List.of(), Map.of(), Map.of(), null, Map.of(), null, null),
                 Map.of());
 
         return new CompiledModel(
