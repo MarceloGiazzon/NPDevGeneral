@@ -36,6 +36,7 @@ public final class PlatformStrings {
         d.put("action.new", "New");
         d.put("shell.signedInAs", "Signed in as");
         d.put("shell.changePassword", "Change password");
+        d.put("shell.inviteUser", "Invite user");
         d.put("shell.signOut", "Sign out");
         d.put("shell.notSignedIn", "Not signed in");
         d.put("shell.toggleMenu", "Collapse/expand menu");
@@ -58,6 +59,7 @@ public final class PlatformStrings {
         Map<String, String> pt = new LinkedHashMap<>();
         pt.put("shell.signedInAs", "logado como");
         pt.put("shell.changePassword", "Alterar senha");
+        pt.put("shell.inviteUser", "Convidar usuario");
         pt.put("shell.signOut", "Sair");
         pt.put("shell.notSignedIn", "nao autenticado");
         pt.put("shell.toggleMenu", "Recolher/expandir menu");

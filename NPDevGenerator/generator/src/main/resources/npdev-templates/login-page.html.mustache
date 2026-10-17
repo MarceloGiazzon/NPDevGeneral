@@ -109,7 +109,8 @@
     oauth_already_linked: "This provider account is already linked to your profile.",
     oauth_link_email_mismatch: "The provider's email does not match this account's email.",
     oauth_inactive_user: "This account is disabled. Contact the administrator.",
-    oauth_missing_email: "The provider did not provide a usable email address for this account."
+    oauth_missing_email: "The provider did not provide a usable email address for this account.",
+    oauth_domain_not_allowed: "This sign-in is limited to approved email domains."
   };
 
   // Inline, stroke-based, no icon font -- a provider absent from this map still gets a plain
@@ -154,7 +155,10 @@
       var button = document.createElement("button");
       button.type = "button";
       button.className = "oauth-button";
-      button.innerHTML = (PROVIDER_ICONS[p.id] || "") + "Continue with " + p.label;
+      // The icon is a fixed internal SVG; the label is operator-supplied (SEC-9) and is only ever
+      // inserted as a text node, never parsed as HTML.
+      button.innerHTML = PROVIDER_ICONS[p.id] || "";
+      button.appendChild(document.createTextNode("Continue with " + p.label));
       button.addEventListener("click", function () {
         window.location.href = p.authorizePath + "?purpose=login&next=" + encodeURIComponent(returnUrl);
       });

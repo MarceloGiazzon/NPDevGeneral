@@ -178,6 +178,7 @@ jobs:
             :adapters:authz-default:test \
             :adapters:idp-google:test \
             :adapters:idp-github:test \
+            :adapters:idp-oidc:test \
             :adapters:document-render-inproc:test \
             :adapters:document-render-stub:test \
             :adapters:runtime-support:test \
