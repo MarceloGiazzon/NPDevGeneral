@@ -175,6 +175,15 @@ class InvitationControllerTest {
     }
 
     @Test
+    void assignableRolesListsDeclaredRolesPlusUserAndAdminForAnAdminOnly() {
+        ResponseEntity<Map<String, Object>> response = controller(true).assignableRoles(null);
+        assertEquals(List.of("Member", "USER", "ADMIN"), response.getBody().get("roles"));
+
+        authenticateAs("USER");
+        assertThrows(ResponseStatusException.class, () -> controller(true).assignableRoles(null));
+    }
+
+    @Test
     void invalidEmailIs400() {
         assertEquals("invalid_email", controller(true).invite(invite("not-an-email"), null).getBody().get("error"));
         assertEquals("invalid_email", controller(true).invite(invite(null), null).getBody().get("error"));

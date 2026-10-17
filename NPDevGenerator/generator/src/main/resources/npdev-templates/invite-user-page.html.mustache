@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Invite user — {{appName}}</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --ink: #1f2430; --muted: #6b7280;
+    --accent: #2563eb; --accent-ink: #ffffff; --line: #e2e5ea;
+    --error: #b91c1c; --error-bg: #fef2f2; --ok: #15803d; --ok-bg: #f0fdf4;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+         background: var(--bg); color: var(--ink);
+         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .card { width: 26rem; max-width: calc(100vw - 2rem); background: var(--card);
+          border: 1px solid var(--line); border-radius: 10px; padding: 1.5rem 1.5rem 1.75rem;
+          box-shadow: 0 6px 24px rgba(16, 24, 40, .07); }
+  h1 { font-size: 1.15rem; margin: 0 0 1.1rem; font-weight: 600; }
+  h2 { font-size: 1rem; margin: 1.6rem 0 .8rem; font-weight: 600; }
+  label { display: block; margin-bottom: .85rem; font-size: .85rem; color: var(--muted); }
+  input[type=email], input[type=text] { width: 100%; margin-top: .3rem; padding: .55rem .6rem;
+          border: 1px solid var(--line); border-radius: 7px; font-size: .95rem; }
+  input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); border-color: var(--accent); }
+  fieldset { border: 1px solid var(--line); border-radius: 7px; margin: 0 0 .85rem; padding: .5rem .7rem; }
+  legend { font-size: .85rem; color: var(--muted); padding: 0 .3rem; }
+  .role { display: flex; align-items: center; gap: .5rem; margin: .25rem 0; color: var(--ink); }
+  .primary { width: 100%; padding: .6rem; border: 0; border-radius: 7px; background: var(--accent);
+             color: var(--accent-ink); font-size: .95rem; cursor: pointer; }
+  .primary:hover { filter: brightness(1.05); }
+  .primary:disabled { opacity: .6; cursor: not-allowed; }
+  .secondary { padding: .45rem .8rem; border: 1px solid var(--line); border-radius: 7px; background: var(--card);
+               color: var(--ink); font-size: .85rem; cursor: pointer; }
+  .note { font-size: .85rem; color: var(--muted); margin: 0 0 1rem; line-height: 1.45; }
+  .banner { margin-top: 1rem; padding: .6rem .7rem; border-radius: 7px; font-size: .85rem; line-height: 1.4; }
+  .banner.error { background: var(--error-bg); color: var(--error); }
+  .banner.ok { background: var(--ok-bg); color: var(--ok); }
+  .linkrow { display: flex; gap: .5rem; margin-top: .5rem; }
+  .linkrow input { flex: 1; margin: 0; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>Invite user</h1>
+  <p class="note">Enter an e-mail address and choose the roles. The person receives a one-time link to choose their own password; you never see it.</p>
+
+  <p id="forbidden" class="banner error hidden">Only administrators can invite users.</p>
+
+  <div id="panels">
+    <form id="inviteForm" autocomplete="off">
+      <label>E-mail
+        <input id="email" name="email" type="email" autocomplete="off" required>
+      </label>
+      <label>Display name (optional)
+        <input id="displayName" name="displayName" type="text" autocomplete="off">
+      </label>
+      <fieldset>
+        <legend>Roles</legend>
+        <div id="roles"><span class="note">Loading roles...</span></div>
+      </fieldset>
+      <button class="primary" id="inviteBtn" type="submit">Send invitation</button>
+    </form>
+
+    <h2>Resend invitation</h2>
+    <form id="resendForm" autocomplete="off">
+      <label>Username
+        <input id="resendUsername" name="resendUsername" type="text" autocomplete="off" required>
+      </label>
+      <button class="secondary" id="resendBtn" type="submit">Resend</button>
+    </form>
+  </div>
+
+  <p id="errorBanner" class="banner error hidden"></p>
+  <p id="okBanner" class="banner ok hidden"></p>
+  <div id="linkBox" class="hidden">
+    <p class="note" style="margin-top:1rem">No e-mail was sent. Pass this link on to the invitee (it works once):</p>
+    <div class="linkrow">
+      <input id="linkValue" type="text" readonly>
+      <button class="secondary" id="copyBtn" type="button">Copy</button>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var TOKEN_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"];
+
+  function currentToken() {
+    for (var i = 0; i < TOKEN_KEYS.length; i++) {
+      var v = localStorage.getItem(TOKEN_KEYS[i]);
+      if (v) { return v; }
+    }
+    return null;
+  }
+
+  var token = currentToken();
+  var errorBanner = document.getElementById("errorBanner");
+  var okBanner = document.getElementById("okBanner");
+  var linkBox = document.getElementById("linkBox");
+  var rolesBox = document.getElementById("roles");
+
+  var MESSAGES = {
+    unauthenticated: "Your session expired. Sign in again.",
+    forbidden: "Only administrators can invite users.",
+    username_taken: "A user with that e-mail/username already exists. Use Resend below to send a new link.",
+    invalid_email: "Enter a valid e-mail address.",
+    role_not_declared_by_model: "One of the selected roles is not declared by this application.",
+    user_not_found: "No user with that username in your workspace.",
+    no_email_on_file: "That user has no e-mail on file; invite them again with an e-mail address.",
+    identity_pack_not_composed: "This application has no sign-in configured.",
+    invite_failed: "The invitation could not be created."
+  };
+  function clearBanners() {
+    errorBanner.classList.add("hidden");
+    okBanner.classList.add("hidden");
+    linkBox.classList.add("hidden");
+  }
+  function showError(code) {
+    errorBanner.textContent = MESSAGES[code] || ("Could not send the invitation (" + code + ").");
+    errorBanner.classList.remove("hidden");
+  }
+  function showOutcome(body, who) {
+    if (body.emailed) {
+      okBanner.textContent = "Invitation sent to " + who;
+      okBanner.classList.remove("hidden");
+    } else if (body.acceptPath) {
+      okBanner.textContent = "Invitation created for " + who + ".";
+      okBanner.classList.remove("hidden");
+      document.getElementById("linkValue").value = window.location.origin + body.acceptPath;
+      linkBox.classList.remove("hidden");
+    }
+  }
+  function lockDown(code) {
+    document.getElementById("panels").classList.add("hidden");
+    if (code === "forbidden") {
+      document.getElementById("forbidden").classList.remove("hidden");
+    } else {
+      showError(code);
+    }
+  }
+
+  function call(method, path, body) {
+    var init = {
+      method: method,
+      headers: {
+        "Content-Type": "application/json",
+        "X-NPDev-Request": "1",
+        "Authorization": "Bearer " + token
+      }
+    };
+    if (body !== undefined) { init.body = JSON.stringify(body); }
+    return fetch(path, init).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (b) { return { status: r.status, body: b }; });
+    });
+  }
+
+  function renderRoles(roles) {
+    rolesBox.textContent = "";
+    roles.forEach(function (name) {
+      var row = document.createElement("label");
+      row.className = "role";
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = name;
+      box.checked = name === "USER";
+      row.appendChild(box);
+      row.appendChild(document.createTextNode(name));
+      rolesBox.appendChild(row);
+    });
+  }
+
+  if (!token) {
+    lockDown("unauthenticated");
+  } else {
+    call("GET", "/api/auth/assignable-roles").then(function (res) {
+      if (res.status === 200 && res.body && Array.isArray(res.body.roles)) {
+        renderRoles(res.body.roles);
+      } else if (res.status === 403) {
+        lockDown("forbidden");
+      } else if (res.status === 401) {
+        lockDown("unauthenticated");
+      } else {
+        lockDown("invite_failed");
+      }
+    }).catch(function () { lockDown("invite_failed"); });
+  }
+
+  document.getElementById("inviteForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    clearBanners();
+    var email = document.getElementById("email").value.trim();
+    var displayName = document.getElementById("displayName").value.trim();
+    var selected = [];
+    rolesBox.querySelectorAll("input[type=checkbox]").forEach(function (box) {
+      if (box.checked) { selected.push(box.value); }
+    });
+    var payload = { email: email, roleNames: selected };
+    if (displayName) { payload.displayName = displayName; }
+    var btn = document.getElementById("inviteBtn");
+    btn.disabled = true;
+    call("POST", "/api/auth/invite", payload).then(function (res) {
+      btn.disabled = false;
+      if (res.status === 201) {
+        showOutcome(res.body, email);
+        document.getElementById("inviteForm").reset();
+        rolesBox.querySelectorAll("input[type=checkbox]").forEach(function (box) { box.checked = box.value === "USER"; });
+      } else if (res.status === 403) {
+        lockDown("forbidden");
+      } else {
+        showError(res.body && res.body.error ? res.body.error : "invite_failed");
+      }
+    }).catch(function () { btn.disabled = false; showError("invite_failed"); });
+  });
+
+  document.getElementById("resendForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    clearBanners();
+    var username = document.getElementById("resendUsername").value.trim();
+    if (!username) { return; }
+    var btn = document.getElementById("resendBtn");
+    btn.disabled = true;
+    call("POST", "/api/auth/users/" + encodeURIComponent(username) + "/invite").then(function (res) {
+      btn.disabled = false;
+      if (res.status === 200) {
+        showOutcome(res.body, username);
+      } else if (res.status === 403) {
+        lockDown("forbidden");
+      } else {
+        showError(res.body && res.body.error ? res.body.error : "invite_failed");
+      }
+    }).catch(function () { btn.disabled = false; showError("invite_failed"); });
+  });
+
+  document.getElementById("copyBtn").addEventListener("click", function () {
+    var input = document.getElementById("linkValue");
+    input.select();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(input.value).catch(function () { document.execCommand("copy"); });
+    } else {
+      document.execCommand("copy");
+    }
+  });
+})();
+</script>
+</body>
+</html>
