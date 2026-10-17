@@ -22,6 +22,7 @@ public final class NpdevInternalTables {
                 NpdevPromotionStateTable.definition(),
                 NpdevTenantTable.definition(),
                 NpdevApiCredentialTable.definition(),
+                NpdevApiCredentialPolicyTable.definition(),
                 NpdevPackInstallIntentTable.definition(),
                 NpdevCronFireClaimTable.definition(),
                 NpdevSequenceCounterTable.definition()
