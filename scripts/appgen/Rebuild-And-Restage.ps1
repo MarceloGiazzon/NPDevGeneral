@@ -70,9 +70,12 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$AppFolder,
-    [string]$RuntimeHostLibsDir = 'D:\WorkSpace\NPDev\Build\runtimehost-libs',
-    [string]$GeneratorRuntimeRoot = 'D:\WorkSpace\NPDev\AppGen\generator-runtime',
-    [string]$BuildRoot = 'D:\WorkSpace\NPDev\Build\generated-finalapps',
+    # OPS-7 (REG-144): empty = resolved below -- RuntimeHostLibsDir via Get-NPDevRuntimeHostLibsDir,
+    # BuildRoot via Get-NPDevBuildRoot + 'generated-finalapps', GeneratorRuntimeRoot as the repo's
+    # sibling <repo-parent>\AppGen\generator-runtime. Never a drive letter.
+    [string]$RuntimeHostLibsDir = '',
+    [string]$GeneratorRuntimeRoot = '',
+    [string]$BuildRoot = '',
     [switch]$SkipLibs,
     [switch]$SkipGeneratorRuntime,
     [switch]$GenerateOnly,
@@ -88,6 +91,20 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+
+# OPS-7: call the shared helpers in a child scope so npdev-common.ps1's file-scope
+# Set-StrictMode -Version Latest cannot leak into this script.
+if ([string]::IsNullOrWhiteSpace($BuildRoot) -or [string]::IsNullOrWhiteSpace($RuntimeHostLibsDir)) {
+    $sharedRoots = & {
+        . (Join-Path $repoRoot 'scripts\npdev-common.ps1')
+        [pscustomobject]@{ Build = (Get-NPDevBuildRoot $repoRoot); Libs = (Get-NPDevRuntimeHostLibsDir $repoRoot) }
+    }
+    if ([string]::IsNullOrWhiteSpace($BuildRoot)) { $BuildRoot = Join-Path $sharedRoots.Build 'generated-finalapps' }
+    if ([string]::IsNullOrWhiteSpace($RuntimeHostLibsDir)) { $RuntimeHostLibsDir = $sharedRoots.Libs }
+}
+if ([string]::IsNullOrWhiteSpace($GeneratorRuntimeRoot)) {
+    $GeneratorRuntimeRoot = Join-Path (Split-Path -Parent $repoRoot) 'AppGen\generator-runtime'
+}
 
 function Write-Stage { param([string]$m) Write-Host "==> $m" -ForegroundColor Cyan }
 

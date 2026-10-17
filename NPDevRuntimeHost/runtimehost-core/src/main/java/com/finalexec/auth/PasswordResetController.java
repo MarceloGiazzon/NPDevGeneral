@@ -14,16 +14,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.sql.DataSource;
-import java.security.MessageDigest;
-import java.security.SecureRandom;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.Base64;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -51,7 +47,6 @@ public class PasswordResetController {
 
     private static final Logger LOG = Logger.getLogger(PasswordResetController.class.getName());
     private static final long TOKEN_EXPIRY_MINUTES = 30;
-    private static final int TOKEN_BYTES = 32;
     /** REG-21 (REG-16 finding F4): reset requests per (tenant,username) per window before further ones
      * are silently no-op'd -- low, because a real user needs one, and it caps email-bombing. */
     private static final int RESET_MAX_PER_USER = 5;
@@ -137,10 +132,10 @@ public class PasswordResetController {
                 return ResponseEntity.ok(GENERIC_REQUEST_RESPONSE);
             }
 
-            String rawToken = generateToken();
-            String tokenHash = sha256Hex(rawToken);
+            String rawToken = OneTimeTokens.newRawToken();
+            String tokenHash = OneTimeTokens.sha256Hex(rawToken);
             Instant expiresAt = Instant.now().plusSeconds(TOKEN_EXPIRY_MINUTES * 60);
-            insertResetToken(connection, tokensTable, user.userId(), tokenHash, expiresAt, tenantId);
+            OneTimeTokens.insert(connection, tokensTable, user.userId(), tokenHash, expiresAt, tenantId);
             sendResetEmail(user.email(), rawToken);
         } catch (Exception exception) {
             LOG.log(Level.WARNING, "Password reset request failed", exception);
@@ -175,7 +170,7 @@ public class PasswordResetController {
             return ResponseEntity.status(503).body(Map.of("error", "identity_pack_not_composed"));
         }
 
-        String tokenHash = sha256Hex(token);
+        String tokenHash = OneTimeTokens.sha256Hex(token);
         try (Connection connection = dataSource.getConnection()) {
             ResetTokenRecord record = findValidToken(connection, tokensTable, tokenHash, tenantId);
             if (record == null) {
@@ -245,24 +240,7 @@ public class PasswordResetController {
 
     /** Resolved table of the identity pack's PasswordResetToken concept, or null when not composed. */
     private static String resetTokensTable(com.npdev.dsl.v1.compiled.CompiledModel model) {
-        return model.findConcept("identity::PasswordResetToken")
-                .map(com.npdev.dsl.v1.compiled.CompiledConcept::getTableName)
-                .filter(name -> name != null && !name.isBlank())
-                .orElse(null);
-    }
-
-    private void insertResetToken(Connection connection, String tokensTable, UUID userId, String tokenHash, Instant expiresAt, String tenantId)
-            throws Exception {
-        String sql = "INSERT INTO " + tokensTable + " (id, user_id, token_hash, expires_at, tenant_id) "
-                + "VALUES (?, ?, ?, ?, ?)";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setObject(1, UUID.randomUUID());
-            ps.setObject(2, userId);
-            ps.setString(3, tokenHash);
-            ps.setTimestamp(4, Timestamp.from(expiresAt));
-            ps.setString(5, tenantId);
-            ps.executeUpdate();
-        }
+        return OneTimeTokens.tableName(model);
     }
 
     private ResetTokenRecord findValidToken(Connection connection, String tokensTable, String tokenHash, String tenantId) throws Exception {
@@ -352,21 +330,5 @@ public class PasswordResetController {
             return (comma >= 0 ? forwarded.substring(0, comma) : forwarded).trim();
         }
         return request.getRemoteAddr();
-    }
-
-    private static String generateToken() {
-        byte[] bytes = new byte[TOKEN_BYTES];
-        new SecureRandom().nextBytes(bytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-    }
-
-    private static String sha256Hex(String value) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
-        } catch (Exception exception) {
-            throw new IllegalStateException("SHA-256 unavailable", exception);
-        }
     }
 }

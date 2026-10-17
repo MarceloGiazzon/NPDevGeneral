@@ -1383,6 +1383,10 @@
           ],
           "description": "Selection surface only: the layout type of the generated Selection panel, which also lists rows on the workbench page. `grid` renders each row as a card (the selection columns, one line each); `table` is the default."
         },
+        "panel": {
+          "type": "string",
+          "description": "AutoPanel surface override: the name of a declared panel that REPLACES this surface's synthesized panel. The expander skips generating the surface and every reference to it (route, workbench wiring, Prompt picker) uses the declared panel instead; the other surfaces stay generated. The panel must exist and be bound to the same concept the surface would have used (the aggregate root for an aggregate-bound AutoPanel's selection/transaction)."
+        },
         "metadata": {
           "type": "object"
         }
@@ -1475,6 +1479,11 @@
           "type": "string",
           "minLength": 1,
           "description": "Client-tier predicate, e.g. \"$root.tipo == 'Expedicao'\"."
+        },
+        "review": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true the procedure's result is shown as a field-by-field \"proposed changes\" dialog; only the ticked fields are folded into the draft (nothing is saved until Save). Not combinable with applyTo, afterAction or checkBalances."
         }
       }
     },
@@ -3136,7 +3145,7 @@
           "not": {
             "const": "plugin:query-provider"
           },
-          "description": "Capability adapter id, e.g. 'plugin:java-source' or 'plugin:java-controller'. 'plugin:query-provider' is a considered-but-unimplemented plugin kind (R10, __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R10) explicitly out of scope for this DSL version -- rejected here so a future session does not have to rediscover the question from scratch. Mounted plugin code runs in-process with the application's full privileges -- it is admission-checked at generation and at boot against a bytecode denylist (SEC-3/B30), not sandboxed: trust it like your own code."
+          "description": "Capability adapter id, e.g. 'plugin:java-source' or 'plugin:java-controller'. 'plugin:query-provider' is a considered-but-unimplemented plugin kind (R10, __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R10) explicitly out of scope for this DSL version -- rejected here so a future session does not have to rediscover the question from scratch. Plugin code is admission-checked at generation and at boot against a bytecode denylist (SEC-3/B30), then runs in a separate OS process on a restricted classpath with a runtime class denylist and memory/CPU ceilings (B30); on Windows its network egress is not OS-blocked, so review plugins you did not write."
         }
       },
       "additionalProperties": false

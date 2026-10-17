@@ -176,6 +176,10 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         // section is the ONLY thing gated on that concept's presence.
         writer.writeRelative("src/main/resources/static/shell.css", templates.render("shell.css.mustache", shellCtx));
         writer.writeRelative("src/main/resources/static/shell.js", templates.render("shell.js.mustache", shellCtx));
+        // AI-7: the "review proposed changes" dialog a workbench action with review: true opens.
+        // Static (no model data), loaded by every workbench page.
+        writer.writeRelative("src/main/resources/static/npdev-review.js",
+                templates.render("npdev-review.js.mustache", java.util.Map.of()));
         if (conceptsByName.containsKey(MENU_CONCEPT_NAME)) {
             writer.writeRelative("src/main/resources/npdev-seed/workspace-menu-seed.json",
                     menuSeedJson(persistedConcepts, model));

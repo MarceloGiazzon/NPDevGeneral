@@ -1190,7 +1190,8 @@ public final class ModelCompiler {
                     action.afterAction(),
                     action.visibleWhen(),
                     action.labelLocales(),
-                    new ArrayList<>(action.checkBalances())
+                    new ArrayList<>(action.checkBalances()),
+                    action.review()
             ));
         }
         Map<String, CompiledWorkbenchBandPicker> bandPickers = new LinkedHashMap<>();
@@ -1231,7 +1232,8 @@ public final class ModelCompiler {
                 bandPickers,
                 toCompiledAutoPanelDataSource(surface.dataSource()),
                 uiState,
-                surface.layout()
+                surface.layout(),
+                surface.panel()
         );
     }
 
