@@ -81,7 +81,7 @@
       ".npdev-shell-execution-status{flex-shrink:0;font-size:11px;font-weight:600;text-transform:uppercase;" +
       "letter-spacing:.02em;padding:2px 6px;border-radius:10px;}" +
       ".npdev-shell-execution-pending .npdev-shell-execution-status{background:#fbeed2;color:#8a5c00;}" +
-      ".npdev-shell-execution-succeeded .npdev-shell-execution-status{background:#d9f0e3;color:#1f7a4d;}" +
+      ".npdev-shell-execution-succeeded .npdev-shell-execution-status{background:#d9f0e3;color:#176b40;}" +
       ".npdev-shell-execution-failed .npdev-shell-execution-status{background:#f6d9d9;color:#a32424;}";
     document.head.appendChild(style);
   })();
@@ -325,6 +325,14 @@
     var originalChildren = Array.prototype.slice.call(document.body.childNodes);
     var content = document.createElement("div");
     content.className = "npdev-shell-content";
+    // a11y: every shell page gets exactly one page-level heading for assistive tech (axe
+    // `page-has-heading-one`); visually hidden because the topbar breadcrumb already shows the
+    // same text. setContext() keeps it in step with the active section.
+    var pageTitle = document.createElement("h1");
+    pageTitle.className = "npdev-shell-page-title";
+    pageTitle.textContent = (document.title || "").split(" - ")[0];
+    content.appendChild(pageTitle);
+    el.pageTitle = pageTitle;
     originalChildren.forEach(function (node) { content.appendChild(node); });
     return content;
   }
@@ -337,6 +345,9 @@
   function buildTopbar() {
     var bar = document.createElement("div");
     bar.className = "npdev-shell-topbar";
+    // a11y: the topbar is the page's banner landmark, so logo/breadcrumb/clock/identity/locale are
+    // inside a landmark region (axe `region`) instead of loose body content.
+    bar.setAttribute("role", "banner");
 
     var sidebarToggle = document.createElement("button");
     sidebarToggle.className = "npdev-shell-collapse-toggle";
@@ -378,6 +389,10 @@
     breadcrumb.className = "npdev-shell-breadcrumb";
     bar.appendChild(breadcrumb);
     el.breadcrumb = breadcrumb;
+    // The visually hidden page h1 (created in wrapContent) lives INSIDE the banner landmark: the
+    // content column's <main> belongs to the host page, and an h1 outside every landmark would
+    // trip axe `region`.
+    if (el.pageTitle) bar.appendChild(el.pageTitle);
 
     // WMS-9 N5: quick-access toggle -- reuses the same recentItems()/recordRecentItem() localStorage
     // list the right-rail "recent-items" gadget already reads (docs/UI_CONTRACT.md keeps this a
@@ -484,8 +499,12 @@
     var sidebar = document.createElement("div");
     sidebar.id = "sideNav";
     sidebar.className = "npdev-shell-sidebar";
+    sidebar.setAttribute("role", "navigation");
+    sidebar.setAttribute("aria-label", "Main navigation");
     var rightbar = document.createElement("div");
     rightbar.className = "npdev-shell-rightbar";
+    rightbar.setAttribute("role", "complementary");
+    rightbar.setAttribute("aria-label", "Side panel");
 
     // R7.10: the drawer's dismiss surface -- covers the content column at MOBILE_BREAKPOINT_PX and
     // below (see injectResponsiveShellStyle's .npdev-shell-sidebar-backdrop rule), hidden otherwise.
@@ -1426,7 +1445,7 @@
     (gadgets || []).forEach(function (gadget) {
       var card = document.createElement("div");
       card.className = "npdev-shell-gadget";
-      var title = document.createElement("h4");
+      var title = document.createElement("h2");
       title.textContent = gadget.title || gadget.name;
       card.appendChild(title);
       var body = document.createElement("div");
@@ -2331,6 +2350,7 @@
         var path = (contextState.path && contextState.path.length) ? contextState.path :
           (contextState.title ? [contextState.title] : []);
         el.breadcrumb.textContent = path.length ? "/ " + path.join(" / ") : "";
+        if (el.pageTitle && path.length) el.pageTitle.textContent = path[path.length - 1];
       }
       // R7.5 fix: re-apply whichever GuidePage is CURRENTLY active (document.body.dataset
       // .guidePage) -- so a context refresh (e.g. new context-info rows) re-renders that page's
