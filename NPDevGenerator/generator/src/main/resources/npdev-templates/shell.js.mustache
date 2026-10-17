@@ -27,6 +27,7 @@
 
   var TOKEN_STORAGE_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"];
   var BUSINESS_UI_ROOT = "/npdev-business-ui/index.html";
+  var TASKS_PAGE = "/npdev-business-ui/collab/tasks.html";
   var CACHE_TTL_MS = 60000;
   var COLLAPSED_GROUPS_KEY = "npdev.shell.collapsedGroups";
   var SIDEBAR_COLLAPSED_KEY = "npdev.shell.sidebarCollapsed";
@@ -829,6 +830,25 @@
     });
   }
 
+  // PROC-3: "Work" section -- only when the generated manifest says the model declares at least one
+  // human task (BusinessUiEmitter manifestJson: collaboration.humanTasks). The count is best-effort:
+  // a failing /api/tasks leaves the link without a badge, never an error. Idempotent: it only
+  // appends into the freshly cleared sidebar renderSidebar() hands it.
+  function renderWorkSection(container, manifest) {
+    var collab = manifest && manifest.collaboration;
+    if (!collab || !collab.humanTasks || !(state.token || state.actorId)) return;
+    addSectionHeader(container, shellString("shell.work", "Work"));
+    var link = addLeafLink(container, TASKS_PAGE, shellString("shell.myTasks", "My tasks"), currentPath());
+    fetchJson("/api/tasks", state.token).then(function (body) {
+      var count = body && typeof body.count === "number" ? body.count : 0;
+      if (!count) return;
+      var badge = document.createElement("span");
+      badge.className = "npdev-shell-nav-badge";
+      badge.textContent = String(count);
+      link.appendChild(badge);
+    }).catch(function () { /* no badge */ });
+  }
+
   function renderSidebar() {
     el.sidebar.innerHTML = "";
     renderSystemSection(el.sidebar, state.manifest ? state.manifest.appName : "", state.menuRows);
@@ -842,6 +862,7 @@
         renderNativeGroup(el.sidebar, group.label, group.items);
       });
     }
+    renderWorkSection(el.sidebar, state.manifest);
     renderNpdevSection(el.sidebar, state.manifest);
   }
 
