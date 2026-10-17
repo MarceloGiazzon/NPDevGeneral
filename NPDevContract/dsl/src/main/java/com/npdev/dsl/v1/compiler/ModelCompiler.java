@@ -385,7 +385,10 @@ public final class ModelCompiler {
                                     .map(r -> new com.npdev.dsl.v1.compiled.CompiledRollup(r.field(), r.from(), r.via(), r.fn(), r.of()))
                                     .toList(),
                             // #18: `fields` is sorted by name just above; keep the declared order beside it.
-                            effective.fields().stream().map(FieldAst::getName).toList()
+                            effective.fields().stream().map(FieldAst::getName).toList(),
+                            concept.getCollaboration() == null ? null
+                                    : new com.npdev.dsl.v1.compiled.CompiledCollaboration(
+                                            concept.getCollaboration().comments(), concept.getCollaboration().attachments())
                     )
             );
             List<String> invariantRefs = new ArrayList<>(invariantsByCanonicalRef.keySet());

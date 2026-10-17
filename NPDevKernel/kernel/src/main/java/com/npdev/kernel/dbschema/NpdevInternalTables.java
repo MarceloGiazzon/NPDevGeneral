@@ -24,7 +24,8 @@ public final class NpdevInternalTables {
                 NpdevApiCredentialTable.definition(),
                 NpdevPackInstallIntentTable.definition(),
                 NpdevCronFireClaimTable.definition(),
-                NpdevSequenceCounterTable.definition()
+                NpdevSequenceCounterTable.definition(),
+                NpdevRecordCommentTable.definition()
         );
     }
 }
