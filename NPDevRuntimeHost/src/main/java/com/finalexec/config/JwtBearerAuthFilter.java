@@ -100,6 +100,11 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
                 || uri.equals("/api/auth/password-reset/confirm") || uri.equals("/api/v1/auth/password-reset/confirm")) {
             return true;
         }
+        // SEC-14: opt-in self-signup. Reachable by someone with no account by definition; the controller answers
+        // 404 unless npdev.auth.signup.enabled, and otherwise always the same generic 200 (no enumeration).
+        if (uri.equals("/api/auth/signup") || uri.equals("/api/v1/auth/signup")) {
+            return true;
+        }
         // SEC-11 (OAuth browser round trip): the provider redirects the browser back to
         // /api/auth/oauth/<provider>/callback WITHOUT any NPDev credential for the signup/login legs
         // (that is the whole point of the flow), so those paths must be reachable when the request

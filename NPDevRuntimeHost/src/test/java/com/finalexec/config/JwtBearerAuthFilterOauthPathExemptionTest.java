@@ -60,6 +60,15 @@ class JwtBearerAuthFilterOauthPathExemptionTest {
     }
 
     @Test
+    void exemptsSelfSignupButNothingAroundIt() throws Exception {
+        // SEC-14: a visitor with no account has no token; the controller itself is 404 unless enabled.
+        assertTrue(shouldNotFilter("/api/auth/signup"));
+        assertTrue(shouldNotFilter("/api/v1/auth/signup"));
+        assertFalse(shouldNotFilter("/api/auth/signup/extra"));
+        assertFalse(shouldNotFilter("/api/auth/sessions/revoke-others"));
+    }
+
+    @Test
     void doesNotExemptUnrelatedOauthPaths() throws Exception {
         assertFalse(shouldNotFilter("/api/auth/oauth/config-typo"));
         assertFalse(shouldNotFilter("/api/auth/oauth/github/"));

@@ -69,6 +69,16 @@ class LoginPageEmitterTest {
     }
 
     @Test
+    void loginPageOffersEmailSignupOnlyWhenTheServerReportsItOn(@TempDir Path tempDir) throws Exception {
+        Path out = emitPage(tempDir, "Login Demo", true);
+        String html = Files.readString(out.resolve("src/main/resources/static/login.html"));
+        assertTrue(html.contains("/api/auth/signup"), "the signup form posts to the self-signup endpoint");
+        assertTrue(html.contains("cfg.signupEnabled"), "the form is gated on the config probe, hidden by default");
+        assertTrue(html.contains("id=\"signupForm\" class=\"hidden\""));
+        assertTrue(html.contains("oauth_signup_disabled"));
+    }
+
+    @Test
     void jwtModeEmitsLoginPageWithOAuthSurface(@TempDir Path tempDir) throws Exception {
         Path out = emitPage(tempDir, "Login Demo", true);
         Path page = out.resolve("src/main/resources/static/login.html");

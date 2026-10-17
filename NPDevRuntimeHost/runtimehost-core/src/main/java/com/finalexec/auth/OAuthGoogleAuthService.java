@@ -92,6 +92,8 @@ public final class OAuthGoogleAuthService {
     private final JwtSigner jwtSigner;
     /** SEC-9: lower-cased email domains allowed to sign in / sign up / link; empty = any domain. */
     private final Set<String> allowedEmailDomains;
+    /** SEC-14: false = a provider sign-in with an unknown verified email may NOT create an account. */
+    private final boolean signupEnabled;
 
     public OAuthGoogleAuthService(
             DataSource dataSource,
@@ -109,6 +111,18 @@ public final class OAuthGoogleAuthService {
             JwtSigner jwtSigner,
             Set<String> allowedEmailDomains
     ) {
+        this(dataSource, modelHolder, identityProvider, jwtSigner, allowedEmailDomains, true);
+    }
+
+    public OAuthGoogleAuthService(
+            DataSource dataSource,
+            ModelHolder modelHolder,
+            IdentityProvider identityProvider,
+            JwtSigner jwtSigner,
+            Set<String> allowedEmailDomains,
+            boolean signupEnabled
+    ) {
+        this.signupEnabled = signupEnabled;
         this.dataSource = dataSource;
         this.modelHolder = modelHolder;
         this.identityProvider = identityProvider;
@@ -172,6 +186,9 @@ public final class OAuthGoogleAuthService {
             return SessionTicket.error(Outcome.EMAIL_EXISTS_REQUIRES_LINK, "email_exists_requires_link");
         }
 
+        if (!signupEnabled) {
+            return SessionTicket.error(Outcome.PROVIDER_REFUSED, "oauth_signup_disabled");
+        }
         return signUp(tables, verified, normalizedTenant);
     }
 

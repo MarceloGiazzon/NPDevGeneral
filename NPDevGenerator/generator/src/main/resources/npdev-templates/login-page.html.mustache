@@ -74,6 +74,17 @@
   </form>
 
   <section id="signupPane" class="pane hidden">
+    <form id="signupForm" class="hidden" autocomplete="on">
+      <p class="note">Enter your email address. We send you a link to finish creating the account.</p>
+      <label>Email
+        <input id="signupEmail" name="email" type="email" autocomplete="email" maxlength="254" required>
+      </label>
+      <label>Name (optional)
+        <input id="signupName" name="name" autocomplete="name" maxlength="120">
+      </label>
+      <button class="primary" type="submit">Send link</button>
+    </form>
+    <p id="signupSent" class="banner ok hidden"></p>
     <p class="note">Or continue with an external identity provider below — its verified email becomes your username.</p>
   </section>
 
@@ -105,6 +116,8 @@
   var tabSignup = document.getElementById("tabSignup");
   var signinPane = document.getElementById("signinForm");
   var signupPane = document.getElementById("signupPane");
+  var signupForm = document.getElementById("signupForm");
+  var signupSent = document.getElementById("signupSent");
 
   // Provider-neutral: an error code arrives with no indication of which provider triggered it
   // (the callback's own redirect only ever carries ?error=<code>), so these messages never name a
@@ -123,6 +136,9 @@
     oauth_inactive_user: "This account is disabled. Contact the administrator.",
     oauth_missing_email: "The provider did not provide a usable email address for this account.",
     oauth_domain_not_allowed: "This sign-in is limited to approved email domains.",
+    oauth_signup_disabled: "Creating a new account with a provider is turned off here. Sign in with an existing account.",
+    signup_disabled: "Creating an account is turned off here.",
+    signup_failed: "Could not send the link. Try again.",
     invalid_mfa_code: "That code is not valid. Try again.",
     mfa_challenge_expired: "Sign-in timed out. Start again.",
     oauth_login_failed: "The provider sign-in could not be completed. Try again."
@@ -237,6 +253,8 @@
   // no template-time knowledge of which providers exist (OAuth is env/keyring-driven, never
   // modeled in the app's JSON model).
   fetch("/api/auth/oauth/config").then(function (r) { return r.json(); }).then(function (cfg) {
+    // SEC-14: self-signup by email is opt-in; the form only exists when the server says it is on.
+    if (cfg && cfg.signupEnabled) { signupForm.classList.remove("hidden"); }
     var providers = (cfg && cfg.providers) || [];
     if (providers.length === 0) { return; }
     if (!mfaActive) { divider.classList.remove("hidden"); }
@@ -254,6 +272,28 @@
       oauthButtons.appendChild(button);
     });
   }).catch(function () { /* OAuth unreachable: no buttons render. */ });
+
+  signupForm.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var email = document.getElementById("signupEmail").value.trim();
+    if (!email) { return; }
+    errorBanner.classList.add("hidden");
+    fetch("/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-NPDev-Request": "1" },
+      body: JSON.stringify({ email: email, displayName: document.getElementById("signupName").value.trim() })
+    }).then(function (r) {
+      return r.json().then(function (body) { return { status: r.status, body: body }; });
+    }).then(function (res) {
+      if (res.status === 200) {
+        signupForm.classList.add("hidden");
+        signupSent.textContent = res.body.message || "Check your email for the link.";
+        signupSent.classList.remove("hidden");
+      } else {
+        showError(res.body && res.body.error ? res.body.error : "signup_failed");
+      }
+    }).catch(function () { showError("signup_failed"); });
+  });
 
   document.getElementById("signinForm").addEventListener("submit", function (ev) {
     ev.preventDefault();
