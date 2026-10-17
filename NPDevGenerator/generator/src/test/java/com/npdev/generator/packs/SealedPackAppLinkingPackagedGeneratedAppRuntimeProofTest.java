@@ -425,6 +425,7 @@ final class SealedPackAppLinkingPackagedGeneratedAppRuntimeProofTest {
                         ":adapters:flow-compiled:jar",
                         ":adapters:idp-github:jar",
                         ":adapters:idp-google:jar",
+                        ":adapters:idp-oidc:jar",
                         ":adapters:json-jackson:jar",
                         ":adapters:metrics-micrometer:jar",
                         ":adapters:notification-inproc:jar",
