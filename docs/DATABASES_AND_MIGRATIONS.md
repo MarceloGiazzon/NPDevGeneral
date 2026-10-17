@@ -138,7 +138,8 @@ An app's database is declared in its **`db.definition.json`** (engine, connectio
 | **InMemory** | no physical database at all | fast dev / demos / tests | **The entire migration mechanism no-ops.** There is no schema to evolve; state lives in memory and vanishes on stop. Checked via `manifest.physicalDatabase()`. |
 | **H2 (H2Local)** | embedded file DB in-process | single-process dev | Full migration path; H2 file on disk. |
 | **H2 (H2Server)** | H2 over a TCP server | dev/demo where multiple processes or a DB browser attach | Full migration path; the app connects over `jdbc:h2:tcp://…`. |
-| **PostgreSQL** | real client/server RDBMS | **production** | Full migration path; the only production-blessed engine. |
+| **PostgreSQL** | real client/server RDBMS | **production** | Full migration path; a production-blessed engine. |
+| **MySQL / SQL Server** | real client/server RDBMS | **production** | Full migration path; `supported` engines (a generated app boots, serves and persists on each, proven in CI). |
 
 Two honest notes:
 
@@ -146,8 +147,8 @@ Two honest notes:
   (types, DDL-in-transaction, catalog shapes). Multiple real bugs (a date/datetime bug, and the T-B1
   `tenant_id` weakening) only manifested under Postgres. **Never treat "green on H2" as "green."** The
   platform runs a full Postgres proof matrix under Testcontainers for exactly this reason.
-- **The deployment posture is single-instance.** One app process per database. Concurrency is *detected
-  and refused*, not *locked* (see §11).
+- **The deployment posture is single-instance.** One app process per database. Concurrent boots
+  *serialize on a migration lock* — the second boot waits for the first, it is not refused on sight (see §11).
 - **H2Local — the engine recommended above — commits DDL implicitly, and so does MySQL.** Postgres and
   SQL Server roll a failed schema change back in full; H2 and MySQL do not (`DDL_IN_TRANSACTION` is
   absent from their capabilities — see `SqlDialects.active().supports(...)`, never assume a rollback).
@@ -167,9 +168,11 @@ Every NPDev database contains two kinds of tables:
 - **Platform / internal tables** — a fixed catalog NPDev needs to run, defined in
   [`NpdevInternalTables`](../NPDevKernel/kernel/src/main/java/com/npdev/kernel/dbschema/NpdevInternalTables.java):
   the flow-instance store, correlation-owner, event store, audit log, trace store, idempotency store,
-  circuit-breaker state, scheduled events, publication execution/audit, **the schema metadata and
-  history tables**, promotion state, the **tenant registry**, the **api-credential** store, and
-  pack-install intent.
+  circuit-breaker state, scheduled events, cron fire claims, sequence counters, publication execution/audit,
+  promotion state, the **tenant registry**, the **api-credential** store, and
+  pack-install intent. (The schema bookkeeping tables — `npdev_schema_history`, `npdev_schema_migration_claim`,
+  `_migration_mark`, `_pending_ack` — are not in that registry: the runtime host creates them inline, see
+  `InternalDdlTypes`.)
 
 Both families flow through the same generator and the same runtime engine. `createInternalTables` /
 `createBusinessTables` in `db.definition.json` gate whether each family is emitted (an
@@ -266,9 +269,9 @@ Order matters because an earlier pass changes what a later pass sees.
    database → **refuse the boot** with an itemized message, rather than silently re-adding dropped
    columns.
 6. **`classify`** — categorize the remaining diff: `SAFE_ADDITIVE` (only new non-bond columns on
-   existing tables), `RENAME_DETECTED`, `TYPE_CHANGE_DETECTED`, or destructive. **Honest caveat:**
-   classify compares column **name sets and types only** — it has *no nullability awareness* (that's
-   why relax/tighten are separate passes, and it's the seam where T-B1 hid).
+   existing tables), `RENAME_DETECTED`, `TYPE_CHANGE_DETECTED`, or destructive. **Note:**
+   since the REG-6 rebuild classify reduces the canonical `SchemaDiff`, which models nullability
+   (the seam where T-B1 once hid is gone; see §15 and §16).
 7. **In-place resolution** — for `RENAME_DETECTED`/`TYPE_CHANGE_DETECTED`, attempt safe in-place
    `RENAME COLUMN` / widening `ALTER COLUMN`, re-classifying after each until the diff is fully
    explained or it falls through.
@@ -282,10 +285,10 @@ Then `flyway.migrate()` applies the idempotent scripts, `applyRequiredFieldBackf
 required column with its literal default (or refuses if only an expression default exists), and a
 history row is written.
 
-**The structural wart (REG-6):** each of these passes *independently re-derives* the same per-column
-facts ("platform-managed? required? a bond? additive?") from the raw manifest maps. There is no single
-canonical object that answers them. That duplication is what manufactures a recurring family of bugs;
-§16 covers it in full.
+**The structural wart (REG-6, now fixed):** these passes used to *independently re-derive* the same
+per-column facts ("platform-managed? required? a bond? additive?") from the raw manifest maps, which
+manufactured a recurring family of bugs. Every pass now consumes one canonical `SchemaDiff`
+(`CurrentSchema` / `DesiredSchema` / `SchemaDiffEngine`); §16 covers it in full.
 
 ## 10. The bookkeeping tables (metadata, history, claim)
 
@@ -298,7 +301,7 @@ canonical object that answers them. That duplication is what manufactures a recu
   `EXTERNAL_VERIFIED`, `EXTERNAL_REFUSED`, `MANUALLY_MARKED_DONE`. This is what the schema-ahead
   detector reads to know a database was migrated past the current build.
 - **`npdev_schema_migration_claim`** — a single-row claim taken at the top of an upgrade boot and
-  released in a `finally`; a held claim refuses a concurrent second boot, naming the holder (REG-7.3).
+  released in a `finally`. It is bookkeeping for the ControlPanel's "who holds it" display and the timeout message; exclusion itself is the `MigrationMutex` waiting lock (R9.3), so a held slot makes a concurrent second boot wait, not refuse (REG-7.3).
 
 ## 11. Safety mechanisms (the honest strengths)
 
@@ -312,7 +315,7 @@ NPDev's migration story is genuinely strong on *not silently doing damage*. What
 - **Platform columns are protected** (§6) — never weakened, always repaired.
 - **Schema-ahead / rollback protection (REG-8).** An older jar on a newer database is detected via
   history and refused, not allowed to silently re-add dropped columns.
-- **Single-instance collision detection (REG-7.3).** Concurrent boots are refused loudly.
+- **Concurrent-boot serialization (REG-7.3, R9.3).** Two boots against one database take turns on a `MigrationMutex` (session advisory lock on Postgres/MySQL/SQL Server, row lock in a dedicated schema on H2), including the first-ever boot; a boot that waits past its budget with no observed progress is refused with `B4:migration_lock_held` unless the schema is already compatible.
 - **Renames preserve data** — declared renames become in-place `RENAME COLUMN`, never drop-plus-add.
 - **Cross-engine proof.** A full Postgres proof matrix (Testcontainers) runs alongside the H2 one.
 
@@ -360,16 +363,16 @@ Mapping to the four operator "options" one naturally wants:
 |---|---|---|
 | Warn about data loss / migrate errors | refuse + itemize + snapshot + acknowledgment token | shipped (stronger than a warning) |
 | Delete & rebuild tables | `allowDestructiveRecreate` + confirmation | shipped |
-| Export & recover data | pre-drop JSONL snapshots (export) | **export only — restore is manual** |
+| Export & recover data | pre-drop JSONL snapshots + `npdev db restore` | shipped — preview by default, `--apply` writes |
 | Do nothing (NPDev doesn't own the schema) | `ExternallyManaged` + `mark-done` | shipped (all-or-nothing) |
 | Manually program the SQL — per-item, verified | **conversion hooks** (SER Phase 7): operator SQL that claims a specific diff item, verified by re-diff, no token needed for what it resolves | shipped — see [`IMPACT_REPORTS.md`](archive/programme-history/IMPACT_REPORTS.md#conversion-hooks--sanctioned-destruction-implemented-phase-7) |
 
 ## 13. Data safety: snapshots, refusals, rollback
 
-- **Snapshots are export-only.** The JSONL files are a manual recovery artifact; **there is no
-  automated restore.** Recovery means reading the `.jsonl` and re-inserting via SQL, the seed-data
-  mechanism, or the REST API. Automating restore safely (conflict resolution against rows written since
-  the drop, shape reconciliation) is real, unstarted work.
+- **Snapshots can be restored, never blindly.** The JSONL files are the recovery artifact, and `npdev db restore`
+  re-inserts rows from a pre-drop snapshot through the running app (`SchemaDropSnapshotRestorer`): a preview by
+  default, `--apply` to write. A row already live and identical is skipped and a row that conflicts with newer live
+  content is reported, never overwritten. Restore is data-only — it does not reconcile schema shape.
 - **Refusals are not side-effect-free.** The safe convergent steps (renames, `NOT NULL` relaxations)
   apply *before* the acknowledgment decision — so a refused upgrade has already applied them. Recovery
   is roll-forward or restore, never redeploying the old jar (which the schema-ahead detector refuses in
@@ -396,10 +399,12 @@ Recorded plainly (these are known, not hidden):
 
 - **No automatic rename inference.** Every rename must be declared via `renamedFrom`. Without it, a
   rename is a drop-plus-add (data loss on the destructive path).
-- **No expression-valued backfills.** Only a literal `default` is backfilled; a `defaultExpression`-only
-  required field on a populated table is refused, not evaluated.
-- **No automated snapshot restore** (§13).
-- **No cross-database data migration** (H2 → Postgres data movement is a different, unbuilt feature).
+- **Expression-valued backfills are gated, not refused.** A `defaultExpression`-only required field on a populated
+  table is evaluated: safe expressions auto-apply, the rest need a dry-run preview plus an acknowledgment
+  (`SCHEMA_EVOLUTION.md#current-limitations`).
+- **Snapshot restore is data-only** (§13); it never reconciles schema shape.
+- **Cross-database data movement is `npdev db promote`** (H2 → Postgres etc.: realize the target, copy, verify); it
+  does not translate H2 SQL into Postgres SQL.
 - **FK/index checking is missing-only, by design.** As of 2026-07-25 the manifest carries explicit
   `businessTableForeignKeys`/`businessTableIndexes` (SER-G8), so both the diff and the `ExternallyManaged`
   check finally see that dimension — the P0.2 asymmetry is closed. `ExternallyManaged` now verifies
@@ -410,20 +415,19 @@ Recorded plainly (these are known, not hidden):
   index (which `getIndexInfo` returns), are legitimate. A drop-proposing FK/index diff would have proposed
   dropping primary-key indexes. Matching is by **column set**, never by name (names are engine-generated:
   `widgets_pkey` on Postgres, `CONSTRAINT_8` on H2); a live PK or unique over the same columns satisfies a
-  declared index. Consequence to know: **NPDev will tell you a constraint is missing, but never that one is
-  surplus.**
-- **`mark-done` trusts the operator completely** — it doesn't verify the live schema matches; it just
-  stops trying to converge.
+  declared index. Surplus constraints are reported separately: `npdev db surplus` previews FOREIGN-classified surplus
+  constraints and, with `--drop … --apply`, drops them (`ConstraintSurplusDropExecutor`).
+- **REST `mark-done` trusts the operator completely** — it doesn't verify the live schema matches; it just
+  stops trying to converge. `npdev db mark-done` verifies first and records only on a strict `NO_CHANGES` diff.
 - **`classify`'s verdict is not changed by nullability alone.** (Corrected 2026-07-25: it is no longer
   true that classify "diffs names + types only" — since the REG-6 rebuild it reduces the canonical
   `SchemaDiff`, which *does* model nullability, and the separate-pass seam where T-B1 hid is gone.) What
   remains is a deliberate mapping choice: a pure relaxation (`SAFE_RELAX`) contributes nothing to the
   worst-item verdict, because relaxing `NOT NULL` never endangers existing rows. Tightening is not
   silent — it surfaces as a backfill/hook item.
-- **Single-instance only.** Concurrency is detect-and-refuse, **not** a lock. A true
-  near-simultaneous-`INSERT` race remains theoretically possible; the first-ever boot of a brand-new
-  database is not claim-protected. Do not run multi-instance deployments of the same app+database
-  relying on this as a mutex.
+- **Single-instance deployment posture.** Concurrent boots serialize on a real waiting lock (R9.3), including the
+  first-ever boot of a brand-new database, so the old claim-row race is gone. The supported posture is still one
+  app process per database; the lock protects the migration step, not steady-state multi-writer traffic.
 - **Refusals are not side-effect-free** (§13).
 - **Dropping a concept needs one boot of ownership history first** (LNCH-1-B7) — the executor only drops
   a table it can *prove* NPDev created.
@@ -449,8 +453,8 @@ Consequences:
   field while the emitter emits it `NOT NULL` — the disagreement *silently weakened the tenant-isolation
   column on every upgrade*. And **T-B2**: two passes disagreed about `version`.
 - **The current state is read shallowly and in fragments.** Nullability/defaults/constraints are read
-  ad hoc and incompletely (hence `classify`'s name+type-only diff and `ExternallyManaged`'s
-  column-shaped-only check). Reading current state *completely and portably* across H2 + Postgres is the
+  ad hoc and incompletely (the historical cause of `classify`'s name+type-only diff and `ExternallyManaged`'s
+  column-shaped-only check, both since fixed). Reading current state *completely and portably* across H2 + Postgres is the
   genuinely hard, unbuilt piece.
 - **The "recorded" state is a fingerprint, not a snapshot.** The only ground truth to diff against is the
   live database itself — which is actually the *right* instinct (a recorded snapshot can lie), but it's
@@ -474,12 +478,9 @@ widenings, required-field backfills). Built exactly as
 default-on equivalence assert, both quality gates green after every step. The passes **can no longer
 disagree** — there is only one derivation. T-B1/T-B2's whole family is structurally foreclosed.
 
-**Known remaining limit (separate, documented — NOT a re-derivation):** the desired side carries no
-explicit FK/index lists (the P0.2 asymmetry — bonds/indexes are derived at generation, not in the
-manifest), so `SchemaDiffEngine` models columns/types/nullability/defaults/uniques/renames but does not
-diff FKs/indexes yet. That is a deferred *enhancement* (plan P5.2), to be added when the desired side can
-express them — it is a smaller surface than the whole engine, and it is no longer a case of two passes
-re-deriving and drifting.
+**FK/index diffing is done (SER-G8):** the manifest carries `businessTableForeignKeys`/`businessTableIndexes`
+(`SchemaRealizationEmitter`), and `SchemaDiffEngine.diffForeignKeysAndIndexes` diffs them alongside
+columns/types/nullability/defaults/uniques/renames — the P0.2 asymmetry is closed.
 
 ## 17. Bugs of the same family found in practice
 
@@ -520,9 +521,9 @@ re-derived ad hoc every time. That is the debt paying interest.
 **You never:**
 - Write a Flyway migration by hand (the generator owns `V1`/`R__`; hand edits are overwritten and the
   generated tree is hash-verified).
-- Name a model field `id`, `version`, `row_version`, or `tenant_id` (rejected at generation).
+- Name a model field `version`, `row_version`, `tenant_id`, or `deleted_at` (reserved; rejected at generation). `id` is allowed.
 - Rely on `mark-done` as verification (it's a trust operation).
-- Run two instances against one database expecting a lock.
+- Run two instances against one database as a way to scale: boots serialize on a migration lock, but one app process per database is the supported posture.
 
 **Operational gotchas (learned the hard way):**
 - ~~**New concept + existing DB → boot fails (REG-40).**~~ Fixed 2026-07-24 — R__ now self-heals a
@@ -573,15 +574,10 @@ actually works. One canonical desired-vs-current model (`CurrentSchema` / `Desir
 
 **Still open, documented, not silently missing:**
 
-- **FK/index diffing** (the P0.2 asymmetry, §16) — the desired side carries no explicit FK/index lists
-  yet (bonds/indexes are derived at generation, not in the manifest), so `SchemaDiffEngine` does not diff
-  them. Deferred *enhancement*, plan P5.2 — a smaller surface than the whole engine now that the engine
-  itself exists.
-- **A Java `DataMigrationHook` interface** — conversion hooks are v1 SQL-only by design; a code-bearing
-  hook (for conversions too complex for a script) is deferred to the ADR-0003 code-bearing-objects track.
-- **`ExternallyManaged` verification is still column-shaped only** (§15) — that mode issues zero DDL by
-  design, so it was never part of the `SchemaDiff` migration; upgrading it to full-shaped (nullability/
-  uniqueness/FK-aware) is unstarted, separate work.
+- **Nothing from the former list is still open:** FK/index diffing shipped (SER-G8), `ExternallyManaged` verification
+  is full-shaped (nullability, declared uniques, FKs and indexes — `ExternalSchemaVerification`), and a Java conversion
+  hook shipped as `conversions[].javaHook`, run isolated by `JavaMigrationHookRunner` (STOR-25). See
+  `SCHEMA_EVOLUTION.md#current-limitations` for the real remaining limits.
 
 ---
 
