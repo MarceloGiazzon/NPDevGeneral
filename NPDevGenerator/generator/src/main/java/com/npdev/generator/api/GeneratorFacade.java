@@ -13,6 +13,7 @@ import com.npdev.generator.emitters.CompanionPagesMenuEmitter;
 import com.npdev.generator.emitters.AgentLinkPageEmitter;
 import com.npdev.generator.emitters.ChangePasswordPageEmitter;
 import com.npdev.generator.emitters.ResetPasswordPageEmitter;
+import com.npdev.generator.emitters.SecurityPageEmitter;
 import com.npdev.generator.emitters.ControllerEmitter;
 import com.npdev.generator.emitters.DtoEmitter;
 import com.npdev.generator.emitters.EntityEmitter;
@@ -386,6 +387,10 @@ public final class GeneratorFacade {
             // WMS-9 N6: logged-in self-service "change my password" screen, same jwt-mode gating
             // as the login/signup screen above (an apiKey app has no user session to change).
             new ChangePasswordPageEmitter(templates, writer).emit(
+                    model == null ? "" : model.getNamespace(),
+                    "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())));
+            // SEC-12: signed-in account-security screen (authenticator-app second factor), same gating.
+            new SecurityPageEmitter(templates, writer).emit(
                     model == null ? "" : model.getNamespace(),
                     "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())));
             // SEC-4: logged-out "forgot password" screen (mailed single-use code), same jwt-mode gating.

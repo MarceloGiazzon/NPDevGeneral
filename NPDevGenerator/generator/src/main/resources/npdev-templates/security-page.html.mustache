@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Account security — {{appName}}</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --ink: #1f2430; --muted: #6b7280;
+    --accent: #2563eb; --accent-ink: #ffffff; --line: #e2e5ea;
+    --error: #b91c1c; --error-bg: #fef2f2; --ok: #15803d; --ok-bg: #f0fdf4;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+         background: var(--bg); color: var(--ink);
+         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .card { width: 26rem; max-width: calc(100vw - 2rem); background: var(--card);
+          border: 1px solid var(--line); border-radius: 10px; padding: 1.5rem 1.5rem 1.75rem;
+          box-shadow: 0 6px 24px rgba(16, 24, 40, .07); }
+  h1 { font-size: 1.15rem; margin: 0 0 .35rem; font-weight: 600; }
+  h2 { font-size: 1rem; margin: 0 0 .6rem; font-weight: 600; }
+  label { display: block; margin-bottom: .85rem; font-size: .85rem; color: var(--muted); }
+  input[type="password"], input[type="text"] { width: 100%; margin-top: .3rem; padding: .55rem .6rem;
+          border: 1px solid var(--line); border-radius: 7px; font-size: .95rem; }
+  input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); border-color: var(--accent); }
+  button { padding: .55rem .9rem; border: 1px solid var(--line); border-radius: 7px; background: var(--card);
+           color: var(--ink); font-size: .9rem; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button.danger { color: var(--error); border-color: var(--error); }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  .row { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .4rem; }
+  .note { font-size: .85rem; color: var(--muted); margin: 0 0 1rem; line-height: 1.45; }
+  .status { font-weight: 600; }
+  .secret { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.05rem;
+            letter-spacing: .06em; padding: .6rem .7rem; background: var(--bg); border-radius: 7px;
+            word-break: break-all; margin: .4rem 0 .6rem; }
+  pre.codes { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .95rem;
+              padding: .7rem; background: var(--bg); border-radius: 7px; margin: .4rem 0 .6rem; }
+  .banner { margin-top: 1rem; padding: .6rem .7rem; border-radius: 7px; font-size: .85rem; line-height: 1.4; }
+  .banner.error { background: var(--error-bg); color: var(--error); }
+  .banner.ok { background: var(--ok-bg); color: var(--ok); }
+  a { color: var(--accent); }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>Account security</h1>
+  <p class="note">Two-step sign-in with an authenticator app protects your account even if your password leaks.</p>
+
+  <p id="loading" class="note">Loading…</p>
+  <p id="unavailable" class="note hidden">Two-step sign-in is not available in this app.</p>
+  <p id="signedOut" class="note hidden">Your session expired. <a href="/login.html">Sign in again</a>.</p>
+
+  <section id="offView" class="hidden">
+    <p>Two-step sign-in is <span class="status">off</span>.</p>
+    <div class="row"><button class="primary" id="turnOnBtn" type="button">Turn on</button></div>
+  </section>
+
+  <section id="passwordStep" class="hidden">
+    <h2>Confirm it is you</h2>
+    <form id="startForm" autocomplete="off">
+      <label>Current password
+        <input id="startPassword" type="password" autocomplete="current-password" required>
+      </label>
+      <div class="row">
+        <button class="primary" id="startBtn" type="submit">Continue</button>
+        <button id="startCancelBtn" type="button">Cancel</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="enrollStep" class="hidden">
+    <h2>Add it to your authenticator app</h2>
+    <p class="note">In Google Authenticator, Microsoft Authenticator, 1Password or any similar app, add an account
+      with this key (time-based, 6 digits). On a phone you can also tap the link.</p>
+    <div class="secret" id="secretText"></div>
+    <p class="note"><a id="otpauthLink" href="#">Open in authenticator app</a></p>
+    <form id="confirmForm" autocomplete="off">
+      <label>6-digit code from the app
+        <input id="confirmCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required>
+      </label>
+      <div class="row">
+        <button class="primary" id="confirmBtn" type="submit">Turn on</button>
+        <button id="confirmCancelBtn" type="button">Cancel</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="codesStep" class="hidden">
+    <h2>Save your recovery codes</h2>
+    <p class="note">Each code works once if you lose your phone. They are shown only now.</p>
+    <pre class="codes" id="codesText"></pre>
+    <div class="row">
+      <button id="copyBtn" type="button">Copy</button>
+      <button id="downloadBtn" type="button">Download .txt</button>
+    </div>
+    <label style="margin-top:.8rem"><input id="savedBox" type="checkbox"> I saved them</label>
+    <div class="row"><button class="primary" id="doneBtn" type="button" disabled>Done</button></div>
+  </section>
+
+  <section id="onView" class="hidden">
+    <p>Two-step sign-in is <span class="status">on</span>. <span id="codesLeft"></span></p>
+    <div class="row">
+      <button id="newCodesBtn" type="button">New recovery codes</button>
+      <button class="danger" id="turnOffBtn" type="button">Turn off</button>
+    </div>
+  </section>
+
+  <section id="newCodesStep" class="hidden">
+    <h2>New recovery codes</h2>
+    <p class="note">The old codes stop working.</p>
+    <form id="newCodesForm" autocomplete="off">
+      <label>6-digit code from the app
+        <input id="newCodesCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required>
+      </label>
+      <div class="row">
+        <button class="primary" type="submit">Generate</button>
+        <button id="newCodesCancelBtn" type="button">Cancel</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="offStep" class="hidden">
+    <h2>Turn off two-step sign-in</h2>
+    <form id="offForm" autocomplete="off">
+      <label>Current password
+        <input id="offPassword" type="password" autocomplete="current-password" required>
+      </label>
+      <label>6-digit code from the app, or a recovery code
+        <input id="offCode" type="text" autocomplete="one-time-code" required>
+      </label>
+      <div class="row">
+        <button class="danger" type="submit">Turn off</button>
+        <button id="offCancelBtn" type="button">Cancel</button>
+      </div>
+    </form>
+  </section>
+
+  <p id="errorBanner" class="banner error hidden"></p>
+  <p id="okBanner" class="banner ok hidden"></p>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var TOKEN_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"];
+  var SECTIONS = ["loading", "unavailable", "signedOut", "offView", "passwordStep", "enrollStep",
+                  "codesStep", "onView", "newCodesStep", "offStep"];
+  var MESSAGES = {
+    unauthenticated: "Your session expired. Sign in again.",
+    invalid_password: "That password is not correct.",
+    invalid_code: "That code is not valid. Check the app and try again.",
+    mfa_already_enabled: "Two-step sign-in is already on.",
+    mfa_enroll_not_started: "Start again: the setup was not started.",
+    mfa_not_enabled: "Two-step sign-in is not on.",
+    too_many_attempts: "Too many attempts. Wait a few minutes and try again.",
+    mfa_not_available: "Two-step sign-in is not available in this app."
+  };
+
+  function $(id) { return document.getElementById(id); }
+  function currentToken() {
+    for (var i = 0; i < TOKEN_KEYS.length; i++) {
+      var v = localStorage.getItem(TOKEN_KEYS[i]);
+      if (v) { return v; }
+    }
+    return null;
+  }
+  function show(name) {
+    SECTIONS.forEach(function (s) { $(s).classList.toggle("hidden", s !== name); });
+  }
+  function clearBanners() { $("errorBanner").classList.add("hidden"); $("okBanner").classList.add("hidden"); }
+  function showError(code) {
+    $("errorBanner").textContent = MESSAGES[code] || ("Something went wrong (" + code + ").");
+    $("errorBanner").classList.remove("hidden");
+    $("okBanner").classList.add("hidden");
+  }
+  function showOk(text) {
+    $("okBanner").textContent = text;
+    $("okBanner").classList.remove("hidden");
+    $("errorBanner").classList.add("hidden");
+  }
+
+  // Recovery codes live only in the DOM of this page (never in web storage) until the user leaves.
+  function api(method, path, body) {
+    var token = currentToken();
+    var headers = { "X-NPDev-Request": "1", "Authorization": "Bearer " + token };
+    var init = { method: method, headers: headers };
+    if (body !== undefined) {
+      headers["Content-Type"] = "application/json";
+      init.body = JSON.stringify(body);
+    }
+    return fetch(path, init).then(function (r) {
+      return r.text().then(function (text) {
+        var parsed = {};
+        try { parsed = text ? JSON.parse(text) : {}; } catch (e) { parsed = {}; }
+        return { status: r.status, body: parsed };
+      });
+    });
+  }
+  function errorCode(res) { return res.body && res.body.error ? res.body.error : "request_failed"; }
+
+  function loadStatus() {
+    clearBanners();
+    if (!currentToken()) { show("signedOut"); return; }
+    show("loading");
+    api("GET", "/api/auth/mfa/status").then(function (res) {
+      if (res.status === 401) { show("signedOut"); return; }
+      if (res.status === 503) { show("unavailable"); return; }
+      if (res.status !== 200) { show("offView"); showError(errorCode(res)); return; }
+      if (res.body.enabled) {
+        $("codesLeft").textContent = res.body.recoveryCodesLeft + " recovery codes left.";
+        show("onView");
+      } else {
+        show("offView");
+      }
+    }).catch(function () { show("offView"); showError("request_failed"); });
+  }
+
+  function groupSecret(secret) {
+    return (secret.match(/.{1,4}/g) || [secret]).join(" ");
+  }
+
+  $("turnOnBtn").addEventListener("click", function () {
+    clearBanners(); $("startForm").reset(); show("passwordStep");
+  });
+  $("startCancelBtn").addEventListener("click", function () { clearBanners(); loadStatus(); });
+  $("startForm").addEventListener("submit", function (ev) {
+    ev.preventDefault(); clearBanners();
+    $("startBtn").disabled = true;
+    api("POST", "/api/auth/mfa/enroll/start", { password: $("startPassword").value }).then(function (res) {
+      $("startBtn").disabled = false;
+      if (res.status !== 200) { showError(errorCode(res)); return; }
+      $("startForm").reset();
+      $("secretText").textContent = groupSecret(res.body.secret);
+      var uri = String(res.body.otpauthUri || "");
+      if (uri.indexOf("otpauth://") === 0) { $("otpauthLink").setAttribute("href", uri); }
+      $("confirmForm").reset();
+      show("enrollStep");
+    }).catch(function () { $("startBtn").disabled = false; showError("request_failed"); });
+  });
+  $("confirmCancelBtn").addEventListener("click", function () {
+    clearBanners(); $("secretText").textContent = ""; loadStatus();
+  });
+  $("confirmForm").addEventListener("submit", function (ev) {
+    ev.preventDefault(); clearBanners();
+    $("confirmBtn").disabled = true;
+    api("POST", "/api/auth/mfa/enroll/confirm", { code: $("confirmCode").value }).then(function (res) {
+      $("confirmBtn").disabled = false;
+      if (res.status !== 200) { showError(errorCode(res)); return; }
+      $("secretText").textContent = "";
+      $("confirmForm").reset();
+      showCodes(res.body.recoveryCodes || []);
+    }).catch(function () { $("confirmBtn").disabled = false; showError("request_failed"); });
+  });
+
+  function showCodes(codes) {
+    $("codesText").textContent = codes.join("\n");
+    $("savedBox").checked = false;
+    $("doneBtn").disabled = true;
+    show("codesStep");
+  }
+  $("savedBox").addEventListener("change", function () { $("doneBtn").disabled = !$("savedBox").checked; });
+  $("copyBtn").addEventListener("click", function () {
+    var text = $("codesText").textContent;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { showOk("Copied."); },
+        function () { showError("request_failed"); });
+    }
+  });
+  $("downloadBtn").addEventListener("click", function () {
+    var blob = new Blob([$("codesText").textContent + "\n"], { type: "text/plain" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "recovery-codes.txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  });
+  $("doneBtn").addEventListener("click", function () {
+    $("codesText").textContent = "";
+    loadStatus();
+  });
+
+  $("newCodesBtn").addEventListener("click", function () {
+    clearBanners(); $("newCodesForm").reset(); show("newCodesStep");
+  });
+  $("newCodesCancelBtn").addEventListener("click", function () { clearBanners(); loadStatus(); });
+  $("newCodesForm").addEventListener("submit", function (ev) {
+    ev.preventDefault(); clearBanners();
+    api("POST", "/api/auth/mfa/recovery-codes", { code: $("newCodesCode").value }).then(function (res) {
+      if (res.status !== 200) { showError(errorCode(res)); return; }
+      $("newCodesForm").reset();
+      showCodes(res.body.recoveryCodes || []);
+    }).catch(function () { showError("request_failed"); });
+  });
+
+  $("turnOffBtn").addEventListener("click", function () {
+    clearBanners(); $("offForm").reset(); show("offStep");
+  });
+  $("offCancelBtn").addEventListener("click", function () { clearBanners(); loadStatus(); });
+  $("offForm").addEventListener("submit", function (ev) {
+    ev.preventDefault(); clearBanners();
+    api("POST", "/api/auth/mfa/disable", { password: $("offPassword").value, code: $("offCode").value })
+      .then(function (res) {
+        if (res.status !== 200) { showError(errorCode(res)); return; }
+        $("offForm").reset();
+        loadStatus();
+        showOk("Two-step sign-in is off.");
+      }).catch(function () { showError("request_failed"); });
+  });
+
+  loadStatus();
+})();
+</script>
+</body>
+</html>

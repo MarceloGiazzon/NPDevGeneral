@@ -41,6 +41,7 @@ public final class PlatformStrings {
         d.put("shell.toggleMenu", "Collapse/expand menu");
         d.put("shell.quickAccess", "Quick access");
         d.put("shell.toggleRightbar", "Show/hide side panel");
+        d.put("shell.security", "Security");
         // REG-146: Map.copyOf(d) here (rather than Collections.unmodifiableMap) is what actually
         // made this nondeterministic -- JDK's ImmutableCollections implementation deliberately
         // randomizes iteration order per JVM run (a JEP 269 hash-flood mitigation), discarding the
@@ -63,6 +64,7 @@ public final class PlatformStrings {
         pt.put("shell.toggleMenu", "Recolher/expandir menu");
         pt.put("shell.quickAccess", "Acesso rápido");
         pt.put("shell.toggleRightbar", "Mostrar/ocultar painel lateral");
+        pt.put("shell.security", "Seguranca");
         PORTUGUESE = Collections.unmodifiableMap(pt);
     }
 

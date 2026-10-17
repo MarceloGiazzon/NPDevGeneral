@@ -567,6 +567,12 @@
         changePasswordLink.href = "/change-password.html";
         changePasswordLink.textContent = shellString("shell.changePassword", "Change password");
         el.identity.appendChild(changePasswordLink);
+        // SEC-12: account security (authenticator-app second factor), same Bearer-only gating.
+        var securityLink = document.createElement("a");
+        securityLink.className = "npdev-shell-security";
+        securityLink.href = "/security.html";
+        securityLink.textContent = shellString("shell.security", "Security");
+        el.identity.appendChild(securityLink);
       }
       var logoutBtn = document.createElement("button");
       logoutBtn.className = "npdev-shell-logout";
