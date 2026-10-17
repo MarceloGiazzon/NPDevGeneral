@@ -1,0 +1,161 @@
+/* INT-9: zero-dependency .xlsx write + read for the business UI.
+ * Emitted as static/npdev-xlsx.js (BusinessUiEmitter), loaded by business-ui-index.mustache BEFORE app.js.
+ * If you turn this into a .mustache template: never write two opening braces in a row (L29).
+ *
+ * write: STORE-only zip (no compression -> no deflate code), inline strings (no sharedStrings part).
+ * read:  any Excel/LibreOffice/Sheets file -- parts are usually DEFLATE-compressed, inflated with the
+ *        browser's DecompressionStream("deflate-raw") (Chrome 80+, Firefox 113+, Safari 16.4+).
+ */
+(function (global) {
+  "use strict";
+
+  // ---------- CRC32 (zip needs it even for STORE) ----------
+  const CRC_TABLE = (function () {
+    const table = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      table[n] = c >>> 0;
+    }
+    return table;
+  })();
+  function crc32(bytes) {
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) crc = CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function xmlEscape(text) {
+    return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+  }
+  function columnName(index) {            // 0 -> A, 25 -> Z, 26 -> AA
+    let name = "";
+    for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) name = String.fromCharCode(65 + ((n - 1) % 26)) + name;
+    return name;
+  }
+  function cellXml(ref, value) {
+    if (value === null || value === undefined || value === "") return "";
+    if (typeof value === "number" && isFinite(value)) return '<c r="' + ref + '"><v>' + value + "</v></c>";
+    if (typeof value === "boolean") return '<c r="' + ref + '" t="b"><v>' + (value ? 1 : 0) + "</v></c>";
+    let text = typeof value === "object" ? JSON.stringify(value) : String(value);
+    // Same formula-injection neutralisation as CSV export (CsvCells.java:39-90): a leading = + - @ is
+    // prefixed with ' unless the text is a plain number.
+    if (/^[=+\-@]/.test(text) && !/^[+-]?\d+(\.\d+)?$/.test(text)) text = "'" + text;
+    return '<c r="' + ref + '" t="inlineStr"><is><t xml:space="preserve">' + xmlEscape(text) + "</t></is></c>";
+  }
+
+  function sheetXml(columns, rows) {
+    const out = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'];
+    const header = columns.map(function (col, i) { return cellXml(columnName(i) + "1", col.label || col.name); }).join("");
+    out.push('<row r="1">' + header + "</row>");
+    rows.forEach(function (row, r) {
+      const cells = columns.map(function (col, i) { return cellXml(columnName(i) + (r + 2), row[col.name]); }).join("");
+      out.push('<row r="' + (r + 2) + '">' + cells + "</row>");
+    });
+    out.push("</sheetData></worksheet>");
+    return out.join("");
+  }
+
+  function buildZip(files) {               // files: [{name, text}] -> Blob (STORE method)
+    const enc = new TextEncoder();
+    const chunks = [], central = [];
+    let offset = 0;
+    files.forEach(function (file) {
+      const name = enc.encode(file.name), data = enc.encode(file.text), crc = crc32(data);
+      const local = new DataView(new ArrayBuffer(30));
+      local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true); local.setUint16(6, 0x0800, true);
+      local.setUint16(8, 0, true); local.setUint32(14, crc, true);
+      local.setUint32(18, data.length, true); local.setUint32(22, data.length, true); local.setUint16(26, name.length, true);
+      chunks.push(local.buffer, name, data);
+      const cd = new DataView(new ArrayBuffer(46));
+      cd.setUint32(0, 0x02014b50, true); cd.setUint16(4, 20, true); cd.setUint16(6, 20, true); cd.setUint16(8, 0x0800, true);
+      cd.setUint32(16, crc, true); cd.setUint32(20, data.length, true); cd.setUint32(24, data.length, true);
+      cd.setUint16(28, name.length, true); cd.setUint32(42, offset, true);
+      central.push(cd.buffer, name);
+      offset += 30 + name.length + data.length;
+    });
+    const centralSize = central.reduce(function (n, part) { return n + part.byteLength; }, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+    end.setUint32(12, centralSize, true); end.setUint32(16, offset, true);
+    return new Blob(chunks.concat(central, [end.buffer]),
+      { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  }
+
+  function writeXlsx(columns, rows, sheetName) {
+    const safeSheet = xmlEscape(String(sheetName || "Sheet1").replace(/[\\\/?*\[\]:]/g, " ").slice(0, 31));
+    return buildZip([
+      { name: "[Content_Types].xml", text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>' },
+      { name: "_rels/.rels", text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+      { name: "xl/workbook.xml", text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="' + safeSheet + '" sheetId="1" r:id="rId1"/></sheets></workbook>' },
+      { name: "xl/_rels/workbook.xml.rels", text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>' },
+      { name: "xl/worksheets/sheet1.xml", text: sheetXml(columns, rows) }
+    ]);
+  }
+
+  // ---------- read ----------
+  async function unzipEntries(buffer, wanted) {   // -> {name: text} for names in `wanted`
+    const view = new DataView(buffer);
+    let eocd = buffer.byteLength - 22;
+    while (eocd >= 0 && view.getUint32(eocd, true) !== 0x06054b50) eocd--;
+    if (eocd < 0) throw new Error("Not an .xlsx (zip) file");
+    let ptr = view.getUint32(eocd + 16, true);
+    const count = view.getUint16(eocd + 10, true), dec = new TextDecoder(), out = {};
+    for (let i = 0; i < count; i++) {
+      const method = view.getUint16(ptr + 10, true), compSize = view.getUint32(ptr + 20, true);
+      const nameLen = view.getUint16(ptr + 28, true), extraLen = view.getUint16(ptr + 30, true);
+      const commentLen = view.getUint16(ptr + 32, true), localOffset = view.getUint32(ptr + 42, true);
+      const name = dec.decode(new Uint8Array(buffer, ptr + 46, nameLen));
+      if (wanted.indexOf(name) >= 0) {
+        const start = localOffset + 30 + view.getUint16(localOffset + 26, true) + view.getUint16(localOffset + 28, true);
+        const raw = new Uint8Array(buffer, start, compSize);
+        if (method === 0) out[name] = dec.decode(raw);
+        else if (method === 8) out[name] = await new Response(new Blob([raw]).stream()
+          .pipeThrough(new DecompressionStream("deflate-raw"))).text();
+        else throw new Error("Unsupported zip compression method " + method);
+      }
+      ptr += 46 + nameLen + extraLen + commentLen;
+    }
+    return out;
+  }
+
+  // First worksheet -> array of rows (array of strings), header row included. Dates stay Excel serial
+  // numbers unless the caller converts them (document it; do not guess styles).
+  async function readFirstSheet(file) {
+    const parts = await unzipEntries(await file.arrayBuffer(), ["xl/sharedStrings.xml", "xl/worksheets/sheet1.xml"]);
+    if (!parts["xl/worksheets/sheet1.xml"]) throw new Error("The workbook has no first worksheet (xl/worksheets/sheet1.xml)");
+    const parser = new DOMParser();
+    const shared = [];
+    if (parts["xl/sharedStrings.xml"]) {
+      const sst = parser.parseFromString(parts["xl/sharedStrings.xml"], "application/xml");
+      Array.prototype.forEach.call(sst.getElementsByTagName("si"), function (si) {
+        shared.push(Array.prototype.map.call(si.getElementsByTagName("t"), function (t) { return t.textContent; }).join(""));
+      });
+    }
+    const sheet = parser.parseFromString(parts["xl/worksheets/sheet1.xml"], "application/xml");
+    const rows = [];
+    Array.prototype.forEach.call(sheet.getElementsByTagName("row"), function (rowEl) {
+      const row = [];
+      Array.prototype.forEach.call(rowEl.getElementsByTagName("c"), function (c) {
+        const ref = c.getAttribute("r") || "";
+        const letters = ref.replace(/\d+/g, "");
+        let col = 0;
+        for (let i = 0; i < letters.length; i++) col = col * 26 + (letters.charCodeAt(i) - 64);
+        const type = c.getAttribute("t"), v = c.getElementsByTagName("v")[0];
+        let value = "";
+        if (type === "s" && v) value = shared[parseInt(v.textContent, 10)] || "";
+        else if (type === "inlineStr") value = Array.prototype.map.call(c.getElementsByTagName("t"), function (t) { return t.textContent; }).join("");
+        else if (type === "b" && v) value = v.textContent === "1" ? "true" : "false";
+        else if (v) value = v.textContent;
+        row[(col || row.length + 1) - 1] = value;
+      });
+      for (let i = 0; i < row.length; i++) if (row[i] === undefined) row[i] = "";
+      rows.push(row);
+    });
+    return rows;
+  }
+
+  global.NpdevXlsx = { writeXlsx: writeXlsx, readFirstSheet: readFirstSheet };
+})(window);

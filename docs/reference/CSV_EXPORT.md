@@ -1,70 +1,58 @@
-# CSV export (LNCH-10 slice 1)
+# CSV and Excel export and import
 
-`GET /api/concepts/{conceptName}/export.csv` (also under `/api/v1/concepts/...`) streams a
-concept's tenant-scoped rows as CSV, an "Export CSV" button on every generated grid.
+Every generated grid has **Export CSV**, **Export Excel** and **Import CSV** (which also takes an
+`.xlsx`) buttons. They work on the rows the grid is showing.
 
-## The endpoint
+## What the buttons export
 
-Backed by `ConceptQueryController.exportCsv` — reuses the exact same `sort`/`direction`/
-structured-filter query parameters (and `parseConceptQuery` parsing) the paged
-`GET /{concept}/page` endpoint already uses (LNCH-5), so a structured `where`-shaped filter that
-works for the grid works identically for the export. Streams page-by-page through
-`ConceptGateway#query` at `ConceptQuery.MAX_LIMIT` (1000) rows per page, flushing the HTTP
-response after each page, rather than materializing the whole result set — a 100k-row concept
-never holds more than one page of records in the JVM at once. Proven by
-`ConceptQueryControllerExportCsvVolumeTest`: 100k rows, exactly 100 bounded `query()` calls (never
-one unbounded fetch-all), correct row/column count in the output.
+Both export buttons are built in the browser (`exportPanelCsv` / `exportPanelXlsx` in the business
+UI). They walk the grid's own list endpoint (`GET /api/concepts/{Concept}`) page by page, 100 rows
+per page up to 50,000 rows, with the same free-text search, column filters (`where`) and sort the
+grid just used. So the file is exactly the filtered, sorted view on screen; while a filter is active
+the grid says so ("Export CSV exports exactly these rows, sorted as shown"). The columns are the
+grid's visible columns, headed by their labels.
 
-The concept and any filter/sort field are validated against the concept's declared schema
-**before** any response header is written (the first page is fetched first; only once that
-succeeds does the response become `text/csv` with a `Content-Disposition: attachment`
-header) — a bad request always gets a clean 400, never a half-written CSV with a 200 status.
+Cells that start with `=`, `+`, `-`, `@` (or a tab / carriage return) get a leading `'` so a
+spreadsheet cannot run them as a formula; a plain number such as `-42` is left alone. The same rule is
+applied in the CSV writer, in the Excel writer, and in the server-side `CsvCells` helper.
 
-Column order: `id` first, then every field in `ConceptRecord.data()`'s own key order (JDBC:
-`SELECT *` column order; InMemory: declared-field order). Values are RFC4180-quoted (comma/quote/
-newline triggers quoting, internal quotes doubled); `null` becomes an empty field.
+## CSV
 
-## The free-text filter gap (a known, pre-existing boundary — not new here)
+RFC 4180: a value containing a comma, quote or newline is quoted (inner quotes doubled); `null`
+becomes an empty field.
 
-The generated grid's search box is a **free-text, OR-across-every-filterable-field substring
-match** — LNCH-5 already documented that this has no SQL-pushdown equivalent (`GeneratedConceptCrudController.list()`'s own comment: "Free-text `filter` ... has no query-tree equivalent so it
-deliberately keeps the legacy fetch-all fallback"). The generic export endpoint's query contract
-only supports **structured** filters (the same `ConceptQuery.Filter` shape the paged endpoint
-pushes to SQL), none of which the grid's UI currently exposes as a control.
+## Excel (.xlsx)
 
-Consequence: the Export CSV button reuses the grid's current **sort**, but not its free-text
-search box value — exporting the free-text-filtered view would either silently ignore the filter
-(wrong data, worse than an error) or require fetching everything into memory to filter
-client-side (defeats the whole point of a streaming export). Rather than either, the button:
+**Export Excel** writes a real `.xlsx` with one sheet named after the concept: strings as text,
+numbers and booleans as numbers/booleans. The file is built by the small `npdev-xlsx.js` helper that
+every app serves; there is no library and no server round trip.
 
-- Only carries `sort`/`direction` into the export URL.
-- Shows an inline notice under the toolbar whenever the search box has a value: *"Export CSV
-  exports every {concept} row sorted as shown — it does not apply the search box filter above."*
+**Import** accepts a `.csv` or an `.xlsx`. For an `.xlsx` the first worksheet is read and turned into
+the same text the paste box takes, so preview, per-row validation and the import itself are the
+ordinary CSV pipeline. The first row must be the header row (the same labels Export writes).
 
-A future slice that gives the grid a structured filter control (dropdown/column-header filters
-instead of free text) would close this gap for free, since the export endpoint already speaks
-that query shape.
+- Excel stores dates as serial numbers. Format date columns as **Text** before saving, or use CSV;
+  otherwise date fields fail validation in the preview.
+- Only `.xlsx` is read. An old binary `.xls` or a password-protected workbook shows an error in the
+  dialog instead of importing.
+- Reading needs a current browser (it uses the built-in `DecompressionStream`: Chrome 80+,
+  Firefox 113+, Safari 16.4+). Export works everywhere.
+
+## The server endpoint
+
+`GET /api/concepts/{conceptName}/export.csv` (also under `/api/v1/concepts/...`) still exists
+(`ConceptQueryController.exportCsv`) and streams a concept's tenant-scoped rows as CSV, but the grid
+no longer calls it. It understands `sort`/`direction` and bare `field=value` equality filters only;
+`filter` and `where` are reserved and ignored there. Use the grid's buttons, or the list endpoint,
+when you need the filtered view. It streams page by page (`ConceptQuery.MAX_LIMIT` rows per page), so
+a large concept is never held in memory; a bad request gets a clean 400 before any CSV byte is
+written. Column order is `id` first, then the stored columns.
 
 ## Verification
 
-- `ConceptQueryControllerTest.csvRowQuotesOnlyValuesThatNeedIt` — the RFC4180 quoting helper.
-- `ConceptQueryControllerExportCsvVolumeTest` — the DoD's own bar: 100k rows for one tenant,
-  H2-backed, real `DefaultConceptGateway`/`JdbcBusinessConceptStore`, asserts exactly
-  `ceil(100000/1000) = 100` bounded `query()` calls and a correct `100001`-line CSV body (header +
-  every row) — proves both "exports the full filtered view" and "without OOM" (bounded per-call
-  page size) deterministically, not by a timing heuristic.
-- Live end-to-end (real `bootJar`+boot against `simple-contact-intake`): created two
-  `ContactMessage` rows including one with a comma and an embedded quote in its fields, curled
-  `/api/concepts/ContactMessage/export.csv`, got a real `200` with `Content-Disposition:
-  attachment; filename="ContactMessage.csv"` and correctly RFC4180-quoted CSV. **Found+fixed a
-  real bug this way**: the first header line repeated `id` twice (`id,email,id,message,...`) —
-  `ConceptRecord.data()` already carries its own `"id"` entry (`JdbcBusinessConceptStore.toRecord`
-  puts every `SELECT *` column, including the id column, into `data()`), and `resolveColumns` was
-  separately prepending `"id"` on top of that. The 100k-row hermetic test's synthetic model
-  happened not to reproduce this (worth noting as a gap in that fixture, not chased further this
-  session) — only the live curl against a real generated app caught it. Fixed with a
-  `LinkedHashSet` dedupe.
-- `node --check` on the generated `npdev-business-ui/app.js` bundle (the Export CSV button's
-  actual emitted JS) confirms it's syntactically valid after the `business-ui-app.mustache`
-  change; the button and its `exportCsvUrl(concept)`/notice logic were confirmed present in the
-  regenerated output.
+- `ConceptQueryControllerTest.csvRowQuotesOnlyValuesThatNeedIt` and
+  `ConceptQueryControllerExportCsvVolumeTest` cover the server endpoint (quoting; 100k rows in 100
+  bounded queries).
+- `BusinessUiEmitterXlsxTest` checks the helper is emitted, loaded before `app.js`, wired into the grid,
+  and that the writer produces a valid zip with accents intact, formulas neutralised and numbers
+  numeric.
