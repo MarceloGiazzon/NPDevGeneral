@@ -6,9 +6,18 @@ import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 
+import com.npdev.kernel.ports.FileHandle;
+import com.npdev.kernel.ports.FileStoreContract;
+
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -40,9 +49,15 @@ public final class RecordCommentService {
     static final String SUPERUSER_ROLE = "SUPERUSER";
     private static final Pattern MENTION = Pattern.compile("(?<![\\w@])@([A-Za-z0-9._-]{2,64})");
 
-    public enum Failure { NOT_FOUND, BODY_INVALID, FORBIDDEN }
+    /** PROC-6 defaults; the Spring wiring overrides them from {@code npdev.collab.attachments.*}. */
+    public static final long DEFAULT_MAX_ATTACHMENT_BYTES = 10_485_760L;
+    public static final Set<String> DEFAULT_ATTACHMENT_TYPES = Set.of(
+            "image/png", "image/jpeg", "image/webp", "application/pdf", "text/plain", "text/csv");
+    private static final int MAX_NAME_LENGTH = 200;
 
-    /** A refused operation; {@link #failure()} maps to 404 / 400 / 403. */
+    public enum Failure { NOT_FOUND, BODY_INVALID, FORBIDDEN, TOO_LARGE, UNSUPPORTED_TYPE }
+
+    /** A refused operation; {@link #failure()} maps to 404 / 400 / 403 / 413 / 415. */
     public static final class CommentException extends RuntimeException {
         private final Failure failure;
 
@@ -56,8 +71,11 @@ public final class RecordCommentService {
         }
     }
 
-    /** One thread row as the API shows it. */
-    public record Item(String id, String author, String body, String kind, String fileJson,
+    /**
+     * One thread row as the API shows it. {@code file} is null for a comment; for an attachment it is
+     * {name, size, contentType} -- never the store key (downloads go through the record's read gate).
+     */
+    public record Item(String id, String author, String body, String kind, Map<String, Object> file,
                        long createdAtEpochMs, boolean mine) {
     }
 
@@ -79,14 +97,39 @@ public final class RecordCommentService {
     private final RecordCommentStore store;
     private final MentionNotifier notifier;
     private final LongSupplier clock;
+    private final Supplier<FileStoreContract> fileStore;
+    private final long maxAttachmentBytes;
+    private final Set<String> attachmentTypes;
 
+    /** Comments only: attachments are unavailable (no file store). */
     public RecordCommentService(Supplier<CompiledModel> model, Supplier<ConceptGateway> gateway,
                                 RecordCommentStore store, MentionNotifier notifier, LongSupplier clock) {
+        this(model, gateway, store, notifier, clock, () -> null, DEFAULT_MAX_ATTACHMENT_BYTES, DEFAULT_ATTACHMENT_TYPES);
+    }
+
+    public RecordCommentService(Supplier<CompiledModel> model, Supplier<ConceptGateway> gateway,
+                                RecordCommentStore store, MentionNotifier notifier, LongSupplier clock,
+                                Supplier<FileStoreContract> fileStore, long maxAttachmentBytes,
+                                Set<String> attachmentTypes) {
         this.model = model;
         this.gateway = gateway;
         this.store = store;
         this.notifier = notifier == null ? MentionNotifier.NONE : notifier;
         this.clock = clock == null ? System::currentTimeMillis : clock;
+        this.fileStore = fileStore == null ? () -> null : fileStore;
+        this.maxAttachmentBytes = maxAttachmentBytes <= 0 ? DEFAULT_MAX_ATTACHMENT_BYTES : maxAttachmentBytes;
+        this.attachmentTypes = attachmentTypes == null || attachmentTypes.isEmpty() ? DEFAULT_ATTACHMENT_TYPES
+                : normalizeTypes(attachmentTypes);
+    }
+
+    private static Set<String> normalizeTypes(Set<String> raw) {
+        Set<String> out = new LinkedHashSet<>();
+        for (String type : raw) {
+            if (type != null && !type.isBlank()) {
+                out.add(type.trim().toLowerCase(Locale.ROOT));
+            }
+        }
+        return out;
     }
 
     // ---------------------------------------------------------------- operations --
@@ -112,6 +155,80 @@ public final class RecordCommentService {
         store.insert(row);
         notifyMentions(concept, row);
         return toItem(row, ctx);
+    }
+
+    /**
+     * PROC-6: stores {@code content} in the file store and adds an ATTACHMENT row to the thread. The record's
+     * read gate runs FIRST, so a caller who cannot read the record learns nothing (404) about size/type rules.
+     */
+    public Item addAttachment(String conceptName, String recordId, String originalName, String contentType,
+                              long size, InputStream content, ExecutionContext ctx) {
+        CompiledConcept concept = requireReadable(conceptName, recordId, ctx, true);
+        FileStoreContract files = fileStore.get();
+        if (files == null) {
+            throw notFound();
+        }
+        String type = contentType == null ? "" : contentType.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
+        if (size <= 0 || content == null) {
+            throw new CommentException(Failure.BODY_INVALID, "the file is empty");
+        }
+        if (size > maxAttachmentBytes) {
+            throw new CommentException(Failure.TOO_LARGE,
+                    "the file is " + size + " bytes; the limit is " + maxAttachmentBytes);
+        }
+        if (!attachmentTypes.contains(type)) {
+            throw new CommentException(Failure.UNSUPPORTED_TYPE,
+                    "content type '" + type + "' is not allowed (allowed: " + attachmentTypes + ")");
+        }
+        String name = cleanFileName(originalName);
+        FileHandle handle = files.put(ctx.tenantId(), name, type, size, content);
+        AttachmentRef ref = new AttachmentRef(handle.storeId(), handle.key(), type, size, name);
+        RecordComment row = new RecordComment(UUID.randomUUID().toString(), ctx.tenantId(), concept.getName(), recordId,
+                ctx.actorId(), name, RecordComment.KIND_ATTACHMENT, ref.toJson(), clock.getAsLong(), null);
+        store.insert(row);
+        return toItem(row, ctx);
+    }
+
+    /**
+     * PROC-6: the file behind an ATTACHMENT row of this record, for a caller who can read the record. The row
+     * must belong to exactly this (tenant, concept, record) and be live; anything else is NOT_FOUND.
+     */
+    public FileHandle openAttachment(String conceptName, String recordId, String commentId, ExecutionContext ctx) {
+        CompiledConcept concept = requireReadable(conceptName, recordId, ctx, true);
+        FileStoreContract files = fileStore.get();
+        RecordComment row = store.findById(ctx.tenantId(), commentId).orElse(null);
+        if (files == null || row == null || row.isDeleted() || !RecordComment.KIND_ATTACHMENT.equals(row.kind())
+                || !row.conceptName().equals(concept.getName()) || !row.recordId().equals(recordId)) {
+            throw notFound();
+        }
+        AttachmentRef ref = AttachmentRef.parse(row.fileJson()).orElseThrow(RecordCommentService::notFound);
+        try {
+            return files.head(ref.storeId(), ref.key());
+        } catch (NoSuchElementException e) {
+            throw notFound();
+        }
+    }
+
+    /** Streams an opened attachment's bytes (the caller has already passed {@link #openAttachment}). */
+    public void copyAttachment(FileHandle handle, OutputStream destination) {
+        FileStoreContract files = fileStore.get();
+        if (files == null) {
+            throw notFound();
+        }
+        try {
+            files.get(handle, destination);
+        } catch (NoSuchElementException e) {
+            throw notFound();
+        }
+    }
+
+    private static String cleanFileName(String raw) {
+        String name = raw == null ? "" : raw.replace('\\', '/');
+        name = name.substring(name.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}\"]", "").trim();
+        if (name.isEmpty()) {
+            name = "file";
+        }
+        return name.length() > MAX_NAME_LENGTH ? name.substring(0, MAX_NAME_LENGTH) : name;
     }
 
     public void delete(String conceptName, String recordId, String commentId, ExecutionContext ctx) {
@@ -206,7 +323,17 @@ public final class RecordCommentService {
     }
 
     private static Item toItem(RecordComment row, ExecutionContext ctx) {
-        return new Item(row.id(), row.author(), row.body(), row.kind(), row.fileJson(), row.createdAtMs(),
+        Map<String, Object> file = null;
+        if (RecordComment.KIND_ATTACHMENT.equals(row.kind())) {
+            Optional<AttachmentRef> ref = AttachmentRef.parse(row.fileJson());
+            if (ref.isPresent()) {
+                file = new LinkedHashMap<>();
+                file.put("name", ref.get().originalName());
+                file.put("size", ref.get().size());
+                file.put("contentType", ref.get().contentType());
+            }
+        }
+        return new Item(row.id(), row.author(), row.body(), row.kind(), file, row.createdAtMs(),
                 row.author().equals(ctx.actorId()));
     }
 }

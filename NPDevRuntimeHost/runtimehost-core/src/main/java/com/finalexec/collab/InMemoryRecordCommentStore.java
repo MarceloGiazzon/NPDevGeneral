@@ -42,6 +42,17 @@ public final class InMemoryRecordCommentStore implements RecordCommentStore {
     }
 
     @Override
+    public java.util.Set<String> attachmentKeys(String tenantId) {
+        java.util.Set<String> keys = new java.util.HashSet<>();
+        for (RecordComment row : byKey.values()) {
+            if (!row.isDeleted() && row.tenantId().equals(tenantId) && RecordComment.KIND_ATTACHMENT.equals(row.kind())) {
+                AttachmentRef.parse(row.fileJson()).ifPresent(ref -> keys.add(ref.key()));
+            }
+        }
+        return keys;
+    }
+
+    @Override
     public boolean softDelete(String tenantId, String commentId, long nowMs) {
         boolean[] changed = {false};
         byKey.computeIfPresent(key(tenantId, commentId), (k, row) -> {
