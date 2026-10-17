@@ -2,6 +2,7 @@ package com.finalexec.auth;
 
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.CapabilityResult;
@@ -244,8 +245,8 @@ public class PasswordResetController {
     }
 
     private ResetTokenRecord findValidToken(Connection connection, String tokensTable, String tokenHash, String tenantId) throws Exception {
-        String sql = "SELECT id, user_id, expires_at, used_at FROM " + tokensTable + " "
-                + "WHERE token_hash = ? AND tenant_id = ?";
+        String sql = SqlIdentifierSupport.sqlWithIdentifiers(
+                "SELECT id, user_id, expires_at, used_at FROM {0} WHERE token_hash = ? AND tenant_id = ?", tokensTable);
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, tokenHash);
             ps.setString(2, tenantId);
@@ -264,7 +265,8 @@ public class PasswordResetController {
     }
 
     private void markTokenUsed(Connection connection, String tokensTable, UUID tokenId) throws Exception {
-        String sql = "UPDATE " + tokensTable + " SET used_at = ? WHERE id = ?";
+        String sql = SqlIdentifierSupport.sqlWithIdentifiers(
+                "UPDATE {0} SET used_at = ? WHERE id = ?", tokensTable);
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setTimestamp(1, Timestamp.from(Instant.now()));
             ps.setObject(2, tokenId);

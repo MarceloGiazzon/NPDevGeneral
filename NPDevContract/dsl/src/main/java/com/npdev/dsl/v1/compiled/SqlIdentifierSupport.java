@@ -8,6 +8,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Shared SQL identifier and bond-shape naming for compiled models.
@@ -182,6 +183,47 @@ public final class SqlIdentifierSupport {
             return normalized;
         }
         return normalized.substring(0, LONG_IDENTIFIER_PREFIX_LENGTH) + "_" + shortHash(rawName);
+    }
+
+    /** A plain, unquoted SQL identifier: one or two dot-separated words of letters, digits and underscores. */
+    private static final Pattern PLAIN_IDENTIFIER =
+            Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,127}(\\.[A-Za-z_][A-Za-z0-9_]{0,127})?");
+
+    /**
+     * The one sanctioned way to put a model-resolved table or column name into SQL text: every
+     * identifier is validated as a plain (optionally schema-qualified) word, then substituted for its
+     * {@code {n}} placeholder in a CONSTANT {@code template}. Values are never placeholders -- they stay
+     * {@code ?} parameters. A name that could carry SQL (quotes, spaces, semicolons, comments) throws
+     * {@link IllegalArgumentException} instead of reaching a statement; a valid name is emitted verbatim,
+     * so the resulting SQL is identical to plain concatenation for every well-formed identifier.
+     */
+    public static String sqlWithIdentifiers(String template, String... identifiers) {
+        StringBuilder out = new StringBuilder(template.length() + 32);
+        int cursor = 0;
+        while (cursor < template.length()) {
+            int open = template.indexOf('{', cursor);
+            int close = open < 0 ? -1 : template.indexOf('}', open);
+            if (open < 0 || close < 0) {
+                out.append(template, cursor, template.length());
+                break;
+            }
+            String index = template.substring(open + 1, close);
+            if (index.isEmpty() || !index.chars().allMatch(Character::isDigit)
+                    || Integer.parseInt(index) >= identifiers.length) {
+                throw new IllegalArgumentException("SQL template placeholder {" + index + "} has no identifier");
+            }
+            out.append(template, cursor, open).append(requirePlainIdentifier(identifiers[Integer.parseInt(index)]));
+            cursor = close + 1;
+        }
+        return out.toString();
+    }
+
+    /** @return {@code identifier} unchanged when it is a plain SQL identifier; throws otherwise. */
+    public static String requirePlainIdentifier(String identifier) {
+        if (identifier == null || !PLAIN_IDENTIFIER.matcher(identifier).matches()) {
+            throw new IllegalArgumentException("not a plain SQL identifier: " + identifier);
+        }
+        return identifier;
     }
 
     public static String tableName(CompiledConcept entity) {

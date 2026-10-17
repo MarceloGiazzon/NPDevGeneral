@@ -146,7 +146,8 @@
     { "adapter": "externalAi", "capability": "externalAi" },
     { "adapter": "fileStore", "capability": "fileStore" },
     { "adapter": "plugin:java-source", "capability": "mosaicPainter" },
-    { "adapter": "mail-smtp", "capability": "mail" }
+    { "adapter": "mail-smtp", "capability": "mail" },
+    { "adapter": "notify", "capability": "notify" }
   ],
   "capabilities": [
     {
@@ -168,6 +169,11 @@
       "name": "mail",
       "operations": ["send"],
       "type": "EmailCapability"
+    },
+    {
+      "name": "notify",
+      "operations": ["send"],
+      "type": "NotifyCapability"
     }
   ],
   "customCapabilities": [
@@ -569,7 +575,7 @@
     },
     {
       "name": "NotifyTradeRecipient",
-      "description": "P7: stamps the recipient's username on the new trade (so the row-access rule lets them see and answer it) and emails them through the mail capability when they have an address. A procedure's capabilityCall args are passed positionally in declared key order, matching mail.send(to, subject, body, templateVars).",
+      "description": "P7: stamps the recipient's username on the new trade (so the row-access rule lets them see and answer it) and emails them through the mail capability when they have an address, and always drops an in-app notification (the shell bell) through notify.send(to, title, body, templateVars, link). A procedure's capabilityCall args are passed positionally in declared key order, matching mail.send(to, subject, body, templateVars).",
       "steps": [
         { "name": "read-recipient", "type": "readConcept", "concept": "Member", "id": "$input.recipientId", "target": "recipient" },
         { "name": "stamp-recipient", "type": "patchConcept", "concept": "Trade", "id": "$input.id",
@@ -585,6 +591,15 @@
               },
               "target": "mailDelivery" }
           ] },
+        { "name": "notify-in-app", "type": "capabilityCall", "capability": "notify", "operation": "send",
+          "args": {
+            "to": "$recipient.username",
+            "title": "New trade ${code} from ${proposerUsername}",
+            "body": "Answer it within 7 days.",
+            "templateVars": "$trade",
+            "link": "/npdev-business-ui/collab/tasks.html"
+          },
+          "target": "notified" },
         { "name": "return-trade", "type": "return", "value": "$trade" }
       ]
     },

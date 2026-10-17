@@ -573,6 +573,16 @@
         securityLink.href = "/security.html";
         securityLink.textContent = shellString("shell.security", "Security");
         el.identity.appendChild(securityLink);
+        // SEC-7: tenant admins get an "Invite user" page (invite-user.html -> POST /api/auth/invite).
+        // The server's own gate is the literal ADMIN role (CreateUserController.requireAdmin), NOT
+        // manifest.superUserRole (the SUPERUSER ControlPanel role), so the link tests the same literal.
+        if (state.roles.indexOf("ADMIN") !== -1) {
+          var inviteLink = document.createElement("a");
+          inviteLink.className = "npdev-shell-invite-user";
+          inviteLink.href = "/invite-user.html";
+          inviteLink.textContent = shellString("shell.inviteUser", "Invite user");
+          el.identity.appendChild(inviteLink);
+        }
       }
       var logoutBtn = document.createElement("button");
       logoutBtn.className = "npdev-shell-logout";
@@ -610,6 +620,19 @@
       el.company.textContent = label;
       el.company.style.display = "";
     }).catch(function () { /* no ShellCompanyName query declared, or it failed -- show nothing */ });
+  }
+
+  // PROC-4: the bell lives in a verbatim static file; the shell only loads it when the model binds the
+  // notify capability (manifest.collaboration.notifications). Idempotent, and never loads for a
+  // logged-out visitor.
+  function loadCollabScript(manifest) {
+    var collab = manifest && manifest.collaboration;
+    if (!collab || !collab.notifications || !state.token) return;
+    if (document.querySelector("script[data-npdev-bell]")) return;
+    var s = document.createElement("script");
+    s.src = "/npdev-business-ui/collab/bell.js";
+    s.setAttribute("data-npdev-bell", "1");
+    document.head.appendChild(s);
   }
 
   // ------------------------------------------------------- executions rail ----
@@ -1723,6 +1746,7 @@
     applyIdentity();
     applyCompanyName();
     renderSidebar();
+    loadCollabScript(manifest);
     applyAppTheme(manifest);
     // P6: guide-page gadgets run authenticated queries -- not for a logged-out visitor of a public page.
     if (!(isPublicPage() && !token)) applyGuidePage(manifest, currentGuidePageName());

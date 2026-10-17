@@ -18,6 +18,8 @@ import java.util.Optional;
 /** PROC-5: the {@code npdev_record_comment} store. Portable SQL; the row cap goes through the dialect. */
 public final class JdbcRecordCommentStore implements RecordCommentStore {
 
+    /** Upper bound on the tenant / concept key columns (TEXT, so unbounded by the schema itself). */
+    static final int MAX_KEY_LENGTH = 255;
     private static final String TABLE = NpdevRecordCommentTable.NAME;
     private static final String COLUMNS =
             "comment_id, tenant_id, concept_name, record_id, author, body, kind, file_json, created_at_ms, deleted_at_ms";
@@ -33,8 +35,8 @@ public final class JdbcRecordCommentStore implements RecordCommentStore {
         String sql = "INSERT INTO " + TABLE + " (" + COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection connection = dataSource.getConnection(); PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, c.id());
-            ps.setString(2, c.tenantId());
-            ps.setString(3, c.conceptName());
+            ps.setString(2, key(c.tenantId(), MAX_KEY_LENGTH));
+            ps.setString(3, key(c.conceptName(), MAX_KEY_LENGTH));
             ps.setString(4, c.recordId());
             ps.setString(5, c.author());
             ps.setString(6, c.body());
@@ -64,8 +66,8 @@ public final class JdbcRecordCommentStore implements RecordCommentStore {
                     + " WHERE tenant_id = ? AND concept_name = ? AND record_id = ? AND deleted_at_ms IS NULL"
                     + " ORDER BY created_at_ms ASC, comment_id ASC\n");
             try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                ps.setString(1, tenantId);
-                ps.setString(2, conceptName);
+                ps.setString(1, key(tenantId, MAX_KEY_LENGTH));
+                ps.setString(2, key(conceptName, MAX_KEY_LENGTH));
                 ps.setString(3, recordId);
                 int index = 4;
                 for (int value : dialect.limitOnly().values(limit, 0)) {
@@ -88,7 +90,7 @@ public final class JdbcRecordCommentStore implements RecordCommentStore {
     public Optional<RecordComment> findById(String tenantId, String commentId) {
         String sql = "SELECT " + COLUMNS + " FROM " + TABLE + " WHERE tenant_id = ? AND comment_id = ?";
         try (Connection connection = dataSource.getConnection(); PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setString(1, tenantId);
+            ps.setString(1, key(tenantId, MAX_KEY_LENGTH));
             ps.setString(2, commentId);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? Optional.of(map(rs)) : Optional.empty();
@@ -103,7 +105,7 @@ public final class JdbcRecordCommentStore implements RecordCommentStore {
         String sql = "SELECT file_json FROM " + TABLE
                 + " WHERE tenant_id = ? AND kind = ? AND deleted_at_ms IS NULL AND file_json IS NOT NULL";
         try (Connection connection = dataSource.getConnection(); PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setString(1, tenantId);
+            ps.setString(1, key(tenantId, MAX_KEY_LENGTH));
             ps.setString(2, RecordComment.KIND_ATTACHMENT);
             java.util.Set<String> keys = new java.util.HashSet<>();
             try (ResultSet rs = ps.executeQuery()) {
@@ -122,12 +124,20 @@ public final class JdbcRecordCommentStore implements RecordCommentStore {
         String sql = "UPDATE " + TABLE + " SET deleted_at_ms = ? WHERE tenant_id = ? AND comment_id = ? AND deleted_at_ms IS NULL";
         try (Connection connection = dataSource.getConnection(); PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setLong(1, nowMs);
-            ps.setString(2, tenantId);
+            ps.setString(2, key(tenantId, MAX_KEY_LENGTH));
             ps.setString(3, commentId);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             throw new IllegalStateException("could not delete record comment", e);
         }
+    }
+
+    /** REG-36: a tenant / concept key reaching a bind is length-bounded, not left to the TEXT column. */
+    static String key(String value, int maxLength) {
+        if (value != null && value.length() > maxLength) {
+            throw new IllegalArgumentException("key longer than " + maxLength + " characters");
+        }
+        return value;
     }
 
     private static RecordComment map(ResultSet rs) throws SQLException {

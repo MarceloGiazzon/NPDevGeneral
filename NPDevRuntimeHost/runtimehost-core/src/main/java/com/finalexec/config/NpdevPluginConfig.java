@@ -519,6 +519,7 @@ public class NpdevPluginConfig {
             if ("eventbus".equalsIgnoreCase(binding.getCapability())
                     || "externalai".equalsIgnoreCase(binding.getCapability())
                     || "filestore".equalsIgnoreCase(binding.getCapability())
+                    || "notify".equalsIgnoreCase(binding.getCapability())
                     || com.finalexec.connector.HttpConnectorCapabilityHandler.ADAPTER_ID.equalsIgnoreCase(binding.getAdapter())
                     // INT-5: outbound webhooks are platform-served too (QueuedWebhookCapabilityHandler).
                     || com.finalexec.webhook.QueuedWebhookCapabilityHandler.ADAPTER_ID.equalsIgnoreCase(binding.getAdapter())) {
