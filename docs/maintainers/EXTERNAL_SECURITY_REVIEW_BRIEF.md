@@ -1,6 +1,6 @@
 # External Security Review — brief for an independent reviewer
 
-> **STATUS: ACTIVE** — this is the one open item that cannot be closed from inside the project.
+> **STATUS: ACTIVE** — this is the one open item that cannot be closed from inside the project (no ledger item tracks it; this brief is its only record).
 > Prepared 2026-07-25. Hand this to a reviewer who did **not** write NPDev.
 >
 > **2026-07-27 update:** briefly misfiled to `docs/archive/programme-history/` during that day's doc
@@ -41,7 +41,7 @@ ranking is itself useful signal.
 | 3 | **Tenant isolation** | Cross-tenant read/write is the worst outcome available | `ExecutionContext`, `TenantIsolationPolicy`, every `*-postgres` adapter |
 | 4 | **Flow `await` / resume** | Durable state + identity across suspension | `DefaultProcedureExecutor`, `DefaultExecutionAuthorizationPolicy.canResumeExecution` |
 | 5 | **Conversion hooks** | Operator SQL that may destroy data **without** an acknowledgment token (by design — ADR-0008) | `com.finalexec.db.ConversionHookRunner` |
-| 6 | **Export/PDF** | Untrusted content rendering; bulk data egress | export path + `ProposedConversionSql` |
+| 6 | **Export/PDF** | Untrusted content rendering; bulk data egress | `DocumentRenderController` (PDF rendering) and the CSV/Excel export paths |
 
 ## 2. What we already believe — please try to falsify these
 
@@ -58,28 +58,28 @@ These are our claims. Each is a target.
 
 ## 3. Known-and-accepted — not findings unless you can weaponise them
 
-Please read [`ACCEPTED_BOUNDARIES.md`](../ACCEPTED_BOUNDARIES.md) first (17 items). The ones most likely
-to look like bugs:
+Please read [`ACCEPTED_BOUNDARIES.md`](../ACCEPTED_BOUNDARIES.md) first (26 boundary records in `ledger/boundaries/`, all now LIFTED; the register's rows are history with named residues). The ones
+most likely to look like bugs:
 
-- **Row-level authz is check-then-act** (TOCTOU), not atomic. Accepted: needs a second actor who
-  already has write access. *If you can exploit it without that precondition, it is a finding.*
-- **`crud.kernelControlled: false` disables authorization** — now a generation-time **error**, so a
-  model cannot reach that state. *If you can reach it anyway, that is a finding.*
+- **Row-level authz was check-then-act** (TOCTOU). That boundary (B18) is now LIFTED: the window is closed on save and delete by
+  locking / compare-and-swap (REG-210, 2026-09-07), with a named residue for tables generated before the row-version column.
+  *Try to break the fix: any lost update or bypass is a finding.*
+- **`crud.kernelControlled: false` disables authorization** — a generation-time **error** when the concept
+  also declares `access.read`/`access.write` (a concept with no declared rules is skipped by that check). *If you can reach an
+  unenforced rule anyway, that is a finding.*
 - **Flow resume with a null `actorId` is tenant-scoped only.** Accepted for anonymous/cron flows.
   *If you can cause a user-owned flow to have a null actorId, that is a finding.*
 - **H2 has no transactional DDL**, so a failed hook `verifySql` cannot roll back DDL on H2.
-- **Single-instance migration** — concurrency is detect-and-refuse, not a lock.
+- **Single-instance posture.** Migration serializes on a real waiting lock (`MigrationMutex`, B4 LIFTED); the supported deployment is still one app process per database.
 
 ## 4. Getting it running
 
 ```bash
 git clone <repo> && cd NPDev_General
-# Generate + build + run a sample app (H2, no external services):
-pwsh -File scripts/appgen/Build-NpdevApp.ps1 -AppFolder superuser-admin-console
 ```
-Full setup: [`GETTING_STARTED.md`](../GETTING_STARTED.md). Two known-open CI items, so you do not
-re-discover them: the Windows `LegacyModelMigrationToolTest` failure, and the Linux
-`npdev report bootstrap` failure.
+Full setup, including generating and running an app on H2 with no external services: [`GETTING_STARTED.md`](../GETTING_STARTED.md).
+(Earlier versions of this brief listed two known-open CI items; both are resolved or were false alarms — QUAL-4 is DONE and
+REG-165 records the Windows `LegacyModelMigrationToolTest` failure as a false alarm.)
 
 **For authorization testing you need two real identities in one tenant** — that is the configuration
 that exposed both bugs we found. A single-user session will not show them.
@@ -90,8 +90,8 @@ One finding per entry. What we need: **the concrete attack** (inputs, actor, seq
 **impact**, and your **severity**. Please do *not* fix anything — a recorded failure is worth more
 than a silent patch, and we would rather triage your raw observation.
 
-File to `docs/EXTERNAL_REVIEW_FINDINGS_<date>.md`, or any format you prefer. Existing findings
-documents (`REG16_*_ADVERSARIAL_REVIEW.md`) show our house style, but do not feel bound by it.
+Send them in any format you prefer; the maintainer records them as ledger items (this repo does not keep findings logs as
+documents, so please do not add one).
 
 **Also worth reporting:** anything in this brief that turned out to be false, any claim in §2 you
 could not evaluate, and anything that took you more than 15 minutes to figure out. A brief that
