@@ -19,4 +19,10 @@ public interface RecordCommentStore {
 
     /** Stamps {@code deleted_at_ms}; returns false when no live row matched. */
     boolean softDelete(String tenantId, String commentId, long nowMs);
+
+    /**
+     * PROC-6: file-store keys of the tenant's live ATTACHMENT rows -- what the orphan-file sweeper must
+     * treat as referenced, since no concept FILE FIELD points at them.
+     */
+    java.util.Set<String> attachmentKeys(String tenantId);
 }

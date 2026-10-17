@@ -82,10 +82,16 @@ class JdbcRecordCommentStoreH2Test {
 
     @Test
     void attachmentRowsKeepTheirFileJson() {
+        String fileJson = new AttachmentRef("local", "t1/plan.pdf", "application/pdf", 7, "plan.pdf").toJson();
         store.insert(new RecordComment("f1", "t1", "Mosaic", "r1", "tito", "plan.pdf", RecordComment.KIND_ATTACHMENT,
-                "{\"key\":\"t1/plan.pdf\"}", 10, null));
+                fileJson, 10, null));
+        store.insert(row("c1", "t1", "r1", 11));
         RecordComment found = store.list("t1", "Mosaic", "r1", 10).get(0);
         assertEquals(RecordComment.KIND_ATTACHMENT, found.kind());
-        assertEquals("{\"key\":\"t1/plan.pdf\"}", found.fileJson());
+        assertEquals(fileJson, found.fileJson());
+        assertEquals(java.util.Set.of("t1/plan.pdf"), store.attachmentKeys("t1"), "comments contribute no keys");
+        assertTrue(store.attachmentKeys("t2").isEmpty());
+        store.softDelete("t1", "f1", 99);
+        assertTrue(store.attachmentKeys("t1").isEmpty(), "a deleted attachment no longer protects its object");
     }
 }

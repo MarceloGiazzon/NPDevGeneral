@@ -99,6 +99,25 @@ public final class JdbcRecordCommentStore implements RecordCommentStore {
     }
 
     @Override
+    public java.util.Set<String> attachmentKeys(String tenantId) {
+        String sql = "SELECT file_json FROM " + TABLE
+                + " WHERE tenant_id = ? AND kind = ? AND deleted_at_ms IS NULL AND file_json IS NOT NULL";
+        try (Connection connection = dataSource.getConnection(); PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, tenantId);
+            ps.setString(2, RecordComment.KIND_ATTACHMENT);
+            java.util.Set<String> keys = new java.util.HashSet<>();
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    AttachmentRef.parse(rs.getString(1)).ifPresent(ref -> keys.add(ref.key()));
+                }
+            }
+            return keys;
+        } catch (SQLException e) {
+            throw new IllegalStateException("could not read attachment keys", e);
+        }
+    }
+
+    @Override
     public boolean softDelete(String tenantId, String commentId, long nowMs) {
         String sql = "UPDATE " + TABLE + " SET deleted_at_ms = ? WHERE tenant_id = ? AND comment_id = ? AND deleted_at_ms IS NULL";
         try (Connection connection = dataSource.getConnection(); PreparedStatement ps = connection.prepareStatement(sql)) {
