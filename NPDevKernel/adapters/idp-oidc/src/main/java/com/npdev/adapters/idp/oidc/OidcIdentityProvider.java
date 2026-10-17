@@ -40,6 +40,8 @@ import java.util.stream.StreamSupport;
  */
 public final class OidcIdentityProvider implements IdentityProvider {
 
+    private static final System.Logger LOG = System.getLogger(OidcIdentityProvider.class.getName());
+
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
     private static final long CLOCK_SKEW_SECONDS = 60L;
 
@@ -110,29 +112,37 @@ public final class OidcIdentityProvider implements IdentityProvider {
         if (code == null || code.isBlank() || redirectUri == null) {
             return Optional.empty();
         }
+        // Fail closed: an interrupted or failed exchange/verification leaves `resolved` empty (no identity).
+        // The failure is logged, never silently folded into the same answer as a rejected token.
+        Optional<IdentityProviderClaims> resolved = Optional.empty();
         try {
-            String idToken = exchangeCode(code, redirectUri);
-            if (idToken == null) {
-                return Optional.empty();
-            }
-            JsonNode claims = verifyIdToken(idToken);                    // null on ANY failure
-            if (claims == null) {
-                return Optional.empty();
-            }
-            String subject = text(claims, "sub");
-            if (subject == null) {
-                return Optional.empty();
-            }
-            String email = text(claims, emailClaim);
-            boolean verified = settings.assumeEmailVerified() || isTrue(claims.get("email_verified"));
-            return Optional.of(new IdentityProviderClaims(subject, email, email != null && verified,
-                    text(claims, nameClaim), text(claims, pictureClaim)));
+            resolved = resolveVerifiedIdentity(code, redirectUri);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return Optional.empty();
         } catch (IOException | RuntimeException e) {
+            LOG.log(System.Logger.Level.WARNING, "OIDC identity resolution failed closed: " + e.getClass().getName());
+        }
+        return resolved;
+    }
+
+    private Optional<IdentityProviderClaims> resolveVerifiedIdentity(String code, String redirectUri)
+            throws IOException, InterruptedException {
+        String idToken = exchangeCode(code, redirectUri);
+        if (idToken == null) {
             return Optional.empty();
         }
+        JsonNode claims = verifyIdToken(idToken);                        // null on ANY failure
+        if (claims == null) {
+            return Optional.empty();
+        }
+        String subject = text(claims, "sub");
+        if (subject == null) {
+            return Optional.empty();
+        }
+        String email = text(claims, emailClaim);
+        boolean verified = settings.assumeEmailVerified() || isTrue(claims.get("email_verified"));
+        return Optional.of(new IdentityProviderClaims(subject, email, email != null && verified,
+                text(claims, nameClaim), text(claims, pictureClaim)));
     }
 
     /** Package-private for the test: header.payload.signature -> claims, or null on any failure. */
@@ -141,17 +151,18 @@ public final class OidcIdentityProvider implements IdentityProvider {
         if (parts.length != 3) {
             return null;
         }
-        JsonNode header;
-        JsonNode claims;
-        byte[] signature;
+        JsonNode header = null;
+        JsonNode claims = null;
+        byte[] signature = null;
         try {
             header = objectMapper.readTree(Base64.getUrlDecoder().decode(parts[0]));
             claims = objectMapper.readTree(Base64.getUrlDecoder().decode(parts[1]));
             signature = Base64.getUrlDecoder().decode(parts[2]);
         } catch (IllegalArgumentException | IOException e) {
-            return null;
+            LOG.log(System.Logger.Level.DEBUG, "OIDC id_token is not decodable: " + e.getClass().getName());
+            header = null;                                               // malformed token: rejected below
         }
-        if (header == null || claims == null || !header.isObject() || !claims.isObject()) {
+        if (header == null || signature == null || claims == null || !header.isObject() || !claims.isObject()) {
             return null;
         }
         if (!"RS256".equals(text(header, "alg"))) {
@@ -161,14 +172,16 @@ public final class OidcIdentityProvider implements IdentityProvider {
         if (key == null) {
             return null;
         }
+        boolean signatureValid = false;
         try {
             Signature verifier = Signature.getInstance("SHA256withRSA");
             verifier.initVerify(key);
             verifier.update((parts[0] + "." + parts[1]).getBytes(StandardCharsets.US_ASCII));
-            if (!verifier.verify(signature)) {
-                return null;
-            }
+            signatureValid = verifier.verify(signature);
         } catch (java.security.GeneralSecurityException e) {
+            LOG.log(System.Logger.Level.WARNING, "OIDC signature verification failed closed: " + e.getClass().getName());
+        }
+        if (!signatureValid) {
             return null;
         }
         // The DISCOVERED issuer, verbatim (a trailing slash matters to some IdPs).
