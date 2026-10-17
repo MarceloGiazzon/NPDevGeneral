@@ -57,6 +57,15 @@ class JdbcRecordCommentStoreH2Test {
     }
 
     @Test
+    void rejectsAKeyLongerThanTheBound() {
+        String tooLong = "t".repeat(JdbcRecordCommentStore.MAX_KEY_LENGTH + 1);
+        assertThrows(IllegalArgumentException.class, () -> store.findById(tooLong, "c1"));
+        assertThrows(IllegalArgumentException.class, () -> store.attachmentKeys(tooLong));
+        assertThrows(IllegalArgumentException.class, () -> store.insert(row("c1", tooLong, "r1", 1L)));
+        assertEquals("tenant", JdbcRecordCommentStore.key("tenant", JdbcRecordCommentStore.MAX_KEY_LENGTH));
+    }
+
+    @Test
     void listsLiveRowsOfOneThreadOldestFirstAndCapsThem() {
         store.insert(row("b", "t1", "r1", 20));
         store.insert(row("a", "t1", "r1", 10));
