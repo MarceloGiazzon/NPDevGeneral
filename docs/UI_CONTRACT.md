@@ -213,6 +213,13 @@ literal string `"system"`) — that is what lets the `prefers-color-scheme` medi
 `applyThemeMode()`/`applyDensity()` in `shell.js.mustache` are the one place this logic lives; extend
 them rather than re-deriving the cascade elsewhere.
 
+**Aggregate Workbench pages** (`static/npdev-workbench/<Panel>.html`) are standalone pages that do not
+load `shell.js`, but they link `/shell.css` (before their inline style) and `/theme.css` (last, harmless
+when the app has none), and their page-local names (`--np-ink`, `--np-line`, `--np-danger`, ...) are
+aliases of the shared tokens. So an app `/theme.css` and the OS dark mode (`prefers-color-scheme`)
+restyle them like every other screen. An explicit app-wide `ui.theme.mode` of `dark` or `light` is
+applied by `shell.js`, so it does not reach a workbench page; only the OS preference does.
+
 ## Shared global states (W1.5 + S10)
 
 Six states every surface needs -- loading, empty, error, permission-denied, no-results, offline --
@@ -337,6 +344,45 @@ concept node of `generated-ui-manifest.json`.
   concept), so a hit may be missing in a very large table: refine the query. A concept with no
   `filterable` field is not searchable, and the server's `filterRows` returns no rows for a non-blank
   `filter` on such a concept (it used to return the whole table).
+
+## Mobile layout (768 px breakpoint)
+
+At 768 px and below the shell injects one responsive block (`injectResponsiveShellStyle` in
+`shell.js`): the left nav becomes an off-canvas drawer opened by the top-bar menu button, and, since
+UI-7, the right gadget rail (KPIs, charts, tables, recents, fragments) becomes a drawer from the
+right, opened by the rail toggle, which stays visible. Only one drawer is open at a time (opening
+one closes the other), and the shared backdrop, Escape, or growing the viewport past 768 px closes
+them. The desktop collapsed state (and its `localStorage` key) is untouched above the breakpoint. A
+page whose GuidePage has no right region still hides both the rail and its toggle.
+
+## Dashboard filter bar
+
+A GuidePage gadget (`kpi` / `bar` / `line` / `table`) bound to a query that declares `parameters`
+carries them in its manifest node (`gadgets[].parameters`: `name`, `type`, `required`). When any
+gadget on the page has parameters, `shell.js` shows one `.npdev-shell-gadget-filters` bar above the
+gadgets with one input per distinct parameter name (date picker for `date`, number for
+`integer`/`decimal`, text otherwise). A `date` parameter defaults to the first day of the current
+month for names starting with `from` / `start` / `since` and to today otherwise. The value is
+remembered in `localStorage` (`npdev.dashboard.<guidePage>.<param>`), sent as an ISO `?name=value`
+query string, and changing it re-runs every gadget. A required parameter left empty shows
+"Set <name> above" in the gadget instead of the endpoint's 400. A page with no parameterized gadgets
+is unchanged.
+
+## Language switch (UI-8)
+
+A model may declare labels per language (`"label": {"default": "Status", "pt-BR": "Situação"}`). The
+manifest's top-level `locales` lists every tag used by a concept/field/enum-option label map (plus
+`settings.locale`); with two or more, `views/locale.js` adds a language `<select>` (Auto + each tag) to
+the top bar. The choice is stored in `localStorage` key `npdev.ui.locale` and sent as `X-Tag-locale` on
+every call (`app.js` `headers()`, `shell.js` `authHeaders()`); picking one reloads the page. The server
+resolves labels (kernel `LabelResolver`: exact tag, then language, then default) and the UI copies the
+already-resolved `label` / `shortLabel` from `GET /api/v1/runtime/metadata/ui/bundle` onto the manifest
+fields; the client never interprets a locale map. Shell chrome strings come from the manifest's
+`stringsByLocale` (`en`, `pt`; `settings.strings` overrides are layered onto the entry matching
+`settings.locale`), looked up by the language part of the chosen tag, then `strings`, then the English
+fallback. "Auto" clears the key, so `Accept-Language` decides server-side and `strings` (the app's
+generation-time catalogue) decides the chrome. Known gap: the Aggregate Workbench page bakes its
+strings at generation and does not follow the switch.
 
 ## Breadcrumbs and default route (W1.6)
 

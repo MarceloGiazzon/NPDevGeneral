@@ -146,11 +146,18 @@
       ".npdev-shell-topbar .npdev-shell-collapse-toggle{width:44px;height:44px;}" +
       ".npdev-shell-sidebar a,.npdev-shell-sidebar .npdev-shell-nav-group-header{min-height:44px;}" +
       ".npdev-shell-body{position:relative;}" +
-      /* The right gadget rail has no drawer of its own (out of scope for this pass) -- at this
-         width it would otherwise squeeze the content column to near-nothing alongside the sidebar
-         drawer, so it and its topbar toggle are simply hidden rather than left half-broken. */
-      ".npdev-shell-rightbar{display:none;}" +
-      ".npdev-shell-topbar button.npdev-shell-rightbar-toggle{display:none;}" +
+      /* UI-7: the right gadget rail is a drawer from the right at this width (mirror of the left
+         nav drawer) so KPI/chart/table gadgets stay reachable on a phone instead of being hidden.
+         It must not stay in the flex flow (it would squeeze the content column). The desktop
+         "collapsed" state means nothing on a drawer. A page with no right region
+         (body.npdev-shell-no-right) keeps shell.css's display:none and loses the toggle too. */
+      ".npdev-shell-rightbar{position:fixed;top:var(--np-topbar-h,52px);bottom:0;right:0;z-index:40;" +
+      "width:min(90vw,340px);padding:14px;transform:translateX(100%);transition:transform .18s ease;" +
+      "box-shadow:0 12px 32px rgba(24,32,42,.28);}" +
+      "body.npdev-shell-rightbar-collapsed .npdev-shell-rightbar{width:min(90vw,340px);padding:14px;overflow-y:auto;}" +
+      "body.npdev-shell-rightbar-mobile-open .npdev-shell-rightbar{transform:translateX(0);}" +
+      "body.npdev-shell-rightbar-mobile-open .npdev-shell-sidebar-backdrop{display:block;}" +
+      "body.npdev-shell-no-right .npdev-shell-topbar button.npdev-shell-rightbar-toggle{display:none;}" +
       "}";
     document.head.appendChild(style);
   })();
@@ -180,8 +187,17 @@
 
   // SEC-1: X-NPDev-Request is always sent (even with no token: after an OAuth sign-in the HttpOnly
   // cookie is the only credential) -- the server requires it for cookie-authenticated writes.
+  function readUiLocale() {
+    try { return localStorage.getItem("npdev.ui.locale") || ""; } catch (ignored) { return ""; }
+  }
+
   function authHeaders(token) {
     var headers = { "X-NPDev-Request": "1" };
+    // UI-8: the user's language choice (views/locale.js); empty = Auto, the server falls back to Accept-Language.
+    var uiLocale = readUiLocale();
+    if (uiLocale) {
+      headers["X-Tag-locale"] = uiLocale;
+    }
     if (token) {
       headers["Authorization"] = "Bearer " + token;
       headers["X-Api-Key"] = token;
@@ -286,7 +302,19 @@
     if (el.sidebarToggle) el.sidebarToggle.setAttribute("aria-expanded", "false");
   }
 
+  // UI-7: the right gadget rail's phone drawer; never open together with the left nav drawer.
+  function closeMobileRightbar() {
+    document.body.classList.remove("npdev-shell-rightbar-mobile-open");
+    if (el.rightbarToggle) el.rightbarToggle.setAttribute("aria-expanded", "false");
+  }
+
+  function closeMobileDrawers() {
+    closeMobileSidebar();
+    closeMobileRightbar();
+  }
+
   function openMobileSidebar() {
+    closeMobileRightbar();
     document.body.classList.add("npdev-shell-sidebar-mobile-open");
     if (el.sidebarToggle) el.sidebarToggle.setAttribute("aria-expanded", "true");
   }
@@ -313,8 +341,8 @@
     var sidebarToggle = document.createElement("button");
     sidebarToggle.className = "npdev-shell-collapse-toggle";
     sidebarToggle.type = "button";
-    sidebarToggle.title = "Recolher/expandir menu";
-    sidebarToggle.setAttribute("aria-label", "Recolher/expandir menu");
+    sidebarToggle.title = shellString("shell.toggleMenu", "Collapse/expand menu");
+    sidebarToggle.setAttribute("aria-label", shellString("shell.toggleMenu", "Collapse/expand menu"));
     sidebarToggle.textContent = "☰";
     sidebarToggle.setAttribute("aria-expanded", "false");
     // R7.10: ties the toggle to the drawer it controls for assistive tech, on both the desktop
@@ -359,8 +387,8 @@
     var quickAccessToggle = document.createElement("button");
     quickAccessToggle.className = "npdev-shell-quickaccess-toggle";
     quickAccessToggle.type = "button";
-    quickAccessToggle.title = "Acesso rapido";
-    quickAccessToggle.setAttribute("aria-label", "Acesso rapido");
+    quickAccessToggle.title = shellString("shell.quickAccess", "Quick access");
+    quickAccessToggle.setAttribute("aria-label", shellString("shell.quickAccess", "Quick access"));
     quickAccessToggle.textContent = "★";
     quickAccessToggle.addEventListener("click", function () {
       renderQuickAccessPanel();
@@ -372,7 +400,7 @@
     var quickAccessPanel = document.createElement("div");
     quickAccessPanel.className = "npdev-shell-quickaccess-panel";
     quickAccessPanel.setAttribute("role", "region");
-    quickAccessPanel.setAttribute("aria-label", "Acesso rapido");
+    quickAccessPanel.setAttribute("aria-label", shellString("shell.quickAccess", "Quick access"));
     bar.appendChild(quickAccessPanel);
     el.quickAccessPanel = quickAccessPanel;
 
@@ -430,9 +458,17 @@
     var rightbarToggle = document.createElement("button");
     rightbarToggle.className = "npdev-shell-rightbar-toggle";
     rightbarToggle.type = "button";
-    rightbarToggle.title = "Mostrar/ocultar painel lateral";
+    rightbarToggle.title = shellString("shell.toggleRightbar", "Show/hide side panel");
     rightbarToggle.textContent = "▤";
+    rightbarToggle.setAttribute("aria-expanded", "false");
     rightbarToggle.addEventListener("click", function () {
+      if (isMobileViewport()) {
+        var open = !document.body.classList.contains("npdev-shell-rightbar-mobile-open");
+        if (open) closeMobileSidebar();
+        document.body.classList.toggle("npdev-shell-rightbar-mobile-open", open);
+        rightbarToggle.setAttribute("aria-expanded", String(open));
+        return;
+      }
       var collapsed = !document.body.classList.contains("npdev-shell-rightbar-collapsed");
       document.body.classList.toggle("npdev-shell-rightbar-collapsed", collapsed);
       writeJsonStorage(localStorage, RIGHTBAR_COLLAPSED_KEY, collapsed);
@@ -457,7 +493,7 @@
     // on every viewport crossing.
     var sidebarBackdrop = document.createElement("div");
     sidebarBackdrop.className = "npdev-shell-sidebar-backdrop";
-    sidebarBackdrop.addEventListener("click", closeMobileSidebar);
+    sidebarBackdrop.addEventListener("click", closeMobileDrawers);
 
     var bodyRow = document.createElement("div");
     bodyRow.className = "npdev-shell-body";
@@ -487,13 +523,15 @@
     // open on a phone, then the same page resized wide (devtools, foldable, external monitor),
     // would keep the off-canvas transform applied under styles no longer meant for it.
     document.addEventListener("keydown", function (event) {
-      if (event.key === "Escape" && document.body.classList.contains("npdev-shell-sidebar-mobile-open")) {
-        closeMobileSidebar();
+      if (event.key === "Escape" && (document.body.classList.contains("npdev-shell-sidebar-mobile-open")
+          || document.body.classList.contains("npdev-shell-rightbar-mobile-open"))) {
+        closeMobileDrawers();
       }
     });
     window.addEventListener("resize", function () {
-      if (!isMobileViewport() && document.body.classList.contains("npdev-shell-sidebar-mobile-open")) {
-        closeMobileSidebar();
+      if (!isMobileViewport() && (document.body.classList.contains("npdev-shell-sidebar-mobile-open")
+          || document.body.classList.contains("npdev-shell-rightbar-mobile-open"))) {
+        closeMobileDrawers();
       }
     });
   }
@@ -503,7 +541,13 @@
   // Chrome strings come from the app's manifest (PlatformStrings defaults + settings.strings);
   // the English fallback covers an app generated before the manifest carried them.
   function shellString(key, fallback) {
-    var strings = state.manifest && state.manifest.strings;
+    // UI-8: the per-locale catalogue for the user's chosen language ("pt-BR" -> "pt") wins, then the
+    // app-default catalogue (generation-time settings.locale), then the English fallback.
+    var manifest = state.manifest;
+    var language = readUiLocale().split("-")[0].toLowerCase();
+    var byLocale = manifest && manifest.stringsByLocale && language ? manifest.stringsByLocale[language] : null;
+    if (byLocale && byLocale[key]) return byLocale[key];
+    var strings = manifest && manifest.strings;
     return (strings && strings[key]) || fallback;
   }
 
@@ -990,7 +1034,72 @@
 
   function fetchGadgetQuery(gadget) {
     if (!gadget || !gadget.query) return Promise.reject(new Error("gadget has no query binding"));
-    return fetchJson("/api/queries/" + encodeURIComponent(gadget.query), state.token);
+    // UI-9: a query that declares parameters needs them on the call (the endpoint answers 400
+    // "Query parameter X is required" otherwise); values come from the dashboard filter bar.
+    var params = new URLSearchParams();
+    var missing = null;
+    (gadget.parameters || []).forEach(function (p) {
+      var value = dashboardParams[p.name];
+      if (value === undefined || value === null || String(value) === "") {
+        if (p.required && !missing) missing = p.name;
+        return;
+      }
+      params.append(p.name, String(value));
+    });
+    if (missing) return Promise.reject(new Error("Set " + missing + " above"));
+    var qs = params.toString();
+    return fetchJson("/api/queries/" + encodeURIComponent(gadget.query) + (qs ? "?" + qs : ""), state.token);
+  }
+
+  // UI-9 dashboard filter bar: one input per distinct query parameter across the page's gadgets.
+  var dashboardParams = {};
+
+  function gadgetParamDefault(p) {
+    if (p.type !== "date") return "";
+    var now = new Date();
+    var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+    var day = /^(from|start|since)/i.test(p.name) ? 1 : now.getDate();
+    return now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(day);
+  }
+
+  function distinctGadgetParams(gadgets) {
+    var seen = {};
+    var list = [];
+    (gadgets || []).forEach(function (g) {
+      (g.parameters || []).forEach(function (p) {
+        if (!seen[p.name]) { seen[p.name] = true; list.push(p); }
+      });
+    });
+    return list;
+  }
+
+  function buildGadgetFilters(gadgets, pageName) {
+    var params = distinctGadgetParams(gadgets);
+    if (!params.length) return null;
+    var bar = document.createElement("div");
+    bar.className = "npdev-shell-gadget-filters";
+    params.forEach(function (p) {
+      var key = "npdev.dashboard." + (pageName || "page") + "." + p.name;
+      var stored = null;
+      try { stored = localStorage.getItem(key); } catch (ignored) { stored = null; }
+      var value = stored !== null ? stored : gadgetParamDefault(p);
+      dashboardParams[p.name] = value;
+      var label = document.createElement("label");
+      label.textContent = p.name;
+      var input = document.createElement("input");
+      input.type = p.type === "date" ? "date" : (p.type === "integer" || p.type === "decimal" ? "number" : "text");
+      if (p.type === "decimal") input.step = "any";
+      input.value = value;
+      input.setAttribute("aria-label", p.name);
+      input.addEventListener("change", function () {
+        dashboardParams[p.name] = input.value;
+        try { localStorage.setItem(key, input.value); } catch (ignored) { /* private mode */ }
+        renderGadgets(gadgets, pageName);
+      });
+      label.appendChild(input);
+      bar.appendChild(label);
+    });
+    return bar;
   }
 
   function gadgetMessage(container, message) {
@@ -1293,8 +1402,10 @@
   gadgetRenderers["bar"] = function (container, gadget) { renderXyChartGadget(container, gadget, "bar"); };
   gadgetRenderers["line"] = function (container, gadget) { renderXyChartGadget(container, gadget, "line"); };
 
-  function renderGadgets(gadgets) {
+  function renderGadgets(gadgets, pageName) {
     el.rightbar.innerHTML = "";
+    var filterBar = buildGadgetFilters(gadgets, pageName);
+    if (filterBar) el.rightbar.appendChild(filterBar);
     (gadgets || []).forEach(function (gadget) {
       var card = document.createElement("div");
       card.className = "npdev-shell-gadget";
@@ -1501,7 +1612,7 @@
       el.logo.appendChild(img);
     }
 
-    renderGadgets(page.gadgets);
+    renderGadgets(page.gadgets, page.name);
   }
 
   // -------------------------------------------------------------- login ----
@@ -1590,6 +1701,18 @@
     });
   }
 
+  // UI-8: the top-bar tooltips are first painted by paintSkeleton() before the manifest (and so the
+  // per-language catalogue) is known; re-apply them here once state.manifest is set.
+  function applyChromeStrings() {
+    var menu = shellString("shell.toggleMenu", "Collapse/expand menu");
+    var quick = shellString("shell.quickAccess", "Quick access");
+    var rail = shellString("shell.toggleRightbar", "Show/hide side panel");
+    if (el.sidebarToggle) { el.sidebarToggle.title = menu; el.sidebarToggle.setAttribute("aria-label", menu); }
+    if (el.quickAccessToggle) { el.quickAccessToggle.title = quick; el.quickAccessToggle.setAttribute("aria-label", quick); }
+    if (el.quickAccessPanel) { el.quickAccessPanel.setAttribute("aria-label", quick); }
+    if (el.rightbarToggle) { el.rightbarToggle.title = rail; }
+  }
+
   function applyData(me, menuRows, manifest, token) {
     state.token = token;
     state.roles = Array.isArray(me.roles) ? me.roles : [];
@@ -1602,6 +1725,7 @@
     if (maybeRedirectToLogin(manifest)) return;
 
     resolveReady(currentUser());
+    applyChromeStrings();
     applyIdentity();
     applyCompanyName();
     renderSidebar();

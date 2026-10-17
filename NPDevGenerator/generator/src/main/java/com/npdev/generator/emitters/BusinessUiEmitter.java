@@ -20,6 +20,9 @@ import com.npdev.dsl.v1.compiled.CompiledGuidePageRegions;
 import com.npdev.dsl.v1.compiled.CompiledGuidePageTheme;
 import com.npdev.dsl.v1.compiled.GuidePageDefaults;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
+import com.npdev.dsl.v1.compiled.PlatformStrings;
+import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
@@ -260,6 +263,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             "board.js",
             "search.js",
             "calendar.js",
+            "locale.js",
             "views.css"
     );
 
@@ -413,13 +417,23 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         if (model != null && model.getSettings() != null) {
             root.put("strings", model.getSettings().getStrings());
         }
+        // UI-8: the languages the model declares labels for (drives the top-bar language switch) and the
+        // shell chrome catalogue per language. `strings` above stays for old shells / "Auto".
+        root.put("locales", declaredLocales(model));
+        root.put("stringsByLocale", stringsByLocale(model));
 
         GuidePageDefaults.Result guidePages = GuidePageDefaults.withBuiltins(model == null ? List.of() : model.getGuidePages());
         Set<String> knownGuidePageNames = new LinkedHashSet<>();
         for (CompiledGuidePage page : guidePages.guidePages()) {
             knownGuidePageNames.add(page.name());
         }
-        root.put("guidePages", guidePageNodes(guidePages.guidePages()));
+        Map<String, CompiledQuery> queriesByName = new LinkedHashMap<>();
+        if (model != null && model.getQueries() != null) {
+            for (CompiledQuery query : model.getQueries()) {
+                queriesByName.put(query.name(), query);
+            }
+        }
+        root.put("guidePages", guidePageNodes(guidePages.guidePages(), queriesByName));
         root.put("defaultGuidePage", guidePages.defaultGuidePage());
         // Path A W1.1 (NPDEV_ROADMAP_2026-09-12.md Wave 1): appShell was compiled/resolved/threaded
         // through the model but never consumed by the generator (grep for it anywhere under
@@ -905,7 +919,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         return trimmed;
     }
 
-    private static List<Map<String, Object>> guidePageNodes(List<CompiledGuidePage> guidePages) {
+    private static List<Map<String, Object>> guidePageNodes(
+            List<CompiledGuidePage> guidePages, Map<String, CompiledQuery> queriesByName) {
         List<Map<String, Object>> nodes = new ArrayList<>();
         for (CompiledGuidePage page : guidePages) {
             Map<String, Object> node = new LinkedHashMap<>();
@@ -926,12 +941,91 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 gadgetNode.put("y", blankToNull(gadget.y()));
                 gadgetNode.put("series", blankToNull(gadget.series()));
                 gadgetNode.put("url", blankToNull(gadget.url()));
+                // UI-9: the bound query's declared parameters, so shell.js can show one dashboard
+                // filter input per distinct parameter instead of calling the query bare (a 400).
+                List<Map<String, Object>> gadgetParameters = new ArrayList<>();
+                CompiledQuery boundQuery = gadget.query() == null ? null : queriesByName.get(gadget.query());
+                if (boundQuery != null) {
+                    for (CompiledProcedureParameter parameter : boundQuery.parameters()) {
+                        Map<String, Object> parameterNode = new LinkedHashMap<>();
+                        parameterNode.put("name", parameter.name());
+                        parameterNode.put("type", parameter.type() == null ? "string" : parameter.type());
+                        parameterNode.put("required", parameter.required());
+                        gadgetParameters.add(parameterNode);
+                    }
+                }
+                gadgetNode.put("parameters", gadgetParameters);
                 gadgetNodes.add(gadgetNode);
             }
             node.put("gadgets", gadgetNodes);
             nodes.add(node);
         }
         return nodes;
+    }
+
+    /**
+     * Sorted, de-duplicated union of every locale tag a label map in the model uses (concept/field ui
+     * label + shortLabel maps, enum option labels) plus {@code settings.locale} when set. The server's
+     * LabelResolver owns resolution; this list only tells the UI which languages to offer.
+     */
+    static List<String> declaredLocales(CompiledModel model) {
+        java.util.TreeSet<String> locales = new java.util.TreeSet<>();
+        if (model == null) {
+            return new ArrayList<>();
+        }
+        for (CompiledConcept concept : model.getConcepts()) {
+            collectLocales(locales, concept.getUi());
+            for (CompiledField field : concept.getFields()) {
+                collectLocales(locales, field.getUi());
+                for (CompiledEnumOption option : field.getEnumOptions()) {
+                    addLocaleKeys(locales, option.getLabelLocales());
+                }
+            }
+        }
+        if (model.getSettings() != null && model.getSettings().getLocale() != null
+                && !model.getSettings().getLocale().isBlank()) {
+            locales.add(model.getSettings().getLocale().trim());
+        }
+        return new ArrayList<>(locales);
+    }
+
+    private static void collectLocales(java.util.Set<String> locales, CompiledPresentationMetadata ui) {
+        if (ui == null) {
+            return;
+        }
+        addLocaleKeys(locales, ui.getLabelLocales());
+        addLocaleKeys(locales, ui.getShortLabelLocales());
+    }
+
+    private static void addLocaleKeys(java.util.Set<String> locales, Map<String, String> labelLocales) {
+        if (labelLocales == null) {
+            return;
+        }
+        for (String tag : labelLocales.keySet()) {
+            if (tag != null && !tag.isBlank() && !"default".equalsIgnoreCase(tag.trim())) {
+                locales.add(tag.trim());
+            }
+        }
+    }
+
+    /**
+     * Shell chrome strings per language: English and Portuguese catalogues (PlatformStrings), with the
+     * model's settings.strings overrides layered onto the one matching settings.locale.
+     */
+    static Map<String, Map<String, String>> stringsByLocale(CompiledModel model) {
+        Map<String, String> en = new LinkedHashMap<>(PlatformStrings.DEFAULTS);
+        en.putAll(PlatformStrings.localeDefaults("en"));
+        Map<String, String> pt = new LinkedHashMap<>(PlatformStrings.DEFAULTS);
+        pt.putAll(PlatformStrings.localeDefaults("pt"));
+        if (model != null && model.getSettings() != null) {
+            String locale = model.getSettings().getLocale();
+            boolean portuguese = locale != null && locale.trim().toLowerCase(Locale.ROOT).startsWith("pt");
+            (portuguese ? pt : en).putAll(model.getSettings().getStrings());
+        }
+        Map<String, Map<String, String>> byLocale = new LinkedHashMap<>();
+        byLocale.put("en", en);
+        byLocale.put("pt", pt);
+        return byLocale;
     }
 
     private static String blankToNull(String value) {
