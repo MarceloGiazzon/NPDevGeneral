@@ -65,16 +65,22 @@ Java dbschema definitions
 The current actual Java dbschema registry must cover only the current implemented internal/system tables:
 
 ```text
+npdev_api_credential
 npdev_audit_log
 npdev_circuit_breaker
 npdev_correlation_owner
+npdev_cron_fire_claim
 npdev_event_store
 npdev_flow_instance
 npdev_idempotency
+npdev_pack_install_intent
+npdev_promotion_state
 npdev_publication_audit
 npdev_publication_execution
-npdev_schema_metadata
 npdev_scheduled_event
+npdev_schema_metadata
+npdev_sequence_counter
+npdev_tenant
 npdev_trace
 ```
 
@@ -161,6 +167,12 @@ Forbidden generated/source-authority output is created under source.
 ```
 
 Normal Gradle-created `.gradle` and `build` folders are warnings for this check, because validation commands may create them.
+
+The checks are enforced in three layers, all run by the kernel quality gate (`scripts/quality/run-kernel-quality-gate.ps1`):
+
+1. `scripts/quality/run-internal-db-schema-source-of-truth-check.ps1` -- the static checks above (class list derived from the `NpdevInternalTables` registry, retired V5001..V5014 resources, hand-written `CREATE TABLE npdev_*`, future-scope table-name literals, generated output under source). Runs first, takes seconds.
+2. `NpdevInternalTablesSourceOfTruthTest` -- pins the exact registered table set (runs inside `kernelQualityGate` via `:kernel:test`).
+3. The coverage ratchet over the kernel/adapters aggregate.
 
 ## Ownership
 
