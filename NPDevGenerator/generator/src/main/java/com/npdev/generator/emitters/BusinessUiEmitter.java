@@ -245,6 +245,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     static final List<String> BUSINESS_UI_VIEW_ASSETS = List.of(
             "registry.js",
             "history.js",
+            "comments.js",
             "board.js",
             "search.js",
             "calendar.js",
@@ -463,6 +464,13 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("route", "/" + SqlIdentifierSupport.aliasPreservingTableName(concept, contexts));
             node.put("tableName", SqlIdentifierSupport.tableName(concept));
             node.put("idField", idField.getName());
+            if (concept.getCollaboration() != null) {
+                // PROC-5/PROC-6: key present only when declared, so existing manifests stay byte-identical.
+                Map<String, Object> collaboration = new LinkedHashMap<>();
+                collaboration.put("comments", concept.getCollaboration().comments());
+                collaboration.put("attachments", concept.getCollaboration().attachments());
+                node.put("collaboration", collaboration);
+            }
             node.put("endpointBase", endpointBase(concept, contexts));
             node.put("formColumns", formColumns(concept));
             node.put("displayMode", displayMode(concept));

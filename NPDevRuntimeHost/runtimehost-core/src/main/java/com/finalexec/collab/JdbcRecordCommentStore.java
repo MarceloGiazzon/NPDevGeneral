@@ -62,7 +62,7 @@ public final class JdbcRecordCommentStore implements RecordCommentStore {
             SqlDialect dialect = SqlDialects.forConnection(connection);
             String sql = dialect.limited("SELECT " + COLUMNS + " FROM " + TABLE
                     + " WHERE tenant_id = ? AND concept_name = ? AND record_id = ? AND deleted_at_ms IS NULL"
-                    + " ORDER BY created_at_ms ASC, comment_id ASC");
+                    + " ORDER BY created_at_ms ASC, comment_id ASC\n");
             try (PreparedStatement ps = connection.prepareStatement(sql)) {
                 ps.setString(1, tenantId);
                 ps.setString(2, conceptName);

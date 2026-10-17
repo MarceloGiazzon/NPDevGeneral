@@ -299,6 +299,13 @@ concept node of `generated-ui-manifest.json`.
   default): a user without it sees "Change history is visible to users with the audit permission."
   rather than an error. Widening it to every record reader needs its own endpoint that first runs the
   record's read authorization, and is deliberately not done.
+- **Comments (`views/comments.js`, PROC-5).** Rendered only for a concept whose manifest node carries
+  `collaboration.comments` (model: `"collaboration": { "comments": true }`; `attachments` is PROC-6).
+  A list (author, time, plain-text body) plus a box to post; `@username` in a comment notifies that
+  user when the in-app notification bell is installed. Served by
+  `/api/records/{concept}/{id}/comments`, gated by the record's own read access: a caller who cannot
+  read the row gets 404, never 403. Bodies are rendered with `textContent` only. The mentioned user is
+  not checked for read access to the record in v1 (they get the same 404).
 - **Board (`views/board.js`).** Appears (concept `views` gains `"board"`, manifest gains `concept.board`
   from `BoardManifestBuilder`) for any concept with a `lifecycle` whose status field is an enum, or any
   concept whose existing `ui.defaultGroup` names an enum field. No new DSL key. Columns are the
