@@ -30,9 +30,25 @@ import java.util.Map;
  * @param fieldMapping     target event-payload field name -> dot-path into the inbound JSON body.
  *                         Empty/absent means the raw parsed JSON body becomes the event payload
  *                         unchanged.
+ * @param startFlow        INT-6: name of a flow started with the mapped payload once the signature
+ *                         verifies (blank when the door only publishes {@code eventName}).
+ * @param idempotencyKey   INT-6: replay de-dupe key -- a dot-path into the JSON body, or
+ *                         {@code $header.<Name>} for a request header (blank = no de-dupe).
+ * @param signature        INT-6: provider signature scheme ({@code scheme}, {@code header},
+ *                         {@code prefix}, {@code toleranceSeconds}); empty means the NPDev scheme.
  */
-public record WebhookAst(String source, String hmacSecretEnvVar, String eventName, Map<String, String> fieldMapping) {
+public record WebhookAst(String source, String hmacSecretEnvVar, String eventName, Map<String, String> fieldMapping,
+                         String startFlow, String idempotencyKey, Map<String, Object> signature) {
     public WebhookAst {
+        eventName = eventName == null ? "" : eventName;
         fieldMapping = fieldMapping == null ? Map.of() : Map.copyOf(fieldMapping);
+        startFlow = startFlow == null ? "" : startFlow;
+        idempotencyKey = idempotencyKey == null ? "" : idempotencyKey;
+        signature = signature == null ? Map.of() : Map.copyOf(signature);
+    }
+
+    /** Pre-INT-6 shape: an event-only door with the NPDev signature scheme. */
+    public WebhookAst(String source, String hmacSecretEnvVar, String eventName, Map<String, String> fieldMapping) {
+        this(source, hmacSecretEnvVar, eventName, fieldMapping, null, null, null);
     }
 }
