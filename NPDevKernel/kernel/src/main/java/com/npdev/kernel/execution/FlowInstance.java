@@ -273,6 +273,69 @@ public record FlowInstance(
         );
     }
 
+    /**
+     * PROC-7: operator retry of a FAILED execution. Returns a RUNNING copy that re-enters at the SAME
+     * {@code currentStepIndex} with the same state (a failed step does not advance the cursor, see
+     * {@link #markFailed}), with the resume streak and the whole failure quartet cleared so the retry
+     * starts from a clean slate. Only FAILED is retryable: FAILED_PERMANENT means a contract or
+     * validation error that a retry cannot fix, and COMPLETED has nothing left to run.
+     *
+     * @throws IllegalStateException {@code NOT_RETRYABLE: ...} if the instance is not FAILED
+     */
+    public FlowInstance withRetry(long nowEpochMs) {
+        if (status != FlowInstanceStatus.FAILED) {
+            throw new IllegalStateException(
+                    "NOT_RETRYABLE: only a FAILED execution can be retried; " + executionId + " is " + status);
+        }
+        return new FlowInstance(
+                executionId,
+                flowName,
+                correlationId,
+                tenantId,
+                actorId,
+                currentStepIndex,
+                FlowInstanceStatus.RUNNING,
+                state,
+                waitingForEventName,
+                createdAtEpochMs,
+                nowEpochMs,
+                0,
+                lastResumeAtEpochMs,
+                lastResumeErrorCode,
+                null,
+                lastProgressAtEpochMs,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    /**
+     * PROC-7: operator cancel of a parked execution (a withdrawn approval that would otherwise wait
+     * forever). Represented as FAILED_PERMANENT with {@code lastErrorCode CANCELLED_BY_OPERATOR} --
+     * deliberately NOT a new status constant, which would ripple through every status switch and
+     * summary query. FAILED_PERMANENT is outside the resume sweep and the event-arrival path, so an
+     * awaited event published afterwards does not resume it.
+     *
+     * @throws IllegalStateException {@code NOT_CANCELLABLE: ...} unless the instance is WAITING_EVENT or
+     *         STUCK -- cancelling a RUNNING one could race a live execution thread
+     */
+    public FlowInstance markCancelled(String actor, long nowEpochMs) {
+        if (status != FlowInstanceStatus.WAITING_EVENT && status != FlowInstanceStatus.STUCK) {
+            throw new IllegalStateException(
+                    "NOT_CANCELLABLE: only a WAITING_EVENT or STUCK execution can be cancelled; "
+                            + executionId + " is " + status);
+        }
+        return markFailedPermanent(state, nowEpochMs, FailureInfo.of(
+                com.npdev.kernel.errors.ErrorKind.FORBIDDEN,
+                CANCELLED_BY_OPERATOR,
+                "Cancelled by " + (actor == null || actor.isBlank() ? "operator" : actor)));
+    }
+
+    /** The {@code lastErrorCode} an operator cancel leaves on the row. */
+    public static final String CANCELLED_BY_OPERATOR = "CANCELLED_BY_OPERATOR";
+
     public FlowInstance markResumeFailure(
             String errorCode,
             long nowEpochMs,

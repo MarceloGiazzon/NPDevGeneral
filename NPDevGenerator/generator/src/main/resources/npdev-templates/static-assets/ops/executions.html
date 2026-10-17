@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Executions</title>
+  <link rel="stylesheet" href="/shell.css">
+  <style>
+    .ops-executions { padding: 16px; max-width: 1200px; margin: 0 auto; }
+    .ops-executions h1 { margin: 0 0 4px; font-size: 20px; }
+    .ops-executions .hint { color: var(--np-text-muted); margin: 0 0 12px; }
+    .ops-executions .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .ops-executions input { padding: 6px 8px; border: 1px solid var(--np-border); border-radius: var(--np-radius);
+      background: var(--np-surface); color: var(--np-text); }
+    .ops-executions button { padding: 6px 12px; border: 1px solid var(--np-border); border-radius: var(--np-radius);
+      background: var(--np-surface); color: var(--np-text); cursor: pointer; }
+    .ops-executions button.primary { background: var(--np-accent); border-color: var(--np-accent); color: #fff; }
+    .ops-executions .table-wrap { overflow-x: auto; }
+    .ops-executions table { width: 100%; border-collapse: collapse; background: var(--np-surface); }
+    .ops-executions th, .ops-executions td { text-align: left; padding: 8px; border-bottom: 1px solid var(--np-border); vertical-align: top; }
+    .ops-executions .status { font-weight: 600; }
+    .ops-executions .status-FAILED, .ops-executions .status-STUCK { color: var(--np-accent); }
+    .ops-executions .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .ops-executions .message { margin: 8px 0; min-height: 1.4em; }
+    @media (max-width: 768px) { .ops-executions { padding: 8px; } }
+  </style>
+</head>
+<body>
+  <main class="ops-executions" id="opsExecutions">
+    <h1>Executions</h1>
+    <p class="hint">Failed and stuck executions of one tenant. Retry re-runs a failed execution from the step that failed;
+      Cancel ends a stuck or waiting one for good; Unstick hands a stuck one back to the resume sweep.</p>
+    <div class="bar">
+      <label for="opsTenant">Tenant</label>
+      <input id="opsTenant" type="text" autocomplete="off" spellcheck="false">
+      <button id="opsLoad" class="primary" type="button">Load</button>
+    </div>
+    <div class="message" id="opsMessage" role="status"></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Flow</th><th>Status</th><th>Error</th><th>Updated</th><th>Resume attempts</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="opsRows"></tbody>
+      </table>
+    </div>
+  </main>
+  <script src="/shell.js"></script>
+  <script src="./executions.js"></script>
+</body>
+</html>
