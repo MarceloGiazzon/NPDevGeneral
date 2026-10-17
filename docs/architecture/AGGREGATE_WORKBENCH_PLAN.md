@@ -3,10 +3,10 @@
 > **STATUS: EXECUTED.** All phases delivered 2026-07-11…2026-07-25 — P0/P1/P4/P6/P7/Polish (this
 > doc's own 2026-07-12 reconciliation, below) plus the three that were PARTIAL there: AW-P2
 > (`cd3cbcf`, closed DONE by `7e1096e` — FK auto-Prompt was already-implemented, `selectorRef`
-> owner-descoped), AW-P3 (`ff4acba` — folded `computed[]` into `recompute:`, closed the DOM-weight
+> owner-descoped at the time and shipped later, `6542e4b2`), AW-P3 (`ff4acba` — folded `computed[]` into `recompute:`, closed the DOM-weight
 > risk), AW-P5 (`0762536` — per-state `allowedActions` gating), reconciled by `88e28a1`. Kept as the
 > authoritative design record (ADRs + phase contracts below are still the reference). **Live
-> re-verification DONE 2026-07-28** (`docs/FRONTEND_STRATEGY_PLAN.md` F5-V.2): the REG-48 `delete()`
+> re-verification DONE 2026-07-28** (`docs/archive/FRONTEND_STRATEGY_PLAN.md` F5-V.2): the REG-48 `delete()`
 > reordering holds up through `AggregateRuntime.commit()`'s cascade-delete of a band row (server-side
 > confirmed, not just DOM) — 7/11 scenario steps passed live against WmsOffice's
 > `ExpedicaoWorkbench.html`/`RecebimentoWorkbench.html`, 3/11 not exercisable because WmsOffice's own
@@ -25,11 +25,31 @@ Status (historical, 2026-07-12 reconciliation): P0, P1, P4, P6, P7, and Polish a
 live, all committed). P2, P3, P5 were PARTIAL at that point — see the STATUS header above for how
 each closed afterward. See §5 for per-phase evidence (commit hashes, file paths).
 
+> **Corrections since this plan was written** (checked 2026-10-17; the design-record text below is otherwise
+> unedited).
+>
+> - **Declared form:** reactive recompute is the typed `transaction.hooks.onFieldChange` (`transaction.metadata.recompute`
+>   is a retired but still accepted fallback); band pickers and actions are the typed `transaction.bandPickers` and
+>   `transaction.actions[]` (`workbenchAction`).
+> - **Schema never gained** `transaction.sections[]` / `band` / `rowOps` / `collapsible` on `autoPanelSurface`
+>   (`additionalProperties: false`): sections are derived from `aggregates[].collections`; `rowOps` exists only on
+>   `panelDataSource` and `collapsible` only on `guidePageRegion`.
+> - **No free `panel{}` / `workbench{}` override and no `workbenches[]` key exist.** The per-region override is
+>   `transaction.regions.<addr>.render` (`"component"` or `"cellGrid"`). The `procedureSlot` / `validationSlot` /
+>   `computeSlot` / `layoutSlot` keys were never added either; the shipped seams are `transaction.hooks.*`,
+>   `aggregate.onCommit` and `regions`.
+> - **Runtime names:** there is no `AggregateController`; the behaviour is `AggregateRuntime.load/commit/invoke`
+>   (runtimehost-core `service/`) behind `AggregateApiController`. The one-level nesting cap lives in
+>   `PanelValidation`, not `SemanticValidator`.
+> - **Closed since:** `selectorRef` shipped (2026-09-05, EDIT-18/REG-206) — `workbenchBandPicker.selectorRef` and the field
+>   picker `selectorRef` adopt a `selectors[]` entry, so the AW-P2 "bandPickers is not fed by `selectors[]`" gap is closed;
+>   per-state `allowedActions` shipped in `0762536`.
+
 > **Realignment note.** This plan was originally workbench-first. Per ADR-0005 the primary authoring
 > surface is now the **AutoPanel** (a slim, concept/aggregate-bound pattern that the generator
 > expands into Selection/Prompt/Detail/Transaction surfaces). The Aggregate Workbench is the
 > Transaction surface of an *aggregate-bound* AutoPanel; the region taxonomy is its expansion
-> vocabulary; `panel{}`/`workbench{}` are the per-surface escape hatch.
+> vocabulary; the per-surface escape hatch is `transaction.regions.<addr>.render` (see the corrections note).
 
 ---
 
@@ -158,8 +178,8 @@ for the bespoke 20%:
 `display` ∈ `selected` (default) | `all` | `paged`. Recebimento reuses this with
 `grids: [destinos]` and `lifecycle: "RecebimentoEstagio"`.
 
-> **F5-R3 (`docs/FRONTEND_STRATEGY_PLAN.md`), recorded 2026-07-28: `display` was never
-> implemented.** `ff4acba` found no code path reads it — `BandRegion` always renders in the
+> **F5-R3 (`docs/archive/FRONTEND_STRATEGY_PLAN.md`), recorded 2026-07-28: `display` was never
+> implemented.** `ff4acba` found no code path reads it — the band renderer always renders in the
 > `selected` mode this doc calls the default, with no `all`/`paged` alternative anywhere in the
 > generator or runtime. It was closed without code, not deferred. Corpus-checked 2026-07-27: 0
 > files in `golden-ai-scenarios/**` or `knowledge/**` teach a client to expect it, so this was
@@ -217,15 +237,17 @@ expansion target rather than a standalone phase.
 ### P2 — `Prompt` surface / `SelectorGrid` + FK wiring — PARTIAL (reconciled 2026-07-12)
 **Goal:** C6. Closes platform gap #14 (modal picker).
 - **Schema:** full `selectors[]` (`concept`, `multiSelect`, `filters`, `columns`, `returnMapping`) +
-  `SelectorAst` + `AutoPanelExpander.expandSelector` + `SemanticValidator.validateSelectors`.
+  `SelectorAst` + `AutoPanelExpander.expandSelector` + `PanelValidation.validateSelectors` (called from `SemanticValidator`).
   Committed `3757336` ("P2(3): standalone selectors[] primitive -> reusable picker panel"). ✅ done.
 - **Still missing:** no dedicated `SelectorGrid` component — a selector expands into a generic
   picker panel, not a distinct modal grid class. The `bandPickers.<band>` mechanism the Polish pass
   shipped (`AutoPanelExpander.bandPickers()`, `workbench-page.html.mustache`'s `openBandPicker`) is a
   **separate, ad hoc** in-browser modal that references an existing panel *by name* via
-  `transaction.metadata.bandPickers` — it is not fed by `selectors[]` and does not close this gap.
+  `transaction.bandPickers` (the typed form; `transaction.metadata.bandPickers` is a retired fallback) — it is not fed by `selectors[]` and does not close this gap.
   FK-field auto-attach of a Prompt from bonds is still driven by the pre-existing `promptsByConcept`
   mechanism, not by `selectors[]`.
+- **Update:** `selectorRef` has since shipped (2026-09-05, EDIT-18/REG-206), so band and field pickers can adopt a
+  `selectors[]` entry — the gap described above is closed.
 - **Acceptance:** C6 — Seleciona Ruas filters + multi-select → returns rows (met via `bandPickers`,
   not via this primitive); FK fields auto-getting a `selectors[]`-backed Prompt — **not met**.
 - **Remaining scope for AW-P2:** either (a) declare `bandPickers` as sugar that compiles to a
@@ -244,7 +266,7 @@ expansion target rather than a standalone phase.
   PanelRuntime"). ✅ done.
 - **Still missing:** the generated `workbench-page.html.mustache` never consumes `metadata.computed` —
   no client CEL/expression evaluator wired into the emitted page. What Polish shipped instead
-  (`recompute: <procedure>` under `transaction.metadata`, debounced invoke-on-edit) is a **server
+  (`recompute: <procedure>` — today the typed `transaction.hooks.onFieldChange`, formerly under `transaction.metadata` — debounced invoke-on-edit) is a **server
   round-trip via a procedure**, not a client-side evaluation of the declared `computed[]` expression —
   it satisfies the *live-recompute-on-keystroke* UX (C4) but does not evaluate `computed[]` itself, so
   the two mechanisms currently coexist without one subsuming the other.
@@ -259,15 +281,15 @@ expansion target rather than a standalone phase.
 ### P4 — Multi-level Transaction: Sections→Bands over an aggregate  ← hardest
 **Goal:** C3, C5, C7, C8 — an aggregate-bound AutoPanel's Transaction becomes the Aggregate
 Workbench. **Lifts the one-level nesting cap at
-[`SemanticValidator.java:587`](../../NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/SemanticValidator.java#L587)**
+[`PanelValidation`](../../NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PanelValidation.java)**
 (owned aggregate collections only; the cap stays for procedure-bound panel dataSources).
-- **Schema:** `transaction.sections[]` (per owned collection) with `band` (`grids[]`, `display`,
-  `collapsible`, `picker`) and `rowOps` ∈ [`add`,`delete`].
+- **Schema (as designed; the shipped form is in the corrections note):** `transaction.sections[]` (per owned
+  collection) with `band` (`grids[]`, `display`, `collapsible`, `picker`) and `rowOps` ∈ [`add`,`delete`].
 - **Generator:** emit the master Grid (row-select drives sections), the Band renderer (repeat card
   per parent row per `display` mode; 1..N parallel grids; per-card computed Sub-Total/Pendente/
   Endereçamento-OK), row add/delete via store + Prompt, and per-region dirty buffers driving
   independent Modo Edição/Desfazer/Salvar.
-- **Kernel** (`AggregateController.patch`): honor inserts/deletes with bond cascade.
+- **Kernel** (`AggregateRuntime`, behind `AggregateApiController`): honor inserts/deletes with bond cascade.
 - **Acceptance:** C3, C5, C7, C8 — full Expedicao Transaction: items master grid + ORIGEM/DESTINO
   band + three independent edit lifecycles on one page. (Reactive-store mechanics spike-proven, §8.)
 - **Risk:** **high** — the primitive stands or falls here. De-risked by the spike; validate the
@@ -284,13 +306,13 @@ Workbench. **Lifts the one-level nesting cap at
 - **Still missing (the plan's actual new-primitive scope):**
   1. No `lifecycles[]` **array** schema construct — P5 deliberately reused the existing singular
      `lifecycle`, so there's no new DSL surface or its validation.
-  2. No per-state `allowedActions` — only whole-panel editable/read-only toggles by state; individual
-     actions/regions are not independently gated.
+  2. ~~No per-state `allowedActions`~~ — shipped in `0762536`: `lifecycleState.allowedActions` gates the action rail
+     per state.
   3. No dedicated `/transition` endpoint and no FlowEngine binding — P6's transition buttons drive
      declared *procedures* directly (`AggregateApiController`, `952f39e`), not a lifecycle-declared
      transition list through a kernel-owned transition path.
 - **Acceptance:** C9 — Estágio transitions gate editability (region-level) ✅ met; action-level gating
-  across all levels — **not met**.
+  across all levels — met later by `0762536`.
 - **Remaining scope for AW-P5:** narrow to per-state `allowedActions` (action-rail gating) only, since
   region editability and the status chip already ship. Decide whether `lifecycles[]` (plural, new
   schema) is still worth adding or whether the existing singular `lifecycle` should just grow an
@@ -306,13 +328,13 @@ a button per transition from the current state sets the status field + commits; 
 adapter enforces the legal transition. Slice 2 (commit 952f39e) — procedure-over-aggregate invoke:
 extracted a shared `ProcedureRunner` @Service (breaking the AggregateRuntime↔PanelRuntime cycle),
 added `AggregateRuntime.invoke` + `POST /api/runtime/aggregate/{name}/invoke/{proc}` returning the
-patched draft WITHOUT persisting, and a workbench invoke-button per `transaction.metadata.actions`
+patched draft WITHOUT persisting, and a workbench invoke-button per `transaction.actions[]`
 entry (review-then-Save). Verified live on H2: invoke patches the draft (404 until commit), commit
 persists, unknown procedure 400s. App-side bespoke procedures (procGerarDemanda etc.) are authoring,
 not platform. C11 (commit boundary + cascade) landed in P4's AggregateRuntime.commit reconcile.
-- **Schema:** action `binding: procedure`; `transaction.recompute.procedure`;
-  `procedureSlot`/`validationSlot`.
-- **Kernel** (`AggregateController`): `invoke(procedure, draft) → tree` (procedures may loop —
+- **Schema (as designed):** action `binding: procedure`; recompute via `transaction.hooks.onFieldChange`; the
+  `procedureSlot`/`validationSlot` keys were never added (see the corrections note).
+- **Kernel** (`AggregateRuntime.invoke/commit`): `invoke(procedure, draft) → tree` (procedures may loop —
   flows can't); `commit(draft)` with cascade + validation slots (Máximo enforcement,
   "Endereçamento OK!").
 - **Generator:** emit action dispatch → invoke/commit; wire slots.
@@ -324,10 +346,10 @@ not platform. C11 (commit boundary + cascade) landed in P4's AggregateRuntime.co
 
 ### P7 — WMS conformance via AutoPanels + generality proof ✅ DONE (verified live 2026-07-12)
 **Goal:** C12; prove no new primitives needed.
-**Result:** Authored Expedicao (itens→{origens,destinos}, 5-state estagio lifecycle) and Recebimento
-(itens→{destinos}, 3-state estagio lifecycle) as slim `autoPanels`. Both `ExpedicaoWorkbench.html`
+**Result:** Authored Expedicao (itens→{origens,destinos}, estagio lifecycle) and Recebimento
+(itens→{destinos}, estagio lifecycle) as slim `autoPanels`. Both `ExpedicaoWorkbench.html`
 and `RecebimentoWorkbench.html` emitted with **zero generator changes** (C12 met). Live on H2:8199 —
-descriptors carry differing bands (2 vs 1) + differing lifecycles (5/4 vs 3/2 states/transitions);
+descriptors carry differing bands (2 vs 1) + lifecycles (4 states / 3 transitions each in today's WmsOffice definitions);
 create + Estágio transition (predemanda→demandagerada) round-trip persisted the whole tree intact.
 - Author Expedicao and Recebimento as **AutoPanels** (Recebimento = same shape, `grids:[destinos]`,
   `RecebimentoEstagio`); `CentroConferenciaRecebimento` as a confirm surface / override.
@@ -355,10 +377,11 @@ The in-browser pass caught + fixed a real bug (`clone(undefined)` aborted revert
 affordance, lifecycle chip, left action rails. Generated default, per-app themeable. Land in P1,
 refine through P4.
 
-**Extension slots (L5) & the escape hatch.** Every AutoPanel surface is overridable by pointing it
-at a free `panel{}`/`workbench{}` (`"transaction": { "panel": "CustomEditor" }`) — the primary
-Tier-3 seam. Finer slots introduced progressively: `computeSlot` (P3), `procedureSlot`+
-`validationSlot`+`recompute` (P6), `layoutSlot` (post-P7). Promotion rule: a surface override or slot
+**Extension slots (L5) & the escape hatch.** Every AutoPanel surface is overridable per region:
+`transaction.regions.<addr>.render: "component"` or `"cellGrid"` — the primary Tier-3 seam (the free
+`panel{}`/`workbench{}` keys first sketched here were never added to the schema). The finer slots sketched here
+(`computeSlot`, `procedureSlot`, `validationSlot`, `layoutSlot`) were not added either; the shipped seams are
+`transaction.hooks.*`, `aggregate.onCommit` and `regions`. Promotion rule: a surface override or slot
 filled the same way across ≥2 apps becomes an AutoPanel/generator default.
 
 **Testing strategy.**
@@ -366,8 +389,8 @@ filled the same way across ≥2 apps becomes an AutoPanel/generator default.
 - *DSL/compiler:* JUnit beside existing `PanelDataSourceNestingValidationTest`.
 - *Generator:* `scripts/quality/run-generator-gate.ps1` + emitter tests
   (`BusinessUiEmitterPanelManifestTest` pattern).
-- *Runtime:* `run-runtimehost-gate.ps1` + `PanelRuntimeTest` sibling `WorkbenchRuntimeTest`.
-- *Frontend:* `run-frontend-gate.ps1`.
+- *Runtime:* `run-runtimehost-gate.ps1` + the `PanelRuntime*Test` classes in `NPDevRuntimeHost/src/test/java/com/finalexec/` beside `WorkbenchRuntimeTest`.
+- *Frontend:* the `run-frontend-gate.ps1` named here was deleted with `NPDevEditor/ui-react` (`7cf1d5f5`); the golden browser scenarios (`scripts/quality/run-shell-scenarios.ps1`) are the frontend check now.
 - *End-to-end:* real-browser via ScrapForAI (see [ScrapForAI memory]) against a live FinalApp
   (127.0.0.1, SSRF allowlist gotchas noted there).
 
@@ -397,6 +420,7 @@ can start against P4 stubs.
 
 ## 8. Current state — P4 spike (proven)
 
+*(This spike directory no longer exists, so the result below cannot be re-checked.)*
 `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\spikes\p4-aggregate-workbench\`:
 `workbench-core.js` (reactive store + Tier-A computed), `workbench-spike.html` (Header + Items +
 Band with 2 parallel grids + picker + per-region buffers), `test-workbench-core.js`
