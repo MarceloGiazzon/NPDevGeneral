@@ -1155,7 +1155,7 @@ load-bearing). DDD's core rule: one aggregate = one transaction = one consistenc
 `referenced` (not `owned`) collection is unaffected — that is a normal cross-aggregate pointer, not
 a boundary the rule cares about.
 
-**Why:** docs/maintainers/NEXT_EXECUTION_PLAN.md P6.1 (3.7). Cheap to enforce once written, and the exact class
+**Why:** docs/archive/NEXT_EXECUTION_PLAN.md P6.1 (3.7). Cheap to enforce once written, and the exact class
 of "the model says one thing, the runtime does another" gap this repo's own register keeps finding
 (REG-52/53-shaped).
 
