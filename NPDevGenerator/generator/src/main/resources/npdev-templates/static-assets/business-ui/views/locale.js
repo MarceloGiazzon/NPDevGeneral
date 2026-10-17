@@ -41,8 +41,18 @@
       } catch (ignored) { /* private mode: the choice just will not persist */ }
       location.reload();
     });
-    var topbar = document.querySelector(".npdev-shell-topbar");
-    if (topbar) { topbar.appendChild(select); }
+    // The shell may paint its top bar after globals are initialised (async session adoption), so wait
+    // for it rather than silently dropping the switch.
+    function attach() {
+      var topbar = document.querySelector(".npdev-shell-topbar");
+      if (topbar) { topbar.appendChild(select); return true; }
+      return false;
+    }
+    if (!attach() && window.MutationObserver) {
+      var observer = new MutationObserver(function () { if (attach()) { observer.disconnect(); } });
+      observer.observe(document.body, { childList: true });
+      setTimeout(function () { observer.disconnect(); }, 15000);
+    }
   }
 
   window.NPDevViews.registerGlobal("locale", { init: init });
