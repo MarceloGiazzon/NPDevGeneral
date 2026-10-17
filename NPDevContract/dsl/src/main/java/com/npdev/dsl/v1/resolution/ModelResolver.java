@@ -248,7 +248,8 @@ public final class ModelResolver {
                 concept.isSoftDelete(),
                 concept.isTemporal(),
                 concept.getUid(),
-                concept.getRollups()
+                concept.getRollups(),
+                concept.getCollaboration()
         );
     }
 
@@ -353,7 +354,9 @@ public final class ModelResolver {
                 // and could never be maintained. The rollup FIELD is still inherited (plain stored
                 // field); a specialization wanting it maintained declares its own rollup over a
                 // reference that targets it.
-                specialization.getRollups()
+                specialization.getRollups(),
+                // PROC-5: the specialization's own declaration wins, else the base's carries over.
+                specialization.getCollaboration() != null ? specialization.getCollaboration() : base.getCollaboration()
         );
     }
 

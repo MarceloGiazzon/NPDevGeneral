@@ -77,6 +77,7 @@ npdev_pack_install_intent
 npdev_promotion_state
 npdev_publication_audit
 npdev_publication_execution
+npdev_record_comment
 npdev_scheduled_event
 npdev_schema_metadata
 npdev_sequence_counter

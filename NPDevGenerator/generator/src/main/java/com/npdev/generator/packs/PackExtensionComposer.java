@@ -217,7 +217,8 @@ public final class PackExtensionComposer {
                 baseConcept.getUid(),
                 baseConcept.getRollups(),
                 // #18: fields the extension added are not named here, so they follow the base's.
-                baseConcept.getFieldOrder()
+                baseConcept.getFieldOrder(),
+                baseConcept.getCollaboration()
         );
     }
 
@@ -526,7 +527,8 @@ public final class PackExtensionComposer {
                 concept.getUid(),
                 concept.getRollups(),
                 // #18: the app's explicit metadata.fieldOrder IS the order people should see.
-                fields.stream().map(CompiledField::getName).toList()
+                fields.stream().map(CompiledField::getName).toList(),
+                concept.getCollaboration()
         );
     }
 
