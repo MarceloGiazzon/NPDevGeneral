@@ -14,9 +14,12 @@ A container that starts with **no Java, no Python** (the M3 thesis: NPDev's priv
 1. resolves + downloads + checksum-verifies + extracts a private JDK 17 (Adoptium)
 2. resolves Python (system, since none is installed here it falls through to the pinned portable
    build) — see `runtime.rs::detect_system_python` / `resolve_portable_python`
-3. resolves or installs an NPDev CLI version (the current `beta1.6` tag) via the same tag-zip
+3. resolves or installs an NPDev CLI version (the newest released tag) via the same tag-zip
    download the Install screen's version picker uses
-4. runs `npdev doctor --json` through those private runtimes and asserts every check passes
+4. runs `npdev doctor --json` through those private runtimes and asserts `ok == true` (no check fails; warnings are allowed)
+
+(`--selftest` has ten numbered steps in `selftest.rs`, including the engine picker, the DB toolbox and a reset; the doctor
+step is [6/10] and prints `passed/total`.)
 
 Any failure anywhere in that chain exits non-zero with which step failed — see `--selftest`'s own
 output format.
@@ -29,11 +32,10 @@ download (`versions.rs::install_version`), which is the entire point of I4's "no
 the original plan sketch.
 
 **But `npdev doctor` has its own, unrelated `git-present` check** (`npdev_cli.py`'s `checks`
-list) that is a hard failure if git is absent — missing git makes `doctor`'s overall `ok` false
-regardless of anything the Manager does. Leaving git out of this image would make the harness
-report a failure that has nothing to do with what I4 exists to test. Decision recorded 2026-08-05:
-install git, so a real, literal "10/10 checks pass" is achievable — matching CLOSEOUT_PLAN.md's own
-stated assertion — rather than silently redefining "10/10" downward to "9/10, git excused."
+list). It was a hard failure when git was absent at the time this harness was written; it is now a **warn** ("optional --
+version history only"), so git absence no longer makes `doctor`'s overall `ok` false. The image still installs git, which
+keeps a literal all-checks-pass result achievable (the doctor has 11 machine checks, not the 10 recorded at the time of the
+2026-08-05 decision) rather than redefining the assertion downward.
 
 ## Why the runtime stage also needs libwebkit2gtk/libgtk/etc (not -dev, just the shared libraries)
 
@@ -47,11 +49,8 @@ dependencies of any Tauri Linux build (the same libraries a `.deb`/AppImage pack
 
 ## Run it
 
-```bash
-pwsh -NoProfile -File scripts/quality/run-manager-harness.ps1
-```
-
-Or directly:
+`scripts/quality/run-manager-harness.ps1` no longer exists (retired in `83eaf603`); the runners are
+`.github/workflows/manager-harness.yml` and these commands:
 
 ```bash
 docker build -f scripts/quality/manager-harness/Dockerfile -t npdev-manager-harness .
@@ -88,8 +87,8 @@ this operation fails" case this fallback exists for.
   `--selftest` at the doctor step, same as CLOSEOUT_PLAN.md's own §0.1 reasoning for tagging
   before the VM test.
 - **No compiled-Rust cache between runs** — every `docker build` recompiles from scratch unless
-  Docker's own layer cache is warm. Not wired into per-PR CI for the same reason
-  firstrun-harness isn't (cost), see `run-manager-harness.ps1`'s `manual-runbook` invocation
-  declaration.
+  Docker's own layer cache is warm. It is wired into CI by
+  `.github/workflows/manager-harness.yml`: pull requests touching `NPDevManager/**`, `scripts/quality/manager-harness/**`,
+  `NPDevRuntimeHost/**` or `**/gradlew`, every tag push, nightly (`cron: '0 5 * * *'`) and `workflow_dispatch`.
 - **Linux only.** Proves the container/CLI path, not the Windows/macOS installer double-click —
   that is I5, and needs a human on a real VM.

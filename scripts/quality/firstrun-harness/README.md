@@ -1,7 +1,7 @@
 # The first-run harness — an executable `README.md`
 
-> Helper artifact. **Written outside the repo**; copy into
-> `scripts/quality/firstrun-harness/` when you wire it up.
+> This harness lives in `scripts/quality/firstrun-harness/` and is wired into CI by
+> `.github/workflows/firstrun-harness.yml` (declared in `scripts/policy/script-invocation-declarations.json`).
 
 ---
 
@@ -29,8 +29,7 @@ via `setup-java`, and GitHub runners ship `pwsh` preinstalled.
 ## Run it
 
 ```bash
-cd firstrun-helpers/harness
-docker build -t npdev-firstrun .
+docker build -t npdev-firstrun scripts/quality/firstrun-harness
 
 # against the published default branch -- what a newcomer actually gets
 docker run --rm npdev-firstrun
@@ -131,21 +130,24 @@ keep running whatever flow README documents this month.
 
 ## Wiring it into the repo
 
-**Trigger on** — *not* every PR:
+**It triggers on** — *not* every PR (`.github/workflows/firstrun-harness.yml`):
 
-- every **tag / release** — the version a newcomer actually gets
-- **nightly**
-- any change to `docs/content/readme.yml`, `docs/content/getting-started.yml`, `docs/content/your-first-app.yml`
-  (README.md / docs/GETTING_STARTED.md / docs/YOUR_FIRST_APP.md are GENERATED from these --
-  md-zero-2026-08-11 PLAN.md Phase 5, `scripts/docs/generate_group_d_docs.py`), `NPDevCli/npdev_cli.py`,
-  or the generated `build.gradle` / `Dockerfile` templates
+- every **tag push** — the version a newcomer actually gets
+- **nightly** (`cron: '0 6 * * *'`)
+- **manual dispatch** (`workflow_dispatch`, with a `repo_ref` input)
+
+There is deliberately no `pull_request` or path trigger, so editing `docs/content/readme.yml`, `getting-started.yml`,
+`your-first-app.yml` (README.md / docs/GETTING_STARTED.md / docs/YOUR_FIRST_APP.md are GENERATED from these by
+`scripts/docs/generate_group_d_docs.py`), `NPDevCli/npdev_cli.py` or the generated `build.gradle` / `Dockerfile` templates does
+not run it; dispatch it by hand after such a change.
 
 **Required registrations** (both, or `run-script-inventory-check.ps1` fails):
 
 - a classification in `scripts/policy/script-inventory-policy.json`
 - a declared `invocation` in `scripts/policy/script-invocation-declarations.json`
 
-**Suggested `.github/workflows/firstrun-harness.yml`:**
+**An earlier suggestion for the workflow** (the real `.github/workflows/firstrun-harness.yml` differs: no PR trigger, cron at 06:00,
+a `workflow_dispatch` `repo_ref` input, and a branch on tag versus default ref):
 
 ```yaml
 name: first-run harness
