@@ -129,6 +129,100 @@ public class ExecutionMonitorService {
         }
     }
 
+    /**
+     * PROC-7: retry a FAILED execution from the step that failed. Outcomes (an explicit body, never
+     * a thrown status, for the same reason as {@link #unstick}): {@code RETRIED}, {@code NOT_FOUND},
+     * {@code NOT_RETRYABLE} (not FAILED -- FAILED_PERMANENT/COMPLETED are dead ends) and {@code
+     * NOT_RETRYABLE_COMPENSATED} (the flow declares onFailure compensation).
+     */
+    public Map<String, Object> retry(String executionId, ExecutionContext requesterContext) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("surfaceName", "Execution Monitor");
+        response.put("executionId", blankIfNull(executionId));
+        try {
+            Optional<com.npdev.kernel.ExecutionResult> result = kernelFacade.retryExecution(executionId, requesterContext);
+            if (result.isEmpty()) {
+                response.put("ok", false);
+                response.put("outcome", "NOT_FOUND");
+                response.put("message", "No execution exists with that id.");
+                return response;
+            }
+            response.put("ok", true);
+            response.put("outcome", "RETRIED");
+            response.put("message", "Execution re-entered at the step that failed.");
+            response.put("runStatus", String.valueOf(result.get().getStatus()));
+            kernelFacade.findExecution(executionId, requesterContext)
+                    .ifPresent(instance -> response.put("status", instance.status() == null ? "" : instance.status().name()));
+            return response;
+        } catch (IllegalStateException refused) {
+            response.put("ok", false);
+            response.put("outcome", blankIfNull(refused.getMessage()).startsWith("NOT_RETRYABLE_COMPENSATED")
+                    ? "NOT_RETRYABLE_COMPENSATED" : "NOT_RETRYABLE");
+            response.put("message", blankIfNull(refused.getMessage()));
+            return response;
+        }
+    }
+
+    /**
+     * PROC-7: cancel a WAITING_EVENT or STUCK execution. It becomes FAILED_PERMANENT with
+     * {@code lastErrorCode CANCELLED_BY_OPERATOR} (no new status constant). Outcomes: {@code
+     * CANCELLED}, {@code NOT_FOUND}, {@code NOT_CANCELLABLE}.
+     */
+    public Map<String, Object> cancel(String executionId, ExecutionContext requesterContext) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("surfaceName", "Execution Monitor");
+        response.put("executionId", blankIfNull(executionId));
+        try {
+            Optional<FlowInstance> cancelled = kernelFacade.cancelExecution(executionId, requesterContext);
+            if (cancelled.isEmpty()) {
+                response.put("ok", false);
+                response.put("outcome", "NOT_FOUND");
+                response.put("message", "No execution exists with that id.");
+                return response;
+            }
+            response.put("ok", true);
+            response.put("outcome", "CANCELLED");
+            response.put("message", "Execution cancelled; an awaited event can no longer resume it.");
+            response.put("execution", executionCard(cancelled.get(), Map.of()));
+            return response;
+        } catch (IllegalStateException refused) {
+            response.put("ok", false);
+            response.put("outcome", "NOT_CANCELLABLE");
+            response.put("message", blankIfNull(refused.getMessage()));
+            return response;
+        }
+    }
+
+    /**
+     * PROC-7: what needs an operator for ONE tenant -- FAILED and STUCK summaries, newest first.
+     * The tenant is explicit because the super-key itself lives under {@code __system__} and the
+     * tenant-scoped {@link #active}/{@link #history}/{@link #stuck} would show it nothing.
+     */
+    public Map<String, Object> attention(String tenantId, ExecutionContext requesterContext) {
+        if (tenantId == null || tenantId.isBlank()) {
+            throw new IllegalArgumentException("tenant is required");
+        }
+        List<Map<String, Object>> items = kernelFacade.listAttentionExecutions(tenantId.trim(), 100, requesterContext).stream()
+                .sorted(Comparator.comparingLong(ExecutionSummary::updatedAtMs).reversed())
+                .map(this::attentionCard)
+                .toList();
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("surfaceName", "Execution Monitor");
+        response.put("mode", "attention");
+        response.put("tenant", tenantId.trim());
+        response.put("detailRouteTemplate", EXECUTION_DETAIL_PATH_TEMPLATE);
+        response.put("attentionCount", items.size());
+        response.put("items", items);
+        return response;
+    }
+
+    private Map<String, Object> attentionCard(ExecutionSummary summary) {
+        Map<String, Object> item = stuckCard(summary);
+        item.put("retryPath", "/api/executions/" + summary.executionId() + "/retry");
+        item.put("cancelPath", "/api/executions/" + summary.executionId() + "/cancel");
+        return item;
+    }
+
     private Map<String, Object> stuckCard(ExecutionSummary summary) {
         String status = blankIfNull(summary.status());
 

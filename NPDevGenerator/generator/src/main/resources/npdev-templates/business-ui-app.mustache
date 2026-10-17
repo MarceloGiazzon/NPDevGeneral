@@ -431,9 +431,16 @@
     return toast(message, error ? "error" : "success");
   }
 
+  // UI-8: the user's language choice (views/locale.js); empty = Auto (server uses Accept-Language).
+  function uiLocale() {
+    try { return localStorage.getItem("npdev.ui.locale") || ""; } catch (ignored) { return ""; }
+  }
+
   function headers() {
     const result = { "Content-Type": "application/json" };
     result["X-NPDev-Request"] = "1"; // SEC-1: required for cookie-authenticated writes
+    const locale = uiLocale();
+    if (locale) { result["X-Tag-locale"] = locale; }
     const apiKey = el.apiKey.value.trim();
     if (apiKey) {
       const scheme = (state.manifest.auth && state.manifest.auth.scheme) || "";
@@ -524,6 +531,10 @@
     }
   }
 
+  function localizedLabelsActive() {
+    return Boolean(uiLocale()) || Boolean(state.manifest && Array.isArray(state.manifest.locales) && state.manifest.locales.length > 1);
+  }
+
   function applyUiContractFieldOverlay(concept, bundle) {
     if (!bundle || !Array.isArray(bundle.fields)) {
       return;
@@ -532,6 +543,15 @@
     bundle.fields.forEach(function (item) { livePermissionByPath[item.fieldPath] = item; });
     concept.fields.forEach(function (field) {
       const live = livePermissionByPath[field.name];
+      // UI-8: the bundle's label is already resolved server-side for the request's X-Tag-locale
+      // (LabelResolver: exact tag, language, default), so the client only copies it -- it never
+      // interprets locale maps itself.
+      // Only for apps that declare more than one language (or a user who picked one), so apps
+      // without localized labels keep exactly the manifest's labels.
+      if (localizedLabelsActive()) {
+        if (live && typeof live.label === "string" && live.label) { field.label = live.label; }
+        if (live && typeof live.shortLabel === "string" && live.shortLabel) { field.shortLabel = live.shortLabel; }
+      }
       field.permissionOverlay = live ? {
         visible: live.visible !== false,
         editable: live.editable !== false,

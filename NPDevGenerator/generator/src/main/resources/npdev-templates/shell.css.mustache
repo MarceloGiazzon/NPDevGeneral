@@ -157,6 +157,12 @@ body.npdev-shell-no-right .npdev-shell-rightbar { display: none; }
 .npdev-shell-body { display: flex; flex: 1; min-height: 0; }
 
 /* ---- left sidebar (collapsible nav tree) ---- */
+/* PROC-3: pending-count pill on the "Work > My tasks" link. */
+.npdev-shell-nav-badge {
+  margin-left: auto; min-width: 18px; padding: 0 6px; border-radius: 9px;
+  background: var(--np-accent); color: var(--np-on-accent); font-size: 11px; line-height: 18px; text-align: center;
+}
+body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar .npdev-shell-nav-badge { display: none; }
 .npdev-shell-sidebar {
   width: var(--np-sidebar-w); flex-shrink: 0; background: var(--np-surface);
   border-right: 1px solid var(--np-border); padding: 14px 10px; overflow-y: auto;
@@ -241,6 +247,16 @@ body.npdev-shell-rightbar-collapsed .npdev-shell-rightbar { width: 0; padding: 0
   transition: box-shadow .15s ease, transform .15s ease;
 }
 .npdev-shell-gadget:hover { box-shadow: 0 2px 6px rgba(16, 24, 40, .1), 0 4px 10px rgba(16, 24, 40, .08); transform: translateY(-1px); }
+/* UI-9: dashboard filter bar (one input per distinct query parameter of the page's gadgets). */
+.npdev-shell-gadget-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.npdev-shell-gadget-filters label {
+  display: flex; flex-direction: column; gap: 2px; flex: 1 1 120px;
+  font-size: 11.5px; color: var(--np-text-muted); font-weight: 600;
+}
+.npdev-shell-gadget-filters input {
+  height: var(--np-control-h); padding: 0 8px; border: 1px solid var(--np-border);
+  border-radius: var(--np-radius); background: var(--np-surface); color: var(--np-text); font: inherit;
+}
 .npdev-shell-gadget h4 {
   margin: 0 0 8px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em;
   color: var(--np-text-muted); font-weight: 700;
