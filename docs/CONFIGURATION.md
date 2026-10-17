@@ -23,10 +23,11 @@ them up is the single most common startup failure:
   `npdev.runtime.mode`, but in practice a Postgres deployment needs both `npdev.runtime.mode=
   postgres` and `npdev.storage.mode=jdbc` set together.
 - **`npdev.database.engine`** — baked in at *generation* time from the model's `db.definition.json`
-  (`InMemory`/`H2Local`/`H2Server`/`Postgres`), not swappable via environment variables at
-  runtime. Setting `npdev.runtime.mode=postgres` against an app generated with a non-Postgres
-  engine will still fail — there's no DataSource bean to satisfy it, regardless of what's in your
-  `.env`.
+  (`InMemory`/`H2Local`/`H2Server`/`Postgres`/`MySQL`/`SqlServer`), not swappable via environment variables at
+  runtime. `npdev.runtime.mode=postgres` names the JDBC storage mode, not the engine, so it is also the correct value for
+  MySQL and SqlServer apps (the generated compose sets `NPDEV_RUNTIME_MODE: postgres` for every container engine). Setting
+  it against an app generated with an embedded engine (`InMemory`/`H2*`) will still fail — there's no
+  server DataSource bean to satisfy it, regardless of what's in your `.env`.
 
 **Gotcha: environment-variable name mangling — narrower than it first looks (REG-154).** Spring
 Boot's relaxed env-var binding strips hyphens from property names, so `npdev.auth.api-keys` binds
@@ -114,7 +115,7 @@ Docker Compose / `.env.example` expose the key paths as env vars so a container 
 as secrets. Mind the **same relaxed-binding hyphen-stripping** as `NPDEV_AUTH_APIKEYS`: the
 property `npdev.auth.jwt.private-key-path` binds from `NPDEV_AUTH_JWT_PRIVATEKEYPATH` (hyphens
 removed — **no** underscore before `KEYPATH`), *not* the intuitive `NPDEV_AUTH_JWT_PRIVATE_KEY_PATH`
-(which silently no-ops). Likewise `NPDEV_AUTH_JWT_PUBLICKEYPATH`. `issuer`/`audience` have no
+(not re-tested for this property — plain `@Value` reads may accept it too, as they do for `NPDEV_AUTH_API_KEYS`). Likewise `NPDEV_AUTH_JWT_PUBLICKEYPATH`. `issuer`/`audience` have no
 internal hyphens, so `NPDEV_AUTH_JWT_ISSUER` / `NPDEV_AUTH_JWT_AUDIENCE` bind as written.
 
 | Property | Environment variable |
@@ -127,7 +128,7 @@ internal hyphens, so `NPDEV_AUTH_JWT_ISSUER` / `NPDEV_AUTH_JWT_AUDIENCE` bind as
 
 Login also needs to know which table/columns hold credentials (defaults match the identity pack's
 own schema, override only if you're bonding to a differently-named concept — see
-`docs/PASSWORD_RESET.md`):
+`docs/reference/PASSWORD_RESET.md`):
 
 | Property | Default |
 |---|---|
@@ -179,7 +180,7 @@ For a host with no persistent disk (most PaaS free tiers), supply the key instea
 - **`npdev.superuser.force-reissue`** (default `false`) — set `true` for one boot to revoke the
   current key and issue a fresh one (see `Reissue-SuperUserKey.ps1`). **Relaxed-binding gotcha,
   same as the JWT/apikey ones above:** the environment variable is `NPDEV_SUPERUSER_FORCEREISSUE`
-  (hyphen stripped — no underscore before `REISSUE`), *not* `NPDEV_SUPERUSER_FORCE_REISSUE`.
+  (hyphen stripped — no underscore before `REISSUE`), *not* `NPDEV_SUPERUSER_FORCE_REISSUE` (also a plain `@Value` read, so the underscore spelling probably resolves too; not re-tested).
 
 ## Postgres-mode required variables
 
@@ -208,7 +209,7 @@ Not part of the mode/auth/postgres contract above, but its own set of startup-ti
 | Property | Default | Notes |
 |---|---|---|
 | `npdev.strict-execution.enabled` | `true` | Cannot be set `false` while `npdev.execution.mode=governed` — startup refuses that combination outright. |
-| `npdev.strict-execution.generated-root` | `${user.dir}/npdev-generated` | The directory whose contents get hashed and verified. |
+| `npdev.strict-execution.generated-root` | `${user.dir}/npdev-generated` (the Java default; under the `default` Spring profile `application-default.properties` overrides it with a backslash form that does not resolve on Linux) | The directory whose contents get hashed and verified. |
 | `npdev.execution.mode` | `governed` | `governed` or `relaxed`. `relaxed` (used by the `dev` profile) skips the hash check entirely — never use it in a real deployment. |
 | `npdev.runtime.surface-profile` | `supported-core` | In governed mode, must be exactly `supported-core`. |
 | `npdev.runtime.supported-surface-enforced` | `true` | Must stay `true` in governed mode. |
@@ -219,20 +220,20 @@ your own customizations (`web/` assets) actually belong instead.
 
 ## File storage / email (adapter-specific, not validated by `StartupValidator`)
 
-These gate which capability adapter gets bound, not checked by the validators above — an unset
-value here fails later, at first use, not at boot:
+These gate which capability adapter gets bound, not checked by `StartupValidator`. With `NPDEV_FILESTORE_PROVIDER=objectstore`
+an unset bucket does fail at boot (`NpdevFileStoreConfig` throws at bean creation); the other values fail later, at first use:
 
 | Property (env var) | Purpose |
 |---|---|
 | `NPDEV_FILESTORE_PROVIDER` | `inproc` (default) or `objectstore` (S3/MinIO-compatible). |
-| `NPDEV_FILESTORE_OBJECTSTORE_BUCKET` / `_ENDPOINT` / `_REGION` / `_ACCESSKEYID` / `_SECRETACCESSKEY` | Required when `NPDEV_FILESTORE_PROVIDER=objectstore`. See `docs/DEPLOYMENT.md`. |
-| `NPDEV_MAIL_SMTP_HOST` | SMTP host when the `mail-smtp` adapter is bound instead of `mail-inproc`. See `docs/EMAIL_NOTIFICATIONS.md`. |
+| `NPDEV_FILESTORE_OBJECTSTORE_BUCKET` / `_ENDPOINT` / `_REGION` / `_ACCESSKEYID` / `_SECRETACCESSKEY` | Only the bucket is required when `NPDEV_FILESTORE_PROVIDER=objectstore`; region defaults to `us-east-1`, endpoint and credentials default to blank. See `docs/DEPLOYMENT.md`. |
+| `NPDEV_MAIL_SMTP_HOST` | SMTP host when the `mail-smtp` adapter is bound instead of `mail-inproc`. See `docs/reference/EMAIL_NOTIFICATIONS.md`. |
 
 ## Persistence capability binding (checked at boot)
 
 A model whose flows persist data — `createConcept`/`updateConcept`/`saveConcept` steps, or a direct
 `persistence.*` capability call — must declare a `persistence` binding in `model.json`'s `bindings`
-array (see `docs/NPDEV_USER_MANUAL.md` section 5.1 for the `capabilities`/`bindings` block shape). A
+array (see `docs/NPDEV_USER_MANUAL.md` section 6 for the `capabilities`/`bindings` block shape). A
 binding can legitimately come from a built-in pack instead of the model's own `bindings` array, so
 model *validation* cannot assume its absence is an error — but a generated app that reaches runtime
 with flows that persist and **no bound adapter for `persistence`** (neither `persistence-inproc` for
@@ -270,7 +271,7 @@ already sets before assuming you need to set something yourself.
 with no `--spring.profiles.active` flag at all now activates Spring's own reserved `default`
 profile (`application-default.properties` — governed execution mode, no seeded auth keys) rather
 than silently running as `dev`, so an un-profiled boot fails closed at `#authentication` instead of
-quietly picking up `application-dev.yml`'s known key. Every supported launcher passes an explicit
+quietly picking up a dev key (`application-dev.yml` no longer seeds one either, so dev fails closed too). Every supported launcher passes an explicit
 profile: `_ops/Run-FinalApp.ps1` defaults to `-Profile dev` (pass `-Profile prod` to boot against
 `application-prod.properties` instead), and `Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1` already pass
 `--spring.profiles.active=dev,step0,trial` explicitly.
