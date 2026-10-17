@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -171,6 +172,13 @@ public class InvitationController {
             return ResponseEntity.status(500).body(Map.of("error", "invite_failed"));
         }
         return ResponseEntity.status(201).body(deliver(userId, username, email, raw));
+    }
+
+    /** SEC-7: the roles an ADMIN may put on an invitation -- feeds the invite page's role checkboxes. */
+    @GetMapping("/api/auth/assignable-roles")
+    public ResponseEntity<Map<String, Object>> assignableRoles(HttpServletRequest httpRequest) {
+        requireAdmin(httpRequest);
+        return ResponseEntity.ok(Map.of("roles", CreateUserController.assignableRoles(modelHolder.get())));
     }
 
     /** Resend: a fresh token (and mail) for an existing user in the caller's tenant with an email on file. */
