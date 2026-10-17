@@ -93,6 +93,8 @@ public class OAuthGoogleController {
     /** SEC-13: used only to ask whether the signed-in user has two-step sign-in on; null in the test-only constructor. */
     private final DataSource dataSource;
     private final ModelHolder modelHolder;
+    /** SEC-14: reported to the login page so it can render the e-mail signup form; false in the test-only constructors. */
+    private final boolean signupEnabled;
 
     @Autowired
     public OAuthGoogleController(
@@ -115,8 +117,11 @@ public class OAuthGoogleController {
             @Value("${npdev.auth.oauth.github.user-endpoint:https://api.github.com/user}") String githubUserEndpoint,
             @Value("${npdev.auth.oauth.github.user-emails-endpoint:https://api.github.com/user/emails}") String githubUserEmailsEndpoint,
             @Value("${npdev.auth.oauth.state-ttl-seconds:600}") long stateTtlSeconds,
+            @Value("${npdev.auth.signup.enabled:false}") boolean signupEnabled,
+            @Value("${npdev.auth.oauth.signup-enabled:true}") boolean oauthSignupEnabled,
             Environment environment
     ) throws Exception {
+        this.signupEnabled = signupEnabled;
         this.expirySeconds = expirySeconds;
         this.dataSource = dataSource;
         this.modelHolder = modelHolder;
@@ -140,7 +145,8 @@ public class OAuthGoogleController {
                     googleAuthorizationEndpoint, googleTokenEndpoint, googleTokenInfoEndpoint, httpClient);
             providers.put(google.providerId(), google);
             authServices.put(google.providerId(), new OAuthGoogleAuthService(dataSource, modelHolder, google, jwtSigner,
-                    OidcProviderConfig.domains(environment.getProperty("npdev.auth.oauth.google.allowed-domains"))));
+                    OidcProviderConfig.domains(environment.getProperty("npdev.auth.oauth.google.allowed-domains")),
+                    oauthSignupEnabled));
         }
         if (jwtSigner != null && present(githubClientId) && present(githubClientSecret)) {
             IdentityProvider github = new GitHubIdentityProvider(githubClientId, githubClientSecret,
@@ -148,7 +154,8 @@ public class OAuthGoogleController {
                     httpClient);
             providers.put(github.providerId(), github);
             authServices.put(github.providerId(), new OAuthGoogleAuthService(dataSource, modelHolder, github, jwtSigner,
-                    OidcProviderConfig.domains(environment.getProperty("npdev.auth.oauth.github.allowed-domains"))));
+                    OidcProviderConfig.domains(environment.getProperty("npdev.auth.oauth.github.allowed-domains")),
+                    oauthSignupEnabled));
         }
         // SEC-9: any number of generic OIDC providers, configured purely by npdev.auth.oidc.* environment.
         Map<String, String> labels = new LinkedHashMap<>();
@@ -161,7 +168,7 @@ public class OAuthGoogleController {
                 IdentityProvider oidc = new OidcIdentityProvider(entry.settings(), httpClient, java.time.Clock.systemUTC());
                 providers.put(id, oidc);
                 authServices.put(id, new OAuthGoogleAuthService(
-                        dataSource, modelHolder, oidc, jwtSigner, entry.allowedDomains()));
+                        dataSource, modelHolder, oidc, jwtSigner, entry.allowedDomains(), oauthSignupEnabled));
                 labels.put(id, entry.label());
             }
         }
@@ -204,6 +211,7 @@ public class OAuthGoogleController {
         this.labels = Map.of();
         this.dataSource = dataSource;
         this.modelHolder = modelHolder;
+        this.signupEnabled = false;
     }
 
     /** Every provider this app currently offers a "Continue with ..." button for. */
@@ -219,6 +227,7 @@ public class OAuthGoogleController {
         }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("providers", entries);
+        body.put("signupEnabled", signupEnabled);
         return ResponseEntity.ok(body);
     }
 

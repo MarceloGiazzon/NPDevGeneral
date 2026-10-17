@@ -184,6 +184,32 @@ class OAuthGoogleAuthServiceTest {
         assertNull(ticket.token());
     }
 
+    // ------------------------------------------------------------------ SEC-14: provider signup switch
+
+    @Test
+    void providerSignupSwitchedOffRefusesAnUnknownEmailButStillLogsInALinkedUser() throws Exception {
+        OAuthGoogleAuthService closed = new OAuthGoogleAuthService(dataSource, new ModelHolder(identityModel()),
+                provider, signer, java.util.Set.of(), false);
+        provider.stub("sub-new", "new@example.com", true, "New Person", null);
+
+        var refused = closed.resolveAndSignIn("code-s1", "http://localhost/api/auth/oauth/google/callback", TENANT);
+
+        assertEquals(OAuthGoogleAuthService.Outcome.PROVIDER_REFUSED, refused.outcome());
+        assertEquals("oauth_signup_disabled", refused.errorCode());
+        assertNull(refused.token());
+        try (Connection c = dataSource.getConnection(); Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM identity_users")) {
+            assertTrue(rs.next());
+            assertEquals(0, rs.getInt(1), "a refused signup must not create an account");
+        }
+
+        insertUser("55555555-5555-5555-5555-555555555555", "ada@example.com", "ada@example.com", true, 0);
+        link("55555555-5555-5555-5555-555555555555", "sub-ada");
+        provider.stub("sub-ada", "ada@example.com", true, "Ada", null);
+        var login = closed.resolveAndSignIn("code-s2", "http://localhost/api/auth/oauth/google/callback", TENANT);
+        assertEquals(OAuthGoogleAuthService.Outcome.LOGIN, login.outcome());
+    }
+
     // ------------------------------------------------------------------ SEC-9: allowed email domains
 
     private OAuthGoogleAuthService serviceRestrictedTo(String... domains) {

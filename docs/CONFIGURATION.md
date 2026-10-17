@@ -145,6 +145,18 @@ Two-step sign-in (authenticator app, identity pack 1.3.0+, `identity::UserMfa`):
 Apps that keep a private copy of the identity pack older than 1.3.0 have no `identity::UserMfa` table;
 MFA is then reported as unavailable and sign-in behaves exactly as before.
 
+Self-signup by e-mail (`POST /api/auth/signup`, **off by default**; needs a bound `mail` capability):
+
+| Property | Environment variable | Meaning |
+|---|---|---|
+| `npdev.auth.signup.enabled` | `NPDEV_AUTH_SIGNUP_ENABLED` | Default `false`. When `false` the endpoint answers `404 signup_disabled` and the login page shows no e-mail form. When `true`, a visitor enters an e-mail address and is mailed a 24-hour one-time link (`npdev.auth.password-reset.link-base-url` + token + `&signup=1`; the bare code when that is unset) to choose a password; until then the account cannot sign in. Every outcome answers the same generic `200` (no account enumeration), is throttled per (e-mail, IP), and always lands in the home tenant. |
+| `npdev.auth.signup.default-roles` | `NPDEV_AUTH_SIGNUP_DEFAULT_ROLES` | Comma list, default `USER`. `ADMIN` or `SUPERUSER` here fails startup (when signup is enabled). |
+| `npdev.auth.signup.allowed-domains` | `NPDEV_AUTH_SIGNUP_ALLOWED_DOMAINS` | Comma list of e-mail domains allowed to sign up; empty = any. A foreign domain still gets the generic `200` but no mail and no account. |
+| `npdev.auth.oauth.signup-enabled` | `NPDEV_AUTH_OAUTH_SIGNUP_ENABLED` | Default `true` (a provider sign-in with an unknown verified e-mail creates the account, as before). `false` refuses that with `oauth_signup_disabled`; existing accounts and explicit provider linking are unaffected. |
+
+Apps whose credential table has extra required columns (WmsOffice's `entidade_id`) cannot use self-signup:
+the account insert fails, one WARNING is logged, and the response stays the generic `200`.
+
 ### ControlPanel Super User key
 
 The Super User key is **issued by default, and supplied by configuration when a deployment needs
