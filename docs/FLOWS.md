@@ -115,8 +115,9 @@ CAPABILITY_FAILED, sub-kind TRANSIENT / RATE_LIMIT / TIMEOUT        → FAILED
 EVENT_PERSIST_FAILED, FAILED                                        → FAILED
 ```
 
-**`COMPLETED`, `FAILED`, and `FAILED_PERMANENT` are true dead ends** — nothing in `KernelRunner.java`
-ever transitions an instance back out of them. **`STUCK` does not self-heal**: `resumeExecution`'s
+**`COMPLETED` and `FAILED_PERMANENT` are true dead ends**, and `FAILED` is only recoverable by the
+operator action below (PROC-7) — nothing in the automatic paths of `KernelRunner.java` ever
+transitions an instance back out of them. **`STUCK` does not self-heal**: `resumeExecution`'s
 status guard (`KernelRunner.java:882`) accepts `RUNNING` and `WAITING_EVENT` but not `STUCK`, so no
 sweep will ever pick a stuck instance back up on its own.
 
@@ -128,6 +129,23 @@ correlation checks. Exposed as `POST /api/executions/{id}/unstick`, **SUPERUSER-
 see §9). Refuses with `NOT_STUCK` on any other status, and refuses a `STUCK` row carrying no
 `waitingForEventName` — `STUCK` is reachable from `RUNNING`, and such a row cannot legally hold
 `WAITING_EVENT`.
+
+**Operator retry and cancel (PROC-7).** Two more SUPERUSER-gated transitions, both audited:
+
+- `KernelRunner.retryFailedExecution(executionId, ctx)` — `FAILED` only, via
+  `FlowInstance.withRetry(now)`: the instance goes back to `RUNNING` at the **same**
+  `currentStepIndex` with the failure quartet and the resume streak cleared, and is re-entered
+  through `resumeExecution` under the instance's own tenant/actor (the trusted resume role). Earlier
+  steps are not re-run. Refused with `NOT_RETRYABLE` for any other status (`FAILED_PERMANENT` means a
+  contract/validation error a retry cannot fix) and `NOT_RETRYABLE_COMPENSATED` when the flow
+  declares `onFailure` compensation (compensation already undid the earlier steps, so re-entering
+  forward would re-apply only the tail). `POST /api/executions/{id}/retry`.
+- `KernelRunner.cancelExecution(executionId, actorId)` — `WAITING_EVENT` or `STUCK` only (never
+  `RUNNING`, which could race a live thread), via `FlowInstance.markCancelled(actor, now)`. There is
+  **no `CANCELLED` status**: a cancelled instance is `FAILED_PERMANENT` with
+  `lastErrorCode = CANCELLED_BY_OPERATOR` and the cancelling actor in `lastErrorMessage`, so it is
+  outside the resume sweep and an awaited event published later does not resume it. Refused with
+  `NOT_CANCELLABLE` otherwise. `POST /api/executions/{id}/cancel`.
 
 ## 3. The 9 step kinds
 
@@ -663,6 +681,17 @@ terminal execution; `npdev_correlation_owner` is the adjacent ownership table (�
 `GET /api/executions/active` / `.../history`. The `npdev-cli`'s `printTrace`/`resumeExecution`
 subcommands remain for direct single-instance inspection or a forced retry.
 
+**Retry, cancel and the per-tenant attention list (PROC-7).** `POST /api/executions/{id}/retry` and
+`POST /api/executions/{id}/cancel` (§2) are SUPERUSER-gated like `unstick`, answer `200` with
+`outcome` `RETRIED` / `CANCELLED`, `404` `NOT_FOUND`, and `409` for `NOT_RETRYABLE`,
+`NOT_RETRYABLE_COMPENSATED` or `NOT_CANCELLABLE`; each writes an `ADMIN_RETRY_EXECUTION` /
+`ADMIN_CANCEL_EXECUTION` audit record. Because the Super User key is issued under tenant
+`__system__`, the tenant-scoped `/active`, `/history` and `/stuck` show it nothing — so
+`GET /api/executions/attention?tenant=<id>` (SUPERUSER, explicit tenant) lists that tenant's `FAILED`
+plus `STUCK` executions. The generated **NPDev > Executions** page
+(`/npdev-business-ui/ops/executions.html`, super-user section of the shell) drives all of it:
+tenant box, a table, and Retry / Cancel / Unstick buttons per row.
+
 **Two things to know before you reach for these:**
 
 - **They need DIFFERENT credentials today, which is a wart, not a design.** `unstick` is
@@ -670,7 +699,8 @@ subcommands remain for direct single-instance inspection or a forced retry.
   grants ADMIN to every anonymous caller, so ADMIN would be no gate at all. But the `stuck` LISTING
   goes through `canReadFailures`, which a SUPERUSER-only principal fails. So an operator currently
   lists with an ADMIN key and un-sticks with the Super User key. Verified live: `POST .../unstick`
-  with an ADMIN key returns **403**.
+  with an ADMIN key returns **403**. (`GET /api/executions/attention?tenant=` is the SUPERUSER-only
+  listing that closes this for the Executions page.)
 - **Since R2.1, reaching `STUCK` at all means a resume kept THROWING.** A merely-quiet wait no
   longer counts toward the cap (§2), so a stuck instance is always a real, repeating failure — fix
   the cause before un-sticking, or it will simply exhaust the cap again.

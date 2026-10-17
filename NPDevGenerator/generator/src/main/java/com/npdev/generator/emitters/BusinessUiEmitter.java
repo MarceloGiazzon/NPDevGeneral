@@ -171,6 +171,13 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                     templates.raw("static-assets/collab/" + asset)
             );
         }
+        // PROC-7: model-free operator pages (served at /npdev-business-ui/ops/...), verbatim copies.
+        for (String asset : BUSINESS_UI_OPS_ASSETS) {
+            writer.writeRelative(
+                    "src/main/resources/static/npdev-business-ui/ops/" + asset,
+                    templates.raw("static-assets/ops/" + asset)
+            );
+        }
         writer.writeRelative(
                 "src/main/resources/static/npdev-business-ui/generated-ui-manifest.json",
                 manifestJson(model, persistedConcepts, superUserRole, resolver, fieldOrigins)
@@ -257,9 +264,16 @@ public final class BusinessUiEmitter extends AbstractEmitter {
      */
     static final List<String> COLLAB_ASSETS = List.of("tasks.html", "tasks.js", "collab.css", "bell.js");
 
+    /** PROC-7: the Executions operator page, linked from the shell's super-user NPDev section. */
+    static final List<String> BUSINESS_UI_OPS_ASSETS = List.of(
+            "executions.html",
+            "executions.js"
+    );
+
     static final List<String> BUSINESS_UI_VIEW_ASSETS = List.of(
             "registry.js",
             "history.js",
+            "comments.js",
             "board.js",
             "search.js",
             "calendar.js",
@@ -505,6 +519,13 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("route", "/" + SqlIdentifierSupport.aliasPreservingTableName(concept, contexts));
             node.put("tableName", SqlIdentifierSupport.tableName(concept));
             node.put("idField", idField.getName());
+            if (concept.getCollaboration() != null) {
+                // PROC-5/PROC-6: key present only when declared, so existing manifests stay byte-identical.
+                Map<String, Object> collaboration = new LinkedHashMap<>();
+                collaboration.put("comments", concept.getCollaboration().comments());
+                collaboration.put("attachments", concept.getCollaboration().attachments());
+                node.put("collaboration", collaboration);
+            }
             node.put("endpointBase", endpointBase(concept, contexts));
             node.put("formColumns", formColumns(concept));
             node.put("displayMode", displayMode(concept));

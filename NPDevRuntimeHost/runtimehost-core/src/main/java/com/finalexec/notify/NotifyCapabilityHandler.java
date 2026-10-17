@@ -107,7 +107,7 @@ public final class NotifyCapabilityHandler implements CapabilityAdapter {
     }
 
     /** "/x" yes; "//evil.com", "/\\evil.com", "https://evil", "javascript:..." no. */
-    private static boolean isSiteRelative(String link) {
+    static boolean isSiteRelative(String link) {
         return link.startsWith("/") && !link.startsWith("//") && !link.startsWith("/\\");
     }
 

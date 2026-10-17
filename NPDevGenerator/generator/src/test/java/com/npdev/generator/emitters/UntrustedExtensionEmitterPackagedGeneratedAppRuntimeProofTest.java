@@ -1035,6 +1035,7 @@ final class UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest {
                         // does not exist"). See docs/ADAPTER_REGISTRATION_CHECKLIST.md.
                         ":adapters:idp-github:jar",
                         ":adapters:idp-google:jar",
+                        ":adapters:idp-oidc:jar",
                         ":adapters:json-jackson:jar",
                         ":adapters:metrics-micrometer:jar",
                         ":adapters:notification-inproc:jar",
