@@ -172,7 +172,8 @@ public final class PostgresPersistenceCapabilityAdapter
 
     private boolean rowExists(Connection connection, String table, String idColumn, Object id)
             throws SQLException {
-        String sql = "SELECT " + idColumn + " FROM " + table + " WHERE " + idColumn + " = ?";
+        String sql = SqlIdentifierSupport.sqlWithIdentifiers(
+                "SELECT {0} FROM {1} WHERE {0} = ?", idColumn, table);
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setObject(1, bindable(ps, coerceValueForColumn(idColumn, id)));
             // A null ResultSet (a minimal JDBC double that does not stub executeQuery) means "no row".

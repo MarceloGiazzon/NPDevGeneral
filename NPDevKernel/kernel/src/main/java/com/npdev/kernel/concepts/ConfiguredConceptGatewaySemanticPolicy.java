@@ -648,12 +648,17 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         if (text.isEmpty()) {
             return Boolean.TRUE;
         }
+        Boolean verdict = null;
         try {
             Object result = ComputedExpression.evaluate(text, facts, INVARIANT_FUNCTIONS);
-            return result instanceof Boolean verdict ? verdict : null;
+            verdict = result instanceof Boolean evaluated ? evaluated : null;
         } catch (ComputedExpression.ExpressionException unsupported) {
-            return null;
+            // Not a security verdict: "no verdict here". The caller records the rule as
+            // skippedUnsupportedExpression (visible in rulesEvaluated) and the kernel CEL engine still
+            // enforces it, so `verdict` stays null rather than becoming an allow or a deny.
+            verdict = null;
         }
+        return verdict;
     }
 
     private static ConceptSemanticDecision allowWithSemanticDetails(
