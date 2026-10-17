@@ -1,6 +1,7 @@
 package com.finalexec.auth;
 
 import com.finalexec.config.ModelHolder;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledRole;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.generated.runtime.service.RuntimeContextService;
@@ -297,10 +298,15 @@ public class CreateUserController {
 
     /** A role the tenant ADMIN may assign: a model-declared role, or the built-in USER/ADMIN. */
     private String assignableRole(String raw) {
+        return assignableRole(modelHolder.get(), raw);
+    }
+
+    /** SEC-6: model-taking twin so {@link InvitationController} applies the exact same role rules. */
+    static String assignableRole(CompiledModel model, String raw) {
         if (raw == null || raw.isBlank()) {
             return null;
         }
-        String declared = declaredRole(raw);
+        String declared = declaredRole(model, raw);
         if (declared != null) {
             return declared;
         }
@@ -309,11 +315,15 @@ public class CreateUserController {
     }
 
     private String declaredRole(String raw) {
+        return declaredRole(modelHolder.get(), raw);
+    }
+
+    static String declaredRole(CompiledModel model, String raw) {
         String normalized = RolePermissions.normalizeRoleName(raw);
         if (normalized == null) {
             return null;
         }
-        for (CompiledRole role : modelHolder.get().getRoles()) {
+        for (CompiledRole role : model.getRoles()) {
             if (normalized.equals(RolePermissions.normalizeRoleName(role.name()))) {
                 return role.name();
             }
@@ -322,7 +332,11 @@ public class CreateUserController {
     }
 
     private List<String> assignableRoles() {
-        List<String> roles = new ArrayList<>(modelHolder.get().getRoles().stream().map(CompiledRole::name).toList());
+        return assignableRoles(modelHolder.get());
+    }
+
+    static List<String> assignableRoles(CompiledModel model) {
+        List<String> roles = new ArrayList<>(model.getRoles().stream().map(CompiledRole::name).toList());
         roles.add("USER");
         roles.add("ADMIN");
         return roles;
