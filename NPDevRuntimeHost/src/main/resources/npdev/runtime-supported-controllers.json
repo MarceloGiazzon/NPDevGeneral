@@ -15,6 +15,7 @@
     "DirectExecutionGatewayController",
     "ExecutionMonitorController",
     "HumanTaskController",
+    "NotificationController",
     "RuntimeMetadataController",
     "RuntimeMetadataValidationController",
     "MetadataHotSwapController",

@@ -517,7 +517,8 @@ public class NpdevPluginConfig {
             // NpdevCapabilityBindingConfig, like eventbus.
             if ("eventbus".equalsIgnoreCase(binding.getCapability())
                     || "externalai".equalsIgnoreCase(binding.getCapability())
-                    || "filestore".equalsIgnoreCase(binding.getCapability())) {
+                    || "filestore".equalsIgnoreCase(binding.getCapability())
+                    || "notify".equalsIgnoreCase(binding.getCapability())) {
                 continue;
             }
             CompiledCapability capability = capabilitiesByName.get(binding.getCapability());
