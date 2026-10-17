@@ -59,7 +59,7 @@ public class WebhookDeliveryAdminController {
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "50") int limit
     ) {
-        requireAdmin(request);
+        String tenantId = requireAdmin(request);
         String normalized = status == null || status.isBlank() ? null : status.trim().toUpperCase();
         if (normalized != null && !STATUSES.contains(normalized)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status must be one of " + STATUSES);
@@ -67,7 +67,7 @@ public class WebhookDeliveryAdminController {
         int bounded = Math.max(1, Math.min(limit, 200));
         try (Connection connection = open()) {
             store.ensureSchema(connection);
-            return store.list(connection, normalized, bounded);
+            return store.list(connection, tenantId, normalized, bounded);
         } catch (SQLException failure) {
             throw unavailable();
         }
@@ -75,10 +75,10 @@ public class WebhookDeliveryAdminController {
 
     @GetMapping("/{id}/payload")
     public String payload(HttpServletRequest request, @PathVariable String id) {
-        requireAdmin(request);
+        String tenantId = requireAdmin(request);
         try (Connection connection = open()) {
             store.ensureSchema(connection);
-            return store.payload(connection, id)
+            return store.payload(connection, tenantId, id)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown delivery"));
         } catch (SQLException failure) {
             throw unavailable();
@@ -87,14 +87,13 @@ public class WebhookDeliveryAdminController {
 
     @PostMapping("/{id}/redeliver")
     public Map<String, Object> redeliver(HttpServletRequest request, @PathVariable String id) {
-        requireAdmin(request);
+        String tenantId = requireAdmin(request);
         try (Connection connection = open()) {
             store.ensureSchema(connection);
-            if (store.redeliver(connection, id, Instant.now())) {
+            if (store.redeliver(connection, tenantId, id, Instant.now())) {
                 return Map.of("id", id, "status", WebhookDeliveryRecordStore.STATUS_PENDING);
             }
-            boolean known = store.list(connection, null, 200).stream().anyMatch(row -> id.equals(row.get("id")));
-            if (!known && store.payload(connection, id).isEmpty()) {
+            if (store.payload(connection, tenantId, id).isEmpty()) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown delivery");
             }
             throw new ResponseStatusException(HttpStatus.CONFLICT, "delivery is already queued or being sent");
@@ -116,10 +115,12 @@ public class WebhookDeliveryAdminController {
                 "webhook-http is not bound by this app's model, or the delivery store is unavailable");
     }
 
-    private void requireAdmin(HttpServletRequest request) {
+    /** Returns the caller's tenant: an admin sees and replays only their own tenant's deliveries. */
+    private String requireAdmin(HttpServletRequest request) {
         ExecutionContext context = runtimeContextService.currentContext(request);
         if (!context.roles().contains("ADMIN")) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
         }
+        return context.tenantId();
     }
 }

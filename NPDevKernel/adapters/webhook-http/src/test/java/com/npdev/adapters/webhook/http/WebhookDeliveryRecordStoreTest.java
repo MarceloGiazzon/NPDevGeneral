@@ -108,7 +108,7 @@ class WebhookDeliveryRecordStoreTest {
     void queuedRowIsDueOnlyOnceItsNextAttemptArrives() throws SQLException {
         Instant now = Instant.parse("2026-10-16T12:00:00Z");
         String id = UUID.randomUUID().toString();
-        store.insertQueued(connection, id, "hooks.example.com", "https://hooks.example.com/x", "{\"n\":1}", "WidgetCreated", now);
+        store.insertQueued(connection, id, "t1", "hooks.example.com", "https://hooks.example.com/x", "{\"n\":1}", "WidgetCreated", now);
 
         java.util.List<WebhookDeliveryRecordStore.DueDelivery> due = store.findDue(connection, now, 10);
         assertEquals(1, due.size());
@@ -122,7 +122,7 @@ class WebhookDeliveryRecordStoreTest {
     void claimForSendCountsTheAttemptAndRescheduleMovesTheNextAttempt() throws SQLException {
         Instant now = Instant.parse("2026-10-16T12:00:00Z");
         String id = UUID.randomUUID().toString();
-        store.insertQueued(connection, id, "hooks.example.com", "https://hooks.example.com/x", "{}", null, now);
+        store.insertQueued(connection, id, "t1", "hooks.example.com", "https://hooks.example.com/x", "{}", null, now);
 
         assertTrue(store.claimForSend(connection, id, now));
         assertFalse(store.claimForSend(connection, id, now), "a second worker must lose the claim");
@@ -141,7 +141,7 @@ class WebhookDeliveryRecordStoreTest {
     void releaseStaleReturnsACrashedWorkersRowToPending() throws SQLException {
         Instant now = Instant.parse("2026-10-16T12:00:00Z");
         String id = UUID.randomUUID().toString();
-        store.insertQueued(connection, id, "hooks.example.com", "https://hooks.example.com/x", "{}", null, now);
+        store.insertQueued(connection, id, "t1", "hooks.example.com", "https://hooks.example.com/x", "{}", null, now);
         assertTrue(store.claimForSend(connection, id, now));
 
         assertEquals(0, store.releaseStale(connection, now.minusSeconds(600), now.plusSeconds(1)));
@@ -153,39 +153,58 @@ class WebhookDeliveryRecordStoreTest {
     void redeliverRequeuesAFailedRowWithTheSameIdAndRefusesPendingOnes() throws SQLException {
         Instant now = Instant.parse("2026-10-16T12:00:00Z");
         String id = UUID.randomUUID().toString();
-        store.insertQueued(connection, id, "hooks.example.com", "https://hooks.example.com/x", "{}", "E", now);
-        assertFalse(store.redeliver(connection, id, now), "a PENDING row is already queued");
+        store.insertQueued(connection, id, "t1", "hooks.example.com", "https://hooks.example.com/x", "{}", "E", now);
+        assertFalse(store.redeliver(connection, "t1", id, now), "a PENDING row is already queued");
 
         assertTrue(store.claimForSend(connection, id, now));
         store.finishFailed(connection, id, 400, "HTTP 400", now);
         assertEquals(WebhookDeliveryRecordStore.STATUS_FAILED, readRow(id).status);
         assertTrue(store.findDue(connection, now.plusSeconds(99999), 10).isEmpty(), "dead letters are never due");
 
-        assertTrue(store.redeliver(connection, id, now.plusSeconds(5)));
+        assertTrue(store.redeliver(connection, "t1", id, now.plusSeconds(5)));
         java.util.List<WebhookDeliveryRecordStore.DueDelivery> due = store.findDue(connection, now.plusSeconds(5), 10);
         assertEquals(1, due.size());
         assertEquals(id, due.get(0).id(), "redelivery keeps the delivery id so receivers can de-duplicate");
 
         assertTrue(store.claimForSend(connection, id, now.plusSeconds(6)));
         store.finishDelivered(connection, id, 200, now.plusSeconds(7));
-        assertTrue(store.redeliver(connection, id, now.plusSeconds(8)), "a DELIVERED row can be replayed on demand");
+        assertTrue(store.redeliver(connection, "t1", id, now.plusSeconds(8)), "a DELIVERED row can be replayed on demand");
     }
 
     @Test
     void listNeverExposesThePayloadAndFiltersByStatus() throws SQLException {
         Instant now = Instant.parse("2026-10-16T12:00:00Z");
         String id = UUID.randomUUID().toString();
-        store.insertQueued(connection, id, "hooks.example.com", "https://hooks.example.com/x", "{\"email\":\"a@b.c\"}", "E", now);
+        store.insertQueued(connection, id, "t1", "hooks.example.com", "https://hooks.example.com/x", "{\"email\":\"a@b.c\"}", "E", now);
 
-        java.util.List<java.util.Map<String, Object>> all = store.list(connection, null, 10);
+        java.util.List<java.util.Map<String, Object>> all = store.list(connection, "t1", null, 10);
         assertEquals(1, all.size());
         assertFalse(all.get(0).containsKey("payload"));
         assertFalse(all.toString().contains("a@b.c"));
         assertEquals("E", all.get(0).get("event_name"));
-        assertEquals(1, store.list(connection, WebhookDeliveryRecordStore.STATUS_PENDING, 10).size());
-        assertTrue(store.list(connection, WebhookDeliveryRecordStore.STATUS_FAILED, 10).isEmpty());
-        assertEquals("{\"email\":\"a@b.c\"}", store.payload(connection, id).orElseThrow());
-        assertTrue(store.payload(connection, "missing").isEmpty());
+        assertEquals(1, store.list(connection, "t1", WebhookDeliveryRecordStore.STATUS_PENDING, 10).size());
+        assertTrue(store.list(connection, "t1", WebhookDeliveryRecordStore.STATUS_FAILED, 10).isEmpty());
+        assertEquals("{\"email\":\"a@b.c\"}", store.payload(connection, "t1", id).orElseThrow());
+        assertTrue(store.payload(connection, "t1", "missing").isEmpty());
+    }
+
+    @Test
+    void tenantFacingReadsAndReplaysNeverCrossTenants() throws SQLException {
+        Instant now = Instant.parse("2026-10-16T12:00:00Z");
+        String id = UUID.randomUUID().toString();
+        store.insertQueued(connection, id, "t1", "hooks.example.com", "https://hooks.example.com/x", "{\"n\":1}", "E", now);
+        assertTrue(store.claimForSend(connection, id, now));
+        store.finishFailed(connection, id, 400, "HTTP 400", now);
+
+        assertTrue(store.list(connection, "t2", null, 10).isEmpty(), "another tenant lists nothing");
+        assertTrue(store.payload(connection, "t2", id).isEmpty(), "another tenant cannot read the payload");
+        assertFalse(store.redeliver(connection, "t2", id, now), "another tenant cannot replay it");
+        assertEquals(WebhookDeliveryRecordStore.STATUS_FAILED, readRow(id).status);
+
+        assertEquals(1, store.list(connection, "t1", null, 10).size());
+        assertTrue(store.redeliver(connection, "t1", id, now));
+        assertEquals("t1", store.findDue(connection, now, 10).get(0).tenantId(),
+                "the platform-wide worker scan sees every tenant and reports whose it is");
     }
 
     private Row readRow(String id) throws SQLException {

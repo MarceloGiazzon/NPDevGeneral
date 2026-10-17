@@ -1,5 +1,6 @@
 package com.finalexec.webhook;
 
+import com.finalexec.config.DefaultTenant;
 import com.npdev.adapters.webhook.http.HttpWebhookCapabilityAdapter;
 import com.npdev.adapters.webhook.http.WebhookDeliveryRecordStore;
 import com.npdev.adapters.webhook.http.WebhookEgressDeniedException;
@@ -94,8 +95,11 @@ public final class QueuedWebhookCapabilityHandler implements CapabilityAdapter {
                     throw failure;
                 }
             }
-            store.insertQueued(connection, deliveryId, prepared.host(), prepared.url(), prepared.bodyJson(),
-                    eventName, Instant.now());
+            store.insertQueued(connection, deliveryId, tenantId(contextState), prepared.host(), prepared.url(),
+                    prepared.bodyJson(), eventName, Instant.now());
+        } catch (IllegalArgumentException invalid) {
+            return CapabilityResult.failure("WEBHOOK_TENANT_INVALID", invalid.getMessage(),
+                    CapabilityErrorKind.CONTRACT, Map.of());
         } catch (SQLException failure) {
             return CapabilityResult.failure("WEBHOOK_QUEUE_FAILED", "Could not queue the webhook delivery",
                     CapabilityErrorKind.TRANSIENT, Map.of());
@@ -104,6 +108,12 @@ public final class QueuedWebhookCapabilityHandler implements CapabilityAdapter {
         result.put("requestId", deliveryId);
         result.put("status", "queued");
         return CapabilityResult.success(result);
+    }
+
+    /** The calling tenant (orchestration passes the event's tenant); the home tenant when the caller carries none. */
+    private static String tenantId(Map<String, Object> contextState) {
+        Object fromContext = contextState == null ? null : contextState.get("tenantId");
+        return DefaultTenant.orDefault(fromContext == null ? null : String.valueOf(fromContext));
     }
 
     private static String eventName(Map<String, Object> contextState, Object payload) {
