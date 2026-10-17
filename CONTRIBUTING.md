@@ -96,7 +96,7 @@ every PR via `ai-knowledge-gate.yml`).
 
 ## A plan may not close with an unresolved deferral that has no tracking id
 
-`docs/maintainers/INVOCATION_TOPOLOGY_PLAN.md` T4: the DSL2-and-decomposition plan (moved out of the
+`docs/archive/INVOCATION_TOPOLOGY_PLAN.md` T4: the DSL2-and-decomposition plan (moved out of the
 repo by md-zero-2026-08-11 Phase 2; git history keeps it) closed with its own
 Definition of Done recording "`AppGen/apps` deferred as a non-git external directory — owner's
 call", with no ledger item attached. The plan closed and the deferral closed with it — 17 corpus
@@ -115,7 +115,7 @@ the rule now rests on review.
 
 ## A `--calibrate` control that cannot run is a failure, not a skip
 
-`docs/maintainers/FAIL_OPEN_PLAN.md` R1: a control that reads a pinned git revision (`git show <SHA>:<path>`) can
+`docs/archive/FAIL_OPEN_PLAN.md` R1: a control that reads a pinned git revision (`git show <SHA>:<path>`) can
 legitimately fail to read it — a shallow clone, a fork without full history, a rebase that orphaned
 the pin. Guarding the *read* is right; several `--calibrate` implementations guard the *whole
 control* instead (`if head_text is not None: report(...)`), so an unreadable revision means that
@@ -135,7 +135,7 @@ goes RED with a "N controls skipped" message, then restore it and confirm GREEN.
 
 ## A new allowlist entry needs a `why` and a REG-nn/B-nn citation
 
-`docs/maintainers/FAIL_OPEN_PLAN.md` R3: an empty `"cleared": {}` allowlist is self-policing — any entry stands
+`docs/archive/FAIL_OPEN_PLAN.md` R3: an empty `"cleared": {}` allowlist is self-policing — any entry stands
 out by existing at all. The moment one gains entries, that stops being true unless something asserts
 each one is reviewed rather than pre-cleared speculatively. `corpus-parse-allowlist.json`,
 `test-task-coverage-allowlist.json`, and `dsl-coverage-allowlist.json` already say this in their own
@@ -171,7 +171,7 @@ compiled-contract test into an end-to-end one.
 ## When a new app lands
 
 Re-run the screen classifier and refresh `docs/SCREEN_TAXONOMY.md`'s per-screen table (F1/F6,
-`docs/maintainers/FRONTEND_STRATEGY_PLAN.md`):
+`docs/archive/FRONTEND_STRATEGY_PLAN.md`):
 
 ```
 python <scratchpad>/helpers/classify-screens.py --apps-root D:/WorkSpace/NPDev/AppGen/apps --format md
@@ -202,7 +202,7 @@ core subset automatically; the full set is documented in `CLAUDE.md`.
 
 ## A new script under `scripts/` declares what it is and what invokes it
 
-`docs/maintainers/INVOCATION_TOPOLOGY_PLAN.md` T2: every check exists to catch a bug, but a check nobody
+`docs/archive/INVOCATION_TOPOLOGY_PLAN.md` T2: every check exists to catch a bug, but a check nobody
 invokes is a check that exists only on paper — four separate real findings in this repo were
 exactly that shape. `scripts/quality/run-script-inventory-check.ps1` (step `[17/17]` of
 `run-ai-knowledge-gate.ps1`) fails if a script under `scripts/` has no entry in either policy file:

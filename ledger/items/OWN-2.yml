@@ -1,0 +1,23 @@
+id: OWN-2
+title: Three outreach conversations (abandonment, domain fit, worth) -- owner-only, slipped nine consecutive plans
+type: PROCESS
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-17
+closed: null
+source: >-
+  Carried out of the archived plans that each listed it as owner-only
+  (docs/archive/NEXT_EXECUTION_PLAN.md P6.3, INVOCATION_TOPOLOGY_PLAN.md T7, FAIL_OPEN_PLAN.md R6,
+  RECORD_SURFACES_PLAN.md P8, reasoning in HUMAN_VS_AI_VERIFICATION.md), moved here by
+  product-readiness task DOC-1 so archiving them loses nothing open.
+surface: process/outreach
+detail: |
+  The AI verification loop is a better tester than a human, but cannot produce three signals at any
+  budget: abandonment, domain fit, worth. Accepted boundary B20 waits on them. The item has no
+  definition of done an agent can execute, so it loses every prioritisation contest against
+  engineering tasks; it is kept as its own ledger item for that reason.
+resolution: >-
+  Owner action, per HUMAN_VS_AI_VERIFICATION.md section 5.1: one conversation, zero installs, with a
+  GeneXus/legacy-4GL shop -- "Would this have helped on your last migration, and if not, what would
+  it have needed?" Then section 5.2's untried simulation: an agent given an unfamiliar domain and
+  no NPDev-specific instructions.

@@ -82,32 +82,32 @@
       "reason": "Declared STATUS: ACTIVE; its own text records having been wrongly archived once already (2026-07-27)."
     },
     {
-      "path": "docs/maintainers/FAIL_OPEN_PLAN.md",
-      "reason": "Declared STATUS: ACTIVE governance doc retained by the 2026-08-11 docs split."
+      "path": "docs/archive/FAIL_OPEN_PLAN.md",
+      "reason": "Closed plan, archived by DOC-1 (2026-10-17) as a historical record; its work shipped and its open owner actions moved to ledger items OWN-1, OWN-2, OWN-3."
     },
     {
-      "path": "docs/maintainers/FRONTEND_STRATEGY_PLAN.md",
-      "reason": "Declared STATUS: ACTIVE governance doc retained by the 2026-08-11 docs split."
+      "path": "docs/archive/FRONTEND_STRATEGY_PLAN.md",
+      "reason": "Closed plan, archived by DOC-1 (2026-10-17) as a historical record; its work shipped and its open owner actions moved to ledger items OWN-1, OWN-2, OWN-3."
     },
     {
-      "path": "docs/maintainers/INVOCATION_TOPOLOGY_PLAN.md",
-      "reason": "Declared STATUS: ACTIVE governance doc retained by the 2026-08-11 docs split."
+      "path": "docs/archive/INVOCATION_TOPOLOGY_PLAN.md",
+      "reason": "Closed plan, archived by DOC-1 (2026-10-17) as a historical record; its work shipped and its open owner actions moved to ledger items OWN-1, OWN-2, OWN-3."
     },
     {
       "path": "docs/maintainers/MATURITY_CLOSURE_LEDGER.md",
       "reason": "GENERATED from scripts/policy/maturity-max-roadmap-policy.json by scripts/docs/generate_maturity_max_roadmap_docs.py (md-zero-2026-08-11 PLAN.md Phase 3) -- nothing reads this rendered file as data, but it stays live governance for a human reader."
     },
     {
-      "path": "docs/maintainers/NEXT_EXECUTION_PLAN.md",
-      "reason": "Declared STATUS: ACTIVE governance doc retained by the 2026-08-11 docs split."
+      "path": "docs/archive/NEXT_EXECUTION_PLAN.md",
+      "reason": "Closed plan, archived by DOC-1 (2026-10-17) as a historical record; its work shipped and its open owner actions moved to ledger items OWN-1, OWN-2, OWN-3."
     },
     {
       "path": "docs/maintainers/POST_BETA0_HUMAN_ACTION_REGISTER.md",
       "reason": "GENERATED from scripts/policy/maturity-max-roadmap-policy.json's humanActionRegister by scripts/docs/generate_maturity_max_roadmap_docs.py (md-zero-2026-08-11 PLAN.md Phase 3) -- nothing reads this rendered file as data, but it stays live governance for a human reader."
     },
     {
-      "path": "docs/maintainers/RECORD_SURFACES_PLAN.md",
-      "reason": "Declared STATUS: ACTIVE governance doc retained by the 2026-08-11 docs split."
+      "path": "docs/archive/RECORD_SURFACES_PLAN.md",
+      "reason": "Closed plan, archived by DOC-1 (2026-10-17) as a historical record; its work shipped and its open owner actions moved to ledger items OWN-1, OWN-2, OWN-3."
     }
   ],
   "legacy": {

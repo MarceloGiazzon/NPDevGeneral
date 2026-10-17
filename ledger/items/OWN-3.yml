@@ -1,0 +1,20 @@
+id: OWN-3
+title: Frontend coverage roadmap F6 (layoutSlot, operator console, dashboard, 3rd nesting level, client-side CEL) -- gated, build nothing until a class recurs
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-10-17
+closed: null
+source: >-
+  Part 6 of the archived docs/archive/FRONTEND_STRATEGY_PLAN.md (and NEXT_EXECUTION_PLAN.md P4.6),
+  moved here by product-readiness task DOC-1 so archiving the plan loses nothing open.
+surface: generator/frontend-coverage
+detail: |
+  F1-F5 shipped. F6 is a gated roadmap: build nothing until the F1 taxonomy proves a class recurs
+  (>=2 apps, >=2 screens). Items and their triggers: F6-1 layoutSlot (ADR-0004 L5, hand-authored
+  region inside a generated screen with its own panel.json slotOf; keystone; trigger: any workbench
+  needs one bespoke region); F6-2 operator-console primitive (F1 confirms recurrence, 6/13 in
+  WmsOffice); F6-3 dashboard primitive (>=2 apps need charts); F6-4 third nesting level (a real
+  app needs it -- WmsOffice does not); F6-5 client-side CEL evaluator (recompute: proves too slow).
+resolution: >-
+  Not scheduled. Reopen a sub-item only when its trigger fires.
