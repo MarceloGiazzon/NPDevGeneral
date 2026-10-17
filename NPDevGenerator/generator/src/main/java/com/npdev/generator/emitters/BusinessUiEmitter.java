@@ -262,7 +262,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
      * script tags in business-ui-index.mustache (registry.js first). Each new view appends its
      * file here AND adds the matching tag there.
      */
-    static final List<String> COLLAB_ASSETS = List.of("tasks.html", "tasks.js", "collab.css");
+    static final List<String> COLLAB_ASSETS = List.of("tasks.html", "tasks.js", "collab.css", "bell.js");
 
     /** PROC-7: the Executions operator page, linked from the shell's super-user NPDev section. */
     static final List<String> BUSINESS_UI_OPS_ASSETS = List.of(
@@ -464,8 +464,19 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         root.put("theme", appThemeNode(settingResolver));
         // PROC-3: absent unless the model declares a human task, so manifests of apps without one stay
         // byte-identical. The shell shows "Work > My tasks" only when this flag is present.
-        if (declaresHumanTask(model)) {
-            root.put("collaboration", new LinkedHashMap<>(Map.of("humanTasks", true)));
+        // PROC-4: same map gains notifications:true when a binding's capability is "notify" -- the shell
+        // then loads collab/bell.js (topbar bell with the unread count).
+        boolean humanTasks = declaresHumanTask(model);
+        boolean notifications = bindsNotifyCapability(model);
+        if (humanTasks || notifications) {
+            Map<String, Object> collaboration = new LinkedHashMap<>();
+            if (humanTasks) {
+                collaboration.put("humanTasks", true);
+            }
+            if (notifications) {
+                collaboration.put("notifications", true);
+            }
+            root.put("collaboration", collaboration);
         }
 
         // REG-12 Slice 3: index declared `document`s by their bound concept so each concept node
@@ -1084,6 +1095,15 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     /** W1.4: app-wide theme/density default, resolved from the ui.theme.mode/ui.density settings
      * (config defaults/overrides envelope) -- applied by shell.js before any per-GuidePage override. */
     /** PROC-3: true when any flow step (at any nesting depth) declares a human {@code task}. */
+    /** PROC-4: true when any binding names the platform-served {@code notify} capability (case-insensitive). */
+    private static boolean bindsNotifyCapability(CompiledModel model) {
+        if (model == null) {
+            return false;
+        }
+        return model.getBindings().stream()
+                .anyMatch(binding -> "notify".equalsIgnoreCase(binding.getCapability()));
+    }
+
     private static boolean declaresHumanTask(CompiledModel model) {
         if (model == null) {
             return false;
