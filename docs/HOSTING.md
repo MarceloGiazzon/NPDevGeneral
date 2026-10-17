@@ -25,7 +25,7 @@ trusting a table here to stay current.
 - **`npdev host check --app <dir> [--fix]`** — the 12-check catalogue: what would a real user hit
   right now. Every non-`ok` row states the consequence before the property. `--fix` repairs whatever
   can be repaired unattended, then re-runs the checks so the output is the new state.
-- **`npdev host check --target <url>`** — the same idea against a URL you have already deployed:
+- **`npdev host check --app <dir> --target <url>`** — the same idea against a URL you have already deployed (`--app` is required by the CLI even with `--target`):
   reachability, TLS, whether forwarded headers actually work end to end, whether health details
   leak, whether auth rejects an unkeyed call. `unknown` is a valid answer here — a fact this command
   cannot see from outside is reported as unknown, never guessed.
@@ -71,8 +71,9 @@ NPDEV_RUNTIME_MODE=postgres              # selects which adapter beans wire
 ```
 
 Both are resolved automatically from the app's baked-in engine — never hand-set unless you know
-why. Environment variable names strip the hyphen from their property name; they do NOT gain an
-underscore (`npdev.auth.api-keys` → `NPDEV_AUTH_APIKEYS`, not `NPDEV_AUTH_API_KEYS`).
+why. Environment variable names strip the hyphen from their property name; the canonical
+spelling the generated files use is the hyphen-stripped one (`npdev.auth.api-keys` → `NPDEV_AUTH_APIKEYS`); plain `@Value` reads
+also resolve the underscore spelling for this property (`NPDEV_AUTH_API_KEYS`), see `docs/CONFIGURATION.md`.
 
 ## Deploying to your own server (rung 4, `vps`)
 

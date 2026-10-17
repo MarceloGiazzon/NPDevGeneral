@@ -2,7 +2,7 @@
 
 Formalizes tag → gate → changelog → artifact, building on `run-beta-release-gate.ps1` (the
 existing gate seed) and the beta0 tag-immutability rules already written into
-`docs/MATURITY_CLOSURE_LEDGER.md`.
+`docs/maintainers/MATURITY_CLOSURE_LEDGER.md`.
 
 ## The process
 
@@ -72,8 +72,9 @@ faster from scratch — a cold build is dominated by compiling 531 dependency cr
 it is an iteration profile, not a general speed-up, and the manager-harness container build stays on
 `release` for exactly that reason.
 
-(Linux `.AppImage` publishing needs a Linux build host — not done from this Windows-only
-development machine; tracked as part of the same CI-automation gap, not a separate one.)
+(Linux `.AppImage` publishing is automated: the `publish-manager-appimage` job in
+`.github/workflows/publish-runtimehost-libs.yml` runs on `ubuntu-22.04` and uploads the `*.AppImage` and
+`manager-appimage-SHA256SUMS`; see the table above.)
 
 **Before uploading:** confirm the binary was actually built from the tagged commit, not an older
 local build — `NPDevManager/src/`, `NPDevManager/ui/`, and `NPDevManager/fixtures/` all changed in
@@ -100,13 +101,14 @@ ever spun off again.
 
 - **If a working branch is ever reintroduced: merge forward whenever a plan closes.** A plan closing
   is a natural, memorable checkpoint — don't let a gap accumulate across several.
-- **Merge via PR, not a local fast-forward**, so both quality gates run on the merge itself before
-  it lands — this is often the first *observed CI run* for changes to the gates themselves.
+- **Merge straight to `main`, never via a PR** (this is a solo repo — see `CLAUDE.md`): commit on the working branch,
+  `git checkout main && git merge --ff-only <branch> && git push origin main`. CI then runs on `main`, which is the first
+  *observed CI run* for changes to the gates themselves.
 - **Tag the merge** `v<version>` per the versioning scheme below. Per the beta0 tag-immutability
   rule (step 4 above): never move a previously pushed tag to point at the new merge — supersede it
   with the next tag.
-- **The tripwire, not the only defense:** `scripts/quality/check-record-surfaces.py`, wired into
-  `run-ai-knowledge-gate.ps1`, WARNs above 20 commits ahead of `origin/main` and FAILs above 50. A
+- **The tripwire, not the only defense:** `scripts/quality/check-record-surfaces.py`, run by the weekly paperwork
+  gate (`run-weekly-paperwork-checks.ps1`, moved out of `run-ai-knowledge-gate.ps1` by R4 Part C), WARNs above 20 commits ahead of `origin/main` and FAILs above 50. A
   working branch is *meant* to run some commits ahead between merges — the threshold exists so a
   second unmerged release can't again reach 71 (or 150) unnoticed, not to force a merge on every
   commit. With `main` as the working branch this stays at 0 by construction, but the check stays
@@ -124,13 +126,13 @@ Semantic-ish: `MAJOR.MINOR.PATCH`.
   adapters, new gate coverage.
 - **PATCH** — bug fixes with no schema or intentional-behavior change.
 
-`BuildInfoEmitter.GENERATOR_VERSION` (currently the hardcoded literal `"0.1.0"`, embedded into
-every generated FinalApp's `npdev-build-info.properties`) should track this tag going forward —
-flagged in `APP_UPGRADE_CONTRACT.md` as a follow-up wiring task, not yet automated.
+The generator version embedded into every generated FinalApp's `npdev-build-info.properties` is resolved from the
+`git describe --tags` output (`BuildInfoEmitter.resolveGeneratorVersion`), so it tracks this tag; `"0.1.0"` is only the
+`FALLBACK_GENERATOR_VERSION` used when no tag is reachable.
 
 ## What the gate does NOT check
 
-The release-checklist gate is deliberately narrow. It does not re-run the DSL/kernel/generator/
+The release steps above are deliberately narrow (the release-checklist script was retired, see step 3). They do not re-run the DSL/kernel/generator/
 RuntimeHost test suites (that's `run-generator-gate.ps1`/`run-runtimehost-gate.ps1`/module test
 tasks — run those first, separately, as step 1 above already says) and does not check trademark
 clearance (a human step, not a scriptable one — see ADR-0007).
@@ -138,7 +140,7 @@ clearance (a human step, not a scriptable one — see ADR-0007).
 ## Local gate runs are tuned; CI is not
 
 The checked-in `gradle.properties` / `build.gradle` files set `org.gradle.parallel`,
-`org.gradle.caching`, `org.gradle.workers.max=4`, a 3 GB heap and a long daemon idle timeout. The
+`org.gradle.caching`, `org.gradle.workers.max=4`, a 3 GB heap and a long daemon idle timeout (`NPDevRuntimeHost/gradle.properties` is the larger exception: `-Xmx6g` and `org.gradle.workers.max=8`). The
 memory math is documented in each file: six independent Gradle builds, one daemon each, against
 32 GB total.
 
