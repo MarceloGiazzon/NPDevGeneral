@@ -146,6 +146,55 @@ public class BusinessUiEmitterGuidePageManifestTest {
     }
 
     @Test
+    void gadgetBoundToParameterizedQueryCarriesItsParameters() throws Exception {
+        CompiledModel model = compile("""
+                {
+                  "namespace": "guidepage.manifest.demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    { "name": "Order", "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "orderDate", "type": "date" },
+                        { "name": "amount", "type": "decimal" } ] }
+                  ],
+                  "queries": [
+                    { "name": "SalesByDay", "concept": "Order",
+                      "parameters": [ { "name": "from", "type": "date", "required": true },
+                                      { "name": "to", "type": "date", "required": true } ],
+                      "where": "orderDate >= :from && orderDate <= :to",
+                      "groupBy": [ { "field": "orderDate", "bucket": "day" } ],
+                      "aggregates": [ { "name": "total", "fn": "sum", "field": "amount" } ] },
+                    { "name": "AllOrders", "concept": "Order" }
+                  ],
+                  "guidePages": [
+                    {
+                      "name": "Default",
+                      "default": true,
+                      "regions": { "right": { "enabled": true } },
+                      "gadgets": [
+                        { "name": "daily", "type": "bar", "query": "SalesByDay", "x": "orderDate", "y": "total" },
+                        { "name": "all", "type": "table", "query": "AllOrders" }
+                      ]
+                    }
+                  ]
+                }
+                """);
+
+        Path out = Files.createTempDirectory("npdev-guidepage-params-out-");
+        new BusinessUiEmitter(new TemplateEngine("npdev-templates/"), new GeneratedSourceWriter(out, new RegenerationPolicy()))
+                .emit(model, "ADMIN", new SettingResolver(SettingStore.empty()));
+        String manifest = Files.readString(out.resolve("src/main/resources/static/npdev-business-ui/generated-ui-manifest.json"));
+        assertTrue(manifest.contains("\"parameters\" : [ {"), manifest);
+        assertTrue(manifest.contains("\"name\" : \"from\""), manifest);
+        assertTrue(manifest.contains("\"type\" : \"date\""), manifest);
+        // the parameterless query's gadget carries an empty list
+        assertTrue(manifest.contains("\"parameters\" : [ ]"), manifest);
+        String shell = Files.readString(out.resolve("src/main/resources/static/shell.js"));
+        assertTrue(shell.contains("npdev-shell-gadget-filters"));
+    }
+
+    @Test
     void frameModeMinimalMapsToBuiltinMinimalGuidePage() throws Exception {
         CompiledModel model = compile("""
                 {

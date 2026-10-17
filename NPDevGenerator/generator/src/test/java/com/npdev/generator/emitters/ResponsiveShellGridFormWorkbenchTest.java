@@ -39,8 +39,12 @@ public class ResponsiveShellGridFormWorkbenchTest {
                 "expected paintSkeleton() to create the backdrop element:\n" + excerpt(js, "function paintSkeleton"));
         assertTrue(js.contains("bodyRow.appendChild(sidebarBackdrop)"),
                 "expected the backdrop to actually be mounted into the body row");
-        assertTrue(js.contains("sidebarBackdrop.addEventListener(\"click\", closeMobileSidebar)"),
-                "expected clicking the backdrop to dismiss the drawer");
+        // UI-7: the backdrop is shared with the right-rail drawer, so it dismisses both (closeMobileDrawers
+        // calls closeMobileSidebar and closeMobileRightbar).
+        assertTrue(js.contains("sidebarBackdrop.addEventListener(\"click\", closeMobileDrawers)"),
+                "expected clicking the backdrop to dismiss the drawer(s)");
+        assertTrue(js.replaceAll("\\s+", " ").contains("function closeMobileDrawers() { closeMobileSidebar(); closeMobileRightbar();"),
+                "expected closeMobileDrawers to close the nav drawer and the right-rail drawer");
 
         // closeMobileSidebar existed in a previous pass but was dead code (defined, never called).
         // It must now have real callers beyond its own definition.

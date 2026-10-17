@@ -71,6 +71,15 @@ public class BusinessUiEmitterWorkbenchTest {
         assertTrue(html.contains("/api/runtime/aggregate/"), "page commits via the aggregate POST");
         assertFalse(html.contains("{{"), "no unrendered mustache placeholders");
 
+        // UI-10: the workbench reads the shell's design tokens and the app's /theme.css.
+        assertTrue(html.contains("href=\"/shell.css\""), "workbench links the shell tokens");
+        assertTrue(html.indexOf("href=\"/shell.css\"") < html.indexOf("<style>"),
+                "shell.css must come before the page-local style so its aliases win");
+        assertTrue(html.contains("href=\"/theme.css\""), "workbench honours the app theme");
+        assertTrue(html.indexOf("href=\"/theme.css\"") > html.indexOf("</style>"), "theme.css is linked last");
+        assertFalse(html.contains("--np-accent:#2b6cb0"), "no competing accent token");
+        assertFalse(html.contains("src=\"/shell.js\""), "the workbench stays a standalone page (no shell.js chrome)");
+
         // Move 6 Move D: every generated workbench page ships the mounted-component machinery
         // unconditionally (an app using none of it never even calls these), so a model that later
         // adds transaction.regions gets it without a generator change.
