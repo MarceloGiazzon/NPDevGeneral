@@ -4190,16 +4190,26 @@ public final class GeneratedCrudRuntimeSupport {
             String safeOperation = (operation == null || operation.isBlank()) ? "UNKNOWN" : operation;
             Map<String, String> meta = new LinkedHashMap<>();
             meta.put("operation", safeOperation);
-            Set<String> redacted = redactedAuditFields(conceptName);
-            String fieldDiff = describeFieldDiff(before, after, redacted);
-            if (!fieldDiff.isEmpty()) {
-                meta.put("fieldDiff", fieldDiff);
-            }
-            // UI-4: the same changes as structured JSON, so a reader never has to parse the ambiguous
-            // "a: x -> y; b: p -> q" string (a value may itself contain "; " or " -> ").
-            String fieldChanges = describeFieldChangesJson(before, after, redacted);
-            if (!fieldChanges.isEmpty()) {
-                meta.put("fieldChanges", fieldChanges);
+            try {
+                Set<String> redacted = redactedAuditFields(conceptName);
+                String fieldDiff = describeFieldDiff(before, after, redacted);
+                if (!fieldDiff.isEmpty()) {
+                    meta.put("fieldDiff", fieldDiff);
+                }
+                // UI-4: the same changes as structured JSON, so a reader never has to parse the ambiguous
+                // "a: x -> y; b: p -> q" string (a value may itself contain "; " or " -> ").
+                String fieldChanges = describeFieldChangesJson(before, after, redacted);
+                if (!fieldChanges.isEmpty()) {
+                    meta.put("fieldChanges", fieldChanges);
+                }
+            } catch (RuntimeException redactionFailure) {
+                // Fail closed on VALUES: if the redaction set cannot be computed, no field value is written
+                // at all (an empty "nothing to redact" set would leak sensitive / password fields). The audit
+                // row itself is still appended, without the diff.
+                LOG.log(Level.WARNING, "Audit field diff omitted for " + safeResourceType
+                        + ": redaction set unavailable", redactionFailure);
+                meta.remove("fieldDiff");
+                meta.remove("fieldChanges");
             }
             auditLogStore.append(AuditRecord.create(
                     safeCtx.tenantId(),
@@ -4273,25 +4283,21 @@ public final class GeneratedCrudRuntimeSupport {
      * an empty model.
      */
     private Set<String> redactedAuditFields(String conceptName) {
-        try {
-            if (conceptName == null || conceptName.isBlank()) {
-                return Set.of();
-            }
-            Optional<CompiledConcept> concept = findEntity(conceptName);
-            if (concept.isEmpty()) {
-                return Set.of();
-            }
-            Set<String> redacted = new HashSet<>();
-            for (CompiledField field : concept.get().getFields()) {
-                boolean password = field.getUi() != null && "password".equals(field.getUi().getWidget());
-                if (field.isSensitive() || password) {
-                    redacted.add(field.getName());
-                }
-            }
-            return redacted;
-        } catch (RuntimeException ignored) {
+        if (conceptName == null || conceptName.isBlank()) {
             return Set.of();
         }
+        Optional<CompiledConcept> concept = findEntity(conceptName);
+        if (concept.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> redacted = new HashSet<>();
+        for (CompiledField field : concept.get().getFields()) {
+            boolean password = field.getUi() != null && "password".equals(field.getUi().getWidget());
+            if (field.isSensitive() || password) {
+                redacted.add(field.getName());
+            }
+        }
+        return redacted;
     }
 
     /**
