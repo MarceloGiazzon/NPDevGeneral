@@ -58,6 +58,8 @@ public final class OAuthGoogleAuthService {
         EMAIL_EXISTS_REQUIRES_LINK,
         PROVIDER_REFUSED,
         UNVERIFIED_OR_MISSING_EMAIL,
+        /** SEC-9: the provider's email domain is not on the operator's allowed-domains list. */
+        DOMAIN_NOT_ALLOWED,
         /** Existing account is valid but disabled. */
         INACTIVE_USER,
         /** Link leg: the Google email does not belong to the signed-in account. */
@@ -88,6 +90,8 @@ public final class OAuthGoogleAuthService {
     private final ModelHolder modelHolder;
     private final IdentityProvider identityProvider;
     private final JwtSigner jwtSigner;
+    /** SEC-9: lower-cased email domains allowed to sign in / sign up / link; empty = any domain. */
+    private final Set<String> allowedEmailDomains;
 
     public OAuthGoogleAuthService(
             DataSource dataSource,
@@ -95,10 +99,41 @@ public final class OAuthGoogleAuthService {
             IdentityProvider identityProvider,
             JwtSigner jwtSigner
     ) {
+        this(dataSource, modelHolder, identityProvider, jwtSigner, Set.of());
+    }
+
+    public OAuthGoogleAuthService(
+            DataSource dataSource,
+            ModelHolder modelHolder,
+            IdentityProvider identityProvider,
+            JwtSigner jwtSigner,
+            Set<String> allowedEmailDomains
+    ) {
         this.dataSource = dataSource;
         this.modelHolder = modelHolder;
         this.identityProvider = identityProvider;
         this.jwtSigner = jwtSigner;
+        Set<String> normalized = new java.util.LinkedHashSet<>();
+        if (allowedEmailDomains != null) {
+            for (String domain : allowedEmailDomains) {
+                if (domain != null && !domain.isBlank()) {
+                    normalized.add(domain.trim().toLowerCase(Locale.ROOT));
+                }
+            }
+        }
+        this.allowedEmailDomains = Set.copyOf(normalized);
+    }
+
+    /** SEC-9: true when no allowlist is configured, or the email's domain (after the last '@') is on it. */
+    private boolean domainAllowed(String email) {
+        if (allowedEmailDomains.isEmpty()) {
+            return true;
+        }
+        if (email == null) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        return at >= 0 && allowedEmailDomains.contains(email.substring(at + 1).trim().toLowerCase(Locale.ROOT));
     }
 
     /**
@@ -114,6 +149,9 @@ public final class OAuthGoogleAuthService {
         IdentityProvider.IdentityProviderClaims verified = claims.get();
         if (!isUsableEmail(verified)) {
             return SessionTicket.error(Outcome.UNVERIFIED_OR_MISSING_EMAIL, "oauth_unverified_email");
+        }
+        if (!domainAllowed(verified.email())) {
+            return SessionTicket.error(Outcome.DOMAIN_NOT_ALLOWED, "oauth_domain_not_allowed");
         }
         String normalizedTenant = DefaultTenant.orDefault(tenantId);
 
@@ -156,6 +194,9 @@ public final class OAuthGoogleAuthService {
         IdentityProvider.IdentityProviderClaims verified = claims.get();
         if (!isUsableEmail(verified)) {
             return SessionTicket.error(Outcome.UNVERIFIED_OR_MISSING_EMAIL, "oauth_unverified_email");
+        }
+        if (!domainAllowed(verified.email())) {
+            return SessionTicket.error(Outcome.DOMAIN_NOT_ALLOWED, "oauth_domain_not_allowed");
         }
         String normalizedTenant = DefaultTenant.orDefault(tenantId);
         if (actorUsername == null || actorUsername.isBlank()) {

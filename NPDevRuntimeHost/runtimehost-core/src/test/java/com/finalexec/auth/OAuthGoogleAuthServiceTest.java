@@ -184,6 +184,52 @@ class OAuthGoogleAuthServiceTest {
         assertNull(ticket.token());
     }
 
+    // ------------------------------------------------------------------ SEC-9: allowed email domains
+
+    private OAuthGoogleAuthService serviceRestrictedTo(String... domains) {
+        return new OAuthGoogleAuthService(dataSource, new ModelHolder(identityModel()), provider, signer,
+                java.util.Set.of(domains));
+    }
+
+    @Test
+    void emailOutsideTheAllowedDomainsIsRefusedAndNothingIsWritten() throws Exception {
+        provider.stub("sub-out", "a@other.org", true, "Out Sider", null);
+
+        var ticket = serviceRestrictedTo("acme.com").resolveAndSignIn(
+                "code-d1", "http://localhost/api/auth/oauth/google/callback", TENANT);
+
+        assertEquals(OAuthGoogleAuthService.Outcome.DOMAIN_NOT_ALLOWED, ticket.outcome());
+        assertEquals("oauth_domain_not_allowed", ticket.errorCode());
+        assertNull(ticket.token());
+        try (Connection c = dataSource.getConnection(); Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM identity_users WHERE username = 'a@other.org'")) {
+            assertTrue(rs.next());
+            assertEquals(0, rs.getInt(1));
+        }
+    }
+
+    @Test
+    void emailInsideTheAllowedDomainsSignsUpAsBefore() {
+        provider.stub("sub-in", "a@ACME.com", true, "In Sider", null);
+
+        var ticket = serviceRestrictedTo("acme.com").resolveAndSignIn(
+                "code-d2", "http://localhost/api/auth/oauth/google/callback", TENANT);
+
+        assertEquals(OAuthGoogleAuthService.Outcome.SIGNUP, ticket.outcome());
+        assertNotNull(ticket.token());
+    }
+
+    @Test
+    void theDomainRestrictionAlsoGuardsTheLinkLeg() throws Exception {
+        insertUser("77777777-7777-7777-7777-777777777777", "bob", "bob@other.org", true, 0);
+        provider.stub("sub-bob", "bob@other.org", true, "Bob", null);
+
+        var ticket = serviceRestrictedTo("acme.com").linkToAuthenticatedUser(
+                "code-d3", "http://localhost/api/auth/oauth/google/callback", TENANT, "bob");
+
+        assertEquals(OAuthGoogleAuthService.Outcome.DOMAIN_NOT_ALLOWED, ticket.outcome());
+    }
+
     @Test
     void providerFailureSurfacesAsProviderRefused() {
         provider.stubEmpty();
