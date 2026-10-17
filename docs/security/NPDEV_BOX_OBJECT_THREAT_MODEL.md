@@ -1,66 +1,34 @@
-# NPDev Box/Object Executable Security Threat Model
+# NPDev Box/Object Threat Model
 
-## Purpose
+## Status of this document
 
-Phase 34 turns the Box/Object/Truth security threat model into executable tests.
+This began as the Phase 34 plan to turn the Box/Object/Truth security threat model into **executable threat tests**
+(a generated threat-test class, a checker, nine expected statuses). **That work was never built**: no threat fixture,
+generated threat class or Phase 34 checker exists in the repository, and none of the nine threat IDs or most of the nine
+status codes below appear anywhere in code. The provider interfaces and local provider adapters that the plan assumed
+(`TenantProvider`, `LocalIdentityProvider`, a production-shaped local audit sink, ...) do not exist either.
 
-Phases 28-33 created provider interfaces, local provider adapters, a packaged local runtime, browser-level E2E, generalized discovery beyond SalesFlow, and a production-shaped local audit sink adapter. Phase 34 must prove key security boundaries through runnable tests, not only prose.
+What follows is the original threat list, mapped to the **existing tests that cover each scenario today**, or marked
+**not covered**. It claims no production security certification, production auth/tenant/audit provider or release
+readiness.
 
-## Scope
+## Threat to coverage
 
-Phase 34 is still local/generated beta work.
+| Threat ID | Scenario | Original expected status | Covered today by | State |
+|---|---|---|---|---|
+| `unauthenticatedRequest` | missing or unknown user | `AUTH_REQUIRED` | `CurrentUserControllerTest`, `SessionTokenControllerTest` (runtimehost-core `auth/`) | partial — auth endpoints, not every route |
+| `wrongTenant` | disabled/unknown tenant | `TENANT_DENIED` | `DefaultExecutionAuthorizationPolicyTest` (tenant isolation, `tenantId=default` denial) in `authz-default` | covered at the policy level |
+| `wrongRole` | role not allowed for a procedure | `ROLE_DENIED` | `DefaultExecutionAuthorizationPolicyTest`, `DefaultExecutionAuthorizationPolicyModelReloadTest` (grants added/dropped by reload) | covered at the policy level |
+| `missingApproval` | procedure requires approval but the approval context is missing | `APPROVAL_REQUIRED` | none | **not covered** |
+| `unauthorizedProcedure` | panel/user attempts a procedure not allowed by route/binding | `PROCEDURE_NOT_ALLOWED` | none | **not covered** |
+| `publicBindingAttempt` | request attempts a public/non-localhost binding | `PUBLIC_BINDING_BLOCKED` | `AuthExposureBootBannerTest` | **warns only** — `AuthExposureBootBanner` logs a banner when auth is off and the bind address is not loopback (Spring's unset `server.address` binds 0.0.0.0); nothing blocks |
+| `pathTraversalResource` | request/resource path contains traversal | `WORKSPACE_ESCAPE_BLOCKED` | `FileSystemFileStoreAdapterTest` (file store), `UntrustedExtensionSecurityHardeningTest` (generator), `PackCoordinateTest` (pack coordinates) | covered per surface, no single workspace-escape test |
+| `auditTamper` | audit event/hash modified after write | `AUDIT_INTEGRITY_FAILED` | none | **not covered** — the audit adapters (`audit-inproc`, `audit-postgres`) contain no tamper, integrity or hash-chain logic |
+| `protectedOverwriteAttempt` | protected generated custom resource overwrite attempt | `PROTECTED_RESOURCE_OVERWRITE_BLOCKED` | none | **not covered** |
 
-It does not implement production auth, production tenancy, production audit, public runtime exposure, release approval, or T6. It adds executable local threat fixtures and checks that prove the current generated runtime rejects dangerous or invalid behavior.
+## What would make this executable
 
-## Required threat cases
-
-The executable threat model must test at least these scenarios:
-
-| Threat ID | Scenario | Expected status |
-|---|---|---|
-| `unauthenticatedRequest` | missing or unknown user | `AUTH_REQUIRED` |
-| `wrongTenant` | disabled/unknown tenant | `TENANT_DENIED` |
-| `wrongRole` | role not allowed for Procedure | `ROLE_DENIED` |
-| `missingApproval` | Procedure requires approval but approval context missing | `APPROVAL_REQUIRED` |
-| `unauthorizedProcedure` | Panel/user attempts a Procedure not allowed by route/binding | `PROCEDURE_NOT_ALLOWED` |
-| `publicBindingAttempt` | request attempts public/non-localhost binding | `PUBLIC_BINDING_BLOCKED` |
-| `pathTraversalResource` | request/resource path contains traversal | `WORKSPACE_ESCAPE_BLOCKED` |
-| `auditTamper` | audit event/hash is modified after write | `AUDIT_INTEGRITY_FAILED` |
-| `protectedOverwriteAttempt` | protected generated custom resource overwrite attempt | `PROTECTED_RESOURCE_OVERWRITE_BLOCKED` |
-
-## Required proof
-
-The Phase 34 checker must prove:
-
-- generated security threat test Java compiles;
-- executable threat test runs from compiled classes;
-- all required threat cases are evaluated;
-- each expected status is observed;
-- audit tamper detection is backed by Phase 33 integrity logic or an equivalent local verifier;
-- protected overwrite attempt is checked in a sandbox, not against protected source resources;
-- no production/release/T6 claim is made;
-- no protected source examples are mutated.
-
-## Non-claims
-
-Phase 34 must not claim:
-
-- production security certification;
-- production auth provider;
-- production tenant provider;
-- production audit sink;
-- production runtime;
-- release readiness;
-- SalesFlow or ClinicFlow T6.
-
-## Implementation guidance
-
-Prefer generator-emitted Java threat classes under:
-
-`build/box-object/real-generator-adapter/generated-app/security/src/main/java/generated/npdev/security/`
-
-The checker may also create Phase 34-specific test harness files under:
-
-`build/box-object/real-generator-adapter/security-threat-model/`
-
-The important requirement is that the final PASS is executable, not static-only.
+If this model is to be enforced rather than described, each **not covered** and **partial** row needs a real test
+beside the code it protects (the policy, the controller, the file store), not a separate generated harness, and the
+`auditTamper` row first needs the integrity logic it assumes. Until then this table is the honest state: two
+scenarios have policy-level tests, three have narrower coverage, and four have none.

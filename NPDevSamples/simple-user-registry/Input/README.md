@@ -3,7 +3,7 @@
 ## One-command run (Windows PowerShell)
 
 ```powershell
-Set-Location D:\WorkSpace\NPDev_General\NPDevSamples
+Set-Location D:\WorkSpace\NPDev\NPDev_General\NPDevSamples
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\generate-sample-app.ps1 -SampleId simple-user-registry
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-sample-app.ps1 -SampleId simple-user-registry
 ```
