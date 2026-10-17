@@ -315,6 +315,7 @@
     {
       "name": "Mosaic",
       "ui": { "label": "Mosaic" },
+      "collaboration": { "comments": true },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "code", "type": "string", "required": false, "maxLength": 20, "unique": true,

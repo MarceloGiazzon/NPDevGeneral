@@ -4,12 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finalexec.config.ModelHolder;
 import com.npdev.adapters.idp.github.GitHubIdentityProvider;
 import com.npdev.adapters.idp.google.GoogleIdentityProvider;
+import com.npdev.adapters.idp.oidc.OidcIdentityProvider;
 import com.npdev.kernel.ports.IdentityProvider;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
@@ -79,6 +81,8 @@ public class OAuthGoogleController {
     private final Map<String, IdentityProvider> providers;
     private final Map<String, OAuthGoogleAuthService> authServices;
     private final long expirySeconds;
+    /** SEC-9: operator-supplied button labels for OIDC providers (google/github use the built-in names). */
+    private final Map<String, String> labels;
 
     @Autowired
     public OAuthGoogleController(
@@ -100,7 +104,8 @@ public class OAuthGoogleController {
             @Value("${npdev.auth.oauth.github.token-endpoint:https://github.com/login/oauth/access_token}") String githubTokenEndpoint,
             @Value("${npdev.auth.oauth.github.user-endpoint:https://api.github.com/user}") String githubUserEndpoint,
             @Value("${npdev.auth.oauth.github.user-emails-endpoint:https://api.github.com/user/emails}") String githubUserEmailsEndpoint,
-            @Value("${npdev.auth.oauth.state-ttl-seconds:600}") long stateTtlSeconds
+            @Value("${npdev.auth.oauth.state-ttl-seconds:600}") long stateTtlSeconds,
+            Environment environment
     ) throws Exception {
         this.expirySeconds = expirySeconds;
         this.stateStore = new OAuthStateStore(Math.max(1L, stateTtlSeconds) * 1000L);
@@ -122,17 +127,35 @@ public class OAuthGoogleController {
             IdentityProvider google = new GoogleIdentityProvider(googleClientId, googleClientSecret,
                     googleAuthorizationEndpoint, googleTokenEndpoint, googleTokenInfoEndpoint, httpClient);
             providers.put(google.providerId(), google);
-            authServices.put(google.providerId(), new OAuthGoogleAuthService(dataSource, modelHolder, google, jwtSigner));
+            authServices.put(google.providerId(), new OAuthGoogleAuthService(dataSource, modelHolder, google, jwtSigner,
+                    OidcProviderConfig.domains(environment.getProperty("npdev.auth.oauth.google.allowed-domains"))));
         }
         if (jwtSigner != null && present(githubClientId) && present(githubClientSecret)) {
             IdentityProvider github = new GitHubIdentityProvider(githubClientId, githubClientSecret,
                     githubAuthorizationEndpoint, githubTokenEndpoint, githubUserEndpoint, githubUserEmailsEndpoint,
                     httpClient);
             providers.put(github.providerId(), github);
-            authServices.put(github.providerId(), new OAuthGoogleAuthService(dataSource, modelHolder, github, jwtSigner));
+            authServices.put(github.providerId(), new OAuthGoogleAuthService(dataSource, modelHolder, github, jwtSigner,
+                    OidcProviderConfig.domains(environment.getProperty("npdev.auth.oauth.github.allowed-domains"))));
+        }
+        // SEC-9: any number of generic OIDC providers, configured purely by npdev.auth.oidc.* environment.
+        Map<String, String> labels = new LinkedHashMap<>();
+        if (jwtSigner != null) {
+            for (OidcProviderConfig.Entry entry : OidcProviderConfig.fromEnvironment(environment)) {
+                String id = entry.settings().providerId();
+                if (providers.containsKey(id)) {
+                    continue;
+                }
+                IdentityProvider oidc = new OidcIdentityProvider(entry.settings(), httpClient, java.time.Clock.systemUTC());
+                providers.put(id, oidc);
+                authServices.put(id, new OAuthGoogleAuthService(
+                        dataSource, modelHolder, oidc, jwtSigner, entry.allowedDomains()));
+                labels.put(id, entry.label());
+            }
         }
         this.providers = providers;
         this.authServices = authServices;
+        this.labels = labels;
     }
 
     private static boolean present(String value) {
@@ -154,6 +177,7 @@ public class OAuthGoogleController {
         this.providers = Map.of(provider.providerId(), provider);
         this.authServices = Map.of(provider.providerId(), authService);
         this.expirySeconds = expirySeconds;
+        this.labels = Map.of();
     }
 
     /** Every provider this app currently offers a "Continue with ..." button for. */
@@ -184,7 +208,13 @@ public class OAuthGoogleController {
             return ResponseEntity.status(503).build();
         }
         String state = stateStore.create("link".equals(purpose) ? "link" : "login", sanitizeNext(next));
-        String authorizationUrl = identityProvider.authorizationUrl(state, callbackUrl(request, provider));
+        String authorizationUrl;
+        try {
+            authorizationUrl = identityProvider.authorizationUrl(state, callbackUrl(request, provider));
+        } catch (IllegalStateException discoveryFailed) {
+            // e.g. OIDC discovery against an unreachable issuer: a 503, not a 500 stack trace.
+            return ResponseEntity.status(503).build();
+        }
         return ResponseEntity.status(HttpServletResponse.SC_FOUND)
                 .header(HttpHeaders.LOCATION, authorizationUrl)
                 .build();
@@ -301,7 +331,11 @@ public class OAuthGoogleController {
     }
 
     /** Display label for the login page's button text -- UI-only, so it stays out of the kernel port. */
-    private static String labelFor(String providerId) {
+    private String labelFor(String providerId) {
+        String configured = labels.get(providerId);
+        if (configured != null) {
+            return configured;
+        }
         return switch (providerId) {
             case "google" -> "Google";
             case "github" -> "GitHub";

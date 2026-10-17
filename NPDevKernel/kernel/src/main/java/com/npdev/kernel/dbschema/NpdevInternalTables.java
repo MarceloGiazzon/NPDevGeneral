@@ -26,6 +26,7 @@ public final class NpdevInternalTables {
                 NpdevPackInstallIntentTable.definition(),
                 NpdevCronFireClaimTable.definition(),
                 NpdevSequenceCounterTable.definition(),
+                NpdevRecordCommentTable.definition(),
                 NpdevNotificationTable.definition()
         );
     }

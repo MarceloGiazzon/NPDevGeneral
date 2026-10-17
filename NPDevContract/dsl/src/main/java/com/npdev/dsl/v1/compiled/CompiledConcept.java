@@ -7,6 +7,7 @@ public final class CompiledConcept extends CompiledEntity {
     private final String module;
     private final List<CompiledIndex> indexes;
     private final CompiledConceptAccess access;
+    private final CompiledCollaboration collaboration;
     private final String renamedFrom;
     private final String satelliteOf;
     private final CompiledOrigin origin;
@@ -310,6 +311,33 @@ public final class CompiledConcept extends CompiledEntity {
             List<CompiledRollup> rollups,
             List<String> fieldOrder
     ) {
+        this(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel, module, indexes, access, renamedFrom, satelliteOf, origin, softDelete, temporal, uid, rollups, fieldOrder, null);
+    }
+
+    /** PROC-5/PROC-6: record collaboration (comments / attachments) -- see getCollaboration. */
+    public CompiledConcept(
+            String name,
+            String className,
+            String tableName,
+            List<CompiledField> fields,
+            List<String> expressionInvariants,
+            List<CompiledInvariant> invariants,
+            CompiledLifecycle lifecycle,
+            CompiledPresentationMetadata ui,
+            String truthLevel,
+            String module,
+            List<CompiledIndex> indexes,
+            CompiledConceptAccess access,
+            String renamedFrom,
+            String satelliteOf,
+            CompiledOrigin origin,
+            boolean softDelete,
+            boolean temporal,
+            String uid,
+            List<CompiledRollup> rollups,
+            List<String> fieldOrder,
+            CompiledCollaboration collaboration
+    ) {
         super(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
@@ -322,6 +350,12 @@ public final class CompiledConcept extends CompiledEntity {
         this.uid = uid;
         this.rollups = rollups == null ? List.of() : List.copyOf(rollups);
         this.fieldOrder = fieldOrder == null ? List.of() : List.copyOf(fieldOrder);
+        this.collaboration = collaboration;
+    }
+
+    /** PROC-5/PROC-6: compiled {@code collaboration} (comment thread / attachments on every record); null if none. */
+    public CompiledCollaboration getCollaboration() {
+        return collaboration;
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */

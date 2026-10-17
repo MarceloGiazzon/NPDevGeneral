@@ -567,6 +567,16 @@
         changePasswordLink.href = "/change-password.html";
         changePasswordLink.textContent = shellString("shell.changePassword", "Change password");
         el.identity.appendChild(changePasswordLink);
+        // SEC-7: tenant admins get an "Invite user" page (invite-user.html -> POST /api/auth/invite).
+        // The server's own gate is the literal ADMIN role (CreateUserController.requireAdmin), NOT
+        // manifest.superUserRole (the SUPERUSER ControlPanel role), so the link tests the same literal.
+        if (state.roles.indexOf("ADMIN") !== -1) {
+          var inviteLink = document.createElement("a");
+          inviteLink.className = "npdev-shell-invite-user";
+          inviteLink.href = "/invite-user.html";
+          inviteLink.textContent = shellString("shell.inviteUser", "Invite user");
+          el.identity.appendChild(inviteLink);
+        }
       }
       var logoutBtn = document.createElement("button");
       logoutBtn.className = "npdev-shell-logout";
@@ -871,6 +881,7 @@
     addLeafLink(container, businessHref("__store__"), "Store", null);
     addLeafLink(container, businessHref("__boxview__"), "Box Inspector", null);
     addLeafLink(container, businessHref("__promotion__"), "Promotion", null);
+    addLeafLink(container, "/npdev-business-ui/ops/executions.html", "Executions", null);
   }
 
   // Host-mode-only: business concepts and declared Panels have no natural home in the System tree

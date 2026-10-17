@@ -339,6 +339,10 @@ final class ConceptValidation {
             validateAccessRules(e.getName(), e.getAccess(), fieldNames, errors);
             validatePublicRead(e, effective.fields(), effectiveModel.getAggregates(), errors);
             validateRollups(e, effective.fields(), entitiesByLower, effectiveCache, errors);
+            if (e.getCollaboration() != null && e.getCollaboration().attachments() && !e.getCollaboration().comments()) {
+                errors.add("Entity " + e.getName() + " collaboration: attachments are added to the comment thread, so comments must be true"
+                        + " -- suggestedFix: set collaboration.comments to true, or remove collaboration.attachments");
+            }
             validateLifecycle(e, effective, effectiveModel.getAutoPanels(), effectiveModel.getAggregates(), errors);
         }
     }

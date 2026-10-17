@@ -91,7 +91,9 @@
     { "name": "aiCallsPerUserPerDay", "type": "int", "default": 20,
       "settableAt": ["tenant", "user"], "label": "AI calls per user per day" },
     { "name": "aiMonthlyBudgetUsd", "type": "string", "default": "5.00",
-      "settableAt": ["tenant"], "label": "Monthly AI budget (USD)" }
+      "settableAt": ["tenant"], "label": "Monthly AI budget (USD)" },
+    { "name": "selfApiBaseUrl", "type": "string", "default": "http://127.0.0.1:8099",
+      "settableAt": ["tenant"], "label": "Loopback connector base URL (INT-3 witness)" }
   ],
 
   "packs": [
@@ -136,6 +138,7 @@
       "name": "ShelfLayout",
       "truthLevel": "T2",
       "ui": { "label": "Shelf layout" },
+      "collaboration": { "comments": true, "attachments": false },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "name", "type": "string", "required": true, "ui": { "label": "Name" } },
@@ -740,6 +743,32 @@
       "name": "externalAi",
       "type": "ExternalAiCapability",
       "operations": [ "generate" ]
+    },
+    {
+      "name": "webhook",
+      "type": "WebhookCapability",
+      "operations": [
+        { "name": "post", "sideEffects": "external" }
+      ]
+    },
+    {
+      "name": "selfApi",
+      "type": "HttpConnector",
+      "http": {
+        "baseUrlProperty": "selfApiBaseUrl",
+        "auth": { "type": "apiKeyHeader", "name": "X-Connector-Probe", "secretEnvVar": "NPDEV_CONNECTOR_SELFAPI_KEY" },
+        "headers": { "Accept": "application/json" },
+        "timeoutMs": 5000,
+        "maxRetries": 1
+      },
+      "operations": [
+        {
+          "name": "health",
+          "sideEffects": "reads",
+          "policy": { "retryCount": 2, "retryDelayMs": 200 },
+          "http": { "method": "GET", "path": "/actuator/health", "response": { "pointer": "/status" } }
+        }
+      ]
     }
   ],
 
@@ -747,6 +776,8 @@
     { "capability": "persistence", "adapter": "repository" },
     { "capability": "notification", "adapter": "notification-inproc" },
     { "capability": "externalAi", "adapter": "externalAi" },
+    { "capability": "selfApi", "adapter": "http-connector" },
+    { "capability": "webhook", "adapter": "webhook-http" },
     { "capability": "eventBus", "adapter": "inproc" }
   ],
 
@@ -1549,7 +1580,36 @@
     }
   ],
 
+  "orchestrationRules": [
+    {
+      "name": "PushNewOrdersToErp",
+      "trigger": { "type": "event", "event": "WidgetOrderPlaced" },
+      "actions": [
+        {
+          "type": "callCapability",
+          "capability": "webhook",
+          "operation": "post",
+          "map": {
+            "url": "http://127.0.0.1:9099/hooks/orders",
+            "event": "WidgetOrderPlaced",
+            "orderId": "$event.id",
+            "status": "$event.status"
+          }
+        }
+      ]
+    }
+  ],
+
   "flows": [
+    {
+      "name": "ConnectorSelfCheckFlow",
+      "input": { "concept": "WidgetCatalogEntry", "mode": "query" },
+      "steps": [
+        { "name": "call-health", "type": "capabilityCall", "capability": "selfApi", "operation": "health",
+          "args": [], "output": "$health" },
+        { "name": "return-health", "type": "return", "value": "$health" }
+      ]
+    },
     {
       "name": "SuggestCatalogTagsFlow",
       "input": { "concept": "WidgetCatalogEntry", "mode": "query" },

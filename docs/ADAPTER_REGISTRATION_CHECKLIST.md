@@ -4,7 +4,7 @@
 > EVERY place below, or a freshly generated FinalApp will fail to compile on a clean machine / CI with
 > a silent symptom (a bare 404 or a `NoClassDefFoundError`, not an obvious build error). This has
 > already caused four incidents (`mail-inproc`/`mail-smtp`, `document-render-inproc`/`document-render-stub`,
-> `file-store-objectstore`, and `idp-google`/`idp-github` -- the last one sat undetected for two weeks,
+> `file-store-objectstore`, and `idp-google`/`idp-github` (the sibling `idp-oidc` follows the same checklist) -- the last one sat undetected for two weeks,
 > 2026-09-16 to 2026-09-29, because CI itself was broken by an unrelated MinIO Docker Hub removal the
 > whole time and never got far enough to compile runtimehost-core).
 >

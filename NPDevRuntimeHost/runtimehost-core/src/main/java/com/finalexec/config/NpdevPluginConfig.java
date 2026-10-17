@@ -514,11 +514,15 @@ public class NpdevPluginConfig {
         for (CompiledCapabilityBinding binding : modelHolder.get().getBindings()) {
             // externalAi (P4/G3) and fileStore (P5) are platform-served (ExternalAiPromptRunner,
             // FileStoreCapabilityHandler), never a plugin contribution -- registered directly by
-            // NpdevCapabilityBindingConfig, like eventbus.
+            // NpdevCapabilityBindingConfig, like eventbus. INT-2: so is every capability bound to
+            // adapter 'http-connector' (HttpConnectorCapabilityHandler), whatever its name.
             if ("eventbus".equalsIgnoreCase(binding.getCapability())
                     || "externalai".equalsIgnoreCase(binding.getCapability())
                     || "filestore".equalsIgnoreCase(binding.getCapability())
-                    || "notify".equalsIgnoreCase(binding.getCapability())) {
+                    || "notify".equalsIgnoreCase(binding.getCapability())
+                    || com.finalexec.connector.HttpConnectorCapabilityHandler.ADAPTER_ID.equalsIgnoreCase(binding.getAdapter())
+                    // INT-5: outbound webhooks are platform-served too (QueuedWebhookCapabilityHandler).
+                    || com.finalexec.webhook.QueuedWebhookCapabilityHandler.ADAPTER_ID.equalsIgnoreCase(binding.getAdapter())) {
                 continue;
             }
             CompiledCapability capability = capabilitiesByName.get(binding.getCapability());

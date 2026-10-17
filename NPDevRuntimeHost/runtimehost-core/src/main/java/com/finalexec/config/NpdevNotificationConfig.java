@@ -1,6 +1,8 @@
 package com.finalexec.config;
 
+import com.finalexec.collab.RecordCommentService;
 import com.finalexec.notify.InMemoryNotificationStore;
+import com.finalexec.notify.MentionNotificationNotifier;
 import com.finalexec.notify.JdbcNotificationStore;
 import com.finalexec.notify.NotificationStore;
 import com.finalexec.notify.NotifyCapabilityHandler;
@@ -27,6 +29,12 @@ public class NpdevNotificationConfig {
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
     public NotificationStore jdbcNotificationStore(DataSource dataSource) {
         return new JdbcNotificationStore(dataSource);
+    }
+
+    /** PROC-5 mentions land in the bell; NpdevCollaborationConfig picks this bean up by type. */
+    @Bean
+    public RecordCommentService.MentionNotifier mentionNotificationNotifier(NotificationStore store) {
+        return new MentionNotificationNotifier(store, System::currentTimeMillis);
     }
 
     @Bean
