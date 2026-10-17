@@ -3,6 +3,7 @@ package com.finalexec.auth;
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityRegistry;
@@ -14,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -173,6 +175,13 @@ public class InvitationController {
         return ResponseEntity.status(201).body(deliver(userId, username, email, raw));
     }
 
+    /** SEC-7: the roles an ADMIN may put on an invitation -- feeds the invite page's role checkboxes. */
+    @GetMapping("/api/auth/assignable-roles")
+    public ResponseEntity<Map<String, Object>> assignableRoles(HttpServletRequest httpRequest) {
+        requireAdmin(httpRequest);
+        return ResponseEntity.ok(Map.of("roles", CreateUserController.assignableRoles(modelHolder.get())));
+    }
+
     /** Resend: a fresh token (and mail) for an existing user in the caller's tenant with an email on file. */
     @PostMapping("/api/auth/users/{username}/invite")
     public ResponseEntity<Map<String, Object>> resend(@PathVariable String username, HttpServletRequest httpRequest) {
@@ -187,8 +196,8 @@ public class InvitationController {
         UUID userId;
         String email;
         try (Connection connection = dataSource.getConnection()) {
-            try (PreparedStatement ps = connection.prepareStatement(
-                    "SELECT id, email FROM " + ids.usersTable() + " WHERE username = ? AND tenant_id = ?")) {
+            try (PreparedStatement ps = connection.prepareStatement(SqlIdentifierSupport.sqlWithIdentifiers(
+                    "SELECT id, email FROM {0} WHERE username = ? AND tenant_id = ?", ids.usersTable()))) {
                 ps.setString(1, username);
                 ps.setString(2, tenantId);
                 try (ResultSet rs = ps.executeQuery()) {
@@ -228,6 +237,9 @@ public class InvitationController {
         if (!capabilityRegistry.has("mail")) {
             return false;
         }
+        // A mail fault is reported as "not emailed" (the admin then receives the accept path to hand over
+        // out of band); it is logged, never mistaken for a delivered invitation.
+        boolean emailed = false;
         try {
             String link = linkBaseUrl.isBlank()
                     ? "/reset-password.html?invite=1&token=" + rawToken
@@ -238,15 +250,14 @@ public class InvitationController {
                     "mail", "EmailCapability", capabilityRegistry.debugDefaultAdapterId("mail"), "send",
                     List.of(email, "You have been invited", body));
             CapabilityResult result = capabilityDispatcher.invoke(call, Map.of());
-            if (!result.ok()) {
+            emailed = result.ok();
+            if (!emailed) {
                 LOG.warning("Invitation email dispatch failed: " + result.error());
-                return false;
             }
-            return true;
         } catch (RuntimeException exception) {
             LOG.log(Level.WARNING, "Invitation email dispatch failed", exception);
-            return false;
         }
+        return emailed;
     }
 
     private ExecutionContext requireAdmin(HttpServletRequest httpRequest) {

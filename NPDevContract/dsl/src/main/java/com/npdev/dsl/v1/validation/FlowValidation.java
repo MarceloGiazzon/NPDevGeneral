@@ -97,7 +97,8 @@ final class FlowValidation {
             "fiscalcapability", Set.of("generatexml", "sign", "transmit", "querystatus"),
             "signaturecapability", Set.of("sign", "verify"),
             "eventbus", Set.of("publish", "subscribe", "unsubscribe"),
-            "invariantengine", Set.of("evaluate")
+            "invariantengine", Set.of("evaluate"),
+            "notifycapability", Set.of("send")
     );
 
     static void validateEvents(ModelAst modelAst, List<String> errors) {

@@ -2,6 +2,7 @@ package com.finalexec.auth;
 
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -56,7 +57,8 @@ public final class OneTimeTokens {
 
     public static void insert(Connection connection, String table, UUID userId, String tokenHash,
                               Instant expiresAt, String tenantId) throws Exception {
-        String sql = "INSERT INTO " + table + " (id, user_id, token_hash, expires_at, tenant_id) VALUES (?, ?, ?, ?, ?)";
+        String sql = SqlIdentifierSupport.sqlWithIdentifiers(
+                "INSERT INTO {0} (id, user_id, token_hash, expires_at, tenant_id) VALUES (?, ?, ?, ?, ?)", table);
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setObject(1, UUID.randomUUID());
             ps.setObject(2, userId);

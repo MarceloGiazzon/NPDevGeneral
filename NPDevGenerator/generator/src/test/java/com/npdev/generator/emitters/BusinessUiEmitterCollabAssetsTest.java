@@ -96,6 +96,44 @@ public class BusinessUiEmitterCollabAssetsTest {
         assertFalse(shellCss.contains("{{"));
     }
 
+    private static final String NOTIFY_MODEL = """
+            {
+              "namespace": "collab.notify", "dslVersion": "1.0.0", "version": "1.0",
+              "concepts": [
+                { "name": "Req", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ] }
+              ],
+              "capabilities": [ { "name": "Notify", "type": "NotifyCapability", "operations": [ "send" ] } ],
+              "bindings": [ { "capability": "Notify", "adapter": "notify" } ]
+            }
+            """;
+
+    @Test
+    void notificationsFlagAppearsOnlyWhenTheNotifyCapabilityIsBound() throws Exception {
+        Path without = emit(WITHOUT_TASK.formatted(""));
+        assertFalse(manifest(without).has("collaboration"), "no notify binding -> no collaboration key");
+
+        Path withNotify = emit(NOTIFY_MODEL);
+        JsonNode collaboration = manifest(withNotify).get("collaboration");
+        assertNotNull(collaboration, "a notify binding must surface in the manifest");
+        assertTrue(collaboration.get("notifications").asBoolean());
+        assertFalse(collaboration.has("humanTasks"), "humanTasks stays absent without a task");
+        assertTrue(Files.isRegularFile(withNotify.resolve("src/main/resources/static/npdev-business-ui/collab/bell.js")));
+    }
+
+    @Test
+    void shellLoadsTheBellScriptAndBellGoesThroughTheShellApi() throws Exception {
+        Path out = emit(NOTIFY_MODEL);
+        String shellJs = Files.readString(out.resolve("src/main/resources/static/shell.js"));
+        assertTrue(shellJs.contains("function loadCollabScript("));
+        assertTrue(shellJs.contains("loadCollabScript(manifest);"));
+        assertTrue(shellJs.contains("/npdev-business-ui/collab/bell.js"));
+        assertFalse(shellJs.contains("{{"));
+        String bellJs = new TemplateEngine("npdev-templates/").raw("static-assets/collab/bell.js");
+        assertTrue(bellJs.contains("shell.api.get(\"/api/notifications/unread-count\")"));
+        assertFalse(java.util.regex.Pattern.compile("\\bfetch\\(\\s*[\"'`a-zA-Z]").matcher(bellJs).find(), "raw fetch() would miss the auth and CSRF headers");
+    }
+
     @Test
     void tasksPageGoesThroughTheShellApiNotRawFetch() throws Exception {
         String tasksJs = new TemplateEngine("npdev-templates/").raw("static-assets/collab/tasks.js");
