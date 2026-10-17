@@ -1109,6 +1109,68 @@ final EventBus eventBus;
         return Optional.of(unstuck);
     }
 
+    /**
+     * PROC-7: operator retry of a FAILED execution from the step that failed. The instance goes back
+     * to RUNNING ({@link FlowInstance#withRetry}) and is then re-entered through
+     * {@link #resumeExecution}, which re-runs {@code currentStepIndex} (the failed step) under the
+     * same REG-238 flow-shape guard as any other resume.
+     *
+     * <p>Refused with an {@link IllegalStateException} whose message starts {@code NOT_RETRYABLE} for
+     * anything but FAILED, and {@code NOT_RETRYABLE_COMPENSATED} when the flow declares {@code
+     * onFailure} compensation: compensation already undid the earlier steps, so re-entering the
+     * forward path would re-apply only the tail.
+     *
+     * @return empty if no such execution exists, else the result of the re-entered run
+     */
+    public Optional<ExecutionResult> retryFailedExecution(String executionId, ExecutionContext executionContext) {
+        if (executionId == null || executionId.isBlank()) {
+            return Optional.empty();
+        }
+        Optional<FlowInstance> instanceOpt = flowInstanceStore.findByExecutionId(executionId);
+        if (instanceOpt.isEmpty()) {
+            return Optional.empty();
+        }
+        FlowInstance existing = instanceOpt.get();
+        if (existing.status() != FlowInstanceStatus.FAILED) {
+            throw new IllegalStateException(
+                    "NOT_RETRYABLE: only a FAILED execution can be retried; " + executionId + " is " + existing.status());
+        }
+        Optional<FlowDefinition> flowOpt = flowDefinitionProvider.findFlow(existing.flowName());
+        if (flowOpt.isPresent() && CompensationRunner.hasAnyOnFailure(flowOpt.get())) {
+            throw new IllegalStateException(
+                    "NOT_RETRYABLE_COMPENSATED: flow " + existing.flowName() + " declares onFailure compensation, "
+                            + "which already undid the earlier steps of " + executionId);
+        }
+        flowInstanceStore.update(existing.withRetry(nowEpochMillis()));
+        // Re-enter as the instance's OWN tenant/actor with the trusted resume role, exactly like the
+        // resume sweep does (ExecutionContext#resuming): the operator who triggered the retry (a
+        // super-key under tenant __system__) is the requester, not the identity the flow runs as.
+        ExecutionContext runAs = existing.tenantId() == null || existing.tenantId().isBlank()
+                ? executionContext
+                : ExecutionContext.resuming(existing.tenantId(), existing.actorId());
+        return Optional.of(resumeExecution(executionId, runAs));
+    }
+
+    /**
+     * PROC-7: operator cancel of a WAITING_EVENT or STUCK execution (see {@link FlowInstance#markCancelled}
+     * for the representation). Persists the cancelled instance and returns it.
+     *
+     * @return the persisted instance, or empty if no such execution exists
+     * @throws IllegalStateException {@code NOT_CANCELLABLE} if the execution is in any other status
+     */
+    public Optional<FlowInstance> cancelExecution(String executionId, String actorId) {
+        if (executionId == null || executionId.isBlank()) {
+            return Optional.empty();
+        }
+        Optional<FlowInstance> instanceOpt = flowInstanceStore.findByExecutionId(executionId);
+        if (instanceOpt.isEmpty()) {
+            return Optional.empty();
+        }
+        FlowInstance cancelled = instanceOpt.get().markCancelled(actorId, nowEpochMillis());
+        flowInstanceStore.update(cancelled);
+        return Optional.of(cancelled);
+    }
+
     @Override
     public FlowEngine.ResumeOutcome resumeFlow(String correlationId, EventEnvelope eventEnvelope) {
         if (eventEnvelope == null) {

@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -78,9 +79,48 @@ public class ExecutionMonitorController {
         return ResponseEntity.status(statusFor(result.get("outcome"))).body(result);
     }
 
+    /**
+     * PROC-7: retry a FAILED execution from the step that failed. SUPERUSER for the same reason as
+     * {@link #unstick}. 409 for anything not retryable (FAILED_PERMANENT, COMPLETED, a flow with
+     * onFailure compensation).
+     */
+    @PostMapping({"/api/v1/executions/{executionId}/retry", "/api/executions/{executionId}/retry"})
+    public ResponseEntity<Map<String, Object>> retry(
+            @PathVariable String executionId,
+            HttpServletRequest request
+    ) {
+        requireSuperUser(request);
+        Map<String, Object> result = executionMonitorService.retry(executionId, currentContext(request));
+        return ResponseEntity.status(statusFor(result.get("outcome"))).body(result);
+    }
+
+    /** PROC-7: cancel a WAITING_EVENT or STUCK execution (becomes FAILED_PERMANENT / CANCELLED_BY_OPERATOR). */
+    @PostMapping({"/api/v1/executions/{executionId}/cancel", "/api/executions/{executionId}/cancel"})
+    public ResponseEntity<Map<String, Object>> cancel(
+            @PathVariable String executionId,
+            HttpServletRequest request
+    ) {
+        requireSuperUser(request);
+        Map<String, Object> result = executionMonitorService.cancel(executionId, currentContext(request));
+        return ResponseEntity.status(statusFor(result.get("outcome"))).body(result);
+    }
+
+    /**
+     * PROC-7: the operator's attention list (FAILED + STUCK) for an explicit tenant. SUPERUSER, because
+     * it reads another tenant's executions -- the super-key itself lives under {@code __system__}.
+     */
+    @GetMapping({"/api/v1/executions/attention", "/api/executions/attention"})
+    public Map<String, Object> attention(
+            @RequestParam(name = "tenant", required = false) String tenant,
+            HttpServletRequest request
+    ) {
+        requireSuperUser(request);
+        return run(() -> executionMonitorService.attention(tenant, currentContext(request)));
+    }
+
     private static HttpStatus statusFor(Object outcome) {
         return switch (String.valueOf(outcome)) {
-            case "UNSTUCK" -> HttpStatus.OK;
+            case "UNSTUCK", "RETRIED", "CANCELLED" -> HttpStatus.OK;
             case "NOT_FOUND" -> HttpStatus.NOT_FOUND;
             // Not STUCK (or STUCK with no awaited event to return to): the request is well-formed
             // and the caller is allowed, the instance is simply in the wrong state for it.
