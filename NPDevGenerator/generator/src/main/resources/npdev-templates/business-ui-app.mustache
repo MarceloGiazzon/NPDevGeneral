@@ -816,31 +816,53 @@
   const EXPORT_PAGE_SIZE = 100;
   const EXPORT_ROW_CAP = 50000;
 
-  async function exportPanelCsv(concept) {
+  // INT-9: the page walk shared by Export CSV and Export Excel -> {columns, rows}.
+  async function collectExportRows(concept) {
     const panel = panelState(concept);
     const fields = visibleFields(concept, panel);
     const columns = fields.map(function (field) { return { name: field.name, label: field.label || field.name }; });
     const rows = [];
     let page = 0;
-    try {
-      setStatus("Preparing " + concept.displayName + " export…", false);
-      while (rows.length < EXPORT_ROW_CAP) {
-        const params = baseQueryParams(concept, panel);
-        params.set("page", String(page));
-        params.set("size", String(EXPORT_PAGE_SIZE));
-        const payload = await fetchJson(concept.endpointBase + "?" + params.toString(), {
-          method: "GET",
-          headers: headers()
-        });
-        const content = Array.isArray(payload.content) ? payload.content : [];
-        rows.push.apply(rows, content);
-        if (content.length < EXPORT_PAGE_SIZE) {
-          break;
-        }
-        page += 1;
+    setStatus("Preparing " + concept.displayName + " export…", false);
+    while (rows.length < EXPORT_ROW_CAP) {
+      const params = baseQueryParams(concept, panel);
+      params.set("page", String(page));
+      params.set("size", String(EXPORT_PAGE_SIZE));
+      const payload = await fetchJson(concept.endpointBase + "?" + params.toString(), {
+        method: "GET",
+        headers: headers()
+      });
+      const content = Array.isArray(payload.content) ? payload.content : [];
+      rows.push.apply(rows, content);
+      if (content.length < EXPORT_PAGE_SIZE) {
+        break;
       }
-      downloadCsv(buildCsv(columns, rows), csvFilenameFor(concept));
-      setStatus(concept.displayName + " export ready: " + rows.length + " row(s).", false);
+      page += 1;
+    }
+    return { columns: columns, rows: rows };
+  }
+
+  async function exportPanelCsv(concept) {
+    try {
+      const collected = await collectExportRows(concept);
+      downloadCsv(buildCsv(collected.columns, collected.rows), csvFilenameFor(concept));
+      setStatus(concept.displayName + " export ready: " + collected.rows.length + " row(s).", false);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  }
+
+  // INT-9: same rows as Export CSV, written as a real .xlsx by npdev-xlsx.js (no library; formula-lead
+  // cells are neutralised there exactly like csvCell above).
+  async function exportPanelXlsx(concept) {
+    try {
+      if (!window.NpdevXlsx) {
+        throw new Error("Excel export is unavailable (npdev-xlsx.js did not load).");
+      }
+      const collected = await collectExportRows(concept);
+      const blob = window.NpdevXlsx.writeXlsx(collected.columns, collected.rows, concept.displayName);
+      downloadBlob(blob, csvFilenameFor(concept).replace(/\.csv$/, ".xlsx"));
+      setStatus(concept.displayName + " Excel export ready: " + collected.rows.length + " row(s).", false);
     } catch (error) {
       notify(error.message, true);
     }
@@ -906,7 +928,10 @@
   }
 
   function downloadCsv(csvText, filename) {
-    const blob = new Blob([csvText], { type: "text/csv;charset=utf-8" });
+    downloadBlob(new Blob([csvText], { type: "text/csv;charset=utf-8" }), filename);
+  }
+
+  function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -1171,18 +1196,18 @@
     intro.className = "import-intro";
     const requiredLabels = fields.filter(function (field) { return field.required; })
         .map(function (field) { return field.label || field.name; });
-    intro.textContent = "Upload or paste a CSV whose header row matches " + concept.displayName
-        + "'s Export CSV." + (requiredLabels.length ? " Required columns: " + requiredLabels.join(", ") + "." : "");
+    intro.textContent = "Upload CSV or Excel (.xlsx, first sheet), or paste CSV, whose header row matches "
+        + concept.displayName + "'s Export CSV / Export Excel." + (requiredLabels.length ? " Required columns: " + requiredLabels.join(", ") + "." : "");
     body.appendChild(intro);
 
     const fileLabel = document.createElement("label");
     fileLabel.className = "import-file-label";
     const fileLabelText = document.createElement("span");
-    fileLabelText.textContent = "CSV file";
+    fileLabelText.textContent = "CSV or Excel file";
     fileLabel.appendChild(fileLabelText);
     const fileInput = document.createElement("input");
     fileInput.type = "file";
-    fileInput.accept = ".csv,text/csv";
+    fileInput.accept = ".csv,text/csv,.xlsx";
     fileLabel.appendChild(fileInput);
     body.appendChild(fileLabel);
 
@@ -1201,6 +1226,25 @@
     fileInput.addEventListener("change", function () {
       const chosen = fileInput.files && fileInput.files[0];
       if (!chosen) {
+        return;
+      }
+      if (/\.xlsx$/i.test(chosen.name)) {
+        // INT-9: the first worksheet becomes CSV text in the same textarea, so validation, mapping and
+        // upload stay the single existing pipeline. Dates arrive as Excel serial numbers: format date
+        // columns as Text in Excel (or use CSV).
+        if (!window.NpdevXlsx) {
+          summary.textContent = "Excel import is unavailable (npdev-xlsx.js did not load).";
+          return;
+        }
+        window.NpdevXlsx.readFirstSheet(chosen).then(function (sheetRows) {
+          textarea.value = sheetRows.map(function (row) {
+            return row.map(function (cell) { return "\"" + String(cell).replace(/"/g, "\"\"") + "\""; }).join(",");
+          }).join("\n");
+          summary.textContent = "";
+        }).catch(function (error) {
+          textarea.value = "";
+          summary.textContent = "Could not read " + chosen.name + ": " + (error && error.message ? error.message : error);
+        });
         return;
       }
       const reader = new FileReader();
@@ -3475,6 +3519,7 @@
     // drift from whatever filter/sort state is currently on screen.
     const exportButton = button("Export CSV", "", function () { exportPanelCsv(concept); });
     actions.appendChild(exportButton);
+    actions.appendChild(button("Export Excel", "", function () { exportPanelXlsx(concept); }));
     // R7.6: generalizes the propose (parse) -> review (per-row-validated preview) -> commit (atomic
     // per accepted row) triad that three hand-authored WmsOffice aggregate wizards already proved
     // (DocumentoFiscalAggregate/RomaneioAggregate/InventarioArquivoAggregate, each parse->review->
