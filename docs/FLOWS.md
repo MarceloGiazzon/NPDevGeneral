@@ -323,7 +323,39 @@ inbox `title`/`description` (`${path}` placeholders over flow state), the form `
 unchanged, so in-flight instances and the resume guard are unaffected, and the runtime reads the task by
 `(flowName, stepName)`. The step's own `timeout` is the task's due date. Validation refuses a `task` on a
 non-await step, empty/duplicate outcomes, field names clashing with `outcomeField`/`completedBy`, and a
-`task` inside a `parallelAwait` forEach. The runtime half (inbox listing and completion) lands in PROC-2.
+`task` inside a `parallelAwait` forEach.
+
+The runtime is a read-side projection with no table of its own (`HumanTaskService`, runtimehost-core): a
+task exists exactly while a flow instance is `WAITING_EVENT` on a step that declares a `task`. The parked
+step is found through the kernel's own `_npdev.await` descriptor, and the task metadata is looked up in the
+compiled model by `(flowName, stepName)`. Three endpoints, all authenticated and tenant-scoped
+(`HumanTaskController`, also under `/api/v1/tasks`):
+
+| Endpoint | Result |
+|---|---|
+| `GET /api/tasks` | `{items, count}` -- only tasks the caller may answer (username equals the resolved `assignee.user`, or the caller holds one of `assignee.roles`), oldest first; each item has `executionId`, `stepName`, rendered `title`/`description`, `startedBy`, `waitingSinceEpochMs`, `dueAtEpochMs` (from the step `timeout`), `overdue`, `recordId` |
+| `GET /api/tasks/{executionId}` | the item plus `fields`, `outcomes`, `outcomeField` |
+| `POST /api/tasks/{executionId}/complete` | body `{stepName, outcome, values}`; checks the caller is an assignee, validates `values` against the declared fields (undeclared keys are dropped), then publishes the step's awaited event and returns `{outcome, eventId, executionStatus}` |
+
+Errors are `{error, message}`: `TASK_NOT_FOUND` 404 (also for another tenant's task), `TASK_FORBIDDEN` 403,
+`TASK_NOT_OPEN` 409 (already answered, moved on, or a different step), `TASK_OUTCOME_INVALID` /
+`TASK_FIELD_INVALID` 400, `TASK_PUBLISH_REFUSED` 409. The event is published straight through the kernel,
+not through `/api/events/publish`, so an assignee needs no `PUBLISH_EVENTS` permission; admins can still
+bypass the assignee check by posting the raw event to `/api/events/publish`. Resolved refs
+(`assignee.user`, `${path}` in the title) read the instance's persisted flow state, and an unresolved ref is
+`null`, never its own text, so a task cannot be answered by a user literally named `$saved.recipientUsername`.
+Concept records written by a `createConcept` step are flat (`$saved.code`), but a `callProcedure` output
+nests the record's fields under `data` (`$notified.data.recipientUsername`).
+
+The flow resumes as its ORIGINAL starter, so the answerer is recorded explicitly. The event payload is the
+form values, plus `<outcomeField>` (the chosen outcome), `completedBy` (the answering user) and every
+`match.payload` entry resolved against the instance state (otherwise an await declaring `match.payload`
+would never match). In the flow the answer is `$<awaitRef>.<outcomeField>`, `$<awaitRef>.completedBy` and
+`$<awaitRef>.<fieldName>`. Escalation pattern: await #1 with `task.assignee.roles ["Manager"]` and
+`timeout: 86400` whose `onTimeout` runs a `notify.send` step; then a `branch` on `$<awaitRef> == null`
+(an unresolved ref is null in conditions) whose then-branch is await #2 on the SAME event with
+`task.assignee.roles ["Director"]`. Limit: the per-execution completion lock is per JVM, so on two app
+nodes a double click could publish twice.
 
 ### Resuming across a reshaped flow — the REG-238 guard
 
