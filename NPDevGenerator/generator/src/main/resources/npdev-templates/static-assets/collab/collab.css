@@ -12,3 +12,19 @@
 .npdev-task-field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
 .npdev-task-actions { display: flex; gap: 8px; margin-top: 8px; }
 .npdev-task-status { margin-top: 8px; font-size: 13px; color: var(--np-text-muted, #6b7280); }
+
+/* PROC-4: the shell notification bell (collab/bell.js). It lives in the topbar of EVERY shell page, so
+   these rules carry no .npdev-collab-page ancestor. */
+.npdev-shell-bell { position: relative; margin-left: 8px; padding: 2px 8px; border: 1px solid var(--np-border, #d8dee7); border-radius: 14px; background: var(--np-surface, #fff); color: var(--np-text, #1c2333); font-size: 15px; line-height: 22px; cursor: pointer; }
+.npdev-shell-bell-count { position: absolute; top: -6px; right: -6px; min-width: 16px; padding: 0 4px; border-radius: 9px; background: var(--np-danger, #b3261e); color: var(--np-on-accent, #fff); font-size: 11px; line-height: 16px; text-align: center; }
+.npdev-shell-bell-count[hidden] { display: none; }
+.npdev-shell-bell-panel { position: fixed; top: 44px; right: 16px; z-index: 80; width: min(360px, calc(100vw - 32px)); max-height: 60vh; overflow: auto; background: var(--np-surface, #fff); color: var(--np-text, #1c2333); border: 1px solid var(--np-border, #d8dee7); border-radius: 8px; box-shadow: 0 12px 32px rgba(24, 32, 42, .22); padding: 6px; }
+.npdev-shell-bell-panel[hidden] { display: none; }
+.npdev-shell-bell-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 6px 8px; border-bottom: 1px solid var(--np-border, #eef1f5); }
+.npdev-shell-bell-head button { background: none; border: 0; color: var(--np-accent, #1f5fbf); font-size: 12px; cursor: pointer; }
+.npdev-shell-bell-item { display: block; padding: 8px; border-bottom: 1px solid var(--np-border, #eef1f5); color: inherit; text-decoration: none; font-size: 13px; }
+.npdev-shell-bell-item:hover { background: var(--np-surface-alt, rgba(127, 127, 127, .08)); }
+.npdev-shell-bell-unread .npdev-shell-bell-title { font-weight: 700; }
+.npdev-shell-bell-body { opacity: .85; margin-top: 2px; }
+.npdev-shell-bell-time { opacity: .6; font-size: 11px; margin-top: 2px; }
+.npdev-shell-bell-empty { padding: 12px 8px; font-size: 13px; color: var(--np-text-muted, #6b7280); }
