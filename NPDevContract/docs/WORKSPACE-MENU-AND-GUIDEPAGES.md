@@ -22,15 +22,14 @@ alongside `panels`:
       "left":  { "enabled": true,  "collapsible": true },
       "right": { "enabled": true,  "collapsible": true, "defaultCollapsed": true, "width": 280 }
     },
-    "theme": { "mode": "light", "accent": "#0b5fff", "density": "comfortable", "logoText": "", "logoUrl": "" },
+    "theme": { "mode": "light", "accent": "#0b5fff", "density": "comfortable" },
     "gadgets": [ { "name": "recent", "type": "recent-items", "title": "Recentes" } ]
   },
   { "name": "Visitor", "regions": { "top": false, "left": { "enabled": false }, "right": { "enabled": false } } }
 ]
 ```
 
-**Built-ins.** Three GuidePages always exist, even if the app declares none: `Default` (top bar +
-left nav), `Minimal` (top bar only), `None` (no chrome at all — the page/section owns the whole
+**Built-ins.** Three GuidePages always exist, even if the app declares none: `Default` (top bar, left nav and a collapsed-by-default right rail, 280 px), `Minimal` (top bar only), `None` (no chrome at all — the page/section owns the whole
 viewport). A declared GuidePage with one of these names **overrides** the built-in of the same name
 in place; every other declared name is additive. Exactly one GuidePage may be marked `"default": true`;
 if none is, the (possibly overridden) `Default` is used.
@@ -48,8 +47,9 @@ An explicit `ui.guidePage`/panel `guidePage` naming an unknown GuidePage **fails
 a clear diagnostic — this is authoring error, not a case to silently fall back from.
 
 **Regions**: `top` (bool), `left`/`right` (`enabled`, `collapsible`, `defaultCollapsed`, and — for
-`right` only — `width` in px). **Theme**: `mode` (`light`/`dark`), `accent` (any CSS color),
-`density`, `logoText`/`logoUrl` (overrides the shell's default title-derived logo).
+`right` only — `width` in px). **Theme**: `mode` (`light`/`dark`/`system`; the `ui.theme.mode` setting defaults to `system`), `accent` (any CSS color),
+`density`, `logoText`/`logoUrl` (override the shell's default title-derived logo; when present they must be non-empty — an
+empty string fails schema validation).
 
 ## `definition/menu.json` — the System nav tree
 
@@ -70,11 +70,11 @@ apps that want a multi-level tree (groups, nested groups) declare it once as
 ]
 ```
 
-- A node with `children` (or no explicit `kind`) is a **GROUP** — a non-navigable collapsible
-  label; nesting is unlimited.
+- A node with `children` is a **GROUP** (the default `kind` only when it has children) — a non-navigable collapsible
+  label; nesting is unlimited. A childless node with no explicit `kind` is a `BUSINESS` leaf.
 - A leaf node's `kind` is `PAGE` (target = relative URL of a hand-authored page under `web/`) or
   `BUSINESS` (target = a persisted concept name or declared Panel name).
-- `Build-NpdevApp.ps1` flattens this tree at build time into `npdev-seed/workspace-menu-pages-seed.json`
+- The generator (`CompanionPagesMenuEmitter`) flattens this tree at generation time into `npdev-seed/workspace-menu-pages-seed.json`
   alongside any `pages.json` entries not already referenced in the tree (so an app with only
   `pages.json` produces the exact same seed as before `menu.json` existed — fully backward
   compatible). `WorkspaceMenuSeeder` resolves the tree's authoring-only `key`/`parentKey` pairs
@@ -92,7 +92,7 @@ apps that want a multi-level tree (groups, nested groups) declare it once as
 - **`reconcile`** (default, W1.2): the only mode that actually re-projects a model/`menu.json`
   change onto an already-seeded table. Each declared seed row carries a content-derived `seedKey`
   (`kind:target`, or `kind:label` for a target-less GROUP header, chained under its parent's own
-  key — see `Build-NpdevApp.ps1`'s `Get-MenuSeedKey`), persisted on the row (workspace pack 1.1.0:
+  key — see `CompanionPagesMenuEmitter.key()`), persisted on the row (workspace pack 1.1.0:
   `Menu.seedKey`/`seedOrigin`/`seedFingerprint`/`overrideOf`) so a later boot can recognize "this is
   the same logical row" even though every UUID is freshly assigned each generation. Per boot:
   - A seed row whose `seedKey` matches no existing row is **inserted** (`seedOrigin: generated`).
@@ -142,10 +142,11 @@ The right rail renders one card per gadget declared on the active GuidePage. Sev
 - **`context-info`** — freeform rows supplied by `NPDevShell.setContext({ title, rows })`; the
   generic business UI calls this on every section switch (`title` also drives the topbar
   breadcrumb).
-- **`page-fragment`** — fetches the model-declared `url` (`{"type":"page-fragment","url":"/npdev-help/orders.html"}`;
-  required, and it must be a same-origin absolute path starting with a single `/`) and injects
-  the HTML via `innerHTML` (display-only; embedded `<script>` tags never execute). A failed fetch
-  renders "Fragment unavailable (<status>)" on the card.
+- **`page-fragment`** — fetches a `url` taken from the gadget's runtime config (a same-origin absolute path starting with a
+  single `/`) and injects the HTML via `innerHTML` (display-only; embedded `<script>` tags never execute). A failed fetch
+  renders "Fragment unavailable (<status>)" on the card. **A model cannot supply that `url`:** `guidePageGadget` has no `url`
+  property (`additionalProperties: false`), so a `page-fragment` gadget declared in a model has nothing to fetch and renders
+  nothing; it is only useful when a page's own script provides the config.
 
 Register a custom type at runtime from any page's own script, after `shell.js` has loaded:
 
