@@ -1232,7 +1232,8 @@ public final class ModelCompiler {
                 bandPickers,
                 toCompiledAutoPanelDataSource(surface.dataSource()),
                 uiState,
-                surface.layout()
+                surface.layout(),
+                surface.panel()
         );
     }
 

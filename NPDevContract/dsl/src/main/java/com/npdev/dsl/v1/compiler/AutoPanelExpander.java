@@ -82,17 +82,19 @@ final class AutoPanelExpander {
                 ? autoPanel.route()
                 : "/" + concept.toLowerCase(Locale.ROOT);
 
-        if (surfaceEnabled(autoPanel, "selection")) {
+        // AutoPanel surface override: a surface that declares `panel` is replaced by that declared
+        // panel -- no synthesized panel is emitted for it; every other surface stays generated.
+        if (surfaceEnabled(autoPanel, "selection") && declaredPanel(autoPanel.selection()) == null) {
             panels.add(selectionPanel(autoPanel, concept, base, baseRoute, fieldNames, settings));
         }
-        if (surfaceEnabled(autoPanel, "detail")) {
+        if (surfaceEnabled(autoPanel, "detail") && declaredPanel(autoPanel.detail()) == null) {
             panels.add(detailPanel(autoPanel, concept, base, baseRoute, fieldNames));
         }
-        if (surfaceEnabled(autoPanel, "transaction")) {
+        if (surfaceEnabled(autoPanel, "transaction") && declaredPanel(autoPanel.transaction()) == null) {
             panels.add(transactionPanel(
                     autoPanel, concept, base, baseRoute, fields, idField, promptsByConcept, settings));
         }
-        if (surfaceEnabled(autoPanel, "prompt")) {
+        if (surfaceEnabled(autoPanel, "prompt") && declaredPanel(autoPanel.prompt()) == null) {
             panels.add(promptPanel(autoPanel, concept, base, baseRoute, fieldNames, idField));
         }
         return panels;
@@ -128,7 +130,12 @@ final class AutoPanelExpander {
                 ? autoPanel.route()
                 : "/" + aggregate.name().toLowerCase(Locale.ROOT);
         String rootConcept = aggregate.root();
-        String selectionPanelName = base + "Selection";
+        // AutoPanel surface override: a declared panel replaces the synthesized one and is what the
+        // other generated half points at.
+        String declaredSelection = declaredPanel(autoPanel.selection());
+        String declaredWorkbench = declaredPanel(autoPanel.transaction());
+        String selectionPanelName = declaredSelection != null ? declaredSelection : base + "Selection";
+        String workbenchPanelName = declaredWorkbench != null ? declaredWorkbench : base + "Workbench";
         List<String> filters = autoPanel.selection() == null ? List.of() : autoPanel.selection().filters();
 
         Map<String, Object> workbench = new LinkedHashMap<>();
@@ -244,14 +251,26 @@ final class AutoPanelExpander {
         // REG-216: a blank conceptMutation create can never satisfy an aggregate root once it has a
         // required field beyond id -- point the Selection panel's "New" button at the paired
         // Workbench's own empty-shell editor (mirrors metadata.selectionPanel above, in reverse).
-        selectionMetadata.put("workbenchPanel", base + "Workbench");
+        selectionMetadata.put("workbenchPanel", workbenchPanelName);
         CompiledPanel selectionPanel = new CompiledPanel(
                 selectionPanelName, baseRoute, rootConcept,
                 List.of(conceptDataSource(rootConcept)), selLayout, List.of(), null, null,
                 List.of(newRecordAction(rootConcept, settings)), Map.of(),
                 selectionMetadata, null);
 
-        return List.of(workbenchPanel, selectionPanel);
+        List<CompiledPanel> synthesized = new ArrayList<>();
+        if (declaredWorkbench == null) {
+            synthesized.add(workbenchPanel);
+        }
+        if (declaredSelection == null) {
+            synthesized.add(selectionPanel);
+        }
+        return List.copyOf(synthesized);
+    }
+
+    /** AutoPanel surface override: the declared panel name a surface replaces its synthesized panel with, or null. */
+    private static String declaredPanel(CompiledAutoPanelSurface surface) {
+        return surface != null && hasText(surface.panel()) ? surface.panel().trim() : null;
     }
 
     /**
@@ -920,7 +939,8 @@ final class AutoPanelExpander {
             }
         }
         String labelField = promptLabelField(autoPanel, names, idField);
-        return new PromptRef(base + "Prompt", idField == null ? "" : idField, labelField == null ? "" : labelField);
+        String declaredPrompt = declaredPanel(autoPanel.prompt());
+        return new PromptRef(declaredPrompt != null ? declaredPrompt : base + "Prompt", idField == null ? "" : idField, labelField == null ? "" : labelField);
     }
 
     private static boolean surfaceEnabled(CompiledAutoPanel autoPanel, String surface) {
