@@ -64,7 +64,7 @@ class CompiledFieldPickerCanonicalJsonTest {
                         List.of(), Map.of(), List.of(), Map.of(),
                         Map.of("itens", new CompiledWorkbenchBandPicker(
                                 "ItemSelectionPanel", "Choose item", List.of("sku"), "ativo == true", true)),
-                        null, Map.of(), null),
+                        null, Map.of(), null, null),
                 null,
                 Map.of());
         CompiledModel model = new CompiledModel(
