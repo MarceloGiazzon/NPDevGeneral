@@ -39,6 +39,8 @@ InMemory
 H2Local
 H2Server
 Postgres
+MySQL
+SqlServer
 ```
 
 A hand-authored SQL source of truth causes drift:
@@ -92,14 +94,14 @@ Do not add future tables under this policy item.
 The following future design areas must not be implemented as part of this model-strengthening step:
 
 ```text
-TenantProvider tables
 Coda tables
 Capability tables
 Orchestration tables
 Flow definition / flow step tables
 ```
 
-Those are separate work items.
+Those are separate work items. (The tenant registry, `npdev_tenant`, is no longer one of them: it lives in the
+Kernel dbschema package as `NpdevTenantTable` and is registered in `NpdevInternalTables`.)
 
 ## Logical column type policy
 

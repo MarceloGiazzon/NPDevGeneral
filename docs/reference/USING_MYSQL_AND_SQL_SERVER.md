@@ -51,7 +51,7 @@ dialect passing unit tests, and it is the entire point:
 
 | Layer | MySQL / SQL Server | PostgreSQL |
 |---|---|---|
-| Dialect string generation (Tier A) | proven — 78 assertions, four engines | proven |
+| Dialect string generation (Tier A) | proven — the Tier A suite runs every check against all four dialects | proven |
 | Behaviour over raw JDBC (Tier B) | proven — **14/14 vectors per engine, 0 skips**, real containers (run `31271016482`) | proven |
 | **A generated app booting and serving** | **proven** (run `31296993259`): boots, serves and persists on both. STOR-12 re-ran the app proof 4/4 on a fresh database and 4/4 on a non-fresh one — the deployment shape | **proven** (run `31279857141`): boots, non-BMP unicode round trip, paginated query, rows survive a restart |
 
@@ -96,7 +96,7 @@ password is wrong":
 | `database-exists` | credentials accepted, database absent | **NPDev creates TABLES at boot, never the database.** Create it once yourself |
 | `database-privileges` | connects, cannot `CREATE TABLE` | NPDev realizes schema at boot; a read-only user fails late and confusingly |
 | `database-charset` | MySQL is not `utf8mb4` | **the silent one** — see below |
-| `database-engine-support` | the engine is experimental | honest status, not a footnote |
+| `database-engine-support` | warns (never fails) when the engine is experimental; every engine is `supported` today | honest status, not a footnote |
 
 All six pass against a real PostgreSQL in CI (run `31279857141`); four are proven by fixtures built
 to make them fail, because a check that has only ever passed is not a check.
@@ -115,7 +115,7 @@ npdev db test-connection --engine mysql --db-host localhost --db-port 3306 \
     --db-user root --db-password ...
 ```
 
-Same five checks, same ids, same order — it shares one code path with `doctor`, so the two can never
+Same six checks, same ids, same order — it shares one code path with `doctor`, so the two can never
 disagree about one database. Omit `--db-name` and it asks whether the **server** is usable rather
 than whether some particular database exists, which is the right question before `npdev init` has
 chosen a name.
@@ -136,8 +136,8 @@ npdev db reset --confirm I_UNDERSTAND_DB_DATA_WILL_BE_DELETED
 ```
 
 Each prints which app it is acting on (`[appId | engine | path]`) before anything else. That is
-worth reading: the generated `_ops` toolbox is written next to the FinalApp's *parent*, so two apps
-scaffolded into the same folder share one toolbox — see `QUAL-3`.
+worth reading: the generated `_ops` toolbox lives inside the FinalApp (since `QUAL-3`), so two apps scaffolded into
+the same folder no longer share one; a parent-level `_ops` is only a legacy fallback the CLI still recognises.
 
 `reset` deletes data and removes the container, so it refuses without the acknowledgement token,
 from a terminal and from the Manager's button alike.
@@ -198,9 +198,10 @@ This is not theoretical either: the conformance suite's own J2 vector once hand-
 `VARCHAR(4000)` instead of asking the dialect, stored `café ☕`, and read back `café ?`. The dialect
 had the right answer and was never asked. The vector was right to fail.
 
-### 5.2 Row caps are a prefix, not a suffix
+### 5.2 Row caps are a whole statement, not a suffix
 
-`SELECT TOP n` rather than `LIMIT n`. Handled inside the dialect; you never see it. Worth knowing
+SQL Server has no `LIMIT n` suffix, so the dialect builds the whole statement
+(`OFFSET … ROWS FETCH NEXT … ROWS ONLY`; boundary B29). Handled inside the dialect; you never see it. Worth knowing
 only because a paginated query **must declare an `ORDER BY`** — SQL Server rejects `OFFSET…FETCH`
 without one, and NPDev refuses it on *every* engine rather than injecting an arbitrary order on the
 one that needs it. An injected order still returns overlapping pages; that would trade a loud failure
