@@ -157,6 +157,12 @@ body.npdev-shell-no-right .npdev-shell-rightbar { display: none; }
 .npdev-shell-body { display: flex; flex: 1; min-height: 0; }
 
 /* ---- left sidebar (collapsible nav tree) ---- */
+/* PROC-3: pending-count pill on the "Work > My tasks" link. */
+.npdev-shell-nav-badge {
+  margin-left: auto; min-width: 18px; padding: 0 6px; border-radius: 9px;
+  background: var(--np-accent); color: var(--np-on-accent); font-size: 11px; line-height: 18px; text-align: center;
+}
+body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar .npdev-shell-nav-badge { display: none; }
 .npdev-shell-sidebar {
   width: var(--np-sidebar-w); flex-shrink: 0; background: var(--np-surface);
   border-right: 1px solid var(--np-border); padding: 14px 10px; overflow-y: auto;

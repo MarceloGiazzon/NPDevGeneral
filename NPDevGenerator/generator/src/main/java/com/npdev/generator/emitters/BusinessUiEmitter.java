@@ -7,6 +7,8 @@ import com.npdev.dsl.v1.compiled.CompiledAppShellNavItem;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledContext;
 import com.npdev.dsl.v1.compiled.CompiledDocument;
+import com.npdev.dsl.v1.compiled.CompiledFlow;
+import com.npdev.dsl.v1.compiled.CompiledFlowStep;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledEnumOption;
@@ -158,6 +160,14 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                     templates.raw("static-assets/business-ui/views/" + asset)
             );
         }
+        // PROC-3: the "My tasks" page assets are static and model-free (identical for every app); only
+        // the manifest's collaboration.humanTasks flag below depends on the model.
+        for (String asset : COLLAB_ASSETS) {
+            writer.writeRelative(
+                    "src/main/resources/static/npdev-business-ui/collab/" + asset,
+                    templates.raw("static-assets/collab/" + asset)
+            );
+        }
         writer.writeRelative(
                 "src/main/resources/static/npdev-business-ui/generated-ui-manifest.json",
                 manifestJson(model, persistedConcepts, superUserRole, resolver, fieldOrigins)
@@ -242,6 +252,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
      * script tags in business-ui-index.mustache (registry.js first). Each new view appends its
      * file here AND adds the matching tag there.
      */
+    static final List<String> COLLAB_ASSETS = List.of("tasks.html", "tasks.js", "collab.css");
+
     static final List<String> BUSINESS_UI_VIEW_ASSETS = List.of(
             "registry.js",
             "history.js",
@@ -422,6 +434,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         // today's flat auto-derivation for anything appShell doesn't mention.
         root.put("appShell", appShellNode(model));
         root.put("theme", appThemeNode(settingResolver));
+        // PROC-3: absent unless the model declares a human task, so manifests of apps without one stay
+        // byte-identical. The shell shows "Work > My tasks" only when this flag is present.
+        if (declaresHumanTask(model)) {
+            root.put("collaboration", new LinkedHashMap<>(Map.of("humanTasks", true)));
+        }
 
         // REG-12 Slice 3: index declared `document`s by their bound concept so each concept node
         // below can carry its own (usually 0 or 1) documents -- the toolbar's "Download PDF"
@@ -951,6 +968,33 @@ public final class BusinessUiEmitter extends AbstractEmitter {
 
     /** W1.4: app-wide theme/density default, resolved from the ui.theme.mode/ui.density settings
      * (config defaults/overrides envelope) -- applied by shell.js before any per-GuidePage override. */
+    /** PROC-3: true when any flow step (at any nesting depth) declares a human {@code task}. */
+    private static boolean declaresHumanTask(CompiledModel model) {
+        if (model == null) {
+            return false;
+        }
+        for (CompiledFlow flow : model.getFlows()) {
+            if (anyHumanTask(flow.getSteps())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean anyHumanTask(List<CompiledFlowStep> steps) {
+        for (CompiledFlowStep step : steps) {
+            if (step.getTask() != null
+                    || anyHumanTask(step.getThenSteps())
+                    || anyHumanTask(step.getElseSteps())
+                    || anyHumanTask(step.getLoopSteps())
+                    || anyHumanTask(step.getOnFailureSteps())
+                    || anyHumanTask(step.getOnTimeoutSteps())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static Map<String, Object> appThemeNode(SettingResolver settingResolver) {
         Map<String, Object> node = new LinkedHashMap<>();
         node.put("mode", settingResolver.value(NpdevSettings.UI_THEME_MODE, SettingTarget.app()));
