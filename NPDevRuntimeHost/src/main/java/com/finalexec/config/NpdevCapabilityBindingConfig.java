@@ -474,18 +474,19 @@ public class NpdevCapabilityBindingConfig {
             ObjectProvider<HttpMessagingCapabilityAdapter> httpMessagingCapabilityAdapterProvider,
             ObjectProvider<ExternalAiPromptRunner> externalAiPromptRunnerProvider,
             ObjectProvider<FileStoreCapabilityHandler> fileStoreCapabilityHandlerProvider,
-            ObjectProvider<com.finalexec.connector.HttpConnectorCapabilityHandler> httpConnectorCapabilityHandlerProvider
+            ObjectProvider<com.finalexec.connector.HttpConnectorCapabilityHandler> httpConnectorCapabilityHandlerProvider,
+            ObjectProvider<com.finalexec.webhook.QueuedWebhookCapabilityHandler> queuedWebhookCapabilityHandlerProvider
     ) {
         CapabilityRegistry registry = new CapabilityRegistry();
         populateCapabilityRegistry(registry, modelHolder.get(), capabilityAdapterResolver,
                 inProcMessagingCapabilityAdapter, httpMessagingCapabilityAdapterProvider,
                 externalAiPromptRunnerProvider, fileStoreCapabilityHandlerProvider,
-                httpConnectorCapabilityHandlerProvider);
+                httpConnectorCapabilityHandlerProvider, queuedWebhookCapabilityHandlerProvider);
         modelHolder.addReloadListener((before, after) -> populateCapabilityRegistry(
                 registry, after, capabilityAdapterResolver,
                 inProcMessagingCapabilityAdapter, httpMessagingCapabilityAdapterProvider,
                 externalAiPromptRunnerProvider, fileStoreCapabilityHandlerProvider,
-                httpConnectorCapabilityHandlerProvider));
+                httpConnectorCapabilityHandlerProvider, queuedWebhookCapabilityHandlerProvider));
         return registry;
     }
 
@@ -497,7 +498,8 @@ public class NpdevCapabilityBindingConfig {
             ObjectProvider<HttpMessagingCapabilityAdapter> httpMessagingCapabilityAdapterProvider,
             ObjectProvider<ExternalAiPromptRunner> externalAiPromptRunnerProvider,
             ObjectProvider<FileStoreCapabilityHandler> fileStoreCapabilityHandlerProvider,
-            ObjectProvider<com.finalexec.connector.HttpConnectorCapabilityHandler> httpConnectorCapabilityHandlerProvider
+            ObjectProvider<com.finalexec.connector.HttpConnectorCapabilityHandler> httpConnectorCapabilityHandlerProvider,
+            ObjectProvider<com.finalexec.webhook.QueuedWebhookCapabilityHandler> queuedWebhookCapabilityHandlerProvider
     ) {
         Map<String, CompiledCapability> capabilitiesByName = compiledModel.getCapabilities().stream()
                 .collect(Collectors.toMap(
@@ -528,6 +530,18 @@ public class NpdevCapabilityBindingConfig {
                             + "-- see NpdevConnectorConfig.");
                 }
                 registry.register(capability.getName(), capability.getType(), handler.adapterId(), handler);
+                continue;
+            }
+
+            // INT-5: outbound webhooks -- post() only queues a durable row; WebhookDeliveryWorker sends it.
+            if ("webhook-http".equalsIgnoreCase(binding.getAdapter())) {
+                com.finalexec.webhook.QueuedWebhookCapabilityHandler handler =
+                        queuedWebhookCapabilityHandlerProvider.getIfAvailable();
+                if (handler == null) {
+                    throw new IllegalStateException("Model binds webhook-http but no QueuedWebhookCapabilityHandler "
+                            + "bean exists -- see NpdevWebhookConfig.");
+                }
+                registry.register(capability.getName(), capability.getType(), "webhook-http", handler);
                 continue;
             }
 

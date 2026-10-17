@@ -744,6 +744,13 @@
       "operations": [ "generate" ]
     },
     {
+      "name": "webhook",
+      "type": "WebhookCapability",
+      "operations": [
+        { "name": "post", "sideEffects": "external" }
+      ]
+    },
+    {
       "name": "selfApi",
       "type": "HttpConnector",
       "http": {
@@ -769,6 +776,7 @@
     { "capability": "notification", "adapter": "notification-inproc" },
     { "capability": "externalAi", "adapter": "externalAi" },
     { "capability": "selfApi", "adapter": "http-connector" },
+    { "capability": "webhook", "adapter": "webhook-http" },
     { "capability": "eventBus", "adapter": "inproc" }
   ],
 
@@ -1554,6 +1562,26 @@
           "value": [ { "sku": "WIDGET-1", "status": "active" }, { "sku": "WIDGET-2", "status": "active" } ],
           "target": "summary" },
         { "name": "return-summary", "type": "return", "value": "$summary" }
+      ]
+    }
+  ],
+
+  "orchestrationRules": [
+    {
+      "name": "PushNewOrdersToErp",
+      "trigger": { "type": "event", "event": "WidgetOrderPlaced" },
+      "actions": [
+        {
+          "type": "callCapability",
+          "capability": "webhook",
+          "operation": "post",
+          "map": {
+            "url": "http://127.0.0.1:9099/hooks/orders",
+            "event": "WidgetOrderPlaced",
+            "orderId": "$event.id",
+            "status": "$event.status"
+          }
+        }
       ]
     }
   ],

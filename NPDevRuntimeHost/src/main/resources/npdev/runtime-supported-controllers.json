@@ -35,6 +35,7 @@
     "PromotionController",
     "TenantAdminController",
     "CredentialAdminController",
+    "WebhookDeliveryAdminController",
     "FileUploadController",
     "DocumentRenderController",
     "SemanticBehaviorWriteBackController",
