@@ -5,14 +5,14 @@
 
 When you change a model whose generated app is already deployed and holds real data, the platform
 does not silently guess what you meant. `SchemaLifecycleExecutor`
-(`NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java`), a Spring
+(`NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java`), a Spring
 `FlywayMigrationStrategy`, decides at **boot time** — from live database introspection, not from
 diffing two model files — exactly what changed and how to apply it safely, or refuses with a
 message telling you precisely what to do.
 
 ## The mental model
 
-Every boot against a physical database (H2Local/H2Server/Postgres — InMemory apps have no DDL and
+Every boot against a physical database (H2Local/H2Server/Postgres/MySQL/SQL Server — InMemory apps have no DDL and
 this entire mechanism no-ops for them):
 
 1. **Fingerprint.** The generator stamps a `schemaFingerprint` (a hash of the compiled model's
@@ -43,11 +43,13 @@ this entire mechanism no-ops for them):
    `APPLIED`/`REFUSED`/`PARTIAL-CRASH`), so the audit trail survives even a crash mid-migration.
 
 Nothing here infers intent. A rename is a rename because you said so
-(`renamedFrom`), not because the platform guessed two columns "look similar."
+(`renamedFrom` or a stable `uid`), not because the platform guessed two columns "look similar."
 
 ## Declaring a rename
 
-Renames are never auto-detected — declare them with `renamedFrom`, and the in-place path (steps
+Renames are never guessed from similar-looking columns — declare them with `renamedFrom`, or give the
+field a stable `uid` (an identity rename is tracked in `npdev_column_identity` and applied in place with
+no `renamedFrom`; REG-209, boundary B1). Either way the in-place path (steps
 preserving all data) is used automatically the next time you deploy.
 
 **Field rename** — on the field object, in its concept's `fields` array:
@@ -163,8 +165,9 @@ added in the same upgrade as an acknowledged drop is still backfilled-and-tighte
 it has no literal default), never silently left permanently nullable.
 
 **Refused, not silently guessed, when:**
-- No `default` is declared (an optional field, or a `defaultExpression`-only field — **expression
-  backfills are not supported in v1**; only literal defaults are backfilled automatically).
+- No `default` is declared (an optional field). A `defaultExpression`-only field is not refused outright:
+  a safe or reviewable expression auto-applies, anything else needs the `EXPRESSION_BACKFILL`
+  acknowledgment after `GET .../expression-backfill-preview` (see [Current limitations](#current-limitations)).
 - The new required field is a **bond/FK reference** — there is no automatic literal-default backfill
   for a bond (its value would have to reference an existing row's actual key). Make the field
   optional, or use the [acknowledged destructive path](#acknowledging-destructive-changes) to
@@ -230,8 +233,8 @@ plan preview) and is deliberately kept out of the hash, so a concept-drop token 
 Model change: rename `User.name` → `User.fullName` (safe, in-place), add optional `User.notes`
 (safe, additive), drop `User.active` (destructive).
 
-> **Stop the running app before regenerating.** `Build-NpdevApp.ps1` wipes the entire FinalApp
-> output directory on every run (`deleteBeforeMount`, per `docs/architecture/APP_UPGRADE_CONTRACT.md`)
+> **Stop the running app before regenerating.** `Build-NpdevApp.ps1` wipes the FinalApp output
+> directory on every run, sparing only `App\data`, `App\logs` and `App\secrets` (`deleteBeforeMount`, per `docs/architecture/APP_UPGRADE_CONTRACT.md`)
 > — a real, load-bearing operational constraint, not just a style preference. If the app is actively
 > serving from that directory, the wipe can fail outright or leave it in an inconsistent state.
 > `-PlanOnly` and `-Upgrade` are no exception: stop the app first, run the command, then rebuild and
@@ -516,6 +519,8 @@ blanket-only app. Use one of these instead, in order of preference:
    is the only option that guarantees a clean slate.
 2. **Use a `freshdb`-style app definition** (several ship already, e.g.
    `simple-user-registry-h2local-freshdb`).
+3. **Use `strategy: Ephemeral`** — the purpose-built option: it drops and recreates every owned table
+   on every start (STOR-16; see that section).
 
 > Note: `strategy: RecreateOnAppStart` was removed; generation refuses it and names the codemod
 > (`npdev migrate db-lifecycle --input <dir> --write`). For a throwaway dataset use `Ephemeral` (see
@@ -543,6 +548,10 @@ keep working unchanged.
 >   "freshdb" CI pattern). Flipping either would defeat the scenario it exists to test.
 > - **5 `InMemory` + `Ephemeral`** (formerly the removed `RecreateOnAppStart`; `_official\Claude`, `pack-sample`, `simple-user-registry-inmemory`,
 >   `canonical-demo`, `simple-contact-intake`) — non-persistent, so the posture does not apply.
+>
+> *Dated snapshot.* By 2026-10-17 there are 62 `db.definition.json` files under `AppGen\apps` and
+> `NPDevSamples` (including `_scratch`/`_experiments`); `canonical-demo` and `simple-contact-intake` are
+> now `Ephemeral`, and the blanket count is still 2.
 >
 > Every remaining blanket-posture definition is now blanket **for a documented reason**, not by
 > default — that is REG-1's "done" state. Recount with:
@@ -637,8 +646,8 @@ retained; older ones are pruned automatically. A snapshot failure is logged loud
 itself crash the boot would be worse than none.
 
 **Restoring (Move 9 B3, `SchemaDropSnapshotRestorer`).** An operator-driven ControlPanel command,
-never automatic and never "restore everything" — every call names one exact `(snapshot, table)`
-pair:
+never automatic — a single-table restore names one exact `(snapshot, table)` pair, and the batch
+form names an explicit list of tables (or `["all"]`):
 
 - `GET /api/admin/schema-migration/snapshots` — every snapshot directory available, most recent first.
 - `GET /api/admin/schema-migration/snapshots/{snapshot}/tables` — every table that snapshot captured.
@@ -651,10 +660,13 @@ pair:
   overwritten** — that is always left for the operator to resolve by hand. Refuses outright if the
   live table does not exist yet (restore is data-only, never schema — boot the app normally first so
   the table exists).
+- `POST /api/admin/schema-migration/snapshots/{snapshot}/restore` — the batch form (STOR-18, boundary
+  B9): an explicit list of tables or `["all"]`, preflighted and restored in FK order, with the same
+  never-overwrite rule per row.
 
 This deliberately does not attempt schema-shape reconciliation (a snapshot column since removed from
 the model is simply not restored; a live table's new required column since added is not backfilled by
-this path) or a bulk "restore every table" mode — see [Current limitations](#current-limitations).
+this path) — see [Current limitations](#current-limitations).
 
 ## Platform-managed columns
 
@@ -739,9 +751,12 @@ mode), or by changing the model to match what the external schema actually has.
 
 **REG-7.2**, GeneXus-style: "the schema is already at this fingerprint; stop trying to migrate to it."
 An operational act against a *running database*, independent of any specific build — so unlike the
-destructive-acknowledgment token, there is no generator/CLI round-trip in v1: it is a ControlPanel-only
-endpoint, submitted on the currently running app (SUPERUSER-gated, `X-Super-User-Key` header, same
-pattern as every other ControlPanel endpoint):
+destructive-acknowledgment token, it needs no generator round-trip: it is submitted on the currently running
+app, either through a ControlPanel endpoint (SUPERUSER-gated, `X-Super-User-Key` header, same
+pattern as every other ControlPanel endpoint) or from the CLI with `npdev db mark-done [--app --url
+--from-fingerprint --by --note --force]` (boundary B6; the CLI records only when the diff is strictly
+`NO_CHANGES`, otherwise it refuses with an itemized diff, and `--force` stamps `forced:true`). The REST
+form:
 
 ```
 POST /api/admin/schema-migration/mark-done
@@ -802,7 +817,9 @@ anything (the mutex, not this row, is what a crashed instance actually loses).
 
 - **Held by someone else** → the boot WAITS (`npdev.schema.lock.waitSeconds`, default 300s), then
   refuses if the budget runs out **and no new progress was observed during the wait** (see
-  "Progress-aware waiting" below):
+  "Progress-aware waiting" below). A boot with nothing to migrate skips the lock entirely (STOR-28), and
+  on timeout the default `npdev.schema.lock.onTimeout=degrade` lets a boot whose schema is already
+  compatible continue with a warning — the refusal below applies when the schema is incompatible:
   ```
   B4:migration_lock_held:Another NPDev instance is currently migrating this database (instance <uuid>
   on host <hostname>, claimed at epoch-ms <t>), and this boot timed out after <n>s waiting for it.
@@ -862,8 +879,9 @@ alongside the holder identity.
 Deliberately out of scope for this feature (recorded here as known future work, not silently
 missing):
 
-- **No automatic rename inference.** Every rename must be declared via `renamedFrom` — there is no
-  identity-tracking (uid-based) mechanism that infers "this looks like the same field, renamed."
+- **No similarity-based rename inference.** A rename is applied only when declared via `renamedFrom`
+  or recognised by a field's stable `uid` (`ColumnIdentityStore`, table `npdev_column_identity`;
+  REG-209, boundary B1) — the platform never infers "this looks like the same field, renamed."
 - **Expression-valued backfills require an explicit dry-run + acknowledgment (Move 9 B1).** A
   `defaultExpression`-only required field on a populated table is no longer refused outright: `GET
   .../expression-backfill-preview` reports what it WOULD compute for every existing row, and
@@ -871,9 +889,9 @@ missing):
   change) and a fresh re-evaluation still has zero rows that fail to produce a value. A row that
   cannot be evaluated (a referenced field absent from it) still blocks the backfill entirely — see
   [Snapshots and restore](#snapshots-and-restore) for the analogous data-recovery command.
-- **Snapshot restore is operator-driven, one table at a time (Move 9 B3).** `SchemaDropSnapshotRestorer`
-  restores exactly one `(snapshot, table)` pair per call — never "restore everything" — and never
-  overwrites a row that is live with content different from the snapshot; see
+- **Snapshot restore is operator-driven (Move 9 B3; batch form STOR-18).** `SchemaDropSnapshotRestorer`
+  restores one `(snapshot, table)` pair per call, or a preflighted, FK-ordered batch through the batch
+  endpoint (boundary B9), and never overwrites a row that is live with content different from the snapshot; see
   [Snapshots and restore](#snapshots-and-restore).
 - **H2→Postgres (or any engine pair) promotion is now one command, and verifies deeper than row
   counts (Move 9 A4; one-command arc + deep verification, B10, package 3.3).**
@@ -884,10 +902,11 @@ missing):
   javadoc for why the target's dialect is derived from its CONNECTION, not the source manifest, when
   the two engines differ). `CrossEngineDataPromotion` (`POST /api/admin/schema-migration/promote/preview`
   then `/promote/apply`) still copies rows typed per column, unchanged; the target table no longer has
-  to already exist before you run this command (it did before this package, and the REST endpoints
-  themselves still assume it does — the CLI is what added realization). `PromotionVerifier`
-  (called from `PromoteMain`, CLI-only — deliberately not mirrored as a REST endpoint yet, see
-  `SchemaAcknowledgmentController`'s own comment for why) is the deeper check the plan's own words
+  to already exist before you run this command (it did before this package; the bare `/promote/preview` and
+  `/promote/apply` endpoints still assume it does, while `POST /api/v1/admin/schema/promote` realizes
+  the target, copies and verifies like the CLI — STOR-29). `PromotionVerifier`
+  (called from `PromoteMain` and, through `PromotionArc`, from
+  `SchemaPromotionController`) is the deeper check the plan's own words
   demand ("never 'Postgres started successfully'"): per-column null counts, an order-independent content hash
   per table (a per-row hash, summed rather than chained, so read order cannot flip the verdict), and
   FK/index/shape parity read from the manifest (reusing `ExternalSchemaVerification`, the same check
@@ -897,11 +916,11 @@ missing):
   command's own realize step, and it still does not translate H2 SQL into Postgres SQL — every DDL
   statement comes from the same generated, engine-specific `V1__` migration the app's own boot would
   run, never a hand-translated one.
-- **`ExternallyManaged` compatibility verification is column-shaped only (REG-7.1).** It confirms
-  every declared table/column exists live with a compatible SQL type; it does NOT check nullability,
-  uniqueness constraints, indexes, or foreign keys. A schema that passes this check can still be
-  incompatible in ways the check does not look for.
-- **"Mark migration as done" trusts the operator completely (REG-7.2).** It is not a verification —
+- **`ExternallyManaged` compatibility verification (REG-7.1, extended by SER-P5.2).** It confirms
+  every declared table/column exists live with a compatible SQL type and also checks nullability,
+  unique constraints, indexes and foreign keys (`ExternalSchemaVerification`).
+- **The REST "Mark migration as done" trusts the operator completely (REG-7.2).** `npdev db mark-done`
+  (boundary B6) verifies against a strict `NO_CHANGES` diff; the ControlPanel `/mark-done` endpoint is not a verification —
   fast-forwarding the stored fingerprint does not confirm the live schema actually matches the model.
   If the claim is wrong, nothing in this mechanism catches that; the executor simply stops trying to
   converge the schema, on the operator's word alone.
