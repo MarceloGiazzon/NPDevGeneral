@@ -26,7 +26,7 @@ also unwanted here, not just Claude-initiated ones.
 A single WmsOffice rebuild in this session cost **6 hours 22 minutes of dead wall-clock time**
 because a background task's completion notification silently never fired and Claude sat waiting on
 it with zero independent check — an unacceptable, user-called-out failure. Immediately after that,
-in the SAME turn, Claude then guessed a script name (`Build-App.ps1`) that does not exist, when the
+in the SAME turn, Claude then guessed a script name (`Build-App.ps1`) that did not exist in that toolbox, when the
 correct name (`Build-FinalApp.ps1`) was sitting unread in a directory listing from three tool calls
 earlier in that very conversation. Guessing instead of re-reading your own prior tool output, right
 after the wait itself was called inexcusable, is a second, avoidable failure stacked on the first —
@@ -34,6 +34,8 @@ do not repeat either half of this:
 
 1. **Never guess a script/file name.** If a directory was already listed in this conversation,
    re-read that listing before invoking anything from it — do not invoke-and-see-if-it-exists.
+   (Since OPS-2 both names exist in a generated app's `_ops`: `Build-FinalApp.ps1` is the one build
+   recipe and `Build-App.ps1` is a thin wrapper that calls it. The rule stands: list, then invoke.)
 2. **A background-task completion notification is NOT guaranteed to fire promptly** — proven live at
    6h22m in this session. For anything the user is actively waiting on, pair `run_in_background` with
    a `Monitor` poll on the real log path (or a short bounded re-check), never a bare notification with
@@ -60,6 +62,9 @@ you pull into context. Cost is `requests × average context`; both multiplicands
   and BLOCKS any command matching `enforcement.expensiveCommands` in
   `scripts/policy/output-digest-policy.json` that is not wrapped. Add a command family to that JSON,
   never to the hook. Deliberate bypass: `-DryRun`/`-ListOnly`, or `NPDEV_DIGEST_BYPASS=1`.
+  The hook, the status line and the `SessionStart` handoff hook are wired by `.claude/settings.json`,
+  which is gitignored (`.claude/*`) and therefore per-machine: a fresh clone has the scripts but not
+  the wiring until that file is created.
 - **Ask before spawning a subagent** unless the user requested one. Subagents were 42% of spend.
 
 The status line (`scripts/ai/session_meter.py`, wired via `.claude/settings.json`) shows the live
@@ -81,9 +86,9 @@ context, so it costs nothing per turn — which is why the advice lives there an
 - **NO SCRIPT MAY READ A `.md` FILE — and the exemption list may never grow.** Markdown is output
   for humans; facts a script needs live in JSON/YAML. Enforced by
   `scripts/quality/check-no-markdown-reads.py` against `scripts/policy/markdown-read-exemptions.json`.
-  Exactly **5 exemptions** remain, all markdown *linters*, pinned by `frozenCount: 5` — the checker
+  Exactly **6 exemptions** remain, all markdown *linters*, pinned by `frozenCount: 6` — the checker
   fails if the list grows, and equally if it shrinks without `frozenCount` being lowered in the same
-  commit, so the ceiling only ratchets down. **A 6th exemption is an owner decision, never a checker
+  commit, so the ceiling only ratchets down. **A 7th exemption is an owner decision, never a checker
   change** — the correct answer to a new markdown read is to invert it into structured data.
 - **Source-of-truth layers:** (1) this repo = truth for platform code/scripts/schemas;
   (2) `D:\WorkSpace\NPDev\AppGen\apps` = truth for app *definitions* only (not a git repo);
@@ -114,17 +119,17 @@ Reading any one whole burns 40–100k tokens. The authoritative list is
 declared size drifts more than ±25%. This prose list is a summary of that JSON, not itself read by
 anything:
 
-- `NPDevGenerator/.../npdev-templates/business-ui-app.mustache` (169 KB)
-- `NPDevKernel/adapters/runtime-support/.../GeneratedCrudRuntimeSupport.java` (158 KB)
-- `NPDevRuntimeHost/.../db/SchemaLifecycleExecutor.java` (138 KB)
-- `NPDevKernel/kernel/.../KernelRunner.java` (126 KB)
-- Big JSON that is noise if read whole: `NPDevSamples/NPDevSamples_Tree.txt`, and test fixtures
+- `NPDevGenerator/.../npdev-templates/business-ui-app.mustache` (325 KB)
+- `NPDevKernel/adapters/runtime-support/.../GeneratedCrudRuntimeSupport.java` (197 KB)
+- `NPDevRuntimeHost/.../db/SchemaLifecycleExecutor.java` (216 KB)
+- `NPDevKernel/kernel/.../KernelRunner.java` (150 KB)
+- Big JSON that is noise if read whole: the test fixtures
   `NPDevRuntimeHost/src/test/resources/npdev/compiled-metadata.json` / `metadata/fields.manifest.json`
 
 **Faster than any of this:** `python scripts/ai/build_symbol_map.py` emits a symbol index of the
 hot files (class/def name → line number) to the Build root. Grep that, then `Read(offset, limit)`.
 
-`SemanticValidator.java` (10 KB) and `UntrustedExtensionEmitter.java` (renamed by W0.2 from its
+`SemanticValidator.java` (13 KB) and `UntrustedExtensionEmitter.java` (renamed by W0.2 from its
 pre-rename name, 13 KB) are **no longer large** — both are now orchestrators over sibling classes.
 Grep the package, not the file.
 
@@ -171,10 +176,16 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   → `run-kernel-quality-gate.ps1` (`kernelQualityGate`: `:kernel:test` + all 36+ `:adapters:*:test`,
   then the kernel aggregate ratchet) → `run-ai-knowledge-gate.ps1` (mostly static,
   but some checks generate and boot probe apps and it runs the NPDevCli suite -- never run a build
-  alongside it; hosts 40 of the 42 `scripts/quality/check-*.py` across 39 numbered checks).
-  **Two checkers are not in it:** `check-dsl-reference-output-floor.py` runs in
-  `run-generator-gate.ps1` (needs a build), and `check-external-ai-mission-coverage.py` runs only in
-  `run-weekly-paperwork-checks.ps1`.
+  alongside it; hosts 44 of the 56 `scripts/quality/check-*.py` across 51 numbered checks).
+  **Twelve checkers are not in it:** `check-dsl-reference-output-floor.py` runs in
+  `run-generator-gate.ps1` (needs a build), `check-a11y-baseline.py` runs only in
+  `run-shell-scenarios.ps1`, and ten run only in `run-weekly-paperwork-checks.ps1`
+  (`-IncludePaperwork`): `check-adr-decision-implementation`, `check-allowlist-citations`,
+  `check-cadence-coverage`, `check-doc-inventory`, `check-external-ai-mission-coverage`,
+  `check-markdown-links`, `check-no-markdown-reads`, `check-pinned-download-links`,
+  `check-readme-contract`, `check-record-surfaces`. So a bare "all gates green" does NOT run the
+  doc-inventory, no-markdown-reads, record-surfaces or cadence-coverage checks -- run them by hand
+  (or with `-IncludePaperwork`) when you touch docs, policy JSON or `CLAUDE.md`.
   **Budget ~13.5 min for the first three gates, plus ~3 min for kernel.**
   Two more gates are **deferred by default**: `-IncludeReleaseGate` (or `-Only betaRelease`) for
   release posture, and `-IncludePaperwork` (or `-Only weeklyPaperwork`) for the 11 checkers
@@ -210,7 +221,7 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
 - **Roadmap reporting/publishing tools, all manual, none gates:** `python
   scripts/quality/emit-capability-matrix.py` (Session 12) emits the app × capability matrix with a
   witness column (`--out <dir>` for `matrix.json`/`matrix.html`, default
-  `scripts/reports/out/capability-matrix/`) — deliberately a report, never a gate; a witness hole is
+  `<BuildRoot>/reports/capability-matrix/`) — deliberately a report, never a gate; a witness hole is
   a human/future-session decision, not a build failure. `python
   scripts/pack-repo/publish-pack-repo.py` (Session 5) publishes the built-in packs
   (`NPDevContract/packs/<id>/pack.json`) into a versioned local git repo (default
@@ -310,8 +321,8 @@ break first and the codemod later.
 ## Where the truth lives (read before filing or editing status)
 
 - **Everything open, in ONE file:** `ledger/session-state/open-state.md` — every non-DONE
-  ledger item (title, done-when, latest note, files) and all 24 accepted boundaries grouped
-  HITTABLE / POSTURAL / LIFTED. Generated by `scripts/ai/build_open_state.py` from the YAML,
+  ledger item (title, done-when, latest note, files) and all 26 accepted boundaries (today every one
+  is LIFTED) grouped HITTABLE / POSTURAL / LIFTED. Generated by `scripts/ai/build_open_state.py` from the YAML,
   refreshed by `/prep`, gitignored so it can never go stale in git. **Read it instead of
   opening `ledger/items/*.yml` one by one.**
 - **Open items:** `ledger/items/*.yml` is authoritative. The rendered `OPEN_ITEMS.md` view is
@@ -355,7 +366,7 @@ break first and the codemod later.
   `scripts/policy/script-inventory-policy.json`) and a declared `invocation` in
   `scripts/policy/script-invocation-declarations.json`; `run-script-inventory-check.ps1` enforces both.
 - **Adding a corpus model** (`AppGen/apps` or `NPDevSamples`)? It needs a `corpusRole` entry in
-  `scripts/quality/corpus-roles.json` (`dsl-fixture` / `engine-variant` / `repro-case` / `showcase`).
+  `scripts/quality/corpus-roles.json` (`dsl-fixture` / `engine-variant` / `repro-case` / `showcase` / `canary` / `probe`).
 - **Frontend contract:** `docs/UI_CONTRACT.md` · screen classes: `docs/SCREEN_TAXONOMY.md` · the
   durable flow engine: `docs/FLOWS.md`.
 ## Key docs
