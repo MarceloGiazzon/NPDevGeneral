@@ -83,6 +83,8 @@ public class BusinessUiEmitterLocaleManifestTest {
         assertTrue(appJs.contains("live.label"), "bundle label is copied into the field");
         String shell = Files.readString(out.resolve("src/main/resources/static/shell.js"));
         assertTrue(shell.contains("X-Tag-locale"));
+        assertTrue(shell.contains("function applyChromeStrings()"),
+                "tooltips are re-applied once the manifest is known (paintSkeleton runs before it)");
         assertFalse(shell.contains("Recolher/expandir menu"));
         assertFalse(shell.contains("Acesso rapido"));
         assertFalse(shell.contains("Mostrar/ocultar painel lateral"));
