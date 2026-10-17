@@ -3,7 +3,7 @@
 ## Status
 
 **APPROVED — 2026-08-03.** Design drafted as a spike (`__OutsideRepo\s1\b20-design.md`, S1_SPEC.md
-§3) explicitly *not* as a unilateral resolution — `docs/HUMAN_VS_AI_VERIFICATION.md:402` names this
+§3) explicitly *not* as a unilateral resolution — `docs/archive/HUMAN_VS_AI_VERIFICATION.md:402` names this
 decision `👤 human`. The owner reviewed D1–D4 and the additional acyclicity question (§8 below) via
 an explicit accept/adjust/override choice at the start of S2 and accepted all of them as written,
 with cycles rejected per the recommendation. This document is the durable record CLAUDE.md's
@@ -142,8 +142,9 @@ context instead.
   fixture witness (`dsl-conformance-max`); S3 (see addendum below) built the codemod and migrated
   exactly two more models for a concrete reason each. `contexts[]` remains optional indefinitely —
   see the addendum for why a corpus-wide migration was decided against.
-- No groupBy join syntax (S4, B27) — a query still names exactly one `concept`; a context-qualified
-  `query.concept` is the only reference site this increment enforces the import gate on.
+- No groupBy join syntax at the time of this increment (S4, B27) — a query still named exactly one `concept`; a context-qualified
+  `query.concept` was the only reference site this increment enforced the import gate on. (groupBy joins shipped afterwards: a
+  `referenceField.targetField` chain of up to 3 hops, B27 LIFTED.)
 
 ## What is actually built (S2)
 
@@ -175,7 +176,7 @@ context instead.
   `contexts[]`, verified both by a dedicated fixture and by the existing generic
   `CanonicalJsonRoundTripCompletenessTest` (reflection-driven; it discovered `CompiledContext`
   automatically and round-tripped it with zero new test-authoring for that class).
-- Tests: `BoundedContextResolutionTest` (7 cases) proves, RED then GREEN: two contexts compose with
+- Tests: `BoundedContextResolutionTest` (7 cases at the time; 13 `@Test` methods today) proves, RED then GREEN: two contexts compose with
   qualified names and an imported reference resolves; an undeclared cross-context reference fails
   named; an import of an undeclared context fails at declaration time; self-import is rejected; an
   import cycle is rejected (D8); a pack-qualified reference inside a context stays unrestricted; a
@@ -216,7 +217,7 @@ is schema-invalid, not just risky — `model.schema.json`'s `localModelRef` patt
 `$ref` strings — before resolving anything inside it. **The codemod instead physically relocates the
 referenced files** into a `contexts/<name>/` subtree that mirrors their original relative layout, so
 every `$ref` string stays byte-identical; only where it resolves *from* changes. A smaller correction:
-`pack.schema.json` has no `packs` property, so pack `$ref`s can never move into a context and were
+`pack.schema.json` had no `packs` property at the time (both copies declare `packs` today), so pack `$ref`s could not move into a context and were
 never really part of the "ref rewrite" risk the spec described (WmsOffice's 28 refs are 26 concept
 refs that move + 2 pack refs that don't; pack-sample's 4 are 2 + 2 the same way).
 
@@ -227,22 +228,22 @@ not by inspection — and fixed in this same session, before the WmsOffice trial
    context-qualified concept's table was silently prefixed exactly like a pack-qualified one
    (`SqlIdentifierSupport.toSnake` folds `::` into `_`, with no exception for a context qualifier).
    `BoundedContextResolutionTest` never asserted table-name behavior, so S2 shipped this unnoticed.
-   Fixed in `ModelCompiler` (`tableNameSource`, gated on the model's own declared `contexts[]`
+   Fixed in `ModelCompiler` (`physicalTableNameSource`, then `tableNameSource`; gated on the model's own declared `contexts[]`
    names so pack-table-prefixing is completely unaffected); new test
    `BoundedContextTableNamingTest`. Live-proven on the WmsOffice trial: all 26 migrated concepts'
    table names are unchanged (`areas`, `armazems`, ... `usuarios`), while `identity::*`/
    `workspace::*` pack-qualified tables stayed prefixed as before.
 2. **`flowStep.scope`** (the field `invariantCheck`/`createConcept`/`updateConcept` steps use to name
    their target concept — the same field `FlowValidation.collectConceptMutationScopes` reads for all
-   three) **was never in `rewriteKnownConceptFields`'s rewrite table**, unlike `flow.concept`/
+   three) **was never in `rewriteKnownConceptFields`'s rewrite table** (today `rewriteKnownMemberReferenceFields`), unlike `flow.concept`/
    `flow.input.concept`. A context-qualified concept's own flow steps stayed unqualified, and
    semantic validation then rejected the mismatch qualification itself introduced. First surfaced on
    `AppGen/apps/pack-sample`'s `ProcessSale` flow; the same class of bug reproduced on two WmsOffice
    flows before the fix. Fixed in `ModelSourceResolver`; new test
    `BoundedContextResolutionTest.flowStepScopeIsQualifiedAlongsideTheConceptItInvariantChecks`.
 
-A third finding is specific to the codemod, not the resolver: **`aggregates[]` is not a
-`pack.schema.json` property and can never move into a context**, but its `root`/
+A third finding is specific to the codemod, not the resolver: **`aggregates[]` was not a
+`pack.schema.json` property and could not move into a context** (PACK-11 later added `aggregates`, `autoPanels`, `documents` and `selectors` to both `pack.schema.json` copies and to `ModelSourceResolver.MODEL_ARRAY_KEYS`), but its `root`/
 `collections[].concept` fields name a concept by bare name — the instant that concept moves into a
 context, those references dangle (`root concept not found`). Found on the WmsOffice trial (13
 dangling references across 5 aggregates). The codemod now qualifies these root-staying references as
@@ -281,7 +282,7 @@ an artifact of the comparison method itself, not a schema change. Evidence:
 
 **What shipped:** `ContextAst`/`CompiledContext` gain a `physicallyIsolate` boolean (four-place
 chain extended, not a new rule — `bounded-context-four-place` in the twin-pair registry now tracks
-`physicallyisolate` alongside `contexts`). `ModelCompiler#tableNameSource` and the table-name-
+`physicallyisolate` alongside `contexts`). `ModelCompiler#physicalTableNameSource` (delegating to `SqlIdentifierSupport.physicalTableNameSource`) and the table-name-
 collision validator (`ConceptValidation#validateTableNameCollisions`) both now resolve a
 context-qualified name through one shared method, `SqlIdentifierSupport#contextAwareIdentifierSource`
 — an isolating context keeps its qualifier (mangled by the SAME `"::" -> "_"` replacement a

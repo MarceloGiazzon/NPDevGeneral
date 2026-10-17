@@ -4,6 +4,15 @@
 
 Accepted as the Phase 0 doctrine for the NPDev new vision.
 
+> **What is realized, as of 2026-10-17.** This document is a vision, not a description of the code. The realized subset:
+> `panels[]` and `procedures[]` are declarative JSON in the model (procedures are step lists, `ProcedureStepType`), not
+> "code-bearing Objects"; there is no authored `objects/` tree or `panel.object.json` / `procedure.object.json`; Box/Object
+> manifests are a generator **output** (`npdev/box/box-manifest.json`, `BoxManifestEmitter`, `npdev-box-manifest.v2`) derived from the
+> compiled model; `config.json` is validated by `NPDevContract/schemas/config.schema.json` (generator, bootstrap, artifact, runtime
+> keys), not a governance document; the "Customization Registry" is realized as `extension-inventory.json`; promotion is app-wide
+> (`PromotionStateService` tracks one current stage per app, evidence required from S5 and ADMIN from S7) rather than per Box or Object;
+> and `schemas/ai/truth-classification.schema.json`'s extra dimensions are unreferenced.
+
 ## Purpose
 
 NPDev is evolving from a contract/generator/runtime/evidence system into a human-centered AI development system.

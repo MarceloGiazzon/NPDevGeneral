@@ -25,25 +25,25 @@ A schema, parser, or compiler change that broke any of those would have passed t
 
 `externalAi` (`egress: "apiEnabled"`, one prompt, limits) · `selfApi` http-connector (loopback `ConnectorSelfCheckFlow`, INT-3) · `domainTypes` · `selectors` ·
 `aggregates` · `autoPanels` · `documents` · `guidePages` · `queries` · `procedures` · `panels` ·
-`ruleProfiles` · `flow.schedule` (cron) · `flow.specializes` + `flow.hooks` · steps `forEach`
+`ruleProfiles` · `roles` · `contexts` · `packs` · `fragments` (`Input/fragments/`) · `propertyScopes`/`properties` · `sequences` · `conversions` · `appShell` · `agentAccess` · `provides` · `flow.schedule` (cron) · `flow.specializes` + `flow.hooks` · steps `forEach`
 (with `maxLoopIterations`), `onFailure`, `map`, `scheduleEvent` (BOTH delivery modes — R2.4 made
 these two different code paths, so `delaySeconds: 0` publishes inline and `delaySeconds: 3600`
 writes a durable `npdev_scheduled_event` row instead; one witness each is required),
-`invariantCheck`, `createConcept`, `emitEvent`, `capabilityCall`, `return`, **`generatedAction`**
+`invariantCheck`, `createConcept`, `updateConcept`, `callProcedure`, `branch`, `awaitEvent` (several flows, e.g. `AwaitPaymentConfirmation`), `emitEvent`, `capabilityCall`, `return`, **`generatedAction`**
 (`PlaceWidgetOrder`'s `score-order-risk` step — see below, fixed 2026-07-29).
 
 ## What it deliberately does NOT cover
 
-- **`awaitEvent`** — `NPDevSamples/durable-workflow-demo` owns that, end to end, including a real
-  process restart. Duplicating it here would add a second fixture to maintain for no new coverage.
-- **`fragments`** — needs a second `$ref`-ed file; `npdev_split_model_sample_app` already covers
-  `$ref` resolution.
+- **A real process restart of a suspended flow** — `NPDevSamples/durable-workflow-demo` owns that, end to end. This fixture's
+  `awaitEvent` steps are parse/compile-time coverage only.
+
+(`awaitEvent` and `fragments` used to be listed here as deliberately not covered; this model now carries both.)
 
 ## Finding surfaced while building this, now fixed: `generatedAction` was an unreachable DSL surface
 
-`generatedAction` is one of the 12 canonical `flowStep.type` values in `model.schema.json` (all four
+`generatedAction` is one of the 13 canonical `flowStep.type` values in `model.schema.json` (all four
 mirrors). `JsonModelParser` handles it and *requires* `actionName`
-(`JsonModelParser.java:1482-1484`). `StepAst` carries a `generatedActionName` field. `ModelCompiler`
+(in `JsonModelParser`). `StepAst` carries a `generatedActionName` field. `ModelCompiler`
 already compiled it into a `CompiledCapabilityCall("GeneratedActionCapability", ...)`, and the
 generator/runtime (`TrustedActionKernelRunnerTemplate`, `GeneratedActionCapabilityAdapter`) already
 had full, tested support for executing one — proven live by
@@ -64,14 +64,14 @@ The schema advertised a step kind the validator refused, and the error message c
 supporting it end to end. That runtime-proof test never surfaced this because it hand-constructs
 `CompiledModel` objects directly, bypassing `JsonModelParser`/`SemanticValidator` entirely.
 
-**Fixed 2026-07-29** (`docs/FINAL_OPEN_ITEMS_PLAN.md` F4, `ledger/items/REG-65.yml`): added the
+**Fixed 2026-07-29** (`docs/archive/programme-history/FINAL_OPEN_ITEMS_PLAN.md` F4, `ledger/items/REG-65.yml`): added the
 missing case to `FlowValidation`'s switch. This fixture's own `PlaceWidgetOrder` flow now includes a
 real `generatedAction` step (`score-order-risk`) as the closing proof — filed and worked around no
 longer applies; it is used.
 
 ## How it is used
 
-**Validated and generated** (2026-07-29, `docs/CLOSEOUT_PLAN.md` G2 — was "validated, not run" until
+**Validated and generated** (2026-07-29, `docs/archive/programme-history/CLOSEOUT_PLAN.md` G2 — was "validated, not run" until
 then). `scripts/quality/validate-corpus.py` parses it on every AI-knowledge-gate run;
 `scripts/quality/check-dsl-conformance-generates.py` additionally generates it for real
 (emission only, no build/boot) on every PR gate run, and asserts the rare features it exists to
