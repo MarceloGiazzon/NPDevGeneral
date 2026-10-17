@@ -1667,6 +1667,18 @@
     });
   }
 
+  // UI-8: the top-bar tooltips are first painted by paintSkeleton() before the manifest (and so the
+  // per-language catalogue) is known; re-apply them here once state.manifest is set.
+  function applyChromeStrings() {
+    var menu = shellString("shell.toggleMenu", "Collapse/expand menu");
+    var quick = shellString("shell.quickAccess", "Quick access");
+    var rail = shellString("shell.toggleRightbar", "Show/hide side panel");
+    if (el.sidebarToggle) { el.sidebarToggle.title = menu; el.sidebarToggle.setAttribute("aria-label", menu); }
+    if (el.quickAccessToggle) { el.quickAccessToggle.title = quick; el.quickAccessToggle.setAttribute("aria-label", quick); }
+    if (el.quickAccessPanel) { el.quickAccessPanel.setAttribute("aria-label", quick); }
+    if (el.rightbarToggle) { el.rightbarToggle.title = rail; }
+  }
+
   function applyData(me, menuRows, manifest, token) {
     state.token = token;
     state.roles = Array.isArray(me.roles) ? me.roles : [];
@@ -1679,6 +1691,7 @@
     if (maybeRedirectToLogin(manifest)) return;
 
     resolveReady(currentUser());
+    applyChromeStrings();
     applyIdentity();
     applyCompanyName();
     renderSidebar();
