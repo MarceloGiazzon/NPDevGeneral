@@ -3,6 +3,7 @@ package com.finalexec.auth;
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityRegistry;
@@ -195,8 +196,8 @@ public class InvitationController {
         UUID userId;
         String email;
         try (Connection connection = dataSource.getConnection()) {
-            try (PreparedStatement ps = connection.prepareStatement(
-                    "SELECT id, email FROM " + ids.usersTable() + " WHERE username = ? AND tenant_id = ?")) {
+            try (PreparedStatement ps = connection.prepareStatement(SqlIdentifierSupport.sqlWithIdentifiers(
+                    "SELECT id, email FROM {0} WHERE username = ? AND tenant_id = ?", ids.usersTable()))) {
                 ps.setString(1, username);
                 ps.setString(2, tenantId);
                 try (ResultSet rs = ps.executeQuery()) {
@@ -236,6 +237,9 @@ public class InvitationController {
         if (!capabilityRegistry.has("mail")) {
             return false;
         }
+        // A mail fault is reported as "not emailed" (the admin then receives the accept path to hand over
+        // out of band); it is logged, never mistaken for a delivered invitation.
+        boolean emailed = false;
         try {
             String link = linkBaseUrl.isBlank()
                     ? "/reset-password.html?invite=1&token=" + rawToken
@@ -246,15 +250,14 @@ public class InvitationController {
                     "mail", "EmailCapability", capabilityRegistry.debugDefaultAdapterId("mail"), "send",
                     List.of(email, "You have been invited", body));
             CapabilityResult result = capabilityDispatcher.invoke(call, Map.of());
-            if (!result.ok()) {
+            emailed = result.ok();
+            if (!emailed) {
                 LOG.warning("Invitation email dispatch failed: " + result.error());
-                return false;
             }
-            return true;
         } catch (RuntimeException exception) {
             LOG.log(Level.WARNING, "Invitation email dispatch failed", exception);
-            return false;
         }
+        return emailed;
     }
 
     private ExecutionContext requireAdmin(HttpServletRequest httpRequest) {
