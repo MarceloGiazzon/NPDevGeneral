@@ -104,9 +104,15 @@
     <select id="np-field-concept" class="np-concept-select"></select>
     <input id="np-new-field-name" type="text" placeholder="field name" autocomplete="off">
     <select id="np-new-field-type"></select>
+    <span id="np-new-field-extras" class="np-kind-extras"></span>
     <label class="np-lbl"><input id="np-new-field-required" type="checkbox"> required</label>
     <button id="np-add-field-btn" type="button">Add field</button>
   </div>
+  <p class="np-hint">
+    <code>enum</code> takes a comma-separated value list; <code>reference</code> points at another
+    concept of this model (a concept from a pack, such as <code>identity::User</code>, is not listed
+    here -- edit it into <code>model.json</code> by hand); <code>file</code> needs nothing extra.
+  </p>
 </details>
 
 <details class="np-action">
@@ -240,6 +246,7 @@
     <select id="np-retype-field"></select>
     <label class="np-lbl" for="np-retype-to">new type</label>
     <select id="np-retype-to"></select>
+    <span id="np-retype-extras" class="np-kind-extras"></span>
     <button id="np-retype-btn" type="button">Change field type</button>
   </div>
 </details>
@@ -286,8 +293,7 @@
 
 <p id="np-edit-status" class="np-status"></p>
 <p class="np-deferred">
-  Still deferred, not in this slice: reference-typed and enum fields in the Add-field forms,
-  multi-step flow authoring, and editing a flow's or panel's internals once created. See
+  Still deferred, not in this slice: multi-step flow authoring, and editing a flow's or panel's internals once created. See
   <code>ledger/items/EDIT-12.yml</code>.
 </p>
 
@@ -378,7 +384,8 @@
   // onDiskConcepts/onDiskFields snapshot the model AS IMPORTED. `renamedFrom` must name what is
   // actually on disk, so anything created after the import must NOT be stamped with one.
   var state = { dirHandle: null, model: null, onDiskConcepts: [], onDiskFields: {} };
-  var FIELD_TYPES = ['string', 'int', 'decimal', 'boolean', 'datetime', 'date', 'uuid'];
+  var FIELD_TYPES = ['string', 'int', 'decimal', 'boolean', 'datetime', 'date', 'uuid',
+    'enum', 'reference', 'file'];
 
   var el = function (id) { return document.getElementById(id); };
 
@@ -488,6 +495,72 @@
     if (required) { field.required = true; }
     return labelled(field);
   }
+
+  // ---- AI-6: enum / reference / file field kinds ------------------------------------------------
+  // The DSL requires enumValues (or values) for type enum and ref|reference for type reference
+  // (model.schema.json $defs.field allOf). `file` needs nothing extra (field.file is optional).
+  var KIND_EXTRAS_CLASS = 'np-kind-extras';
+
+  // conceptNames() ALREADY EXISTS (line ~443) -- reuse it, do not redefine it.
+
+  function textFieldsOf(conceptName) {
+    var concept = findByName((state.model && state.model.concepts) || [], conceptName);
+    return ((concept && concept.fields) || [])
+      .filter(function (f) { return f.type === 'string' || f.type === 'enum'; })
+      .map(function (f) { return f.name; });
+  }
+
+  // Renders the type-specific inputs into `holder` (a <span> next to the type <select>).
+  function fieldKindExtras(holder, type) {
+    holder.innerHTML = '';
+    if (type === 'enum') {
+      var values = document.createElement('input');
+      values.type = 'text';
+      values.className = 'np-enum-values';
+      values.placeholder = 'values, comma-separated: OPEN, CLOSED';
+      holder.appendChild(values);
+    } else if (type === 'reference') {
+      var target = document.createElement('select');
+      target.className = 'np-ref-target';
+      fillSelect(target, conceptNames(), false);
+      var display = document.createElement('select');
+      display.className = 'np-ref-display';
+      var refreshDisplay = function () {
+        var names = textFieldsOf(target.value);
+        fillSelect(display, [''].concat(names), false);
+        if (names.indexOf('name') >= 0) { display.value = 'name'; }
+      };
+      target.addEventListener('change', refreshDisplay);
+      target.addEventListener('focus', function () {
+        fillSelect(target, conceptNames(), true);
+        refreshDisplay();
+      });
+      refreshDisplay();
+      holder.appendChild(target);
+      holder.appendChild(display);
+    }
+  }
+
+  // Applies the extras to a field object; returns an error string or null.
+  function applyFieldKind(field, holder) {
+    delete field.enumValues;
+    delete field.reference;
+    if (field.type === 'enum') {
+      var raw = (holder.querySelector('.np-enum-values') || {}).value || '';
+      var list = raw.split(',').map(function (v) { return v.trim(); })
+        .filter(function (v) { return v.length > 0; });
+      if (list.length === 0) { return 'An enum field needs at least one value.'; }
+      field.enumValues = list;
+    } else if (field.type === 'reference') {
+      var targetName = (holder.querySelector('.np-ref-target') || {}).value || '';
+      if (!targetName) { return 'Choose the concept this reference points at.'; }
+      field.reference = { target: targetName };
+      var displayField = (holder.querySelector('.np-ref-display') || {}).value || '';
+      if (displayField) { field.reference.displayField = displayField; }
+    }
+    return null;
+  }
+  // ---- end AI-6 ----------------------------------------------------------------------------------
 
   function newConcept(name, fields) {
     var all = [labelled({ name: 'id', type: 'uuid', id: true, required: true, uid: generateUid() })];
@@ -726,6 +799,11 @@
     });
     if (type) { typeSelect.value = type; }
 
+    var extras = document.createElement('span');
+    extras.className = KIND_EXTRAS_CLASS;
+    typeSelect.addEventListener('change', function () { fieldKindExtras(extras, typeSelect.value); });
+    fieldKindExtras(extras, typeSelect.value);
+
     var removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.textContent = 'Remove';
@@ -733,18 +811,26 @@
 
     row.appendChild(nameInput);
     row.appendChild(typeSelect);
+    row.appendChild(extras);
     row.appendChild(removeBtn);
     fieldRowsRoot.appendChild(row);
   }
 
+  // Returns the fields, or { problem: '...' } when a row's type-specific inputs are incomplete
+  // (an enum with no values, a reference with no target).
   function readFieldRows() {
     var fields = [];
+    var problem = null;
     Array.prototype.forEach.call(fieldRowsRoot.querySelectorAll('.np-field-row'), function (row) {
       var name = row.querySelector('.np-field-name').value.trim();
       var type = row.querySelector('.np-field-type').value;
-      if (name.length > 0) { fields.push(newField(name, type, false)); }
+      if (name.length === 0) { return; }
+      var field = newField(name, type, false);
+      var rowProblem = applyFieldKind(field, row.querySelector('.' + KIND_EXTRAS_CLASS));
+      if (rowProblem && !problem) { problem = 'Field "' + name + '": ' + rowProblem; }
+      fields.push(field);
     });
-    return fields;
+    return problem ? { problem: problem } : fields;
   }
 
   // Every action funnels through this so the "no model imported" and "nothing named" checks, and
@@ -772,7 +858,9 @@
         if (name.length === 0) { return 'Concept name is required.'; }
         var concepts = ensureArray(state.model, 'concepts');
         if (findByName(concepts, name)) { return 'A concept named "' + name + '" already exists.'; }
-        var concept = newConcept(name, readFieldRows());
+        var rows = readFieldRows();
+        if (rows.problem) { return rows.problem; }
+        var concept = newConcept(name, rows);
         count = concept.fields.length;
         concepts.push(concept);
         conceptNameInput.value = '';
@@ -797,7 +885,11 @@
         if (findByName(fields, name)) {
           return 'Concept "' + concept.name + '" already has a field named "' + name + '".';
         }
-        fields.push(newField(name, el('np-new-field-type').value, el('np-new-field-required').checked));
+        var added = newField(name, el('np-new-field-type').value, el('np-new-field-required').checked);
+        var kindProblem = applyFieldKind(added, el('np-new-field-extras'));
+        if (kindProblem) { return kindProblem; }
+        fields.push(added);
+        fieldKindExtras(el('np-new-field-extras'), el('np-new-field-type').value);
         el('np-new-field-name').value = '';
         el('np-new-field-required').checked = false;
         return null;
@@ -1133,8 +1225,17 @@
             + 'states first if you really mean to retype it.';
         }
         if (field.type === newType) { return 'It is already ' + newType + '.'; }
+        var oldType = field.type;
+        var oldEnumValues = field.enumValues;
+        var oldReference = field.reference;
         field.type = newType;
-        delete field.enumValues;
+        var problem = applyFieldKind(field, el('np-retype-extras'));
+        if (problem) {
+          field.type = oldType;
+          if (oldEnumValues !== undefined) { field.enumValues = oldEnumValues; }
+          if (oldReference !== undefined) { field.reference = oldReference; }
+          return problem;
+        }
         return null;
       }
     );
@@ -1325,6 +1426,12 @@
 
   fillSelect(el('np-new-field-type'), FIELD_TYPES, false);
   fillSelect(el('np-retype-to'), FIELD_TYPES, false);
+  el('np-new-field-type').addEventListener('change', function () {
+    fieldKindExtras(el('np-new-field-extras'), el('np-new-field-type').value);
+  });
+  el('np-retype-to').addEventListener('change', function () {
+    fieldKindExtras(el('np-retype-extras'), el('np-retype-to').value);
+  });
 
   if (typeof window.showDirectoryPicker !== 'function') {
     el('np-unsupported').classList.remove('np-hidden');

@@ -223,6 +223,27 @@ final class PanelValidation {
             validateSurfaceComputed(here, "prompt", autoPanel.prompt(), errors, warnings);
             validateSelectionDataSourceProcedure(here, autoPanel.selection(), procedureNames, errors);
 
+            String surfaceConcept = hasConcept ? autoPanel.concept()
+                    : hasAggregate && aggregatesByNormalizedName.containsKey(normalize(autoPanel.aggregate()))
+                            ? aggregatesByNormalizedName.get(normalize(autoPanel.aggregate())).root()
+                            : null;
+            validateSurfacePanelOverride(here, "selection", autoPanel.selection(), surfaceConcept, modelAst, errors);
+            validateSurfacePanelOverride(here, "transaction", autoPanel.transaction(), surfaceConcept, modelAst, errors);
+            if (hasAggregate) {
+                // An aggregate-bound AutoPanel only expands selection + transaction (the workbench).
+                if (autoPanel.detail() != null && hasText(autoPanel.detail().panel())) {
+                    errors.add(here + " detail.panel: an aggregate-bound AutoPanel has no detail surface to replace"
+                            + " -- suggestedFix: remove detail.panel, or override selection or transaction instead");
+                }
+                if (autoPanel.prompt() != null && hasText(autoPanel.prompt().panel())) {
+                    errors.add(here + " prompt.panel: an aggregate-bound AutoPanel has no prompt surface to replace"
+                            + " -- suggestedFix: remove prompt.panel, or override selection or transaction instead");
+                }
+            } else {
+                validateSurfacePanelOverride(here, "detail", autoPanel.detail(), surfaceConcept, modelAst, errors);
+                validateSurfacePanelOverride(here, "prompt", autoPanel.prompt(), surfaceConcept, modelAst, errors);
+            }
+
             if (hasAggregate) {
                 AggregateAst aggregate = aggregatesByNormalizedName.get(normalize(autoPanel.aggregate()));
                 validateRegions(here, autoPanel, aggregate, entitiesByLower, modelAst.getQueries(), errors);
@@ -231,6 +252,58 @@ final class PanelValidation {
                 validateBandPickers(here, autoPanel, aggregate, entitiesByLower, errors);
             }
         }
+    }
+
+    /**
+     * AutoPanel surface override ({@code <surface>.panel}): the named panel must be a declared panel
+     * whose primary data source is the same concept the replaced surface would have used. A panel
+     * whose first data source is query/procedure-backed carries no concept to compare and is accepted.
+     */
+    private static void validateSurfacePanelOverride(
+            String autoPanelLabel, String surface, AutoPanelSurfaceAst surfaceAst, String surfaceConcept,
+            ModelAst modelAst, List<String> errors) {
+        if (surfaceAst == null || !hasText(surfaceAst.panel())) {
+            return;
+        }
+        String wanted = surfaceAst.panel().trim();
+        PanelAst declared = null;
+        for (PanelAst panel : modelAst.getPanels()) {
+            if (normalize(panel.name()).equals(normalize(wanted))) {
+                declared = panel;
+                break;
+            }
+        }
+        List<String> fitting = new ArrayList<>();
+        for (PanelAst panel : modelAst.getPanels()) {
+            String panelConcept = primaryDataSourceConcept(panel);
+            if (surfaceConcept != null && panelConcept != null && normalize(panelConcept).equals(normalize(surfaceConcept))) {
+                fitting.add(panel.name());
+            }
+        }
+        String fitHint = fitting.isEmpty()
+                ? "declare a panel bound to " + surfaceConcept
+                : "panels bound to " + surfaceConcept + ": " + fitting;
+        if (declared == null) {
+            errors.add(autoPanelLabel + " " + surface + ".panel: panel not found: " + wanted
+                    + " -- suggestedFix: " + fitHint);
+            return;
+        }
+        String panelConcept = primaryDataSourceConcept(declared);
+        if (surfaceConcept != null && panelConcept != null && !normalize(panelConcept).equals(normalize(surfaceConcept))) {
+            errors.add(autoPanelLabel + " " + surface + ".panel: panel " + wanted + " is bound to concept "
+                    + panelConcept + " but this surface is bound to " + surfaceConcept
+                    + " -- suggestedFix: " + fitHint);
+        }
+    }
+
+    private static String primaryDataSourceConcept(PanelAst panel) {
+        for (PanelDataSourceAst dataSource : panel.dataSources()) {
+            if (hasText(dataSource.concept())) {
+                return dataSource.concept();
+            }
+            return null;
+        }
+        return null;
     }
 
     /**
@@ -300,6 +373,11 @@ final class PanelValidation {
                                 + balanceName);
                     }
                 }
+            }
+            if (action.review()
+                    && (action.applyTo() != null || hasText(action.afterAction()) || hasCheckBalances)) {
+                errors.add(panelLabel
+                        + " transaction.actions: review cannot be combined with applyTo, afterAction or checkBalances");
             }
             if (hasText(action.afterAction()) && !procedureNames.contains(normalize(action.afterAction()))) {
                 errors.add(panelLabel + " transaction.actions: afterAction names a procedure not found: "

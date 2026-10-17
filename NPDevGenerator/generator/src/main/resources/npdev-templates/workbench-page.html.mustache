@@ -111,7 +111,12 @@
     .rowbtn,.addrow,.pick,.btn{min-height:44px}
     .rev{min-height:32px}
   }
+  dialog.npdev-review{max-width:640px;width:92vw;border:1px solid #bbb;border-radius:8px;padding:16px}
+  dialog.npdev-review table{border-collapse:collapse;width:100%}
+  dialog.npdev-review th,dialog.npdev-review td{border:1px solid #ddd;padding:4px 8px;text-align:left;vertical-align:top}
+  dialog.npdev-review .npdev-review-actions{text-align:right;margin:12px 0 0}
 </style>
+<script src="/npdev-review.js"></script>
 <!-- App-owned theme (404-harmless); last, so it overrides shell and workbench tokens alike. -->
 <link rel="stylesheet" href="/theme.css" onerror="this.remove()">
 </head>
@@ -1348,6 +1353,21 @@
                 .then(function (r2) { return r2.ok ? r2.json() : null; })
                 .then(function (folded) { if (folded) store.patch(folded); render(); refreshServerDerivedFields(); })
                 .catch(function () { render(); refreshServerDerivedFields(); });
+            } else if (action.review && window.NPDevReview) {
+              // AI-7: show the answer as a field-by-field proposal; only the ticked fields are
+              // folded into the draft, and nothing is saved until the user clicks Save.
+              pendingMsg = null;
+              NPDevReview.open({
+                title: (action.label || "Proposed changes") + " — review",
+                current: store.toDraft(),
+                proposed: res.b,
+                onApply: function (accepted) {
+                  pendingMsg = { className: "msg ok", text: (action.label || "Done") + " — review and Save." };
+                  store.patch(accepted); render(); refreshServerDerivedFields();
+                },
+                onDiscard: function () { msg.className = "msg"; msg.textContent = "Discarded."; },
+                onEmpty: function () { msg.className = "msg"; msg.textContent = "No changes proposed."; }
+              });
             } else {
               // A procedure ending in a `return` step is answered with just that value (AggregateRuntime
               // .invoke -- the same rule DefaultProcedureExecutor's callProcedure applies), e.g. an

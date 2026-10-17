@@ -164,7 +164,7 @@ minutes) to the complete gate suite (T2) and release-readiness evidence (T3) -- 
 
 ## Authoring in the editor
 
-The browser-based authoring UI (concepts, fields, flows, panels) as an alternative to hand-editing
+The browser-based authoring UI (concepts, fields -- including enum, reference and file fields -- flows, panels) as an alternative to hand-editing
 model JSON is already built into every app you generate -- open **`/model-authoring.html`** on
 your running app (e.g. `http://localhost:8080/model-authoring.html`). No separate install or
 server needed; it covers the starter templates and the common scaffolding and editing actions.
