@@ -206,6 +206,16 @@ public final class CompiledModelCanonicalJson {
             node.put("hmacSecretEnvVar", safe(webhook.hmacSecretEnvVar()));
             node.put("eventName", safe(webhook.eventName()));
             node.set("fieldMapping", toStringMap(webhook.fieldMapping()));
+            // INT-6: new keys only when declared, so pre-INT-6 canonical JSON stays byte-identical.
+            if (!webhook.startFlow().isBlank()) {
+                node.put("startFlow", webhook.startFlow());
+            }
+            if (!webhook.idempotencyKey().isBlank()) {
+                node.put("idempotencyKey", webhook.idempotencyKey());
+            }
+            if (!webhook.signature().isEmpty()) {
+                node.set("signature", toObjectMap(webhook.signature()));
+            }
             webhooks.add(node);
         }
         return webhooks;

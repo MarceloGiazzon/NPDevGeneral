@@ -2,16 +2,26 @@ package com.finalexec.api;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.config.DefaultTenant;
 import com.finalexec.config.ModelHolder;
+import com.finalexec.webhook.InboundSignatureVerifier;
+import com.finalexec.webhook.InboundWebhookSupport;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledWebhook;
+import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.ExecutionResult;
+import com.npdev.kernel.ExecutionStatus;
+import com.npdev.kernel.KernelRunner;
 import com.npdev.kernel.events.EventEnvelope;
 import com.npdev.kernel.execution.FlowInstance;
+import com.npdev.kernel.ports.EventBus;
 import com.npdev.kernel.ports.EventStore;
 import com.npdev.kernel.ports.FlowInstanceStore;
+import com.npdev.kernel.ports.IdempotencyStore;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,13 +30,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.security.GeneralSecurityException;
-import java.security.MessageDigest;
-import java.util.HexFormat;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,7 +62,7 @@ import java.util.function.Function;
  * algorithm, encoding, and header name {@code com.npdev.adapters.webhook.http.HttpWebhookCapabilityAdapter}
  * (R6.1, {@code ledger/items/RUN-14.yml}) already sends on the outbound side, so a caller round-
  * tripping through both halves of this pair sees one convention, not two. The comparison is
- * {@link MessageDigest#isEqual(byte[], byte[])}, which the JDK documents as constant-time
+ * {@link java.security.MessageDigest#isEqual(byte[], byte[])}, which the JDK documents as constant-time
  * specifically to defeat timing attacks -- never a short-circuiting {@code String.equals} /
  * {@code Arrays.equals} on the raw bytes.
  *
@@ -77,14 +83,31 @@ import java.util.function.Function;
  * {@code npdev monitor logs export}, so anything written here should be assumed to end up in a
  * support bundle in a chat window (see {@code npdev_monitor.redact()}).
  *
- * <p><b>Replay: deliberately NOT handled in this round.</b> There is no timestamp window and no
- * nonce/idempotency check here -- a captured valid request can be replayed and will publish a
- * second event with a fresh {@code eventId}/{@code correlationId} lookup each time. A flow already
- * past its {@code awaitEvent} step is unaffected (nothing is waiting to consume the duplicate), but
- * a flow that re-parks on the same await could be resumed twice. Recording delivery ids (mirroring
- * R6.1's {@code WebhookDeliveryRecordStore}) is the natural follow-up if a specific source's replay
- * risk becomes a real problem; not built here because the roadmap item's own Definition of Done
- * names none of it.
+ * <p><b>Provider signature schemes (INT-6).</b> The door's {@code signature} block picks the scheme
+ * and header: {@code npdev} (default, above), {@code hmac-sha256-hex} (GitHub),
+ * {@code hmac-sha256-base64} (Shopify) and {@code stripe-v1} (timestamped {@code t.body}, with a
+ * tolerance window; a genuine signature outside it is 401 {@code WEBHOOK_SIGNATURE_EXPIRED}). The
+ * crypto lives in {@link InboundSignatureVerifier} and always runs over the raw bytes read once
+ * below.
+ *
+ * <p><b>Replay de-dupe (INT-6).</b> When the door declares {@code idempotencyKey} (a body dot-path or
+ * {@code $header.<Name>}), a delivery whose key was already processed SUCCESSFULLY is acknowledged
+ * with 200 {@code {ok:true,duplicate:true}} and nothing is published or started. The key is recorded
+ * only after the event/flow succeeded, so a provider retry of a failed first attempt still runs.
+ * Two concurrent deliveries of the same key can both pass the check (the store has no atomic
+ * claim); providers retry sequentially after a failure, so this is the accepted residual window.
+ * A door without {@code idempotencyKey} has no replay protection beyond the stripe timestamp window.
+ *
+ * <p><b>Event + flow (INT-6).</b> {@code eventName} is appended to the {@link EventStore} (which
+ * resumes a parked {@code awaitEvent}) AND published on the {@link EventBus} so orchestration rules
+ * subscribed to it fire. {@code startFlow} additionally runs that flow with the mapped payload as
+ * input, as the home tenant's system actor, synchronously inside the provider's request -- keep it
+ * short, a provider times out after ~10 s and retries. A flow that does not finish OK (or park on an
+ * {@code awaitEvent}) is a 500 {@code WEBHOOK_FLOW_FAILED} so the provider retries. If a door has
+ * both, an event published before a failing flow is published again on the retry.
+ *
+ * <p><b>Bodies.</b> A JSON object, or {@code application/x-www-form-urlencoded} (first value per
+ * key); anything else is 400 {@code WEBHOOK_BODY_NOT_JSON}.
  *
  * <p><b>Field mapping.</b> {@link CompiledWebhook#fieldMapping()} maps a target event-payload field
  * name to a dot-path into the inbound parsed JSON body (e.g. {@code "correlationId": "orderId"}
@@ -119,8 +142,8 @@ public class WebhookInboundController {
 
     private static final Logger LOG = LoggerFactory.getLogger(WebhookInboundController.class);
 
-    private static final String HMAC_ALGORITHM = "HmacSHA256";
     private static final String SIGNATURE_HEADER = "X-Npdev-Webhook-Signature";
+    private static final String IDEMPOTENCY_CAPABILITY = "webhook-inbound";
     private static final TypeReference<LinkedHashMap<String, Object>> BODY_TYPE = new TypeReference<>() {
     };
 
@@ -131,15 +154,23 @@ public class WebhookInboundController {
     private final FlowInstanceStore flowInstanceStore;
     private final ObjectMapper objectMapper;
     private final Function<String, String> secretLookup;
+    private final EventBus eventBus;
+    private final ObjectProvider<KernelRunner> kernelRunner;
+    private final IdempotencyStore idempotencyStore;
+    private final Clock clock;
 
     @Autowired
     public WebhookInboundController(
             ModelHolder modelHolder,
             EventStore eventStore,
             FlowInstanceStore flowInstanceStore,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            EventBus eventBus,
+            ObjectProvider<KernelRunner> kernelRunner,
+            IdempotencyStore idempotencyStore
     ) {
-        this(modelHolder, eventStore, flowInstanceStore, objectMapper, System::getenv);
+        this(modelHolder, eventStore, flowInstanceStore, objectMapper, System::getenv,
+                eventBus, kernelRunner, idempotencyStore, Clock.systemUTC());
     }
 
     /** Convenience overload for existing test call sites with a plain {@link CompiledModel} and no
@@ -162,11 +193,32 @@ public class WebhookInboundController {
             ObjectMapper objectMapper,
             Function<String, String> secretLookup
     ) {
+        this(modelHolder, eventStore, flowInstanceStore, objectMapper, secretLookup,
+                null, null, IdempotencyStore.noop(), Clock.systemUTC());
+    }
+
+    /** Full test seam: every collaborator and the clock injectable. A null {@code eventBus} skips the
+     *  bus publish; a null {@code kernelRunner} makes {@code startFlow} doors fail. */
+    WebhookInboundController(
+            ModelHolder modelHolder,
+            EventStore eventStore,
+            FlowInstanceStore flowInstanceStore,
+            ObjectMapper objectMapper,
+            Function<String, String> secretLookup,
+            EventBus eventBus,
+            ObjectProvider<KernelRunner> kernelRunner,
+            IdempotencyStore idempotencyStore,
+            Clock clock
+    ) {
         this.modelHolder = modelHolder;
         this.eventStore = eventStore;
         this.flowInstanceStore = flowInstanceStore;
         this.objectMapper = objectMapper;
         this.secretLookup = secretLookup;
+        this.eventBus = eventBus;
+        this.kernelRunner = kernelRunner;
+        this.idempotencyStore = idempotencyStore == null ? IdempotencyStore.noop() : idempotencyStore;
+        this.clock = clock;
     }
 
     @PostMapping("/{source}")
@@ -193,23 +245,60 @@ public class WebhookInboundController {
                     "no HMAC secret configured for this webhook (env var " + webhook.hmacSecretEnvVar() + ")");
         }
 
-        String signatureHeader = httpRequest.getHeader(SIGNATURE_HEADER);
+        Map<String, Object> signature = webhook.signature();
+        String scheme = signatureText(signature, "scheme", InboundSignatureVerifier.SCHEME_NPDEV);
+        String headerName = signatureText(signature, "header", SIGNATURE_HEADER);
+        String prefix = signatureText(signature, "prefix", null);
+        long toleranceSeconds = signature.get("toleranceSeconds") instanceof Number n
+                ? n.longValue() : InboundSignatureVerifier.DEFAULT_TOLERANCE_SECONDS;
+
+        String signatureHeader = httpRequest.getHeader(headerName);
         if (signatureHeader == null || signatureHeader.isBlank()) {
-            LOG.info("webhook '{}' denied: missing {} header", source, SIGNATURE_HEADER);
+            LOG.info("webhook '{}' denied: missing signature header", source);
             return failure(HttpStatus.UNAUTHORIZED, "WEBHOOK_SIGNATURE_MISSING",
-                    "missing " + SIGNATURE_HEADER + " header");
+                    "missing " + headerName + " header");
         }
-        if (!verifySignature(secret, rawBody, signatureHeader)) {
+        InboundSignatureVerifier.Result verdict = InboundSignatureVerifier.check(
+                scheme, secret, rawBody, httpRequest::getHeader, headerName, prefix,
+                toleranceSeconds, Instant.now(clock));
+        if (verdict == InboundSignatureVerifier.Result.EXPIRED) {
+            LOG.info("webhook '{}' denied: signed timestamp outside tolerance", source);
+            return failure(HttpStatus.UNAUTHORIZED, "WEBHOOK_SIGNATURE_EXPIRED",
+                    "signed timestamp is outside the allowed tolerance");
+        }
+        if (verdict != InboundSignatureVerifier.Result.VALID) {
             // Never log the presented or computed signature -- see class javadoc.
             LOG.info("webhook '{}' denied: signature verification failed", source);
             return failure(HttpStatus.UNAUTHORIZED, "WEBHOOK_SIGNATURE_INVALID", "signature verification failed");
         }
 
         Map<String, Object> body;
-        try {
-            body = rawBody.length == 0 ? new LinkedHashMap<>() : objectMapper.readValue(rawBody, BODY_TYPE);
-        } catch (IOException parseFailure) {
-            return failure(HttpStatus.BAD_REQUEST, "WEBHOOK_BODY_NOT_JSON", "request body must be a JSON object");
+        String contentType = httpRequest.getContentType();
+        if (contentType != null && contentType.regionMatches(true, 0, "application/x-www-form-urlencoded", 0, 33)) {
+            body = InboundWebhookSupport.parseFormBody(rawBody);
+        } else {
+            try {
+                body = rawBody.length == 0 ? new LinkedHashMap<>() : objectMapper.readValue(rawBody, BODY_TYPE);
+            } catch (IOException parseFailure) {
+                return failure(HttpStatus.BAD_REQUEST, "WEBHOOK_BODY_NOT_JSON", "request body must be a JSON object");
+            }
+        }
+
+        String homeTenant = DefaultTenant.id();
+        String idempotencyKey = InboundWebhookSupport.resolveIdempotencyKey(
+                webhook.idempotencyKey(), body, httpRequest::getHeader);
+        if (idempotencyKey != null) {
+            if (idempotencyKey.length() > InboundWebhookSupport.MAX_IDEMPOTENCY_KEY_LENGTH) {
+                return failure(HttpStatus.BAD_REQUEST, "WEBHOOK_IDEMPOTENCY_KEY_INVALID",
+                        "idempotency key exceeds " + InboundWebhookSupport.MAX_IDEMPOTENCY_KEY_LENGTH + " characters");
+            }
+            if (idempotencyStore.find(homeTenant, IDEMPOTENCY_CAPABILITY, source, idempotencyKey).isPresent()) {
+                LOG.info("webhook '{}' duplicate delivery acknowledged without re-running", source);
+                Map<String, Object> duplicate = new LinkedHashMap<>();
+                duplicate.put("ok", true);
+                duplicate.put("duplicate", true);
+                return ResponseEntity.ok(duplicate);
+            }
         }
 
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -218,7 +307,7 @@ public class WebhookInboundController {
             payload.putAll(body);
         } else {
             for (Map.Entry<String, String> mapping : webhook.fieldMapping().entrySet()) {
-                Object value = readDotPath(body, mapping.getValue());
+                Object value = InboundWebhookSupport.readDotPath(body, mapping.getValue());
                 if (value != null) {
                     payload.put(mapping.getKey(), value);
                 }
@@ -232,29 +321,73 @@ public class WebhookInboundController {
             correlationId = UUID.randomUUID().toString();
         }
 
-        // The resume sweep (ResumeCoordinator.findAwaitedEventForInstance) scopes its EventStore
-        // lookup by the WAITING instance's own tenantId -- a null-tenant published event is
-        // filtered out for any instance whose tenant is non-blank (every apikey-mode create, even
-        // the single-tenant "dev" default, carries one). A third-party webhook caller has no NPDev
-        // tenant claim of its own to stamp the event with, so borrow the tenant from whichever
-        // instance is actually parked on this correlationId -- the same "resume under the waiting
-        // instance's own tenant" reasoning ResumeCoordinator itself already documents. No match
-        // (event arriving before the flow parks, or an untenanted app) leaves tenantId null, which
-        // EventStore's own filter treats as "unscoped" and matches any instance.
-        String tenantId = resolveTenantForCorrelation(correlationId);
-
-        EventEnvelope event = EventEnvelope.of(
-                webhook.eventName(), payload, correlationId, UUID.randomUUID().toString(),
-                "external", 0, Map.of(), tenantId, null);
-        eventStore.append(event);
-
-        LOG.info("webhook '{}' verified: published event '{}' (eventId={})", source, webhook.eventName(), event.eventId());
-
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("ok", true);
-        response.put("eventId", event.eventId());
-        response.put("eventName", event.eventName());
+
+        if (!webhook.eventName().isBlank()) {
+            // The resume sweep (ResumeCoordinator.findAwaitedEventForInstance) scopes its EventStore
+            // lookup by the WAITING instance's own tenantId -- a null-tenant published event is
+            // filtered out for any instance whose tenant is non-blank (every apikey-mode create, even
+            // the single-tenant "dev" default, carries one). A third-party webhook caller has no NPDev
+            // tenant claim of its own to stamp the event with, so borrow the tenant from whichever
+            // instance is actually parked on this correlationId -- the same "resume under the waiting
+            // instance's own tenant" reasoning ResumeCoordinator itself already documents. No match
+            // (event arriving before the flow parks, or an untenanted app) leaves tenantId null, which
+            // EventStore's own filter treats as "unscoped" and matches any instance.
+            String tenantId = resolveTenantForCorrelation(correlationId);
+
+            EventEnvelope event = EventEnvelope.of(
+                    webhook.eventName(), payload, correlationId, UUID.randomUUID().toString(),
+                    "external", 0, Map.of(), tenantId, null);
+            eventStore.append(event);
+            if (eventBus != null) {
+                // INT-6: the store append above resumes awaitEvent; the bus publish is what
+                // orchestrationRules (kernelRunner.subscribeEvent) listen on.
+                eventBus.publish(event);
+            }
+            LOG.info("webhook '{}' verified: published event '{}' (eventId={})", source, webhook.eventName(), event.eventId());
+            response.put("eventId", event.eventId());
+            response.put("eventName", event.eventName());
+        }
+
+        if (!webhook.startFlow().isBlank()) {
+            KernelRunner runner = kernelRunner == null ? null : kernelRunner.getIfAvailable();
+            if (runner == null) {
+                return failure(HttpStatus.INTERNAL_SERVER_ERROR, "WEBHOOK_FLOW_FAILED",
+                        "flow runtime is not available");
+            }
+            ExecutionResult result;
+            try {
+                result = runner.execute(webhook.startFlow(), payload, ExecutionContext.system(homeTenant));
+            } catch (RuntimeException flowFailure) {
+                LOG.warn("webhook '{}' flow '{}' threw {}", source, webhook.startFlow(), flowFailure.getClass().getSimpleName());
+                return failure(HttpStatus.INTERNAL_SERVER_ERROR, "WEBHOOK_FLOW_FAILED",
+                        "flow '" + webhook.startFlow() + "' failed");
+            }
+            ExecutionStatus status = result.getStatus();
+            if (status != ExecutionStatus.OK && status != ExecutionStatus.WAITING_EVENT) {
+                LOG.warn("webhook '{}' flow '{}' finished {}", source, webhook.startFlow(), status);
+                return failure(HttpStatus.INTERNAL_SERVER_ERROR, "WEBHOOK_FLOW_FAILED",
+                        "flow '" + webhook.startFlow() + "' finished " + status);
+            }
+            LOG.info("webhook '{}' verified: started flow '{}' ({})", source, webhook.startFlow(), status);
+            response.put("flow", webhook.startFlow());
+            response.put("executionId", result.getExecutionId());
+            response.put("status", status.name());
+        }
+
+        if (idempotencyKey != null) {
+            // Recorded only now, after the event/flow succeeded: a failed first attempt must stay
+            // retryable. The stored result is deliberately minimal (no payload, nothing sensitive).
+            idempotencyStore.saveSuccess(homeTenant, IDEMPOTENCY_CAPABILITY, source, idempotencyKey,
+                    "{\"ok\":true}", clock.millis());
+        }
         return ResponseEntity.ok(response);
+    }
+
+    private static String signatureText(Map<String, Object> signature, String key, String fallback) {
+        Object value = signature.get(key);
+        return value == null || String.valueOf(value).isBlank() ? fallback : String.valueOf(value);
     }
 
     /** Resolves the tenant to stamp the published event with by finding whichever WAITING flow
@@ -270,53 +403,6 @@ public class WebhookInboundController {
             }
         }
         return null;
-    }
-
-    private static boolean verifySignature(String secret, byte[] rawBody, String signatureHeader) {
-        String presented = signatureHeader.regionMatches(true, 0, "sha256=", 0, 7)
-                ? signatureHeader.substring(7)
-                : signatureHeader;
-        byte[] presentedBytes;
-        try {
-            presentedBytes = HexFormat.of().parseHex(presented.trim());
-        } catch (IllegalArgumentException notHex) {
-            return false;
-        }
-        byte[] expectedBytes = hmac(secret, rawBody);
-        // MessageDigest.isEqual is documented constant-time specifically to defeat HMAC/signature
-        // timing attacks -- never String.equals/Arrays.equals here, which short-circuit on the
-        // first differing byte and leak comparison-length information through response latency.
-        return MessageDigest.isEqual(expectedBytes, presentedBytes);
-    }
-
-    private static byte[] hmac(String secret, byte[] data) {
-        try {
-            Mac mac = Mac.getInstance(HMAC_ALGORITHM);
-            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), HMAC_ALGORITHM));
-            return mac.doFinal(data);
-        } catch (GeneralSecurityException e) {
-            throw new IllegalStateException("Failed computing HMAC signature for inbound webhook", e);
-        }
-    }
-
-    /** Reads a dot-path (e.g. {@code "customer.email"}) out of a parsed JSON body's nested maps.
-     *  Returns null on any missing segment or a non-map intermediate -- absent, never an error, so
-     *  one unmapped optional field does not fail the whole request. */
-    private static Object readDotPath(Map<String, Object> body, String path) {
-        if (path == null || path.isBlank()) {
-            return null;
-        }
-        Object current = body;
-        for (String segment : path.split("\\.")) {
-            if (!(current instanceof Map<?, ?> map)) {
-                return null;
-            }
-            current = map.get(segment);
-            if (current == null) {
-                return null;
-            }
-        }
-        return current;
     }
 
     private static ResponseEntity<Map<String, Object>> failure(HttpStatus status, String code, String message) {

@@ -850,6 +850,33 @@
         "correlationId": "orderId",
         "reference": "txnRef"
       }
+    },
+    {
+      "source": "stripe",
+      "hmacSecretEnvVar": "NPDEV_WEBHOOK_STRIPE_SECRET",
+      "signature": { "scheme": "stripe-v1", "header": "Stripe-Signature", "toleranceSeconds": 300 },
+      "idempotencyKey": "id",
+      "startFlow": "RecordStripePayment",
+      "fieldMapping": {
+        "stripeEventId": "id",
+        "type": "type",
+        "orderId": "data.object.metadata.orderId",
+        "amount": "data.object.amount_received"
+      }
+    },
+    {
+      "source": "github",
+      "hmacSecretEnvVar": "NPDEV_WEBHOOK_GITHUB_SECRET",
+      "eventName": "PaymentConfirmed",
+      "signature": { "scheme": "hmac-sha256-hex", "header": "X-Hub-Signature-256", "prefix": "sha256=" },
+      "idempotencyKey": "$header.X-GitHub-Delivery"
+    },
+    {
+      "source": "shopify",
+      "hmacSecretEnvVar": "NPDEV_WEBHOOK_SHOPIFY_SECRET",
+      "startFlow": "RecordStripePayment",
+      "signature": { "scheme": "hmac-sha256-base64", "header": "X-Shopify-Hmac-Sha256" },
+      "idempotencyKey": "$header.X-Shopify-Webhook-Id"
     }
   ],
 
@@ -1601,6 +1628,13 @@
   ],
 
   "flows": [
+    {
+      "name": "RecordStripePayment",
+      "input": { "concept": "WidgetCatalogEntry", "mode": "query" },
+      "steps": [
+        { "name": "return-event", "type": "return", "value": "$input" }
+      ]
+    },
     {
       "name": "ConnectorSelfCheckFlow",
       "input": { "concept": "WidgetCatalogEntry", "mode": "query" },

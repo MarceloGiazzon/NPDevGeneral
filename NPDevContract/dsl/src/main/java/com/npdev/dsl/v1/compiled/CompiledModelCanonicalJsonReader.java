@@ -202,7 +202,10 @@ public final class CompiledModelCanonicalJsonReader {
                 text(node, "source"),
                 text(node, "hmacSecretEnvVar"),
                 text(node, "eventName"),
-                toStringMap(node.get("fieldMapping")));
+                toStringMap(node.get("fieldMapping")),
+                text(node, "startFlow"),
+                text(node, "idempotencyKey"),
+                toObjectMap(node.get("signature")));
     }
 
     /** R5.3: reads a single model-declared document-numbering counter. */

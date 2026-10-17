@@ -1009,7 +1009,8 @@ public final class ModelCompiler {
         List<com.npdev.dsl.v1.compiled.CompiledWebhook> compiled = new ArrayList<>();
         for (com.npdev.dsl.v1.ast.WebhookAst webhookAst : webhookAsts) {
             compiled.add(new com.npdev.dsl.v1.compiled.CompiledWebhook(
-                    webhookAst.source(), webhookAst.hmacSecretEnvVar(), webhookAst.eventName(), webhookAst.fieldMapping()));
+                    webhookAst.source(), webhookAst.hmacSecretEnvVar(), webhookAst.eventName(), webhookAst.fieldMapping(),
+                    webhookAst.startFlow(), webhookAst.idempotencyKey(), webhookAst.signature()));
         }
         return compiled;
     }

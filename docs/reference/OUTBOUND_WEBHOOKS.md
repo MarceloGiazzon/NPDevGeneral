@@ -107,3 +107,40 @@ All three answer 503 when the app's model does not bind `webhook-http`. The tabl
 - Logs carry delivery ids, hosts and HTTP statuses, never payloads or secrets.
 - Delivery is at-least-once: a receiver can see the same id twice (a retry after a lost acknowledgement,
   or a redelivery). De-duplicate on `X-Npdev-Webhook-Delivery`.
+
+## Receiving webhooks from a provider (INT-6)
+
+The other direction: an outside system (a payment provider, a Git host, a shop) calls
+`POST /api/hooks/{source}` with no NPDev credential. The call is accepted only when its signature
+verifies against a secret read from the environment variable the door names. A verified delivery
+publishes `eventName` (resuming a flow parked on `awaitEvent`, and firing `orchestrationRules` on
+that event), starts `startFlow` with the mapped payload, or both.
+
+```json
+{
+  "webhooks": [
+    { "source": "stripe", "hmacSecretEnvVar": "NPDEV_WEBHOOK_STRIPE_SECRET",
+      "signature": { "scheme": "stripe-v1", "header": "Stripe-Signature", "toleranceSeconds": 300 },
+      "idempotencyKey": "id", "startFlow": "RecordStripePayment",
+      "fieldMapping": { "orderId": "data.object.metadata.orderId", "amount": "data.object.amount_received" } }
+  ]
+}
+```
+
+| `signature.scheme` | Provider | Header value | Signed bytes |
+|---|---|---|---|
+| `npdev` (default) | NPDev's own outbound webhooks | `X-Npdev-Webhook-Signature: [sha256=]<hex>` | body |
+| `hmac-sha256-hex` | GitHub (`prefix: "sha256="`) | hex HMAC-SHA256 after the prefix | body |
+| `hmac-sha256-base64` | Shopify | base64 HMAC-SHA256 | body |
+| `stripe-v1` | Stripe | `t=<unix>,v1=<hex>[,v1=<hex>]`; any `v1` may match | `t + "." + body` |
+
+- `idempotencyKey` is a dot-path into the body or `$header.<Name>` (for example
+  `$header.X-GitHub-Delivery`). A key already processed successfully answers 200
+  `{"ok":true,"duplicate":true}` and runs nothing; the key is recorded only after the event or flow
+  succeeded, so a provider retry of a failed attempt still runs.
+- Bodies may be JSON objects or `application/x-www-form-urlencoded`.
+- `startFlow` runs synchronously inside the provider's request (providers wait about 10 s, then
+  retry): keep it short. A flow that fails answers 500 `WEBHOOK_FLOW_FAILED`.
+- Rejections are 401 with `WEBHOOK_SIGNATURE_MISSING`, `WEBHOOK_SIGNATURE_INVALID`,
+  `WEBHOOK_SIGNATURE_EXPIRED` (genuine `stripe-v1` signature outside the tolerance) or
+  `WEBHOOK_SECRET_NOT_CONFIGURED`; an unknown `source` is 404.
