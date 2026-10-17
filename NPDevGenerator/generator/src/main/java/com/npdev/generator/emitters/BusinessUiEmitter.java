@@ -200,6 +200,10 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         // Static (no model data), loaded by every workbench page.
         writer.writeRelative("src/main/resources/static/npdev-review.js",
                 templates.render("npdev-review.js.mustache", java.util.Map.of()));
+        // INT-9: zero-dependency .xlsx writer/reader for the grid's Export Excel / Import dialog.
+        // Static (no model data); loaded by the business UI index before app.js.
+        writer.writeRelative("src/main/resources/static/npdev-xlsx.js",
+                templates.render("npdev-xlsx.js.mustache", java.util.Map.of()));
         if (conceptsByName.containsKey(MENU_CONCEPT_NAME)) {
             writer.writeRelative("src/main/resources/npdev-seed/workspace-menu-seed.json",
                     menuSeedJson(persistedConcepts, model));

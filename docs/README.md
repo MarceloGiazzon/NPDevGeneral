@@ -49,6 +49,7 @@ One file per built-in feature.
 [OPTIMISTIC_LOCKING.md](reference/OPTIMISTIC_LOCKING.md) ·
 [OUTBOUND_WEBHOOKS.md](reference/OUTBOUND_WEBHOOKS.md) ·
 [PASSWORD_RESET.md](reference/PASSWORD_RESET.md) ·
+[REST_API.md](reference/REST_API.md) ·
 [ROW_LEVEL_AUTHORIZATION.md](reference/ROW_LEVEL_AUTHORIZATION.md) ·
 [ROLLUP_FIELDS.md](reference/ROLLUP_FIELDS.md) ·
 [SCHEDULED_FLOWS.md](reference/SCHEDULED_FLOWS.md) ·

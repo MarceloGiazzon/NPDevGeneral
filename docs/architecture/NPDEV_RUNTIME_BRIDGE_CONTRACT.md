@@ -4,11 +4,11 @@
 
 This document defines the runtime bridge contract between code-bearing Panel Objects and code-bearing Procedure Objects.
 
-The bridge contract explains how Panel Object frontend code can call Procedure Object backend logic through a safe boundary such as `window.NPDev.procedures.call(procedureId, input, options)`.
+The bridge lets Panel Object frontend code (an untrusted-extension panel) call Procedure and Flow backend logic through a fixed boundary: the `window.NPDev` script that every generated app with an untrusted-extension panel serves at `/generated/trusted-source/npdev-panel-runtime.js` (the `trusted-source` segment is historical; the route keeps that name). Panels use `window.NPDev.callProcedure(name, payload)`, `window.NPDev.startFlow(flowName, payload)` and `window.NPDev.resumeFlow(flowName, eventName, payload)`; there is no `window.NPDev.procedures` object.
 
 ## Scope
 
-Phase 11 is contract only. It does not implement production runtime behavior, HTTP endpoints, Java execution through the bridge, auth enforcement, tenant enforcement, or release gate integration.
+The bridge is live. In every generated app that has an untrusted-extension panel, the calls below are real HTTP requests handled by `GeneratedTrustedSourceRuntimeController`. A procedure runs through the generated action kernel runner, and a flow through the flow runner, under the caller's runtime context (`RuntimeContextService.currentContext(request)`: tenant and roles come from the session or API key the request carries). The sections titled "Planned envelope (not implemented)" below describe a richer request/response envelope that nothing implements yet.
 
 ## Inputs
 
@@ -25,13 +25,28 @@ The runtime bridge contract consumes:
 
 ### Frontend Bridge Surface
 
-Panel JavaScript calls the bridge through:
+A panel page loads the script and then calls it:
 
-```javascript
-window.NPDev.procedures.call(procedureId, input, options)
+```html
+<script src="/generated/trusted-source/npdev-panel-runtime.js"></script>
 ```
 
-The frontend bridge surface accepts a Procedure Object id, an input object, and optional request metadata.
+```javascript
+const result = await window.NPDev.callProcedure('CreateUsers', { users: [] });
+```
+
+| Call | HTTP request | Notes |
+|---|---|---|
+| `window.NPDev.callProcedure(name, payload)` | `POST /generated/procedures/{name}` | Auto-renders the result (`renderActionResult(null, body)`), returns the response body, and on a non-2xx response throws an `Error` carrying `.responseBody` and `.httpStatus`. |
+| `window.NPDev.startFlow(flowName, payload)` | `POST /generated/flows/{flow}/start` | Auto-renders the flow result and returns the body (a failed request returns a body with `httpStatus`, `status: 'failed'` and `error`; it does not throw). |
+| `window.NPDev.resumeFlow(flowName, eventName, payload)` | `POST /generated/flows/{flow}/events/{event}` | Publishes the event for a flow waiting on it; same return behaviour as `startFlow`. |
+| `window.NPDev.renderActionResult(container, response)` / `renderActionResultHtml(response)` | none | Renders a procedure/action response (status, execution and correlation ids, dispatch/event/trace/audit/idempotency status, counts, message, error). |
+| `window.NPDev.renderFlowResult(container, response)` / `renderFlowResultHtml(response)` | none | Renders a flow response, with links to the flow and correlation evidence pages. |
+| `window.NPDev.authHeaders(extra)` | none | Builds request headers. The credential is read from `window.NPDevApiKey`, or from `localStorage` (`npdev.shell.token`, `npdev.businessUi.apiKey`, `npdev.apiKey`) and sent as both `Authorization: Bearer` and `X-Api-Key`. |
+
+The request body is the JSON payload object. `POST /generated/actions/{action}/run` is the same runner addressed by action name.
+
+The response body of `callProcedure` has these keys: `status`, `actionName`, `procedureName`, `executionId`, `correlationId`, `capabilityId`, `capabilityDispatchStatus`, `createdCount`, `sideEffectCountBefore`, `sideEffectCountAfter`, `eventStatus`, `auditStatus`, `traceStatus`, `idempotencyStatus`, `correlationStatus`, `message`, `error`, and `result` (an object, present only when the procedure returned data).
 
 ### Procedure Invocation Surface
 
@@ -42,9 +57,9 @@ procedure.generate-monthly-invoices
 com.npdev.examples.salesflow.billing.GenerateMonthlyInvoices
 ```
 
-Phase 11 defines the invocation contract only. It does not execute the Java Procedure through the bridge.
+The example above is the original contract sample (the Java class path is illustrative). In the shipped bridge a procedure is addressed by its name in `POST /generated/procedures/{name}`.
 
-### Request Envelope
+### Planned envelope (not implemented): Request Envelope
 
 Bridge requests must carry:
 
@@ -58,9 +73,9 @@ Bridge requests must carry:
 - `requestedAt`
 - `approvalContext`
 
-### Response Envelope
+### Planned envelope (not implemented): Response Envelope
 
-Bridge responses must carry:
+The shipped response keys are listed under "Frontend Bridge Surface". A bridge response must additionally carry:
 
 - `requestId`
 - `correlationId`
@@ -73,9 +88,9 @@ Bridge responses must carry:
 - `completedAt`
 - `truthLevelClaim`
 
-### Error Envelope
+### Planned envelope (not implemented): Error Envelope
 
-Bridge errors must be classified as:
+Bridge errors are to be classified as:
 
 - `ValidationError`
 - `AuthRequired`
@@ -123,36 +138,22 @@ Future bridge calls may create evidence references for request validation, execu
 - Existing generator behavior remains default.
 - Release gates are not changed in Phase 11.
 
-## Advisory Mode Behavior
+## Runtime Behavior
 
-Phase 11 advisory mode uses a `STUB_ONLY` or contract-only bridge.
+The bridge executes for real: a call reaches the generated action kernel runner (procedures) or flow runner (flows) and returns the runner's response map. There is no advisory or stub mode in the shipped bridge. The `releaseGateImpact = None` rule of this document still holds: calling the bridge does not change any release gate.
 
-Advisory mode means:
+## Not Yet Implemented
 
-- no backend execution
-- no auth/tenancy enforcement
-- no production HTTP endpoint
-- response status may be `STUB_ONLY` or `UNSUPPORTED_IN_ADVISORY_MODE`
-- `releaseGateImpact = None`
+These parts of the original contract are still future work:
 
-## Future Production Behavior
-
-Later phases must define and implement:
-
-- HTTP endpoint adapter
-- Java Procedure invocation adapter
-- auth provider
-- tenant provider
-- audit trail
-- evidence capture
-- bridge tests
+- the request/response/error envelopes above (request ids, `evidenceRefs`, `truthLevelClaim`, classified errors)
+- `approvalContext` and per-procedure `allowedRoles` enforcement at the bridge itself
+- dedicated bridge tests for the full planned envelope
 
 ## Non-Goals
 
-- no production runtime implementation
-- no HTTP endpoints
-- no Java execution through bridge
-- no auth/tenancy enforcement
+- no new envelope fields beyond what the runtime returns today
+- no change of the `/generated/...` route names
 - no release gate changes
 - no T6 promotion
 - no release readiness claim
