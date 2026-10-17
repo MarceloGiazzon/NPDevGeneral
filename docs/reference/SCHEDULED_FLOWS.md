@@ -23,7 +23,7 @@ system principal, never the ControlPanel superuser key.
   `org.springframework.scheduling.support.CronTrigger`. A 5-field cron is normalized to the 6-field
   form at compile time by prefixing a `0` seconds field (`0 2 * * *` becomes `0 0 2 * * *`). Unlike
   classic crontab, when both day-of-month and day-of-week are restricted Spring ANDs them rather than
-  ORing. `SemanticValidator` only checks field count (5 or 6 space-separated fields); full
+  ORing. `FlowValidation.validateFlowSchedule` only checks field count (5 or 6 space-separated fields); full
   cron-grammar validation happens at boot, when the scheduler constructs each `CronTrigger` — a
   malformed expression is logged, skipped, and shown as a `FAILURE` schedule in the ControlPanel
   rather than failing the whole app's startup.
