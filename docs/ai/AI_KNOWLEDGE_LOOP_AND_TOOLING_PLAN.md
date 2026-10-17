@@ -4,13 +4,14 @@
 > "Implementation status" box below for what landed. · **Created:** 2026-07-13 · **Branch:** `beta1-vision-spine`
 
 > ## Implementation status (2026-07-13)
-> All five phases are built and verified:
-> - **Phase 1** — `schemas/ai/knowledge-card.schema.json`, 9 seed cards in `NPDevMcp/knowledge/cards/`,
->   `scripts/ai/extract_platform_status.py` → `NPDevMcp/knowledge/platform-status.json` (33 items),
+> All five phases are built and verified (counts below are as of 2026-07-13; corrections as of 2026-10-17 are marked):
+> - **Phase 1** — `schemas/ai/knowledge-card.schema.json`, 9 seed cards in `NPDevMcp/knowledge/cards/` (16 today),
+>   `scripts/ai/extract_platform_status.py` → `NPDevMcp/knowledge/platform-status.json` (33 items then; 0 today, because it now
+>   reads `ledger/gaps.yml`, which is intentionally empty — ledger items are projected into `capabilities.json` by `build_knowledge.py`),
 >   `scripts/ai/build_knowledge.py`, gate `scripts/quality/run-ai-knowledge-gate.ps1` (green).
 > - **Phase 2** — `build_rag_index.py` now chunks cards; server ranker boosts them ×1.5. Verified:
 >   `npdev_search_examples "tenant default 403"` returns the card #1.
-> - **Phase 3** — `scripts/ai/failure_signatures.py` normalizer + `failure-index.json` (23 sigs) +
+> - **Phase 3** — `scripts/ai/failure_signatures.py` normalizer + `failure-index.json` (23 sigs then, 22 today) +
 >   new `npdev_search_fix` tool. Verified: exact-signature hit on a panel-unknown-entity diagnostic.
 > - **Phase 3+ (live capture, 2026-07-13)** — the validate/fix loop is now instrumented in
 >   `NPDevCli/npdev_cli.py` (`_capture_validation`, the chokepoint MCP `npdev_validate` + eval + direct
@@ -25,28 +26,29 @@
 > - **Phase 4** — `npdev_check_support` tool over `capabilities.json`. Verified: `REG-244`→DONE
 >   (exact), `panel orderBy`→orderBy items (keyword), nonsense→explicit `unknown`.
 > - **Phase 5** — `scripts/appgen/Rebuild-And-Restage.ps1` + tracked skills `rebuild-app` /
->   `verify-in-browser` under `.claude/skills/` (un-ignored). Wrapper not yet run against a live app.
+>   `verify-in-browser` under `.claude/skills/` (un-ignored). The wrapper has since been run against live apps (see the `CLAUDE.md` ALERT of 2026-09-26).
 > - **Follow-on tooling (2026-07-10, `ed5ef43`), outside the original five phases:** two maintainer
 >   tools for AI structured-output support. `scripts/ai/build_core_context.py` assembles the
->   prompt-cacheable core-context bundle (`docs/ai/AUTHORING_FOR_AI.md` + the curated `schemas/ai/*`
->   schemas + a few golden samples) into `<Build>/npdev-ai/core-context/`. `scripts/ai/
+>   prompt-cacheable core-context bundle (`docs/content/authoring-for-ai.json` — never `docs/ai/AUTHORING_FOR_AI.md` — plus the curated `schemas/ai/*`
+>   schemas and a few golden samples) into `<Build>/npdev-ai/core-context/`. `scripts/ai/
 >   derive_constrained_schemas.py` mechanically derives a structured-output-safe subset of the
 >   authoring-strict `schemas/ai/*.json` schemas (Claude's `output_config.format` supports only a
 >   constrained JSON-Schema subset — no `pattern`/`minLength`/`if-then`/`not`/recursive `$ref`) into
->   `<Build>/npdev-ai/constrained/`. Both are run manually when the AI-authoring contract or its
->   schemas change; neither is wired into a gate.
+>   `<Build>/npdev-ai/constrained/`. Neither is wired into a gate; they run when the AI-authoring contract or its
+>   schemas change, or on demand through the MCP tools `npdev_core_context` and `npdev_get_constrained_schema`.
 >
 > **Decisions taken:** skills home = `.claude/skills/` via a targeted `!.claude/skills/` un-ignore
 > (so they function as real Claude Code skills and are tracked). Live error→fix pair capture is now
 > built (Phase 3+ above). **CI trigger resolved:** rather than flip the heavy ~120-min
-> `workflow_dispatch`-only workflows (the `BOND-B4` tension), the fast pure-Python gate runs
-> on every push to `main` (no path filter) and on demand via `.github/workflows/ai-knowledge-gate.yml`. **Real-path proof:** the capture path was exercised through the real Gradle validator
+> `workflow_dispatch`-only workflows (the `BOND-B4` tension), the AI knowledge gate runs
+> on every push to `main`, on `pull_request` (no path filter) and on demand via `.github/workflows/ai-knowledge-gate.yml`; it has since
+> grown past "fast pure-Python" (it shells out to gradlew). **Real-path proof:** the capture path was exercised through the real Gradle validator
 > (fail→fix on a sample model) — which surfaced that the validator emits a generic
 > `semantic_validation_error` code with unquoted identifiers in the message; the normalizer now falls
 > back to a keyword-templatized message signature for generic codes, so real diagnostics cluster
 > name-agnostically (`flow <id> step <id>: references unknown capability <id>`).
 
-> **Status:** Proposal / hand-off plan · **Created:** 2026-07-13 · **Branch at capture:** `beta1-vision-spine`
+> **Original status (superseded by the implementation status above):** Proposal / hand-off plan · **Created:** 2026-07-13 · **Branch at capture:** `beta1-vision-spine`
 > **Audience:** an implementing AI agent (and its human reviewer) picking this up cold.
 > **Scope:** four ideas about (a) closing the loop between dev-session knowledge and the corpora an
 > external authoring AI retrieves from, and (b) codifying the maintainer's own build/verify iteration
@@ -77,30 +79,30 @@
 Facts established by reading the code on 2026-07-13. Cited so the implementer can re-verify.
 
 ### 1.1 What the external authoring AI actually retrieves from
-- The MCP tool `npdev_search_examples` ([NPDevMcp/server.py:172](../../NPDevMcp/server.py#L172)) reads
+- The MCP tool `npdev_search_examples` ([NPDevMcp/server.py](../../NPDevMcp/server.py), `tool_search_examples`) reads
   **`<Build>/npdev-ai/rag-index.json`** and does keyword/count ranking (`_rank_chunks`,
-  [server.py:211](../../NPDevMcp/server.py#L211)) over chunk fields `title/text/keywords/objectType/source`.
+  [server.py](../../NPDevMcp/server.py)) over chunk fields `title/text/keywords/objectType/source`.
 - That index is produced by [scripts/ai/build_rag_index.py](../../scripts/ai/build_rag_index.py) from
-  **only**: `docs/NPDEV_CONCEPTS_DEEP_DIVE.md`, `docs/NPDEV_USER_MANUAL.md`,
-  `docs/ai/AUTHORING_FOR_AI.md`, and `NPDevSamples/*/Input/model.json` (chunked per concept/flow/panel/
+  **only**: the generated content mirrors `docs/content/npdev-concepts-deep-dive.json`, `npdev-user-manual.json` and
+  `authoring-for-ai.json`, the knowledge cards, and `NPDevSamples/*/Input/model.json` (chunked per concept/flow/panel/
   procedure/orchestration/event).
-- **`golden-ai-scenarios/` is the eval/regression corpus, not the retrieval corpus.** Each scenario is
+- **The AI scenario corpus (`NPDevSamples/ai-scenarios/`, formerly `golden-ai-scenarios/`) is the eval/regression corpus, not the retrieval corpus.** Each scenario is
   a `scenario.manifest.json` + model(s) + `expected-behavior.json` (+ for negatives, an expected
-  diagnostic). It is consumed by the eval harness, never surfaced to an authoring agent through search.
+  diagnostic). It is consumed by the eval harness; its negative scenarios are also indexed into `failure-index.json` and surfaced by `npdev_search_fix`.
 - **Neither `docs/OPEN_GAPS_AND_ROADMAP.md` (the gaps ledger) nor the maintainer's `~/.claude/.../memory/`
   files are read by any of the above.** They are three disconnected knowledge streams.
 
 ### 1.2 What the validate loop already produces (free signal for idea 2)
 - `npdev_validate` → CLI `validate model --semantic` → `run_validate_semantic`
-  ([NPDevCli/npdev_cli.py:588](../../NPDevCli/npdev_cli.py#L588)) emits a typed
+  ([NPDevCli/npdev_cli.py](../../NPDevCli/npdev_cli.py); `--semantic` is now a documented no-op because semantic validation is the default) emits a typed
   **`npdev-validation-report.v2`** with per-diagnostic `path / concept / field / suggestedFix`.
 - The **negative golden scenarios already pair a broken model with its expected diagnostic** (e.g.
   `custom-panel-invalid-binding`, `workflow-invalid-transition`, `panel-unknown-entity`). That is a
   ready-made seed for a "failure signature → fix" index — no new capture plumbing required for v1.
 
 ### 1.3 The gaps ledger is fast-moving and human-shaped
-- `OPEN_GAPS_AND_ROADMAP.md` (generated, not committed since md-zero-2026-08-11 PLAN.md Phase 6 —
-  `python scripts/docs/generate_gaps_roadmap.py`) has a machine-*parseable*
+- `OPEN_GAPS_AND_ROADMAP.md` (generated from `ledger/gaps.yml`, not committed since md-zero-2026-08-11 PLAN.md Phase 6 —
+  `python scripts/docs/generate_gaps_roadmap.py`; live ids now live in `ledger/items/*.yml`) had a machine-*parseable*
   priority table (§1) with stable IDs (`BUG-*`, `ARCH-*`, `BOND-*`, `AW-*`) and a status vocabulary
   (`OPEN/PARTIAL/NEEDS-VERIFY/DONE/BOUNDARY`). But the *detail* is prose, and it churns: all six design
   boundaries in §6 were lifted to features in a single day (2026-07-13). Any capability list copied by
