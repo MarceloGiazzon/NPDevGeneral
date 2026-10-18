@@ -1,21 +1,22 @@
 {
-  "closedAt": "2026-10-18T05:32:31.3116865Z",
+  "closedAt": "2026-10-18T21:51:36.2504179Z",
   "branch": "main",
-  "head": "a0fd7fcf",
-  "headSubject": "ci(f6): install Playwright browsers on the fresh runner (-InstallBrowsers)",
-  "summary": "Finished the F6 follow-ups: added PanelRuntimeLayoutResponseTest, made run-f6-showcase.ps1 emit a structured report (fixed the red Script automation quality step in CI), ran the RuntimeHost and kernel gates (coverage floors auto-ratcheted), renamed ScrapForAILegacy to ScrapForAI on GitHub, and after Marcelo made it public added .github/workflows/f6-showcase.yml, a Windows job that runs all five F6 browser routines in CI (green on a0fd7fcf).",
-  "nextStep": "First confirm the NPDev CI Validation run on a0fd7fcf finished green (gh run list --branch main --limit 6); if its Script automation quality or any other step is red, fix that before anything else and do not push while it runs (cancel-in-progress). Then the remaining work is owner-only: OWN-1 (revoke the exposed classic GitHub token and delete C:\\Users\\Marcelo\\Downloads\\ghToken.txt), OWN-2 (outreach conversations), and the cold-start run of docs/GETTING_STARTED.md, DEPLOYMENT.md and HOSTING.md on the new machine. Optional follow-ups: add a LICENSE to the ScrapForAI engine repo (D:\\WorkSpace\\ScrapForAILegacy, origin now github.com/MarceloGiazzon/ScrapForAI; it has two uncommitted engine files, src/config/env.ts and src/runner/playwrightContext.ts, a PLAYWRIGHT_CHANNEL option, left untouched); decide whether to rename the local folder (about 11 files in this repo still say ScrapForAILegacy, correctly, as the local path).",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\F6_PLAN\\PROGRESS.md",
-  "blocked": "",
-  "verified": "run-runtimehost-gate.ps1: sample-app and runtimehost-core tests passed (incl. the new PanelRuntimeLayoutResponseTest); the gate first went red on stale scripts coverage evidence and check-coverage-ratchet.py passed after a fresh run-all-gates.ps1 -Only aiKnowledge (51/51). run-kernel-quality-gate.ps1 passed (209s). CI on 0df5b8f1: all 5 workflows green. CI on a0fd7fcf: F6 showcase (all 5 browser routines green on a clean Windows runner), AI Knowledge Gate, Engine support and Security scan green; NPDev CI Validation was still in progress at close. NOT run: release gate, paperwork gate, run-all-gates.ps1 as a whole.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "head": "a9ecf0ca",
+  "headSubject": "chore(quality): coverage floors auto-ratcheted after the SESS-1 coverage tests (dsl 86.5352, kernel 67.8258)",
+  "summary": "Finished publishing PLAN_DEFERRED_ITEMS_2026-10-18: the full gate run on 3b2890e9 was red (dsl and kernel coverage floors, 8 new security-sweep fingerprints from SESS-1), so added IdentityPackTableNamesTest and IdentityRoleLookupSessionRevocationTest, triaged the 8 sweep verdicts (frozenCount 638->646, with approval), re-ran gates, and pushed 3b2890e9, 70171368, 738ae63a, a9ecf0ca to origin/main.",
+  "nextStep": "Open the VIEW-2 donut in a real browser (verify-in-browser skill against a freshly built dsl-conformance-max or Pigmentampas app) and fix anything wrong; then read ledger/session-state/open-state.md and pick up OWN-1 / OWN-2, the only two non-DONE ledger items. BKP-1 restore drill still needs a CI job with a real SQL Server container.",
+  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_DEFERRED_ITEMS_2026-10-18",
+  "blocked": "BKP-1 restore drill needs a Docker host or CI with a real SQL Server container (Docker is off locally by policy); only generator output and bash -n verified.",
+  "verified": "run-all-gates: kernel and aiKnowledge passed in the full run; generator and runtimeHost failed there only from a partial kernel jacoco left by a filtered test run, then passed on a -Only generator,runtimeHost re-run (ALL 2 GATES GREEN). Narrow tests IdentityPackTableNamesTest (6) and IdentityRoleLookupSessionRevocationTest (7) green. CI on a9ecf0ca: NPDev CI Validation, AI Knowledge Gate, Engine support, F6 showcase, Kernel quality gate, Security scan all success. NOT verified: VIEW-2 donut in a browser, BKP-1 restore drill.",
+  "dirtyCount": 2,
+  "dirtyFiles": [
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl"
+  ],
   "unpushed": 0,
   "landedCommits": [
-    "a0fd7fcf ci(f6): install Playwright browsers on the fresh runner (-InstallBrowsers)",
-    "10fc9ac5 ci: F6 showcase browser routines workflow (Windows, checks out the ScrapForAI engine)",
-    "ae684e5c chore(quality): kernel coverage floor auto-ratcheted 66.5251 -> 67.4368 (45 reports)",
-    "0df5b8f1 test(runtimehost): pin panelLayoutResponse; fix(quality): f6 showcase emits a structured report",
-    "3008aa1f chore(session): handoff after main-only cleanup, metadata-key retirement and the five F6 frontend features"
+    "a9ecf0ca chore(quality): coverage floors auto-ratcheted after the SESS-1 coverage tests (dsl 86.5352, kernel 67.8258)",
+    "738ae63a chore(security): triage the 8 new sweep fingerprints from per-device sessions (SESS-1)",
+    "70171368 test(auth): cover the SESS-1 session-revocation lookup and the optional sessions table"
   ]
 }
