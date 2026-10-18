@@ -5,7 +5,7 @@ NPDevContract defines the shared model, config, runtime, and evidence contracts 
 
 ## Role In Workspace
 - Owns schemas, examples, DSL parsing/validation, and compiled-model canonical JSON.
-- Supplies the authoring and runtime contract surface used by Editor, Generator, Kernel, RuntimeHost, and Samples.
+- Supplies the authoring and runtime contract surface used by the Generator, Kernel, RuntimeHost, CLI/MCP and Samples (the Editor module was removed in 2026-08).
 - Acts as the first line of drift control when schemas or contract semantics change.
 
 ## Main Deliverables

@@ -11,7 +11,7 @@ NPDevRuntimeHost is the reusable Spring Boot base template that the Generator co
 ## Main Deliverables
 - `build.gradle.template` used by assembled apps.
 - Host REST APIs and runtime/admin support code.
-- Runtime schema migrations under `src\main\resources\db\migration`.
+- Runtime schema realization in `runtimehost-core` (`com.finalexec.db.*`: `SchemaLifecycleExecutor`, the `Migration*Store` classes); there is no `db\migration` resource directory.
 - Host-side security, scheduling, plugin, and runtime config.
 
 ## Key Paths
@@ -20,8 +20,8 @@ NPDevRuntimeHost is the reusable Spring Boot base template that the Generator co
 - `src\main\java\com\finalexec\config`
 - `src\main\java\com\finalexec\api`
 - `src\main\java\com\finalexec\npdev\service`
-- `src\main\resources\db\migration`
-- `libs`
+- `runtimehost-core\src\main\java\com\finalexec\db`
+- `<Build>\runtimehost-libs` (staged by `sync-runtimehost-libs.ps1` via `Get-NPDevRuntimeHostLibsDir`; there is no `libs` folder here)
 
 ## Operational Expectations
 - Emitted generator dependencies must be declared in the template.

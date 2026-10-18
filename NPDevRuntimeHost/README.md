@@ -6,7 +6,7 @@ Provide the template runtime shell that hosts assembled NPDev applications, migr
 
 ## Build
 
-Use the Gradle RuntimeHost tasks to compile the template runtime and packaged support assets.
+Do not build this directory directly: it is a template (`build.gradle` says so). Generation copies it into each FinalApp, and you build from the generated final app root.
 
 ## Test
 

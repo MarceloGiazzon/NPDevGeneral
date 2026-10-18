@@ -4,8 +4,8 @@ MONITOR_PLAN G1, and `npdev.rs`'s standing rule: **fixtures are CAPTURED, not wr
 hand-written fixture is a guess about the shape the CLI emits, and the whole reason stub mode exists
 is to build the UI against what the CLI *actually* returns.
 
-Every file here is verbatim stdout from a real command. None has been edited by hand — not to
-shorten it, not to tidy it, not to make a screen look better. Where a state could not be produced
+Most files here are verbatim stdout from a real command, not edited to shorten, tidy or flatter a screen. Some are hand-authored
+or trimmed — `NPDevManager/src/npdev.rs` records which (for example `prompter-generate.json` is hand-authored). Where a state could not be produced
 honestly, it is listed under "not covered" rather than fabricated.
 
 ## Doctor / install / database (M2–M15)
@@ -14,7 +14,7 @@ honestly, it is listed under "not covered" rather than fabricated.
 |---|---|
 | `doctor-all-green.json` | `npdev doctor --json` on a healthy machine |
 | `doctor-missing-java.json`, `doctor-no-jars.json` | the same, with the named thing genuinely absent |
-| `doctor-wrong-java.json`, `doctor-acceptable-newer-java.json` | **the documented exception** — hand-authored (deps-and-java W1.7), because no Java 11/22 was installed to capture from. Every other file here is a live capture. |
+| `doctor-wrong-java.json`, `doctor-acceptable-newer-java.json` | hand-authored (deps-and-java W1.7), because no Java 11/22 was installed to capture from. They are not the only hand-written fixtures here (see above). |
 | `db-test-connection-ok.json` | `npdev db test-connection --json` against a real Postgres container |
 | `db-test-connection-refused.json` | the same command pointed at port 59999 with nothing listening |
 | `init-result.json` | `npdev init --json` |
