@@ -8,7 +8,7 @@ The canonical demo is the platform-owned reference model used for:
 
 - regression-oriented smoke generation
 - documentation and screenshots
-- editor and preview expectations
+- authoring and preview expectations (the former editor was removed in 2026-08)
 - explainability examples
 - onboarding discussions about the platform specimen
 

@@ -22,7 +22,7 @@ NPDevSamples holds canonical examples, official release samples, tenant demonstr
 - `medium-expense-approval\Input`
 - `restaurant-saas-multitenant\Input`
 - `user-minimal\Input`
-- `NPDevSamples\manifest.schema.json`
+- `NPDevContract\schemas\manifest.schema.json`
 - `scripts`
 
 ## Operational Expectations

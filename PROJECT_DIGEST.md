@@ -11,8 +11,8 @@ docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md
 Supporting ADRs:
 
 ```text
-docs/adr/ADR-0002-box-object-truth-model.md
-docs/adr/ADR-0003-code-bearing-panel-procedure-objects.md
+docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md (the planned ADR-0002 was never written)
+(the planned ADR-0003, code-bearing panel and procedure objects, was never written; see docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md)
 ```
 
 ## Product identity

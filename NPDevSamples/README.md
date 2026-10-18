@@ -16,7 +16,7 @@ Verify samples through the runtimehost gate, sample-matrix gate, and sample-spec
 
 Each sample follows the same split: `Input` holds source model/config/docs, and `Output` holds generated artifact, assembled app, and runtime evidence.
 
-Every sample now lives in its own top-level folder and follows one layout:
+Almost every sample lives in its own top-level folder and follows one layout (exceptions: `npdev-init-seed/` keeps `model.json` / `config.json` / `db.definition.json` at its top level with no `Input/`, and `12works/` holds `gift-idea-tracker/` plus a file inventory):
 
 - `<sample>/Input`: `model.json`, `config.json`, docs, request payloads, and optional resources
 - `<sample>/Output/ArtifactNP`: generated artifact tree

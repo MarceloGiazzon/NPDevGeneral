@@ -10,7 +10,7 @@ Use the Gradle generator tasks to compile templates, assembler logic, and migrat
 
 ## Test
 
-Run the generator gate plus the focused determinism, regeneration-evolution, migration, and projection-guard tests.
+Run the generator gate (`scripts/quality/run-generator-gate.ps1`, which also runs the determinism check `scripts/hygiene/check-deterministic-generation.ps1`) plus the focused regeneration-evolution, migration, and projection-guard tests.
 
 ## Architecture
 
