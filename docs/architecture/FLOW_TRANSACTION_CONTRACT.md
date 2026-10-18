@@ -37,13 +37,13 @@ practice).
 ```json
 {
   "name": "reserve-inventory",
-  "type": "capability",
+  "type": "capabilityCall",
   "capability": "inventory",
   "operation": "reserve",
   "input": "input",
   "output": "reserved",
   "onFailure": [
-    { "name": "release-inventory", "type": "capability", "capability": "inventory", "operation": "release", "input": "input" }
+    { "name": "release-inventory", "type": "capabilityCall", "capability": "inventory", "operation": "release", "input": "input" }
   ]
 }
 ```
@@ -137,6 +137,6 @@ existed.
   `StepProgressRecorder` already tracks progress today.
 - **Event-store append atomicity with a concept write.** Investigated and found *not* coupled in
   the same request/method today — event emission is its own separate flow step
-  (`emitEvent`/`event`), not something `DefaultConceptGateway.save` does automatically. There was
+  (`emitEvent`), not something `DefaultConceptGateway.save` does automatically. There was
   therefore no "write + event append" atomicity gap to close for that specific pairing; the real
   gap found and fixed was the kernel-gateway-write + JPA-persist double-write described above.

@@ -9,16 +9,16 @@ how an earlier draft of this doc assumed it behaved — see "Correction" below).
 | Zone | Lives where | Regeneration behavior |
 |---|---|---|
 | **Platform-owned, hash-verified** | `<FinalApp>/npdev-generated/` | Fully rewritten every regeneration; hash-checked at every boot (`StrictExecutionValidator`) — a mismatch is a **hard boot failure** in governed mode, not a warning. |
-| **Platform-owned, unverified** | Everything else `FinalAppAssembler` copies from the RuntimeHost template (the app's Spring Boot Java sources, build files, `application-ai-beta-local.yml`, etc.) | Fully rewritten every regeneration (`deleteBeforeMount` wipes the entire FinalApp root first). No hash check — nothing here is meant to be hand-edited either, it is just not enforced the way `npdev-generated/` is. |
-| **App-owned** | `apps/<App>/web/`, `apps/<App>/definition/{pages.json,menu.json}` — **outside the FinalApp output tree entirely**, in the AppGen app-definition source (layer 2 of this repo's [[source_of_truth_layers]]) | Never touched by generation. Re-mounted (copied in fresh) into the newly-regenerated FinalApp's `src/main/resources/static/` (for `web/`) and a companion seed file (for the menu/pages) on every build — see `Build-NpdevApp.ps1` steps 4b/4c. |
+| **Platform-owned, unverified** | Everything else `FinalAppAssembler` copies from the RuntimeHost template (the app's Spring Boot Java sources, build files, the `application-*` profile files, etc.) | Fully rewritten every regeneration (`deleteBeforeMount` wipes the FinalApp root first, sparing only `data`, `logs` and `secrets` — `FinalAppAssembler.PRESERVED_APP_DIRECTORIES`). No hash check — nothing here is meant to be hand-edited either, it is just not enforced the way `npdev-generated/` is. |
+| **App-owned** | `apps/<App>/web/`, `apps/<App>/definition/{pages.json,menu.json}` — **outside the FinalApp output tree entirely**, in the AppGen app-definition source (layer 2 of this repo's [[source_of_truth_layers]]) | Never touched by generation. Re-mounted (copied in fresh) into the newly-regenerated FinalApp's `src/main/resources/static/` (for `web/`) and a companion seed file (for the menu/pages) on every build — `FinalAppAssembler.mountWebAssets` mounts `web/` (the old `Build-NpdevApp.ps1` step 4b is retired); only step 4c (pages/menu) remains in the script. |
 
 ## Correction: this is re-mount, not in-place preservation
 
 An earlier assumption (baked into this LNCH item's original "why") was that `web/` lives *inside*
 the FinalApp output and survives regeneration by being skipped/preserved in place. That is not
 what happens. `FinalAppAssembler.assemble()` (via `Build-NpdevApp.ps1`'s `deleteBeforeMount`)
-**deletes and fully recreates the entire FinalApp root on every single build** — there is no
-skip-if-exists logic anywhere in the assembler. What actually makes app customization survive a
+**deletes and recreates the FinalApp root on every single build, sparing only `data`, `logs` and `secrets`** (`PRESERVED_APP_DIRECTORIES`) — there is no
+skip-if-exists logic for anything else. What actually makes app customization survive a
 regeneration is that its *source* never lived inside the wiped tree to begin with: `apps/<App>/
 web/` is a separate directory the build script copies **from**, after the wipe, not a directory
 inside the output the build script preserves.

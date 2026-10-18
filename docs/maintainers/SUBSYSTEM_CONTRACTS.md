@@ -19,7 +19,7 @@ the Manager's two newest screens. The Tauri commands are thin wrappers — **no 
 
 - **The routine schema is the ENGINE's, pinned** (`schemas/ai/scrapforai-routine.schema.json`).
   Never hand-edit it; re-pin with `scripts/quality/pin-routine-schema.py` against a running engine.
-  All 42 routines live under a `browser-routines/` directory and are conformance-checked by
+  All 35 routines live under a `browser-routines/` directory and are conformance-checked by
   `check-routine-corpus-conformance.py`.
 - **"Green" is one function**, `npdev_explore.evaluate_verdict`. The PowerShell harness and the
   Playwright reporter record THROUGH `npdev explore record` rather than judging for themselves.
@@ -88,8 +88,8 @@ fails the RuntimeHost gate for a listed controller whose file is not under `com/
 
 **They DO run in the gate.** `build.gradle.template`'s exclusion of that test source lives inside the
 `generatedRuntimeMountPresent()` guard, firing only when the mount is genuinely absent (a bare
-template checkout) — `SchemaImpactControllerTest`, `AgentProxyControllerTest`'s 9 SUPERUSER-guard
-tests, and their siblings all run for real.
+template checkout) — `SchemaImpactControllerTest`, `AgentProxyControllerTest`'s SUPERUSER-guard
+test (one of its 10 tests), and their siblings all run for real.
 
 A green `run-runtimehost-gate.ps1` is real evidence these controller guards ran — but still confirm
 against a running app for anything the gate doesn't itself assert on.
@@ -135,8 +135,8 @@ The differences are declared at the point of choice by `npdev engines`:
 - **H2 and MySQL COMMIT IMPLICITLY ON DDL**, so `DDL_IN_TRANSACTION` is absent from their
   capabilities and a "nothing persisted" claim is false there (STOR-2). Ask
   `SqlDialects.active().supports(...)` rather than assuming a rollback.
-- **SQL Server has no suffix row cap**, so `rowLimit()` throws (boundary B29). Call `rowLimited()`,
-  which every engine answers.
+- **SQL Server has no suffix row cap** (boundary B29), so `SqlDialect` has no bare `rowLimit()` any more. `rowLimited(String, long)`
+  builds the whole statement and every engine answers it.
 
 `npdev capabilities` prints the matrix, generated from the dialects so it cannot drift.
 
