@@ -210,6 +210,16 @@ def _has_panel_widget(model: dict, layout_type: str = "", predicate=None) -> boo
     return False
 
 
+def _aggregate_depth(collections) -> int:
+    return max((1 + _aggregate_depth(c.get("collections") or []) for c in collections if isinstance(c, dict)), default=0)
+
+
+def _has_aggregate_depth(model: dict, depth: int) -> bool:
+    # F6-4: an aggregate whose owned-collection tree is at least this deep (root -> 1 -> 2 -> 3 is depth 3).
+    return any(_aggregate_depth(a.get("collections") or []) >= depth
+               for a in model.get("aggregates") or [] if isinstance(a, dict))
+
+
 def _has_workbench_derived(model: dict) -> bool:
     # Recognizes BOTH the retired transaction.metadata.derived list and its Move 6 Move B typed
     # replacement, transaction.derivedFields (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4) -- the same

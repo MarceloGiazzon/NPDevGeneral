@@ -34,7 +34,7 @@ from .detectors_model import (  # noqa: F401 - every name the table below refere
 from .detectors_ui import (  # noqa: F401 - every name the table below references
     _has_autopanel_selection_data_source_procedure, _has_band_picker_filter,
     _has_field_picker_filter, _has_panel_action_concept_query, _has_panel_action_download,
-    _has_panel_data_source_on_row_load, _has_panel_layout_slot, _has_panel_widget, _has_picker_selector_ref, _has_region_component_mount,
+    _has_panel_data_source_on_row_load, _has_aggregate_depth, _has_panel_layout_slot, _has_panel_widget, _has_picker_selector_ref, _has_region_component_mount,
     _has_transaction_hook, _has_typed_workbench_actions, _has_workbench_after_action,
     _has_workbench_apply_to, _has_workbench_band_pickers, _has_workbench_check_balances,
     _has_workbench_derived, _has_workbench_ui_state, _has_workbench_visible_when,
@@ -327,6 +327,8 @@ FEATURE_DETECTORS = {
     # Move 6 Move D (docs/MOVE6_TYPED_SURFACE_PLAN.md §5).
     "workbench.region.component": _has_region_component_mount,
     "panel.layout.slots": _has_panel_layout_slot,
+    # F6-4 third nesting level: an aggregate three collections deep (workbench section -> band -> sub-band).
+    "aggregate.collections.depth3": lambda m: _has_aggregate_depth(m, 3),
     # F6-2 operator console / F6-3 dashboard: layout types and every widget kind / chart kind / aggregate.
     "panel.layout.console": lambda m: _has_panel_widget(m, "console"),
     "panel.layout.dashboard": lambda m: _has_panel_widget(m, "dashboard"),

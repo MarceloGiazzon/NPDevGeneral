@@ -188,6 +188,10 @@
     var baseline = clone(draft);
     var dirty = { header: false, sections: {} };
     function sectionDef(c) { return (descriptor.sections || []).filter(function (s) { return s.collection === c; })[0]; }
+    // F6-4 third level: a band's sub-bands, and the rows that carry them.
+    function bandDef(c, b) { return ((sectionDef(c) || {}).bands || []).filter(function (x) { return x.collection === b; })[0]; }
+    function initSubBands(row, def) { ((def && def.bands) || []).forEach(function (sb) { if (!Array.isArray(row[sb.collection])) row[sb.collection] = []; }); }
+    function findBandRow(c, id, b, bid) { var r = findRow(c, id); return r ? (r[b] || []).filter(function (x) { return String(x.id) === String(bid); })[0] : undefined; }
     function findRow(c, id) { return (draft[c] || []).filter(function (r) { return String(r.id) === String(id); })[0]; }
     return {
       aggregate: descriptor.aggregate || resp.aggregate,
@@ -202,10 +206,15 @@
       editBandRow: function (c, id, b, bid, f, v) { var r = findRow(c, id); if (r) { var br = (r[b] || []).filter(function (x) { return String(x.id) === String(bid); })[0]; if (br) { br[f] = v; dirty.sections[c] = true; } } },
       addRow: function (c) { var row = { id: genId() }; (sectionDef(c).bands || []).forEach(function (b) { row[b.collection] = []; }); (draft[c] = draft[c] || []).push(row); dirty.sections[c] = true; return row.id; },
       deleteRow: function (c, id) { draft[c] = (draft[c] || []).filter(function (r) { return String(r.id) !== String(id); }); dirty.sections[c] = true; },
-      addBandRow: function (c, id, b) { var r = findRow(c, id); if (!r) return null; var br = { id: genId() }; (r[b] = r[b] || []).push(br); dirty.sections[c] = true; return br.id; },
+      addBandRow: function (c, id, b) { var r = findRow(c, id); if (!r) return null; var br = { id: genId() }; initSubBands(br, bandDef(c, b)); (r[b] = r[b] || []).push(br); dirty.sections[c] = true; return br.id; },
       // Add a band row seeded from a picked source row (C6): copy overlapping columns, assign a fresh id.
-      addBandRowFrom: function (c, id, b, values) { var r = findRow(c, id); if (!r) return null; var br = Object.assign({}, values || {}); br.id = genId(); (r[b] = r[b] || []).push(br); dirty.sections[c] = true; return br.id; },
+      addBandRowFrom: function (c, id, b, values) { var r = findRow(c, id); if (!r) return null; var br = Object.assign({}, values || {}); br.id = genId(); initSubBands(br, bandDef(c, b)); (r[b] = r[b] || []).push(br); dirty.sections[c] = true; return br.id; },
       deleteBandRow: function (c, id, b, bid) { var r = findRow(c, id); if (!r) return; r[b] = (r[b] || []).filter(function (x) { return String(x.id) !== String(bid); }); dirty.sections[c] = true; },
+      // F6-4 third level: rows of a sub-band, addressed section row -> band row -> sub-band row. Same dirty
+      // scope as the section (one commit saves the whole aggregate tree), so Revert on the section covers them.
+      editSubBandRow: function (c, id, b, bid, sb, sid, f, v) { var br = findBandRow(c, id, b, bid); if (br) { var sr = (br[sb] || []).filter(function (x) { return String(x.id) === String(sid); })[0]; if (sr) { sr[f] = v; dirty.sections[c] = true; } } },
+      addSubBandRow: function (c, id, b, bid, sb) { var br = findBandRow(c, id, b, bid); if (!br) return null; var sr = { id: genId() }; (br[sb] = br[sb] || []).push(sr); dirty.sections[c] = true; return sr.id; },
+      deleteSubBandRow: function (c, id, b, bid, sb, sid) { var br = findBandRow(c, id, b, bid); if (!br) return; br[sb] = (br[sb] || []).filter(function (x) { return String(x.id) !== String(sid); }); dirty.sections[c] = true; },
       // Per-region edit buffer (C8): true when the region has staged, uncommitted changes vs the baseline.
       regionDirty: function (scope, c) { return scope === "header" ? !!dirty.header : !!dirty.sections[c]; },
       // Discard a single region's staged changes back to the baseline, leaving other regions untouched.
@@ -241,7 +250,12 @@
             if (row && row.id == null) { row.id = genId(); }
             (s.bands || []).forEach(function (b) {
               if (!Array.isArray(row[b.collection])) return;
-              row[b.collection].forEach(function (br) { if (br && br.id == null) { br.id = genId(); } });
+              row[b.collection].forEach(function (br) {
+                if (br && br.id == null) { br.id = genId(); }
+                ((b.bands) || []).forEach(function (sb) {
+                  if (br && Array.isArray(br[sb.collection])) { br[sb.collection].forEach(function (sr) { if (sr && sr.id == null) { sr.id = genId(); } }); }
+                });
+              });
             });
           });
           dirty.sections[s.collection] = true;
@@ -288,13 +302,19 @@
                 return {
                   collection: b.collection, columns: b.columns || [], picker: b.picker || null, visibleWhen: b.visibleWhen || null,
                   address: b.address, render: b.render || null, component: b.component || null,
-                  readOnlyColumns: b.readOnlyColumns || null
+                  readOnlyColumns: b.readOnlyColumns || null,
+                  subBandDefs: (b.bands || []).map(function (sb) { return { collection: sb.collection, columns: sb.columns || [], readOnlyColumns: sb.readOnlyColumns || null }; })
                 };
               }),
               rows: (draft[s.collection] || []).map(function (r) {
                 return {
                   id: r.id, values: pick(r, s.columns || []),
-                  bands: (s.bands || []).reduce(function (acc, b) { acc[b.collection] = (r[b.collection] || []).map(function (br) { return { id: br.id, values: pick(br, b.columns || []) }; }); return acc; }, {})
+                  bands: (s.bands || []).reduce(function (acc, b) { acc[b.collection] = (r[b.collection] || []).map(function (br) {
+                    return {
+                      id: br.id, values: pick(br, b.columns || []),
+                      bands: (b.bands || []).reduce(function (sacc, sb) { sacc[sb.collection] = (br[sb.collection] || []).map(function (sr) { return { id: sr.id, values: pick(sr, sb.columns || []) }; }); return sacc; }, {})
+                    };
+                  }); return acc; }, {})
                 };
               })
             };
@@ -704,6 +724,8 @@
   }
 
   var store = null, selected = null, pendingMsg = null;
+  // F6-4: the band row (of the selected section row) whose sub-bands are shown, as { collection, id }.
+  var selectedBand = null;
   // Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): the last on-demand balance-check report, keyed
   // by balance rule name -- ephemeral UI state, exactly like server-tier derived fields below:
   // never written into store's draft, never part of the commit payload. A stale report never
@@ -1059,6 +1081,56 @@
     });
   }
 
+  // F6-4 third nesting level: the grids of one band row's sub-bands (editable cells, add and remove row).
+  function renderSubBandRegion(sec, selRow, bd, bandRow) {
+    var region = el('<div class="region r-subband"></div>');
+    region.append(el('<div class="bar band"><span>' + bd.collection + ' \u2192 sub-bands (row ' + bandRow.id + ')</span></div>'));
+    var body = el('<div class="body"></div>');
+    var grids = el('<div class="grids"></div>');
+    bd.subBandDefs.forEach(function (sd) {
+      var g = el('<div class="gwrap"></div>');
+      g.append(el("<h2>" + sd.collection + "</h2>"));
+      var gt = el("<table></table>");
+      gt.append(el("<tr>" + sd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + '<th><span class="sr-only">Actions</span></th></tr>'));
+      (bandRow.bands[sd.collection] || []).forEach(function (sr) {
+        var tr = el("<tr></tr>");
+        sd.columns.forEach(function (c) {
+          var td = el("<td></td>");
+          td.append(cell(sr.values[c], function (val) { store.editSubBandRow(sec.collection, selRow.id, bd.collection, bandRow.id, sd.collection, sr.id, c, val); },
+            "sb:" + sec.collection + ":" + selRow.id + ":" + bd.collection + ":" + bandRow.id + ":" + sd.collection + ":" + sr.id + ":" + c, isReadOnlyColumn(sd, c)));
+          tr.append(td);
+        });
+        var del = el("<td></td>");
+        if (EDITABLE) {
+          var x = el('<button type="button" class="rowbtn" aria-label="Remove row">\u2715</button>');
+          x.onclick = function () { store.deleteSubBandRow(sec.collection, selRow.id, bd.collection, bandRow.id, sd.collection, sr.id); render(); };
+          del.append(x);
+        }
+        tr.append(del);
+        gt.append(tr);
+      });
+      var wrap = el('<div class="gwrap-scroll"></div>');
+      wrap.append(gt);
+      g.append(wrap);
+      if (EDITABLE) {
+        var addRowFn = function () {
+          var newId = store.addSubBandRow(sec.collection, selRow.id, bd.collection, bandRow.id, sd.collection);
+          activeFocusKey = "sb:" + sec.collection + ":" + selRow.id + ":" + bd.collection + ":" + bandRow.id + ":" + sd.collection + ":" + newId + ":" + (sd.columns[0] || "");
+          restoreFocus = true;
+          render();
+        };
+        gt._npdevAddRow = addRowFn;
+        var add = el('<button type="button" class="addrow">+ add row</button>');
+        add.onclick = addRowFn;
+        g.append(add);
+      }
+      grids.append(g);
+    });
+    body.append(grids);
+    region.append(body);
+    return region;
+  }
+
   function render() {
     var v = store.view();
     var si = store.stateInfo();
@@ -1194,7 +1266,10 @@
           } else {
             var gt = el("<table></table>"); gt.append(el("<tr>" + bd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + '<th><span class="sr-only">Actions</span></th></tr>'));
             (selRow.bands[bd.collection] || []).forEach(function (br) {
-              var tr = el("<tr></tr>");
+              var tr = el('<tr class="' + (bd.subBandDefs.length ? "bandrow " : "") + (bd.subBandDefs.length && selectedBand && selectedBand.collection === bd.collection && selectedBand.id === br.id ? "sel" : "") + '"></tr>');
+              if (bd.subBandDefs.length) {
+                tr.onclick = function () { if (!selectedBand || selectedBand.collection !== bd.collection || selectedBand.id !== br.id) { selectedBand = { collection: bd.collection, id: br.id }; render(); } };
+              }
               bd.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(br.values[c], function (val) { store.editBandRow(sec.collection, selRow.id, bd.collection, br.id, c, val); }, "b:" + sec.collection + ":" + selRow.id + ":" + bd.collection + ":" + br.id + ":" + c, isReadOnlyColumn(bd, c))); tr.append(td); });
               var del = el('<td></td>');
               if (EDITABLE) { var bx = el('<button type="button" class="rowbtn" aria-label="Remove row">✕</button>'); bx.onclick = function () { store.deleteBandRow(sec.collection, selRow.id, bd.collection, br.id); render(); }; del.append(bx); }
@@ -1220,6 +1295,16 @@
           grids.append(g);
         });
         bb.append(grids); band.append(bb); app.append(band);
+        // F6-4: selecting a band row that has sub-bands shows them beneath, the same way selecting a
+        // section row shows its bands. Deeper levels are carried through the draft untouched.
+        var selBandRow = null, selBandDef = null;
+        sec.bandDefs.forEach(function (bd) {
+          if (selectedBand && selectedBand.collection === bd.collection && bd.subBandDefs.length) {
+            var found = (selRow.bands[bd.collection] || []).filter(function (br) { return br.id === selectedBand.id; })[0];
+            if (found) { selBandRow = found; selBandDef = bd; }
+          }
+        });
+        if (selBandRow) { app.append(renderSubBandRegion(sec, selRow, selBandDef, selBandRow)); }
       }
     });
 

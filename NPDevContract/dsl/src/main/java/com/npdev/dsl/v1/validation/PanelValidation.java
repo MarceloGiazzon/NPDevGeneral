@@ -175,6 +175,15 @@ final class PanelValidation {
         referenced.add(normalized);
     }
 
+    /** Depth of an owned-collection tree: a flat list is 1, a collection with children adds one per level. */
+    private static int collectionDepth(List<AggregateCollectionAst> collections) {
+        int deepest = 0;
+        for (AggregateCollectionAst collection : collections) {
+            deepest = Math.max(deepest, 1 + collectionDepth(collection.collections()));
+        }
+        return deepest;
+    }
+
     static void validateAutoPanels(
             ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors, List<String> warnings) {
         Map<String, AggregateAst> aggregatesByNormalizedName = modelAst.getAggregates().stream()
@@ -204,6 +213,17 @@ final class PanelValidation {
             }
             if (hasAggregate && !aggregateNames.contains(normalize(autoPanel.aggregate()))) {
                 errors.add(here + ": aggregate not found: " + autoPanel.aggregate());
+            }
+            if (hasAggregate && aggregateNames.contains(normalize(autoPanel.aggregate()))) {
+                // F6-4: the workbench page edits three levels (section -> band -> sub-band). Deeper owned
+                // collections are still loaded and saved with the tree, but the page shows no grid for them.
+                AggregateAst aggregate = aggregatesByNormalizedName.get(normalize(autoPanel.aggregate()));
+                int depth = collectionDepth(aggregate.collections());
+                if (depth > 3) {
+                    warnings.add(here + ": aggregate " + aggregate.name() + " nests collections " + depth
+                            + " levels deep; the workbench page edits three levels, deeper collections are loaded and saved"
+                            + " unchanged but have no grid");
+                }
             }
             if (hasText(autoPanel.route()) && !autoPanel.route().startsWith("/")) {
                 errors.add(here + ": route must start with '/': " + autoPanel.route());

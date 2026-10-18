@@ -393,6 +393,34 @@ final class AutoPanelExpander {
         return names;
     }
 
+    /**
+     * F6-4 third nesting level: the sub-bands of a band -- its child collections, recursively. They carry the
+     * same columns/readOnlyColumns shape as a band and a derived {@code address}
+     * ({@code <collection>.<band>.<subBand>}); pickers, visibleWhen and component regions are only declared for
+     * sections and bands, so a sub-band always renders as the generated grid.
+     */
+    private static List<Map<String, Object>> subBandDescriptors(
+            CompiledAggregateCollection parent, String parentAddress, Map<String, List<String>> fieldsByConcept) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (CompiledAggregateCollection child : parent.collections()) {
+            Map<String, Object> subBand = new LinkedHashMap<>();
+            subBand.put("collection", child.name());
+            subBand.put("concept", child.concept());
+            subBand.put("childField", child.childField());
+            subBand.put("columns", withLookupColumns(
+                    columnsFor(fieldsByConcept, child.concept()), child.lookupFields()));
+            subBand.put("readOnlyColumns", lookupFieldNames(child.lookupFields()));
+            String address = parentAddress + "." + child.name();
+            subBand.put("address", address);
+            List<Map<String, Object>> deeper = subBandDescriptors(child, address, fieldsByConcept);
+            if (!deeper.isEmpty()) {
+                subBand.put("bands", deeper);
+            }
+            out.add(subBand);
+        }
+        return out;
+    }
+
     private static Map<String, Object> sectionDescriptor(
             CompiledAggregateCollection collection, Map<String, List<String>> fieldsByConcept,
             Map<String, Map<String, Object>> bandPickers, Map<String, String> visibleWhen,
@@ -441,6 +469,11 @@ final class AutoPanelExpander {
                 band.put("visibleWhen", bandVisibleWhen);
             }
             attachRegion(band, collection.name() + "." + child.name(), regions);
+            // F6-4: a band's own child collections become its sub-bands (a third level).
+            List<Map<String, Object>> subBands = subBandDescriptors(child, collection.name() + "." + child.name(), fieldsByConcept);
+            if (!subBands.isEmpty()) {
+                band.put("bands", subBands);
+            }
             bands.add(band);
         }
         section.put("bands", bands);
