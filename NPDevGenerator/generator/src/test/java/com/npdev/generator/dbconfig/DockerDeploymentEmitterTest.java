@@ -80,16 +80,20 @@ class DockerDeploymentEmitterTest {
     }
 
     @Test
-    void sqlServerShipsNoBackupOrRestoreScript(@TempDir Path tempDir) throws Exception {
-        // SQL Server's BACKUP DATABASE writes INSIDE the container -- a script that produced a dump
-        // nothing could restore would be worse than no script at all.
+    void sqlServerShipsFileBasedBackupAndRestoreScripts(@TempDir Path tempDir) throws Exception {
+        // BKP-1: SQL Server's BACKUP DATABASE writes INSIDE the container, so its scripts are the
+        // file-based pair (run T-SQL in the `database` service, move the .bak with `docker compose cp`),
+        // not the stdout/stdin stream the other engines use. DockerDeploymentEmitterSqlServerBackupTest
+        // holds the detail.
         GeneratedDatabasePlan plan = loadPlan(tempDir, "SqlServer", 1433);
         Path appRoot = tempDir.resolve("app");
 
         new DockerDeploymentEmitter().emit(null, appRoot, plan);
 
-        assertFalse(Files.exists(appRoot.resolve("deploy").resolve("backup.sh")));
-        assertFalse(Files.exists(appRoot.resolve("deploy").resolve("restore.sh")));
+        String backup = Files.readString(appRoot.resolve("deploy").resolve("backup.sh"));
+        String restore = Files.readString(appRoot.resolve("deploy").resolve("restore.sh"));
+        assertTrue(backup.contains("BACKUP DATABASE"), backup);
+        assertTrue(restore.contains("RESTORE DATABASE"), restore);
     }
 
     @Test

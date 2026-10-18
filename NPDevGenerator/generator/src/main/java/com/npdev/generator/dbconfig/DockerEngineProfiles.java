@@ -101,7 +101,10 @@ public final class DockerEngineProfiles {
                 text(node, "composeImage"),
                 text(node, "backupCommand"),
                 text(node, "restoreCommand"),
-                stringMap(node.path("backupClientEnv")));
+                stringMap(node.path("backupClientEnv")),
+                text(node, "backupMode"),
+                text(node, "backupServerDir"),
+                text(node, "backupClientCommand"));
     }
 
     private static DockerEngineProfile.Probe probe(JsonNode node) {
