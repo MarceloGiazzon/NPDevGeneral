@@ -12,7 +12,7 @@
 NPDev is **not** an app. It is a factory that turns a JSON description of your app (called a
 **definition**) into a real, running web application with:
 
-- a database (in-memory, or a real H2/Postgres database),
+- a database (in-memory, or a real H2/Postgres/MySQL/SQL Server database),
 - a REST API,
 - a web page where you can create/edit/delete your data,
 - validation rules, events, and automation, if you ask for them.
@@ -50,7 +50,7 @@ Two more words you'll see as you go deeper:
 | **Event** | An announcement your app broadcasts when something happens (`UserCreated`, `InvoiceIssued`). Other parts of the app can react to it. |
 | **Orchestration rule** | "When event X happens, automatically do Y" — no manual trigger needed. |
 | **Reference / bond** | A link from one concept to another, like a foreign key — e.g. an `Invoice` field that points at the `User` who owns it. |
-| **Procedure (coda)** | A small server-side script (steps like "read this", "compute that", "save this") for logic that doesn't need to be a public web action. |
+| **Procedure** | A small server-side routine (declarative steps like "read this", "compute that", "save this") for logic that doesn't need to be a public web action. |
 
 ---
 
@@ -96,7 +96,7 @@ Before building your first app, two things must be true on your machine:
    app links against:
 
 ```powershell
-& '$repo\scripts\runtimehost\sync-runtimehost-libs.ps1' `
+& "$repo\scripts\runtimehost\sync-runtimehost-libs.ps1" `
   -BuildLocalJars `
   -RuntimeHostLibsDir './Build\runtimehost-libs'
 ```
@@ -113,7 +113,7 @@ workflow:
 
 ```powershell
 # 1. Generate the app from your JSON definition + emit a control-script toolbox ("_ops")
-& '$repo\scripts\appgen\Build-AppGenApp.ps1' -App <YourAppName>
+& "$repo\scripts\appgen\Build-AppGenApp.ps1" -App <YourAppName>
 
 # The command above prints where it put things, typically:
 $ops = './Build\generated-finalapps\<yourapp>\_ops'
@@ -131,7 +131,7 @@ $ops = './Build\generated-finalapps\<yourapp>\_ops'
 & "$ops\Stop-App.ps1"
 ```
 
-`-App` accepts either a short name (resolved under `AppGen\apps\`) or a full path. Nothing
+`-App` accepts either a short name (resolved under `AppGen\apps\`, and one level of `AppGen\apps\_official\` too, which is why `-App Claude` works) or a full path. Nothing
 about steps 2–5 changes between a one-concept toy app and a full showcase app — the
 *complexity lives entirely in your JSON*, not in the commands.
 
@@ -141,9 +141,9 @@ about steps 2–5 changes between a one-concept toy app and a full showcase app 
 | --- | --- | --- |
 | `scripts\appgen\Build-AppGenApp.ps1 -App <name\|path>` | NPDev_General | Reads your `definition\`, calls the generator, produces the app + the `_ops\` toolbox below. Run this again any time you edit your JSON. |
 | `_ops\Build-FinalApp.ps1` | generated app | Compiles the generated Java project into `FinalExec-0.1.0.jar`. |
-| `_ops\Start-App.ps1` | generated app | Starts the database environment (if your app uses a physical H2/Postgres server) and then the app; waits until `/api/flows` answers. |
+| `_ops\Start-App.ps1` | generated app | Starts the database environment (if your app uses a physical H2/Postgres server) and then the app; waits until `/actuator/health` reports `UP`. |
 | `_ops\Status-Environment.ps1` | generated app | Quick up/down probe. |
-| `_ops\Smoke-Test.ps1` | generated app | Runs the data-driven smoke test described by `definition\smoke-plan.json` (if present) against the running app. |
+| `_ops\Smoke-Test.ps1` | generated app | Smoke-tests the running app: reads `/api/admin/storage/summary` and, if the model has a `User` concept, POSTs and GETs `/api/users`. It does not read `definition\smoke-plan.json`. |
 | `_ops\Stop-App.ps1` | generated app | Stops the app and, if applicable, its database server. |
 | `_ops\Start-Environment.ps1` / `Stop-Environment.ps1` | generated app | Starts/stops only the database server process (used automatically by Start/Stop-App). |
 | `scripts\runtimehost\sync-runtimehost-libs.ps1 -BuildLocalJars -RuntimeHostLibsDir ...` | NPDev_General | One-time (or after an engine change) compile of the shared runtime libraries every generated app links against. |
@@ -164,8 +164,8 @@ AppGen\apps\<YourAppName>\
 │   ├── model.json             REQUIRED. The actual app: concepts, flows, rules, panels...
 │   ├── db.definition.json    REQUIRED. Which database engine, and how the schema is managed.
 │   ├── manifest.json          optional. Free-form catalog metadata, not used by the generator.
-│   ├── smoke-plan.json        optional. A scripted "does it work" test (used by Smoke-Test.ps1).
-│   ├── input\                 optional. Sample JSON payloads referenced by smoke-plan.json.
+│   ├── smoke-plan.json        optional. A scripted "does it work" plan (not read by the generated Smoke-Test.ps1).
+│   ├── input\                 optional. Sample JSON payloads (referenced by smoke-plan.json).
 │   │   └── create-user.json
 │   └── capabilities\<name>\   optional. Your own Java code for a custom capability.
 │       ├── capability.plugin.json
@@ -261,10 +261,9 @@ Maven dependency (or a local jar) on its classpath that NPDev doesn't already sh
 }
 ```
 
-- **`javaVersion`** -- `17` (default) or `21`. Only the generated app's own toolchain changes;
-  the NPDev platform itself always stays on 17. An unsupported value fails generation immediately
-  with the reason (the Gradle 9.5.1 wrapper resolves 17 to 26 as toolchains; anything the wrapper
-  cannot resolve is refused at generation rather than failing four minutes into the build).
+- **`javaVersion`** -- any integer 17 or higher (default `17`). Only the generated app's own toolchain changes;
+  the NPDev platform itself always stays on 17. There is deliberately no upper bound at
+  generation: the Gradle 9.5.1 wrapper resolves toolchains 17 to 26, and a value it cannot resolve fails at build time.
 - **`dependencies[]`** -- a plain string is shorthand for a Maven coordinate at `implementation`
   scope. Use the object forms for a different scope (`implementation` / `runtimeOnly` /
   `compileOnly` / `testImplementation`), a local jar, or a BOM (`platform`).
@@ -289,7 +288,7 @@ must be paired correctly, or the app refuses to start.
 | `engine` | pair with `runtime.springProfile` | Why |
 | --- | --- | --- |
 | `InMemory` | `dev,step0,trial` | Zero setup — an ephemeral in-memory database, wiped on every restart. Best for learning and Level 1–2 apps. |
-| `H2Server` / `H2Local` / `Postgres` | `dev,trial` (**do not include `step0`**) | A real, persistent database. If `step0` is left in, it silently overrides the datasource and the app refuses to boot with a "connected database is ... finalexec_step0" error. |
+| `H2Server` / `H2Local` / `Postgres` / `MySQL` / `SqlServer` | `dev,trial` (**do not include `step0`**) | A real, persistent database. If `step0` is left in, it sets `npdev.trial.database-override: true`, which skips the startup check that the connected database is the one the app was generated for, so a wrong or stale database is not caught. |
 
 InMemory example:
 
@@ -338,9 +337,9 @@ The older `"strategy": "DropAndRecreateOnStructureChange"` + `"allowDestructiveR
 pairing pre-authorizes **column** drops and type narrowings once, at authoring time, and is
 deprecated — see `docs/SCHEMA_EVOLUTION.md`. It never authorizes a whole-table destruction: dropping
 a concept, or applying a diff that cannot be executed item by item, requires the token regardless.
-**Most definitions shipped in this repo still carry the deprecated posture** for backward
-compatibility; that is history, not a recommendation, and those apps say so in a `NOTICE` on every
-boot. Existing apps keep working unchanged.
+**Most definitions shipped in this repo now use this recommended posture** (50 of the 63 `db.definition*.json` files under
+`NPDevSamples` and `AppGen\apps` at the 2026-10-12 count; 3 still use the deprecated `DropAndRecreateOnStructureChange`). Apps that still
+carry it say so in a `NOTICE` on every boot. Existing apps keep working unchanged.
 
 ### 5.3 `model.json` — the actual app
 
@@ -412,7 +411,7 @@ be called by another program rather than looked at by a person.
 ```
 
 > **Why the `capabilities` + `bindings` blocks are required.** `createConcept` (and
-> `updateConcept`/`saveConcept`) is shorthand for "persist this via the `persistence` capability", so
+> `updateConcept`) is shorthand for "persist this via the `persistence` capability", so
 > the model must (1) declare the `persistence` capability and (2) **bind** it to an adapter.
 > `"adapter": "repository"` is the portable abstract name — it resolves to the in-memory store under
 > the `dev,step0,trial` profile and to Postgres in production; you never name a concrete adapter here.
@@ -420,7 +419,7 @@ be called by another program rather than looked at by a person.
 > legitimately be supplied later by a built-in pack, so the validator can't assume it's an error), but
 > at runtime the flow fails with `Capability binding not found for capability 'persistence'` — a
 > message that today appears only in the app's stdout log (`_ops\app.out.log`), not the HTTP response.
-> Every `createConcept`/`updateConcept`/`saveConcept` flow needs a `persistence` binding.
+> Every `createConcept`/`updateConcept` flow needs a `persistence` binding.
 
 `definition\config.json` sets `"defaults": { "ui.generateBusinessUi": false }` (a top-level
 sibling of `scenario`/`generator`/etc.) to deliberately skip the automatic web UI, since this
@@ -432,7 +431,7 @@ level is about the API only — omit that block and you'd get Level 2 for free.
 **Run it** (once you've created the folder as `AppGen\apps\notes-app\`):
 
 ```powershell
-& '$repo\scripts\appgen\Build-AppGenApp.ps1' -App notes-app
+& "$repo\scripts\appgen\Build-AppGenApp.ps1" -App notes-app
 $ops = './Build\generated-finalapps\notes-app\_ops'
 & "$ops\Build-FinalApp.ps1"; & "$ops\Start-App.ps1"
 ```
@@ -509,7 +508,7 @@ This exact pattern already exists and is proven green as the reference app
 **Run the real thing:**
 
 ```powershell
-& '$repo\scripts\appgen\Build-AppGenApp.ps1' -App simple-user-registry-inmemory
+& "$repo\scripts\appgen\Build-AppGenApp.ps1" -App simple-user-registry-inmemory
 $ops = './Build\generated-finalapps\simple-user-registry\_ops'
 & "$ops\Build-FinalApp.ps1"; & "$ops\Start-App.ps1"
 ```
@@ -525,7 +524,7 @@ value of Level 2: **zero UI code, a working screen.**
 
 **What you learn:** linking concepts together (references/"bonds"), reacting to events
 automatically without a manual trigger, and read-only server-side procedures.
-**New vocabulary:** `reference` field, `onDelete`, `orchestrations`, `procedure` (coda),
+**New vocabulary:** `reference` field, `onDelete`, `orchestrations`, `procedure`,
 `query`.
 
 Real apps are rarely one flat table. Level 3 introduces **references** — a field on one
@@ -617,15 +616,14 @@ across restarts.
 **Run the real thing:**
 
 ```powershell
-& '$repo\scripts\appgen\Build-AppGenApp.ps1' -App invoice-bonds-demo
+& "$repo\scripts\appgen\Build-AppGenApp.ps1" -App invoice-bonds-demo
 $ops = './Build\generated-finalapps\invoicebonds\_ops'
 & "$ops\Build-FinalApp.ps1"; & "$ops\Start-App.ps1"; & "$ops\Smoke-Test.ps1"
 ```
 
-`Smoke-Test.ps1` reads `definition\smoke-plan.json`, which POSTs
-`definition\input\create-user.json` and `definition\input\create-product.json` to their flows
-and checks `/api/flows` answers — a fully scripted "does it still work" check you get for
-free once you've written a couple of sample payloads.
+`Smoke-Test.ps1` is a quick "does it still work" check: it reads the storage summary and, if the model has a `User` concept,
+creates and lists a user through `/api/users`. (The `definition\smoke-plan.json` / `definition\input\` files in the layout are
+optional sample material; the generated script does not read them.)
 
 ---
 
@@ -729,14 +727,14 @@ notify" is modeled without polling or manual bookkeeping.
 **Run the real thing:**
 
 ```powershell
-& '$repo\scripts\appgen\Build-AppGenApp.ps1' -App Claude
+& "$repo\scripts\appgen\Build-AppGenApp.ps1" -App Claude
 $ops = './Build\generated-finalapps\claude-support-desk\_ops'
 & "$ops\Build-FinalApp.ps1"; & "$ops\Start-App.ps1"; & "$ops\Smoke-Test.ps1"
 ```
 
 Open `http://localhost:8090/` for the generated business UI, or `/tickets/triage` for the
 hand-authored panel. This app also demonstrates multi-tenant data (`Tenant`/`SupportAgent`/
-`SupportTicket`), trace/audit, and a coda procedure — all built the same way as everything
+`SupportTicket`), trace/audit, and a custom procedure — all built the same way as everything
 above, just more of it at once.
 
 ---
@@ -749,7 +747,7 @@ above, just more of it at once.
 | Concepts | 1, standalone | 1, standalone | Several, linked by `reference` | Several, linked, multi-tenant |
 | Web UI | None (`ui.generateBusinessUi: false`) | Automatic (table + form) | Automatic | Automatic + hand-authored panels |
 | Behavior | One flow, one invariant | Flow + uniqueness rule | Flow + event + orchestration rule + query | + custom Java capability + resumable (`awaitEvent`) flow |
-| Database | InMemory | InMemory | Persistent (H2Server) | Persistent (H2Server) |
+| Database | InMemory | InMemory | Persistent (H2Server) | InMemory (`Ephemeral`) |
 | You write Java? | No | No | No | Yes — one small plain class |
 | Talk to it via | REST only | Browser + REST | Browser + REST + smoke test | Browser (custom panel) + REST + smoke test |
 
@@ -760,7 +758,7 @@ above, just more of it at once.
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | Build throws about a mismatched/stale constructor | `Build\runtimehost-libs` is out of date with the engine source | Re-run `sync-runtimehost-libs.ps1 -BuildLocalJars ...` (§3) |
-| App refuses to boot: "connected database is jdbc:h2:mem:finalexec_step0" | `step0` left in `runtime.springProfile` while using a physical DB engine | Remove `step0`, keep `dev,trial`, for any engine other than `InMemory` (§5.2) |
+| App boots against an unexpected database | `step0` left in `runtime.springProfile` while using a physical DB engine (it turns off the database-identity check) | Remove `step0`, keep `dev,trial`, for any engine other than `InMemory` (§5.2) |
 | Generation fails on `additionalProperties` | An unknown/misspelled key exists somewhere in your JSON | Every schema is strict — remove the key or check its exact spelling against §5 |
 | Builder throws "App definition not found" | `definition\` folder missing or one of `config.json`/`model.json`/`db.definition.json` missing | Recheck the required layout in §5 |
 | "Strict execution signature mismatch ... unexpected file" at boot | Something was added directly under the generated `npdev-generated\...\static` folder | Never edit generated output. Put your own static pages under your app's `web\` folder instead (§5) — they're served same-origin and are outside the signed/protected tree |
