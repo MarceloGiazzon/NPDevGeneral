@@ -54,7 +54,7 @@ machine-checked.
 
 No checkpoint may be added, removed, renamed, split, merged, or reordered without explicit human approval. Checkpoint numbers without a script named above either have no dedicated per-checkpoint script (verification is manual/narrative) or their script lives outside this per-checkpoint naming convention -- absence here is not itself evidence the checkpoint is unverified.
 
-This policy document's own boundary rules (the checkpoint list, the no-new-roadmap rule, the closure definition) are themselves checked against reality by `scripts/quality/run-maturity-max-roadmap-boundary-check.ps1`, which reads `scripts/policy/maturity-max-roadmap-policy.json` directly -- never this rendered file.
+This policy document's own boundary rules (the checkpoint list, the no-new-roadmap rule, the closure definition) were checked against reality by `scripts/quality/run-maturity-max-roadmap-boundary-check.ps1`, which read `scripts/policy/maturity-max-roadmap-policy.json` directly -- never this rendered file. That script was retired (see above), so they are not currently machine-checked.
 
 ## Beta0 Tag Rule
 
@@ -93,7 +93,7 @@ Findings with any other classification are invalid for this roadmap. Failures mu
 Cursor local runs must produce each checkpoint evidence bundle under:
 
 ```text
-D:\WorkSpace\NPDev_General__OutsideRepo\temp\last-roadmap
+D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\temp\last-roadmap
 ```
 
 Cloud/Codex fallback locations are:

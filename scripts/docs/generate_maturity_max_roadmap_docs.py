@@ -85,6 +85,13 @@ def render_roadmap_boundary_policy(p: dict) -> str:
         lines.append(f"{cp['number']}. {cp['name']}{scripts_suffix}")
     lines += [
         "",
+        "**Retired scripts (2026-08-13):** every per-checkpoint script named above except",
+        "`run-portable-tooling-check.ps1` was deleted in commit 83eaf603 (Step 9 R4) as an orphan gate --",
+        "nothing in `run-all-gates.ps1` or any workflow invoked it. The names stay here as the historical",
+        "record of how each checkpoint was verified; they are not current commands. The same applies to the",
+        "boundary-check claim in the paragraph below: that script is gone, so these rules are not currently",
+        "machine-checked.",
+        "",
         "No checkpoint may be added, removed, renamed, split, merged, or reordered without explicit "
         "human approval. Checkpoint numbers without a script named above either have no dedicated "
         "per-checkpoint script (verification is manual/narrative) or their script lives outside this "
@@ -92,9 +99,10 @@ def render_roadmap_boundary_policy(p: dict) -> str:
         "unverified.",
         "",
         "This policy document's own boundary rules (the checkpoint list, the no-new-roadmap rule, the "
-        "closure definition) are themselves checked against reality by "
-        "`scripts/quality/run-maturity-max-roadmap-boundary-check.ps1`, which reads "
-        "`scripts/policy/maturity-max-roadmap-policy.json` directly -- never this rendered file.",
+        "closure definition) were checked against reality by "
+        "`scripts/quality/run-maturity-max-roadmap-boundary-check.ps1`, which read "
+        "`scripts/policy/maturity-max-roadmap-policy.json` directly -- never this rendered file. "
+        "That script was retired (see above), so they are not currently machine-checked.",
         "",
         "## Beta0 Tag Rule",
         "",
@@ -235,7 +243,7 @@ def render_maturity_closure_ledger(p: dict) -> str:
         "`git rev-list -n 1 beta0`. Beta0 may not be retagged, moved, deleted, recreated, or "
         "reinterpreted by this roadmap.",
         "",
-        f"The repository state is declared by `{p['beta0StateTruthReportPath']}` as one of:",
+        f"The repository state was declared by `{p['beta0StateTruthReportPath']}` (no tracked script produces it any more: its checkers were deleted in `83eaf603`, 2026-08-13) as one of:",
         "",
         "| State | Meaning |",
         "|---|---|",
