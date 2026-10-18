@@ -97,12 +97,15 @@
   ],
 
   "packs": [
-    { "$ref": "packs/labeling/pack.json", "as": "labeling" }
+    { "$ref": "packs/labeling/pack.json", "as": "labeling" },
+    { "$ref": "packs/approvals/pack.json", "as": "approvals" }
   ],
 
   "provides": {
     "roleBindings": {
-      "curator": "WidgetLabelCurator"
+      "curator": "WidgetLabelCurator",
+      "approver": "WarehouseManager",
+      "requester": "SupplierViewer"
     }
   },
 

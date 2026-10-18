@@ -65,6 +65,7 @@ CHECKED_PACKS = (
     REPO_ROOT / "NPDevContract" / "packs" / "identity" / "pack.json",
     REPO_ROOT / "NPDevContract" / "packs" / "workspace" / "pack.json",
     REPO_ROOT / "NPDevContract" / "packs" / "contacts" / "pack.json",
+    REPO_ROOT / "NPDevContract" / "packs" / "approvals" / "pack.json",
 )
 
 

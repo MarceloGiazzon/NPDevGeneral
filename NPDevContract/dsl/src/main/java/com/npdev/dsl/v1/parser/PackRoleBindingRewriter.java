@@ -40,7 +40,9 @@ import java.util.regex.Pattern;
  * role check anywhere inside a larger expression): {@code read}/{@code write} (a concept's {@code
  * access} object), {@code visibleWhen}, {@code enabledWhen}, {@code readonlyWhen}. A coincidental
  * {@code "role(...)"} substring inside an unrelated label or description is left untouched, because
- * this walker never looks at those keys in the first place.
+ * this walker never looks at those keys in the first place. PACK-1 added one more STRUCTURED site: a
+ * flow human task's {@code assignee.roles} (each entry a plain role name), so a pack can route a
+ * task to a role the importing app binds.
  *
  * <p>Structured fields substitute the bound name UNQUOTED, preserving the existing {@code "role:X"}
  * / bare-role-name conventions those fields already use (e.g. {@code visibility: "role:role('curator')"}
@@ -58,6 +60,9 @@ final class PackRoleBindingRewriter {
     private static final Set<String> UNQUOTED_STRING_FIELDS = Set.of("visibility", "permissionHint");
     /** An array of plain role-name strings, each entry substituted UNQUOTED. */
     private static final String UNQUOTED_ARRAY_FIELD = "permissionRequirements";
+    /** PACK-1: {@code assignee: { roles: [...] }} of a human task -- the only place {@code roles} is walked. */
+    private static final String ASSIGNEE_FIELD = "assignee";
+    private static final String ASSIGNEE_ROLES_FIELD = "roles";
     /** Free-form expression strings; the token is substituted as a QUOTED string literal. */
     private static final Set<String> QUOTED_STRING_FIELDS =
             Set.of("read", "write", "visibleWhen", "enabledWhen", "readonlyWhen");
@@ -115,14 +120,10 @@ final class PackRoleBindingRewriter {
                 if (value.isTextual() && UNQUOTED_STRING_FIELDS.contains(field)) {
                     obj.put(field, substitute(value.asText(), false, packId, path, provides, packFile));
                 } else if (value.isArray() && UNQUOTED_ARRAY_FIELD.equals(field)) {
-                    ArrayNode array = (ArrayNode) value;
-                    for (int i = 0; i < array.size(); i++) {
-                        JsonNode item = array.get(i);
-                        if (item.isTextual()) {
-                            array.set(i, TextNode.valueOf(
-                                    substitute(item.asText(), false, packId, path, provides, packFile)));
-                        }
-                    }
+                    substituteArrayEntries((ArrayNode) value, packId, path, provides, packFile);
+                } else if (value.isObject() && ASSIGNEE_FIELD.equals(field)
+                        && value.get(ASSIGNEE_ROLES_FIELD) instanceof ArrayNode assigneeRoles) {
+                    substituteArrayEntries(assigneeRoles, packId, path, provides, packFile);
                 } else if (value.isTextual() && QUOTED_STRING_FIELDS.contains(field)) {
                     obj.put(field, substitute(value.asText(), true, packId, path, provides, packFile));
                 } else {
@@ -132,6 +133,16 @@ final class PackRoleBindingRewriter {
         } else if (node.isArray()) {
             for (JsonNode child : node) {
                 rewriteNode(child, packId, path, provides, packFile);
+            }
+        }
+    }
+
+    private static void substituteArrayEntries(
+            ArrayNode array, String packId, List<String> path, JsonNode provides, Path packFile) throws IOException {
+        for (int i = 0; i < array.size(); i++) {
+            JsonNode item = array.get(i);
+            if (item.isTextual()) {
+                array.set(i, TextNode.valueOf(substitute(item.asText(), false, packId, path, provides, packFile)));
             }
         }
     }
