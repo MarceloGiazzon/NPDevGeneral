@@ -53,7 +53,7 @@ the screen where you fix it rather than fixing it for you. **Re-check** re-runs 
 
 > Green here means *this machine can build NPDev apps*. It does not yet mean anything has been built.
 
-### 2.3 Install → the four steps, in order
+### 2.3 Install → the first four steps, in order (a fifth, "Monitored App Paths", is optional)
 
 1. **Java 17** — "Install private JDK". Downloads into the Manager's own folder.
 2. **Python** — only offered if you have none.
@@ -91,7 +91,7 @@ DBeaver.
 
 > **If you pointed NPDev at a database server you already run: do not press Stop or Reset.** NPDev
 > only knows a server is not its own when the app's `db.definition.json` says
-> `"externallyProvisioned": true`, and no screen can set that yet — so **Reset deletes data**.
+> `"externallyProvisioned": true`. Tick **"This server is mine, not NPDev's"** when creating the app (it passes `--externally-provisioned`); an app that declares `false` is NPDev's to manage, so **Reset deletes data**.
 
 ### 2.6 Change one thing
 
@@ -149,7 +149,7 @@ Do **not** try to fix anything. A workaround you apply silently is a defect we n
 | Seven unused internal database methods | Four are answers prepared before any consumer exists, three are exercised by the dialect conformance vectors instead of production code. Deliberate and recorded, no user-visible effect (`STOR-13`) | No |
 | The first build is slow | Gradle is populating a cold cache. Later builds are much faster | No |
 | Ready shows `git-present` as a **warning**, and `npdev init` says it made no repository | The Manager never installs git and nothing needs it — apps scaffold, build and run without it. Only your app's own version history is affected | No |
-| §2.6 asks you to **add** a field, not rename one | A rename with nothing declaring it a rename reads as drop-plus-add, and NPDev refuses destructive schema changes on purpose (`docs/ACCEPTED_BOUNDARIES.md` B1). If you rename one anyway, the refusal is the product working | No |
+| §2.6 asks you to **add** a field, not rename one | A rename with nothing declaring it a rename reads as drop-plus-add, and NPDev refuses destructive schema changes on purpose (`docs/ACCEPTED_BOUNDARIES.md` B1, since LIFTED: a field with a stable `uid` or a declared `renamedFrom` renames in place; only the undeclared case still refuses). If you rename one anyway, the refusal is the product working | No |
 
 **Anything not in this table is worth reporting**, including "the wording confused me".
 

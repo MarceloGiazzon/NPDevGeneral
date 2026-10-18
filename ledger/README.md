@@ -66,11 +66,11 @@ restructuring, derived gate numbers) is separate, larger, and not implied by thi
 2026-08-14).** The field existed from 992d47a8 onward but nothing checked it — a `guard` could be
 absent from a DONE item, or present and pointing at nothing, and neither was ever caught. Four rules
 now run on every gate pass (`scripts/quality/check-done-item-guards.py`, wired into
-`run-ai-knowledge-gate.ps1` step [36/35]):
+`run-ai-knowledge-gate.ps1`, step [37/39] at the time of writing):
 
 1. **Coverage.** Every `status: DONE` item must carry a `guard:` block, unless its id is in
-   `scripts/policy/done-item-guard-policy.json`'s `legacy.ids` — the 177 DONE-without-guard items
-   that predated the checker, frozen 2026-08-14. An id leaves the legacy list (with `frozenCount`
+   `scripts/policy/done-item-guard-policy.json`'s `legacy.ids` — the DONE-without-guard items
+   that predated the checker, frozen 2026-08-14 (177 then; 168 today, shrunk as designed). An id leaves the legacy list (with `frozenCount`
    lowered in the same commit) once its item genuinely gains a guard, changes status away from
    `DONE`, or is deleted — leaving a no-longer-needed entry in place is itself a checker failure.
 2. **Resolution.** Every `guard:` block present on *any* item, regardless of status, must actually
@@ -137,8 +137,9 @@ rendered doc is no longer committed to the repo at all (build output, per
 is gone.
 
 **Dependency note:** this script needs PyYAML (`import yaml`), same as the other ledger/gaps.yml
-readers (`scripts/docs/generate_gaps_roadmap.py`, `scripts/ai/extract_platform_status.py`) and
-`scripts/quality/check-workflow-yaml-syntax.py`; everything else under `scripts/` is stdlib-only.
+readers (`scripts/docs/generate_gaps_roadmap.py`, `scripts/ai/extract_platform_status.py`, `scripts/ai/build_open_state.py`, the docs generators
+`generate_group_d_docs.py` / `generate_group_e_docs.py`, `check-semantic-inventory.py`) and
+`scripts/quality/check-workflow-yaml-syntax.py`; most other scripts are stdlib-only (`build_knowledge.py` treats PyYAML as optional).
 Declared in `scripts/requirements.txt`; `.github/workflows/ai-knowledge-gate.yml` installs it
 (`pip install -r scripts/requirements.txt`) before running any of them.
 
@@ -147,6 +148,7 @@ Declared in `scripts/requirements.txt`; `.github/workflows/ai-knowledge-gate.yml
 - `scripts/quality/generate_open_items.py` — renders OPEN_ITEMS.md, and is reused by
   `check-done-item-guards.py` for schema-validated item loading (`from generate_open_items import
   load_items`) rather than re-implementing the same validation twice.
+- `scripts/ai/build_open_state.py` — reads `ledger/items` and `ledger/boundaries` and writes `ledger/session-state/open-state.md`.
 - `scripts/quality/check-done-item-guards.py` — enforces the `guard:` coverage ratchet and resolution
   rules described above, against `scripts/policy/done-item-guard-policy.json`.
 - `scripts/external-review/build-review-pack.py`'s `FORBIDDEN_PATH_PATTERNS` names `OPEN_ITEMS\.md$`

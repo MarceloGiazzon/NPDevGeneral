@@ -16,17 +16,27 @@ Model Context Protocol server (JSON-RPC 2.0 over stdio) that wraps the portable 
 | `npdev_get_constrained_schema` | The same grammar reduced to the subset a structured-output API accepts (`scripts/ai/derive_constrained_schemas.py`, derived on demand into `<Build>/npdev-ai/constrained/`). |
 | `npdev_core_context` | The stable, prompt-cacheable authoring prefix — contract + curated schemas + golden models (`scripts/ai/build_core_context.py`). `manifest_only` returns just the content hash. |
 | `npdev_app_context` | The volatile per-app half: this model's contents + the constrained schema its output must satisfy. Goes **after** the core-context prefix. |
-| `npdev_search_examples` | Retrieve real, working example snippets (RAG; reads `build/npdev-ai/rag-index.json` — see `scripts/ai/build_rag_index.py`). |
+| `npdev_search_examples` | Retrieve real, working example snippets (RAG; reads `npdev-ai/rag-index.json` under the build root — `NPDEV_BUILD_ROOT`, else `<repo-parent>/Build` — see `scripts/ai/build_rag_index.py`). |
 | `npdev_graph_explain` | "Why does this element exist?" — purely from a generated app's `npdev/semantic-graph.json`: which elements reference it and what it references. |
 | `npdev_graph_reuse` | "What would I reuse for this intent?" — keyword-ranks existing elements in that same graph against a free-text intent, with each candidate's own wiring. |
+| `npdev_search_fix` | Given a validator diagnostic, retrieve precedent fixes keyed by a normalized failure signature (identifiers templated out). |
+| `npdev_check_support` | Cheap pre-check before committing to a model shape: is a feature a known gap, constraint or already-lifted boundary? Takes a ledger id (`REG-244`) or free text. |
+| `npdev_author_tier` | Ranks reuse > specialization > new concept > untrusted extension for an authoring intent, and explains each choice. |
+| `npdev_author_diff_gate` | AI Authoring Contract check (no archival): verifies a candidate `model.json` against its previous version and a submission manifest. |
+| `npdev_author_submit` | The same check, and on a pass archives the previous model so the next iteration can diff against it. The manifest is required. |
+| `npdev_impact` | One change-preview report for a baseline/current pair: migration classification, xref usage and the other composed checks. |
 | `npdev_migration_diff` | Classify a schema change safe-additive vs destructive; dry-run migration plan. |
 | `npdev_generate` | Run the real generator. **Slow + writes to disk — gate behind confirmation.** |
+| `npdev_build_and_run` | Generate -> build -> boot -> ready in one call, returning structured diagnostics (`npdev_generate` stops at generate). Slow. |
+| `npdev_close_loop` | Natural-language intent -> validated semantic model -> generated app -> runtime proof in one call (wraps `npdev loop run`). |
+| `npdev_build_review_pack` | ADR-0009: builds a redacted, chunked external-AI review pack for one mission, written locally; fails closed if the sanitizer finds a secret. |
+| `npdev_ingest_review_verdict` | ADR-0009: validates an external-AI verdict file and, only if it passes, records a run entry under `docs/external-ai-review/runs/`. |
 
 ## The loop it enables
 
 ```
 author model.json → npdev_validate → typed errors? → fix → re-validate
-                  → npdev_generate → npdev app smoke → done
+                  → npdev_generate → npdev_build_and_run (or `npdev run app`) → done
 ```
 
 `npdev_validate` returning `status: "failed"` is a **successful** tool call that returns a
