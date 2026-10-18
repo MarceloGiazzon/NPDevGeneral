@@ -13,6 +13,13 @@ decision block on 2026-07-25.
 > (`docs/adr/ADR-0005-auto-panel-patterns.md`, existing and unrelated) — this document uses the next
 > free number, **ADR-0008**, instead.
 
+> **Implementation note (2026-10-17).** Several limits recorded below have since moved. Java hooks now exist: `conversions[].javaHook`
+> runs isolated (`JavaMigrationHookRunner`). `convert.sql` and `verifySql` mixed-DDL behaviour is configurable with
+> `npdev.schema.conversionHooks.mixedDdlVerify=warn|refuse|split`. Hooks are still individually atomic by default, but
+> `ConversionHookRunner` has an opt-in collective atomicity mode (`AtomicityMode.COLLECTIVE`). "No token needed" is still the default; there
+> is now an opt-in `-Dnpdev.schema.destructive.sanctioned=token-required` (boundary B14 LIFTED, STOR-33) and `SANCTIONED_DESTRUCTION`
+> history rows.
+
 ## Context
 
 Schema-engine rebuild Phase 6 (Impact Report) gives an operator a read-only preview of what an upgrade

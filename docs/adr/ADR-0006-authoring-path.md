@@ -5,6 +5,10 @@
 Proposed — 2026-07-17. Drafted per `docs/LAUNCH_READINESS_GAPS.md` LNCH-18. Ratification (the
 "one non-author completes the DoD run") is outstanding — see DoD section below.
 
+> **Implementation note (2026-10-17).** The React editor (`NPDevEditor/ui-react`) this ADR says is "not frozen or deprecated" was removed from
+> the repository on 2026-08-17; its replacement is the model-authoring page `static/model-authoring.html`, emitted by `ModelAuthoringEmitter`.
+> The RAG / knowledge-card corpus lives at `NPDevMcp/knowledge/`, and `docs/LAUNCH_READINESS_GAPS.md` (LNCH-18) is no longer in the repo.
+
 ## Context
 
 "Low-code platform" is a claim about *who can author an app*, not just about how much

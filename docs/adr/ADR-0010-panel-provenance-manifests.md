@@ -3,6 +3,9 @@
 ## Status
 Accepted - 2026-07-28
 
+> **Implementation note (2026-10-17).** The impact gate this ADR calls "future" exists: `scripts/quality/check-panel-provenance-impact.py`
+> enforces only `confirmed: true` manifests and reports an unconfirmed one as an advisory warning.
+
 ## Context
 
 WmsOffice measures **model JSON 259,503 B vs hand-written HTML/JS/Java 257,659 B** — a 0.99 ratio.
