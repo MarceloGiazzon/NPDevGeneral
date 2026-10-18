@@ -50,6 +50,109 @@
           "expr": "title != null && title != ''"
         }
       ]
+    },
+    {
+      "name": "Project",
+      "ui": {
+        "label": "Project"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "ui": {
+            "label": "Name"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Phase",
+      "ui": {
+        "label": "Phase"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "projectId",
+          "type": "uuid"
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "ui": {
+            "label": "Title"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Task",
+      "ui": {
+        "label": "Task"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "phaseId",
+          "type": "uuid"
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "ui": {
+            "label": "Title"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subtask",
+      "ui": {
+        "label": "Subtask"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "taskId",
+          "type": "uuid"
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "ui": {
+            "label": "Title"
+          }
+        },
+        {
+          "name": "hours",
+          "type": "integer",
+          "ui": {
+            "label": "Hours"
+          }
+        }
+      ]
     }
   ],
   "capabilities": [
@@ -107,6 +210,81 @@
         "title": "Reset shared mailbox password",
         "status": "DONE",
         "priority": 1
+      }
+    },
+    {
+      "concept": "Project",
+      "alias": "pr1",
+      "data": {
+        "name": "Website relaunch"
+      }
+    },
+    {
+      "concept": "Phase",
+      "alias": "ph1",
+      "data": {
+        "projectId": "$ref:pr1",
+        "title": "Design"
+      }
+    },
+    {
+      "concept": "Phase",
+      "alias": "ph2",
+      "data": {
+        "projectId": "$ref:pr1",
+        "title": "Build"
+      }
+    },
+    {
+      "concept": "Task",
+      "alias": "tk1",
+      "data": {
+        "phaseId": "$ref:ph1",
+        "title": "Wireframes"
+      }
+    },
+    {
+      "concept": "Task",
+      "alias": "tk2",
+      "data": {
+        "phaseId": "$ref:ph2",
+        "title": "Checkout page"
+      }
+    },
+    {
+      "concept": "Subtask",
+      "alias": "st1",
+      "data": {
+        "taskId": "$ref:tk1",
+        "title": "Home wireframe",
+        "hours": 4
+      }
+    },
+    {
+      "concept": "Subtask",
+      "alias": "st2",
+      "data": {
+        "taskId": "$ref:tk1",
+        "title": "Cart wireframe",
+        "hours": 6
+      }
+    },
+    {
+      "concept": "Subtask",
+      "alias": "st3",
+      "data": {
+        "taskId": "$ref:tk2",
+        "title": "Payment form",
+        "hours": 8
+      }
+    },
+    {
+      "concept": "Subtask",
+      "alias": "st4",
+      "data": {
+        "taskId": "$ref:tk2",
+        "title": "Order summary",
+        "hours": 3
       }
     }
   ],
@@ -326,6 +504,41 @@
           "value": "$saved"
         }
       ]
+    }
+  ],
+  "aggregates": [
+    {
+      "name": "Project",
+      "root": "Project",
+      "collections": [
+        {
+          "name": "phases",
+          "concept": "Phase",
+          "childField": "projectId",
+          "ownership": "owned",
+          "collections": [
+            {
+              "name": "tasks",
+              "concept": "Task",
+              "childField": "phaseId",
+              "ownership": "owned",
+              "collections": [
+                {
+                  "name": "subtasks",
+                  "concept": "Subtask",
+                  "childField": "taskId",
+                  "ownership": "owned"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "autoPanels": [
+    {
+      "aggregate": "Project"
     }
   ]
 }

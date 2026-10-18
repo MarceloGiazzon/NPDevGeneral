@@ -682,4 +682,54 @@ class AggregateWorkbenchExpansionTest {
         assertEquals("tipo", clauses.get(1).get("rootRef"), "$root.tipo must resolve as a rootRef, not a static value");
         assertNull(clauses.get(1).get("value"));
     }
+
+    /**
+     * F6-4 third nesting level: a band's own child collections become its sub-bands (descriptor key
+     * {@code bands} on the band), recursively and with a derived three-part address. A model with only two
+     * levels must keep a band descriptor with no {@code bands} key at all.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void thirdLevelCollectionsBecomeSubBandsOfTheBand() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "f6.depth3", "version": "1.0",
+              "concepts": [
+                { "name": "Project", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                { "name": "Phase", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "projectId", "type": "uuid" }, { "name": "title", "type": "string" } ] },
+                { "name": "Task", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "phaseId", "type": "uuid" }, { "name": "title", "type": "string" } ] },
+                { "name": "Subtask", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "taskId", "type": "uuid" }, { "name": "hours", "type": "integer" } ] }
+              ],
+              "aggregates": [
+                { "name": "Project", "root": "Project", "collections": [
+                  { "name": "phases", "concept": "Phase", "childField": "projectId", "ownership": "owned", "collections": [
+                    { "name": "tasks", "concept": "Task", "childField": "phaseId", "ownership": "owned", "collections": [
+                      { "name": "subtasks", "concept": "Subtask", "childField": "taskId", "ownership": "owned" } ] } ] } ] }
+              ],
+              "autoPanels": [ { "aggregate": "Project" } ]
+            }
+            """;
+        CompiledModel model = compile(json);
+        CompiledPanel workbench = model.getPanels().stream()
+                .filter(p -> "ProjectWorkbench".equals(p.name())).findFirst().orElseThrow();
+        Map<String, Object> wb = (Map<String, Object>) workbench.metadata().get("workbench");
+        List<Map<String, Object>> sections = (List<Map<String, Object>>) wb.get("sections");
+        assertEquals("phases", sections.get(0).get("collection"));
+        List<Map<String, Object>> bands = (List<Map<String, Object>>) sections.get(0).get("bands");
+        assertEquals("tasks", bands.get(0).get("collection"));
+        List<Map<String, Object>> subBands = (List<Map<String, Object>>) bands.get(0).get("bands");
+        assertNotNull(subBands, "the band's child collection must surface as a sub-band");
+        assertEquals("subtasks", subBands.get(0).get("collection"));
+        assertEquals("Subtask", subBands.get(0).get("concept"));
+        assertEquals("taskId", subBands.get(0).get("childField"));
+        assertEquals("phases.tasks.subtasks", subBands.get(0).get("address"));
+        assertEquals(List.of("id", "taskId", "hours"), subBands.get(0).get("columns"));
+        assertNull(subBands.get(0).get("bands"), "a leaf sub-band has no deeper bands");
+    }
 }

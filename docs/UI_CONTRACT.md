@@ -333,6 +333,27 @@ A declared panel (`panels[]`) can render as an **operator console** (`layout.typ
 - After an action runs the panel reloads and every widget recomputes; the action is added to `history`.
 - The live panel response echoes `layout.widgets` only when the panel declares them.
 
+## Aggregate workbench depth — three editable levels
+
+An aggregate-bound AutoPanel (`autoPanels[].aggregate`) renders as a standalone workbench page
+(`/npdev-workbench/<Panel>Workbench.html`) over the aggregate's owned-collection tree:
+
+| Level | Descriptor key | What the page draws |
+|---|---|---|
+| 1 | `sections[]` | a master grid per first-level collection; selecting a row shows its bands |
+| 2 | `sections[].bands[]` | one parallel grid per child collection of the selected row; selecting a band row (when it has child collections) shows its sub-bands |
+| 3 | `sections[].bands[].bands[]` | one grid per child collection of the selected band row, titled by collection, with add / remove row |
+
+- Every level is editable in the browser, carries the same `columns` / `readOnlyColumns` shape, and is saved
+  by the page's single Save, which posts the whole tree to `POST /api/runtime/aggregate/{aggregate}`
+  (the server loads and commits the tree recursively, so depth is not a server concern).
+- Component regions, band pickers and `visibleWhen` are declared per section and per band (addresses
+  `<collection>` and `<collection>.<band>`); a sub-band always renders as the generated grid. Its descriptor
+  `address` is `<collection>.<band>.<subBand>`.
+- Collections nested **deeper than three levels** are still loaded, kept in the draft and saved unchanged, but
+  the page draws no grid for them; validation warns ("nests collections N levels deep").
+- Derived `sum(a[].b[].c[].d)` expressions already walk any depth.
+
 ## View renderers (`window.NPDevViews`)
 
 New business-UI list views and detail-dialog sections do NOT grow `business-ui-app.mustache`. They
