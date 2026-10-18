@@ -36,6 +36,14 @@ establishes a three-tier authoring model.
 | **AutoPanel** | a slim `autoPanel{}` bound to a concept/aggregate | Selection + Prompt + Detail + Transaction (+ Sections), fully wired |
 | Free panel / workbench | full `panel{}` / `workbench{}` | exactly as declared |
 
+> **Implementation note (2026-10-17).** There is no free `panel{}` / `workbench{}` authoring tier and no `"transaction": { "panel": ... }`
+> override: `autoPanelSurface` is `additionalProperties: false` and the per-region override is
+> `transaction.regions.<addr>.render` (`"component"` or `"cellGrid"`). A workbench exists only as the panel
+> `AutoPanelExpander.expandAggregateWorkbench` generates. Expansion into Selection + Prompt + Detail + Transaction (+ Sections), with a
+> selectable `surfaces` subset, holds for concept-bound AutoPanels; an aggregate-bound AutoPanel expands to exactly a workbench panel
+> (`<Base>Workbench`) plus a selection panel and ignores `surfaces`. The `<Base>Form` / `/<concept>/edit` naming below is the
+> concept-bound case.
+
 ### Surfaces (the expansion targets)
 An AutoPanel expands into these generated surfaces (a subset is selectable via `surfaces`):
 - **Selection** — filtered list + grid (the "Work With" list).

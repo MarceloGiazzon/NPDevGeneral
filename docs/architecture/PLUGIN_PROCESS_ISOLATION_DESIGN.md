@@ -1,6 +1,8 @@
 # Plugin Process Isolation ("Model B") — Design
 
-**Status:** design only, not implemented. Tracked by `ledger/items/SEC-3.yml`. This document answers
+**Status:** IMPLEMENTED — Model B shipped (`ledger/items/SEC-3.yml`, DONE 2026-09-01): `plugin:java-source` invocations and
+`plugin:java-controller` requests run in the OS-process worker pool (`pluginipc` classes in `NPDevRuntimeHost/runtimehost-core`, wired by
+`NpdevPluginConfig`). What follows is the original design record, written when it was still a proposal. Tracked by `ledger/items/SEC-3.yml`. This document answers
 the five open questions SEC-3's 2026-08-31 scoping note left for whoever picks this up, in the order
 they gate each other. It proposes concrete decisions, not just options, so a future session can
 implement without re-deriving the shape — but every decision here is still a *proposal*: nothing in
@@ -32,7 +34,7 @@ This is the crux question, and the one every other decision depends on. Today
 `TimeBoundedPluginExecutionEngine.execute(contribution, realizationSummary, call, contextState,
 handler)` invokes `handler` **directly, in-process**, via one of three paths (`CapabilityAdapter`,
 `DynamicCapabilityHandler`, or plain reflection over `handler`'s methods) — see
-`NPDevRuntimeHost/runtimehost-core/.../TimeBoundedPluginExecutionEngine.java:232` (`invokeHandler`).
+`NPDevRuntimeHost/runtimehost-core/.../TimeBoundedPluginExecutionEngine.java` (`invokeHandler`).
 The call is a `CapabilityCall(capability, capabilityType, adapterId, operation, args, correlationId,
 idempotencyKey)` (`NPDevKernel/kernel/.../CapabilityCall.java`); the result is a `CapabilityResult(ok,
 value, error)` where `error` is a `CapabilityError(code, message, CapabilityErrorKind, details)`
@@ -125,7 +127,7 @@ raised platform-wide first, which is its own (unwanted) behavior change.
 
 ### Decision: fixed-size warm pool, one child JVM per pool slot, keyed by nothing (fungible workers)
 
-- **Pool size:** a static config (`npdev.runtime.plugin-pool-size`, default small — 2–4) rather than
+- **Pool size:** a static config (`npdev.runtime.plugin-ipc-pool.size` (the original proposal called it `plugin-pool-size`), default small — 2–4) rather than
   dynamic scaling. Dynamic pool sizing is its own can of worms (backpressure, queueing policy under
   burst) and nothing in the shipped corpus's plugin usage today justifies it; start static, revisit
   with real load data.
@@ -140,7 +142,7 @@ raised platform-wide first, which is its own (unwanted) behavior change.
   (config, e.g. 50) *and* independently on a wall-clock idle timer (e.g. 10 minutes unused) — bounding
   the blast radius of a plugin that leaked native memory or file descriptors without crashing outright,
   without needing per-invocation health probing.
-- **Host redeploy / shutdown:** the pool's owning Spring bean's `@PreDestroy` sends a `close` frame to
+- **Host redeploy / shutdown:** the pool's owning Spring bean's `@PreDestroy` closes each worker's stdin (EOF; there is no separate `close` frame kind — `PluginIpcFrame` defines only invoke, callback and response) to
   every live worker (grace period, e.g. 2s) then `Process.destroyForcibly()` any still alive. No
   in-flight-request draining logic beyond what `TimeBoundedPluginExecutionEngine`'s own
   `executorService.shutdownNow()` already does for the host side today.
@@ -184,8 +186,8 @@ since a container's own `/sys/fs/cgroup` starts as a non-delegating non-root cgr
 assert TWO things, not one: a well-behaved plugin **completes** under the configured ceiling, and a
 runaway plugin is **killed** by it — a raised-ceiling test that only checks "the child died" cannot
 distinguish real containment from the JVM merely failing to boot at too tight a limit.
-- **Limits:** memory ceiling and CPU rate are both config (`npdev.runtime.plugin-memory-limit-mb`,
-  `npdev.runtime.plugin-cpu-rate-percent`), not hardcoded — different deployments will want different
+- **Limits:** memory ceiling and CPU rate are both config (`npdev.runtime.plugin-ipc-pool.memory-limit-mb`,
+  `npdev.runtime.plugin-ipc-pool.cpu-rate-percent` (the keys as shipped)), not hardcoded — different deployments will want different
   headroom, and there is no principled platform-wide default without real usage data.
 - **A platform with neither mechanism available** (e.g. a container runtime without cgroup delegation)
   degrades to **wall-clock timeout only**, logged loudly as a posture warning at boot (the same

@@ -30,10 +30,7 @@ Use these locations:
 
 ```text
 D:\WorkSpace\NPDev\Build
-D:\WorkSpace\NPDev\Build\_gradle-init
-D:\WorkSpace\NPDev\Build\_chatgpt_patchs
 D:\WorkSpace\NPDev\Build\generated-finalapps
-D:\WorkSpace\NPDev\Build\databases
 D:\WorkSpace\NPDev\Build\runtimehost-libs
 ```
 
@@ -58,18 +55,12 @@ D:\WorkSpace\NPDev\NPDev_General\NPDevGenerator\generator\build
 D:\WorkSpace\NPDev\NPDev_General\NPDevKernel\.gradle
 D:\WorkSpace\NPDev\NPDev_General\NPDevKernel\kernel\build
 D:\WorkSpace\NPDev\NPDev_General\NPDevRuntimeHost\.gradle
-D:\WorkSpace\NPDev\NPDev_General\NPDevEditor\.gradle
-D:\WorkSpace\NPDev\NPDev_General\NPDevEditor\ui-react\node_modules
-D:\WorkSpace\NPDev\NPDev_General\NPDevEditor\ui-react\dist
 ```
 
 ## Required Gradle practice
 
-Use the external Build-scoped runner when building source subprojects:
-
-```text
-D:\WorkSpace\NPDev\Build\_chatgpt_patchs\move-other-subprojects-to-external-build\Invoke-NPDevExternalGradle.ps1
-```
+Build source subprojects through their own Gradle builds with the build root redirected outside the repo (`NPDEV_BUILD_ROOT`,
+resolved by `Get-NPDevBuildRoot`); the external Gradle runner script this section used to name no longer exists.
 
 The build root must be:
 
@@ -107,13 +98,8 @@ If pre-existing source-local output folders already exist, report them as pre-ex
 
 ## Correct cleanup location
 
-Cleanup scripts and reports must be written under:
-
-```text
-D:\WorkSpace\NPDev\Build\_chatgpt_patchs\source-build-hygiene
-```
-
-not inside the source repo, except for this policy document itself.
+The cleanup scripts live in-repo at `scripts/hygiene/clean-*.ps1`; their reports must not be written inside the source repo
+(`clean-rebuildable-artifacts.ps1` reports to the OS temp directory), except for this policy document itself.
 
 ## Stop rule
 

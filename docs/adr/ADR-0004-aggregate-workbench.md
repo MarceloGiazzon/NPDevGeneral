@@ -4,6 +4,14 @@
 Accepted - 2026-07-25 (per `docs/architecture/AGGREGATE_WORKBENCH_PLAN.md`'s own execution record:
 "All phases delivered 2026-07-11…2026-07-25")
 
+> **Implementation note (2026-10-17).** The decision stands; some of its sketched names did not ship as written. There is no
+> `SelectorGrid` region (picking is `transaction.bandPickers` / `openBandPicker`, and `selectorRef` later let a picker adopt a
+> `selectors[]` entry); the lifecycle state machine is applied by a status-field write plus commit, with no `FlowEngine` binding;
+> the L5 slot kinds `procedureSlot`, `computeSlot`, `validationSlot` and `layoutSlot` were never added as DSL keys (the shipped seams
+> are `transaction.hooks.*`, `aggregate.onCommit` and `transaction.regions.<addr>.render`); and the server side is
+> `AggregateRuntime` (`load` / `commit` / `invoke`) behind `AggregateApiController` (`/api/v1/runtime/aggregate`), not a kernel
+> `AggregateController`. See `docs/architecture/AGGREGATE_WORKBENCH_PLAN.md`'s corrections note.
+
 ## Context
 
 The WMS receiving/shipping editors (`NovoCentroExpedicao`, `NovoCentroRec` in the
