@@ -34,8 +34,7 @@ import java.util.function.Function;
  *   <li>{@code retryCount} is the number of attempts in total (always &gt;= 1), not retries after
  *       the first; only TRANSIENT, TIMEOUT and RATE_LIMIT failures are retried, after a constant
  *       {@code retryDelayMs} (the flow engine's effective backoff when no host override is set);</li>
- *   <li>{@code timeoutMs} is one deadline for the whole call including retries; 0 means unset and
- *       resolves to {@link CapabilityExecutionPolicy#DEFAULT_TIMEOUT_MS};</li>
+ *   <li>{@code timeoutMs} is one deadline for the whole call including retries;</li>
  *   <li>the circuit is keyed {@code (tenant, capability, operation)} exactly like a flow's, so a
  *       flow and a procedure calling the same operation trip and share ONE breaker; the same
  *       failure kinds count against it, a success resets it.</li>
@@ -43,10 +42,13 @@ import java.util.function.Function;
  *
  * <p>Out of scope: the bulkhead (it stays flow-only) and idempotency-key caching.</p>
  *
- * <p>The deadline only needs a worker thread when the delegate says the target is not already
- * bounded ({@link CapabilityDispatcher#requiresBoundedAsyncDispatch}); otherwise the call stays on
- * the caller's thread, as in KernelRunner, so thread-bound state such as an ambient transaction is
- * not lost.</p>
+ * <p>A deadline needs a worker thread, and a worker thread leaves the caller's ambient transaction
+ * behind -- which a procedure or an orchestration action may be running inside. So the call only
+ * hops threads when the operation DECLARES a {@code timeoutMs} and the delegate says its target is
+ * not already bounded ({@link CapabilityDispatcher#requiresBoundedAsyncDispatch}); an undeclared
+ * deadline keeps the call on the caller's thread (retry and circuit still apply), exactly as such
+ * calls behaved before this decorator existed. Unlike a flow step there is no 10-minute backstop
+ * here for that reason.</p>
  */
 public final class PolicyEnforcingCapabilityDispatcher implements CapabilityDispatcher {
 
@@ -85,7 +87,7 @@ public final class PolicyEnforcingCapabilityDispatcher implements CapabilityDisp
         if (policy == null) {
             policy = CapabilityExecutionPolicy.defaults();
         }
-        long timeoutMs = policy.timeoutMs() > 0 ? policy.timeoutMs() : CapabilityExecutionPolicy.DEFAULT_TIMEOUT_MS;
+        long timeoutMs = policy.timeoutMs();   // 0 = no declared deadline: stay on the caller's thread
         int maxAttempts = Math.max(1, policy.retryCount());
         int openAfterFailures = policy.circuitOpenAfterFailures() > 0
                 ? policy.circuitOpenAfterFailures() : CIRCUIT_FAILURE_THRESHOLD;
@@ -104,8 +106,8 @@ public final class PolicyEnforcingCapabilityDispatcher implements CapabilityDisp
         long startedAt = System.currentTimeMillis();
         CapabilityResult last = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            long remaining = timeoutMs - (System.currentTimeMillis() - startedAt);
-            if (remaining <= 0) {
+            long remaining = timeoutMs > 0 ? timeoutMs - (System.currentTimeMillis() - startedAt) : 0;
+            if (timeoutMs > 0 && remaining <= 0) {
                 last = timeoutResult(call, attempt, timeoutMs);
                 break;
             }
@@ -176,7 +178,7 @@ public final class PolicyEnforcingCapabilityDispatcher implements CapabilityDisp
 
     private CapabilityResult invokeOnce(
             CapabilityCall call, Map<String, Object> contextState, long remainingMs, long timeoutMs, int attempt) {
-        if (!delegate.requiresBoundedAsyncDispatch(call)) {
+        if (timeoutMs <= 0 || !delegate.requiresBoundedAsyncDispatch(call)) {
             return invokeSafely(call, contextState);
         }
         CompletableFuture<CapabilityResult> future =
