@@ -7878,6 +7878,7 @@ def _eval_run_one_scenario(
         "kind": manifest.get("kind"),
         "expectedOutcome": manifest.get("expectedOutcome"),
         "expectedFailureStage": manifest.get("expectedFailureStage"),
+        "expectedErrorCode": manifest.get("expectedErrorCode"),
         "iterations": 1,
         "tokens": None,
     }
@@ -7894,6 +7895,8 @@ def _eval_run_one_scenario(
             if entry is None:
                 raise CliError(f"scenario {scenario_id!r} missing from its own schema validation report")
             verdict, first_error = _eval_verdict_from_schema_entry(entry)
+            # AIC-1: which policy rule rejected the model (None when the scenario did not fail at ai-model-schema).
+            base["actualDiagnosticCode"] = entry.get("actualDiagnosticCode")
             base["detailReportPath"] = str(scenario_out / "ai-schema-validation-report.json")
     except (CliError, subprocess.TimeoutExpired) as exc:
         verdict, first_error = "FAIL", str(exc)

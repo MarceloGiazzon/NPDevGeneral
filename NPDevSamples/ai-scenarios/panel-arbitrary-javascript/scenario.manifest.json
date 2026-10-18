@@ -4,6 +4,7 @@
   "kind": "negative",
   "expectedOutcome": "fail",
   "expectedFailureStage": "ai-model-schema",
+  "expectedErrorCode": "AI_MODEL_FIELD_UNCLASSIFIED",
   "files": {
     "aiModel": "ai-model.json"
   }

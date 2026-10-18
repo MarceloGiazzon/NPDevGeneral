@@ -46,6 +46,41 @@ class EvalStageRoutingTest(unittest.TestCase):
         self.assertEqual("PASS", report["scenarios"][0]["verdict"])
         self.assertIsNone(report["scenarios"][0]["firstError"])
 
+    def test_negative_scenario_reports_the_diagnostic_code_it_expected_and_got(self):
+        # AIC-1: the schema-validation report carries the policy code that rejected the model.
+        manifest = {"kind": "negative", "expectedOutcome": "fail", "expectedFailureStage": "ai-model-schema",
+                    "expectedErrorCode": "ROLE_TENANT_BYPASS_REJECTED"}
+        schema_report = {"scenarios": [{"scenarioId": "role-tenant-bypass", "status": "passed", "failures": [],
+                                        "expectedErrorCode": "ROLE_TENANT_BYPASS_REJECTED",
+                                        "actualDiagnosticCode": "ROLE_TENANT_BYPASS_REJECTED"}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("npdev_cli._ai_build_root", return_value=Path(tmp)), \
+                 patch("npdev_cli._eval_read_manifest", return_value=manifest), \
+                 patch("npdev_cli._eval_run_schema_validation", return_value=schema_report):
+                report = npdev_cli.run_eval(self._run_args(scenario="role-tenant-bypass"))
+
+        scenario = report["scenarios"][0]
+        self.assertEqual("PASS", scenario["verdict"])
+        self.assertEqual("ROLE_TENANT_BYPASS_REJECTED", scenario["expectedErrorCode"])
+        self.assertEqual("ROLE_TENANT_BYPASS_REJECTED", scenario["actualDiagnosticCode"])
+
+    def test_a_wrong_diagnostic_code_fails_the_scenario_with_the_mismatch_as_first_error(self):
+        manifest = {"kind": "negative", "expectedOutcome": "fail", "expectedFailureStage": "ai-model-schema",
+                    "expectedErrorCode": "ROLE_TENANT_BYPASS_REJECTED"}
+        schema_report = {"scenarios": [{"scenarioId": "role-tenant-bypass", "status": "failed",
+                                        "failures": ["expected diagnostic code ROLE_TENANT_BYPASS_REJECTED but got AI_MODEL_SCHEMA_INVALID."],
+                                        "actualDiagnosticCode": "AI_MODEL_SCHEMA_INVALID"}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("npdev_cli._ai_build_root", return_value=Path(tmp)), \
+                 patch("npdev_cli._eval_read_manifest", return_value=manifest), \
+                 patch("npdev_cli._eval_run_schema_validation", return_value=schema_report):
+                report = npdev_cli.run_eval(self._run_args(scenario="role-tenant-bypass"))
+
+        self.assertFalse(report["ok"])
+        self.assertEqual("FAIL", report["scenarios"][0]["verdict"])
+        self.assertIn("expected diagnostic code ROLE_TENANT_BYPASS_REJECTED", report["scenarios"][0]["firstError"])
+        self.assertEqual("AI_MODEL_SCHEMA_INVALID", report["scenarios"][0]["actualDiagnosticCode"])
+
     def test_positive_scenario_always_invokes_the_heavy_beta_gate_path(self):
         manifest = {"kind": "positive", "expectedOutcome": "pass", "expectedFailureStage": ""}
         beta_gate_entry = {"scenarioId": "base-ai-loop", "expectedOutcome": "pass", "status": "passed",

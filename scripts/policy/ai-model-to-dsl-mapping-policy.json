@@ -175,13 +175,22 @@
     { "code": "WORKFLOW_TRANSITION_STATE_UNRESOLVED", "stage": "ai-model-schema", "classification": "rejected" },
     { "code": "WORKFLOW_TRANSITION_ROLE_UNRESOLVED", "stage": "ai-model-schema", "classification": "rejected" },
     { "code": "AI_MODEL_FIELD_UNCLASSIFIED", "stage": "ai-model-schema", "classification": "rejected" },
-    { "code": "AI_SAFETY_PATH_TRAVERSAL", "stage": "ai-model-schema", "classification": "rejected" },
     { "code": "TRUSTED_SOURCE_PATH_UNSAFE", "stage": "ai-model-schema", "classification": "rejected" },
     { "code": "ROLE_TENANT_BYPASS_REJECTED", "stage": "ai-model-schema", "classification": "rejected" },
+    { "code": "AI_MODEL_SCHEMA_INVALID", "stage": "ai-model-schema", "classification": "rejected" },
     { "code": "AI_VERIFICATION_EXTERNAL_URL_REJECTED", "stage": "verification-schema", "classification": "rejected" },
     { "code": "AI_CONFIG_RUNTIME_UNSUPPORTED", "stage": "ai-config-schema", "classification": "rejected" },
     { "code": "SMOKE_VERIFICATION_BEHAVIOR_MISMATCH", "stage": "smoke-verification", "classification": "rejected" }
   ],
+  "schemaFailureDiagnostics": {
+    "_comment": "AIC-1: how run-ai-schema-validation.ps1 turns an ai-model.schema.json failure into one of the rejectionRules codes. An additionalProperties failure on <path>.<property> is looked up in rejectedInstanceFields first, then falls to AI_MODEL_FIELD_UNCLASSIFIED; any other keyword is matched by the first rule below whose keyword and pathRegex (path normalised, array indexes as []) both match; anything unmatched is AI_MODEL_SCHEMA_INVALID.",
+    "unknownPropertyCode": "AI_MODEL_FIELD_UNCLASSIFIED",
+    "fallbackCode": "AI_MODEL_SCHEMA_INVALID",
+    "rules": [
+      { "keyword": "not", "pathRegex": "^roles\\[\\]\\.permissions\\[\\]$", "diagnosticCode": "ROLE_TENANT_BYPASS_REJECTED" },
+      { "keyword": "not", "pathRegex": "\\.implementation\\.entrypoint$", "diagnosticCode": "TRUSTED_SOURCE_PATH_UNSAFE" }
+    ]
+  },
   "normalizerDiagnosticScenarios": [
     { "scenarioId": "panel-unknown-entity", "expectedDiagnosticCode": "PANEL_ENTITY_UNRESOLVED" },
     { "scenarioId": "procedure-unbounded-bulk", "expectedDiagnosticCode": "PROCEDURE_BULK_LIMIT_MISSING" },
@@ -219,7 +228,7 @@
     { "scenarioId": "workflow-invalid-transition", "expectedDiagnosticCode": "WORKFLOW_TRANSITION_STATE_UNRESOLVED", "stage": "ai-model-schema" },
     { "scenarioId": "workflow-no-terminal-state", "expectedDiagnosticCode": "WORKFLOW_TERMINAL_STATE_UNRESOLVED", "stage": "ai-model-schema" },
     { "scenarioId": "unsupported-surface", "expectedDiagnosticCode": "AI_CONFIG_RUNTIME_UNSUPPORTED", "stage": "ai-config-schema" },
-    { "scenarioId": "trusted-source-path-traversal", "expectedDiagnosticCode": "AI_SAFETY_PATH_TRAVERSAL", "stage": "ai-model-schema" },
+    { "scenarioId": "trusted-source-path-traversal", "expectedDiagnosticCode": "TRUSTED_SOURCE_PATH_UNSAFE", "stage": "ai-model-schema" },
     { "scenarioId": "verification-external-curl", "expectedDiagnosticCode": "AI_VERIFICATION_EXTERNAL_URL_REJECTED", "stage": "verification-schema" }
   ],
   "goldenScenarioExamples": [
