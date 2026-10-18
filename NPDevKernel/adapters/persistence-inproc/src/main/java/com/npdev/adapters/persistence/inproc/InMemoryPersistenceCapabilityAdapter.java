@@ -79,6 +79,7 @@ public final class InMemoryPersistenceCapabilityAdapter
             id = UUID.randomUUID().toString();
             idWasGenerated = true;
         }
+        refuseOtherTenantsRecord(conceptKey, record, id);
         // ENG-6: defaults are a CREATE-time concern -- a minted id, or an explicit id with no stored
         // record yet. An update never re-defaults (a partial payload must not reset untouched fields).
         if (idWasGenerated || !recordExists(conceptKey, record, id)) {
@@ -258,6 +259,38 @@ public final class InMemoryPersistenceCapabilityAdapter
             tenant = record.get("tenant_id");
         }
         return tenant == null || String.valueOf(tenant).isBlank() ? "default" : String.valueOf(tenant);
+    }
+
+    /**
+     * TEN-1: the isolated fallback store is keyed on concept + id alone, so a tenant-stamped save of
+     * an id that another tenant already owns would replace that record. Refuse it, with the same code
+     * and no hint of who owns the record, as the Postgres adapter does. (With a ConceptStore the
+     * store itself keys on the tenant.) A record with no tenant marker on either side stays visible
+     * to everyone, as before.
+     */
+    private void refuseOtherTenantsRecord(String conceptKey, Map<String, Object> record, Object id) {
+        if (conceptStore != null) {
+            return;
+        }
+        Map<Object, Map<String, Object>> byId = storeByConcept.get(conceptKey);
+        Map<String, Object> existing = byId == null ? null : byId.get(id);
+        if (existing == null) {
+            return;
+        }
+        String incoming = explicitTenantOf(record);
+        String owner = explicitTenantOf(existing);
+        if (incoming != null && owner != null && !incoming.equals(owner)) {
+            throw new IllegalArgumentException(
+                    "PERSISTENCE_RECORD_NOT_IN_TENANT: record not found for this tenant in " + conceptKey);
+        }
+    }
+
+    private static String explicitTenantOf(Map<String, Object> record) {
+        Object tenant = record.get("tenantId");
+        if (tenant == null) {
+            tenant = record.get("tenant_id");
+        }
+        return tenant == null || String.valueOf(tenant).isBlank() ? null : String.valueOf(tenant);
     }
 
     private boolean recordExists(String conceptKey, Map<String, Object> record, Object id) {

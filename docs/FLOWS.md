@@ -207,6 +207,9 @@ into the 10 real kinds:
    correct as stated, not understated. A `createConcept` that creates a record gets the same defaults
    as the CRUD API (literal and `defaultExpression` defaults, `nextNumber` sequences, lifecycle
    initial state), and an `updateConcept` never re-applies defaults (ENG-6).
+   Both are tenant-checked on existing ids (TEN-1): a flow in one tenant that is handed a record id owned
+   by another tenant fails with `PERSISTENCE_RECORD_NOT_IN_TENANT` ("record not found for this tenant")
+   and leaves that record untouched. Tables without a `tenant_id` column stay unscoped.
 
 ### Worked examples, from real sample models
 
