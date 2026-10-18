@@ -2,7 +2,7 @@
 
 Item 20 adds an executable Postgres proof harness.
 
-The proof requires Docker Desktop / Docker daemon to be running. The proof script now performs a fail-fast Docker preflight and supports `-StartDockerDesktop` to try the common Docker Desktop install paths before running.
+The proof requires Docker Desktop / Docker daemon to be running. Locally the script SKIPS by default (`scripts/policy/local-test-profile.json` disables postgres) unless `CI=true` or `-Force` is passed. The proof script now performs a fail-fast Docker preflight and supports `-StartDockerDesktop` to try the common Docker Desktop install paths before running.
 
 The proof starts a temporary real Postgres container and executes transactional SQL covering:
 

@@ -64,8 +64,8 @@ Because the value is an ordinary column, it sorts, filters and pages like any ot
   rollup field works, because the child's own rollup is written before its parent is recounted.
 - No `where` filter yet (e.g. "count only PUBLISHED children"). Use a query with a `where` for
   that view today.
-- Rows that existed before the rollup was declared are counted on the next write that touches
-  the parent or one of its children, not at boot.
+- Rows that existed before the rollup was declared are recomputed at boot: `RollupBackfillRunner` calls
+  `RollupConceptStoreDecorator.backfill(tenantId)` for `default` and every `npdev_tenant` row.
 - Like a `derivedExpression` field, a rollup field still appears as an input in generated forms.
   The platform overwrites whatever is submitted. The typed `PUT`/`POST` response still echoes the
   submitted value; the next read returns the real one.

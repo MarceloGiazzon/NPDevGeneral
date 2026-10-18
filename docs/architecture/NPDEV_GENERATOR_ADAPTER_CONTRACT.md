@@ -8,6 +8,12 @@ Phase 10 is a contract phase. It defines adapter responsibilities, inputs, outpu
 
 The contract exists to let NPDev move from advisory proof toward product architecture while preserving existing generator stability and protected custom code.
 
+> **Status, 2026-10-17: contract only; nothing here is produced or consumed.** There is no `examples/` directory, nothing writes
+> `build/box-object/*` or `build/box-object/generator-adapter`, the three `scripts/reports/out/*-report.json` inputs have no producer script
+> (`producerScripts: []` in `doc-entrypoint-classification-policy.json`), and the `boxObjectAdapter` config key does not exist. The only
+> related shape is `schemas/ai/generator-adapter-contract.schema.json` (top-level `mode` and `enabledByDefault`, per-adapter
+> `kind` / `enabled` / `mode`), which no code references.
+
 ## Scope
 
 This contract covers how a future generator adapter consumes:
