@@ -281,6 +281,11 @@ Pigmentampa + WmsOffice), but both are marked `generated-equivalent` — the cla
 judgment is that AutoPanel Detail / generated login already cover this shape, so they are not
 candidates by the rule's own "hand-written" precondition.
 
+> **Superseded 2026-10-18.** The owner overrode this recurrence gate and ordered the F6 coverage items built in full: the
+> operator console shipped as `layout.type: "console"` (with the dashboard as `"dashboard"`), both made of declarative
+> `layout.widgets[]`; see `docs/UI_CONTRACT.md` ("Console and dashboard layouts"). The reasoning below is kept as the
+> record of why the gate existed.
+
 **The honest reading, not a forced "yes":** `operator-console` is real, concentrated, unmet need —
 the plurality class in NPDev's one substantial hand-authored app, and the class the plan's own
 prose (correctly, if imprecisely on the count) singled out. But it is **one real second app away**
