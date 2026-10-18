@@ -1,10 +1,11 @@
 id: OWN-3
-title: Frontend coverage roadmap F6 (layoutSlot, operator console, dashboard, 3rd nesting level, client-side CEL) -- gated, build nothing until a class recurs
+title: Frontend coverage roadmap F6 (layoutSlot, operator console, dashboard, 3rd nesting level, client-side CEL) -- built in full on the owner's order, 2026-10-18
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-10-17
-closed: null
+closed: 2026-10-18
+verification: VERIFIED_LIVE
 source: >-
   Part 6 of the archived docs/archive/FRONTEND_STRATEGY_PLAN.md (and NEXT_EXECUTION_PLAN.md P4.6),
   moved here by product-readiness task DOC-1 so archiving the plan loses nothing open.
@@ -17,4 +18,19 @@ detail: |
   WmsOffice); F6-3 dashboard primitive (>=2 apps need charts); F6-4 third nesting level (a real
   app needs it -- WmsOffice does not); F6-5 client-side CEL evaluator (recompute: proves too slow).
 resolution: >-
-  Not scheduled. Reopen a sub-item only when its trigger fires.
+  2026-10-18: the owner overrode the recurrence gate and ordered all five built and fully supported, with one growing
+  demo app. Shipped as: F6-1 layoutSlot = panels[].layout.slots[] (680ddccc); F6-2 operator console and F6-3 dashboard =
+  layout.type console|dashboard with declarative layout.widgets[] -- tile, chart (bar/line/donut, inline SVG), actions,
+  history, table (c03d7927); F6-4 third nesting level = section -> band -> sub-band in the aggregate workbench, with a
+  validation warning past three levels (5e785f08); F6-5 client-side expression engine = npdev-expr.js, pinned to the
+  server ComputedExpression by one shared fixture, driving transaction.computed[].collection live per-row columns and
+  full-language client derivedFields (7bc0731d). Demo and proof: NPDevSamples/f6-showcase, five browser routines, one
+  command (e5626782). The "operator console" taxonomy decision in docs/SCREEN_TAXONOMY.md is superseded by this order.
+guard:
+  kind: script
+  ref: scripts/quality/run-f6-showcase.ps1
+  asserts: >-
+    generates f6-showcase into the Build root, boots it on a freshly wiped database and drives the five browser
+    routines (layoutSlot, dashboard, live computed columns + derived values, third nesting level, operator console)
+    against the real server, all green
+  provenRed: false
