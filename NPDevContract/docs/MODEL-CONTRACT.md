@@ -4,16 +4,16 @@ The model contract describes business concepts authored by the NPDev user.
 
 A model should define neutral platform structure: namespace, version, concepts, fields, invariants, flows, orchestration metadata, plugin needs, and UI metadata.
 
-`concepts` is the canonical write format. The legacy top-level `entities` key is accepted only as a read-compatible import alias for immediately previous stable inputs.
+`concepts` is the canonical write format. The legacy top-level `entities` key is no longer accepted in authoring: `JsonModelParser` rejects it with `LEGACY_ENTITIES_ROOT` ("Root 'entities' is no longer supported") and points at `npdev migrate legacy-model`. Only the compiled-model JSON reader still reads `entities`.
 
 A model should not require NPDev core code to know domain vocabulary from a generated app. Those words belong in model files, generated artifacts, examples, samples, or tests.
 
-Canonical schema path: schemas/authoring/model.schema.json. This file is kept byte-identical
-to `schemas/model.schema.json`, `dsl/resources/Schemas/model.schema.json`, and the classpath
+Canonical schema path: schemas/authoring/model.schema.json. This file is kept semantically identical
+to `schemas/model.schema.json`, `dsl/resources/Schemas/model.schema.json` (which carries extra `canonicalSchema` and `deprecated` keys), and the classpath
 copy at `dsl/src/main/resources/schema/model.schema.json` (different consumers resolve the
 schema from different relative roots, so one logical schema exists as four physical files).
 `StructuralSchemaAssetConformanceTest` (in `NPDevContract/dsl`) asserts all four stay aligned —
-run it after any schema edit; it is the only thing that catches drift between copies.
+run it after any schema edit. `scripts/quality/check-schema-mirror-consistency.py` also checks the four copies.
 
 ## Split model files
 
@@ -48,7 +48,7 @@ is authored as `type: "reference"` with `reference.target`; `reference.via` sele
 target anchor and defaults to `id`; `reference.onDelete` is `restrict`, `cascade`, or
 `nullify` and defaults to `restrict`.
 
-Anchors are target fields that are either the id field, `connectable: "anchor"`, or unique.
+Anchors are target fields that are either the id field, or both unique **and** marked `connectable: "anchor"` (a field that is only unique is not an anchor, and a `via` targeting it is rejected).
 Natural-key anchors such as `skuId` are valid and drive the generated Java/SQL type of the
 source field. Bonds remain loose typed ID/value columns; generated code does not use JPA
 relation objects.
@@ -63,14 +63,12 @@ when a higher-truth concept points to a lower-truth concept. A separate, opt-in 
 bond closure is below a requested truth level, and require evidence for T4+. It is reachable via
 `ModelValidatorMain`'s `--releaseGate --targetTruthLevel=<T0..T6> [--evidencePath=<path>]...`
 flags (R81, ledger/items/REG-81.yml); an author who never passes those flags sees no release-gate
-diagnostics from a direct `ModelValidatorMain`/`npdev validate model` call. As of Move 8 (item G3,
-docs/MOVE8_CLOSE_TABLE_SPEC.md), `scripts\quality\run-generator-gate.ps1` DOES run it automatically
+diagnostics from a direct `ModelValidatorMain`/`npdev validate model` call. As of Move 8 (item G3), `scripts\quality\run-generator-gate.ps1` DOES run it automatically
 -- one fixed check, `--targetTruthLevel=T2` against `NPDevSamples\dsl-conformance-max\Input\
 model.json` (the `releaseGateT2` step/report section) -- so that one corpus model's T2 promotion
 is checked on every generator-gate run. `GeneratorMain` itself still never invokes it, and no other
-model in the corpus is checked this way yet (REG-85, ledger/items/REG-85.yml: dsl-conformance-max
-itself currently fails this exact check -- 7 concepts stuck at T1 -- left open deliberately rather
-than lowering the bar to force a pass).
+model in the corpus is checked this way yet (REG-85, ledger/items/REG-85.yml, DONE: dsl-conformance-max failed this exact check
+with 7 concepts stuck at T1 until they were promoted; its concepts now declare `truthLevel: "T2"`).
 
 Before enabling generated FK constraints against existing data, run a bond inspection or
 equivalent precheck and clean dangling source values. The CLI command is:

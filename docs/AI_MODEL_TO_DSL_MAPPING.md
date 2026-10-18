@@ -12,6 +12,7 @@ Only `schemaVersion: "ai-model.v1"` is accepted. The normalizer rejects any othe
 | --- | --- | --- |
 | `schemaVersion` | diagnostic-only | Version gate for the normalizer; not emitted into official model DSL. |
 | `app` | mapped | Official namespace/config naming metadata. |
+| `enums` | mapped | Named enum declarations. |
 | `entities` | mapped | `concepts`, concept fields, invariants, tenant id fields, and created events. |
 | `flows` | mapped | Official `flows` with persistence/event steps. |
 | `panels` | mapped | Official `panels` and panel sidecar contract. |
@@ -34,6 +35,7 @@ Only `schemaVersion: "ai-model.v1"` is accepted. The normalizer rejects any othe
 | `date` | `date` |
 | `datetime` | `datetime` |
 | `uuid` | `uuid` |
+| `enum` | passed through as `enum`, with `enumValues` emitted. |
 
 ## Rejection Rules
 
@@ -50,17 +52,17 @@ The active contract rejects unsupported or incoherent AI model input before offi
 | Unresolved panel role/entity/procedure/workflow | `PANEL_ROLE_UNRESOLVED`, `PANEL_ENTITY_UNRESOLVED`, `PANEL_PROCEDURE_UNRESOLVED`, `PANEL_WORKFLOW_UNRESOLVED` |
 | Unresolved procedure role/entity or unsafe bulk limit | `PROCEDURE_ROLE_UNRESOLVED`, `PROCEDURE_ENTITY_UNRESOLVED`, `PROCEDURE_BULK_LIMIT_MISSING` |
 | Unresolved workflow entity/state/role | `WORKFLOW_ENTITY_UNRESOLVED`, `WORKFLOW_START_STATE_UNRESOLVED`, `WORKFLOW_TERMINAL_STATE_UNRESOLVED`, `WORKFLOW_TRANSITION_STATE_UNRESOLVED`, `WORKFLOW_TRANSITION_ROLE_UNRESOLVED` |
-| Schema-level unknown or unsafe field shape | `AI_MODEL_FIELD_UNCLASSIFIED`, `TRUSTED_SOURCE_PATH_UNSAFE`, `ROLE_TENANT_BYPASS_REJECTED` |
+| Schema-level unknown or unsafe field shape | rejected by the AI schema validation as a generic schema failure. The codes `AI_MODEL_FIELD_UNCLASSIFIED`, `TRUSTED_SOURCE_PATH_UNSAFE` and `ROLE_TENANT_BYPASS_REJECTED` are listed in `scripts/policy/ai-model-to-dsl-mapping-policy.json` `rejectionRules` but no code emits them today |
 
 ## Golden Examples
 
-`NPDevSamples/ai-scenarios/base-ai-loop/ai-model.json` proves the simple entity and flow path: `User` maps to an official concept and `CreateUser` maps to an official flow.
+`NPDevSamples/ai-scenarios/base-ai-loop/ai-model.json` proves the simple entity and flow path: `Learner` maps to an official concept and `CreateLearner` maps to an official flow.
 
 `NPDevSamples/ai-scenarios/tenant-workflow-ops/ai-model.json` proves expanded mapping: tenant-scoped `Ticket`, `CreateTicket`, the workflow panel, `advance-ticket`, roles, auth, tenancy, and lifecycle metadata all map to official DSL artifacts.
 
 Negative scenarios stay in the contract as rejection examples. For example, `panel-unknown-entity` documents `PANEL_ENTITY_UNRESOLVED`, `procedure-unbounded-bulk` documents `PROCEDURE_BULK_LIMIT_MISSING`, and `workflow-invalid-transition` documents `WORKFLOW_TRANSITION_STATE_UNRESOLVED`.
 
-CP3 reconciles scenario scope without adding new product support. Trusted-source scenarios are deferred under `NPDevSamples/ai-scenarios/deferred/trusted-source/` and excluded from active mapping coverage. CP12 keeps trusted-source and custom procedures outside the active minimal support boundary, but admits bounded declarative custom panel metadata through the normal panel contract. Unsupported custom procedure kinds remain clean kind rejections with `AI_MODEL_KIND_UNSUPPORTED`.
+CP3 reconciles scenario scope without adding new product support. The former `deferred/` tree was deleted on 2026-08-21: `create-users-panel-procedure` and `trusted-source-path-traversal` are ordinary top-level scenarios now. CP12 keeps trusted-source and custom procedures outside the active minimal support boundary, but admits bounded declarative custom panel metadata through the normal panel contract. Unsupported custom procedure kinds remain clean kind rejections with `AI_MODEL_KIND_UNSUPPORTED`.
 
 ## What This Does Not Solve
 

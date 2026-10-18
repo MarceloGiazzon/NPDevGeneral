@@ -14,10 +14,13 @@ Required fields:
 
 Optional fields: `requiredRole`, `tenantScoped`, `metadata`, `validationHints`, `widgets`, `implementation`.
 
-Supported layout types (the DSL's `panelLayout.type` enum):
+Supported layout types (`layout.type` in `schemas/ai/custom-panel.schema.json`; anything else, including `grid`, is rejected):
 
 - `table`
-- `grid`
+- `detail`
+- `form`
+- `summary`
+- `workflowTask`
 
 Supported widget types:
 
