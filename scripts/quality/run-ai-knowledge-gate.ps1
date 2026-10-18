@@ -360,6 +360,14 @@ try {
     # cannot see (declarations live in pack.json, or in probe apps its corpus roots exclude). Was an
     # orphaned script -- written for PACK-8/PACK-10 close-out but never wired into any gate, which
     # run-script-inventory-check.ps1 (Move 11 W2/O4) flags for every check-*.py.
+    # F6-5: the browser expression engine (npdev-expr.js) and the server engine replay ONE shared fixture.
+    # Skips cleanly without node locally; CI=true makes a missing node a failure.
+    Write-Host "Checking the browser expression engine agrees with the server engine on the shared fixture..."
+    & $py "scripts/quality/check-client-expr-parity.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "the browser expression engine disagrees with the shared fixture: see scripts/quality/check-client-expr-parity.py output above -- fix npdev-expr.js.mustache to match ComputedExpression, or correct the fixture (NPDevContract/dsl/src/test/resources/expr-parity.json) and the Java engine together"
+    }
+
     Write-Host "Checking pack-composition surfaces (packs.from / satelliteOf / pack.extends) have corpus coverage..."
     & $py "scripts/quality/check-pack-coverage.py" "--probes" "--strict"
     if ($LASTEXITCODE -ne 0) {

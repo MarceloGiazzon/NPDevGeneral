@@ -56,6 +56,12 @@
       "hostedIn": "scripts/quality/run-weekly-paperwork-checks.ps1",
       "movedToWeekly": true
     },
+    "check-client-expr-parity.py": {
+      "classification": "product",
+      "reason": "Proves the browser expression engine (npdev-expr.js) matches the server ComputedExpression on a shared fixture -- a runtime-correctness guard for live computed columns, not documentation.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
     "check-dsl-conformance-generates.py": {
       "classification": "product",
       "reason": "Proves a DSL feature survives actual code GENERATION, not just parsing -- the emit-side twin of check-dsl-coverage.py.",

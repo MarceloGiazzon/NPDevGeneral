@@ -313,6 +313,9 @@
     "scripts/quality/check-done-item-guards.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-client-expr-parity.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-dsl-conformance-generates.py": {
       "invocation": "ci-gate"
     },

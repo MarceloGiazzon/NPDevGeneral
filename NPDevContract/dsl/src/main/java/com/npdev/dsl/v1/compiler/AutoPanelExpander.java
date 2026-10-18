@@ -181,6 +181,21 @@ final class AutoPanelExpander {
         for (CompiledAggregateCollection collection : aggregate.collections()) {
             sections.add(sectionDescriptor(collection, fieldsByConcept, bandPickers, visibleWhen, regions));
         }
+        // F6-5: computed[] entries naming a collection become live per-row columns on that section/band/sub-band.
+        Map<String, List<Map<String, Object>>> computedByAddress = new LinkedHashMap<>();
+        if (autoPanel.transaction() != null) {
+            for (CompiledAutoPanelComputed computed : autoPanel.transaction().computed()) {
+                if (computed.collection() != null && !computed.collection().isBlank()) {
+                    Map<String, Object> entry = new LinkedHashMap<>();
+                    entry.put("col", computed.col());
+                    entry.put("expr", computed.expr());
+                    computedByAddress.computeIfAbsent(computed.collection().trim(), key -> new ArrayList<>()).add(entry);
+                }
+            }
+        }
+        if (!computedByAddress.isEmpty()) {
+            attachComputedColumns(sections, null, computedByAddress);
+        }
         workbench.put("sections", sections);
         // Lifecycle gating (ADR-0005 / P5): the root concept's declared state machine drives the
         // status chip + per-state editability in the client.
@@ -419,6 +434,25 @@ final class AutoPanelExpander {
             out.add(subBand);
         }
         return out;
+    }
+
+    /** F6-5: walks section -> band -> sub-band descriptors, adding {@code computed} where an address has columns. */
+    @SuppressWarnings("unchecked")
+    private static void attachComputedColumns(
+            List<Map<String, Object>> nodes, String parentAddress, Map<String, List<Map<String, Object>>> byAddress) {
+        for (Map<String, Object> node : nodes) {
+            String address = parentAddress == null
+                    ? String.valueOf(node.get("collection"))
+                    : parentAddress + "." + node.get("collection");
+            List<Map<String, Object>> computed = byAddress.get(address);
+            if (computed != null) {
+                node.put("computed", computed);
+            }
+            Object children = node.get("bands");
+            if (children instanceof List<?> list) {
+                attachComputedColumns((List<Map<String, Object>>) list, address, byAddress);
+            }
+        }
     }
 
     private static Map<String, Object> sectionDescriptor(

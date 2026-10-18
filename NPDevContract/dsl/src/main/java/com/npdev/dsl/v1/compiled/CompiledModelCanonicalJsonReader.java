@@ -505,7 +505,7 @@ public final class CompiledModelCanonicalJsonReader {
         JsonNode computedNode = node.get("computed");
         if (computedNode != null && computedNode.isArray()) {
             for (JsonNode c : computedNode) {
-                computed.add(new CompiledAutoPanelComputed(optionalText(c, "col"), optionalText(c, "expr")));
+                computed.add(new CompiledAutoPanelComputed(optionalText(c, "col"), optionalText(c, "expr"), optionalText(c, "collection")));
             }
         }
         return new CompiledAutoPanelSurface(

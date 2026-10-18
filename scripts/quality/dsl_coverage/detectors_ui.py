@@ -220,6 +220,27 @@ def _has_aggregate_depth(model: dict, depth: int) -> bool:
                for a in model.get("aggregates") or [] if isinstance(a, dict))
 
 
+def _has_computed_collection(model: dict) -> bool:
+    # F6-5: an aggregate transaction's computed[] entry that names a collection -- a live per-row browser column.
+    for panel in model.get("autoPanels") or []:
+        transaction = panel.get("transaction") if isinstance(panel, dict) else None
+        for entry in (transaction or {}).get("computed") or []:
+            if isinstance(entry, dict) and entry.get("collection"):
+                return True
+    return False
+
+
+def _has_derived_expression(model: dict) -> bool:
+    # F6-5: a client-tier derivedFields entry written in the full expression language (no legacy [] path).
+    for panel in model.get("autoPanels") or []:
+        transaction = panel.get("transaction") if isinstance(panel, dict) else None
+        derived = (transaction or {}).get("derivedFields") or {}
+        for entry in (derived.values() if isinstance(derived, dict) else []):
+            if isinstance(entry, dict) and entry.get("expression") and "[]" not in entry["expression"]                     and entry.get("tier", "client") == "client":
+                return True
+    return False
+
+
 def _has_workbench_derived(model: dict) -> bool:
     # Recognizes BOTH the retired transaction.metadata.derived list and its Move 6 Move B typed
     # replacement, transaction.derivedFields (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4) -- the same

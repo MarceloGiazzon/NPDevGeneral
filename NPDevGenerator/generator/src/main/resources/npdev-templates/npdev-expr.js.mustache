@@ -1,0 +1,395 @@
+/*
+ * Emitted as static/npdev-expr.js (BusinessUiEmitter), loaded by the aggregate workbench page.
+ *
+ * F6-5: the browser twin of the platform's server-side expression engine
+ * (NPDevContract/dsl .../expr/ComputedExpression.java). Same grammar, same coercion, same null
+ * semantics, so an expression that validates and evaluates on the server evaluates to the same value
+ * here with no server round trip. The two are pinned to ONE shared fixture
+ * (NPDevContract/dsl/src/test/resources/expr-parity.json): the Java test and
+ * scripts/quality/check-client-expr-parity.py both replay it, so they cannot drift silently.
+ *
+ * Language: number / string ('..' or "..", no escapes) / true / false / null literals, field references
+ * (dotted paths, an optional leading $ such as $root.discount), arithmetic + - * / %, comparison
+ * == != < <= > >=, logical && || !, unary -, parentheses, and function calls name(args) /
+ * receiver.name(args) (a function must be supplied by the caller; none are built in, exactly like the
+ * server's computed columns), with param => body lambdas as call arguments.
+ *
+ * Known, deliberate divergences from the JVM: a number prints with JavaScript's Number formatting
+ * (1e21 is "1e+21", not "1.0E21"), and a string is "numeric" by a JavaScript re-implementation of
+ * Double.parseDouble's grammar (decimal and exponent forms, NaN, Infinity, a trailing d/f/D/F; not hex floats).
+ */
+(function (root) {
+  "use strict";
+
+  function ExpressionError(message) {
+    this.name = "ExpressionError";
+    this.message = message;
+  }
+  ExpressionError.prototype = Object.create(Error.prototype);
+  ExpressionError.prototype.constructor = ExpressionError;
+
+  var LETTER = /\p{L}/u;
+  var DIGIT = /\p{Nd}/u;
+  function isLetter(c) { return LETTER.test(c); }
+  function isDigit(c) { return DIGIT.test(c); }
+  function isLetterOrDigit(c) { return isLetter(c) || isDigit(c); }
+  function isWhitespace(c) { return /\s/.test(c); }
+
+  // ---- tokenizer (mirrors ComputedExpression#tokenize) ----------------------------------------
+  function tokenize(expr) {
+    var tokens = [];
+    var s = expr == null ? "" : String(expr);
+    var i = 0;
+    var n = s.length;
+    while (i < n) {
+      var c = s.charAt(i);
+      if (isWhitespace(c)) { i++; continue; }
+      if (isDigit(c) || (c === "." && i + 1 < n && isDigit(s.charAt(i + 1)))) {
+        var numStart = i;
+        while (i < n && (isDigit(s.charAt(i)) || s.charAt(i) === ".")) { i++; }
+        tokens.push({ type: "NUM", text: s.substring(numStart, i) });
+        continue;
+      }
+      if (c === "'" || c === '"') {
+        var strStart = ++i;
+        while (i < n && s.charAt(i) !== c) { i++; }
+        if (i >= n) { throw new ExpressionError("unterminated string literal"); }
+        tokens.push({ type: "STR", text: s.substring(strStart, i) });
+        i++;
+        continue;
+      }
+      if (c === "$" || isLetter(c) || c === "_") {
+        var idStart = i;
+        if (c === "$") { i++; }
+        while (i < n && (isLetterOrDigit(s.charAt(i)) || s.charAt(i) === "_")) { i++; }
+        while (i < n && s.charAt(i) === "." && i + 1 < n && (isLetter(s.charAt(i + 1)) || s.charAt(i + 1) === "_")) {
+          i++;
+          while (i < n && (isLetterOrDigit(s.charAt(i)) || s.charAt(i) === "_")) { i++; }
+        }
+        tokens.push({ type: "IDENT", text: s.substring(idStart, i) });
+        continue;
+      }
+      var two = i + 1 < n ? s.substring(i, i + 2) : "";
+      if (two === "==" || two === "!=" || two === "<=" || two === ">=" || two === "&&" || two === "||" || two === "=>") {
+        tokens.push({ type: "OP", text: two });
+        i += 2;
+        continue;
+      }
+      if (c === ",") { tokens.push({ type: "COMMA", text: "," }); i++; continue; }
+      if ("+-*/%<>!()".indexOf(c) >= 0) {
+        tokens.push({ type: c === "(" ? "LP" : c === ")" ? "RP" : "OP", text: c });
+        i++;
+        continue;
+      }
+      throw new ExpressionError("unexpected character '" + c + "' in expression");
+    }
+    tokens.push({ type: "EOF", text: "" });
+    return tokens;
+  }
+
+  // ---- coercion (mirrors ComputedExpression's isNumericLike / toNumber / truthy / equalsLoose) --
+  var NUMERIC = /^[+-]?(NaN|Infinity|(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?[fFdD]?)$/;
+
+  function parseNumericLike(text) {
+    var t = String(text).replace(/^[\u0000- ]+|[\u0000- ]+$/g, "");
+    if (!NUMERIC.test(t)) { return null; }
+    var sign = t.charAt(0) === "-" ? -1 : 1;
+    var body = t.replace(/^[+-]/, "");
+    if (body === "NaN") { return NaN; }
+    if (body === "Infinity") { return sign * Infinity; }
+    return sign * parseFloat(body.replace(/[fFdD]$/, ""));
+  }
+
+  function isNumericLike(v) {
+    if (typeof v === "number") { return true; }
+    if (typeof v === "string") { return parseNumericLike(v) !== null; }
+    return false;
+  }
+
+  function toNumber(v) {
+    if (typeof v === "number") { return v; }
+    if (typeof v === "boolean") { return v ? 1 : 0; }
+    if (typeof v === "string") {
+      var parsed = parseNumericLike(v);
+      return parsed === null ? 0 : parsed;
+    }
+    return 0;
+  }
+
+  function norm(v) { return v === undefined ? null : v; }
+
+  function truthy(v) {
+    v = norm(v);
+    if (typeof v === "boolean") { return v; }
+    if (typeof v === "number") { return v !== 0; }
+    if (v === null) { return false; }
+    if (typeof v === "string") { return v.trim().length > 0; }
+    return true;
+  }
+
+  function stringify(v) { v = norm(v); return v === null ? "" : String(v); }
+
+  function equalsLoose(l, r) {
+    l = norm(l); r = norm(r);
+    if (l === null || r === null) { return l === null && r === null; }
+    if (isNumericLike(l) && isNumericLike(r)) { return toNumber(l) === toNumber(r); }
+    return stringify(l) === stringify(r);
+  }
+
+  // ---- AST nodes ---------------------------------------------------------------------------------
+  function Literal(value) { this.value = value; }
+  Literal.prototype.eval = function () { return this.value; };
+  Literal.prototype.looksBoolean = function () { return typeof this.value === "boolean"; };
+  Literal.prototype.collectFields = function () {};
+
+  function Var(name) { this.name = name; }
+  Var.prototype.eval = function (vars) {
+    if (vars === null || vars === undefined) { return null; }
+    if (Object.prototype.hasOwnProperty.call(vars, this.name)) { return norm(vars[this.name]); }
+    if (this.name.indexOf(".") < 0) { return null; }
+    var current = vars;
+    var segments = this.name.split(".");
+    for (var i = 0; i < segments.length; i++) {
+      if (current === null || typeof current !== "object" || Array.isArray(current)) { return null; }
+      current = norm(current[segments[i]]);
+    }
+    return current;
+  };
+  Var.prototype.looksBoolean = function () { return false; };
+  Var.prototype.collectFields = function (out) { out.push(this.name); };
+
+  function Unary(op, operand) { this.op = op; this.operand = operand; }
+  Unary.prototype.eval = function (vars, ctx) {
+    var v = this.operand.eval(vars, ctx);
+    return this.op === "!" ? !truthy(v) : -toNumber(v);
+  };
+  Unary.prototype.looksBoolean = function () { return this.op === "!"; };
+  Unary.prototype.collectFields = function (out) { this.operand.collectFields(out); };
+
+  var BOOLEAN_OPS = { "&&": 1, "||": 1, "==": 1, "!=": 1, "<": 1, "<=": 1, ">": 1, ">=": 1 };
+
+  function Binary(op, left, right) { this.op = op; this.left = left; this.right = right; }
+  Binary.prototype.looksBoolean = function () { return Object.prototype.hasOwnProperty.call(BOOLEAN_OPS, this.op); };
+  Binary.prototype.collectFields = function (out) { this.left.collectFields(out); this.right.collectFields(out); };
+  Binary.prototype.eval = function (vars, ctx) {
+    if (this.op === "&&") { return truthy(this.left.eval(vars, ctx)) && truthy(this.right.eval(vars, ctx)); }
+    if (this.op === "||") { return truthy(this.left.eval(vars, ctx)) || truthy(this.right.eval(vars, ctx)); }
+    var l = this.left.eval(vars, ctx);
+    var r = this.right.eval(vars, ctx);
+    var d;
+    switch (this.op) {
+      case "+":
+        if (isNumericLike(l) && isNumericLike(r)) { return toNumber(l) + toNumber(r); }
+        return stringify(l) + stringify(r);
+      case "-": return toNumber(l) - toNumber(r);
+      case "*": return toNumber(l) * toNumber(r);
+      case "/": d = toNumber(r); return d === 0 ? 0 : toNumber(l) / d;
+      case "%": d = toNumber(r); return d === 0 ? 0 : toNumber(l) % d;
+      case "==": return equalsLoose(l, r);
+      case "!=": return !equalsLoose(l, r);
+      case "<": return toNumber(l) < toNumber(r);
+      case "<=": return toNumber(l) <= toNumber(r);
+      case ">": return toNumber(l) > toNumber(r);
+      case ">=": return toNumber(l) >= toNumber(r);
+      default: throw new ExpressionError("unknown operator: " + this.op);
+    }
+  };
+
+  // name(args...) -- the function must be supplied by the caller (ctx.functions[name]); it receives the
+  // raw argument nodes, a variable scope and a context, like the server's ExprFunction.
+  function Call(name, args) { this.name = name; this.args = args; }
+  Call.prototype.looksBoolean = function () { return true; };
+  Call.prototype.collectFields = function (out) {
+    var skipFrom = this.name === "uniqueBy" ? 1 : this.args.length;
+    for (var i = 0; i < this.args.length; i++) {
+      if (i < skipFrom || i > skipFrom) { this.args[i].collectFields(out); }
+    }
+  };
+  Call.prototype.eval = function (vars, ctx) {
+    var fn = ctx && ctx.functions && Object.prototype.hasOwnProperty.call(ctx.functions, this.name) ? ctx.functions[this.name] : null;
+    if (!fn) { throw new ExpressionError("unknown function: " + this.name); }
+    return fn(this.args, vars, ctx);
+  };
+
+  // param => body: valid only as a call argument; a consuming function calls invokeLambda per item.
+  function Lambda(param, body) { this.param = param; this.body = body; }
+  Lambda.prototype.looksBoolean = function () { return false; };
+  Lambda.prototype.collectFields = function () {};
+  Lambda.prototype.eval = function () {
+    throw new ExpressionError("lambda expression used outside a function-call argument");
+  };
+  Lambda.prototype.invokeLambda = function (item, outerVars, ctx) {
+    var param = this.param;
+    var scope = new Proxy({}, {
+      has: function () { return true; },
+      get: function (target, name) {
+        if (typeof name !== "string") { return undefined; }
+        if (name === param) { return item; }
+        if (name.indexOf(param + ".") === 0) {
+          var current = item;
+          var segments = name.substring(param.length + 1).split(".");
+          for (var i = 0; i < segments.length; i++) {
+            if (current === null || typeof current !== "object" || Array.isArray(current)) { return null; }
+            current = norm(current[segments[i]]);
+          }
+          return current;
+        }
+        return outerVars === null || outerVars === undefined ? null : norm(outerVars[name]);
+      },
+      getOwnPropertyDescriptor: function (target, name) {
+        return { configurable: true, enumerable: true, writable: true, value: undefined };
+      }
+    });
+    return this.body.eval(scope, ctx);
+  };
+
+  // ---- parser (mirrors ComputedExpression#Parser) -------------------------------------------------
+  var DIRECT_FUNCTION_NAMES = { "scope.exists": 1 };
+
+  function Parser(tokens) { this.tokens = tokens; this.pos = 0; }
+  Parser.prototype.peek = function () { return this.tokens[this.pos]; };
+  Parser.prototype.next = function () { return this.tokens[this.pos++]; };
+  Parser.prototype.matchOp = function (op) {
+    var t = this.peek();
+    if (t.type === "OP" && t.text === op) { this.pos++; return true; }
+    return false;
+  };
+  Parser.prototype.expect = function (type) {
+    if (this.peek().type !== type) { throw new ExpressionError("expected " + type + " but found '" + this.peek().text + "'"); }
+    this.pos++;
+  };
+  Parser.prototype.parseAll = function () { var node = this.parseOr(); this.expect("EOF"); return node; };
+  Parser.prototype.parseOr = function () {
+    var left = this.parseAnd();
+    while (this.matchOp("||")) { left = new Binary("||", left, this.parseAnd()); }
+    return left;
+  };
+  Parser.prototype.parseAnd = function () {
+    var left = this.parseEquality();
+    while (this.matchOp("&&")) { left = new Binary("&&", left, this.parseEquality()); }
+    return left;
+  };
+  Parser.prototype.parseBinaryLevel = function (ops, sub) {
+    var left = sub.call(this);
+    for (;;) {
+      var t = this.peek();
+      if (t.type === "OP" && ops.indexOf(t.text) >= 0) {
+        var op = this.next().text;
+        left = new Binary(op, left, sub.call(this));
+      } else {
+        return left;
+      }
+    }
+  };
+  Parser.prototype.parseEquality = function () { return this.parseBinaryLevel(["==", "!="], this.parseRelational); };
+  Parser.prototype.parseRelational = function () { return this.parseBinaryLevel(["<", "<=", ">", ">="], this.parseAdditive); };
+  Parser.prototype.parseAdditive = function () { return this.parseBinaryLevel(["+", "-"], this.parseMultiplicative); };
+  Parser.prototype.parseMultiplicative = function () { return this.parseBinaryLevel(["*", "/", "%"], this.parseUnary); };
+  Parser.prototype.parseUnary = function () {
+    var t = this.peek();
+    if (t.type === "OP" && (t.text === "-" || t.text === "!")) {
+      var op = this.next().text;
+      return new Unary(op, this.parseUnary());
+    }
+    return this.parsePrimary();
+  };
+  Parser.prototype.parsePrimary = function () {
+    var t = this.peek();
+    switch (t.type) {
+      case "NUM":
+        this.next();
+        if (!/^(\d+\.?\d*|\.\d+)$/.test(t.text)) { throw new ExpressionError("invalid number: " + t.text); }
+        return new Literal(parseFloat(t.text));
+      case "STR":
+        this.next();
+        return new Literal(t.text);
+      case "IDENT":
+        this.next();
+        if (this.peek().type === "LP") { return this.parseCallSuffix(t.text); }
+        if (t.text === "true") { return new Literal(true); }
+        if (t.text === "false") { return new Literal(false); }
+        if (t.text === "null") { return new Literal(null); }
+        return new Var(t.text);
+      case "LP":
+        this.next();
+        var inner = this.parseOr();
+        this.expect("RP");
+        return inner;
+      default:
+        throw new ExpressionError("unexpected token '" + t.text + "' in expression");
+    }
+  };
+  Parser.prototype.parseCallSuffix = function (identText) {
+    this.next(); // LP
+    var args = this.parseArgList();
+    this.expect("RP");
+    if (Object.prototype.hasOwnProperty.call(DIRECT_FUNCTION_NAMES, identText)) { return new Call(identText, args); }
+    var lastDot = identText.lastIndexOf(".");
+    if (lastDot < 0) { return new Call(identText, args); }
+    var combined = [new Var(identText.substring(0, lastDot))].concat(args);
+    return new Call(identText.substring(lastDot + 1), combined);
+  };
+  Parser.prototype.parseArgList = function () {
+    var args = [];
+    if (this.peek().type === "RP") { return args; }
+    args.push(this.parseArg());
+    while (this.peek().type === "COMMA") { this.next(); args.push(this.parseArg()); }
+    return args;
+  };
+  Parser.prototype.parseArg = function () {
+    var a = this.peek();
+    var b = this.tokens[this.pos + 1];
+    if (a.type === "IDENT" && b && b.type === "OP" && b.text === "=>") {
+      var param = this.next().text;
+      this.next(); // =>
+      return new Lambda(param, this.parseOr());
+    }
+    return this.parseOr();
+  };
+
+  // ---- public api ---------------------------------------------------------------------------------
+  var cache = Object.create(null);
+
+  function parse(source) {
+    var key = source == null ? "" : String(source);
+    if (cache[key]) { return cache[key]; }
+    var node = new Parser(tokenize(key)).parseAll();
+    cache[key] = node;
+    return node;
+  }
+
+  /** Parse and evaluate. options.functions maps a function name to fn(argNodes, vars, ctx). */
+  function evaluate(source, vars, options) {
+    return norm(parse(source).eval(vars, options || {}));
+  }
+
+  /** Never throws: the value, or {error: message} when the expression cannot be parsed or evaluated. */
+  function tryEvaluate(source, vars, options) {
+    try { return { value: evaluate(source, vars, options) }; }
+    catch (e) { return { error: e && e.message ? e.message : String(e) }; }
+  }
+
+  function referencedFields(source) {
+    var out = [];
+    parse(source).collectFields(out);
+    return out.filter(function (name, i) { return out.indexOf(name) === i; });
+  }
+
+  function isBooleanShaped(source) { return parse(source).looksBoolean(); }
+
+  var api = {
+    ExpressionError: ExpressionError,
+    parse: parse,
+    validate: function (source) { parse(source); },
+    evaluate: evaluate,
+    tryEvaluate: tryEvaluate,
+    referencedFields: referencedFields,
+    isBooleanShaped: isBooleanShaped
+  };
+
+  if (typeof module !== "undefined" && module.exports) { module.exports = api; }
+  if (root) {
+    root.npdev = root.npdev || {};
+    root.npdev.expr = api;
+  }
+})(typeof window !== "undefined" ? window : (typeof globalThis !== "undefined" ? globalThis : this));
