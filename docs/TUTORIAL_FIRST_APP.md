@@ -16,8 +16,8 @@ red before this tutorial could silently go stale.
 
 **Before you start:** produce the DSL reference once with
 `python scripts/docs/generate_dsl_reference.py`. It renders to the external Build root and is
-gitignored, so a fresh clone won't have `docs/DSL_REFERENCE.md` — referenced twice below — until
-you run that command.
+gitignored, so a fresh clone won't have a `DSL_REFERENCE.md` — referenced twice below, and written to
+`<Build root>/docs/DSL_REFERENCE.md` — until you run that command.
 
 ## What you're building
 
@@ -67,12 +67,12 @@ slice through NPDev's concept/capability/flow/event model.
     "name": "SubmitContactMessage",
     "input": { "concept": "ContactMessage", "mode": "create" },
     "steps": [
-      { "name": "validate-contact-message", "type": "enforceInvariants", "scope": "ContactMessage",
+      { "name": "validate-contact-message", "type": "invariantCheck", "scope": "ContactMessage",
         "invariants": ["NameRequired", "EmailRequired", "MessageRequired"] },
-      { "name": "save-message", "type": "capabilityCall", "cap": "persistence", "op": "save",
-        "args": ["$input"], "out": "$saved" },
-      { "name": "send-notification", "type": "capabilityCall", "cap": "notification", "op": "send",
-        "args": ["$saved"], "out": "$delivery" },
+      { "name": "save-message", "type": "capabilityCall", "capability": "persistence", "operation": "save",
+        "args": ["$input"], "output": "$saved" },
+      { "name": "send-notification", "type": "capabilityCall", "capability": "notification", "operation": "send",
+        "args": ["$saved"], "output": "$delivery" },
       { "name": "emit-contact-event", "type": "emitEvent", "event": "ContactMessageReceived", "from": "$saved" },
       { "name": "return-message", "type": "return", "value": "$saved" }
     ]
@@ -81,11 +81,11 @@ slice through NPDev's concept/capability/flow/event model.
 ```
 
 Read it top to bottom: a **concept** is a data shape with fields and invariants (business rules
-that must hold, checked as an `enforceInvariants` flow step or automatically around CRUD). A
+that must hold, checked as an `invariantCheck` flow step or automatically around CRUD). A
 **capability** is a named, adapter-pluggable side effect (`persistence`/`notification` here — see
-`docs/DSL_REFERENCE.md`'s Capability section for the full shape); a **binding** picks which
+the generated `DSL_REFERENCE.md`'s Capability section for the full shape); a **binding** picks which
 concrete adapter backs it (`notification-inproc` here logs instead of sending real email — swap to
-an SMTP adapter, see `docs/EMAIL_NOTIFICATIONS.md`, without touching the flow). A **flow** is an
+an SMTP adapter, see `docs/reference/EMAIL_NOTIFICATIONS.md`, without touching the flow). A **flow** is an
 explicit sequence of steps — this one is the platform's generated `POST` handler for creating a
 `ContactMessage`, made explicit rather than implicit so you can see exactly what happens on
 create: validate, save, notify, emit an event other flows/orchestrations can react to, return.
@@ -188,7 +188,7 @@ full mental model, the exact `renamedFrom` syntax, and a worked example of a 3-c
 - `docs/SCHEMA_EVOLUTION.md` — what happens when you change the model of an app that's already
   deployed and has data: safe in-place changes, destructive-change acknowledgment, how to declare
   a rename.
-- `docs/DSL_REFERENCE.md` — every field/step/capability shape this model used, and the rest the
+- the generated `DSL_REFERENCE.md` (see "Before you start") — every field/step/capability shape this model used, and the rest the
   schema supports (bonds, lifecycle, panels, schedules, compensation...), generated from the
   schema itself.
 - `docs/NPDEV_CONCEPTS_DEEP_DIVE.md` — the conceptual model behind concepts/flows/capabilities.

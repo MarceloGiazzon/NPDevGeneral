@@ -81,7 +81,7 @@ same fact expressed at two heights.
 - AST: `FieldAst.connectable`, `ReferenceSemanticsAst.via` / `.onDelete`
   (additive constructors; existing call sites unchanged).
 - Parser: parses the three keys.
-- `SemanticValidator`: anchor must be unique/id; `via` must resolve to a
+- Validation (now `ConceptValidation` for the anchor rule and `ReferenceValidation` for `via`; `SemanticValidator` only orchestrates): anchor must be unique/id; `via` must resolve to a
   connectable anchor on the target; `onDelete` value validated (schema also
   enforces the enum at parse time).
 - Tests: `BondSemanticsSupportTest` (positive + 2 negative).
@@ -92,16 +92,16 @@ same fact expressed at two heights.
   through the resolver (sanitize/merge) so it survives specialization.
 - Schema: `concept.truthLevel` enum (T0..T6) in all four copies.
 - Parser reads `truthLevel`.
-- **Truth-edge invariant** in `SemanticValidator.validateBondTruthEdge`: a bond
+- **Truth-edge invariant** in `ReferenceValidation.validateBondTruthEdge`: a bond
   whose source concept is *more* true than its target raises a **warning**
   ("no upward truth edges"). It is a warning, not an error, so it never blocks
   creation (truth is restrictive only at release). A release gate can later
   elevate it to a hard error.
 - Tests: `TruthLevelSupportTest` (parse + default, upward warns, downward clean).
 
-**Deferred (own increments):**
+**Deferred at the time (own increments; items 1, 3 and 4 are DONE in the phases below):**
 - **Release-gate elevation** — promote the truth-edge warning to a blocking error
-  inside a release/promotion phase (the validator has no release-gate hook yet).
+  inside a release/promotion phase (done: `ReleaseGateValidator`, `ValidationLayer.RELEASE_GATE`).
 - **Earned vs declared truth** — today `truthLevel` is an authored/claimed level;
   a release gate should verify high levels (Tested/EvidenceBacked) against actual
   evidence rather than trusting the declaration.
@@ -142,7 +142,7 @@ used to be discarded at compile.*
 
 ### Phase 2 — DB schema integrity (DDL / Flyway) — **DONE**
 *Turned the "indexed UUID column" into a real foreign key.*
-- `FlywayEmitter`: N:1/1:1 ports now emit, in a final FK pass after all tables/indexes,
+- `FlywayEmitter` (since deleted; the bond DDL is now `SchemaRealizationEmitter.appendBonds` / `appendBondConstraints`): N:1/1:1 ports emitted, in a final FK pass after all tables/indexes,
   PostgreSQL-safe conditional `DO $$ ... pg_constraint ... END $$;` blocks whose body
   runs `ALTER TABLE child ADD CONSTRAINT fk_<t>_<col> FOREIGN KEY (col)
   REFERENCES target(anchor) ON DELETE <RESTRICT|CASCADE|SET NULL>`. ✅
@@ -152,7 +152,7 @@ used to be discarded at compile.*
   unique port (1:1) → unique FK column via the existing unique-index pass. ✅
 - N:M (`multiple`) skipped (junction is Phase 4); only declared references get FKs (the
   `*Id`-uuid heuristic columns keep their plain index, no FK).
-- **Exit met:** `FlywayEmitterBondsTest` asserts FK shape + anchor-typed column + ON
+- **Exit met** (with the since-deleted `FlywayEmitterBondsTest`, whose coverage moved with the DDL): it asserted FK shape + anchor-typed column + ON
   DELETE + anchor unique index. The packaged-app runtime-proof test boots a real H2 app
   and runs the generated migration, so the FK DDL is proven to execute. Live
   insert-rejection / cascade is the explicit Phase 9 proof.
@@ -174,16 +174,16 @@ used to be discarded at compile.*
   `InvariantViolationException` diagnostics.
 - Scalar bond finders emit as `/api/<source>/by/<field>/{value}` and service
   `listBy<Field>` methods, giving a derived inverse query without storing a reverse edge.
-- **Proof:** `BondJavaEmitterTest`, `FlywayEmitterBondsTest`.
+- **Proof:** `BondJavaEmitterTest` (`FlywayEmitterBondsTest` was deleted with `FlywayEmitter`).
 
 ### Phase 4 — N:M (multiple pointers) + junction synthesis — **DONE**
 *Pure-pointer many-to-many; the link still carries no data.* Depends on Phase 3.
 - The semantic validator now accepts `reference.multiple=true`.
-- `FlywayEmitter` synthesizes deterministic `<source_table>_<port_column>` junction
+- The schema-realization emitter (formerly `FlywayEmitter`) synthesizes deterministic `<source_table>_<port_column>` junction
   tables with typed source/target columns, composite PK, indexes, and real FKs.
 - Generated entity/DTO CRUD omits N:M ports as scalar fields; generated services and
   controllers expose explicit add/remove/list/replace set operations.
-- **Proof:** `BondSemanticsSupportTest`, `BondJavaEmitterTest`, `FlywayEmitterBondsTest`.
+- **Proof:** `BondSemanticsSupportTest`, `BondJavaEmitterTest` (`FlywayEmitterBondsTest` was deleted with `FlywayEmitter`).
 
 ### Phase 5 — Runtime integrity: onUpdate, restrict, inverse — **PARTIAL**
 *Behaviours that aren't pure DDL.* Depends on Phase 2/3.
@@ -209,7 +209,7 @@ used to be discarded at compile.*
 - Semantic graph displays concept truth levels and flags upward truth edges.
 - Metadata reference catalogs include `via`, `onDelete`, anchor field/type, cardinality,
   source/target truth levels, and upward-edge state.
-- **Proof:** `npm test`, `npm run build` in `NPDevEditor/ui-react`.
+- **Proof (historical):** `npm test`, `npm run build` in `NPDevEditor/ui-react`; that module was removed from the repo (2026-08-17), so this proof can no longer run.
 
 ### Phase 8 — Migration, tooling, docs — **DONE**
 *Don't break the verified FinalApps.* Cross-cutting.
@@ -247,7 +247,7 @@ editor (7) layer on after.
 
 ## Notes for the next session
 
-- Pre-existing WIP on branch `beta0-no-false-green-release-hardening`: the
+- (Historical, resolved: the copies are aligned now and `check-schema-mirror-consistency.py` checks them.) Pre-existing WIP on branch `beta0-no-false-green-release-hardening`: the
   classpath schema copy (`dsl/src/main/resources/schema/model.schema.json`) has
   `fragments`/`packs`/`localModelRef`/`packRef` that the canonical copy
   (`dsl/resources/Schemas/model.schema.json`) lacks, so
