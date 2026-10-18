@@ -195,6 +195,45 @@ public class BusinessUiEmitterGuidePageManifestTest {
     }
 
     @Test
+    void donutGadgetReachesTheManifestAndShellRegistersItsRenderer() throws Exception {
+        // VIEW-2: a share-of-total chart; one word for one chart, same name as the panel widget's donut.
+        CompiledModel model = compile("""
+                {
+                  "namespace": "guidepage.donut.demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    { "name": "Order", "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "status", "type": "string" },
+                        { "name": "amount", "type": "decimal" } ] }
+                  ],
+                  "queries": [
+                    { "name": "OrdersByStatus", "concept": "Order",
+                      "groupBy": [ "status" ],
+                      "aggregates": [ { "name": "count", "fn": "count" } ] }
+                  ],
+                  "guidePages": [
+                    { "name": "Default", "default": true, "regions": { "right": { "enabled": true } },
+                      "gadgets": [
+                        { "name": "share", "type": "donut", "title": "Orders by status",
+                          "query": "OrdersByStatus", "x": "status", "y": "count" } ] }
+                  ]
+                }
+                """);
+
+        Path out = Files.createTempDirectory("npdev-guidepage-donut-out-");
+        new BusinessUiEmitter(new TemplateEngine("npdev-templates/"), new GeneratedSourceWriter(out, new RegenerationPolicy()))
+                .emit(model, "ADMIN", new SettingResolver(SettingStore.empty()));
+        String manifest = Files.readString(out.resolve("src/main/resources/static/npdev-business-ui/generated-ui-manifest.json"));
+        assertTrue(manifest.contains("\"type\" : \"donut\""), manifest);
+        String shell = Files.readString(out.resolve("src/main/resources/static/shell.js"));
+        assertTrue(shell.contains("gadgetRenderers[\"donut\"]"), "shell.js must register the donut renderer");
+        assertTrue(shell.contains("function renderDonutGadget("), "shell.js must define the donut renderer");
+        assertTrue(shell.contains("data-chart"), "the donut draws an SVG ring");
+    }
+
+    @Test
     void frameModeMinimalMapsToBuiltinMinimalGuidePage() throws Exception {
         CompiledModel model = compile("""
                 {

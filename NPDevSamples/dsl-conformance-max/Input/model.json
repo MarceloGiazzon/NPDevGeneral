@@ -1491,6 +1491,14 @@
           "type": "page-fragment",
           "title": "How orders work",
           "url": "/npdev-help/widget-order.html"
+        },
+        {
+          "name": "unitsShareByWarehouse",
+          "type": "donut",
+          "title": "Shipped units by warehouse",
+          "query": "ShippedUnitsByWarehouseMonth",
+          "x": "warehouseId",
+          "y": "totalUnits"
         }
       ]
     }

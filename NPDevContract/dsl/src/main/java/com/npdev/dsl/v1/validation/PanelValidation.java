@@ -1392,9 +1392,12 @@ final class PanelValidation {
     /** Move 10 B2 (LC-B2): the chart/KPI gadget types -- bind to a named query, per {@link
      *  #validateGuidePageGadgetQueryBinding}. The pre-existing rail types ({@code recent-items},
      *  {@code context-info}, {@code page-fragment}) need no query and are left untouched. */
-    private static final Set<String> QUERY_BOUND_GADGET_TYPES = Set.of("kpi", "bar", "line", "table");
+    private static final Set<String> QUERY_BOUND_GADGET_TYPES = Set.of("kpi", "bar", "line", "donut", "table");
     /** {@code x}/{@code series} need a categorical axis, so only these two chart shapes require it. */
     private static final Set<String> AXIS_GADGET_TYPES = Set.of("bar", "line");
+    /** VIEW-2: a share-of-total chart. Not an axis chart (no series), but like bar/line it needs one
+     *  categorical {@code x} (the slice label) and one numeric {@code y} (the slice size). */
+    private static final String DONUT_GADGET_TYPE = "donut";
 
     static void validateGuidePages(ModelAst modelAst, List<String> errors) {
         Map<String, QueryAst> queriesByName = new HashMap<>();
@@ -1525,6 +1528,10 @@ final class PanelValidation {
             errors.add(here + ": query " + query.name() + " has no groupBy -- " + gadget.type()
                     + " gadgets need a categorical/bucketed axis");
         }
+        if (DONUT_GADGET_TYPE.equals(type) && query.groupBy().isEmpty()) {
+            errors.add(here + ": query " + query.name() + " has no groupBy -- a donut gadget needs one"
+                    + " categorical field to cut its slices by");
+        }
 
         Set<String> groupByFieldNames = new HashSet<>();
         for (GroupByFieldAst groupByField : query.groupBy()) {
@@ -1546,6 +1553,14 @@ final class PanelValidation {
             if (hasText(gadget.series()) && !groupByFieldNames.contains(normalize(gadget.series()))) {
                 errors.add(here + ": series \"" + gadget.series() + "\" does not name a groupBy field of query "
                         + query.name());
+            }
+        }
+        if (DONUT_GADGET_TYPE.equals(type)) {
+            requireGroupByField(here, "x (the slice label)", gadget.x(), query, groupByFieldNames, errors);
+            requireAggregateOutput(here, "y (the slice size)", gadget.y(), query, aggregateOutputNames, errors);
+            if (hasText(gadget.series())) {
+                errors.add(here + ": a donut gadget has one ring and does not support series; remove series"
+                        + " or use a bar gadget");
             }
         }
         // "table" renders whatever columns the query produces (groupBy fields + aggregate
