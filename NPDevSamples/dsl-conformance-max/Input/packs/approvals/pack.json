@@ -1,0 +1,471 @@
+{
+  "$schema": "../../../../../NPDevContract/schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "approvals",
+  "version": "1.0.0",
+  "namespace": "com.npdev.approvals",
+  "description": "Built-in NPDev approvals pack: anyone with the 'requester' role files an approval request, a person with the 'approver' role decides it from My tasks (approve or reject, with a comment), and the pack records who decided, when and why. The two roles are logical: the importing app binds them to its own role names with provides.roleBindings { \"requester\": ..., \"approver\": ... }, and composition refuses when either is unbound. A resumed flow applies the decision as the person who started it and without that person's roles, so the rules also admit the platform's trusted resume principal (role ADMIN); who filed a request is the starter of its flow execution (My tasks shows it).",
+  "category": "other",
+  "author": "NPDev",
+  "concepts": [
+    {
+      "name": "ApprovalRequest",
+      "ui": {
+        "label": "Approval request"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "maxLength": 200,
+          "ui": {
+            "label": "Title"
+          }
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "maxLength": 2000,
+          "ui": {
+            "label": "Description"
+          }
+        },
+        {
+          "name": "subjectConcept",
+          "type": "string",
+          "required": false,
+          "maxLength": 120,
+          "ui": {
+            "label": "About (concept)"
+          }
+        },
+        {
+          "name": "subjectId",
+          "type": "string",
+          "required": false,
+          "maxLength": 64,
+          "ui": {
+            "label": "About (record id)"
+          }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "required": true,
+          "default": "PENDING",
+          "enumValues": [
+            "PENDING",
+            "APPROVED",
+            "REJECTED",
+            "EXPIRED"
+          ],
+          "ui": {
+            "label": "Status"
+          }
+        },
+        {
+          "name": "decidedBy",
+          "type": "string",
+          "required": false,
+          "maxLength": 120,
+          "ui": {
+            "label": "Decided by"
+          }
+        },
+        {
+          "name": "decisionComment",
+          "type": "string",
+          "required": false,
+          "maxLength": 1000,
+          "ui": {
+            "label": "Decision comment"
+          }
+        }
+      ],
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          {
+            "value": "PENDING",
+            "label": "Pending",
+            "initial": true
+          },
+          {
+            "value": "APPROVED",
+            "label": "Approved",
+            "terminal": true
+          },
+          {
+            "value": "REJECTED",
+            "label": "Rejected",
+            "terminal": true
+          },
+          {
+            "value": "EXPIRED",
+            "label": "Expired",
+            "terminal": true
+          }
+        ],
+        "transitions": [
+          {
+            "from": "PENDING",
+            "to": "APPROVED",
+            "event": "ApprovalDecided",
+            "actionLabel": "Approve"
+          },
+          {
+            "from": "PENDING",
+            "to": "REJECTED",
+            "event": "ApprovalDecided",
+            "actionLabel": "Reject"
+          },
+          {
+            "from": "PENDING",
+            "to": "EXPIRED",
+            "event": "ApprovalExpired"
+          }
+        ]
+      },
+      "indexes": [
+        {
+          "name": "idx_approvals_request_status",
+          "fields": [
+            "status"
+          ]
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('approver')) || $user.roles.contains(role('requester'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('approver')) || $user.roles.contains(role('requester'))"
+      }
+    },
+    {
+      "name": "ApprovalDecision",
+      "ui": {
+        "label": "Approval decision"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "requestId",
+          "type": "reference",
+          "required": true,
+          "ui": {
+            "label": "Request"
+          },
+          "reference": {
+            "target": "ApprovalRequest",
+            "displayField": "title",
+            "onDelete": "cascade"
+          }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "required": true,
+          "enumValues": [
+            "APPROVED",
+            "REJECTED"
+          ],
+          "ui": {
+            "label": "Decision"
+          }
+        },
+        {
+          "name": "completedBy",
+          "type": "string",
+          "required": true,
+          "maxLength": 120,
+          "ui": {
+            "label": "Decided by"
+          }
+        },
+        {
+          "name": "comment",
+          "type": "string",
+          "required": false,
+          "maxLength": 1000,
+          "ui": {
+            "label": "Comment"
+          }
+        },
+        {
+          "name": "decidedAt",
+          "type": "datetime",
+          "required": false,
+          "defaultExpression": "now()",
+          "ui": {
+            "label": "Decided at"
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_approvals_decision_request",
+          "fields": [
+            "requestId"
+          ]
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('approver'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('approver'))"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "ApprovalDecided",
+      "payload": [
+        "requestId",
+        "status",
+        "comment",
+        "completedBy"
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "RequestApproval",
+      "input": {
+        "concept": "ApprovalRequest",
+        "mode": "create"
+      },
+      "steps": [
+        {
+          "name": "save-request",
+          "type": "createConcept",
+          "scope": "ApprovalRequest",
+          "input": "$input",
+          "output": "$saved"
+        },
+        {
+          "name": "await-decision",
+          "type": "awaitEvent",
+          "awaitEvent": "ApprovalDecided",
+          "awaitRef": "decision",
+          "match": {
+            "correlation": false,
+            "payload": {
+              "requestId": "$saved.id"
+            }
+          },
+          "timeout": 1209600,
+          "task": {
+            "title": "Approve: ${saved.title}",
+            "description": "${saved.description}",
+            "assignee": {
+              "roles": [
+                "role('approver')"
+              ]
+            },
+            "outcomeField": "status",
+            "outcomes": [
+              {
+                "value": "APPROVED",
+                "label": "Approve"
+              },
+              {
+                "value": "REJECTED",
+                "label": "Reject"
+              }
+            ],
+            "fields": [
+              {
+                "name": "comment",
+                "type": "text",
+                "label": "Comment",
+                "required": false,
+                "maxLength": 1000
+              }
+            ],
+            "record": "$saved"
+          },
+          "onTimeout": [
+            {
+              "name": "expire-request",
+              "type": "callProcedure",
+              "procedure": "ExpireApprovalRequest",
+              "input": "$saved",
+              "output": "$expired"
+            }
+          ]
+        },
+        {
+          "name": "has-decision",
+          "type": "branch",
+          "condition": "$decision.status",
+          "then": [
+            {
+              "name": "apply-decision",
+              "type": "callProcedure",
+              "procedure": "ApplyApprovalDecision",
+              "input": "$decision",
+              "output": "$applied"
+            }
+          ]
+        },
+        {
+          "name": "return-request",
+          "type": "return",
+          "value": "$saved"
+        }
+      ]
+    }
+  ],
+  "procedures": [
+    {
+      "name": "ApplyApprovalDecision",
+      "description": "A human task answered from My tasks publishes ApprovalDecided {requestId, status, comment, completedBy}; this writes the audit row (who decided, when, why) and moves the request itself to the chosen status, unless it already left PENDING. The decision row takes the request's id, so a request has at most one.",
+      "steps": [
+        {
+          "name": "read-request",
+          "type": "readConcept",
+          "concept": "ApprovalRequest",
+          "id": "$input.requestId",
+          "target": "request"
+        },
+        {
+          "name": "still-pending",
+          "type": "if",
+          "condition": "$request.status == 'PENDING'",
+          "then": [
+            {
+              "name": "log-decision",
+              "type": "patchConcept",
+              "concept": "ApprovalDecision",
+              "id": "$input.requestId",
+              "createIfMissing": true,
+              "set": {
+                "requestId": "$input.requestId",
+                "status": "$input.status",
+                "completedBy": "$input.completedBy",
+                "comment": "$input.comment"
+              },
+              "target": "logged"
+            },
+            {
+              "name": "apply",
+              "type": "patchConcept",
+              "concept": "ApprovalRequest",
+              "id": "$input.requestId",
+              "set": {
+                "status": "$input.status",
+                "decidedBy": "$input.completedBy",
+                "decisionComment": "$input.comment"
+              },
+              "target": "request"
+            }
+          ]
+        },
+        {
+          "name": "return-request",
+          "type": "return",
+          "value": "$request"
+        }
+      ]
+    },
+    {
+      "name": "ExpireApprovalRequest",
+      "description": "The RequestApproval flow's awaitEvent timeout path: a request still PENDING when its 14 days run out moves to EXPIRED.",
+      "steps": [
+        {
+          "name": "read-request",
+          "type": "readConcept",
+          "concept": "ApprovalRequest",
+          "id": "$input.id",
+          "target": "request"
+        },
+        {
+          "name": "still-pending",
+          "type": "if",
+          "condition": "$request.status == 'PENDING'",
+          "then": [
+            {
+              "name": "expire",
+              "type": "patchConcept",
+              "concept": "ApprovalRequest",
+              "id": "$input.id",
+              "set": {
+                "status": "EXPIRED"
+              },
+              "target": "request"
+            }
+          ]
+        },
+        {
+          "name": "return-request",
+          "type": "return",
+          "value": "$request"
+        }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "name": "PendingApprovals",
+      "concept": "ApprovalRequest",
+      "where": "status == 'PENDING'",
+      "orderBy": [
+        "title"
+      ]
+    },
+    {
+      "name": "DecidedApprovals",
+      "concept": "ApprovalRequest",
+      "where": "status != 'PENDING'",
+      "orderBy": [
+        "title"
+      ]
+    }
+  ],
+  "autoPanels": [
+    {
+      "name": "ApprovalRequests",
+      "concept": "ApprovalRequest",
+      "route": "/approvals",
+      "surfaces": [
+        "selection",
+        "detail"
+      ],
+      "selection": {
+        "columns": [
+          "title",
+          "status",
+          "decidedBy"
+        ]
+      }
+    },
+    {
+      "name": "ApprovalDecisions",
+      "concept": "ApprovalDecision",
+      "route": "/approvals/decisions",
+      "surfaces": [
+        "selection",
+        "detail"
+      ],
+      "selection": {
+        "columns": [
+          "requestId",
+          "status",
+          "completedBy",
+          "decidedAt",
+          "comment"
+        ]
+      }
+    }
+  ]
+}

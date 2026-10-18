@@ -1530,7 +1530,8 @@ final class PanelValidation {
         }
         if (DONUT_GADGET_TYPE.equals(type) && query.groupBy().isEmpty()) {
             errors.add(here + ": query " + query.name() + " has no groupBy -- a donut gadget needs one"
-                    + " categorical field to cut its slices by");
+                    + " categorical field to cut its slices by -- suggestedFix: add a groupBy field to query "
+                    + query.name());
         }
 
         Set<String> groupByFieldNames = new HashSet<>();
@@ -1559,8 +1560,8 @@ final class PanelValidation {
             requireGroupByField(here, "x (the slice label)", gadget.x(), query, groupByFieldNames, errors);
             requireAggregateOutput(here, "y (the slice size)", gadget.y(), query, aggregateOutputNames, errors);
             if (hasText(gadget.series())) {
-                errors.add(here + ": a donut gadget has one ring and does not support series; remove series"
-                        + " or use a bar gadget");
+                errors.add(here + ": a donut gadget has one ring and does not support series -- suggestedFix: "
+                        + "remove series, or use a bar gadget");
             }
         }
         // "table" renders whatever columns the query produces (groupBy fields + aggregate

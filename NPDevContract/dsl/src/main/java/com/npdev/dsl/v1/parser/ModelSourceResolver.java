@@ -1311,6 +1311,10 @@ public final class ModelSourceResolver {
             rewriteTextField(object, "capability", resolverFor(rewriteMaps, ambiguousNames, "capabilities"), qualifiedReferenceValidator);
             rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
             rewriteTextField(object, "event", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
+            // PACK-1: an awaitEvent step names the event it parks on in `awaitEvent`, not `event`; without
+            // this a pack that declares an event and awaits it (the approvals pack) kept the bare name
+            // while the event itself was pack-qualified, and validation rejected it as unknown.
+            rewriteTextField(object, "awaitEvent", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
         } else if ("procedures".equals(rootKey)) {
             rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
             if ("actionDescriptor".equals(parentKey)) {
