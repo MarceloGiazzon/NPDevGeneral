@@ -36,7 +36,7 @@ each closed afterward. See §5 for per-phase evidence (commit hashes, file paths
 >   `panelDataSource` and `collapsible` only on `guidePageRegion`.
 > - **No free `panel{}` / `workbench{}` override and no `workbenches[]` key exist.** The per-region override is
 >   `transaction.regions.<addr>.render` (`"component"` or `"cellGrid"`). The `procedureSlot` / `validationSlot` /
->   `computeSlot` / `layoutSlot` keys were never added either; the shipped seams are `transaction.hooks.*`,
+>   `computeSlot` keys were never added either (`layoutSlot` later shipped as `panels[].layout.slots[]`, F6-1); the shipped seams are `transaction.hooks.*`,
 >   `aggregate.onCommit` and `regions`.
 > - **Runtime names:** there is no `AggregateController`; the behaviour is `AggregateRuntime.load/commit/invoke`
 >   (runtimehost-core `service/`) behind `AggregateApiController`. The one-level nesting cap lives in
@@ -380,7 +380,7 @@ refine through P4.
 **Extension slots (L5) & the escape hatch.** Every AutoPanel surface is overridable per region:
 `transaction.regions.<addr>.render: "component"` or `"cellGrid"` — the primary Tier-3 seam (the free
 `panel{}`/`workbench{}` keys first sketched here were never added to the schema). The finer slots sketched here
-(`computeSlot`, `procedureSlot`, `validationSlot`, `layoutSlot`) were not added either; the shipped seams are
+(`computeSlot`, `procedureSlot`, `validationSlot`) were not added either, and `layoutSlot` shipped separately as `panels[].layout.slots[]` (F6-1); the shipped seams are
 `transaction.hooks.*`, `aggregate.onCommit` and `regions`. Promotion rule: a surface override or slot
 filled the same way across ≥2 apps becomes an AutoPanel/generator default.
 

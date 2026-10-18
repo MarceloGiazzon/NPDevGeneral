@@ -2048,6 +2048,84 @@
     return null;
   }
 
+  // F6-1 layoutSlot (ADR-0004 L5): hand-authored regions inside a generated declared panel. The same
+  // global registry the Aggregate Workbench uses (workbench-page.html.mustache) -- an app-owned
+  // web/regions/<name>.js calls window.npdev.regions.register(name, {mount, update, unmount}). A slot
+  // component is handed a NARROWED, frozen api -- the panel's data as a copy, refresh(), and
+  // invoke(actionName, data) through the panel's own declared actions -- never fetch/state/DOM of the
+  // generated page, so a slot edits THROUGH the generated wiring and not around it.
+  window.npdev = window.npdev || {};
+  window.npdev.regions = window.npdev.regions || (function () {
+    const registry = {};
+    return {
+      register: function (name, impl) { registry[name] = impl; },
+      get: function (name) { return registry[name]; }
+    };
+  })();
+  const slotMounts = {};
+  const slotScriptRequests = {};
+
+  // Injects the app-owned <script src="/regions/<name>.js"> once per component and re-renders when it
+  // settles (load OR failure), so the mount below replaces its "not registered" placeholder.
+  function ensureSlotScript(name) {
+    if (slotScriptRequests[name]) { return; }
+    slotScriptRequests[name] = true;
+    const script = document.createElement("script");
+    script.src = "/regions/" + encodeURIComponent(name) + ".js";
+    script.onload = function () { render(); };
+    script.onerror = function () { render(); };
+    document.head.appendChild(script);
+  }
+
+  function slotApi(panelMeta, entry) {
+    return Object.freeze({
+      panel: panelMeta.name,
+      data: JSON.parse(JSON.stringify(entry.data || {})),
+      refresh: function () { return loadDeclaredPanel(panelMeta); },
+      invoke: function (actionName, data) { return executeDeclaredPanelAction(panelMeta, actionName, data || {}); }
+    });
+  }
+
+  // One persistent container per (panel, component): render() rebuilds the whole page, but re-inserting
+  // the SAME element keeps a mounted component's own DOM alive; update() runs on every later render.
+  function mountPanelSlot(panelMeta, entry, slot) {
+    const key = panelMeta.name + "/" + slot.component;
+    let mount = slotMounts[key];
+    if (!mount) {
+      const el = document.createElement("div");
+      el.className = "panel-slot panel-slot-" + slot.placement;
+      mount = { el: el, name: null, body: document.createElement("div") };
+      if (slot.label) {
+        const heading = document.createElement("h3");
+        heading.textContent = slot.label;
+        el.appendChild(heading);
+      }
+      el.appendChild(mount.body);
+      slotMounts[key] = mount;
+    }
+    ensureSlotScript(slot.component);
+    const impl = window.npdev.regions.get(slot.component);
+    if (!impl) {
+      mount.body.innerHTML = "";
+      const note = document.createElement("p");
+      note.className = "sub";
+      note.textContent = 'Component "' + slot.component + '" is not registered — check that web/regions/'
+        + slot.component + '.js loads and calls window.npdev.regions.register.';
+      mount.body.appendChild(note);
+      mount.name = null;
+      return mount.el;
+    }
+    const api = slotApi(panelMeta, entry);
+    if (mount.name !== slot.component) {
+      mount.body.innerHTML = "";
+      if (impl.mount) { impl.mount(mount.body, api); }
+      mount.name = slot.component;
+    } else if (impl.update) {
+      impl.update(api);
+    }
+    return mount.el;
+  }
+
   function renderDeclaredPanel(panelMeta) {
     const section = document.createElement("section");
     section.className = "concept-panel";
@@ -2135,6 +2213,11 @@
     });
 
     const entry = declaredPanelState(panelMeta);
+    // F6-1 layoutSlot: slots only mount once the panel's data has loaded (the component is handed it).
+    const slots = (entry.loaded && entry.layout && Array.isArray(entry.layout.slots)) ? entry.layout.slots : [];
+    slots.forEach(function (slot) {
+      if (slot.placement === "above") { section.appendChild(mountPanelSlot(panelMeta, entry, slot)); }
+    });
     const body = document.createElement("div");
     body.className = "declared-panel-body";
     if (entry.loading) {
@@ -2159,7 +2242,11 @@
         body.appendChild(resultBlock);
       }
     }
-    section.appendChild(body);
+    const replaceSlot = slots.find(function (slot) { return slot.placement === "replace"; });
+    section.appendChild(replaceSlot ? mountPanelSlot(panelMeta, entry, replaceSlot) : body);
+    slots.forEach(function (slot) {
+      if (slot.placement === "below") { section.appendChild(mountPanelSlot(panelMeta, entry, slot)); }
+    });
     return section;
   }
 

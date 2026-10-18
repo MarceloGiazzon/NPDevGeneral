@@ -1,0 +1,33 @@
+{
+  "scenarioName": "f6-layoutslot-ticket-board",
+  "targetPath": "/npdev-business-ui/",
+  "options": {
+    "headless": true,
+    "screenshots": "always",
+    "collectDomOnFailure": true,
+    "viewport": { "width": 1400, "height": 900 }
+  },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "valueFromCredential": "apiKey" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav", "state": "visible", "label": "Auth landed, shell nav rendered" },
+    { "action": "click", "selector": "#sideNav :text(\"Ticket board\")", "label": "Open the Ticket board declared panel" },
+    { "action": "waitForSelector", "selector": ".panel-slot-above .f6-kpis", "state": "visible", "label": "The ABOVE slot component mounted and drew its KPI strip" },
+    { "action": "waitForSelector", "selector": ".panel-slot-below .f6-timeline", "state": "visible", "label": "The BELOW slot component mounted and drew its timeline" },
+    { "action": "assertTextContains", "selector": ".panel-slot-above", "text": "Ticket KPIs", "label": "The slot label heading renders" },
+    { "action": "assertCount", "selector": ".panel-slot-above .f6-kpi[data-kpi=\"Total\"]", "operator": "=", "count": 1, "label": "KPI tile Total exists" },
+    { "action": "assertTextContains", "selector": ".panel-slot-above .f6-kpi[data-kpi=\"Total\"]", "text": "4", "label": "The slot received the panel's live data: 4 seeded tickets" },
+    { "action": "assertTextContains", "selector": ".panel-slot-above .f6-kpi[data-kpi=\"OPEN\"]", "text": "2", "label": "Two tickets are OPEN" },
+    { "action": "assertCount", "selector": ".panel-slot-below .f6-timeline li", "operator": "=", "count": 4, "label": "The timeline lists all four tickets" },
+    { "action": "assertTextContains", "selector": ".panel-slot-below .f6-timeline li:first-child", "text": "VPN drops every hour", "label": "Timeline is ordered by priority, highest first (the slot's own logic)" },
+    { "action": "assertTextContains", "selector": ".declared-panel-body", "text": "Printer on floor 2 is offline", "label": "The generated body is still rendered between the slots" },
+    { "action": "screenshot", "name": "f6_layoutslot_board" },
+    { "action": "click", "selector": ".panel-slot-below .f6-timeline-refresh", "label": "The slot calls api.refresh() through the generated wiring" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertCount", "selector": ".panel-slot-below .f6-timeline li", "operator": "=", "count": 4, "label": "Still four tickets after refresh, and the slot did not double-mount" },
+    { "action": "assertCount", "selector": ".panel-slot-above .f6-kpis", "operator": "=", "count": 1, "label": "Exactly one KPI strip after re-render (persistent container, no duplicate)" },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}

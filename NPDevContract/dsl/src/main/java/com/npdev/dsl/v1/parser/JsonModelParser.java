@@ -2138,11 +2138,32 @@ public final class JsonModelParser {
                 index++;
             }
         }
+        List<PanelSlotAst> slots = new ArrayList<>();
+        JsonNode slotsNode = node.get("slots");
+        if (slotsNode != null && !slotsNode.isNull()) {
+            if (!slotsNode.isArray()) {
+                throw new IOException(fieldPath + ".slots must be an array");
+            }
+            int slotIndex = 0;
+            for (JsonNode slotNode : slotsNode) {
+                String slotPath = fieldPath + ".slots[" + slotIndex + "]";
+                if (!slotNode.isObject()) {
+                    throw new IOException(slotPath + " must be an object");
+                }
+                slots.add(new PanelSlotAst(
+                        requiredText(slotNode, "placement"),
+                        requiredText(slotNode, "component"),
+                        readText(slotNode, "label")
+                ));
+                slotIndex++;
+            }
+        }
         return new PanelLayoutAst(
                 requiredText(node, "type"),
                 children,
                 parseTextArray(node.get("fields")),
-                parseObjectMap(node.get("metadata"))
+                parseObjectMap(node.get("metadata")),
+                slots
         );
     }
 

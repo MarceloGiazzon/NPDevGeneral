@@ -1675,11 +1675,20 @@ public final class CompiledModelCanonicalJsonReader {
                 children.add(child);
             }
         }
+        List<CompiledPanelSlot> slots = new ArrayList<>();
+        for (JsonNode slotNode : array(node, "slots")) {
+            slots.add(new CompiledPanelSlot(
+                    text(slotNode, "placement"),
+                    text(slotNode, "component"),
+                    optionalText(slotNode, "label")
+            ));
+        }
         return new CompiledPanelLayout(
                 text(node, "type"),
                 children,
                 toStringList(node.get("fields")),
-                toObjectMap(node.get("metadata"))
+                toObjectMap(node.get("metadata")),
+                slots
         );
     }
 

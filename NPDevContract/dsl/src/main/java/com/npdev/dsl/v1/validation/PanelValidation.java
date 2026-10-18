@@ -42,6 +42,7 @@ import com.npdev.dsl.v1.compiled.FieldWidgetDefaults;
 import com.npdev.dsl.v1.compiled.GuidePageDefaults;
 import com.npdev.dsl.v1.ast.PanelActionAst;
 import com.npdev.dsl.v1.ast.PanelAst;
+import com.npdev.dsl.v1.ast.PanelSlotAst;
 import com.npdev.dsl.v1.ast.PanelDataSourceAst;
 import com.npdev.dsl.v1.ast.PresentationMetadataAst;
 import com.npdev.dsl.v1.ast.ProcedureAst;
@@ -855,6 +856,42 @@ final class PanelValidation {
         return "(unbound)";
     }
 
+    private static final Set<String> PANEL_SLOT_PLACEMENTS = Set.of("above", "below", "replace");
+    private static final Pattern PANEL_SLOT_COMPONENT = Pattern.compile("^[A-Za-z][A-Za-z0-9_-]*$");
+
+    /**
+     * F6-1 layoutSlot: every slot needs a known placement and a component name that can be a file name
+     * under web/regions/; a component mounts once per panel, and only one slot may replace the body.
+     */
+    private static void validatePanelSlots(PanelAst panel, List<String> errors) {
+        if (panel.layout() == null) {
+            return;
+        }
+        Set<String> seenComponents = new HashSet<>();
+        int replaceCount = 0;
+        for (PanelSlotAst slot : panel.layout().slots()) {
+            String where = "Panel " + panel.name() + " layout.slots";
+            if (!PANEL_SLOT_PLACEMENTS.contains(slot.placement())) {
+                errors.add(where + ": placement '" + slot.placement() + "' must be one of above, below, replace"
+                        + " -- suggestedFix: set placement to above, below or replace");
+            }
+            if (!hasText(slot.component()) || !PANEL_SLOT_COMPONENT.matcher(slot.component()).matches()) {
+                errors.add(where + ": component '" + slot.component() + "' is not a valid component name"
+                        + " -- suggestedFix: use letters, digits, '-' or '_', starting with a letter (it is the file name web/regions/<component>.js)");
+            } else if (!seenComponents.add(slot.component())) {
+                errors.add(where + ": component '" + slot.component() + "' is mounted twice"
+                        + " -- suggestedFix: declare each component once per panel");
+            }
+            if ("replace".equals(slot.placement())) {
+                replaceCount++;
+            }
+        }
+        if (replaceCount > 1) {
+            errors.add("Panel " + panel.name() + " layout.slots: only one slot may use placement 'replace'"
+                    + " -- suggestedFix: keep one replace slot and use above or below for the others");
+        }
+    }
+
     static void validatePanels(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         Set<String> queryNames = modelAst.getQueries().stream()
                 .map(QueryAst::name)
@@ -881,6 +918,7 @@ final class PanelValidation {
             if (hasText(panel.route()) && !panel.route().startsWith("/")) {
                 errors.add("Panel " + panel.name() + ": route must start with '/': " + panel.route());
             }
+            validatePanelSlots(panel, errors);
             for (PanelDataSourceAst dataSource : panel.dataSources()) {
                 if (hasText(dataSource.concept()) && !entitiesByLower.containsKey(normalize(dataSource.concept()))) {
                     errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()

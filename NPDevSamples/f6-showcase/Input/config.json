@@ -1,0 +1,27 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "f6-showcase",
+    "description": "F6 showcase: one small app that demonstrates every frontend coverage feature (layoutSlot, operator console, dashboard, third nesting level, client-side CEL), one section per feature, each backed by a real browser check.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": { "root": "..\\..\\..\\NPDevRuntimeHost", "mergeStrategy": "clean-copy" },
+  "artifact": { "root": "..\\Output\\ArtifactNP", "generatedFolderName": "npdev-generated", "libsFolderName": "libs", "metaFolderName": "npdev-meta" },
+  "finalExec": { "root": "..\\Output\\App", "deleteBeforeMount": true },
+  "database": { "provider": "h2-local", "database": "f6_showcase", "resetMode": "reset" },
+  "runtime": { "springProfile": "dev,trial", "serverPort": 8110, "javaArgs": [], "gradleTask": "bootRun" },
+  "trialDefaults": {
+    "apiKey": "dev-key", "recommendedProfiles": "dev,trial", "runtimeUrl": "http://localhost:8110/",
+    "databaseMode": "h2-local",
+    "notes": ["F6 showcase: grows one feature at a time."]
+  }
+}

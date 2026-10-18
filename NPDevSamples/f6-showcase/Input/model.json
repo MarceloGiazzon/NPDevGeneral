@@ -1,0 +1,64 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.f6showcase",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "F6 showcase: one small app demonstrating every frontend coverage feature, one section per feature."
+  },
+  "concepts": [
+    {
+      "name": "Ticket",
+      "ui": { "label": "Ticket" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "title", "type": "string", "required": true, "ui": { "label": "Title" } },
+        { "name": "status", "type": "string", "required": true, "ui": { "label": "Status" } },
+        { "name": "priority", "type": "integer", "required": true, "ui": { "label": "Priority" } }
+      ],
+      "invariants": [
+        { "name": "TicketTitleRequired", "expr": "title != null && title != ''" }
+      ]
+    }
+  ],
+  "capabilities": [
+    { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById"] }
+  ],
+  "bindings": [
+    { "capability": "persistence", "adapter": "repository" },
+    { "capability": "eventBus", "adapter": "inproc" }
+  ],
+  "seeds": [
+    { "concept": "Ticket", "alias": "t1", "data": { "title": "Printer on floor 2 is offline", "status": "OPEN", "priority": 2 } },
+    { "concept": "Ticket", "alias": "t2", "data": { "title": "New hire laptop request", "status": "OPEN", "priority": 1 } },
+    { "concept": "Ticket", "alias": "t3", "data": { "title": "VPN drops every hour", "status": "IN_PROGRESS", "priority": 3 } },
+    { "concept": "Ticket", "alias": "t4", "data": { "title": "Reset shared mailbox password", "status": "DONE", "priority": 1 } }
+  ],
+  "panels": [
+    {
+      "name": "TicketBoard",
+      "route": "/f6/ticket-board",
+      "title": "Ticket board (layoutSlot)",
+      "layout": {
+        "type": "table",
+        "fields": ["title", "status", "priority"],
+        "slots": [
+          { "placement": "above", "component": "ticket-kpis", "label": "Ticket KPIs" },
+          { "placement": "below", "component": "ticket-timeline", "label": "Ticket timeline" }
+        ]
+      },
+      "dataSources": [
+        { "name": "tickets", "concept": "Ticket" }
+      ],
+      "fieldBindings": [
+        { "field": "title", "source": "tickets.title" },
+        { "field": "status", "source": "tickets.status" },
+        { "field": "priority", "source": "tickets.priority" }
+      ],
+      "explainability": {
+        "governedDataAccess": "ConceptGateway",
+        "ruleProfile": "always"
+      }
+    }
+  ]
+}

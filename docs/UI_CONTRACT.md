@@ -275,6 +275,30 @@ create/display/update/delete flags), not the same catalog, so overlaying one ont
 conflate two unrelated concerns — left as a known, accepted boundary rather than force a shoehorned
 merge. Declared Panels/Store/Box View sections are likewise not covered (no concept to scope by).
 
+## Panel slots — hand-authored regions inside a generated panel (`layout.slots`)
+
+A declared panel (`panels[]`) can mount app-owned components around or instead of its generated body:
+
+```json
+"layout": { "type": "table", "slots": [
+  { "placement": "above", "component": "order-kpi-strip", "label": "Order KPIs" },
+  { "placement": "below", "component": "order-timeline" } ] }
+```
+
+- `placement` is `above` or `below` the generated body, or `replace` for the body itself (at most one
+  `replace` per panel). `component` is a file name: the app's own `web/regions/<component>.js`, loaded on
+  demand from `/regions/<component>.js`, which calls `window.npdev.regions.register(name, {mount, update, unmount})`.
+  This is the same registry and file convention the Aggregate Workbench uses for `transaction.regions`.
+- Slots mount only after the panel's data has loaded. `mount(el, api)` runs once, `update(api)` on every later
+  render, so the component keeps its own DOM. `api` is a frozen, narrowed object: `panel` (the panel name),
+  `data` (a copy of the panel's data keyed by data source; a concept-bound data source's rows are record
+  envelopes `{tenantId, concept, id, data: {...fields}}`, so read fields from `row.data`), `refresh()` (reload the panel) and
+  `invoke(actionName, data)` (run one of the panel's own declared actions). A slot never gets the page's
+  fetch, state or DOM, so it works through the generated wiring and not around it.
+- A component that is missing or fails to load shows a visible "not registered" note, never a blank.
+- The live panel response (`GET /api/runtime/metadata/ui/panels/{name}`) echoes `layout.slots` only when
+  the panel declares them.
+
 ## View renderers (`window.NPDevViews`)
 
 New business-UI list views and detail-dialog sections do NOT grow `business-ui-app.mustache`. They

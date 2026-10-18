@@ -1632,6 +1632,20 @@ public final class CompiledModelCanonicalJson {
         node.set("children", children);
         node.set("fields", toStringArray(layout.fields()));
         node.set("metadata", toObjectMap(layout.metadata()));
+        if (!layout.slots().isEmpty()) {
+            // F6-1 layoutSlot: written only when declared, so a model without slots keeps its canonical bytes.
+            ArrayNode slots = JsonNodeFactory.instance.arrayNode();
+            for (CompiledPanelSlot slot : layout.slots()) {
+                ObjectNode slotNode = JsonNodeFactory.instance.objectNode();
+                slotNode.put("placement", safe(slot.placement()));
+                slotNode.put("component", safe(slot.component()));
+                if (slot.label() != null) {
+                    slotNode.put("label", slot.label());
+                }
+                slots.add(slotNode);
+            }
+            node.set("slots", slots);
+        }
         return node;
     }
 
