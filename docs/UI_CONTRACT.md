@@ -492,7 +492,7 @@ page whose GuidePage has no right region still hides both the rail and its toggl
 
 ## Dashboard filter bar
 
-A GuidePage gadget (`kpi` / `bar` / `line` / `table`) bound to a query that declares `parameters`
+A GuidePage gadget (`kpi` / `bar` / `line` / `donut` / `table`) bound to a query that declares `parameters`
 carries them in its manifest node (`gadgets[].parameters`: `name`, `type`, `required`). When any
 gadget on the page has parameters, `shell.js` shows one `.npdev-shell-gadget-filters` bar above the
 gadgets with one input per distinct parameter name (date picker for `date`, number for

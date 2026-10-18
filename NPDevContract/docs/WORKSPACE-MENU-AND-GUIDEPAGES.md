@@ -136,7 +136,7 @@ reseeds from scratch on the next boot regardless of mode.
 
 ## Shell gadgets
 
-The right rail renders one card per gadget declared on the active GuidePage. Seven built-in types (`recent-items`, `context-info`, `page-fragment` below; `kpi`, `bar`, `line`, `table` are query-bound chart gadgets):
+The right rail renders one card per gadget declared on the active GuidePage. Eight built-in types (`recent-items`, `context-info`, `page-fragment` below; `kpi`, `bar`, `line`, `donut`, `table` are query-bound chart gadgets; a `donut` is a share-of-total ring with a label/value/percent legend and needs `x` = a groupBy field and `y` = an aggregate output):
 
 - **`recent-items`** — the last 10 sections/pages visited, tracked client-side in `localStorage`.
 - **`context-info`** — freeform rows supplied by `NPDevShell.setContext({ title, rows })`; the

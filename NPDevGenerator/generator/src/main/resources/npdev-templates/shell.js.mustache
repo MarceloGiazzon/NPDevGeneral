@@ -1433,10 +1433,69 @@
     }).catch(function (err) { gadgetMessage(container, "Erro: " + err.message); });
   }
 
+  // VIEW-2: share-of-total ring + legend (label, value, percent). Same SVG maths as the panel widget's
+  // renderDonutChart (business-ui-app): one stroked circle per slice, dasharray = its fraction.
+  function renderDonutGadget(container, gadget) {
+    fetchGadgetQuery(gadget).then(function (result) {
+      var rows = (result && result.rows) || [];
+      var points = rows.map(function (row) {
+        return { label: String(row[gadget.x] == null ? "" : row[gadget.x]), value: Math.max(0, numberOrZero(row[gadget.y])), row: row };
+      });
+      var total = points.reduce(function (sum, p) { return sum + p.value; }, 0);
+      if (!points.length || total <= 0) { gadgetMessage(container, "Sem dados."); return; }
+      var drillConcept = result && result.concept;
+      var drillKeys = drillableKeys(result);
+      var wrap = document.createElement("div");
+      wrap.className = "npdev-shell-gadget-donut";
+      wrap.style.cssText = "display:flex;align-items:center;gap:16px;flex-wrap:wrap";
+      var radius = 54, circumference = 2 * Math.PI * radius, offset = 0;
+      var svg = svgEl("svg", {
+        viewBox: "0 0 140 140", width: "140", height: "140", role: "img",
+        "data-chart": "donut", "class": "npdev-shell-gadget-chart"
+      });
+      points.forEach(function (point, i) {
+        var fraction = point.value / total;
+        var slice = svgEl("circle", {
+          cx: "70", cy: "70", r: String(radius), fill: "none", stroke: CHART_COLORS[i % CHART_COLORS.length],
+          "stroke-width": "26", "stroke-dasharray": (fraction * circumference) + " " + (circumference - fraction * circumference),
+          "stroke-dashoffset": String(-offset), transform: "rotate(-90 70 70)",
+          "data-label": point.label, "data-value": String(point.value)
+        });
+        var title = svgEl("title", {});
+        title.textContent = point.label + ": " + formatNumber(point.value);
+        slice.appendChild(title);
+        svg.appendChild(slice);
+        offset += fraction * circumference;
+      });
+      wrap.appendChild(svg);
+      var legend = document.createElement("ul");
+      legend.className = "npdev-shell-gadget-legend";
+      legend.style.cssText = "list-style:none;margin:0;padding:0";
+      points.forEach(function (point, i) {
+        var item = document.createElement("li");
+        item.className = "npdev-shell-gadget-legend-item";
+        item.setAttribute("data-label", point.label);
+        item.setAttribute("data-value", String(point.value));
+        var swatch = document.createElement("i");
+        swatch.style.background = CHART_COLORS[i % CHART_COLORS.length];
+        item.appendChild(swatch);
+        item.appendChild(document.createTextNode(
+          point.label + " — " + formatNumber(point.value) + " (" + Math.round(point.value / total * 100) + "%)"));
+        if (drillConcept) {
+          makeClickableElement(item, "Ver " + drillConcept, function () { navigateToDrilldown(drillConcept, drillKeys, point.row); });
+        }
+        legend.appendChild(item);
+      });
+      wrap.appendChild(legend);
+      container.appendChild(wrap);
+    }).catch(function (err) { gadgetMessage(container, "Erro: " + err.message); });
+  }
+
   gadgetRenderers["kpi"] = function (container, gadget) { renderKpiGadget(container, gadget); };
   gadgetRenderers["table"] = function (container, gadget) { renderTableGadget(container, gadget); };
   gadgetRenderers["bar"] = function (container, gadget) { renderXyChartGadget(container, gadget, "bar"); };
   gadgetRenderers["line"] = function (container, gadget) { renderXyChartGadget(container, gadget, "line"); };
+  gadgetRenderers["donut"] = function (container, gadget) { renderDonutGadget(container, gadget); };
 
   function renderGadgets(gadgets, pageName) {
     el.rightbar.innerHTML = "";

@@ -5578,6 +5578,7 @@
             "kpi",
             "bar",
             "line",
+            "donut",
             "table"
           ]
         },
