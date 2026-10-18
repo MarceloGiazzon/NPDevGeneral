@@ -1,0 +1,99 @@
+name: F6 showcase (browser)
+
+# F6 frontend features (layoutSlot, operator console, dashboard, third nesting level, client-side
+# expressions): scripts/quality/run-f6-showcase.ps1 generates NPDevSamples/f6-showcase, boots it on a
+# freshly wiped database and drives the five f6-*-verify-routine.json browser routines through the
+# ScrapForAI engine. Until this workflow existed they ran by hand only.
+#
+# The engine lives in its own repo (MarceloGiazzon/ScrapForAI) and is checked out beside this one;
+# the harness finds it through SCRAPFORAI_ROOT. Windows because the harness launches the engine via
+# node_modules\.bin\tsx.cmd and the script uses Get-NetTCPConnection.
+#
+# Direct-to-main is the only landing path (CLAUDE.md: never open a PR), so push is the trigger.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: f6-showcase-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  f6-showcase:
+    name: F6 showcase browser routines
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    defaults:
+      run:
+        shell: pwsh
+
+    env:
+      NPDEV_WORKSPACE: ${{ github.workspace }}
+      # Same pin as npdev-ci-validation.yml's Windows job: one build root, <workspace>/Build.
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build
+      SCRAPFORAI_ROOT: ${{ github.workspace }}/ScrapForAI-engine
+      CI: true
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+
+    steps:
+      - name: Checkout NPDev
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout ScrapForAI engine
+        uses: actions/checkout@v4
+        with:
+          repository: MarceloGiazzon/ScrapForAI
+          path: ScrapForAI-engine
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Stage RuntimeHost libs (deterministic; not cache-dependent)
+        timeout-minutes: 30
+        run: pwsh -NoProfile -File scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars
+
+      - name: Run F6 showcase
+        timeout-minutes: 30
+        run: pwsh -NoProfile -File scripts/quality/run-f6-showcase.ps1
+
+      - name: Upload F6 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f6-showcase-evidence
+          if-no-files-found: ignore
+          path: |
+            scripts/reports/out/f6-showcase-report.json
+            Build/samples/f6-showcase/App/f6-showcase-boot.stdout.log
+            Build/samples/f6-showcase/App/f6-showcase-boot.stderr.log
+            Build/scrapforai-artifacts/**
