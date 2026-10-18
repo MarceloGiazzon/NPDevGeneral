@@ -5,6 +5,20 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-18 — UX references that can never take effect are validation errors, not warnings
+
+**What changes.** Four `ui` presentation diagnostics used to be warnings although each describes a
+rule that silently does nothing: `unknown_interaction_field_ref` (a `visibleWhen`/`enabledWhen`/
+`readonlyWhen`/`requiredWhen` naming a field that does not exist), `invalid_interaction_condition` (a
+condition that does not parse), `unknown_layout_field_ref` (`defaultSort`/`defaultGroup`/layout naming a
+missing field) and `unknown_interaction_search_field` (a reference picker's `searchFields` naming a
+field the target lacks). They are now errors. Style warnings (missing labels, duplicate order, ...)
+are unchanged.
+
+**Who is affected.** Models carrying one of those four mistakes. None of the 77 corpus models did.
+
+**Codemod.** None - there is no mechanical fix; the message names the field to correct.
+
 ## 2026-10-18 — the six untyped `transaction.metadata.*` keys are now validation errors
 
 **What changes.** `autoPanels[].transaction.metadata.{recompute, derived, computed, actions,

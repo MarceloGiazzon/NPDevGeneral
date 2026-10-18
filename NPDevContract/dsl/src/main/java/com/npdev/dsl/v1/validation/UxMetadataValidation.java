@@ -599,6 +599,33 @@ final class UxMetadataValidation {
         }
     }
 
+    /**
+     * UX codes that mean a declared rule or layout entry can NEVER take effect -- a reference to a
+     * field that does not exist, or a condition that does not parse. Every other UX code is a
+     * stylistic warning (missing label, duplicate order, ...); these are authoring mistakes that would
+     * otherwise ship as a silent no-op, so they are refused like any other broken cross-reference.
+     */
+    private static final Set<String> SILENT_NO_OP_CODES = Set.of(
+            "unknown_interaction_field_ref",
+            "unknown_layout_field_ref",
+            "unknown_interaction_search_field",
+            "invalid_interaction_condition");
+
+    /** Re-issues the silent-no-op diagnostics at ERROR severity; everything else passes through. */
+    static List<ValidationDiagnostic> escalateSilentNoOps(List<ValidationDiagnostic> diagnostics) {
+        List<ValidationDiagnostic> out = new ArrayList<>(diagnostics.size());
+        for (ValidationDiagnostic d : diagnostics) {
+            if (d.getSeverity() == ValidationSeverity.WARNING && SILENT_NO_OP_CODES.contains(d.getCode())) {
+                out.add(new ValidationDiagnostic(d.getLayer(), ValidationSeverity.ERROR, d.getCode(), d.getMessage(),
+                        d.getSourceModule(), d.getPath(), d.getConcept(), d.getField(), d.getSection(),
+                        d.getRuleName(), d.getSuggestedFix(), d.getHelpKey(), d.getBoundaryId()));
+            } else {
+                out.add(d);
+            }
+        }
+        return out;
+    }
+
     private static ValidationDiagnostic uxDiagnostic(
             String code,
             String message,
