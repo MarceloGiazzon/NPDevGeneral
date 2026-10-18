@@ -180,10 +180,21 @@ public final class SemanticValidator {
         for (String warning : semanticWarnings) {
             diagnostics.add(ValidationDiagnosticNormalizer.semanticDiagnostic(warning, ValidationSeverity.WARNING));
         }
-        List<ValidationDiagnostic> uxDiagnostics = UxMetadataValidation.validatePresentationMetadata(effectiveModel, entitiesByLower);
+        List<ValidationDiagnostic> uxDiagnostics = UxMetadataValidation.escalateSilentNoOps(
+                UxMetadataValidation.validatePresentationMetadata(effectiveModel, entitiesByLower));
         diagnostics.addAll(uxDiagnostics);
+        List<String> uxErrors = new ArrayList<>();
         for (ValidationDiagnostic diagnostic : uxDiagnostics) {
-            warnings.add(diagnostic.getMessage());
+            if (diagnostic.getSeverity() == ValidationSeverity.ERROR) {
+                uxErrors.add(diagnostic.getMessage());
+            } else {
+                warnings.add(diagnostic.getMessage());
+            }
+        }
+        if (!uxErrors.isEmpty()) {
+            // `errors` may be the immutable empty list canonicalizeConceptTerminology returns.
+            errors = new ArrayList<>(errors);
+            errors.addAll(uxErrors);
         }
 
         // P2.3: typed SEMANTIC_GRAPH_* refusals queried off the same ReferenceIndex the semantic

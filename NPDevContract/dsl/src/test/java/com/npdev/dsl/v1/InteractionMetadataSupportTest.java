@@ -8,6 +8,7 @@ import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.dsl.v1.validation.SemanticValidator;
 import com.npdev.dsl.v1.validation.ValidationDiagnostic;
 import com.npdev.dsl.v1.validation.ValidationLayer;
+import com.npdev.dsl.v1.validation.ValidationSeverity;
 import com.npdev.dsl.v1.validation.ValidationResult;
 import org.junit.jupiter.api.Test;
 
@@ -100,7 +101,7 @@ class InteractionMetadataSupportTest {
     }
 
     @Test
-    void validatorWarnsOnBrokenInteractionMetadata() throws Exception {
+    void validatorReportsBrokenInteractionMetadata() throws Exception {
         Path modelPath = Files.createTempFile("npdev-interaction-metadata-error-", ".json");
         Files.writeString(modelPath, """
                 {
@@ -150,7 +151,14 @@ class InteractionMetadataSupportTest {
 
         ModelAst ast = new JsonModelParser().parse(modelPath);
         ValidationResult validation = new SemanticValidator().validateWithWarnings(ast);
-        assertTrue(validation.getErrors().isEmpty(), "Expected no hard semantic errors, got: " + validation.getErrors());
+        // Unknown field references and unparsable conditions can never take effect, so they are errors; every
+        // other broken-metadata finding below stays a warning. The only hard errors are those escalated ones.
+        List<String> escalated = validation.getDiagnostics().stream()
+                .filter(diagnostic -> diagnostic.getLayer() == ValidationLayer.UX_METADATA
+                        && diagnostic.getSeverity() == ValidationSeverity.ERROR)
+                .map(ValidationDiagnostic::getMessage)
+                .toList();
+        assertEquals(escalated, validation.getErrors(), "Expected only the escalated UX errors, got: " + validation.getErrors());
 
         List<ValidationDiagnostic> uxWarnings = validation.getDiagnostics().stream()
                 .filter(diagnostic -> diagnostic.getLayer() == ValidationLayer.UX_METADATA)
