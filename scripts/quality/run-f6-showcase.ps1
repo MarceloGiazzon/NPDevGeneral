@@ -18,6 +18,10 @@
   Refuses to run if the app's port is already taken (it never kills a process it did not start). The app is always
   stopped afterwards. Needs Java 17+, PowerShell 7 and the ScrapForAI engine (see the verify-in-browser skill).
 
+.PARAMETER InstallBrowsers
+  Also run `npx playwright install chromium` in the engine before the routines. Needed on a fresh machine (CI); a developer
+  machine normally has the browsers already.
+
 .PARAMETER ReportPath
   Where to write the run's structured JSON report (schemaVersion npdev-f6-showcase-result.v1): per-routine status and an
   overallStatus, written even when the run fails.
@@ -29,6 +33,7 @@ param(
     [int]$BootTimeoutSeconds = 420,
     [switch]$SkipGenerate,
     [switch]$KeepRunning,
+    [switch]$InstallBrowsers,
     [string]$ReportPath = "scripts/reports/out/f6-showcase-report.json"
 )
 
@@ -124,7 +129,7 @@ try {
     if (-not $healthy) { throw "f6-showcase did not become healthy: $lastError (boot log: $stdout)" }
 
     $creds = @{ apiKey = (Get-NpdevLiveApiKey -AppRoot $appRoot) }
-    Initialize-ScrapForAI | Out-Null
+    Initialize-ScrapForAI -InstallBrowsers:$InstallBrowsers | Out-Null
     $scrapCtx = Start-ScrapForAI -AppBaseUrl $baseUrl -AllowEvaluate
 
     $failed = @()

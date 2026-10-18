@@ -84,7 +84,7 @@ jobs:
 
       - name: Run F6 showcase
         timeout-minutes: 30
-        run: pwsh -NoProfile -File scripts/quality/run-f6-showcase.ps1
+        run: pwsh -NoProfile -File scripts/quality/run-f6-showcase.ps1 -InstallBrowsers
 
       - name: Upload F6 evidence
         if: always()
