@@ -63,7 +63,7 @@ The report records:
 - Coverage over release samples.
 - Missing or invalid blocking sample inputs, if any.
 - Non-blocking issues for fixture-only samples.
-- Input fingerprints for selected sample `model.json`, `config.json`, `manifest.json`, `expected-behavior.md`, and `expected-endpoints.md`.
+- Input fingerprints for each file in the policy's `requiredInputFiles` (`sample-matrix-policy.json`: `model.json`, `config.json`, `db.definition.json`, `manifest.json`, `expected-behavior.md`, `expected-endpoints.md`); a missing one is a blocking issue.
 - Per-sample verification command metadata, output summary, log path, per-sample verification report path, and generation marker evidence.
 - A full `releaseEvidence.eligible` flag. It is `true` only when every release-blocking sample passes strict input-contract validation and the canonical generation/runtime verifier.
 - A separate `inputContractEvidence.eligible` flag for strict sample input-contract evidence.

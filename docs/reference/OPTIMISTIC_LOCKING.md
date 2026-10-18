@@ -32,8 +32,8 @@ the same contract:
 - **`InMemoryConceptStore`** — every method is already `synchronized`, so the read-compare-write is
   atomic for free; a CAS request that doesn't match the map's current entry throws.
 - **`JdbcBusinessConceptStore`** — a CAS request becomes an explicit
-  `UPDATE ... SET ..., row_version = row_version + 1 WHERE id = ? AND tenant_id = ? AND
-  row_version = ?`, checked against rows-affected (0 rows means someone else won the race, or the
+  `UPDATE ... SET ..., row_version = ? WHERE id = ? AND tenant_id = ? AND
+  row_version = ?` (the new version is bound as a precomputed `expected + 1`), checked against rows-affected (0 rows means someone else won the race, or the
   row is gone — either way, re-fetch and attach whatever's actually there). An unconditional write
   keeps using the existing upsert (`MERGE`/`ON CONFLICT`), just with `row_version` folded in as one
   more column.

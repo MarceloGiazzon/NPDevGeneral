@@ -2,12 +2,12 @@
 
 > **Purpose.** A self-contained brief to hand an **independent, project-blind agent** (a fresh AI
 > tool, or a person who has never seen NPDev) so it can run the three usability/reproduction tests
-> that have never been done by anyone outside the project. Copy the "Brief to paste" section below
+> that were first run in July 2026 (REG-13, REG-14 and REG-17 are DONE); the kit stays valid for repeating them with a new outsider. Copy the "Brief to paste" section below
 > verbatim into a *fresh* agent session — one with **no** prior NPDev context.
 >
 > **Why independence is the whole point.** Every app NPDev has produced was built by the author or an
-> AI they supervised. The claim "a non-engineer / a stranger can author an app from the docs" is
-> entirely unvalidated. The *friction* the outsider hits **is the result** — do not coach them, do not
+> AI they supervised. The claim "a non-engineer / a stranger can author an app from the docs" was
+> unvalidated before those runs. The *friction* the outsider hits **is the result** — do not coach them, do not
 > pre-load them with project knowledge, do not let them ask the author for help. A warmed-up agent
 > that already knows the project proves nothing.
 >
@@ -90,6 +90,6 @@ Feed the friction logs back as **new, dated ledger items** under `ledger/items/`
 finding; `ledger/items/*.yml` is the schema'd source of truth — the old markdown registers,
 `docs/LAUNCH_READINESS_GAPS.md` and `docs/NPDEV_OPEN_ITEMS_REGISTER.md`, were removed 2026-08-11 and
 git history keeps them). Do not silently fix them mid-session; the record of what a stranger hit is
-the value. Then REG-13/REG-14/REG-17 can move from "never done" to DONE with evidence.
+the value. (REG-13, REG-14 and REG-17 are already DONE; record a repeat run as new evidence.)
 
 *Companion: `docs/archive/programme-history/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` (the log format).*

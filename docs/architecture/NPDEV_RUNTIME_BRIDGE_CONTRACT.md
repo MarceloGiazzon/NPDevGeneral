@@ -10,6 +10,15 @@ The bridge lets Panel Object frontend code (an untrusted-extension panel) call P
 
 The bridge is live. In every generated app that has an untrusted-extension panel, the calls below are real HTTP requests handled by `GeneratedTrustedSourceRuntimeController`. A procedure runs through the generated action kernel runner, and a flow through the flow runner, under the caller's runtime context (`RuntimeContextService.currentContext(request)`: tenant and roles come from the session or API key the request carries). The sections titled "Planned envelope (not implemented)" below describe a richer request/response envelope that nothing implements yet.
 
+> **What is live, as of 2026-10-17.** Everything from "Inputs" onward is the original design contract and is mostly not what runs.
+> The live bridge is `window.NPDev.callProcedure(name, payload)`, which POSTs to `/generated/procedures/{procedureName}`
+> (`UntrustedExtensionControllerTemplate`). The request body is the raw payload map; tenant and user come from the server-side
+> `ExecutionContext`. The response carries `status: "ok"` or `"rejected"` plus an `error` code string such as `unknown-action`, mapped to an HTTP
+> status. The `build/box-object/*` and `examples/box-object-truth/*` inputs, the request/response envelope fields, the error classes, the
+> `STUB_ONLY` / `UNSUPPORTED_IN_ADVISORY_MODE` responses, the `procedure.generate-monthly-invoices` mapping and the contract keys
+> `requiresAuth` / `requiresTenant` / `allowedRoles` / `aiExecution` do not exist in code; the last appear only in
+> `schemas/ai/runtime-bridge-contract.schema.json`, which nothing references.
+
 ## Inputs
 
 The runtime bridge contract consumes:
