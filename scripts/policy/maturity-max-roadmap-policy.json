@@ -67,7 +67,7 @@
     "artifacts/roadmap/roadmap-sha256.txt"
   ],
   "evidencePathPolicy": {
-    "cursorLocalDefault": "D:\\WorkSpace\\NPDev_General__OutsideRepo\\temp\\last-roadmap",
+    "cursorLocalDefault": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\temp\\last-roadmap",
     "cloudFallbackEnvironmentVariable": "NPDEV_CHECKPOINT_DIR",
     "repoRelativeFallback": "docs/maturity-closure/checkpoints/last-roadmap",
     "maxZipSizeMB": 100,
@@ -102,7 +102,7 @@
       "action": "Checkpoint 1 approval gate",
       "owner": "Human roadmap owner",
       "status": "open",
-      "evidencePath": "`D:\\WorkSpace\\NPDev_General__OutsideRepo\\temp\\last-roadmap\\checkpoint-result.json`",
+      "evidencePath": "`D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\temp\\last-roadmap\\checkpoint-result.json`",
       "blockingStatus": "blocking-for-next-checkpoint",
       "aiDelegable": "\u274c permanently (E6 \u2014 checkpoint approval/authority)",
       "notes": "Codex/Cursor must not proceed to Checkpoint 1 until Checkpoint 0 is reviewed and approved."
@@ -111,7 +111,7 @@
       "action": "New checkpoint approval",
       "owner": "Human roadmap owner",
       "status": "standing-required",
-      "evidencePath": "`docs/ROADMAP_BOUNDARY_POLICY.md`",
+      "evidencePath": "`docs/maintainers/ROADMAP_BOUNDARY_POLICY.md`",
       "blockingStatus": "blocking-for-scope-change",
       "aiDelegable": "\u274c permanently (E6 \u2014 checkpoint approval/authority)",
       "notes": "Any checkpoint addition, removal, rename, split, merge, or reorder requires explicit human approval."
@@ -129,7 +129,7 @@
       "action": "Independent audit sign-off",
       "owner": "Human owner / independent reviewer",
       "status": "open \u2014 **review now done, sign-off still owner's**",
-      "evidencePath": "`scripts/reports/out/maturity-max-roadmap-boundary-report.json`; M6's real run: `docs/external-ai-review/runs/M6-AUDIT-VERDICT.json`, verdict `NPDev_General__OutsideRepo/external-ai-review/packs/M6-AUDIT-VERDICT/*-nvidia-verdict.json`",
+      "evidencePath": "(the boundary-check script that produced `maturity-max-roadmap-boundary-report.json` was retired in `83eaf603`); M6's real run: `docs/external-ai-review/runs/M6-AUDIT-VERDICT.json`, verdict (outside the repo, may have been pruned) `NPDev_General__OutsideRepo/external-ai-review/packs/M6-AUDIT-VERDICT/*-nvidia-verdict.json`",
       "blockingStatus": "non-blocking-for-cp0",
       "aiDelegable": "\u26a0\ufe0f AI does the **review** (E4, mission M6 \u2014 actually run 2026-07-27 against a real evidence bundle, appropriately skeptical result); the **sign-off** stays the owner's",
       "notes": "Arrange review outside Codex/Cursor. Automation can register the need but cannot perform independent sign-off."
@@ -138,10 +138,10 @@
       "action": "Real participant sessions",
       "owner": "Human product/research owner",
       "status": "open",
-      "evidencePath": "`docs/POST_BETA0_HUMAN_ACTION_REGISTER.md`",
+      "evidencePath": "`docs/maintainers/POST_BETA0_HUMAN_ACTION_REGISTER.md`",
       "blockingStatus": "non-blocking-for-cp0",
       "aiDelegable": "\u274c permanently (E5 \u2014 an AI persona is not a participant)",
-      "notes": "Schedule real participant validation sessions after technical closure. Automation cannot substitute for participant feedback. Owner's call formally recorded 2026-07-27 (D5, `docs/DECISION_BRIEFS_2026-07.md`): permanently open with this honest label, not scheduled sessions or an AI-persona substitute, until there is a live product and real users to invite."
+      "notes": "Schedule real participant validation sessions after technical closure. Automation cannot substitute for participant feedback. Owner's call formally recorded 2026-07-27 (D5, `docs/archive/programme-history/DECISION_BRIEFS_2026-07.md`): permanently open with this honest label, not scheduled sessions or an AI-persona substitute, until there is a live product and real users to invite."
     }
   ]
 }
