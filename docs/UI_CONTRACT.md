@@ -328,8 +328,12 @@ A declared panel (`panels[]`) can render as an **operator console** (`layout.typ
   chart without a kind or `groupBy`, a field that is not on the data source's concept, a second `actions` or
   `history` widget, and widgets on a `table`/`grid` layout. A console or dashboard with no widgets is an error.
 - Rows are record envelopes (see "Panel slots"); widgets read fields from `row.data`. Aggregation happens
-  client-side over the rows the panel response already returned, so it respects the usual read caps
-  (a capped list reports it) and the caller's permissions without any new endpoint.
+  client-side over the rows the panel response already returned, so it needs no new endpoint and sees only what
+  the caller may read. **Known limit:** the panel endpoint returns at most 1000 rows per data source (the
+  `PANEL_ROW_CAP`, unless the bound query declares its own `limit`) and, unlike the list API's
+  `X-List-Truncated`, does not say when it cut the list. A tile or chart over a table larger than that counts only
+  the returned rows, silently. For large tables, bind the data source to a query that already aggregates (a
+  `groupBy` query) instead of the raw concept.
 - After an action runs the panel reloads and every widget recomputes; the action is added to `history`.
 - The live panel response echoes `layout.widgets` only when the panel declares them.
 
