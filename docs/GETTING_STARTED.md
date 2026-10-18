@@ -5,8 +5,8 @@ change the model and watch the change land. Start from the repository root. On L
 use the portable `npdev` entrypoint; on Windows use `npdev.bat` with the same arguments (examples
 below use `./npdev` — swap in `npdev.bat` and backslash paths on Windows).
 
-Requires Java 17+ and Python 3 (the `npdev` CLI is Python itself), with Gradle and PowerShell
-fetched on demand — Docker is optional, only needed for the container run path described in
+Requires Java 17+ and Python 3 (the `npdev` CLI is Python itself), with Gradle
+fetched on demand (PowerShell 7 is not fetched: `npdev run app` and `npdev verify --tier T1+` need it, and `./npdev doctor` warns when it is missing) — Docker is optional, only needed for the container run path described in
 `docs/DEPLOYMENT.md`. `./npdev doctor` checks everything below and tells you exactly what is
 missing.
 

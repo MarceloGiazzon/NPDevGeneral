@@ -168,12 +168,14 @@ Now, without declaring anything, rename `isbn` to `isbnCode` in `model.json` and
 refuses:
 
 ```
-DESTRUCTIVE_DROP_COLUMN  book.isbn  (2 row(s) hold a value today)
-possible rename(s) -- NPDev cannot tell a rename from a drop+add by shape alone, so it
-still refuses; this is the fix, not a guess:
-    column 'isbnCode' added on book (2 row(s) hold a value today). If this is a RENAME,
-    declare it and re-run:
-        "isbnCode": { ..., "renamedFrom": "isbn" }
+DESTRUCTIVE_DROP_COLUMN  book.isbn
+...
+  possible rename(s) -- NPDev cannot tell a rename from a drop+add by shape alone, so it still refuses; this is the fix, not a guess (docs/ACCEPTED_BOUNDARIES.md B1):
+    'isbn' -> 'isbnCode' on book (score N/M):
+        ...
+        If this is a RENAME, declare it and re-run:
+          "isbnCode": { ..., "renamedFrom": "isbn" }
+  If it is genuinely a drop plus an add, acknowledge the drop as shown above (this hint never blocks or auto-applies anything).
 ```
 
 **NPDev cannot guess that a rename is a rename.** "renamed `isbn`→`isbnCode`" and "dropped

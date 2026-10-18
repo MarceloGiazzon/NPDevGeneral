@@ -7,7 +7,7 @@ feature nobody has proven.
 
 You write a JSON *model*. NPDev generates a complete Spring Boot application from it — database
 schema, REST API, web UI, background jobs — and you run that application. Nothing here is a
-framework you import; it is all generated code you own.
+framework you import; it is all generated code you own (it does build and run against NPDev's kernel and adapter jars, staged next to the app).
 
 Start with `docs/GETTING_STARTED.md` if you have not built an app yet. This guide assumes you
 have one and want to know what else is available.
@@ -71,7 +71,7 @@ That is an `autoPanels[]` entry: a filterable list and an editable detail form, 
 
 **Real apps:** path 1 is every sample; path 2 is `dsl-conformance-max`'s
 `WidgetOrderTypedActionsWorkbench`; path 3 is `invoice-bonds-demo`'s `InvoiceConsolePanel`;
-path 4 is any app declaring `metadata.untrustedExtensionEntrypoint`.
+path 4 is any app declaring `metadata.untrustedExtensionEntrypoint` (no sample in the corpus declares it today).
 
 ## 3. The three ways to get a procedure
 
@@ -102,7 +102,7 @@ have.
 the generated CRUD path (`coda.allowed`), NOT a procedure. The two are unrelated and the
 nickname has been dropped from the procedure docs.
 
-**Real app:** `dsl-conformance-max` — 16 procedures covering every step type.
+**Real app:** `dsl-conformance-max` — 16 procedures; the corpus exercises 7 of the procedure step types today (`readConcept`, `listConcepts`, `mapList`, `mapValue`, `patchConcept`, `computeValue`, `return`) while the executor dispatches 15.
 
 ## 4. Flows, events and orchestrations — behaviour that reacts on its own
 
@@ -275,11 +275,11 @@ and a lookup walks them until it finds a value.
 
 ```json
 "propertyScopes": [
-  { "name": "user", "from": "tenant" },
+  { "name": "user", "from": "$user.id" },
   { "name": "tenant" }
 ],
 "properties": [
-  { "name": "pageSize", "type": "integer", "defaultValue": 25, "settableAt": ["tenant", "user"] }
+  { "name": "pageSize", "type": "int", "default": 25, "settableAt": ["tenant", "user"] }
 ]
 ```
 

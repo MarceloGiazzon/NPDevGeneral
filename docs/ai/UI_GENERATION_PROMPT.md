@@ -4,7 +4,7 @@ This is the reference prompt for an AI agent generating a hand-written screen ag
 NPDev app's UI contract (`docs/UI_CONTRACT.md`). Copy it verbatim as a system/task prompt; fill in
 `{CONCEPT}` and the app's base URL.
 
-**Productized as a CLI command (docs/REMEDIATION_PLAN.md R-P4):**
+**Productized as a CLI command (docs/archive/programme-history/REMEDIATION_PLAN.md R-P4):**
 `npdev generate screen --app <url> --concept <C> --out web/<name>.html` fetches the live bundle,
 assembles this exact prompt against it, and refuses to write anything whose manifest fails the
 impact gate against that same bundle — generation and verification in one step. See
@@ -53,7 +53,9 @@ permissions. If something you need is absent from the bundle, stop and say so.
 ## Required output
 
 1. `{screen}.html` — self-contained, no external CDN.
-2. `{screen}.panel.json` — the provenance manifest:
+2. `{screen}.panel.json` — the provenance manifest. (When the CLI drives you, return ONE JSON object `{"html": "...", "panelJson": {...}}`
+   instead; the CLI fills in `schemaVersion`, `producer`, `confirmed`, `slotOf`, `unresolved` and the `generatedFrom` defaults. The full
+   shape is `schemas/panel-provenance.schema.json`.)
 
 ```jsonc
 {
@@ -73,6 +75,6 @@ permissions. If something you need is absent from the bundle, stop and say so.
 
 Every entry in `reads`/`writes` MUST name a `fieldPath` that exists in the bundle's `fields`.
 Every entry in `invokes` MUST be an `invocations[].id` from the bundle.
-The build fails otherwise — that is intentional (see F4 in `docs/NEXT_EXECUTION_PLAN.md`, once the
-impact gate ships): a rename or removal in the model must break the exact screens that depended on
+The build fails otherwise — that is intentional (the impact gate `scripts/quality/check-panel-provenance-impact.py` has shipped; design
+history in F4 of `docs/archive/NEXT_EXECUTION_PLAN.md`): a rename or removal in the model must break the exact screens that depended on
 it, not fail silently at runtime for a real user.

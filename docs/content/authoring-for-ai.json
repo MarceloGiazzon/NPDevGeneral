@@ -10,7 +10,7 @@
     {
       "level": 2,
       "title": "Non-negotiables",
-      "body": "\n1. **Every object is validated `additionalProperties: false`.** A typo'd or invented key fails\n   generation — it is not ignored. Only emit keys defined in the schema for that object.\n2. **Exactly one field per concept has `\"id\": true`** (or use the conventional `{\"name\":\"id\",\n   \"type\":\"uuid\",\"id\":true,\"required\":true}`).\n3. **References are same-model only.** A `reference.target` must name a concept defined in this\n   same `model.json`.\n4. **Root uses `concepts`, not `entities`.** `entities` is a rejected legacy shape.\n5. Required root fields: `dslVersion` (`\"1.0.0\"`), `version`, `namespace` (or alias `model`),\n   and a non-empty `concepts` array.\n"
+      "body": "\n1. **Every schema object is closed (`additionalProperties: false`)**, with the exception of the free-form `metadata` maps on panels and procedures. A typo'd or invented key fails\n   generation — it is not ignored. Only emit keys defined in the schema for that object.\n2. **Exactly one field per concept has `\"id\": true`** (or use the conventional `{\"name\":\"id\",\n   \"type\":\"uuid\",\"id\":true,\"required\":true}`).\n3. **References stay inside the composed model.** A `reference.target` must name a concept defined in this\n   model, including concepts composed in from a pack or fragment.\n4. **Root uses `concepts`, not `entities`.** `entities` is a rejected legacy shape.\n5. Required root fields: `dslVersion` (`\"1.0.0\"`), `version`, `namespace` (or alias `model`),\n   and a non-empty `concepts` array.\n"
     },
     {
       "level": 2,
@@ -25,7 +25,7 @@
     {
       "level": 2,
       "title": "Field types",
-      "body": "\n`string`, `uuid`, `int`/`integer`, `long`, `boolean`, `date`, `datetime`, `enum` (needs\n`enumValues`), `reference` (needs `reference.target`), `object` (needs `properties`), `array`\n(needs `items`).\n"
+      "body": "\n`string`, `uuid`, `int`/`integer`, `long`, `boolean`, `date`, `datetime`, `enum` (needs\n`enumValues`), `reference` (needs `reference.target`), `object` (needs `properties`), `array`\n(needs `items`), `decimal`, `file`.\n"
     },
     {
       "level": 2,
