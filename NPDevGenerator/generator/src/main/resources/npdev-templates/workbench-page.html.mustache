@@ -118,6 +118,7 @@
   dialog.npdev-review .npdev-review-actions{text-align:right;margin:12px 0 0}
 </style>
 <script src="/npdev-review.js"></script>
+<script src="/npdev-expr.js"></script>
 <!-- App-owned theme (404-harmless); last, so it overrides shell and workbench tokens alike. -->
 <link rel="stylesheet" href="/theme.css" onerror="this.remove()">
 </head>
@@ -188,6 +189,16 @@
     var baseline = clone(draft);
     var dirty = { header: false, sections: {} };
     function sectionDef(c) { return (descriptor.sections || []).filter(function (s) { return s.collection === c; })[0]; }
+    // F6-5: header values for $root.<field>, the row addressed by [section, rowId, band, bandRowId, sub, subRowId],
+    // and a computed column's value for that row -- evaluated here in the browser, never by a server round trip.
+    function rootVars() { var o = {}; ((descriptor.header && descriptor.header.fields) || []).forEach(function (f) { o[f] = draft[f]; }); return o; }
+    function rowAt(path) {
+      var row = findRow(path[0], path[1]);
+      if (!row || path.length <= 2) return row;
+      var br = (row[path[2]] || []).filter(function (x) { return String(x.id) === String(path[3]); })[0];
+      if (!br || path.length <= 4) return br;
+      return (br[path[4]] || []).filter(function (x) { return String(x.id) === String(path[5]); })[0];
+    }
     // F6-4 third level: a band's sub-bands, and the rows that carry them.
     function bandDef(c, b) { return ((sectionDef(c) || {}).bands || []).filter(function (x) { return x.collection === b; })[0]; }
     function initSubBands(row, def) { ((def && def.bands) || []).forEach(function (sb) { if (!Array.isArray(row[sb.collection])) row[sb.collection] = []; }); }
@@ -276,6 +287,14 @@
         };
       },
       toDraft: function () { return clone(draft); },
+      computedAt: function (path, expr) {
+        var row = rowAt(path);
+        var api = window.npdev && window.npdev.expr;
+        if (!row || !api) return null;
+        var scope = Object.assign({}, row, { "$root": rootVars() });
+        var result = api.tryEvaluate(expr, scope);
+        return result.error ? null : result.value;
+      },
       // P3b: live, uncloned reads for the built-in cellGrid region -- it repaints hundreds of cells
       // per stroke, so cloning the whole draft per cell (toDraft) is not an option. Callers must not mutate.
       rowsOf: function (c) { return draft[c] || []; },
@@ -298,12 +317,14 @@
               address: s.address, render: s.render || null, component: s.component || null,
               cellGrid: s.cellGrid || null,
               readOnlyColumns: s.readOnlyColumns || null,
+              computed: s.computed || [],
               bandDefs: (s.bands || []).map(function (b) {
                 return {
                   collection: b.collection, columns: b.columns || [], picker: b.picker || null, visibleWhen: b.visibleWhen || null,
                   address: b.address, render: b.render || null, component: b.component || null,
                   readOnlyColumns: b.readOnlyColumns || null,
-                  subBandDefs: (b.bands || []).map(function (sb) { return { collection: sb.collection, columns: sb.columns || [], readOnlyColumns: sb.readOnlyColumns || null }; })
+                  computed: b.computed || [],
+                  subBandDefs: (b.bands || []).map(function (sb) { return { collection: sb.collection, columns: sb.columns || [], readOnlyColumns: sb.readOnlyColumns || null, computed: sb.computed || [] }; })
                 };
               }),
               rows: (draft[s.collection] || []).map(function (r) {
@@ -453,7 +474,7 @@
     // the key: "h:<field>" or "s:<collection>:<rowId>:<column>").
     i.setAttribute("aria-label", key ? String(key).split(":").pop() : "value");
     if (key) { i.setAttribute("data-fkey", key); i.addEventListener("focus", function () { activeFocusKey = key; }); }
-    i.oninput = function (e) { on(e.target.value); scheduleRecompute(); };
+    i.oninput = function (e) { on(e.target.value); updateLiveComputed(); scheduleRecompute(); };
     i.addEventListener("keydown", cellKeydown);
     // Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): forceReadOnly marks a query-sourced
     // lookupField column (sec/bd.readOnlyColumns) -- read-only regardless of the section's own
@@ -518,8 +539,44 @@
     return consumed === path.length ? segments : null;
   }
 
+  // F6-5: a client-tier derived expression WITHOUT the legacy [] path syntax is a full expression of the platform
+  // language (npdev-expr.js) over the draft: header fields by name, plus sum/count/avg/min/max over a collection
+  // path written with dots, e.g. sum(itens.quantidade) - discount or count(itens) > 0.
+  function derivedPathValues(argNode, vars) {
+    var path = argNode && argNode.name;
+    if (typeof path !== "string") return [];
+    var cur = [vars];
+    path.split(".").forEach(function (seg) {
+      var next = [];
+      cur.forEach(function (item) {
+        var v = item === null || item === undefined ? undefined : item[seg];
+        if (Array.isArray(v)) { v.forEach(function (x) { next.push(x); }); }
+        else if (v !== undefined && v !== null) { next.push(v); }
+      });
+      cur = next;
+    });
+    return cur;
+  }
+  function derivedNumbers(args, vars) {
+    return derivedPathValues(args[0], vars).map(function (x) { var n = Number(x); return isNaN(n) ? 0 : n; });
+  }
+  var DERIVED_FUNCTIONS = {
+    sum: function (args, vars) { return derivedNumbers(args, vars).reduce(function (a, b) { return a + b; }, 0); },
+    count: function (args, vars) { return derivedPathValues(args[0], vars).length; },
+    avg: function (args, vars) { var n = derivedNumbers(args, vars); return n.length ? n.reduce(function (a, b) { return a + b; }, 0) / n.length : 0; },
+    min: function (args, vars) { var n = derivedNumbers(args, vars); return n.length ? Math.min.apply(null, n) : 0; },
+    max: function (args, vars) { var n = derivedNumbers(args, vars); return n.length ? Math.max.apply(null, n) : 0; }
+  };
+  function evaluateDerivedExpression(root, text) {
+    var api = window.npdev && window.npdev.expr;
+    if (!api) return undefined;
+    var result = api.tryEvaluate(text, root, { functions: DERIVED_FUNCTIONS });
+    return result.error ? undefined : result.value;
+  }
   function evaluateDerived(root, expression) {
-    var m = /^sum\((.+)\)$/.exec(String(expression || "").trim());
+    var text = String(expression || "").trim();
+    if (text.indexOf("[]") < 0) return evaluateDerivedExpression(root, text);
+    var m = /^sum\((.+)\)$/.exec(text);
     if (!m) return undefined;
     var segments = derivedSegments(m[1].trim());
     if (!segments || !segments.length) return undefined;
@@ -1081,6 +1138,41 @@
     });
   }
 
+  // F6-5: live computed columns. A computed[] entry that names a collection shows as a read-only extra column
+  // whose value npdev-expr.js evaluates over the row (plus $root.<header field>) on every keystroke.
+  function escHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+  function computedHeaderCells(defs) { return (defs || []).map(function (cc) { return "<th>" + escHtml(cc.col) + "</th>"; }).join(""); }
+  function formatComputed(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "number") return Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100);
+    return String(v);
+  }
+  function appendComputedCells(tr, defs, path) {
+    (defs || []).forEach(function (cc) {
+      var td = el("<td></td>");
+      var span = el('<span class="computed-cell"></span>');
+      span.setAttribute("data-col", cc.col);
+      span._cpath = path;
+      span._cexpr = cc.expr;
+      span.textContent = formatComputed(store.computedAt(path, cc.expr));
+      td.append(span);
+      tr.append(td);
+    });
+  }
+  function updateLiveComputed() {
+    if (!store) return;
+    Array.prototype.forEach.call(document.querySelectorAll(".computed-cell"), function (span) {
+      span.textContent = formatComputed(store.computedAt(span._cpath, span._cexpr));
+    });
+    // The derived banner follows the same keystrokes (client-tier values only; server-tier ones wait for their procedure).
+    var draftNow = store.toDraft();
+    (store.descriptor.derived || []).forEach(function (d) {
+      if (d.tier === "server") return;
+      var node = document.querySelector('.derived .val[data-derived="' + d.name + '"]');
+      if (node) { var value = evaluateDerived(draftNow, d.expression); node.textContent = value == null ? "—" : String(value); }
+    });
+  }
+
   // F6-4 third nesting level: the grids of one band row's sub-bands (editable cells, add and remove row).
   function renderSubBandRegion(sec, selRow, bd, bandRow) {
     var region = el('<div class="region r-subband"></div>');
@@ -1091,7 +1183,7 @@
       var g = el('<div class="gwrap"></div>');
       g.append(el("<h2>" + sd.collection + "</h2>"));
       var gt = el("<table></table>");
-      gt.append(el("<tr>" + sd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + '<th><span class="sr-only">Actions</span></th></tr>'));
+      gt.append(el("<tr>" + sd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + computedHeaderCells(sd.computed) + '<th><span class="sr-only">Actions</span></th></tr>'));
       (bandRow.bands[sd.collection] || []).forEach(function (sr) {
         var tr = el("<tr></tr>");
         sd.columns.forEach(function (c) {
@@ -1100,6 +1192,7 @@
             "sb:" + sec.collection + ":" + selRow.id + ":" + bd.collection + ":" + bandRow.id + ":" + sd.collection + ":" + sr.id + ":" + c, isReadOnlyColumn(sd, c)));
           tr.append(td);
         });
+        appendComputedCells(tr, sd.computed, [sec.collection, selRow.id, bd.collection, bandRow.id, sd.collection, sr.id]);
         var del = el("<td></td>");
         if (EDITABLE) {
           var x = el('<button type="button" class="rowbtn" aria-label="Remove row">\u2715</button>');
@@ -1188,7 +1281,9 @@
         var value = d.tier === "server" ? serverDerivedValues[d.name] : evaluateDerived(draftNow, d.expression);
         var item = el('<span class="item"></span>');
         item.append(el('<span class="lbl">' + (d.label || d.name) + ':</span>'));
-        item.append(el('<span class="val">' + (value == null ? "—" : String(value)) + '</span>'));
+        var valEl = el('<span class="val">' + (value == null ? "—" : String(value)) + '</span>');
+        valEl.setAttribute("data-derived", d.name);
+        item.append(valEl);
         banner.append(item);
       });
       app.append(banner);
@@ -1216,10 +1311,11 @@
         })));
       } else {
         var tbl = el("<table></table>");
-        tbl.append(el("<tr>" + sec.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + '<th><span class="sr-only">Actions</span></th></tr>'));
+        tbl.append(el("<tr>" + sec.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + computedHeaderCells(sec.computed) + '<th><span class="sr-only">Actions</span></th></tr>'));
         sec.rows.forEach(function (r) {
           var tr = el('<tr class="master ' + (r.id === selected ? "sel" : "") + '"></tr>');
           sec.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(r.values[c], function (val) { store.editRow(sec.collection, r.id, c, val); }, "s:" + sec.collection + ":" + r.id + ":" + c, isReadOnlyColumn(sec, c))); tr.append(td); });
+          appendComputedCells(tr, sec.computed, [sec.collection, r.id]);
           var del = el('<td></td>');
           // R7.9: a real <button>, not a <span onclick> -- was completely unreachable by keyboard.
           if (EDITABLE) { var x = el('<button type="button" class="rowbtn" aria-label="Remove row">✕</button>'); x.onclick = function (e) { e.stopPropagation(); store.deleteRow(sec.collection, r.id); if (selected === r.id) selected = null; render(); }; del.append(x); }
@@ -1264,13 +1360,14 @@
               revert: function () { store.revertRegion("section", sec.collection); render(); }
             })));
           } else {
-            var gt = el("<table></table>"); gt.append(el("<tr>" + bd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + '<th><span class="sr-only">Actions</span></th></tr>'));
+            var gt = el("<table></table>"); gt.append(el("<tr>" + bd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + computedHeaderCells(bd.computed) + '<th><span class="sr-only">Actions</span></th></tr>'));
             (selRow.bands[bd.collection] || []).forEach(function (br) {
               var tr = el('<tr class="' + (bd.subBandDefs.length ? "bandrow " : "") + (bd.subBandDefs.length && selectedBand && selectedBand.collection === bd.collection && selectedBand.id === br.id ? "sel" : "") + '"></tr>');
               if (bd.subBandDefs.length) {
                 tr.onclick = function () { if (!selectedBand || selectedBand.collection !== bd.collection || selectedBand.id !== br.id) { selectedBand = { collection: bd.collection, id: br.id }; render(); } };
               }
               bd.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(br.values[c], function (val) { store.editBandRow(sec.collection, selRow.id, bd.collection, br.id, c, val); }, "b:" + sec.collection + ":" + selRow.id + ":" + bd.collection + ":" + br.id + ":" + c, isReadOnlyColumn(bd, c))); tr.append(td); });
+              appendComputedCells(tr, bd.computed, [sec.collection, selRow.id, bd.collection, br.id]);
               var del = el('<td></td>');
               if (EDITABLE) { var bx = el('<button type="button" class="rowbtn" aria-label="Remove row">✕</button>'); bx.onclick = function () { store.deleteBandRow(sec.collection, selRow.id, bd.collection, br.id); render(); }; del.append(bx); }
               tr.append(del); gt.append(tr);

@@ -1372,6 +1372,11 @@
               "expr": {
                 "type": "string",
                 "minLength": 1
+              },
+              "collection": {
+                "type": "string",
+                "minLength": 1,
+                "description": "F6-5: on an aggregate-bound transaction, the section (itens), band (itens.posicoes) or sub-band whose rows this column is computed for. The expression sees the row's fields and $root.<headerField>, and is evaluated live in the browser as a read-only extra column."
               }
             },
             "additionalProperties": false

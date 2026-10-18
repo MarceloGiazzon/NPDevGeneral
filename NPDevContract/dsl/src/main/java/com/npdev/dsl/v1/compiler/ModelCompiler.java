@@ -1177,7 +1177,7 @@ public final class ModelCompiler {
         }
         List<CompiledAutoPanelComputed> computed = new ArrayList<>();
         for (AutoPanelComputedAst c : surface.computed()) {
-            computed.add(new CompiledAutoPanelComputed(c.col(), c.expr()));
+            computed.add(new CompiledAutoPanelComputed(c.col(), c.expr(), c.collection()));
         }
         List<CompiledDerivedField> derivedFields = new ArrayList<>();
         for (DerivedFieldAst d : surface.derivedFields()) {

@@ -69,6 +69,13 @@
           "ui": {
             "label": "Name"
           }
+        },
+        {
+          "name": "rate",
+          "type": "integer",
+          "ui": {
+            "label": "Hourly rate"
+          }
         }
       ]
     },
@@ -216,7 +223,8 @@
       "concept": "Project",
       "alias": "pr1",
       "data": {
-        "name": "Website relaunch"
+        "name": "Website relaunch",
+        "rate": 50
       }
     },
     {
@@ -275,7 +283,7 @@
       "data": {
         "taskId": "$ref:tk2",
         "title": "Payment form",
-        "hours": 8
+        "hours": 4
       }
     },
     {
@@ -284,7 +292,7 @@
       "data": {
         "taskId": "$ref:tk2",
         "title": "Order summary",
-        "hours": 3
+        "hours": 6
       }
     }
   ],
@@ -538,7 +546,35 @@
   ],
   "autoPanels": [
     {
-      "aggregate": "Project"
+      "aggregate": "Project",
+      "transaction": {
+        "computed": [
+          {
+            "col": "cost",
+            "expr": "hours * $root.rate",
+            "collection": "phases.tasks.subtasks"
+          },
+          {
+            "col": "doubled",
+            "expr": "hours * 2",
+            "collection": "phases.tasks.subtasks"
+          }
+        ],
+        "derivedFields": {
+          "totalHours": {
+            "label": "Total hours",
+            "expression": "sum(phases.tasks.subtasks.hours)"
+          },
+          "totalCost": {
+            "label": "Total cost",
+            "expression": "sum(phases.tasks.subtasks.hours) * rate"
+          },
+          "hasWork": {
+            "label": "Has work",
+            "expression": "count(phases.tasks.subtasks) > 0"
+          }
+        }
+      }
     }
   ]
 }

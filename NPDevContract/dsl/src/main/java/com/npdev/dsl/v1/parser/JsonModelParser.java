@@ -1992,7 +1992,8 @@ public final class JsonModelParser {
         for (JsonNode computedNode : node) {
             out.add(new AutoPanelComputedAst(
                     requiredText(computedNode, "col"),
-                    requiredText(computedNode, "expr")
+                    requiredText(computedNode, "expr"),
+                    readText(computedNode, "collection")
             ));
         }
         return out;

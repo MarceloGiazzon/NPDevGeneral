@@ -354,6 +354,43 @@ An aggregate-bound AutoPanel (`autoPanels[].aggregate`) renders as a standalone 
   the page draws no grid for them; validation warns ("nests collections N levels deep").
 - Derived `sum(a[].b[].c[].d)` expressions already walk any depth.
 
+## Client-side expressions — live computed columns and derived values
+
+Every generated app serves `/npdev-expr.js`, the browser twin of the server's expression engine
+(`ComputedExpression`): the same grammar, coercion and null rules, so an expression that validates on the
+server evaluates to the same value in the browser with **no server round trip**. The two are pinned to one
+shared fixture (`NPDevContract/dsl/src/test/resources/expr-parity.json`): the Java test and
+`scripts/quality/check-client-expr-parity.py` both replay it.
+
+**Language.** Number / string (`'..'` or `".."`, no escapes) / `true` / `false` / `null` literals; field
+references, dotted (`customer.tier`) and optionally `$`-prefixed (`$root.discount`); `+ - * / %`; comparison
+`== != < <= > >=`; logical `&& || !`; unary `-`; parentheses. Arithmetic treats a missing or non-numeric operand
+as 0 and division by zero as 0; `+` concatenates unless both sides are numeric (including numeric strings);
+`==` compares numerically when both sides look numeric, otherwise as text, and `null == null` only.
+In the browser a function must be supplied by the host page; none are built in, exactly like the server's
+computed columns. The one deliberate difference from the JVM: numbers print with JavaScript's formatting
+(`1e21`, not `1.0E21`).
+
+**Per-row computed columns** (`transaction.computed[]` with `collection`). On an aggregate-bound workbench,
+
+```json
+"transaction": { "computed": [
+  { "col": "cost", "expr": "hours * $root.rate", "collection": "phases.tasks.subtasks" } ] }
+```
+
+adds a read-only `cost` column to every row of that section (`itens`), band (`itens.posicoes`) or sub-band, recomputed on
+every keystroke from the row's own fields plus `$root.<header field>`. Validation refuses a `collection` that is not
+a path of the aggregate, a field that is not on that collection's concept (or `$root.` field not on the root), and
+`collection` anywhere but an aggregate-bound `transaction`. Without `collection`, `computed[]` keeps its old meaning
+(applied by the server when the panel loads).
+
+**Derived values** (`transaction.derivedFields`, client tier). An expression with the legacy `[]` path syntax
+(`sum(itens[].qty)`) behaves as before. Any other expression is a full expression of the language above, evaluated
+over the draft, with five aggregate functions over a collection path written with dots, flattening nested arrays:
+`sum(a.b.c)`, `count(a.b)`, `avg(...)`, `min(...)`, `max(...)`. For example `sum(phases.tasks.subtasks.hours) * rate`
+or `count(itens) > 0`. The derived banner recomputes on every keystroke too. A derived expression that does not
+parse is a validation error.
+
 ## View renderers (`window.NPDevViews`)
 
 New business-UI list views and detail-dialog sections do NOT grow `business-ui-app.mustache`. They

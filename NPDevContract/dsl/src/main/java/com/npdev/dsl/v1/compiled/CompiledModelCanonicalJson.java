@@ -592,6 +592,9 @@ public final class CompiledModelCanonicalJson {
             ObjectNode cn = JsonNodeFactory.instance.objectNode();
             cn.put("col", safe(c.col()));
             cn.put("expr", safe(c.expr()));
+            if (c.collection() != null) {
+                cn.put("collection", c.collection());
+            }
             computed.add(cn);
         }
         node.set("computed", computed);

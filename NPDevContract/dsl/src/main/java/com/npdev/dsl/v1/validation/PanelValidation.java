@@ -23,6 +23,7 @@ import com.npdev.dsl.v1.ast.OrchestrationActionAst;
 import com.npdev.dsl.v1.ast.OrchestrationAst;
 import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
+import com.npdev.dsl.v1.ast.DerivedFieldAst;
 import com.npdev.dsl.v1.ast.AggregateBalanceAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.AggregateFunctionAst;
@@ -242,6 +243,7 @@ final class PanelValidation {
             validateSurfaceComputed(here, "selection", autoPanel.selection(), errors, warnings);
             validateSurfaceComputed(here, "detail", autoPanel.detail(), errors, warnings);
             validateSurfaceComputed(here, "transaction", autoPanel.transaction(), errors, warnings);
+            validateComputedCollections(here, autoPanel, aggregatesByNormalizedName, entitiesByLower, errors);
             validateSurfaceComputed(here, "prompt", autoPanel.prompt(), errors, warnings);
             validateSelectionDataSourceProcedure(here, autoPanel.selection(), procedureNames, errors);
 
@@ -796,6 +798,83 @@ final class PanelValidation {
         return null;
     }
 
+    /**
+     * F6-5: a computed column naming a {@code collection} must name a real section/band/sub-band path of the
+     * autoPanel's aggregate, and every field its expression reads must exist -- on that collection's concept, or
+     * on the aggregate root for {@code $root.<field>} -- otherwise the live column would silently show zeros.
+     */
+    private static void validateComputedCollections(
+            String panelLabel, AutoPanelAst autoPanel, Map<String, AggregateAst> aggregatesByName,
+            Map<String, ConceptAst> entitiesByLower, List<String> errors) {
+        if (autoPanel.transaction() == null) {
+            return;
+        }
+        for (AutoPanelComputedAst computed : autoPanel.transaction().computed()) {
+            if (!hasText(computed.collection())) {
+                continue;
+            }
+            String where = panelLabel + " transaction computed column " + computed.col();
+            AggregateAst aggregate = hasText(autoPanel.aggregate()) ? aggregatesByName.get(normalize(autoPanel.aggregate())) : null;
+            if (aggregate == null) {
+                errors.add(where + ": collection needs an aggregate-bound autoPanel"
+                        + " -- suggestedFix: set autoPanels[].aggregate, or remove collection");
+                continue;
+            }
+            List<AggregateCollectionAst> level = aggregate.collections();
+            AggregateCollectionAst found = null;
+            for (String segment : computed.collection().trim().split("\\.")) {
+                found = null;
+                for (AggregateCollectionAst candidate : level) {
+                    if (normalize(candidate.name()).equals(normalize(segment))) {
+                        found = candidate;
+                        break;
+                    }
+                }
+                if (found == null) {
+                    break;
+                }
+                level = found.collections();
+            }
+            if (found == null) {
+                errors.add(where + ": collection '" + computed.collection() + "' is not a collection path of aggregate "
+                        + aggregate.name() + " -- suggestedFix: use a section name, or section.band for a nested collection");
+                continue;
+            }
+            ConceptAst concept = entitiesByLower.get(normalize(found.concept()));
+            ConceptAst root = entitiesByLower.get(normalize(aggregate.root()));
+            Set<String> rowFields = new HashSet<>();
+            if (concept != null) {
+                concept.getFields().forEach(field -> rowFields.add(normalize(field.getName())));
+            }
+            Set<String> rootFields = new HashSet<>();
+            if (root != null) {
+                root.getFields().forEach(field -> rootFields.add(normalize(field.getName())));
+            }
+            Set<String> referenced;
+            try {
+                referenced = ComputedExpression.referencedFields(computed.expr());
+            } catch (ComputedExpression.ExpressionException ex) {
+                continue; // the syntax error is reported by validateSurfaceComputed
+            }
+            for (String name : referenced) {
+                if (name.startsWith("$root.")) {
+                    String field = name.substring("$root.".length()).split("\\.")[0];
+                    if (root != null && !rootFields.contains(normalize(field))) {
+                        errors.add(where + ": " + name + " is not a field of " + root.getName()
+                                + " -- suggestedFix: use a field declared on the aggregate root " + root.getName());
+                    }
+                } else if (!name.startsWith("$")) {
+                    String field = name.split("\\.")[0];
+                    if (concept != null && !rowFields.contains(normalize(field))) {
+                        errors.add(where + ": '" + name + "' is not a field of " + concept.getName()
+                                + " -- suggestedFix: use a field declared on " + concept.getName()
+                                + " (the row's concept), or $root.<field> for a header field");
+                    }
+                }
+            }
+        }
+    }
+
     private static void validateSurfaceComputed(
             String panelLabel, String surface, AutoPanelSurfaceAst surfaceAst, List<String> errors, List<String> warnings) {
         if (surfaceAst == null) {
@@ -803,7 +882,12 @@ final class PanelValidation {
         }
         Set<String> cols = new HashSet<>();
         for (AutoPanelComputedAst computed : surfaceAst.computed()) {
-            if (!cols.add(normalize(computed.col()))) {
+            if (hasText(computed.collection()) && !"transaction".equals(surface)) {
+                errors.add(panelLabel + " " + surface + " computed column " + computed.col()
+                        + ": collection is only valid on an aggregate-bound transaction"
+                        + " -- suggestedFix: remove collection, or move the column to the transaction surface");
+            }
+            if (!cols.add(normalize(computed.collection()) + "|" + normalize(computed.col()))) {
                 errors.add(panelLabel + " " + surface + ": duplicate computed column: " + computed.col());
             }
             try {
@@ -813,11 +897,27 @@ final class PanelValidation {
                         + ": invalid expression: " + ex.getMessage());
             }
         }
+        // F6-5: a client-tier derived expression without the legacy [] path syntax is evaluated by the platform
+        // expression language in the browser, so it must parse (functions such as sum(...) are resolved there).
+        for (DerivedFieldAst derived : surfaceAst.derivedFields()) {
+            if ("client".equals(derived.tier()) && hasText(derived.expression()) && !derived.expression().contains("[]")) {
+                try {
+                    ComputedExpression.validate(derived.expression());
+                } catch (ComputedExpression.ExpressionException ex) {
+                    errors.add(panelLabel + " " + surface + " derivedFields." + derived.name() + ": invalid expression: "
+                            + ex.getMessage() + " -- suggestedFix: use the expression language (arithmetic, comparison, && || !),"
+                            + " or the legacy sum(collection[].field) path form");
+                }
+            }
+        }
         // AW-P3: computed[] is compiled into the workbench descriptor's metadata for introspection,
         // but no client evaluator reads it -- the live keystroke-recompute UX is delivered entirely
         // by transaction.hooks.onFieldChange (a server-round-trip procedure). Warn rather than let a
         // declared computed[] silently do nothing on this surface, without blocking authoring.
-        if (!surfaceAst.computed().isEmpty() && !hasText(recomputeProcedureName(surfaceAst))) {
+        // F6-5: a column that names a collection is evaluated live in the browser, so only the columns
+        // without one still depend on a recompute procedure.
+        boolean hasServerOnlyComputed = surfaceAst.computed().stream().anyMatch(c -> !hasText(c.collection()));
+        if (hasServerOnlyComputed && !hasText(recomputeProcedureName(surfaceAst))) {
             warnings.add(panelLabel + " " + surface + ": declares computed[] but no "
                     + "transaction.hooks.onFieldChange (recompute) procedure -- computed[] stays panel metadata "
                     + "only and will NOT recompute live in the generated page unless a recompute "
