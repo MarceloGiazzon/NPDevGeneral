@@ -291,6 +291,27 @@ public final class GeneratedCrudRuntimeSupport {
         return this;
     }
 
+    // RUN-2: an orchestration rule that calls a capability used to pass tenantId only when the
+    // triggering event carried a real one, and to call the bare dispatcher. A handler resolving
+    // tenant-scoped settings (connector secrets, AI spend caps, file store) then got no tenant, or the
+    // reserved "default" sentinel an anonymous publish stamps. Optional collaborators, set after
+    // construction (like withFieldDefaults) so every existing call site keeps compiling.
+    private static final String UNSET_TENANT_SENTINEL = "default";
+    private volatile String orchestrationFallbackTenant;
+    private volatile CapabilityDispatcher orchestrationCapabilityDispatcher;
+
+    /** The app's home tenant (npdev.tenant.default-id), used when an event carries no real tenant. */
+    public GeneratedCrudRuntimeSupport withOrchestrationFallbackTenant(String tenantId) {
+        this.orchestrationFallbackTenant = tenantId == null || tenantId.isBlank() ? null : tenantId.trim();
+        return this;
+    }
+
+    /** The dispatcher orchestration capability actions invoke -- e.g. the policy-enforcing wrapper (RUN-1). */
+    public GeneratedCrudRuntimeSupport withOrchestrationCapabilityDispatcher(CapabilityDispatcher dispatcher) {
+        this.orchestrationCapabilityDispatcher = dispatcher;
+        return this;
+    }
+
     public GeneratedCrudRuntimeSupport withConceptGateway(ConceptGateway conceptGateway) {
         this.conceptGateway = conceptGateway;
         return this;
@@ -1638,13 +1659,26 @@ public final class GeneratedCrudRuntimeSupport {
         callContext.put("orchestration", orchestrationName);
         callContext.put("eventName", envelope.eventName());
         callContext.put("eventId", envelope.eventId());
-        if (envelope.tenantId() != null) {
-            callContext.put("tenantId", envelope.tenantId());
+        String eventTenant = envelope.tenantId();
+        boolean eventHasTenant = eventTenant != null && !eventTenant.isBlank()
+                && !UNSET_TENANT_SENTINEL.equals(eventTenant);
+        String fallbackTenant = orchestrationFallbackTenant;
+        if (eventHasTenant) {
+            callContext.put("tenantId", eventTenant);
+            callContext.put("tenantSource", "event");
+        } else if (fallbackTenant != null) {
+            callContext.put("tenantId", fallbackTenant);
+            callContext.put("tenantSource", "fallback");
+        } else if (eventTenant != null) {
+            callContext.put("tenantId", eventTenant);
+            callContext.put("tenantSource", "event");
         }
         if (envelope.actorId() != null) {
             callContext.put("actorId", envelope.actorId());
         }
-        CapabilityResult result = capabilityDispatcher.invoke(call, callContext);
+        CapabilityDispatcher orchestrationDispatcher = orchestrationCapabilityDispatcher;
+        CapabilityResult result = (orchestrationDispatcher != null ? orchestrationDispatcher : capabilityDispatcher)
+                .invoke(call, callContext);
 
         Map<String, Object> evidencePayload = new LinkedHashMap<>();
         evidencePayload.put("orchestration", orchestrationName);

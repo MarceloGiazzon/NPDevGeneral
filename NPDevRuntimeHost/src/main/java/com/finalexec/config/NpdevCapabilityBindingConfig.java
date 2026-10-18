@@ -52,7 +52,9 @@ import com.npdev.kernel.security.PermissionGrant;
 import com.npdev.kernel.security.StaticPermissionEvaluator;
 import com.finalexec.ai.ExternalAiPromptRunner;
 import com.finalexec.filestore.FileStoreCapabilityHandler;
+import com.finalexec.npdev.service.CapabilityOperationPolicies;
 import com.finalexec.npdev.service.ProcedureRunner;
+import com.npdev.kernel.capabilities.PolicyEnforcingCapabilityDispatcher;
 import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
 import com.npdev.runtime.support.InMemoryOrchestrationExecutionRegistry;
 import com.npdev.runtime.support.OrchestrationExecutionRegistry;
@@ -707,7 +709,9 @@ public class NpdevCapabilityBindingConfig {
             PermissionEvaluator permissionEvaluator,
             IdempotencyStore idempotencyStore,
             ConceptGateway conceptGateway,
-            LiveConceptGatewaySemanticPolicy conceptGatewaySemanticPolicy
+            LiveConceptGatewaySemanticPolicy conceptGatewaySemanticPolicy,
+            ObjectProvider<CircuitBreakerStateStore> circuitBreakerStateStoreProvider,
+            @Value("${npdev.tenant.default-id:dev}") String homeTenantId
     ) {
         GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(
                 modelHolder::get,
@@ -723,6 +727,13 @@ public class NpdevCapabilityBindingConfig {
                 permissionEvaluator,
                 idempotencyStore
         ).withConceptGateway(conceptGateway).withFieldDefaults(conceptGatewaySemanticPolicy);
+        // RUN-2: an orchestration capability action always carries a tenant (the event's, else the
+        // app's home tenant) and obeys the policy its operation declares, like a flow step (RUN-1).
+        support.withOrchestrationFallbackTenant(homeTenantId)
+                .withOrchestrationCapabilityDispatcher(new PolicyEnforcingCapabilityDispatcher(
+                        capabilityDispatcher,
+                        CapabilityOperationPolicies.forModel(modelHolder),
+                        circuitBreakerStateStoreProvider.getIfAvailable()));
         modelHolder.addReloadListener((before, after) -> support.reloadOrchestrationSubscribers(after));
         return support;
     }

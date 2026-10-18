@@ -161,4 +161,30 @@ class PolicyEnforcingCapabilityDispatcherTest {
 
         assertEquals("fine", dispatcher.invoke(CALL, STATE).value());
     }
+
+    @Test
+    void anUndeclaredDeadlineKeepsTheCallOnTheCallersThread() {
+        // A worker thread would leave the caller's ambient transaction behind; no declared timeoutMs,
+        // no hop (retry and circuit still apply).
+        Thread[] seen = new Thread[1];
+        PolicyEnforcingCapabilityDispatcher dispatcher = new PolicyEnforcingCapabilityDispatcher((call, state) -> {
+            seen[0] = Thread.currentThread();
+            return CapabilityResult.success("ok");
+        }, c -> policy(1, 0, 0, 0, 0), new MapStore());
+
+        assertTrue(dispatcher.invoke(CALL, STATE).ok());
+        assertEquals(Thread.currentThread(), seen[0]);
+    }
+
+    @Test
+    void aDeclaredDeadlineRunsTheCallOnAWorkerThread() {
+        Thread[] seen = new Thread[1];
+        PolicyEnforcingCapabilityDispatcher dispatcher = new PolicyEnforcingCapabilityDispatcher((call, state) -> {
+            seen[0] = Thread.currentThread();
+            return CapabilityResult.success("ok");
+        }, c -> policy(1, 0, 5_000, 0, 0), new MapStore());
+
+        assertTrue(dispatcher.invoke(CALL, STATE).ok());
+        assertFalse(Thread.currentThread() == seen[0]);
+    }
 }
