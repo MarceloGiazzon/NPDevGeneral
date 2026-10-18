@@ -2,12 +2,17 @@
  * Repo: NPDevGenerator/generator/src/main/resources/npdev-templates/static-assets/business-ui/views/search.js
  * App:  static/npdev-business-ui/views/search.js  (verbatim copy; NOT Mustache)
  *
- * v1 = client-side fan-out over the EXISTING per-concept free-text search:
+ * VIEW-1: ONE request, `GET /api/search?q=<q>&limit=5` (GlobalSearchController -> GlobalSearchService),
+ * which asks the concept gateway once per readable concept with an OR of case-insensitive CONTAINS
+ * over the concept's string/enum fields. Same read permission, row rules and field visibility as a
+ * normal list, so search can never show a row the grid would not.
+ *
+ * Fallback: an app generated before VIEW-1 answers 404 there; the palette then does the original
+ * client-side fan-out over the per-concept free-text search,
  *   GET {concept.endpointBase}?filter=<q>&page=0&size=5
  * (business-concept-crud-controller.mustache:210-273 -- OR across every `filterable` field,
  *  case-insensitive substring, bounded to ConceptQuery.MAX_LIMIT=1000 rows per concept, answers
- *  X-List-Truncated). Same auth headers, same per-concept read permission and row-level access as
- *  the grid, so search can never show a row the grid would not.
+ *  X-List-Truncated).
  *
  * Needs registry.js `registerGlobal` (UI-5 step 1) and app.js calling every global's init(appCtx)
  * once after NPDevShell.mount (UI-5 step 2). appCtx =
@@ -23,6 +28,26 @@
     return (concepts || []).filter(function (c) {
       return (c.fields || []).some(function (f) { return f.filterable; });
     });
+  }
+
+  // VIEW-1: the server's flat, ranked list -> the palette's per-concept groups (group order = first hit
+  // order, so an exact match's concept leads). Hits for a concept the manifest does not show are dropped.
+  function groupServerResults(results, concepts) {
+    var byName = {}, groups = [], index = {};
+    concepts.forEach(function (c) { byName[c.conceptName] = c; });
+    (results || []).forEach(function (hit) {
+      var concept = byName[hit.concept];
+      if (!concept) { return; }
+      if (index[hit.concept] === undefined) {
+        index[hit.concept] = groups.length;
+        groups.push({ concept: concept, rows: [], total: 0, labels: [] });
+      }
+      var group = groups[index[hit.concept]];
+      group.rows.push(hit.record || { id: hit.id });
+      group.labels.push(hit.label);
+      group.total = group.rows.length;
+    });
+    return groups;
   }
 
   async function runLimited(tasks, limit) {
@@ -55,6 +80,20 @@
       var mine = ++generation;
       if (q.length < MIN_CHARS) { results.textContent = ""; return; }
       results.textContent = "Searching…";
+      var groups = null;
+      try {
+        var payload = await app.fetchJson("/api/search?" + new URLSearchParams({ q: q, limit: String(PER_CONCEPT) }).toString(),
+          { method: "GET", headers: app.headers() });
+        groups = groupServerResults(payload && payload.results, app.visibleConcepts());
+      } catch (error) {
+        if (error && error.status !== 404 && error.status !== 405) { groups = []; } // a real failure: no fallback storm
+      }
+      if (groups === null) { groups = await fanOut(q); } // an app generated before VIEW-1
+      if (mine !== generation) { return; } // a newer query superseded this one
+      render(groups);
+    }
+
+    async function fanOut(q) {
       var concepts = searchableConcepts(app.visibleConcepts());
       var tasks = concepts.map(function (concept) {
         return async function () {
@@ -67,8 +106,10 @@
           }
         };
       });
-      var groups = await runLimited(tasks, MAX_PARALLEL);
-      if (mine !== generation) { return; } // a newer query superseded this one
+      return runLimited(tasks, MAX_PARALLEL);
+    }
+
+    function render(groups) {
       results.innerHTML = "";
       var any = false;
       groups.forEach(function (group) {
@@ -83,9 +124,12 @@
           item.type = "button";
           item.className = "global-search-hit";
           var columns = (group.concept.list && group.concept.list.columns) || [];
-          var label = columns.filter(function (c) { return c !== group.concept.idField; })
-            .slice(0, 2).map(function (c) { return row[c]; })
-            .filter(function (v) { return v !== null && v !== undefined && v !== ""; }).join(" · ");
+          var label = group.labels && group.labels[group.rows.indexOf(row)];
+          if (!label) {
+            label = columns.filter(function (c) { return c !== group.concept.idField; })
+              .slice(0, 2).map(function (c) { return row[c]; })
+              .filter(function (v) { return v !== null && v !== undefined && v !== ""; }).join(" · ");
+          }
           item.textContent = label || String(row[group.concept.idField]);
           item.addEventListener("click", function () { close(); app.openDetails(group.concept.conceptName, row); });
           results.appendChild(item);
@@ -134,5 +178,7 @@
     }
   }
 
-  window.NPDevViews.registerGlobal("search", { init: init, _searchableConcepts: searchableConcepts });
+  window.NPDevViews.registerGlobal("search", {
+    init: init, _searchableConcepts: searchableConcepts, _groupServerResults: groupServerResults
+  });
 })();
