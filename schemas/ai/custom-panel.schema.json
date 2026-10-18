@@ -140,7 +140,9 @@
         "type": {
           "enum": [
             "table",
-            "grid"
+            "grid",
+            "console",
+            "dashboard"
           ]
         },
         "fields": {
@@ -148,6 +150,36 @@
           "items": {
             "type": "string",
             "pattern": "^[A-Za-z][A-Za-z0-9]*$"
+          }
+        },
+        "widgets": {
+          "type": "array",
+          "description": "Declarative widgets of a console or dashboard layout (tile, chart, actions, history, table). Data only: no code, no component names -- layout.slots, which mount app-owned JavaScript, is deliberately not allowed here.",
+          "items": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": { "enum": ["tile", "chart", "actions", "history", "table"] },
+              "title": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "^[^<>`$]*$" },
+              "dataSource": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*$" },
+              "aggregate": { "enum": ["count", "sum", "avg", "min", "max"] },
+              "field": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*$" },
+              "groupBy": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*$" },
+              "chart": { "enum": ["bar", "line", "donut"] },
+              "filter": {
+                "type": "object",
+                "required": ["field", "equals"],
+                "properties": {
+                  "field": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*$" },
+                  "equals": { "type": "string", "maxLength": 80, "pattern": "^[^<>`$]*$" }
+                },
+                "additionalProperties": false
+              },
+              "span": { "type": "integer", "minimum": 1, "maximum": 4 }
+            },
+            "additionalProperties": false
           }
         }
       },
