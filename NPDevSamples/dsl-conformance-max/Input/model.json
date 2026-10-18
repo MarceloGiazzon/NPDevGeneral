@@ -1109,7 +1109,7 @@
       "aggregate": "WidgetOrderAggregate",
       "route": "/widget-orders",
       "metadata": {
-        "purpose": "Coverage for autoPanels[] outside WmsOffice."
+        "purpose": "Coverage for autoPanels[] outside WmsOffice, and for the typed transaction.actions[] surface: inputFields (inline mini-form merged into the draft), applyTo (appendRow field mapping, with an action-level visibleWhen) and afterAction (a procedure that folds {draft, result} into a patched draft, subsuming applyTo)."
       },
       "transaction": {
         "hooks": {
@@ -1134,41 +1134,30 @@
             "component": "widget-order-notes"
           }
         },
-        "metadata": {
-          "visibleWhen": {
-            "lines": "$root.status != 'CANCELLED'"
+        "actions": [
+          {
+            "label": "Apply status",
+            "procedure": "RenameOrderStatusProcedure",
+            "inputFields": ["newStatus"]
           },
-          "actions": [
-            {
-              "label": "Apply status",
-              "procedure": "RenameOrderStatusProcedure",
-              "inputFields": ["newStatus"],
-              "metadata": {
-                "purpose": "Coverage for workbench transaction.metadata.actions[].inputFields (G3, docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md): a workbench action collects this field via an inline mini-form and merges it into the draft posted to invoke(), so a 'propose' procedure can seed input the current draft has no field for."
-              }
+          {
+            "label": "Suggest line",
+            "procedure": "SuggestLineProcedure",
+            "applyTo": {
+              "collection": "lines",
+              "mode": "appendRow",
+              "map": { "sku": "$resultado.id", "quantity": "1" }
             },
-            {
-              "label": "Suggest line",
-              "procedure": "SuggestLineProcedure",
-              "applyTo": {
-                "collection": "lines",
-                "mode": "appendRow",
-                "map": { "sku": "$resultado.id", "quantity": "1" }
-              },
-              "visibleWhen": "$root.status == 'DRAFT'",
-              "metadata": {
-                "purpose": "Coverage for the Workbench applyTo action mapping (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 2A) -- without applyTo, invoking a pure-computation action replaces the WHOLE draft with its raw result (invokeAction's other branch, store.patch); applyTo instead extracts named fields and appends one new row to a declared collection. map values follow patchConcept's own literal-by-default / $-ref convention -- quantity here is a literal, sku is a $ref into the raw invoke() result. Also covers action-level visibleWhen (Wave 2C / Gap 2) -- only offered while the order is still a DRAFT."
-              }
-            },
-            {
-              "label": "Suggest and fold line",
-              "procedure": "SuggestLineProcedure",
-              "afterAction": "ApplySuggestedLineProcedure",
-              "metadata": {
-                "purpose": "Coverage for Move 6 Move B's per-action afterAction (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4), which subsumes applyTo: instead of a static client-side field mapping, a procedure receiving {draft, result} and returning a patched draft -- declared per-action (like applyTo always has been) because different actions fold their results differently."
-              }
-            }
-          ]
+            "visibleWhen": "$root.status == 'DRAFT'"
+          },
+          {
+            "label": "Suggest and fold line",
+            "procedure": "SuggestLineProcedure",
+            "afterAction": "ApplySuggestedLineProcedure"
+          }
+        ],
+        "visibleWhen": {
+          "lines": "$root.status != 'CANCELLED'"
         }
       }
     },

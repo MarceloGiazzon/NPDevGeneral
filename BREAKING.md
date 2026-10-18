@@ -5,6 +5,22 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-18 — the six untyped `transaction.metadata.*` keys are now validation errors
+
+**What changes.** `autoPanels[].transaction.metadata.{recompute, derived, computed, actions,
+visibleWhen, bandPickers}` were deprecated by Moves 6-8: the compiler still read them as a fallback
+and validation only warned. The compiler no longer reads them, and validation now FAILS with an error
+naming the typed replacement (`transaction.hooks.onFieldChange`, `transaction.derivedFields`,
+`transaction.computed`, `transaction.actions`, `transaction.visibleWhen`, `transaction.bandPickers`),
+so a leftover key can no longer silently do nothing. As part of this, lifecycle validation now also
+sees the procedures named by typed `transaction.actions[]` (it only ever read the untyped list).
+
+**Who is affected.** Any model still declaring one of the six keys. Only the `dsl-conformance-max`
+sample did; it is migrated in the same commit.
+
+**Codemod.** `npdev migrate dsl-2 --input <path> --write` rewrites all six. It re-serialises the whole
+file, so hand-formatted models get a large whitespace-only diff; review with `git diff -w`.
+
 ## 2026-10-16 — `schemaLifecycle.strategy: RecreateOnAppStart` is removed (was deprecated 2026-08-18, STOR-16)
 
 **What changes.** Generation now refuses the old spelling with an error that names the fixing

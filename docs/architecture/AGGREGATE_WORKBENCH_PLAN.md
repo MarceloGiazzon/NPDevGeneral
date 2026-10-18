@@ -29,7 +29,7 @@ each closed afterward. See §5 for per-phase evidence (commit hashes, file paths
 > unedited).
 >
 > - **Declared form:** reactive recompute is the typed `transaction.hooks.onFieldChange` (`transaction.metadata.recompute`
->   is a retired but still accepted fallback); band pickers and actions are the typed `transaction.bandPickers` and
+>   is retired and now a validation error); band pickers and actions are the typed `transaction.bandPickers` and
 >   `transaction.actions[]` (`workbenchAction`).
 > - **Schema never gained** `transaction.sections[]` / `band` / `rowOps` / `collapsible` on `autoPanelSurface`
 >   (`additionalProperties: false`): sections are derived from `aggregates[].collections`; `rowOps` exists only on
@@ -243,7 +243,7 @@ expansion target rather than a standalone phase.
   picker panel, not a distinct modal grid class. The `bandPickers.<band>` mechanism the Polish pass
   shipped (`AutoPanelExpander.bandPickers()`, `workbench-page.html.mustache`'s `openBandPicker`) is a
   **separate, ad hoc** in-browser modal that references an existing panel *by name* via
-  `transaction.bandPickers` (the typed form; `transaction.metadata.bandPickers` is a retired fallback) — it is not fed by `selectors[]` and does not close this gap.
+  `transaction.bandPickers` (the typed form; `transaction.metadata.bandPickers` is retired and now a validation error) — it is not fed by `selectors[]` and does not close this gap.
   FK-field auto-attach of a Prompt from bonds is still driven by the pre-existing `promptsByConcept`
   mechanism, not by `selectors[]`.
 - **Update:** `selectorRef` has since shipped (2026-09-05, EDIT-18/REG-206), so band and field pickers can adopt a

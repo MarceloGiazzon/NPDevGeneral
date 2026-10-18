@@ -25,6 +25,7 @@ import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
 import com.npdev.dsl.v1.ast.AutoPanelComputedAst;
 import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
+import com.npdev.dsl.v1.ast.WorkbenchActionAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.expr.ComputedExpression;
@@ -296,17 +297,9 @@ final class LifecycleValidation {
             if (transaction == null) {
                 continue;
             }
-            Object declared = transaction.metadata().get("actions");
-            if (!(declared instanceof List<?> list)) {
-                continue;
-            }
-            for (Object entry : list) {
-                if (!(entry instanceof Map<?, ?> map)) {
-                    continue;
-                }
-                Object procedure = map.get("procedure");
-                if (procedure != null && !String.valueOf(procedure).isBlank()) {
-                    procedures.add(String.valueOf(procedure).trim());
+            for (WorkbenchActionAst action : transaction.actions()) {
+                if (action != null && hasText(action.procedure())) {
+                    procedures.add(action.procedure().trim());
                 }
             }
         }

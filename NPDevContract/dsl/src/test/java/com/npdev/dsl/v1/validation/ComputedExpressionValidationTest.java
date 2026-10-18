@@ -70,7 +70,7 @@ class ComputedExpressionValidationTest {
     @Test
     void computedWithoutRecomputeProcedureWarnsItStaysMetadataOnly() throws Exception {
         // AW-P3: computed[] compiles into panel metadata but nothing evaluates it client-side --
-        // live recompute-on-keystroke is delivered entirely by transaction.metadata.recompute. Warn
+        // live recompute-on-keystroke is delivered entirely by transaction.hooks.onFieldChange (a recompute procedure). Warn
         // (don't block) so a declared computed[] never silently does nothing.
         String json = """
             {
@@ -112,7 +112,7 @@ class ComputedExpressionValidationTest {
                 { "concept": "Item", "surfaces": ["transaction"],
                   "transaction": {
                     "computed": [{ "col": "total", "expr": "pos*42 + cxAvulsas" }],
-                    "metadata": { "recompute": "Recalcular" }
+                    "hooks": { "onFieldChange": "Recalcular" }
                   } }
               ]
             }
