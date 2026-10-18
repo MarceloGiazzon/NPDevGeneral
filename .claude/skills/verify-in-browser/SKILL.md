@@ -9,7 +9,7 @@ Use the ScrapForAI harness to drive the running app the way a user would. This i
 proof for UI/runtime changes; tests alone don't exercise the generated page.
 
 ## Harness
-- In-repo runner: `NPDevSamples/scripts/browser/scrapforai-harness.ps1` (+ `demonstrate-browser.ps1`).
+- In-repo runner: `NPDevSamples/scripts/browser/scrapforai-harness.ps1` (per-sample copies also live beside some samples, e.g. `NPDevSamples/12works/gift-idea-tracker/`).
 - External engine: `D:\WorkSpace\ScrapForAILegacy` (Playwright). Start/auth it per its own README.
 
 ## Non-negotiable gotchas (each has burned a session before)

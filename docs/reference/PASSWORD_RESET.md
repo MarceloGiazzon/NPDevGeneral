@@ -22,8 +22,8 @@ Always returns the same response — unknown username, inactive account, no emai
 accounts. A matching token (32 random bytes, base64url) is generated, its SHA-256 hash + a 30-minute
 expiry stored in the identity pack's `PasswordResetToken` table (resolved from the compiled model, so
 `identity_v1_password_reset_tokens` in a real app; an app that does not compose the concept gets the
-generic response and a logged warning), and — only if the app's model declared *and*
-bound a `mail` capability (`CapabilityRegistry.has("mail")`) — an email is dispatched through it.
+generic response and a logged warning), and an email is dispatched through the bound `mail` capability (`CapabilityRegistry.has("mail")`). If no `mail` capability is
+bound, the request returns the generic response before any token is generated or stored.
 
 ```
 POST /api/auth/password-reset/confirm
@@ -48,13 +48,13 @@ under the old password, mirroring `ControlPanelTenantUsersController`'s admin-fo
 2. **A populated `identity_users.email`** — previously always `NULL` at every registration path
    (`BootstrapAdminController`, `CreateUserController`, `ControlPanelAdminUserController`); all
    three now accept an optional `email` field and thread it through
-   `IdentityProvisioning.insertIdentityUser` (new 6-arg overload; the old 5-arg one still exists,
-   delegating with `email=null`, so nothing already calling it breaks). An account with no email on
+   `IdentityProvisioning.insertIdentityUser` (a 7-arg overload that takes `email`; a 6-arg overload
+   delegates with `email=null`, so nothing already calling it breaks). An account with no email on
    file can't use self-service reset — same treatment as an unknown username, and the fallback is
    ControlPanel's admin-forced reset.
 3. **A declared and bound `mail` capability** — e.g.
    `{"name":"mail","type":"EmailCapability","operations":["send"]}` bound to `mail-inproc` (dev) or
-   `mail-smtp` (real send), per `docs/EMAIL_NOTIFICATIONS.md`. Without one, `requestReset` still
+   `mail-smtp` (real send), per `docs/reference/EMAIL_NOTIFICATIONS.md`. Without one, `requestReset` still
    returns the generic 200, it just never sends anything — a silent no-op, not an error, since
    plenty of apps won't want/need self-service reset.
 

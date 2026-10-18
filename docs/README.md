@@ -80,7 +80,7 @@ One file per built-in feature.
 
 ## Generated / live registers
 
-Never hand-edit these — each has its own regenerate command, checked by `run-ai-knowledge-gate.ps1`.
+Never hand-edit these — each has its own regenerate command (`generate_gaps_roadmap.py` is also run by `run-ai-knowledge-gate.ps1`; `OPEN_ITEMS.md` and `DSL_REFERENCE.md` render into the Build root and are not committed).
 `OPEN_ITEMS.md`, `OPEN_GAPS_AND_ROADMAP.md` and `DSL_REFERENCE.md` are no longer committed to the
 repo (md-zero-2026-08-11 PLAN.md Phase 6) — build output, per `BUILD_OUTPUT_LOCATION_POLICY.md`;
 run the commands below to render a local copy into the external Build root.
@@ -121,4 +121,4 @@ reference inside it will not fail the release gate.
 
 [beta/](beta/) is Beta0-era runbook material, also classified `historical`.
 
-[security/](security/) holds the current security-review process document.
+[security/](security/) holds the Box/Object threat model (a threat-to-existing-test mapping, not an executable test suite).
