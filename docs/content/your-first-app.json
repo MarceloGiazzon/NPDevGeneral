@@ -178,7 +178,7 @@
         {
           "type": "fence",
           "lang": "",
-          "text": "DESTRUCTIVE_DROP_COLUMN  book.isbn  (2 row(s) hold a value today)\npossible rename(s) -- NPDev cannot tell a rename from a drop+add by shape alone, so it\nstill refuses; this is the fix, not a guess:\n    column 'isbnCode' added on book (2 row(s) hold a value today). If this is a RENAME,\n    declare it and re-run:\n        \"isbnCode\": { ..., \"renamedFrom\": \"isbn\" }"
+          "text": "DESTRUCTIVE_DROP_COLUMN  book.isbn\n...\n  possible rename(s) -- NPDev cannot tell a rename from a drop+add by shape alone, so it still refuses; this is the fix, not a guess (docs/ACCEPTED_BOUNDARIES.md B1):\n    'isbn' -> 'isbnCode' on book (score N/M):\n        ...\n        If this is a RENAME, declare it and re-run:\n          \"isbnCode\": { ..., \"renamedFrom\": \"isbn\" }\n  If it is genuinely a drop plus an add, acknowledge the drop as shown above (this hint never blocks or auto-applies anything)."
         },
         {
           "type": "prose",

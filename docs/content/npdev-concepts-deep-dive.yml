@@ -60,12 +60,13 @@ sections:
 
     **Field types you can use:**
     `string`, `uuid`, `int`, `integer`, `long`, `boolean`, `date`, `datetime`, `enum`,
-    `reference` (→ see §7), `object` (→ needs `properties`), `array` (→ needs `items`).
+    `reference` (→ see §7), `object` (→ needs `properties`), `array` (→ needs `items`), `decimal`, `file`.
 
     - `type: "enum"` needs `enumValues: ["A", "B", ...]`.
     - `type: "object"` needs a nested `properties` block — a mini-concept embedded in a field
       (e.g. an `emergencyContact` field with its own `name`/`phone` sub-fields).
-    - `type: "array"` needs `items: { "type": "..." }` — a repeatable list on one record.
+    - `type: "array"` needs `items: { "type": "object" | "enum", ... }` — a repeatable list on one record. The schema accepts only
+      `object` and `enum` item types; `items: { "type": "string" }` fails validation.
 
     **Invariants** are the rules a record must satisfy before it can be saved. Two shapes:
 
@@ -303,7 +304,7 @@ sections:
   body: |2
 
     - The generator compiles your Java straight into the generated application — if it doesn't
-      compile, the whole app build fails. Keep custom capabilities small and dependency-free.
+      compile, the whole app build fails. Keep custom capabilities small; third-party libraries are possible through `config.json`'s `build.dependencies[]` / `build.repositories[]`, which a `plugin:java-source` capability picks up.
     - A capability is an *interface*; the adapter is the *implementation*. You can swap adapters
       (e.g., move `persistence` from an in-memory adapter to a Postgres-backed one) without
       touching your flows, because flows only ever call the capability by name.
@@ -714,8 +715,8 @@ sections:
     **If you are organising ONE project, you want `contexts[]`.** It is the module mechanism, and
     the reason is the `imports[]` column: a context may only reference another context it has
     declared, the import graph must be acyclic, and a violation is a compile error rather than a
-    convention. That is what makes a boundary a boundary. `physicallyIsolate` additionally puts a
-    context's tables in their own physical database.
+    convention. That is what makes a boundary a boundary. `physicallyIsolate` additionally gives a
+    context's tables context-qualified, mangled names (`::` becomes `_`) in the same database; it does not create a separate physical database.
 
     **If you are shipping something for OTHER projects to install, you want `packs[]`.** A pack is
     versioned, resolvable from a remote coordinate, and declares what it `requires` and `provides`.

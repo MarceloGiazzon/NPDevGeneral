@@ -27,12 +27,12 @@ a running app, not JSON, and every speculative concept is one they must now unde
 
 ## Non-negotiables
 
-1. **Every object is validated `additionalProperties: false`.** A typo'd or invented key fails
+1. **Every schema object is closed (`additionalProperties: false`)**, with the exception of the free-form `metadata` maps on panels and procedures. A typo'd or invented key fails
    generation — it is not ignored. Only emit keys defined in the schema for that object.
 2. **Exactly one field per concept has `"id": true`** (or use the conventional `{"name":"id",
    "type":"uuid","id":true,"required":true}`).
-3. **References are same-model only.** A `reference.target` must name a concept defined in this
-   same `model.json`.
+3. **References stay inside the composed model.** A `reference.target` must name a concept defined in this
+   model, including concepts composed in from a pack or fragment.
 4. **Root uses `concepts`, not `entities`.** `entities` is a rejected legacy shape.
 5. Required root fields: `dslVersion` (`"1.0.0"`), `version`, `namespace` (or alias `model`),
    and a non-empty `concepts` array.
@@ -71,7 +71,7 @@ one because it "looks unused" — ask.
 
 `string`, `uuid`, `int`/`integer`, `long`, `boolean`, `date`, `datetime`, `enum` (needs
 `enumValues`), `reference` (needs `reference.target`), `object` (needs `properties`), `array`
-(needs `items`).
+(needs `items`), `decimal`, `file`.
 
 ## Common gotchas (these are the ones that bite)
 

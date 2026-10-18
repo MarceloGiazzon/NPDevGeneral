@@ -3,7 +3,7 @@
   "preamble": [
     {
       "type": "prose",
-      "text": "# Getting Started\n\nThis is the actual first hour: check the machine, create an app with `npdev init`, run it, then\nchange the model and watch the change land. Start from the repository root. On Linux and macOS,\nuse the portable `npdev` entrypoint; on Windows use `npdev.bat` with the same arguments (examples\nbelow use `./npdev` — swap in `npdev.bat` and backslash paths on Windows).\n\nRequires Java 17+ and Python 3 (the `npdev` CLI is Python itself), with Gradle and PowerShell\nfetched on demand — Docker is optional, only needed for the container run path described in\n`docs/DEPLOYMENT.md`. `./npdev doctor` checks everything below and tells you exactly what is\nmissing.\n"
+      "text": "# Getting Started\n\nThis is the actual first hour: check the machine, create an app with `npdev init`, run it, then\nchange the model and watch the change land. Start from the repository root. On Linux and macOS,\nuse the portable `npdev` entrypoint; on Windows use `npdev.bat` with the same arguments (examples\nbelow use `./npdev` — swap in `npdev.bat` and backslash paths on Windows).\n\nRequires Java 17+ and Python 3 (the `npdev` CLI is Python itself), with Gradle\nfetched on demand (PowerShell 7 is not fetched: `npdev run app` and `npdev verify --tier T1+` need it, and `./npdev doctor` warns when it is missing) — Docker is optional, only needed for the container run path described in\n`docs/DEPLOYMENT.md`. `./npdev doctor` checks everything below and tells you exactly what is\nmissing.\n"
     }
   ],
   "sections": [
