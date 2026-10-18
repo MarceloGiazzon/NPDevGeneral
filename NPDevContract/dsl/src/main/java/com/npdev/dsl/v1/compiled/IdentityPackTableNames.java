@@ -28,16 +28,32 @@ public record IdentityPackTableNames(
         String usersTable,
         String rolesTable,
         String userRolesTable,
-        String userRolePermissionsTable
+        String userRolePermissionsTable,
+        String userSessionsTable
 ) {
     private static final Logger LOG = Logger.getLogger(IdentityPackTableNames.class.getName());
+
+    /**
+     * SESS-1: {@code userSessionsTable} is OPTIONAL -- {@code identity::UserSession} only exists from
+     * identity pack 1.4.0, and an app on an older private pack copy (REG-39) simply has no sessions
+     * feature: null here means "off", never an error. The four-table form stays for every existing
+     * caller and test.
+     */
+    public IdentityPackTableNames(
+            String usersTable, String rolesTable, String userRolesTable, String userRolePermissionsTable) {
+        this(usersTable, rolesTable, userRolesTable, userRolePermissionsTable, null);
+    }
 
     public static IdentityPackTableNames resolve(CompiledModel compiledModel) {
         return new IdentityPackTableNames(
                 resolveTable(compiledModel, "identity::User"),
                 resolveTable(compiledModel, "identity::Role"),
                 resolveTable(compiledModel, "identity::UserRole"),
-                resolveTable(compiledModel, "identity::UserRolePermission"));
+                resolveTable(compiledModel, "identity::UserRolePermission"),
+                compiledModel.findConcept("identity::UserSession")
+                        .map(CompiledConcept::getTableName)
+                        .filter(name -> name != null && !name.isBlank())
+                        .orElse(null));
     }
 
     /**

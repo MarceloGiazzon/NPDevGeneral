@@ -364,7 +364,11 @@ public class LoginController {
         throttle.recordSuccess(tenantId, username);
         Set<String> roles = IdentityRoleLookup.rolesFor(dataSource, identityTables, tenantId, username);
         JwtSigner signer = new JwtSigner(objectMapper, privateKey, issuer, audience, expirySeconds);
-        String token = signer.sign(tenantId, username, roles, tokenVersion);
+        // SESS-1: one session row per sign-in; its id rides in the token as `sid`. Null (identity pack
+        // older than 1.4.0, or a write problem) simply mints the token without one.
+        String[] client = UserSessionStore.clientOf(httpRequest);
+        String sessionId = UserSessionStore.open(dataSource, identityTables, tenantId, username, client[0], client[1]);
+        String token = signer.sign(tenantId, username, roles, tokenVersion, sessionId);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("token", token);

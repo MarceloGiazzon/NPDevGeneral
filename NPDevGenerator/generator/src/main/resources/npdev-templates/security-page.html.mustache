@@ -29,6 +29,11 @@
   button.danger { color: var(--error); border-color: var(--error); }
   button:disabled { opacity: .55; cursor: not-allowed; }
   .row { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .4rem; }
+  .devices { list-style: none; padding: 0; margin: .4rem 0; }
+  .devices li { display: flex; gap: .75rem; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    padding: .5rem 0; border-top: 1px solid rgba(128,128,128,.25); }
+  .devices .what { font-weight: 600; }
+  .devices .meta { font-size: .85rem; opacity: .8; }
   .note { font-size: .85rem; color: var(--muted); margin: 0 0 1rem; line-height: 1.45; }
   .status { font-weight: 600; }
   .secret { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.05rem;
@@ -140,6 +145,9 @@
   <section id="sessionsCard" class="hidden">
     <h2>Sessions</h2>
     <p class="note">Lost a phone or used a shared computer? Sign out everywhere else. You stay signed in here.</p>
+    <h3>Where you're signed in</h3>
+    <p class="note" id="deviceListNote">Each browser or device you signed in on. End one to sign out just that device.</p>
+    <ul id="deviceList" class="devices"></ul>
     <div class="row"><button class="danger" id="revokeOthersBtn" type="button">Sign out of all other devices</button></div>
   </section>
 
@@ -213,9 +221,61 @@
   }
   function errorCode(res) { return res.body && res.body.error ? res.body.error : "request_failed"; }
 
+  // SESS-2: "Where you're signed in" -- every live session of this user, this device marked, one Revoke each.
+  function deviceName(agent) {
+    if (!agent) { return "Unknown device"; }
+    var browser = /Edg\//.test(agent) ? "Edge" : /Firefox\//.test(agent) ? "Firefox"
+      : /Chrome\//.test(agent) ? "Chrome" : /Safari\//.test(agent) ? "Safari" : "Browser";
+    var os = /Windows/.test(agent) ? "Windows" : /Android/.test(agent) ? "Android"
+      : /iPhone|iPad/.test(agent) ? "iOS" : /Mac OS X/.test(agent) ? "macOS" : /Linux/.test(agent) ? "Linux" : "";
+    return os ? browser + " on " + os : browser;
+  }
+  function renderDevices(sessions) {
+    var list = $("deviceList");
+    while (list.firstChild) { list.removeChild(list.firstChild); }
+    $("deviceListNote").classList.toggle("hidden", !sessions.length);
+    sessions.forEach(function (s) {
+      var li = document.createElement("li");
+      var info = document.createElement("div");
+      var what = document.createElement("div");
+      what.className = "what";
+      what.textContent = deviceName(s.userAgent) + (s.current ? " (this device)" : "");
+      var meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = (s.ipAddress || "unknown address") + " \u00b7 last active " + (s.lastSeenAt || s.createdAt || "unknown");
+      info.appendChild(what);
+      info.appendChild(meta);
+      li.appendChild(info);
+      if (!s.current) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = "danger";
+        button.textContent = "Revoke";
+        button.addEventListener("click", function () {
+          clearBanners();
+          button.disabled = true;
+          api("DELETE", "/api/auth/sessions/" + encodeURIComponent(s.id)).then(function (res) {
+            if (res.status === 401) { show("signedOut"); return; }
+            if (res.status !== 200 && res.status !== 404) { button.disabled = false; showError(errorCode(res)); return; }
+            showOk("That device was signed out.");
+            loadDevices();
+          }).catch(function () { button.disabled = false; showError("request_failed"); });
+        });
+        li.appendChild(button);
+      }
+      list.appendChild(li);
+    });
+  }
+  function loadDevices() {
+    api("GET", "/api/auth/sessions").then(function (res) {
+      renderDevices(res.status === 200 && res.body.sessions ? res.body.sessions : []);
+    }).catch(function () { renderDevices([]); });
+  }
+
   function loadStatus() {
     clearBanners();
     $("sessionsCard").classList.toggle("hidden", !currentToken());
+    if (currentToken()) { loadDevices(); }
     if (!currentToken()) { show("signedOut"); return; }
     show("loading");
     api("GET", "/api/auth/mfa/status").then(function (res) {
@@ -337,6 +397,7 @@
       if (res.status !== 200 || !res.body.token) { showError(errorCode(res)); return; }
       storeToken(res.body.token);
       showOk("Other sessions were signed out.");
+      loadDevices();
     }).catch(function () { $("revokeOthersBtn").disabled = false; showError("request_failed"); });
   });
 

@@ -146,6 +146,16 @@ Two-step sign-in (authenticator app, identity pack 1.3.0+, `identity::UserMfa`):
 Apps that keep a private copy of the identity pack older than 1.3.0 have no `identity::UserMfa` table;
 MFA is then reported as unavailable and sign-in behaves exactly as before.
 
+**Per-device sessions** (identity pack 1.4.0, `identity::UserSession`): every sign-in opens a session row
+(browser, address, last active) and the token carries its id as the `sid` claim, so one device can be
+ended without signing out the others. The account security page (`/security.html`) lists them as "Where
+you're signed in" with a Revoke per device (`GET /api/auth/sessions`, `DELETE /api/auth/sessions/{id}`);
+sign-out, "sign out of all other devices" and a password change also end sessions. A revoked session is
+refused within **30 seconds** (each node caches the verdict that long; the node that handled the revoke
+sees it at once). Tokens minted before this feature carry no `sid` and keep working until they expire.
+Apps that keep a private copy of the identity pack older than 1.4.0 have no `identity::UserSession`
+table: sessions are then simply off, the list is empty and sign-in behaves exactly as before.
+
 Self-signup by e-mail (`POST /api/auth/signup`, **off by default**; needs a bound `mail` capability):
 
 | Property | Environment variable | Meaning |
