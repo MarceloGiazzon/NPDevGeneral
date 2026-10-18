@@ -10,6 +10,7 @@
   "concepts": [
     {
       "name": "ApprovalRequest",
+      "truthLevel": "T2",
       "ui": {
         "label": "Approval request"
       },
@@ -149,6 +150,7 @@
     },
     {
       "name": "ApprovalDecision",
+      "truthLevel": "T2",
       "ui": {
         "label": "Approval decision"
       },
