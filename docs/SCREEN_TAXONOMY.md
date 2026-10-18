@@ -144,7 +144,7 @@ screenshot, not just the DOM-text dump, which mis-reads dense tables as blank). 
 `Sugerir*` suggestion flows against `invoke()` (procedure-over-draft) found and fixed a second real
 platform bug (REG-73: `ProcedureRunner` never resolved a capability adapter from the model's
 `bindings`, so every procedure-side `capabilityCall` failed regardless of aggregates) and closed a
-previously-unused generator seam (`autoPanels[].transaction.metadata.actions`) to wire the suggestions
+previously-unused generator seam (`autoPanels[].transaction.actions`) to wire the suggestions
 as real clickable Workbench buttons, live-verified. Two real, still-open residuals named (not fixed):
 a position edit's stock-ledger side effect (`syncOcupacao`) has no cross-aggregate write mechanism,
 and a `Sugerir` result isn't auto-applied into a new position row by the generic renderer. Neither

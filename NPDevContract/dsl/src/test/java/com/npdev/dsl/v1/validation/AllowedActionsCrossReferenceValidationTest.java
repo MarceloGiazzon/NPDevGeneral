@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * any well-formed string, so a typo silently produced a state where that action never appears in the
  * action rail -- the original bug's actual failure mode, still open after C8 typed the array.
  * LifecycleValidation now cross-references each entry against the concept's own AutoPanel workbench
- * actions (transaction.metadata.actions[].procedure). Same aggregate/autoPanel fixture shape as
+ * actions (transaction.actions[].procedure). Same aggregate/autoPanel fixture shape as
  * AggregateWorkbenchExpansionTest (the mechanism only exists for aggregate-bound workbenches). */
 class AllowedActionsCrossReferenceValidationTest {
 
@@ -45,11 +45,15 @@ class AllowedActionsCrossReferenceValidationTest {
                     { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned" }
                   ] }
               ],
+              "procedures": [
+                { "name": "GerarDemanda", "steps": [{ "name": "done", "type": "return", "value": "ok" }] },
+                { "name": "Recalcular", "steps": [{ "name": "done", "type": "return", "value": "ok" }] }
+              ],
               "autoPanels": [ { "aggregate": "Expedicao",
-                "transaction": { "metadata": { "actions": [
+                "transaction": { "actions": [
                   { "label": "Gerar Demanda", "procedure": "GerarDemanda" },
                   { "procedure": "Recalcular" }
-                ] } } } ]
+                ] } } ]
             }
             """.formatted(allowedActionsJson);
     }

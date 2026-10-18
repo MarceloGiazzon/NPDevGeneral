@@ -793,46 +793,46 @@ final class PanelValidation {
         }
         // AW-P3: computed[] is compiled into the workbench descriptor's metadata for introspection,
         // but no client evaluator reads it -- the live keystroke-recompute UX is delivered entirely
-        // by transaction.metadata.recompute (a server-round-trip procedure). Warn rather than let a
+        // by transaction.hooks.onFieldChange (a server-round-trip procedure). Warn rather than let a
         // declared computed[] silently do nothing on this surface, without blocking authoring.
         if (!surfaceAst.computed().isEmpty() && !hasText(recomputeProcedureName(surfaceAst))) {
             warnings.add(panelLabel + " " + surface + ": declares computed[] but no "
-                    + "transaction.metadata.recompute procedure -- computed[] stays panel metadata "
+                    + "transaction.hooks.onFieldChange (recompute) procedure -- computed[] stays panel metadata "
                     + "only and will NOT recompute live in the generated page unless a recompute "
                     + "procedure is also declared.");
         }
         // Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.5): transaction.metadata.recompute and
         // .derived are retired in favor of the typed transaction.hooks.onFieldChange /
-        // .derivedFields -- both still work (one release of dual support), but warn so authors
-        // migrate rather than discover this silently later. Run `npdev migrate dsl-2` to rewrite
-        // existing usages automatically.
+        // .derivedFields -- the old keys are now validation ERRORS (they used to be read as a fallback and
+        // warn), so an author's old key can never silently do nothing. Run `npdev migrate dsl-2` to
+        // rewrite existing usages automatically.
         if (surfaceAst.metadata().get("recompute") != null) {
-            warnings.add(panelLabel + " " + surface + ": transaction.metadata.recompute is deprecated -- "
-                    + "use transaction.hooks.onFieldChange instead (run `npdev migrate dsl-2` to rewrite it).");
+            errors.add(panelLabel + " " + surface + ": transaction.metadata.recompute is retired -- "
+                    + "suggestedFix: use transaction.hooks.onFieldChange instead (run `npdev migrate dsl-2` to rewrite it).");
         }
         if (surfaceAst.metadata().get("derived") != null) {
-            warnings.add(panelLabel + " " + surface + ": transaction.metadata.derived is deprecated -- "
-                    + "use transaction.derivedFields instead (run `npdev migrate dsl-2` to rewrite it).");
+            errors.add(panelLabel + " " + surface + ": transaction.metadata.derived is retired -- "
+                    + "suggestedFix: use transaction.derivedFields instead (run `npdev migrate dsl-2` to rewrite it).");
         }
         // Move 8 D2 (item G4, docs/MOVE8_CLOSE_TABLE_SPEC.md): the remaining four untyped
         // metadata keys Move 6/7 gave typed replacements to (transaction.actions, .visibleWhen,
         // .bandPickers, and the surface-level computed[] field) had no deprecation signal at all --
         // an author's old key would silently do nothing instead of warning them to migrate.
         if (surfaceAst.metadata().get("computed") != null) {
-            warnings.add(panelLabel + " " + surface + ": transaction.metadata.computed is deprecated -- "
-                    + "use the surface's own computed[] field instead (run `npdev migrate dsl-2` to rewrite it).");
+            errors.add(panelLabel + " " + surface + ": transaction.metadata.computed is retired -- "
+                    + "suggestedFix: use the surface's own computed[] field instead (run `npdev migrate dsl-2` to rewrite it).");
         }
         if (surfaceAst.metadata().get("actions") != null) {
-            warnings.add(panelLabel + " " + surface + ": transaction.metadata.actions is deprecated -- "
-                    + "use transaction.actions instead (run `npdev migrate dsl-2` to rewrite it).");
+            errors.add(panelLabel + " " + surface + ": transaction.metadata.actions is retired -- "
+                    + "suggestedFix: use transaction.actions instead (run `npdev migrate dsl-2` to rewrite it).");
         }
         if (surfaceAst.metadata().get("visibleWhen") != null) {
-            warnings.add(panelLabel + " " + surface + ": transaction.metadata.visibleWhen is deprecated -- "
-                    + "use transaction.visibleWhen instead (run `npdev migrate dsl-2` to rewrite it).");
+            errors.add(panelLabel + " " + surface + ": transaction.metadata.visibleWhen is retired -- "
+                    + "suggestedFix: use transaction.visibleWhen instead (run `npdev migrate dsl-2` to rewrite it).");
         }
         if (surfaceAst.metadata().get("bandPickers") != null) {
-            warnings.add(panelLabel + " " + surface + ": transaction.metadata.bandPickers is deprecated -- "
-                    + "use transaction.bandPickers instead (run `npdev migrate dsl-2` to rewrite it).");
+            errors.add(panelLabel + " " + surface + ": transaction.metadata.bandPickers is retired -- "
+                    + "suggestedFix: use transaction.bandPickers instead (run `npdev migrate dsl-2` to rewrite it).");
         }
     }
 
@@ -842,11 +842,7 @@ final class PanelValidation {
         if (surfaceAst.hooks() != null && hasText(surfaceAst.hooks().onFieldChange())) {
             return surfaceAst.hooks().onFieldChange().trim();
         }
-        Object declared = surfaceAst.metadata().get("recompute");
-        if (declared instanceof Map<?, ?> map) {
-            declared = map.get("procedure");
-        }
-        return declared == null ? null : String.valueOf(declared).trim();
+        return null;
     }
 
     private static String firstNonBlankBinding(AutoPanelAst autoPanel) {

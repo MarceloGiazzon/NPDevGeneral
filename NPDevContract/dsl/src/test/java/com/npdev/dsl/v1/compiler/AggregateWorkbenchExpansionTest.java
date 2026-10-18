@@ -89,16 +89,14 @@ class AggregateWorkbenchExpansionTest {
                   ] }
               ],
               "autoPanels": [ { "aggregate": "Expedicao", "selection": { "filters": ["cliente"] },
-                "transaction": { "metadata": {
-                  "recompute": "Recalcular",
+                "transaction": {
+                  "hooks": { "onFieldChange": "Recalcular" },
                   "bandPickers": {
-                    "origens": { "panel": "MovtoOrigemSelection", "label": "Seleciona Ruas", "columns": ["local"] },
-                    "semvias": { "label": "ignored — no panel" }
+                    "origens": { "panel": "MovtoOrigemSelection", "label": "Seleciona Ruas", "columns": ["local"] }
                   },
                   "actions": [
-                  { "label": "Gerar Demanda", "procedure": "GerarDemanda" },
-                  { "procedure": "Recalcular" },
-                  { "label": "no-op" } ] } } } ]
+                    { "label": "Gerar Demanda", "procedure": "GerarDemanda" },
+                    { "procedure": "Recalcular" } ] } } ]
             }
             """;
         CompiledModel model = compile(json);
@@ -149,11 +147,11 @@ class AggregateWorkbenchExpansionTest {
         assertNull(confirmada.get("allowedActions"),
                 "confirmada declares no allowedActions -- absent means no restriction");
 
-        // Procedure-over-aggregate actions (P6): declared under transaction.metadata.actions; the entry
-        // without a procedure is dropped, and a missing label defaults to the procedure name.
+        // Procedure-over-aggregate actions (P6): declared under transaction.actions; a missing label
+        // defaults to the procedure name.
         List<Map<String, Object>> actions = (List<Map<String, Object>>) wb.get("actions");
         assertNotNull(actions, "workbench descriptor should carry declared invoke actions");
-        assertEquals(2, actions.size(), "the label-only entry (no procedure) is skipped");
+        assertEquals(2, actions.size());
         assertEquals("Gerar Demanda", actions.get(0).get("label"));
         assertEquals("GerarDemanda", actions.get(0).get("procedure"));
         assertEquals("Recalcular", actions.get(1).get("label"), "label defaults to the procedure name");
@@ -173,11 +171,10 @@ class AggregateWorkbenchExpansionTest {
         assertEquals("itemSeq", bands.get(0).get("childField"));
         assertEquals(List.of("id", "itemSeq", "local"), bands.get(1).get("columns"));
 
-        // Reactive recompute (P3): the declared procedure surfaces on the workbench descriptor.
+        // Reactive recompute (P3): the hooks.onFieldChange procedure surfaces on the workbench descriptor.
         assertEquals("Recalcular", wb.get("recompute"), "recompute procedure projected onto the workbench");
 
-        // Per-band picker (C6): the origens band gets a picker; the entry without a panel is dropped;
-        // destinos (undeclared) has none.
+        // Per-band picker (C6): the origens band gets a picker; destinos (undeclared) has none.
         Map<String, Object> origens = bands.get(0);
         Map<String, Object> picker = (Map<String, Object>) origens.get("picker");
         assertNotNull(picker, "origens band should carry its declared picker");
@@ -213,15 +210,13 @@ class AggregateWorkbenchExpansionTest {
                   ] }
               ],
               "autoPanels": [ { "aggregate": "Movimento",
-                "transaction": { "metadata": { "actions": [
+                "transaction": { "actions": [
                   { "label": "Sugerir", "procedure": "SugerirProcedure",
                     "applyTo": { "collection": "itens", "mode": "appendRow",
                       "map": { "produtoId": "$resultado.produtoId", "papel": "Destino" } } },
                   { "label": "No applyTo", "procedure": "NoApplyToProcedure" },
-                  { "label": "Missing collection", "procedure": "P1", "applyTo": { "mode": "appendRow", "map": { "a": "$b" } } },
-                  { "label": "Wrong mode", "procedure": "P2", "applyTo": { "collection": "itens", "mode": "replaceAll", "map": { "a": "$b" } } },
                   { "label": "Empty map", "procedure": "P3", "applyTo": { "collection": "itens", "mode": "appendRow", "map": {} } }
-                ] } } } ]
+                ] } } ]
             }
             """;
         CompiledModel model = compile(json);
@@ -231,7 +226,7 @@ class AggregateWorkbenchExpansionTest {
                 .orElseThrow(() -> new AssertionError("expected MovimentoWorkbench"));
         Map<String, Object> wb = (Map<String, Object>) workbench.metadata().get("workbench");
         List<Map<String, Object>> actions = (List<Map<String, Object>>) wb.get("actions");
-        assertEquals(5, actions.size());
+        assertEquals(3, actions.size());
 
         Map<String, Object> sugerir = actions.get(0);
         Map<String, Object> applyTo = (Map<String, Object>) sugerir.get("applyTo");
@@ -243,61 +238,9 @@ class AggregateWorkbenchExpansionTest {
         assertEquals("Destino", map.get("papel"), "a plain value is a literal, passed through verbatim");
 
         assertNull(actions.get(1).get("applyTo"), "an action that never declared applyTo has none");
-        assertNull(actions.get(2).get("applyTo"), "missing collection must be dropped, not passed through malformed");
-        assertNull(actions.get(3).get("applyTo"), "an undeclared mode must be dropped");
-        assertNull(actions.get(4).get("applyTo"), "an empty map has nothing to fold in, so applyTo is dropped");
-    }
-
-    /**
-     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2B): a declared derived display field (M6's
-     * "balanced banner", docs/MOVE3_G2_CHECKLISTS.md) must survive the compiler with a label
-     * defaulting to its name, and an entry missing a name or expression must be dropped rather than
-     * passed through malformed.
-     */
-    @Test
-    @SuppressWarnings("unchecked")
-    void workbenchDerivedFieldsSurviveWithDefaultLabelAndMalformedEntriesAreDropped() throws Exception {
-        String json = """
-            {
-              "dslVersion": "1.0.0", "namespace": "wms.derived", "version": "1.0",
-              "concepts": [
-                { "name": "Movimento", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
-                { "name": "MovimentoItem", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true },
-                  { "name": "movimentoId", "type": "uuid" } ] }
-              ],
-              "aggregates": [
-                { "name": "Movimento", "root": "Movimento",
-                  "collections": [
-                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" }
-                  ] }
-              ],
-              "autoPanels": [ { "aggregate": "Movimento",
-                "transaction": { "metadata": { "derived": [
-                  { "name": "origemTotal", "expression": "sum(itens[].posicoes[].filter(papel=='Origem').quantidade)" },
-                  { "name": "destinoTotal", "expression": "sum(itens[].posicoes[].filter(papel=='Destino').quantidade)", "label": "Destino Total" },
-                  { "expression": "sum(itens[].quantidade)" },
-                  { "name": "noExpression" }
-                ] } } } ]
-            }
-            """;
-        CompiledModel model = compile(json);
-
-        CompiledPanel workbench = model.getPanels().stream()
-                .filter(p -> "MovimentoWorkbench".equals(p.name())).findFirst()
-                .orElseThrow(() -> new AssertionError("expected MovimentoWorkbench"));
-        Map<String, Object> wb = (Map<String, Object>) workbench.metadata().get("workbench");
-        List<Map<String, Object>> derived = (List<Map<String, Object>>) wb.get("derived");
-        assertNotNull(derived, "workbench descriptor should carry declared derived fields");
-        assertEquals(2, derived.size(), "the two malformed entries (no name, no expression) are dropped");
-
-        assertEquals("origemTotal", derived.get(0).get("name"));
-        assertEquals("origemTotal", derived.get(0).get("label"), "label defaults to name when not declared");
-        assertEquals("sum(itens[].posicoes[].filter(papel=='Origem').quantidade)", derived.get(0).get("expression"));
-
-        assertEquals("destinoTotal", derived.get(1).get("name"));
-        assertEquals("Destino Total", derived.get(1).get("label"), "an explicit label must survive as declared");
+        // A missing collection or a mode other than appendRow is rejected by the schema before it can
+        // reach the compiler; an empty map is the one malformed shape the compiler still has to drop.
+        assertNull(actions.get(2).get("applyTo"), "an empty map has nothing to fold in, so applyTo is dropped");
     }
 
     /**
@@ -434,12 +377,12 @@ class AggregateWorkbenchExpansionTest {
                   ] }
               ],
               "autoPanels": [ { "aggregate": "Movimento",
-                "transaction": { "metadata": { "actions": [
+                "transaction": { "actions": [
                   { "label": "Aplicar Sugestao", "procedure": "SugerirDestino", "afterAction": "AplicarSugestao" },
                   { "label": "Sugerir", "procedure": "Sugerir",
                     "applyTo": { "collection": "itens", "mode": "appendRow", "map": { "a": "$b" } } },
                   { "label": "Neither", "procedure": "Plain" }
-                ] } } } ]
+                ] } } ]
             }
             """;
         CompiledModel model = compile(json);
@@ -464,7 +407,7 @@ class AggregateWorkbenchExpansionTest {
     /**
      * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2C / Gap 2, docs/MOVE3_G2_CHECKLISTS.md): a
      * declared visibleWhen predicate must survive the compiler on a top-level section, a nested
-     * band, AND an action -- all keyed off the same {@code transaction.metadata.visibleWhen} map
+     * band, AND an action -- all keyed off the same {@code transaction.visibleWhen} map
      * (collections/bands) or the action's own {@code visibleWhen} key. A blank expression must be
      * dropped rather than passed through, and an undeclared collection/action must carry none.
      */
@@ -496,17 +439,16 @@ class AggregateWorkbenchExpansionTest {
                   ] }
               ],
               "autoPanels": [ { "aggregate": "Expedicao",
-                "transaction": { "metadata": {
+                "transaction": {
                   "visibleWhen": {
                     "itens": "$root.tipo == 'RECEBIMENTO'",
-                    "origens": "$root.tipo != 'CANCELADA'",
-                    "avulsos": ""
+                    "origens": "$root.tipo != 'CANCELADA'"
                   },
                   "actions": [
                     { "label": "Confirmar", "procedure": "ConfirmarProcedure", "visibleWhen": "$root.tipo == 'RECEBIMENTO'" },
                     { "label": "Sempre", "procedure": "SempreProcedure" }
                   ]
-                } } } ]
+                } } ]
             }
             """;
         CompiledModel model = compile(json);
@@ -522,7 +464,7 @@ class AggregateWorkbenchExpansionTest {
                 "a declared collection visibleWhen must survive verbatim");
 
         Map<String, Object> avulsos = sections.stream().filter(s -> "avulsos".equals(s.get("collection"))).findFirst().orElseThrow();
-        assertNull(avulsos.get("visibleWhen"), "a blank expression must be dropped, not passed through");
+        assertNull(avulsos.get("visibleWhen"), "an undeclared collection carries no visibleWhen (a blank one is a schema error)");
 
         List<Map<String, Object>> bands = (List<Map<String, Object>>) itens.get("bands");
         Map<String, Object> origens = bands.get(0);
@@ -739,47 +681,5 @@ class AggregateWorkbenchExpansionTest {
         assertEquals("id", clauses.get(1).get("field"));
         assertEquals("tipo", clauses.get(1).get("rootRef"), "$root.tipo must resolve as a rootRef, not a static value");
         assertNull(clauses.get(1).get("value"));
-    }
-
-    /**
-     * Move 7 W1: when BOTH the typed and untyped spellings are declared on the same surface, the
-     * typed one wins entirely (same precedence rule Move 6 established for hooks/derivedFields) --
-     * the untyped metadata is ignored outright, not merged.
-     */
-    @Test
-    @SuppressWarnings("unchecked")
-    void typedActionsWinOverUntypedMetadataWhenBothDeclared() throws Exception {
-        String json = """
-            {
-              "dslVersion": "1.0.0", "namespace": "wms.typed7prec", "version": "1.0",
-              "concepts": [
-                { "name": "Movimento", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
-                { "name": "MovimentoItem", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true },
-                  { "name": "movimentoId", "type": "uuid" } ] }
-              ],
-              "aggregates": [
-                { "name": "Movimento", "root": "Movimento",
-                  "collections": [
-                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" }
-                  ] }
-              ],
-              "autoPanels": [ { "aggregate": "Movimento",
-                "transaction": {
-                  "actions": [ { "procedure": "TypedProcedure", "label": "Typed Wins" } ],
-                  "metadata": { "actions": [ { "procedure": "UntypedProcedure", "label": "Untyped Loses" } ] }
-                } } ]
-            }
-            """;
-        CompiledModel model = compile(json);
-
-        CompiledPanel workbench = model.getPanels().stream()
-                .filter(p -> "MovimentoWorkbench".equals(p.name())).findFirst()
-                .orElseThrow(() -> new AssertionError("expected MovimentoWorkbench"));
-        Map<String, Object> wb = (Map<String, Object>) workbench.metadata().get("workbench");
-        List<Map<String, Object>> actions = (List<Map<String, Object>>) wb.get("actions");
-        assertEquals(1, actions.size(), "typed actions replace the untyped list entirely, not merge with it");
-        assertEquals("TypedProcedure", actions.get(0).get("procedure"));
     }
 }

@@ -293,8 +293,7 @@ final class AutoPanelExpander {
         }
         // Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): transaction.actions (typed, schema-validated
         // -- a typo'd key now fails at schema time) is the typed spelling; the untyped
-        // transaction.metadata.actions list is retired but still accepted when actions is absent (one
-        // release of dual support, migrated by `npdev migrate`).
+        // transaction.metadata.actions list is retired: PanelValidation rejects it, `npdev migrate dsl-2` rewrites it.
         if (!transaction.actions().isEmpty()) {
             for (CompiledWorkbenchAction typedAction : transaction.actions()) {
                 boolean hasProcedure = hasText(typedAction.procedure());
@@ -334,94 +333,10 @@ final class AutoPanelExpander {
             }
             return actions;
         }
-        Object declared = transaction.metadata().get("actions");
-        if (!(declared instanceof List<?> list)) {
-            return actions;
-        }
-        for (Object entry : list) {
-            if (!(entry instanceof Map<?, ?> map)) {
-                continue;
-            }
-            Object procedure = map.get("procedure");
-            if (procedure == null || String.valueOf(procedure).isBlank()) {
-                continue;
-            }
-            Object label = map.get("label");
-            Map<String, Object> action = new LinkedHashMap<>();
-            action.put("label", label == null || String.valueOf(label).isBlank()
-                    ? String.valueOf(procedure) : String.valueOf(label));
-            action.put("procedure", String.valueOf(procedure).trim());
-            List<String> inputFields = new ArrayList<>();
-            if (map.get("inputFields") instanceof List<?> fieldList) {
-                for (Object field : fieldList) {
-                    if (field != null && !String.valueOf(field).isBlank()) {
-                        inputFields.add(String.valueOf(field).trim());
-                    }
-                }
-            }
-            action.put("inputFields", inputFields);
-            Map<String, Object> applyTo = workbenchActionApplyTo(map.get("applyTo"));
-            if (applyTo != null) {
-                action.put("applyTo", applyTo);
-            }
-            // Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4): per-action afterAction subsumes
-            // applyTo -- instead of a static client-side field mapping, a procedure receiving
-            // {draft, result} and returning a patched draft. Declared per-action (unlike the other,
-            // transaction-wide hooks) because different actions fold their results differently, same
-            // as applyTo always has been.
-            String afterAction = workbenchActionAfterAction(map.get("afterAction"));
-            if (afterAction != null) {
-                action.put("afterAction", afterAction);
-            }
-            Object visibleWhen = map.get("visibleWhen");
-            if (visibleWhen != null && !String.valueOf(visibleWhen).isBlank()) {
-                action.put("visibleWhen", String.valueOf(visibleWhen).trim());
-            }
-            actions.add(action);
-        }
         return actions;
     }
 
-    /**
-     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2A): declares how this action's
-     * {@code invoke()} result folds into the draft, instead of the client's prior unconditional
-     * "replace the whole draft" behavior -- the gap that made a pure-computation action like
-     * {@code SugerirDestino} silently destroy the rest of the draft. Same untyped-metadata
-     * mechanism as the rest of {@code transaction.metadata.actions} (not the schema-typed
-     * {@code panelAction} used by regular, non-Workbench panels -- those actions persist directly
-     * and have no client-held draft to fold into). Malformed input is dropped rather than thrown,
-     * matching this method's own existing defensive style.
-     */
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> workbenchActionApplyTo(Object raw) {
-        if (!(raw instanceof Map<?, ?> map)) {
-            return null;
-        }
-        Object collection = map.get("collection");
-        Object mode = map.get("mode");
-        if (collection == null || String.valueOf(collection).isBlank()
-                || mode == null || !"appendRow".equals(String.valueOf(mode).trim())) {
-            return null;
-        }
-        Map<String, String> fieldMap = new LinkedHashMap<>();
-        if (map.get("map") instanceof Map<?, ?> rawFieldMap) {
-            for (Map.Entry<?, ?> fieldEntry : rawFieldMap.entrySet()) {
-                if (fieldEntry.getKey() != null && fieldEntry.getValue() != null) {
-                    fieldMap.put(String.valueOf(fieldEntry.getKey()), String.valueOf(fieldEntry.getValue()));
-                }
-            }
-        }
-        if (fieldMap.isEmpty()) {
-            return null;
-        }
-        Map<String, Object> applyTo = new LinkedHashMap<>();
-        applyTo.put("collection", String.valueOf(collection).trim());
-        applyTo.put("mode", "appendRow");
-        applyTo.put("map", fieldMap);
-        return applyTo;
-    }
-
-    /** Move 7 W1: the typed-record twin of {@link #workbenchActionApplyTo(Object)}, same validation. */
+    /** Move 7 W1: the typed-record twin of the former untyped applyTo reader, same validation. */
     private static Map<String, Object> typedWorkbenchActionApplyTo(CompiledWorkbenchActionApplyTo applyTo) {
         if (applyTo == null || !hasText(applyTo.collection()) || !"appendRow".equals(applyTo.mode())) {
             return null;
@@ -435,24 +350,6 @@ final class AutoPanelExpander {
         descriptor.put("mode", "appendRow");
         descriptor.put("map", fieldMap);
         return descriptor;
-    }
-
-    /**
-     * Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4): an action's declared afterAction
-     * procedure name, accepted as either a bare string or {@code {procedure}} object (the same
-     * dual shape {@code transaction.hooks} entries could take, kept consistent here even though
-     * afterAction itself lives per-action rather than in {@code hooks}). Null if undeclared.
-     */
-    private static String workbenchActionAfterAction(Object raw) {
-        if (raw instanceof Map<?, ?> map) {
-            Object procedure = map.get("procedure");
-            return procedure == null || String.valueOf(procedure).isBlank()
-                    ? null : String.valueOf(procedure).trim();
-        }
-        if (raw == null || String.valueOf(raw).isBlank()) {
-            return null;
-        }
-        return String.valueOf(raw).trim();
     }
 
     /** Session 1: {name, collection, groupBy} per declared balance rule -- everything the client
@@ -647,8 +544,7 @@ final class AutoPanelExpander {
         }
         // Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): transaction.visibleWhen (typed,
         // schema-validated) is the typed spelling; the untyped transaction.metadata.visibleWhen map
-        // is retired but still accepted when visibleWhen is absent (one release of dual support,
-        // migrated by `npdev migrate`).
+        // is retired: PanelValidation rejects it, `npdev migrate dsl-2` rewrites it.
         if (!transaction.visibleWhen().isEmpty()) {
             for (Map.Entry<String, String> entry : transaction.visibleWhen().entrySet()) {
                 if (!hasText(entry.getKey()) || !hasText(entry.getValue())) {
@@ -657,20 +553,6 @@ final class AutoPanelExpander {
                 out.put(entry.getKey().trim(), entry.getValue().trim());
             }
             return out;
-        }
-        Object declared = transaction.metadata().get("visibleWhen");
-        if (!(declared instanceof Map<?, ?> map)) {
-            return out;
-        }
-        for (Map.Entry<?, ?> entry : map.entrySet()) {
-            if (entry.getKey() == null || String.valueOf(entry.getKey()).isBlank()) {
-                continue;
-            }
-            Object expression = entry.getValue();
-            if (expression == null || String.valueOf(expression).isBlank()) {
-                continue;
-            }
-            out.put(String.valueOf(entry.getKey()).trim(), String.valueOf(expression).trim());
         }
         return out;
     }
@@ -684,19 +566,11 @@ final class AutoPanelExpander {
             return null;
         }
         // Move 6 Move B: transaction.hooks.onFieldChange is the typed spelling; the untyped
-        // transaction.metadata.recompute is retired but still accepted (docs/MOVE6_TYPED_SURFACE_PLAN.md
-        // §B.5 -- one release of dual support, migrated by `npdev migrate`).
+        // transaction.metadata.recompute is retired: PanelValidation rejects it, `npdev migrate dsl-2` rewrites it.
         if (transaction.hooks() != null && hasText(transaction.hooks().onFieldChange())) {
             return transaction.hooks().onFieldChange().trim();
         }
-        Object declared = transaction.metadata().get("recompute");
-        if (declared instanceof Map<?, ?> map) {
-            declared = map.get("procedure");
-        }
-        if (declared == null || String.valueOf(declared).isBlank()) {
-            return null;
-        }
-        return String.valueOf(declared).trim();
+        return null;
     }
 
     /**
@@ -716,8 +590,8 @@ final class AutoPanelExpander {
             return out;
         }
         // Move 6 Move B: transaction.derivedFields (typed, keyed by name, tier-aware) is the typed
-        // spelling; the untyped transaction.metadata.derived list is retired but still accepted when
-        // derivedFields is absent (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.5).
+        // spelling; the untyped transaction.metadata.derived list is retired:
+        // PanelValidation rejects it, `npdev migrate dsl-2` rewrites it.
         if (!transaction.derivedFields().isEmpty()) {
             for (CompiledDerivedField d : transaction.derivedFields()) {
                 if (!hasText(d.name())) {
@@ -740,29 +614,6 @@ final class AutoPanelExpander {
                 out.add(field);
             }
             return out;
-        }
-        Object declared = transaction.metadata().get("derived");
-        if (!(declared instanceof List<?> list)) {
-            return out;
-        }
-        for (Object entry : list) {
-            if (!(entry instanceof Map<?, ?> map)) {
-                continue;
-            }
-            Object name = map.get("name");
-            Object expression = map.get("expression");
-            if (name == null || String.valueOf(name).isBlank()
-                    || expression == null || String.valueOf(expression).isBlank()) {
-                continue;
-            }
-            Object label = map.get("label");
-            Map<String, Object> field = new LinkedHashMap<>();
-            field.put("name", String.valueOf(name).trim());
-            field.put("label", label == null || String.valueOf(label).isBlank()
-                    ? String.valueOf(name).trim() : String.valueOf(label).trim());
-            field.put("tier", "client");
-            field.put("expression", String.valueOf(expression).trim());
-            out.add(field);
         }
         return out;
     }
@@ -791,8 +642,7 @@ final class AutoPanelExpander {
         }
         // Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): transaction.bandPickers (typed,
         // schema-validated) is the typed spelling; the untyped transaction.metadata.bandPickers map
-        // is retired but still accepted when bandPickers is absent (one release of dual support,
-        // migrated by `npdev migrate`).
+        // is retired: PanelValidation rejects it, `npdev migrate dsl-2` rewrites it.
         if (!transaction.bandPickers().isEmpty()) {
             for (Map.Entry<String, CompiledWorkbenchBandPicker> entry : transaction.bandPickers().entrySet()) {
                 CompiledWorkbenchBandPicker typedPicker = entry.getValue();
@@ -842,29 +692,6 @@ final class AutoPanelExpander {
                 pickers.put(entry.getKey(), picker);
             }
             return pickers;
-        }
-        Object declared = transaction.metadata().get("bandPickers");
-        if (!(declared instanceof Map<?, ?> map)) {
-            return pickers;
-        }
-        for (Map.Entry<?, ?> entry : map.entrySet()) {
-            if (!(entry.getValue() instanceof Map<?, ?> spec)) {
-                continue;
-            }
-            Object panel = spec.get("panel");
-            if (panel == null || String.valueOf(panel).isBlank()) {
-                continue;
-            }
-            Map<String, Object> picker = new LinkedHashMap<>();
-            picker.put("panel", String.valueOf(panel).trim());
-            Object label = spec.get("label");
-            picker.put("label", label == null || String.valueOf(label).isBlank()
-                    ? settings.resolveString("action.select") : String.valueOf(label));
-            Object columns = spec.get("columns");
-            if (columns instanceof List<?> cols) {
-                picker.put("columns", cols.stream().map(String::valueOf).toList());
-            }
-            pickers.put(String.valueOf(entry.getKey()), picker);
         }
         return pickers;
     }
