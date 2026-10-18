@@ -18,13 +18,18 @@
   Refuses to run if the app's port is already taken (it never kills a process it did not start). The app is always
   stopped afterwards. Needs Java 17+, PowerShell 7 and the ScrapForAI engine (see the verify-in-browser skill).
 
+.PARAMETER ReportPath
+  Where to write the run's structured JSON report (schemaVersion npdev-f6-showcase-result.v1): per-routine status and an
+  overallStatus, written even when the run fails.
+
 .EXAMPLE
   pwsh -NoProfile -File scripts/quality/run-f6-showcase.ps1
 #>
 param(
     [int]$BootTimeoutSeconds = 420,
     [switch]$SkipGenerate,
-    [switch]$KeepRunning
+    [switch]$KeepRunning,
+    [string]$ReportPath = "scripts/reports/out/f6-showcase-report.json"
 )
 
 $ErrorActionPreference = "Stop"
@@ -65,6 +70,18 @@ foreach ($routine in $routines) {
 
 function Stop-ProcessTree([int]$ProcessId) {
     if ($ProcessId -gt 0) { & taskkill /PID $ProcessId /T /F 2>&1 | Out-Null }
+}
+
+$report = [ordered]@{
+    schemaVersion = "npdev-f6-showcase-result.v1"
+    generatedAt   = (Get-Date).ToUniversalTime().ToString("o")
+    runId         = [guid]::NewGuid().ToString()
+    scriptPath    = "scripts/quality/run-f6-showcase.ps1"
+    workspaceRoot = $repoRoot
+    sampleId      = $sampleId
+    port          = $port
+    routines      = @()
+    overallStatus = "failed"
 }
 
 $process = $null
@@ -117,15 +134,21 @@ try {
             $result = Invoke-ScrapRoutine -Context $scrapCtx -RoutinePath (Join-Path $routineDir "$routine.json") -Credentials $creds
             # Benign by design: pre-auth 401s, the app-less theme.css and favicon 404s.
             Assert-RoutineGreen -Result $result -Label $routine -AllowConsoleErrorSubstrings @("theme.css", "status of 401", "status of 404")
+            $report.routines += [ordered]@{ name = $routine; status = "passed"; message = "" }
         } catch {
             Write-Host ("FAIL  " + $routine + ": " + $_.Exception.Message) -ForegroundColor Red
             $failed += $routine
+            $report.routines += [ordered]@{ name = $routine; status = "failed"; message = $_.Exception.Message }
         }
     }
     if ($failed.Count -gt 0) { throw ("F6 showcase routines failed: " + ($failed -join ", ")) }
+    $report.overallStatus = "passed"
     Write-Host ("OK    F6 showcase: all " + $routines.Count + " browser routines green against a fresh database.") -ForegroundColor Green
 }
 finally {
+    $reportDirectory = Split-Path -Parent $ReportPath
+    if (-not [string]::IsNullOrWhiteSpace($reportDirectory)) { New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null }
+    $report | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $ReportPath -Encoding UTF8
     if ($scrapCtx) { Stop-ScrapForAI -Context $scrapCtx }
     if ($process -and -not $KeepRunning) { Stop-ProcessTree $process.Id }
 }
