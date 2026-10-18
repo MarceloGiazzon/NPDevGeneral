@@ -13,7 +13,7 @@
 ## The five places to update
 
 1. `NPDevGenerator\generator\src\test\java\com\npdev\generator\emitters\UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest.java`
-   — add `":adapters:<your-adapter>:jar"` to the adapter-jar build list (kept in alphabetical order).
+   — add `":adapters:<your-adapter>:jar"` to the adapter-jar build list (the lists are not strictly sorted; match the neighbouring entries).
 2. `NPDevGenerator\generator\src\test\java\com\npdev\generator\emitters\HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest.java`
    — same list, same entry.
 3. `NPDevGenerator\generator\src\test\java\com\npdev\generator\emitters\HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest.java`
@@ -25,7 +25,7 @@
 
 ## Also check (if the adapter is imported by the RuntimeHost template)
 
-- `NPDevRuntimeHost\src\main\java\com\finalexec\config\NpdevPluginConfig.java` imports some adapters
+- `NPDevRuntimeHost\runtimehost-core\src\main\java\com\finalexec\config\NpdevPluginConfig.java` imports some adapters
   (e.g. the mail adapters) unconditionally. If yours is imported there, its jar MUST exist or every
   generated app fails to compile — the same reason the four proof-test lists above exist.
 
