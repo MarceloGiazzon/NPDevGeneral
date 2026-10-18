@@ -240,6 +240,12 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   each `NPDevSamples/scripts/browser/browser-routines/*-verify-routine.json` is green. Boots a real
   app, so it is T1/T2 (`shell-scenarios-golden-browser` in `verification-cadence.json`), never the
   static `aiKnowledge` gate.
+- **F6 frontend showcase (layoutSlot, operator console, dashboard, third nesting level, client-side
+  expressions):** `pwsh -NoProfile -File scripts/quality/run-f6-showcase.ps1` generates
+  `NPDevSamples/f6-showcase` into `<BuildRoot>/samples/f6-showcase` (never into the repo), boots it on 8110
+  against a freshly wiped database and drives its five `f6-*-verify-routine.json` browser routines in a fixed
+  order. Boots a real app, so T1/T2 (`f6-showcase-browser` in `verification-cadence.json`), never the static
+  `aiKnowledge` gate. Refuses to run if port 8110 is taken and never kills a process it did not start.
 - **Roadmap reporting/publishing tools, all manual, none gates:** `python
   scripts/quality/emit-capability-matrix.py` (Session 12) emits the app × capability matrix with a
   witness column (`--out <dir>` for `matrix.json`/`matrix.html`, default
