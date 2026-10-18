@@ -14,7 +14,7 @@ fails or the expected evidence doesn't show up.
 
 ## Why this sample exists
 
-`docs/EXECUTION_TREES.md` §0.1 names a durable, event-correlated, compensating workflow engine as
+The (since-removed) `EXECUTION_TREES.md` §0.1 named a durable, event-correlated, compensating workflow engine as
 one of NPDev's three genuinely differentiated capabilities — "the category Temporal, Camunda, and
 Zeebe sell." Documentation and unit tests proved the mechanism works *within one continuously
 running JVM*. Nothing proved it survives what actually happens in production: the process dying and
@@ -30,11 +30,9 @@ database setup.
 2. **The application process is killed** (not a graceful shutdown — `Stop-Process -Force`) and a
    **new** JVM is started from the same on-disk H2 database file. Nothing about step 1's execution
    was held in memory that survives this; if the wait state weren't durably persisted, it would be
-   gone. The script waits 5s before killing — see `REG-57` (`docs/NPDEV_OPEN_ITEMS_REGISTER.md`), a
-   real, separately-filed timing gap where a kill in roughly the first second after the response can
-   catch the on-disk checkpoint before it's physically durable. That gap is real and worth fixing on
-   its own terms; it is not the thing this sample exists to demonstrate, so the script works around
-   it rather than making the demo flaky.
+   gone. The script kills immediately: the timing gap `REG-57` (`ledger/items/REG-57.yml`) described, where a kill in roughly the first
+   second after the response could catch the on-disk checkpoint before it was physically durable, was fixed on 2026-07-28 (write delay 0), so no
+   workaround wait is needed.
 3. `POST /api/events/publish` with `Requests/publish-approval-event.json` (using the `correlationId`
    captured from step 1) — the **same** execution resumes and completes.
 4. The script confirms this by matching the `executionId` from step 1 against

@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-NPDev is **pre-1.0**; only the latest tag (currently `beta1.2`) receives fixes. See `BREAKING.md`
+NPDev is **pre-1.0**; only the latest tag (see `git tag --sort=-v:refname`; currently `beta1.20`) receives fixes. See `BREAKING.md`
 for what changes between tags.
 
 ## Reporting a vulnerability
@@ -41,10 +41,10 @@ If an agent needs a credential (a `GH_TOKEN` for `gh` CLI calls, a deploy key, e
 environment once — a shell profile variable, `gh auth login`, a `.env` file that is itself gitignored
 — and let the agent reference it by name. If a credential is ever pasted into a chat by mistake,
 **rotate it**; do not treat "nothing bad happened" as a reason to leave it live. (This convention was
-written after exactly that happened on this project — see `docs/CLOSEOUT_PLAN.md` G1.)
+written after exactly that happened on this project — see `docs/archive/programme-history/CLOSEOUT_PLAN.md` G1.)
 
 ## What we have already reviewed
 
 Adversarial review history and known accepted boundaries:
-`docs/OPEN_ITEMS.md` (generated, not committed — `python scripts/quality/generate_open_items.py`),
+`OPEN_ITEMS.md` (generated into `<Build>/docs/`, not committed — `python scripts/quality/generate_open_items.py`),
 [`docs/archive/SECURITY_PATTERN_SWEEP_2026-07.md`](docs/archive/SECURITY_PATTERN_SWEEP_2026-07.md).
