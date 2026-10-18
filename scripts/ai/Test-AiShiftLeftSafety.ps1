@@ -58,7 +58,7 @@ function Add-NPDevStringSafetyFindings {
             $Findings.Add((New-AiShiftLeftFinding "AI_SAFETY_UNSAFE_EXTERNAL_URL" $Path "External non-local URLs are not allowed in AI-generated safety-sensitive fields.")) | Out-Null
         }
         if ($isPathLike -and (Test-NPDevUnsafePathText $value)) {
-            $Findings.Add((New-AiShiftLeftFinding "AI_SAFETY_PATH_TRAVERSAL" $Path "Absolute paths, UNC paths, and path traversal are not allowed in AI-generated safety-sensitive fields.")) | Out-Null
+            $Findings.Add((New-AiShiftLeftFinding "TRUSTED_SOURCE_PATH_UNSAFE" $Path "Absolute paths, UNC paths, and path traversal are not allowed in AI-generated safety-sensitive fields.")) | Out-Null
         }
         if ($isCommandLike -and (Test-NPDevSuspiciousCommandText $value)) {
             $Findings.Add((New-AiShiftLeftFinding "AI_SAFETY_SUSPICIOUS_COMMAND" $Path "Destructive shell commands, command chaining, command substitution, and direct shell command modes are not allowed.")) | Out-Null
@@ -101,7 +101,7 @@ function Invoke-AiShiftLeftSafetyLint {
             if ($null -ne $implementation -and $null -ne $implementation.Value) {
                 $entrypoint = [string]$implementation.Value.entrypoint
                 if (Test-NPDevUnsafePathText $entrypoint) {
-                    $findings.Add((New-AiShiftLeftFinding "AI_SAFETY_PATH_TRAVERSAL" "$.procedures[?(@.procedureId=='$([string]$procedure.procedureId)')].implementation.entrypoint" "Trusted procedure entrypoints must be relative and traversal-free.")) | Out-Null
+                    $findings.Add((New-AiShiftLeftFinding "TRUSTED_SOURCE_PATH_UNSAFE" "$.procedures[?(@.procedureId=='$([string]$procedure.procedureId)')].implementation.entrypoint" "Trusted procedure entrypoints must be relative and traversal-free.")) | Out-Null
                 }
             }
         }
@@ -113,7 +113,7 @@ function Invoke-AiShiftLeftSafetyLint {
             if ($null -ne $implementation -and $null -ne $implementation.Value) {
                 $entrypoint = [string]$implementation.Value.entrypoint
                 if (Test-NPDevUnsafePathText $entrypoint) {
-                    $findings.Add((New-AiShiftLeftFinding "AI_SAFETY_PATH_TRAVERSAL" "$.panels[?(@.panelId=='$([string]$panel.panelId)')].implementation.entrypoint" "Trusted panel entrypoints must be relative and traversal-free.")) | Out-Null
+                    $findings.Add((New-AiShiftLeftFinding "TRUSTED_SOURCE_PATH_UNSAFE" "$.panels[?(@.panelId=='$([string]$panel.panelId)')].implementation.entrypoint" "Trusted panel entrypoints must be relative and traversal-free.")) | Out-Null
                 }
             }
         }
@@ -121,7 +121,7 @@ function Invoke-AiShiftLeftSafetyLint {
     }
     if ($null -ne $AiConfig) {
         if (Test-NPDevUnsafePathText ([string]$AiConfig.output.directory)) {
-            $findings.Add((New-AiShiftLeftFinding "AI_SAFETY_PATH_TRAVERSAL" "$.output.directory" "Output directory must be relative and traversal-free.")) | Out-Null
+            $findings.Add((New-AiShiftLeftFinding "TRUSTED_SOURCE_PATH_UNSAFE" "$.output.directory" "Output directory must be relative and traversal-free.")) | Out-Null
         }
         Add-NPDevStringSafetyFindings -Node $AiConfig -Path "$" -Findings $findings
     }

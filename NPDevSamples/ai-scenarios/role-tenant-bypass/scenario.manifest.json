@@ -4,6 +4,7 @@
   "kind": "negative",
   "expectedOutcome": "fail",
   "expectedFailureStage": "ai-model-schema",
+  "expectedErrorCode": "ROLE_TENANT_BYPASS_REJECTED",
   "files": {
     "aiModel": "ai-model.json"
   }

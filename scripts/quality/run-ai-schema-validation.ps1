@@ -75,6 +75,31 @@ function Invoke-SchemaValidation {
     }
 }
 
+# AIC-1: the policy-defined diagnostic code for an ai-model schema failure. Data-driven from
+# scripts/policy/ai-model-to-dsl-mapping-policy.json (rejectedInstanceFields + schemaFailureDiagnostics)
+# so a new rejection is a policy edit, not a script edit.
+function Get-AiModelDiagnosticCode {
+    param([object]$SchemaValidation, [object]$Policy)
+    if ($null -eq $SchemaValidation -or $SchemaValidation.status -eq "passed") { return $null }
+    $diagnostics = $Policy.schemaFailureDiagnostics
+    foreach ($schemaError in @($SchemaValidation.errors)) {
+        if ($null -eq $schemaError) { continue }
+        $normalizedPath = ([string]$schemaError.path -replace "/\d+", "[]" -replace "^/", "" -replace "/", ".")
+        if ([string]$schemaError.keyword -eq "additionalProperties") {
+            $fullPath = $normalizedPath + "." + [string]$schemaError.params.additionalProperty
+            $rejected = @($Policy.rejectedInstanceFields | Where-Object { [string]$_.path -eq $fullPath }) | Select-Object -First 1
+            if ($null -ne $rejected) { return [string]$rejected.diagnosticCode }
+            return [string]$diagnostics.unknownPropertyCode
+        }
+        foreach ($rule in @($diagnostics.rules)) {
+            if ([string]$rule.keyword -eq [string]$schemaError.keyword -and $normalizedPath -match [string]$rule.pathRegex) {
+                return [string]$rule.diagnosticCode
+            }
+        }
+    }
+    return [string]$diagnostics.fallbackCode
+}
+
 function Test-AiModel {
     param([object]$Model, [string]$ScenarioId)
     $failures = [System.Collections.Generic.List[string]]::new()
@@ -325,6 +350,7 @@ if (Test-Path -LiteralPath $schemaValidationRoot) {
 }
 New-Item -ItemType Directory -Force -Path $schemaValidationRoot | Out-Null
 $results = @()
+$diagnosticPolicy = Read-JsonFile "scripts/policy/ai-model-to-dsl-mapping-policy.json"
 $overallStatus = if ($missingRequiredScenarios.Count -eq 0) { "passed" } else { "failed" }
 
 foreach ($scenarioDir in $scenarioDirs) {
@@ -334,6 +360,8 @@ foreach ($scenarioDir in $scenarioDirs) {
     $manifestPath = Join-Path $scenarioDir.FullName "scenario.manifest.json"
     $expectedStage = $null
     $actualFailureStage = $null
+    $actualDiagnosticCode = $null
+    $expectedErrorCode = $null
     $expectedOutcome = $null
     $scenarioId = $scenarioDir.Name
 
@@ -353,6 +381,7 @@ foreach ($scenarioDir in $scenarioDirs) {
         $scenarioId = [string]$manifest.scenarioId
         $expectedOutcome = [string]$manifest.expectedOutcome
         $expectedStage = [string]$manifest.expectedFailureStage
+        $expectedErrorCode = [string]$manifest.expectedErrorCode
         if ($manifest.schemaVersion -ne "ai-scenario-manifest.v1") {
             Add-Failure $semanticFailures "manifest schemaVersion must be ai-scenario-manifest.v1."
         }
@@ -476,6 +505,13 @@ foreach ($scenarioDir in $scenarioDirs) {
                             Add-Failure $scenarioFailures $failure
                         }
                     }
+                    elseif ($actualFailureStage -eq "ai-model-schema") {
+                        # AIC-1: say WHICH rule rejected the model, and hold a scenario to the code it declares.
+                        $actualDiagnosticCode = Get-AiModelDiagnosticCode $modelSchemaValidation $diagnosticPolicy
+                        if (-not [string]::IsNullOrWhiteSpace($expectedErrorCode) -and $actualDiagnosticCode -ne $expectedErrorCode) {
+                            Add-Failure $scenarioFailures ("expected diagnostic code " + $expectedErrorCode + " but got " + [string]$actualDiagnosticCode + ".")
+                        }
+                    }
                 }
                 elseif ($expectedStage -notin @("scope-policy", "smoke-verification")) {
                     Add-Failure $scenarioFailures ("expected failure at " + $expectedStage + " but AI schema validation passed.")
@@ -501,6 +537,8 @@ foreach ($scenarioDir in $scenarioDirs) {
         expectedOutcome = $expectedOutcome
         expectedFailureStage = $expectedStage
         actualFailureStage = $actualFailureStage
+        expectedErrorCode = $expectedErrorCode
+        actualDiagnosticCode = $actualDiagnosticCode
         schemaValidation = [pscustomobject]@{
             status = if (@($schemaValidations | Where-Object { $_.status -ne "passed" }).Count -eq 0) { "passed" } else { "failed" }
             schemas = $schemaValidations
