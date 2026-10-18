@@ -14,13 +14,12 @@ Required fields:
 
 Optional fields: `requiredRole`, `tenantScoped`, `metadata`, `validationHints`, `widgets`, `implementation`.
 
-Supported layout types (`layout.type` in `schemas/ai/custom-panel.schema.json`; anything else, including `grid`, is rejected):
+Supported layout types (`layout.type` in `schemas/ai/custom-panel.schema.json`, always equal to the DSL's panel layout types; anything else is rejected):
 
 - `table`
-- `detail`
-- `form`
-- `summary`
-- `workflowTask`
+- `grid`
+- `console` and `dashboard` -- built from `layout.widgets[]` (tile, chart, actions, history, table), which is declarative data only.
+  `layout.slots[]` is deliberately not accepted here: a slot mounts app-owned JavaScript.
 
 Supported widget types:
 
