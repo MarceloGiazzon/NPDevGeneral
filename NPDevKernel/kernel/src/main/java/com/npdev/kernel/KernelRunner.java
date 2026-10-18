@@ -122,7 +122,7 @@ final EventBus eventBus;
     // SLA: external-ai-http alone can legitimately spend maxRetries(2)+1 attempts x 120s request
     // timeout plus backoff, so anything under ~6 minutes would turn a hang backstop into a
     // functional limit on a working adapter.
-    private static final long DEFAULT_CAPABILITY_TIMEOUT_MS = 600_000L;
+    private static final long DEFAULT_CAPABILITY_TIMEOUT_MS = CapabilityExecutionPolicy.DEFAULT_TIMEOUT_MS;
 
     private static final AtomicInteger CAPABILITY_THREAD_SEQUENCE = new AtomicInteger();
 
