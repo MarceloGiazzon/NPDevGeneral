@@ -1406,6 +1406,30 @@ final EventBus eventBus;
             StepProgressRecorder progressRecorder,
             ExecutionContext executionContext
     ) {
+        return executeSteps(flow, steps, input, state, emittedEvents, traceMeta, stepTraces, executionId,
+                defaultCorrelationId, stepIndexOffset, progressRecorder, executionContext, null);
+    }
+
+    /**
+     * RUN-3: {@code completedSink}, when non-null, receives every step of THIS list that ran to
+     * completion, in order. A nested body (branch then/else, one forEach iteration) uses it to know
+     * which of its steps to compensate if a later one fails. Null for every other caller.
+     */
+    StepExecutionOutcome executeSteps(
+            FlowDefinition flow,
+            List<FlowStepDefinition> steps,
+            Object input,
+            Map<String, Object> state,
+            List<EventEnvelope> emittedEvents,
+            FlowTraceMeta traceMeta,
+            List<StepTrace> stepTraces,
+            String executionId,
+            String defaultCorrelationId,
+            int stepIndexOffset,
+            StepProgressRecorder progressRecorder,
+            ExecutionContext executionContext,
+            List<FlowStepDefinition> completedSink
+    ) {
         ExecutionContext effectiveContext = normalizeExecutionContext(executionContext);
         for (FlowStepDefinition step : steps) {
             int traceStepIndex = stepIndexOffset + stepTraces.size();
@@ -1551,6 +1575,9 @@ final EventBus eventBus;
                     stepTraces
             );
             progressRecorder.onStepCompleted(traceStepIndex + 1, state);
+            if (completedSink != null) {
+                completedSink.add(step);
+            }
         }
         return StepExecutionOutcome.continueFlow();
     }

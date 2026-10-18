@@ -219,11 +219,52 @@ final class FlowValidation {
             );
             validateAggregateTransactionalBoundary(flow, ownedConceptToAggregate, errors);
             warnCreateOrUpdateFlowWithoutPersistenceSemantics(flow, warnings);
+            warnOnFailureInsideParallelForEach(flow, flow.getSteps(), warnings);
         }
 
         if (!allowUnboundFlowCapabilities) {
             validateReferencedCapabilityBindings(modelAst, referencedCapabilities, errors);
         }
+    }
+
+    /**
+     * RUN-3: onFailure on a step nested in a branch or a SEQUENTIAL forEach body is compensated when
+     * its body fails; a parallelAwait forEach does not support it yet, so the declaration would
+     * silently never run. Say so at validation time instead.
+     */
+    private static void warnOnFailureInsideParallelForEach(FlowAst flow, List<StepAst> steps, List<String> warnings) {
+        if (warnings == null || steps == null) {
+            return;
+        }
+        for (StepAst step : steps) {
+            if (step == null) {
+                continue;
+            }
+            if (Boolean.TRUE.equals(step.getParallelAwait()) && declaresOnFailure(step.getLoopSteps())) {
+                warnings.add("Flow " + flow.getName() + " step " + step.getName()
+                        + ": a step in this parallelAwait forEach body declares onFailure, which is not"
+                        + " supported inside a parallel forEach yet and will not run. Use a sequential forEach,"
+                        + " or put the compensation on the forEach step itself.");
+            }
+            warnOnFailureInsideParallelForEach(flow, step.getThenSteps(), warnings);
+            warnOnFailureInsideParallelForEach(flow, step.getElseSteps(), warnings);
+            warnOnFailureInsideParallelForEach(flow, step.getLoopSteps(), warnings);
+        }
+    }
+
+    private static boolean declaresOnFailure(List<StepAst> steps) {
+        if (steps == null) {
+            return false;
+        }
+        for (StepAst step : steps) {
+            if (step != null && (!step.getOnFailureSteps().isEmpty()
+                    || declaresOnFailure(step.getThenSteps())
+                    || declaresOnFailure(step.getElseSteps())
+                    || declaresOnFailure(step.getLoopSteps()))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void warnCreateOrUpdateFlowWithoutPersistenceSemantics(FlowAst flow, List<String> warnings) {
