@@ -101,7 +101,7 @@
     "tier": "T1",
     "maxStaleness": "1-wave",
     "invokedBy": "scripts/quality/run-f6-showcase.ps1",
-    "description": "F6: generate + boot f6-showcase on a fresh database and drive the five frontend-coverage routines (layoutSlot, dashboard, live computed columns + derived values, third nesting level, operator console) against the real server via ScrapForAI. Boots a real app, so T1/T2, never the static aiKnowledge gate."
+    "description": "F6: generate + boot f6-showcase on a fresh database and drive the five frontend-coverage routines (layoutSlot, dashboard, live computed columns + derived values, third nesting level, operator console) against the real server via ScrapForAI. Boots a real app, so T1/T2, never the static aiKnowledge gate. Also runs in CI on every push to main: .github/workflows/f6-showcase.yml (Windows; checks out the ScrapForAI engine repo)."
   },
   {
       "id": "shell-scenarios-golden-browser",
