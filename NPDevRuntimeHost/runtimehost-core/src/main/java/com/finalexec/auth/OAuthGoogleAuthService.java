@@ -344,7 +344,17 @@ public final class OAuthGoogleAuthService {
         Set<String> roles = IdentityPackTableNames.tryResolve(modelHolder.get())
                 .map(tables -> IdentityRoleLookup.rolesFor(dataSource, tables, tenantId, username))
                 .orElseGet(Set::of);
-        String token = jwtSigner.sign(tenantId, username, roles, tokenVersion);
+        // SESS-1: a session row per provider sign-in too (user agent / address from the request in flight).
+        String sessionId = IdentityPackTableNames.tryResolve(modelHolder.get())
+                .map(tables -> {
+                    var attributes = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+                    var request = attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servlet
+                            ? servlet.getRequest() : null;
+                    String[] client = UserSessionStore.clientOf(request);
+                    return UserSessionStore.open(dataSource, tables, tenantId, username, client[0], client[1]);
+                })
+                .orElse(null);
+        String token = jwtSigner.sign(tenantId, username, roles, tokenVersion, sessionId);
         return new SessionTicket(Outcome.LOGIN, null, token, tenantId, username, roles);
     }
 

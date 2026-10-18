@@ -130,6 +130,103 @@ public final class IdentityRoleLookup {
         return claimedVersion != tokenVersion(dataSource, tables, tenantId, actorId);
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // SESS-1: per-device sessions. A token carrying a `sid` claim is refused once its
+    // identity::UserSession row is revoked. Same shared-decision-point rule as isTokenRevoked: BOTH
+    // claim->context paths call this, so they cannot diverge.
+    // ---------------------------------------------------------------------------------------------
+
+    /** How long a "not revoked" answer is trusted -- the documented upper bound on how long a revoked
+     *  session keeps working. A revoked answer is cached for the same time; either way one request in
+     *  30 s per session costs a query, not every request. */
+    static final long SESSION_CACHE_MILLIS = 30_000L;
+    /** last_seen_at is refreshed at most this often per session. */
+    static final long SESSION_TOUCH_MILLIS = 5 * 60_000L;
+    private static final int SESSION_CACHE_MAX = 10_000;
+
+    private record SessionVerdict(boolean revoked, long checkedAtMillis) {
+    }
+
+    private static final java.util.concurrent.ConcurrentHashMap<String, SessionVerdict> SESSION_VERDICTS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Evicts one session's cached verdict on THIS node, so a revoke made here shows at once here
+     *  (other nodes converge within {@value #SESSION_CACHE_MILLIS} ms). */
+    public static void forgetSession(String tenantId, String sessionId) {
+        String tenant = tenantId == null || tenantId.isBlank() ? "default" : tenantId;
+        SESSION_VERDICTS.remove(tenant + "|" + sessionId);
+    }
+
+    /** For tests: forget every cached verdict. */
+    public static void clearSessionCache() {
+        SESSION_VERDICTS.clear();
+    }
+
+    /**
+     * True when {@code rawSessionId} names a session of this tenant whose {@code revoked_at} is set.
+     * A token with no {@code sid} (minted before sessions), an app without the sessions table, a sid
+     * with no row, or any database error all answer {@code false}: the feature degrades to "off" and
+     * never turns into a sign-in outage (a revoked-by-tv token is still refused by {@link #isTokenRevoked}).
+     * Also refreshes {@code last_seen_at}, at most once per {@value #SESSION_TOUCH_MILLIS} ms.
+     */
+    public static boolean isSessionRevoked(
+            Object rawSessionId, DataSource dataSource, IdentityPackTableNames tables, String tenantId) {
+        if (rawSessionId == null || dataSource == null || tables == null || tables.userSessionsTable() == null) {
+            return false;
+        }
+        String sid = String.valueOf(rawSessionId).trim();
+        if (sid.isEmpty()) {
+            return false;
+        }
+        String tenant = tenantId == null || tenantId.isBlank() ? "default" : tenantId;
+        String key = tenant + "|" + sid;
+        long now = System.currentTimeMillis();
+        SessionVerdict cached = SESSION_VERDICTS.get(key);
+        if (cached != null && now - cached.checkedAtMillis() < SESSION_CACHE_MILLIS) {
+            return cached.revoked();
+        }
+        boolean revoked = false;
+        try (Connection connection = dataSource.getConnection()) {
+            java.sql.Timestamp revokedAt = null;
+            java.sql.Timestamp lastSeen = null;
+            boolean found = false;
+            String select = "SELECT revoked_at, last_seen_at FROM " + tables.userSessionsTable()
+                    + " WHERE session_id = ? AND tenant_id = ?";
+            try (PreparedStatement statement = connection.prepareStatement(select)) {
+                statement.setString(1, sid);
+                statement.setString(2, tenant);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    if (resultSet.next()) {
+                        found = true;
+                        revokedAt = resultSet.getTimestamp(1);
+                        lastSeen = resultSet.getTimestamp(2);
+                    }
+                }
+            }
+            revoked = found && revokedAt != null;
+            if (found && !revoked && (lastSeen == null || now - lastSeen.getTime() >= SESSION_TOUCH_MILLIS)) {
+                String update = "UPDATE " + tables.userSessionsTable()
+                        + " SET last_seen_at = ? WHERE session_id = ? AND tenant_id = ?";
+                try (PreparedStatement statement = connection.prepareStatement(update)) {
+                    statement.setTimestamp(1, new java.sql.Timestamp(now));
+                    statement.setString(2, sid);
+                    statement.setString(3, tenant);
+                    statement.executeUpdate();
+                }
+            }
+        } catch (SQLException unavailable) {
+            // A session table that cannot be read (stale private identity pack, transient DB error) must
+            // not lock everyone out; the token_version check above still guards the account.
+            LOG.fine("session revocation lookup unavailable: " + unavailable.getMessage());
+            return false;
+        }
+        if (SESSION_VERDICTS.size() >= SESSION_CACHE_MAX) {
+            SESSION_VERDICTS.clear();
+        }
+        SESSION_VERDICTS.put(key, new SessionVerdict(revoked, now));
+        return revoked;
+    }
+
     private static boolean rejectTvlessTokensNow() {
         String configured = System.getProperty(REJECT_TVLESS_AFTER_PROPERTY);
         if (configured == null || configured.isBlank()) {

@@ -40,6 +40,22 @@ class SecurityPageEmitterTest {
     }
 
     @Test
+    void securityPageListsWhereYouAreSignedInWithARevokePerDevice(@TempDir Path tempDir) throws Exception {
+        // SESS-2: the per-device list and its Revoke, driven by the sessions endpoints.
+        String html = Files.readString(emitPage(tempDir, "Security Demo", true)
+                .resolve("src/main/resources/static/security.html"));
+
+        assertTrue(html.contains("Where you're signed in"), "the section heading");
+        assertTrue(html.contains("api(\"GET\", \"/api/auth/sessions\")"), "the list is loaded from the sessions endpoint");
+        assertTrue(html.contains("api(\"DELETE\", \"/api/auth/sessions/\" + encodeURIComponent(s.id))"),
+                "a device is ended through the sessions endpoint, by its short handle");
+        assertTrue(html.contains("(this device)") && html.contains("if (!s.current)"),
+                "the current device is marked and offers no Revoke");
+        assertFalse(html.contains("innerHTML"), "device names and addresses come from the server: textContent only");
+        assertTrue(html.contains("X-NPDev-Request"), "the DELETE carries the CSRF header via the shared helper");
+    }
+
+    @Test
     void apiKeyModeEmitsNoSecurityPage(@TempDir Path tempDir) throws Exception {
         Path out = emitPage(tempDir, "Security Demo", false);
         assertFalse(Files.exists(out.resolve("src/main/resources/static/security.html")));

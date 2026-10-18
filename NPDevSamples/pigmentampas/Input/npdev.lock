@@ -2,10 +2,10 @@
   "schemaVersion" : "npdev-lock.v1",
   "packs" : {
     "identity" : {
-      "resolvedVersion" : "1.3.0",
-      "digest" : "sha256:d26331dadf52193b4a8910642a7a0b5d6ae0660b7e08cb9137842fd2adac36ce",
-      "sourcePath" : "sha256/d26331dadf52193b4a8910642a7a0b5d6ae0660b7e08cb9137842fd2adac36ce/pack.json",
-      "from" : "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/identity@identity-1.3.0"
+      "resolvedVersion" : "1.4.0",
+      "digest" : "sha256:d3e42c9c27eae8dcfd159605c38b4e847653a148c758dc8cbb7f8c237722b21a",
+      "sourcePath" : "sha256/d3e42c9c27eae8dcfd159605c38b4e847653a148c758dc8cbb7f8c237722b21a/pack.json",
+      "from" : "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/identity@identity-1.4.0"
     },
     "tracing" : {
       "resolvedVersion" : "1.0.2",

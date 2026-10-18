@@ -93,5 +93,10 @@ public final class IdentityAwareContextResolver implements AuthenticatedContextR
                 identityTables.get(), context.tenantId(), context.actorId())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "token_revoked");
         }
+        // SESS-1: a token for one device whose session row was revoked (the other devices keep working).
+        if (IdentityRoleLookup.isSessionRevoked(claims == null ? null : claims.get("sid"),
+                dataSourceProvider.getIfAvailable(), identityTables.get(), context.tenantId())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "session_revoked");
+        }
     }
 }

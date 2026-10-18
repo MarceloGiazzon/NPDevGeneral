@@ -198,7 +198,15 @@ public class ChangePasswordController {
 
             Set<String> roles = IdentityRoleLookup.rolesFor(dataSource, identityTables, tenantId, username);
             JwtSigner signer = new JwtSigner(objectMapper, privateKey, issuer, audience, expirySeconds);
-            String token = signer.sign(tenantId, username, roles, newTokenVersion);
+            // SESS-1: the re-minted token keeps THIS device's session (or opens one when the caller's
+            // token predates sessions) and every other session of the user is marked ended.
+            String sessionId = UserSessionStore.sessionIdOf(httpRequest);
+            if (sessionId == null) {
+                String[] client = UserSessionStore.clientOf(httpRequest);
+                sessionId = UserSessionStore.open(dataSource, identityTables, tenantId, username, client[0], client[1]);
+            }
+            UserSessionStore.revokeAllExcept(dataSource, identityTables, tenantId, username, sessionId);
+            String token = signer.sign(tenantId, username, roles, newTokenVersion, sessionId);
 
             return freshSession(token, roles, httpRequest);
         } catch (IdentityPackSchemaException schemaException) {
@@ -271,7 +279,15 @@ public class ChangePasswordController {
 
             Set<String> roles = IdentityRoleLookup.rolesFor(dataSource, identityTables, tenantId, username);
             JwtSigner signer = new JwtSigner(objectMapper, privateKey, issuer, audience, expirySeconds);
-            String token = signer.sign(tenantId, username, roles, newTokenVersion);
+            // SESS-1: the re-minted token keeps THIS device's session (or opens one when the caller's
+            // token predates sessions) and every other session of the user is marked ended.
+            String sessionId = UserSessionStore.sessionIdOf(httpRequest);
+            if (sessionId == null) {
+                String[] client = UserSessionStore.clientOf(httpRequest);
+                sessionId = UserSessionStore.open(dataSource, identityTables, tenantId, username, client[0], client[1]);
+            }
+            UserSessionStore.revokeAllExcept(dataSource, identityTables, tenantId, username, sessionId);
+            String token = signer.sign(tenantId, username, roles, newTokenVersion, sessionId);
             return freshSession(token, roles, httpRequest);
         } catch (IdentityPackSchemaException schemaException) {
             LOG.log(Level.SEVERE, "Revoke other sessions: identity pack schema mismatch bumping token_version",

@@ -32,7 +32,7 @@ final class PackCatalogEmitterTest {
         assertTrue(root.path("discoverable").asBoolean());
 
         JsonNode identity = findPack(root.path("packs"), "identity");
-        assertEquals("1.3.0", identity.path("version").asText());
+        assertEquals("1.4.0", identity.path("version").asText());
         assertTrue(identity.path("conceptCount").asInt() >= 3);
         assertTrue(identity.path("included").asBoolean());
 
@@ -81,7 +81,7 @@ final class PackCatalogEmitterTest {
         JsonNode fork = findPack(root.path("packs"), "project-tracker-demo");
         assertEquals("identity", fork.path("forkedFrom").path("pack").asText());
         assertTrue(fork.path("forkedFromExists").asBoolean());
-        assertEquals("1.3.0", fork.path("forkedFromCurrentVersion").asText());
+        assertEquals("1.4.0", fork.path("forkedFromCurrentVersion").asText());
         assertTrue(fork.path("forkedFromVersionDrift").asBoolean());
     }
 

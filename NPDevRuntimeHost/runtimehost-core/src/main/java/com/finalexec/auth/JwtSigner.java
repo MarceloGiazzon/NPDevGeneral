@@ -56,6 +56,15 @@ public final class JwtSigner {
      * immediately, without a denylist.
      */
     public String sign(String tenantId, String actorId, Iterable<String> roles, int tokenVersion) {
+        return sign(tenantId, actorId, roles, tokenVersion, null);
+    }
+
+    /**
+     * SESS-1: {@code sessionId} (when non-null) is stamped into the {@code sid} claim -- the id of the
+     * {@code identity::UserSession} row opened for this sign-in, checked on every request so ONE device
+     * can be ended without bumping the user's token_version (which would end all of them).
+     */
+    public String sign(String tenantId, String actorId, Iterable<String> roles, int tokenVersion, String sessionId) {
         try {
             long nowEpochSeconds = System.currentTimeMillis() / 1000L;
             Map<String, Object> header = new LinkedHashMap<>();
@@ -75,6 +84,9 @@ public final class JwtSigner {
             claims.put("tenant_id", tenantId);
             claims.put("roles", roles);
             claims.put("tv", tokenVersion);
+            if (sessionId != null && !sessionId.isBlank()) {
+                claims.put("sid", sessionId);
+            }
 
             String headerSegment = base64UrlEncode(objectMapper.writeValueAsBytes(header));
             String payloadSegment = base64UrlEncode(objectMapper.writeValueAsBytes(claims));

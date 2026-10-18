@@ -2828,6 +2828,15 @@ public final class GeneratedCrudRuntimeSupport {
             if (actorId != null && isTokenRevoked(claims.get("tv"), tenantId, actorId)) {
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "token_revoked");
             }
+            // SESS-1: and a token for one device whose session row was revoked -- the same shared decision
+            // IdentityAwareContextResolver applies, so the two paths cannot diverge.
+            if (actorId != null && claims.get("sid") != null) {
+                Optional<IdentityPackTableNames> sessionTables = identityTables();
+                if (sessionTables.isPresent()
+                        && IdentityRoleLookup.isSessionRevoked(claims.get("sid"), dataSource, sessionTables.get(), tenantId)) {
+                    throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "session_revoked");
+                }
+            }
 
             // Identity-backed roles (when the identity pack is populated for this tenant+actor) are
             // authoritative over the principal's claim-roles -- same supplement-with-fallback contract
