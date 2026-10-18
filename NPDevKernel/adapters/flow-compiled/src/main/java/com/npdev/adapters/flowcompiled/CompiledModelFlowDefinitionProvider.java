@@ -271,7 +271,12 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
         return base + "-" + stepIndex;
     }
 
-    private static CapabilityExecutionPolicy toExecutionPolicy(CompiledCapabilityExecutionPolicy policy) {
+    /**
+     * The one DSL-policy -> kernel-policy converter. Public so the procedure side (RUN-1,
+     * {@code ProcedureRunner}) resolves a capability operation's declared policy exactly as a flow
+     * step does, instead of keeping a second copy that could drift.
+     */
+    public static CapabilityExecutionPolicy toExecutionPolicy(CompiledCapabilityExecutionPolicy policy) {
         if (policy == null) {
             return CapabilityExecutionPolicy.defaults();
         }

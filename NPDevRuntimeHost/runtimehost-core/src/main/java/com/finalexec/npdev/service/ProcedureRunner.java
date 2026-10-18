@@ -1,14 +1,21 @@
 package com.finalexec.npdev.service;
 
 import com.finalexec.config.ModelHolder;
+import com.npdev.adapters.flowcompiled.CompiledModelFlowDefinitionProvider;
+import com.npdev.dsl.v1.compiled.CompiledCapability;
+import com.npdev.dsl.v1.compiled.CompiledCapabilityOperation;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledProcedure;
 import com.npdev.dsl.v1.compiled.CompiledProcedureStep;
+import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityErrorKind;
 import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.capabilities.CapabilityExecutionPolicy;
+import com.npdev.kernel.capabilities.PolicyEnforcingCapabilityDispatcher;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.ports.CapabilityDispatcher;
+import com.npdev.kernel.ports.CircuitBreakerStateStore;
 import com.npdev.kernel.ports.EventBus;
 import com.npdev.kernel.procedures.DefaultProcedureExecutor;
 import com.npdev.kernel.procedures.ProcedureDefinition;
@@ -38,6 +45,8 @@ public class ProcedureRunner {
     private final ConceptGateway conceptGateway;
     private final CapabilityDispatcher capabilityDispatcher;
     private final EventBus eventBus;
+    // RUN-1: the breaker store flows already share; null (tests, bare hosts) = timeout and retry only.
+    private CircuitBreakerStateStore circuitBreakerStateStore;
 
     @Autowired
     public ProcedureRunner(
@@ -77,6 +86,11 @@ public class ProcedureRunner {
         this.eventBus = eventBus;
     }
 
+    @Autowired(required = false)
+    void setCircuitBreakerStateStore(CircuitBreakerStateStore circuitBreakerStateStore) {
+        this.circuitBreakerStateStore = circuitBreakerStateStore;
+    }
+
     /** Whether the compiled model declares a procedure with this name. */
     public boolean hasProcedure(String procedureName) {
         return procedureName != null && buildProcedureDefinitions().containsKey(procedureName.trim());
@@ -106,7 +120,12 @@ public class ProcedureRunner {
         }
         DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
                 conceptGateway,
-                capabilityDispatcher == null ? ProcedureRunner::capabilityUnavailable : capabilityDispatcher,
+                capabilityDispatcher == null
+                        ? ProcedureRunner::capabilityUnavailable
+                        // RUN-1: a procedure's capability call obeys the policy its operation declares
+                        // (deadline, retry of transient failures, the shared circuit), like a flow step.
+                        : new PolicyEnforcingCapabilityDispatcher(
+                                capabilityDispatcher, this::operationPolicy, circuitBreakerStateStore),
                 eventBus == null ? event -> { } : eventBus,
                 procedures,
                 com.npdev.kernel.procedures.ProcedureExecutionLimits.defaults(),
@@ -114,6 +133,27 @@ public class ProcedureRunner {
         );
         return executor.execute(definition, input == null ? Map.of() : input,
                 context == null ? ExecutionContext.anonymous() : context);
+    }
+
+    /** The execution policy the live model declares on (capability, operation); defaults when none. */
+    private CapabilityExecutionPolicy operationPolicy(CapabilityCall call) {
+        CompiledModel model = modelHolder.get();
+        if (model == null || call.capability() == null || call.operation() == null) {
+            return CapabilityExecutionPolicy.defaults();
+        }
+        for (CompiledCapability capability : model.getCapabilities()) {
+            if (capability.getName() == null
+                    || !capability.getName().trim().equalsIgnoreCase(call.capability().trim())) {
+                continue;
+            }
+            for (CompiledCapabilityOperation operation : capability.getOperations()) {
+                if (operation.getName() != null
+                        && operation.getName().trim().equalsIgnoreCase(call.operation().trim())) {
+                    return CompiledModelFlowDefinitionProvider.toExecutionPolicy(operation.getExecutionPolicy());
+                }
+            }
+        }
+        return CapabilityExecutionPolicy.defaults();
     }
 
     /**

@@ -32,6 +32,13 @@ public record CapabilityExecutionPolicy(
         String idempotencyKeyField,
         FailureClassification failureClassification
 ) {
+    /**
+     * The hang backstop applied when a policy declares no {@code timeoutMs}: 10 minutes, far above any
+     * legitimate capability duration. Shared by the flow engine (KernelRunner) and the procedure-side
+     * {@code PolicyEnforcingCapabilityDispatcher} so both resolve "unset" to the same deadline.
+     */
+    public static final long DEFAULT_TIMEOUT_MS = 600_000L;
+
     public enum FailureClassification {
         TRANSIENT,
         PERMANENT,
