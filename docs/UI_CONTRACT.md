@@ -299,6 +299,40 @@ A declared panel (`panels[]`) can mount app-owned components around or instead o
 - The live panel response (`GET /api/runtime/metadata/ui/panels/{name}`) echoes `layout.slots` only when
   the panel declares them.
 
+## Console and dashboard layouts — declarative widgets (`layout.widgets`)
+
+A declared panel (`panels[]`) can render as an **operator console** (`layout.type: "console"`) or a
+**dashboard** (`"dashboard"`): instead of the generic data-source tables it draws a 4-column grid of
+`layout.widgets[]`, all computed in the browser from the panel's own data sources.
+
+```json
+"layout": { "type": "dashboard", "widgets": [
+  { "kind": "tile",  "title": "Open", "dataSource": "tickets", "filter": { "field": "status", "equals": "OPEN" } },
+  { "kind": "tile",  "title": "Average priority", "dataSource": "tickets", "aggregate": "avg", "field": "priority" },
+  { "kind": "chart", "title": "By status", "dataSource": "tickets", "chart": "bar", "groupBy": "status" } ] }
+```
+
+| `kind` | What it draws | Needs |
+|---|---|---|
+| `tile` | one aggregate number | `dataSource`; `aggregate` (default `count`; `sum`/`avg`/`min`/`max` need `field`); optional `filter` |
+| `chart` | the aggregate per distinct `groupBy` value, as `bar`, `line` or `donut` (inline SVG, no library) | `dataSource`, `chart`, `groupBy`; same `aggregate`/`field`/`filter` as a tile |
+| `actions` | the panel's action buttons and their inline inputs | none; at most one per panel |
+| `history` | this browser session's action runs, newest first, with status | none; at most one per panel |
+| `table` | one data source's rows, with the usual row operations | `dataSource` |
+
+- `title` heads the card; `span` (1-4) is its width in the grid (tiles 1, charts 2, everything else 4 by default).
+- A `console` is for flow-driven screens: a few status tiles, the `actions` widget (each action may declare
+  `inputFields` for a small inline form) and a `history` of what ran. A `dashboard` is for read-only
+  analytics. The two differ only in intent; both accept every widget kind.
+- Validation refuses a widget over an undeclared data source, a non-`count` aggregate without `field`, a
+  chart without a kind or `groupBy`, a field that is not on the data source's concept, a second `actions` or
+  `history` widget, and widgets on a `table`/`grid` layout. A console or dashboard with no widgets is an error.
+- Rows are record envelopes (see "Panel slots"); widgets read fields from `row.data`. Aggregation happens
+  client-side over the rows the panel response already returned, so it respects the usual read caps
+  (a capped list reports it) and the caller's permissions without any new endpoint.
+- After an action runs the panel reloads and every widget recomputes; the action is added to `history`.
+- The live panel response echoes `layout.widgets` only when the panel declares them.
+
 ## View renderers (`window.NPDevViews`)
 
 New business-UI list views and detail-dialog sections do NOT grow `business-ui-app.mustache`. They

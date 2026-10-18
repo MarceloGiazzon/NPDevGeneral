@@ -1882,7 +1882,7 @@
     if (!state.declaredPanels[panelMeta.name]) {
       state.declaredPanels[panelMeta.name] = {
         loading: false, loaded: false, data: {}, fieldBindings: [], dataSources: [], actions: [],
-        lastActionName: "", lastActionResult: null
+        lastActionName: "", lastActionResult: null, history: []
       };
     }
     return state.declaredPanels[panelMeta.name];
@@ -1931,6 +1931,7 @@
       );
       entry.lastActionName = actionName;
       entry.lastActionResult = payload.result;
+      recordPanelHistory(entry, actionName, payload.status || "OK", payload.status === "FAILED");
       if (payload.status === "WAITING" && payload.executionId) {
         // R7.7: a flow-bound action that parked on awaitEvent is not "completed" -- see
         // trackFlowExecution's own comment for why this is the same lie docs/UI_CONTRACT.md warns
@@ -1941,6 +1942,7 @@
       }
       await loadDeclaredPanel(panelMeta);
     } catch (error) {
+      recordPanelHistory(entry, actionName, error.message, true);
       setStatus(error.message, true);
       render();
     }
@@ -2126,6 +2128,224 @@
     return mount.el;
   }
 
+  // ---- F6-2 console / F6-3 dashboard: declarative widgets computed client-side over a panel's own
+  // data sources (layout.type "console" | "dashboard", layout.widgets[]). No library: charts are inline SVG.
+  function isWidgetLayout(layout) {
+    return !!(layout && (layout.type === "console" || layout.type === "dashboard")
+      && Array.isArray(layout.widgets) && layout.widgets.length);
+  }
+
+  // A concept-bound data source's rows are record envelopes ({tenantId, concept, id, data}); a query or
+  // procedure source returns plain objects. Widgets read fields from whichever shape is present.
+  function widgetRows(entry, widget) {
+    const raw = (entry.data || {})[widget.dataSource];
+    let rows = (Array.isArray(raw) ? raw : []).map(function (row) {
+      return row && row.data && typeof row.data === "object" ? row.data : (row || {});
+    });
+    if (widget.filter && widget.filter.field) {
+      rows = rows.filter(function (row) { return String(row[widget.filter.field]) === String(widget.filter.equals); });
+    }
+    return rows;
+  }
+
+  function aggregateRows(rows, aggregate, field) {
+    const kind = aggregate || "count";
+    if (kind === "count") { return rows.length; }
+    const nums = rows.map(function (row) { return Number(row[field]); }).filter(function (n) { return !isNaN(n); });
+    if (!nums.length) { return 0; }
+    if (kind === "min") { return Math.min.apply(null, nums); }
+    if (kind === "max") { return Math.max.apply(null, nums); }
+    const total = nums.reduce(function (a, b) { return a + b; }, 0);
+    return kind === "avg" ? total / nums.length : total;
+  }
+
+  function groupedPoints(rows, widget) {
+    const groups = {};
+    const order = [];
+    rows.forEach(function (row) {
+      const key = row[widget.groupBy] === undefined || row[widget.groupBy] === null ? "(none)" : String(row[widget.groupBy]);
+      if (!groups[key]) { groups[key] = []; order.push(key); }
+      groups[key].push(row);
+    });
+    order.sort();
+    return order.map(function (key) {
+      return { label: key, value: aggregateRows(groups[key], widget.aggregate, widget.field) };
+    });
+  }
+
+  function formatWidgetNumber(n) {
+    return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+  }
+
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const CHART_COLORS = ["#2f6fdb", "#e07b39", "#2e9e6b", "#9b59b6", "#d4a017", "#c0392b", "#16a0b5", "#7f8c8d"];
+
+  function svgEl(name, attrs) {
+    const el = document.createElementNS(SVG_NS, name);
+    Object.keys(attrs || {}).forEach(function (key) { el.setAttribute(key, String(attrs[key])); });
+    return el;
+  }
+
+  function svgText(x, y, text, anchor, size) {
+    const el = svgEl("text", { x: x, y: y, "text-anchor": anchor || "middle", "font-size": size || 10, fill: "currentColor" });
+    el.textContent = text;
+    return el;
+  }
+
+  function renderBarChart(points) {
+    const w = 360, h = 190, pad = 28;
+    const svg = svgEl("svg", { viewBox: "0 0 " + w + " " + h, width: "100%", role: "img", "data-chart": "bar" });
+    const max = Math.max.apply(null, points.map(function (p) { return p.value; }).concat([1]));
+    const slot = (w - 2 * pad) / Math.max(points.length, 1);
+    points.forEach(function (point, i) {
+      const barHeight = (h - 2 * pad) * (point.value / max);
+      const x = pad + i * slot + slot * 0.15;
+      svg.appendChild(svgEl("rect", {
+        x: x, y: h - pad - barHeight, width: slot * 0.7, height: Math.max(barHeight, 0),
+        fill: CHART_COLORS[i % CHART_COLORS.length], "data-label": point.label, "data-value": point.value
+      }));
+      svg.appendChild(svgText(x + slot * 0.35, h - pad - barHeight - 4, formatWidgetNumber(point.value)));
+      svg.appendChild(svgText(x + slot * 0.35, h - pad + 12, point.label));
+    });
+    return svg;
+  }
+
+  function renderLineChart(points) {
+    const w = 360, h = 190, pad = 28;
+    const svg = svgEl("svg", { viewBox: "0 0 " + w + " " + h, width: "100%", role: "img", "data-chart": "line" });
+    const max = Math.max.apply(null, points.map(function (p) { return p.value; }).concat([1]));
+    const step = points.length > 1 ? (w - 2 * pad) / (points.length - 1) : 0;
+    const coords = points.map(function (point, i) {
+      return [pad + i * step, h - pad - (h - 2 * pad) * (point.value / max)];
+    });
+    svg.appendChild(svgEl("polyline", {
+      points: coords.map(function (c) { return c[0] + "," + c[1]; }).join(" "),
+      fill: "none", stroke: CHART_COLORS[0], "stroke-width": 2
+    }));
+    points.forEach(function (point, i) {
+      svg.appendChild(svgEl("circle", {
+        cx: coords[i][0], cy: coords[i][1], r: 4, fill: CHART_COLORS[0],
+        "data-label": point.label, "data-value": point.value
+      }));
+      svg.appendChild(svgText(coords[i][0], h - pad + 12, point.label));
+    });
+    return svg;
+  }
+
+  function renderDonutChart(points) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "display:flex;align-items:center;gap:16px;flex-wrap:wrap";
+    const radius = 54;
+    const circumference = 2 * Math.PI * radius;
+    const total = points.reduce(function (sum, p) { return sum + p.value; }, 0);
+    const svg = svgEl("svg", { viewBox: "0 0 140 140", width: 140, height: 140, role: "img", "data-chart": "donut" });
+    let offset = 0;
+    points.forEach(function (point, i) {
+      const fraction = total > 0 ? point.value / total : 0;
+      svg.appendChild(svgEl("circle", {
+        cx: 70, cy: 70, r: radius, fill: "none", stroke: CHART_COLORS[i % CHART_COLORS.length], "stroke-width": 26,
+        "stroke-dasharray": (fraction * circumference) + " " + (circumference - fraction * circumference),
+        "stroke-dashoffset": -offset, transform: "rotate(-90 70 70)",
+        "data-label": point.label, "data-value": point.value
+      }));
+      offset += fraction * circumference;
+    });
+    wrap.appendChild(svg);
+    const legend = document.createElement("ul");
+    legend.className = "chart-legend";
+    legend.style.cssText = "list-style:none;margin:0;padding:0";
+    points.forEach(function (point, i) {
+      const item = document.createElement("li");
+      item.setAttribute("data-label", point.label);
+      item.setAttribute("data-value", String(point.value));
+      const swatch = document.createElement("span");
+      swatch.style.cssText = "display:inline-block;width:10px;height:10px;margin-right:6px;background:" + CHART_COLORS[i % CHART_COLORS.length];
+      item.appendChild(swatch);
+      item.appendChild(document.createTextNode(point.label + ": " + formatWidgetNumber(point.value)));
+      legend.appendChild(item);
+    });
+    wrap.appendChild(legend);
+    return wrap;
+  }
+
+  function recordPanelHistory(entry, actionName, status, failed) {
+    entry.history = entry.history || [];
+    entry.history.unshift({ at: new Date(), action: actionName, status: status, failed: !!failed });
+    if (entry.history.length > 25) { entry.history.length = 25; }
+  }
+
+  function renderWidgetGrid(panelMeta, entry, actionHost) {
+    const grid = document.createElement("div");
+    grid.className = "panel-widgets panel-widgets-" + entry.layout.type;
+    grid.style.cssText = "display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:8px 0";
+    entry.layout.widgets.forEach(function (widget) {
+      const card = document.createElement("div");
+      card.className = "panel-widget panel-widget-" + widget.kind;
+      card.setAttribute("data-widget", widget.kind);
+      const defaultSpan = widget.kind === "tile" ? 1 : (widget.kind === "chart" ? 2 : 4);
+      card.style.cssText = "grid-column:span " + (widget.span || defaultSpan)
+        + ";border:1px solid #c8d0d8;border-radius:8px;padding:10px 14px;min-width:0";
+      if (widget.title) {
+        const heading = document.createElement("h4");
+        heading.textContent = widget.title;
+        heading.style.cssText = "margin:0 0 6px 0;font-size:13px;opacity:.75";
+        card.appendChild(heading);
+      }
+      if (widget.kind === "tile") {
+        const value = aggregateRows(widgetRows(entry, widget), widget.aggregate, widget.field);
+        card.setAttribute("data-title", widget.title || "");
+        card.setAttribute("data-value", String(value));
+        const number = document.createElement("div");
+        number.className = "widget-value";
+        number.style.cssText = "font-size:28px;font-weight:600";
+        number.textContent = formatWidgetNumber(value);
+        card.appendChild(number);
+      } else if (widget.kind === "chart") {
+        const points = groupedPoints(widgetRows(entry, widget), widget);
+        card.setAttribute("data-chart-kind", widget.chart || "");
+        if (!points.length) {
+          const none = document.createElement("p");
+          none.className = "sub";
+          none.textContent = "No data.";
+          card.appendChild(none);
+        } else if (widget.chart === "line") {
+          card.appendChild(renderLineChart(points));
+        } else if (widget.chart === "donut") {
+          card.appendChild(renderDonutChart(points));
+        } else {
+          card.appendChild(renderBarChart(points));
+        }
+      } else if (widget.kind === "actions") {
+        card.appendChild(actionHost);
+      } else if (widget.kind === "history") {
+        const history = entry.history || [];
+        if (!history.length) {
+          const none = document.createElement("p");
+          none.className = "sub";
+          none.textContent = "No actions run yet.";
+          card.appendChild(none);
+        } else {
+          const list = document.createElement("ol");
+          list.className = "widget-history";
+          list.style.cssText = "margin:0;padding-left:20px";
+          history.forEach(function (run) {
+            const item = document.createElement("li");
+            item.setAttribute("data-action", run.action);
+            item.setAttribute("data-status", run.status);
+            item.textContent = run.at.toLocaleTimeString() + " \u2014 " + run.action + " \u2014 " + run.status;
+            if (run.failed) { item.style.color = "#c0392b"; }
+            list.appendChild(item);
+          });
+          card.appendChild(list);
+        }
+      } else if (widget.kind === "table") {
+        card.appendChild(renderDeclaredPanelValue((entry.data || {})[widget.dataSource], entry, widget.dataSource, panelMeta));
+      }
+      grid.appendChild(card);
+    });
+    return grid;
+  }
+
   function renderDeclaredPanel(panelMeta) {
     const section = document.createElement("section");
     section.className = "concept-panel";
@@ -2167,6 +2387,11 @@
     // declared action.confirmationText) and only ever appears on the live entry.actions. Looked up
     // by name here so the header-button loop below can still iterate the boot-time list unchanged.
     const headerEntry = declaredPanelState(panelMeta);
+    // F6-2 / F6-3: a console/dashboard layout places the action buttons itself (the `actions` widget);
+    // every other layout appends them straight to the section, exactly as before.
+    const widgetLayout = !!headerEntry.loaded && isWidgetLayout(headerEntry.layout);
+    const actionHost = widgetLayout ? document.createElement("div") : section;
+    if (widgetLayout) { actionHost.className = "panel-widget-actions"; }
     (panelMeta.actions || []).forEach(function (action) {
       // G2: scope="row" actions render per row inside renderDeclaredColumnsTable instead -- skip here.
       if (action.scope === "row") { return; }
@@ -2180,7 +2405,7 @@
           window.location.href = panelMeta.newWorkbenchUrl;
         });
         newButton.disabled = !panelEnabled || !evaluateWhen(action.enabledWhen, panelContext);
-        section.appendChild(newButton);
+        actionHost.appendChild(newButton);
         return;
       }
       const fieldNames = action.inputFields || [];
@@ -2199,7 +2424,7 @@
           inputsByField[field] = input;
           inlineForm.appendChild(input);
         });
-        section.appendChild(inlineForm);
+        actionHost.appendChild(inlineForm);
       }
       const actionButton = button(action.label, "primary", function () {
         const liveAction = (headerEntry.actions || []).find(function (a) { return a.name === action.name; });
@@ -2209,7 +2434,7 @@
         executeDeclaredPanelAction(panelMeta, action.name, data);
       });
       actionButton.disabled = !panelEnabled || !evaluateWhen(action.enabledWhen, panelContext);
-      section.appendChild(actionButton);
+      actionHost.appendChild(actionButton);
     });
 
     const entry = declaredPanelState(panelMeta);
@@ -2243,7 +2468,9 @@
       }
     }
     const replaceSlot = slots.find(function (slot) { return slot.placement === "replace"; });
-    section.appendChild(replaceSlot ? mountPanelSlot(panelMeta, entry, replaceSlot) : body);
+    section.appendChild(replaceSlot
+      ? mountPanelSlot(panelMeta, entry, replaceSlot)
+      : (widgetLayout ? renderWidgetGrid(panelMeta, entry, actionHost) : body));
     slots.forEach(function (slot) {
       if (slot.placement === "below") { section.appendChild(mountPanelSlot(panelMeta, entry, slot)); }
     });

@@ -6,6 +6,7 @@ import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelSlot;
+import com.npdev.dsl.v1.compiled.CompiledPanelWidget;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
 import com.npdev.dsl.v1.compiled.CompiledPanelFieldBinding;
@@ -337,7 +338,37 @@ public class PanelRuntime {
             }
             layout.put("slots", slots);
         }
+        if (!panel.layout().widgets().isEmpty()) {
+            List<Map<String, Object>> widgets = new ArrayList<>();
+            for (CompiledPanelWidget widget : panel.layout().widgets()) {
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("kind", widget.kind());
+                putIfPresent(entry, "title", widget.title());
+                putIfPresent(entry, "dataSource", widget.dataSource());
+                putIfPresent(entry, "aggregate", widget.aggregate());
+                putIfPresent(entry, "field", widget.field());
+                putIfPresent(entry, "groupBy", widget.groupBy());
+                putIfPresent(entry, "chart", widget.chart());
+                if (widget.filterField() != null) {
+                    Map<String, Object> filter = new LinkedHashMap<>();
+                    filter.put("field", widget.filterField());
+                    filter.put("equals", widget.filterEquals() == null ? "" : widget.filterEquals());
+                    entry.put("filter", filter);
+                }
+                if (widget.span() != null) {
+                    entry.put("span", widget.span());
+                }
+                widgets.add(entry);
+            }
+            layout.put("widgets", widgets);
+        }
         return layout;
+    }
+
+    private static void putIfPresent(Map<String, Object> target, String key, String value) {
+        if (value != null) {
+            target.put(key, value);
+        }
     }
 
     public Map<String, Object> executeAction(

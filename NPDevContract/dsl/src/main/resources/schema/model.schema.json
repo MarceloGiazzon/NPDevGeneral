@@ -5066,8 +5066,11 @@
           "type": "string",
           "enum": [
             "table",
-            "grid"
-          ]
+            "grid",
+            "console",
+            "dashboard"
+          ],
+          "description": "table (default) and grid render the data sources; console (F6-2) and dashboard (F6-3) render the declarative widgets[] instead."
         },
         "children": {
           "type": "array",
@@ -5091,9 +5094,99 @@
           "items": {
             "$ref": "#/$defs/panelSlot"
           }
+        },
+        "widgets": {
+          "type": "array",
+          "description": "F6-2 / F6-3: the declarative widgets of a console or dashboard layout, computed client-side over the panel's own data sources (tile, chart, actions, history, table).",
+          "items": {
+            "$ref": "#/$defs/panelWidget"
+          }
         }
       },
       "additionalProperties": false
+    },
+    "panelWidget": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "tile",
+            "chart",
+            "actions",
+            "history",
+            "table"
+          ],
+          "description": "tile: one aggregate number. chart: an aggregate per groupBy value, drawn as bar/line/donut. actions: the panel's action bar (at most one). history: this session's action runs (at most one). table: a data source's rows."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dataSource": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of one of this panel's dataSources. Required for tile, chart and table."
+        },
+        "aggregate": {
+          "type": "string",
+          "enum": [
+            "count",
+            "sum",
+            "avg",
+            "min",
+            "max"
+          ],
+          "description": "How a tile or chart reduces rows (default count). Everything except count needs field."
+        },
+        "field": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The numeric field that sum/avg/min/max reduce."
+        },
+        "groupBy": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Chart only: the field whose distinct values become the categories."
+        },
+        "chart": {
+          "type": "string",
+          "enum": [
+            "bar",
+            "line",
+            "donut"
+          ],
+          "description": "Chart only: how the categories are drawn."
+        },
+        "filter": {
+          "type": "object",
+          "required": [
+            "field",
+            "equals"
+          ],
+          "additionalProperties": false,
+          "description": "Only rows whose field equals the given text are aggregated.",
+          "properties": {
+            "field": {
+              "type": "string",
+              "minLength": 1
+            },
+            "equals": {
+              "type": "string"
+            }
+          }
+        },
+        "span": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4,
+          "description": "Width in a 4-column grid (default 1)."
+        }
+      }
     },
     "panelSlot": {
       "type": "object",

@@ -1,0 +1,38 @@
+{
+  "scenarioName": "f6-operator-console-ticket-console",
+  "targetPath": "/npdev-business-ui/",
+  "options": {
+    "headless": true,
+    "screenshots": "always",
+    "collectDomOnFailure": true,
+    "viewport": { "width": 1400, "height": 900 }
+  },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "valueFromCredential": "apiKey" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav", "state": "visible", "label": "Auth landed, shell nav rendered" },
+    { "action": "click", "selector": "#sideNav :text(\"Ticket console\")", "label": "Open the Ticket console declared panel" },
+    { "action": "waitForSelector", "selector": ".panel-widgets-console", "state": "visible", "label": "The console layout rendered its widget grid" },
+    { "action": "assertCount", "selector": ".panel-widgets-console .panel-widget-tile", "operator": "=", "count": 4, "label": "Four status tiles" },
+    { "action": "assertTextContains", "selector": ".panel-widget-tile[data-title=\"Tickets\"] .widget-value", "text": "4", "label": "Tickets tile: count of all rows" },
+    { "action": "assertTextContains", "selector": ".panel-widget-tile[data-title=\"Open\"] .widget-value", "text": "2", "label": "Open tile: filter status=OPEN" },
+    { "action": "assertTextContains", "selector": ".panel-widget-tile[data-title=\"In progress\"] .widget-value", "text": "1", "label": "In progress tile: filter status=IN_PROGRESS" },
+    { "action": "assertTextContains", "selector": ".panel-widget-tile[data-title=\"Total priority\"] .widget-value", "text": "7", "label": "Total priority tile: sum(priority) = 2+1+3+1" },
+    { "action": "assertCount", "selector": ".panel-widget-actions textarea[placeholder=\"title\"]", "operator": "=", "count": 1, "label": "The actions widget hosts the flow action's inline inputs" },
+    { "action": "assertTextContains", "selector": ".panel-widget-history", "text": "No actions run yet", "label": "History starts empty" },
+    { "action": "screenshot", "name": "f6_console_before" },
+    { "action": "fill", "selector": ".panel-widget-actions textarea[placeholder=\"title\"]", "value": "Console-created ticket" },
+    { "action": "fill", "selector": ".panel-widget-actions textarea[placeholder=\"status\"]", "value": "OPEN" },
+    { "action": "fill", "selector": ".panel-widget-actions textarea[placeholder=\"priority\"]", "value": "5" },
+    { "action": "click", "selector": ".panel-widget-actions button:has-text(\"Open ticket\")", "label": "Run the OpenTicket flow through the console action" },
+    { "action": "waitForSelector", "selector": ".panel-widget-tile[data-title=\"Tickets\"][data-value=\"5\"]", "state": "visible", "label": "The Tickets tile recomputed to 5 after the flow ran" },
+    { "action": "assertTextContains", "selector": ".panel-widget-tile[data-title=\"Open\"] .widget-value", "text": "3", "label": "Open tile recomputed to 3" },
+    { "action": "assertTextContains", "selector": ".panel-widget-tile[data-title=\"Total priority\"] .widget-value", "text": "12", "label": "Total priority recomputed to 12" },
+    { "action": "assertCount", "selector": ".widget-history li[data-action=\"open\"]", "operator": "=", "count": 1, "label": "The history widget recorded the run" },
+    { "action": "assertTextContains", "selector": ".panel-widget-table", "text": "Console-created ticket", "label": "The table widget lists the new ticket" },
+    { "action": "screenshot", "name": "f6_console_after" },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}

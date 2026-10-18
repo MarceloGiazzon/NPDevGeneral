@@ -1355,6 +1355,46 @@
       ]
     },
     {
+      "name": "WidgetOrdersConsolePanel",
+      "route": "/widget-orders-console",
+      "title": "Widget orders console",
+      "layout": {
+        "type": "console",
+        "widgets": [
+          { "kind": "tile", "title": "Orders", "dataSource": "orders" },
+          { "kind": "tile", "title": "Draft orders", "dataSource": "orders", "filter": { "field": "status", "equals": "DRAFT" } },
+          { "kind": "tile", "title": "Total lines", "dataSource": "orders", "aggregate": "sum", "field": "lineCount" },
+          { "kind": "actions", "title": "Operations" },
+          { "kind": "history", "title": "Recent runs" },
+          { "kind": "table", "title": "Orders", "dataSource": "orders" }
+        ]
+      },
+      "dataSources": [
+        { "name": "orders", "concept": "WidgetOrder" }
+      ],
+      "actions": [
+        { "name": "place", "label": "Place order", "binding": "flow", "flow": "PlaceWidgetOrder", "inputFields": ["customerEmail", "status", "lineCount"] }
+      ]
+    },
+    {
+      "name": "WidgetOrdersDashboardPanel",
+      "route": "/widget-orders-dashboard",
+      "title": "Widget orders dashboard",
+      "layout": {
+        "type": "dashboard",
+        "widgets": [
+          { "kind": "tile", "title": "Orders", "dataSource": "orders", "span": 2 },
+          { "kind": "tile", "title": "Average lines", "dataSource": "orders", "aggregate": "avg", "field": "lineCount", "span": 2 },
+          { "kind": "chart", "title": "Orders by status", "dataSource": "orders", "chart": "bar", "groupBy": "status" },
+          { "kind": "chart", "title": "Lines by status", "dataSource": "orders", "chart": "donut", "groupBy": "status", "aggregate": "sum", "field": "lineCount" },
+          { "kind": "chart", "title": "Max lines by status", "dataSource": "orders", "chart": "line", "groupBy": "status", "aggregate": "max", "field": "lineCount", "span": 4 }
+        ]
+      },
+      "dataSources": [
+        { "name": "orders", "concept": "WidgetOrder" }
+      ]
+    },
+    {
       "name": "WidgetCatalogReviewPanel",
       "route": "/widget-catalog-review",
       "title": "Widget catalog review",
