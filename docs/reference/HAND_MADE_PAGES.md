@@ -72,7 +72,7 @@ exposes `NPDevShell.api`.
 
 Every call sends the user's token and the headers the generated UI sends. A non-2xx response rejects
 with an `Error` whose `message` is the server's message, plus `.status` and `.body`. Use the
-app's normal endpoints: `/api/concepts/<Concept>`, `/api/queries/<Query>`,
+app's normal endpoints: `/api/concepts/<table>` (the concept's snake_case plural route, e.g. `/api/concepts/mosaic_cells`), `/api/queries/<Query>`,
 `/api/runtime/aggregate/<Aggregate>/...`, and `/api/public/**` for public reads. Row-level access,
 permissions and validation apply exactly as for the generated screens; a hand-made page cannot see
 or write more than its user could anyway.
@@ -138,4 +138,4 @@ If only part of a generated screen needs custom code, two narrower hooks exist:
 - **A custom region inside an aggregate workbench** — `regionMount` loads an app-owned
   `/regions/<name>.js` into one region of the generated page.
 - **A custom widget for one field** — `ui.widget: "custom"` with `ui.customWidgetRef`
-  (example in `NPDevSamples/dsl-conformance-max`).
+  (examples are in AppGen, e.g. under `AppGen/apps/_official/WmsOffice/definition/concepts/`; `NPDevSamples` has none).

@@ -1,6 +1,6 @@
 # NPDev — the pitch
 
-> Written for `docs/POST_PUBLIC_PLAN.md` P2.4 ("tell 3 specific people"). Use this as a starting
+> Written for `docs/archive/programme-history/POST_PUBLIC_PLAN.md` P2.4 ("tell 3 specific people"). Use this as a starting
 > point for a DM, forum post, or conversation opener — not as a doc to link to verbatim.
 
 **The one-line version:** you write a specification in domain language; NPDev derives a complete,
@@ -41,6 +41,5 @@ cares primarily about a polished custom UI out of the box, say so before they fi
 engine in depth), `docs/DATABASES_AND_MIGRATIONS.md` (schema evolution in depth).
 
 **After the conversation:** record what they hit in the first hour —
-`docs/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` (restored to `docs/` 2026-07-29, docs/REMEDIATION_PLAN.md
-R-O2 — it had been archived alongside its own DoD's programme history, but this is a reusable
-template, not a historical record).
+`docs/archive/programme-history/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` (restored to `docs/` on 2026-07-29 as a reusable
+template and since re-archived with its programme history).

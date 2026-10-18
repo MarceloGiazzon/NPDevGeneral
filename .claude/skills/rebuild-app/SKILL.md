@@ -26,7 +26,7 @@ pwsh -File scripts/appgen/Rebuild-And-Restage.ps1 -AppFolder <appFolder>
 
 The wrapper runs, in order: `sync-runtimehost-libs.ps1 -BuildLocalJars -RuntimeHostLibsDir <dir>` →
 `AppGen/generator-runtime/prepare-npdev-generator-runtime.ps1 -RuntimeRoot <root>` →
-`Build-NpdevApp.ps1 ... -RuntimeHostLibsDir <dir>` → 4a builds the jar, 4b starts the app, 4c runs
+`Build-NpdevApp.ps1 ... -RuntimeHostLibsDir <dir>` → (`Build-NpdevApp` only generates) 4a builds the jar via `_ops\Build-App.ps1`, 4b starts the app (`Start-App.ps1`), 4c runs
 the panel-provenance impact gate (`_ops/Check-Provenance.ps1`) against its live bundle, failing the
 rebuild if a **confirmed** manifest now references a field/invocation the model no longer has.
 `-SkipProvenanceCheck` skips only 4c (the jar is still built and the app still started); `-NoStart`
