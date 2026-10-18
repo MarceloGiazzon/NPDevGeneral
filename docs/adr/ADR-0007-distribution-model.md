@@ -7,6 +7,10 @@
 remains genuinely open — it requires a real professional search this session cannot perform, not
 just a sign-off. See each decision's own status line below.
 
+> **Implementation note (2026-10-17).** "No installer" no longer holds: a tag push now publishes release assets — the runtimehost jars,
+> an NPDev Manager Windows NSIS installer and a Linux AppImage (`.github/workflows/publish-runtimehost-libs.yml`). The monorepo is still the
+> source distribution unit. `docs/LAUNCH_READINESS_GAPS.md` (LNCH-23) is no longer in the repo.
+
 ## Context
 
 LNCH-23 bundles five unglamorous but launch-blocking decisions: license, distribution model,
