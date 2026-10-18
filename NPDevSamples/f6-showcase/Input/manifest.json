@@ -1,0 +1,7 @@
+{
+  "id": "f6-showcase", "title": "F6 Showcase", "complexity": "T1-showcase",
+  "purpose": "One small app demonstrating every frontend coverage feature (layoutSlot, operator console, dashboard, third nesting level, client-side CEL), one section per feature, each backed by a real browser check.",
+  "inputFiles": [],
+  "walkthrough": ["Generate and boot the f6-showcase sample with the sample app generator script in NPDevSamples/scripts.", "Open the Ticket board panel: the KPI strip above and the timeline below the table are app-owned slot components."],
+  "expectedOutcomes": ["Ticket board shows a KPI strip (Total 4, OPEN 2, IN_PROGRESS 1, DONE 1) above the generated table and a priority-ordered timeline below it."]
+}

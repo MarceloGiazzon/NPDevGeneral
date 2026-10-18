@@ -5084,9 +5084,45 @@
         },
         "metadata": {
           "type": "object"
+        },
+        "slots": {
+          "type": "array",
+          "description": "F6-1 layoutSlot (ADR-0004 L5): hand-authored regions inside this generated panel. Each slot mounts an app-owned component (web/regions/<component>.js, registered with window.npdev.regions.register) above or below the generated body, or in place of it, and is handed the panel's live data through a narrowed api (panel, data, refresh, invoke) so it never reaches around the generated wiring.",
+          "items": {
+            "$ref": "#/$defs/panelSlot"
+          }
         }
       },
       "additionalProperties": false
+    },
+    "panelSlot": {
+      "type": "object",
+      "required": [
+        "placement",
+        "component"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "placement": {
+          "type": "string",
+          "enum": [
+            "above",
+            "below",
+            "replace"
+          ],
+          "description": "above/below: mounted before/after the generated body. replace: mounted instead of the generated body (at most one per panel)."
+        },
+        "component": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "description": "Name registered via window.npdev.regions.register(name, {mount, update, unmount}) in the app's own web/regions/<name>.js."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional heading shown above the mounted component."
+        }
+      }
     },
     "panelFieldBinding": {
       "type": "object",

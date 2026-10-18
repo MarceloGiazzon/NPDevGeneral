@@ -99,6 +99,7 @@ generator-producer manifest with no `modelHash` as always-re-derive, never stale
 - The human/agent producers depend on F2 (the UI contract bundle, `docs/UI_CONTRACT.md`) being live;
   a manifest's `reads`/`invokes` are meaningless without a real bundle to validate them against.
 - `slotOf` is reserved, not populated, for [ADR-0004](ADR-0004-aggregate-workbench.md)'s L5
-  `layoutSlot` — the workbench and the contract meet there once that concept ships.
+  `layoutSlot` — which shipped as `panels[].layout.slots[]` (F6-1); populating `slotOf` from a slot's
+  component is still not done.
 - The impact gate (F4) that actually enforces `confirmed: true` manifests is separately scoped and
   not part of this ADR's implementation.

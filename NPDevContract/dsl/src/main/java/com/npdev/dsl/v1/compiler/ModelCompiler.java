@@ -71,6 +71,7 @@ import com.npdev.dsl.v1.ast.PanelAst;
 import com.npdev.dsl.v1.ast.PanelDataSourceAst;
 import com.npdev.dsl.v1.ast.PanelFieldBindingAst;
 import com.npdev.dsl.v1.ast.PanelLayoutAst;
+import com.npdev.dsl.v1.ast.PanelSlotAst;
 import com.npdev.dsl.v1.ast.PresentationMetadataAst;
 import com.npdev.dsl.v1.ast.ProcedureAst;
 import com.npdev.dsl.v1.ast.ProcedureParameterAst;
@@ -157,6 +158,7 @@ import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
 import com.npdev.dsl.v1.compiled.CompiledPanelFieldBinding;
 import com.npdev.dsl.v1.compiled.CompiledPanelLayout;
+import com.npdev.dsl.v1.compiled.CompiledPanelSlot;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
 import com.npdev.dsl.v1.compiled.CompiledProcedure;
 import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
@@ -2177,11 +2179,16 @@ public final class ModelCompiler {
         for (PanelLayoutAst child : layout.children()) {
             children.add(compilePanelLayout(child));
         }
+        List<CompiledPanelSlot> slots = new ArrayList<>();
+        for (PanelSlotAst slot : layout.slots()) {
+            slots.add(new CompiledPanelSlot(slot.placement(), slot.component(), slot.label()));
+        }
         return new CompiledPanelLayout(
                 layout.type(),
                 children,
                 copyStrings(layout.fields()),
-                sortObjectMap(layout.metadata())
+                sortObjectMap(layout.metadata()),
+                slots
         );
     }
 

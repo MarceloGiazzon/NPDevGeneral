@@ -1294,6 +1294,13 @@
       "name": "WidgetOrderReviewPanel",
       "route": "/widget-order-review",
       "title": "Widget order review",
+      "layout": {
+        "type": "table",
+        "slots": [
+          { "placement": "above", "component": "order-kpi-strip", "label": "Order KPIs" },
+          { "placement": "below", "component": "order-timeline" }
+        ]
+      },
       "dataSources": [
         {
           "name": "orders",

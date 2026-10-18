@@ -188,6 +188,15 @@ def _has_region_component_mount(model: dict) -> bool:
     return False
 
 
+def _has_panel_layout_slot(model: dict) -> bool:
+    # F6-1 layoutSlot (ADR-0004 L5): a declared panel whose layout.slots[] mounts a hand-authored region.
+    for panel in model.get("panels") or []:
+        layout = panel.get("layout") if isinstance(panel, dict) else None
+        if isinstance(layout, dict) and layout.get("slots"):
+            return True
+    return False
+
+
 def _has_workbench_derived(model: dict) -> bool:
     # Recognizes BOTH the retired transaction.metadata.derived list and its Move 6 Move B typed
     # replacement, transaction.derivedFields (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4) -- the same

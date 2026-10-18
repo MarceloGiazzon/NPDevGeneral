@@ -34,7 +34,7 @@ from .detectors_model import (  # noqa: F401 - every name the table below refere
 from .detectors_ui import (  # noqa: F401 - every name the table below references
     _has_autopanel_selection_data_source_procedure, _has_band_picker_filter,
     _has_field_picker_filter, _has_panel_action_concept_query, _has_panel_action_download,
-    _has_panel_data_source_on_row_load, _has_picker_selector_ref, _has_region_component_mount,
+    _has_panel_data_source_on_row_load, _has_panel_layout_slot, _has_picker_selector_ref, _has_region_component_mount,
     _has_transaction_hook, _has_typed_workbench_actions, _has_workbench_after_action,
     _has_workbench_apply_to, _has_workbench_band_pickers, _has_workbench_check_balances,
     _has_workbench_derived, _has_workbench_ui_state, _has_workbench_visible_when,
@@ -326,6 +326,7 @@ FEATURE_DETECTORS = {
     "autoPanel.selection.dataSource.procedure": _has_autopanel_selection_data_source_procedure,
     # Move 6 Move D (docs/MOVE6_TYPED_SURFACE_PLAN.md §5).
     "workbench.region.component": _has_region_component_mount,
+    "panel.layout.slots": _has_panel_layout_slot,
     # Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): the typed, schema-validated replacements for
     # the untyped transaction.metadata.actions/.bandPickers -- tracked separately from
     # workbench.applyTo/afterAction/visibleWhen above (which recognize either spelling) so a

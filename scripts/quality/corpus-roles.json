@@ -66,6 +66,7 @@
     "NPDevSamples/medium-expense-approval": "showcase",
     "NPDevSamples/notification-pack-proof": "repro-case",
     "NPDevSamples/npdev-canary": "canary",
+    "NPDevSamples/f6-showcase": "showcase",
     "NPDevSamples/npdev-init-seed": "showcase",
     "NPDevSamples/pack9-role-binding-a": "repro-case",
     "NPDevSamples/pack9-role-binding-b": "repro-case",

@@ -5,6 +5,7 @@ import com.npdev.dsl.v1.compiled.CompiledActionMetadata;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
+import com.npdev.dsl.v1.compiled.CompiledPanelSlot;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
 import com.npdev.dsl.v1.compiled.CompiledPanelFieldBinding;
@@ -310,12 +311,33 @@ public class PanelRuntime {
         // source can consume the selector's declared pick contract instead of guessing from columns.
         response.put("metadata", panel.metadata() == null ? Map.of() : panel.metadata());
         response.put("fallbackUi", dataSourceSummaries.stream().anyMatch(item -> Boolean.TRUE.equals(item.get("fallback"))));
-        response.put("layout", panel.layout() == null ? Map.of() : Map.of(
-                "type", safe(panel.layout().type()),
-                "fields", panel.layout().fields()
-        ));
+        response.put("layout", panelLayoutResponse(panel));
         response.put("gatewayTrace", traceSince(traceStart));
         return response;
+    }
+
+    /** The panel's layout as served to the browser; {@code slots} (F6-1 layoutSlot) appear only when declared. */
+    private static Map<String, Object> panelLayoutResponse(CompiledPanel panel) {
+        if (panel.layout() == null) {
+            return Map.of();
+        }
+        Map<String, Object> layout = new LinkedHashMap<>();
+        layout.put("type", safe(panel.layout().type()));
+        layout.put("fields", panel.layout().fields());
+        if (!panel.layout().slots().isEmpty()) {
+            List<Map<String, Object>> slots = new ArrayList<>();
+            for (CompiledPanelSlot slot : panel.layout().slots()) {
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("placement", slot.placement());
+                entry.put("component", slot.component());
+                if (slot.label() != null) {
+                    entry.put("label", slot.label());
+                }
+                slots.add(entry);
+            }
+            layout.put("slots", slots);
+        }
+        return layout;
     }
 
     public Map<String, Object> executeAction(
