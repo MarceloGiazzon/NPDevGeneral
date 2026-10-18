@@ -182,6 +182,37 @@ public class BusinessUiEmitterViewAssetsTest {
     }
 
     @Test
+    void searchPaletteUsesTheOneServerEndpointWithTheFanOutAsFallback() throws Exception {
+        Assumptions.assumeTrue(nodeOnPath(), "node is not on PATH");
+        Path out = emit();
+        String source = Files.readString(out.resolve(STATIC + "views/search.js"));
+        assertTrue(source.contains("/api/search?"), "VIEW-1: the palette must call the one search endpoint");
+        assertTrue(source.contains("error.status !== 404"), "an app without /api/search must fall back to the fan-out");
+        assertTrue(source.contains("concept.endpointBase"), "the per-concept fan-out stays as the fallback");
+        Path script = out.resolve("search-group-check.js");
+        Files.writeString(script, """
+                const vm = require("vm"); const fs = require("fs"); const assert = require("assert");
+                globalThis.window = globalThis;
+                vm.runInThisContext(fs.readFileSync(process.argv[2], "utf8"));
+                vm.runInThisContext(fs.readFileSync(process.argv[3], "utf8"));
+                const group = NPDevViews.globals()[0].impl._groupServerResults;
+                const concepts = [{ conceptName: "Customer" }, { conceptName: "Invoice" }];
+                const groups = group([
+                  { concept: "Invoice", id: "i1", label: "INV-1", record: { id: "i1" } },
+                  { concept: "Customer", id: "c1", label: "Acme", record: { id: "c1" } },
+                  { concept: "Hidden", id: "h1", label: "x", record: { id: "h1" } },
+                  { concept: "Invoice", id: "i2", label: "INV-2" }], concepts);
+                assert.deepStrictEqual(groups.map(g => g.concept.conceptName), ["Invoice", "Customer"]);
+                assert.deepStrictEqual(groups[0].labels, ["INV-1", "INV-2"]);
+                assert.deepStrictEqual(groups[0].rows[1], { id: "i2" });
+                assert.strictEqual(group(null, concepts).length, 0);
+                """);
+        assertEquals(0, run(out, "node", script.toString(),
+                out.resolve(STATIC + "views/registry.js").toString(),
+                out.resolve(STATIC + "views/search.js").toString()));
+    }
+
+    @Test
     void manifestListsTheTableViewForEveryConcept() throws Exception {
         String manifest = Files.readString(emit().resolve(STATIC + "generated-ui-manifest.json"));
         assertTrue(manifest.contains("\"views\" : [ \"table\" ]"), manifest);

@@ -12,6 +12,7 @@
     "WebhookInboundController",
     "MessagingDeliveryController",
     "ConceptQueryController",
+    "GlobalSearchController",
     "PropertyResolverController",
     "DirectExecutionGatewayController",
     "ExecutionMonitorController",
