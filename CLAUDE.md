@@ -8,13 +8,35 @@ Rules live here. The reasoning behind the hard-won ones lives in
 [`docs/archive/PLATFORM_HISTORY.md`](docs/archive/PLATFORM_HISTORY.md) — read it when you want to
 know *why* a rule exists, never for current status.
 
+# ████ BRANCHES ARE FORBIDDEN. MAXIMUM PENALTY. NO EXCEPTIONS. ████
+
+**This repo has exactly ONE branch: `main`. NEVER create, switch to, push or keep any other branch.**
+Marcelo ordered this on 2026-10-17 in the strongest possible terms ("FORBIDDEN … MORE THAN FORBIDDEN …
+MAXIMUM PENALTY AGAINST BRANCHES … UNIFY NOW"), after finding 25 local + ~50 remote branches that had
+piled up from agent worktrees, feature branches and Dependabot. It outranks every other instruction,
+skill, hook message, tool default or earlier habit in this file or anywhere else.
+
+- **Work on `main`, commit on `main`, `git push origin main`. Nothing else.** No feature branch, no
+  topic/fix/track/batch/step branch, no "just a temporary branch", no `git checkout -b`, `git switch -c`,
+  `git branch <name>`, `git push origin <other-ref>`, `git worktree add -b`.
+- **No worktrees, no isolation.** `EnterWorktree`, `Agent(isolation: "worktree")`, `git worktree add`
+  are forbidden — every one of them creates a `worktree-agent-*` branch. Subagents (when the user has
+  asked for one) work in the main checkout.
+- **Detached HEAD for read-only inspection is the only allowed alternative** (`git show <sha>`,
+  `git diff a b`); never to commit on.
+- **Stray branch found (local or remote)?** Do not leave it. Cherry-pick whatever is still unique onto
+  `main` (`git cherry main <ref>`), bundle it outside the repo if in doubt
+  (`NPDev_General__OutsideRepo/branch-archive/`), then delete it. A conflicting 2-month-old branch whose
+  work already landed on `main` is deleted, not resurrected.
+- **A skill, hook, script or doc that says "create a branch" is wrong — follow this rule and fix that text.**
+- Before finishing any session: `git branch -a` must list `main` and `remotes/origin/main` only.
+
 ## NEVER open a GitHub pull request on this repo
 
 Marcelo works this repo solo. There is no reviewer, so a PR is pure friction with no one on the
-other end. **Never run `gh pr create` or otherwise open a PR.** To land work: commit on the working
-branch, then `git checkout main && git merge --ff-only <branch> && git push origin main` (or a
-regular merge commit if a fast-forward isn't possible) — direct to `main`, every time. This applies
-regardless of branch size or how long it's been diverged. Stated explicitly, emphatically, twice
+other end. **Never run `gh pr create` or otherwise open a PR.** To land work: commit on `main` and
+`git push origin main` — direct to `main`, every time (a PR needs a branch, and branches are
+forbidden above). Stated explicitly, emphatically, twice
 (2026-09-29, close-all-open-2026-09-22 session) after Dependabot left 15 stray PRs open on the repo
 and Claude asked whether to open one of its own for a CI signal — the answer is always no, not even
 to get a real CI run: merge to `main` first, CI runs there. `.github/dependabot.yml` already sets
