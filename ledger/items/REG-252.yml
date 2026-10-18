@@ -1,0 +1,40 @@
+id: REG-252
+title: >-
+  Flow createConcept/updateConcept could overwrite another tenant's record: the persistence adapters
+  keyed the existence check, the lifecycle read and the upsert on id only
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-10-18
+closed: 2026-10-18
+verification: UNIT_TESTED
+source: >-
+  2026-10-18 implementation check of the deferred-items plan (TEN-1). Two security-pattern-sweep
+  allowlist entries (bef07e2fb8ba, fdec2ed5d5f1) justified the unscoped reads with "REG-46: the
+  persistence capability port has no tenant parameter at all", which stopped being true when REG-46
+  added TenantScopedPersistenceCapabilityContract.
+surface: NPDevKernel persistence adapters (persistence-postgres, persistence-inproc)
+files:
+  - NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java
+  - NPDevKernel/adapters/persistence-inproc/src/main/java/com/npdev/adapters/persistence/inproc/InMemoryPersistenceCapabilityAdapter.java
+  - scripts/quality/security-pattern-sweep-allowlist.json
+detail: |
+  save() decided create-vs-update with a by-id existence check and read the lifecycle's previous status
+  by id, both ignoring tenant_id, then upserted on id. A tenant-B flow handed a tenant-A record id
+  (ids leak through links, exports and logs) matched A's row, overwrote its fields and re-stamped it as
+  B's. Reproduced RED first on H2 (the save returned normally and A's row held B's data).
+  Fix: a tenant-stamped save on a tenant-scoped table reads the row's owner (ABSENT / SAME_TENANT /
+  OTHER_TENANT) and refuses OTHER_TENANT with PERSISTENCE_RECORD_NOT_IN_TENANT ("record not found for
+  this tenant" -- no owner is revealed); the lifecycle previous-status read gains AND tenant_id = ?.
+  Tables without a tenant_id column, and records without a tenant, stay unscoped as before
+  (REG-43/REG-50). The in-memory adapter's isolated fallback store refuses the same case. Three stale
+  REG-46 allowlist entries were removed and two re-justified with the true reason.
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/adapters/persistence-postgres/src/test/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapterTenantOverwriteTest.java#tenantBCannotOverwriteTenantARecordThroughTheScopedSave
+  asserts: >-
+    Tenant B saving tenant A's id is refused with PERSISTENCE_RECORD_NOT_IN_TENANT, the message does
+    not name tenant A, and A's row keeps its name and tenant_id; the same tenant still updates its own
+    record; a table without tenant_id stays unscoped.
+  provenRed: true

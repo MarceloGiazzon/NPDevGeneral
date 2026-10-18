@@ -18,6 +18,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class InMemoryPersistenceCapabilityAdapterTest {
@@ -157,5 +158,24 @@ class InMemoryPersistenceCapabilityAdapterTest {
         List<?> query = (List<?>) adapter.query("User", Map.of("email", "x@y.com"));
         assertEquals(1, query.size());
         assertEquals("Xavier", ((Map<?, ?>) query.get(0)).get("name"));
+    }
+
+    @Test
+    void tenantBCannotOverwriteTenantARecordInTheFallbackStore() {
+        // TEN-1: ids leak, so a tenant-stamped save of another tenant's id must be refused, not replace it.
+        InMemoryPersistenceCapabilityAdapter adapter = new InMemoryPersistenceCapabilityAdapter();
+        adapter.save("Note", Map.of("id", "X", "name", "A-original", "tenantId", "tenantA"));
+
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+                () -> adapter.save("Note", Map.of("id", "X", "name", "B-overwrite", "tenantId", "tenantB")));
+
+        assertTrue(refused.getMessage().contains("PERSISTENCE_RECORD_NOT_IN_TENANT"));
+        assertFalse(refused.getMessage().contains("tenantA"));
+        Map<?, ?> kept = (Map<?, ?>) adapter.findById("Note", "X");
+        assertEquals("A-original", kept.get("name"));
+        assertEquals("tenantA", kept.get("tenantId"));
+
+        adapter.save("Note", Map.of("id", "X", "name", "A-second", "tenantId", "tenantA"));
+        assertEquals("A-second", ((Map<?, ?>) adapter.findById("Note", "X")).get("name"));
     }
 }

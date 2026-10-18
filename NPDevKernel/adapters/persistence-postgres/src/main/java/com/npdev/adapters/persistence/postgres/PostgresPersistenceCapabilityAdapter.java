@@ -125,11 +125,27 @@ public final class PostgresPersistenceCapabilityAdapter
             // ENG-6: defaults are a CREATE-time concern. A freshly minted id is always a create; an
             // explicit id is a create only when no row carries it yet. An update never re-defaults
             // (a partial updateConcept payload must not reset untouched fields).
-            boolean creating = idWasGenerated || !rowExists(connection, table, idColumn, id);
+            // TEN-1: when the record carries a tenant and the table is tenant-scoped, an existing row
+            // owned by ANOTHER tenant is refused -- matching it by id alone would overwrite it and
+            // re-stamp it as the caller's. Tables without a tenant_id column stay unscoped (REG-43/50).
+            String recordTenant = recordTenant(runtimeRecord);
+            boolean tenantScoped = recordTenant != null && tableColumns.hasColumn(TENANT_COLUMN);
+            if (recordTenant != null) {
+                enforceMetadataAvailableForTenantScoping(tableColumns, table, "save");
+            }
+            RowOwnership ownership = idWasGenerated
+                    ? RowOwnership.ABSENT
+                    : rowOwnership(connection, table, tableColumns, idColumn, id, tenantScoped ? recordTenant : null);
+            if (ownership == RowOwnership.OTHER_TENANT) {
+                throw new IllegalArgumentException(
+                        "PERSISTENCE_RECORD_NOT_IN_TENANT: record not found for this tenant in " + table);
+            }
+            boolean creating = ownership == RowOwnership.ABSENT;
             if (creating) {
                 applyCreateDefaults(concept, runtimeRecord);
             }
-            enforceLifecycleTransition(connection, concept, table, tableColumns, id, runtimeRecord);
+            enforceLifecycleTransition(connection, concept, table, tableColumns, id, runtimeRecord,
+                    tenantScoped ? recordTenant : null);
             Map<String, Object> sqlRecord = normalizeRecordForSave(table, runtimeRecord, tableColumns);
 
             List<String> columns = new ArrayList<>(sqlRecord.keySet());
@@ -170,15 +186,44 @@ public final class PostgresPersistenceCapabilityAdapter
         }
     }
 
-    private boolean rowExists(Connection connection, String table, String idColumn, Object id)
-            throws SQLException {
-        String sql = SqlIdentifierSupport.sqlWithIdentifiers(
-                "SELECT {0} FROM {1} WHERE {0} = ?", idColumn, table);
+    /** Who owns the row an id points at, as far as the caller's tenant is concerned (TEN-1). */
+    private enum RowOwnership { ABSENT, SAME_TENANT, OTHER_TENANT }
+
+    /** The tenant stamped on a save payload (tenantId / tenant_id), or null when it carries none. */
+    private static String recordTenant(Map<String, Object> runtimeRecord) {
+        Object tenant = runtimeRecord.get("tenantId");
+        if (tenant == null) {
+            tenant = runtimeRecord.get(TENANT_COLUMN);
+        }
+        return tenant == null || String.valueOf(tenant).isBlank() ? null : String.valueOf(tenant);
+    }
+
+    /**
+     * Existence check for save(). With a {@code tenantId} (tenant-scoped table, tenant-stamped record)
+     * it also reads the row's tenant, so a row of another tenant is told apart from "no such row".
+     * Without one it is the plain by-id lookup. The native upsert that follows runs on this same
+     * connection straight after, so this check is the guard for engines whose upsert is keyed on the
+     * primary key alone.
+     */
+    private RowOwnership rowOwnership(Connection connection, String table, TableColumns tableColumns,
+                                      String idColumn, Object id, String tenantId) throws SQLException {
+        String tenantColumn = tenantId == null ? null : tableColumns.columnName(TENANT_COLUMN);
+        String sql = tenantColumn == null
+                ? SqlIdentifierSupport.sqlWithIdentifiers("SELECT {0} FROM {1} WHERE {0} = ?", idColumn, table)
+                : SqlIdentifierSupport.sqlWithIdentifiers(
+                        "SELECT {0}, {2} FROM {1} WHERE {0} = ?", idColumn, table, tenantColumn);
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setObject(1, bindable(ps, coerceValueForColumn(idColumn, id)));
             // A null ResultSet (a minimal JDBC double that does not stub executeQuery) means "no row".
             try (ResultSet rs = ps.executeQuery()) {
-                return rs != null && rs.next();
+                if (rs == null || !rs.next()) {
+                    return RowOwnership.ABSENT;
+                }
+                if (tenantColumn == null) {
+                    return RowOwnership.SAME_TENANT;
+                }
+                String owner = rs.getString(2);
+                return owner == null || owner.equals(tenantId) ? RowOwnership.SAME_TENANT : RowOwnership.OTHER_TENANT;
             }
         }
     }
@@ -189,7 +234,8 @@ public final class PostgresPersistenceCapabilityAdapter
             String table,
             TableColumns tableColumns,
             Object id,
-            Map<String, Object> runtimeRecord
+            Map<String, Object> runtimeRecord,
+            String tenantId
     ) throws SQLException {
         if (compiledModel == null) {
             return;
@@ -214,9 +260,14 @@ public final class PostgresPersistenceCapabilityAdapter
 
         String previousValue = null;
         boolean rowExists = false;
-        String sql = "SELECT " + statusColumn + " FROM " + table + " WHERE " + idColumn + " = ?";
+        // TEN-1: on a tenant-scoped save the previous state is read from the caller's own row only.
+        String sql = "SELECT " + statusColumn + " FROM " + table + " WHERE " + idColumn + " = ?"
+                + (tenantId == null ? "" : " AND " + tableColumns.columnName(TENANT_COLUMN) + " = ?");
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setObject(1, bindable(ps, coerceValueForColumn(idColumn, id)));
+            if (tenantId != null) {
+                ps.setString(2, tenantId);
+            }
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     rowExists = true;
