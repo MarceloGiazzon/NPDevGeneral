@@ -54,8 +54,21 @@ public record DockerEngineProfile(
         String composeImage,
         String backupCommand,
         String restoreCommand,
-        Map<String, String> backupClientEnv
+        Map<String, String> backupClientEnv,
+        String backupMode,
+        String backupServerDir,
+        String backupClientCommand
 ) {
+
+    /** BKP-1: backupCommand writes a dump to stdout and restoreCommand reads one from stdin. */
+    public static final String BACKUP_MODE_STREAM = "stream";
+    /** BKP-1: the server writes/reads a file inside its own container (SQL Server BACKUP DATABASE). */
+    public static final String BACKUP_MODE_SERVER_FILE = "server-file";
+
+    /** True for an engine whose dump is a file on the server's own filesystem rather than a stream. */
+    public boolean isServerFileBackup() {
+        return BACKUP_MODE_SERVER_FILE.equals(backupMode);
+    }
 
     public enum Kind {
         /** Runs in a container this toolbox starts and stops. Must supply every field. */
@@ -159,6 +172,19 @@ public record DockerEngineProfile(
         // same "appears to work, fails in an operator's hands" trap the R9.1 comment above describes.
         if (hasBackup) {
             require(backupClientEnv != null && !backupClientEnv.isEmpty(), "backupClientEnv");
+            // BKP-1: a profile that names a mode names a known one, and the file mode carries the three
+            // facts the generated scripts cannot guess (the client, where the server may write, and
+            // that the commands are statements with {database}/{file} placeholders).
+            require(backupMode == null || backupMode.isBlank()
+                    || BACKUP_MODE_STREAM.equals(backupMode) || BACKUP_MODE_SERVER_FILE.equals(backupMode),
+                    "backupMode (stream or server-file)");
+            if (isServerFileBackup()) {
+                require(backupServerDir != null && backupServerDir.startsWith("/"), "backupServerDir");
+                require(backupClientCommand != null && !backupClientCommand.isBlank(), "backupClientCommand");
+                require(backupCommand.contains("{file}") && restoreCommand.contains("{file}"),
+                        "backupCommand/restoreCommand {file} placeholder");
+                require(adminUser != null && !adminUser.isBlank(), "adminUser");
+            }
         }
     }
 

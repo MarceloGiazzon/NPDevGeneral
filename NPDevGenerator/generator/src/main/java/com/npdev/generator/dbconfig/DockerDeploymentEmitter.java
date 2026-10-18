@@ -76,10 +76,9 @@ public final class DockerDeploymentEmitter {
         DockerEngineProfile profile = plan == null ? null : DockerEngineProfiles.of(plan.engine());
         boolean serverEngine = profile != null && profile.isContainerBacked();
         // Backup ships only where the profile declares both commands (validate() enforces
-        // both-or-neither). SQL Server's BACKUP DATABASE writes INSIDE the container, so its
-        // restore story is a file copy rather than a pipe -- its backupCommand/restoreCommand are
-        // deliberately empty, and emitting a script that produced an unusable dump would be worse
-        // than emitting none.
+        // both-or-neither). SQL Server's BACKUP DATABASE writes INSIDE the container, so its dump is
+        // a file rather than a stream: its profile is backupMode "server-file" (BKP-1) and the
+        // scripts below move the .bak out with `docker compose cp` / the data-volume mount.
         boolean hasBackup = serverEngine && profile.backupCommand() != null && !profile.backupCommand().isBlank()
                 && profile.restoreCommand() != null && !profile.restoreCommand().isBlank();
 
@@ -934,6 +933,9 @@ public final class DockerDeploymentEmitter {
      * backup.sh failed on first use, on every engine, always.
      */
     private static String backupScript(DockerEngineProfile profile) {
+        if (profile.isServerFileBackup()) {
+            return serverFileBackupScript(profile);
+        }
         return """
                 #!/usr/bin/env bash
                 # LNCH-9/R9.1: dumps the compose stack's %s database, run INSIDE the `database`
@@ -968,6 +970,9 @@ public final class DockerDeploymentEmitter {
      * silently-wrong source.
      */
     private static String restoreScript(DockerEngineProfile profile) {
+        if (profile.isServerFileBackup()) {
+            return serverFileRestoreScript(profile);
+        }
         return """
                 #!/usr/bin/env bash
                 # LNCH-9/R9.1: restores a `backup.sh` dump into the compose stack's %s database.
@@ -1086,6 +1091,11 @@ public final class DockerDeploymentEmitter {
         out.append(line(prop, "volumes:"));
         out.append(line(child, "- ./deploy/backup-sidecar.sh:/deploy/backup-sidecar.sh:ro"));
         out.append(line(child, "- ./backups:/backups"));
+        if (profile.isServerFileBackup()) {
+            // BKP-1: the server writes the .bak INSIDE its own container, so the sidecar mounts the same
+            // data volume to move it out into ./backups.
+            out.append(line(child, "- dbdata:" + profile.dataVolumePath()));
+        }
         out.append(line(child, "# MON-6: sidecar output lands beside the app's own logs, not only in `docker compose logs`."));
         out.append(line(child, "- ./logs:/logs"));
         out.append(composeLoggingBlock(prop, child, grand));
@@ -1155,6 +1165,11 @@ public final class DockerDeploymentEmitter {
         out.append(line(prop, "volumes:"));
         out.append(line(child, "- ./deploy/backup-verify.sh:/deploy/backup-verify.sh:ro"));
         out.append(line(child, "- ./backups:/backups:ro"));
+        if (profile.isServerFileBackup()) {
+            // BKP-1: the scratch server reads the .bak from ITS filesystem, so the verify job stages the
+            // latest backup into the scratch server's own data volume.
+            out.append(line(child, "- backup-verify-scratch:" + profile.dataVolumePath()));
+        }
         out.append(line(child, "- ./logs:/logs"));
         out.append(NEWLINE);
         return out.toString();
@@ -1168,6 +1183,9 @@ public final class DockerDeploymentEmitter {
      * {@code docker compose exec}), per {@code backupClientEnv}.
      */
     private static String backupSidecarScript(DockerEngineProfile profile) {
+        if (profile.isServerFileBackup()) {
+            return serverFileSidecarScript(profile);
+        }
         return """
                 #!/bin/sh
                 # R9.9: nightly backup sidecar for the compose `backup` profile -- dumps the %s
@@ -1226,6 +1244,9 @@ public final class DockerDeploymentEmitter {
      * uses (see that method's javadoc), against the scratch database rather than production.
      */
     private static String backupVerifyScript(DockerEngineProfile profile) {
+        if (profile.isServerFileBackup()) {
+            return serverFileVerifyScript(profile);
+        }
         return """
                 #!/bin/sh
                 # R9.9: restores the LATEST dump from backup.sh/backup-sidecar.sh into the disposable
@@ -1256,6 +1277,191 @@ public final class DockerDeploymentEmitter {
                     exit 1
                 fi
                 """.formatted(profile.restoreCommand());
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // BKP-1: backupMode "server-file" (SQL Server). BACKUP DATABASE / RESTORE DATABASE run on the
+    // server and read or write a file in the server's own filesystem, so the stream scripts above
+    // (`cmd > dump`, `cmd < dump`) do not apply. The profile's backupCommand/restoreCommand are the
+    // T-SQL statements with {database}/{file} placeholders; credentials come from the environment
+    // (DB_PASSWORD from .env on the host path, SQLCMDPASSWORD/SQLCMDSERVER on the sidecar path) and the
+    // login is the engine's admin user -- a per-app database user may not hold BACKUP/RESTORE rights.
+    // ------------------------------------------------------------------------------------------
+
+    private static String serverFileStatement(String template, String databaseExpr, String fileExpr) {
+        return template.replace("{database}", databaseExpr).replace("{file}", fileExpr);
+    }
+
+    private static String serverFileBackupScript(DockerEngineProfile profile) {
+        String statement = serverFileStatement(profile.backupCommand(), "${DB_NAME}", "${server_path}");
+        return """
+                #!/usr/bin/env bash
+                # BKP-1: backs up the compose stack's %1$s database. BACKUP DATABASE writes the .bak INSIDE
+                # the `database` service, so this runs it there and then copies the file out with
+                # `docker compose cp` into ./backups. Run from the FinalApp root (where docker-compose.yml
+                # and .env live).
+                set -euo pipefail
+                cd "$(dirname "$0")/.."
+
+                if [ ! -f .env ]; then
+                    echo "backup.sh: .env not found -- copy .env.example to .env first" >&2
+                    exit 1
+                fi
+                set -a
+                source .env
+                set +a
+                DB_NAME="${DB_NAME:-npdev}"
+
+                mkdir -p backups
+                file="${DB_NAME}-$(date -u +%%Y%%m%%dT%%H%%M%%SZ).bak"
+                server_path="%2$s/${file}"
+                echo "Backing up ${DB_NAME} to backups/${file} ..."
+                docker compose exec -T database %3$s -U %4$s -P "$DB_PASSWORD" -Q "%5$s"
+                docker compose cp "database:${server_path}" "backups/${file}"
+                docker compose exec -T database rm -f "${server_path}"
+                echo "Done: backups/${file}"
+                """.formatted(profile.guiLabel(), profile.backupServerDir(), profile.backupClientCommand(),
+                profile.adminUser(), statement);
+    }
+
+    private static String serverFileRestoreScript(DockerEngineProfile profile) {
+        String restore = serverFileStatement(profile.restoreCommand(), "${DB_NAME}", "${server_path}");
+        return """
+                #!/usr/bin/env bash
+                # BKP-1: restores a `backup.sh` .bak into the compose stack's %1$s database.
+                # DESTRUCTIVE: this replaces the target database's contents. Requires an explicit
+                # --yes flag as a deliberate confirmation step. The .bak is copied into the `database`
+                # service and restored from there (the profile's restore statement closes open connections
+                # first and returns the database to MULTI_USER afterwards).
+                set -euo pipefail
+                cd "$(dirname "$0")/.."
+
+                dump_file="${1:-}"
+                confirm="${2:-}"
+                if [ -z "$dump_file" ] || [ "$confirm" != "--yes" ]; then
+                    echo "Usage: deploy/restore.sh <backup-file.bak> --yes" >&2
+                    echo "  (the --yes flag is required: this REPLACES the target database's data)" >&2
+                    exit 1
+                fi
+                if [ ! -f "$dump_file" ]; then
+                    echo "restore.sh: backup file not found: ${dump_file}" >&2
+                    exit 1
+                fi
+                if [ ! -f .env ]; then
+                    echo "restore.sh: .env not found -- copy .env.example to .env first" >&2
+                    exit 1
+                fi
+                set -a
+                source .env
+                set +a
+                DB_NAME="${DB_NAME:-npdev}"
+
+                server_path="%2$s/restore-$$.bak"
+                echo "Restoring ${dump_file} into ${DB_NAME} ..."
+                docker compose cp "$dump_file" "database:${server_path}"
+                docker compose exec -T database %3$s -U %4$s -P "$DB_PASSWORD" -Q "%5$s" || { docker compose exec -T database rm -f "${server_path}"; exit 1; }
+                docker compose exec -T database rm -f "${server_path}"
+                echo "Done. Restart the app so it re-validates against the restored data: docker compose restart app"
+                """.formatted(profile.guiLabel(), profile.backupServerDir(), profile.backupClientCommand(),
+                profile.adminUser(), restore);
+    }
+
+    private static String serverFileSidecarScript(DockerEngineProfile profile) {
+        String statement = serverFileStatement(profile.backupCommand(), "${DB_NAME}", "${server_path}");
+        return """
+                #!/bin/sh
+                # BKP-1: nightly backup sidecar for the compose `backup` profile -- %1$s BACKUP DATABASE
+                # runs on the `database` service over the compose network (SQLCMDSERVER/SQLCMDPASSWORD) and
+                # writes the .bak into the data volume this container shares; the file is then moved into
+                # /backups and backups beyond the retention cap are pruned.
+                set -eu
+
+                DB_NAME="${DB_NAME:-npdev}"
+                BACKUP_DIR="${BACKUP_DIR:-/backups}"
+                RETENTION_COUNT="${BACKUP_RETENTION_COUNT:-14}"
+                INTERVAL_SECONDS="${BACKUP_INTERVAL_SECONDS:-86400}"
+                LOG_FILE="/logs/backup-sidecar.log"
+
+                mkdir -p "$BACKUP_DIR" /logs
+
+                log() {
+                    msg="[backup-sidecar] $(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ) $1"
+                    printf '%%s\\n' "$msg" | tee -a "$LOG_FILE"
+                }
+
+                prune() {
+                    count=$(ls -1t "$BACKUP_DIR"/*.bak 2>/dev/null | wc -l)
+                    if [ "$count" -gt "$RETENTION_COUNT" ]; then
+                        ls -1t "$BACKUP_DIR"/*.bak | tail -n "+$((RETENTION_COUNT + 1))" | while IFS= read -r stale; do
+                            log "pruning ${stale} (retention: ${RETENTION_COUNT} backups)"
+                            rm -f "$stale"
+                        done
+                    fi
+                }
+
+                run_backup() {
+                    file="${DB_NAME}-$(date -u +%%Y%%m%%dT%%H%%M%%SZ).bak"
+                    server_path="%2$s/${file}"
+                    out="$BACKUP_DIR/${file}"
+                    log "backing up ${DB_NAME} to ${out} ..."
+                    if %3$s -U %4$s -Q "%5$s" && mv "$server_path" "$out"; then
+                        log "done: ${out}"
+                    else
+                        log "FAILED: ${out}"
+                        rm -f "$server_path" "$out"
+                    fi
+                    prune
+                }
+
+                log "starting -- interval ${INTERVAL_SECONDS}s, retention ${RETENTION_COUNT} backups"
+                while true; do
+                    run_backup
+                    sleep "$INTERVAL_SECONDS"
+                done
+                """.formatted(profile.guiLabel(), profile.backupServerDir(), profile.backupClientCommand(),
+                profile.adminUser(), statement);
+    }
+
+    private static String serverFileVerifyScript(DockerEngineProfile profile) {
+        String restore = serverFileStatement(profile.restoreCommand(), "${DB_NAME}", "${server_path}");
+        return """
+                #!/bin/sh
+                # BKP-1: restores the LATEST .bak from backup.sh/backup-sidecar.sh into the disposable
+                # backup-verify-db service (NEVER the real `database` service) and reports pass/fail. The
+                # .bak is staged into the scratch server's own data volume, restored with RESTORE
+                # DATABASE ... CHECKSUM, and the restored database is then integrity-checked (DBCC CHECKDB).
+                set -u
+
+                BACKUP_DIR="${BACKUP_DIR:-/backups}"
+                DB_NAME="${DB_NAME:-npdev}"
+                LOG_FILE="/logs/backup-verify.log"
+                mkdir -p /logs
+
+                log() {
+                    printf '[backup-verify] %%s\\n' "$1" | tee -a "$LOG_FILE"
+                }
+
+                latest=$(ls -1t "$BACKUP_DIR"/*.bak 2>/dev/null | head -n 1)
+                if [ -z "$latest" ]; then
+                    log "FAIL: no backup found in ${BACKUP_DIR}"
+                    exit 1
+                fi
+
+                server_path="%1$s/verify-restore.bak"
+                log "restoring ${latest} into scratch database ${DB_NAME} ..."
+                if cp "$latest" "$server_path" \\
+                    && %2$s -U %3$s -Q "%4$s" \\
+                    && %2$s -U %3$s -Q "DBCC CHECKDB ([${DB_NAME}]) WITH NO_INFOMSGS"; then
+                    rm -f "$server_path"
+                    log "PASS: ${latest} restored successfully into the scratch database and passed DBCC CHECKDB"
+                    exit 0
+                else
+                    rm -f "$server_path"
+                    log "FAIL: restore of ${latest} into the scratch database failed"
+                    exit 1
+                fi
+                """.formatted(profile.backupServerDir(), profile.backupClientCommand(),
+                profile.adminUser(), restore);
     }
 
     // ------------------------------------------------------------------------------------------

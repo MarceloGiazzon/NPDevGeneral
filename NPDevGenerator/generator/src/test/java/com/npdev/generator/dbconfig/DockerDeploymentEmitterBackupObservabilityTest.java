@@ -16,8 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>R9.9's {@code backup} profile (nightly sidecar + a disposable scratch-restore verify job)
  * ships ONLY where {@link DockerEngineProfile} declares {@code backupCommand}/{@code restoreCommand}
- * (Postgres, MySQL today -- see {@code DockerDeploymentEmitterTest} for why SQL Server and the
- * embedded engines are exempt). R9.10's {@code observability} profile (Prometheus + a provisioned
+ * (Postgres, MySQL and, since BKP-1, SQL Server in its file-based form -- the embedded engines
+ * are exempt, see {@code DockerDeploymentEmitterTest}). R9.10's {@code observability} profile (Prometheus + a provisioned
  * Grafana dashboard + an Alertmanager liveness alert) ships for EVERY engine -- it only scrapes the
  * {@code app} service's actuator endpoint, never the database.
  */
@@ -91,21 +91,18 @@ class DockerDeploymentEmitterBackupObservabilityTest {
     }
 
     @Test
-    void sqlServerGetsNoBackupProfileAtAll(@TempDir Path tempDir) throws Exception {
-        // SQL Server's backupCommand/restoreCommand are deliberately empty (BACKUP DATABASE writes
-        // inside the container) -- the whole backup profile (sidecar + scratch db + verify job)
-        // must be absent, not merely the backup.sh/restore.sh scripts DockerDeploymentEmitterTest
-        // already covers.
+    void sqlServerGetsTheBackupProfileToo(@TempDir Path tempDir) throws Exception {
+        // BKP-1: SQL Server used to be exempt (its BACKUP DATABASE writes inside the container). It now
+        // ships the whole profile in its file-based form; DockerDeploymentEmitterSqlServerBackupTest
+        // holds the detail.
         Path appRoot = emit(tempDir, "SqlServer", 1433);
         String compose = Files.readString(appRoot.resolve("docker-compose.yml"));
 
-        assertFalse(compose.contains("\n  backup:") || compose.contains("backup:\n"),
-                "SQL Server must not get the backup sidecar service: " + compose);
-        assertFalse(compose.contains("backup-verify"), "SQL Server must not get the verify job or scratch db: " + compose);
-        assertFalse(Files.exists(appRoot.resolve("deploy").resolve("backup-sidecar.sh")));
-        assertFalse(Files.exists(appRoot.resolve("deploy").resolve("backup-verify.sh")));
-        // The observability profile is unrelated to the database engine and must still be present.
-        assertTrue(compose.contains("actuator-proxy:"), "observability must still ship for SQL Server: " + compose);
+        assertTrue(compose.contains("backup-verify-db:"), compose);
+        assertTrue(compose.contains("backup-verify:"), compose);
+        assertTrue(Files.exists(appRoot.resolve("deploy").resolve("backup-sidecar.sh")));
+        assertTrue(Files.exists(appRoot.resolve("deploy").resolve("backup-verify.sh")));
+        assertTrue(compose.contains("actuator-proxy:"), "observability still ships for SQL Server: " + compose);
     }
 
     @Test

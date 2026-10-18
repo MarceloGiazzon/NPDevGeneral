@@ -19,7 +19,15 @@
     "it needs the equivalent connection facts supplied as env vars the client tools already read implicitly",
     "(PGHOST/PGPORT/PGPASSWORD for psql/pg_dump, MYSQL_HOST/MYSQL_TCP_PORT/MYSQL_PWD for mysql/mysqldump) --",
     "the command strings themselves stay identical between both call sites. Present only where",
-    "backupCommand/restoreCommand are present; DockerEngineProfile#validate() enforces that pairing."
+    "backupCommand/restoreCommand are present; DockerEngineProfile#validate() enforces that pairing.",
+    "",
+    "BKP-1: 'backupMode' is \"stream\" (the default: backupCommand writes the dump to stdout and",
+    "restoreCommand reads it from stdin -- Postgres, MySQL) or \"server-file\" (SQL Server: BACKUP DATABASE",
+    "can only write a file INSIDE the database container's filesystem, so backupCommand/restoreCommand are",
+    "the T-SQL statements with {database} and {file} placeholders, 'backupClientCommand' is the client that",
+    "runs them, and 'backupServerDir' is where the server may write the .bak. The generated scripts then",
+    "move the file out with `docker compose cp` (backup.sh/restore.sh) or through a data-volume mount",
+    "(the backup sidecar and the backup-verify job)). Credentials come from the environment like the others."
   ],
   "schemaVersion": "npdev-engine-profile.v1",
   "engines": {
@@ -224,8 +232,15 @@
       ],
       "dataVolumePath": "/var/opt/mssql",
       "composeImage": "mcr.microsoft.com/mssql/server:2022-latest",
-      "backupCommand": "",
-      "restoreCommand": ""
+      "backupMode": "server-file",
+      "backupServerDir": "/var/opt/mssql/data",
+      "backupClientCommand": "/opt/mssql-tools18/bin/sqlcmd -C -b",
+      "backupCommand": "BACKUP DATABASE [{database}] TO DISK = N'{file}' WITH INIT, CHECKSUM",
+      "restoreCommand": "IF DB_ID(N'{database}') IS NOT NULL ALTER DATABASE [{database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; RESTORE DATABASE [{database}] FROM DISK = N'{file}' WITH REPLACE, CHECKSUM; ALTER DATABASE [{database}] SET MULTI_USER;",
+      "backupClientEnv": {
+        "SQLCMDSERVER": "{host},{port}",
+        "SQLCMDPASSWORD": "{password}"
+      }
     },
     "H2Local": {
       "guiLabel": "H2 (file)",

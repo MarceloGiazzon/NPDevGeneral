@@ -3,11 +3,11 @@
 Three independent mechanisms, covering the two storage engines and the "just give me my data
 back" escape hatch:
 
-## 1. Postgres and MySQL compose stack — `deploy/backup.sh` / `deploy/restore.sh`
+## 1. Postgres, MySQL and SQL Server compose stack — `deploy/backup.sh` / `deploy/restore.sh`
 
-Emitted for FinalApps generated with `db.engine: Postgres` or `MySQL` (see `docs/DEPLOYMENT.md`) —
-the scripts live under `deploy/` alongside `docker-compose.yml`. SQL Server has no backup script
-yet (its engine profile declares no backup command).
+Emitted for FinalApps generated with `db.engine: Postgres`, `MySQL` or `SqlServer` (see
+`docs/DEPLOYMENT.md`) — the scripts live under `deploy/` alongside `docker-compose.yml`. SQL Server's
+file-based form is described at the end of this section.
 
 ```bash
 # Backup (writes to ./backups/<db>-<UTC timestamp>.sql):
@@ -42,6 +42,28 @@ need it.
 **Proven live**: created 2 records → `backup.sh` → `DROP SCHEMA public CASCADE` (simulating total
 data loss, app health goes 503) → `restore.sh` → `docker compose restart app` → both records
 present again via the REST API.
+
+**SQL Server (file-based).** `BACKUP DATABASE` can only write a file inside the database container,
+so there is no stream to pipe. The same four scripts and the same `backup` profile exist, with a
+`.bak` file instead of a `.sql` dump:
+
+- `deploy/backup.sh` runs `BACKUP DATABASE ... WITH INIT, CHECKSUM` in the `database` service as `sa`
+  (password from `.env`), copies the file out with `docker compose cp` into `./backups/<db>-<UTC
+  timestamp>.bak` and removes it from the container.
+- `deploy/restore.sh backups/<file>.bak --yes` copies the file in, closes open connections
+  (`SINGLE_USER ... ROLLBACK IMMEDIATE`), runs `RESTORE DATABASE ... WITH REPLACE, CHECKSUM`, reopens
+  the database (`MULTI_USER`) and removes the staged file. Then `docker compose restart app`.
+- The `backup` sidecar and the `backup-verify` job work as above, with the same retention and
+  interval variables (`*.bak` files are pruned). The sidecar mounts the server's data volume to move
+  the `.bak` out; the verify job stages the newest `.bak` into the scratch server's own volume,
+  restores it with `CHECKSUM`, and reads the restored database back (table count) before it reports
+  PASS.
+- The login is `sa`: a per-app database user is not given `BACKUP`/`RESTORE` rights.
+
+Not yet exercised against a live SQL Server container (Docker is off by policy on the maintainer's
+machine and the local SQL Server Express is unusable): run `docker compose --profile backup up -d
+backup` and `docker compose --profile backup run --rm backup-verify` on a Docker host before relying
+on it, and report what you see.
 
 ## 2. H2Local / H2Server — nightly in-app backup
 
