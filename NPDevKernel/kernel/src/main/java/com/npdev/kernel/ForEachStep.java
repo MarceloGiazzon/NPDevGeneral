@@ -166,23 +166,36 @@ final class ForEachStep {
                     state.put("correlationId", iterationCorrelationId);
                 }
                 List<StepTrace> loopIterationTraces = new ArrayList<>();
-                KernelRunner.StepExecutionOutcome nested = runner.executeSteps(
-                        flow,
-                        step.getLoopSteps(),
-                        input,
-                        state,
-                        emittedEvents,
-                        traceMeta,
-                        loopIterationTraces,
-                        executionId,
-                        defaultCorrelationId,
-                        0,
-                        loopBodyProgressRecorder,
-                        effectiveContext
-                );
+                // RUN-3: only THIS iteration's completed steps are compensated if it fails; earlier
+                // iterations finished successfully and stay done.
+                List<FlowStepDefinition> completedInIteration = new ArrayList<>();
+                KernelRunner.StepExecutionOutcome nested;
+                try {
+                    nested = runner.executeSteps(
+                            flow,
+                            step.getLoopSteps(),
+                            input,
+                            state,
+                            emittedEvents,
+                            traceMeta,
+                            loopIterationTraces,
+                            executionId,
+                            defaultCorrelationId,
+                            0,
+                            loopBodyProgressRecorder,
+                            effectiveContext,
+                            completedInIteration
+                    );
+                } catch (RuntimeException failure) {
+                    CompensationRunner.recordNestedFailure(flow, step, state, completedInIteration);
+                    throw failure;
+                }
                 stepTraces.addAll(loopIterationTraces);
                 if (nested.failedResult() != null) {
                     ExecutionResult nestedFailure = nested.failedResult();
+                    if (CompensationRunner.isFailure(nestedFailure)) {
+                        CompensationRunner.recordNestedFailure(flow, step, state, completedInIteration);
+                    }
                     runner.traceFailedStep(traceMeta, step, traceStepIndex, stepStartedAt, stateBefore, state, stepInfo,
                             nestedFailure.getInvariantViolations(), nestedFailure.getCapabilityError(), stepTraces);
                     if (nestedFailure.getStatus() == ExecutionStatus.WAITING_EVENT) {

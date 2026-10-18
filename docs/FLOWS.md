@@ -413,10 +413,10 @@ operator and deploy accidents, not a defence against a hostile model.
 Full spec: `docs/architecture/FLOW_TRANSACTION_CONTRACT.md`. This section is the guarantee, stated
 plainly.
 
-A flow with **no** top-level `onFailure` declaration takes the exact pre-LNCH-17 failure path — a
-failing step just picks a terminal status (§2) and stops. A flow with **any top-level step** declaring `onFailure` changes what happens on failure
-(`CompensationRunner.hasAnyOnFailure` looks at top-level steps only — an `onFailure` declared solely on a nested
-branch/`forEach` step does not switch the flow onto the compensation path): `CompensationRunner.beginCompensation`
+A flow with **no** `onFailure` declaration anywhere takes the exact pre-LNCH-17 failure path — a
+failing step just picks a terminal status (§2) and stops. A flow with **any step** declaring `onFailure`, top-level or nested in a
+`branch`/`forEach` body, changes what happens on failure (`CompensationRunner.hasAnyOnFailure`, recursive since
+RUN-3): `CompensationRunner.beginCompensation`
 stamps five reserved state keys (compensation-active flag, terminal status, error kind/code/message; a sixth,
 next-index, is maintained as compensation advances), then `runCompensations` runs every already-completed step's
 declared `onFailure` block, **in reverse order**, from the failed step back to step 0 — durably
@@ -437,10 +437,19 @@ Proven by `KernelRunnerCompensationTest.crashMidCompensationThenResumeOnFreshRun
 crash-injection test (freezes a thread mid-checkpoint), resumed on a brand-new `KernelRunner` with no
 shared in-memory state.
 
-**Scope limit, by design, not oversight:** compensation triggering is scoped to top-level flow steps
-in this slice. A step nested inside a `branch` or `forEach` body can declare its own `onFailure`, but
-the containing `branch`/`forEach` step's `onFailure` compensates the whole branch/loop as one unit —
-there is no per-nested-step compensation yet.
+**Nested bodies (RUN-3).** A step inside a `branch` then/else body or a sequential `forEach` body can
+declare its own `onFailure`. When a later step of **that same body** fails, the body's already-completed
+steps that declared `onFailure` run their blocks in reverse order (for a `forEach`, only the **failing
+iteration's** steps — earlier iterations finished successfully and stay done), and then the failure
+propagates to the parent level, which compensates its own completed steps as above. As at the top level,
+the step that failed does not compensate itself, and top-level compensation starts below the top-level step
+that contained the failure. The nested blocks are planned into the instance state
+(`__npdev_nestedCompPlan__`, with a durable pointer `__npdev_nestedCompNext__`) and run by
+`runCompensations` before the top-level loop, checkpointing after each one, so the crash guarantee above
+covers them too: each runs exactly once (`KernelRunnerNestedCompensationTest`, including the crash-and-resume
+case). Limits: a nested step's `onFailure` runs when **its enclosing body** fails — a body that completed
+normally is not revisited when a *later* top-level step fails; and a `parallelAwait` `forEach` body does
+not support it yet (the validator warns).
 
 ## 6. `forEach` resumability (LIFT-LOOP-P2)
 

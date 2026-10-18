@@ -365,4 +365,49 @@ class FlowForEachValidationTest {
         assertTrue(errors.stream().anyMatch(e -> e.contains("shadows enclosing forEach step")),
                 "expected a nested-shadowing error, got: " + errors);
     }
+
+    @Test
+    void onFailureInsideAParallelForEachBodyWarnsThatItWillNotRun() throws Exception {
+        // RUN-3: onFailure nested in a branch or sequential forEach body is compensated; a
+        // parallelAwait forEach does not support it yet, so the author is told at validation time.
+        String json = modelJsonWithEvents("""
+            [
+              { "name": "sum-orders", "type": "forEach", "collection": "input.orders", "itemKey": "order",
+                "parallelAwait": true,
+                "steps": [
+                  { "name": "calc", "type": "map", "input": "order", "output": "calcOut",
+                    "onFailure": [ { "name": "undo-calc", "type": "map", "input": "order", "output": "undone" } ] },
+                  { "name": "wait-for-approval", "type": "awaitEvent", "awaitEvent": "OrderApproved", "awaitRef": "approval" }
+                ]
+              }
+            ]
+            """, """
+            [ { "name": "OrderApproved", "payload": [] } ]
+            """);
+
+        var result = new SemanticValidator().validateWithWarnings(new JsonModelParser().parse(MAPPER.readTree(json)));
+
+        assertTrue(result.getErrors().isEmpty(), "unexpected errors: " + result.getErrors());
+        assertTrue(result.getWarnings().stream().anyMatch(w -> w.contains("parallelAwait forEach body declares onFailure")),
+                "expected the parallel-forEach onFailure warning, got: " + result.getWarnings());
+    }
+
+    @Test
+    void onFailureInsideASequentialForEachBodyDoesNotWarn() throws Exception {
+        String json = modelJson("""
+            [
+              { "name": "sum-orders", "type": "forEach", "collection": "input.orders", "itemKey": "order",
+                "steps": [
+                  { "name": "calc", "type": "map", "input": "order", "output": "calcOut",
+                    "onFailure": [ { "name": "undo-calc", "type": "map", "input": "order", "output": "undone" } ] }
+                ]
+              }
+            ]
+            """);
+
+        var result = new SemanticValidator().validateWithWarnings(new JsonModelParser().parse(MAPPER.readTree(json)));
+
+        assertTrue(result.getWarnings().stream().noneMatch(w -> w.contains("declares onFailure")),
+                "unexpected warning: " + result.getWarnings());
+    }
 }
