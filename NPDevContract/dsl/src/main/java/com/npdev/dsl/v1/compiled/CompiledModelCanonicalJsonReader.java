@@ -1683,12 +1683,29 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalText(slotNode, "label")
             ));
         }
+        List<CompiledPanelWidget> widgets = new ArrayList<>();
+        for (JsonNode widgetNode : array(node, "widgets")) {
+            JsonNode spanNode = widgetNode.get("span");
+            widgets.add(new CompiledPanelWidget(
+                    text(widgetNode, "kind"),
+                    optionalText(widgetNode, "title"),
+                    optionalText(widgetNode, "dataSource"),
+                    optionalText(widgetNode, "aggregate"),
+                    optionalText(widgetNode, "field"),
+                    optionalText(widgetNode, "groupBy"),
+                    optionalText(widgetNode, "chart"),
+                    optionalText(widgetNode, "filterField"),
+                    optionalText(widgetNode, "filterEquals"),
+                    spanNode != null && spanNode.canConvertToInt() ? Integer.valueOf(spanNode.asInt()) : null
+            ));
+        }
         return new CompiledPanelLayout(
                 text(node, "type"),
                 children,
                 toStringList(node.get("fields")),
                 toObjectMap(node.get("metadata")),
-                slots
+                slots,
+                widgets
         );
     }
 

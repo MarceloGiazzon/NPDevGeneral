@@ -9,30 +9,106 @@
   "concepts": [
     {
       "name": "Ticket",
-      "ui": { "label": "Ticket" },
+      "ui": {
+        "label": "Ticket"
+      },
       "fields": [
-        { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "title", "type": "string", "required": true, "ui": { "label": "Title" } },
-        { "name": "status", "type": "string", "required": true, "ui": { "label": "Status" } },
-        { "name": "priority", "type": "integer", "required": true, "ui": { "label": "Priority" } }
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Title"
+          }
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Status"
+          }
+        },
+        {
+          "name": "priority",
+          "type": "integer",
+          "required": true,
+          "ui": {
+            "label": "Priority"
+          }
+        }
       ],
       "invariants": [
-        { "name": "TicketTitleRequired", "expr": "title != null && title != ''" }
+        {
+          "name": "TicketTitleRequired",
+          "expr": "title != null && title != ''"
+        }
       ]
     }
   ],
   "capabilities": [
-    { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById"] }
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save",
+        "findById"
+      ]
+    }
   ],
   "bindings": [
-    { "capability": "persistence", "adapter": "repository" },
-    { "capability": "eventBus", "adapter": "inproc" }
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    },
+    {
+      "capability": "eventBus",
+      "adapter": "inproc"
+    }
   ],
   "seeds": [
-    { "concept": "Ticket", "alias": "t1", "data": { "title": "Printer on floor 2 is offline", "status": "OPEN", "priority": 2 } },
-    { "concept": "Ticket", "alias": "t2", "data": { "title": "New hire laptop request", "status": "OPEN", "priority": 1 } },
-    { "concept": "Ticket", "alias": "t3", "data": { "title": "VPN drops every hour", "status": "IN_PROGRESS", "priority": 3 } },
-    { "concept": "Ticket", "alias": "t4", "data": { "title": "Reset shared mailbox password", "status": "DONE", "priority": 1 } }
+    {
+      "concept": "Ticket",
+      "alias": "t1",
+      "data": {
+        "title": "Printer on floor 2 is offline",
+        "status": "OPEN",
+        "priority": 2
+      }
+    },
+    {
+      "concept": "Ticket",
+      "alias": "t2",
+      "data": {
+        "title": "New hire laptop request",
+        "status": "OPEN",
+        "priority": 1
+      }
+    },
+    {
+      "concept": "Ticket",
+      "alias": "t3",
+      "data": {
+        "title": "VPN drops every hour",
+        "status": "IN_PROGRESS",
+        "priority": 3
+      }
+    },
+    {
+      "concept": "Ticket",
+      "alias": "t4",
+      "data": {
+        "title": "Reset shared mailbox password",
+        "status": "DONE",
+        "priority": 1
+      }
+    }
   ],
   "panels": [
     {
@@ -41,24 +117,215 @@
       "title": "Ticket board (layoutSlot)",
       "layout": {
         "type": "table",
-        "fields": ["title", "status", "priority"],
+        "fields": [
+          "title",
+          "status",
+          "priority"
+        ],
         "slots": [
-          { "placement": "above", "component": "ticket-kpis", "label": "Ticket KPIs" },
-          { "placement": "below", "component": "ticket-timeline", "label": "Ticket timeline" }
+          {
+            "placement": "above",
+            "component": "ticket-kpis",
+            "label": "Ticket KPIs"
+          },
+          {
+            "placement": "below",
+            "component": "ticket-timeline",
+            "label": "Ticket timeline"
+          }
         ]
       },
       "dataSources": [
-        { "name": "tickets", "concept": "Ticket" }
+        {
+          "name": "tickets",
+          "concept": "Ticket"
+        }
       ],
       "fieldBindings": [
-        { "field": "title", "source": "tickets.title" },
-        { "field": "status", "source": "tickets.status" },
-        { "field": "priority", "source": "tickets.priority" }
+        {
+          "field": "title",
+          "source": "tickets.title"
+        },
+        {
+          "field": "status",
+          "source": "tickets.status"
+        },
+        {
+          "field": "priority",
+          "source": "tickets.priority"
+        }
       ],
       "explainability": {
         "governedDataAccess": "ConceptGateway",
         "ruleProfile": "always"
       }
+    },
+    {
+      "name": "TicketConsole",
+      "route": "/f6/ticket-console",
+      "title": "Ticket console (operator console)",
+      "layout": {
+        "type": "console",
+        "widgets": [
+          {
+            "kind": "tile",
+            "title": "Tickets",
+            "dataSource": "tickets"
+          },
+          {
+            "kind": "tile",
+            "title": "Open",
+            "dataSource": "tickets",
+            "filter": {
+              "field": "status",
+              "equals": "OPEN"
+            }
+          },
+          {
+            "kind": "tile",
+            "title": "In progress",
+            "dataSource": "tickets",
+            "filter": {
+              "field": "status",
+              "equals": "IN_PROGRESS"
+            }
+          },
+          {
+            "kind": "tile",
+            "title": "Total priority",
+            "dataSource": "tickets",
+            "aggregate": "sum",
+            "field": "priority"
+          },
+          {
+            "kind": "actions",
+            "title": "Operations"
+          },
+          {
+            "kind": "history",
+            "title": "Recent runs"
+          },
+          {
+            "kind": "table",
+            "title": "All tickets",
+            "dataSource": "tickets"
+          }
+        ]
+      },
+      "dataSources": [
+        {
+          "name": "tickets",
+          "concept": "Ticket"
+        }
+      ],
+      "actions": [
+        {
+          "name": "open",
+          "label": "Open ticket",
+          "binding": "flow",
+          "flow": "OpenTicket",
+          "inputFields": [
+            "title",
+            "status",
+            "priority"
+          ]
+        }
+      ],
+      "explainability": {
+        "governedDataAccess": "ConceptGateway",
+        "ruleProfile": "always"
+      }
+    },
+    {
+      "name": "TicketDashboard",
+      "route": "/f6/ticket-dashboard",
+      "title": "Ticket dashboard (dashboard)",
+      "layout": {
+        "type": "dashboard",
+        "widgets": [
+          {
+            "kind": "tile",
+            "title": "Tickets",
+            "dataSource": "tickets",
+            "span": 2
+          },
+          {
+            "kind": "tile",
+            "title": "Average priority",
+            "dataSource": "tickets",
+            "aggregate": "avg",
+            "field": "priority",
+            "span": 2
+          },
+          {
+            "kind": "chart",
+            "title": "Tickets by status",
+            "dataSource": "tickets",
+            "chart": "bar",
+            "groupBy": "status"
+          },
+          {
+            "kind": "chart",
+            "title": "Priority by status",
+            "dataSource": "tickets",
+            "chart": "donut",
+            "groupBy": "status",
+            "aggregate": "sum",
+            "field": "priority"
+          },
+          {
+            "kind": "chart",
+            "title": "Highest priority by status",
+            "dataSource": "tickets",
+            "chart": "line",
+            "groupBy": "status",
+            "aggregate": "max",
+            "field": "priority",
+            "span": 4
+          }
+        ]
+      },
+      "dataSources": [
+        {
+          "name": "tickets",
+          "concept": "Ticket"
+        }
+      ],
+      "explainability": {
+        "governedDataAccess": "ConceptGateway",
+        "ruleProfile": "always"
+      }
+    }
+  ],
+  "flows": [
+    {
+      "name": "OpenTicket",
+      "input": {
+        "concept": "Ticket",
+        "mode": "create"
+      },
+      "steps": [
+        {
+          "name": "validate-ticket",
+          "type": "invariantCheck",
+          "scope": "Ticket",
+          "invariants": [
+            "TicketTitleRequired"
+          ]
+        },
+        {
+          "name": "save-ticket",
+          "type": "createConcept",
+          "scope": "Ticket",
+          "input": "$input",
+          "output": "$saved"
+        },
+        {
+          "name": "return-ticket",
+          "type": "return",
+          "value": "$saved"
+        }
+      ]
     }
   ]
 }

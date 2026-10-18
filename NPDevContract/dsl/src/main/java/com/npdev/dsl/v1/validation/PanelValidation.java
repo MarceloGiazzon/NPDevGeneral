@@ -43,6 +43,7 @@ import com.npdev.dsl.v1.compiled.GuidePageDefaults;
 import com.npdev.dsl.v1.ast.PanelActionAst;
 import com.npdev.dsl.v1.ast.PanelAst;
 import com.npdev.dsl.v1.ast.PanelSlotAst;
+import com.npdev.dsl.v1.ast.PanelWidgetAst;
 import com.npdev.dsl.v1.ast.PanelDataSourceAst;
 import com.npdev.dsl.v1.ast.PresentationMetadataAst;
 import com.npdev.dsl.v1.ast.ProcedureAst;
@@ -856,6 +857,118 @@ final class PanelValidation {
         return "(unbound)";
     }
 
+    private static final Set<String> WIDGET_KINDS = Set.of("tile", "chart", "actions", "history", "table");
+    private static final Set<String> WIDGET_AGGREGATES = Set.of("count", "sum", "avg", "min", "max");
+    private static final Set<String> WIDGET_CHARTS = Set.of("bar", "line", "donut");
+    private static final Set<String> WIDGET_LAYOUTS = Set.of("console", "dashboard");
+
+    /**
+     * F6-2 / F6-3: console and dashboard layouts are made of {@code widgets[]}. A widget over a data source
+     * must name one that exists, a non-count aggregate needs a field, a chart needs a kind and a category
+     * field, and when the data source is concept-bound every field a widget names must exist on the concept
+     * (otherwise the widget would silently draw zeros or nothing).
+     */
+    private static void validatePanelWidgets(PanelAst panel, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
+        if (panel.layout() == null) {
+            return;
+        }
+        String type = panel.layout().type();
+        List<PanelWidgetAst> widgets = panel.layout().widgets();
+        String where = "Panel " + panel.name() + " layout.widgets";
+        boolean widgetLayout = WIDGET_LAYOUTS.contains(type);
+        if (!widgets.isEmpty() && !widgetLayout) {
+            errors.add(where + ": widgets need layout.type 'console' or 'dashboard', not '" + type + "'"
+                    + " -- suggestedFix: set layout.type to console or dashboard, or remove widgets");
+        }
+        if (widgetLayout && widgets.isEmpty()) {
+            errors.add("Panel " + panel.name() + " layout: type '" + type + "' needs at least one widget"
+                    + " -- suggestedFix: add widgets[] (tile, chart, actions, history or table)");
+        }
+        int actionsWidgets = 0;
+        int historyWidgets = 0;
+        for (PanelWidgetAst widget : widgets) {
+            String kind = widget.kind();
+            if (!WIDGET_KINDS.contains(kind)) {
+                errors.add(where + ": kind '" + kind + "' must be one of tile, chart, actions, history, table"
+                        + " -- suggestedFix: use a supported widget kind");
+                continue;
+            }
+            if ("actions".equals(kind)) {
+                actionsWidgets++;
+            }
+            if ("history".equals(kind)) {
+                historyWidgets++;
+            }
+            boolean overData = "tile".equals(kind) || "chart".equals(kind) || "table".equals(kind);
+            if (!overData) {
+                continue;
+            }
+            String label = where + " " + kind + (hasText(widget.title()) ? " '" + widget.title() + "'" : "");
+            Optional<PanelDataSourceAst> dataSource = hasText(widget.dataSource())
+                    ? panel.dataSources().stream()
+                            .filter(candidate -> normalize(candidate.name()).equals(normalize(widget.dataSource())))
+                            .findFirst()
+                    : Optional.empty();
+            if (!hasText(widget.dataSource())) {
+                errors.add(label + ": dataSource is required -- suggestedFix: name one of this panel's dataSources");
+                continue;
+            }
+            if (dataSource.isEmpty()) {
+                errors.add(label + ": dataSource '" + widget.dataSource() + "' is not declared on this panel"
+                        + " -- suggestedFix: use a name from this panel's dataSources[]");
+                continue;
+            }
+            ConceptAst concept = hasText(dataSource.get().concept())
+                    ? entitiesByLower.get(normalize(dataSource.get().concept())) : null;
+            Set<String> knownFields = new HashSet<>();
+            if (concept != null) {
+                concept.getFields().forEach(field -> knownFields.add(normalize(field.getName())));
+            }
+            if ("table".equals(kind)) {
+                continue;
+            }
+            String aggregate = hasText(widget.aggregate()) ? widget.aggregate() : "count";
+            if (!WIDGET_AGGREGATES.contains(aggregate)) {
+                errors.add(label + ": aggregate '" + aggregate + "' must be one of count, sum, avg, min, max"
+                        + " -- suggestedFix: use a supported aggregate");
+            } else if (!"count".equals(aggregate) && !hasText(widget.field())) {
+                errors.add(label + ": aggregate '" + aggregate + "' needs a field"
+                        + " -- suggestedFix: set field to the numeric field to reduce");
+            }
+            checkWidgetField(errors, label, "field", widget.field(), concept, knownFields);
+            checkWidgetField(errors, label, "filter.field", widget.filterField(), concept, knownFields);
+            if (hasText(widget.filterField()) && widget.filterEquals() == null) {
+                errors.add(label + ": filter needs equals -- suggestedFix: set filter.equals to the text to match");
+            }
+            if ("chart".equals(kind)) {
+                if (!hasText(widget.chart()) || !WIDGET_CHARTS.contains(widget.chart())) {
+                    errors.add(label + ": chart must be one of bar, line, donut -- suggestedFix: set chart to bar, line or donut");
+                }
+                if (!hasText(widget.groupBy())) {
+                    errors.add(label + ": groupBy is required -- suggestedFix: set groupBy to the category field");
+                } else {
+                    checkWidgetField(errors, label, "groupBy", widget.groupBy(), concept, knownFields);
+                }
+            }
+        }
+        if (actionsWidgets > 1) {
+            errors.add("Panel " + panel.name() + " layout.widgets: at most one 'actions' widget"
+                    + " -- suggestedFix: keep a single actions widget");
+        }
+        if (historyWidgets > 1) {
+            errors.add("Panel " + panel.name() + " layout.widgets: at most one 'history' widget"
+                    + " -- suggestedFix: keep a single history widget");
+        }
+    }
+
+    private static void checkWidgetField(List<String> errors, String label, String what, String name,
+                                         ConceptAst concept, Set<String> knownFields) {
+        if (hasText(name) && concept != null && !knownFields.contains(normalize(name))) {
+            errors.add(label + ": " + what + " '" + name + "' is not a field of " + concept.getName()
+                    + " -- suggestedFix: use a field declared on " + concept.getName());
+        }
+    }
+
     private static final Set<String> PANEL_SLOT_PLACEMENTS = Set.of("above", "below", "replace");
     private static final Pattern PANEL_SLOT_COMPONENT = Pattern.compile("^[A-Za-z][A-Za-z0-9_-]*$");
 
@@ -919,6 +1032,7 @@ final class PanelValidation {
                 errors.add("Panel " + panel.name() + ": route must start with '/': " + panel.route());
             }
             validatePanelSlots(panel, errors);
+            validatePanelWidgets(panel, entitiesByLower, errors);
             for (PanelDataSourceAst dataSource : panel.dataSources()) {
                 if (hasText(dataSource.concept()) && !entitiesByLower.containsKey(normalize(dataSource.concept()))) {
                     errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()

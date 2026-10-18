@@ -22,7 +22,7 @@
     { "action": "assertTextContains", "selector": ".panel-slot-above .f6-kpi[data-kpi=\"OPEN\"]", "text": "2", "label": "Two tickets are OPEN" },
     { "action": "assertCount", "selector": ".panel-slot-below .f6-timeline li", "operator": "=", "count": 4, "label": "The timeline lists all four tickets" },
     { "action": "assertTextContains", "selector": ".panel-slot-below .f6-timeline li:first-child", "text": "VPN drops every hour", "label": "Timeline is ordered by priority, highest first (the slot's own logic)" },
-    { "action": "assertTextContains", "selector": ".declared-panel-body", "text": "Printer on floor 2 is offline", "label": "The generated body is still rendered between the slots" },
+    { "action": "assertTextContains", "selector": "#concept-__panel-TicketBoard__ .declared-panel-body", "text": "Printer on floor 2 is offline", "label": "The generated body is still rendered between the slots" },
     { "action": "screenshot", "name": "f6_layoutslot_board" },
     { "action": "click", "selector": ".panel-slot-below .f6-timeline-refresh", "label": "The slot calls api.refresh() through the generated wiring" },
     { "action": "waitForTimeout", "timeoutMs": 800 },

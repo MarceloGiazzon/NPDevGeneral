@@ -197,6 +197,19 @@ def _has_panel_layout_slot(model: dict) -> bool:
     return False
 
 
+def _has_panel_widget(model: dict, layout_type: str = "", predicate=None) -> bool:
+    # F6-2 console / F6-3 dashboard: a declared panel whose layout.widgets[] contains a widget matching
+    # predicate (and, when given, whose layout.type is layout_type).
+    for panel in model.get("panels") or []:
+        layout = panel.get("layout") if isinstance(panel, dict) else None
+        if not isinstance(layout, dict) or (layout_type and layout.get("type") != layout_type):
+            continue
+        for widget in layout.get("widgets") or []:
+            if isinstance(widget, dict) and (predicate is None or predicate(widget)):
+                return True
+    return False
+
+
 def _has_workbench_derived(model: dict) -> bool:
     # Recognizes BOTH the retired transaction.metadata.derived list and its Move 6 Move B typed
     # replacement, transaction.derivedFields (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4) -- the same

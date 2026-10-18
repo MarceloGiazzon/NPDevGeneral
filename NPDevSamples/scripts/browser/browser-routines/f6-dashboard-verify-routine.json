@@ -1,0 +1,30 @@
+{
+  "scenarioName": "f6-dashboard-ticket-dashboard",
+  "targetPath": "/npdev-business-ui/",
+  "options": {
+    "headless": true,
+    "screenshots": "always",
+    "collectDomOnFailure": true,
+    "viewport": { "width": 1400, "height": 900 }
+  },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "valueFromCredential": "apiKey" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#sideNav", "state": "visible", "label": "Auth landed, shell nav rendered" },
+    { "action": "click", "selector": "#sideNav :text(\"Ticket dashboard\")", "label": "Open the Ticket dashboard declared panel" },
+    { "action": "waitForSelector", "selector": ".panel-widgets-dashboard", "state": "visible", "label": "The dashboard layout rendered its widget grid" },
+    { "action": "assertTextContains", "selector": ".panel-widget-tile[data-title=\"Tickets\"] .widget-value", "text": "4", "label": "Count tile" },
+    { "action": "assertTextContains", "selector": ".panel-widget-tile[data-title=\"Average priority\"] .widget-value", "text": "1.75", "label": "Average tile: (2+1+3+1)/4 = 1.75" },
+    { "action": "assertCount", "selector": "svg[data-chart=\"bar\"] rect", "operator": "=", "count": 3, "label": "Bar chart: one bar per status (DONE, IN_PROGRESS, OPEN)" },
+    { "action": "assertCount", "selector": "svg[data-chart=\"bar\"] rect[data-label=\"OPEN\"][data-value=\"2\"]", "operator": "=", "count": 1, "label": "Bar for OPEN carries count 2" },
+    { "action": "assertCount", "selector": "svg[data-chart=\"donut\"] circle", "operator": "=", "count": 3, "label": "Donut: one arc per status" },
+    { "action": "assertCount", "selector": ".chart-legend li[data-label=\"IN_PROGRESS\"][data-value=\"3\"]", "operator": "=", "count": 1, "label": "Donut legend: sum(priority) for IN_PROGRESS = 3" },
+    { "action": "assertCount", "selector": ".chart-legend li[data-label=\"OPEN\"][data-value=\"3\"]", "operator": "=", "count": 1, "label": "Donut legend: sum(priority) for OPEN = 2+1" },
+    { "action": "assertCount", "selector": "svg[data-chart=\"line\"] circle", "operator": "=", "count": 3, "label": "Line chart: one point per status" },
+    { "action": "assertCount", "selector": "svg[data-chart=\"line\"] circle[data-label=\"IN_PROGRESS\"][data-value=\"3\"]", "operator": "=", "count": 1, "label": "Line point: max(priority) for IN_PROGRESS = 3" },
+    { "action": "screenshot", "name": "f6_dashboard" },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}

@@ -1646,7 +1646,34 @@ public final class CompiledModelCanonicalJson {
             }
             node.set("slots", slots);
         }
+        if (!layout.widgets().isEmpty()) {
+            // F6-2 / F6-3 console and dashboard widgets: written only when declared, like slots above.
+            ArrayNode widgets = JsonNodeFactory.instance.arrayNode();
+            for (CompiledPanelWidget widget : layout.widgets()) {
+                ObjectNode widgetNode = JsonNodeFactory.instance.objectNode();
+                widgetNode.put("kind", safe(widget.kind()));
+                putWidgetText(widgetNode, "title", widget.title());
+                putWidgetText(widgetNode, "dataSource", widget.dataSource());
+                putWidgetText(widgetNode, "aggregate", widget.aggregate());
+                putWidgetText(widgetNode, "field", widget.field());
+                putWidgetText(widgetNode, "groupBy", widget.groupBy());
+                putWidgetText(widgetNode, "chart", widget.chart());
+                putWidgetText(widgetNode, "filterField", widget.filterField());
+                putWidgetText(widgetNode, "filterEquals", widget.filterEquals());
+                if (widget.span() != null) {
+                    widgetNode.put("span", widget.span());
+                }
+                widgets.add(widgetNode);
+            }
+            node.set("widgets", widgets);
+        }
         return node;
+    }
+
+    private static void putWidgetText(ObjectNode node, String key, String value) {
+        if (value != null) {
+            node.put(key, value);
+        }
     }
 
     private static ArrayNode toPanelFieldBindings(List<CompiledPanelFieldBinding> bindings) {

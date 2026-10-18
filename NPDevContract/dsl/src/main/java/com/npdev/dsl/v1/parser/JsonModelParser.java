@@ -2158,12 +2158,42 @@ public final class JsonModelParser {
                 slotIndex++;
             }
         }
+        List<PanelWidgetAst> widgets = new ArrayList<>();
+        JsonNode widgetsNode = node.get("widgets");
+        if (widgetsNode != null && !widgetsNode.isNull()) {
+            if (!widgetsNode.isArray()) {
+                throw new IOException(fieldPath + ".widgets must be an array");
+            }
+            int widgetIndex = 0;
+            for (JsonNode widgetNode : widgetsNode) {
+                String widgetPath = fieldPath + ".widgets[" + widgetIndex + "]";
+                if (!widgetNode.isObject()) {
+                    throw new IOException(widgetPath + " must be an object");
+                }
+                JsonNode filterNode = widgetNode.get("filter");
+                JsonNode spanNode = widgetNode.get("span");
+                widgets.add(new PanelWidgetAst(
+                        requiredText(widgetNode, "kind"),
+                        readText(widgetNode, "title"),
+                        readText(widgetNode, "dataSource"),
+                        readText(widgetNode, "aggregate"),
+                        readText(widgetNode, "field"),
+                        readText(widgetNode, "groupBy"),
+                        readText(widgetNode, "chart"),
+                        filterNode != null && filterNode.isObject() ? readText(filterNode, "field") : null,
+                        filterNode != null && filterNode.isObject() ? readText(filterNode, "equals") : null,
+                        spanNode != null && spanNode.canConvertToInt() ? Integer.valueOf(spanNode.asInt()) : null
+                ));
+                widgetIndex++;
+            }
+        }
         return new PanelLayoutAst(
                 requiredText(node, "type"),
                 children,
                 parseTextArray(node.get("fields")),
                 parseObjectMap(node.get("metadata")),
-                slots
+                slots,
+                widgets
         );
     }
 
