@@ -40,7 +40,7 @@ what is *offered* to the agent.
 - `channels` — `mcp` / `telegram` / `whatsapp`, each `{ "enabled": true|false }`. Off by default.
   `telegram`/`whatsapp` additionally need `auth.mode: jwt` and the identity pack composed (account
   linking stores the Telegram/WhatsApp id in `identity::ExternalIdentity`) — the generator refuses to
-  build otherwise, naming exactly what's missing. MCP works in every auth mode.
+  build otherwise, with one fixed message that names both prerequisites whichever is missing. MCP works in every auth mode.
 - `expose` — one entry per concept, flow or aggregate. A concept entry defaults to `operations: ["list", "get"]`
   (read-only) and every non-sensitive field; narrow either with `operations`/`fields`. `roles` filters
   who is even OFFERED the tool (absent = every linked user) — the app's permissions still enforce every
@@ -169,7 +169,7 @@ tools the token's own roles are offered; `tools/call` executes through the app's
 | Symptom | Likely cause |
 |---|---|
 | App refuses to generate, naming `agentAccess.channels.telegram` | `auth.mode` is not `jwt`, or the identity pack is not composed. Both are required for Telegram/WhatsApp. |
-| Telegram bot never answers | Check the boot log for `"Telegram channel NOT started"` — token missing/wrong, or `getMe` failed. |
+| Telegram bot never answers | Check the boot log: `"Telegram channel NOT started: ..."` (a WARNING) means `getMe` failed; a missing token logs `"... Telegram channel not started."` at a lower level. |
 | Every chat answer is an error | No AI vendor key configured (`secrets/agent-proxy.env`) — `GET /api/agent/status` (SUPERUSER) reports `ai.keyPresent: false`. |
 | `409 Conflict` in the boot log | Another copy of this app (or a Telegram webhook) is polling with the same bot token. |
 | `401` and the Telegram channel stops | The bot token was rejected — check it was pasted correctly, no extra whitespace. |
@@ -181,4 +181,4 @@ tools the token's own roles are offered; `tools/call` executes through the app's
 ## See also
 
 - [`docs/UI_CONTRACT.md`](../UI_CONTRACT.md) for how `agent-link.html` fits the generated shell.
-- `helpers/agent/wire-formats.md` (platform source) for the exact wire shapes MCP/Telegram/WhatsApp use.
+- `AgentMcpController` and `TelegramChannel` (runtimehost-core `agent/`) for the exact wire shapes MCP/Telegram/WhatsApp use (their Javadoc cites a `helpers/agent/wire-formats.md` that is not in the repo).

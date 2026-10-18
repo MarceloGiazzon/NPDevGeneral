@@ -84,7 +84,7 @@ for dev, a real queue in prod — never touches the pack or the app model, only 
 
 An operation's `input`/`output` can point at a `conceptRef`/`schemaRef` instead of an inline schema —
 prefer that when the payload shape already exists as a concept, so the two never drift independently.
-`policy` on an operation is purely resilience (retry, timeout, circuit breaker, bulkhead, idempotency)
+`policy` on an operation is purely resilience (retry, timeout, circuit breaker, bulkhead, idempotency); what an operation can fail with and whether it writes are expressed separately, through the operation's `errors` (`capabilityOperationError[]`) and `sideEffects`
 — it says nothing about what the operation can fail with or whether it writes anything; that gap is
 tracked separately as W4.1 in the roadmap, not something a pack author can express yet.
 
@@ -132,7 +132,7 @@ Some specifics worth knowing before you pick one:
 - [`docs/MANAGER.md`](MANAGER.md) § 9 · Packs — the Manager's Packs tab: what's resolved and locked
   for one app, signature/deprecation state, `pack why`, export-a-copy.
 - `npdev pack --help` — `add` / `update` / `list` / `why` / `search` / `build-catalog` / `export` /
-  `diff` / `publish` / `sign-keygen` / `verify`.
+  `diff` / `publish` / `sign-keygen` / `verify` / `deprecate`.
 - `NPDevContract/schemas/pack.schema.json` — the authoritative field list (mirrored in three more
   places; see this repo's `CLAUDE.md` "model.schema.json is duplicated in 4 places" note — `pack.schema.json`
   itself has only the two copies checked by `check-schema-mirror-consistency.py`).

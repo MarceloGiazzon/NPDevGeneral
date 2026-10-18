@@ -14,7 +14,7 @@ These remain source and should not be cleaned as residue:
 
 - Gradle/npm/build caches: `.npdev-gradle`, `.gradle`, `build`, `node_modules`, `dist`, `coverage`, `target`. New Gradle caches default outside the workspace under the user cache directory, unless `NPDEV_GRADLE_USER_HOME` or `NPDEV_LOCAL_CACHE_ROOT` is set.
 - IDE Java-language-server compile output: `bin` (Eclipse JDT/VSCode Java extension default output folder, independent of Gradle's `build`).
-- RuntimeHost local jars: staged outside the workspace in `..\NPDev_General__OutsideRepo\runtimehost-libs` by default, unless `NPDEV_RUNTIMEHOST_LIBS_DIR` is set. Generated apps reference that external folder instead of copying jars into source, evidence, or sample output folders.
+- RuntimeHost local jars: staged outside the workspace in `<BuildRoot>\runtimehost-libs` by default (`Get-NPDevRuntimeHostLibsDir`), unless `NPDEV_RUNTIMEHOST_LIBS_DIR` is set. Generated apps reference that external folder instead of copying jars into source, evidence, or sample output folders.
 - Generated app/sample output: `Output`, `RunOutput`.
 - Rebuildable RuntimeHost assembly residue: `NPDevRuntimeHost\libs`, `NPDevRuntimeHost\npdev-generated`, `NPDevRuntimeHost\npdev-meta`, generated `NPDevRuntimeHost\build.gradle`, and `npdev-build-info.properties`.
 - IDE-local metadata: `.idea`, `.vscode`, `*.iml`.
@@ -97,7 +97,7 @@ Any generated app, release scratch area, local dependency jar, state zip, or dia
 
 The active release decision remains `scripts\reports\out\beta-release-gate-report.json`. Release bundles under `scripts\reports\releases` are artifacts and should be uploaded or archived outside source control when needed.
 
-Local retention keeps only the newest 5 release bundles by default. If a bundle is a milestone worth keeping longer, export it outside the workspace first or pass it explicitly to the prune script as a preserved bundle.
+The beta release gate no longer creates bundles under `scripts\reports\releases` (it writes a flat set of files under `scripts\reports\out`), and the prune script (`scripts\hygiene\prune-release-evidence.ps1`) was deleted in `8dfe28ac`. If you still have old bundles worth keeping, export them outside the workspace and delete the rest by hand.
 
 Do not manually combine focused reports into a release claim. Rerun:
 
@@ -167,23 +167,7 @@ extra junction setup.)
 
 ## Release Bundle Retention
 
-Preview release bundle pruning:
-
-```powershell
-pwsh -File scripts\hygiene\prune-release-evidence.ps1 -DryRun
-```
-
-Apply the default retention window:
-
-```powershell
-pwsh -File scripts\hygiene\prune-release-evidence.ps1 -KeepLatest 5
-```
-
-Preserve a specific bundle while pruning:
-
-```powershell
-pwsh -File scripts\hygiene\prune-release-evidence.ps1 -KeepLatest 5 -PreserveReleaseBundle runtimehost-beta-YYYYMMDD-HHMMSS
-```
+Retired. `scripts\hygiene\prune-release-evidence.ps1` no longer exists, and nothing creates release bundles to prune (see Evidence Handling above).
 
 ---
 
@@ -222,9 +206,10 @@ pwsh -File scripts\hygiene\quarantine-to-outside-repo.ps1 -Restore quarantine-20
 
 **Process docs** — `*_PLAN.md`, `*_CHECKLIST*.md`, `*_FINDINGS*.md`, `MOVE*`, `SCREEN_TAXONOMY` —
 are refused outright. Measured 2026-08-10: all 23 tested are cited by live files including
-`CLAUDE.md`, `CONTRIBUTING.md` and a CI workflow. Worse,
-`scripts/quality/check-blocker-citation-freshness.py` is **scoped to those exact filenames**, so
-moving them makes that check pass while checking zero files — a silent green.
+`CLAUDE.md`, `CONTRIBUTING.md` and a CI workflow. Worse, a freshness checker
+(`check-blocker-citation-freshness.py`, since deleted) was **scoped to those exact filenames**, so
+moving them made it pass while checking zero files — a silent green. The refusal itself is still enforced in
+`quarantine-to-outside-repo.ps1`.
 
 ### What the audit actually found
 
