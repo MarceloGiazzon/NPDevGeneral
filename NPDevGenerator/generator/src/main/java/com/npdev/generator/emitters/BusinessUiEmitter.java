@@ -286,6 +286,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             "search.js",
             "calendar.js",
             "locale.js",
+            "admin-panels.js",
+            "bulk-actions.js",
+            "form-inputs.js",
+            "csv-io.js",
+            "declared-panels.js",
             "views.css"
     );
 

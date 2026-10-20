@@ -80,6 +80,23 @@
     },
     globals: function () {
       return this._globals.slice();
+    },
+    // CARVE-1 modules: code moved verbatim out of app.js. A module file calls
+    // registerModule(name, function (host) { ...; return { exports }; }); app.js then calls
+    // module(name, host) ONCE with the helpers/state the code uses and destructures the exports.
+    _modules: {},
+    registerModule: function (name, factory) {
+      if (!name || typeof factory !== "function") {
+        throw new Error("NPDevViews.registerModule(name, function (host) { return exports; }) requires a factory");
+      }
+      this._modules[name] = factory;
+    },
+    module: function (name, host) {
+      var factory = this._modules[name];
+      if (!factory) {
+        throw new Error("NPDevViews module '" + name + "' is not loaded (missing <script> in index.html?)");
+      }
+      return factory(host);
     }
   };
 })();

@@ -72,7 +72,7 @@ public class BusinessUiEmitterXlsxTest {
         assertTrue(index.contains("/npdev-xlsx.js"));
         assertTrue(index.indexOf("/npdev-xlsx.js") < index.indexOf("./app.js"), "xlsx helper must load before app.js");
 
-        String app = Files.readString(out.resolve("src/main/resources/static/npdev-business-ui/app.js"));
+        String app = CarvedUiModules.appJsWithModules(out);
         assertTrue(app.contains("function exportPanelXlsx"));
         assertTrue(app.contains("NpdevXlsx.readFirstSheet"));
         assertTrue(app.contains("Export Excel"));
