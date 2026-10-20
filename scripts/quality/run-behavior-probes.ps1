@@ -50,25 +50,9 @@ Set-StrictMode -Off
 
 function Write-Section { param([string]$m) Write-Host "== $m ==" -ForegroundColor Cyan }
 
-function Get-DescendantProcessIds {
-    param([int]$RootProcessId)
-    $allProcesses = @(Get-CimInstance Win32_Process)
-    $pending = [System.Collections.Generic.Queue[int]]::new()
-    $descendants = [System.Collections.Generic.List[int]]::new()
-    $pending.Enqueue($RootProcessId)
-    while ($pending.Count -gt 0) {
-        $parentId = $pending.Dequeue()
-        foreach ($child in @($allProcesses | Where-Object { $_.ParentProcessId -eq $parentId })) {
-            $descendants.Add([int]$child.ProcessId) | Out-Null
-            $pending.Enqueue([int]$child.ProcessId)
-        }
-    }
-    return @($descendants)
-}
-
 function Stop-ProcessTree {
     param([int]$RootProcessId)
-    $ids = @((Get-DescendantProcessIds -RootProcessId $RootProcessId) | Select-Object -Unique)
+    $ids = @((Get-NPDevDescendantProcessIds -RootProcessId $RootProcessId) | Select-Object -Unique)
     [array]::Reverse($ids)
     foreach ($id in $ids) {
         if ($id -ne $PID) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }

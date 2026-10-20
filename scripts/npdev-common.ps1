@@ -306,6 +306,83 @@ function Get-NPDevGradleWrapperExecutable([string]$ProjectRoot) {
     throw ("Gradle wrapper not found in " + $ProjectRoot)
 }
 
+# XPLAT-2a: portable process-tree and port helpers. Get-CimInstance Win32_Process, Get-NetTCPConnection
+# and taskkill do not exist on Linux/macOS PowerShell, so the run-*.ps1 teardown code that used them
+# threw (or killed only the wrapper and orphaned the gradle daemon + bootRun JVM). On Windows these
+# still use exactly the CIM / NetTCPConnection calls the callers used before.
+
+# Rows with .ProcessId and .ParentProcessId for every live process. Non-Windows: `ps -A -o pid=,ppid=`
+# (same output shape on Linux procps and macOS BSD ps).
+function Get-NPDevProcessTable {
+    if ($IsWindows) {
+        return @(Get-CimInstance Win32_Process)
+    }
+
+    $rows = [System.Collections.Generic.List[object]]::new()
+    foreach ($line in @(& ps -A -o pid= -o ppid= 2>$null)) {
+        if ("$line" -match '^\s*(\d+)\s+(\d+)\s*$') {
+            $rows.Add([pscustomobject]@{ ProcessId = [int]$Matches[1]; ParentProcessId = [int]$Matches[2] }) | Out-Null
+        }
+    }
+    return @($rows)
+}
+
+# Breadth-first: every transitive child of RootProcessId (not RootProcessId itself), parents before
+# children. Callers reverse the list so leaves die first.
+function Get-NPDevDescendantProcessIds([int]$RootProcessId) {
+    $allProcesses = @(Get-NPDevProcessTable)
+    $pending = [System.Collections.Generic.Queue[int]]::new()
+    $descendants = [System.Collections.Generic.List[int]]::new()
+    $pending.Enqueue($RootProcessId)
+    while ($pending.Count -gt 0) {
+        $parentId = $pending.Dequeue()
+        foreach ($child in @($allProcesses | Where-Object { $_.ParentProcessId -eq $parentId })) {
+            $descendants.Add([int]$child.ProcessId) | Out-Null
+            $pending.Enqueue([int]$child.ProcessId)
+        }
+    }
+    return @($descendants)
+}
+
+# PIDs of processes LISTENING on a TCP port. Windows: Get-NetTCPConnection. Non-Windows: lsof, else
+# `ss -ltnp`; returns an empty list when neither tool is installed (use Test-NPDevPortFree to learn
+# whether the port is taken without knowing who holds it).
+function Get-NPDevListeningProcessIds([int]$Port) {
+    if (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue) {
+        return @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty OwningProcess -Unique)
+    }
+
+    $ids = [System.Collections.Generic.List[int]]::new()
+    if (Get-Command lsof -CommandType Application -ErrorAction SilentlyContinue) {
+        foreach ($line in @(& lsof -nP "-iTCP:$Port" -sTCP:LISTEN -t 2>$null)) {
+            if ("$line".Trim() -match '^\d+$') { $ids.Add([int]"$line".Trim()) | Out-Null }
+        }
+    }
+    if ($ids.Count -eq 0 -and (Get-Command ss -CommandType Application -ErrorAction SilentlyContinue)) {
+        foreach ($line in @(& ss -H -ltnp "sport = :$Port" 2>$null)) {
+            foreach ($m in [regex]::Matches("$line", 'pid=(\d+)')) { $ids.Add([int]$m.Groups[1].Value) | Out-Null }
+        }
+    }
+    return @($ids | Select-Object -Unique)
+}
+
+# True when nothing is listening on the port: a TcpListener bind succeeds on BOTH the wildcard and the
+# loopback address. Portable. Both are needed because Windows lets a loopback bind succeed while the
+# wildcard is held (and the reverse), so either alone can report a busy port as free.
+function Test-NPDevPortFree([int]$Port) {
+    foreach ($address in @([System.Net.IPAddress]::Any, [System.Net.IPAddress]::Loopback)) {
+        $listener = $null
+        try {
+            $listener = [System.Net.Sockets.TcpListener]::new($address, $Port)
+            $listener.Start()
+        }
+        catch { return $false }
+        finally { if ($null -ne $listener) { $listener.Stop() } }
+    }
+    return $true
+}
+
 function Get-NPDevLocalCacheRoot([string]$WorkspaceRoot) {
     if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_LOCAL_CACHE_ROOT)) {
         return Normalize-NPDevPath $env:NPDEV_LOCAL_CACHE_ROOT

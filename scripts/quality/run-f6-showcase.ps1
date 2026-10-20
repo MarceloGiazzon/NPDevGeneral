@@ -58,8 +58,10 @@ $baseUrl = "http://127.0.0.1:$port"
 # The routines open workbench pages by absolute URL on the port the showcase config pins.
 if ($port -ne 8110) { throw "f6-showcase must keep runtime.serverPort 8110: the browser routines address http://127.0.0.1:8110 directly." }
 
-$listener = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-if ($listener) { throw "Port $port is already in use (process $($listener[0].OwningProcess)); stop it first -- this script never kills a process it did not start." }
+# XPLAT-2a: Get-NetTCPConnection does not exist off Windows; the shared helpers fall back to lsof/ss and a bind test.
+$listenerIds = @(Get-NPDevListeningProcessIds $port)
+if ($listenerIds.Count -gt 0) { throw "Port $port is already in use (process $($listenerIds[0])); stop it first -- this script never kills a process it did not start." }
+if (-not $IsWindows -and -not (Test-NPDevPortFree $port)) { throw "Port $port is already in use (holder unknown); stop it first -- this script never kills a process it did not start." }
 
 $routines = @(
     "f6-layoutslot-verify-routine",
@@ -74,7 +76,16 @@ foreach ($routine in $routines) {
 }
 
 function Stop-ProcessTree([int]$ProcessId) {
-    if ($ProcessId -gt 0) { & taskkill /PID $ProcessId /T /F 2>&1 | Out-Null }
+    if ($ProcessId -le 0) { return }
+    if ($IsWindows) {
+        & taskkill /PID $ProcessId /T /F 2>&1 | Out-Null
+        return
+    }
+    # XPLAT-2a: no taskkill off Windows -- walk the tree via ps and kill leaves first.
+    $ids = @(Get-NPDevDescendantProcessIds $ProcessId)
+    [array]::Reverse($ids)
+    foreach ($id in $ids) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
+    Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
 }
 
 $report = [ordered]@{

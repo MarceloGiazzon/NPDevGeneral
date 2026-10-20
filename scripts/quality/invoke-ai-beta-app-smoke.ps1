@@ -42,7 +42,19 @@ function Convert-ResponseContentToString {
 
 function Get-DescendantProcessIds {
     param([int]$RootProcessId)
-    $allProcesses = @(Get-CimInstance Win32_Process)
+    # XPLAT-2a: Get-CimInstance only exists on Windows; elsewhere `ps -A -o pid= -o ppid=` gives the same
+    # (ProcessId, ParentProcessId) table on Linux and macOS, so the gradle daemon and the bootRun JVM
+    # are walked and killed too instead of being orphaned when only the wrapper is stopped.
+    $allProcesses = if ($IsWindows) {
+        @(Get-CimInstance Win32_Process)
+    }
+    else {
+        @(& ps -A -o pid= -o ppid= 2>$null | ForEach-Object {
+            if ("$_" -match '^\s*(\d+)\s+(\d+)\s*$') {
+                [pscustomobject]@{ ProcessId = [int]$Matches[1]; ParentProcessId = [int]$Matches[2] }
+            }
+        })
+    }
     $pending = [System.Collections.Generic.Queue[int]]::new()
     $descendants = [System.Collections.Generic.List[int]]::new()
     $pending.Enqueue($RootProcessId)
@@ -59,10 +71,6 @@ function Get-DescendantProcessIds {
 
 function Stop-ProcessTree {
     param([int]$RootProcessId)
-    if (-not $IsWindows) {
-        Stop-Process -Id $RootProcessId -Force -ErrorAction SilentlyContinue
-        return
-    }
     $ids = @((Get-DescendantProcessIds -RootProcessId $RootProcessId) | Select-Object -Unique)
     [array]::Reverse($ids)
     foreach ($id in $ids) {

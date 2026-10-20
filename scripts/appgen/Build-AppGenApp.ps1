@@ -26,12 +26,19 @@
 param(
   [Parameter(Mandatory = $true)]
   [string]$App,
-  [string]$AppsRoot = 'D:\WorkSpace\NPDev\AppGen\apps',
+  # XPLAT-2a / REG-144: empty = <repo-parent>\AppGen\apps, derived from this script's location
+  # (it lives at <repo>/scripts/appgen/), never from a drive letter.
+  [string]$AppsRoot = '',
   [switch]$GenerateOnly,
   [switch]$SkipRuntimeHostLibs
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($AppsRoot)) {
+  $productRepo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+  $AppsRoot = Join-Path (Join-Path (Split-Path -Parent $productRepo) 'AppGen') 'apps'
+}
 
 # -App may be a full path to the app folder, or a short name resolved under -AppsRoot
 # (including one level deeper, e.g. AppsRoot\_official\<App>).

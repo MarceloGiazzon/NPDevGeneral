@@ -37,16 +37,19 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$AppFolder = 'D:\WorkSpace\NPDev\AppGen\apps\_official\Claude',
-  # Portable default (REG-144): resolved from $PSScriptRoot below, not hardcoded to the author's
-  # D:\ layout. The AppGen/Build defaults around it point outside the repo and stay per-machine.
+  # XPLAT-2a / REG-144: empty = resolved below from the repo layout and the shared helpers, never from
+  # a drive letter. AppFolder -> <repo-parent>\AppGen\apps\_official\Claude; RuntimeCurrent ->
+  # <repo-parent>\AppGen\generator-runtime\current; OutRoot -> <Get-NPDevBuildRoot>\generated-finalapps\
+  # claude-support-desk; RuntimeHostLibsDir -> Get-NPDevRuntimeHostLibsDir. On the author's machine
+  # (repo at D:\WorkSpace\NPDev\NPDev_General) these are the same paths the old literals named.
+  [string]$AppFolder = '',
   [string]$ProductRepo = '',
-  [string]$RuntimeCurrent = 'D:\WorkSpace\NPDev\AppGen\generator-runtime\current',
-  [string]$OutRoot = 'D:\WorkSpace\NPDev\Build\generated-finalapps\claude-support-desk',
+  [string]$RuntimeCurrent = '',
+  [string]$OutRoot = '',
   [int]$ServerPort = 8090,
   [string]$ApiKey = 'dev-key',
   [string]$SpringProfiles = 'dev,step0,trial',
-  [string]$RuntimeHostLibsDir = 'D:\WorkSpace\NPDev\Build\runtimehost-libs',
+  [string]$RuntimeHostLibsDir = '',
   [switch]$GenerateOnly,
   [switch]$SkipRuntimeHostLibs
 )
@@ -56,6 +59,21 @@ $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($ProductRepo)) {
   $ProductRepo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 }
+
+# Resolve the shared roots by CALLING the helpers in a child scope -- npdev-common.ps1 sets
+# Set-StrictMode -Version Latest at file scope and this script does not run under it, so the
+# dot-source must not leak out of this block (same pattern as Build-NpdevApp.ps1, OPS-7).
+if ([string]::IsNullOrWhiteSpace($OutRoot) -or [string]::IsNullOrWhiteSpace($RuntimeHostLibsDir)) {
+  $sharedRoots = & {
+    . (Join-Path $ProductRepo 'scripts\npdev-common.ps1')
+    [pscustomobject]@{ Build = (Get-NPDevBuildRoot $ProductRepo); Libs = (Get-NPDevRuntimeHostLibsDir $ProductRepo) }
+  }
+  if ([string]::IsNullOrWhiteSpace($OutRoot)) { $OutRoot = Join-Path (Join-Path $sharedRoots.Build 'generated-finalapps') 'claude-support-desk' }
+  if ([string]::IsNullOrWhiteSpace($RuntimeHostLibsDir)) { $RuntimeHostLibsDir = $sharedRoots.Libs }
+}
+$appGenRoot = Join-Path (Split-Path -Parent $ProductRepo) 'AppGen'
+if ([string]::IsNullOrWhiteSpace($AppFolder)) { $AppFolder = Join-Path (Join-Path (Join-Path $appGenRoot 'apps') '_official') 'Claude' }
+if ([string]::IsNullOrWhiteSpace($RuntimeCurrent)) { $RuntimeCurrent = Join-Path (Join-Path $appGenRoot 'generator-runtime') 'current' }
 
 function Write-Step {
   param([string]$Message)
@@ -293,8 +311,21 @@ $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') 
 # gradle ':clean' fail. Detect it (listener on the app port and/or app.pid), warn,
 # and let the operator choose to stop it or cancel. Use -Force to stop without asking.
 $running = @()
-$listeners = Get-NetTCPConnection -LocalPort $plan.serverPort -State Listen -ErrorAction SilentlyContinue
-if ($listeners) { $running += ($listeners | Select-Object -ExpandProperty OwningProcess) }
+# XPLAT-2a: Get-NetTCPConnection is Windows-only; lsof / ss elsewhere.
+function Get-ListenerPids([int]$Port) {
+  if (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue) {
+    return @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess)
+  }
+  $found = @()
+  if (Get-Command lsof -CommandType Application -ErrorAction SilentlyContinue) {
+    $found = @(& lsof -nP "-iTCP:$Port" -sTCP:LISTEN -t 2>$null | Where-Object { "$_".Trim() -match '^\d+$' } | ForEach-Object { [int]"$_".Trim() })
+  }
+  if ($found.Count -eq 0 -and (Get-Command ss -CommandType Application -ErrorAction SilentlyContinue)) {
+    $found = @(& ss -H -ltnp "sport = :$Port" 2>$null | ForEach-Object { [regex]::Matches("$_", 'pid=(\d+)') } | ForEach-Object { [int]$_.Groups[1].Value })
+  }
+  return @($found)
+}
+$running += @(Get-ListenerPids $plan.serverPort)
 $pidFile = Join-Path $PSScriptRoot 'app.pid'
 if (Test-Path -LiteralPath $pidFile) {
   $fp = 0; [void][int]::TryParse((Get-Content -Raw -LiteralPath $pidFile).Trim(), [ref]$fp)
@@ -397,7 +428,7 @@ $StartApp = $ApiKeyProvisioner + @'
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
 $jar = Get-ChildItem -LiteralPath $plan.appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
-       Where-Object { $_.FullName -like '*\build\libs\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
+       Where-Object { $_.FullName -like '*[\/]build[\/]libs[\/]*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
 if ($null -eq $jar) { Write-Host 'Runnable jar not found. Run Build-App.ps1 first.' -ForegroundColor Red; exit 1 }
 $pidFile = Join-Path $PSScriptRoot 'app.pid'
 $logFile = Join-Path $PSScriptRoot 'app.out.log'
@@ -405,8 +436,22 @@ if (Test-Path -LiteralPath $pidFile) {
   $old = Get-Process -Id ([int](Get-Content -Raw -LiteralPath $pidFile)) -ErrorAction SilentlyContinue
   if ($null -ne $old) { Write-Host "Already running (PID $($old.Id)). Stop it first (Stop-App.ps1)."; exit 0 }
 }
-$portBusy = Get-NetTCPConnection -LocalPort $plan.serverPort -State Listen -ErrorAction SilentlyContinue
-if ($portBusy) { Write-Host "Port $($plan.serverPort) is already in use (PID $(($portBusy.OwningProcess | Sort-Object -Unique) -join ', ')). Stop that first (Stop-App.ps1) to avoid a duplicate." -ForegroundColor Yellow; exit 0 }
+# XPLAT-2a: Get-NetTCPConnection is Windows-only; lsof / ss elsewhere.
+function Get-ListenerPids([int]$Port) {
+  if (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue) {
+    return @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess)
+  }
+  $found = @()
+  if (Get-Command lsof -CommandType Application -ErrorAction SilentlyContinue) {
+    $found = @(& lsof -nP "-iTCP:$Port" -sTCP:LISTEN -t 2>$null | Where-Object { "$_".Trim() -match '^\d+$' } | ForEach-Object { [int]"$_".Trim() })
+  }
+  if ($found.Count -eq 0 -and (Get-Command ss -CommandType Application -ErrorAction SilentlyContinue)) {
+    $found = @(& ss -H -ltnp "sport = :$Port" 2>$null | ForEach-Object { [regex]::Matches("$_", 'pid=(\d+)') } | ForEach-Object { [int]$_.Groups[1].Value })
+  }
+  return @($found)
+}
+$portBusy = @(Get-ListenerPids $plan.serverPort)
+if ($portBusy.Count -gt 0) { Write-Host "Port $($plan.serverPort) is already in use (PID $(($portBusy | Sort-Object -Unique) -join ', ')). Stop that first (Stop-App.ps1) to avoid a duplicate." -ForegroundColor Yellow; exit 0 }
 Write-Host "Starting $($plan.appName) on $($plan.baseUrl) (profiles: $($plan.springProfiles))"
 Ensure-NpdevApiKey -AppRoot $plan.appRoot
 $args = @('-jar', $jar.FullName, "--server.port=$($plan.serverPort)", "--spring.profiles.active=$($plan.springProfiles)")
@@ -656,7 +701,7 @@ $RunCommands = @"
 ## Manual run (foreground)
 ``````powershell
 Set-Location '$GeneratedAppRoot'
-.\gradlew.bat --no-daemon bootRun "--args=--spring.profiles.active=$SpringProfiles --server.port=$ServerPort"
+$(if ($IsWindows) { '.\gradlew.bat' } else { './gradlew' }) --no-daemon bootRun "--args=--spring.profiles.active=$SpringProfiles --server.port=$ServerPort"
 ``````
 "@
 Set-Content -LiteralPath (Join-Path $OutRoot 'RUN_COMMANDS.md') -Value $RunCommands -Encoding UTF8

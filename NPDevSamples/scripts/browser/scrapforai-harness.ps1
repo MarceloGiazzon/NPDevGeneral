@@ -91,12 +91,19 @@ function Get-ScrapForAIRoot([string]$Override = "") {
     }
     $root = Normalize-AbsolutePath $root
     Ensure-Directory -PathValue $root -Label "ScrapForAI root"
-    Ensure-File -PathValue (Join-Path $root "src\server.ts") -Label "ScrapForAI server.ts"
+    Ensure-File -PathValue (Join-Path (Join-Path $root "src") "server.ts") -Label "ScrapForAI server.ts"
     return $root
 }
 
+# XPLAT-2a: npm writes node_modules/.bin/tsx.cmd (a cmd shim) on Windows but a plain `tsx` symlink on
+# Linux/macOS, and the path is built from separate segments so no literal backslash reaches node.
+function Get-ScrapForAITsxPath([string]$Root) {
+    $binDir = Join-Path (Join-Path $Root "node_modules") ".bin"
+    return (Join-Path $binDir $(if ($IsWindows) { "tsx.cmd" } else { "tsx" }))
+}
+
 function Test-ScrapForAIReady([string]$Root) {
-    $tsx = Join-Path $Root "node_modules\.bin\tsx.cmd"
+    $tsx = Get-ScrapForAITsxPath $Root
     return (Test-Path -LiteralPath $tsx)
 }
 
@@ -196,8 +203,8 @@ function Start-ScrapForAI {
         $env:MAX_REQUEST_BODY_SIZE     = "5mb"
     }
 
-    $tsx    = Join-Path $Root "node_modules\.bin\tsx.cmd"
-    $server = Join-Path $Root "src\server.ts"
+    $tsx    = Get-ScrapForAITsxPath $Root
+    $server = Join-Path (Join-Path $Root "src") "server.ts"
     Ensure-File -PathValue $tsx -Label "ScrapForAI tsx launcher (run Initialize-ScrapForAI first)"
 
     Info ("Starting ScrapForAI on http://127.0.0.1:$Port (allowlist: $originList)")
@@ -234,10 +241,27 @@ function Start-ScrapForAI {
     return $context
 }
 
+# XPLAT-2a: Get-NetTCPConnection does not exist in PowerShell on Linux/macOS; fall back to lsof, then ss.
+function Get-PortListenerPids([int]$Port) {
+    if (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue) {
+        return @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty OwningProcess)
+    }
+    $found = @()
+    if (Get-Command lsof -CommandType Application -ErrorAction SilentlyContinue) {
+        $found = @(& lsof -nP "-iTCP:$Port" -sTCP:LISTEN -t 2>$null |
+            Where-Object { "$_".Trim() -match '^\d+$' } | ForEach-Object { [int]"$_".Trim() })
+    }
+    if ($found.Count -eq 0 -and (Get-Command ss -CommandType Application -ErrorAction SilentlyContinue)) {
+        $found = @(& ss -H -ltnp "sport = :$Port" 2>$null |
+            ForEach-Object { [regex]::Matches("$_", 'pid=(\d+)') } | ForEach-Object { [int]$_.Groups[1].Value })
+    }
+    return @($found)
+}
+
 function Stop-PortListener([int]$Port) {
-    $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-    foreach ($c in $conns) {
-        Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+    foreach ($listenerId in (Get-PortListenerPids $Port)) {
+        Stop-Process -Id $listenerId -Force -ErrorAction SilentlyContinue
     }
 }
 

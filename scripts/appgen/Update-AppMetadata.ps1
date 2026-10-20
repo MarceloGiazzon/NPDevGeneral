@@ -74,10 +74,13 @@ $ErrorActionPreference = "Stop"
 # levels up -- correct under any clone name and any drive.
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $generatorRoot = Join-Path $repo "NPDevGenerator"
-$gradlew = Join-Path $generatorRoot "gradlew.bat"
+# XPLAT-2a: gradlew.bat does not exist as a runnable form on Linux/macOS -- resolve the wrapper per
+# platform with the shared helper (gradlew.bat on Windows, gradlew elsewhere; throws if neither exists).
+. (Join-Path $repo "scripts\npdev-common.ps1")
+$gradlew = Get-NPDevGradleWrapperExecutable $generatorRoot
 if (-not (Test-Path -LiteralPath $gradlew)) { throw "Gradle wrapper not found: $gradlew" }
 $kernelRoot = Join-Path $repo "NPDevKernel"
-$kernelGradlew = Join-Path $kernelRoot "gradlew.bat"
+$kernelGradlew = Get-NPDevGradleWrapperExecutable $kernelRoot
 if (-not (Test-Path -LiteralPath $kernelGradlew)) { throw "Gradle wrapper not found: $kernelGradlew" }
 
 $AppOpsRoot = (Resolve-Path -LiteralPath $AppOpsRoot).Path
