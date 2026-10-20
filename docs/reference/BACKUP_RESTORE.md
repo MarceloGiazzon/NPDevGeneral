@@ -64,8 +64,12 @@ The SQL Server drill is wired into the `sqlserver` leg of the `app-on-engine` jo
 `.github/workflows/engine-support.yml` (the "Backup drill (sqlserver)" steps): it brings up the
 generated compose's `database`, takes one backup through the `backup` sidecar, runs `backup-verify`
 against the scratch server and fails the job unless the drill reports PASS and the restored table has
-its rows. Do not treat it as proven until that job has been seen green; Docker is off by policy on
-the maintainer's machine and the local SQL Server Express is unusable, so it does not run locally.
+its rows. **CI-proven** (engine-support run 39363426546, commit cec8b16b): backup through the sidecar,
+restore into the scratch server, `DBCC CHECKDB` PASS and the 3 seeded rows read back, with no
+retry or workaround. Its first run (ea20ed07) exposed that the sidecar could not write the
+`./backups` and `./logs` bind mounts as the mssql image's uid 10001; the generated compose now runs
+`backup` and `backup-verify` as root (REG-268). Docker is off by policy on the maintainer's machine
+and the local SQL Server Express is unusable, so the drill runs in CI only.
 
 ## 2. H2Local / H2Server — nightly in-app backup
 
