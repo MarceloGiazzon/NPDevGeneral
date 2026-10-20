@@ -556,6 +556,290 @@ jobs:
             --db-host 127.0.0.1 $ARGS \
             --report Build/reports/tier-c-${{ matrix.engine }}.json
 
+      # ---------------------------------------------------------------------------------------
+      # BKP-2 -- the SQL Server backup sidecar + restore drill against a REAL SQL Server.
+      #
+      # BKP-1 (fc02d2b5) made DockerDeploymentEmitter emit the `backup` compose profile for SQL
+      # Server (deploy/backup-sidecar.sh, deploy/backup-verify.sh, the backup / backup-verify-db /
+      # backup-verify services). Until this group ran, that emission was pinned ONLY by a generator
+      # unit test (DockerDeploymentEmitterSqlServerBackupTest) that reads the text; nothing ever
+      # executed it. These steps run the emitted compose exactly as docs/reference/BACKUP_RESTORE.md
+      # tells an operator to: `up -d backup`, then `run --rm backup-verify`.
+      #
+      # sqlserver leg ONLY. They reuse the app proof's generated app (Build/engine-proof/sqlserver/App),
+      # so they sit after it, and they use `!cancelled()` rather than the default success() so a red
+      # Tier C vector does not hide whether the drill works -- the drill needs the generated
+      # compose, not Tier C. The compose stack is self-contained (its own `database` service on the
+      # compose network, no published port), so it does not collide with npdev-engine on 1433.
+      # ---------------------------------------------------------------------------------------
+      - name: Backup drill (sqlserver) -- stage the generated compose and deploy scripts
+        if: ${{ !cancelled() && matrix.engine == 'sqlserver' && ((github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine) }}
+        env:
+          DRILL: ${{ runner.temp }}/bkp-drill
+          SA_PASSWORD: 'Npdev!Probe123'
+        run: |
+          set -euo pipefail
+          SRC="$NPDEV_BUILD_ROOT/engine-proof/sqlserver/App"
+          echo "ASSERT: the app proof generated a SQL Server app with the backup profile at $SRC"
+          for f in docker-compose.yml .env.example deploy/backup.sh deploy/restore.sh \
+                   deploy/backup-sidecar.sh deploy/backup-verify.sh; do
+            if [ ! -f "$SRC/$f" ]; then
+              echo "::error::$SRC/$f is missing -- the generated SQL Server app did not emit the backup profile (or the app proof never generated it)"
+              ls -la "$SRC" || true
+              exit 1
+            fi
+          done
+
+          # Only the compose file and the deploy scripts are needed to run the profile -- never the
+          # app build. Staged under RUNNER_TEMP (outside the checkout) so nothing lands in the repo.
+          rm -rf "$DRILL"
+          mkdir -p "$DRILL/deploy" "$DRILL/bkp-out"
+          cp "$SRC/docker-compose.yml" "$DRILL/docker-compose.emitted.yml"
+          cp "$SRC/docker-compose.yml" "$DRILL/docker-compose.yml"
+          cp "$SRC/.env.example" "$DRILL/.env.example"
+          cp -r "$SRC/deploy/." "$DRILL/deploy/"
+          cd "$DRILL"
+
+          echo "ASSERT: the emitted compose is the SQL Server file-based form (BKP-1)"
+          for needle in 'backup-verify-db:' 'backup-verify:' 'SQLCMDSERVER: database,1433' \
+                        'SQLCMDSERVER: backup-verify-db,1433' '- dbdata:/var/opt/mssql' \
+                        '- backup-verify-scratch:/var/opt/mssql'; do
+            if ! grep -qF -- "$needle" docker-compose.yml; then
+              echo "::error::docker-compose.yml does not contain '$needle'"
+              exit 1
+            fi
+          done
+
+          # Same throwaway sa password the rest of this job already uses (strong enough for the
+          # engine's policy). NPDEV_SUPER_USER_KEY is an unrelated `:?` guard on the observability
+          # profile: compose interpolates the whole file, so it must be set to parse, not to be used.
+          DB_NAME="$(grep -E '^DB_NAME=' .env.example | head -n 1 | cut -d= -f2-)"
+          if ! [[ "$DB_NAME" =~ ^[A-Za-z0-9_]+$ ]]; then
+            echo "::error::could not derive a sane DB_NAME from .env.example (got '$DB_NAME')"
+            exit 1
+          fi
+          cp .env.example .env
+          sed -i -E '/^(DB_PASSWORD|NPDEV_SUPER_USER_KEY)=/d' .env
+          {
+            printf '\n'
+            printf "DB_PASSWORD='%s'\n" "$SA_PASSWORD"
+            printf 'NPDEV_SUPER_USER_KEY=ci-throwaway-not-a-secret\n'
+          } >> .env
+          echo "drill database name: $DB_NAME"
+
+          # Run the pinned digest this job already pulled, not whatever `2022-latest` is today: a
+          # gate whose image moves cannot tell a regression from an upstream change. Only the
+          # image reference is rewritten; docker-compose.emitted.yml keeps the file as generated.
+          before="$(grep -cE '^[[:space:]]*image: mcr\.microsoft\.com/mssql/server:' docker-compose.yml || true)"
+          if [ "$before" -lt 4 ]; then
+            echo "::error::expected >= 4 SQL Server image lines (database, backup, backup-verify-db, backup-verify), found $before"
+            exit 1
+          fi
+          sed -i -E "s#^([[:space:]]*image: )mcr\.microsoft\.com/mssql/server:[^[:space:]]+#\1${PINNED_SQLSERVER}#" docker-compose.yml
+          after="$(grep -cF "image: ${PINNED_SQLSERVER}" docker-compose.yml || true)"
+          if [ "$after" != "$before" ]; then
+            echo "::error::pinned $after of $before SQL Server image lines"
+            exit 1
+          fi
+
+          echo "ASSERT: the backup profile parses and defines the three services"
+          docker compose --profile backup config --quiet
+          services="$(docker compose --profile backup config --services)"
+          echo "$services"
+          for svc in database backup backup-verify-db backup-verify; do
+            if ! echo "$services" | grep -qx "$svc"; then
+              echo "::error::compose service '$svc' is not defined under --profile backup"
+              exit 1
+            fi
+          done
+
+      - name: Backup drill (sqlserver) -- start the stack's database and seed a known table
+        if: ${{ !cancelled() && matrix.engine == 'sqlserver' && ((github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine) }}
+        env:
+          DRILL: ${{ runner.temp }}/bkp-drill
+          SA_PASSWORD: 'Npdev!Probe123'
+        run: |
+          set -euo pipefail
+          cd "$DRILL"
+          DB_NAME="$(grep -E '^DB_NAME=' .env | head -n 1 | cut -d= -f2-)"
+
+          # Three SQL Server instances (this job's npdev-engine, the stack's database and the
+          # scratch one) is too much for one runner; Tier C and the app proof are finished with
+          # npdev-engine, and `docker logs` in the "Engine logs" step still works on a stopped container.
+          docker stop npdev-engine >/dev/null 2>&1 || true
+
+          # `database` has no profile, so this starts it alone (no app, no build). --wait blocks on
+          # the compose healthcheck, which is the engine's own readiness probe.
+          if ! timeout 480 docker compose up -d --wait database; then
+            echo "::error::the compose 'database' service never became healthy"
+            docker compose logs --no-color database | tail -80 || true
+            exit 1
+          fi
+
+          # SQL Server cannot create the database from env (createsDatabaseFromEnv=false), and the
+          # sidecar backs up an EXISTING database, so create and fill one first.
+          sql() { docker compose exec -T database /opt/mssql-tools18/bin/sqlcmd -C -b -S localhost -U sa -P "$SA_PASSWORD" "$@"; }
+          sql -Q "IF DB_ID(N'$DB_NAME') IS NULL CREATE DATABASE [$DB_NAME];"
+          sql -Q "USE [$DB_NAME]; CREATE TABLE dbo.bkp_probe (id INT NOT NULL PRIMARY KEY, note NVARCHAR(64) NOT NULL); INSERT INTO dbo.bkp_probe (id, note) VALUES (1, N'alpha'), (2, N'beta'), (3, N'gamma');"
+          rows="$(sql -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM [$DB_NAME].dbo.bkp_probe;" | tr -d '[:space:]')"
+          echo "ASSERT: the seeded source database has 3 rows -> got '$rows'"
+          if [ "$rows" != "3" ]; then
+            echo "::error::seeding the source database failed (rows='$rows')"
+            exit 1
+          fi
+
+      - name: Backup drill (sqlserver) -- one backup through the `backup` sidecar
+        if: ${{ !cancelled() && matrix.engine == 'sqlserver' && ((github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine) }}
+        env:
+          DRILL: ${{ runner.temp }}/bkp-drill
+        run: |
+          set -euo pipefail
+          cd "$DRILL"
+          mkdir -p backups logs bkp-out
+          shopt -s nullglob
+
+          # The sidecar runs backup-sidecar.sh as the image's default user, with ./backups and ./logs
+          # bind-mounted. Record which user that is: it decides whether the bind mounts are writable.
+          echo "mssql image default user: $(docker run --rm --entrypoint id "$PINNED_SQLSERVER" 2>&1 || true)"
+
+          # The sidecar takes its first backup immediately on start (then sleeps the interval), so
+          # "one backup" is: start it, wait for its own `done:` line, stop it.
+          # Returns 0 = backup reported done, 1 = it reported FAILED / the container died, 2 = timeout.
+          wait_backup() {
+            local i state
+            for i in $(seq 1 60); do
+              docker compose --profile backup logs --no-color backup > bkp-out/sidecar.log 2>&1 || true
+              if grep -Eq 'done: /backups/[^ ]+\.bak' bkp-out/sidecar.log; then return 0; fi
+              if grep -q 'FAILED' bkp-out/sidecar.log; then return 1; fi
+              state="$(docker compose --profile backup ps -a --format '{{.State}}' backup 2>/dev/null || true)"
+              case "$state" in exited*|dead*|restarting*) return 1 ;; esac
+              sleep 3
+            done
+            return 2
+          }
+
+          echo "ASSERT: 'docker compose --profile backup up -d backup' takes a backup (sidecar logs 'done: /backups/<db>-<ts>.bak')"
+          docker compose --profile backup up -d backup
+          rc=0
+          wait_backup || rc=$?
+          if [ "$rc" != "0" ]; then
+            echo "---- sidecar log (attempt 1, rc=$rc) ----"
+            cat bkp-out/sidecar.log || true
+            # If the failure is the bind mounts being unwritable for the image's non-root user, say so
+            # loudly and retry once with world-writable dirs, so the rest of the drill still runs.
+            # That retry is a WARNING, never a silent pass: a fresh `up -d backup` hitting this
+            # is a real gap in the generated profile (it would need a mkdir/chmod or `user:`).
+            if grep -Eqi 'permission denied|cannot create|read-only' bkp-out/sidecar.log; then
+              echo "::warning::the generated backup sidecar could not write its ./backups or ./logs bind mounts as the image's default user; retrying with chmod 0777 to exercise the rest of the drill. This is a finding about the generated profile, not a pass."
+              docker compose --profile backup rm -sf backup
+              chmod 0777 backups logs
+              docker compose --profile backup up -d backup
+              rc=0
+              wait_backup || rc=$?
+            fi
+          fi
+          if [ "$rc" != "0" ]; then
+            echo "::error::the backup sidecar did not complete a backup (rc=$rc)"
+            cat bkp-out/sidecar.log || true
+            exit 1
+          fi
+
+          echo "ASSERT: a non-empty .bak landed in ./backups on the host"
+          ls -l backups
+          baks=(backups/*.bak)
+          if [ "${#baks[@]}" -lt 1 ] || [ ! -s "${baks[0]}" ]; then
+            echo "::error::no non-empty .bak in ./backups after the sidecar reported done"
+            exit 1
+          fi
+          echo "backup file: ${baks[0]} ($(stat -c %s "${baks[0]}") bytes)"
+          docker compose --profile backup stop backup
+
+      - name: Backup drill (sqlserver) -- restore drill (backup-verify) and ASSERT it passes
+        if: ${{ !cancelled() && matrix.engine == 'sqlserver' && ((github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine) }}
+        env:
+          DRILL: ${{ runner.temp }}/bkp-drill
+          SA_PASSWORD: 'Npdev!Probe123'
+        run: |
+          set -euo pipefail
+          cd "$DRILL"
+          DB_NAME="$(grep -E '^DB_NAME=' .env | head -n 1 | cut -d= -f2-)"
+          mkdir -p bkp-out
+
+          # `run` starts backup-verify-db (the DISPOSABLE scratch server) and waits for its healthcheck
+          # first. The exit code is captured, not allowed to abort the step, so the output is always
+          # printed and the assertions below say exactly what was missing.
+          echo "RUN: docker compose --profile backup run --rm -T backup-verify"
+          rc=0
+          timeout 600 docker compose --profile backup run --rm -T backup-verify > bkp-out/backup-verify.out 2>&1 || rc=$?
+          cat bkp-out/backup-verify.out
+          echo "backup-verify exit code: $rc"
+
+          # The strings below are what deploy/backup-verify.sh prints on success
+          # (DockerDeploymentEmitter.serverFileVerifyScript): log "PASS: ${latest} restored successfully
+          # into the scratch database and passed DBCC CHECKDB", with log() = printf '[backup-verify] %s'.
+          echo "ASSERT: exit code 0"
+          if [ "$rc" != "0" ]; then
+            echo "::error::backup-verify exited $rc"
+            exit 1
+          fi
+          echo "ASSERT: output contains '[backup-verify] PASS:'"
+          if ! grep -qF '[backup-verify] PASS:' bkp-out/backup-verify.out; then
+            echo "::error::backup-verify never printed its PASS line"
+            exit 1
+          fi
+          echo "ASSERT: output contains 'restored successfully into the scratch database and passed DBCC CHECKDB'"
+          if ! grep -qF 'restored successfully into the scratch database and passed DBCC CHECKDB' bkp-out/backup-verify.out; then
+            echo "::error::backup-verify's PASS line does not report a restore + DBCC CHECKDB"
+            exit 1
+          fi
+          echo "ASSERT: output contains no '[backup-verify] FAIL:'"
+          if grep -qF '[backup-verify] FAIL:' bkp-out/backup-verify.out; then
+            echo "::error::backup-verify printed a FAIL line"
+            exit 1
+          fi
+
+          # Independent of the script's own verdict: the scratch server (still running after `run`)
+          # must now actually hold the restored table with the rows seeded into the SOURCE database.
+          echo "ASSERT: the scratch server has [$DB_NAME].dbo.bkp_probe with 3 rows"
+          rows="$(docker compose --profile backup exec -T backup-verify-db /opt/mssql-tools18/bin/sqlcmd -C -b -S localhost -U sa -P "$SA_PASSWORD" -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM [$DB_NAME].dbo.bkp_probe;" | tr -d '[:space:]')"
+          echo "scratch row count: '$rows'"
+          if [ "$rows" != "3" ]; then
+            echo "::error::the restored scratch database does not hold the 3 seeded rows (got '$rows')"
+            exit 1
+          fi
+          echo "### sqlserver backup drill: PASS (backup sidecar -> .bak -> backup-verify RESTORE + DBCC CHECKDB -> 3 rows read back)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Backup drill (sqlserver) -- collect logs and tear the stack down
+        if: ${{ always() && matrix.engine == 'sqlserver' && ((github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine) }}
+        env:
+          DRILL: ${{ runner.temp }}/bkp-drill
+        run: |
+          [ -d "$DRILL" ] || { echo "drill was never staged; nothing to collect"; exit 0; }
+          cd "$DRILL"
+          mkdir -p bkp-out logs
+          docker compose --profile backup ps -a > bkp-out/ps.txt 2>&1 || true
+          docker compose --profile backup logs --no-color > bkp-out/compose-all.log 2>&1 || true
+          ls -lR backups logs > bkp-out/tree.txt 2>&1 || true
+          tail -60 bkp-out/compose-all.log || true
+          docker compose --profile backup down -v --remove-orphans || true
+
+      - name: Backup drill (sqlserver) -- upload compose file and logs
+        if: ${{ always() && matrix.engine == 'sqlserver' && ((github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqlserver-backup-drill
+          # .env is deliberately NOT uploaded.
+          path: |
+            ${{ runner.temp }}/bkp-drill/docker-compose.emitted.yml
+            ${{ runner.temp }}/bkp-drill/docker-compose.yml
+            ${{ runner.temp }}/bkp-drill/deploy/backup.sh
+            ${{ runner.temp }}/bkp-drill/deploy/restore.sh
+            ${{ runner.temp }}/bkp-drill/deploy/backup-sidecar.sh
+            ${{ runner.temp }}/bkp-drill/deploy/backup-verify.sh
+            ${{ runner.temp }}/bkp-drill/logs/**
+            ${{ runner.temp }}/bkp-drill/bkp-out/**
+          if-no-files-found: warn
+
       # Runs on failure too, and that is the point: the FIRST conformance run's headline said "3 jobs
       # failed" while containing a 13/13 pass nobody could see without downloading an artifact.
       - name: Engine logs

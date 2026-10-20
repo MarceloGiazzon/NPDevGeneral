@@ -1,0 +1,212 @@
+{
+  "_comment": [
+    "ENGM-1: the engine capability matrix. Rows are storage engines, columns are capabilities, and every cell is a CLAIM tied to the CI job that witnesses it.",
+    "A cell is {claim, witnessJob, note}. claim is supported | partial | unsupported. witnessJob is '<workflow file>#<job id>' naming a real `jobs:` key under .github/workflows/, or null.",
+    "supported / partial REQUIRE a witnessJob; unsupported must NOT carry one. 'unsupported' here means 'no CI job proves it', not 'the code path does not exist' -- the note says which.",
+    "partial = a job exercises part of the capability (a narrower scope, a different layer, or a different mechanism) and the note says exactly what is and is not covered.",
+    "Checked statically by scripts/quality/check-engine-matrix.py (aiKnowledge gate), which parses the workflow YAML: a claim can never outlive its witness, and a witness can never be a typo.",
+    "To upgrade a cell, add or extend a CI job that really exercises it FIRST, then point witnessJob at it. Never edit a claim up without a job; never leave a witness pointing at a job that no longer covers the cell.",
+    "The local H2-in-compat-mode runs and the SqlDialect.capabilities() declarations are NOT witnesses (storage-dialect-conformance.yml: 'Never claim MySQL support from a green local run alone')."
+  ],
+  "capabilities": [
+    "boot",
+    "additive_migration",
+    "destructive_migration_ack",
+    "promotion_target",
+    "backup",
+    "restore_drill",
+    "pagination",
+    "json_search",
+    "flow_durability"
+  ],
+  "engines": {
+    "h2": {
+      "boot": {
+        "claim": "supported",
+        "witnessJob": "journeys.yml#journeys",
+        "note": "NPDevSamples/journeys is an H2Local jwt app generated, built, booted on a wiped DB and driven over REST and a real browser on every push to main and nightly."
+      },
+      "additive_migration": {
+        "claim": "partial",
+        "witnessJob": "npdev-ci-validation.yml#ci-validation",
+        "note": "The RuntimeHost gate runs the runtimehost-core suite (MissingTableCreationPassTest, NewConceptSchemaProvisionerTest, MigrationPreflightTest on H2). No booted-app Tier C evolution vector runs on H2."
+      },
+      "destructive_migration_ack": {
+        "claim": "partial",
+        "witnessJob": "npdev-ci-validation.yml#ci-validation",
+        "note": "SurplusDropFlowH2Test and the schema-drop snapshot tests run in the RuntimeHost gate against a real H2; the acknowledgment REST flow on a booted app is not driven in CI."
+      },
+      "promotion_target": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "H2 is the SOURCE of `npdev db promote` (H2 -> Postgres etc.). No CI job promotes into an H2 target."
+      },
+      "backup": {
+        "claim": "supported",
+        "witnessJob": "npdev-ci-validation.yml#ci-validation",
+        "note": "ScheduledH2BackupTest (OPS-10): online BACKUP TO into a directory with newest-N retention, against a real file H2, inside the RuntimeHost gate."
+      },
+      "restore_drill": {
+        "claim": "partial",
+        "witnessJob": "npdev-ci-validation.yml#ci-validation",
+        "note": "DataExportImportRoundTripH2Test and SchemaVaultStoreTest prove the data export/snapshot restore round trip; no test restores a ScheduledH2Backup zip into a fresh database and boots the app on it."
+      },
+      "pagination": {
+        "claim": "supported",
+        "witnessJob": "kernel-quality-gate.yml#kernel-quality-gate",
+        "note": "kernelQualityGate runs :kernel:test, whose DialectConformanceTierBTest vectors (limit, non-overlapping pages, offset past the end) run against H2 by default."
+      },
+      "json_search": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "No engine-side JSON path query exists in the kernel or runtime-support (no JSON_VALUE / jsonb operators). Only JSON round-trip storage is witnessed (vectors J1/J2)."
+      },
+      "flow_durability": {
+        "claim": "partial",
+        "witnessJob": "kernel-quality-gate.yml#kernel-quality-gate",
+        "note": "JdbcFlowInstanceStoreClaimTest (in flowinstance-postgres) proves the SKIP LOCKED claim/lease against a real H2 (no double-resume, expired claim reclaimable). No test kills the process and resumes a waiting flow from H2."
+      }
+    },
+    "postgres": {
+      "boot": {
+        "claim": "supported",
+        "witnessJob": "engine-support.yml#app-on-engine",
+        "note": "A generated app boots, serves CRUD, round-trips non-BMP unicode and preserves rows across a restart against the pinned postgres image (matrix leg postgres)."
+      },
+      "additive_migration": {
+        "claim": "supported",
+        "witnessJob": "engine-support.yml#app-on-engine",
+        "note": "Tier C E1 (nullable column added, rows preserved) and E2 (renamedFrom moves data) run through NPDev's own schema engine against the real engine."
+      },
+      "destructive_migration_ack": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "No real-engine job drives a destructive change through the acknowledgment flow. The mechanism is engine-agnostic and only H2-witnessed; Tier C deliberately forces allowDestructiveRecreate=false."
+      },
+      "promotion_target": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "`npdev db promote` exists and docs name Postgres as the usual target, but no CI job runs a promotion into a real Postgres."
+      },
+      "backup": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "PostgresDialect declares SNAPSHOT_RESTORE but no conformance vector or job takes a backup; the generated toolbox parity job covers start/stop/status/reset, not backup."
+      },
+      "restore_drill": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "No CI restore drill on Postgres. The pre-drop JSONL snapshot restore (`npdev db restore`) is witnessed on H2 only."
+      },
+      "pagination": {
+        "claim": "supported",
+        "witnessJob": "storage-dialect-conformance.yml#conformance",
+        "note": "Tier B against a real pinned Postgres: limitReturnsExactlyN, pagesDoNotOverlapOrGap, offsetPastTheEndReturnsNothing, limitOnlyCaps; app-on-engine also asserts a filtered, ordered query path."
+      },
+      "json_search": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "No JSON path query is implemented. jsonb round-trip is witnessed (storage-dialect-conformance.yml#conformance J1/J2) but that is storage, not search."
+      },
+      "flow_durability": {
+        "claim": "supported",
+        "witnessJob": "npdev-ci-validation.yml#linux-maturity-validation",
+        "note": "flowinstance-postgres Testcontainers tests (PostgresFlowInstanceStoreTest) plus the generated-app Postgres integration tests (AsyncWaitResumeE2EIT) run against a real Postgres. Not run on pull requests."
+      }
+    },
+    "mysql": {
+      "boot": {
+        "claim": "supported",
+        "witnessJob": "engine-support.yml#app-on-engine",
+        "note": "Same app-on-engine proof as Postgres on the pinned mysql image, forced to utf8mb4 (matrix leg mysql); doctor must also fail a utf8mb3 server (doctor-charset-fixture)."
+      },
+      "additive_migration": {
+        "claim": "supported",
+        "witnessJob": "engine-support.yml#app-on-engine",
+        "note": "Tier C E1/E2 against a real MySQL. MySQL commits DDL implicitly (no DDL_IN_TRANSACTION), so a half-applied migration cannot be rolled back; that is a declared limit, not a gap in this cell."
+      },
+      "destructive_migration_ack": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "No real-engine job drives a destructive change through the acknowledgment flow; MySQL's implicit DDL commit makes this the cell most worth a real witness."
+      },
+      "promotion_target": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "No CI job promotes a database into a real MySQL."
+      },
+      "backup": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "MySqlDialect does not declare SNAPSHOT_RESTORE and no job takes a MySQL backup."
+      },
+      "restore_drill": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "No CI restore drill on MySQL."
+      },
+      "pagination": {
+        "claim": "supported",
+        "witnessJob": "storage-dialect-conformance.yml#conformance",
+        "note": "Tier B against a real pinned MySQL 8.4 (same vectors as Postgres), plus the app-on-engine query path."
+      },
+      "json_search": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "No JSON path query is implemented; JSON column round-trip is witnessed (J1/J2), search is not."
+      },
+      "flow_durability": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "docs/FLOWS.md names JdbcFlowInstanceStore for Postgres/H2 only; no CI job resumes a waiting flow on MySQL."
+      }
+    },
+    "sqlserver": {
+      "boot": {
+        "claim": "supported",
+        "witnessJob": "engine-support.yml#app-on-engine",
+        "note": "Same app-on-engine proof on the pinned mssql/server:2022 image (matrix leg sqlserver), including the non-BMP unicode assertion that originally exposed the VARCHAR/NVARCHAR gap."
+      },
+      "additive_migration": {
+        "claim": "supported",
+        "witnessJob": "engine-support.yml#app-on-engine",
+        "note": "Tier C E1/E2 against a real SQL Server."
+      },
+      "destructive_migration_ack": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "No real-engine job drives a destructive change through the acknowledgment flow."
+      },
+      "promotion_target": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "No CI job promotes a database into a real SQL Server."
+      },
+      "backup": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "SqlServerDialect declares SNAPSHOT_RESTORE but no conformance vector or job takes a backup."
+      },
+      "restore_drill": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "No CI restore drill on SQL Server."
+      },
+      "pagination": {
+        "claim": "supported",
+        "witnessJob": "storage-dialect-conformance.yml#conformance",
+        "note": "Tier B against a real pinned SQL Server 2022 (OFFSET/FETCH spelling), plus the app-on-engine query path."
+      },
+      "json_search": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "No JSON path query is implemented; JSON is stored as nvarchar(max) and only its round-trip is witnessed (J1/J2)."
+      },
+      "flow_durability": {
+        "claim": "unsupported",
+        "witnessJob": null,
+        "note": "docs/FLOWS.md names JdbcFlowInstanceStore for Postgres/H2 only; no CI job resumes a waiting flow on SQL Server."
+      }
+    }
+  }
+}
