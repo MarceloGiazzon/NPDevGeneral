@@ -2,12 +2,7 @@ package com.npdev.kernel;
 
 import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.kernel.events.EventEnvelope;
-import com.npdev.kernel.capability.CapabilityPolicyOverride;
 import com.npdev.kernel.capability.CapabilityPolicyOverrides;
-import com.npdev.kernel.capability.CapabilityOpKey;
-import com.npdev.kernel.capability.CircuitBreakerState;
-import com.npdev.kernel.capability.CircuitState;
-import com.npdev.kernel.capability.IdempotencyRecord;
 import com.npdev.kernel.capabilities.CapabilityExecutionPolicy;
 import com.npdev.kernel.errors.ErrorKind;
 import com.npdev.kernel.errors.FailureCodes;
@@ -55,14 +50,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 /**
@@ -76,20 +63,14 @@ public final class KernelRunner implements FlowEngine {
 final EventBus eventBus;
     final InvariantEngine invariantEngine;
     private final FlowDefinitionProvider flowDefinitionProvider;
-    private final CapabilityDispatcher capabilityDispatcher;
     private final ExecutionTracer executionTracer;
     final EventStore eventStore;
     final FlowInstanceStore flowInstanceStore;
     private final CorrelationOwnershipStore correlationOwnershipStore;
-    private final CircuitBreakerStateStore circuitBreakerStateStore;
-    private final BulkheadStore bulkheadStore;
     final IdempotencyStore idempotencyStore;
-    private final CapabilityPolicyOverrides capabilityPolicyOverrides;
-    private final JsonCodec jsonCodec;
     final SchemaValidator schemaValidator;
     EventSchemaProvider eventSchemaProvider = EventSchemaProvider.noop();
     private PermissionEvaluator permissionEvaluator = PermissionEvaluator.allowAll();
-    private final MetricsSink metricsSink;
     private final IdProvider idProvider;
     // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): optional, set-after-construction like
     // eventSchemaProvider/permissionEvaluator above -- a callProcedure flow step is a no-op-safe
@@ -104,46 +85,7 @@ final EventBus eventBus;
     DeferredEventScheduler deferredEventScheduler;
     private final ThreadLocal<String> currentFlowContext = new ThreadLocal<>();
     private static final Object UNRESOLVED = new Object();
-    private static final int CIRCUIT_FAILURE_THRESHOLD = 5;
-    private static final long CIRCUIT_OPEN_DURATION_MS = 30_000L;
-    private static final int BULKHEAD_MAX_CONCURRENT = 10;
-
-    // R2.6 (RUN-4): the kernel-wide capability timeout backstop. Before this,
-    // CapabilityExecutionPolicy.defaults() returned timeoutMs=0 and a model that declared a
-    // capabilityPolicy without a timeout got 0 too, so invokeCapabilityOnce took the synchronous
-    // branch and a capability adapter that never returned hung the calling thread forever. The
-    // adapter-level deadlines shipped for RUN-4 cover the two NPDev network adapters only -- a
-    // custom or third-party CapabilityAdapter still has no deadline at all, which is what this
-    // backstop is for. Resolved with the same "0 means unset -> hardcoded constant" precedence
-    // resolveEffectiveCapabilityPolicy already uses for circuit/bulkhead, so a host-supplied
-    // override of exactly 0 still disables the timeout (and restores the old synchronous path).
-    //
-    // 10 minutes is deliberately far above any legitimate capability duration rather than a tuned
-    // SLA: external-ai-http alone can legitimately spend maxRetries(2)+1 attempts x 120s request
-    // timeout plus backoff, so anything under ~6 minutes would turn a hang backstop into a
-    // functional limit on a working adapter.
-    private static final long DEFAULT_CAPABILITY_TIMEOUT_MS = CapabilityExecutionPolicy.DEFAULT_TIMEOUT_MS;
-
-    private static final AtomicInteger CAPABILITY_THREAD_SEQUENCE = new AtomicInteger();
-
-    // R2.6 (RUN-4): the timeout branch used to be CompletableFuture.supplyAsync(supplier) with no
-    // Executor, which per the JDK contract runs on ForkJoinPool.commonPool(). That pool's workers
-    // are shared, pre-existing and reused, so they do not carry the calling thread's thread-local
-    // state -- and this kernel HAS such state on the capability call stack: currentFlowContext is
-    // set for the whole flow-step loop (see execute) and read by assertCrudInvariantPathAllowed,
-    // which is what stops the deprecated CRUD invariant path from being re-entered during flow
-    // execution. On a commonPool worker that read returns null, so the guard silently stops
-    // guarding instead of throwing. Cancelling on timeout also interrupts a SHARED pool thread.
-    // A dedicated cached pool of daemon threads fixes both: it is sized by demand exactly as the
-    // synchronous path was (one thread per in-flight capability), the threads are named so a stack
-    // dump is readable, daemon so they never hold the JVM open, and interrupting one on timeout
-    // affects nothing but that capability.
-    private static final ExecutorService CAPABILITY_EXECUTOR = Executors.newCachedThreadPool(runnable -> {
-        Thread thread = new Thread(runnable, "npdev-capability-" + CAPABILITY_THREAD_SEQUENCE.incrementAndGet());
-        thread.setDaemon(true);
-        return thread;
-    });
-    private static final int IDEMPOTENCY_RESULT_MAX_CHARS = 16_384;
+    private final CapabilityInvoker capabilityInvoker;
 
     public KernelRunner withEventSchemaProvider(EventSchemaProvider provider) {
         this.eventSchemaProvider = provider == null ? EventSchemaProvider.noop() : provider;
@@ -590,25 +532,25 @@ final EventBus eventBus;
         this.eventBus = eventBus;
         this.invariantEngine = invariantEngine;
         this.flowDefinitionProvider = flowDefinitionProvider;
-        this.capabilityDispatcher = capabilityDispatcher;
         this.executionTracer = executionTracer == null ? ExecutionTracer.NOOP : executionTracer;
         this.eventStore = eventStore;
         this.flowInstanceStore = flowInstanceStore == null ? FlowInstanceStore.noop() : flowInstanceStore;
         this.correlationOwnershipStore = correlationOwnershipStore == null
                 ? CorrelationOwnershipStore.noop()
                 : correlationOwnershipStore;
-        this.circuitBreakerStateStore = circuitBreakerStateStore == null
-                ? CircuitBreakerStateStore.noop()
-                : circuitBreakerStateStore;
-        this.bulkheadStore = bulkheadStore == null ? BulkheadStore.noop() : bulkheadStore;
         this.idempotencyStore = idempotencyStore == null ? IdempotencyStore.noop() : idempotencyStore;
-        this.capabilityPolicyOverrides = capabilityPolicyOverrides == null
-                ? CapabilityPolicyOverrides.empty()
-                : capabilityPolicyOverrides;
-        this.jsonCodec = jsonCodec == null ? JsonCodec.noop() : jsonCodec;
         this.schemaValidator = schemaValidator == null ? SchemaValidator.noop() : schemaValidator;
-        this.metricsSink = metricsSink == null ? MetricsSink.noop() : metricsSink;
         this.idProvider = idProvider == null ? IdProvider.uuid() : idProvider;
+        this.capabilityInvoker = new CapabilityInvoker(
+                capabilityDispatcher,
+                circuitBreakerStateStore == null ? CircuitBreakerStateStore.noop() : circuitBreakerStateStore,
+                bulkheadStore == null ? BulkheadStore.noop() : bulkheadStore,
+                this.idempotencyStore,
+                capabilityPolicyOverrides == null ? CapabilityPolicyOverrides.empty() : capabilityPolicyOverrides,
+                jsonCodec == null ? JsonCodec.noop() : jsonCodec,
+                metricsSink == null ? MetricsSink.noop() : metricsSink,
+                currentFlowContext
+        );
     }
 
     public KernelRunner(
@@ -985,7 +927,7 @@ final EventBus eventBus;
         }
 
         FlowDefinition resumingFlow = flowOpt.get();
-        ExecutionResult shapeRefusal = refuseIfFlowShapeChanged(existing, resumingFlow);
+        ExecutionResult shapeRefusal = FlowRunOutcomes.refuseIfFlowShapeChanged(this, existing, resumingFlow);
         if (shapeRefusal != null) {
             return shapeRefusal;
         }
@@ -998,85 +940,6 @@ final EventBus eventBus;
                 existing.currentStepIndex(),
                 existing.executionId(),
                 resumeContext
-        );
-    }
-
-    /**
-     * REG-238 (boundary B28): refuse to resume a durable instance positionally against a flow whose
-     * step SHAPE changed since that instance was checkpointed.
-     *
-     * <p>Returns {@code null} to allow the resume, or a terminal failure result to refuse it.
-     *
-     * <p><b>Why this writes STUCK to the store rather than just returning a failed result.</b>
-     * Neither resume caller treats a returned FAILED as a reason to stop: the sweep
-     * ({@code ResumeCoordinator.resumeAllWaitingExecutions}) only persists backoff when the result
-     * is WAITING_EVENT or a RuntimeException escapes, and otherwise counts the attempt as a
-     * successful resume; the event-arrival path ({@code ResumeCoordinator.resumeWaitingExecutionsFor})
-     * does the same with no backoff and no claim lease at all. A refusal that left the row in
-     * WAITING_EVENT would therefore be re-selected and refused again indefinitely -- every sweep
-     * tick on the in-proc store, and about once per 30s claim lease on the JDBC one. Writing STUCK
-     * takes the row out of WAITING_EVENT, so both paths stop selecting it, and it does so at the
-     * one choke point both of them funnel through.
-     *
-     * <p><b>Why STUCK specifically</b>, and not FAILED/FAILED_PERMANENT: STUCK is the only status
-     * with a coded operator recovery path ({@link #unstickExecution}), which is exactly the
-     * "fix the model, then put it back" situation this is. {@code markStuck} also preserves
-     * {@code waitingForEventName}, which {@code withUnstuck} requires.
-     *
-     * <p><b>No awaited event is burned.</b> This returns before any step runs, and the awaited
-     * event is only marked consumed inside the await step itself, so after the operator restores
-     * the shape and un-sticks the instance, the original event is still there to resume on.
-     *
-     * <p><b>Instances checkpointed before this guard shipped</b> carry no fingerprint and are
-     * allowed through, once, with a log line. They are deliberately NOT stamped with the current
-     * shape on the way past: stamping at resume time would bless whatever shape happens to be live
-     * at that moment as if it were the checkpointed one, laundering the exact misapplication this
-     * guard exists to catch. A correct backfill would have to know the shape as of checkpoint time,
-     * which by construction no longer exists. Such instances drain out under the old behaviour.
-     */
-    private ExecutionResult refuseIfFlowShapeChanged(FlowInstance existing, FlowDefinition flow) {
-        Object checkpointed = existing.state().get(FlowShapeFingerprint.STATE_KEY);
-        String checkpointedShape = checkpointed == null ? null : checkpointed.toString();
-        if (checkpointedShape == null || checkpointedShape.isBlank()) {
-            LOG.info("Resuming execution " + existing.executionId() + " (flow " + existing.flowName()
-                    + ") without a flow-shape fingerprint -- it was checkpointed before REG-238's guard "
-                    + "existed, so a step-shape change since then cannot be detected for this instance.");
-            return null;
-        }
-
-        String currentShape = flow.getShapeFingerprint();
-        if (checkpointedShape.equals(currentShape)) {
-            return null;
-        }
-
-        String message = "Flow \"" + existing.flowName() + "\" changed step shape since execution "
-                + existing.executionId() + " was checkpointed at step index " + existing.currentStepIndex()
-                + ", so that index no longer identifies the step it parked on; refusing to resume it "
-                + "positionally (checkpointed shape " + checkpointedShape + ", current shape " + currentShape
-                + "). Restore the flow's step shape and then un-stick this execution; un-sticking it "
-                + "without fixing the model first will simply refuse again.";
-        FailureInfo failureInfo = FailureInfo.of(
-                ErrorKind.SYSTEM,
-                FailureCodes.FLOW_SHAPE_CHANGED,
-                message,
-                Map.of(
-                        "checkpointedShape", checkpointedShape,
-                        "currentShape", currentShape,
-                        "currentStepIndex", String.valueOf(existing.currentStepIndex())
-                )
-        );
-        FlowInstance stuck = existing.markStuck(existing.state(), nowEpochMillis(), failureInfo);
-        flowInstanceStore.update(stuck);
-        emitOperationalFailureEvent(stuck);
-        LOG.warning(message);
-        return ExecutionResult.failed(
-                existing.flowName(),
-                List.of(),
-                List.of(),
-                message,
-                existing.executionId(),
-                existing.correlationId(),
-                existing.executionId()
         );
     }
 
@@ -1319,11 +1182,11 @@ final EventBus eventBus;
                     // terminal FlowInstanceStatus/FailureInfo shape either way.
                     FlowInstance failed;
                     if (CompensationRunner.hasAnyOnFailure(flow)) {
-                        CompensationRunner.beginCompensation(state, resolveFailureTerminalStatus(failure), failure.getFailureInfo());
+                        CompensationRunner.beginCompensation(state, FlowRunOutcomes.resolveFailureTerminalStatus(failure), failure.getFailureInfo());
                         CompensationRunner.runCompensations(this, flow, input, state, marker - 1, traceMeta, stepTraces, executionId, correlationId, currentInstance, executionContext);
                         failed = CompensationRunner.finalizeCompensatedFailure(currentInstance[0], state, nowEpochMillis());
                     } else {
-                        failed = switch (resolveFailureTerminalStatus(failure)) {
+                        failed = switch (FlowRunOutcomes.resolveFailureTerminalStatus(failure)) {
                             case FAILED_PERMANENT -> currentInstance[0].markFailedPermanent(
                                     state, nowEpochMillis(), failure.getFailureInfo());
                             case STUCK -> currentInstance[0].markStuck(
@@ -1586,95 +1449,8 @@ final EventBus eventBus;
     // durable-checkpoint rationale this comment used to carry).
     static final StepProgressRecorder NOOP_STEP_PROGRESS_RECORDER = (nextStepIndex, currentState) -> { };
 
-    private static FlowInstanceStatus resolveFailureTerminalStatus(ExecutionResult failure) {
-        if (failure == null || failure.getStatus() == null) {
-            return FlowInstanceStatus.FAILED;
-        }
-        if (failure.getFailureInfo() != null
-                && FailureCodes.RESUME_ATTEMPT_CAP.equals(failure.getFailureInfo().code())) {
-            return FlowInstanceStatus.STUCK;
-        }
-        return switch (failure.getStatus()) {
-            case INPUT_VALIDATION_FAILED, INVARIANT_FAILED, EVENT_PAYLOAD_INVALID -> FlowInstanceStatus.FAILED_PERMANENT;
-            case CAPABILITY_FAILED -> {
-                CapabilityError capabilityError = failure.getCapabilityError();
-                if (capabilityError == null || capabilityError.kind() == null) {
-                    yield FlowInstanceStatus.FAILED;
-                }
-                yield switch (capabilityError.kind()) {
-                    case CONTRACT, AUTH, PERMANENT, NOT_FOUND -> FlowInstanceStatus.FAILED_PERMANENT;
-                    case TRANSIENT, RATE_LIMIT, TIMEOUT -> FlowInstanceStatus.FAILED;
-                };
-            }
-            case EVENT_PERSIST_FAILED, FAILED -> FlowInstanceStatus.FAILED;
-            case WAITING_EVENT, OK -> FlowInstanceStatus.FAILED;
-        };
-    }
-
     void emitOperationalFailureEvent(FlowInstance instance) {
-        if (instance == null) {
-            return;
-        }
-        if (instance.status() == FlowInstanceStatus.FAILED_PERMANENT) {
-            publishOperationalEvent(
-                    "ExecutionFailedPermanent",
-                    Map.of(
-                            "executionId", instance.executionId(),
-                            "correlationId", instance.correlationId(),
-                            "flowName", instance.flowName(),
-                            "errorKind", instance.lastErrorKind() == null ? "SYSTEM" : instance.lastErrorKind(),
-                            "errorCode", instance.lastErrorCode() == null ? FailureCodes.SYSTEM_EXCEPTION : instance.lastErrorCode(),
-                            "failedAtEpochMs", instance.failedAtEpochMs() == null ? nowEpochMillis() : instance.failedAtEpochMs()
-                    ),
-                    instance
-            );
-            return;
-        }
-        if (instance.status() == FlowInstanceStatus.STUCK) {
-            publishOperationalEvent(
-                    "ExecutionStuck",
-                    Map.of(
-                            "executionId", instance.executionId(),
-                            "correlationId", instance.correlationId(),
-                            "flowName", instance.flowName(),
-                            "resumeAttemptCount", instance.resumeAttemptCount(),
-                            "lastResumeErrorCode", instance.lastResumeErrorCode() == null ? FailureCodes.RESUME_ATTEMPT_CAP : instance.lastResumeErrorCode(),
-                            "lastProgressAtEpochMs", instance.lastProgressAtEpochMs() == null ? 0L : instance.lastProgressAtEpochMs()
-                    ),
-                    instance
-            );
-        }
-    }
-
-    private void publishOperationalEvent(
-            String eventName,
-            Map<String, Object> payload,
-            FlowInstance instance
-    ) {
-        try {
-            EventEnvelope envelope = newEnvelope(
-                    nextId("event"),
-                    eventName,
-                    instance.correlationId(),
-                    "system:" + instance.executionId(),
-                    payload,
-                    Map.of(
-                            "flow", instance.flowName(),
-                            "executionId", instance.executionId(),
-                            "eventCategory", "ops"
-                    ),
-                    instance.flowName(),
-                    Math.max(0, instance.currentStepIndex()),
-                    instance.tenantId(),
-                    instance.actorId()
-            );
-            if (eventStore != null) {
-                eventStore.append(envelope);
-            }
-            eventBus.publish(envelope);
-        } catch (RuntimeException ignored) {
-            // Ops event emission must never alter execution outcome.
-        }
+        FlowRunOutcomes.emitOperationalFailureEvent(this, instance);
     }
 
     static String resolveInvariantConceptName(FlowStepDefinition step, FlowDefinition flow) {
@@ -1685,150 +1461,16 @@ final EventBus eventBus;
         return flow.getEntityName();
     }
 
-    private static CapabilityErrorKind classifyCapabilityException(RuntimeException runtimeException) {
-        if (runtimeException instanceof IllegalArgumentException
-                || runtimeException instanceof ClassCastException
-                || runtimeException instanceof UnsupportedOperationException) {
-            return CapabilityErrorKind.CONTRACT;
-        }
-        String message = runtimeException.getMessage() == null ? "" : runtimeException.getMessage().toLowerCase();
-        String typeName = runtimeException.getClass().getName().toLowerCase();
-        if (typeName.contains("auth")
-                || typeName.contains("forbidden")
-                || message.contains("unauthorized")
-                || message.contains("forbidden")
-                || message.contains("access denied")) {
-            return CapabilityErrorKind.AUTH;
-        }
-        if (typeName.contains("rate")
-                || message.contains("rate limit")
-                || message.contains("too many requests")) {
-            return CapabilityErrorKind.RATE_LIMIT;
-        }
-        if (typeName.contains("timeout")
-                || message.contains("timeout")) {
-            return CapabilityErrorKind.TIMEOUT;
-        }
-        if (typeName.contains("transient")
-                || typeName.contains("temporar")) {
-            return CapabilityErrorKind.TRANSIENT;
-        }
-        return CapabilityErrorKind.PERMANENT;
-    }
-
     EffectiveCapabilityPolicy resolveEffectiveCapabilityPolicy(
             FlowStepDefinition step,
             CapabilityExecutionPolicy basePolicy,
             String tenantId
     ) {
-        CapabilityExecutionPolicy safeBase = basePolicy == null
-                ? CapabilityExecutionPolicy.defaults()
-                : basePolicy;
-        CapabilityPolicyOverride override = capabilityPolicyOverrides.find(
-                        step.getCapability(),
-                        step.getOperation()
-                )
-                .orElse(CapabilityPolicyOverride.empty());
-
-        int retryMaxAttempts = positiveOrDefault(override.retryMaxAttempts(), safeBase.retryCount());
-        long retryBaseDelayMs = nonNegativeOrDefault(override.retryBaseDelayMs(), safeBase.retryDelayMs());
-        long retryMaxDelayMs = nonNegativeOrDefault(
-                override.retryMaxDelayMs(),
-                Math.max(retryBaseDelayMs, safeBase.retryDelayMs())
-        );
-        // R2.6 (RUN-4): 0 means unset here exactly as it does for circuit/bulkhead below, so an
-        // undeclared timeout -- whether from CapabilityExecutionPolicy.defaults() or from a model
-        // that declared a capabilityPolicy but no timeoutMs -- resolves to the hardcoded backstop
-        // instead of "no deadline at all". A host-supplied override of exactly 0 still wins and
-        // disables the timeout, which is the escape hatch back to the synchronous path.
-        long timeoutMsBase = safeBase.timeoutMs() > 0 ? safeBase.timeoutMs() : DEFAULT_CAPABILITY_TIMEOUT_MS;
-        long timeoutMs = nonNegativeOrDefault(override.timeoutMs(), timeoutMsBase);
-        // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5 / capabilityPolicy): a declared model
-        // policy's circuitOpenAfterFailures/circuitOpenMs/bulkheadMaxConcurrent now sit BETWEEN the
-        // host-supplied override and the hardcoded constant -- the same 3-tier precedence retry/
-        // timeout already have (override > model > hardcoded default), previously missing entirely
-        // for these three: every capability silently used the hardcoded constants regardless of what
-        // the model declared.
-        int circuitAfterFailuresBase = safeBase.circuitOpenAfterFailures() > 0
-                ? safeBase.circuitOpenAfterFailures() : CIRCUIT_FAILURE_THRESHOLD;
-        long circuitOpenMsBase = safeBase.circuitOpenMs() > 0 ? safeBase.circuitOpenMs() : CIRCUIT_OPEN_DURATION_MS;
-        int bulkheadMaxConcurrentBase = safeBase.bulkheadMaxConcurrent() > 0
-                ? safeBase.bulkheadMaxConcurrent() : BULKHEAD_MAX_CONCURRENT;
-        int circuitAfterFailures = positiveOrDefault(override.circuitOpenAfterFailures(), circuitAfterFailuresBase);
-        long circuitOpenMs = nonNegativeOrDefault(override.circuitOpenMs(), circuitOpenMsBase);
-        int bulkheadMaxConcurrent = positiveOrDefault(override.bulkheadMaxConcurrent(), bulkheadMaxConcurrentBase);
-        boolean cacheIdempotencyFailures = override.cacheIdempotencyFailures() != null
-                && override.cacheIdempotencyFailures();
-
-        return new EffectiveCapabilityPolicy(
-                retryMaxAttempts,
-                retryBaseDelayMs,
-                Math.max(retryBaseDelayMs, retryMaxDelayMs),
-                timeoutMs,
-                circuitAfterFailures,
-                circuitOpenMs,
-                bulkheadMaxConcurrent,
-                cacheIdempotencyFailures
-        );
-    }
-
-    private static int positiveOrDefault(Integer value, int fallback) {
-        if (value == null || value <= 0) {
-            return fallback;
-        }
-        return value;
-    }
-
-    private static long nonNegativeOrDefault(Long value, long fallback) {
-        if (value == null || value < 0L) {
-            return fallback;
-        }
-        return value;
-    }
-
-    private static long retryDelayForAttempt(EffectiveCapabilityPolicy policy, int attempt) {
-        if (policy == null || policy.retryBaseDelayMs() <= 0) {
-            return 0L;
-        }
-        int exponent = Math.max(0, attempt - 1);
-        long multiplier;
-        if (exponent >= 20) {
-            multiplier = 1L << 20;
-        } else {
-            multiplier = 1L << exponent;
-        }
-        long computed = policy.retryBaseDelayMs() * multiplier;
-        if (computed < 0L) {
-            return policy.retryMaxDelayMs();
-        }
-        return Math.min(computed, Math.max(policy.retryBaseDelayMs(), policy.retryMaxDelayMs()));
+        return capabilityInvoker.resolveEffectiveCapabilityPolicy(step, basePolicy, tenantId);
     }
 
     static CapabilityError reclassifyIntegrityViolation(CapabilityError error) {
-        if (error == null
-                || error.kind() == CapabilityErrorKind.CONTRACT
-                || !isIntegrityViolationMessage(error.message())) {
-            return error;
-        }
-        return new CapabilityError(
-                error.code(),
-                error.message(),
-                CapabilityErrorKind.CONTRACT,
-                error.details()
-        );
-    }
-
-    private static boolean isIntegrityViolationMessage(String message) {
-        if (message == null || message.isBlank()) {
-            return false;
-        }
-        String normalized = message.toLowerCase(java.util.Locale.ROOT);
-        return normalized.contains("referential integrity")
-                || normalized.contains("integrity constraint")
-                || normalized.contains("referential/constraint violation")
-                || normalized.contains("foreign key")
-                || normalized.contains("unique index or primary key")
-                || normalized.contains("unique constraint");
+        return CapabilityInvoker.reclassifyIntegrityViolation(error);
     }
 
     CapabilityResult invokeCapabilityWithPolicy(
@@ -1842,332 +1484,8 @@ final EventBus eventBus;
             Map<String, Object> traceInfo,
             String tenantId
     ) {
-        long startedAtMs = nowEpochMillis();
-        CapabilityOpKey opKey = new CapabilityOpKey(
-                normalizeTenantOrDefault(tenantId),
-                Objects.requireNonNull(step.getCapability(), "capability is required"),
-                Objects.requireNonNull(step.getOperation(), "operation is required")
-        );
-        String idempotencyState = (idempotencyKey == null || idempotencyKey.isBlank()) ? "NONE" : "MISS";
-        String bulkheadState = "NOT_USED";
-        int attemptsUsed = 0;
-        safeMetricInc("npdev.capability.call", capabilityMetricTags(
-                opKey,
-                null,
-                CircuitState.CLOSED.name(),
-                bulkheadState,
-                idempotencyState
-        ));
-        long now = nowEpochMillis();
-        CircuitBreakerState circuit = circuitBreakerStateStore.get(opKey);
-        String circuitState = circuitStateName(circuit, CircuitState.CLOSED.name());
-        updateCapabilityTraceInfo(traceInfo, attemptsUsed, circuitState, bulkheadState, idempotencyState);
-        CircuitGate gate = gateCircuit(opKey, circuit, now);
-        if (!gate.allowed()) {
-            circuitState = currentCircuitState(opKey, CircuitState.OPEN.name());
-            updateCapabilityTraceInfo(traceInfo, attemptsUsed, circuitState, bulkheadState, idempotencyState);
-            CapabilityResult circuitFailure = circuitOpenFailure(step, opKey, circuit);
-            safeMetricFailure(
-                    opKey,
-                    startedAtMs,
-                    circuitFailure.error(),
-                    circuitState,
-                    bulkheadState,
-                    idempotencyState
-            );
-            return circuitFailure;
-        }
-
-        int maxConcurrent = gate.halfOpenTrial() ? 1 : effectivePolicy.bulkheadMaxConcurrent();
-        if (!bulkheadStore.tryAcquire(opKey, maxConcurrent, now)) {
-            bulkheadState = "REJECTED";
-            circuitState = currentCircuitState(opKey, circuitStateName(circuit, CircuitState.CLOSED.name()));
-            updateCapabilityTraceInfo(traceInfo, attemptsUsed, circuitState, bulkheadState, idempotencyState);
-            CapabilityResult rejected = CapabilityResult.failure(
-                    "CAPABILITY_BULKHEAD_FULL",
-                    "Capability bulkhead is full for " + step.getCapability() + "." + step.getOperation(),
-                    CapabilityErrorKind.TRANSIENT,
-                    capabilityDetails(
-                            "capability", step.getCapability(),
-                            "operation", step.getOperation(),
-                            "tenantId", opKey.tenantId(),
-                            "maxConcurrent", maxConcurrent
-                    )
-            );
-            safeMetricFailure(
-                    opKey,
-                    startedAtMs,
-                    rejected.error(),
-                    circuitState,
-                    bulkheadState,
-                    idempotencyState
-            );
-            return rejected;
-        }
-        bulkheadState = "ACQUIRED";
-        updateCapabilityTraceInfo(traceInfo, attemptsUsed, circuitState, bulkheadState, idempotencyState);
-
-        try {
-            if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-                Optional<IdempotencyRecord> cachedRecord = idempotencyStore.find(
-                        opKey.tenantId(),
-                        opKey.capabilityName(),
-                        opKey.operationName(),
-                        idempotencyKey
-                );
-                if (cachedRecord.isPresent()) {
-                    IdempotencyRecord record = cachedRecord.get();
-                    idempotencyState = "HIT";
-                    updateCapabilityTraceInfo(traceInfo, attemptsUsed, circuitState, bulkheadState, idempotencyState);
-                    if (record.success()) {
-                        onCapabilitySuccess(opKey, now);
-                        circuitState = currentCircuitState(opKey, CircuitState.CLOSED.name());
-                        updateCapabilityTraceInfo(traceInfo, attemptsUsed, circuitState, bulkheadState, idempotencyState);
-                        CapabilityResult cachedSuccess = CapabilityResult.success(fromCachedSuccessRecord(record));
-                        safeMetricSuccess(
-                                opKey,
-                                startedAtMs,
-                                circuitState,
-                                bulkheadState,
-                                idempotencyState
-                        );
-                        return cachedSuccess;
-                    }
-                    CapabilityResult cachedFailure = fromCachedFailureRecord(step, record);
-                    if (cachedFailure != null) {
-                        onCapabilityFailure(
-                                opKey,
-                                cachedFailure.error(),
-                                now,
-                                effectivePolicy.circuitOpenAfterFailures(),
-                                effectivePolicy.circuitOpenMs()
-                        );
-                        safeMetricFailure(
-                                opKey,
-                                startedAtMs,
-                                cachedFailure.error(),
-                                currentCircuitState(opKey, CircuitState.CLOSED.name()),
-                                bulkheadState,
-                                idempotencyState
-                        );
-                        return cachedFailure;
-                    }
-                } else {
-                    idempotencyState = "MISS";
-                    updateCapabilityTraceInfo(traceInfo, attemptsUsed, circuitState, bulkheadState, idempotencyState);
-                }
-            }
-
-            long startedAt = nowEpochMillis();
-            int maxAttempts = Math.max(1, effectivePolicy.retryMaxAttempts());
-            CapabilityResult lastFailure = null;
-
-            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-                attemptsUsed = attempt;
-                updateCapabilityTraceInfo(traceInfo, attemptsUsed, circuitState, bulkheadState, idempotencyState);
-                long remainingTimeoutMs = remainingTimeout(effectivePolicy.timeoutMs(), startedAt);
-                if (effectivePolicy.timeoutMs() > 0 && remainingTimeoutMs <= 0) {
-                    lastFailure = timeoutCapabilityResult(step, attempt, effectivePolicy.timeoutMs());
-                    break;
-                }
-
-                CapabilityResult attemptResult = invokeCapabilityOnce(
-                        step,
-                        args,
-                        state,
-                        correlationId,
-                        idempotencyKey,
-                        remainingTimeoutMs,
-                        attempt
-                );
-
-                if (attemptResult.ok()) {
-                    onCapabilitySuccess(opKey, nowEpochMillis());
-                    if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-                        idempotencyStore.saveSuccess(
-                                opKey.tenantId(),
-                                opKey.capabilityName(),
-                                opKey.operationName(),
-                                idempotencyKey,
-                                encodeIdempotencyResult(attemptResult.value()),
-                                nowEpochMillis()
-                        );
-                    }
-                    safeMetricSuccess(
-                            opKey,
-                            startedAtMs,
-                            currentCircuitState(opKey, CircuitState.CLOSED.name()),
-                            bulkheadState,
-                            idempotencyState
-                    );
-                    updateCapabilityTraceInfo(
-                            traceInfo,
-                            attemptsUsed,
-                            currentCircuitState(opKey, CircuitState.CLOSED.name()),
-                            bulkheadState,
-                            idempotencyState
-                    );
-                    return attemptResult;
-                }
-
-                CapabilityResult normalized = normalizeCapabilityFailure(step, attemptResult, attempt);
-                CapabilityError error = normalized.error();
-                if (error == null) {
-                    lastFailure = normalized;
-                    break;
-                }
-                CapabilityErrorKind kind = policy.applyFailureClassification(error.kind());
-                if (kind == null) {
-                    kind = error.kind();
-                }
-                if (kind != error.kind()) {
-                    error = new CapabilityError(error.code(), error.message(), kind, error.details());
-                    normalized = CapabilityResult.failure(error);
-                }
-                lastFailure = normalized;
-
-                if (isRetryable(kind) && attempt < maxAttempts) {
-                    long retryDelayMs = retryDelayForAttempt(effectivePolicy, attempt);
-                    if (!sleepForRetry(retryDelayMs)) {
-                        lastFailure = CapabilityResult.failure(
-                                "CAPABILITY_RETRY_INTERRUPTED",
-                                "Capability retry was interrupted",
-                                CapabilityErrorKind.TRANSIENT,
-                                capabilityDetails(
-                                        "capability", step.getCapability(),
-                                        "operation", step.getOperation(),
-                                        "attempt", attempt,
-                                        "maxAttempts", maxAttempts,
-                                        "retryDelayMs", retryDelayMs
-                                )
-                        );
-                        break;
-                    }
-                    continue;
-                }
-                break;
-            }
-
-            if (lastFailure == null) {
-                lastFailure = CapabilityResult.failure(
-                        "CAPABILITY_POLICY_EXHAUSTED",
-                        "Capability invocation exhausted retry policy",
-                        CapabilityErrorKind.PERMANENT,
-                        capabilityDetails(
-                                "capability", step.getCapability(),
-                                "operation", step.getOperation(),
-                                "retryCount", maxAttempts
-                        )
-                );
-            }
-            CapabilityError finalError = lastFailure.error();
-            if (finalError != null) {
-                onCapabilityFailure(
-                        opKey,
-                        finalError,
-                        nowEpochMillis(),
-                        effectivePolicy.circuitOpenAfterFailures(),
-                        effectivePolicy.circuitOpenMs()
-                );
-                if (idempotencyKey != null
-                        && !idempotencyKey.isBlank()
-                        && shouldCacheFailure(finalError, effectivePolicy.cacheIdempotencyFailures())) {
-                    idempotencyStore.saveFailure(
-                            opKey.tenantId(),
-                            opKey.capabilityName(),
-                            opKey.operationName(),
-                            idempotencyKey,
-                            finalError.kind().name() + ":" + finalError.code(),
-                            nowEpochMillis()
-                    );
-                }
-                safeMetricFailure(
-                        opKey,
-                        startedAtMs,
-                        finalError,
-                        currentCircuitState(opKey, circuitStateName(circuit, CircuitState.CLOSED.name())),
-                        bulkheadState,
-                        idempotencyState
-                );
-                updateCapabilityTraceInfo(
-                        traceInfo,
-                        attemptsUsed,
-                        currentCircuitState(opKey, circuitStateName(circuit, CircuitState.CLOSED.name())),
-                        bulkheadState,
-                        idempotencyState
-                );
-            } else {
-                safeMetricFailure(
-                        opKey,
-                        startedAtMs,
-                        null,
-                        currentCircuitState(opKey, circuitStateName(circuit, CircuitState.CLOSED.name())),
-                        bulkheadState,
-                        idempotencyState
-                );
-                updateCapabilityTraceInfo(
-                        traceInfo,
-                        attemptsUsed,
-                        currentCircuitState(opKey, circuitStateName(circuit, CircuitState.CLOSED.name())),
-                        bulkheadState,
-                        idempotencyState
-                );
-            }
-            return lastFailure;
-        } finally {
-            bulkheadStore.release(opKey);
-        }
-    }
-
-    private static void updateCapabilityTraceInfo(
-            Map<String, Object> traceInfo,
-            int attemptsUsed,
-            String circuitState,
-            String bulkheadState,
-            String idempotencyState
-    ) {
-        if (traceInfo == null) {
-            return;
-        }
-        traceInfo.put("attemptCount", attemptsUsed);
-        traceInfo.put("circuitState", circuitState);
-        traceInfo.put("bulkheadState", bulkheadState);
-        traceInfo.put("idempotencyState", idempotencyState);
-    }
-
-    private CircuitGate gateCircuit(CapabilityOpKey key, CircuitBreakerState state, long now) {
-        CircuitBreakerState current = state == null ? CircuitBreakerState.closed() : state;
-        if (current.state() == CircuitState.OPEN) {
-            if (now < current.halfOpenAllowedAtMs()) {
-                return new CircuitGate(false, false);
-            }
-            CircuitBreakerState halfOpen = new CircuitBreakerState(
-                    CircuitState.HALF_OPEN,
-                    current.consecutiveFailures(),
-                    current.openedAtMs(),
-                    current.lastFailureAtMs(),
-                    current.halfOpenAllowedAtMs(),
-                    0
-            );
-            circuitBreakerStateStore.put(key, halfOpen);
-            return new CircuitGate(true, true);
-        }
-        if (current.state() == CircuitState.HALF_OPEN) {
-            if (current.halfOpenTrialCount() >= 1) {
-                return new CircuitGate(false, true);
-            }
-            CircuitBreakerState trial = new CircuitBreakerState(
-                    CircuitState.HALF_OPEN,
-                    current.consecutiveFailures(),
-                    current.openedAtMs(),
-                    current.lastFailureAtMs(),
-                    current.halfOpenAllowedAtMs(),
-                    1
-            );
-            circuitBreakerStateStore.put(key, trial);
-            return new CircuitGate(true, true);
-        }
-        return new CircuitGate(true, false);
+        return capabilityInvoker.invokeCapabilityWithPolicy(
+                step, args, state, correlationId, idempotencyKey, policy, effectivePolicy, traceInfo, tenantId);
     }
 
     // LNCH-8: single choke point for both fresh-start (execute) and resumed (resumeExecution)
@@ -2185,575 +1503,18 @@ final EventBus eventBus;
         long startedAtMs = nowEpochMillis();
         ExecutionResult result = executeFlowInstance(flow, input, initialInstance, startStepIndex, traceId, executionContext);
         long durationMs = nowEpochMillis() - startedAtMs;
-        String outcome = flowOutcomeTag(result.getStatus());
-        logFlowOutcome(flow.getName(), result, outcome, durationMs);
+        String outcome = FlowRunOutcomes.flowOutcomeTag(result.getStatus());
+        FlowRunOutcomes.logFlowOutcome(flow.getName(), result, outcome, durationMs);
         recordFlowOutcomeMetric(flow.getName(), outcome, durationMs);
         return result;
     }
 
-    private void logFlowOutcome(String flowName, ExecutionResult result, String outcome, long durationMs) {
-        LOG.info(String.format(
-                "{\"event\":\"npdev.flow.outcome\",\"flowName\":\"%s\",\"executionId\":\"%s\","
-                        + "\"correlationId\":\"%s\",\"outcome\":\"%s\",\"status\":\"%s\",\"durationMs\":%d}",
-                jsonEscape(flowName),
-                jsonEscape(result.getExecutionId()),
-                jsonEscape(result.getCorrelationId()),
-                jsonEscape(outcome),
-                result.getStatus() == null ? "" : result.getStatus().name(),
-                durationMs
-        ));
-    }
-
     private void recordFlowOutcomeMetric(String flowName, String outcome, long durationMs) {
         Map<String, String> tags = new LinkedHashMap<>();
-        tags.put("flowName", safeTag(flowName, "<none>"));
+        tags.put("flowName", CapabilityInvoker.safeTag(flowName, "<none>"));
         tags.put("outcome", outcome);
-        safeMetricInc("npdev.flow.outcome", tags);
-        safeMetricObserveMs("npdev.flow.duration_ms", durationMs, tags);
-    }
-
-    private static String flowOutcomeTag(ExecutionStatus status) {
-        if (status == null) {
-            return "unknown";
-        }
-        return switch (status) {
-            case OK -> "success";
-            case WAITING_EVENT -> "waiting";
-            default -> "failure";
-        };
-    }
-
-    private static String jsonEscape(String value) {
-        if (value == null) {
-            return "";
-        }
-        StringBuilder sb = new StringBuilder(value.length());
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            switch (c) {
-                case '"' -> sb.append("\\\"");
-                case '\\' -> sb.append("\\\\");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                default -> {
-                    if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-                }
-            }
-        }
-        return sb.toString();
-    }
-
-    private void safeMetricInc(String name, Map<String, String> tags) {
-        try {
-            metricsSink.inc(name, tags);
-        } catch (RuntimeException ignored) {
-            // Metrics must never break execution.
-        }
-    }
-
-    private void safeMetricObserveMs(String name, long durationMs, Map<String, String> tags) {
-        try {
-            metricsSink.observeMs(name, durationMs, tags);
-        } catch (RuntimeException ignored) {
-            // Metrics must never break execution.
-        }
-    }
-
-    private void safeMetricSuccess(
-            CapabilityOpKey opKey,
-            long startedAtMs,
-            String circuitState,
-            String bulkheadState,
-            String idempotencyState
-    ) {
-        Map<String, String> tags = capabilityMetricTags(opKey, null, circuitState, bulkheadState, idempotencyState);
-        safeMetricInc("npdev.capability.success", tags);
-        safeMetricObserveMs("npdev.capability.duration_ms", nowEpochMillis() - startedAtMs, tags);
-    }
-
-    private void safeMetricFailure(
-            CapabilityOpKey opKey,
-            long startedAtMs,
-            CapabilityError error,
-            String circuitState,
-            String bulkheadState,
-            String idempotencyState
-    ) {
-        Map<String, String> tags = capabilityMetricTags(opKey, error, circuitState, bulkheadState, idempotencyState);
-        safeMetricInc("npdev.capability.failure", tags);
-        safeMetricObserveMs("npdev.capability.duration_ms", nowEpochMillis() - startedAtMs, tags);
-    }
-
-    private static Map<String, String> capabilityMetricTags(
-            CapabilityOpKey opKey,
-            CapabilityError error,
-            String circuitState,
-            String bulkheadState,
-            String idempotencyState
-    ) {
-        Map<String, String> tags = new LinkedHashMap<>();
-        tags.put("tenantId", safeTag(opKey == null ? null : opKey.tenantId(), "default"));
-        tags.put("capabilityName", safeTag(opKey == null ? null : opKey.capabilityName(), "<none>"));
-        tags.put("operationName", safeTag(opKey == null ? null : opKey.operationName(), "<none>"));
-        tags.put("errorKind", error == null || error.kind() == null ? "NONE" : error.kind().name());
-        tags.put("circuitState", safeTag(circuitState, CircuitState.CLOSED.name()));
-        tags.put("bulkhead", safeTag(bulkheadState, "NOT_USED"));
-        tags.put("idempotency", safeTag(idempotencyState, "NONE"));
-        return Map.copyOf(tags);
-    }
-
-    private String currentCircuitState(CapabilityOpKey opKey, String fallback) {
-        try {
-            CircuitBreakerState current = circuitBreakerStateStore.get(opKey);
-            if (current == null || current.state() == null) {
-                return fallback;
-            }
-            return current.state().name();
-        } catch (RuntimeException ignored) {
-            return fallback;
-        }
-    }
-
-    private static String circuitStateName(CircuitBreakerState state, String fallback) {
-        if (state == null || state.state() == null) {
-            return fallback;
-        }
-        return state.state().name();
-    }
-
-    private static String safeTag(String value, String fallback) {
-        if (value == null) {
-            return fallback;
-        }
-        String trimmed = value.trim();
-        return trimmed.isBlank() ? fallback : trimmed;
-    }
-
-    private void onCapabilitySuccess(CapabilityOpKey key, long now) {
-        circuitBreakerStateStore.reset(key);
-    }
-
-    private void onCapabilityFailure(
-            CapabilityOpKey key,
-            CapabilityError error,
-            long now,
-            int circuitOpenAfterFailures,
-            long circuitOpenMs
-    ) {
-        if (error == null) {
-            return;
-        }
-        if (!isCircuitFailure(error.kind())) {
-            CircuitBreakerState current = circuitBreakerStateStore.get(key);
-            if (current != null && current.state() != CircuitState.CLOSED) {
-                circuitBreakerStateStore.reset(key);
-            }
-            return;
-        }
-
-        // REG-37: the increment and the open/closed decision now happen INSIDE the store, under a
-        // lock it owns. This used to be get() -> compute here -> put(), which is a read-modify-write
-        // race: concurrent failures both read the same count, both write count+1, and the breaker
-        // opens late under exactly the load it exists for. The rule itself lives in
-        // CircuitBreakerTransitions so both backends provably apply the same one.
-        circuitBreakerStateStore.recordFailure(key, now, circuitOpenAfterFailures, circuitOpenMs);
-    }
-
-    private static boolean isCircuitFailure(CapabilityErrorKind kind) {
-        return kind == CapabilityErrorKind.TRANSIENT
-                || kind == CapabilityErrorKind.TIMEOUT
-                || kind == CapabilityErrorKind.RATE_LIMIT;
-    }
-
-    private static boolean isRetryable(CapabilityErrorKind kind) {
-        return kind == CapabilityErrorKind.TRANSIENT
-                || kind == CapabilityErrorKind.TIMEOUT
-                || kind == CapabilityErrorKind.RATE_LIMIT;
-    }
-
-    private static boolean shouldCacheFailure(CapabilityError error, boolean cacheIdempotencyFailures) {
-        if (!cacheIdempotencyFailures) {
-            return false;
-        }
-        if (error == null) {
-            return false;
-        }
-        CapabilityErrorKind kind = error.kind();
-        return kind == CapabilityErrorKind.PERMANENT
-                || kind == CapabilityErrorKind.CONTRACT
-                || kind == CapabilityErrorKind.AUTH
-                || kind == CapabilityErrorKind.NOT_FOUND;
-    }
-
-    private CapabilityResult fromCachedFailureRecord(FlowStepDefinition step, IdempotencyRecord record) {
-        if (record == null || record.success()) {
-            return null;
-        }
-        String raw = record.errorCode();
-        if (raw == null || raw.isBlank()) {
-            return CapabilityResult.failure(
-                    "CAPABILITY_IDEMPOTENCY_CACHED_FAILURE",
-                    "Cached idempotency failure blocks capability execution",
-                    CapabilityErrorKind.PERMANENT,
-                    capabilityDetails(
-                            "capability", step.getCapability(),
-                            "operation", step.getOperation(),
-                            "idempotencyKey", record.idempotencyKey()
-                    )
-            );
-        }
-        String kindPart = raw;
-        String codePart = raw;
-        int separator = raw.indexOf(':');
-        if (separator > 0) {
-            kindPart = raw.substring(0, separator);
-            codePart = raw.substring(separator + 1);
-        }
-        CapabilityErrorKind kind = parseKind(kindPart);
-        if (kind == CapabilityErrorKind.TRANSIENT
-                || kind == CapabilityErrorKind.TIMEOUT
-                || kind == CapabilityErrorKind.RATE_LIMIT) {
-            return null;
-        }
-        return CapabilityResult.failure(
-                codePart == null || codePart.isBlank() ? "CAPABILITY_IDEMPOTENCY_CACHED_FAILURE" : codePart,
-                "Cached idempotency failure blocks capability execution",
-                kind,
-                capabilityDetails(
-                        "capability", step.getCapability(),
-                        "operation", step.getOperation(),
-                        "idempotencyKey", record.idempotencyKey()
-                )
-        );
-    }
-
-    private Object fromCachedSuccessRecord(IdempotencyRecord record) {
-        if (record == null) {
-            return null;
-        }
-        String payload = record.resultJsonRedacted();
-        if (payload == null || payload.isBlank()) {
-            return null;
-        }
-        try {
-            return jsonCodec.fromJsonToObject(payload);
-        } catch (RuntimeException exception) {
-            return payload;
-        }
-    }
-
-    private static CapabilityErrorKind parseKind(String value) {
-        if (value == null || value.isBlank()) {
-            return CapabilityErrorKind.PERMANENT;
-        }
-        try {
-            return CapabilityErrorKind.valueOf(value.trim().toUpperCase());
-        } catch (IllegalArgumentException exception) {
-            return CapabilityErrorKind.PERMANENT;
-        }
-    }
-
-    private String encodeIdempotencyResult(Object value) {
-        String serialized = jsonCodec.toJson(value);
-        if (serialized == null) {
-            return "null";
-        }
-        if (serialized.length() > IDEMPOTENCY_RESULT_MAX_CHARS) {
-            return serialized.substring(0, IDEMPOTENCY_RESULT_MAX_CHARS);
-        }
-        return serialized;
-    }
-
-    private CapabilityResult circuitOpenFailure(
-            FlowStepDefinition step,
-            CapabilityOpKey opKey,
-            CircuitBreakerState state
-    ) {
-        return CapabilityResult.failure(
-                "CAPABILITY_CIRCUIT_OPEN",
-                "Circuit breaker is open for " + step.getCapability() + "." + step.getOperation(),
-                CapabilityErrorKind.TRANSIENT,
-                capabilityDetails(
-                        "tenantId", opKey.tenantId(),
-                        "capability", opKey.capabilityName(),
-                        "operation", opKey.operationName(),
-                        "circuitState", state == null ? CircuitState.OPEN.name() : state.state().name(),
-                        "halfOpenAllowedAtMs", state == null ? 0L : state.halfOpenAllowedAtMs()
-                )
-        );
-    }
-
-    private CapabilityResult invokeCapabilityOnce(
-            FlowStepDefinition step,
-            List<Object> args,
-            Map<String, Object> state,
-            String correlationId,
-            String idempotencyKey,
-            long timeoutMs,
-            int attempt
-    ) {
-        List<Object> effectiveArgs = (args == null) ? new ArrayList<>() : args;
-        List<Object> callArgs = args;
-        Object conceptForDebug = null;
-
-        if (args != null
-                && step != null
-                && step.getCapability() != null
-                && step.getOperation() != null) {
-
-            String capName = step.getCapability().trim().toLowerCase();
-            String opName = step.getOperation().trim().toLowerCase();
-            boolean isPersistence = "persistence".equals(capName);
-
-            // NPDev convention (debug only for now): infer a concept name for persistence.save
-            // from invariant scope or runtime entity name.
-            if (isPersistence && "save".equals(opName) && args.size() == 1) {
-                Object concept = step.getInvariantScope();
-                if (concept == null || String.valueOf(concept).isBlank()) {
-                    concept = state == null ? null : state.get("_npdevEntityName");
-                }
-                if (concept != null && !String.valueOf(concept).isBlank()) {
-                    conceptForDebug = concept;
-                }
-
-                // Tenant isolation for the FLOW-DRIVEN persistence path: stamp the caller's tenant
-                // (carried in flow state, seeded from the ExecutionContext at execute() time) into the
-                // entity payload so the capability adapter writes the tenant_id column. The tenant is
-                // taken from the execution context, never from caller-supplied data -- mirroring the
-                // generated-CRUD path. Reads via capability findById (by globally-unique UUID) are
-                // unaffected (IDs are globally-unique UUIDs, not enumerable); query()/list reads are
-                // tenant-scoped below, the same way.
-                if (args.get(0) instanceof Map<?, ?> entityMap) {
-                    Map<String, Object> stamped = new LinkedHashMap<>();
-                    for (Map.Entry<?, ?> entry : entityMap.entrySet()) {
-                        stamped.put(String.valueOf(entry.getKey()), entry.getValue());
-                    }
-                    stamped.put("tenantId", flowStateTenantId(state));
-                    callArgs = List.of(stamped);
-                    effectiveArgs = callArgs;
-                }
-            }
-
-            // Tenant isolation for flow-driven persistence READS: query()/list() take
-            // (concept, criteria) -- stamp the caller's tenant into the criteria map the same way
-            // save() stamps it into the entity map, so a flow author gets row-scoped reads for free
-            // instead of having to remember to add a tenantId criterion themselves.
-            if (isPersistence && ("query".equals(opName) || "list".equals(opName)) && args.size() == 2) {
-                Object concept = args.get(0);
-                if (concept != null && !String.valueOf(concept).isBlank()) {
-                    conceptForDebug = concept;
-                }
-                Map<String, Object> stamped = new LinkedHashMap<>();
-                if (args.get(1) instanceof Map<?, ?> criteriaMap) {
-                    for (Map.Entry<?, ?> entry : criteriaMap.entrySet()) {
-                        stamped.put(String.valueOf(entry.getKey()), entry.getValue());
-                    }
-                }
-                stamped.put("tenantId", flowStateTenantId(state));
-                callArgs = List.of(concept, stamped);
-                effectiveArgs = callArgs;
-            }
-        }
-
-        // Verbose capability debug so we can see which adapter is being used at runtime
-        LOG.info(String.format(
-                "NPDEV-CAPABILITY :: cap=%s op=%s adapterId=%s argsCount=%s concept=%s correlationId=%s attempt=%s",
-                step == null ? null : step.getCapability(),
-                step == null ? null : step.getOperation(),
-                step == null ? null : step.getCapabilityAdapterId(),
-                effectiveArgs == null ? 0 : effectiveArgs.size(),
-                conceptForDebug,
-                correlationId,
-                attempt
-        ));
-CapabilityCall call = new CapabilityCall(
-                Objects.requireNonNull(step.getCapability(), "capability is required"),
-                step.getCapabilityType(),
-                step.getCapabilityAdapterId(),
-                Objects.requireNonNull(step.getOperation(), "operation is required"),
-                callArgs,
-                correlationId,
-                idempotencyKey
-        );
-        Map<String, Object> contextState = new LinkedHashMap<>(state == null ? Map.of() : state);
-        contextState.put("capabilityAttempt", attempt);
-        if (conceptForDebug != null) {
-            contextState.put("_npdevConcept", conceptForDebug);
-        }
-        Map<String, Object> finalContextState = Map.copyOf(contextState);
-
-        // REG-231: a target that itself doesn't need bounding (see
-        // CapabilityDispatcher#requiresBoundedAsyncDispatch) takes the SAME synchronous path as
-        // timeoutMs<=0 below -- deliberately reusing it rather than adding a parallel branch, since
-        // R2.6's own comment on capabilityInvocationPropagatingCurrentFlow already establishes that
-        // running on the caller's thread with no hop at all is the one case that never needs
-        // currentFlowContext propagation in the first place (there's no thread boundary to cross).
-        if (timeoutMs <= 0 || !capabilityDispatcher.requiresBoundedAsyncDispatch(call)) {
-            try {
-                return capabilityDispatcher.invoke(call, finalContextState);
-            } catch (RuntimeException runtimeException) {
-                return CapabilityResult.failure(
-                        "CAPABILITY_DISPATCHER_EXCEPTION",
-                        runtimeException.getMessage() == null
-                                ? "Capability dispatcher threw runtime exception"
-                                : runtimeException.getMessage(),
-                        classifyCapabilityException(runtimeException),
-                        capabilityDetails(
-                                "capability", step.getCapability(),
-                                "operation", step.getOperation(),
-                                "adapterId", step.getCapabilityAdapterId(),
-                                "attempt", attempt,
-                                "exceptionType", runtimeException.getClass().getName()
-                        )
-                );
-            }
-        }
-
-        CompletableFuture<CapabilityResult> future = CompletableFuture.supplyAsync(
-                capabilityInvocationPropagatingCurrentFlow(call, finalContextState),
-                CAPABILITY_EXECUTOR
-        );
-        try {
-            return future.get(timeoutMs, TimeUnit.MILLISECONDS);
-        } catch (TimeoutException timeoutException) {
-            future.cancel(true);
-            return timeoutCapabilityResult(step, attempt, timeoutMs);
-        } catch (InterruptedException interruptedException) {
-            Thread.currentThread().interrupt();
-            return CapabilityResult.failure(
-                    "CAPABILITY_DISPATCHER_INTERRUPTED",
-                    "Capability invocation interrupted",
-                    CapabilityErrorKind.TRANSIENT,
-                    capabilityDetails(
-                            "capability", step.getCapability(),
-                            "operation", step.getOperation(),
-                            "adapterId", step.getCapabilityAdapterId(),
-                            "attempt", attempt
-                    )
-            );
-        } catch (ExecutionException executionException) {
-            Throwable cause = executionException.getCause();
-            RuntimeException runtime = cause instanceof RuntimeException runtimeException
-                    ? runtimeException
-                    : new RuntimeException(cause == null ? "Capability dispatcher execution failed" : cause.getMessage(), cause);
-            return CapabilityResult.failure(
-                    "CAPABILITY_DISPATCHER_EXCEPTION",
-                    runtime.getMessage() == null
-                            ? "Capability dispatcher threw runtime exception"
-                            : runtime.getMessage(),
-                    classifyCapabilityException(runtime),
-                    capabilityDetails(
-                            "capability", step.getCapability(),
-                            "operation", step.getOperation(),
-                            "adapterId", step.getCapabilityAdapterId(),
-                            "attempt", attempt,
-                            "exceptionType", runtime.getClass().getName()
-                    )
-            );
-        }
-    }
-
-    /**
-     * The tenant a flow-driven persistence write is owned by: taken from flow state (seeded from the
-     * caller's ExecutionContext at execute() time), falling back to "default" when no tenant claim is
-     * present (e.g. an unauthenticated trial boot). Mirrors the generated-CRUD currentTenantId().
-     */
-    private static String flowStateTenantId(Map<String, Object> state) {
-        Object tenant = state == null ? null : state.get("tenantId");
-        String tenantId = tenant == null ? null : String.valueOf(tenant).trim();
-        return (tenantId == null || tenantId.isBlank()) ? "default" : tenantId;
-    }
-
-    private static CapabilityResult normalizeCapabilityFailure(
-            FlowStepDefinition step,
-            CapabilityResult result,
-            int attempt
-    ) {
-        if (result.error() != null) {
-            CapabilityError error = result.error();
-            Map<String, Object> details = new LinkedHashMap<>();
-            for (Map.Entry<String, Object> entry : error.details().entrySet()) {
-                if (entry.getKey() != null && entry.getValue() != null) {
-                    details.put(entry.getKey(), entry.getValue());
-                }
-            }
-            details.put("attempt", attempt);
-            if (step.getCapability() != null) {
-                details.put("capability", step.getCapability());
-            }
-            if (step.getOperation() != null) {
-                details.put("operation", step.getOperation());
-            }
-            if (step.getCapabilityAdapterId() != null) {
-                details.put("adapterId", step.getCapabilityAdapterId());
-            }
-            return CapabilityResult.failure(new CapabilityError(
-                    error.code(),
-                    error.message(),
-                    error.kind(),
-                    details
-            ));
-        }
-        return CapabilityResult.failure(
-                "CAPABILITY_RESULT_INVALID",
-                "Capability dispatcher returned failed result without error",
-                CapabilityErrorKind.PERMANENT,
-                capabilityDetails(
-                        "attempt", attempt,
-                        "capability", step.getCapability(),
-                        "operation", step.getOperation(),
-                        "adapterId", step.getCapabilityAdapterId()
-                )
-        );
-    }
-
-    private static CapabilityResult timeoutCapabilityResult(
-            FlowStepDefinition step,
-            int attempt,
-            long timeoutMs
-    ) {
-        return CapabilityResult.failure(
-                "CAPABILITY_TIMEOUT",
-                "Capability invocation timed out after " + timeoutMs + "ms",
-                CapabilityErrorKind.TIMEOUT,
-                capabilityDetails(
-                        "capability", step.getCapability(),
-                        "operation", step.getOperation(),
-                        "adapterId", step.getCapabilityAdapterId(),
-                        "attempt", attempt,
-                        "timeoutMs", timeoutMs
-                )
-        );
-    }
-
-    private static boolean isTimeoutError(CapabilityError error) {
-        return error != null && "CAPABILITY_TIMEOUT".equals(error.code());
-    }
-
-    private static long remainingTimeout(long timeoutMs, long startedAtEpochMs) {
-        if (timeoutMs <= 0) {
-            return 0;
-        }
-        long elapsed = nowEpochMillis() - startedAtEpochMs;
-        return timeoutMs - elapsed;
-    }
-
-    private static boolean sleepForRetry(long retryDelayMs) {
-        if (retryDelayMs <= 0) {
-            return true;
-        }
-        try {
-            TimeUnit.MILLISECONDS.sleep(retryDelayMs);
-            return true;
-        } catch (InterruptedException interruptedException) {
-            Thread.currentThread().interrupt();
-            return false;
-        }
+        capabilityInvoker.safeMetricInc("npdev.flow.outcome", tags);
+        capabilityInvoker.safeMetricObserveMs("npdev.flow.duration_ms", durationMs, tags);
     }
 
     static String resolveIdempotencyKey(
@@ -2769,25 +1530,6 @@ CapabilityCall call = new CapabilityCall(
             return null;
         }
         return String.valueOf(resolved);
-    }
-
-    private static Map<String, Object> capabilityDetails(Object... pairs) {
-        if (pairs == null || pairs.length == 0) {
-            return Map.of();
-        }
-        if (pairs.length % 2 != 0) {
-            throw new IllegalArgumentException("pairs length must be even");
-        }
-        Map<String, Object> out = new LinkedHashMap<>();
-        for (int i = 0; i < pairs.length; i += 2) {
-            Object keyRaw = pairs[i];
-            Object value = pairs[i + 1];
-            if (keyRaw == null || value == null) {
-                continue;
-            }
-            out.put(String.valueOf(keyRaw), value);
-        }
-        return Map.copyOf(out);
     }
 
     void traceSuccessfulStep(
@@ -2887,43 +1629,6 @@ CapabilityCall call = new CapabilityCall(
 
     static long nowEpochMillis() {
         return System.currentTimeMillis();
-    }
-
-    /**
-     * R2.6 (RUN-4): runs capabilityDispatcher.invoke on a CAPABILITY_EXECUTOR worker while making it
-     * observe the calling thread's currentFlowContext, so the timeout branch and the synchronous
-     * branch behave identically as far as this kernel's own thread-local state is concerned.
-     * Without this, assertCrudInvariantPathAllowed reads null on the worker and stops rejecting the
-     * deprecated CRUD invariant path re-entered from inside a capability during flow execution.
-     *
-     * Only this kernel's own thread-local is propagated. SLF4J's MDC (correlationId, stamped by
-     * CorrelationIdFilter) and Spring's RequestContextHolder are the other two thread-bound things
-     * a capability can care about, but neither slf4j nor Spring is on the kernel's compile
-     * classpath -- adding either as a dependency just to copy a context map is not something this
-     * item needs, and the host owns those seams.
-     */
-    private Supplier<CapabilityResult> capabilityInvocationPropagatingCurrentFlow(
-            CapabilityCall call,
-            Map<String, Object> contextState
-    ) {
-        String callerFlowContext = currentFlowContext.get();
-        return () -> {
-            String workerPrevious = currentFlowContext.get();
-            if (callerFlowContext == null) {
-                currentFlowContext.remove();
-            } else {
-                currentFlowContext.set(callerFlowContext);
-            }
-            try {
-                return capabilityDispatcher.invoke(call, contextState);
-            } finally {
-                if (workerPrevious == null) {
-                    currentFlowContext.remove();
-                } else {
-                    currentFlowContext.set(workerPrevious);
-                }
-            }
-        };
     }
 
     private void assertCrudInvariantPathAllowed() {
@@ -3447,12 +2152,6 @@ CapabilityCall call = new CapabilityCall(
         static StepExecutionOutcome failed(ExecutionResult result) {
             return new StepExecutionOutcome(false, null, result);
         }
-    }
-
-    private record CircuitGate(
-            boolean allowed,
-            boolean halfOpenTrial
-    ) {
     }
 
     record EffectiveCapabilityPolicy(

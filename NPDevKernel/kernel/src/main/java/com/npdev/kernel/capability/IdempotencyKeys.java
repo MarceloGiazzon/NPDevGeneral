@@ -8,7 +8,7 @@ import java.security.NoSuchAlgorithmException;
  * Bounds the length of an idempotency key before it is used as storage key material (REG-36).
  *
  * <p><b>The asymmetry that made this a bug.</b> The cached success <em>value</em> has always been
- * bounded ({@code KernelRunner.IDEMPOTENCY_RESULT_MAX_CHARS}). The <em>key</em> that addresses it was
+ * bounded ({@code CapabilityInvoker.IDEMPOTENCY_RESULT_MAX_CHARS}). The <em>key</em> that addresses it was
  * not, even though it is the more caller-influenced of the two: it comes either from a model author's
  * {@code idempotencyKeyField} pointing at request data, or straight off an {@code Idempotency-Key}
  * request header. An oversized key exceeds Postgres's btree index-entry limit, so the post-success
