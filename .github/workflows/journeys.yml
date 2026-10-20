@@ -1,0 +1,90 @@
+name: Identity journeys
+
+# JRN-1: scripts/quality/run-journeys.ps1 generates NPDevSamples/journeys (identity pack, jwt auth),
+# boots it on a freshly wiped database with a local SMTP sink and drives the real identity journeys
+# over REST: self-signup, password reset, invitation, change password, sign-out (cookie expired AND
+# old token refused) and per-device session revocation. An audit found password reset broken in every
+# generated app and sign-out leaving the cookie alive while every gate was green; this is the test
+# that would have caught both.
+#
+# Windows because the runner stops its process tree through Win32_Process, like the other app-booting
+# runners. Direct-to-main is the only landing path (CLAUDE.md: never open a PR), so push is a trigger;
+# the nightly run catches drift that no push touched.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: journeys-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  journeys:
+    name: Identity journeys (REST)
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        shell: pwsh
+
+    env:
+      NPDEV_WORKSPACE: ${{ github.workspace }}
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build
+      CI: true
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+
+    steps:
+      - name: Checkout NPDev
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Stage RuntimeHost libs (deterministic; not cache-dependent)
+        timeout-minutes: 30
+        run: pwsh -NoProfile -File scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars
+
+      - name: Run identity journeys
+        timeout-minutes: 20
+        run: pwsh -NoProfile -File scripts/quality/run-journeys.ps1
+
+      - name: Upload journeys evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journeys-evidence
+          if-no-files-found: ignore
+          path: |
+            scripts/reports/out/journeys-report.json
+            NPDevSamples/journeys/Output/RunOutput/journeys/rest-report.json
+            NPDevSamples/journeys/Output/RunOutput/journeys/mail.jsonl
+            NPDevSamples/journeys/Output/RunOutput/journeys/sink.stderr.log
+            NPDevSamples/journeys/Output/App/journeys-boot.stdout.log
+            NPDevSamples/journeys/Output/App/journeys-boot.stderr.log
