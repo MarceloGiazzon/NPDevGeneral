@@ -34,6 +34,15 @@
     Skip generate + build and boot what is already under the sample's Output\App (iterating on the
     journeys themselves). The daily/CI run never uses it.
 
+.PARAMETER SkipBrowser
+    Run only the REST journeys. The default also drives the login page and the reset-password page
+    in a real headless browser (ScrapForAI): sign in (wrong then right password), Create-account tab,
+    the mailed link, choosing a password, and signing in with it; then a reset requested from the
+    reset page, its mailed link, and signing in with the newest password.
+
+.PARAMETER InstallBrowsers
+    Also run `npx playwright install chromium` first. CI needs it; a developer machine usually has it.
+
 .PARAMETER ReportPath
     Where to write the JSON report (schemaVersion npdev-journeys-result.v1).
 #>
@@ -43,6 +52,8 @@ param(
     [int]$SmtpPort = 2526,
     [int]$BootTimeoutSeconds = 300,
     [switch]$ReuseBuild,
+    [switch]$SkipBrowser,
+    [switch]$InstallBrowsers,
     [string]$ReportPath = "scripts/reports/out/journeys-report.json"
 )
 
@@ -55,6 +66,7 @@ try {
 . (Join-Path $repoRoot "scripts\npdev-common.ps1")
 Set-StrictMode -Off
 . (Join-Path $repoRoot "NPDevSamples\scripts\sample-common.ps1")
+. (Join-Path $repoRoot "NPDevSamples\scripts\browser\scrapforai-harness.ps1")
 
 function Write-Section { param([string]$m) Write-Host "== $m ==" -ForegroundColor Cyan }
 
@@ -100,6 +112,7 @@ $report = [ordered]@{
     sampleId      = $SampleId
     stages        = [ordered]@{}
     rest          = $null
+    browser       = @()
     status        = "failed"
 }
 function Write-JsonReport {
@@ -222,7 +235,84 @@ try {
     $restExit = $LASTEXITCODE
     if (Test-Path -LiteralPath $restReport) { $report.rest = Get-Content -Raw -LiteralPath $restReport | ConvertFrom-Json }
 
-    $allGreen = ($restExit -eq 0)
+    $browserGreen = $true
+    if (-not $SkipBrowser) {
+        Write-Section "Browser journeys (login page, Create account, reset-password page)"
+        $routineDir = Join-Path $repoRoot "NPDevSamples\scripts\browser\browser-routines"
+        $browserDir = Join-Path $evidenceDir "browser"
+        New-Item -ItemType Directory -Force -Path $browserDir | Out-Null
+        $runStamp = (Get-Date).ToString("yyyyMMddHHmmss")
+        $person = "browser-$runStamp@example.test"
+        $signupPassword = "Browser-signup-pass-1"
+        $resetPassword = "Browser-reset-pass-2"
+        # A wrong password makes Chrome log a 401 for the fetch the page itself handles correctly; the
+        # static login/reset pages carry no favicon, so Chrome logs one 404 per page load.
+        $allowed = @("responded with a status of 401", "responded with a status of 404")
+
+        function Get-MailedLink {
+            param([string]$Address, [int]$After)
+            $deadline = (Get-Date).AddSeconds(20)
+            while ((Get-Date) -lt $deadline) {
+                $lines = @(if (Test-Path -LiteralPath $mailFile) { Get-Content -LiteralPath $mailFile | Where-Object { $_.Trim() } } else { @() })
+                for ($i = $After; $i -lt $lines.Count; $i++) {
+                    $rec = $lines[$i] | ConvertFrom-Json
+                    if (@($rec.to | ForEach-Object { "$_".ToLowerInvariant() }) -contains $Address.ToLowerInvariant()) {
+                        $m = [regex]::Match([string]$rec.body, 'https?://[^/\s]+(/reset-password\.html\?[^\s"<>]+)')
+                        if ($m.Success) { return $m.Groups[1].Value }
+                    }
+                }
+                Start-Sleep -Milliseconds 400
+            }
+            return $null
+        }
+        function Get-MailCount { if (Test-Path -LiteralPath $mailFile) { return @(Get-Content -LiteralPath $mailFile | Where-Object { $_.Trim() }).Count } else { return 0 } }
+
+        function Invoke-BrowserJourney {
+            param([string]$RoutineName, [hashtable]$Variables = @{}, [string]$TargetPath = "")
+            $name = [System.IO.Path]::GetFileNameWithoutExtension($RoutineName)
+            Info ("=== Browser journey: " + $name + " ===")
+            $status = "passed"; $message = "green"
+            $result = Invoke-ScrapRoutine -Context $scrapCtx -RoutinePath (Join-Path $routineDir $RoutineName) -Variables $Variables -TargetPathOverride $TargetPath
+            try { Assert-RoutineGreen -Result $result -Label $name -AllowConsoleErrorSubstrings $allowed | Out-Null }
+            catch { $status = "failed"; $message = $_.Exception.Message; $script:browserGreen = $false }
+            Save-RoutineEvidence -Result $result -OutDir $browserDir -Name $name | Out-Null
+            $report.browser += [pscustomobject]@{ routine = $name; status = $status; message = $message }
+            return ($status -eq "passed")
+        }
+
+        $scrapCtx = $null
+        try {
+            Initialize-ScrapForAI -InstallBrowsers:$InstallBrowsers | Out-Null
+            $scrapCtx = Start-ScrapForAI -AppBaseUrl $baseUrl
+
+            # 1. the admin the REST half created signs in through the real login page
+            Invoke-BrowserJourney "journeys-signin-verify-routine.json" @{ username = "journey-admin"; password = "Admin-journey-pass-1" } | Out-Null
+
+            # 2. Create account -> mailed link -> choose a password -> sign in with it
+            $before = Get-MailCount
+            if (Invoke-BrowserJourney "journeys-signup-verify-routine.json" @{ email = $person }) {
+                $link = Get-MailedLink -Address $person -After $before
+                if ($null -eq $link) { $browserGreen = $false; $report.browser += [pscustomobject]@{ routine = "signup-mailed-link"; status = "failed"; message = "no reset-password link was mailed to $person" } }
+                elseif (Invoke-BrowserJourney "journeys-set-password-verify-routine.json" @{ password = $signupPassword } $link) {
+                    Invoke-BrowserJourney "journeys-signin-verify-routine.json" @{ username = $person; password = $signupPassword } | Out-Null
+                }
+            }
+
+            # 3. forgot password: request from the reset page -> mailed link -> new password -> sign in
+            $before = Get-MailCount
+            if (Invoke-BrowserJourney "journeys-reset-request-verify-routine.json" @{ username = $person }) {
+                $link = Get-MailedLink -Address $person -After $before
+                if ($null -eq $link) { $browserGreen = $false; $report.browser += [pscustomobject]@{ routine = "reset-mailed-link"; status = "failed"; message = "no reset-password link was mailed to $person" } }
+                elseif (Invoke-BrowserJourney "journeys-set-password-verify-routine.json" @{ password = $resetPassword } $link) {
+                    Invoke-BrowserJourney "journeys-signin-verify-routine.json" @{ username = $person; password = $resetPassword } | Out-Null
+                }
+            }
+        }
+        catch { $browserGreen = $false; $report.browser += [pscustomobject]@{ routine = "browser-harness"; status = "failed"; message = $_.Exception.Message } }
+        finally { if ($null -ne $scrapCtx) { Stop-ScrapForAI $scrapCtx } }
+    }
+
+    $allGreen = ($restExit -eq 0) -and $browserGreen
     $report.status = if ($allGreen) { "passed" } else { "failed" }
     Write-JsonReport
 

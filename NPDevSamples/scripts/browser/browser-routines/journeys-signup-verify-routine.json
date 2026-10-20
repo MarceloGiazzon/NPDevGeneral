@@ -1,0 +1,19 @@
+{
+  "scenarioName": "journeys-signup-golden-scenario",
+  "targetPath": "/login.html",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true, "viewport": { "width": 1000, "height": 800 } },
+  "variables": { "email": "PLACEHOLDER", "name": "Browser Person" },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#tabSignup", "state": "visible" },
+    { "action": "click", "selector": "#tabSignup", "label": "Open the Create account tab" },
+    { "action": "waitForSelector", "selector": "#signupEmail", "state": "visible", "label": "Self-signup is on, so the form is offered" },
+    { "action": "fill", "selector": "#signupEmail", "valueFromVariable": "email" },
+    { "action": "fill", "selector": "#signupName", "valueFromVariable": "name" },
+    { "action": "click", "selector": "#signupForm button[type=\"submit\"]", "label": "Send link" },
+    { "action": "waitForSelector", "selector": "#signupSent", "state": "visible" },
+    { "action": "screenshot", "name": "signup_link_sent" },
+    { "action": "assertHidden", "selector": "#errorBanner", "label": "No error banner after a valid signup" },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}
