@@ -1,0 +1,25 @@
+id: REG-268
+title: >-
+  The generated SQL Server backup sidecar and verify job could not write their ./backups and ./logs bind mounts on Linux
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-10-20
+closed: 2026-10-20
+source: >-
+  BKP-2 restore drill, first CI run (engine-support run 39360952514, commit ea20ed07): the drill only passed after
+  its own chmod 0777 retry; the sidecar log showed `tee: /logs/backup-sidecar.log: Permission denied`.
+surface: NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DockerDeploymentEmitter.java, .github/workflows/engine-support.yml
+detail: |
+  The mssql image runs as uid 10001 while Docker creates a missing ./backups or ./logs bind source root-owned on a
+  fresh Linux checkout, so `docker compose --profile backup up -d backup` died on a stock Linux host. Postgres and
+  MySQL images run as root and were unaffected. Docker Desktop on Windows/macOS hides the problem.
+resolution: >-
+  01033dbd: the server-file-backup engine's `backup` and `backup-verify` services get `user: "0:0"` and the verify
+  script chmods its staged .bak so the mssql scratch server can read it. DockerDeploymentEmitterSqlServerBackupTest
+  pins the compose and script. The CI drill no longer retries and fails on any Permission denied; engine-support run
+  39363426546 (cec8b16b) passed first time. The engine matrix backup/restore_drill cells for sqlserver are now supported.
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DockerDeploymentEmitter.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/DockerDeploymentEmitterSqlServerBackupTest.java
+  - .github/workflows/engine-support.yml

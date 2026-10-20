@@ -183,14 +183,14 @@
         "note": "No CI job promotes a database into a real SQL Server."
       },
       "backup": {
-        "claim": "unsupported",
-        "witnessJob": null,
-        "note": "SqlServerDialect declares SNAPSHOT_RESTORE but no conformance vector or job takes a backup."
+        "claim": "supported",
+        "witnessJob": "engine-support.yml#app-on-engine",
+        "note": "The generated `backup` sidecar takes a BACKUP DATABASE ... CHECKSUM .bak into ./backups on the pinned mssql/server image (sqlserver leg, 'Backup drill' steps)."
       },
       "restore_drill": {
-        "claim": "unsupported",
-        "witnessJob": null,
-        "note": "No CI restore drill on SQL Server."
+        "claim": "supported",
+        "witnessJob": "engine-support.yml#app-on-engine",
+        "note": "The generated `backup-verify` job restores that .bak into a scratch server, DBCC CHECKDB passes and the seeded rows read back (sqlserver leg, 'Backup drill' steps)."
       },
       "pagination": {
         "claim": "supported",
