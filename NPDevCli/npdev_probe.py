@@ -238,6 +238,15 @@ def _read_active() -> dict:
 # The verbs
 # ---------------------------------------------------------------------------------------------
 
+def _java_executable(java_home: str | None) -> "Path | str":
+    """`$JAVA_HOME/bin/java.exe` on Windows, `$JAVA_HOME/bin/java` elsewhere (XPLAT-2b: the `.exe`
+    name does not exist on Linux/macOS, so Popen died with FileNotFoundError); bare `java` on PATH
+    when JAVA_HOME is unset or points nowhere."""
+    if java_home and Path(java_home).exists():
+        return Path(java_home) / "bin" / ("java.exe" if os.name == "nt" else "java")
+    return "java"
+
+
 def run_probe_start(app_dir: str, agent_port: int, wait_seconds: float, json_out: bool) -> int:
     agent = ensure_jacocoagent()
     final_app, port = _resolve_final_app(Path(app_dir))
@@ -246,8 +255,7 @@ def run_probe_start(app_dir: str, agent_port: int, wait_seconds: float, json_out
     run_dir = probe_runs_dir() / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    java_home = os.environ.get("JAVA_HOME")
-    java = Path(java_home) / "bin" / "java.exe" if java_home and Path(java_home).exists() else "java"
+    java = _java_executable(os.environ.get("JAVA_HOME"))
     # output=tcpserver, NOT output=file: file mode only flushes on clean JVM exit, and a probe
     # session is precisely where the app gets killed or times out (S6.2). TCP mode is also what
     # makes `dump` work at all.
