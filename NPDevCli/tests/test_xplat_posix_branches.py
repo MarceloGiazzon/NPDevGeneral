@@ -52,7 +52,7 @@ class ProbeJavaExecutableTests(unittest.TestCase):
         for name in ("posix", "nt"):
             with mock.patch.object(npdev_probe, "os", _fake_os(name)):
                 self.assertEqual(npdev_probe._java_executable(None), "java")
-                self.assertEqual(npdev_probe._java_executable(r"Z:\definitely\not\here"), "java")
+                self.assertEqual(npdev_probe._java_executable(os.path.join(os.sep, "definitely", "not", "here")), "java")
 
 
 class TerminateBranchTests(unittest.TestCase):
@@ -183,8 +183,9 @@ class ClaudeDesktopConfigPathTests(unittest.TestCase):
                          / "claude_desktop_config.json")
 
     def test_windows_still_uses_appdata(self):
-        path = self._path("win32", "nt", APPDATA=r"C:\Users\x\AppData\Roaming", XDG_CONFIG_HOME="/ignored")
-        self.assertEqual(path, Path(r"C:\Users\x\AppData\Roaming") / "Claude" / "claude_desktop_config.json")
+        roaming = os.path.join(os.sep, "roaming-appdata")
+        path = self._path("win32", "nt", APPDATA=roaming, XDG_CONFIG_HOME="/ignored")
+        self.assertEqual(path, Path(roaming) / "Claude" / "claude_desktop_config.json")
         self.assertIsNone(self._path("win32", "nt"))
 
 
