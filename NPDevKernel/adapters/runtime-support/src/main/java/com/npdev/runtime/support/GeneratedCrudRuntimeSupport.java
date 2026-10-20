@@ -9,24 +9,16 @@ import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
-import com.npdev.dsl.v1.compiled.CompiledOrchestration;
-import com.npdev.dsl.v1.compiled.CompiledOrchestrationAction;
-import com.npdev.dsl.v1.compiled.CompiledOrchestrationTrigger;
 import com.npdev.dsl.v1.compiled.CompiledReferenceSemantics;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.CompiledStateTransition;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
-import com.npdev.dsl.v1.expr.ComputedExpression;
-import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityRegistry;
-import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.FlowStepDefinition;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.KernelRunner;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.UserScopedExpressions;
-import com.npdev.kernel.concepts.ConceptListRequest;
-import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.events.EventEnvelope;
 import com.npdev.kernel.audit.AuditRecord;
 import com.npdev.kernel.capability.IdempotencyRecord;
@@ -45,13 +37,8 @@ import com.npdev.kernel.security.PermissionRequirement;
 import com.npdev.kernel.security.PermissionSubject;
 import com.npdev.runtime.support.crud.bonds.BondRuntimeShape;
 import com.npdev.runtime.support.crud.valuecoercion.DslTypeCoercionSupport;
-import com.npdev.runtime.support.crud.orchestration.EventCapabilityOrchestration;
 import com.npdev.runtime.support.crud.orchestration.EventCreateOrchestration;
-import com.npdev.runtime.support.crud.orchestration.EventScheduleOrchestration;
 import com.npdev.runtime.support.crud.orchestration.OrchestrationActionExecutionResult;
-import com.npdev.runtime.support.crud.orchestration.OrchestrationExecutionClaim;
-import com.npdev.runtime.support.crud.orchestration.RuntimeOrchestration;
-import com.npdev.runtime.support.crud.orchestration.RuntimeOrchestrationAction;
 import com.npdev.runtime.support.crud.orchestration.ScheduledEventRecord;
 import com.npdev.runtime.support.crud.scheduling.ScheduledEventSql;
 import com.npdev.runtime.support.crud.uniqueness.CompoundUniqueFieldLookup;
@@ -62,7 +49,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.Query;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -75,16 +61,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
-import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -103,24 +83,16 @@ import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import static com.npdev.runtime.support.CrudAuditDiffSupport.describeFieldChangesJson;
+import static com.npdev.runtime.support.CrudAuditDiffSupport.describeFieldDiff;
 import static com.npdev.runtime.support.crud.bonds.BondNamingSupport.normalizeTenantForBondCheck;
 import static com.npdev.runtime.support.crud.bonds.BondNamingSupport.referenceTargetName;
-import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.asBoolean;
-import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.readPathValue;
-import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.resolveConditionValue;
-import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.resolveStateMachineGuardValue;
-import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.valuesEqual;
 import static com.npdev.runtime.support.crud.executioncontext.PayloadClaimsSupport.asNonBlankString;
 import static com.npdev.runtime.support.crud.executioncontext.PayloadClaimsSupport.extractCurrentId;
 import static com.npdev.runtime.support.crud.executioncontext.PayloadClaimsSupport.immutablePayload;
 import static com.npdev.runtime.support.crud.executioncontext.PayloadClaimsSupport.parseRoles;
 import static com.npdev.runtime.support.crud.executioncontext.PayloadClaimsSupport.toPayloadMap;
-import static com.npdev.runtime.support.crud.orchestration.OrchestrationSupport.coerceMappedValue;
-import static com.npdev.runtime.support.crud.orchestration.OrchestrationSupport.extractResultAdapterId;
-import static com.npdev.runtime.support.crud.orchestration.OrchestrationSupport.resolveOrchestrationSubjectId;
-import static com.npdev.runtime.support.crud.orchestration.OrchestrationSupport.serializePayloadForIdempotency;
 import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.extractVersion;
-import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.hasMapKey;
 import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.isLifecycleMissing;
 import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.readLifecycleToken;
 import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.readLifecycleValue;
@@ -128,27 +100,16 @@ import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.readO
 import static com.npdev.runtime.support.crud.schemaexpr.SchemaExpressionSupport.cloneSchemaDefaultValue;
 import static com.npdev.runtime.support.crud.schemaexpr.SchemaExpressionSupport.evaluateSchemaExpression;
 import static com.npdev.runtime.support.crud.scheduling.ScheduledEventSupport.buildScheduleEvidencePayload;
-import static com.npdev.runtime.support.crud.scheduling.ScheduledEventSupport.buildScheduleKey;
 import static com.npdev.runtime.support.crud.scheduling.ScheduledEventSupport.nullToEmpty;
 import static com.npdev.runtime.support.crud.scheduling.ScheduledEventSupport.sanitizeScheduleLimit;
 import static com.npdev.runtime.support.crud.scheduling.ScheduledEventSupport.sanitizeScheduleOffset;
 import static com.npdev.runtime.support.crud.scheduling.ScheduledEventSupport.toScheduledEventRecord;
 import static com.npdev.runtime.support.crud.sqlnaming.SqlNamingSupport.columnName;
-import static com.npdev.runtime.support.crud.sqlnaming.SqlNamingSupport.existsByIdSql;
-import static com.npdev.runtime.support.crud.sqlnaming.SqlNamingSupport.fetchCurrentStatusSql;
 import static com.npdev.runtime.support.crud.sqlnaming.SqlNamingSupport.tableName;
 import static com.npdev.runtime.support.crud.uniqueness.InvariantMessageSupport.collectUniqueInvariantRefs;
-import static com.npdev.runtime.support.crud.uniqueness.InvariantMessageSupport.extractFieldPath;
-import static com.npdev.runtime.support.crud.uniqueness.InvariantMessageSupport.extractPathFromMessage;
-import static com.npdev.runtime.support.crud.uniqueness.InvariantMessageSupport.inferInvariantFromMessage;
 import static com.npdev.runtime.support.crud.valuecoercion.DslTypeCoercionSupport.normalizeByDslType;
 import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.normalizeType;
 import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.readPayloadValue;
-import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.referenceValuesEqual;
-import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toBoolean;
-import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toInteger;
-import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toLong;
-import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toOffsetDateTime;
 import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toTimestamp;
 import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toUuid;
 import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.writeObjectValue;
@@ -168,7 +129,6 @@ public final class GeneratedCrudRuntimeSupport {
     private static final String SCHEDULE_STATUS_PROCESSING = "PROCESSING";
     private static final String SCHEDULE_STATUS_PROCESSED = "PROCESSED";
     private static final String SCHEDULE_STATUS_FAILED = "FAILED";
-    private static final int DEFAULT_SCHEDULE_DELAY_SECONDS = 60;
 
     public record InvariantViolationDetail(
             String code,
@@ -259,15 +219,16 @@ public final class GeneratedCrudRuntimeSupport {
     private final Supplier<CompiledModel> modelSupplier;
     private final KernelRunner kernelRunner;
     private final EntityManager entityManager;
-    private final CapabilityDispatcher capabilityDispatcher;
-    private final CapabilityRegistry capabilityRegistry;
     private final DataSource dataSource;
     private final RuntimeClock runtimeClock;
-    private final OrchestrationExecutionRegistry orchestrationExecutionRegistry;
     private final RuntimeInvariantEngineFactory runtimeInvariantEngineFactory;
     private final AuditLogStore auditLogStore;
     private final PermissionEvaluator permissionEvaluator;
     private final IdempotencyStore idempotencyStore;
+    private final CrudLifecycleSupport lifecycleSupport;
+    private final CrudOrchestrationSupport orchestrationSupport;
+    private final CrudSchemaValidationSupport schemaValidationSupport;
+    private final CrudReferenceLookupSupport referenceLookupSupport;
     // REG-241: handles from every currently-registered orchestration subscription, so a reload can
     // close them before re-registering against the new model. Access is synchronized on itself --
     // the constructor's initial registration and a later ModelReloadListener-driven reload are the
@@ -275,7 +236,6 @@ public final class GeneratedCrudRuntimeSupport {
     // reloads under its own write lock), but nothing stops a reload racing this class's OWN
     // constructor-adjacent state in a test double, so the lock is taken explicitly rather than relied
     // on implicitly.
-    private final List<AutoCloseable> orchestrationSubscriptions = new ArrayList<>();
     private ConceptGateway conceptGateway;
 
     // Fallback existence check for cross-concept reference validation when there is no
@@ -296,24 +256,22 @@ public final class GeneratedCrudRuntimeSupport {
     // tenant-scoped settings (connector secrets, AI spend caps, file store) then got no tenant, or the
     // reserved "default" sentinel an anonymous publish stamps. Optional collaborators, set after
     // construction (like withFieldDefaults) so every existing call site keeps compiling.
-    private static final String UNSET_TENANT_SENTINEL = "default";
-    private volatile String orchestrationFallbackTenant;
-    private volatile CapabilityDispatcher orchestrationCapabilityDispatcher;
 
     /** The app's home tenant (npdev.tenant.default-id), used when an event carries no real tenant. */
     public GeneratedCrudRuntimeSupport withOrchestrationFallbackTenant(String tenantId) {
-        this.orchestrationFallbackTenant = tenantId == null || tenantId.isBlank() ? null : tenantId.trim();
+        orchestrationSupport.setOrchestrationFallbackTenant(tenantId);
         return this;
     }
 
     /** The dispatcher orchestration capability actions invoke -- e.g. the policy-enforcing wrapper (RUN-1). */
     public GeneratedCrudRuntimeSupport withOrchestrationCapabilityDispatcher(CapabilityDispatcher dispatcher) {
-        this.orchestrationCapabilityDispatcher = dispatcher;
+        orchestrationSupport.setOrchestrationCapabilityDispatcher(dispatcher);
         return this;
     }
 
     public GeneratedCrudRuntimeSupport withConceptGateway(ConceptGateway conceptGateway) {
         this.conceptGateway = conceptGateway;
+        referenceLookupSupport.setConceptGateway(conceptGateway);
         return this;
     }
 
@@ -422,20 +380,24 @@ public final class GeneratedCrudRuntimeSupport {
         this.modelSupplier = modelSupplier;
         this.kernelRunner = kernelRunner;
         this.entityManager = entityManager;
-        this.capabilityDispatcher = capabilityDispatcher;
-        this.capabilityRegistry = capabilityRegistry;
         this.dataSource = dataSource;
         this.runtimeClock = runtimeClock == null ? new SystemRuntimeClock() : runtimeClock;
-        this.orchestrationExecutionRegistry = orchestrationExecutionRegistry == null
-                ? new InMemoryOrchestrationExecutionRegistry()
-                : orchestrationExecutionRegistry;
         this.runtimeInvariantEngineFactory = runtimeInvariantEngineFactory == null
                 ? missingRuntimeInvariantEngineFactory()
                 : runtimeInvariantEngineFactory;
         this.auditLogStore = auditLogStore == null ? AuditLogStore.noop() : auditLogStore;
         this.permissionEvaluator = permissionEvaluator == null ? PermissionEvaluator.allowAll() : permissionEvaluator;
         this.idempotencyStore = idempotencyStore == null ? IdempotencyStore.noop() : idempotencyStore;
-        initializeOrchestrationSubscribers();
+        this.lifecycleSupport = new CrudLifecycleSupport(this, this.entityManager);
+        this.schemaValidationSupport = new CrudSchemaValidationSupport(this);
+        this.referenceLookupSupport = new CrudReferenceLookupSupport(this, this.entityManager);
+        this.orchestrationSupport = new CrudOrchestrationSupport(
+                this, this.modelSupplier, this.kernelRunner, this.entityManager, capabilityDispatcher,
+                capabilityRegistry, this.dataSource, this.runtimeClock,
+                orchestrationExecutionRegistry == null
+                        ? new InMemoryOrchestrationExecutionRegistry()
+                        : orchestrationExecutionRegistry);
+        orchestrationSupport.initializeOrchestrationSubscribers();
         // R2.4: the kernel's scheduleEvent flow step needs the durable table this class owns, and
         // :kernel cannot depend on this adapter. Registered here rather than in a Spring @Bean for
         // the same reason initializeOrchestrationSubscribers() is: this constructor is already the
@@ -593,7 +555,7 @@ public final class GeneratedCrudRuntimeSupport {
                 continue;
             }
             boolean exists = inMemoryBusinessData
-                    ? existsByAnchorViaConceptGateway(targetEntity, anchor, rawValue, context)
+                    ? referenceLookupSupport.existsByAnchorViaConceptGateway(targetEntity, anchor, rawValue, context)
                     : bondTargetExistsForTenant(
                             SqlIdentifierSupport.tableName(targetEntity),
                             SqlIdentifierSupport.columnName(anchor),
@@ -999,10 +961,10 @@ public final class GeneratedCrudRuntimeSupport {
         Map<String, Object> safePayload = immutablePayload(payload);
         Map<String, Object> normalizedPayload = normalizePayloadForValidation(entity, safePayload);
         List<InvariantViolationDetail> violations = new ArrayList<>();
-        for (String message : validateFieldTypesAndReferences(entity, normalizedPayload)) {
-            violations.add(toTypedViolation(entityName, message));
+        for (String message : schemaValidationSupport.validateFieldTypesAndReferences(entity, normalizedPayload)) {
+            violations.add(schemaValidationSupport.toTypedViolation(entityName, message));
         }
-        validateLifecycleTransitions(entityName, entity, normalizedPayload, violations);
+        lifecycleSupport.validateLifecycleTransitions(entityName, entity, normalizedPayload, violations);
 
         InvariantEngine engine = runtimeInvariantEngineFactory.create(
                 (requestedEntity, fieldName, value, rawPayload) -> uniqueValueLookup != null
@@ -1025,7 +987,7 @@ public final class GeneratedCrudRuntimeSupport {
                             Object excludeId,
                             Object payload
                     ) {
-                        return resourceHasConflict(
+                        return referenceLookupSupport.resourceHasConflict(
                                 entityName,
                                 resourceField,
                                 resourceId,
@@ -1047,7 +1009,7 @@ public final class GeneratedCrudRuntimeSupport {
                             Map<String, Object> state,
                             Object payload
                     ) {
-                        return scopeExists(conceptName, fieldPath, expectedValue);
+                        return referenceLookupSupport.scopeExists(conceptName, fieldPath, expectedValue);
                     }
                 },
                 (requestedEntity, fieldNames, values, rawPayload) -> compoundUniqueValueLookup != null
@@ -1080,7 +1042,7 @@ public final class GeneratedCrudRuntimeSupport {
                     Map.of()
             ));
             for (InvariantEngine.Violation violation : result.violations()) {
-                violations.add(toInvariantViolation(entityName, violation, uniqueInvariantRefs));
+                violations.add(schemaValidationSupport.toInvariantViolation(entityName, violation, uniqueInvariantRefs));
             }
         }
 
@@ -1190,7 +1152,7 @@ public final class GeneratedCrudRuntimeSupport {
             return;
         }
 
-        CompiledStateTransition transition = findLifecycleTransition(lifecycle, previous, nextStatus);
+        CompiledStateTransition transition = lifecycleSupport.findLifecycleTransition(lifecycle, previous, nextStatus);
         if (transition == null || transition.getEvent() == null || transition.getEvent().isBlank()) {
             return;
         }
@@ -1268,7 +1230,7 @@ public final class GeneratedCrudRuntimeSupport {
         );
     }
 
-    private void publishRuntimeEvent(String eventName, Map<String, Object> payload, Map<String, Object> metadata) {
+    void publishRuntimeEvent(String eventName, Map<String, Object> payload, Map<String, Object> metadata) {
         if (eventName == null || eventName.isBlank()) {
             return;
         }
@@ -1288,1032 +1250,24 @@ public final class GeneratedCrudRuntimeSupport {
         );
     }
 
-    private List<String> initializeOrchestrationSubscribers() {
-        return registerOrchestrationSubscribers(modelSupplier.get());
-    }
-
-    /**
-     * REG-241: the constructor-only registration above left the EventBus subscription set frozen
-     * as external state forever -- after a {@code /model-reload}, an orchestration rule ADDED to
-     * the new model never fired (no subscriber existed for its event) and a rule REMOVED kept
-     * firing (its subscriber was never told to stop). Called from a {@code ModelReloadListener}
-     * registered in {@code NpdevCapabilityBindingConfig}, which runs inside {@code
-     * ModelHolder.swap}'s write lock, so this always runs with readers of the model blocked and
-     * never overlaps a concurrent reload.
-     */
+    /** CARVE-3: delegates to {@link CrudOrchestrationSupport} (the REG-241 reload hook is part of the public surface). */
     public void reloadOrchestrationSubscribers(CompiledModel model) {
-        registerOrchestrationSubscribers(model);
+        orchestrationSupport.reloadOrchestrationSubscribers(model);
     }
 
-    private List<String> registerOrchestrationSubscribers(CompiledModel model) {
-        synchronized (orchestrationSubscriptions) {
-            closeOrchestrationSubscriptionsLocked();
-            if (model.getOrchestrationRules().isEmpty()) {
-                return List.of();
-            }
-            List<String> subscribers = new ArrayList<>();
-            for (CompiledOrchestration orchestration : model.getOrchestrationRules()) {
-                RuntimeOrchestration runtimeOrchestration = toRuntimeOrchestration(orchestration);
-                if (runtimeOrchestration == null) {
-                    continue;
-                }
-                try {
-                    AutoCloseable subscription = kernelRunner.subscribeEvent(
-                            runtimeOrchestration.eventName(),
-                            envelope -> handleEventOrchestration(runtimeOrchestration, envelope));
-                    orchestrationSubscriptions.add(subscription);
-                    subscribers.add(runtimeOrchestration.name());
-                } catch (Exception exception) {
-                    LOG.log(Level.WARNING,
-                            "Failed to register orchestration subscriber: " + runtimeOrchestration.name(),
-                            exception);
-                }
-            }
-            return subscribers.isEmpty() ? List.of() : List.copyOf(subscribers);
-        }
-    }
-
-    private void closeOrchestrationSubscriptionsLocked() {
-        for (AutoCloseable subscription : orchestrationSubscriptions) {
-            try {
-                subscription.close();
-            } catch (Exception exception) {
-                LOG.log(Level.WARNING, "Failed to close a prior orchestration subscription", exception);
-            }
-        }
-        orchestrationSubscriptions.clear();
-    }
-
-    private RuntimeOrchestration toRuntimeOrchestration(CompiledOrchestration orchestration) {
-        if (orchestration == null) {
-            return null;
-        }
-        CompiledOrchestrationTrigger trigger = orchestration.getTrigger();
-        if (trigger == null) {
-            return null;
-        }
-        if (!"event".equals(normalize(trigger.getType()))) {
-            return null;
-        }
-        String eventName = trigger.getEvent() == null ? "" : trigger.getEvent().trim();
-        if (eventName.isBlank()) {
-            return null;
-        }
-
-        List<CompiledOrchestrationAction> sourceActions = orchestration.getActions().isEmpty()
-                ? (orchestration.getAction() == null ? List.of() : List.of(orchestration.getAction()))
-                : orchestration.getActions();
-        if (sourceActions.isEmpty()) {
-            return null;
-        }
-        List<RuntimeOrchestrationAction> runtimeActions = new ArrayList<>();
-        int index = 0;
-        for (CompiledOrchestrationAction sourceAction : sourceActions) {
-            RuntimeOrchestrationAction runtimeAction = toRuntimeOrchestrationAction(sourceAction, index);
-            if (runtimeAction == null) {
-                return null;
-            }
-            runtimeActions.add(runtimeAction);
-            index++;
-        }
-        if (runtimeActions.isEmpty()) {
-            return null;
-        }
-        return new RuntimeOrchestration(
-                orchestration.getName(),
-                eventName,
-                orchestration.getCondition(),
-                List.copyOf(runtimeActions)
-        );
-    }
-
-    private RuntimeOrchestrationAction toRuntimeOrchestrationAction(
-            CompiledOrchestrationAction action,
-            int index
-    ) {
-        if (action == null) {
-            return null;
-        }
-        String actionType = normalize(action.getType());
-        if ("create".equals(actionType)) {
-            EventCreateOrchestration createAction = toRuntimeCreateOrchestration(action);
-            if (createAction == null) {
-                return null;
-            }
-            return new RuntimeOrchestrationAction(index, "create", createAction, null, null);
-        }
-        if ("callcapability".equals(actionType)) {
-            EventCapabilityOrchestration capabilityAction = toRuntimeCapabilityOrchestration(action);
-            if (capabilityAction == null) {
-                return null;
-            }
-            return new RuntimeOrchestrationAction(index, "callCapability", null, capabilityAction, null);
-        }
-        if ("scheduleevent".equals(actionType)) {
-            EventScheduleOrchestration scheduleAction = toRuntimeScheduleOrchestration(action);
-            if (scheduleAction == null) {
-                return null;
-            }
-            return new RuntimeOrchestrationAction(index, "scheduleEvent", null, null, scheduleAction);
-        }
-        return null;
-    }
-
-    private EventCreateOrchestration toRuntimeCreateOrchestration(CompiledOrchestrationAction action) {
-        if (action == null || entityManager == null) {
-            return null;
-        }
-        Optional<CompiledConcept> targetEntityOpt = findEntity(action.getConcept());
-        if (targetEntityOpt.isEmpty()) {
-            return null;
-        }
-        CompiledConcept targetEntity = targetEntityOpt.get();
-        Map<String, CompiledField> fieldsByName = new LinkedHashMap<>();
-        List<String> uniqueFields = new ArrayList<>();
-        for (CompiledField field : targetEntity.getFields()) {
-            if (field == null || field.getName() == null || field.getName().isBlank()) {
-                continue;
-            }
-            fieldsByName.put(normalize(field.getName()), field);
-            if (field.isUnique()) {
-                uniqueFields.add(field.getName());
-            }
-        }
-        uniqueFields.sort(String.CASE_INSENSITIVE_ORDER);
-        String table = tableName(targetEntity);
-        if (table == null || table.isBlank()) {
-            return null;
-        }
-        Map<String, String> fieldMap = action.getMap() == null ? Map.of() : action.getMap();
-        return new EventCreateOrchestration(
-                targetEntity.getName(),
-                table,
-                Map.copyOf(fieldsByName),
-                Map.copyOf(fieldMap),
-                List.copyOf(uniqueFields)
-        );
-    }
-
-    private EventCapabilityOrchestration toRuntimeCapabilityOrchestration(CompiledOrchestrationAction action) {
-        if (action == null || capabilityDispatcher == null) {
-            return null;
-        }
-        String capabilityName = action.getCapability() == null ? "" : action.getCapability().trim();
-        String operation = action.getOperation() == null ? "" : action.getOperation().trim();
-        if (capabilityName.isBlank() || operation.isBlank()) {
-            return null;
-        }
-        String capabilityType = resolveCapabilityType(capabilityName);
-        String adapterId = resolveCapabilityAdapterId(capabilityName);
-        Map<String, String> fieldMap = action.getMap() == null ? Map.of() : action.getMap();
-        return new EventCapabilityOrchestration(
-                capabilityName,
-                capabilityType,
-                adapterId,
-                operation,
-                Map.copyOf(fieldMap)
-        );
-    }
-
-    private EventScheduleOrchestration toRuntimeScheduleOrchestration(CompiledOrchestrationAction action) {
-        if (action == null || dataSource == null) {
-            return null;
-        }
-        String eventName = action.getEvent() == null ? "" : action.getEvent().trim();
-        if (eventName.isBlank()) {
-            return null;
-        }
-        long delaySeconds = action.getDelaySeconds() == null
-                ? DEFAULT_SCHEDULE_DELAY_SECONDS
-                : Math.max(0L, action.getDelaySeconds());
-        Map<String, String> fieldMap = action.getMap() == null ? Map.of() : action.getMap();
-        return new EventScheduleOrchestration(
-                eventName,
-                delaySeconds,
-                Map.copyOf(fieldMap)
-        );
-    }
-
-    private void handleEventOrchestration(RuntimeOrchestration orchestration, EventEnvelope envelope) {
-        if (orchestration == null || envelope == null) {
-            return;
-        }
-        if (!orchestration.eventName().equals(envelope.eventName())) {
-            return;
-        }
-
-        Map<String, Object> eventPayload = envelope.payload() == null ? Map.of() : envelope.payload();
-        if (!shouldExecuteOrchestration(orchestration.name(), orchestration.condition(), envelope, eventPayload)) {
-            return;
-        }
-        OrchestrationExecutionClaim claim = claimOrchestrationExecution(orchestration, envelope, eventPayload);
-        if (!claim.acquired()) {
-            publishOrchestrationEvent("OrchestrationSkippedDuplicate", orchestration, envelope, Map.of(
-                    "reason", "duplicate_execution",
-                    "idempotencyKey", claim.duplicateKey() == null ? "" : claim.duplicateKey()
-            ));
-            return;
-        }
-
-        publishOrchestrationEvent("OrchestrationStarted", orchestration, envelope, Map.of(
-                "actionCount", orchestration.actions().size()
-        ));
-
-        for (RuntimeOrchestrationAction action : orchestration.actions()) {
-            OrchestrationActionExecutionResult result =
-                    executeOrchestrationAction(orchestration, action, envelope, eventPayload);
-            if (result.success()) {
-                publishOrchestrationActionEvent(
-                        "OrchestrationActionSucceeded",
-                        orchestration,
-                        action,
-                        envelope,
-                        result.status(),
-                        result.reason()
-                );
-                continue;
-            }
-
-            publishOrchestrationActionEvent(
-                    "OrchestrationActionFailed",
-                    orchestration,
-                    action,
-                    envelope,
-                    result.status(),
-                    result.reason()
-            );
-            publishOrchestrationEvent("OrchestrationStopped", orchestration, envelope, Map.of(
-                    "actionIndex", action.index(),
-                    "actionType", action.type(),
-                    "status", result.status(),
-                    "reason", result.reason()
-            ));
-            releaseOrchestrationExecution(claim);
-            return;
-        }
-
-        publishOrchestrationEvent("OrchestrationCompleted", orchestration, envelope, Map.of(
-                "actionCount", orchestration.actions().size()
-        ));
-    }
-
-    private OrchestrationActionExecutionResult executeOrchestrationAction(
-            RuntimeOrchestration orchestration,
-            RuntimeOrchestrationAction action,
-            EventEnvelope envelope,
-            Map<String, Object> eventPayload
-    ) {
-        if (action == null) {
-            return OrchestrationActionExecutionResult.failed("failed", "action_missing");
-        }
-        String normalizedType = normalize(action.type());
-        if ("create".equals(normalizedType)) {
-            return executeCreateOrchestrationAction(action.createAction(), envelope, eventPayload);
-        }
-        if ("callcapability".equals(normalizedType)) {
-            return executeCapabilityOrchestrationAction(
-                    orchestration == null ? null : orchestration.name(),
-                    action.capabilityAction(),
-                    envelope,
-                    eventPayload
-            );
-        }
-        if ("scheduleevent".equals(normalizedType)) {
-            return executeScheduleOrchestrationAction(
-                    orchestration,
-                    action,
-                    action.scheduleAction(),
-                    envelope,
-                    eventPayload
-            );
-        }
-        return OrchestrationActionExecutionResult.failed("failed", "unsupported_action");
-    }
-
+    // Kept on this class (private, same signature) because tests reach them reflectively.
     private OrchestrationActionExecutionResult executeCreateOrchestrationAction(
             EventCreateOrchestration action,
             EventEnvelope envelope,
             Map<String, Object> eventPayload
     ) {
-        if (action == null) {
-            return OrchestrationActionExecutionResult.failed("failed", "create_action_missing");
-        }
-        Map<String, Object> createPayload = resolveCreatePayload(action, envelope, eventPayload);
-        if (createPayload.isEmpty()) {
-            return OrchestrationActionExecutionResult.failed("failed", "mapped_payload_empty");
-        }
-
-        try {
-            if (existsByUniqueFields(action, createPayload)) {
-                return OrchestrationActionExecutionResult.succeeded("skipped", "unique_exists");
-            }
-            insertMappedRow(action, createPayload);
-            return OrchestrationActionExecutionResult.succeeded("ok", "created");
-        } catch (Exception exception) {
-            if (isUniqueViolation(exception)) {
-                return OrchestrationActionExecutionResult.succeeded("skipped", "unique_violation");
-            }
-            if (isNotNullViolation(exception)) {
-                // REG-232: a NOT NULL constraint failure here means the orchestration's own field
-                // mapping left a required column unset -- a business-level "required field missing"
-                // condition, not an infrastructure fault. Logged at INFO with just the message (no
-                // raw JDBC stack trace) so it reads as a clean diagnostic instead of a noisy WARN.
-                LOG.log(Level.INFO, "Create orchestration action skipped -- a required field was "
-                        + "left null: {0}", exception.getMessage());
-                return OrchestrationActionExecutionResult.failed("failed", "required_field_missing");
-            }
-            LOG.log(Level.WARNING, "Create orchestration action failed", exception);
-            return OrchestrationActionExecutionResult.failed("failed", "create_failed");
-        }
+        return orchestrationSupport.executeCreateOrchestrationAction(action, envelope, eventPayload);
     }
 
-    private OrchestrationActionExecutionResult executeCapabilityOrchestrationAction(
-            String orchestrationName,
-            EventCapabilityOrchestration orchestration,
-            EventEnvelope envelope,
-            Map<String, Object> eventPayload
-    ) {
-        if (orchestration == null) {
-            return OrchestrationActionExecutionResult.failed("failed", "capability_action_missing");
-        }
-        if (capabilityDispatcher == null || envelope == null) {
-            return OrchestrationActionExecutionResult.failed("failed", "capability_dispatcher_missing");
-        }
-        Map<String, Object> capabilityPayload = resolveMappedValues(orchestration.fieldMap(), eventPayload);
-        Map<String, Object> invocationPayload = capabilityPayload.isEmpty()
-                ? Map.of()
-                : Map.copyOf(new LinkedHashMap<>(capabilityPayload));
-
-        CapabilityCall call = new CapabilityCall(
-                orchestration.capabilityName(),
-                orchestration.capabilityType(),
-                orchestration.adapterId(),
-                orchestration.operation(),
-                List.of(invocationPayload),
-                envelope.correlationId(),
-                null
-        );
-        // INT-5: tenantId/actorId ride along (when the event carries them) so a capability handler can
-        // resolve tenant-scoped settings; Map.of rejects nulls, hence the LinkedHashMap.
-        Map<String, Object> callContext = new LinkedHashMap<>();
-        callContext.put("orchestration", orchestrationName);
-        callContext.put("eventName", envelope.eventName());
-        callContext.put("eventId", envelope.eventId());
-        String eventTenant = envelope.tenantId();
-        boolean eventHasTenant = eventTenant != null && !eventTenant.isBlank()
-                && !UNSET_TENANT_SENTINEL.equals(eventTenant);
-        String fallbackTenant = orchestrationFallbackTenant;
-        if (eventHasTenant) {
-            callContext.put("tenantId", eventTenant);
-            callContext.put("tenantSource", "event");
-        } else if (fallbackTenant != null) {
-            callContext.put("tenantId", fallbackTenant);
-            callContext.put("tenantSource", "fallback");
-        } else if (eventTenant != null) {
-            callContext.put("tenantId", eventTenant);
-            callContext.put("tenantSource", "event");
-        }
-        if (envelope.actorId() != null) {
-            callContext.put("actorId", envelope.actorId());
-        }
-        CapabilityDispatcher orchestrationDispatcher = orchestrationCapabilityDispatcher;
-        CapabilityResult result = (orchestrationDispatcher != null ? orchestrationDispatcher : capabilityDispatcher)
-                .invoke(call, callContext);
-
-        Map<String, Object> evidencePayload = new LinkedHashMap<>();
-        evidencePayload.put("orchestration", orchestrationName);
-        evidencePayload.put("capability", orchestration.capabilityName());
-        evidencePayload.put("operation", orchestration.operation());
-        evidencePayload.put("sourceEvent", envelope.eventName());
-        evidencePayload.put("sourceEventId", envelope.eventId());
-        evidencePayload.put("correlationId", envelope.correlationId());
-        if (!invocationPayload.isEmpty()) {
-            evidencePayload.putAll(invocationPayload);
-        }
-
-        if (result != null && result.ok()) {
-            if (result.value() != null) {
-                evidencePayload.put("result", result.value());
-                String adapterId = extractResultAdapterId(result.value());
-                if (adapterId != null) {
-                    evidencePayload.put("adapterId", adapterId);
-                }
-            }
-            publishRuntimeEvent(
-                    "OrchestrationCapabilityInvoked",
-                    evidencePayload,
-                    Map.of(
-                            "orchestrationAction", "callCapability",
-                            "status", "ok"
-                    )
-            );
-            return OrchestrationActionExecutionResult.succeeded("ok", "capability_invoked");
-        }
-
-        if (result != null && result.error() != null) {
-            evidencePayload.put("errorCode", result.error().code());
-            evidencePayload.put("errorMessage", result.error().message());
-            if (result.error().details() != null && !result.error().details().isEmpty()) {
-                evidencePayload.put("errorDetails", result.error().details());
-            }
-        }
-        publishRuntimeEvent(
-                "OrchestrationCapabilityFailed",
-                evidencePayload,
-                Map.of(
-                        "orchestrationAction", "callCapability",
-                        "status", "failed"
-                )
-        );
-        return OrchestrationActionExecutionResult.failed("failed", "capability_failed");
-    }
-
-    private OrchestrationActionExecutionResult executeScheduleOrchestrationAction(
-            RuntimeOrchestration orchestration,
-            RuntimeOrchestrationAction runtimeAction,
-            EventScheduleOrchestration scheduleAction,
-            EventEnvelope envelope,
-            Map<String, Object> eventPayload
-    ) {
-        if (scheduleAction == null) {
-            return OrchestrationActionExecutionResult.failed("failed", "schedule_action_missing");
-        }
-        if (dataSource == null || envelope == null) {
-            return OrchestrationActionExecutionResult.failed("failed", "scheduler_unavailable");
-        }
-
-        String orchestrationName = orchestration == null ? "" : nullToEmpty(orchestration.name());
-        int actionIndex = runtimeAction == null ? 0 : runtimeAction.index();
-        String scheduleKey = buildScheduleKey(orchestrationName, actionIndex, envelope, eventPayload);
-        if (scheduleKey == null || scheduleKey.isBlank()) {
-            return OrchestrationActionExecutionResult.failed("failed", "schedule_key_missing");
-        }
-
-        Map<String, Object> mappedPayload = resolveMappedValues(scheduleAction.fieldMap(), eventPayload);
-        String payloadJson;
-        try {
-            payloadJson = OBJECT_MAPPER.writeValueAsString(mappedPayload == null ? Map.of() : mappedPayload);
-        } catch (Exception exception) {
-            return OrchestrationActionExecutionResult.failed("failed", "schedule_payload_invalid");
-        }
-
-        UUID scheduleId = UUID.randomUUID();
-        OffsetDateTime dueAt = runtimeClock.nowUtc().plusSeconds(Math.max(0L, scheduleAction.delaySeconds()));
-        try {
-            insertScheduledEvent(
-                    scheduleId,
-                    scheduleKey,
-                    orchestrationName,
-                    actionIndex,
-                    envelope.eventName(),
-                    envelope.eventId(),
-                    envelope.correlationId(),
-                    envelope.tenantId(),
-                    scheduleAction.eventName(),
-                    dueAt,
-                    payloadJson
-            );
-
-            publishRuntimeEvent(
-                    "OrchestrationScheduleCreated",
-                    buildScheduleEvidencePayload(
-                            "scheduleId", scheduleId,
-                            "scheduleKey", scheduleKey,
-                            "orchestration", orchestrationName,
-                            "actionIndex", actionIndex,
-                            "sourceEvent", envelope.eventName(),
-                            "sourceEventId", envelope.eventId(),
-                            "eventName", scheduleAction.eventName(),
-                            "dueAt", dueAt.toString()
-                    ),
-                    Map.of(
-                            "orchestrationAction", "scheduleEvent",
-                            "status", "scheduled"
-                    )
-            );
-            return OrchestrationActionExecutionResult.succeeded("ok", "scheduled");
-        } catch (Exception exception) {
-            if (isUniqueViolation(exception)) {
-                return OrchestrationActionExecutionResult.succeeded("skipped", "schedule_exists");
-            }
-            LOG.log(Level.WARNING, "Schedule orchestration action failed", exception);
-            return OrchestrationActionExecutionResult.failed("failed", "schedule_failed");
-        }
-    }
-
-    private void publishOrchestrationEvent(
-            String eventName,
-            RuntimeOrchestration orchestration,
-            EventEnvelope envelope,
-            Map<String, Object> details
-    ) {
-        if (eventName == null || eventName.isBlank() || orchestration == null || envelope == null) {
-            return;
-        }
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("orchestration", orchestration.name());
-        payload.put("sourceEvent", envelope.eventName());
-        payload.put("sourceEventId", envelope.eventId());
-        payload.put("correlationId", envelope.correlationId());
-        if (details != null && !details.isEmpty()) {
-            payload.putAll(details);
-        }
-        publishRuntimeEvent(
-                eventName,
-                payload,
-                Map.of("orchestrationAction", "workflow")
-        );
-    }
-
-    private void publishOrchestrationActionEvent(
-            String eventName,
-            RuntimeOrchestration orchestration,
-            RuntimeOrchestrationAction action,
-            EventEnvelope envelope,
-            String status,
-            String reason
-    ) {
-        if (eventName == null || eventName.isBlank()
-                || orchestration == null
-                || action == null
-                || envelope == null) {
-            return;
-        }
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("orchestration", orchestration.name());
-        payload.put("actionIndex", action.index());
-        payload.put("actionType", action.type());
-        payload.put("status", status);
-        payload.put("reason", reason);
-        payload.put("sourceEvent", envelope.eventName());
-        payload.put("sourceEventId", envelope.eventId());
-        payload.put("correlationId", envelope.correlationId());
-        publishRuntimeEvent(
-                eventName,
-                payload,
-                Map.of(
-                        "orchestrationAction", normalize(action.type()),
-                        "status", status == null ? "" : status
-                )
-        );
-    }
-
-    private OrchestrationExecutionClaim claimOrchestrationExecution(
-            RuntimeOrchestration orchestration,
-            EventEnvelope envelope,
-            Map<String, Object> eventPayload
-    ) {
-        List<String> keys = buildOrchestrationExecutionKeys(orchestration, envelope, eventPayload);
-        if (keys.isEmpty()) {
-            return OrchestrationExecutionClaim.acquired(List.of());
-        }
-        List<String> acquiredKeys = new ArrayList<>();
-        for (String key : keys) {
-            if (key == null || key.isBlank()) {
-                continue;
-            }
-            if (orchestrationExecutionRegistry.tryAcquire(key)) {
-                acquiredKeys.add(key);
-                continue;
-            }
-            for (String acquired : acquiredKeys) {
-                orchestrationExecutionRegistry.release(acquired);
-            }
-            return OrchestrationExecutionClaim.duplicate(key);
-        }
-        return OrchestrationExecutionClaim.acquired(List.copyOf(acquiredKeys));
-    }
-
-    private void releaseOrchestrationExecution(OrchestrationExecutionClaim claim) {
-        if (claim == null || claim.keys().isEmpty()) {
-            return;
-        }
-        for (String key : claim.keys()) {
-            orchestrationExecutionRegistry.release(key);
-        }
-    }
-
-    private List<String> buildOrchestrationExecutionKeys(
-            RuntimeOrchestration orchestration,
-            EventEnvelope envelope,
-            Map<String, Object> eventPayload
-    ) {
-        if (orchestration == null || envelope == null) {
-            return List.of();
-        }
-        String orchestrationName = normalize(orchestration.name());
-        if (orchestrationName.isBlank()) {
-            return List.of();
-        }
-
-        List<String> keys = new ArrayList<>();
-        String sourceEventId = envelope.eventId();
-        if (sourceEventId != null && !sourceEventId.isBlank()) {
-            keys.add("event:" + orchestrationName + ":" + sourceEventId.trim());
-        }
-
-        String correlationId = envelope.correlationId();
-        if (correlationId != null && !correlationId.isBlank()) {
-            String subjectId = resolveOrchestrationSubjectId(eventPayload);
-            if (subjectId == null || subjectId.isBlank()) {
-                subjectId = serializePayloadForIdempotency(eventPayload);
-            }
-            keys.add("effective:" + orchestrationName + ":"
-                    + normalize(envelope.eventName()) + ":"
-                    + correlationId.trim() + ":"
-                    + subjectId.trim());
-        }
-        return keys.isEmpty() ? List.of() : List.copyOf(keys);
-    }
-
-    private Map<String, Object> resolveCreatePayload(
-            EventCreateOrchestration orchestration,
-            EventEnvelope envelope,
-            Map<String, Object> eventPayload
-    ) {
-        if (orchestration == null || orchestration.fieldMap().isEmpty()) {
-            return Map.of();
-        }
-        Map<String, Object> mappedValues = resolveMappedValues(orchestration.fieldMap(), eventPayload);
-        Map<String, Object> values = new LinkedHashMap<>();
-        for (Map.Entry<String, Object> mapping : mappedValues.entrySet()) {
-            CompiledField field = orchestration.fieldsByName().get(normalize(mapping.getKey()));
-            if (field == null) {
-                continue;
-            }
-            values.put(field.getName(), coerceMappedValue(field, mapping.getValue()));
-        }
-
-        if (!hasMapKey(values, "id")) {
-            CompiledField idField = orchestration.fieldsByName().get("id");
-            if (idField != null && ("uuid".equals(normalizeType(idField.getDslType()))
-                    || "reference".equals(normalizeType(idField.getDslType())))) {
-                values.put(idField.getName(), UUID.randomUUID());
-            }
-        }
-        // Without this, an orchestration-created row silently falls back to the table's schema-level
-        // tenant_id default ("default") instead of the tenant that actually triggered the event -- the
-        // row exists but is invisible through the normal tenant-scoped list/read endpoints. Confirmed
-        // live: a create-orchestration row was findable only via a direct SQL query, never via the
-        // generated concept's REST API under the acting tenant. "tenantId" has no CompiledField (it's
-        // a generator-injected infra column, never DSL-authored), so it's added under its raw key --
-        // insertMappedRow's columnName() already falls back to a computed identifier for keys with no
-        // matching field, exactly for cases like this one.
-        if (!hasMapKey(values, "tenantId") && envelope != null && envelope.tenantId() != null) {
-            values.put("tenantId", envelope.tenantId());
-        }
-        return values.isEmpty() ? Map.of() : Map.copyOf(values);
-    }
-
-    private boolean shouldExecuteOrchestration(
-            String orchestrationName,
-            String condition,
-            EventEnvelope envelope,
-            Map<String, Object> eventPayload
-    ) {
-        if (condition == null || condition.isBlank()) {
-            return true;
-        }
-        boolean matches = evaluateOrchestrationCondition(condition, eventPayload);
-        if (matches) {
-            return true;
-        }
-
-        Map<String, Object> evidencePayload = new LinkedHashMap<>();
-        evidencePayload.put("orchestration", orchestrationName);
-        evidencePayload.put("sourceEvent", envelope.eventName());
-        evidencePayload.put("sourceEventId", envelope.eventId());
-        evidencePayload.put("correlationId", envelope.correlationId());
-        evidencePayload.put("reason", "condition_false");
-
-        publishRuntimeEvent(
-                "OrchestrationConditionSkipped",
-                evidencePayload,
-                Map.of(
-                        "orchestrationAction", "condition",
-                        "status", "skipped"
-                )
-        );
-        return false;
-    }
-
-    /**
-     * R4.2 (roadmap): the orchestration twin of {@code KernelRunner.evaluateCondition} -- used to be
-     * a hand-rolled {@code ==}/{@code !=}-only matcher, same shape and same limitation. Now tries the
-     * full {@link ComputedExpression} grammar ({@code &&}, {@code ||}, {@code >}, arithmetic) FIRST,
-     * falling through to the legacy matcher below on {@link ComputedExpression.ExpressionException}
-     * -- the same first-then-fallback ordering {@code CelInvariantEngine.evaluateExpression} already
-     * established for invariant expressions. The bridging scope simply reuses {@link
-     * ConditionValueSupport#resolveConditionValue}, so a token that parses under both engines
-     * resolves against the SAME {@code $event.}/quoted-literal/bare-payload-field rules either way.
-     */
     private boolean evaluateOrchestrationCondition(String rawCondition, Map<String, Object> eventPayload) {
-        if (rawCondition == null || rawCondition.isBlank()) {
-            return true;
-        }
-        String condition = rawCondition.trim();
-        if ("true".equalsIgnoreCase(condition)) {
-            return true;
-        }
-        if ("false".equalsIgnoreCase(condition)) {
-            return false;
-        }
-
-        try {
-            return ComputedExpression.evaluateBoolean(condition, new OrchestrationConditionScope(eventPayload));
-        } catch (ComputedExpression.ExpressionException notComputedExpression) {
-            // fall through to the legacy matcher below.
-        }
-
-        int equalsIndex = condition.indexOf("==");
-        if (equalsIndex >= 0) {
-            Object left = resolveConditionValue(condition.substring(0, equalsIndex), eventPayload);
-            Object right = resolveConditionValue(condition.substring(equalsIndex + 2), eventPayload);
-            return valuesEqual(left, right);
-        }
-
-        int notEqualsIndex = condition.indexOf("!=");
-        if (notEqualsIndex >= 0) {
-            Object left = resolveConditionValue(condition.substring(0, notEqualsIndex), eventPayload);
-            Object right = resolveConditionValue(condition.substring(notEqualsIndex + 2), eventPayload);
-            return !valuesEqual(left, right);
-        }
-
-        return asBoolean(resolveConditionValue(condition, eventPayload));
+        return orchestrationSupport.evaluateOrchestrationCondition(rawCondition, eventPayload);
     }
 
-    /** R4.2: bridges a {@link ComputedExpression} variable lookup to {@link
-     * ConditionValueSupport#resolveConditionValue} -- {@code containsKey} always answers {@code
-     * true} (mirroring {@code CelInvariantEngine.FieldPathScope}) so {@link
-     * ComputedExpression.Node#eval} always takes the {@code get} branch rather than trying its own
-     * dotted-map walk over this synthetic view. */
-    private static final class OrchestrationConditionScope extends AbstractMap<String, Object> {
-        private final Map<String, Object> eventPayload;
-
-        OrchestrationConditionScope(Map<String, Object> eventPayload) {
-            this.eventPayload = eventPayload;
-        }
-
-        @Override
-        public Object get(Object key) {
-            return key instanceof String token ? resolveConditionValue(token, eventPayload) : null;
-        }
-
-        @Override
-        public boolean containsKey(Object key) {
-            return true;
-        }
-
-        @Override
-        public Set<Entry<String, Object>> entrySet() {
-            return Set.of();
-        }
-    }
-
-    private Map<String, Object> resolveMappedValues(
-            Map<String, String> mapping,
-            Map<String, Object> eventPayload
-    ) {
-        if (mapping == null || mapping.isEmpty()) {
-            return Map.of();
-        }
-        Map<String, Object> values = new LinkedHashMap<>();
-        for (Map.Entry<String, String> entry : mapping.entrySet()) {
-            String targetKey = entry.getKey();
-            if (targetKey == null || targetKey.isBlank()) {
-                continue;
-            }
-            Object rawValue = resolveMappingValue(entry.getValue(), eventPayload);
-            if (rawValue == null) {
-                continue;
-            }
-            values.put(targetKey, rawValue);
-        }
-        return values.isEmpty() ? Map.of() : Map.copyOf(values);
-    }
-
-    private Object resolveMappingValue(String source, Map<String, Object> eventPayload) {
-        if (source == null) {
-            return null;
-        }
-        String trimmed = source.trim();
-        if (trimmed.isEmpty()) {
-            return null;
-        }
-        if ("$event".equals(trimmed)) {
-            return eventPayload;
-        }
-        if (trimmed.startsWith("$event.")) {
-            return readPathValue(eventPayload, trimmed.substring("$event.".length()));
-        }
-        Object direct = readPayloadValue(eventPayload, trimmed);
-        if (direct != null) {
-            return direct;
-        }
-        if ((trimmed.startsWith("\"") && trimmed.endsWith("\""))
-                || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
-            return trimmed.substring(1, trimmed.length() - 1);
-        }
-        if ("null".equalsIgnoreCase(trimmed)) {
-            return null;
-        }
-        return trimmed;
-    }
-
-    private String resolveCapabilityType(String capabilityName) {
-        if (capabilityName == null || capabilityName.isBlank()) {
-            return null;
-        }
-        String requested = normalize(capabilityName);
-        for (var capability : modelSupplier.get().getCapabilities()) {
-            if (capability != null && normalize(capability.getName()).equals(requested)) {
-                return capability.getType();
-            }
-        }
-        return null;
-    }
-
-    private String resolveCapabilityAdapterId(String capabilityName) {
-        if (capabilityName == null || capabilityName.isBlank()) {
-            return null;
-        }
-        if (capabilityRegistry != null) {
-            String fromRegistry = capabilityRegistry.debugDefaultAdapterId(capabilityName);
-            if (fromRegistry != null && !fromRegistry.isBlank()) {
-                return fromRegistry;
-            }
-        }
-        String requested = normalize(capabilityName);
-        for (var binding : modelSupplier.get().getBindings()) {
-            if (binding != null
-                    && normalize(binding.getCapability()).equals(requested)
-                    && binding.getAdapter() != null
-                    && !binding.getAdapter().isBlank()) {
-                return binding.getAdapter().trim();
-            }
-        }
-        return null;
-    }
-
-    private boolean existsByUniqueFields(EventCreateOrchestration orchestration, Map<String, Object> payload) {
-        if (entityManager == null
-                || orchestration == null
-                || orchestration.uniqueFields().isEmpty()
-                || payload == null
-                || payload.isEmpty()) {
-            return false;
-        }
-        List<Map.Entry<String, Object>> checks = new ArrayList<>();
-        for (String uniqueField : orchestration.uniqueFields()) {
-            if (uniqueField == null || uniqueField.isBlank()) {
-                continue;
-            }
-            Object value = readMapValue(payload, uniqueField);
-            if (isLifecycleMissing(value)) {
-                continue;
-            }
-            checks.add(Map.entry(uniqueField, value));
-        }
-        if (checks.isEmpty()) {
-            return false;
-        }
-
-        StringBuilder sql = new StringBuilder("SELECT 1 FROM ")
-                .append(orchestration.targetTable())
-                .append(" WHERE ");
-        for (int index = 0; index < checks.size(); index++) {
-            if (index > 0) {
-                sql.append(" AND ");
-            }
-            sql.append("CAST(")
-                    .append(columnName(orchestration.fieldsByName().get(normalize(checks.get(index).getKey())),
-                            checks.get(index).getKey()))
-                    .append(" AS VARCHAR) = :u")
-                    .append(index);
-        }
-        try {
-            Query query = entityManager.createNativeQuery(sql.toString());
-            for (int index = 0; index < checks.size(); index++) {
-                query.setParameter("u" + index, String.valueOf(checks.get(index).getValue()));
-            }
-            query.setMaxResults(1);
-            List<?> rows = query.getResultList();
-            return rows != null && !rows.isEmpty();
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    private void insertMappedRow(EventCreateOrchestration orchestration, Map<String, Object> payload) throws SQLException {
-        if (dataSource == null
-                || orchestration == null
-                || payload == null
-                || payload.isEmpty()) {
-            return;
-        }
-        List<Map.Entry<String, Object>> entries = new ArrayList<>(payload.entrySet());
-        entries.sort(Comparator.comparing(entry -> normalize(entry.getKey())));
-        StringBuilder columns = new StringBuilder();
-        StringBuilder values = new StringBuilder();
-        for (int index = 0; index < entries.size(); index++) {
-            if (index > 0) {
-                columns.append(", ");
-                values.append(", ");
-            }
-            columns.append(columnName(orchestration.fieldsByName().get(normalize(entries.get(index).getKey())),
-                    entries.get(index).getKey()));
-            values.append("?");
-        }
-        String sql = "INSERT INTO " + orchestration.targetTable()
-                + " (" + columns + ") VALUES (" + values + ")";
-        // A lifecycle event is published synchronously INSIDE the originating service's
-        // @Transactional update, so this insert usually runs while the caller's transaction still
-        // holds a row lock on the source row. On its own pooled connection the insert's FK check
-        // then waited on that lock forever while the caller waited on the insert -- a cross-
-        // connection self-deadlock Postgres cannot detect (CI, 2026-09-30: CanonicalDemoBusinessE2EIT
-        // hung with pid A "idle in transaction" after the orchestration's own existence check, and
-        // pid B's INSERT INTO insurance_claims blocked_by {A}). When a Spring transaction is active,
-        // join its connection instead, under a SAVEPOINT so a unique/NOT NULL failure rolls back
-        // only this insert -- on Postgres a failed statement would otherwise abort the caller's whole
-        // transaction. With no transaction active (a deferred or async event), keep the own short
-        // JDBC transaction; the shared EntityManager is not usable there (TransactionRequiredException).
-        if (CallerTransaction.isBoundTo(dataSource)) {
-            CallerTransaction.insertUnderSavepoint(dataSource, sql, entries);
-            return;
-        }
-        try (Connection connection = dataSource.getConnection()) {
-            boolean previousAutoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);
-            try (PreparedStatement insert = connection.prepareStatement(sql)) {
-                for (int index = 0; index < entries.size(); index++) {
-                    insert.setObject(index + 1, entries.get(index).getValue());
-                }
-                insert.executeUpdate();
-            }
-            connection.commit();
-            connection.setAutoCommit(previousAutoCommit);
-        }
-    }
-
-    /**
-     * The caller's Spring-managed JDBC connection, when there is one. spring-jdbc is compileOnly here
-     * (runtime-support also runs outside a Spring app), so every Spring type stays behind
-     * {@link #isBoundTo(DataSource)}'s class-presence check and is never loaded when it is absent.
-     */
-    private static final class CallerTransaction {
-        private static final boolean SPRING_JDBC_PRESENT = isPresent(
-                "org.springframework.jdbc.datasource.DataSourceUtils");
-
-        private static boolean isPresent(String className) {
-            try {
-                Class.forName(className, false, GeneratedCrudRuntimeSupport.class.getClassLoader());
-                return true;
-            } catch (ClassNotFoundException | LinkageError absent) {
-                return false;
-            }
-        }
-
-        // Bound, not merely "a transaction is active": if this DataSource is not the one the
-        // transaction manager bound a connection for, DataSourceUtils would hand back a fresh
-        // unbound connection and the insert would never be committed by anyone.
-        static boolean isBoundTo(DataSource dataSource) {
-            return SPRING_JDBC_PRESENT && SpringJdbc.hasBoundConnection(dataSource);
-        }
-
-        static void insertUnderSavepoint(DataSource dataSource, String sql,
-                                         List<Map.Entry<String, Object>> entries) throws SQLException {
-            SpringJdbc.insertUnderSavepoint(dataSource, sql, entries);
-        }
-
-        private static final class SpringJdbc {
-            static boolean hasBoundConnection(DataSource dataSource) {
-                return org.springframework.transaction.support.TransactionSynchronizationManager
-                        .isActualTransactionActive()
-                        && org.springframework.transaction.support.TransactionSynchronizationManager
-                        .hasResource(dataSource);
-            }
-
-            static void insertUnderSavepoint(DataSource dataSource, String sql,
-                                             List<Map.Entry<String, Object>> entries) throws SQLException {
-                Connection connection = org.springframework.jdbc.datasource.DataSourceUtils
-                        .getConnection(dataSource);
-                try {
-                    java.sql.Savepoint savepoint = connection.setSavepoint();
-                    try (PreparedStatement insert = connection.prepareStatement(sql)) {
-                        for (int index = 0; index < entries.size(); index++) {
-                            insert.setObject(index + 1, entries.get(index).getValue());
-                        }
-                        insert.executeUpdate();
-                    } catch (SQLException | RuntimeException failure) {
-                        connection.rollback(savepoint);
-                        throw failure;
-                    }
-                } finally {
-                    org.springframework.jdbc.datasource.DataSourceUtils.releaseConnection(connection, dataSource);
-                }
-            }
-        }
-    }
 
     /**
      * Is this failure a unique violation? <b>Ask the dialect first; the message is the last resort.</b>
@@ -2345,7 +1299,7 @@ public final class GeneratedCrudRuntimeSupport {
      * removed: some callers wrap a non-SQL failure -- the in-memory store raises its own -- and
      * those have no SQLSTATE to inspect.
      */
-    private static boolean isUniqueViolation(Exception exception) {
+    static boolean isUniqueViolation(Exception exception) {
         if (exception == null) {
             return false;
         }
@@ -2555,7 +1509,7 @@ public final class GeneratedCrudRuntimeSupport {
      * field (23505 and 23502 never overlap in practice, but the ordering mirrors the FK check's own
      * belt-and-suspenders convention).
      */
-    private static boolean isNotNullViolation(Throwable exception) {
+    static boolean isNotNullViolation(Throwable exception) {
         if (exception == null) {
             return false;
         }
@@ -2740,7 +1694,7 @@ public final class GeneratedCrudRuntimeSupport {
         return "flow:" + UUID.nameUUIDFromBytes(composite.getBytes(StandardCharsets.UTF_8));
     }
 
-    private void insertScheduledEvent(
+    void insertScheduledEvent(
             UUID id,
             String scheduleKey,
             String orchestrationName,
@@ -2778,7 +1732,7 @@ public final class GeneratedCrudRuntimeSupport {
         }
     }
 
-    private ExecutionContext resolveCurrentExecutionContext() {
+    ExecutionContext resolveCurrentExecutionContext() {
         try {
             RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
             if (!(requestAttributes instanceof ServletRequestAttributes servletRequestAttributes)) {
@@ -3096,400 +2050,6 @@ public final class GeneratedCrudRuntimeSupport {
         }
     }
 
-    private List<String> validateFieldTypesAndReferences(CompiledConcept entity, Map<String, Object> payload) {
-        if (entity == null || entity.getName() == null || entity.getName().isBlank()) {
-            return List.of("Entity metadata is required for runtime field validation");
-        }
-        List<String> violations = new ArrayList<>();
-        for (CompiledField field : entity.getFields()) {
-            if (field == null || field.getName() == null || field.getName().isBlank()) {
-                continue;
-            }
-            if (field.isId()) {
-                continue;
-            }
-
-            Object value = readPayloadValue(payload, field.getName());
-            if (value == null) {
-                continue;
-            }
-
-            String dslType = normalizeType(field.getDslType());
-            switch (dslType) {
-                case "enum" -> validateEnumField(entity.getName(), field, value, violations);
-                case "date" -> validateDateField(entity.getName(), field, value, violations);
-                case "datetime" -> validateDateTimeField(entity.getName(), field, value, violations);
-                case "reference" -> validateReferenceField(entity.getName(), field, value, violations);
-                case "object", "array" -> validateNestedSchemaField(entity.getName(), field, value, violations);
-                default -> {
-                    // Validation for required/unique/expression invariants is handled by invariant engine.
-                }
-            }
-        }
-        return violations;
-    }
-
-    private void validateEnumField(
-            String entityName,
-            CompiledField field,
-            Object value,
-            List<String> violations
-    ) {
-        String normalized = value.toString().trim();
-        if (normalized.isEmpty()) {
-            return;
-        }
-        Collection<String> allowed = field.getEnumValues();
-        boolean match = allowed.stream().anyMatch(candidate -> candidate != null && candidate.equals(normalized));
-        if (!match) {
-            violations.add("Entity " + entityName + ": enum constraint violated for field '" + field.getName()
-                    + "' (allowed: " + allowed + ")");
-        }
-    }
-
-    private void validateDateField(
-            String entityName,
-            CompiledField field,
-            Object value,
-            List<String> violations
-    ) {
-        try {
-            if (value instanceof LocalDate) {
-                return;
-            }
-            if (value instanceof String raw) {
-                LocalDate.parse(raw.trim(), DateTimeFormatter.ISO_LOCAL_DATE);
-                return;
-            }
-            violations.add("Entity " + entityName + ": date field '" + field.getName()
-                    + "' must use ISO format YYYY-MM-DD");
-        } catch (DateTimeParseException exception) {
-            violations.add("Entity " + entityName + ": date field '" + field.getName()
-                    + "' must use ISO format YYYY-MM-DD");
-        }
-    }
-
-    private void validateDateTimeField(
-            String entityName,
-            CompiledField field,
-            Object value,
-            List<String> violations
-    ) {
-        if (value instanceof OffsetDateTime || value instanceof LocalDateTime) {
-            return;
-        }
-        if (!(value instanceof String raw)) {
-            violations.add("Entity " + entityName + ": datetime field '" + field.getName()
-                    + "' must use ISO datetime format");
-            return;
-        }
-
-        String candidate = raw.trim();
-        if (candidate.isEmpty()) {
-            return;
-        }
-        try {
-            DateTimeFormatter.ISO_DATE_TIME.parseBest(
-                    candidate,
-                    OffsetDateTime::from,
-                    LocalDateTime::from
-            );
-        } catch (DateTimeParseException exception) {
-            violations.add("Entity " + entityName + ": datetime field '" + field.getName()
-                    + "' must use ISO datetime format");
-        }
-    }
-
-    private void validateReferenceField(
-            String entityName,
-            CompiledField field,
-            Object value,
-            List<String> violations
-    ) {
-        String targetEntityName = field.getReferenceTarget();
-        if (targetEntityName == null || targetEntityName.isBlank()) {
-            violations.add("Entity " + entityName + ": reference field '" + field.getName()
-                    + "' has no target entity");
-            return;
-        }
-
-        Optional<CompiledConcept> targetEntityOpt = findEntity(targetEntityName);
-        if (targetEntityOpt.isEmpty()) {
-            violations.add("Entity " + entityName + ": reference target '" + targetEntityName
-                    + "' not found in compiled model");
-            return;
-        }
-
-        CompiledConcept targetEntity = targetEntityOpt.get();
-        CompiledField anchor = resolveReferenceAnchor(field, targetEntity).orElse(null);
-        if (anchor == null) {
-            violations.add("Entity " + entityName + ": reference field '" + field.getName()
-                    + "' has no resolvable target anchor");
-            return;
-        }
-
-        Object anchorValue = normalizeByDslType(anchor.getDslType(), value);
-        if (anchorValue == null) {
-            violations.add("Entity " + entityName + ": reference field '" + field.getName()
-                    + "' must match anchor " + targetEntityName + "." + anchor.getName());
-            return;
-        }
-
-        if (!existsByAnchor(targetEntity, anchor, anchorValue)) {
-            violations.add("Entity " + entityName + ": reference '" + field.getName()
-                    + "' points to non-existent " + targetEntityName + "." + anchor.getName()
-                    + " " + anchorValue);
-        }
-    }
-
-    private void validateNestedSchemaField(
-            String entityName,
-            CompiledField field,
-            Object value,
-            List<String> violations
-    ) {
-        CompiledSchema schema = field.getSchema();
-        if (schema == null) {
-            violations.add("Entity " + entityName + ": field '" + field.getName()
-                    + "' is missing schema metadata for nested validation");
-            return;
-        }
-        validateSchemaValue(entityName, field.getName(), schema, value, violations);
-    }
-
-    private void validateSchemaValue(
-            String entityName,
-            String path,
-            CompiledSchema schema,
-            Object value,
-            List<String> violations
-    ) {
-        if (schema == null) {
-            return;
-        }
-        String type = normalizeType(schema.getType());
-        if (type.isBlank()) {
-            return;
-        }
-        if (value == null) {
-            return;
-        }
-
-        switch (type) {
-            case "object" -> validateObjectSchemaValue(entityName, path, schema, value, violations);
-            case "array" -> validateArraySchemaValue(entityName, path, schema, value, violations);
-            case "enum" -> validateEnumSchemaValue(entityName, path, schema, value, violations);
-            case "date" -> validateDateSchemaValue(entityName, path, value, violations);
-            case "datetime" -> validateDateTimeSchemaValue(entityName, path, value, violations);
-            case "reference", "uuid" -> {
-                if (toUuid(value) == null) {
-                    violations.add("Entity " + entityName + ": field '" + path + "' must be a UUID");
-                }
-            }
-            case "boolean" -> {
-                if (!(value instanceof Boolean)) {
-                    violations.add("Entity " + entityName + ": field '" + path + "' must be boolean");
-                }
-            }
-            default -> {
-                // Scalar type rules already covered by existing field validators when applicable.
-            }
-        }
-    }
-
-    private void validateObjectSchemaValue(
-            String entityName,
-            String path,
-            CompiledSchema schema,
-            Object value,
-            List<String> violations
-    ) {
-        if (!(value instanceof Map<?, ?> rawMap)) {
-            violations.add("Entity " + entityName + ": field '" + path + "' must be an object");
-            return;
-        }
-        Map<String, Object> map = mapWithStringKeys(rawMap);
-
-        for (String requiredField : schema.getRequired()) {
-            if (requiredField == null || requiredField.isBlank()) {
-                continue;
-            }
-            boolean present = hasMapKey(map, requiredField);
-            if (!present) {
-                CompiledSchema requiredSchema = schema.getProperties().get(requiredField);
-                if (requiredSchema != null
-                        && (requiredSchema.getDefaultValue() != null
-                        || (requiredSchema.getDefaultExpression() != null && !requiredSchema.getDefaultExpression().isBlank())
-                        || (requiredSchema.getDerivedExpression() != null && !requiredSchema.getDerivedExpression().isBlank()))) {
-                    present = true;
-                }
-            }
-            if (!present) {
-                violations.add("Entity " + entityName + ": required nested field '" + path + "."
-                        + requiredField + "' is missing");
-            }
-        }
-
-        for (Map.Entry<String, CompiledSchema> property : schema.getProperties().entrySet()) {
-            String propertyName = property.getKey();
-            Object propertyValue = readMapValue(map, propertyName);
-            if (propertyValue == null && property.getValue() != null) {
-                if (property.getValue().getDefaultValue() != null) {
-                    propertyValue = property.getValue().getDefaultValue();
-                } else if (property.getValue().getDefaultExpression() != null
-                        && !property.getValue().getDefaultExpression().isBlank()) {
-                    propertyValue = evaluateSchemaExpression(property.getValue().getDefaultExpression(), map);
-                } else if (property.getValue().getDerivedExpression() != null
-                        && !property.getValue().getDerivedExpression().isBlank()) {
-                    propertyValue = evaluateSchemaExpression(property.getValue().getDerivedExpression(), map);
-                }
-            }
-            if (propertyValue == null) {
-                continue;
-            }
-            validateSchemaValue(
-                    entityName,
-                    path + "." + propertyName,
-                    property.getValue(),
-                    propertyValue,
-                    violations
-            );
-        }
-    }
-
-    private void validateArraySchemaValue(
-            String entityName,
-            String path,
-            CompiledSchema schema,
-            Object value,
-            List<String> violations
-    ) {
-        if (!(value instanceof Collection<?> values)) {
-            violations.add("Entity " + entityName + ": field '" + path + "' must be an array");
-            return;
-        }
-        if (schema.getItems() == null) {
-            return;
-        }
-        int index = 0;
-        for (Object item : values) {
-            validateSchemaValue(entityName, path + "[" + index + "]", schema.getItems(), item, violations);
-            index++;
-        }
-    }
-
-    private void validateEnumSchemaValue(
-            String entityName,
-            String path,
-            CompiledSchema schema,
-            Object value,
-            List<String> violations
-    ) {
-        if (schema.getEnumValues() == null || schema.getEnumValues().isEmpty()) {
-            return;
-        }
-        String normalized = value.toString().trim();
-        if (normalized.isEmpty()) {
-            return;
-        }
-        boolean match = schema.getEnumValues().stream()
-                .anyMatch(candidate -> candidate != null && candidate.equals(normalized));
-        if (!match) {
-            violations.add("Entity " + entityName + ": enum constraint violated for field '" + path
-                    + "' (allowed: " + schema.getEnumValues() + ")");
-        }
-    }
-
-    private void validateDateSchemaValue(
-            String entityName,
-            String path,
-            Object value,
-            List<String> violations
-    ) {
-        try {
-            if (value instanceof LocalDate) {
-                return;
-            }
-            if (value instanceof String raw) {
-                LocalDate.parse(raw.trim(), DateTimeFormatter.ISO_LOCAL_DATE);
-                return;
-            }
-            violations.add("Entity " + entityName + ": date field '" + path
-                    + "' must use ISO format YYYY-MM-DD");
-        } catch (DateTimeParseException exception) {
-            violations.add("Entity " + entityName + ": date field '" + path
-                    + "' must use ISO format YYYY-MM-DD");
-        }
-    }
-
-    private void validateDateTimeSchemaValue(
-            String entityName,
-            String path,
-            Object value,
-            List<String> violations
-    ) {
-        if (value instanceof OffsetDateTime || value instanceof LocalDateTime) {
-            return;
-        }
-        if (!(value instanceof String raw)) {
-            violations.add("Entity " + entityName + ": datetime field '" + path
-                    + "' must use ISO datetime format");
-            return;
-        }
-
-        String candidate = raw.trim();
-        if (candidate.isEmpty()) {
-            return;
-        }
-        try {
-            DateTimeFormatter.ISO_DATE_TIME.parseBest(
-                    candidate,
-                    OffsetDateTime::from,
-                    LocalDateTime::from
-            );
-        } catch (DateTimeParseException exception) {
-            violations.add("Entity " + entityName + ": datetime field '" + path
-                    + "' must use ISO datetime format");
-        }
-    }
-
-    private InvariantViolationDetail toTypedViolation(String concept, String message) {
-        String path = extractPathFromMessage(message);
-        String invariant = inferInvariantFromMessage(path, message);
-        return new InvariantViolationDetail(
-                "invariant_failed",
-                concept,
-                invariant,
-                path,
-                message,
-                false
-        );
-    }
-
-    private InvariantViolationDetail toInvariantViolation(
-            String concept,
-            InvariantEngine.Violation violation,
-            Set<String> uniqueInvariantRefs
-    ) {
-        String invariant = violation == null || violation.invariantRef() == null || violation.invariantRef().isBlank()
-                ? "unknown_invariant"
-                : violation.invariantRef();
-        String message = violation == null || violation.message() == null || violation.message().isBlank()
-                ? "Invariant validation failed"
-                : violation.message();
-        String path = extractFieldPath(violation);
-        boolean unique = uniqueInvariantRefs.contains(normalize(invariant))
-                || message.toLowerCase(Locale.ROOT).contains("unique constraint violated");
-
-        return new InvariantViolationDetail(
-                "invariant_failed",
-                concept,
-                invariant,
-                path,
-                message,
-                unique
-        );
-    }
 
     public static Map<String, Object> mapWithStringKeys(Map<?, ?> rawMap) {
         Map<String, Object> out = new HashMap<>();
@@ -3517,7 +2077,7 @@ public final class GeneratedCrudRuntimeSupport {
         return null;
     }
 
-    private Optional<CompiledConcept> findEntity(String name) {
+    Optional<CompiledConcept> findEntity(String name) {
         CompiledModel currentModel = modelSupplier.get();
         Optional<CompiledConcept> exact = currentModel.findConcept(name);
         if (exact.isPresent()) {
@@ -3532,7 +2092,7 @@ public final class GeneratedCrudRuntimeSupport {
         return Optional.empty();
     }
 
-    private CompiledConcept requireEntity(String entityName) {
+    CompiledConcept requireEntity(String entityName) {
         return findEntity(entityName)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown entity for runtime support: " + entityName));
     }
@@ -3567,7 +2127,7 @@ public final class GeneratedCrudRuntimeSupport {
         return target.flatMap(entity -> resolveReferenceAnchor(referenceField, entity));
     }
 
-    private Optional<CompiledField> resolveReferenceAnchor(CompiledField referenceField, CompiledConcept targetEntity) {
+    Optional<CompiledField> resolveReferenceAnchor(CompiledField referenceField, CompiledConcept targetEntity) {
         if (referenceField == null || targetEntity == null) {
             return Optional.empty();
         }
@@ -3584,7 +2144,7 @@ public final class GeneratedCrudRuntimeSupport {
         return Optional.empty();
     }
 
-    private Optional<CompiledField> idField(CompiledConcept entity) {
+    Optional<CompiledField> idField(CompiledConcept entity) {
         if (entity == null) {
             return Optional.empty();
         }
@@ -3666,308 +2226,9 @@ public final class GeneratedCrudRuntimeSupport {
         }
     }
 
-    private boolean existsById(CompiledConcept entity, UUID id) {
-        if (entityManager == null || entity == null || id == null) {
-            return false;
-        }
-        String table = tableName(entity);
-        if (table.isBlank()) {
-            return false;
-        }
-        Optional<CompiledField> idField = idField(entity);
-        if (idField.isEmpty()) {
-            return false;
-        }
 
-        try {
-            Query query = entityManager.createNativeQuery(existsByIdSql(entity, idField.get()));
-            query.setParameter("id", id.toString());
-            query.setMaxResults(1);
-            List<?> rows = query.getResultList();
-            return rows != null && !rows.isEmpty();
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    private boolean existsByAnchor(CompiledConcept entity, CompiledField anchor, Object value) {
-        if (entity == null || anchor == null || value == null) {
-            return false;
-        }
-        if (entityManager == null) {
-            return existsByAnchorViaConceptGateway(entity, anchor, value);
-        }
-        String table = tableName(entity);
-        String column = columnName(anchor);
-        if (table.isBlank() || column.isBlank()) {
-            return false;
-        }
-
-        try {
-            Query query = entityManager.createNativeQuery(
-                    "SELECT 1 FROM " + table + " WHERE CAST(" + column + " AS VARCHAR) = :value"
-            );
-            query.setParameter("value", String.valueOf(value));
-            query.setMaxResults(1);
-            List<?> rows = query.getResultList();
-            return rows != null && !rows.isEmpty();
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    // Reference-existence fallback for npdev.storage.mode=in-memory, where there is no
-    // EntityManager and the referenced concept lives only in the ConceptGateway/ConceptStore.
-    private boolean existsByAnchorViaConceptGateway(CompiledConcept entity, CompiledField anchor, Object value) {
-        return existsByAnchorViaConceptGateway(entity, anchor, value, null);
-    }
-
-    // explicitContext: the caller's context when it has one (enforceBondTargetTenant), so the
-    // tenant-keyed store read is scoped to THAT tenant; null falls back to the current CRUD context.
-    private boolean existsByAnchorViaConceptGateway(
-            CompiledConcept entity,
-            CompiledField anchor,
-            Object value,
-            ExecutionContext explicitContext
-    ) {
-        if (conceptGateway == null) {
-            return false;
-        }
-        try {
-            ExecutionContext context = explicitContext != null ? explicitContext : resolveCurrentCrudContext();
-            String anchorName = anchor.getName();
-            if ("id".equalsIgnoreCase(anchorName)) {
-                return conceptGateway.read(
-                        new ConceptReadRequest(entity.getName(), String.valueOf(value), context.tenantId()),
-                        context
-                ).isPresent();
-            }
-            return conceptGateway.list(new ConceptListRequest(entity.getName(), context.tenantId()), context)
-                    .stream()
-                    .anyMatch(record -> referenceValuesEqual(record.data().get(anchorName), value));
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    private boolean resourceHasConflict(
-            String entityName,
-            String resourceFieldPath,
-            Object resourceIdValue,
-            String startsAtFieldPath,
-            Object scheduledAtValue,
-            String durationMinutesFieldPath,
-            Object durationMinutesValue,
-            Object excludeIdValue,
-            Object payload
-    ) {
-        if (entityName == null
-                || entityName.isBlank()
-                || resourceFieldPath == null
-                || resourceFieldPath.isBlank()
-                || startsAtFieldPath == null
-                || startsAtFieldPath.isBlank()
-                || durationMinutesFieldPath == null
-                || durationMinutesFieldPath.isBlank()) {
-            return false;
-        }
-        if (entityManager == null) {
-            return resourceHasConflictViaConceptGateway(
-                    entityName,
-                    resourceFieldPath,
-                    resourceIdValue,
-                    startsAtFieldPath,
-                    scheduledAtValue,
-                    durationMinutesFieldPath,
-                    durationMinutesValue,
-                    excludeIdValue,
-                    payload
-            );
-        }
-
-        Optional<CompiledConcept> entityOpt = findEntity(entityName);
-        if (entityOpt.isEmpty()) {
-            return false;
-        }
-        CompiledConcept entity = entityOpt.get();
-        String table = tableName(entity);
-        if (table.isBlank()) {
-            return false;
-        }
-
-        String resourceColumn = columnName(entity, resourceFieldPath);
-        String startsAtColumn = columnName(entity, startsAtFieldPath);
-        String durationColumn = columnName(entity, durationMinutesFieldPath);
-        Optional<CompiledField> idField = idField(entity);
-        if (resourceColumn.isBlank() || startsAtColumn.isBlank() || durationColumn.isBlank() || idField.isEmpty()) {
-            return false;
-        }
-        String idColumn = columnName(idField.get());
-
-        Object effectiveExcludeId = resolveConflictExcludeId(excludeIdValue, payload);
-        UUID resourceId = toUuid(resourceIdValue);
-        OffsetDateTime start = toOffsetDateTime(scheduledAtValue);
-        Integer durationMinutes = toInteger(durationMinutesValue);
-        UUID excludeId = toUuid(effectiveExcludeId);
-        if (resourceId == null || start == null || durationMinutes == null || durationMinutes <= 0) {
-            return false;
-        }
-
-        try {
-            Query query = entityManager.createNativeQuery(
-                    "SELECT " + idColumn + ", " + startsAtColumn + ", " + durationColumn + " "
-                            + "FROM " + table + " "
-                            + "WHERE CAST(" + resourceColumn + " AS VARCHAR) = :resourceId "
-                            + "  AND (:excludeId = '' OR CAST(" + idColumn + " AS VARCHAR) <> :excludeId)"
-            );
-            query.setParameter("resourceId", resourceId.toString());
-            query.setParameter("excludeId", excludeId == null ? "" : excludeId.toString());
-            List<?> rows = query.getResultList();
-            OffsetDateTime newEnd = start.plusMinutes(durationMinutes);
-            if (rows == null || rows.isEmpty()) {
-                return false;
-            }
-            for (Object row : rows) {
-                if (!(row instanceof Object[] values) || values.length < 3) {
-                    continue;
-                }
-                OffsetDateTime existingStart = toOffsetDateTime(values[1]);
-                Integer existingDuration = toInteger(values[2]);
-                if (existingStart == null || existingDuration == null || existingDuration <= 0) {
-                    continue;
-                }
-                OffsetDateTime existingEnd = existingStart.plusMinutes(existingDuration);
-                if (start.isBefore(existingEnd) && existingStart.isBefore(newEnd)) {
-                    return true;
-                }
-            }
-            return false;
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    // Conflict-detection fallback for npdev.storage.mode=in-memory, where there is no
-    // EntityManager and the resource's existing bookings live only in the ConceptGateway/ConceptStore.
-    private boolean resourceHasConflictViaConceptGateway(
-            String entityName,
-            String resourceFieldPath,
-            Object resourceIdValue,
-            String startsAtFieldPath,
-            Object scheduledAtValue,
-            String durationMinutesFieldPath,
-            Object durationMinutesValue,
-            Object excludeIdValue,
-            Object payload
-    ) {
-        if (conceptGateway == null) {
-            return false;
-        }
-        Object effectiveExcludeId = resolveConflictExcludeId(excludeIdValue, payload);
-        UUID resourceId = toUuid(resourceIdValue);
-        OffsetDateTime start = toOffsetDateTime(scheduledAtValue);
-        Integer durationMinutes = toInteger(durationMinutesValue);
-        UUID excludeId = toUuid(effectiveExcludeId);
-        if (resourceId == null || start == null || durationMinutes == null || durationMinutes <= 0) {
-            return false;
-        }
-        OffsetDateTime newEnd = start.plusMinutes(durationMinutes);
-
-        try {
-            ExecutionContext context = resolveCurrentCrudContext();
-            return conceptGateway.list(new ConceptListRequest(entityName, context.tenantId()), context)
-                    .stream()
-                    .anyMatch(record -> {
-                        Map<String, Object> data = record.data();
-                        if (!referenceValuesEqual(data.get(resourceFieldPath), resourceId.toString())) {
-                            return false;
-                        }
-                        UUID rowId = toUuid(data.get("id"));
-                        if (excludeId != null && excludeId.equals(rowId)) {
-                            return false;
-                        }
-                        OffsetDateTime existingStart = toOffsetDateTime(data.get(startsAtFieldPath));
-                        Integer existingDuration = toInteger(data.get(durationMinutesFieldPath));
-                        if (existingStart == null || existingDuration == null || existingDuration <= 0) {
-                            return false;
-                        }
-                        OffsetDateTime existingEnd = existingStart.plusMinutes(existingDuration);
-                        return start.isBefore(existingEnd) && existingStart.isBefore(newEnd);
-                    });
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    private boolean scopeExists(String conceptName, String fieldPath, Object expectedValue) {
-        if (entityManager == null
-                || conceptName == null
-                || conceptName.isBlank()
-                || fieldPath == null
-                || fieldPath.isBlank()
-                || expectedValue == null) {
-            return false;
-        }
-
-        String trimmedFieldPath = fieldPath.trim();
-        if (trimmedFieldPath.contains(".") || trimmedFieldPath.contains("[") || trimmedFieldPath.contains("]")) {
-            return false;
-        }
-
-        Optional<CompiledConcept> entityOpt = findEntity(conceptName);
-        if (entityOpt.isEmpty()) {
-            return false;
-        }
-
-        CompiledConcept entity = entityOpt.get();
-        String table = tableName(entity);
-        if (table.isBlank()) {
-            return false;
-        }
-
-        String column = columnName(entity, trimmedFieldPath);
-        if (column.isBlank()) {
-            return false;
-        }
-
-        String expectedText = String.valueOf(expectedValue).trim();
-        if (expectedText.isEmpty()) {
-            return false;
-        }
-
-        try {
-            Query query = entityManager.createNativeQuery(
-                    "SELECT 1 FROM " + table + " WHERE CAST(" + column + " AS VARCHAR) = :expectedValue"
-            );
-            query.setParameter("expectedValue", expectedText);
-            query.setMaxResults(1);
-            List<?> rows = query.getResultList();
-            return rows != null && !rows.isEmpty();
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    private Object resolveConflictExcludeId(Object excludeIdValue, Object payload) {
-        UUID explicit = toUuid(excludeIdValue);
-        if (explicit != null) {
-            return explicit;
-        }
-        if (!(payload instanceof Map<?, ?> rawMap)) {
-            return excludeIdValue;
-        }
-        Map<String, Object> map = mapWithStringKeys(rawMap);
-        Object fromId = readMapValue(map, "id");
-        UUID id = toUuid(fromId);
-        if (id != null) {
-            return id;
-        }
-        Object fromShadowId = readMapValue(map, "__id");
-        UUID shadowId = toUuid(fromShadowId);
-        if (shadowId != null) {
-            return shadowId;
-        }
-        return excludeIdValue;
+    boolean existsByAnchor(CompiledConcept entity, CompiledField anchor, Object value) {
+        return referenceLookupSupport.existsByAnchor(entity, anchor, value);
     }
 
     public static String normalize(String value) {
@@ -3985,171 +2246,6 @@ public final class GeneratedCrudRuntimeSupport {
         return trimmed.substring(0, 1).toLowerCase(Locale.ROOT) + trimmed.substring(1);
     }
 
-    private void validateLifecycleTransitions(
-            String entityName,
-            CompiledConcept entity,
-            Map<String, Object> payload,
-            List<InvariantViolationDetail> violations
-    ) {
-        if (entity == null || payload == null || payload.isEmpty() || violations == null) {
-            return;
-        }
-        CompiledLifecycle lifecycle = entity.getLifecycle();
-        if (lifecycle == null || lifecycle.getTransitions().isEmpty()) {
-            return;
-        }
-
-        UUID currentId = extractCurrentId(payload);
-        if (currentId == null) {
-            return;
-        }
-
-        String statusField = lifecycle.getStatusField() == null || lifecycle.getStatusField().isBlank()
-                ? "status"
-                : lifecycle.getStatusField().trim();
-        String nextStatus = readLifecycleToken(readPayloadValue(payload, statusField));
-        if (nextStatus == null) {
-            return;
-        }
-
-        String previousStatus = fetchCurrentStatus(entity, currentId, statusField);
-        if (previousStatus == null || normalize(previousStatus).equals(normalize(nextStatus))) {
-            return;
-        }
-
-        CompiledStateTransition matchingTransition = findLifecycleTransition(lifecycle, previousStatus, nextStatus);
-        if (matchingTransition == null) {
-            violations.add(new InvariantViolationDetail(
-                    "invariant_failed",
-                    entityName,
-                    "status_transition_not_allowed",
-                    statusField,
-                    "Status transition from '" + previousStatus + "' to '" + nextStatus + "' is not allowed",
-                    false
-            ));
-            return;
-        }
-
-        for (String requiredField : matchingTransition.getRequiredPayload()) {
-            if (requiredField == null || requiredField.isBlank()) {
-                continue;
-            }
-            Object value = readPayloadValue(payload, requiredField);
-            if (isLifecycleMissing(value)) {
-                violations.add(new InvariantViolationDetail(
-                        "invariant_failed",
-                        entityName,
-                        "status_transition_requires_field",
-                        requiredField,
-                        "Status transition to '" + matchingTransition.getTo()
-                                + "' requires field '" + requiredField + "'",
-                        false
-                ));
-            }
-        }
-
-        if (matchingTransition.getGuard() != null
-                && !matchingTransition.getGuard().isBlank()
-                && !evaluateStateMachineGuard(matchingTransition.getGuard(), payload, previousStatus, nextStatus)) {
-            violations.add(new InvariantViolationDetail(
-                    "invariant_failed",
-                    entityName,
-                    "status_transition_guard_failed",
-                    statusField,
-                    "Status transition from '" + previousStatus + "' to '" + nextStatus
-                            + "' failed guard '" + matchingTransition.getGuard() + "'",
-                    false
-            ));
-        }
-    }
-
-    private boolean evaluateStateMachineGuard(
-            String rawCondition,
-            Map<String, Object> payload,
-            String previousStatus,
-            String nextStatus
-    ) {
-        if (rawCondition == null || rawCondition.isBlank()) {
-            return true;
-        }
-        String condition = rawCondition.trim();
-        if ("true".equalsIgnoreCase(condition)) {
-            return true;
-        }
-        if ("false".equalsIgnoreCase(condition)) {
-            return false;
-        }
-        // A guard naming the acting user ($user.roles.contains('Curator')) goes through the same
-        // evaluator the concept gateway and row access use, never the legacy matcher below.
-        if (UserScopedExpressions.referencesUser(condition)) {
-            return UserScopedExpressions.evaluate(condition, payload, resolveCurrentExecutionContext());
-        }
-
-        int equalsIndex = condition.indexOf("==");
-        if (equalsIndex >= 0) {
-            Object left = resolveStateMachineGuardValue(condition.substring(0, equalsIndex), payload, previousStatus, nextStatus);
-            Object right = resolveStateMachineGuardValue(condition.substring(equalsIndex + 2), payload, previousStatus, nextStatus);
-            return valuesEqual(left, right);
-        }
-
-        int notEqualsIndex = condition.indexOf("!=");
-        if (notEqualsIndex >= 0) {
-            Object left = resolveStateMachineGuardValue(condition.substring(0, notEqualsIndex), payload, previousStatus, nextStatus);
-            Object right = resolveStateMachineGuardValue(condition.substring(notEqualsIndex + 2), payload, previousStatus, nextStatus);
-            return !valuesEqual(left, right);
-        }
-
-        return asBoolean(resolveStateMachineGuardValue(condition, payload, previousStatus, nextStatus));
-    }
-
-    private CompiledStateTransition findLifecycleTransition(
-            CompiledLifecycle lifecycle,
-            String previousStatus,
-            String nextStatus
-    ) {
-        if (lifecycle == null || lifecycle.getTransitions() == null) {
-            return null;
-        }
-        String previous = normalize(previousStatus);
-        String next = normalize(nextStatus);
-        for (CompiledStateTransition transition : lifecycle.getTransitions()) {
-            if (transition == null) {
-                continue;
-            }
-            if (normalize(transition.getFrom()).equals(previous)
-                    && normalize(transition.getTo()).equals(next)) {
-                return transition;
-            }
-        }
-        return null;
-    }
-
-    private String fetchCurrentStatus(CompiledConcept entity, UUID id, String statusField) {
-        if (entityManager == null || entity == null || id == null) {
-            return null;
-        }
-        String table = tableName(entity);
-        if (table == null || table.isBlank()) {
-            return null;
-        }
-        String statusColumn = columnName(entity, statusField);
-        Optional<CompiledField> idField = idField(entity);
-        if (statusColumn.isBlank() || idField.isEmpty()) {
-            return null;
-        }
-        try {
-            Query query = entityManager.createNativeQuery(fetchCurrentStatusSql(entity, idField.get(), statusColumn));
-            query.setParameter("id", id.toString());
-            query.setMaxResults(1);
-            List<?> rows = query.getResultList();
-            if (rows == null || rows.isEmpty()) {
-                return null;
-            }
-            return readLifecycleToken(rows.get(0));
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
 
     // -------------------------------------------------------------------------
     // CRUD kernel-port integration: context, permission, audit, idempotency
@@ -4296,54 +2392,7 @@ public final class GeneratedCrudRuntimeSupport {
         }
     }
 
-    /**
-     * R5.1: a compact, deterministic "field: before -> after" list for every field that differs
-     * between two record snapshots. A create has {@code before == null}, so every field in
-     * {@code after} shows as a change from "null"; a delete has {@code after == null}, so every
-     * field in {@code before} shows as a change to "null". Values are stringified, not
-     * type-preserved -- this produces an audit trail entry, not a re-playable payload. Fields are
-     * sorted alphabetically so output is deterministic regardless of the entity's declared field
-     * order.
-     */
-    private static String describeFieldDiff(Map<String, Object> before, Map<String, Object> after,
-                                            Set<String> redacted) {
-        if (before == null && after == null) {
-            return "";
-        }
-        List<String> fields = new ArrayList<>();
-        if (before != null) {
-            fields.addAll(before.keySet());
-        }
-        if (after != null) {
-            for (String key : after.keySet()) {
-                if (!fields.contains(key)) {
-                    fields.add(key);
-                }
-            }
-        }
-        fields.sort(Comparator.naturalOrder());
-        StringBuilder builder = new StringBuilder();
-        for (String field : fields) {
-            Object oldValue = before == null ? null : before.get(field);
-            Object newValue = after == null ? null : after.get(field);
-            String oldText = oldValue == null ? "null" : String.valueOf(oldValue);
-            String newText = newValue == null ? "null" : String.valueOf(newValue);
-            if (oldText.equals(newText)) {
-                continue;
-            }
-            if (redacted.contains(field)) {
-                oldText = REDACTED_AUDIT_VALUE;
-                newText = REDACTED_AUDIT_VALUE;
-            }
-            if (builder.length() > 0) {
-                builder.append("; ");
-            }
-            builder.append(field).append(": ").append(oldText).append(" -> ").append(newText);
-        }
-        return builder.toString();
-    }
 
-    private static final String REDACTED_AUDIT_VALUE = "***";
 
     /**
      * UI-4: names of the concept's fields whose values must never reach the audit trail in clear:
@@ -4368,50 +2417,4 @@ public final class GeneratedCrudRuntimeSupport {
         return redacted;
     }
 
-    /**
-     * UI-4: JSON array of {@code {field, before, after}} for every field that differs between two
-     * snapshots, sorted by field name, with the same redaction and stringification as
-     * {@link #describeFieldDiff}. Empty string when nothing changed or serialization fails.
-     */
-    private static String describeFieldChangesJson(Map<String, Object> before, Map<String, Object> after,
-                                                   Set<String> redacted) {
-        if (before == null && after == null) {
-            return "";
-        }
-        List<String> fields = new ArrayList<>();
-        if (before != null) {
-            fields.addAll(before.keySet());
-        }
-        if (after != null) {
-            for (String key : after.keySet()) {
-                if (!fields.contains(key)) {
-                    fields.add(key);
-                }
-            }
-        }
-        fields.sort(Comparator.naturalOrder());
-        List<Map<String, String>> changes = new ArrayList<>();
-        for (String field : fields) {
-            Object oldValue = before == null ? null : before.get(field);
-            Object newValue = after == null ? null : after.get(field);
-            String oldText = oldValue == null ? "null" : String.valueOf(oldValue);
-            String newText = newValue == null ? "null" : String.valueOf(newValue);
-            if (oldText.equals(newText)) {
-                continue;
-            }
-            Map<String, String> change = new LinkedHashMap<>();
-            change.put("field", field);
-            change.put("before", redacted.contains(field) ? REDACTED_AUDIT_VALUE : oldText);
-            change.put("after", redacted.contains(field) ? REDACTED_AUDIT_VALUE : newText);
-            changes.add(change);
-        }
-        if (changes.isEmpty()) {
-            return "";
-        }
-        try {
-            return OBJECT_MAPPER.writeValueAsString(changes);
-        } catch (Exception e) {
-            return "";
-        }
-    }
 }
