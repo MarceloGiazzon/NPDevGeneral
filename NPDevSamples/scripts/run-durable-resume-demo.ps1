@@ -59,12 +59,21 @@ function Wait-ForAppReady([string]$LogPath, [int]$TimeoutSeconds) {
 }
 
 Info "=== Step -1: clean up any leftover process from a previous run on this port ==="
-Get-CimInstance Win32_Process -Filter "Name='java.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -and $_.CommandLine.Contains("FinalExec-") -and $_.CommandLine.Contains("server.port=$port") } |
-    ForEach-Object {
-        Info ("Killing leftover PID " + $_.ProcessId + " from a previous run.")
-        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-    }
+# XPLAT-2a: Get-CimInstance is Windows-only; elsewhere read the same (pid, command line) pairs from ps.
+$leftovers = if ($IsWindows) {
+    @(Get-CimInstance Win32_Process -Filter "Name='java.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine.Contains("FinalExec-") -and $_.CommandLine.Contains("server.port=$port") } |
+        ForEach-Object { [int]$_.ProcessId })
+}
+else {
+    @(& ps -A -o pid= -o args= 2>$null | ForEach-Object {
+        if ("$_" -match '^\s*(\d+)\s+(.*)$' -and $Matches[2].Contains("FinalExec-") -and $Matches[2].Contains("server.port=$port")) { [int]$Matches[1] }
+    })
+}
+foreach ($leftoverId in $leftovers) {
+    Info ("Killing leftover PID " + $leftoverId + " from a previous run.")
+    Stop-Process -Id $leftoverId -Force -ErrorAction SilentlyContinue
+}
 Start-Sleep -Seconds 1
 
 Info "=== Step 0: generate + build ==="

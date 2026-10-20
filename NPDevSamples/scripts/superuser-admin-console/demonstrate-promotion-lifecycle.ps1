@@ -66,8 +66,9 @@ function Remove-PersistedDatabase {
 
 function Start-SampleAppProcess([string]$Label) {
     $appRoot = $sample.AppRoot
-    $gradlew = Join-Path $appRoot "gradlew.bat"
-    Ensure-File -PathValue $gradlew -Label "Generated app gradlew.bat"
+    # XPLAT-2a: platform-aware wrapper (gradlew.bat on Windows, gradlew elsewhere) from sample-common.ps1.
+    $gradlew = Get-NPDevGradleWrapperExecutable $appRoot
+    Ensure-File -PathValue $gradlew -Label "Generated app Gradle wrapper"
     $outLog = Join-Path $bootLogRoot ($Label + "-boot-out.log")
     $errLog = Join-Path $bootLogRoot ($Label + "-boot-err.log")
     Remove-Item -LiteralPath $outLog -Force -ErrorAction SilentlyContinue

@@ -84,9 +84,12 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 # Call the function instead, so a third person's clone (and any drive) resolves correctly.
 # npdev-common.ps1 enables Set-StrictMode at dot-source time; this script was not written under it,
 # so restore this script's own mode immediately after loading the helpers.
+#
+# XPLAT-2a: loaded unconditionally now -- the gradle calls below need Get-NPDevGradleWrapperExecutable
+# (gradlew.bat does not exist as a runnable form on Linux/macOS), not only the libs-dir default.
+. (Join-Path $repoRoot "scripts\npdev-common.ps1")
+Set-StrictMode -Off
 if ([string]::IsNullOrWhiteSpace($RuntimeHostLibsDir)) {
-    . (Join-Path $repoRoot "scripts\npdev-common.ps1")
-    Set-StrictMode -Off
     $RuntimeHostLibsDir = Get-NPDevRuntimeHostLibsDir $repoRoot
 }
 $py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "py" }
@@ -126,7 +129,7 @@ try {
         $generatorRoot = Join-Path $repoRoot "NPDevGenerator"
         Push-Location $generatorRoot
         try {
-            & (Join-Path $generatorRoot "gradlew.bat") ":generator:classifyModelChange" `
+            & (Get-NPDevGradleWrapperExecutable $generatorRoot) ":generator:classifyModelChange" `
                 "-PcurrentPath=$ModelDiffCurrentPath" "-PbaselinePath=$ModelDiffBaselinePath" `
                 "-PreportOut=$classifyReport" "--console=plain" | Out-Host
         } finally {
@@ -168,7 +171,7 @@ try {
         Write-Section "T0: gradlew :NPDevContract:dsl:test --tests $DslTestFilter"
         Push-Location (Join-Path $repoRoot "NPDevContract")
         try {
-            & (Join-Path (Get-Location) "gradlew.bat") ":dsl:test" "--tests" $DslTestFilter "--console=plain" | Out-Host
+            & (Get-NPDevGradleWrapperExecutable (Get-Location).Path) ":dsl:test" "--tests" $DslTestFilter "--console=plain" | Out-Host
             $exit = $LASTEXITCODE
         } finally {
             Pop-Location

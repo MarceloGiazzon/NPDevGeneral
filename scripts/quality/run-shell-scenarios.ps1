@@ -75,26 +75,9 @@ function Write-JsonReport {
 
 # Same descendant-tree kill as invoke-ai-beta-app-smoke.ps1 (scripts/quality) -- `gradlew bootRun`
 # forks a JVM child; killing only the wrapper process leaves the app itself running on the port.
-function Get-DescendantProcessIds {
-    param([int]$RootProcessId)
-    $allProcesses = @(Get-CimInstance Win32_Process)
-    $pending = [System.Collections.Generic.Queue[int]]::new()
-    $descendants = [System.Collections.Generic.List[int]]::new()
-    $pending.Enqueue($RootProcessId)
-    while ($pending.Count -gt 0) {
-        $parentId = $pending.Dequeue()
-        foreach ($child in @($allProcesses | Where-Object { $_.ParentProcessId -eq $parentId })) {
-            $childId = [int]$child.ProcessId
-            $descendants.Add($childId) | Out-Null
-            $pending.Enqueue($childId)
-        }
-    }
-    return @($descendants)
-}
-
 function Stop-ProcessTree {
     param([int]$RootProcessId)
-    $ids = @((Get-DescendantProcessIds -RootProcessId $RootProcessId) | Select-Object -Unique)
+    $ids = @((Get-NPDevDescendantProcessIds -RootProcessId $RootProcessId) | Select-Object -Unique)
     [array]::Reverse($ids)
     foreach ($id in $ids) {
         if ($id -ne $PID) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }

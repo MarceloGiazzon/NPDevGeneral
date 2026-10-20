@@ -727,8 +727,21 @@ $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') 
 # gradle ':clean' fail. Detect it (listener on the app port and/or app.pid), warn,
 # and let the operator choose to stop it or cancel. Use -Force to stop without asking.
 $running = @()
-$listeners = Get-NetTCPConnection -LocalPort $plan.serverPort -State Listen -ErrorAction SilentlyContinue
-if ($listeners) { $running += ($listeners | Select-Object -ExpandProperty OwningProcess) }
+# XPLAT-2a: Get-NetTCPConnection is Windows-only; lsof / ss elsewhere.
+function Get-ListenerPids([int]$Port) {
+  if (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue) {
+    return @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess)
+  }
+  $found = @()
+  if (Get-Command lsof -CommandType Application -ErrorAction SilentlyContinue) {
+    $found = @(& lsof -nP "-iTCP:$Port" -sTCP:LISTEN -t 2>$null | Where-Object { "$_".Trim() -match '^\d+$' } | ForEach-Object { [int]"$_".Trim() })
+  }
+  if ($found.Count -eq 0 -and (Get-Command ss -CommandType Application -ErrorAction SilentlyContinue)) {
+    $found = @(& ss -H -ltnp "sport = :$Port" 2>$null | ForEach-Object { [regex]::Matches("$_", 'pid=(\d+)') } | ForEach-Object { [int]$_.Groups[1].Value })
+  }
+  return @($found)
+}
+$running += @(Get-ListenerPids $plan.serverPort)
 $pidFile = Join-Path $PSScriptRoot 'app.pid'
 if (Test-Path -LiteralPath $pidFile) {
   $fp = 0; [void][int]::TryParse((Get-Content -Raw -LiteralPath $pidFile).Trim(), [ref]$fp)
@@ -834,7 +847,7 @@ $ImpactOnlyApp = @'
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
 $jar = Get-ChildItem -LiteralPath $plan.appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
-       Where-Object { $_.FullName -like '*\build\libs\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
+       Where-Object { $_.FullName -like '*[\/]build[\/]libs[\/]*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
 if ($null -eq $jar) { Write-Host 'Runnable jar not found. Run Build-App.ps1 first.' -ForegroundColor Red; exit 1 }
 Write-Host "Computing schema impact for $($plan.appName) against its configured live database (zero writes)..."
 # REG-152 review: deliberately NOT calling Ensure-NpdevApiKey here. REPORT_ONLY mode never sends
@@ -867,7 +880,7 @@ $MigrateOnlyApp = @'
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
 $jar = Get-ChildItem -LiteralPath $plan.appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
-       Where-Object { $_.FullName -like '*\build\libs\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
+       Where-Object { $_.FullName -like '*[\/]build[\/]libs[\/]*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
 if ($null -eq $jar) { Write-Host 'Runnable jar not found. Run Build-App.ps1 first.' -ForegroundColor Red; exit 1 }
 Write-Host "Running the schema migration for $($plan.appName) as a one-shot job (MIGRATE_ONLY) -- no serving instance will start..."
 $javaArgs = @("-Dnpdev.schema.lifecycle.mode=MIGRATE_ONLY", '-jar', $jar.FullName,
@@ -900,7 +913,7 @@ if (Test-Path -LiteralPath $pidFile) {
 $startEnv = Join-Path $PSScriptRoot 'Start-Environment.ps1'
 if (Test-Path -LiteralPath $startEnv) { & $startEnv }
 $jar = Get-ChildItem -LiteralPath $plan.appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
-       Where-Object { $_.FullName -like '*\build\libs\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
+       Where-Object { $_.FullName -like '*[\/]build[\/]libs[\/]*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
 if ($null -eq $jar) { Write-Host 'Runnable jar not found. Run Build-App.ps1 first.' -ForegroundColor Red; exit 1 }
 $logFile = Join-Path $PSScriptRoot 'app.out.log'
 $keyFileSource = Join-Path $plan.appRoot 'SUPER_USER_KEY.txt'
