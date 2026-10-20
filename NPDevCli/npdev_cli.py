@@ -6960,7 +6960,9 @@ def _claude_desktop_config_path() -> Path | None:
     if os.name == "nt":
         appdata = os.environ.get("APPDATA")
         return Path(appdata) / "Claude" / "claude_desktop_config.json" if appdata else None
-    return Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
+    xdg_config = os.environ.get("XDG_CONFIG_HOME")  # XPLAT-2b: honour it, else ~/.config
+    config_home = Path(xdg_config) if xdg_config else Path.home() / ".config"
+    return config_home / "Claude" / "claude_desktop_config.json"
 
 
 def _merge_mcp_config(config_path: Path, entry: dict) -> tuple[dict, str | None]:

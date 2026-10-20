@@ -210,7 +210,18 @@ class MachineSnapshot:
                             continue
                 self.enumerated = True
                 return
-            out = subprocess.run(["ss", "-ltnp"], capture_output=True, text=True, timeout=20).stdout
+            try:
+                out = subprocess.run(["ss", "-ltnp"], capture_output=True, text=True, timeout=20).stdout
+            except FileNotFoundError:
+                # XPLAT-2b: macOS (and minimal Linux images) have no `ss`; `lsof` is the portable
+                # listener query there. A missing lsof too falls to the outer handler, which leaves
+                # `enumerated` False so callers use the direct TCP probe.
+                out = subprocess.run(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN"],
+                                     capture_output=True, text=True, timeout=20).stdout
+                for port, pid in _parse_lsof_listeners(out):
+                    self.ports.setdefault(port, []).append(pid)
+                self.enumerated = True
+                return
             for line in out.splitlines():
                 match = re.search(r":(\d+)\s", line)
                 if not match:
@@ -239,6 +250,22 @@ class MachineSnapshot:
             state = _docker_state(container)
         self._docker[container] = state
         return state
+
+
+def _parse_lsof_listeners(text: str) -> list[tuple[int, int]]:
+    """(port, pid) pairs from `lsof -nP -iTCP -sTCP:LISTEN`. Rows look like
+    `java  1234 me  45u  IPv6 0x... 0t0  TCP *:8080 (LISTEN)`; the header and anything that does
+    not parse are skipped."""
+    pairs: list[tuple[int, int]] = []
+    for line in text.splitlines():
+        if "(LISTEN)" not in line:
+            continue
+        parts = line.split()
+        match = re.search(r":(\d+)\s+\(LISTEN\)\s*$", line)
+        if len(parts) < 2 or not parts[1].isdigit() or not match:
+            continue
+        pairs.append((int(match.group(1)), int(parts[1])))
+    return pairs
 
 
 def _collect_command_lines() -> dict[int, str]:
