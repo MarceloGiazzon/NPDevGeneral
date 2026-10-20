@@ -1,0 +1,53 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "journeys",
+    "description": "JRN-1 fixture: identity pack + jwt auth + SMTP mail, driven by scripts/quality/run-journeys.ps1. Not a demo.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": false,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "h2-local",
+    "database": "journeys",
+    "resetMode": "reset"
+  },
+  "runtime": {
+    "springProfile": "dev,trial",
+    "serverPort": 8190,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "defaults": {
+    "auth.mode": "jwt"
+  },
+  "trialDefaults": {
+    "recommendedProfiles": "dev,trial",
+    "runtimeUrl": "http://localhost:8190/",
+    "databaseMode": "h2-local",
+    "notes": [
+      "JRN-1 journey-suite fixture on port 8190."
+    ]
+  }
+}

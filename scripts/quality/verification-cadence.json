@@ -97,6 +97,13 @@
       "description": "dsl-conformance-max still emits cleanly (NPDevSamples/scripts/generate-sample-app.ps1 -SampleId dsl-conformance-max -NoAssembleFinalApp -- emission only, no build/boot)."
     },
     {
+    "id": "jrn-journeys",
+    "tier": "T1",
+    "maxStaleness": "1-wave",
+    "invokedBy": "scripts/quality/run-journeys.ps1",
+    "description": "JRN-1: generate + boot NPDevSamples/journeys (identity pack, jwt auth) on a wiped database with a local SMTP sink and drive the real identity journeys over REST: self-signup, password reset, invitation, change password, sign-out (cookie expired AND old token refused) and per-device session revocation. Boots a real app, so T1/T2, never the static aiKnowledge gate."
+  },
+  {
     "id": "f6-showcase-browser",
     "tier": "T1",
     "maxStaleness": "1-wave",
