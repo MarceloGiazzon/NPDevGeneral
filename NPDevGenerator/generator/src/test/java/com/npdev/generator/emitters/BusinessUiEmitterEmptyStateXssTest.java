@@ -78,14 +78,7 @@ public class BusinessUiEmitterEmptyStateXssTest {
     }
 
     private static String readAppJs(Path out) throws IOException {
-        Path assets = out.resolve("src/main/resources/static/npdev-business-ui");
-        try (var files = Files.walk(assets)) {
-            Path appJs = files.filter(path -> path.getFileName().toString().endsWith(".js"))
-                    .filter(path -> path.getFileName().toString().contains("app"))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalStateException("no app js emitted under " + assets));
-            return Files.readString(appJs);
-        }
+        return CarvedUiModules.appJsWithModules(out);
     }
 
     @Test

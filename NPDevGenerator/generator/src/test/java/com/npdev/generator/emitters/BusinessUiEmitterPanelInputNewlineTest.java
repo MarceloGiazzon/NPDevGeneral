@@ -33,7 +33,8 @@ public class BusinessUiEmitterPanelInputNewlineTest {
     @Test
     @DisplayName("REG-92: the declared Panel's mini-form control is a newline-preserving textarea")
     void panelMiniFormUsesTextarea() {
-        String app = TEMPLATES.render("business-ui-app.mustache", Map.of());
+        String app = TEMPLATES.render("business-ui-app.mustache", Map.of())
+                + "\n" + TEMPLATES.raw("static-assets/business-ui/views/declared-panels.js");
 
         String factory = withoutLineComments(body(app, "function createDeclaredPanelTextInput(field)"));
         assertTrue(factory.contains("createElement(\"textarea\")"),

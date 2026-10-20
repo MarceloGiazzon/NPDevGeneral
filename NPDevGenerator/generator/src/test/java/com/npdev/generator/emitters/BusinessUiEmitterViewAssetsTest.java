@@ -260,4 +260,49 @@ public class BusinessUiEmitterViewAssetsTest {
                 """);
         assertEquals(0, run(out, "node", script.toString(), out.resolve(STATIC + "views/registry.js").toString()));
     }
+
+    /** CARVE-1: view code moved verbatim out of app.js lives in modules that app.js builds through NPDevViews.module. */
+    private static final String[][] CARVED_MODULES = {
+            {"admin-panels.js", "adminPanels"},
+            {"declared-panels.js", "declaredPanels"},
+            {"csv-io.js", "csvIo"},
+            {"form-inputs.js", "formInputs"},
+            {"bulk-actions.js", "bulkActions"}
+    };
+
+    @Test
+    void carvedModulesAreEmittedLoadedBeforeAppJsAndBuiltByAppJs() throws Exception {
+        Path out = emit();
+        String index = Files.readString(out.resolve(STATIC + "index.html"));
+        String appJs = Files.readString(out.resolve(STATIC + "app.js"));
+        for (String[] module : CARVED_MODULES) {
+            Path emitted = out.resolve(STATIC + "views/" + module[0]);
+            assertTrue(Files.exists(emitted), "views/" + module[0] + " must be emitted");
+            assertEquals(new TemplateEngine("npdev-templates/").raw("static-assets/business-ui/views/" + module[0]),
+                    Files.readString(emitted));
+            assertTrue(Files.readString(emitted).contains("registerModule(\"" + module[1] + "\""), module[0]);
+            assertTrue(index.indexOf("./views/registry.js") < index.indexOf("./views/" + module[0]),
+                    module[0] + " registers into NPDevViews, so registry.js must come first");
+            assertTrue(index.indexOf("./views/" + module[0]) < index.indexOf("./app.js"),
+                    module[0] + " must load before app.js builds it");
+            assertTrue(appJs.contains("NPDevViews.module(\"" + module[1] + "\""), "app.js must build " + module[1]);
+        }
+    }
+
+    @Test
+    void registryBuildsAModuleOnceFromItsFactoryAndRejectsAMissingOne() throws Exception {
+        Assumptions.assumeTrue(nodeOnPath(), "node is not on PATH");
+        Path out = emit();
+        Path script = out.resolve("module-check.js");
+        Files.writeString(script, """
+                const vm = require("vm"); const fs = require("fs"); const assert = require("assert");
+                globalThis.window = globalThis;
+                vm.runInThisContext(fs.readFileSync(process.argv[2], "utf8"));
+                NPDevViews.registerModule("demo", function (host) { return { twice: function (n) { return host.base(n) * 2; } }; });
+                assert.strictEqual(NPDevViews.module("demo", { base: function (n) { return n + 1; } }).twice(2), 6);
+                assert.throws(function () { NPDevViews.module("absent", {}); }, /not loaded/);
+                assert.throws(function () { NPDevViews.registerModule("bad"); });
+                """);
+        assertEquals(0, run(out, "node", script.toString(), out.resolve(STATIC + "views/registry.js").toString()));
+    }
 }
