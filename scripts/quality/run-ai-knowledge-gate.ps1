@@ -377,6 +377,14 @@ try {
         $failures += "a high-risk DSL keyword has neither a behaviour witness nor an allowlist entry (or the allowlist grew): see scripts/quality/check-dsl-behavior-witness.py output above and scripts/policy/dsl-behavior-witness.json"
     }
 
+    # ENGM-1: an engine support claim may only stand on a CI job that exists. The matrix lists engines x capabilities,
+    # each cell naming its witness workflow#job; this parses the workflow YAML so a claim cannot outlive its witness.
+    Write-Host "Checking every engine support claim names a real CI witness job..."
+    & $py "scripts/quality/check-engine-matrix.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "an engine support claim has no real witness job (or contradicts itself): see scripts/quality/check-engine-matrix.py output above and scripts/policy/engine-capability-matrix.json"
+    }
+
     Write-Host "Checking pack-composition surfaces (packs.from / satelliteOf / pack.extends) have corpus coverage..."
     & $py "scripts/quality/check-pack-coverage.py" "--probes" "--strict"
     if ($LASTEXITCODE -ne 0) {

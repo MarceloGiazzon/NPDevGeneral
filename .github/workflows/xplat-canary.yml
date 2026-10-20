@@ -1,0 +1,313 @@
+name: Cross-platform canary (Linux + macOS)
+
+# XPLAT-1: the maker path (generate -> build -> boot -> REST smoke -> acceptance) has only ever been
+# proven on Windows (run-fast-gate.ps1's T1 canary, plus the Windows-only journeys / f6-showcase
+# workflows). firstrun-harness.yml proves the README path in a bare Linux container and
+# npdev-pr-gate.yml generates a sample on ubuntu-latest, but nothing builds-and-BOOTS the frozen
+# canary on Linux, and nothing at all runs on macOS. This workflow exists to COLLECT failures, not to
+# gate anything: every major step is continue-on-error with its outcome recorded, the logs and a
+# failure summary are uploaded, and the last step prints one PASS/FAIL table and only then turns the
+# job red. Use the artifact to build the XPLAT-2 fix list.
+#
+# It runs the SAME scripts run-fast-gate.ps1 runs for its T1 canary stage, with the same arguments:
+#   NPDevSamples/scripts/generate-sample-app.ps1 -SampleId npdev-canary
+#   scripts/quality/invoke-ai-beta-app-smoke.ps1  (gradle build, bootRun, /actuator/health, REST smoke,
+#                                                  then NPDevSamples/npdev-canary/acceptance)
+# Nothing here is a new script; if the canary path changes in run-fast-gate.ps1, mirror it here.
+#
+# Not a push trigger on purpose (it is expected to be red until XPLAT-2 lands): nightly + manual.
+on:
+  schedule:
+    - cron: '41 4 * * *'
+  workflow_dispatch:
+    inputs:
+      chmod_gradlew:
+        description: 'chmod +x the generated app gradlew before the smoke step (isolates the exec-bit failure from everything behind it)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xplat-canary-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  canary:
+    name: Canary on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    defaults:
+      run:
+        shell: pwsh
+
+    env:
+      NPDEV_WORKSPACE: ${{ github.workspace }}
+      # Same pin as journeys.yml / f6-showcase.yml: one build root, <workspace>/Build. GitHub checks the
+      # repo out as 'NPDevGeneral', so the name-based walk would otherwise disagree with Gradle (REG-144).
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build
+      CI: true
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+
+    steps:
+      - name: Checkout NPDev
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # No Node: the canary path never touches the browser harness (ScrapForAI).
+
+      # Paths come from the repo's own resolvers (scripts/npdev-common.ps1), never from literals, so
+      # the libs dir the staging step writes is the one the smoke script and the generated app read.
+      - name: Resolve build paths and create the log folder
+        run: |
+          . ./scripts/npdev-common.ps1
+          $root = (Get-Location).Path
+          $build = Get-NPDevBuildRoot $root
+          $libs = Get-NPDevRuntimeHostLibsDir $root
+          $xplat = Join-Path $build 'xplat-canary'
+          New-Item -ItemType Directory -Force -Path (Join-Path $xplat 'logs') | Out-Null
+          Add-Content -Path $env:GITHUB_ENV -Value "XPLAT_ROOT=$xplat"
+          Add-Content -Path $env:GITHUB_ENV -Value "NPDEV_RUNTIMEHOST_LIBS_DIR=$libs"
+          Write-Host "build root : $build"
+          Write-Host "libs dir   : $libs"
+          Write-Host "xplat root : $xplat"
+
+      - name: Environment diagnostics
+        id: diag
+        continue-on-error: true
+        run: |
+          $log = Join-Path $env:XPLAT_ROOT 'logs/diag.log'
+          & {
+            Write-Host "os            : $([System.Runtime.InteropServices.RuntimeInformation]::OSDescription)"
+            Write-Host "arch          : $([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)"
+            Write-Host "pwsh          : $($PSVersionTable.PSVersion)"
+            Write-Host "IsWindows/IsLinux/IsMacOS : $IsWindows / $IsLinux / $IsMacOS"
+            Write-Host "cwd           : $((Get-Location).Path)"
+            Write-Host "JAVA_HOME     : $env:JAVA_HOME"
+            java -version 2>&1 | ForEach-Object { Write-Host "java          : $_" }
+            Write-Host "python        : $(python --version 2>&1)"
+            Write-Host "python3       : $(python3 --version 2>&1)"
+            Write-Host "--- gradle wrapper modes in the CHECKOUT (git mode 100755 expected) ---"
+            foreach ($d in 'NPDevGenerator', 'NPDevKernel', 'NPDevRuntimeHost', 'NPDevContract/dsl') {
+              $f = Join-Path $d 'gradlew'
+              if (Test-Path -LiteralPath $f) { Write-Host ("{0,-40} {1}" -f $f, (Get-Item -LiteralPath $f).UnixFileMode) } else { Write-Host "$f MISSING" }
+            }
+            Write-Host "--- FS case sensitivity probe ---"
+            $probe = Join-Path $env:RUNNER_TEMP 'CaseProbe.tmp'
+            Set-Content -LiteralPath $probe -Value 'x'
+            Write-Host ("lower-case alias of CaseProbe.tmp resolves: " + (Test-Path -LiteralPath (Join-Path $env:RUNNER_TEMP 'caseprobe.tmp')))
+            Remove-Item -LiteralPath $probe -Force
+            df -h . 2>&1 | ForEach-Object { Write-Host $_ }
+          } *>&1 | Tee-Object -FilePath $log
+
+      - name: Stage RuntimeHost libs
+        id: libs
+        continue-on-error: true
+        timeout-minutes: 30
+        run: |
+          $log = Join-Path $env:XPLAT_ROOT 'logs/stage-libs.log'
+          pwsh -NoProfile -File scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars *>&1 | Tee-Object -FilePath $log
+          exit $LASTEXITCODE
+
+      - name: Generate the npdev-canary sample
+        id: generate
+        continue-on-error: true
+        timeout-minutes: 20
+        run: |
+          $log = Join-Path $env:XPLAT_ROOT 'logs/generate.log'
+          pwsh -NoProfile -File NPDevSamples/scripts/generate-sample-app.ps1 -SampleId npdev-canary *>&1 | Tee-Object -FilePath $log
+          exit $LASTEXITCODE
+
+      # Records (and optionally repairs, via the manual input) the execution bit of the generated app's
+      # wrapper, so a permission-denied in the next step is attributable instead of a mystery.
+      - name: Inspect the generated app wrapper
+        id: inspect
+        if: steps.generate.outcome == 'success'
+        continue-on-error: true
+        env:
+          CHMOD_GRADLEW: ${{ inputs.chmod_gradlew && 'true' || 'false' }}
+        run: |
+          $log = Join-Path $env:XPLAT_ROOT 'logs/inspect.log'
+          $app = Join-Path (Get-Location).Path 'NPDevSamples/npdev-canary/Output/App'
+          & {
+            $w = Join-Path $app 'gradlew'
+            if (-not (Test-Path -LiteralPath $w)) { Write-Host "generated app has NO gradlew at $w"; throw "gradlew missing" }
+            Write-Host "gradlew mode as generated: $((Get-Item -LiteralPath $w).UnixFileMode)"
+            if ($env:CHMOD_GRADLEW -eq 'true') {
+              chmod +x $w
+              Write-Host "chmod +x applied (manual input); mode now: $((Get-Item -LiteralPath $w).UnixFileMode)"
+            }
+            Get-ChildItem -LiteralPath $app -Force | Select-Object -First 40 | ForEach-Object { Write-Host ("{0,-30} {1}" -f $_.Name, $_.UnixFileMode) }
+          } *>&1 | Tee-Object -FilePath $log
+
+      # Build + boot + health + REST smoke + acceptance, exactly as run-fast-gate.ps1 invokes it. The
+      # script writes a per-stage JSON report the summary step reads, so one red step here still yields
+      # a verdict per stage (build / boot / health / smoke / acceptance).
+      - name: Build, boot and smoke the canary
+        id: smoke
+        if: steps.generate.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 45
+        run: |
+          $log = Join-Path $env:XPLAT_ROOT 'logs/smoke.log'
+          $repo = (Get-Location).Path
+          pwsh -NoProfile -File scripts/quality/invoke-ai-beta-app-smoke.ps1 `
+            -AppRoot (Join-Path $repo 'NPDevSamples/npdev-canary/Output/App') `
+            -VerificationPath (Join-Path $repo 'NPDevSamples/npdev-canary/canary-verification.json') `
+            -ReportPath (Join-Path $env:XPLAT_ROOT 'canary-smoke.json') `
+            -Port 8103 `
+            -Profiles 'dev,trial' `
+            -BootTimeoutSeconds 420 `
+            -AcceptanceScenariosPath (Join-Path $repo 'NPDevSamples/npdev-canary/acceptance') *>&1 | Tee-Object -FilePath $log
+          exit $LASTEXITCODE
+
+      # The smoke script's Stop-ProcessTree only kills the wrapper process on non-Windows (the
+      # Get-CimInstance descendant walk is Windows-only). Measure whether the app outlived it.
+      - name: Check for orphaned app after teardown
+        id: orphans
+        if: always()
+        continue-on-error: true
+        run: |
+          $log = Join-Path $env:XPLAT_ROOT 'logs/orphans.log'
+          & {
+            $alive = $false
+            try {
+              $r = Invoke-WebRequest -Uri 'http://127.0.0.1:8103/actuator/health' -TimeoutSec 5 -SkipHttpErrorCheck
+              $alive = $true
+              Write-Host "port 8103 still answers after teardown: HTTP $($r.StatusCode)"
+            } catch { Write-Host "port 8103 is closed after teardown (good): $($_.Exception.Message)" }
+            $java = @(Get-Process -Name java -ErrorAction SilentlyContinue)
+            Write-Host "java processes still alive: $($java.Count)"
+            $java | ForEach-Object { Write-Host "  pid $($_.Id)" }
+            $java | Stop-Process -Force -ErrorAction SilentlyContinue
+            if ($alive) { throw "app outlived the smoke script's teardown" }
+          } *>&1 | Tee-Object -FilePath $log
+
+      - name: Verdict table and failure summary
+        id: verdict
+        if: always()
+        env:
+          OC_DIAG: ${{ steps.diag.outcome }}
+          OC_LIBS: ${{ steps.libs.outcome }}
+          OC_GENERATE: ${{ steps.generate.outcome }}
+          OC_INSPECT: ${{ steps.inspect.outcome }}
+          OC_SMOKE: ${{ steps.smoke.outcome }}
+          OC_ORPHANS: ${{ steps.orphans.outcome }}
+          MATRIX_OS: ${{ matrix.os }}
+        run: |
+          $logs = Join-Path $env:XPLAT_ROOT 'logs'
+          function ToVerdict([string]$o) {
+            switch ($o) { 'success' { 'PASS' } 'failure' { 'FAIL' } 'skipped' { 'SKIP' } 'cancelled' { 'CANCELLED' } default { 'UNKNOWN' } }
+          }
+          $rows = [System.Collections.Generic.List[object]]::new()
+          function Add-Row([string]$Step, [string]$Verdict, [string]$Log) {
+            $rows.Add([pscustomobject]@{ Step = $Step; Verdict = $Verdict; Log = $Log })
+          }
+          Add-Row 'environment diagnostics'      (ToVerdict $env:OC_DIAG)     'diag.log'
+          Add-Row 'stage RuntimeHost libs'       (ToVerdict $env:OC_LIBS)     'stage-libs.log'
+          Add-Row 'generate npdev-canary'        (ToVerdict $env:OC_GENERATE) 'generate.log'
+          Add-Row 'inspect generated gradlew'    (ToVerdict $env:OC_INSPECT)  'inspect.log'
+
+          # Per-stage verdicts from the smoke script's own JSON report.
+          $stageVerdict = @{}
+          $reportPath = Join-Path $env:XPLAT_ROOT 'canary-smoke.json'
+          $report = $null
+          if (Test-Path -LiteralPath $reportPath) {
+            try { $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json } catch { Write-Host "could not parse ${reportPath}: $($_.Exception.Message)" }
+          }
+          foreach ($stage in 'build', 'boot', 'health', 'smoke', 'acceptance') {
+            $v = 'NOT RUN'
+            if ($null -ne $report -and $null -ne $report.$stage) {
+              $s = [string]$report.$stage.status
+              $v = switch ($s) { 'passed' { 'PASS' } 'failed' { 'FAIL' } 'running' { 'FAIL (still running)' } 'stopped' { 'PASS (booted, then stopped)' } default { $s.ToUpper() } }
+            }
+            $stageVerdict[$stage] = $v
+          }
+          Add-Row 'canary: gradle build'         $stageVerdict['build']      'smoke.log'
+          Add-Row 'canary: boot'                 $stageVerdict['boot']       'smoke.log'
+          Add-Row 'canary: /actuator/health UP'  $stageVerdict['health']     'smoke.log'
+          Add-Row 'canary: REST smoke'           $stageVerdict['smoke']      'smoke.log'
+          Add-Row 'canary: acceptance scenarios' $stageVerdict['acceptance'] 'smoke.log'
+          Add-Row 'smoke script as a whole'      (ToVerdict $env:OC_SMOKE)   'smoke.log'
+          Add-Row 'no orphan app after teardown' (ToVerdict $env:OC_ORPHANS) 'orphans.log'
+
+          $table = ($rows | Format-Table -AutoSize -Wrap | Out-String)
+          Write-Host ""
+          Write-Host "=== XPLAT canary verdict on $env:MATRIX_OS ==="
+          Write-Host $table
+
+          # Markdown: job summary + the artifact copy.
+          $md = [System.Text.StringBuilder]::new()
+          [void]$md.AppendLine("## XPLAT canary on $env:MATRIX_OS")
+          [void]$md.AppendLine("")
+          [void]$md.AppendLine("| Step | Verdict | Log |")
+          [void]$md.AppendLine("|---|---|---|")
+          foreach ($r in $rows) { [void]$md.AppendLine("| $($r.Step) | **$($r.Verdict)** | $($r.Log) |") }
+          [void]$md.AppendLine("")
+
+          $failedLogs = @($rows | Where-Object { $_.Verdict -like 'FAIL*' -or $_.Verdict -eq 'CANCELLED' } | ForEach-Object { $_.Log } | Select-Object -Unique)
+          foreach ($name in $failedLogs) {
+            $p = Join-Path $logs $name
+            [void]$md.AppendLine("### Tail of $name")
+            [void]$md.AppendLine('```')
+            if (Test-Path -LiteralPath $p) { (Get-Content -LiteralPath $p -Tail 60) | ForEach-Object { [void]$md.AppendLine($_) } } else { [void]$md.AppendLine('(log file not written)') }
+            [void]$md.AppendLine('```')
+            [void]$md.AppendLine("")
+          }
+          if ($null -ne $report) {
+            foreach ($stage in 'build', 'boot', 'health', 'smoke', 'acceptance') {
+              $st = $report.$stage
+              if ($null -ne $st -and [string]$st.status -eq 'failed') {
+                [void]$md.AppendLine("### Report: $stage -- $($st.message)")
+                [void]$md.AppendLine('```')
+                [void]$md.AppendLine((($st.evidence | ConvertTo-Json -Depth 6 -Compress) -replace '\\n', "`n"))
+                [void]$md.AppendLine('```')
+                [void]$md.AppendLine("")
+              }
+            }
+          }
+          $mdText = $md.ToString()
+          Set-Content -LiteralPath (Join-Path $env:XPLAT_ROOT 'failure-summary.md') -Value $mdText
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $mdText
+
+          # -and / -or have equal precedence in PowerShell, so every clause is parenthesised.
+          $generated = ($env:OC_GENERATE -eq 'success')
+          $bad = @($rows | Where-Object {
+            ($_.Verdict -like 'FAIL*') -or ($_.Verdict -eq 'CANCELLED') -or (($_.Verdict -eq 'NOT RUN') -and $generated)
+          })
+          if ($bad.Count -gt 0) {
+            Write-Host "FAIL: $($bad.Count) step(s) did not pass on $env:MATRIX_OS -- see the failure-summary.md artifact."
+            exit 1
+          }
+          Write-Host "PASS: every step passed on $env:MATRIX_OS."
+
+      - name: Upload canary evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xplat-canary-${{ matrix.os }}
+          if-no-files-found: ignore
+          path: |
+            Build/xplat-canary/**
+            NPDevSamples/npdev-canary/Output/App/ai-beta-*.log
+            NPDevSamples/npdev-canary/Output/Reports/**

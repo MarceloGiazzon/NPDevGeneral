@@ -331,6 +331,9 @@
     "scripts/quality/check-emitted-sql-portability.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-engine-matrix.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-engine-parity.py": {
       "invocation": "ci-gate"
     },
