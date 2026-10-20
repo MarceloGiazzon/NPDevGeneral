@@ -698,8 +698,9 @@ jobs:
           mkdir -p backups logs bkp-out
           shopt -s nullglob
 
-          # The sidecar runs backup-sidecar.sh as the image's default user, with ./backups and ./logs
-          # bind-mounted. Record which user that is: it decides whether the bind mounts are writable.
+          # The mssql image's default user is uid 10001 while ./backups and ./logs are root-owned bind
+          # mounts here. The generated compose runs the sidecar as root (`user: "0:0"`) so this MUST
+          # work first time -- there is deliberately no chmod-and-retry: a Permission denied is a failure.
           echo "mssql image default user: $(docker run --rm --entrypoint id "$PINNED_SQLSERVER" 2>&1 || true)"
 
           # The sidecar takes its first backup immediately on start (then sleeps the interval), so
@@ -723,24 +724,19 @@ jobs:
           rc=0
           wait_backup || rc=$?
           if [ "$rc" != "0" ]; then
-            echo "---- sidecar log (attempt 1, rc=$rc) ----"
+            echo "---- sidecar log (rc=$rc) ----"
             cat bkp-out/sidecar.log || true
-            # If the failure is the bind mounts being unwritable for the image's non-root user, say so
-            # loudly and retry once with world-writable dirs, so the rest of the drill still runs.
-            # That retry is a WARNING, never a silent pass: a fresh `up -d backup` hitting this
-            # is a real gap in the generated profile (it would need a mkdir/chmod or `user:`).
-            if grep -Eqi 'permission denied|cannot create|read-only' bkp-out/sidecar.log; then
-              echo "::warning::the generated backup sidecar could not write its ./backups or ./logs bind mounts as the image's default user; retrying with chmod 0777 to exercise the rest of the drill. This is a finding about the generated profile, not a pass."
-              docker compose --profile backup rm -sf backup
-              chmod 0777 backups logs
-              docker compose --profile backup up -d backup
-              rc=0
-              wait_backup || rc=$?
-            fi
           fi
           if [ "$rc" != "0" ]; then
             echo "::error::the backup sidecar did not complete a backup (rc=$rc)"
             cat bkp-out/sidecar.log || true
+            exit 1
+          fi
+
+          echo "ASSERT: the sidecar logged no 'Permission denied' (its ./backups and ./logs bind mounts were writable)"
+          if grep -qi 'permission denied' bkp-out/sidecar.log; then
+            echo "::error::the backup sidecar hit Permission denied on a bind mount"
+            cat bkp-out/sidecar.log
             exit 1
           fi
 

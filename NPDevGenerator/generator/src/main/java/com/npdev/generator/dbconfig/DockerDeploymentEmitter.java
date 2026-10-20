@@ -1062,6 +1062,17 @@ public final class DockerDeploymentEmitter {
     }
 
     /**
+     * The SQL Server image sets {@code USER mssql} (uid 10001), unlike the postgres and mysql images,
+     * which run as root. A fresh Linux checkout has {@code ./backups} and {@code ./logs} root-owned
+     * (Docker creates a missing bind source as root), so the backup sidecar and the verify job failed
+     * with {@code Permission denied} on those mounts (seen in CI, engine-support.yml). They only run
+     * {@code sqlcmd} and move files, so on the server-file engine they run as root, as on the others.
+     */
+    private static String serverFileBackupUserLines(DockerEngineProfile profile, int prop) {
+        return profile.isServerFileBackup() ? line(prop, "user: \"0:0\"") : "";
+    }
+
+    /**
      * The nightly backup sidecar (long-running, so it carries {@code restart: unless-stopped} +
      * R9.2's log cap like every other persistent service in this file). Runs {@code backup-sidecar.sh}
      * against the SAME {@code database} service {@code backup.sh} targets, over the compose network
@@ -1078,6 +1089,7 @@ public final class DockerDeploymentEmitter {
         out.append(line(prop, "# R9.9: nightly dump + retention pruning, opt-in via `docker compose --profile backup up -d backup`."));
         out.append(line(prop, "image: " + profile.composeImage()));
         out.append(line(prop, "profiles: [\"backup\"]"));
+        out.append(serverFileBackupUserLines(profile, prop));
         out.append(line(prop, "depends_on:"));
         out.append(line(child, "database:"));
         out.append(line(grand, "condition: service_healthy"));
@@ -1154,6 +1166,7 @@ public final class DockerDeploymentEmitter {
         out.append(line(prop, "# `docker compose --profile backup run --rm backup-verify`."));
         out.append(line(prop, "image: " + profile.composeImage()));
         out.append(line(prop, "profiles: [\"backup\"]"));
+        out.append(serverFileBackupUserLines(profile, prop));
         out.append(line(prop, "depends_on:"));
         out.append(line(child, "backup-verify-db:"));
         out.append(line(grand, "condition: service_healthy"));
@@ -1449,7 +1462,10 @@ public final class DockerDeploymentEmitter {
 
                 server_path="%1$s/verify-restore.bak"
                 log "restoring ${latest} into scratch database ${DB_NAME} ..."
+                # This job runs as root (compose `user:`), so the staged copy is root-owned; the scratch
+                # server runs as `mssql` and must be able to read it.
                 if cp "$latest" "$server_path" \\
+                    && chmod 0644 "$server_path" \\
                     && %2$s -U %3$s -Q "%4$s" \\
                     && %2$s -U %3$s -Q "DBCC CHECKDB ([${DB_NAME}]) WITH NO_INFOMSGS"; then
                     rm -f "$server_path"

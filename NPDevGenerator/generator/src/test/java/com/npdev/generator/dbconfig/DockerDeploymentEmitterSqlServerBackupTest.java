@@ -139,6 +139,28 @@ class DockerDeploymentEmitterSqlServerBackupTest {
     }
 
     @Test
+    void sqlServerSidecarAndVerifyRunAsRootSoTheBindMountsAreWritableOnLinux(@TempDir Path tempDir) throws Exception {
+        // The mssql image defaults to uid 10001; Docker creates ./backups and ./logs root-owned on a
+        // fresh Linux checkout, so without `user:` the sidecar died with "Permission denied" (CI proof).
+        String compose = read(emit(tempDir, "SqlServer", 1433), "docker-compose.yml");
+        int sidecar = compose.indexOf("  backup:");
+        int scratchDb = compose.indexOf("  backup-verify-db:");
+        int verify = compose.indexOf("  backup-verify:");
+        assertTrue(sidecar >= 0 && scratchDb > sidecar && verify > scratchDb, compose);
+        assertTrue(compose.substring(sidecar, scratchDb).contains("user: \"0:0\""), compose);
+        assertTrue(compose.substring(verify).contains("user: \"0:0\""), compose);
+        assertFalse(compose.substring(scratchDb, verify).contains("user:"),
+                "the scratch SERVER keeps the image's own mssql user: " + compose);
+        assertTrue(read(emit(tempDir, "SqlServer", 1433), "deploy/backup-verify.sh").contains("chmod 0644 \"$server_path\""),
+                "the root-owned staged copy must stay readable by the mssql server");
+
+        for (String[] other : new String[][] {{"Postgres", "5432"}, {"MySQL", "3306"}}) {
+            String c = read(emit(tempDir, other[0], Integer.parseInt(other[1])), "docker-compose.yml");
+            assertFalse(c.contains("user: \"0:0\""), other[0] + " images already run as root: " + c);
+        }
+    }
+
+    @Test
     void sqlServerEmissionIsByteIdenticalAcrossTwoRuns(@TempDir Path tempDir) throws Exception {
         Path first = emit(tempDir.resolve("one"), "SqlServer", 1433);
         Path second = emit(tempDir.resolve("two"), "SqlServer", 1433);
