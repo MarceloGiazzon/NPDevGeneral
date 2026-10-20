@@ -109,6 +109,9 @@ function Write-JsonReport {
 }
 
 $samplesRoot = Get-NPDevSamplesRoot -ScriptRoot (Join-Path $repoRoot "NPDevSamples\scripts")
+# Resolve-NPDevSample insists the (gitignored) Output folder exists; a fresh checkout or a
+# clean-workspace-state run has none, and generation creates the contents.
+New-Item -ItemType Directory -Force -Path (Join-Path $samplesRoot "$SampleId\Output") | Out-Null
 $sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId $SampleId
 $config = Read-SampleConfig -Sample $sample
 if ($Port -le 0) { $Port = Get-ConfigInt -Config $config -Path @("runtime", "serverPort") -Fallback 8190 }
