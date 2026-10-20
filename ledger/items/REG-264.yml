@@ -1,0 +1,20 @@
+id: REG-264
+title: >-
+  A flow updateConcept step on an id that does not exist creates the row (upsert) where REST PUT answers 404
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-20
+closed: null
+source: >-
+  ENF-1 behaviour probe fl-update-concept-rejects-unknown-id (NPDevSamples/dsl-conformance-max/behavior-probes/20-flow.json), found while checking
+  that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.
+surface: generated-app runtime (dsl-conformance-max)
+detail: |
+  KNOWN DEFECT: a flow with input mode 'update' (UpdateOrderLineQuantity) given an id that does not
+  exist should fail (404/409/422); ACTUAL: 200 OK and it silently CREATES a row with that id
+  (sku/unitPrice/widgetOrderId null) that GET /api/widget_order_lines/<id> then returns. The REST PUT
+  on a missing id is 404 (control).
+resolution: >-
+  Fix the runtime, then remove "knownFailure": "REG-264" from probe fl-update-concept-rejects-unknown-id; the runner turns that probe red
+  the moment it passes with the marker still set, so the marker cannot outlive the bug.

@@ -1,0 +1,22 @@
+id: REG-265
+title: >-
+  An aggregate invariant or balance veto answers 503 Service Unavailable instead of a client error (AggregateApiController maps every IllegalStateException to 503)
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-20
+closed: null
+source: >-
+  ENF-1 behaviour probe qil-aggregate-veto-status-is-client-error (NPDevSamples/dsl-conformance-max/behavior-probes/30-query-invariant-lifecycle.json), found while checking
+  that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.
+surface: generated-app runtime (dsl-conformance-max)
+detail: |
+  DEFECT: an aggregate invariant/balance veto is a client error, but POST
+  /api/runtime/aggregate/StockTransferAggregate answers 503 Service Unavailable
+  (AggregateApiController maps every IllegalStateException to 503, including the veto thrown by
+  assertAggregateInvariants/assertAggregateBalances). Request: draft with quantity 50 > disponivel 10.
+  Actual: 503 {"message":"Aggregate StockTransferAggregate invariant(s) violated:
+  PositionWithinAvailable -- ..."}. Expected: 4xx (400/409/422).
+resolution: >-
+  Fix the runtime, then remove "knownFailure": "REG-265" from probe qil-aggregate-veto-status-is-client-error; the runner turns that probe red
+  the moment it passes with the marker still set, so the marker cannot outlive the bug.

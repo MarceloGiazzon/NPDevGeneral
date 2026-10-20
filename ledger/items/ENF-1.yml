@@ -1,0 +1,24 @@
+id: ENF-1
+title: >-
+  Accepted implies enforced: the schema accepts DSL keywords the runtime may silently ignore, and nothing
+  proved otherwise
+type: GAP
+severity: HIGH
+status: PARTIAL
+opened: 2026-10-20
+closed: null
+source: >-
+  PLAN_PRODUCT_GAPS_2026-10-19 (W0). check-dsl-coverage.py proves each DSL feature appears in some model;
+  it never proved the runtime obeys it. Nested onFailure, two-clause query filters and a 5-field cron were
+  accepted and ignored for months.
+surface: NPDevSamples/dsl-conformance-max/behavior-probes, scripts/quality/run-behavior-probes.ps1, scripts/policy/dsl-behavior-witness.json
+detail: |
+  Table-driven behaviour probes (scripts/quality/behavior_probes/run_probes.py) run against a booted
+  dsl-conformance-max app on a wiped database. scripts/policy/dsl-behavior-witness.json maps each keyword of the
+  high-risk schema families (`<$defs name>.<property>`) to the probe ids that witness it, or to a reasoned
+  allowlist group; check-dsl-behavior-witness.py (aiKnowledge gate) fails on an unwitnessed keyword, a
+  dangling probe id, or an allowlist that grew (frozenCount ratchet). A probe exposing a real defect carries
+  knownFailure and is green only while it still fails.
+resolution: >-
+  Open until the allowlist is empty for the high-risk families (flow, query, invariant, lifecycle, role,
+  field). Each session shrinks the allowlist and lowers frozenCount in the same commit.

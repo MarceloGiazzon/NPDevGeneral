@@ -1,0 +1,19 @@
+id: REG-255
+title: >-
+  field.min / field.max are not enforced: out-of-range numbers are accepted on create and update
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-10-20
+closed: null
+source: >-
+  ENF-1 behaviour probe cf-field-min-enforced (NPDevSamples/dsl-conformance-max/behavior-probes/10-concept-field.json), found while checking
+  that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.
+surface: generated-app runtime (dsl-conformance-max)
+detail: |
+  REAL DEFECT: ShelfLayout.rows declares min 1 but 0 (and later -5 via PUT) is accepted. Evidence:
+  POST /api/shelf_layouts {name, rows:0, cols:1} -> 201; POST /api/shelf_slots {row:-1} (min 0) ->
+  201; PUT rows:-5 -> 200; expected 4xx. Boundary value 1 is accepted (control).
+resolution: >-
+  Fix the runtime, then remove "knownFailure": "REG-255" from probe cf-field-min-enforced; the runner turns that probe red
+  the moment it passes with the marker still set, so the marker cannot outlive the bug.

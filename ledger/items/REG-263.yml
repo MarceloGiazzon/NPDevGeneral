@@ -1,0 +1,20 @@
+id: REG-263
+title: >-
+  A flow updateConcept step replaces the row instead of merging: untouched fields are nulled and the version is not bumped
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-10-20
+closed: null
+source: >-
+  ENF-1 behaviour probe fl-update-concept-keeps-untouched-fields (NPDevSamples/dsl-conformance-max/behavior-probes/20-flow.json), found while checking
+  that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.
+surface: generated-app runtime (dsl-conformance-max)
+detail: |
+  KNOWN DEFECT: updateConcept replaces the whole row instead of merging. REST PUT {quantity} keeps
+  sku/unitPrice/widgetOrderId (and bumps version), but POST /api/flows/UpdateOrderLineQuantity/execute
+  {id, quantity:7} leaves the stored line with sku=null, unitPrice=null, widgetOrderId=null (data
+  loss), version still 0. Expected: sku unchanged.
+resolution: >-
+  Fix the runtime, then remove "knownFailure": "REG-263" from probe fl-update-concept-keeps-untouched-fields; the runner turns that probe red
+  the moment it passes with the marker still set, so the marker cannot outlive the bug.

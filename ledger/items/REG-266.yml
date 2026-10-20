@@ -1,0 +1,20 @@
+id: REG-266
+title: >-
+  An aggregate commit that makes an illegal lifecycle transition answers a bare 500 where the single-record PUT answers 422 CONCEPT_LIFECYCLE_TRANSITION_INVALID
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-20
+closed: null
+source: >-
+  ENF-1 behaviour probe qil-aggregate-lifecycle-refusal-is-client-error (NPDevSamples/dsl-conformance-max/behavior-probes/30-query-invariant-lifecycle.json), found while checking
+  that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.
+surface: generated-app runtime (dsl-conformance-max)
+detail: |
+  DEFECT: committing an aggregate draft that moves the root Committed->Draft is refused (row
+  unchanged) but answers a bare 500 Internal Server Error {"status":500,"error":"Internal Server
+  Error","path":"/api/runtime/aggregate/StockTransferAggregate"} - the single-record endpoints answer
+  422 CONCEPT_LIFECYCLE_TRANSITION_INVALID. Expected a 4xx.
+resolution: >-
+  Fix the runtime, then remove "knownFailure": "REG-266" from probe qil-aggregate-lifecycle-refusal-is-client-error; the runner turns that probe red
+  the moment it passes with the marker still set, so the marker cannot outlive the bug.

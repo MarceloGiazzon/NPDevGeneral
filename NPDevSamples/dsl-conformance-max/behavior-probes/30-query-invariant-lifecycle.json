@@ -1,0 +1,2509 @@
+{
+  "probes": [
+    {
+      "id": "qil-lifecycle-illegal-transition-refused",
+      "description": "StockTransfer lifecycle declares only Draft->Committed: that transition succeeds, but Committed->Draft is refused with 422 CONCEPT_LIFECYCLE_TRANSITION_INVALID and the stored row keeps status Committed (a schema-accepted lifecycle that is not enforced would let the write through).",
+      "keywords": [
+        "lifecycle.transitions",
+        "lifecycleTransition.from",
+        "lifecycleTransition.to",
+        "lifecycle.statusField"
+      ],
+      "steps": [
+        {
+          "name": "create Draft",
+          "method": "POST",
+          "path": "/api/stock_transfers",
+          "body": {
+            "reference": "lc-${rand}",
+            "status": "Draft"
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.status": "Draft"
+            }
+          },
+          "save": {
+            "id": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "allowed Draft->Committed",
+          "method": "PUT",
+          "path": "/api/stock_transfers/${id}",
+          "body": {
+            "reference": "lc-${rand}",
+            "status": "Committed"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "Committed"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "illegal Committed->Draft",
+          "method": "PUT",
+          "path": "/api/stock_transfers/${id}",
+          "body": {
+            "reference": "lc-${rand}",
+            "status": "Draft"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.code": "CONCEPT_LIFECYCLE_TRANSITION_INVALID",
+              "$.concept": "StockTransfer",
+              "$.message": {
+                "matches": "Committed -> Draft"
+              }
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "row still Committed",
+          "method": "GET",
+          "path": "/api/stock_transfers/${id}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "Committed",
+              "$.version": 1
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/stock_transfers/${id}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-lifecycle-initial-state-default-and-undeclared-state",
+      "description": "A create that omits the status field gets the state flagged initial:true (Draft) instead of being refused as a missing required field, and a state value that is not a declared lifecycle state is rejected with 422.",
+      "keywords": [
+        "lifecycleState.initial",
+        "lifecycleState.value",
+        "lifecycle.states"
+      ],
+      "steps": [
+        {
+          "name": "create without status",
+          "method": "POST",
+          "path": "/api/stock_transfers",
+          "body": {
+            "reference": "lc-${rand}"
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.status": "Draft"
+            }
+          },
+          "save": {
+            "id": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "undeclared state",
+          "method": "POST",
+          "path": "/api/stock_transfers",
+          "body": {
+            "reference": "lc-${rand}",
+            "status": "Bogus"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.code": "invariant_failed",
+              "$.path": "status",
+              "$.message": {
+                "matches": "allowed: \\[Draft, Committed\\]"
+              }
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/stock_transfers/${id}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-lifecycle-batch-applies-transition-guard",
+      "description": "PATCH /api/concepts/StockTransfer/batch runs the same lifecycle gate as the single-record PUT: an allowed Draft->Committed op is reported updated and persisted, an illegal Committed->Draft op is reported failed (reason names the transition) and the row stays Committed.",
+      "keywords": [
+        "lifecycle.transitions",
+        "lifecycleTransition.from",
+        "lifecycleTransition.to"
+      ],
+      "steps": [
+        {
+          "name": "create Draft",
+          "method": "POST",
+          "path": "/api/stock_transfers",
+          "body": {
+            "reference": "lc-${rand}",
+            "status": "Draft"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "id": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "batch allowed",
+          "method": "PATCH",
+          "path": "/api/concepts/StockTransfer/batch",
+          "body": [
+            {
+              "id": "${id}",
+              "fields": {
+                "status": "Committed"
+              }
+            }
+          ],
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.succeeded": 1,
+              "$.results[0].status": "updated"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "batch illegal",
+          "method": "PATCH",
+          "path": "/api/concepts/StockTransfer/batch",
+          "body": [
+            {
+              "id": "${id}",
+              "fields": {
+                "status": "Draft"
+              }
+            }
+          ],
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.succeeded": 0,
+              "$.results[0].status": "failed",
+              "$.results[0].reason": {
+                "matches": "Committed -> Draft"
+              }
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "row still Committed",
+          "method": "GET",
+          "path": "/api/stock_transfers/${id}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "Committed"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/stock_transfers/${id}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-invariant-create-rejected",
+      "description": "WidgetOrderLine.PositiveQuantity (quantity > 0) is enforced on create: quantity 0 is refused with 422 invariant_failed naming PositiveQuantity at path quantity, and quantity 2 is accepted (so the refusal is the invariant, not a blanket failure).",
+      "keywords": [
+        "concept.invariants",
+        "invariant.name",
+        "invariant.expr"
+      ],
+      "steps": [
+        {
+          "name": "quantity 0",
+          "method": "POST",
+          "path": "/api/widget_order_lines",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "q-${rand}",
+            "quantity": 0,
+            "unitPrice": 3.5
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.code": "invariant_failed",
+              "$.invariant": "PositiveQuantity",
+              "$.path": "quantity"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "quantity -5",
+          "method": "POST",
+          "path": "/api/widget_order_lines",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "q-${rand}",
+            "quantity": -5,
+            "unitPrice": 3.5
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.code": "invariant_failed",
+              "$.invariant": "PositiveQuantity"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "quantity 2",
+          "method": "POST",
+          "path": "/api/widget_order_lines",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "q-${rand}",
+            "quantity": 2,
+            "unitPrice": 3.5
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.quantity": 2,
+              "$.lineTotal": 7
+            }
+          },
+          "save": {
+            "id": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_order_lines/${id}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-invariant-update-rejected-row-unchanged",
+      "description": "An UPDATE that would violate PositiveQuantity is refused (422 invariant_failed) and the stored row keeps its previous quantity and version - the invariant is not create-only.",
+      "keywords": [
+        "concept.invariants",
+        "invariant.name",
+        "invariant.expr"
+      ],
+      "steps": [
+        {
+          "name": "create",
+          "method": "POST",
+          "path": "/api/widget_order_lines",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "q-${rand}",
+            "quantity": 2,
+            "unitPrice": 3.5
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "id": "$.id",
+            "oid": "$.widgetOrderId",
+            "sku": "$.sku"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "update to violate",
+          "method": "PUT",
+          "path": "/api/widget_order_lines/${id}",
+          "body": {
+            "widgetOrderId": "${oid}",
+            "sku": "${sku}",
+            "quantity": -1,
+            "unitPrice": 3.5
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.code": "invariant_failed",
+              "$.invariant": "PositiveQuantity",
+              "$.path": "quantity"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "row unchanged",
+          "method": "GET",
+          "path": "/api/widget_order_lines/${id}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.quantity": 2,
+              "$.version": 0
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "valid update applies",
+          "method": "PUT",
+          "path": "/api/widget_order_lines/${id}",
+          "body": {
+            "widgetOrderId": "${oid}",
+            "sku": "${sku}",
+            "quantity": 9,
+            "unitPrice": 3.5
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.quantity": 9,
+              "$.version": 1
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_order_lines/${id}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-invariant-batch-same-as-single-endpoint",
+      "description": "PATCH /api/concepts/WidgetOrderLine/batch applies the same invariants as the single-record PUT: quantity 0 is reported failed (reason names the rejected invariant) and the row is unchanged, while a valid batch op (quantity 7) is reported updated and persisted.",
+      "keywords": [
+        "concept.invariants",
+        "invariant.name",
+        "invariant.expr"
+      ],
+      "steps": [
+        {
+          "name": "create",
+          "method": "POST",
+          "path": "/api/widget_order_lines",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "q-${rand}",
+            "quantity": 2,
+            "unitPrice": 3.5
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "id": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "batch violating",
+          "method": "PATCH",
+          "path": "/api/concepts/WidgetOrderLine/batch",
+          "body": [
+            {
+              "id": "${id}",
+              "fields": {
+                "quantity": 0
+              }
+            }
+          ],
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.succeeded": 0,
+              "$.results[0].status": "failed",
+              "$.results[0].reason": {
+                "matches": "(?i)invariant"
+              }
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "row unchanged",
+          "method": "GET",
+          "path": "/api/widget_order_lines/${id}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.quantity": 2
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "batch valid",
+          "method": "PATCH",
+          "path": "/api/concepts/WidgetOrderLine/batch",
+          "body": [
+            {
+              "id": "${id}",
+              "fields": {
+                "quantity": 7
+              }
+            }
+          ],
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.succeeded": 1,
+              "$.results[0].status": "updated"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "row updated",
+          "method": "GET",
+          "path": "/api/widget_order_lines/${id}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.quantity": 7
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_order_lines/${id}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-query-where-excludes-non-matching-rows",
+      "description": "ActiveCatalogEntries (where discontinued == false) returns the active row and never a discontinued one: the discontinued fixture sorts FIRST by sku, so an ignored/unapplied where would surface it at rows[0] and as a '\"discontinued\":true' fragment.",
+      "keywords": [
+        "query.where",
+        "query.concept"
+      ],
+      "steps": [
+        {
+          "name": "active",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "!1-qil-act",
+            "displayName": "qil",
+            "discontinued": false,
+            "unitPrice": 1.5
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.discontinued": false
+            }
+          },
+          "save": {
+            "a": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "discontinued",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "!0-qil-disc",
+            "displayName": "qil",
+            "discontinued": true,
+            "unitPrice": 1.5
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.discontinued": true
+            }
+          },
+          "save": {
+            "d": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "query",
+          "method": "GET",
+          "path": "/api/queries/ActiveCatalogEntries?limit=1000",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.query": "ActiveCatalogEntries",
+              "$.aggregate": false,
+              "$.rows[0].id": "${a}",
+              "$.rows[0].sku": "!1-qil-act"
+            },
+            "notText": "\"discontinued\":true"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup a",
+          "method": "DELETE",
+          "path": "/api/widget_catalog_entrys/${a}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup d",
+          "method": "DELETE",
+          "path": "/api/widget_catalog_entrys/${d}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-query-orderby-limit-offset",
+      "description": "ActiveCatalogEntries orderBy sku (ascending): three rows created out of order come back sorted, and the limit/offset request parameters window the sorted set (limit=1&offset=1 is the middle row, offset=2 the last, limit=2 returns exactly two rows).",
+      "keywords": [
+        "query.orderBy",
+        "query.limit"
+      ],
+      "steps": [
+        {
+          "name": "create c",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "!2-qil-c",
+            "displayName": "qil",
+            "discontinued": false,
+            "unitPrice": 1.5
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "c": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "create a",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "!2-qil-a",
+            "displayName": "qil",
+            "discontinued": false,
+            "unitPrice": 1.5
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "a": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "create b",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "!2-qil-b",
+            "displayName": "qil",
+            "discontinued": false,
+            "unitPrice": 1.5
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "b": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "sorted",
+          "method": "GET",
+          "path": "/api/queries/ActiveCatalogEntries?limit=3",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.rows": {
+                "len": 3
+              },
+              "$.rows[0].id": "${a}",
+              "$.rows[1].id": "${b}",
+              "$.rows[2].id": "${c}",
+              "$.limit": 3,
+              "$.offset": 0
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "offset 1",
+          "method": "GET",
+          "path": "/api/queries/ActiveCatalogEntries?limit=1&offset=1",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.rows": {
+                "len": 1
+              },
+              "$.rows[0].id": "${b}",
+              "$.offset": 1,
+              "$.limit": 1
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "offset 2",
+          "method": "GET",
+          "path": "/api/queries/ActiveCatalogEntries?limit=1&offset=2",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.rows[0].id": "${c}"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "limit 2",
+          "method": "GET",
+          "path": "/api/queries/ActiveCatalogEntries?limit=2",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.rows": {
+                "len": 2
+              },
+              "$.rows[1].id": "${b}"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup a",
+          "method": "DELETE",
+          "path": "/api/widget_catalog_entrys/${a}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup b",
+          "method": "DELETE",
+          "path": "/api/widget_catalog_entrys/${b}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup c",
+          "method": "DELETE",
+          "path": "/api/widget_catalog_entrys/${c}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-query-aggregate-functions-and-where-exact",
+      "description": "ShippedUnitsByWarehouseMonth: the group QIL-AGG/2026-03 reports exact sum 3e9, avg 1.5e9, min 1e9, max 2e9, count 2 - the 0 and -7 events the query where (unitsShipped > 0) must drop would change count, min and sum if the where were ignored.",
+      "keywords": [
+        "query.groupBy",
+        "query.aggregates",
+        "aggregateFunction.fn",
+        "aggregateFunction.name",
+        "aggregateFunction.field",
+        "query.where"
+      ],
+      "steps": [
+        {
+          "name": "e1",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-AGG",
+            "shippedAt": "2026-03-05",
+            "unitsShipped": 2000000000
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e1": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "e2",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-AGG",
+            "shippedAt": "2026-03-06",
+            "unitsShipped": 1000000000
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e2": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "e3",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-AGG",
+            "shippedAt": "2026-03-07",
+            "unitsShipped": 0
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e3": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "e4",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-AGG",
+            "shippedAt": "2026-03-08",
+            "unitsShipped": -7
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e4": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "e5",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-AGG",
+            "shippedAt": "2026-04-10",
+            "unitsShipped": 100000000
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e5": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "e6",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-AGG2",
+            "shippedAt": "2026-03-09",
+            "unitsShipped": 500000000
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e6": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "query",
+          "method": "GET",
+          "path": "/api/queries/ShippedUnitsByWarehouseMonth",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.aggregate": true,
+              "$.concept": "WidgetShipmentEvent",
+              "$.rows[0].warehouseId": "QIL-AGG",
+              "$.rows[0].shippedAt": "2026-03",
+              "$.rows[0].totalUnits": 3000000000,
+              "$.rows[0].avgUnits": 1500000000,
+              "$.rows[0].minUnits": 1000000000,
+              "$.rows[0].maxUnits": 2000000000,
+              "$.rows[0].eventCount": 2
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e1",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e1}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e2",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e2}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e3",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e3}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e4",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e4}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e5",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e5}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e6",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e6}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-query-groupby-field-and-month-bucket",
+      "description": "groupBy [warehouseId, {shippedAt, bucket: month}] yields one row per (warehouse, month): same-month events collapse (QIL-AGG March), another month stays separate (QIL-AGG April = 1e8), and another warehouse in the same month is its own row; the bucketed key is rendered as yyyy-MM and the echo lists the bucket.",
+      "keywords": [
+        "query.groupBy",
+        "groupByField.bucket",
+        "groupByField.field"
+      ],
+      "steps": [
+        {
+          "name": "e1",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-AGG",
+            "shippedAt": "2026-03-05",
+            "unitsShipped": 2000000000
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e1": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "e2",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-AGG",
+            "shippedAt": "2026-03-28",
+            "unitsShipped": 1000000000
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e2": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "e5",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-AGG",
+            "shippedAt": "2026-04-10",
+            "unitsShipped": 100000000
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e5": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "e6",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-AGG2",
+            "shippedAt": "2026-03-09",
+            "unitsShipped": 500000000
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e6": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "query",
+          "method": "GET",
+          "path": "/api/queries/ShippedUnitsByWarehouseMonth",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.rows[0].warehouseId": "QIL-AGG",
+              "$.rows[0].shippedAt": "2026-03",
+              "$.rows[0].eventCount": 2,
+              "$.rows[1].warehouseId": "QIL-AGG2",
+              "$.rows[1].shippedAt": "2026-03",
+              "$.rows[1].eventCount": 1,
+              "$.rows[1].totalUnits": 500000000,
+              "$.rows[2].warehouseId": "QIL-AGG",
+              "$.rows[2].shippedAt": "2026-04",
+              "$.rows[2].eventCount": 1,
+              "$.rows[2].totalUnits": 100000000,
+              "$.groupBy[1].field": "shippedAt",
+              "$.groupBy[1].bucket": "month"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e1",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e1}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e2",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e2}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e5",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e5}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e6",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e6}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-query-aggregate-orderby-desc",
+      "description": "ShippedUnitsByWarehouseMonth orderBy 'totalUnits desc': groups of 3e9, 5e8 and 1e8 units, inserted ascending, come back strictly descending (an ignored orderBy would return insertion/group order).",
+      "keywords": [
+        "query.orderBy"
+      ],
+      "steps": [
+        {
+          "name": "e1",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-ORD",
+            "shippedAt": "2026-04-10",
+            "unitsShipped": 100000000
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e1": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "e2",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-ORD2",
+            "shippedAt": "2026-03-09",
+            "unitsShipped": 500000000
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e2": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "e3",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-ORD",
+            "shippedAt": "2026-03-05",
+            "unitsShipped": 2000000000
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e3": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "query",
+          "method": "GET",
+          "path": "/api/queries/ShippedUnitsByWarehouseMonth",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.rows[0].warehouseId": "QIL-ORD",
+              "$.rows[0].shippedAt": "2026-03",
+              "$.rows[0].totalUnits": 2000000000,
+              "$.rows[1].warehouseId": "QIL-ORD2",
+              "$.rows[1].totalUnits": 500000000,
+              "$.rows[2].warehouseId": "QIL-ORD",
+              "$.rows[2].shippedAt": "2026-04",
+              "$.rows[2].totalUnits": 100000000
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e1",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e1}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e2",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e2}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e3",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e3}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-query-lookup-and-computed-column-exact",
+      "description": "WarehouseMonthShareOfAllTime on warehouse QIL-SHR (Mar +40/-10, Apr +60, May -25): the lookup allTimeUnits sums only unitsShipped > 0 per warehouse (= 100, would be 65 if its where were ignored) and the computed column sharePercent = monthUnits*100/allTimeUnits is exactly 30 for March and 60 for April.",
+      "keywords": [
+        "query.lookups",
+        "queryLookup.on",
+        "queryLookup.fn",
+        "queryLookup.where",
+        "queryLookup.concept",
+        "queryLookup.field",
+        "query.computed",
+        "queryComputedColumn.expression",
+        "queryComputedColumn.name"
+      ],
+      "steps": [
+        {
+          "name": "e1",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-SHR",
+            "shippedAt": "2026-03-05",
+            "unitsShipped": 40
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e1": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "e2",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-SHR",
+            "shippedAt": "2026-03-06",
+            "unitsShipped": -10
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e2": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "e3",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-SHR",
+            "shippedAt": "2026-04-05",
+            "unitsShipped": 60
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e3": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "e4",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-SHR",
+            "shippedAt": "2026-05-05",
+            "unitsShipped": -25
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e4": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "query",
+          "method": "GET",
+          "path": "/api/queries/WarehouseMonthShareOfAllTime",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.aggregate": true
+            },
+            "text": "{\"warehouseId\":\"QIL-SHR\",\"shippedAt\":\"2026-03\",\"monthUnits\":30,\"allTimeUnits\":100,\"sharePercent\":30}"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "april",
+          "method": "GET",
+          "path": "/api/queries/WarehouseMonthShareOfAllTime",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.aggregate": true
+            },
+            "text": "{\"warehouseId\":\"QIL-SHR\",\"shippedAt\":\"2026-04\",\"monthUnits\":60,\"allTimeUnits\":100,\"sharePercent\":60}"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e1",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e1}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e2",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e2}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e3",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e3}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e4",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e4}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-query-having-on-computed-column-filters-groups",
+      "description": "having 'sharePercent > 0' (a computed column) drops the QIL-SHR May group (monthUnits -25 => share -25) while the March and April groups of the same warehouse remain - the having is applied after lookups/computed, per the schema.",
+      "keywords": [
+        "query.having",
+        "query.computed"
+      ],
+      "steps": [
+        {
+          "name": "e1",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-SHR",
+            "shippedAt": "2026-03-05",
+            "unitsShipped": 40
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e1": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "e2",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-SHR",
+            "shippedAt": "2026-03-06",
+            "unitsShipped": -10
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e2": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "e3",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-SHR",
+            "shippedAt": "2026-04-05",
+            "unitsShipped": 60
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e3": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "e4",
+          "method": "POST",
+          "path": "/api/widget_shipment_events",
+          "body": {
+            "warehouseId": "QIL-SHR",
+            "shippedAt": "2026-05-05",
+            "unitsShipped": -25
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "e4": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "query",
+          "method": "GET",
+          "path": "/api/queries/WarehouseMonthShareOfAllTime",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.aggregate": true
+            },
+            "text": "\"warehouseId\":\"QIL-SHR\",\"shippedAt\":\"2026-04\"",
+            "notText": "\"warehouseId\":\"QIL-SHR\",\"shippedAt\":\"2026-05\""
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "march kept",
+          "method": "GET",
+          "path": "/api/queries/WarehouseMonthShareOfAllTime",
+          "expect": {
+            "status": 200,
+            "text": "\"warehouseId\":\"QIL-SHR\",\"shippedAt\":\"2026-03\""
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e1",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e1}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e2",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e2}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e3",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e3}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup e4",
+          "method": "DELETE",
+          "path": "/api/widget_shipment_events/${e4}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-aggregate-balance-check-exact-per-group",
+      "description": "POST .../check-balances/OrigemDestinoBalance on a two-sku draft reports each [sku, validity] group separately with exact left/right totals and delta (A1: Origem 5 vs Destino 3 => delta 2, unbalanced, templated message 'Faltam 2 unidade(s) de A1 (validade 2027-01-01) no destino'; B2: 4 vs 4 => balanced) and does not persist anything.",
+      "keywords": [
+        "aggregate.balances",
+        "aggregateBalance.groupBy",
+        "aggregateBalance.discriminatorField",
+        "aggregateBalance.leftValue",
+        "aggregateBalance.rightValue",
+        "aggregateBalance.quantityField",
+        "aggregateBalance.collection",
+        "aggregateBalance.message",
+        "aggregateBalance.name"
+      ],
+      "steps": [
+        {
+          "name": "stock location (disponivel 10)",
+          "method": "POST",
+          "path": "/api/stock_locations",
+          "body": {
+            "localId": "QIL-${rand}",
+            "disponivel": 10
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.disponivel": 10
+            }
+          },
+          "save": {
+            "loc": "$.localId",
+            "locId": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "check",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/StockTransferAggregate/check-balances/OrigemDestinoBalance",
+          "body": {
+            "reference": "agg-${loc}",
+            "status": "Draft",
+            "items": [
+              {
+                "sku": "A1",
+                "validity": "2027-01-01",
+                "positions": [
+                  {
+                    "role": "Origem",
+                    "localId": "${loc}",
+                    "quantity": 5,
+                    "sku": "A1",
+                    "validity": "2027-01-01"
+                  },
+                  {
+                    "role": "Destino",
+                    "localId": "${loc}",
+                    "quantity": 3,
+                    "sku": "A1",
+                    "validity": "2027-01-01"
+                  }
+                ]
+              },
+              {
+                "sku": "B2",
+                "validity": "2027-01-01",
+                "positions": [
+                  {
+                    "role": "Origem",
+                    "localId": "${loc}",
+                    "quantity": 4,
+                    "sku": "B2",
+                    "validity": "2027-01-01"
+                  },
+                  {
+                    "role": "Destino",
+                    "localId": "${loc}",
+                    "quantity": 4,
+                    "sku": "B2",
+                    "validity": "2027-01-01"
+                  }
+                ]
+              }
+            ]
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.__balances.OrigemDestinoBalance.balanced": false,
+              "$.__balances.OrigemDestinoBalance.groups": {
+                "len": 2
+              },
+              "$.__balances.OrigemDestinoBalance.groups[0].group.sku": "A1",
+              "$.__balances.OrigemDestinoBalance.groups[0].leftTotal": 5,
+              "$.__balances.OrigemDestinoBalance.groups[0].rightTotal": 3,
+              "$.__balances.OrigemDestinoBalance.groups[0].delta": 2,
+              "$.__balances.OrigemDestinoBalance.groups[0].balanced": false,
+              "$.__balances.OrigemDestinoBalance.groups[0].message": "Faltam 2 unidade(s) de A1 (validade 2027-01-01) no destino",
+              "$.__balances.OrigemDestinoBalance.groups[1].group.sku": "B2",
+              "$.__balances.OrigemDestinoBalance.groups[1].leftTotal": 4,
+              "$.__balances.OrigemDestinoBalance.groups[1].rightTotal": 4,
+              "$.__balances.OrigemDestinoBalance.groups[1].balanced": true
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "nothing persisted",
+          "method": "GET",
+          "path": "/api/concepts/StockTransfer/page?reference=agg-${loc}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.total": 0,
+              "$.items": {
+                "len": 0
+              }
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup location",
+          "method": "DELETE",
+          "path": "/api/stock_locations/${locId}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-aggregate-invariant-vetoes-commit",
+      "description": "Committing a StockTransferAggregate draft whose position quantity (50) exceeds the available stock (10, from the AvailableQuantityQuery lookup field) is vetoed by the aggregate invariant PositionWithinAvailable (message names the rule) and nothing is persisted - not even the root. (Status code of the veto is tracked separately: qil-aggregate-veto-status-is-client-error.)",
+      "keywords": [
+        "aggregate.invariants",
+        "aggregateInvariant.name",
+        "aggregateInvariant.expression",
+        "aggregateInvariant.message",
+        "aggregateCollection.lookupFields"
+      ],
+      "steps": [
+        {
+          "name": "stock location (disponivel 10)",
+          "method": "POST",
+          "path": "/api/stock_locations",
+          "body": {
+            "localId": "QIL-${rand}",
+            "disponivel": 10
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.disponivel": 10
+            }
+          },
+          "save": {
+            "loc": "$.localId",
+            "locId": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "over-available commit",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "body": {
+            "reference": "agg-${loc}",
+            "status": "Draft",
+            "items": [
+              {
+                "sku": "A1",
+                "validity": "2027-01-01",
+                "positions": [
+                  {
+                    "role": "Origem",
+                    "localId": "${loc}",
+                    "quantity": 50,
+                    "sku": "A1",
+                    "validity": "2027-01-01"
+                  },
+                  {
+                    "role": "Destino",
+                    "localId": "${loc}",
+                    "quantity": 50,
+                    "sku": "A1",
+                    "validity": "2027-01-01"
+                  }
+                ]
+              }
+            ]
+          },
+          "expect": {
+            "status": [
+              400,
+              409,
+              422,
+              503
+            ],
+            "json": {
+              "$.message": {
+                "matches": "invariant\\(s\\) violated: PositionWithinAvailable"
+              }
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "nothing persisted",
+          "method": "GET",
+          "path": "/api/concepts/StockTransfer/page?reference=agg-${loc}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.total": 0,
+              "$.items": {
+                "len": 0
+              }
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup location",
+          "method": "DELETE",
+          "path": "/api/stock_locations/${locId}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-aggregate-balance-vetoes-commit",
+      "description": "Committing an unbalanced draft (Origem 5, Destino 3, both within available stock) is vetoed server-side by the balance rule with its templated shortfall message, and nothing is persisted - the server never trusts the client's check-balances.",
+      "keywords": [
+        "aggregate.balances",
+        "aggregateBalance.message",
+        "aggregateBalance.name"
+      ],
+      "steps": [
+        {
+          "name": "stock location (disponivel 10)",
+          "method": "POST",
+          "path": "/api/stock_locations",
+          "body": {
+            "localId": "QIL-${rand}",
+            "disponivel": 10
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.disponivel": 10
+            }
+          },
+          "save": {
+            "loc": "$.localId",
+            "locId": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "unbalanced commit",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "body": {
+            "reference": "agg-${loc}",
+            "status": "Draft",
+            "items": [
+              {
+                "sku": "A1",
+                "validity": "2027-01-01",
+                "positions": [
+                  {
+                    "role": "Origem",
+                    "localId": "${loc}",
+                    "quantity": 5,
+                    "sku": "A1",
+                    "validity": "2027-01-01"
+                  },
+                  {
+                    "role": "Destino",
+                    "localId": "${loc}",
+                    "quantity": 3,
+                    "sku": "A1",
+                    "validity": "2027-01-01"
+                  }
+                ]
+              }
+            ]
+          },
+          "expect": {
+            "status": [
+              400,
+              409,
+              422,
+              503
+            ],
+            "json": {
+              "$.message": {
+                "matches": "balance\\(s\\) violated: Faltam 2 unidade\\(s\\) de A1 \\(validade 2027-01-01\\) no destino"
+              }
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "nothing persisted",
+          "method": "GET",
+          "path": "/api/concepts/StockTransfer/page?reference=agg-${loc}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.total": 0,
+              "$.items": {
+                "len": 0
+              }
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup location",
+          "method": "DELETE",
+          "path": "/api/stock_locations/${locId}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-aggregate-commit-persists-tree-and-attaches-lookup-field",
+      "description": "A balanced, within-stock draft commits (200): the root and both positions are persisted with generated ids and the childField links (items.stockTransferId, positions.stockTransferItemId), and each position carries the query-sourced lookup field maxQuantity = 10 (from StockLocation.disponivel via AvailableQuantityQuery joined on localId). The root is then readable through the plain concept endpoint.",
+      "keywords": [
+        "aggregate.collections",
+        "aggregateCollection.childField",
+        "aggregateCollection.lookupFields",
+        "aggregate.root"
+      ],
+      "steps": [
+        {
+          "name": "stock location (disponivel 10)",
+          "method": "POST",
+          "path": "/api/stock_locations",
+          "body": {
+            "localId": "QIL-${rand}",
+            "disponivel": 10
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.disponivel": 10
+            }
+          },
+          "save": {
+            "loc": "$.localId",
+            "locId": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "commit",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "body": {
+            "reference": "agg-${loc}",
+            "status": "Draft",
+            "items": [
+              {
+                "sku": "A1",
+                "validity": "2027-01-01",
+                "positions": [
+                  {
+                    "role": "Origem",
+                    "localId": "${loc}",
+                    "quantity": 5,
+                    "sku": "A1",
+                    "validity": "2027-01-01"
+                  },
+                  {
+                    "role": "Destino",
+                    "localId": "${loc}",
+                    "quantity": 5,
+                    "sku": "A1",
+                    "validity": "2027-01-01"
+                  }
+                ]
+              }
+            ]
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.aggregate": "StockTransferAggregate",
+              "$.status": "Draft",
+              "$.items": {
+                "len": 1
+              },
+              "$.items[0].positions": {
+                "len": 2
+              },
+              "$.items[0].stockTransferId": {
+                "exists": true
+              },
+              "$.items[0].positions[0].maxQuantity": 10,
+              "$.items[0].positions[1].maxQuantity": 10,
+              "$.items[0].positions[0].quantity": 5,
+              "$.items[0].positions[1].quantity": 5
+            }
+          },
+          "save": {
+            "tid": "$.id",
+            "iid": "$.items[0].id",
+            "p0": "$.items[0].positions[0].id",
+            "p1": "$.items[0].positions[1].id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "root readable",
+          "method": "GET",
+          "path": "/api/stock_transfers/${tid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "Draft",
+              "$.reference": "agg-${loc}"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "load aggregate",
+          "method": "GET",
+          "path": "/api/runtime/aggregate/StockTransferAggregate/${tid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[0].id": "${iid}",
+              "$.items[0].positions": {
+                "len": 2
+              },
+              "$.items[0].positions[0].maxQuantity": 10
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup p0",
+          "method": "DELETE",
+          "path": "/api/stock_transfer_positions/${p0}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup p1",
+          "method": "DELETE",
+          "path": "/api/stock_transfer_positions/${p1}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup item",
+          "method": "DELETE",
+          "path": "/api/stock_transfer_items/${iid}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup root",
+          "method": "DELETE",
+          "path": "/api/stock_transfers/${tid}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup location",
+          "method": "DELETE",
+          "path": "/api/stock_locations/${locId}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-aggregate-commit-refuses-illegal-lifecycle-transition",
+      "description": "The aggregate commit path honours the root concept's lifecycle: re-committing a Committed StockTransfer with status Draft (balanced, within stock) does not change the stored status - the row stays Committed and no child rows are written. (The HTTP status of that refusal is tracked in qil-aggregate-lifecycle-refusal-is-client-error.)",
+      "keywords": [
+        "lifecycle.transitions",
+        "aggregate.root"
+      ],
+      "steps": [
+        {
+          "name": "stock location (disponivel 10)",
+          "method": "POST",
+          "path": "/api/stock_locations",
+          "body": {
+            "localId": "QIL-${rand}",
+            "disponivel": 10
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.disponivel": 10
+            }
+          },
+          "save": {
+            "loc": "$.localId",
+            "locId": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "create Draft",
+          "method": "POST",
+          "path": "/api/stock_transfers",
+          "body": {
+            "reference": "agg-${loc}",
+            "status": "Draft"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "tid": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "to Committed",
+          "method": "PUT",
+          "path": "/api/stock_transfers/${tid}",
+          "body": {
+            "reference": "agg-${loc}",
+            "status": "Committed"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "Committed"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "aggregate commit back to Draft",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "body": {
+            "reference": "agg-${loc}",
+            "status": "Draft",
+            "items": [
+              {
+                "sku": "A1",
+                "validity": "2027-01-01",
+                "positions": [
+                  {
+                    "role": "Origem",
+                    "localId": "${loc}",
+                    "quantity": 5,
+                    "sku": "A1",
+                    "validity": "2027-01-01"
+                  },
+                  {
+                    "role": "Destino",
+                    "localId": "${loc}",
+                    "quantity": 5,
+                    "sku": "A1",
+                    "validity": "2027-01-01"
+                  }
+                ]
+              }
+            ],
+            "id": "${tid}"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "still Committed",
+          "method": "GET",
+          "path": "/api/stock_transfers/${tid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "Committed",
+              "$.version": 1
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "no children written",
+          "method": "GET",
+          "path": "/api/concepts/StockTransferItem/page?stockTransferId=${tid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.total": 0
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup root",
+          "method": "DELETE",
+          "path": "/api/stock_transfers/${tid}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup location",
+          "method": "DELETE",
+          "path": "/api/stock_locations/${locId}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-aggregate-veto-status-is-client-error",
+      "description": "DEFECT: an aggregate invariant/balance veto is a client error, but POST /api/runtime/aggregate/StockTransferAggregate answers 503 Service Unavailable (AggregateApiController maps every IllegalStateException to 503, including the veto thrown by assertAggregateInvariants/assertAggregateBalances). Request: draft with quantity 50 > disponivel 10. Actual: 503 {\"message\":\"Aggregate StockTransferAggregate invariant(s) violated: PositionWithinAvailable -- ...\"}. Expected: 4xx (400/409/422).",
+      "keywords": [
+        "aggregate.invariants",
+        "aggregate.balances"
+      ],
+      "knownFailure": "REG-265",
+      "steps": [
+        {
+          "name": "stock location (disponivel 10)",
+          "method": "POST",
+          "path": "/api/stock_locations",
+          "body": {
+            "localId": "QIL-${rand}",
+            "disponivel": 10
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.disponivel": 10
+            }
+          },
+          "save": {
+            "loc": "$.localId",
+            "locId": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "over-available commit",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "body": {
+            "reference": "agg-${loc}",
+            "status": "Draft",
+            "items": [
+              {
+                "sku": "A1",
+                "validity": "2027-01-01",
+                "positions": [
+                  {
+                    "role": "Origem",
+                    "localId": "${loc}",
+                    "quantity": 50,
+                    "sku": "A1",
+                    "validity": "2027-01-01"
+                  },
+                  {
+                    "role": "Destino",
+                    "localId": "${loc}",
+                    "quantity": 50,
+                    "sku": "A1",
+                    "validity": "2027-01-01"
+                  }
+                ]
+              }
+            ]
+          },
+          "expect": {
+            "status": [
+              400,
+              409,
+              422
+            ]
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "unbalanced commit",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "body": {
+            "reference": "agg-${loc}",
+            "status": "Draft",
+            "items": [
+              {
+                "sku": "A1",
+                "validity": "2027-01-01",
+                "positions": [
+                  {
+                    "role": "Origem",
+                    "localId": "${loc}",
+                    "quantity": 5,
+                    "sku": "A1",
+                    "validity": "2027-01-01"
+                  },
+                  {
+                    "role": "Destino",
+                    "localId": "${loc}",
+                    "quantity": 3,
+                    "sku": "A1",
+                    "validity": "2027-01-01"
+                  }
+                ]
+              }
+            ]
+          },
+          "expect": {
+            "status": [
+              400,
+              409,
+              422
+            ]
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup location",
+          "method": "DELETE",
+          "path": "/api/stock_locations/${locId}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-aggregate-lifecycle-refusal-is-client-error",
+      "description": "DEFECT: committing an aggregate draft that moves the root Committed->Draft is refused (row unchanged) but answers a bare 500 Internal Server Error {\"status\":500,\"error\":\"Internal Server Error\",\"path\":\"/api/runtime/aggregate/StockTransferAggregate\"} - the single-record endpoints answer 422 CONCEPT_LIFECYCLE_TRANSITION_INVALID. Expected a 4xx.",
+      "keywords": [
+        "lifecycle.transitions",
+        "aggregate.root"
+      ],
+      "knownFailure": "REG-266",
+      "steps": [
+        {
+          "name": "stock location (disponivel 10)",
+          "method": "POST",
+          "path": "/api/stock_locations",
+          "body": {
+            "localId": "QIL-${rand}",
+            "disponivel": 10
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.disponivel": 10
+            }
+          },
+          "save": {
+            "loc": "$.localId",
+            "locId": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "create Draft",
+          "method": "POST",
+          "path": "/api/stock_transfers",
+          "body": {
+            "reference": "agg-${loc}",
+            "status": "Draft"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "tid": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "to Committed",
+          "method": "PUT",
+          "path": "/api/stock_transfers/${tid}",
+          "body": {
+            "reference": "agg-${loc}",
+            "status": "Committed"
+          },
+          "expect": {
+            "status": 200
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "aggregate commit back to Draft",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "body": {
+            "reference": "agg-${loc}",
+            "status": "Draft",
+            "items": [
+              {
+                "sku": "A1",
+                "validity": "2027-01-01",
+                "positions": [
+                  {
+                    "role": "Origem",
+                    "localId": "${loc}",
+                    "quantity": 5,
+                    "sku": "A1",
+                    "validity": "2027-01-01"
+                  },
+                  {
+                    "role": "Destino",
+                    "localId": "${loc}",
+                    "quantity": 5,
+                    "sku": "A1",
+                    "validity": "2027-01-01"
+                  }
+                ]
+              }
+            ],
+            "id": "${tid}"
+          },
+          "expect": {
+            "status": [
+              400,
+              409,
+              422
+            ]
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup root",
+          "method": "DELETE",
+          "path": "/api/stock_transfers/${tid}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup location",
+          "method": "DELETE",
+          "path": "/api/stock_locations/${locId}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-aggregate-oncommit-failure-rolls-back-tree",
+      "description": "DEFECT: AggregateRuntime.commit documents that a failing onCommit procedure rolls back every prior write of the commit (root and children). Request: POST /api/runtime/aggregate/WidgetOrderAggregate with an explicit root id and one line while no WidgetOrderAudit row exists, so AuditWidgetOrderProcedure fails (503 'onCommit procedure ... failed: CONCEPT_NOT_FOUND'). Actual: after the 503 the WidgetOrder (GET /api/widget_orders/<id> 200) and its WidgetOrderLine are still stored. Expected: both 404. (Uses throwaway StockTransfer ids as uuid sources.)",
+      "keywords": [
+        "aggregate.onCommit",
+        "aggregate.collections"
+      ],
+      "knownFailure": "REG-267",
+      "steps": [
+        {
+          "name": "uuid source 1",
+          "method": "POST",
+          "path": "/api/stock_transfers",
+          "body": {
+            "reference": "uuid-${rand}",
+            "status": "Draft"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "oid": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "uuid source 2",
+          "method": "POST",
+          "path": "/api/stock_transfers",
+          "body": {
+            "reference": "uuid-${rand}",
+            "status": "Draft"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "lid": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "commit with failing onCommit",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/WidgetOrderAggregate",
+          "body": {
+            "id": "${oid}",
+            "customerEmail": "developer",
+            "status": "qil-atomic",
+            "lineCount": 1,
+            "lines": [
+              {
+                "id": "${lid}",
+                "sku": "qil-a",
+                "quantity": 1,
+                "unitPrice": 2
+              }
+            ]
+          },
+          "expect": {
+            "status": 503,
+            "json": {
+              "$.message": {
+                "matches": "onCommit procedure AuditWidgetOrderProcedure failed"
+              }
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "root rolled back",
+          "method": "GET",
+          "path": "/api/widget_orders/${oid}",
+          "expect": {
+            "status": 404
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "line rolled back",
+          "method": "GET",
+          "path": "/api/widget_order_lines/${lid}",
+          "expect": {
+            "status": 404
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup order",
+          "method": "DELETE",
+          "path": "/api/widget_orders/${oid}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup line",
+          "method": "DELETE",
+          "path": "/api/widget_order_lines/${lid}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup src1",
+          "method": "DELETE",
+          "path": "/api/stock_transfers/${oid}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup src2",
+          "method": "DELETE",
+          "path": "/api/stock_transfers/${lid}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-sequence-nextnumber-unique-monotonic",
+      "description": "WidgetOrder.orderNumber defaults to nextNumber('orderNumber') (format ORD-{year}-{seq:4}, tenant scope): two orders created one after the other each get a number of the declared shape, the numbers differ, and sorted by orderNumber the later-created order (lineCount 2) comes after the earlier one (lineCount 1). Create steps carry no status expectation because POST /api/widget_orders answers the known 500 although the row is saved.",
+      "keywords": [
+        "sequence.name",
+        "sequence.format",
+        "sequence.scope"
+      ],
+      "steps": [
+        {
+          "name": "create order 1",
+          "method": "POST",
+          "path": "/api/widget_orders",
+          "body": {
+            "customerEmail": "developer",
+            "status": "qil-seq",
+            "lineCount": 1
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "create order 2",
+          "method": "POST",
+          "path": "/api/widget_orders",
+          "body": {
+            "customerEmail": "developer",
+            "status": "qil-seq",
+            "lineCount": 2
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "read both",
+          "method": "GET",
+          "path": "/api/concepts/WidgetOrder/page?status=qil-seq&sort=orderNumber&direction=asc&limit=10",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.total": 2,
+              "$.items[0].lineCount": 1,
+              "$.items[1].lineCount": 2,
+              "$.items[0].orderNumber": {
+                "matches": "^ORD-20\\d\\d-\\d{4}$"
+              },
+              "$.items[1].orderNumber": {
+                "matches": "^ORD-20\\d\\d-\\d{4}$"
+              }
+            }
+          },
+          "save": {
+            "n0": "$.items[0].orderNumber",
+            "id0": "$.items[0].id",
+            "id1": "$.items[1].id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "numbers differ",
+          "method": "GET",
+          "path": "/api/concepts/WidgetOrder/page?status=qil-seq&sort=orderNumber&direction=asc&limit=10",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[1].orderNumber": {
+                "distinctFrom": "n0"
+              }
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup 0",
+          "method": "DELETE",
+          "path": "/api/widget_orders/${id0}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup 1",
+          "method": "DELETE",
+          "path": "/api/widget_orders/${id1}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "qil-query-where-binds-current-user",
+      "description": "OrdersIPlaced (where placedBy == $user.id) lists the caller's own order but not an order placed by someone else: the fixture row with placedBy 'qil-someone-else' exists (checked through the page endpoint) yet never appears in the query result, while the caller's own row (placedBy defaulted to the actor 'developer') does. Create steps carry no status expectation (known POST /api/widget_orders 500 with the row saved).",
+      "keywords": [
+        "query.where"
+      ],
+      "steps": [
+        {
+          "name": "own order",
+          "method": "POST",
+          "path": "/api/widget_orders",
+          "body": {
+            "customerEmail": "developer",
+            "status": "qil-usr",
+            "lineCount": 0
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "someone else's order",
+          "method": "POST",
+          "path": "/api/widget_orders",
+          "body": {
+            "customerEmail": "developer",
+            "status": "qil-usr-other",
+            "lineCount": 0,
+            "placedBy": "qil-someone-else"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "own stored",
+          "method": "GET",
+          "path": "/api/concepts/WidgetOrder/page?status=qil-usr",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.total": 1,
+              "$.items[0].placedBy": "developer"
+            }
+          },
+          "save": {
+            "own": "$.items[0].id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "other stored",
+          "method": "GET",
+          "path": "/api/concepts/WidgetOrder/page?status=qil-usr-other",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.total": 1,
+              "$.items[0].placedBy": "qil-someone-else"
+            }
+          },
+          "save": {
+            "oth": "$.items[0].id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "query",
+          "method": "GET",
+          "path": "/api/queries/OrdersIPlaced?limit=1000",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.query": "OrdersIPlaced",
+              "$.aggregate": false
+            },
+            "text": "\"status\":\"qil-usr\"",
+            "notText": "\"placedBy\":\"qil-someone-else\""
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup own",
+          "method": "DELETE",
+          "path": "/api/widget_orders/${own}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup other",
+          "method": "DELETE",
+          "path": "/api/widget_orders/${oth}",
+          "stopOnFail": false
+        }
+      ]
+    }
+  ]
+}

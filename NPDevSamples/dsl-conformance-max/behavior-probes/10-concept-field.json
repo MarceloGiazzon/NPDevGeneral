@@ -1,0 +1,2103 @@
+{
+  "probes": [
+    {
+      "id": "cf-field-required-missing-and-null-rejected",
+      "keywords": [
+        "field.required"
+      ],
+      "description": "A required field that is absent or explicitly null is rejected with 422 invariant_failed naming required(<field>) at that path; the same payload with the field present is accepted, so the rejection is caused by the field and nothing else.",
+      "steps": [
+        {
+          "name": "missing discontinued",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "WID-${rand}",
+            "displayName": "cf ${rand}",
+            "unitPrice": 1.5
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.code": "invariant_failed",
+              "$.invariant": "required(discontinued)",
+              "$.path": "discontinued",
+              "$.concept": "WidgetCatalogEntry",
+              "$.violations": {
+                "len": 1
+              }
+            }
+          }
+        },
+        {
+          "name": "null unitPrice",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "WID-${rand}",
+            "displayName": "cf ${rand}",
+            "discontinued": false,
+            "unitPrice": null
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.invariant": "required(unitPrice)",
+              "$.path": "unitPrice"
+            }
+          }
+        },
+        {
+          "name": "control with every required field",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "WID-${rand}",
+            "displayName": "cf ${rand}",
+            "discontinued": false,
+            "unitPrice": 1.5
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.id": {
+                "exists": true
+              },
+              "$.discontinued": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-field-required-on-referenced-field",
+      "keywords": [
+        "field.required",
+        "field.reference"
+      ],
+      "description": "A required reference field (ShelfSlot.entryId) is enforced as required, and a supplied value must point at an existing row of the target concept (422 bond_target_not_found) -- two separate rules that both hold.",
+      "steps": [
+        {
+          "name": "layout",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "cf-${rand}",
+            "rows": 2,
+            "cols": 2
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "layoutId": "$.id"
+          }
+        },
+        {
+          "name": "missing entryId",
+          "method": "POST",
+          "path": "/api/shelf_slots",
+          "body": {
+            "shelfLayoutId": "${layoutId}",
+            "row": 1,
+            "col": 1
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.invariant": "required(entryId)",
+              "$.path": "entryId"
+            }
+          }
+        },
+        {
+          "name": "dangling entryId",
+          "method": "POST",
+          "path": "/api/shelf_slots",
+          "body": {
+            "shelfLayoutId": "${layoutId}",
+            "row": 1,
+            "col": 1,
+            "entryId": "${uuid}"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.code": "bond_target_not_found",
+              "$.path": "entryId",
+              "$.concept": "ShelfSlot"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-field-enum-values-enforced-on-create-and-update",
+      "keywords": [
+        "field.enumValues"
+      ],
+      "description": "An enum field accepts only its declared enumValues: an unknown value is rejected on create and on update with 422 schema_validation listing the allowed values, and a declared value is accepted.",
+      "steps": [
+        {
+          "name": "unknown value on create",
+          "method": "POST",
+          "path": "/api/stock_transfers",
+          "body": {
+            "reference": "R-${rand}",
+            "status": "Bogus"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.invariant": "schema_validation",
+              "$.path": "status",
+              "$.message": {
+                "matches": "allowed: .Draft, Committed."
+              }
+            }
+          }
+        },
+        {
+          "name": "declared value on create",
+          "method": "POST",
+          "path": "/api/stock_transfers",
+          "body": {
+            "reference": "R-${rand}",
+            "status": "Draft"
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.status": "Draft"
+            }
+          },
+          "save": {
+            "tid": "$.id"
+          }
+        },
+        {
+          "name": "unknown value on update",
+          "method": "PUT",
+          "path": "/api/stock_transfers/${tid}",
+          "body": {
+            "status": "Archived"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.invariant": "schema_validation",
+              "$.path": "status"
+            }
+          }
+        },
+        {
+          "name": "row unchanged",
+          "method": "GET",
+          "path": "/api/stock_transfers/${tid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "Draft"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-field-unique-rejects-duplicate",
+      "keywords": [
+        "field.unique"
+      ],
+      "description": "A field declared unique rejects a second live row with the same value (409 unique_integrity_failed naming the field) while a different value is accepted.",
+      "steps": [
+        {
+          "name": "first",
+          "method": "POST",
+          "path": "/api/widget_suppliers",
+          "body": {
+            "supplierCode": "U-${rand}",
+            "displayName": "first"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "code": "$.supplierCode"
+          }
+        },
+        {
+          "name": "duplicate code",
+          "method": "POST",
+          "path": "/api/widget_suppliers",
+          "body": {
+            "supplierCode": "${code}",
+            "displayName": "second"
+          },
+          "expect": {
+            "status": 409,
+            "json": {
+              "$.code": "unique_integrity_failed",
+              "$.concept": "WidgetSupplier",
+              "$.path": "supplierCode"
+            }
+          }
+        },
+        {
+          "name": "different code",
+          "method": "POST",
+          "path": "/api/widget_suppliers",
+          "body": {
+            "supplierCode": "U2-${rand}",
+            "displayName": "third"
+          },
+          "expect": {
+            "status": 201
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-softdelete-hides-row-and-frees-unique-value",
+      "keywords": [
+        "concept.softDelete",
+        "field.unique"
+      ],
+      "description": "On a softDelete concept a delete (204) makes the row disappear from get-by-id (404) and from the list, and frees its unique value for reuse by a new live row.",
+      "steps": [
+        {
+          "name": "create",
+          "method": "POST",
+          "path": "/api/widget_suppliers",
+          "body": {
+            "supplierCode": "SD-${rand}",
+            "displayName": "to delete"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "sid": "$.id",
+            "code": "$.supplierCode"
+          }
+        },
+        {
+          "name": "visible before delete",
+          "method": "GET",
+          "path": "/api/concepts/widget_suppliers?where=supplierCode:eq:${code}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 1
+              },
+              "$.content[0].id": "${sid}"
+            }
+          }
+        },
+        {
+          "name": "delete",
+          "method": "DELETE",
+          "path": "/api/widget_suppliers/${sid}",
+          "expect": {
+            "status": 204
+          }
+        },
+        {
+          "name": "get by id is gone",
+          "method": "GET",
+          "path": "/api/widget_suppliers/${sid}",
+          "expect": {
+            "status": 404
+          }
+        },
+        {
+          "name": "list is empty for that code",
+          "method": "GET",
+          "path": "/api/concepts/widget_suppliers?where=supplierCode:eq:${code}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 0
+              },
+              "$.totalElements": 0
+            }
+          }
+        },
+        {
+          "name": "unique value reusable",
+          "method": "POST",
+          "path": "/api/widget_suppliers",
+          "body": {
+            "supplierCode": "${code}",
+            "displayName": "reborn"
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.id": {
+                "not": "${sid}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-softdelete-restore-brings-row-back",
+      "keywords": [
+        "concept.softDelete"
+      ],
+      "description": "The generated restore action (POST /api/widget_suppliers/{id}/restore) must make a soft-deleted row visible again. The runtime answers 404 for a row that was just deleted (204): 'softDelete' is accepted as reversible but restore cannot find the deleted row. Evidence: POST supplier -> 201; DELETE -> 204; POST .../restore -> 404 (empty body); expected 204 and GET by id -> 200.",
+      "steps": [
+        {
+          "name": "create",
+          "method": "POST",
+          "path": "/api/widget_suppliers",
+          "body": {
+            "supplierCode": "RS-${rand}",
+            "displayName": "restore me"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "sid": "$.id"
+          }
+        },
+        {
+          "name": "delete",
+          "method": "DELETE",
+          "path": "/api/widget_suppliers/${sid}",
+          "expect": {
+            "status": 204
+          }
+        },
+        {
+          "name": "restore",
+          "method": "POST",
+          "path": "/api/widget_suppliers/${sid}/restore",
+          "expect": {
+            "status": 204
+          }
+        },
+        {
+          "name": "visible again",
+          "method": "GET",
+          "path": "/api/widget_suppliers/${sid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.id": "${sid}"
+            }
+          }
+        }
+      ],
+      "knownFailure": "REG-258"
+    },
+    {
+      "id": "cf-field-access-read-masks-field-for-non-owner",
+      "keywords": [
+        "field.access"
+      ],
+      "description": "field.access.read (ownerEmail == $user.id) is evaluated per record: internalNotes is returned for a row owned by the caller and masked to null (get-by-id and the paged list) for a row owned by someone else; the other fields stay readable.",
+      "steps": [
+        {
+          "name": "own row",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "WID-${rand}",
+            "displayName": "cf ${rand}",
+            "discontinued": false,
+            "unitPrice": 1.5,
+            "ownerEmail": "developer",
+            "internalNotes": "mine-${rand}"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "ownId": "$.id"
+          }
+        },
+        {
+          "name": "foreign row",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "WID-${rand}",
+            "displayName": "cf ${rand}",
+            "discontinued": false,
+            "unitPrice": 1.5,
+            "ownerEmail": "someone-else",
+            "internalNotes": "secret-${rand}"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "otherId": "$.id"
+          }
+        },
+        {
+          "name": "owner reads notes",
+          "method": "GET",
+          "path": "/api/widget_catalog_entrys/${ownId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.internalNotes": {
+                "matches": "^mine-"
+              },
+              "$.ownerEmail": "developer"
+            }
+          }
+        },
+        {
+          "name": "non-owner row masked",
+          "method": "GET",
+          "path": "/api/widget_catalog_entrys/${otherId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.internalNotes": null,
+              "$.ownerEmail": "someone-else",
+              "$.displayName": {
+                "exists": true
+              }
+            }
+          }
+        },
+        {
+          "name": "paged list: owner row keeps notes",
+          "method": "GET",
+          "path": "/api/concepts/widget_catalog_entrys?where=id:eq:${ownId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content[0].internalNotes": {
+                "matches": "^mine-"
+              }
+            }
+          }
+        },
+        {
+          "name": "paged list: foreign row masked",
+          "method": "GET",
+          "path": "/api/concepts/widget_catalog_entrys?where=id:eq:${otherId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content[0].internalNotes": null,
+              "$.content[0].id": "${otherId}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-concept-access-write-denies-foreign-row-create",
+      "keywords": [
+        "conceptAccess.write"
+      ],
+      "description": "concept.access.write (customerEmail == $user.id) is enforced on create: an order for another customer is refused with 403 ROW_SCOPE_DENIED and is not stored. (A rule-satisfying create is not used as control because WidgetOrder creation hits the recorded PlaceWidgetOrder defect.)",
+      "steps": [
+        {
+          "name": "tag",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "tag-${rand}",
+            "rows": 1,
+            "cols": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "tag": "$.name"
+          }
+        },
+        {
+          "name": "foreign customer",
+          "method": "POST",
+          "path": "/api/concepts/widget_orders",
+          "body": {
+            "customerEmail": "${tag}@other.test",
+            "status": "S-${tag}",
+            "lineCount": 1
+          },
+          "expect": {
+            "status": 403,
+            "json": {
+              "$.code": "ROW_SCOPE_DENIED",
+              "$.message": {
+                "matches": "WidgetOrder"
+              }
+            }
+          }
+        },
+        {
+          "name": "nothing stored under that status",
+          "method": "GET",
+          "path": "/api/concepts/widget_orders?where=status:eq:S-${tag}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-concept-access-read-hides-rows-outside-scope",
+      "keywords": [
+        "conceptAccess.read",
+        "conceptAccess.write"
+      ],
+      "description": "concept.access.read (customerEmail == $user.id) hides a row from the caller once it no longer satisfies the rule: an order handed over to another customer disappears from get-by-id (404) and from the list. NOTE the hand-over PUT itself is accepted (200): the write rule is checked against the stored row, not the new payload - arguably intended pre-image semantics, asserted as-is. WidgetOrder creation answers 500 (known PlaceWidgetOrder defect) although the row is stored, so the order is located by a unique status tag.",
+      "steps": [
+        {
+          "name": "tag",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "tag-${rand}",
+            "rows": 1,
+            "cols": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "tag": "$.name"
+          }
+        },
+        {
+          "name": "create own order (500 tolerated, row is stored)",
+          "method": "POST",
+          "path": "/api/concepts/widget_orders",
+          "body": {
+            "customerEmail": "developer",
+            "status": "R-${tag}",
+            "lineCount": 1
+          },
+          "expect": {
+            "status": [
+              201,
+              500
+            ]
+          }
+        },
+        {
+          "name": "order visible to its owner",
+          "method": "GET",
+          "path": "/api/concepts/widget_orders?where=status:eq:R-${tag}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 1
+              },
+              "$.content[0].customerEmail": "developer"
+            }
+          },
+          "save": {
+            "oid": "$.content[0].id"
+          }
+        },
+        {
+          "name": "hand over to another customer",
+          "method": "PUT",
+          "path": "/api/widget_orders/${oid}",
+          "body": {
+            "customerEmail": "${tag}@other.test"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.customerEmail": {
+                "matches": "@other.test$"
+              }
+            }
+          }
+        },
+        {
+          "name": "get by id now 404",
+          "method": "GET",
+          "path": "/api/widget_orders/${oid}",
+          "expect": {
+            "status": 404
+          }
+        },
+        {
+          "name": "list no longer returns it",
+          "method": "GET",
+          "path": "/api/concepts/widget_orders?where=status:eq:R-${tag}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-concept-access-public-serves-only-allowlisted-fields",
+      "keywords": [
+        "conceptAccess.public"
+      ],
+      "description": "concept.access.public.fields is an allow-list: the anonymous /api/public/concepts/WidgetCatalogEntry surface (no API key) returns exactly id, sku, displayName, unitPrice and never ownerEmail, internalNotes, discontinued, version or tenantId; it is read-only; and a concept whose public grant has scope=aggregate (ShelfSlot) is not served on its own route.",
+      "steps": [
+        {
+          "name": "create entry with private data",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "PUB-${rand}",
+            "displayName": "cf ${rand}",
+            "discontinued": false,
+            "unitPrice": 1.5,
+            "ownerEmail": "owner-${rand}@x.test",
+            "internalNotes": "private-${rand}"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "eid": "$.id",
+            "sku": "$.sku",
+            "dn": "$.displayName"
+          }
+        },
+        {
+          "name": "anonymous get",
+          "method": "GET",
+          "path": "/api/public/concepts/WidgetCatalogEntry/${eid}",
+          "auth": "none",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.id": "${eid}",
+              "$.sku": "${sku}",
+              "$.displayName": "${dn}",
+              "$.unitPrice": 1.5,
+              "$.ownerEmail": {
+                "exists": false
+              },
+              "$.internalNotes": {
+                "exists": false
+              },
+              "$.discontinued": {
+                "exists": false
+              },
+              "$.tenantId": {
+                "exists": false
+              },
+              "$.version": {
+                "exists": false
+              }
+            },
+            "notText": "private-"
+          }
+        },
+        {
+          "name": "anonymous listing of public concepts",
+          "method": "GET",
+          "path": "/api/public/concepts",
+          "auth": "none",
+          "expect": {
+            "status": 200,
+            "text": "WidgetCatalogEntry",
+            "notText": "ShelfSlot"
+          }
+        },
+        {
+          "name": "aggregate-scoped concept has no own public route",
+          "method": "GET",
+          "path": "/api/public/concepts/ShelfSlot",
+          "auth": "none",
+          "expect": {
+            "status": 404
+          }
+        },
+        {
+          "name": "public surface never accepts writes",
+          "method": "POST",
+          "path": "/api/public/concepts/WidgetCatalogEntry",
+          "auth": "none",
+          "body": {
+            "sku": "X",
+            "displayName": "x",
+            "discontinued": false,
+            "unitPrice": 1
+          },
+          "expect": {
+            "status": [
+              401,
+              403,
+              404,
+              405
+            ]
+          }
+        },
+        {
+          "name": "no anonymous access to the private route",
+          "method": "GET",
+          "path": "/api/widget_catalog_entrys/${eid}",
+          "auth": "none",
+          "expect": {
+            "status": [
+              401,
+              403
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-concept-access-public-where-filters-rows",
+      "keywords": [
+        "conceptAccess.public"
+      ],
+      "description": "concept.access.public.where (discontinued == false) narrows the anonymous surface: a discontinued row is 404 by id and absent from the public list while a live row is served; the inherited grant also applies to the extending concept PromotedWidgetCatalogEntry.",
+      "steps": [
+        {
+          "name": "live entry",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "WID-${rand}",
+            "displayName": "cf ${rand}",
+            "discontinued": false,
+            "unitPrice": 1.5
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "liveId": "$.id",
+            "liveSku": "$.sku"
+          }
+        },
+        {
+          "name": "discontinued entry",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "WID-${rand}",
+            "displayName": "cf ${rand}",
+            "discontinued": true,
+            "unitPrice": 1.5
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "deadId": "$.id",
+            "deadSku": "$.sku"
+          }
+        },
+        {
+          "name": "live row public",
+          "method": "GET",
+          "path": "/api/public/concepts/WidgetCatalogEntry/${liveId}",
+          "auth": "none",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.id": "${liveId}"
+            }
+          }
+        },
+        {
+          "name": "discontinued row not public",
+          "method": "GET",
+          "path": "/api/public/concepts/WidgetCatalogEntry/${deadId}",
+          "auth": "none",
+          "expect": {
+            "status": 404
+          }
+        },
+        {
+          "name": "live row is in the public list",
+          "method": "GET",
+          "path": "/api/public/concepts/WidgetCatalogEntry?sku=${liveSku}",
+          "auth": "none",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.total": 1,
+              "$.items[0].id": "${liveId}"
+            }
+          }
+        },
+        {
+          "name": "discontinued row not in the public list",
+          "method": "GET",
+          "path": "/api/public/concepts/WidgetCatalogEntry?sku=${deadSku}",
+          "auth": "none",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.total": 0,
+              "$.items": {
+                "len": 0
+              }
+            }
+          }
+        },
+        {
+          "name": "discontinued promoted entry",
+          "method": "POST",
+          "path": "/api/promoted_widget_catalog_entrys",
+          "body": {
+            "sku": "WID-${rand}",
+            "displayName": "cf ${rand}",
+            "discontinued": true,
+            "unitPrice": 1.5,
+            "promotionLabel": "p"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "deadPromoted": "$.id"
+          }
+        },
+        {
+          "name": "promoted discontinued not public",
+          "method": "GET",
+          "path": "/api/public/concepts/PromotedWidgetCatalogEntry/${deadPromoted}",
+          "auth": "none",
+          "expect": {
+            "status": 404
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-concept-extends-inherits-fields-invariants-and-adds-own",
+      "keywords": [
+        "concept.extends",
+        "concept.invariants"
+      ],
+      "description": "PromotedWidgetCatalogEntry extends WidgetCatalogEntry: it enforces the parent's invariant CatalogSkuRequired and required fields as well as its own required promotionLabel, stores inherited and own fields, and inherits the parent's field-level read access.",
+      "steps": [
+        {
+          "name": "blank sku hits the inherited invariant",
+          "method": "POST",
+          "path": "/api/promoted_widget_catalog_entrys",
+          "body": {
+            "sku": "",
+            "displayName": "cf ${rand}",
+            "discontinued": false,
+            "unitPrice": 1.5,
+            "promotionLabel": "p"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.code": "invariant_failed",
+              "$.invariant": "CatalogSkuRequired",
+              "$.concept": "PromotedWidgetCatalogEntry",
+              "$.path": "sku"
+            }
+          }
+        },
+        {
+          "name": "own required field",
+          "method": "POST",
+          "path": "/api/promoted_widget_catalog_entrys",
+          "body": {
+            "sku": "WID-${rand}",
+            "displayName": "cf ${rand}",
+            "discontinued": false,
+            "unitPrice": 1.5
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.invariant": "required(promotionLabel)",
+              "$.path": "promotionLabel",
+              "$.violations": {
+                "len": 1
+              }
+            }
+          }
+        },
+        {
+          "name": "inherited required field",
+          "method": "POST",
+          "path": "/api/promoted_widget_catalog_entrys",
+          "body": {
+            "displayName": "x",
+            "sku": "WID-${rand}",
+            "unitPrice": 1,
+            "promotionLabel": "p"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.invariant": "required(discontinued)"
+            }
+          }
+        },
+        {
+          "name": "valid promoted entry",
+          "method": "POST",
+          "path": "/api/promoted_widget_catalog_entrys",
+          "body": {
+            "sku": "WID-${rand}",
+            "displayName": "cf ${rand}",
+            "discontinued": false,
+            "unitPrice": 1.5,
+            "promotionLabel": "spring",
+            "ownerEmail": "developer",
+            "internalNotes": "n-${rand}"
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.promotionLabel": "spring",
+              "$.ownerEmail": "developer"
+            }
+          }
+        },
+        {
+          "name": "foreign-owned promoted entry",
+          "method": "POST",
+          "path": "/api/promoted_widget_catalog_entrys",
+          "body": {
+            "sku": "WID-${rand}",
+            "displayName": "cf ${rand}",
+            "discontinued": false,
+            "unitPrice": 1.5,
+            "promotionLabel": "p",
+            "ownerEmail": "somebody",
+            "internalNotes": "hidden"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "pid2": "$.id"
+          }
+        },
+        {
+          "name": "inherited field access masks on read",
+          "method": "GET",
+          "path": "/api/promoted_widget_catalog_entrys/${pid2}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.internalNotes": null,
+              "$.promotionLabel": "p"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-concept-rollups-count-and-max-follow-child-rows",
+      "keywords": [
+        "concept.rollups"
+      ],
+      "description": "WidgetCatalogEntry.slotCount (count) and highestSlotRow (max of row) are recomputed from ShelfSlot rows on child create, update and delete, and a client-supplied value for a rollup field is not kept.",
+      "steps": [
+        {
+          "name": "layout",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "ru-${rand}",
+            "rows": 9,
+            "cols": 9
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "lid": "$.id"
+          }
+        },
+        {
+          "name": "entry (client tries to write rollups)",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "WID-${rand}",
+            "displayName": "cf ${rand}",
+            "discontinued": false,
+            "unitPrice": 1.5,
+            "slotCount": 99,
+            "highestSlotRow": 77
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "eid": "$.id"
+          }
+        },
+        {
+          "name": "client-written rollups discarded",
+          "method": "GET",
+          "path": "/api/widget_catalog_entrys/${eid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.slotCount": 0,
+              "$.highestSlotRow": null
+            }
+          }
+        },
+        {
+          "name": "slot row 2",
+          "method": "POST",
+          "path": "/api/shelf_slots",
+          "body": {
+            "shelfLayoutId": "${lid}",
+            "row": 2,
+            "col": 0,
+            "entryId": "${eid}"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "s1": "$.id"
+          }
+        },
+        {
+          "name": "slot row 5",
+          "method": "POST",
+          "path": "/api/shelf_slots",
+          "body": {
+            "shelfLayoutId": "${lid}",
+            "row": 5,
+            "col": 1,
+            "entryId": "${eid}"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "s2": "$.id"
+          }
+        },
+        {
+          "name": "count 2 max 5",
+          "method": "GET",
+          "path": "/api/widget_catalog_entrys/${eid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.slotCount": 2,
+              "$.highestSlotRow": 5
+            }
+          }
+        },
+        {
+          "name": "move high slot down to row 1",
+          "method": "PUT",
+          "path": "/api/shelf_slots/${s2}",
+          "body": {
+            "row": 1
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "name": "max recomputed after update",
+          "method": "GET",
+          "path": "/api/widget_catalog_entrys/${eid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.slotCount": 2,
+              "$.highestSlotRow": 2
+            }
+          }
+        },
+        {
+          "name": "delete the row-2 slot",
+          "method": "DELETE",
+          "path": "/api/shelf_slots/${s1}",
+          "expect": {
+            "status": 204
+          }
+        },
+        {
+          "name": "count 1 max 1 after delete",
+          "method": "GET",
+          "path": "/api/widget_catalog_entrys/${eid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.slotCount": 1,
+              "$.highestSlotRow": 1
+            }
+          }
+        },
+        {
+          "name": "delete last slot",
+          "method": "DELETE",
+          "path": "/api/shelf_slots/${s2}",
+          "expect": {
+            "status": 204
+          }
+        },
+        {
+          "name": "count back to 0, max null",
+          "method": "GET",
+          "path": "/api/widget_catalog_entrys/${eid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.slotCount": 0,
+              "$.highestSlotRow": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-temporal-asof-resolves-effective-dated-row",
+      "keywords": [
+        "concept.temporal"
+      ],
+      "description": "On a temporal concept the generic list resolves rows by validFrom <= asOf <= validTo (both ends inclusive), returns nothing outside every window, defaults to today's window when asOf is absent (an expired 2020 row is not returned, the open-ended one is), rejects a malformed asOf (400 invalid_asOf) and rejects asOf on a non-temporal concept. Note: the plain /api/widget_price_list_entrys list and the /api/concepts/<Concept>/page route do not apply asOf at all (they return every row) - only the documented generic list does.",
+      "steps": [
+        {
+          "name": "expired window 2020",
+          "method": "POST",
+          "path": "/api/widget_price_list_entrys",
+          "body": {
+            "productCode": "PC-${rand}",
+            "amount": 10,
+            "validFrom": "2020-01-01",
+            "validTo": "2020-12-31"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "code": "$.productCode"
+          }
+        },
+        {
+          "name": "open-ended window from 2021",
+          "method": "POST",
+          "path": "/api/widget_price_list_entrys",
+          "body": {
+            "productCode": "${code}",
+            "amount": 20,
+            "validFrom": "2021-01-01",
+            "validTo": "2999-12-31"
+          },
+          "expect": {
+            "status": 201
+          }
+        },
+        {
+          "name": "asOf inside the old window",
+          "method": "GET",
+          "path": "/api/concepts/widget_price_list_entrys?where=productCode:eq:${code}&asOf=2020-06-15",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 1
+              },
+              "$.content[0].amount": 10,
+              "$.asOf": "2020-06-15"
+            }
+          }
+        },
+        {
+          "name": "last day of old window is inclusive",
+          "method": "GET",
+          "path": "/api/concepts/widget_price_list_entrys?where=productCode:eq:${code}&asOf=2020-12-31",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 1
+              },
+              "$.content[0].amount": 10
+            }
+          }
+        },
+        {
+          "name": "first day of new window is inclusive",
+          "method": "GET",
+          "path": "/api/concepts/widget_price_list_entrys?where=productCode:eq:${code}&asOf=2021-01-01",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 1
+              },
+              "$.content[0].amount": 20
+            }
+          }
+        },
+        {
+          "name": "before every window",
+          "method": "GET",
+          "path": "/api/concepts/widget_price_list_entrys?where=productCode:eq:${code}&asOf=2019-12-31",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 0
+              },
+              "$.totalElements": 0
+            }
+          }
+        },
+        {
+          "name": "default view is today: only the current row",
+          "method": "GET",
+          "path": "/api/concepts/widget_price_list_entrys?where=productCode:eq:${code}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 1
+              },
+              "$.content[0].amount": 20,
+              "$.asOf": {
+                "matches": "^\\d{4}-\\d{2}-\\d{2}$"
+              }
+            }
+          }
+        },
+        {
+          "name": "malformed asOf",
+          "method": "GET",
+          "path": "/api/concepts/widget_price_list_entrys?where=productCode:eq:${code}&asOf=yesterday",
+          "expect": {
+            "status": 400,
+            "json": {
+              "$.code": "invalid_asOf"
+            }
+          }
+        },
+        {
+          "name": "asOf on a non-temporal concept",
+          "method": "GET",
+          "path": "/api/concepts/widget_suppliers?asOf=2021-01-01",
+          "expect": {
+            "status": 400,
+            "json": {
+              "$.code": "invalid_request",
+              "$.message": {
+                "matches": "temporal"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-field-derived-expression-computed-server-side",
+      "keywords": [
+        "field.derivedExpression"
+      ],
+      "description": "WidgetOrderLine.lineTotal (derivedExpression quantity * unitPrice) is computed by the server on create and recomputed on update; a client-supplied lineTotal is overridden.",
+      "steps": [
+        {
+          "name": "create with a lying lineTotal",
+          "method": "POST",
+          "path": "/api/widget_order_lines",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "WID-${rand}",
+            "quantity": 4,
+            "unitPrice": 2.5,
+            "lineTotal": 999
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.lineTotal": 10
+            }
+          },
+          "save": {
+            "lid": "$.id"
+          }
+        },
+        {
+          "name": "stored value is the derived one",
+          "method": "GET",
+          "path": "/api/widget_order_lines/${lid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.lineTotal": 10,
+              "$.quantity": 4
+            }
+          }
+        },
+        {
+          "name": "update quantity",
+          "method": "PUT",
+          "path": "/api/widget_order_lines/${lid}",
+          "body": {
+            "quantity": 6
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.lineTotal": 15
+            }
+          }
+        },
+        {
+          "name": "update with a lying lineTotal",
+          "method": "PUT",
+          "path": "/api/widget_order_lines/${lid}",
+          "body": {
+            "lineTotal": 1
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.lineTotal": 15
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-field-default-expression-order-number-and-user",
+      "keywords": [
+        "field.defaultExpression"
+      ],
+      "description": "WidgetOrder.orderNumber (defaultExpression nextNumber('orderNumber')) is filled with a distinct ORD-YYYY-NNNN value on each create and WidgetOrder.placedBy ($user.id) with the caller; an explicitly supplied value wins over the default. WidgetOrder creation answers 500 (known PlaceWidgetOrder defect) although the row is stored, so rows are located by a unique status tag.",
+      "steps": [
+        {
+          "name": "tag",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "tag-${rand}",
+            "rows": 1,
+            "cols": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "tag": "$.name"
+          }
+        },
+        {
+          "name": "first order",
+          "method": "POST",
+          "path": "/api/concepts/widget_orders",
+          "body": {
+            "customerEmail": "developer",
+            "status": "D-${tag}",
+            "lineCount": 1
+          },
+          "expect": {
+            "status": [
+              201,
+              500
+            ]
+          }
+        },
+        {
+          "name": "second order",
+          "method": "POST",
+          "path": "/api/concepts/widget_orders",
+          "body": {
+            "customerEmail": "developer",
+            "status": "D-${tag}",
+            "lineCount": 1
+          },
+          "expect": {
+            "status": [
+              201,
+              500
+            ]
+          }
+        },
+        {
+          "name": "two rows, numbered and attributed",
+          "method": "GET",
+          "path": "/api/concepts/widget_orders?where=status:eq:D-${tag}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 2
+              },
+              "$.content[0].orderNumber": {
+                "matches": "^ORD-\\d{4}-\\d{4}$"
+              },
+              "$.content[1].orderNumber": {
+                "matches": "^ORD-\\d{4}-\\d{4}$"
+              },
+              "$.content[0].placedBy": "developer",
+              "$.content[1].placedBy": "developer"
+            }
+          },
+          "save": {
+            "n1": "$.content[0].orderNumber"
+          }
+        },
+        {
+          "name": "numbers differ",
+          "method": "GET",
+          "path": "/api/concepts/widget_orders?where=status:eq:D-${tag}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content[1].orderNumber": {
+                "distinctFrom": "n1"
+              }
+            }
+          }
+        },
+        {
+          "name": "explicit values win",
+          "method": "POST",
+          "path": "/api/concepts/widget_orders",
+          "body": {
+            "customerEmail": "developer",
+            "status": "X-${tag}",
+            "lineCount": 1,
+            "orderNumber": "CUSTOM-${tag}",
+            "placedBy": "zed"
+          },
+          "expect": {
+            "status": [
+              201,
+              500
+            ]
+          }
+        },
+        {
+          "name": "explicit values stored",
+          "method": "GET",
+          "path": "/api/concepts/widget_orders?where=status:eq:X-${tag}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 1
+              },
+              "$.content[0].orderNumber": "CUSTOM-${tag}",
+              "$.content[0].placedBy": "zed"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-field-default-expression-now-timestamps",
+      "keywords": [
+        "field.defaultExpression"
+      ],
+      "description": "ApprovalDecision.decidedAt (defaultExpression now()) is filled on create with an ISO instant, and two creates get different instants.",
+      "steps": [
+        {
+          "name": "request",
+          "method": "POST",
+          "path": "/api/concepts/approvals_approval_requests",
+          "body": {
+            "title": "cf-${rand}",
+            "status": "PENDING"
+          },
+          "expect": {
+            "status": [
+              200,
+              201
+            ]
+          },
+          "save": {
+            "rid": "$.id"
+          }
+        },
+        {
+          "name": "first decision",
+          "method": "POST",
+          "path": "/api/concepts/approvals_approval_decisions",
+          "body": {
+            "requestId": "${rid}",
+            "status": "APPROVED",
+            "completedBy": "cf"
+          },
+          "expect": {
+            "status": [
+              200,
+              201
+            ],
+            "json": {
+              "$.decidedAt": {
+                "matches": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+              }
+            }
+          },
+          "save": {
+            "t1": "$.decidedAt"
+          }
+        },
+        {
+          "name": "second decision",
+          "method": "POST",
+          "path": "/api/concepts/approvals_approval_decisions",
+          "body": {
+            "requestId": "${rid}",
+            "status": "REJECTED",
+            "completedBy": "cf"
+          },
+          "expect": {
+            "status": [
+              200,
+              201
+            ],
+            "json": {
+              "$.decidedAt": {
+                "distinctFrom": "t1"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-field-default-value-fills-omitted-field",
+      "keywords": [
+        "field.default"
+      ],
+      "description": "REAL DEFECT: ApprovalRequest.status declares default 'PENDING' (pack approvals) but the runtime ignores field.default: creating a request without status is refused as if the field had no default. Evidence: POST /api/concepts/approvals_approval_requests {\"title\":\"t\"} -> 400 {\"code\":\"invalid_request\",\"message\":\"Required field is missing for approvals::ApprovalRequest: status\"}; expected 200/201 with status PENDING.",
+      "steps": [
+        {
+          "name": "omit status",
+          "method": "POST",
+          "path": "/api/concepts/approvals_approval_requests",
+          "body": {
+            "title": "cf-${rand}"
+          },
+          "expect": {
+            "status": [
+              200,
+              201
+            ],
+            "json": {
+              "$.status": "PENDING"
+            }
+          }
+        }
+      ],
+      "knownFailure": "REG-253"
+    },
+    {
+      "id": "cf-field-max-length-enforced",
+      "keywords": [
+        "field.maxLength"
+      ],
+      "description": "REAL DEFECT: ApprovalRequest.title declares maxLength 200 (pack approvals) but a 201-character title is accepted and stored in full. Evidence: POST /api/concepts/approvals_approval_requests {title: 'x' * 201, status: 'PENDING'} -> 200 with the full 201-char title; expected a 4xx validation error. A 200-character title is the accepted control.",
+      "steps": [
+        {
+          "name": "200 chars is accepted",
+          "method": "POST",
+          "path": "/api/concepts/approvals_approval_requests",
+          "body": {
+            "title": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+            "status": "PENDING"
+          },
+          "expect": {
+            "status": [
+              200,
+              201
+            ]
+          }
+        },
+        {
+          "name": "201 chars is rejected",
+          "method": "POST",
+          "path": "/api/concepts/approvals_approval_requests",
+          "body": {
+            "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "status": "PENDING"
+          },
+          "expect": {
+            "status": [
+              400,
+              409,
+              422
+            ]
+          }
+        }
+      ],
+      "knownFailure": "REG-254"
+    },
+    {
+      "id": "cf-field-min-enforced",
+      "keywords": [
+        "field.min"
+      ],
+      "description": "REAL DEFECT: ShelfLayout.rows declares min 1 but 0 (and later -5 via PUT) is accepted. Evidence: POST /api/shelf_layouts {name, rows:0, cols:1} -> 201; POST /api/shelf_slots {row:-1} (min 0) -> 201; PUT rows:-5 -> 200; expected 4xx. Boundary value 1 is accepted (control).",
+      "steps": [
+        {
+          "name": "boundary value is valid",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "min-${rand}",
+            "rows": 1,
+            "cols": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "lid": "$.id"
+          }
+        },
+        {
+          "name": "below min on create",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "min-${rand}",
+            "rows": 0,
+            "cols": 1
+          },
+          "expect": {
+            "status": [
+              400,
+              409,
+              422
+            ]
+          }
+        },
+        {
+          "name": "below min on update",
+          "method": "PUT",
+          "path": "/api/shelf_layouts/${lid}",
+          "body": {
+            "rows": -5
+          },
+          "expect": {
+            "status": [
+              400,
+              409,
+              422
+            ]
+          }
+        }
+      ],
+      "knownFailure": "REG-255"
+    },
+    {
+      "id": "cf-field-max-enforced",
+      "keywords": [
+        "field.max"
+      ],
+      "description": "REAL DEFECT: WidgetShowcase.volumeLevel declares min 0 / max 11 and qualityRating max 3, but 12 and 4 (and -1) are accepted. Evidence: POST /api/widget_showcases {volumeLevel:12,...} -> 201, {qualityRating:4} -> 201; expected 4xx. Boundary value 11 is accepted (control).",
+      "steps": [
+        {
+          "name": "boundary value is valid",
+          "method": "POST",
+          "path": "/api/widget_showcases",
+          "body": {
+            "volumeLevel": 11,
+            "featured": true,
+            "listPrice": 1,
+            "qualityRating": 3
+          },
+          "expect": {
+            "status": 201
+          }
+        },
+        {
+          "name": "above max",
+          "method": "POST",
+          "path": "/api/widget_showcases",
+          "body": {
+            "volumeLevel": 12,
+            "featured": true,
+            "listPrice": 1
+          },
+          "expect": {
+            "status": [
+              400,
+              409,
+              422
+            ]
+          }
+        },
+        {
+          "name": "rating above max",
+          "method": "POST",
+          "path": "/api/widget_showcases",
+          "body": {
+            "volumeLevel": 1,
+            "featured": true,
+            "listPrice": 1,
+            "qualityRating": 4
+          },
+          "expect": {
+            "status": [
+              400,
+              409,
+              422
+            ]
+          }
+        }
+      ],
+      "knownFailure": "REG-255"
+    },
+    {
+      "id": "cf-field-precision-scale-enforced",
+      "keywords": [
+        "field.precision",
+        "field.scale"
+      ],
+      "description": "REAL DEFECT: decimal(12,2) fields (WidgetCatalogEntry.unitPrice, WidgetShowcase.listPrice) accept a value with 14 integer digits and with 3 decimals and store them unchanged. Evidence: POST /api/widget_catalog_entrys {unitPrice: 12345678901234.5} -> 201 and GET returns 12345678901234.5; unitPrice 1.555 -> 201, stored 1.555; expected a 4xx (or rounding to 1.56 for scale). 12.34 round-trips exactly (control).",
+      "steps": [
+        {
+          "name": "fits precision and scale",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "WID-${rand}",
+            "displayName": "cf ${rand}",
+            "discontinued": false,
+            "unitPrice": 12.34
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.unitPrice": 12.34
+            }
+          }
+        },
+        {
+          "name": "exceeds precision 12",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "WID-${rand}",
+            "displayName": "cf ${rand}",
+            "discontinued": false,
+            "unitPrice": 12345678901234.5
+          },
+          "expect": {
+            "status": [
+              400,
+              409,
+              422
+            ]
+          }
+        }
+      ],
+      "knownFailure": "REG-256"
+    },
+    {
+      "id": "cf-index-unique-single-field-rejects-duplicate",
+      "keywords": [
+        "concept.indexes",
+        "index.unique",
+        "index.fields"
+      ],
+      "description": "REAL DEFECT: StockLocation declares unique index ux_stock_location_local_id on [localId] but two rows with the same localId are stored. Evidence: POST /api/stock_locations {localId:'L',disponivel:1} -> 201 twice; expected the second to be refused (409 like a unique field).",
+      "steps": [
+        {
+          "name": "first",
+          "method": "POST",
+          "path": "/api/stock_locations",
+          "body": {
+            "localId": "LOC-${rand}",
+            "disponivel": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "loc": "$.localId"
+          }
+        },
+        {
+          "name": "duplicate localId",
+          "method": "POST",
+          "path": "/api/stock_locations",
+          "body": {
+            "localId": "${loc}",
+            "disponivel": 2
+          },
+          "expect": {
+            "status": [
+              409,
+              422
+            ]
+          }
+        },
+        {
+          "name": "other localId still fine",
+          "method": "POST",
+          "path": "/api/stock_locations",
+          "body": {
+            "localId": "LOC2-${rand}",
+            "disponivel": 2
+          },
+          "expect": {
+            "status": 201
+          }
+        }
+      ],
+      "knownFailure": "REG-257"
+    },
+    {
+      "id": "cf-index-unique-compound-rejects-duplicate-pair",
+      "keywords": [
+        "concept.indexes",
+        "index.unique",
+        "index.fields",
+        "index.name"
+      ],
+      "description": "REAL DEFECT: WidgetOrderLine declares unique index ux_widget_order_line_sku on [widgetOrderId, sku] but the same pair is stored twice. Evidence: POST /api/widget_order_lines {widgetOrderId:X, sku:S, quantity:2, unitPrice:3.5} -> 201 twice; expected 409/422 on the second. Same sku on another order is the valid control.",
+      "steps": [
+        {
+          "name": "first line",
+          "method": "POST",
+          "path": "/api/widget_order_lines",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "WID-${rand}",
+            "quantity": 2,
+            "unitPrice": 3.5
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "oid": "$.widgetOrderId",
+            "sku": "$.sku"
+          }
+        },
+        {
+          "name": "same sku, another order",
+          "method": "POST",
+          "path": "/api/widget_order_lines",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "${sku}",
+            "quantity": 2,
+            "unitPrice": 3.5
+          },
+          "expect": {
+            "status": 201
+          }
+        },
+        {
+          "name": "same order and sku",
+          "method": "POST",
+          "path": "/api/widget_order_lines",
+          "body": {
+            "widgetOrderId": "${oid}",
+            "sku": "${sku}",
+            "quantity": 1,
+            "unitPrice": 3.5
+          },
+          "expect": {
+            "status": [
+              409,
+              422
+            ]
+          }
+        }
+      ],
+      "knownFailure": "REG-257"
+    },
+    {
+      "id": "cf-concept-invariant-expression-enforced-on-create-and-update",
+      "keywords": [
+        "concept.invariants",
+        "invariant.name",
+        "invariant.expr"
+      ],
+      "description": "A concept invariant expression is evaluated on both create and update: WidgetOrderLine.PositiveQuantity (quantity > 0) rejects 0 on create and on update with 422 invariant_failed naming the invariant, and the stored row stays unchanged after the refused update.",
+      "steps": [
+        {
+          "name": "zero quantity on create",
+          "method": "POST",
+          "path": "/api/widget_order_lines",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "WID-${rand}",
+            "quantity": 0,
+            "unitPrice": 1
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.code": "invariant_failed",
+              "$.invariant": "PositiveQuantity",
+              "$.concept": "WidgetOrderLine",
+              "$.path": "quantity"
+            }
+          }
+        },
+        {
+          "name": "valid line",
+          "method": "POST",
+          "path": "/api/widget_order_lines",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "WID-${rand}",
+            "quantity": 3,
+            "unitPrice": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "lid": "$.id"
+          }
+        },
+        {
+          "name": "zero quantity on update",
+          "method": "PUT",
+          "path": "/api/widget_order_lines/${lid}",
+          "body": {
+            "quantity": 0
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.invariant": "PositiveQuantity"
+            }
+          }
+        },
+        {
+          "name": "row unchanged",
+          "method": "GET",
+          "path": "/api/widget_order_lines/${lid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.quantity": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-concept-collaboration-comments-only-where-declared",
+      "keywords": [
+        "concept.collaboration"
+      ],
+      "description": "concept.collaboration.comments: a record of ShelfLayout (comments: true) accepts and lists comments (201, author = caller, kind COMMENT) and rejects an empty one (400 BODY_INVALID), while a real record of StockLocation (no collaboration block) has no comment thread (404 NOT_FOUND). Attachments (attachments: false on ShelfLayout) need multipart and are not covered by the JSON runner.",
+      "steps": [
+        {
+          "name": "layout",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "col-${rand}",
+            "rows": 1,
+            "cols": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "lid": "$.id"
+          }
+        },
+        {
+          "name": "location without collaboration",
+          "method": "POST",
+          "path": "/api/stock_locations",
+          "body": {
+            "localId": "COL-${rand}",
+            "disponivel": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "sid": "$.id"
+          }
+        },
+        {
+          "name": "comment on collaborative concept",
+          "method": "POST",
+          "path": "/api/records/ShelfLayout/${lid}/comments",
+          "body": {
+            "body": "hello ${rand}"
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.kind": "COMMENT",
+              "$.author": "developer",
+              "$.body": {
+                "matches": "^hello "
+              },
+              "$.mine": true
+            }
+          }
+        },
+        {
+          "name": "empty comment refused",
+          "method": "POST",
+          "path": "/api/records/ShelfLayout/${lid}/comments",
+          "body": {
+            "body": ""
+          },
+          "expect": {
+            "status": 400,
+            "json": {
+              "$.error": "BODY_INVALID"
+            }
+          }
+        },
+        {
+          "name": "thread lists the comment",
+          "method": "GET",
+          "path": "/api/records/ShelfLayout/${lid}/comments",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$": {
+                "len": 1
+              },
+              "$[0].kind": "COMMENT"
+            }
+          }
+        },
+        {
+          "name": "no thread on a concept without collaboration",
+          "method": "POST",
+          "path": "/api/records/StockLocation/${sid}/comments",
+          "body": {
+            "body": "hello"
+          },
+          "expect": {
+            "status": 404,
+            "json": {
+              "$.error": "NOT_FOUND"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

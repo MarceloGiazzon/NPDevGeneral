@@ -1,0 +1,259 @@
+{
+  "schemaVersion": "npdev-dsl-behavior-witness.v1",
+  "_comment": [
+    "ENF-1. `families` are the model.schema.json $defs whose every property is a tracked keyword `<def>.<property>`.",
+    "A keyword is WITNESSED by a probe naming it in its own `keywords` array (NPDevSamples/dsl-conformance-max/behavior-probes/*.json);",
+    "this file never repeats that. A keyword with no probe must sit in an `allowlist` group with a reason and an open ledger id.",
+    "frozenCount pins the number of allowlisted keywords: it may only shrink, and lowering it is part of the same commit as the probe that removes an entry.",
+    "Checked by scripts/quality/check-dsl-behavior-witness.py (aiKnowledge gate); the probes run in scripts/quality/run-behavior-probes.ps1."
+  ],
+  "families": [
+    "flow",
+    "flowStep",
+    "flowSchedule",
+    "flowHook",
+    "flowInput",
+    "humanTask",
+    "awaitMatch",
+    "orchestrationRule",
+    "orchestrationTrigger",
+    "orchestrationAction",
+    "query",
+    "queryLookup",
+    "queryComputedColumn",
+    "groupByField",
+    "aggregateFunction",
+    "invariant",
+    "aggregateInvariant",
+    "aggregate",
+    "aggregateBalance",
+    "aggregateCollection",
+    "lifecycle",
+    "lifecycleState",
+    "lifecycleTransition",
+    "sequence",
+    "concept",
+    "field",
+    "conceptAccess",
+    "index",
+    "enumOption",
+    "domainType",
+    "role",
+    "seed"
+  ],
+  "allowlist": [
+    {
+      "keywords": [
+        "aggregate.name",
+        "aggregateCollection.collections",
+        "aggregateCollection.name",
+        "concept.access",
+        "concept.fields",
+        "concept.lifecycle",
+        "concept.name",
+        "domainType.name",
+        "field.id",
+        "field.name",
+        "field.type",
+        "flow.name",
+        "flow.steps",
+        "flowStep.name",
+        "flowStep.steps",
+        "query.name",
+        "queryLookup.name",
+        "role.name"
+      ],
+      "reason": "Structural container or identity key: a concept, flow, query or field cannot exist without it, so a runtime that ignored it would fail every probe at once; there is no separate behaviour to witness.",
+      "ledger": "ENF-1"
+    },
+    {
+      "keywords": [
+        "aggregate.metadata",
+        "aggregate.uid",
+        "aggregateCollection.metadata",
+        "concept.module",
+        "concept.renamedFrom",
+        "concept.satelliteOf",
+        "concept.specializes",
+        "concept.specializesFloat",
+        "concept.truthLevel",
+        "concept.uid",
+        "field.renamedFrom",
+        "field.uid",
+        "flow.uid",
+        "lifecycleState.metadata",
+        "lifecycleTransition.metadata",
+        "query.metadata",
+        "query.uid"
+      ],
+      "reason": "Identity, authoring or migration metadata (uid, metadata, renamedFrom, module, truthLevel, satelliteOf, specializes): consumed by tooling and the migrator, with no behaviour observable through the running app's REST API.",
+      "ledger": "ENF-1"
+    },
+    {
+      "keywords": [
+        "concept.ui",
+        "domainType.ui",
+        "field.connectable",
+        "field.description",
+        "field.picker",
+        "field.ui",
+        "lifecycleState.label",
+        "lifecycleTransition.action",
+        "lifecycleTransition.actionLabel"
+      ],
+      "reason": "Presentation only (labels, help text, pickers, icons): rendered by the browser shell and covered by the browser scenarios, not by REST behaviour.",
+      "ledger": "ENF-1"
+    },
+    {
+      "keywords": [
+        "domainType.baseType",
+        "domainType.examples",
+        "domainType.format",
+        "domainType.normalization",
+        "domainType.validation",
+        "enumOption.badge",
+        "enumOption.badgeHint",
+        "enumOption.default",
+        "enumOption.deprecated",
+        "enumOption.description",
+        "enumOption.displayLabel",
+        "enumOption.group",
+        "enumOption.help",
+        "enumOption.icon",
+        "enumOption.iconHint",
+        "enumOption.label",
+        "enumOption.order",
+        "enumOption.value",
+        "field.domainType",
+        "field.duplicationPolicy",
+        "field.itemIdentityField",
+        "field.items",
+        "field.maxItems",
+        "field.minItems",
+        "field.minLength",
+        "field.properties",
+        "field.ref",
+        "field.uniqueItems",
+        "field.values",
+        "invariant.expression",
+        "invariant.fields",
+        "invariant.override",
+        "invariant.rule",
+        "invariant.specializes",
+        "invariant.type"
+      ],
+      "reason": "No model in the corpus declares it, so there is nothing to probe. Add a real example to dsl-conformance-max first (each enumOption property, each domainType validation/normalization/format, array-field limits, the extra invariant forms), then a probe. field.domainType is in this group because the only domain type (Sku) declares no validation or normalization, so the runtime accepts any value and there is nothing enforceable to assert.",
+      "ledger": "ENF-1"
+    },
+    {
+      "keywords": [
+        "seed.alias",
+        "seed.concept",
+        "seed.count",
+        "seed.data",
+        "seed.id",
+        "seed.repeatOver"
+      ],
+      "reason": "The model declares no top-level seeds, so seed.* has no corpus example to probe; add a seeds example to dsl-conformance-max first.",
+      "ledger": "ENF-1"
+    },
+    {
+      "keywords": [
+        "lifecycleState.allowedActions",
+        "lifecycleState.terminal",
+        "lifecycleTransition.event",
+        "lifecycleTransition.guard",
+        "lifecycleTransition.requiredPayload",
+        "lifecycleTransition.requires",
+        "orchestrationAction.concept",
+        "orchestrationAction.delayMinutes",
+        "orchestrationAction.delayMs",
+        "orchestrationAction.delaySeconds",
+        "orchestrationAction.event",
+        "orchestrationRule.condition",
+        "query.parameters",
+        "query.permissionRequirements",
+        "query.tracePolicy"
+      ],
+      "reason": "Declared by no query / lifecycle state / transition / rule / action in the corpus (parameters, permissionRequirements, tracePolicy, terminal, allowedActions, guard, event, requires, requiredPayload, rule condition, delay and concept/event action variants); add a fixture example first.",
+      "ledger": "ENF-1"
+    },
+    {
+      "keywords": [
+        "field.file"
+      ],
+      "reason": "File fields are enforced by the multipart upload endpoint (POST /api/files/{concept}/{field}), which the JSON probe runner cannot send; needs a multipart step type in run_probes.py.",
+      "ledger": "ENF-1"
+    },
+    {
+      "keywords": [
+        "field.sensitive"
+      ],
+      "reason": "Applies only to external-AI review packs, not to an ordinary concept read or write.",
+      "ledger": "ENF-1"
+    },
+    {
+      "keywords": [
+        "humanTask.description",
+        "humanTask.fields",
+        "humanTask.outcomeField",
+        "humanTask.outcomes",
+        "humanTask.record",
+        "humanTask.title",
+        "role.concepts",
+        "role.grants"
+      ],
+      "reason": "Needs a second principal: the API key always resolves to actor developer with role ADMIN and extra identity headers are ignored, so another role cannot be acted as (human-task outcomes need WarehouseManager; role grants need a non-admin caller). Needs a JWT-mode fixture or a second API key.",
+      "ledger": "ENF-1"
+    },
+    {
+      "keywords": [
+        "flow.schedule",
+        "flowSchedule.cron",
+        "flowSchedule.tenantScope",
+        "flowStep.delayMinutes",
+        "flowStep.delayMs",
+        "flowStep.delaySeconds",
+        "flowStep.onTimeout",
+        "flowStep.timeout"
+      ],
+      "reason": "Schedules and timers have no REST-observable effect in this app: /api/admin/cron-schedules is 404 here, the only scheduled flow is a daily 03:15 six-field cron, timeouts are days. A probe needs a per-minute scheduled flow plus the SUPERUSER cron-schedules endpoint (the unit tests NpdevCronSchedulerServiceFiveFieldTest and CronSchedules.normalize cover the five-field case meanwhile).",
+      "ledger": "ENF-1"
+    },
+    {
+      "keywords": [
+        "flowStep.else",
+        "flowStep.phase"
+      ],
+      "reason": "Two declared forms are indistinguishable from outside in the current fixture (pre and post checkpoint share one condition; the only else arm sits after a failing step and both arms write the same variable).",
+      "ledger": "ENF-1"
+    },
+    {
+      "keywords": [
+        "orchestrationAction.action",
+        "orchestrationAction.capability",
+        "orchestrationAction.map",
+        "orchestrationAction.operation"
+      ],
+      "reason": "Environment-bound: the orchestration rule's webhook target is not served in the probe environment, so the action outcome (capability, operation, map, action) cannot be asserted.",
+      "ledger": "ENF-1"
+    },
+    {
+      "keywords": [
+        "aggregate.onValidate",
+        "aggregateCollection.concept",
+        "aggregateCollection.orderBy",
+        "aggregateCollection.ownership",
+        "aggregateCollection.via",
+        "concept.events",
+        "flow.action",
+        "flow.concept",
+        "flowStep.action",
+        "flowStep.data"
+      ],
+      "reason": "Not yet probed (work remaining for ENF-1): aggregate onValidate, collection concept/orderBy/ownership/via, concept events, and the flow-level and step-level action/data/concept fields have no distinct observable behaviour identified yet.",
+      "ledger": "ENF-1"
+    }
+  ],
+  "frozenCount": 134
+}
