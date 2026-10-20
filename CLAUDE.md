@@ -240,6 +240,10 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   each `NPDevSamples/scripts/browser/browser-routines/*-verify-routine.json` is green. Boots a real
   app, so it is T1/T2 (`shell-scenarios-golden-browser` in `verification-cadence.json`), never the
   static `aiKnowledge` gate.
+- **Identity journeys (JRN-1):** `pwsh -NoProfile -File scripts/quality/run-journeys.ps1` boots
+  `NPDevSamples/journeys` (identity pack, jwt) on a wiped DB with a local SMTP sink and drives signup,
+  password reset, invitation, change-password, sign-out and session revocation over REST. T1/T2
+  (`jrn-journeys`), never the static gate; refuses a taken port (8190 app, 2526 sink).
 - **F6 frontend showcase (layoutSlot, operator console, dashboard, third nesting level, client-side
   expressions):** `pwsh -NoProfile -File scripts/quality/run-f6-showcase.ps1` generates
   `NPDevSamples/f6-showcase` into `<BuildRoot>/samples/f6-showcase` (never into the repo), boots it on 8110

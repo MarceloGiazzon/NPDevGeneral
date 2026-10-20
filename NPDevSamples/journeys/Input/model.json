@@ -1,0 +1,44 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "npdev.samples.journeys",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "JRN-1 fixture: the smallest jwt-mode app that carries the built-in identity pack, so the daily journey suite (sign up, password reset, accept an invitation, sign in, change password, sign out, revoke other sessions) can drive the REAL login, e-mail and session paths of a generated app. Not a demo: a FIXTURE for scripts/quality/run-journeys.ps1. Mail goes through mail-smtp to a throwaway local SMTP sink the runner starts, so no real mail dependency exists."
+  },
+  "packs": [
+    { "$ref": "packs/identity/pack.json", "as": "identity" }
+  ],
+  "concepts": [
+    {
+      "name": "Credential",
+      "ui": { "label": "Credential" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "userId", "type": "reference", "required": true, "unique": true,
+          "ui": { "label": "Identity user" },
+          "reference": { "target": "identity::User", "onDelete": "cascade" } },
+        { "name": "passwordHash", "type": "string", "required": true, "maxLength": 200,
+          "ui": { "label": "Password hash" } }
+      ]
+    },
+    {
+      "name": "JourneyNote",
+      "ui": { "label": "Journey note" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "title", "type": "string", "required": true, "maxLength": 120,
+          "ui": { "label": "Title" } }
+      ]
+    }
+  ],
+  "bindings": [
+    { "adapter": "repository", "capability": "persistence" },
+    { "adapter": "inproc", "capability": "eventBus" },
+    { "adapter": "mail-smtp", "capability": "mail" }
+  ],
+  "capabilities": [
+    { "name": "persistence", "operations": ["save", "findById"], "type": "PersistenceCapability" },
+    { "name": "mail", "operations": ["send"], "type": "EmailCapability" }
+  ]
+}

@@ -672,6 +672,16 @@
     "scripts/quality/run-script-inventory-check.ps1": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/journeys/run_journeys.py": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/journeys/smtp_sink.py": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/run-journeys.ps1": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/quality/run-f6-showcase.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"
