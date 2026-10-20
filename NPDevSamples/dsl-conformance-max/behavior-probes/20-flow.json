@@ -1,0 +1,4999 @@
+{
+  "probes": [
+    {
+      "id": "fl-input-schema-rejects-missing-required",
+      "keywords": [
+        "flow.inputSchema"
+      ],
+      "description": "flow.inputSchema.required is enforced before any step runs: PlaceWidgetOrder with only customerEmail is refused with INPUT_VALIDATION_FAILED naming both missing fields, while a complete body is not refused for input reasons.",
+      "steps": [
+        {
+          "name": "missing status and lineCount",
+          "method": "POST",
+          "path": "/api/flows/PlaceWidgetOrder/execute",
+          "body": {
+            "customerEmail": "developer"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "INPUT_VALIDATION_FAILED",
+              "$.errorCode": "INPUT_VALIDATION_FAILED",
+              "$.inputValidationErrors": {
+                "len": 2
+              },
+              "$.inputValidationErrors[0].code": "required_missing",
+              "$.inputValidationErrors[1].code": "required_missing",
+              "$.invariantViolations": {
+                "len": 0
+              }
+            },
+            "text": "$.lineCount"
+          }
+        },
+        {
+          "name": "positive control: complete body passes input validation (flow may fail LATER, see fl-generated-action-completes)",
+          "method": "POST",
+          "path": "/api/flows/PlaceWidgetOrderAudited/execute",
+          "body": {
+            "customerEmail": "developer",
+            "status": "NEW",
+            "lineCount": 1
+          },
+          "expect": {
+            "status": [
+              200,
+              422
+            ],
+            "json": {
+              "$.status": {
+                "not": "INPUT_VALIDATION_FAILED"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-input-schema-rejects-wrong-type-and-minlength",
+      "keywords": [
+        "flow.inputSchema"
+      ],
+      "description": "flow.inputSchema property constraints (type integer, minLength 1) are enforced: a string lineCount gives type_mismatch, a fractional lineCount gives type_mismatch, an empty customerEmail gives min_length.",
+      "steps": [
+        {
+          "name": "string lineCount",
+          "method": "POST",
+          "path": "/api/flows/PlaceWidgetOrder/execute",
+          "body": {
+            "customerEmail": "developer",
+            "status": "NEW",
+            "lineCount": "abc"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "INPUT_VALIDATION_FAILED",
+              "$.inputValidationErrors": {
+                "len": 1
+              },
+              "$.inputValidationErrors[0].field": "$.lineCount",
+              "$.inputValidationErrors[0].code": "type_mismatch"
+            }
+          }
+        },
+        {
+          "name": "fractional lineCount",
+          "method": "POST",
+          "path": "/api/flows/PlaceWidgetOrder/execute",
+          "body": {
+            "customerEmail": "developer",
+            "status": "NEW",
+            "lineCount": 1.5
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "INPUT_VALIDATION_FAILED",
+              "$.inputValidationErrors[0].code": "type_mismatch"
+            }
+          }
+        },
+        {
+          "name": "empty customerEmail",
+          "method": "POST",
+          "path": "/api/flows/PlaceWidgetOrder/execute",
+          "body": {
+            "customerEmail": "",
+            "status": "NEW",
+            "lineCount": 1
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "INPUT_VALIDATION_FAILED",
+              "$.inputValidationErrors": {
+                "len": 1
+              },
+              "$.inputValidationErrors[0].field": "$.customerEmail",
+              "$.inputValidationErrors[0].code": "min_length"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-invariant-check-refuses-bad-input-with-invariant-name",
+      "keywords": [
+        "flowStep.type",
+        "flowStep.invariants",
+        "flowStep.scope"
+      ],
+      "description": "An invariantCheck step with invariants [CustomerEmailRequired, LineCountNotNegative] on scope WidgetOrder stops the flow with INVARIANT_FAILED / 422, names LineCountNotNegative, the concept and the step, and no later step (save-order) runs.",
+      "steps": [
+        {
+          "name": "execute PlaceWidgetOrder",
+          "method": "POST",
+          "path": "/api/flows/PlaceWidgetOrder/execute",
+          "body": {
+            "customerEmail": "developer",
+            "status": "NEW",
+            "lineCount": -4
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "INVARIANT_FAILED",
+              "$.errorCode": "invariant_violation",
+              "$.invariantViolations[0].invariantRef": "LineCountNotNegative",
+              "$.invariantViolations[0].conceptName": "WidgetOrder",
+              "$.invariantViolations[0].stepName": "validate-order",
+              "$.invariantViolations[0].stepIndex": 0,
+              "$.invariantViolations[0].details.fieldPath": "lineCount",
+              "$.output": null
+            }
+          },
+          "save": {
+            "execId": "$.executionId"
+          }
+        },
+        {
+          "name": "execution never reached save-order (no 'saved' in flow state)",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.flowName": "PlaceWidgetOrder",
+              "$.status": "FAILED_PERMANENT",
+              "$.currentStepIndex": 0
+            },
+            "notText": "\"saved\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-invariant-check-pre-checkpoint-blocks-the-write",
+      "keywords": [
+        "flowStep.checkpoint",
+        "flowStep.type",
+        "flowStep.invariants"
+      ],
+      "description": "invariantCheck with checkpoint 'pre' in UpdateOrderLineQuantity refuses quantity 0 (PositiveQuantity, stepIndex 0) BEFORE apply-quantity runs: the stored line keeps its old quantity; a valid quantity passes and is stored.",
+      "steps": [
+        {
+          "name": "create line",
+          "method": "POST",
+          "path": "/api/flows/RecordOrderLines/execute",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "CHK-${rand}",
+            "quantity": 2,
+            "unitPrice": 3
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.quantity": 2
+            }
+          },
+          "save": {
+            "lineId": "$.output.id"
+          }
+        },
+        {
+          "name": "update to 0 refused",
+          "method": "POST",
+          "path": "/api/flows/UpdateOrderLineQuantity/execute",
+          "body": {
+            "id": "${lineId}",
+            "quantity": 0
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "INVARIANT_FAILED",
+              "$.invariantViolations[0].invariantRef": "PositiveQuantity",
+              "$.invariantViolations[0].stepName": "validate-line",
+              "$.invariantViolations[0].stepIndex": 0
+            }
+          }
+        },
+        {
+          "name": "stored quantity unchanged",
+          "method": "GET",
+          "path": "/api/widget_order_lines/${lineId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.quantity": 2
+            }
+          }
+        },
+        {
+          "name": "valid update passes",
+          "method": "POST",
+          "path": "/api/flows/UpdateOrderLineQuantity/execute",
+          "body": {
+            "id": "${lineId}",
+            "quantity": 4
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.quantity": 4
+            }
+          }
+        },
+        {
+          "name": "stored quantity is 4",
+          "method": "GET",
+          "path": "/api/widget_order_lines/${lineId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.quantity": 4
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-foreach-iterates-and-enforces-max-loop-iterations",
+      "keywords": [
+        "flowStep.type",
+        "flowStep.collection",
+        "flowStep.itemKey",
+        "flowStep.maxLoopIterations"
+      ],
+      "description": "forEach over $input.entries runs (2-item and 500-item collections succeed), refuses a missing collection with a message naming the step and path, and refuses 501 items against maxLoopIterations=500.",
+      "steps": [
+        {
+          "name": "two items",
+          "method": "POST",
+          "path": "/api/flows/SweepDiscontinuedCatalog/execute",
+          "body": {
+            "entries": [
+              {
+                "sku": "a-${rand}"
+              },
+              {
+                "sku": "b-${rand}"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.entries": {
+                "len": 2
+              }
+            }
+          }
+        },
+        {
+          "name": "missing collection",
+          "method": "POST",
+          "path": "/api/flows/SweepDiscontinuedCatalog/execute",
+          "body": {},
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "FAILED",
+              "$.error": {
+                "matches": "forEach step sweep-entries requires an iterable collection at [$]input[.]entries"
+              }
+            }
+          }
+        },
+        {
+          "name": "exactly maxLoopIterations items",
+          "method": "POST",
+          "path": "/api/flows/SweepDiscontinuedCatalog/execute",
+          "body": {
+            "entries": [
+              {
+                "sku": "s0"
+              },
+              {
+                "sku": "s1"
+              },
+              {
+                "sku": "s2"
+              },
+              {
+                "sku": "s3"
+              },
+              {
+                "sku": "s4"
+              },
+              {
+                "sku": "s5"
+              },
+              {
+                "sku": "s6"
+              },
+              {
+                "sku": "s7"
+              },
+              {
+                "sku": "s8"
+              },
+              {
+                "sku": "s9"
+              },
+              {
+                "sku": "s10"
+              },
+              {
+                "sku": "s11"
+              },
+              {
+                "sku": "s12"
+              },
+              {
+                "sku": "s13"
+              },
+              {
+                "sku": "s14"
+              },
+              {
+                "sku": "s15"
+              },
+              {
+                "sku": "s16"
+              },
+              {
+                "sku": "s17"
+              },
+              {
+                "sku": "s18"
+              },
+              {
+                "sku": "s19"
+              },
+              {
+                "sku": "s20"
+              },
+              {
+                "sku": "s21"
+              },
+              {
+                "sku": "s22"
+              },
+              {
+                "sku": "s23"
+              },
+              {
+                "sku": "s24"
+              },
+              {
+                "sku": "s25"
+              },
+              {
+                "sku": "s26"
+              },
+              {
+                "sku": "s27"
+              },
+              {
+                "sku": "s28"
+              },
+              {
+                "sku": "s29"
+              },
+              {
+                "sku": "s30"
+              },
+              {
+                "sku": "s31"
+              },
+              {
+                "sku": "s32"
+              },
+              {
+                "sku": "s33"
+              },
+              {
+                "sku": "s34"
+              },
+              {
+                "sku": "s35"
+              },
+              {
+                "sku": "s36"
+              },
+              {
+                "sku": "s37"
+              },
+              {
+                "sku": "s38"
+              },
+              {
+                "sku": "s39"
+              },
+              {
+                "sku": "s40"
+              },
+              {
+                "sku": "s41"
+              },
+              {
+                "sku": "s42"
+              },
+              {
+                "sku": "s43"
+              },
+              {
+                "sku": "s44"
+              },
+              {
+                "sku": "s45"
+              },
+              {
+                "sku": "s46"
+              },
+              {
+                "sku": "s47"
+              },
+              {
+                "sku": "s48"
+              },
+              {
+                "sku": "s49"
+              },
+              {
+                "sku": "s50"
+              },
+              {
+                "sku": "s51"
+              },
+              {
+                "sku": "s52"
+              },
+              {
+                "sku": "s53"
+              },
+              {
+                "sku": "s54"
+              },
+              {
+                "sku": "s55"
+              },
+              {
+                "sku": "s56"
+              },
+              {
+                "sku": "s57"
+              },
+              {
+                "sku": "s58"
+              },
+              {
+                "sku": "s59"
+              },
+              {
+                "sku": "s60"
+              },
+              {
+                "sku": "s61"
+              },
+              {
+                "sku": "s62"
+              },
+              {
+                "sku": "s63"
+              },
+              {
+                "sku": "s64"
+              },
+              {
+                "sku": "s65"
+              },
+              {
+                "sku": "s66"
+              },
+              {
+                "sku": "s67"
+              },
+              {
+                "sku": "s68"
+              },
+              {
+                "sku": "s69"
+              },
+              {
+                "sku": "s70"
+              },
+              {
+                "sku": "s71"
+              },
+              {
+                "sku": "s72"
+              },
+              {
+                "sku": "s73"
+              },
+              {
+                "sku": "s74"
+              },
+              {
+                "sku": "s75"
+              },
+              {
+                "sku": "s76"
+              },
+              {
+                "sku": "s77"
+              },
+              {
+                "sku": "s78"
+              },
+              {
+                "sku": "s79"
+              },
+              {
+                "sku": "s80"
+              },
+              {
+                "sku": "s81"
+              },
+              {
+                "sku": "s82"
+              },
+              {
+                "sku": "s83"
+              },
+              {
+                "sku": "s84"
+              },
+              {
+                "sku": "s85"
+              },
+              {
+                "sku": "s86"
+              },
+              {
+                "sku": "s87"
+              },
+              {
+                "sku": "s88"
+              },
+              {
+                "sku": "s89"
+              },
+              {
+                "sku": "s90"
+              },
+              {
+                "sku": "s91"
+              },
+              {
+                "sku": "s92"
+              },
+              {
+                "sku": "s93"
+              },
+              {
+                "sku": "s94"
+              },
+              {
+                "sku": "s95"
+              },
+              {
+                "sku": "s96"
+              },
+              {
+                "sku": "s97"
+              },
+              {
+                "sku": "s98"
+              },
+              {
+                "sku": "s99"
+              },
+              {
+                "sku": "s100"
+              },
+              {
+                "sku": "s101"
+              },
+              {
+                "sku": "s102"
+              },
+              {
+                "sku": "s103"
+              },
+              {
+                "sku": "s104"
+              },
+              {
+                "sku": "s105"
+              },
+              {
+                "sku": "s106"
+              },
+              {
+                "sku": "s107"
+              },
+              {
+                "sku": "s108"
+              },
+              {
+                "sku": "s109"
+              },
+              {
+                "sku": "s110"
+              },
+              {
+                "sku": "s111"
+              },
+              {
+                "sku": "s112"
+              },
+              {
+                "sku": "s113"
+              },
+              {
+                "sku": "s114"
+              },
+              {
+                "sku": "s115"
+              },
+              {
+                "sku": "s116"
+              },
+              {
+                "sku": "s117"
+              },
+              {
+                "sku": "s118"
+              },
+              {
+                "sku": "s119"
+              },
+              {
+                "sku": "s120"
+              },
+              {
+                "sku": "s121"
+              },
+              {
+                "sku": "s122"
+              },
+              {
+                "sku": "s123"
+              },
+              {
+                "sku": "s124"
+              },
+              {
+                "sku": "s125"
+              },
+              {
+                "sku": "s126"
+              },
+              {
+                "sku": "s127"
+              },
+              {
+                "sku": "s128"
+              },
+              {
+                "sku": "s129"
+              },
+              {
+                "sku": "s130"
+              },
+              {
+                "sku": "s131"
+              },
+              {
+                "sku": "s132"
+              },
+              {
+                "sku": "s133"
+              },
+              {
+                "sku": "s134"
+              },
+              {
+                "sku": "s135"
+              },
+              {
+                "sku": "s136"
+              },
+              {
+                "sku": "s137"
+              },
+              {
+                "sku": "s138"
+              },
+              {
+                "sku": "s139"
+              },
+              {
+                "sku": "s140"
+              },
+              {
+                "sku": "s141"
+              },
+              {
+                "sku": "s142"
+              },
+              {
+                "sku": "s143"
+              },
+              {
+                "sku": "s144"
+              },
+              {
+                "sku": "s145"
+              },
+              {
+                "sku": "s146"
+              },
+              {
+                "sku": "s147"
+              },
+              {
+                "sku": "s148"
+              },
+              {
+                "sku": "s149"
+              },
+              {
+                "sku": "s150"
+              },
+              {
+                "sku": "s151"
+              },
+              {
+                "sku": "s152"
+              },
+              {
+                "sku": "s153"
+              },
+              {
+                "sku": "s154"
+              },
+              {
+                "sku": "s155"
+              },
+              {
+                "sku": "s156"
+              },
+              {
+                "sku": "s157"
+              },
+              {
+                "sku": "s158"
+              },
+              {
+                "sku": "s159"
+              },
+              {
+                "sku": "s160"
+              },
+              {
+                "sku": "s161"
+              },
+              {
+                "sku": "s162"
+              },
+              {
+                "sku": "s163"
+              },
+              {
+                "sku": "s164"
+              },
+              {
+                "sku": "s165"
+              },
+              {
+                "sku": "s166"
+              },
+              {
+                "sku": "s167"
+              },
+              {
+                "sku": "s168"
+              },
+              {
+                "sku": "s169"
+              },
+              {
+                "sku": "s170"
+              },
+              {
+                "sku": "s171"
+              },
+              {
+                "sku": "s172"
+              },
+              {
+                "sku": "s173"
+              },
+              {
+                "sku": "s174"
+              },
+              {
+                "sku": "s175"
+              },
+              {
+                "sku": "s176"
+              },
+              {
+                "sku": "s177"
+              },
+              {
+                "sku": "s178"
+              },
+              {
+                "sku": "s179"
+              },
+              {
+                "sku": "s180"
+              },
+              {
+                "sku": "s181"
+              },
+              {
+                "sku": "s182"
+              },
+              {
+                "sku": "s183"
+              },
+              {
+                "sku": "s184"
+              },
+              {
+                "sku": "s185"
+              },
+              {
+                "sku": "s186"
+              },
+              {
+                "sku": "s187"
+              },
+              {
+                "sku": "s188"
+              },
+              {
+                "sku": "s189"
+              },
+              {
+                "sku": "s190"
+              },
+              {
+                "sku": "s191"
+              },
+              {
+                "sku": "s192"
+              },
+              {
+                "sku": "s193"
+              },
+              {
+                "sku": "s194"
+              },
+              {
+                "sku": "s195"
+              },
+              {
+                "sku": "s196"
+              },
+              {
+                "sku": "s197"
+              },
+              {
+                "sku": "s198"
+              },
+              {
+                "sku": "s199"
+              },
+              {
+                "sku": "s200"
+              },
+              {
+                "sku": "s201"
+              },
+              {
+                "sku": "s202"
+              },
+              {
+                "sku": "s203"
+              },
+              {
+                "sku": "s204"
+              },
+              {
+                "sku": "s205"
+              },
+              {
+                "sku": "s206"
+              },
+              {
+                "sku": "s207"
+              },
+              {
+                "sku": "s208"
+              },
+              {
+                "sku": "s209"
+              },
+              {
+                "sku": "s210"
+              },
+              {
+                "sku": "s211"
+              },
+              {
+                "sku": "s212"
+              },
+              {
+                "sku": "s213"
+              },
+              {
+                "sku": "s214"
+              },
+              {
+                "sku": "s215"
+              },
+              {
+                "sku": "s216"
+              },
+              {
+                "sku": "s217"
+              },
+              {
+                "sku": "s218"
+              },
+              {
+                "sku": "s219"
+              },
+              {
+                "sku": "s220"
+              },
+              {
+                "sku": "s221"
+              },
+              {
+                "sku": "s222"
+              },
+              {
+                "sku": "s223"
+              },
+              {
+                "sku": "s224"
+              },
+              {
+                "sku": "s225"
+              },
+              {
+                "sku": "s226"
+              },
+              {
+                "sku": "s227"
+              },
+              {
+                "sku": "s228"
+              },
+              {
+                "sku": "s229"
+              },
+              {
+                "sku": "s230"
+              },
+              {
+                "sku": "s231"
+              },
+              {
+                "sku": "s232"
+              },
+              {
+                "sku": "s233"
+              },
+              {
+                "sku": "s234"
+              },
+              {
+                "sku": "s235"
+              },
+              {
+                "sku": "s236"
+              },
+              {
+                "sku": "s237"
+              },
+              {
+                "sku": "s238"
+              },
+              {
+                "sku": "s239"
+              },
+              {
+                "sku": "s240"
+              },
+              {
+                "sku": "s241"
+              },
+              {
+                "sku": "s242"
+              },
+              {
+                "sku": "s243"
+              },
+              {
+                "sku": "s244"
+              },
+              {
+                "sku": "s245"
+              },
+              {
+                "sku": "s246"
+              },
+              {
+                "sku": "s247"
+              },
+              {
+                "sku": "s248"
+              },
+              {
+                "sku": "s249"
+              },
+              {
+                "sku": "s250"
+              },
+              {
+                "sku": "s251"
+              },
+              {
+                "sku": "s252"
+              },
+              {
+                "sku": "s253"
+              },
+              {
+                "sku": "s254"
+              },
+              {
+                "sku": "s255"
+              },
+              {
+                "sku": "s256"
+              },
+              {
+                "sku": "s257"
+              },
+              {
+                "sku": "s258"
+              },
+              {
+                "sku": "s259"
+              },
+              {
+                "sku": "s260"
+              },
+              {
+                "sku": "s261"
+              },
+              {
+                "sku": "s262"
+              },
+              {
+                "sku": "s263"
+              },
+              {
+                "sku": "s264"
+              },
+              {
+                "sku": "s265"
+              },
+              {
+                "sku": "s266"
+              },
+              {
+                "sku": "s267"
+              },
+              {
+                "sku": "s268"
+              },
+              {
+                "sku": "s269"
+              },
+              {
+                "sku": "s270"
+              },
+              {
+                "sku": "s271"
+              },
+              {
+                "sku": "s272"
+              },
+              {
+                "sku": "s273"
+              },
+              {
+                "sku": "s274"
+              },
+              {
+                "sku": "s275"
+              },
+              {
+                "sku": "s276"
+              },
+              {
+                "sku": "s277"
+              },
+              {
+                "sku": "s278"
+              },
+              {
+                "sku": "s279"
+              },
+              {
+                "sku": "s280"
+              },
+              {
+                "sku": "s281"
+              },
+              {
+                "sku": "s282"
+              },
+              {
+                "sku": "s283"
+              },
+              {
+                "sku": "s284"
+              },
+              {
+                "sku": "s285"
+              },
+              {
+                "sku": "s286"
+              },
+              {
+                "sku": "s287"
+              },
+              {
+                "sku": "s288"
+              },
+              {
+                "sku": "s289"
+              },
+              {
+                "sku": "s290"
+              },
+              {
+                "sku": "s291"
+              },
+              {
+                "sku": "s292"
+              },
+              {
+                "sku": "s293"
+              },
+              {
+                "sku": "s294"
+              },
+              {
+                "sku": "s295"
+              },
+              {
+                "sku": "s296"
+              },
+              {
+                "sku": "s297"
+              },
+              {
+                "sku": "s298"
+              },
+              {
+                "sku": "s299"
+              },
+              {
+                "sku": "s300"
+              },
+              {
+                "sku": "s301"
+              },
+              {
+                "sku": "s302"
+              },
+              {
+                "sku": "s303"
+              },
+              {
+                "sku": "s304"
+              },
+              {
+                "sku": "s305"
+              },
+              {
+                "sku": "s306"
+              },
+              {
+                "sku": "s307"
+              },
+              {
+                "sku": "s308"
+              },
+              {
+                "sku": "s309"
+              },
+              {
+                "sku": "s310"
+              },
+              {
+                "sku": "s311"
+              },
+              {
+                "sku": "s312"
+              },
+              {
+                "sku": "s313"
+              },
+              {
+                "sku": "s314"
+              },
+              {
+                "sku": "s315"
+              },
+              {
+                "sku": "s316"
+              },
+              {
+                "sku": "s317"
+              },
+              {
+                "sku": "s318"
+              },
+              {
+                "sku": "s319"
+              },
+              {
+                "sku": "s320"
+              },
+              {
+                "sku": "s321"
+              },
+              {
+                "sku": "s322"
+              },
+              {
+                "sku": "s323"
+              },
+              {
+                "sku": "s324"
+              },
+              {
+                "sku": "s325"
+              },
+              {
+                "sku": "s326"
+              },
+              {
+                "sku": "s327"
+              },
+              {
+                "sku": "s328"
+              },
+              {
+                "sku": "s329"
+              },
+              {
+                "sku": "s330"
+              },
+              {
+                "sku": "s331"
+              },
+              {
+                "sku": "s332"
+              },
+              {
+                "sku": "s333"
+              },
+              {
+                "sku": "s334"
+              },
+              {
+                "sku": "s335"
+              },
+              {
+                "sku": "s336"
+              },
+              {
+                "sku": "s337"
+              },
+              {
+                "sku": "s338"
+              },
+              {
+                "sku": "s339"
+              },
+              {
+                "sku": "s340"
+              },
+              {
+                "sku": "s341"
+              },
+              {
+                "sku": "s342"
+              },
+              {
+                "sku": "s343"
+              },
+              {
+                "sku": "s344"
+              },
+              {
+                "sku": "s345"
+              },
+              {
+                "sku": "s346"
+              },
+              {
+                "sku": "s347"
+              },
+              {
+                "sku": "s348"
+              },
+              {
+                "sku": "s349"
+              },
+              {
+                "sku": "s350"
+              },
+              {
+                "sku": "s351"
+              },
+              {
+                "sku": "s352"
+              },
+              {
+                "sku": "s353"
+              },
+              {
+                "sku": "s354"
+              },
+              {
+                "sku": "s355"
+              },
+              {
+                "sku": "s356"
+              },
+              {
+                "sku": "s357"
+              },
+              {
+                "sku": "s358"
+              },
+              {
+                "sku": "s359"
+              },
+              {
+                "sku": "s360"
+              },
+              {
+                "sku": "s361"
+              },
+              {
+                "sku": "s362"
+              },
+              {
+                "sku": "s363"
+              },
+              {
+                "sku": "s364"
+              },
+              {
+                "sku": "s365"
+              },
+              {
+                "sku": "s366"
+              },
+              {
+                "sku": "s367"
+              },
+              {
+                "sku": "s368"
+              },
+              {
+                "sku": "s369"
+              },
+              {
+                "sku": "s370"
+              },
+              {
+                "sku": "s371"
+              },
+              {
+                "sku": "s372"
+              },
+              {
+                "sku": "s373"
+              },
+              {
+                "sku": "s374"
+              },
+              {
+                "sku": "s375"
+              },
+              {
+                "sku": "s376"
+              },
+              {
+                "sku": "s377"
+              },
+              {
+                "sku": "s378"
+              },
+              {
+                "sku": "s379"
+              },
+              {
+                "sku": "s380"
+              },
+              {
+                "sku": "s381"
+              },
+              {
+                "sku": "s382"
+              },
+              {
+                "sku": "s383"
+              },
+              {
+                "sku": "s384"
+              },
+              {
+                "sku": "s385"
+              },
+              {
+                "sku": "s386"
+              },
+              {
+                "sku": "s387"
+              },
+              {
+                "sku": "s388"
+              },
+              {
+                "sku": "s389"
+              },
+              {
+                "sku": "s390"
+              },
+              {
+                "sku": "s391"
+              },
+              {
+                "sku": "s392"
+              },
+              {
+                "sku": "s393"
+              },
+              {
+                "sku": "s394"
+              },
+              {
+                "sku": "s395"
+              },
+              {
+                "sku": "s396"
+              },
+              {
+                "sku": "s397"
+              },
+              {
+                "sku": "s398"
+              },
+              {
+                "sku": "s399"
+              },
+              {
+                "sku": "s400"
+              },
+              {
+                "sku": "s401"
+              },
+              {
+                "sku": "s402"
+              },
+              {
+                "sku": "s403"
+              },
+              {
+                "sku": "s404"
+              },
+              {
+                "sku": "s405"
+              },
+              {
+                "sku": "s406"
+              },
+              {
+                "sku": "s407"
+              },
+              {
+                "sku": "s408"
+              },
+              {
+                "sku": "s409"
+              },
+              {
+                "sku": "s410"
+              },
+              {
+                "sku": "s411"
+              },
+              {
+                "sku": "s412"
+              },
+              {
+                "sku": "s413"
+              },
+              {
+                "sku": "s414"
+              },
+              {
+                "sku": "s415"
+              },
+              {
+                "sku": "s416"
+              },
+              {
+                "sku": "s417"
+              },
+              {
+                "sku": "s418"
+              },
+              {
+                "sku": "s419"
+              },
+              {
+                "sku": "s420"
+              },
+              {
+                "sku": "s421"
+              },
+              {
+                "sku": "s422"
+              },
+              {
+                "sku": "s423"
+              },
+              {
+                "sku": "s424"
+              },
+              {
+                "sku": "s425"
+              },
+              {
+                "sku": "s426"
+              },
+              {
+                "sku": "s427"
+              },
+              {
+                "sku": "s428"
+              },
+              {
+                "sku": "s429"
+              },
+              {
+                "sku": "s430"
+              },
+              {
+                "sku": "s431"
+              },
+              {
+                "sku": "s432"
+              },
+              {
+                "sku": "s433"
+              },
+              {
+                "sku": "s434"
+              },
+              {
+                "sku": "s435"
+              },
+              {
+                "sku": "s436"
+              },
+              {
+                "sku": "s437"
+              },
+              {
+                "sku": "s438"
+              },
+              {
+                "sku": "s439"
+              },
+              {
+                "sku": "s440"
+              },
+              {
+                "sku": "s441"
+              },
+              {
+                "sku": "s442"
+              },
+              {
+                "sku": "s443"
+              },
+              {
+                "sku": "s444"
+              },
+              {
+                "sku": "s445"
+              },
+              {
+                "sku": "s446"
+              },
+              {
+                "sku": "s447"
+              },
+              {
+                "sku": "s448"
+              },
+              {
+                "sku": "s449"
+              },
+              {
+                "sku": "s450"
+              },
+              {
+                "sku": "s451"
+              },
+              {
+                "sku": "s452"
+              },
+              {
+                "sku": "s453"
+              },
+              {
+                "sku": "s454"
+              },
+              {
+                "sku": "s455"
+              },
+              {
+                "sku": "s456"
+              },
+              {
+                "sku": "s457"
+              },
+              {
+                "sku": "s458"
+              },
+              {
+                "sku": "s459"
+              },
+              {
+                "sku": "s460"
+              },
+              {
+                "sku": "s461"
+              },
+              {
+                "sku": "s462"
+              },
+              {
+                "sku": "s463"
+              },
+              {
+                "sku": "s464"
+              },
+              {
+                "sku": "s465"
+              },
+              {
+                "sku": "s466"
+              },
+              {
+                "sku": "s467"
+              },
+              {
+                "sku": "s468"
+              },
+              {
+                "sku": "s469"
+              },
+              {
+                "sku": "s470"
+              },
+              {
+                "sku": "s471"
+              },
+              {
+                "sku": "s472"
+              },
+              {
+                "sku": "s473"
+              },
+              {
+                "sku": "s474"
+              },
+              {
+                "sku": "s475"
+              },
+              {
+                "sku": "s476"
+              },
+              {
+                "sku": "s477"
+              },
+              {
+                "sku": "s478"
+              },
+              {
+                "sku": "s479"
+              },
+              {
+                "sku": "s480"
+              },
+              {
+                "sku": "s481"
+              },
+              {
+                "sku": "s482"
+              },
+              {
+                "sku": "s483"
+              },
+              {
+                "sku": "s484"
+              },
+              {
+                "sku": "s485"
+              },
+              {
+                "sku": "s486"
+              },
+              {
+                "sku": "s487"
+              },
+              {
+                "sku": "s488"
+              },
+              {
+                "sku": "s489"
+              },
+              {
+                "sku": "s490"
+              },
+              {
+                "sku": "s491"
+              },
+              {
+                "sku": "s492"
+              },
+              {
+                "sku": "s493"
+              },
+              {
+                "sku": "s494"
+              },
+              {
+                "sku": "s495"
+              },
+              {
+                "sku": "s496"
+              },
+              {
+                "sku": "s497"
+              },
+              {
+                "sku": "s498"
+              },
+              {
+                "sku": "s499"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.entries": {
+                "len": 500
+              }
+            }
+          }
+        },
+        {
+          "name": "one over maxLoopIterations",
+          "method": "POST",
+          "path": "/api/flows/SweepDiscontinuedCatalog/execute",
+          "body": {
+            "entries": [
+              {
+                "sku": "s0"
+              },
+              {
+                "sku": "s1"
+              },
+              {
+                "sku": "s2"
+              },
+              {
+                "sku": "s3"
+              },
+              {
+                "sku": "s4"
+              },
+              {
+                "sku": "s5"
+              },
+              {
+                "sku": "s6"
+              },
+              {
+                "sku": "s7"
+              },
+              {
+                "sku": "s8"
+              },
+              {
+                "sku": "s9"
+              },
+              {
+                "sku": "s10"
+              },
+              {
+                "sku": "s11"
+              },
+              {
+                "sku": "s12"
+              },
+              {
+                "sku": "s13"
+              },
+              {
+                "sku": "s14"
+              },
+              {
+                "sku": "s15"
+              },
+              {
+                "sku": "s16"
+              },
+              {
+                "sku": "s17"
+              },
+              {
+                "sku": "s18"
+              },
+              {
+                "sku": "s19"
+              },
+              {
+                "sku": "s20"
+              },
+              {
+                "sku": "s21"
+              },
+              {
+                "sku": "s22"
+              },
+              {
+                "sku": "s23"
+              },
+              {
+                "sku": "s24"
+              },
+              {
+                "sku": "s25"
+              },
+              {
+                "sku": "s26"
+              },
+              {
+                "sku": "s27"
+              },
+              {
+                "sku": "s28"
+              },
+              {
+                "sku": "s29"
+              },
+              {
+                "sku": "s30"
+              },
+              {
+                "sku": "s31"
+              },
+              {
+                "sku": "s32"
+              },
+              {
+                "sku": "s33"
+              },
+              {
+                "sku": "s34"
+              },
+              {
+                "sku": "s35"
+              },
+              {
+                "sku": "s36"
+              },
+              {
+                "sku": "s37"
+              },
+              {
+                "sku": "s38"
+              },
+              {
+                "sku": "s39"
+              },
+              {
+                "sku": "s40"
+              },
+              {
+                "sku": "s41"
+              },
+              {
+                "sku": "s42"
+              },
+              {
+                "sku": "s43"
+              },
+              {
+                "sku": "s44"
+              },
+              {
+                "sku": "s45"
+              },
+              {
+                "sku": "s46"
+              },
+              {
+                "sku": "s47"
+              },
+              {
+                "sku": "s48"
+              },
+              {
+                "sku": "s49"
+              },
+              {
+                "sku": "s50"
+              },
+              {
+                "sku": "s51"
+              },
+              {
+                "sku": "s52"
+              },
+              {
+                "sku": "s53"
+              },
+              {
+                "sku": "s54"
+              },
+              {
+                "sku": "s55"
+              },
+              {
+                "sku": "s56"
+              },
+              {
+                "sku": "s57"
+              },
+              {
+                "sku": "s58"
+              },
+              {
+                "sku": "s59"
+              },
+              {
+                "sku": "s60"
+              },
+              {
+                "sku": "s61"
+              },
+              {
+                "sku": "s62"
+              },
+              {
+                "sku": "s63"
+              },
+              {
+                "sku": "s64"
+              },
+              {
+                "sku": "s65"
+              },
+              {
+                "sku": "s66"
+              },
+              {
+                "sku": "s67"
+              },
+              {
+                "sku": "s68"
+              },
+              {
+                "sku": "s69"
+              },
+              {
+                "sku": "s70"
+              },
+              {
+                "sku": "s71"
+              },
+              {
+                "sku": "s72"
+              },
+              {
+                "sku": "s73"
+              },
+              {
+                "sku": "s74"
+              },
+              {
+                "sku": "s75"
+              },
+              {
+                "sku": "s76"
+              },
+              {
+                "sku": "s77"
+              },
+              {
+                "sku": "s78"
+              },
+              {
+                "sku": "s79"
+              },
+              {
+                "sku": "s80"
+              },
+              {
+                "sku": "s81"
+              },
+              {
+                "sku": "s82"
+              },
+              {
+                "sku": "s83"
+              },
+              {
+                "sku": "s84"
+              },
+              {
+                "sku": "s85"
+              },
+              {
+                "sku": "s86"
+              },
+              {
+                "sku": "s87"
+              },
+              {
+                "sku": "s88"
+              },
+              {
+                "sku": "s89"
+              },
+              {
+                "sku": "s90"
+              },
+              {
+                "sku": "s91"
+              },
+              {
+                "sku": "s92"
+              },
+              {
+                "sku": "s93"
+              },
+              {
+                "sku": "s94"
+              },
+              {
+                "sku": "s95"
+              },
+              {
+                "sku": "s96"
+              },
+              {
+                "sku": "s97"
+              },
+              {
+                "sku": "s98"
+              },
+              {
+                "sku": "s99"
+              },
+              {
+                "sku": "s100"
+              },
+              {
+                "sku": "s101"
+              },
+              {
+                "sku": "s102"
+              },
+              {
+                "sku": "s103"
+              },
+              {
+                "sku": "s104"
+              },
+              {
+                "sku": "s105"
+              },
+              {
+                "sku": "s106"
+              },
+              {
+                "sku": "s107"
+              },
+              {
+                "sku": "s108"
+              },
+              {
+                "sku": "s109"
+              },
+              {
+                "sku": "s110"
+              },
+              {
+                "sku": "s111"
+              },
+              {
+                "sku": "s112"
+              },
+              {
+                "sku": "s113"
+              },
+              {
+                "sku": "s114"
+              },
+              {
+                "sku": "s115"
+              },
+              {
+                "sku": "s116"
+              },
+              {
+                "sku": "s117"
+              },
+              {
+                "sku": "s118"
+              },
+              {
+                "sku": "s119"
+              },
+              {
+                "sku": "s120"
+              },
+              {
+                "sku": "s121"
+              },
+              {
+                "sku": "s122"
+              },
+              {
+                "sku": "s123"
+              },
+              {
+                "sku": "s124"
+              },
+              {
+                "sku": "s125"
+              },
+              {
+                "sku": "s126"
+              },
+              {
+                "sku": "s127"
+              },
+              {
+                "sku": "s128"
+              },
+              {
+                "sku": "s129"
+              },
+              {
+                "sku": "s130"
+              },
+              {
+                "sku": "s131"
+              },
+              {
+                "sku": "s132"
+              },
+              {
+                "sku": "s133"
+              },
+              {
+                "sku": "s134"
+              },
+              {
+                "sku": "s135"
+              },
+              {
+                "sku": "s136"
+              },
+              {
+                "sku": "s137"
+              },
+              {
+                "sku": "s138"
+              },
+              {
+                "sku": "s139"
+              },
+              {
+                "sku": "s140"
+              },
+              {
+                "sku": "s141"
+              },
+              {
+                "sku": "s142"
+              },
+              {
+                "sku": "s143"
+              },
+              {
+                "sku": "s144"
+              },
+              {
+                "sku": "s145"
+              },
+              {
+                "sku": "s146"
+              },
+              {
+                "sku": "s147"
+              },
+              {
+                "sku": "s148"
+              },
+              {
+                "sku": "s149"
+              },
+              {
+                "sku": "s150"
+              },
+              {
+                "sku": "s151"
+              },
+              {
+                "sku": "s152"
+              },
+              {
+                "sku": "s153"
+              },
+              {
+                "sku": "s154"
+              },
+              {
+                "sku": "s155"
+              },
+              {
+                "sku": "s156"
+              },
+              {
+                "sku": "s157"
+              },
+              {
+                "sku": "s158"
+              },
+              {
+                "sku": "s159"
+              },
+              {
+                "sku": "s160"
+              },
+              {
+                "sku": "s161"
+              },
+              {
+                "sku": "s162"
+              },
+              {
+                "sku": "s163"
+              },
+              {
+                "sku": "s164"
+              },
+              {
+                "sku": "s165"
+              },
+              {
+                "sku": "s166"
+              },
+              {
+                "sku": "s167"
+              },
+              {
+                "sku": "s168"
+              },
+              {
+                "sku": "s169"
+              },
+              {
+                "sku": "s170"
+              },
+              {
+                "sku": "s171"
+              },
+              {
+                "sku": "s172"
+              },
+              {
+                "sku": "s173"
+              },
+              {
+                "sku": "s174"
+              },
+              {
+                "sku": "s175"
+              },
+              {
+                "sku": "s176"
+              },
+              {
+                "sku": "s177"
+              },
+              {
+                "sku": "s178"
+              },
+              {
+                "sku": "s179"
+              },
+              {
+                "sku": "s180"
+              },
+              {
+                "sku": "s181"
+              },
+              {
+                "sku": "s182"
+              },
+              {
+                "sku": "s183"
+              },
+              {
+                "sku": "s184"
+              },
+              {
+                "sku": "s185"
+              },
+              {
+                "sku": "s186"
+              },
+              {
+                "sku": "s187"
+              },
+              {
+                "sku": "s188"
+              },
+              {
+                "sku": "s189"
+              },
+              {
+                "sku": "s190"
+              },
+              {
+                "sku": "s191"
+              },
+              {
+                "sku": "s192"
+              },
+              {
+                "sku": "s193"
+              },
+              {
+                "sku": "s194"
+              },
+              {
+                "sku": "s195"
+              },
+              {
+                "sku": "s196"
+              },
+              {
+                "sku": "s197"
+              },
+              {
+                "sku": "s198"
+              },
+              {
+                "sku": "s199"
+              },
+              {
+                "sku": "s200"
+              },
+              {
+                "sku": "s201"
+              },
+              {
+                "sku": "s202"
+              },
+              {
+                "sku": "s203"
+              },
+              {
+                "sku": "s204"
+              },
+              {
+                "sku": "s205"
+              },
+              {
+                "sku": "s206"
+              },
+              {
+                "sku": "s207"
+              },
+              {
+                "sku": "s208"
+              },
+              {
+                "sku": "s209"
+              },
+              {
+                "sku": "s210"
+              },
+              {
+                "sku": "s211"
+              },
+              {
+                "sku": "s212"
+              },
+              {
+                "sku": "s213"
+              },
+              {
+                "sku": "s214"
+              },
+              {
+                "sku": "s215"
+              },
+              {
+                "sku": "s216"
+              },
+              {
+                "sku": "s217"
+              },
+              {
+                "sku": "s218"
+              },
+              {
+                "sku": "s219"
+              },
+              {
+                "sku": "s220"
+              },
+              {
+                "sku": "s221"
+              },
+              {
+                "sku": "s222"
+              },
+              {
+                "sku": "s223"
+              },
+              {
+                "sku": "s224"
+              },
+              {
+                "sku": "s225"
+              },
+              {
+                "sku": "s226"
+              },
+              {
+                "sku": "s227"
+              },
+              {
+                "sku": "s228"
+              },
+              {
+                "sku": "s229"
+              },
+              {
+                "sku": "s230"
+              },
+              {
+                "sku": "s231"
+              },
+              {
+                "sku": "s232"
+              },
+              {
+                "sku": "s233"
+              },
+              {
+                "sku": "s234"
+              },
+              {
+                "sku": "s235"
+              },
+              {
+                "sku": "s236"
+              },
+              {
+                "sku": "s237"
+              },
+              {
+                "sku": "s238"
+              },
+              {
+                "sku": "s239"
+              },
+              {
+                "sku": "s240"
+              },
+              {
+                "sku": "s241"
+              },
+              {
+                "sku": "s242"
+              },
+              {
+                "sku": "s243"
+              },
+              {
+                "sku": "s244"
+              },
+              {
+                "sku": "s245"
+              },
+              {
+                "sku": "s246"
+              },
+              {
+                "sku": "s247"
+              },
+              {
+                "sku": "s248"
+              },
+              {
+                "sku": "s249"
+              },
+              {
+                "sku": "s250"
+              },
+              {
+                "sku": "s251"
+              },
+              {
+                "sku": "s252"
+              },
+              {
+                "sku": "s253"
+              },
+              {
+                "sku": "s254"
+              },
+              {
+                "sku": "s255"
+              },
+              {
+                "sku": "s256"
+              },
+              {
+                "sku": "s257"
+              },
+              {
+                "sku": "s258"
+              },
+              {
+                "sku": "s259"
+              },
+              {
+                "sku": "s260"
+              },
+              {
+                "sku": "s261"
+              },
+              {
+                "sku": "s262"
+              },
+              {
+                "sku": "s263"
+              },
+              {
+                "sku": "s264"
+              },
+              {
+                "sku": "s265"
+              },
+              {
+                "sku": "s266"
+              },
+              {
+                "sku": "s267"
+              },
+              {
+                "sku": "s268"
+              },
+              {
+                "sku": "s269"
+              },
+              {
+                "sku": "s270"
+              },
+              {
+                "sku": "s271"
+              },
+              {
+                "sku": "s272"
+              },
+              {
+                "sku": "s273"
+              },
+              {
+                "sku": "s274"
+              },
+              {
+                "sku": "s275"
+              },
+              {
+                "sku": "s276"
+              },
+              {
+                "sku": "s277"
+              },
+              {
+                "sku": "s278"
+              },
+              {
+                "sku": "s279"
+              },
+              {
+                "sku": "s280"
+              },
+              {
+                "sku": "s281"
+              },
+              {
+                "sku": "s282"
+              },
+              {
+                "sku": "s283"
+              },
+              {
+                "sku": "s284"
+              },
+              {
+                "sku": "s285"
+              },
+              {
+                "sku": "s286"
+              },
+              {
+                "sku": "s287"
+              },
+              {
+                "sku": "s288"
+              },
+              {
+                "sku": "s289"
+              },
+              {
+                "sku": "s290"
+              },
+              {
+                "sku": "s291"
+              },
+              {
+                "sku": "s292"
+              },
+              {
+                "sku": "s293"
+              },
+              {
+                "sku": "s294"
+              },
+              {
+                "sku": "s295"
+              },
+              {
+                "sku": "s296"
+              },
+              {
+                "sku": "s297"
+              },
+              {
+                "sku": "s298"
+              },
+              {
+                "sku": "s299"
+              },
+              {
+                "sku": "s300"
+              },
+              {
+                "sku": "s301"
+              },
+              {
+                "sku": "s302"
+              },
+              {
+                "sku": "s303"
+              },
+              {
+                "sku": "s304"
+              },
+              {
+                "sku": "s305"
+              },
+              {
+                "sku": "s306"
+              },
+              {
+                "sku": "s307"
+              },
+              {
+                "sku": "s308"
+              },
+              {
+                "sku": "s309"
+              },
+              {
+                "sku": "s310"
+              },
+              {
+                "sku": "s311"
+              },
+              {
+                "sku": "s312"
+              },
+              {
+                "sku": "s313"
+              },
+              {
+                "sku": "s314"
+              },
+              {
+                "sku": "s315"
+              },
+              {
+                "sku": "s316"
+              },
+              {
+                "sku": "s317"
+              },
+              {
+                "sku": "s318"
+              },
+              {
+                "sku": "s319"
+              },
+              {
+                "sku": "s320"
+              },
+              {
+                "sku": "s321"
+              },
+              {
+                "sku": "s322"
+              },
+              {
+                "sku": "s323"
+              },
+              {
+                "sku": "s324"
+              },
+              {
+                "sku": "s325"
+              },
+              {
+                "sku": "s326"
+              },
+              {
+                "sku": "s327"
+              },
+              {
+                "sku": "s328"
+              },
+              {
+                "sku": "s329"
+              },
+              {
+                "sku": "s330"
+              },
+              {
+                "sku": "s331"
+              },
+              {
+                "sku": "s332"
+              },
+              {
+                "sku": "s333"
+              },
+              {
+                "sku": "s334"
+              },
+              {
+                "sku": "s335"
+              },
+              {
+                "sku": "s336"
+              },
+              {
+                "sku": "s337"
+              },
+              {
+                "sku": "s338"
+              },
+              {
+                "sku": "s339"
+              },
+              {
+                "sku": "s340"
+              },
+              {
+                "sku": "s341"
+              },
+              {
+                "sku": "s342"
+              },
+              {
+                "sku": "s343"
+              },
+              {
+                "sku": "s344"
+              },
+              {
+                "sku": "s345"
+              },
+              {
+                "sku": "s346"
+              },
+              {
+                "sku": "s347"
+              },
+              {
+                "sku": "s348"
+              },
+              {
+                "sku": "s349"
+              },
+              {
+                "sku": "s350"
+              },
+              {
+                "sku": "s351"
+              },
+              {
+                "sku": "s352"
+              },
+              {
+                "sku": "s353"
+              },
+              {
+                "sku": "s354"
+              },
+              {
+                "sku": "s355"
+              },
+              {
+                "sku": "s356"
+              },
+              {
+                "sku": "s357"
+              },
+              {
+                "sku": "s358"
+              },
+              {
+                "sku": "s359"
+              },
+              {
+                "sku": "s360"
+              },
+              {
+                "sku": "s361"
+              },
+              {
+                "sku": "s362"
+              },
+              {
+                "sku": "s363"
+              },
+              {
+                "sku": "s364"
+              },
+              {
+                "sku": "s365"
+              },
+              {
+                "sku": "s366"
+              },
+              {
+                "sku": "s367"
+              },
+              {
+                "sku": "s368"
+              },
+              {
+                "sku": "s369"
+              },
+              {
+                "sku": "s370"
+              },
+              {
+                "sku": "s371"
+              },
+              {
+                "sku": "s372"
+              },
+              {
+                "sku": "s373"
+              },
+              {
+                "sku": "s374"
+              },
+              {
+                "sku": "s375"
+              },
+              {
+                "sku": "s376"
+              },
+              {
+                "sku": "s377"
+              },
+              {
+                "sku": "s378"
+              },
+              {
+                "sku": "s379"
+              },
+              {
+                "sku": "s380"
+              },
+              {
+                "sku": "s381"
+              },
+              {
+                "sku": "s382"
+              },
+              {
+                "sku": "s383"
+              },
+              {
+                "sku": "s384"
+              },
+              {
+                "sku": "s385"
+              },
+              {
+                "sku": "s386"
+              },
+              {
+                "sku": "s387"
+              },
+              {
+                "sku": "s388"
+              },
+              {
+                "sku": "s389"
+              },
+              {
+                "sku": "s390"
+              },
+              {
+                "sku": "s391"
+              },
+              {
+                "sku": "s392"
+              },
+              {
+                "sku": "s393"
+              },
+              {
+                "sku": "s394"
+              },
+              {
+                "sku": "s395"
+              },
+              {
+                "sku": "s396"
+              },
+              {
+                "sku": "s397"
+              },
+              {
+                "sku": "s398"
+              },
+              {
+                "sku": "s399"
+              },
+              {
+                "sku": "s400"
+              },
+              {
+                "sku": "s401"
+              },
+              {
+                "sku": "s402"
+              },
+              {
+                "sku": "s403"
+              },
+              {
+                "sku": "s404"
+              },
+              {
+                "sku": "s405"
+              },
+              {
+                "sku": "s406"
+              },
+              {
+                "sku": "s407"
+              },
+              {
+                "sku": "s408"
+              },
+              {
+                "sku": "s409"
+              },
+              {
+                "sku": "s410"
+              },
+              {
+                "sku": "s411"
+              },
+              {
+                "sku": "s412"
+              },
+              {
+                "sku": "s413"
+              },
+              {
+                "sku": "s414"
+              },
+              {
+                "sku": "s415"
+              },
+              {
+                "sku": "s416"
+              },
+              {
+                "sku": "s417"
+              },
+              {
+                "sku": "s418"
+              },
+              {
+                "sku": "s419"
+              },
+              {
+                "sku": "s420"
+              },
+              {
+                "sku": "s421"
+              },
+              {
+                "sku": "s422"
+              },
+              {
+                "sku": "s423"
+              },
+              {
+                "sku": "s424"
+              },
+              {
+                "sku": "s425"
+              },
+              {
+                "sku": "s426"
+              },
+              {
+                "sku": "s427"
+              },
+              {
+                "sku": "s428"
+              },
+              {
+                "sku": "s429"
+              },
+              {
+                "sku": "s430"
+              },
+              {
+                "sku": "s431"
+              },
+              {
+                "sku": "s432"
+              },
+              {
+                "sku": "s433"
+              },
+              {
+                "sku": "s434"
+              },
+              {
+                "sku": "s435"
+              },
+              {
+                "sku": "s436"
+              },
+              {
+                "sku": "s437"
+              },
+              {
+                "sku": "s438"
+              },
+              {
+                "sku": "s439"
+              },
+              {
+                "sku": "s440"
+              },
+              {
+                "sku": "s441"
+              },
+              {
+                "sku": "s442"
+              },
+              {
+                "sku": "s443"
+              },
+              {
+                "sku": "s444"
+              },
+              {
+                "sku": "s445"
+              },
+              {
+                "sku": "s446"
+              },
+              {
+                "sku": "s447"
+              },
+              {
+                "sku": "s448"
+              },
+              {
+                "sku": "s449"
+              },
+              {
+                "sku": "s450"
+              },
+              {
+                "sku": "s451"
+              },
+              {
+                "sku": "s452"
+              },
+              {
+                "sku": "s453"
+              },
+              {
+                "sku": "s454"
+              },
+              {
+                "sku": "s455"
+              },
+              {
+                "sku": "s456"
+              },
+              {
+                "sku": "s457"
+              },
+              {
+                "sku": "s458"
+              },
+              {
+                "sku": "s459"
+              },
+              {
+                "sku": "s460"
+              },
+              {
+                "sku": "s461"
+              },
+              {
+                "sku": "s462"
+              },
+              {
+                "sku": "s463"
+              },
+              {
+                "sku": "s464"
+              },
+              {
+                "sku": "s465"
+              },
+              {
+                "sku": "s466"
+              },
+              {
+                "sku": "s467"
+              },
+              {
+                "sku": "s468"
+              },
+              {
+                "sku": "s469"
+              },
+              {
+                "sku": "s470"
+              },
+              {
+                "sku": "s471"
+              },
+              {
+                "sku": "s472"
+              },
+              {
+                "sku": "s473"
+              },
+              {
+                "sku": "s474"
+              },
+              {
+                "sku": "s475"
+              },
+              {
+                "sku": "s476"
+              },
+              {
+                "sku": "s477"
+              },
+              {
+                "sku": "s478"
+              },
+              {
+                "sku": "s479"
+              },
+              {
+                "sku": "s480"
+              },
+              {
+                "sku": "s481"
+              },
+              {
+                "sku": "s482"
+              },
+              {
+                "sku": "s483"
+              },
+              {
+                "sku": "s484"
+              },
+              {
+                "sku": "s485"
+              },
+              {
+                "sku": "s486"
+              },
+              {
+                "sku": "s487"
+              },
+              {
+                "sku": "s488"
+              },
+              {
+                "sku": "s489"
+              },
+              {
+                "sku": "s490"
+              },
+              {
+                "sku": "s491"
+              },
+              {
+                "sku": "s492"
+              },
+              {
+                "sku": "s493"
+              },
+              {
+                "sku": "s494"
+              },
+              {
+                "sku": "s495"
+              },
+              {
+                "sku": "s496"
+              },
+              {
+                "sku": "s497"
+              },
+              {
+                "sku": "s498"
+              },
+              {
+                "sku": "s499"
+              },
+              {
+                "sku": "s500"
+              }
+            ]
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "FAILED",
+              "$.error": "forEach step sweep-entries exceeded maxLoopIterations=500"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-capability-call-dispatches-to-bound-adapter",
+      "keywords": [
+        "flowStep.type",
+        "flowStep.capability",
+        "flowStep.operation",
+        "flowStep.args",
+        "flowStep.output"
+      ],
+      "description": "A capabilityCall step (notification.send) is dispatched to the bound in-process notification adapter: the flow result carries the adapter id and channel the dispatcher selected. Surprising-but-actual: the adapter's metadata is merged into the returned $input.",
+      "steps": [
+        {
+          "name": "execute SweepDiscontinuedCatalog",
+          "method": "POST",
+          "path": "/api/flows/SweepDiscontinuedCatalog/execute",
+          "body": {
+            "entries": [
+              {
+                "sku": "n-${rand}"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.adapterId": "notification-inproc",
+              "$.output.channel": "notification",
+              "$.output.entries": {
+                "len": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-return-and-call-procedure-output-shape",
+      "keywords": [
+        "flowStep.type",
+        "flowStep.value",
+        "flowStep.procedure",
+        "flowStep.input",
+        "flowStep.output"
+      ],
+      "description": "return step yields exactly $input (nested structure preserved); callProcedure resolves the procedure's own return (RenameOrderStatusProcedure returns the client-supplied newStatus) and a missing procedure input fails the flow with REF_UNRESOLVABLE naming newStatus.",
+      "steps": [
+        {
+          "name": "return $input",
+          "method": "POST",
+          "path": "/api/flows/RecordStripePayment/execute",
+          "body": {
+            "nested": {
+              "k": [
+                1,
+                2
+              ]
+            },
+            "n": null,
+            "tag": "r-${rand}"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.nested.k[1]": 2,
+              "$.output.n": null,
+              "$.output.tag": {
+                "matches": "^r-[0-9a-f]{8}$"
+              }
+            }
+          }
+        },
+        {
+          "name": "callProcedure result",
+          "method": "POST",
+          "path": "/api/flows/RenameOrderStatusViaFlow/execute",
+          "body": {
+            "newStatus": "SHIPPED-probe",
+            "id": "${uuid}"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output": "SHIPPED-probe"
+            }
+          }
+        },
+        {
+          "name": "procedure input missing",
+          "method": "POST",
+          "path": "/api/flows/RenameOrderStatusViaFlow/execute",
+          "body": {},
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "FAILED",
+              "$.error": {
+                "matches": "REF_UNRESOLVABLE.*[$]newStatus"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-generated-action-completes",
+      "keywords": [
+        "flowStep.type",
+        "flowStep.actionName",
+        "flow.outputSchema"
+      ],
+      "description": "KNOWN DEFECT: PlaceWidgetOrder's generatedAction step ScoreWidgetOrderRisk has no runtime adapter. POST /api/flows/PlaceWidgetOrder/execute with a valid body should finish OK and return the saved order (outputSchema id/customerEmail/status/lineCount). ACTUAL: 422 status CAPABILITY_FAILED, errorCode capability_not_found, 'Capability binding not found for capability generated.action.ScoreWidgetOrderRisk and adapter generated-action', capabilityStepName score-order-risk; the order row was already saved by save-order.",
+      "knownFailure": "REG-259",
+      "steps": [
+        {
+          "name": "execute PlaceWidgetOrder",
+          "method": "POST",
+          "path": "/api/flows/PlaceWidgetOrder/execute",
+          "body": {
+            "customerEmail": "developer",
+            "status": "NEW",
+            "lineCount": 1
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.customerEmail": "developer",
+              "$.output.status": "NEW",
+              "$.output.lineCount": 1,
+              "$.output.id": {
+                "exists": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-start-endpoint-flag-exposed-in-openapi",
+      "keywords": [
+        "flow.startEndpoint"
+      ],
+      "description": "flow.startEndpoint=true is surfaced by the running app: the OpenAPI operation for POST /api/v1/flows/PlaceWidgetOrder/execute (and its specializing flow) carries x-npdev-start-endpoint=true; RecordOrderLines (flag absent) and ConfirmWidgetOrder do not.",
+      "steps": [
+        {
+          "name": "GET /v3/api-docs",
+          "method": "GET",
+          "path": "/v3/api-docs",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.paths./api/v1/flows/PlaceWidgetOrder/execute.post.x-npdev-start-endpoint": true,
+              "$.paths./api/v1/flows/PlaceWidgetOrderAudited/execute.post.x-npdev-start-endpoint": true,
+              "$.paths./api/v1/flows/RecordOrderLines/execute.post.x-npdev-start-endpoint": {
+                "exists": false
+              },
+              "$.paths./api/v1/flows/ConfirmWidgetOrder/execute.post.x-npdev-start-endpoint": {
+                "exists": false
+              },
+              "$.paths./api/v1/flows/RecordOrderLines/execute.post.operationId": {
+                "exists": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-onfailure-compensation-runs-for-completed-step",
+      "keywords": [
+        "flowStep.onFailure",
+        "flowStep.type",
+        "flowStep.policy"
+      ],
+      "description": "Saga compensation: when a LATER step fails, the onFailure block of the already-completed save-order step runs (compensate-notify capabilityCall) -- its output variable compensationNotice and the durable __npdev_compensatedSteps__ counter are in the failed execution's state. The forcing failure is the open REG-259 (score-order-risk, index 5); if that defect is fixed, replace the forcing step with another late failure.",
+      "steps": [
+        {
+          "name": "force a failure after save-order",
+          "method": "POST",
+          "path": "/api/flows/PlaceWidgetOrder/execute",
+          "body": {
+            "customerEmail": "developer",
+            "status": "NEW",
+            "lineCount": 3
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "CAPABILITY_FAILED",
+              "$.capabilityStepName": "score-order-risk",
+              "$.capabilityStepIndex": 5
+            }
+          },
+          "save": {
+            "execId": "$.executionId"
+          }
+        },
+        {
+          "name": "compensate-notify output is in state",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "FAILED_PERMANENT",
+              "$.currentStepIndex": 5
+            },
+            "text": "\"compensationNotice\""
+          }
+        },
+        {
+          "name": "durable compensation counter exists",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "text": "\"__npdev_compensatedSteps__\""
+          }
+        },
+        {
+          "name": "control: failure BEFORE save-order",
+          "method": "POST",
+          "path": "/api/flows/PlaceWidgetOrder/execute",
+          "body": {
+            "customerEmail": "developer",
+            "status": "NEW",
+            "lineCount": -1
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "INVARIANT_FAILED"
+            }
+          },
+          "save": {
+            "execId2": "$.executionId"
+          }
+        },
+        {
+          "name": "control: nothing to compensate when save-order never completed",
+          "method": "GET",
+          "path": "/api/executions/${execId2}",
+          "expect": {
+            "status": 200,
+            "notText": "\"compensationNotice\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-monitor-reports-compensated-execution",
+      "keywords": [
+        "flowStep.onFailure"
+      ],
+      "description": "KNOWN DEFECT (monitoring): after a compensated failure the execution monitor (GET /api/executions/history, documented 'COMPENSATED' when an onFailure block ran) should report compensationStatus COMPENSATED and compensatedSteps >= 1. ACTUAL: compensationStatus NONE, compensatedSteps 0 although the same execution's state holds compensationNotice. Likely cause (unverified): ExecutionMonitorService reads state['__npdev_compensatedSteps__'] from the redacted execution, where only state KEYS survive, so the Number check always fails. Forcing failure = REG-259.",
+      "knownFailure": "REG-260",
+      "steps": [
+        {
+          "name": "execute PlaceWidgetOrder",
+          "method": "POST",
+          "path": "/api/flows/PlaceWidgetOrder/execute",
+          "body": {
+            "customerEmail": "developer",
+            "status": "NEW",
+            "lineCount": 2
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "CAPABILITY_FAILED"
+            }
+          },
+          "save": {
+            "execId": "$.executionId"
+          }
+        },
+        {
+          "name": "GET /api/executions/history",
+          "method": "GET",
+          "path": "/api/executions/history",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[0].executionId": "${execId}",
+              "$.items[0].status": "FAILED_PERMANENT",
+              "$.items[0].compensationStatus": "COMPENSATED",
+              "$.items[0].compensatedSteps": {
+                "gt": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-specializes-inherits-schema-and-invariants",
+      "keywords": [
+        "flow.specializes",
+        "flow.inputSchema",
+        "flowStep.invariants"
+      ],
+      "description": "PlaceWidgetOrderAudited declares only 'specializes' + hooks, yet it enforces the parent's inputSchema (required fields) and the parent's validate-order invariantCheck (LineCountNotNegative at stepIndex 0).",
+      "steps": [
+        {
+          "name": "inherited inputSchema",
+          "method": "POST",
+          "path": "/api/flows/PlaceWidgetOrderAudited/execute",
+          "body": {
+            "customerEmail": "developer"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "INPUT_VALIDATION_FAILED",
+              "$.flowName": "PlaceWidgetOrderAudited",
+              "$.inputValidationErrors": {
+                "len": 2
+              }
+            }
+          }
+        },
+        {
+          "name": "inherited invariantCheck",
+          "method": "POST",
+          "path": "/api/flows/PlaceWidgetOrderAudited/execute",
+          "body": {
+            "customerEmail": "developer",
+            "status": "NEW",
+            "lineCount": -2
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "INVARIANT_FAILED",
+              "$.flowName": "PlaceWidgetOrderAudited",
+              "$.invariantViolations[0].invariantRef": "LineCountNotNegative",
+              "$.invariantViolations[0].stepName": "validate-order"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-hook-after-step-emits-event-at-the-hook-position",
+      "keywords": [
+        "flow.hooks",
+        "flowHook.position",
+        "flowHook.targetStep",
+        "flowHook.steps",
+        "flowStep.type",
+        "flowStep.event",
+        "flowStep.from"
+      ],
+      "description": "The 'after save-order' flowHook of PlaceWidgetOrderAudited injects its emitEvent step right after save-order: the execution emits WidgetOrderPlaced from step hook-emit-placed at stepIndex 2 (validate=0, save=1), carrying the saved order; the parent flow without the hook emits no WidgetOrderPlaced from that step. Works whether or not the flow later fails (REG-259).",
+      "steps": [
+        {
+          "name": "execute PlaceWidgetOrderAudited",
+          "method": "POST",
+          "path": "/api/flows/PlaceWidgetOrderAudited/execute",
+          "body": {
+            "customerEmail": "developer",
+            "status": "NEW",
+            "lineCount": 2
+          },
+          "expect": {
+            "status": [
+              200,
+              422
+            ],
+            "json": {
+              "$.emittedEvents[0].eventName": "WidgetOrderPlaced",
+              "$.emittedEvents[0].stepIndex": 2,
+              "$.emittedEvents[0].flowName": "PlaceWidgetOrderAudited",
+              "$.emittedEvents[0].payload._meta.step": "hook-emit-placed",
+              "$.emittedEvents[0].payload.customerEmail": "developer",
+              "$.emittedEvents[0].payload.lineCount": 2,
+              "$.emittedEvents[0].payload.id": {
+                "exists": true
+              }
+            }
+          },
+          "save": {
+            "hookEventId": "$.emittedEvents[0].eventId",
+            "hookCorr": "$.correlationId"
+          }
+        },
+        {
+          "name": "event is persisted in the event store",
+          "method": "GET",
+          "path": "/api/events/${hookEventId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.eventId": "${hookEventId}",
+              "$.eventName": "WidgetOrderPlaced",
+              "$.flowName": "PlaceWidgetOrderAudited",
+              "$.correlationId": "${hookCorr}",
+              "$.stepIndex": 2
+            }
+          }
+        },
+        {
+          "name": "control: parent flow (no hook) emitted nothing before its failure",
+          "method": "POST",
+          "path": "/api/flows/PlaceWidgetOrder/execute",
+          "body": {
+            "customerEmail": "developer",
+            "status": "NEW",
+            "lineCount": 2
+          },
+          "expect": {
+            "status": [
+              200,
+              422
+            ],
+            "json": {
+              "$.emittedEvents": {
+                "len": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-orchestration-rule-fires-on-flow-emitted-event",
+      "keywords": [
+        "orchestrationRule.name",
+        "orchestrationRule.trigger",
+        "orchestrationTrigger.type",
+        "orchestrationTrigger.event",
+        "orchestrationRule.actions",
+        "orchestrationAction.type"
+      ],
+      "description": "orchestrationRule PushNewOrdersToErp (trigger event WidgetOrderPlaced) starts when a FLOW emits WidgetOrderPlaced: an OrchestrationStarted event whose payload.sourceEventId is that exact event appears. A flow event with another name (WidgetOrderLineRecorded) starts no orchestration. (The rule's webhook action targets 127.0.0.1:9099 which is not served here, so its action outcome is deliberately not asserted.) Relies on probes running sequentially: the OrchestrationStarted list is read newest-first.",
+      "steps": [
+        {
+          "name": "control event of a different name",
+          "method": "POST",
+          "path": "/api/flows/RecordOrderLines/execute",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "OR-${rand}",
+            "quantity": 1,
+            "unitPrice": 1
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.emittedEvents[0].eventName": "WidgetOrderLineRecorded"
+            }
+          },
+          "save": {
+            "otherEventId": "$.emittedEvents[0].eventId"
+          }
+        },
+        {
+          "name": "emit WidgetOrderPlaced from a flow",
+          "method": "POST",
+          "path": "/api/flows/PlaceWidgetOrderAudited/execute",
+          "body": {
+            "customerEmail": "developer",
+            "status": "NEW",
+            "lineCount": 1
+          },
+          "expect": {
+            "status": [
+              200,
+              422
+            ],
+            "json": {
+              "$.emittedEvents[0].eventName": "WidgetOrderPlaced"
+            }
+          },
+          "save": {
+            "srcEventId": "$.emittedEvents[0].eventId"
+          }
+        },
+        {
+          "name": "orchestration started for the emitted event",
+          "method": "GET",
+          "path": "/api/events/by-name/OrchestrationStarted?limit=1",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$[0].payload.orchestration": "PushNewOrdersToErp",
+              "$[0].payload.sourceEvent": "WidgetOrderPlaced",
+              "$[0].payload.sourceEventId": "${srcEventId}"
+            }
+          }
+        },
+        {
+          "name": "emit a non-matching event again",
+          "method": "POST",
+          "path": "/api/flows/RecordOrderLines/execute",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "OR2-${rand}",
+            "quantity": 1,
+            "unitPrice": 1
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "name": "no new orchestration for a non-matching event",
+          "method": "GET",
+          "path": "/api/events/by-name/OrchestrationStarted?limit=1",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$[0].payload.sourceEventId": "${srcEventId}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-emit-event-is-persisted-with-flow-context",
+      "keywords": [
+        "flowStep.type",
+        "flowStep.event",
+        "flowStep.from"
+      ],
+      "description": "emitEvent step in RecordOrderLines emits WidgetOrderLineRecorded after the line is saved (stepIndex 2, step emit-line-recorded) and persists it in the event store under the execution's correlation id; a run refused by invariantCheck emits and persists nothing.",
+      "steps": [
+        {
+          "name": "execute RecordOrderLines",
+          "method": "POST",
+          "path": "/api/flows/RecordOrderLines/execute",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "EM-${rand}",
+            "quantity": 2,
+            "unitPrice": 2
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.emittedEvents": {
+                "len": 1
+              },
+              "$.emittedEvents[0].eventName": "WidgetOrderLineRecorded",
+              "$.emittedEvents[0].stepIndex": 2,
+              "$.emittedEvents[0].payload._meta.step": "emit-line-recorded"
+            }
+          },
+          "save": {
+            "corr": "$.correlationId",
+            "evId": "$.emittedEvents[0].eventId"
+          }
+        },
+        {
+          "name": "persisted",
+          "method": "GET",
+          "path": "/api/events/${evId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.eventId": "${evId}",
+              "$.eventName": "WidgetOrderLineRecorded",
+              "$.correlationId": "${corr}",
+              "$.flowName": "RecordOrderLines",
+              "$.stepIndex": 2
+            }
+          }
+        },
+        {
+          "name": "execute RecordOrderLines",
+          "method": "POST",
+          "path": "/api/flows/RecordOrderLines/execute",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "EM2-${rand}",
+            "quantity": 0,
+            "unitPrice": 2
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "INVARIANT_FAILED",
+              "$.emittedEvents": {
+                "len": 0
+              }
+            }
+          },
+          "save": {
+            "corr2": "$.correlationId"
+          }
+        },
+        {
+          "name": "refused run persisted no WidgetOrderLineRecorded",
+          "method": "GET",
+          "path": "/api/events/by-correlation/${corr2}",
+          "expect": {
+            "status": 200,
+            "notText": "WidgetOrderLineRecorded"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-await-event-resumes-only-on-matching-correlation",
+      "keywords": [
+        "flowStep.type",
+        "flowStep.awaitEvent",
+        "flowStep.awaitRef",
+        "flowStep.match",
+        "awaitMatch.correlation"
+      ],
+      "description": "awaitEvent with match.correlation=true parks AwaitPaymentConfirmation (HTTP 202, WAITING_EVENT, awaited event/step/correlation reported); a PaymentConfirmed event with a DIFFERENT correlation id leaves it waiting; the event carrying the execution's correlation id completes it.",
+      "steps": [
+        {
+          "name": "execute AwaitPaymentConfirmation",
+          "method": "POST",
+          "path": "/api/flows/AwaitPaymentConfirmation/execute",
+          "body": {
+            "orderRef": "x-${rand}"
+          },
+          "expect": {
+            "status": 202,
+            "json": {
+              "$.status": "WAITING_EVENT",
+              "$.awaitedStepName": "await-payment-confirmation",
+              "$.awaitedStepIndex": 0,
+              "$.awaitedEventName": "PaymentConfirmed",
+              "$.awaitedCorrelationId": {
+                "matches": "^[0-9a-f-]{36}$"
+              },
+              "$.output": null
+            }
+          },
+          "save": {
+            "execId": "$.executionId",
+            "corr": "$.correlationId"
+          }
+        },
+        {
+          "name": "execution is WAITING_EVENT",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "WAITING_EVENT",
+              "$.waitingForEventName": "PaymentConfirmed"
+            }
+          }
+        },
+        {
+          "name": "publish with another correlation id",
+          "method": "POST",
+          "path": "/api/events/publish",
+          "body": {
+            "eventName": "PaymentConfirmed",
+            "correlationId": "other-${corr}",
+            "payload": {
+              "correlationId": "c1",
+              "reference": "r-${rand}"
+            }
+          },
+          "expect": {
+            "status": 202
+          }
+        },
+        {
+          "name": "still waiting after the unrelated event",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "WAITING_EVENT",
+              "$.waitingForEventName": "PaymentConfirmed"
+            }
+          }
+        },
+        {
+          "name": "publish with the awaited correlation id",
+          "method": "POST",
+          "path": "/api/events/publish",
+          "body": {
+            "eventName": "PaymentConfirmed",
+            "correlationId": "${corr}",
+            "payload": {
+              "correlationId": "c1",
+              "reference": "r-${rand}"
+            }
+          },
+          "expect": {
+            "status": 202
+          }
+        },
+        {
+          "name": "completed after the matching event",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "COMPLETED",
+              "$.currentStepIndex": 2,
+              "$.waitingForEventName": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-await-event-inside-foreach-waits-per-iteration",
+      "keywords": [
+        "flowStep.type",
+        "flowStep.collection",
+        "flowStep.itemKey",
+        "flowStep.awaitEvent",
+        "flowStep.awaitRef",
+        "awaitMatch.correlation"
+      ],
+      "description": "A (sequential) forEach containing awaitEvent parks once per item: ProcessWidgetOrderLineApprovals over 2 skus awaits correlation '<exec>::forEach:await-line-approved:0' first; the iteration-0 event moves it on to wait for iteration 1 (still WAITING_EVENT); only the iteration-1 event completes the flow. An empty collection completes immediately without waiting.",
+      "steps": [
+        {
+          "name": "execute ProcessWidgetOrderLineApprovals",
+          "method": "POST",
+          "path": "/api/flows/ProcessWidgetOrderLineApprovals/execute",
+          "body": {
+            "skus": [
+              "a-${rand}",
+              "b-${rand}"
+            ]
+          },
+          "expect": {
+            "status": 202,
+            "json": {
+              "$.status": "WAITING_EVENT",
+              "$.awaitedEventName": "WidgetOrderLineApproved",
+              "$.awaitedCorrelationId": {
+                "matches": "::forEach:await-line-approved:0$"
+              }
+            }
+          },
+          "save": {
+            "execId": "$.executionId"
+          }
+        },
+        {
+          "name": "approve iteration 0",
+          "method": "POST",
+          "path": "/api/events/publish",
+          "body": {
+            "eventName": "WidgetOrderLineApproved",
+            "correlationId": "${execId}::forEach:await-line-approved:0",
+            "payload": {
+              "sku": "a"
+            }
+          },
+          "expect": {
+            "status": 202
+          }
+        },
+        {
+          "name": "still waiting for iteration 1",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "WAITING_EVENT",
+              "$.waitingForEventName": "WidgetOrderLineApproved"
+            }
+          }
+        },
+        {
+          "name": "resume re-evaluates: now awaiting iteration 1",
+          "method": "POST",
+          "path": "/api/executions/${execId}/resume",
+          "body": {},
+          "expect": {
+            "status": 202,
+            "json": {
+              "$.status": "WAITING_EVENT",
+              "$.awaitedCorrelationId": "${execId}::forEach:await-line-approved:1"
+            }
+          }
+        },
+        {
+          "name": "approve iteration 1",
+          "method": "POST",
+          "path": "/api/events/publish",
+          "body": {
+            "eventName": "WidgetOrderLineApproved",
+            "correlationId": "${execId}::forEach:await-line-approved:1",
+            "payload": {
+              "sku": "b"
+            }
+          },
+          "expect": {
+            "status": 202
+          }
+        },
+        {
+          "name": "completed after the last iteration event",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "COMPLETED"
+            }
+          }
+        },
+        {
+          "name": "empty collection never waits",
+          "method": "POST",
+          "path": "/api/flows/ProcessWidgetOrderLineApprovals/execute",
+          "body": {
+            "skus": []
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.skus": {
+                "len": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-parallel-await-joins-all-iteration-events",
+      "keywords": [
+        "flowStep.parallelAwait",
+        "flowStep.type",
+        "flowStep.collection",
+        "flowStep.itemKey",
+        "flowStep.awaitRef",
+        "flowStep.event",
+        "flowStep.payload",
+        "flowStep.input",
+        "flowStep.output"
+      ],
+      "description": "parallelAwait forEach starts every iteration at once (the map step of BOTH iterations ran before any event: skuSeen exists for 0 and 1), needs ALL iteration events (a resume with only iteration 0 delivered stays WAITING_EVENT), and once both arrived an explicit resume completes the flow with OK and each iteration's emitEvent WidgetOrderLineApprovalRecorded is persisted under its own iteration correlation id.",
+      "steps": [
+        {
+          "name": "execute ProcessParallelWidgetOrderLineApprovals",
+          "method": "POST",
+          "path": "/api/flows/ProcessParallelWidgetOrderLineApprovals/execute",
+          "body": {
+            "skus": [
+              "a-${rand}",
+              "b-${rand}"
+            ]
+          },
+          "expect": {
+            "status": 202,
+            "json": {
+              "$.status": "WAITING_EVENT",
+              "$.awaitedStepName": "await-line-approvals-parallel"
+            }
+          },
+          "save": {
+            "execId": "$.executionId"
+          }
+        },
+        {
+          "name": "map output of iteration 1 exists while still waiting",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "WAITING_EVENT"
+            },
+            "text": "__iterScope.await-line-approvals-parallel.1.skuSeen"
+          }
+        },
+        {
+          "name": "approve iteration 0 only",
+          "method": "POST",
+          "path": "/api/events/publish",
+          "body": {
+            "eventName": "WidgetOrderLineApproved",
+            "correlationId": "${execId}::forEach:await-line-approved-parallel:0",
+            "payload": {
+              "sku": "a"
+            }
+          },
+          "expect": {
+            "status": 202
+          }
+        },
+        {
+          "name": "resume with one of two events: join not satisfied",
+          "method": "POST",
+          "path": "/api/executions/${execId}/resume",
+          "body": {},
+          "expect": {
+            "status": 202,
+            "json": {
+              "$.status": "WAITING_EVENT"
+            }
+          }
+        },
+        {
+          "name": "approve iteration 1",
+          "method": "POST",
+          "path": "/api/events/publish",
+          "body": {
+            "eventName": "WidgetOrderLineApproved",
+            "correlationId": "${execId}::forEach:await-line-approved-parallel:1",
+            "payload": {
+              "sku": "b"
+            }
+          },
+          "expect": {
+            "status": 202
+          }
+        },
+        {
+          "name": "resume with both events: join satisfied",
+          "method": "POST",
+          "path": "/api/executions/${execId}/resume",
+          "body": {},
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.skus": {
+                "len": 2
+              }
+            }
+          }
+        },
+        {
+          "name": "execution is COMPLETED",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "COMPLETED"
+            }
+          }
+        },
+        {
+          "name": "iteration 0: the awaited event plus the event it emitted",
+          "method": "GET",
+          "path": "/api/events/by-correlation/${execId}::forEach:await-line-approved-parallel:0",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$": {
+                "len": 2
+              }
+            },
+            "text": "\"eventName\":\"WidgetOrderLineApprovalRecorded\""
+          }
+        },
+        {
+          "name": "iteration 1: the awaited event plus the event it emitted",
+          "method": "GET",
+          "path": "/api/events/by-correlation/${execId}::forEach:await-line-approved-parallel:1",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$": {
+                "len": 2
+              }
+            },
+            "text": "\"eventName\":\"WidgetOrderLineApprovalRecorded\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-parallel-await-resumes-itself-when-last-event-arrives",
+      "keywords": [
+        "flowStep.parallelAwait",
+        "flowStep.awaitEvent"
+      ],
+      "description": "KNOWN DEFECT: for a parallelAwait forEach, publishing the awaited event for EVERY iteration (POST /api/events/publish, correlation '<exec>::forEach:await-line-approved-parallel:<i>', i=0,1) should resume the execution to COMPLETED just as a single awaitEvent does (see fl-await-event-resumes-only-on-matching-correlation). ACTUAL: both publishes return 202 and the execution stays WAITING_EVENT (currentStepIndex 0, resumeAttemptCount 0) for at least 30 s -- only an explicit POST /api/executions/<id>/resume completes it (proved by fl-parallel-await-joins-all-iteration-events).",
+      "knownFailure": "REG-261",
+      "steps": [
+        {
+          "name": "execute ProcessParallelWidgetOrderLineApprovals",
+          "method": "POST",
+          "path": "/api/flows/ProcessParallelWidgetOrderLineApprovals/execute",
+          "body": {
+            "skus": [
+              "a-${rand}",
+              "b-${rand}"
+            ]
+          },
+          "expect": {
+            "status": 202,
+            "json": {
+              "$.status": "WAITING_EVENT"
+            }
+          },
+          "save": {
+            "execId": "$.executionId"
+          }
+        },
+        {
+          "name": "publish WidgetOrderLineApproved",
+          "method": "POST",
+          "path": "/api/events/publish",
+          "body": {
+            "eventName": "WidgetOrderLineApproved",
+            "correlationId": "${execId}::forEach:await-line-approved-parallel:0",
+            "payload": {
+              "sku": "a"
+            }
+          },
+          "expect": {
+            "status": 202
+          }
+        },
+        {
+          "name": "publish WidgetOrderLineApproved",
+          "method": "POST",
+          "path": "/api/events/publish",
+          "body": {
+            "eventName": "WidgetOrderLineApproved",
+            "correlationId": "${execId}::forEach:await-line-approved-parallel:1",
+            "payload": {
+              "sku": "b"
+            }
+          },
+          "expect": {
+            "status": 202
+          }
+        },
+        {
+          "name": "execution completes after the last awaited event",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "COMPLETED"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-await-payload-match-and-branch-then-arm",
+      "keywords": [
+        "awaitMatch.payload",
+        "flowStep.type",
+        "flowStep.condition",
+        "flowStep.then",
+        "flowStep.awaitEvent",
+        "flowStep.awaitRef"
+      ],
+      "description": "approvals::RequestApproval awaits ApprovalDecided with match.payload requestId=$saved.id: a decision for ANOTHER request id leaves it waiting and the request PENDING; the decision for this request resumes it, the branch condition $decision.status is truthy so the THEN arm (apply-decision) runs and the stored request becomes APPROVED with decidedBy/decisionComment filled in.",
+      "steps": [
+        {
+          "name": "harvest a fresh uuid",
+          "method": "POST",
+          "path": "/api/flows/RecordOrderLines/execute",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "ID-${rand}",
+            "quantity": 1,
+            "unitPrice": 1
+          },
+          "expect": {
+            "status": 200
+          },
+          "save": {
+            "rid": "$.output.id"
+          }
+        },
+        {
+          "name": "execute approvals::RequestApproval",
+          "method": "POST",
+          "path": "/api/flows/approvals::RequestApproval/execute",
+          "body": {
+            "id": "${rid}",
+            "title": "probe-${rand}",
+            "status": "PENDING"
+          },
+          "expect": {
+            "status": 202,
+            "json": {
+              "$.status": "WAITING_EVENT",
+              "$.awaitedEventName": "approvals::ApprovalDecided"
+            }
+          },
+          "save": {
+            "execId": "$.executionId"
+          }
+        },
+        {
+          "name": "decision for another request",
+          "method": "POST",
+          "path": "/api/events/publish",
+          "body": {
+            "eventName": "approvals::ApprovalDecided",
+            "correlationId": "any-${rand}",
+            "payload": {
+              "requestId": "other-${rid}",
+              "status": "APPROVED",
+              "completedBy": "developer"
+            }
+          },
+          "expect": {
+            "status": 202
+          }
+        },
+        {
+          "name": "still waiting",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "WAITING_EVENT"
+            }
+          }
+        },
+        {
+          "name": "request untouched",
+          "method": "GET",
+          "path": "/api/approvals_approval_requests/${rid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "PENDING",
+              "$.decidedBy": null
+            }
+          }
+        },
+        {
+          "name": "decision for this request",
+          "method": "POST",
+          "path": "/api/events/publish",
+          "body": {
+            "eventName": "approvals::ApprovalDecided",
+            "correlationId": "any-${rand}",
+            "payload": {
+              "requestId": "${rid}",
+              "status": "APPROVED",
+              "completedBy": "developer",
+              "comment": "ok-${rand}"
+            }
+          },
+          "expect": {
+            "status": 202
+          }
+        },
+        {
+          "name": "execution is COMPLETED",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "COMPLETED"
+            }
+          }
+        },
+        {
+          "name": "THEN arm applied the decision",
+          "method": "GET",
+          "path": "/api/approvals_approval_requests/${rid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "APPROVED",
+              "$.decidedBy": "developer",
+              "$.decisionComment": {
+                "matches": "^ok-"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-branch-skips-then-arm-when-condition-falsy",
+      "keywords": [
+        "flowStep.type",
+        "flowStep.condition",
+        "flowStep.then",
+        "awaitMatch.payload"
+      ],
+      "description": "Branch step has-decision (condition $decision.status) takes the no-arm path when the condition is falsy: a matching ApprovalDecided event with an EMPTY status resumes and completes the flow, but apply-decision does NOT run -- the request stays PENDING with no decidedBy. (Contrast: fl-await-payload-match-and-branch-then-arm.)",
+      "steps": [
+        {
+          "name": "harvest a fresh uuid",
+          "method": "POST",
+          "path": "/api/flows/RecordOrderLines/execute",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "ID-${rand}",
+            "quantity": 1,
+            "unitPrice": 1
+          },
+          "expect": {
+            "status": 200
+          },
+          "save": {
+            "rid": "$.output.id"
+          }
+        },
+        {
+          "name": "execute approvals::RequestApproval",
+          "method": "POST",
+          "path": "/api/flows/approvals::RequestApproval/execute",
+          "body": {
+            "id": "${rid}",
+            "title": "probe-${rand}",
+            "status": "PENDING"
+          },
+          "expect": {
+            "status": 202,
+            "json": {
+              "$.status": "WAITING_EVENT"
+            }
+          },
+          "save": {
+            "execId": "$.executionId"
+          }
+        },
+        {
+          "name": "decision with empty status",
+          "method": "POST",
+          "path": "/api/events/publish",
+          "body": {
+            "eventName": "approvals::ApprovalDecided",
+            "correlationId": "any-${rand}",
+            "payload": {
+              "requestId": "${rid}",
+              "status": "",
+              "completedBy": "developer"
+            }
+          },
+          "expect": {
+            "status": 202
+          }
+        },
+        {
+          "name": "execution is COMPLETED",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "COMPLETED"
+            }
+          }
+        },
+        {
+          "name": "THEN arm skipped",
+          "method": "GET",
+          "path": "/api/approvals_approval_requests/${rid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "PENDING",
+              "$.decidedBy": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-human-task-assignee-role-is-enforced",
+      "keywords": [
+        "humanTask.assignee",
+        "flowStep.task",
+        "flowStep.type"
+      ],
+      "description": "The awaitEvent step AwaitCatalogEntryApproval carries a humanTask assigned to role WarehouseManager. The probe actor (ADMIN, not WarehouseManager) is not an assignee: the task is absent from GET /api/tasks, GET /api/tasks/<id> is 403 TASK_FORBIDDEN (404 TASK_NOT_FOUND for an unknown id proves the 403 is the role check), completing it is 403 and the parked execution stays WAITING_EVENT. The assignee-side path (complete -> outcome event) needs a WarehouseManager principal and is not reachable with the single probe key.",
+      "steps": [
+        {
+          "name": "execute AwaitCatalogEntryApproval",
+          "method": "POST",
+          "path": "/api/flows/AwaitCatalogEntryApproval/execute",
+          "body": {
+            "id": "${uuid}",
+            "sku": "T-${rand}"
+          },
+          "expect": {
+            "status": 202,
+            "json": {
+              "$.status": "WAITING_EVENT"
+            }
+          },
+          "save": {
+            "execId": "$.executionId"
+          }
+        },
+        {
+          "name": "no open task is offered to a non-assignee",
+          "method": "GET",
+          "path": "/api/tasks",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.count": 0
+            }
+          }
+        },
+        {
+          "name": "detail forbidden",
+          "method": "GET",
+          "path": "/api/tasks/${execId}",
+          "expect": {
+            "status": 403,
+            "json": {
+              "$.error": "TASK_FORBIDDEN"
+            }
+          }
+        },
+        {
+          "name": "unknown task id is a different error",
+          "method": "GET",
+          "path": "/api/tasks/${uuid}",
+          "expect": {
+            "status": 404,
+            "json": {
+              "$.error": "TASK_NOT_FOUND"
+            }
+          }
+        },
+        {
+          "name": "completion forbidden",
+          "method": "POST",
+          "path": "/api/tasks/${execId}/complete",
+          "body": {
+            "stepName": "await-catalog-approval",
+            "outcome": "APPROVED",
+            "values": {}
+          },
+          "expect": {
+            "status": 403,
+            "json": {
+              "$.error": "TASK_FORBIDDEN"
+            }
+          }
+        },
+        {
+          "name": "execution untouched",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "WAITING_EVENT",
+              "$.waitingForEventName": "CatalogEntryApproved"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-create-concept-persists-the-row",
+      "keywords": [
+        "flowStep.type",
+        "flowStep.scope",
+        "flowStep.input",
+        "flowStep.output"
+      ],
+      "description": "createConcept (RecordOrderLines.save-line) really stores the row in the scope concept: the flow output id is readable through the concept REST API with the same field values and the derived lineTotal (quantity*unitPrice) computed.",
+      "steps": [
+        {
+          "name": "execute RecordOrderLines",
+          "method": "POST",
+          "path": "/api/flows/RecordOrderLines/execute",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "CC-${rand}",
+            "quantity": 3,
+            "unitPrice": 2.5
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.id": {
+                "exists": true
+              },
+              "$.output.quantity": 3
+            }
+          },
+          "save": {
+            "lineId": "$.output.id",
+            "sku": "$.output.sku",
+            "orderId": "$.output.widgetOrderId"
+          }
+        },
+        {
+          "name": "row is stored",
+          "method": "GET",
+          "path": "/api/widget_order_lines/${lineId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.sku": "${sku}",
+              "$.widgetOrderId": "${orderId}",
+              "$.quantity": 3,
+              "$.unitPrice": 2.5,
+              "$.lineTotal": 7.5
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-flow-input-binding-routes-concept-writes-through-the-flow",
+      "keywords": [
+        "flow.input",
+        "flowInput.concept",
+        "flowInput.mode"
+      ],
+      "description": "A flow whose input is {concept, mode} is the write path of that concept: REST POST /api/widget_order_lines runs RecordOrderLines (create) and PUT /api/widget_order_lines/<id> runs UpdateOrderLineQuantity (update) -- the newest WidgetOrderLineRecorded event is emitted by the respective flow at its emitEvent stepIndex 2. Assumes no other client writes order lines between the write and the event read (probes run sequentially).",
+      "steps": [
+        {
+          "name": "marker before",
+          "method": "GET",
+          "path": "/api/events/by-name/WidgetOrderLineRecorded?limit=1",
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "name": "REST create",
+          "method": "POST",
+          "path": "/api/widget_order_lines",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "RT-${rand}",
+            "quantity": 2,
+            "unitPrice": 3
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.id": {
+                "exists": true
+              }
+            }
+          },
+          "save": {
+            "lineId": "$.id"
+          }
+        },
+        {
+          "name": "create ran RecordOrderLines",
+          "method": "GET",
+          "path": "/api/events/by-name/WidgetOrderLineRecorded?limit=1",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$[0].flowName": "RecordOrderLines",
+              "$[0].stepIndex": 2
+            }
+          },
+          "save": {
+            "ev1": "$[0].eventId"
+          }
+        },
+        {
+          "name": "REST update",
+          "method": "PUT",
+          "path": "/api/widget_order_lines/${lineId}",
+          "body": {
+            "quantity": 5
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.quantity": 5
+            }
+          }
+        },
+        {
+          "name": "update ran UpdateOrderLineQuantity",
+          "method": "GET",
+          "path": "/api/events/by-name/WidgetOrderLineRecorded?limit=1",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$[0].flowName": "UpdateOrderLineQuantity",
+              "$[0].stepIndex": 3,
+              "$[0].eventId": {
+                "distinctFrom": "ev1"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-create-concept-enforces-required-fields",
+      "keywords": [
+        "flowStep.type",
+        "flowStep.scope"
+      ],
+      "description": "KNOWN DEFECT: createConcept in a flow bypasses the concept's required-field invariants. REST POST /api/widget_order_lines {sku, quantity} is refused 422 invariant_failed required(unitPrice)/required(widgetOrderId); the SAME body through POST /api/flows/RecordOrderLines/execute returns 200 OK and stores a line with widgetOrderId=null and unitPrice=null (observed: lineTotal 0/null). Expected: 422 INVARIANT_FAILED naming required(unitPrice).",
+      "knownFailure": "REG-262",
+      "steps": [
+        {
+          "name": "control: REST create refuses the incomplete line",
+          "method": "POST",
+          "path": "/api/widget_order_lines",
+          "body": {
+            "sku": "RQ-${rand}",
+            "quantity": 1
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.code": "invariant_failed"
+            }
+          }
+        },
+        {
+          "name": "flow createConcept must refuse it too",
+          "method": "POST",
+          "path": "/api/flows/RecordOrderLines/execute",
+          "body": {
+            "sku": "RQ-${rand}",
+            "quantity": 1
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "INVARIANT_FAILED",
+              "$.invariantViolations[0].invariantRef": {
+                "matches": "required\\(unitPrice\\)|required\\(widgetOrderId\\)"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-update-concept-keeps-untouched-fields",
+      "keywords": [
+        "flowStep.type",
+        "flowStep.scope",
+        "flowStep.input",
+        "flow.input"
+      ],
+      "description": "KNOWN DEFECT: updateConcept replaces the whole row instead of merging. REST PUT {quantity} keeps sku/unitPrice/widgetOrderId (and bumps version), but POST /api/flows/UpdateOrderLineQuantity/execute {id, quantity:7} leaves the stored line with sku=null, unitPrice=null, widgetOrderId=null (data loss), version still 0. Expected: sku unchanged.",
+      "knownFailure": "REG-263",
+      "steps": [
+        {
+          "name": "execute RecordOrderLines",
+          "method": "POST",
+          "path": "/api/flows/RecordOrderLines/execute",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "UM-${rand}",
+            "quantity": 2,
+            "unitPrice": 3
+          },
+          "expect": {
+            "status": 200
+          },
+          "save": {
+            "lineId": "$.output.id",
+            "sku": "$.output.sku"
+          }
+        },
+        {
+          "name": "execute UpdateOrderLineQuantity",
+          "method": "POST",
+          "path": "/api/flows/UpdateOrderLineQuantity/execute",
+          "body": {
+            "id": "${lineId}",
+            "quantity": 7
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.quantity": 7
+            }
+          }
+        },
+        {
+          "name": "untouched fields survive",
+          "method": "GET",
+          "path": "/api/widget_order_lines/${lineId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.quantity": 7,
+              "$.sku": "${sku}",
+              "$.unitPrice": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-update-concept-rejects-unknown-id",
+      "keywords": [
+        "flowStep.type",
+        "flowStep.scope",
+        "flow.input",
+        "flowInput.mode"
+      ],
+      "description": "KNOWN DEFECT: a flow with input mode 'update' (UpdateOrderLineQuantity) given an id that does not exist should fail (404/409/422); ACTUAL: 200 OK and it silently CREATES a row with that id (sku/unitPrice/widgetOrderId null) that GET /api/widget_order_lines/<id> then returns. The REST PUT on a missing id is 404 (control).",
+      "knownFailure": "REG-264",
+      "steps": [
+        {
+          "name": "control: REST PUT on a missing id",
+          "method": "PUT",
+          "path": "/api/widget_order_lines/${uuid}",
+          "body": {
+            "quantity": 5
+          },
+          "expect": {
+            "status": 404
+          }
+        },
+        {
+          "name": "flow update of an id that never existed",
+          "method": "POST",
+          "path": "/api/flows/UpdateOrderLineQuantity/execute",
+          "body": {
+            "id": "${uuid}",
+            "quantity": 5
+          },
+          "expect": {
+            "status": [
+              404,
+              409,
+              422
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

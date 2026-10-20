@@ -1,0 +1,22 @@
+id: REG-267
+title: >-
+  A failing aggregate onCommit procedure does not roll the commit back: the root and its lines stay persisted although the request failed
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-10-20
+closed: null
+source: >-
+  ENF-1 behaviour probe qil-aggregate-oncommit-failure-rolls-back-tree (NPDevSamples/dsl-conformance-max/behavior-probes/30-query-invariant-lifecycle.json), found while checking
+  that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.
+surface: generated-app runtime (dsl-conformance-max)
+detail: |
+  DEFECT: AggregateRuntime.commit documents that a failing onCommit procedure rolls back every prior
+  write of the commit (root and children). Request: POST /api/runtime/aggregate/WidgetOrderAggregate
+  with an explicit root id and one line while no WidgetOrderAudit row exists, so
+  AuditWidgetOrderProcedure fails (503 'onCommit procedure ... failed: CONCEPT_NOT_FOUND'). Actual:
+  after the 503 the WidgetOrder (GET /api/widget_orders/<id> 200) and its WidgetOrderLine are still
+  stored. Expected: both 404. (Uses throwaway StockTransfer ids as uuid sources.)
+resolution: >-
+  Fix the runtime, then remove "knownFailure": "REG-267" from probe qil-aggregate-oncommit-failure-rolls-back-tree; the runner turns that probe red
+  the moment it passes with the marker still set, so the marker cannot outlive the bug.

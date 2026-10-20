@@ -1,0 +1,22 @@
+id: REG-259
+title: >-
+  A flow with a generatedAction step fails at runtime in a generated app: no generated-action capability binding exists, so the create returns 500 after the row was already saved
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-10-20
+closed: null
+source: >-
+  ENF-1 behaviour probe fl-generated-action-completes (NPDevSamples/dsl-conformance-max/behavior-probes/20-flow.json), found while checking
+  that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.
+surface: generated-app runtime (dsl-conformance-max)
+detail: |
+  KNOWN DEFECT: PlaceWidgetOrder's generatedAction step ScoreWidgetOrderRisk has no runtime adapter.
+  POST /api/flows/PlaceWidgetOrder/execute with a valid body should finish OK and return the saved
+  order (outputSchema id/customerEmail/status/lineCount). ACTUAL: 422 status CAPABILITY_FAILED,
+  errorCode capability_not_found, 'Capability binding not found for capability
+  generated.action.ScoreWidgetOrderRisk and adapter generated-action', capabilityStepName score-order-
+  risk; the order row was already saved by save-order.
+resolution: >-
+  Fix the runtime, then remove "knownFailure": "REG-259" from probe fl-generated-action-completes; the runner turns that probe red
+  the moment it passes with the marker still set, so the marker cannot outlive the bug.

@@ -922,6 +922,15 @@
       "orderBy": [ "sku" ]
     },
     {
+      "name": "CheapActiveCatalogEntries",
+      "concept": "WidgetCatalogEntry",
+      "where": "discontinued == false && unitPrice < 10",
+      "orderBy": [ "sku" ],
+      "metadata": {
+        "purpose": "ENF-1: a TWO-clause where (a && b). Two-clause filters were once accepted and silently ignored; the behaviour probe qil-query-two-clause-where-filters-on-both builds rows that differ on each clause and asserts the exact result set."
+      }
+    },
+    {
       "name": "ShippedUnitsByWarehouseMonth",
       "concept": "WidgetShipmentEvent",
       "where": "unitsShipped > 0",

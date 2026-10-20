@@ -104,6 +104,13 @@
     "description": "JRN-1: generate + boot NPDevSamples/journeys (identity pack, jwt auth) on a wiped database with a local SMTP sink and drive the real identity journeys over REST: self-signup, password reset, invitation, change password, sign-out (cookie expired AND old token refused) and per-device session revocation. Boots a real app, so T1/T2, never the static aiKnowledge gate. Also runs in CI on every push to main and nightly: .github/workflows/journeys.yml (Windows)."
   },
   {
+    "id": "enf-behavior-probes",
+    "tier": "T1",
+    "maxStaleness": "1-wave",
+    "invokedBy": "scripts/quality/run-behavior-probes.ps1",
+    "description": "ENF-1: generate + boot dsl-conformance-max on a wiped database and run every table-driven behaviour probe in NPDevSamples/dsl-conformance-max/behavior-probes/ against the live REST API, proving the runtime OBEYS DSL features (cron schedules, nested onFailure, two-clause query filters, lifecycle refusals, batch invariants...) rather than merely accepting them. A probe with knownFailure counts green only while it still fails. The static half, check-dsl-behavior-witness.py, runs in the aiKnowledge gate. Boots a real app, so T1/T2."
+  },
+  {
     "id": "f6-showcase-browser",
     "tier": "T1",
     "maxStaleness": "1-wave",

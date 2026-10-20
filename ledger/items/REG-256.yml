@@ -1,0 +1,21 @@
+id: REG-256
+title: >-
+  field.precision / field.scale are not enforced: a decimal wider than its declared precision is accepted and stored unchanged
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-20
+closed: null
+source: >-
+  ENF-1 behaviour probe cf-field-precision-scale-enforced (NPDevSamples/dsl-conformance-max/behavior-probes/10-concept-field.json), found while checking
+  that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.
+surface: generated-app runtime (dsl-conformance-max)
+detail: |
+  REAL DEFECT: decimal(12,2) fields (WidgetCatalogEntry.unitPrice, WidgetShowcase.listPrice) accept a
+  value with 14 integer digits and with 3 decimals and store them unchanged. Evidence: POST
+  /api/widget_catalog_entrys {unitPrice: 12345678901234.5} -> 201 and GET returns 12345678901234.5;
+  unitPrice 1.555 -> 201, stored 1.555; expected a 4xx (or rounding to 1.56 for scale). 12.34 round-
+  trips exactly (control).
+resolution: >-
+  Fix the runtime, then remove "knownFailure": "REG-256" from probe cf-field-precision-scale-enforced; the runner turns that probe red
+  the moment it passes with the marker still set, so the marker cannot outlive the bug.

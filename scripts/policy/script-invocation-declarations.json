@@ -316,6 +316,9 @@
     "scripts/quality/check-client-expr-parity.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-dsl-behavior-witness.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-dsl-conformance-generates.py": {
       "invocation": "ci-gate"
     },
@@ -676,6 +679,13 @@
       "invocation": "orchestrated"
     },
     "scripts/quality/journeys/smtp_sink.py": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/run-behavior-probes.ps1": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
+    "scripts/quality/behavior_probes/run_probes.py": {
       "invocation": "orchestrated"
     },
     "scripts/quality/run-journeys.ps1": {

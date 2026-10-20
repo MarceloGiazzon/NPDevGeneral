@@ -1,0 +1,22 @@
+id: REG-262
+title: >-
+  A flow createConcept step skips required-field validation that the REST create enforces (stores nulls for required fields)
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-10-20
+closed: null
+source: >-
+  ENF-1 behaviour probe fl-create-concept-enforces-required-fields (NPDevSamples/dsl-conformance-max/behavior-probes/20-flow.json), found while checking
+  that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.
+surface: generated-app runtime (dsl-conformance-max)
+detail: |
+  KNOWN DEFECT: createConcept in a flow bypasses the concept's required-field invariants. REST POST
+  /api/widget_order_lines {sku, quantity} is refused 422 invariant_failed
+  required(unitPrice)/required(widgetOrderId); the SAME body through POST
+  /api/flows/RecordOrderLines/execute returns 200 OK and stores a line with widgetOrderId=null and
+  unitPrice=null (observed: lineTotal 0/null). Expected: 422 INVARIANT_FAILED naming
+  required(unitPrice).
+resolution: >-
+  Fix the runtime, then remove "knownFailure": "REG-262" from probe fl-create-concept-enforces-required-fields; the runner turns that probe red
+  the moment it passes with the marker still set, so the marker cannot outlive the bug.

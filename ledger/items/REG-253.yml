@@ -1,0 +1,21 @@
+id: REG-253
+title: >-
+  field.default is ignored: a field omitted on create is rejected as missing instead of taking its declared default
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-10-20
+closed: null
+source: >-
+  ENF-1 behaviour probe cf-field-default-value-fills-omitted-field (NPDevSamples/dsl-conformance-max/behavior-probes/10-concept-field.json), found while checking
+  that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.
+surface: generated-app runtime (dsl-conformance-max)
+detail: |
+  REAL DEFECT: ApprovalRequest.status declares default 'PENDING' (pack approvals) but the runtime
+  ignores field.default: creating a request without status is refused as if the field had no default.
+  Evidence: POST /api/concepts/approvals_approval_requests {"title":"t"} -> 400
+  {"code":"invalid_request","message":"Required field is missing for approvals::ApprovalRequest:
+  status"}; expected 200/201 with status PENDING.
+resolution: >-
+  Fix the runtime, then remove "knownFailure": "REG-253" from probe cf-field-default-value-fills-omitted-field; the runner turns that probe red
+  the moment it passes with the marker still set, so the marker cannot outlive the bug.

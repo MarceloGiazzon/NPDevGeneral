@@ -368,6 +368,15 @@ try {
         $failures += "the browser expression engine disagrees with the shared fixture: see scripts/quality/check-client-expr-parity.py output above -- fix npdev-expr.js.mustache to match ComputedExpression, or correct the fixture (NPDevContract/dsl/src/test/resources/expr-parity.json) and the Java engine together"
     }
 
+    # ENF-1: coverage proves a DSL keyword APPEARS in a model; this proves a runtime probe WITNESSES that the
+    # booted app obeys it (or that the gap is allowlisted with a reason and a ledger id, ratcheted down).
+    # The probes themselves boot an app, so they run in scripts/quality/run-behavior-probes.ps1 (T1/T2).
+    Write-Host "Checking every high-risk DSL keyword has a behaviour probe witness or a reasoned allowlist entry..."
+    & $py "scripts/quality/check-dsl-behavior-witness.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a high-risk DSL keyword has neither a behaviour witness nor an allowlist entry (or the allowlist grew): see scripts/quality/check-dsl-behavior-witness.py output above and scripts/policy/dsl-behavior-witness.json"
+    }
+
     Write-Host "Checking pack-composition surfaces (packs.from / satelliteOf / pack.extends) have corpus coverage..."
     & $py "scripts/quality/check-pack-coverage.py" "--probes" "--strict"
     if ($LASTEXITCODE -ne 0) {

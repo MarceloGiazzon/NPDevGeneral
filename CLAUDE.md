@@ -242,8 +242,16 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   static `aiKnowledge` gate.
 - **Identity journeys (JRN-1):** `pwsh -NoProfile -File scripts/quality/run-journeys.ps1` boots
   `NPDevSamples/journeys` (identity pack, jwt) on a wiped DB with a local SMTP sink and drives signup,
-  password reset, invitation, change-password, sign-out and session revocation over REST. T1/T2
+  password reset, invitation, change-password, sign-out and session revocation over REST, then the
+  login and reset-password pages in a real browser (`-SkipBrowser` opts out). T1/T2
   (`jrn-journeys`), never the static gate; refuses a taken port (8190 app, 2526 sink).
+- **Behaviour probes (ENF-1, "accepted implies enforced"):** `pwsh -NoProfile -File
+  scripts/quality/run-behavior-probes.ps1` boots `dsl-conformance-max` on a wiped DB (port 8120) and runs
+  the table-driven probes in `NPDevSamples/dsl-conformance-max/behavior-probes/*.json`. T1/T2
+  (`enf-behavior-probes`). A probe carrying `knownFailure: REG-nn` is green only while it still fails.
+  Its static half, `check-dsl-behavior-witness.py` (aiKnowledge gate), needs every keyword of the tracked
+  schema families witnessed by a probe's `keywords` or allowlisted in `scripts/policy/dsl-behavior-witness.json`
+  (ratchet: `frozenCount` only shrinks). `-Explore` holds the booted app up for authoring probes.
 - **F6 frontend showcase (layoutSlot, operator console, dashboard, third nesting level, client-side
   expressions):** `pwsh -NoProfile -File scripts/quality/run-f6-showcase.ps1` generates
   `NPDevSamples/f6-showcase` into `<BuildRoot>/samples/f6-showcase` (never into the repo), boots it on 8110
