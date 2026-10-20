@@ -23,3 +23,8 @@ files:
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DockerDeploymentEmitter.java
   - NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/DockerDeploymentEmitterSqlServerBackupTest.java
   - .github/workflows/engine-support.yml
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/DockerDeploymentEmitterSqlServerBackupTest.java#sqlServerSidecarAndVerifyRunAsRootSoTheBindMountsAreWritableOnLinux
+  asserts: the SQL Server backup and backup-verify compose services carry user "0:0" (the scratch server does not), postgres and mysql do not gain it, and backup-verify.sh chmods the staged .bak; the engine-support sqlserver drill additionally fails on any Permission denied
+  provenRed: true
