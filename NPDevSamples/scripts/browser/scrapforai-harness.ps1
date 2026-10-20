@@ -271,6 +271,7 @@ function Invoke-ScrapRoutine {
     param(
         [Parameter(Mandatory = $true)][object]$Context,
         [Parameter(Mandatory = $true)][string]$RoutinePath,
+        [string]$TargetPathOverride = "", # overrides the routine file's own targetPath (e.g. a one-time link read from a mail sink)
         [hashtable]$Variables = @{},    # merged over the routine's own variables (e.g. a per-run unique code)
         [hashtable]$Credentials = @{},  # R7 Stage D: merged over the routine's own credentials (e.g. the
                                          # app's live per-app API key -- see Get-NpdevLiveApiKey in
@@ -291,6 +292,7 @@ function Invoke-ScrapRoutine {
     if ($routine.PSObject.Properties.Name -contains "targetPath") {
         $targetPath = [string]$routine.targetPath
     }
+    if (-not [string]::IsNullOrWhiteSpace($TargetPathOverride)) { $targetPath = $TargetPathOverride }
     $targetUrl = $Context.AppBaseUrl + $targetPath
 
     # Merge routine-declared variables with any runtime overrides.

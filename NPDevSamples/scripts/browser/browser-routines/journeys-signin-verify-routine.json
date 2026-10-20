@@ -1,0 +1,22 @@
+{
+  "scenarioName": "journeys-signin-golden-scenario",
+  "targetPath": "/login.html?next=%2Fapi%2Fauth%2Fme",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true, "viewport": { "width": 1000, "height": 800 } },
+  "variables": { "username": "PLACEHOLDER", "password": "PLACEHOLDER", "wrongPassword": "Definitely-not-the-password-1" },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#signinForm", "state": "visible" },
+    { "action": "fill", "selector": "#username", "valueFromVariable": "username" },
+    { "action": "fill", "selector": "#password", "valueFromVariable": "wrongPassword" },
+    { "action": "click", "selector": "#signinForm button[type=\"submit\"]", "label": "Sign in with a wrong password" },
+    { "action": "waitForSelector", "selector": "#errorBanner", "state": "visible" },
+    { "action": "assertTextContains", "selector": "#errorBanner", "text": "Incorrect username or password", "label": "A wrong password is refused with the plain message, not a blank page or a raw code" },
+    { "action": "screenshot", "name": "signin_wrong_password" },
+    { "action": "fill", "selector": "#password", "valueFromVariable": "password" },
+    { "action": "click", "selector": "#signinForm button[type=\"submit\"]", "label": "Sign in with the right password" },
+    { "action": "waitForSelector", "selector": "body:has-text(\"username\")", "state": "visible", "label": "The browser left the login page for the next= target" },
+    { "action": "screenshot", "name": "signin_landed" },
+    { "action": "assertTextContains", "selector": "body", "text": "username", "label": "/api/auth/me answers for the cookie session the sign-in created" },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}

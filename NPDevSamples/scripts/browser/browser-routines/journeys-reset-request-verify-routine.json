@@ -1,0 +1,16 @@
+{
+  "scenarioName": "journeys-reset-request-golden-scenario",
+  "targetPath": "/reset-password.html",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true, "viewport": { "width": 1000, "height": 800 } },
+  "variables": { "username": "PLACEHOLDER" },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#requestForm", "state": "visible" },
+    { "action": "fill", "selector": "#username", "valueFromVariable": "username" },
+    { "action": "click", "selector": "#requestBtn", "label": "Send reset link" },
+    { "action": "waitForSelector", "selector": "#requestSent", "state": "visible" },
+    { "action": "screenshot", "name": "reset_request_sent" },
+    { "action": "assertHidden", "selector": "#errorBanner" },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}
