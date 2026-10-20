@@ -141,10 +141,10 @@ Reading any one whole burns 40–100k tokens. The authoritative list is
 declared size drifts more than ±25%. This prose list is a summary of that JSON, not itself read by
 anything:
 
-- `NPDevGenerator/.../npdev-templates/business-ui-app.mustache` (325 KB)
-- `NPDevKernel/adapters/runtime-support/.../GeneratedCrudRuntimeSupport.java` (197 KB)
-- `NPDevRuntimeHost/.../db/SchemaLifecycleExecutor.java` (216 KB)
-- `NPDevKernel/kernel/.../KernelRunner.java` (150 KB)
+- `NPDevGenerator/.../npdev-templates/business-ui-app.mustache` (157 KB)
+- `NPDevKernel/adapters/runtime-support/.../GeneratedCrudRuntimeSupport.java` (116 KB)
+- `NPDevRuntimeHost/.../db/SchemaLifecycleExecutor.java` (115 KB)
+- `NPDevKernel/kernel/.../KernelRunner.java` (93 KB)
 - Big JSON that is noise if read whole: the test fixtures
   `NPDevRuntimeHost/src/test/resources/npdev/compiled-metadata.json` / `metadata/fields.manifest.json`
 
