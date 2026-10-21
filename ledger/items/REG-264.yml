@@ -19,3 +19,9 @@ detail: |
 resolution: >-
   Fix the runtime, then remove "knownFailure": "REG-264" from probe fl-update-concept-rejects-unknown-id; the runner turns that probe red
   the moment it passes with the marker still set, so the marker cannot outlive the bug.
+guard:
+  kind: live
+  ref: NPDevSamples/dsl-conformance-max/behavior-probes/20-flow.json
+  asserts: >-
+    behaviour probe fl-update-concept-rejects-unknown-id: updateConcept on a missing id fails instead of upserting
+  provenRed: true

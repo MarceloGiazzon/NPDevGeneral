@@ -22,3 +22,9 @@ detail: |
 resolution: >-
   Add a behaviour probe to NPDevSamples/dsl-conformance-max/behavior-probes (a concept with two date fields and an invariant comparing them: a
   reversed pair must be refused), make it pass, then add the rule to the leave pack and its rules sheet.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/CelInvariantEngineDateComparisonTest.java
+  asserts: >-
+    a date field compares against another date field in an invariant
+  provenRed: false

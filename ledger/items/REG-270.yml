@@ -22,3 +22,9 @@ detail: |
 resolution: >-
   Decide the rule and the override field, emit it from the generator in one place (the path derivation), pin it in the dsl-conformance-max corpus,
   and ship the codemod plus a BREAKING.md line in the same commit.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/RestCollectionNameEmitterTest.java
+  asserts: >-
+    a concept ending in y is served at the -ies collection path
+  provenRed: false

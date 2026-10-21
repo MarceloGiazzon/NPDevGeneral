@@ -20,3 +20,9 @@ resolution: >-
 note: >-
   Fixed 2026-10-21: setUp/tearDown set npdev.schema.lock.waitSeconds=1 (restored after). Blocking step was currentShapeIsUnaffected, the
   intentional second-claim contention. Test class 300.5 s -> 1.49 s (6/6 pass); gradle wall 331 s -> 18 s. Production default untouched.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationClaimStoreLegacyTableShapeTest.java
+  asserts: >-
+    the legacy-table-shape claim tests pass with a 1 s schema-lock wait (class 300.5 s -> 1.49 s, 6/6)
+  provenRed: false

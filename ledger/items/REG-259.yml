@@ -21,3 +21,9 @@ detail: |
 resolution: >-
   Fix the runtime, then remove "knownFailure": "REG-259" from probe fl-generated-action-completes; the runner turns that probe red
   the moment it passes with the marker still set, so the marker cannot outlive the bug.
+guard:
+  kind: live
+  ref: NPDevSamples/dsl-conformance-max/behavior-probes/20-flow.json
+  asserts: >-
+    behaviour probe fl-generated-action-completes: a flow with a generatedAction step completes in a generated app
+  provenRed: true

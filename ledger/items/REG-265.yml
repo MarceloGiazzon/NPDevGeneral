@@ -21,3 +21,9 @@ detail: |
 resolution: >-
   Fix the runtime, then remove "knownFailure": "REG-265" from probe qil-aggregate-veto-status-is-client-error; the runner turns that probe red
   the moment it passes with the marker still set, so the marker cannot outlive the bug.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/npdev/service/AggregateRuntimeInProcAtomicityAndVetoTest.java
+  asserts: >-
+    an aggregate invariant or balance veto answers a client error, not 503
+  provenRed: true

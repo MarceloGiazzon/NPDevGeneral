@@ -21,3 +21,9 @@ detail: |
 resolution: >-
   Fix the runtime, then remove "knownFailure": "REG-261" from probe fl-parallel-await-resumes-itself-when-last-event-arrives; the runner turns that probe red
   the moment it passes with the marker still set, so the marker cannot outlive the bug.
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerParallelAwaitEventResumeTest.java
+  asserts: >-
+    a parallelAwait forEach resumes itself when its last event is published
+  provenRed: true
