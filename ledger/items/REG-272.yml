@@ -1,0 +1,18 @@
+id: REG-272
+title: >-
+  The dev H2 database file grew to 12.5 GB for about 400k small rows
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-10-21
+closed: null
+source: >-
+  LOAD-4 session (2026-10-21): seeding dom-sales for the 10k and 100k row load runs left a 12.5 GB H2 file for roughly 400k small rows. Cause not established.
+surface: dev H2 storage (file engine settings, MVStore compaction, or the platform's own write pattern)
+detail: |
+  About 30 KB per small row is far above what the rows themselves need. Candidates, none checked: MVStore not compacting after repeated wipe-and-reseed,
+  per-row event or audit writes, a large index set, or retained undo/page versions from long transactions during seeding.
+  Why it matters: local gate and load runs fill the disk and the file is slow to wipe.
+resolution: >-
+  Reproduce with a fresh seed of 100k rows, measure file size before and after a SHUTDOWN COMPACT, and attribute the bytes by table; fix the cause or record
+  the expected size in the load-proof baseline.
