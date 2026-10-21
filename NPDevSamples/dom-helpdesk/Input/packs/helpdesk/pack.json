@@ -1,0 +1,582 @@
+{
+  "$schema": "../../schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "helpdesk",
+  "version": "1.0.0",
+  "namespace": "com.npdev.helpdesk",
+  "description": "NPDev helpdesk pack: agents, ticket categories, tickets and ticket comments. A person with the 'requester' role raises tickets and adds comments but cannot read the queue; 'helpdeskAgent' works tickets (takes, waits on the requester, resolves, reopens, closes) and comments; 'helpdeskManager' also maintains agents and categories. A ticket is NEW, then OPEN, PENDING (waiting for the requester) and RESOLVED, and finally CLOSED; a ticket cannot be taken, paused, resolved or reopened without an assigned agent (it may still be closed without action straight from NEW). How many tickets are in each state and how many each agent holds are derived by queries. The three roles are logical: the importing app binds them with provides.roleBindings { \"requester\": ..., \"helpdeskAgent\": ..., \"helpdeskManager\": ... } (composition refuses when one is unbound) and grants them read/create/update on the pack's concepts in its own roles[] (see the dom-helpdesk sample).",
+  "category": "other",
+  "author": "NPDev",
+  "metadata": {
+    "summary": "Handles support requests. Someone raises a ticket describing a problem; an agent takes it, may ask the requester for more information, resolves it, and a resolved ticket is later closed or reopened. Every ticket carries a priority and a category, and a ticket that is being worked always has an agent. How many tickets are in each state and how many each agent holds is always calculated, never typed in.",
+    "reviewNotes": [
+      "There are no response or resolution deadlines (SLAs) and no breach warnings. Say what time targets each priority has.",
+      "A requester can raise tickets but cannot see them again, because the platform has no per-row visibility: the role either reads every ticket or none. Say whether requesters must see their own tickets; that needs a rule the platform does not yet offer.",
+      "Internal notes are a flag on a comment and are hidden only by role (requesters cannot read comments at all). They are not hidden from any agent.",
+      "Priority is chosen by whoever raises the ticket and is not recomputed. Say whether agents may change it and whether priority drives assignment.",
+      "Assignment is manual: nothing picks an agent, balances load or skips inactive agents. Say how tickets should be routed.",
+      "Nobody is told when a ticket changes: no email or notification goes to the requester or the agent. Say who needs to hear about which change.",
+      "A CLOSED ticket is final; a requester who replies after closing needs a new ticket. Say how long a closed ticket may be reopened.",
+      "Attachments are not modelled.",
+      "A ticket's category is required; a category that is later made inactive stays on old tickets."
+    ]
+  },
+  "concepts": [
+    {
+      "name": "HelpdeskAgent",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Agent"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "fullName",
+          "type": "string",
+          "ui": {
+            "label": "Name"
+          },
+          "required": true,
+          "maxLength": 200
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "ui": {
+            "label": "Email"
+          },
+          "required": true,
+          "unique": true,
+          "maxLength": 254
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "ui": {
+            "label": "Active"
+          },
+          "required": true,
+          "default": true
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('helpdeskManager')) || $user.roles.contains(role('helpdeskAgent'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('helpdeskManager'))"
+      }
+    },
+    {
+      "name": "TicketCategory",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Category"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "ui": {
+            "label": "Code"
+          },
+          "required": true,
+          "unique": true,
+          "maxLength": 30
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "ui": {
+            "label": "Name"
+          },
+          "required": true,
+          "maxLength": 120
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "ui": {
+            "label": "Active"
+          },
+          "required": true,
+          "default": true
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('helpdeskManager')) || $user.roles.contains(role('helpdeskAgent')) || $user.roles.contains(role('requester'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('helpdeskManager'))"
+      }
+    },
+    {
+      "name": "Ticket",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Ticket"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "ticketNumber",
+          "type": "string",
+          "ui": {
+            "label": "Ticket number"
+          },
+          "required": true,
+          "unique": true,
+          "maxLength": 30
+        },
+        {
+          "name": "categoryId",
+          "type": "reference",
+          "ui": {
+            "label": "Category"
+          },
+          "required": true,
+          "reference": {
+            "target": "TicketCategory",
+            "displayField": "name"
+          }
+        },
+        {
+          "name": "assignedAgentId",
+          "type": "reference",
+          "ui": {
+            "label": "Assigned to"
+          },
+          "required": false,
+          "reference": {
+            "target": "HelpdeskAgent",
+            "displayField": "fullName"
+          }
+        },
+        {
+          "name": "requesterName",
+          "type": "string",
+          "ui": {
+            "label": "Requester"
+          },
+          "required": true,
+          "maxLength": 200
+        },
+        {
+          "name": "requesterEmail",
+          "type": "string",
+          "ui": {
+            "label": "Requester email"
+          },
+          "required": true,
+          "maxLength": 254
+        },
+        {
+          "name": "subject",
+          "type": "string",
+          "ui": {
+            "label": "Subject"
+          },
+          "required": true,
+          "maxLength": 300
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "ui": {
+            "label": "Description"
+          },
+          "required": false,
+          "maxLength": 4000
+        },
+        {
+          "name": "priority",
+          "type": "enum",
+          "ui": {
+            "label": "Priority"
+          },
+          "required": true,
+          "default": "NORMAL",
+          "enumValues": [
+            "LOW",
+            "NORMAL",
+            "HIGH",
+            "URGENT"
+          ]
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "ui": {
+            "label": "Status"
+          },
+          "required": true,
+          "default": "NEW",
+          "enumValues": [
+            "NEW",
+            "OPEN",
+            "PENDING",
+            "RESOLVED",
+            "CLOSED"
+          ]
+        },
+        {
+          "name": "openedAt",
+          "type": "datetime",
+          "ui": {
+            "label": "Opened"
+          },
+          "required": false,
+          "defaultExpression": "now()"
+        }
+      ],
+      "invariants": [
+        {
+          "name": "AssignedOnceWorked",
+          "type": "expression",
+          "expr": "status == 'NEW' || status == 'CLOSED' || assignedAgentId != null"
+        }
+      ],
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          {
+            "value": "NEW",
+            "label": "New",
+            "initial": true
+          },
+          {
+            "value": "OPEN",
+            "label": "Open"
+          },
+          {
+            "value": "PENDING",
+            "label": "Waiting for requester"
+          },
+          {
+            "value": "RESOLVED",
+            "label": "Resolved"
+          },
+          {
+            "value": "CLOSED",
+            "label": "Closed",
+            "terminal": true
+          }
+        ],
+        "transitions": [
+          {
+            "from": "NEW",
+            "to": "OPEN",
+            "event": "TicketTaken",
+            "actionLabel": "Take"
+          },
+          {
+            "from": "NEW",
+            "to": "CLOSED",
+            "event": "TicketClosed",
+            "actionLabel": "Close without action"
+          },
+          {
+            "from": "OPEN",
+            "to": "PENDING",
+            "event": "TicketPending",
+            "actionLabel": "Wait for requester"
+          },
+          {
+            "from": "PENDING",
+            "to": "OPEN",
+            "event": "TicketReopened",
+            "actionLabel": "Requester replied"
+          },
+          {
+            "from": "OPEN",
+            "to": "RESOLVED",
+            "event": "TicketResolved",
+            "actionLabel": "Resolve"
+          },
+          {
+            "from": "PENDING",
+            "to": "RESOLVED",
+            "event": "TicketResolved",
+            "actionLabel": "Resolve"
+          },
+          {
+            "from": "RESOLVED",
+            "to": "OPEN",
+            "event": "TicketReopened",
+            "actionLabel": "Reopen"
+          },
+          {
+            "from": "RESOLVED",
+            "to": "CLOSED",
+            "event": "TicketClosed",
+            "actionLabel": "Close"
+          }
+        ]
+      },
+      "indexes": [
+        {
+          "name": "idx_helpdesk_ticket_agent",
+          "fields": [
+            "assignedAgentId",
+            "status"
+          ]
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('helpdeskManager')) || $user.roles.contains(role('helpdeskAgent')) || $user.roles.contains(role('requester'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('helpdeskManager')) || $user.roles.contains(role('helpdeskAgent')) || $user.roles.contains(role('requester'))"
+      }
+    },
+    {
+      "name": "TicketComment",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Comment"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "ticketId",
+          "type": "reference",
+          "ui": {
+            "label": "Ticket"
+          },
+          "required": true,
+          "reference": {
+            "target": "Ticket",
+            "displayField": "ticketNumber",
+            "onDelete": "cascade"
+          }
+        },
+        {
+          "name": "authorName",
+          "type": "string",
+          "ui": {
+            "label": "Author"
+          },
+          "required": true,
+          "maxLength": 200
+        },
+        {
+          "name": "body",
+          "type": "string",
+          "ui": {
+            "label": "Comment"
+          },
+          "required": true,
+          "maxLength": 4000
+        },
+        {
+          "name": "internal",
+          "type": "boolean",
+          "ui": {
+            "label": "Internal note"
+          },
+          "required": true,
+          "default": false
+        },
+        {
+          "name": "postedAt",
+          "type": "datetime",
+          "ui": {
+            "label": "Posted"
+          },
+          "required": false,
+          "defaultExpression": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_helpdesk_comment_ticket",
+          "fields": [
+            "ticketId"
+          ]
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('helpdeskManager')) || $user.roles.contains(role('helpdeskAgent'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('helpdeskManager')) || $user.roles.contains(role('helpdeskAgent')) || $user.roles.contains(role('requester'))"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "TicketTaken",
+      "payload": [
+        "assignedAgentId"
+      ]
+    },
+    {
+      "name": "TicketPending",
+      "payload": [
+        "assignedAgentId"
+      ]
+    },
+    {
+      "name": "TicketResolved",
+      "payload": [
+        "assignedAgentId"
+      ]
+    },
+    {
+      "name": "TicketReopened",
+      "payload": [
+        "assignedAgentId"
+      ]
+    },
+    {
+      "name": "TicketClosed",
+      "payload": [
+        "assignedAgentId"
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "name": "ActiveAgents",
+      "concept": "HelpdeskAgent",
+      "where": "active == true",
+      "orderBy": [
+        "fullName"
+      ]
+    },
+    {
+      "name": "NewTickets",
+      "concept": "Ticket",
+      "where": "status == 'NEW'",
+      "orderBy": [
+        "openedAt"
+      ]
+    },
+    {
+      "name": "TicketsByStatus",
+      "concept": "Ticket",
+      "groupBy": [
+        "status"
+      ],
+      "aggregates": [
+        {
+          "name": "tickets",
+          "fn": "count"
+        }
+      ]
+    },
+    {
+      "name": "WorkloadByAgent",
+      "concept": "Ticket",
+      "where": "status == 'OPEN'",
+      "groupBy": [
+        "assignedAgentId"
+      ],
+      "aggregates": [
+        {
+          "name": "open",
+          "fn": "count"
+        }
+      ],
+      "lookups": [
+        {
+          "name": "resolved",
+          "concept": "Ticket",
+          "fn": "count",
+          "on": {
+            "assignedAgentId": "assignedAgentId"
+          },
+          "where": "status == 'RESOLVED'"
+        }
+      ],
+      "orderBy": [
+        "open desc"
+      ]
+    }
+  ],
+  "autoPanels": [
+    {
+      "name": "HelpdeskAgents",
+      "concept": "HelpdeskAgent",
+      "route": "/helpdesk-agents",
+      "surfaces": [
+        "selection",
+        "detail",
+        "transaction"
+      ],
+      "selection": {
+        "columns": [
+          "fullName",
+          "email",
+          "active"
+        ]
+      }
+    },
+    {
+      "name": "TicketCategories",
+      "concept": "TicketCategory",
+      "route": "/ticket-categories",
+      "surfaces": [
+        "selection",
+        "detail",
+        "transaction"
+      ],
+      "selection": {
+        "columns": [
+          "code",
+          "name",
+          "active"
+        ]
+      }
+    },
+    {
+      "name": "Tickets",
+      "concept": "Ticket",
+      "route": "/tickets",
+      "surfaces": [
+        "selection",
+        "detail",
+        "transaction"
+      ],
+      "selection": {
+        "columns": [
+          "ticketNumber",
+          "subject",
+          "priority",
+          "assignedAgentId",
+          "status"
+        ]
+      }
+    },
+    {
+      "name": "TicketComments",
+      "concept": "TicketComment",
+      "route": "/ticket-comments",
+      "surfaces": [
+        "selection",
+        "detail",
+        "transaction"
+      ],
+      "selection": {
+        "columns": [
+          "ticketId",
+          "authorName",
+          "internal",
+          "postedAt"
+        ]
+      }
+    }
+  ]
+}
