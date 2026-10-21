@@ -649,6 +649,86 @@
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ProcedureStepAst.java",
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledProcedureStep.java"
       ]
-    }
+    },
+    {
+      "id": "document-list-report-four-place",
+      "citedBy": "REP-1 (reports beyond one record, 2026-10-20)",
+      "description": "documents[].kind:list adds members INSIDE the existing document def (subtotals/grandTotal/columns/groupBy/query), so the REG-108 pack-composition rule never sees them. Each must be threaded through parser -> compiler -> canonical writer + reader, or a declared report silently loses its totals on the way to the runtime (the canonical JSON is all the generator and the runtime host ever read). The pack-contributed half -- a report's `query` naming a pack-qualified queries[] member -- lives in ModelSourceResolver.rewriteKnownMemberReferenceFields (documents branch) and fails loudly in validation when forgotten.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "subtotals",
+        "grandTotal"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
+      ]
+    },
+    {
+      "id": "truth-rollup-java-python",
+      "citedBy": "TRUTH-1 (truth level + evidence rollup, 2026-10-20)",
+      "description": "The truth rollup is computed twice on purpose: npdev_truth.py offline (the Manager badge and `npdev truth`, app may be stopped) and the generated GeneratedBoxViewController live (GET /api/admin/box/truth, judged against the running build). They must agree on the schema version, the stale/undated freshness statuses and the overclaim verdict, or the Manager and the app show different truth for the same app. The JSON schema carries the same vocabulary.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "npdev-truth-rollup.v1",
+        "observedStatus",
+        "undated",
+        "overclaim"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevCli/npdev_truth.py",
+        "NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-box-view-controller.mustache",
+        "schemas/ai/truth-rollup.schema.json"
+      ]
+    },
+    {
+      "id": "flow-trace-merge-both-stores",
+      "citedBy": "FLOW-1 (flow analytics, 2026-10-20)",
+      "description": "A resumed or retried flow saves a NEW trace segment under the same executionId. Both trace stores must merge it into the stored trace through FlowTraceMerge (the in-memory InProcExecutionTracer, which is the DEFAULT storage mode, and the JDBC JdbcTraceStore); a store that overwrites keeps only the last segment, so the steps before the wait, the original start time and the recorded wait vanish and the analytics endpoint reports a resumed human-task flow as one tiny step.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "FlowTraceMerge"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevKernel/adapters/tracing-inproc/src/main/java/com/npdev/adapters/tracing/inproc/InProcExecutionTracer.java",
+        "NPDevKernel/adapters/tracestore-postgres/src/main/java/com/npdev/adapters/tracestore/jdbc/JdbcTraceStore.java"
+      ]
+    },
+    {
+      "id": "flow-trace-wait-info-keys",
+      "citedBy": "FLOW-1 (flow analytics, 2026-10-20)",
+      "description": "The step-info keys FlowTraceMerge writes (waitedMs, waitStartedAtEpochMs, stepAttempts) are read by the analytics aggregation and must survive the default trace redaction allowlist, or a non-debug viewer sees every wait as zero. All three places must name them.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "waitedMs",
+        "stepAttempts"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevKernel/kernel/src/main/java/com/npdev/kernel/trace/FlowTraceMerge.java",
+        "NPDevKernel/adapters/tracing-redaction-default/src/main/java/com/npdev/adapters/tracing/redaction/DefaultTraceRedactionPolicy.java",
+        "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/FlowAnalytics.java"
+      ]
+    },
+  {
+      "id": "live-extra-fields-contract",
+      "citedBy": "LIVE-1 (add a field to a running app, 2026-10-20)",
+      "description": "A field a live /model-reload adds to an existing concept lives in the generated entity's extras bag. The two public method names (putExtraField / extraFields) are a duck-typed contract between entity.mustache (also compiled into sealed pack jars with no runtime-support, so it cannot implement an interface) and runtime-support's ExtraFieldAccess; renaming one side silently drops every live-added field on write.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "putExtraField",
+        "extraFields"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevGenerator/generator/src/main/resources/npdev-templates/entity.mustache",
+        "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/reflection/ExtraFieldAccess.java"
+      ]
+  }
   ]
 }

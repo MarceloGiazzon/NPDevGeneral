@@ -54,7 +54,6 @@
         "domainType.name",
         "field.id",
         "field.name",
-        "field.type",
         "flow.name",
         "flow.steps",
         "flowStep.name",
@@ -76,7 +75,6 @@
         "concept.satelliteOf",
         "concept.specializes",
         "concept.specializesFloat",
-        "concept.truthLevel",
         "concept.uid",
         "field.renamedFrom",
         "field.uid",
@@ -86,7 +84,7 @@
         "query.metadata",
         "query.uid"
       ],
-      "reason": "Identity, authoring or migration metadata (uid, metadata, renamedFrom, module, truthLevel, satelliteOf, specializes): consumed by tooling and the migrator, with no behaviour observable through the running app's REST API.",
+      "reason": "Identity, authoring or migration metadata (uid, metadata, renamedFrom, module, satelliteOf, specializes): consumed by tooling and the migrator, with no behaviour observable through the running app's REST API.",
       "ledger": "ENF-1"
     },
     {
@@ -96,7 +94,6 @@
         "field.connectable",
         "field.description",
         "field.picker",
-        "field.ui",
         "lifecycleState.label",
         "lifecycleTransition.action",
         "lifecycleTransition.actionLabel"
@@ -171,11 +168,10 @@
         "orchestrationAction.delaySeconds",
         "orchestrationAction.event",
         "orchestrationRule.condition",
-        "query.parameters",
         "query.permissionRequirements",
         "query.tracePolicy"
       ],
-      "reason": "Declared by no query / lifecycle state / transition / rule / action in the corpus (parameters, permissionRequirements, tracePolicy, terminal, allowedActions, guard, event, requires, requiredPayload, rule condition, delay and concept/event action variants); add a fixture example first.",
+      "reason": "Declared by no query / lifecycle state / transition / rule / action in the corpus (permissionRequirements, tracePolicy, terminal, allowedActions, guard, event, requires, requiredPayload, rule condition, delay and concept/event action variants); add a fixture example first.",
       "ledger": "ENF-1"
     },
     {
@@ -255,5 +251,5 @@
       "ledger": "ENF-1"
     }
   ],
-  "frozenCount": 134
+  "frozenCount": 130
 }

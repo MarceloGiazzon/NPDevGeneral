@@ -1,0 +1,113 @@
+{
+  "schemaVersion": "npdev-model-revisions.v1",
+  "description": "LIVE-1: deltas against Input/model.json used by the behaviour probe 60-live-add-field.json. Each revision is a list of ops applied to a scratch copy of Input/ (model.json is never edited), so a revision can not go stale against the model other work keeps changing. addField appends the field to the concept; removeField drops it. Revisions after addOptionalFields CARRY liveNote/liveRank: they are deltas against Input/model.json, but by then the running app already holds those two live fields, so without them the preflight would refuse every later revision for REMOVING them and the probe would pass for the wrong reason.",
+  "revisions": {
+    "addOptionalFields": [
+      {
+        "op": "addField",
+        "concept": "WidgetSupplier",
+        "field": {
+          "name": "liveNote",
+          "type": "string",
+          "ui": {
+            "label": "Live note"
+          }
+        }
+      },
+      {
+        "op": "addField",
+        "concept": "WidgetSupplier",
+        "field": {
+          "name": "liveRank",
+          "type": "integer"
+        }
+      }
+    ],
+    "refusedRequiredField": [
+      {
+        "op": "addField",
+        "concept": "WidgetSupplier",
+        "field": {
+          "name": "liveNote",
+          "type": "string",
+          "ui": {
+            "label": "Live note"
+          }
+        }
+      },
+      {
+        "op": "addField",
+        "concept": "WidgetSupplier",
+        "field": {
+          "name": "liveRank",
+          "type": "integer"
+        }
+      },
+      {
+        "op": "addField",
+        "concept": "WidgetSupplier",
+        "field": {
+          "name": "liveMust",
+          "type": "string",
+          "required": true
+        }
+      }
+    ],
+    "refusedFieldRemoval": [
+      {
+        "op": "addField",
+        "concept": "WidgetSupplier",
+        "field": {
+          "name": "liveNote",
+          "type": "string",
+          "ui": {
+            "label": "Live note"
+          }
+        }
+      },
+      {
+        "op": "addField",
+        "concept": "WidgetSupplier",
+        "field": {
+          "name": "liveRank",
+          "type": "integer"
+        }
+      },
+      {
+        "op": "removeField",
+        "concept": "WidgetSupplier",
+        "field": "displayName"
+      }
+    ],
+    "failingAlter": [
+      {
+        "op": "addField",
+        "concept": "WidgetSupplier",
+        "field": {
+          "name": "liveNote",
+          "type": "string",
+          "ui": {
+            "label": "Live note"
+          }
+        }
+      },
+      {
+        "op": "addField",
+        "concept": "WidgetSupplier",
+        "field": {
+          "name": "liveRank",
+          "type": "integer"
+        }
+      },
+      {
+        "op": "addField",
+        "concept": "WidgetSupplier",
+        "field": {
+          "name": "liveBig",
+          "type": "string",
+          "maxLength": 2000000000
+        }
+      }
+    ]
+  }
+}

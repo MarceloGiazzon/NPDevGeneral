@@ -1,0 +1,38 @@
+{
+  "probes": [
+    {
+      "id": "truth-declared-levels-reach-the-rollup-and-block-nothing",
+      "keywords": ["concept.truthLevel"],
+      "description": "TRUTH-1: a concept's declared truthLevel (T4 on WidgetOrder, T3 on WidgetSupplier, T2 on WidgetShowcase, which every bond-reachable concept needs for the T2 release gate) reaches GET /api/admin/box/truth unchanged, and the level is display only: a concept declared T4 with no evidence behind it (WidgetOrderLineNote) is reported as an overclaim and nothing is refused (this probe deliberately never touches WidgetOrderLineNote's own route, which would give it test evidence). The evidence href every row carries resolves to its record.",
+      "steps": [
+        { "name": "rollup answers with the declared levels",
+          "method": "GET", "path": "/api/admin/box/truth",
+          "expect": { "status": 200,
+            "json": {
+              "$.schemaVersion": "npdev-truth-rollup.v1",
+              "$.concepts[?conceptName=WidgetOrder].declaredLevel": "T4",
+              "$.concepts[?conceptName=WidgetCatalogEntry].declaredLevel": "T4",
+              "$.concepts[?conceptName=WidgetSupplier].declaredLevel": "T3",
+              "$.concepts[?conceptName=WidgetShowcase].declaredLevel": "T2",
+              "$.concepts[?conceptName=ShelfLayout].declaredLevel": "T2",
+              "$.summary.lowestDeclared": "T2",
+              "$.summary.lowestSupported": { "in": ["T2", "T3"] } } },
+          "save": { "evidenceHref": "$.concepts[?conceptName=WidgetShowcase].evidence[0].href" } },
+        { "name": "a concept declared T4 with no evidence is an overclaim, never an error",
+          "method": "GET", "path": "/api/admin/box/truth",
+          "expect": { "status": 200,
+            "json": {
+              "$.concepts[?conceptName=WidgetOrderLineNote].declaredLevel": "T4",
+              "$.concepts[?conceptName=WidgetOrderLineNote].claim": "overclaim",
+              "$.concepts[?conceptName=WidgetOrderLineNote].supportedLevel": { "in": ["T2", "T3"] } } } },
+        { "name": "the evidence link resolves to its record",
+          "method": "GET", "path": "${evidenceHref}",
+          "expect": { "status": 200,
+            "json": { "$.kind": "generated", "$.level": "T2", "$.id": "generated:WidgetShowcase" } } },
+        { "name": "an unknown evidence id is a 404, not a 500",
+          "method": "GET", "path": "/api/admin/box/truth/evidence?id=does-not-exist",
+          "expect": { "status": 404 } }
+      ]
+    }
+  ]
+}

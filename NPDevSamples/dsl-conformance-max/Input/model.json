@@ -166,7 +166,7 @@
     },
     {
       "name": "WidgetOrder",
-      "truthLevel": "T2",
+      "truthLevel": "T4",
       "uid": "wo00000000000001",
       "ui": {
         "label": { "default": "Widget order", "pt-BR": "Pedido de widget" }
@@ -325,7 +325,7 @@
     },
     {
       "name": "WidgetOrderLineNote",
-      "truthLevel": "T2",
+      "truthLevel": "T4",
       "ui": {
         "label": "Widget order line note"
       },
@@ -359,7 +359,7 @@
     },
     {
       "name": "WidgetCatalogEntry",
-      "truthLevel": "T2",
+      "truthLevel": "T4",
       "ui": {
         "label": "Widget catalog entry"
       },
@@ -527,7 +527,7 @@
     },
     {
       "name": "WidgetSupplier",
-      "truthLevel": "T2",
+      "truthLevel": "T3",
       "softDelete": true,
       "ui": { "label": "Widget supplier" },
       "fields": [
@@ -920,6 +920,14 @@
       "concept": "WidgetCatalogEntry",
       "where": "discontinued == false",
       "orderBy": [ "sku" ]
+    },
+    {
+      "name": "CatalogEntriesOwnedBy",
+      "concept": "WidgetCatalogEntry",
+      "where": "ownerEmail == :owner",
+      "orderBy": [ "sku" ],
+      "parameters": [ { "name": "owner", "type": "string", "required": true } ],
+      "metadata": { "purpose": "REP-1/ENF-1: a plain query with a declared parameter -- bound from the request by GET /api/queries/CatalogEntriesOwnedBy?owner=... and by the WidgetCatalogPriceReport document alike (one binding rule); an unbound parameter is refused with 400, never served unfiltered." }
     },
     {
       "name": "CheapActiveCatalogEntries",
@@ -1484,6 +1492,42 @@
       ],
       "metadata": {
         "purpose": "R5.7 coverage: an aggregate-bound document with a header band, a lineItems band (WidgetOrderAggregate's 'lines' collection), and a logo bound to a stored image field -- the canonical invoice shape (header + line-item table + logo)."
+      }
+    },
+    {
+      "name": "WidgetCatalogPriceReport",
+      "concept": "WidgetCatalogEntry",
+      "kind": "list",
+      "title": "Widget catalog by owner",
+      "query": "CatalogEntriesOwnedBy",
+      "columns": [
+        { "field": "sku", "label": "SKU" },
+        { "field": "displayName", "label": "Name" },
+        { "field": "unitPrice", "label": "Unit price", "total": "sum" },
+        { "field": "internalNotes", "label": "Internal notes" }
+      ],
+      "groupBy": ["ownerEmail"],
+      "subtotals": true,
+      "grandTotal": true,
+      "metadata": {
+        "purpose": "REP-1 coverage: a multi-record report (kind list) over a named query, grouped with per-group subtotals and a grand total. internalNotes carries field-level access.read, so it must vanish for a viewer who owns no row -- and no figure may be derived from data the viewer cannot read."
+      }
+    },
+    {
+      "name": "WidgetOrderLinesByStatus",
+      "concept": "WidgetOrder",
+      "kind": "list",
+      "title": "Widget orders by status",
+      "columns": [
+        { "field": "orderNumber", "label": "Order" },
+        { "field": "customerEmail", "label": "Customer" },
+        { "field": "lineCount", "label": "Lines", "total": "sum" }
+      ],
+      "groupBy": ["status"],
+      "subtotals": true,
+      "grandTotal": true,
+      "metadata": {
+        "purpose": "REP-1 coverage: a plain-concept report (no query) over WidgetOrder, whose access.read row rule must scope every row, subtotal and the grand total to the viewer."
       }
     }
   ],
