@@ -174,4 +174,22 @@ class ReviewGateValidationTest {
         assertEquals("none", CompiledModelCanonicalJsonReader.fromJson(json)
                 .getExternalAi().findPrompt("Paint").orElseThrow().review());
     }
+
+    @Test
+    void aProposalCurrentThatIsNotARefAndAReservedOutcomeFieldAreRejected() throws Exception {
+        String task = PROPOSAL_TASK.replace("\"current\": \"$input\"", "\"current\": \"input\"")
+                .replace("\"outcomeField\": \"decision\"", "\"outcomeField\": \"recordId\"");
+        List<String> errors = errors(model("", AWAIT.formatted(task), NO_PROCEDURE_CALL));
+        assertTrue(errors.stream().anyMatch(e -> e.contains("task.proposal.current 'input' is not a flow-state ref")),
+                errors.toString());
+        assertTrue(errors.stream().anyMatch(e -> e.contains("task.outcomeField 'recordId' clashes")), errors.toString());
+    }
+
+    @Test
+    void aRequiredPromptCallWithNoOutputHasNothingToReview() throws Exception {
+        String json = model(", \"review\": \"required\"", AWAIT.formatted(PROPOSAL_TASK), NO_PROCEDURE_CALL)
+                .replace(", \"output\": \"$answer\"", "");
+        List<String> errors = errors(json);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("has no output to review")), errors.toString());
+    }
 }
