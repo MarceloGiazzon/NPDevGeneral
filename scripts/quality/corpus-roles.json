@@ -70,6 +70,7 @@
     "NPDevSamples/journeys": "probe",
     "NPDevSamples/npdev-init-seed": "showcase",
     "NPDevSamples/dom-inventory": "showcase",
+    "NPDevSamples/dom-sales": "showcase",
     "NPDevSamples/pack9-role-binding-a": "repro-case",
     "NPDevSamples/pack9-role-binding-b": "repro-case",
     "NPDevSamples/pigmentampas": "showcase",

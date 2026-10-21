@@ -1,0 +1,105 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.domsales",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "DOM-2: a consumer of the built-in sales pack. Binds its three logical roles to REP, SALES_MGR and ACCT and grants them the pack's concepts; probe/sales_probe.py drives the pack's rules against the booted app (role enforcement, invariants, order and invoice lifecycles, derived totals and amount owed)."
+  },
+  "packs": [
+    {
+      "$ref": "packs/sales/pack.json",
+      "as": "sales"
+    }
+  ],
+  "provides": {
+    "roleBindings": {
+      "salesRep": "REP",
+      "salesManager": "SALES_MGR",
+      "accountant": "ACCT"
+    }
+  },
+  "roles": [
+    {
+      "name": "SALES_MGR",
+      "concepts": {
+        "sales::Customer": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ],
+        "sales::SalesItem": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ],
+        "sales::SalesOrder": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ],
+        "sales::SalesOrderLine": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ],
+        "sales::Invoice": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      }
+    },
+    {
+      "name": "REP",
+      "concepts": {
+        "sales::Customer": [
+          "read"
+        ],
+        "sales::SalesItem": [
+          "read"
+        ],
+        "sales::SalesOrder": [
+          "read",
+          "create",
+          "update"
+        ],
+        "sales::SalesOrderLine": [
+          "read",
+          "create",
+          "update"
+        ],
+        "sales::Invoice": [
+          "read"
+        ]
+      }
+    },
+    {
+      "name": "ACCT",
+      "concepts": {
+        "sales::Customer": [
+          "read"
+        ],
+        "sales::SalesItem": [
+          "read"
+        ],
+        "sales::SalesOrder": [
+          "read"
+        ],
+        "sales::SalesOrderLine": [
+          "read"
+        ],
+        "sales::Invoice": [
+          "read",
+          "create",
+          "update"
+        ]
+      }
+    }
+  ]
+}
