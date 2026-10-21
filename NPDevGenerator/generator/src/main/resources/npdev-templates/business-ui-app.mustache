@@ -828,6 +828,13 @@
     return concept.endpointBase + "?" + params.toString();
   }
 
+  // MOB-1 (M3): no-ops until shell.js is present, so a page without it behaves exactly as before.
+  const OFFLINE_NOOP = { setPrincipal: function () {}, restorePrincipal: function () { return null; },
+    put: function () { return false; }, get: function () { return null; }, clearAll: function () {} };
+  function shellOffline() {
+    return (window.NPDevShell && window.NPDevShell.offline) || OFFLINE_NOOP;
+  }
+
   async function loadPanel(concept) {
     const panel = panelState(concept);
     panel.loading = true;
@@ -837,10 +844,14 @@
     panel.selectedIds = [];
     render();
     try {
-      const payload = await fetchJson(listUrl(concept), {
+      const url = listUrl(concept);
+      const payload = await fetchJson(url, {
         method: "GET",
         headers: headers()
       });
+      shellOffline().put(url, payload);
+      panel.staleSince = null;
+      panel.offlineEmpty = false;
       panel.records = Array.isArray(payload.content) ? payload.content : [];
       panel.totalElements = Number(payload.totalElements || panel.records.length);
       panel.loading = false;
@@ -849,10 +860,42 @@
       await hydrateReferenceLabels(concept, panel.records);
     } catch (error) {
       panel.loading = false;
-      setStatus(error.message, true);
+      if (error.status === undefined) {
+        // MOB-1 (M3): fetch itself failed (no network), as opposed to the server refusing -- an HTTP
+        // error is never papered over with old data.
+        const cached = shellOffline().get(listUrl(concept));
+        if (cached) {
+          const cachedPayload = cached.payload;
+          panel.records = Array.isArray(cachedPayload.content) ? cachedPayload.content : [];
+          panel.totalElements = Number(cachedPayload.totalElements || panel.records.length);
+          panel.staleSince = cached.savedAt;
+          panel.offlineEmpty = false;
+          setStatus("You are offline - showing " + concept.displayName + " as last updated "
+            + new Date(cached.savedAt).toLocaleString() + ".", false);
+        } else {
+          panel.records = [];
+          panel.totalElements = 0;
+          panel.staleSince = null;
+          // Shown inside the panel as well: the single status line is overwritten by whichever load
+          // finishes last, and this message must not be the one that gets lost.
+          panel.offlineEmpty = true;
+          setStatus("You are offline and " + concept.displayName
+            + " has not been opened on this device yet, so there is nothing to show.", true);
+        }
+      } else {
+        setStatus(error.message, true);
+      }
     }
     render();
   }
+
+  // Back online: replace a stale list with a fresh one.
+  window.addEventListener("online", function () {
+    visibleConcepts().forEach(function (concept) {
+      const panel = panelState(concept);
+      if (panel.staleSince || panel.offlineEmpty) { loadPanel(concept); }
+    });
+  });
 
   function conceptIsAdmin(concept) {
     return Boolean(concept && concept.admin);
@@ -1228,6 +1271,15 @@
     });
     header.appendChild(actions);
     section.appendChild(header);
+    if (panel.staleSince || panel.offlineEmpty) {
+      const banner = document.createElement("div");
+      banner.className = "offline-banner";
+      banner.setAttribute("role", "status");
+      banner.textContent = panel.staleSince
+        ? "Offline - this list is stale. Last updated " + new Date(panel.staleSince).toLocaleString() + "."
+        : "You are offline and " + concept.displayName + " has not been opened on this device yet, so there is nothing to show.";
+      section.appendChild(banner);
+    }
 
     // UI-0: Table | Board | Calendar switcher; null (nothing rendered) when only "table" is available.
     const viewSwitcher = buildViewSwitcher(concept);
@@ -3359,9 +3411,13 @@
       const me = await fetchJson("/api/me", { method: "GET", headers: headers() });
       state.roles = Array.isArray(me.roles) ? me.roles : [];
       state.actorId = me.actorId || "";
+      shellOffline().setPrincipal({ tenantId: me.tenantId || "", actorId: state.actorId, roles: state.roles });
     } catch (error) {
-      state.roles = [];
-      state.actorId = "";
+      // MOB-1 (M3): with no network (not an HTTP refusal) reuse the principal this device last saw, so
+      // the app opens with the same navigation; any HTTP error, e.g. 401, still means "not signed in".
+      const restored = error.status === undefined ? shellOffline().restorePrincipal() : null;
+      state.roles = restored ? restored.roles : [];
+      state.actorId = restored ? restored.actorId : "";
     }
     state.isSuperUser = Boolean(superUserRole) && state.roles.indexOf(superUserRole) !== -1;
   }

@@ -186,6 +186,14 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 "src/main/resources/static/npdev-business-ui/shell-manifest.json",
                 shellManifestJson()
         );
+        // MOB-1: installable PWA -- manifest, icons and the app-shell service worker, all at the web root
+        // so the worker's scope covers every page. Name/colours come from the model's default GuidePage.
+        writer.writeRelative(PwaAssets.MANIFEST_PATH, PwaAssets.manifestJson(model));
+        writer.writeRelativeBytes(PwaAssets.ICON_192_PATH, PwaAssets.iconPng(192, PwaAssets.accent(model)));
+        writer.writeRelativeBytes(PwaAssets.ICON_512_PATH, PwaAssets.iconPng(512, PwaAssets.accent(model)));
+        Map<String, Object> swCtx = new LinkedHashMap<>(shellCtx);
+        swCtx.put("shellAssetsJson", shellAssetsJson());
+        writer.writeRelative("src/main/resources/static/npdev-sw.js", templates.render("npdev-sw.js.mustache", swCtx));
 
         // The shared frame (top bar + left nav) is now the platform default for EVERY generated
         // app, not just ones that compose the workspace pack -- since Phase 4, the generic
@@ -263,6 +271,36 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     }
 
     private static final String MENU_CONCEPT_NAME = "workspace::Menu";
+
+    /**
+     * MOB-1: every static file the business UI page loads, as a JSON array for the service worker to
+     * precache at install (a first load races the worker's activation, so relying on runtime caching
+     * alone left the view scripts out and an offline reload failed). Model-free, so deterministic.
+     */
+    private static String shellAssetsJson() {
+        List<String> paths = new ArrayList<>(List.of(
+                "/npdev-business-ui/index.html",
+                "/npdev-business-ui/app.js",
+                "/npdev-business-ui/style.css",
+                "/npdev-business-ui/generated-ui-manifest.json",
+                "/npdev-business-ui/shell-manifest.json",
+                "/npdev-business-ui/views/views.css",
+                "/shell.js",
+                "/shell.css",
+                "/theme.css",
+                "/npdev-xlsx.js",
+                "/npdev-manifest.json",
+                "/npdev-icon-192.png",
+                "/npdev-icon-512.png"));
+        for (String asset : BUSINESS_UI_VIEW_ASSETS) {
+            paths.add("/npdev-business-ui/views/" + asset);
+        }
+        for (String asset : COLLAB_ASSETS) {
+            paths.add("/npdev-business-ui/collab/" + asset);
+        }
+        return paths.stream().distinct().map(path -> "\"" + path + "\"")
+                .collect(java.util.stream.Collectors.joining(",\n  ", "[\n  ", "\n]"));
+    }
 
     /**
      * Plain JS/CSS assets under static-assets/business-ui/views/, emitted verbatim to

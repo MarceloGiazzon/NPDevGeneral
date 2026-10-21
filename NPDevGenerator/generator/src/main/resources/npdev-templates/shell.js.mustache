@@ -25,6 +25,90 @@
   var NPDEV_UI_SHELL_CONTRACT_COMPAT = { min: "{{{uiContractCompatMin}}}", max: "{{{uiContractCompatMax}}}" };
   window.NPDevUiShell = window.NPDevUiShell || { version: NPDEV_UI_SHELL_VERSION, contractCompat: NPDEV_UI_SHELL_CONTRACT_COMPAT };
 
+  // MOB-1 (M2): make every page that loads the shell installable -- the manifest link and the service
+  // worker are added from here so no page template needs its own <head> edit. A browser without
+  // serviceWorker (or an insecure origin) simply skips the worker; the page works as before.
+  (function installable() {
+    try {
+      if (!document.querySelector('link[rel="manifest"]')) {
+        var link = document.createElement("link");
+        link.rel = "manifest";
+        link.href = "/npdev-manifest.json";
+        document.head.appendChild(link);
+      }
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/npdev-sw.js").catch(function () {});
+      }
+    } catch (ignored) { /* installability is an extra, never a blocker */ }
+  })();
+
+  // MOB-1 (M3): the last OFFLINE_MAX_ENTRIES successful list responses, per tenant AND user. Entries
+  // live in localStorage under an unguessable-by-scope key and are wiped on sign-out and whenever the
+  // signed-in principal differs from the one that wrote them, so a shared phone never shows user A's
+  // rows to user B. Only successful GETs are ever stored; an HTTP refusal is never served from here.
+  var OFFLINE_PREFIX = "npdev.offline.v1:";
+  var OFFLINE_PRINCIPAL_KEY = OFFLINE_PREFIX + "principal";
+  var OFFLINE_MAX_ENTRIES = 20;
+  var offlineScope = null;
+  function offlineStore() { try { return window.localStorage; } catch (e) { return null; } }
+  function offlineJson(key) {
+    var store = offlineStore();
+    try { return store ? JSON.parse(store.getItem(key)) : null; } catch (e) { return null; }
+  }
+  function offlineScopeOf(principal) { return (principal.tenantId || "") + "|" + principal.actorId; }
+  function offlineClearAll() {
+    var store = offlineStore();
+    offlineScope = null;
+    if (!store) { return; }
+    var doomed = [];
+    for (var i = 0; i < store.length; i++) {
+      var key = store.key(i);
+      if (key && key.indexOf(OFFLINE_PREFIX) === 0) { doomed.push(key); }
+    }
+    doomed.forEach(function (key) { store.removeItem(key); });
+  }
+  function offlineSetPrincipal(principal) {
+    var store = offlineStore();
+    if (!store || !principal || !principal.actorId) { offlineScope = null; return; }
+    var previous = offlineJson(OFFLINE_PRINCIPAL_KEY);
+    if (previous && previous.actorId && offlineScopeOf(previous) !== offlineScopeOf(principal)) { offlineClearAll(); }
+    offlineScope = offlineScopeOf(principal);
+    try {
+      store.setItem(OFFLINE_PRINCIPAL_KEY, JSON.stringify({
+        tenantId: principal.tenantId || "", actorId: principal.actorId, roles: principal.roles || []
+      }));
+    } catch (e) { /* storage full or blocked: offline reads just stay unavailable */ }
+  }
+  function offlineRestorePrincipal() {
+    var principal = offlineJson(OFFLINE_PRINCIPAL_KEY);
+    if (!principal || !principal.actorId) { return null; }
+    offlineScope = offlineScopeOf(principal);
+    return principal;
+  }
+  function offlineEntryKey(url) { return OFFLINE_PREFIX + "e:" + offlineScope + ":" + url; }
+  function offlineIndexKey() { return OFFLINE_PREFIX + "i:" + offlineScope; }
+  function offlinePut(url, payload) {
+    var store = offlineStore();
+    if (!store || !offlineScope) { return false; }
+    var index = (offlineJson(offlineIndexKey()) || []).filter(function (u) { return u !== url; });
+    index.unshift(url);
+    while (index.length > OFFLINE_MAX_ENTRIES) { store.removeItem(offlineEntryKey(index.pop())); }
+    try {
+      store.setItem(offlineEntryKey(url), JSON.stringify({ savedAt: Date.now(), payload: payload }));
+      store.setItem(offlineIndexKey(), JSON.stringify(index));
+      return true;
+    } catch (e) {
+      // Quota: keep only the newest half and give up on this one rather than throw into the page.
+      index.slice(Math.ceil(index.length / 2)).forEach(function (u) { store.removeItem(offlineEntryKey(u)); });
+      return false;
+    }
+  }
+  function offlineGet(url) {
+    if (!offlineScope) { return null; }
+    var entry = offlineJson(offlineEntryKey(url));
+    return entry && entry.payload ? entry : null;
+  }
+
   var TOKEN_STORAGE_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"];
   var BUSINESS_UI_ROOT = "/npdev-business-ui/index.html";
   var TASKS_PAGE = "/npdev-business-ui/collab/tasks.html";
@@ -615,6 +699,7 @@
           .catch(function () {})
           .then(function () {
             TOKEN_STORAGE_KEYS.forEach(function (key) { localStorage.removeItem(key); });
+            offlineClearAll();
             sessionStorage.clear();
             window.location.reload();
           });
@@ -2398,6 +2483,14 @@
   // it does for a hand-authored page -- app.js itself never builds a header or nav again.
   window.NPDevShell = {
     registerGadget: function (type, renderFn) { gadgetRenderers[type] = renderFn; },
+    // MOB-1 (M3): the per-user offline read cache, used by the business UI's list loader.
+    offline: {
+      setPrincipal: offlineSetPrincipal,
+      restorePrincipal: offlineRestorePrincipal,
+      put: offlinePut,
+      get: offlineGet,
+      clearAll: offlineClearAll
+    },
     // `context.title` becomes the topbar breadcrumb (e.g. the active section's display name);
     // `context.path` (W1.6), when given, is an ordered array of segments (e.g. [groupLabel, title])
     // projected from the host's own nav tree (business-ui-app.mustache's deriveNativeGroups()) --
