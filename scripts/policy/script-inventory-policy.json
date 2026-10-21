@@ -55,8 +55,12 @@
       "pattern": "^scripts/tests/"
     },
     {
+      "classification": "helper",
+      "pattern": "^scripts/load/load_common\\.py$"
+    },
+    {
       "classification": "canonical",
-      "pattern": "^scripts/(ai|evidence|hygiene|quality|release|runtimehost|samples|security|appgen|ci|docs|external-review|hooks|proofs|pack-repo)/"
+      "pattern": "^scripts/(ai|evidence|hygiene|quality|release|runtimehost|samples|security|appgen|ci|docs|external-review|hooks|proofs|pack-repo|load)/"
     },
     {
       "classification": "canonical",
