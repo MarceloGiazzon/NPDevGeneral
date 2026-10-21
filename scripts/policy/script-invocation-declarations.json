@@ -136,6 +136,10 @@
     "scripts/docs/generate_dsl_reference.py": {
       "invocation": "ci-gate"
     },
+    "scripts/docs/generate_engine_matrix_doc.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "docs/reference/ENGINE_MATRIX.md"
+    },
     "scripts/docs/generate_gaps_roadmap.py": {
       "invocation": "ci-gate"
     },

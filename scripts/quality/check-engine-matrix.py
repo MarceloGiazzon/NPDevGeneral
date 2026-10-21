@@ -126,8 +126,24 @@ def check_cell(engine: str, capability: str, cell, jobs_cache: dict, problems: l
     return claim
 
 
+def check_doc_stamp(doc: dict, problems: list[str]) -> None:
+    """ENGM-2: docs/reference/ENGINE_MATRIX.md is rendered from the matrix. Scripts may not read markdown, so the
+    renderer records the SHA-256 of its output in a stamp and this re-renders in memory and compares."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "docs"))
+    import generate_engine_matrix_doc as renderer
+
+    stamp_path = renderer.STAMP_PATH
+    regenerate = "run python scripts/docs/generate_engine_matrix_doc.py and commit the result"
+    if not stamp_path.is_file():
+        problems.append(f"{stamp_path.relative_to(REPO_ROOT)} is missing: {regenerate}")
+        return
+    recorded = json.loads(stamp_path.read_text(encoding="utf-8")).get("renderSha256")
+    if recorded != renderer.render_sha256(doc):
+        problems.append("docs/reference/ENGINE_MATRIX.md is stale against the matrix or its renderer: " + regenerate)
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser =argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--matrix", type=Path, default=MATRIX, help="matrix JSON to check (default: the repo file)")
     args = parser.parse_args()
 
@@ -164,6 +180,9 @@ def main() -> int:
                 claim = check_cell(engine, capability, row[capability], jobs_cache, problems)
                 if claim in tally:
                     tally[claim] += 1
+
+    if args.matrix == MATRIX:
+        check_doc_stamp(doc, problems)
 
     total = sum(tally.values())
     print(f"{len(ENGINES)} engines x {len(CAPABILITIES)} capabilities = {total} cell(s): "
