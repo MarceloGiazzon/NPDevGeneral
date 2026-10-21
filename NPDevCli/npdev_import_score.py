@@ -65,6 +65,44 @@ def _ratio(num: int, den: int) -> float | None:
     return round(num / den, 3) if den else None
 
 
+def _enum_values(field: dict) -> set[str] | None:
+    """Normalized value names of an enum field, or None when the field is not an enum."""
+    if field.get("type") != "enum":
+        return None
+    raw = field.get("values") or field.get("enumValues") or []
+    return {_norm(v.get("value", "") if isinstance(v, dict) else str(v)) for v in raw}
+
+
+def _score_enums(matched: list[str], draft_by_key: dict, oracle_by_key: dict) -> dict:
+    """Enum fields of matched concepts: found by field name (exact or affix), then how many of the oracle's
+    values the draft's enum carries. A draft enum on a field the oracle does not make an enum is not counted
+    as a hit, and the draft's total is reported beside it so over-production is visible."""
+    oracle_total = found = values_exact = 0
+    value_recall_sum = 0.0
+    for key in matched:
+        d_enums = {_norm(f["name"]): _enum_values(f) for f in _fields(draft_by_key[key]) if _enum_values(f) is not None}
+        for field in _fields(oracle_by_key[key]):
+            o_values = _enum_values(field)
+            if o_values is None:
+                continue
+            oracle_total += 1
+            name = _norm(field["name"])
+            hit = name if name in d_enums else next((d for d in d_enums if _affix_match(name, d)), None)
+            if hit is None:
+                continue
+            found += 1
+            d_values = d_enums[hit]
+            overlap = len(o_values & d_values)
+            value_recall_sum += overlap / len(o_values) if o_values else 0.0
+            values_exact += 1 if o_values == d_values else 0
+    return {
+        "oracleEnumFieldsInMatchedConcepts": oracle_total, "foundByFieldName": found,
+        "recallByFieldName": _ratio(found, oracle_total),
+        "valueSetsIdentical": values_exact,
+        "meanValueRecallOfFound": round(value_recall_sum / found, 3) if found else None,
+    }
+
+
 def score(draft_path: Path, oracle_path: Path) -> dict:
     draft = _load_concepts(draft_path)
     oracle = _load_concepts(oracle_path)
@@ -127,8 +165,9 @@ def score(draft_path: Path, oracle_path: Path) -> dict:
             "oracleTotal": oracle_refs_total, "oracleBetweenMatchedConcepts": oracle_refs,
             "recovered": recovered, "recallAmongMatched": _ratio(recovered, oracle_refs),
         },
-        "enums": {"oracle": oracle_enums, "draft": draft_enums,
-                  "note": "the database-first importer emits no enums; domains arrive with IMP-2."},
+        "enums": {"oracle": oracle_enums, "draft": draft_enums, **_score_enums(matched, draft_by_key, oracle_by_key),
+                  "note": "draft is the total the importer produced; the found/recall numbers count only enum fields "
+                          "of matched concepts that the hand-built model also makes an enum."},
         "perConcept": per_concept,
     }
 
@@ -145,7 +184,10 @@ def run(args) -> int:
           f"precision {f['precisionExactOrAffix']}")
     print(f"references: {r['recovered']} of {r['oracleBetweenMatchedConcepts']} between matched concepts "
           f"({r['oracleTotal']} in the oracle)")
-    print(f"enums: oracle {result['enums']['oracle']}, draft {result['enums']['draft']}")
+    e = result["enums"]
+    print(f"enums: oracle {e['oracle']}, draft {e['draft']}; of {e['oracleEnumFieldsInMatchedConcepts']} oracle enum fields "
+          f"in matched concepts {e['foundByFieldName']} found by field name, {e['valueSetsIdentical']} with identical values, "
+          f"mean value recall {e['meanValueRecallOfFound']}")
     if not args.out:
         print(text, end="")
     return 0
