@@ -230,6 +230,20 @@
       ".npdev-shell-topbar .npdev-shell-collapse-toggle{width:44px;height:44px;}" +
       ".npdev-shell-sidebar a,.npdev-shell-sidebar .npdev-shell-nav-group-header{min-height:44px;}" +
       ".npdev-shell-body{position:relative;}" +
+      /* The topbar is a single nowrap row. On a phone the identity block (actor, Change password, Security,
+         Invite, Sign out) outgrew it and pushed Sign out past the right edge, under the right-rail toggle.
+         Drop the breadcrumb, let the logo shrink, and let the identity block scroll sideways with Sign out
+         pinned to its right edge so the one control a shared phone needs is always on screen. */
+      ".npdev-shell-topbar{gap:8px;padding:0 8px;}" +
+      ".npdev-shell-topbar .npdev-shell-breadcrumb{display:none;}" +
+      /* The clock and company badge are what ate the row (the identity block was measured at 0px wide at 390px
+         and its Sign out button drew under the rail toggle); they are chrome, not controls, so they go. */
+      ".npdev-shell-topbar .npdev-shell-clock,.npdev-shell-topbar .npdev-shell-company{display:none;}" +
+      ".npdev-shell-topbar .npdev-shell-logo{min-width:0;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;}" +
+      ".npdev-shell-topbar .npdev-shell-identity{min-width:96px;flex:1 1 96px;overflow-x:auto;gap:12px;scrollbar-width:none;}" +
+      ".npdev-shell-topbar .npdev-shell-identity::-webkit-scrollbar{display:none;}" +
+      ".npdev-shell-topbar button.npdev-shell-logout{position:sticky;right:0;margin-left:auto;flex-shrink:0;min-height:36px;}" +
+      ".npdev-shell-topbar button.npdev-shell-rightbar-toggle{flex-shrink:0;}" +
       /* UI-7: the right gadget rail is a drawer from the right at this width (mirror of the left
          nav drawer) so KPI/chart/table gadgets stay reachable on a phone instead of being hidden.
          It must not stay in the flex flow (it would squeeze the content column). The desktop
