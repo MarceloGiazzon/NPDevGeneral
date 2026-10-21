@@ -64,13 +64,12 @@
     },
     {
       "id": "lc-transition-guard-and-required-payload-enforced",
-      "knownFailure": "REG-275",
       "keywords": [
         "lifecycleTransition.guard",
         "lifecycleTransition.requiredPayload",
         "lifecycleTransition.requires"
       ],
-      "description": "DEFECT: WidgetReviewDemo declares Draft -> Submitted with requiredPayload [reviewer], and Submitted -> Approved with requires [approvedNote] and guard reviewMode == 'manual'. Expected: the first move without a reviewer, the second with reviewMode 'auto', and the second without an approvedNote are each refused 422 (CrudLifecycleSupport names these status_transition_requires_field / status_transition_guard_failed). Actual: the REST PUT (ConceptGateway) only checks that the from->to edge exists, so all three are accepted with 200 and the guard and payload requirements are decoration.",
+      "description": "WidgetReviewDemo declares Draft -> Submitted with requiredPayload [reviewer], and Submitted -> Approved with requires [approvedNote] and guard reviewMode == 'manual'. Expected: the first move without a reviewer, the second with reviewMode 'auto', and the second without an approvedNote are each refused 422 (CrudLifecycleSupport names these status_transition_requires_field / status_transition_guard_failed). Actual: the REST PUT (ConceptGateway) only checks that the from->to edge exists, so all three are accepted with 200 and the guard and payload requirements are decoration.",
       "steps": [
         {
           "name": "create a",

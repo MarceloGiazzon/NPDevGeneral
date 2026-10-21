@@ -3,9 +3,10 @@ title: >-
   Lifecycle transition guard, requiredPayload and requires are accepted but never enforced on the REST write path; a terminal state does not block an outgoing transition
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-21
-closed: null
+closed: 2026-10-21
+verification: VERIFIED_LIVE
 source: >-
   ENF-1 behaviour probe lc-transition-guard-and-required-payload-enforced (NPDevSamples/dsl-conformance-max/behavior-probes/85-lifecycle-flows-roles.json), knownFailure REG-275.
 surface: ConceptGateway lifecycle check (CONCEPT_LIFECYCLE_TRANSITION_INVALID) versus NPDevKernel/adapters/runtime-support/.../CrudLifecycleSupport.validateLifecycleTransitions
@@ -18,3 +19,9 @@ detail: |
 resolution: >-
   Run guard / requiredPayload evaluation in the gateway's lifecycle check (or route it through CrudLifecycleSupport), decide and enforce what terminal means (reject outgoing transitions at validation time, or
   document it as a board-column marker only), then remove knownFailure from the probe and the lifecycleState.terminal allowlist note.
+guard:
+  kind: live
+  ref: NPDevSamples/dsl-conformance-max/behavior-probes/85-lifecycle-flows-roles.json
+  asserts: >-
+    behaviour probe lc-transition-guard-and-required-payload-enforced: a transition missing its requiredPayload field, or failing its guard, is refused 422 on the REST write path
+  provenRed: true

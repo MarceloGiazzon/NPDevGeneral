@@ -2383,6 +2383,10 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
 
+    Optional<Object> readFieldViaConceptGateway(CompiledConcept entity, UUID id, String fieldName) {
+        return referenceLookupSupport.readFieldViaConceptGateway(entity, id, fieldName);
+    }
+
     boolean existsByAnchor(CompiledConcept entity, CompiledField anchor, Object value) {
         return referenceLookupSupport.existsByAnchor(entity, anchor, value);
     }
