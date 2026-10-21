@@ -95,7 +95,7 @@ processes, screens, permissions, and how it all changes over time.
 | **`visibility` / `enabledWhen`** | show and enable things conditionally, by rule rather than by JavaScript |
 | **`actions`** | buttons that call flows or procedures, including ones that **stream a generated file back** |
 | **`aggregates` (workbenches)** | master-detail-detail screens editing a root and its collections **in one transaction**, with `onValidate` and `onCommit` hooks |
-| **`documents`** | generated documents and printable output |
+| **`documents`** | generated documents and printable output: one-record and aggregate documents, and `kind: list` multi-record reports (named query, columns, grouping, subtotals, grand total) as PDF and CSV, computed over what the viewer may read |
 | **`guidePages` / `explainability`** | attach guidance to a screen so users are told what it is for — in the model, beside the thing it explains |
 | **Widget catalogue** | field types map to appropriate inputs, validated for compatibility at authoring time |
 | **Paintable boards (`render: "cellGrid"`)** | a workbench collection drawn as a square or hex board instead of a row grid: each child row is one painted cell (row, col, value), the palette is a query's rows (label, image, colour), with paint/fill/erase/undo/zoom, and Save still commits the whole aggregate in one transaction. Examples: Pigmentampas `Mosaics` (20×33 hex mosaic of caps), `dsl-conformance-max` `ShelfLayoutWorkbench` (warehouse shelf map) |

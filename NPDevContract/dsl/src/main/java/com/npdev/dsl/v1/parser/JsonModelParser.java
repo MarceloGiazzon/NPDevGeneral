@@ -1520,7 +1520,13 @@ public final class JsonModelParser {
                     parseObjectMap(documentNode.get("metadata")),
                     readText(documentNode, "aggregate"),
                     parseDocumentBands(documentNode.get("bands"), "documents[" + name + "].bands"),
-                    parseDocumentLogo(documentNode.get("logo"), "documents[" + name + "].logo")
+                    parseDocumentLogo(documentNode.get("logo"), "documents[" + name + "].logo"),
+                    readText(documentNode, "kind"),
+                    readText(documentNode, "query"),
+                    parseDocumentColumns(documentNode.get("columns"), "documents[" + name + "].columns"),
+                    parseTextArray(documentNode.get("groupBy")),
+                    readOptionalBoolean(documentNode, "subtotals"),
+                    readOptionalBoolean(documentNode, "grandTotal")
             ));
         }
         return out;
@@ -1549,6 +1555,25 @@ public final class JsonModelParser {
                     readLabelLocales(bandNode, "label"),
                     parsePanelFieldBindings(bandNode.get("fields"), fieldPath + "[" + name + "].fields")
             ));
+        }
+        return out;
+    }
+
+    /** REP-1: a {@code kind: list} document's {@code columns[]} -- {@code field} required, {@code
+     *  label}/{@code total} optional. */
+    private static List<DocumentColumnAst> parseDocumentColumns(JsonNode node, String fieldPath) throws IOException {
+        List<DocumentColumnAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException(fieldPath + " must be an array");
+        }
+        for (JsonNode columnNode : node) {
+            out.add(new DocumentColumnAst(
+                    requiredText(columnNode, "field"),
+                    readLabelText(columnNode, "label"),
+                    readText(columnNode, "total")));
         }
         return out;
     }

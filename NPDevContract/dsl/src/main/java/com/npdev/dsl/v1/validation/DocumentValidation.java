@@ -5,9 +5,11 @@ import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.DocumentAst;
 import com.npdev.dsl.v1.ast.DocumentBandAst;
+import com.npdev.dsl.v1.ast.DocumentColumnAst;
 import com.npdev.dsl.v1.ast.DocumentLogoAst;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.ast.PanelFieldBindingAst;
+import com.npdev.dsl.v1.ast.QueryAst;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -46,9 +48,16 @@ final class DocumentValidation {
             }
         }
 
+        Map<String, QueryAst> queriesByLower = new HashMap<>();
+        for (QueryAst query : modelAst.getQueries()) {
+            if (hasText(query.name())) {
+                queriesByLower.put(normalize(query.name()), query);
+            }
+        }
+
         Set<String> documentNames = new HashSet<>();
         for (DocumentAst document : modelAst.getDocuments()) {
-            validateDocument(document, entitiesByLower, aggregatesByLower, documentNames, errors);
+            validateDocument(document, entitiesByLower, aggregatesByLower, queriesByLower, documentNames, errors);
         }
     }
 
@@ -56,6 +65,7 @@ final class DocumentValidation {
             DocumentAst document,
             Map<String, ConceptAst> entitiesByLower,
             Map<String, AggregateAst> aggregatesByLower,
+            Map<String, QueryAst> queriesByLower,
             Set<String> documentNames,
             List<String> errors) {
         String here = "Document " + document.name();
@@ -107,6 +117,137 @@ final class DocumentValidation {
         }
 
         validateLogo(document, here, rootConcept, errors);
+        validateListReport(document, here, rootConcept, queriesByLower, errors);
+    }
+
+    private static final Set<String> TOTAL_FUNCTIONS = Set.of("sum", "count", "min", "max", "avg");
+
+    /**
+     * REP-1: {@code kind: list} -- a multi-record report. The load-bearing checks are the ones that
+     * would otherwise print a silently wrong report: a column or groupBy field that is not on the
+     * concept (an always-blank column), a subtotal with nothing to total, and a total row with no
+     * column left to carry its label.
+     */
+    private static void validateListReport(
+            DocumentAst document,
+            String here,
+            ConceptAst rootConcept,
+            Map<String, QueryAst> queriesByLower,
+            List<String> errors) {
+        boolean declaresListMembers = hasText(document.query()) || !document.columns().isEmpty()
+                || !document.groupBy().isEmpty() || document.subtotals() != null || document.grandTotal() != null;
+        if (hasText(document.kind()) && !document.listReport()) {
+            errors.add(here + ": kind must be 'list', found: " + document.kind()
+                    + " -- suggestedFix: Set 'kind' to 'list', or remove it for a one-record document.");
+        }
+        if (!document.listReport()) {
+            if (declaresListMembers) {
+                errors.add(here + ": query/columns/groupBy/subtotals/grandTotal only apply to a list report"
+                        + " -- suggestedFix: Add kind: list to this document, or remove those members.");
+            }
+            return;
+        }
+
+        if (hasText(document.aggregate()) || !document.bands().isEmpty() || document.logo() != null) {
+            errors.add(here + ": a list report does not support aggregate/bands/logo (it has no single root "
+                    + "record to lay out)"
+                    + " -- suggestedFix: Remove 'aggregate', 'bands' and 'logo', or drop kind: list "
+                    + "to keep a one-record document.");
+        }
+        if (document.columns().isEmpty()) {
+            errors.add(here + ": a list report must declare at least one column -- an empty report would print "
+                    + "a blank table, indistinguishable from an authoring mistake"
+                    + " -- suggestedFix: Add 'columns', each naming a property on concept '" + document.concept() + "'.");
+        }
+
+        Set<String> conceptFieldNames = rootConcept == null ? null : rootConcept.getFields().stream()
+                .map(field -> normalize(field.getName()))
+                .collect(Collectors.toSet());
+        Set<String> seenColumns = new HashSet<>();
+        boolean anyTotal = false;
+        boolean anyPlainColumn = false;
+        for (DocumentColumnAst column : document.columns()) {
+            if (!hasText(column.field())) {
+                errors.add(here + ": a column requires 'field' -- suggestedFix: Add 'field', naming a property "
+                        + "on the document's concept.");
+                continue;
+            }
+            if (!seenColumns.add(normalize(column.field()))) {
+                errors.add(here + ": duplicate column '" + column.field() + "' -- suggestedFix: List each field "
+                        + "once in 'columns'.");
+            }
+            if (conceptFieldNames != null && !conceptFieldNames.contains(normalize(column.field()))) {
+                errors.add(here + ": column field '" + column.field() + "' not found on concept '"
+                        + rootConcept.getName() + "' -- suggestedFix: Point 'field' at a property declared on "
+                        + "the concept, or add that property to the concept.");
+            }
+            if (hasText(column.total())) {
+                if (!TOTAL_FUNCTIONS.contains(column.total())) {
+                    errors.add(here + ": column '" + column.field() + "' total must be one of sum, count, min, "
+                            + "max, avg, found: " + column.total() + " -- suggestedFix: Change 'total' to one of "
+                            + "those, or remove it.");
+                } else {
+                    anyTotal = true;
+                }
+            } else {
+                anyPlainColumn = true;
+            }
+        }
+
+        Set<String> seenGroups = new HashSet<>();
+        for (String groupField : document.groupBy()) {
+            if (!hasText(groupField)) {
+                errors.add(here + ": groupBy entries must be non-blank field names -- suggestedFix: Remove the "
+                        + "blank entry.");
+                continue;
+            }
+            if (!seenGroups.add(normalize(groupField))) {
+                errors.add(here + ": duplicate groupBy field '" + groupField + "' -- suggestedFix: List each "
+                        + "grouping field once.");
+            }
+            if (conceptFieldNames != null && !conceptFieldNames.contains(normalize(groupField))) {
+                errors.add(here + ": groupBy field '" + groupField + "' not found on concept '"
+                        + rootConcept.getName() + "' -- suggestedFix: Point 'groupBy' at a property declared on "
+                        + "the concept.");
+            }
+        }
+
+        boolean subtotals = Boolean.TRUE.equals(document.subtotals());
+        boolean grandTotal = Boolean.TRUE.equals(document.grandTotal());
+        if (subtotals && document.groupBy().isEmpty()) {
+            errors.add(here + ": subtotals needs groupBy -- a subtotal is a total per group"
+                    + " -- suggestedFix: Add 'groupBy', or use 'grandTotal' alone.");
+        }
+        if ((subtotals || grandTotal) && !anyTotal) {
+            errors.add(here + ": subtotals/grandTotal need at least one column with a 'total' -- there would "
+                    + "be nothing to total -- suggestedFix: Add total: sum (or count/min/max/avg) to a column.");
+        }
+        if ((subtotals || grandTotal) && anyTotal && !anyPlainColumn) {
+            errors.add(here + ": subtotals/grandTotal need at least one column WITHOUT a 'total', to carry the "
+                    + "row label ('Subtotal ...' / 'Grand total') -- suggestedFix: Remove 'total' from one column "
+                    + "or add a label column.");
+        }
+
+        if (hasText(document.query())) {
+            QueryAst query = queriesByLower.get(normalize(document.query()));
+            if (query == null) {
+                errors.add(here + ": query not found: " + document.query() + " -- suggestedFix: Declare a query "
+                        + "with this name in queries[], or point 'query' at one that exists.");
+            } else {
+                if (query.isAggregate()) {
+                    errors.add(here + ": query '" + document.query() + "' is an aggregate query (groupBy/aggregates); a "
+                            + "list report takes a plain query and groups/totals the rows itself, so row-level "
+                            + "visibility rules apply to every figure -- suggestedFix: Point 'query' at a plain "
+                            + "query, or remove 'query' and group with the document's own 'groupBy'.");
+                }
+                if (hasText(query.concept()) && hasText(document.concept())
+                        && !normalize(query.concept()).equals(normalize(document.concept()))) {
+                    errors.add(here + ": query '" + document.query() + "' reads concept '" + query.concept()
+                            + "' but the document's concept is '" + document.concept() + "' -- suggestedFix: "
+                            + "Use a query over the same concept.");
+                }
+            }
+        }
     }
 
     private static boolean validateBand(

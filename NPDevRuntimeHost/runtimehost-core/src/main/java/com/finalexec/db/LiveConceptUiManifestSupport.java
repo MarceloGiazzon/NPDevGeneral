@@ -210,6 +210,9 @@ public final class LiveConceptUiManifestSupport {
             documentNode.put("name", document.name());
             documentNode.put("title", document.title() == null || document.title().isBlank()
                     ? document.name() : document.title());
+            if (document.listReport()) {
+                documentNode.put("kind", document.kind()); // REP-1: same node the generated manifest carries
+            }
             documents.add(documentNode);
         }
         return documents;

@@ -6,13 +6,17 @@ import com.npdev.dsl.v1.compiled.CompiledDocument;
 import com.npdev.dsl.v1.compiled.CompiledDocumentBand;
 import com.npdev.dsl.v1.compiled.CompiledDocumentLogo;
 import com.npdev.dsl.v1.compiled.CompiledPanelFieldBinding;
+import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
+import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGateway;
+import com.npdev.kernel.concepts.ConceptGatewayAccessDeniedException;
 import com.npdev.kernel.concepts.ConceptPage;
 import com.npdev.kernel.concepts.ConceptQuery;
+import com.npdev.kernel.concepts.ConceptQueryPredicateCompiler;
 import com.npdev.kernel.concepts.ConceptQueryRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.ports.CapabilityAdapter;
@@ -116,36 +120,16 @@ public class DocumentRenderController {
         ConceptQuery baseQuery = ConceptQueryController.parseConceptQuery(request.getParameterMap());
         ExecutionContext context = runtimeContextService.currentContext(request);
 
-        List<ConceptRecord> records = new ArrayList<>();
-        ConceptPage page;
-        try {
-            page = conceptGateway.query(new ConceptQueryRequest(
-                    document.concept(), context.tenantId(),
-                    new ConceptQuery(baseQuery.filters(), baseQuery.sorts(), 0, RENDER_PAGE_SIZE)), context);
-        } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
+        String html;
+        if (document.listReport()) {
+            ListReport report = buildListReport(document, request, context);
+            html = report.toHtml(titleOf(document), printedAt());
+        } else {
+            List<ConceptRecord> records = fetchAllRows(
+                    document, baseQuery.filters(), baseQuery.sorts(), null, context);
+            List<String> columns = resolveColumns(records);
+            html = buildPrintHtml(document, columns, records);
         }
-        int offset = 0;
-        while (true) {
-            records.addAll(page.items());
-            if (records.size() > MAX_DOCUMENT_ROWS) {
-                throw new ResponseStatusException(
-                        HttpStatus.PAYLOAD_TOO_LARGE,
-                        "Document '" + document.name() + "' matched more than " + MAX_DOCUMENT_ROWS
-                                + " rows. A PDF must be materialized in full before it can be rendered, so narrow "
-                                + "the query (filters) or use the CSV export, which streams without this limit.");
-            }
-            offset += page.items().size();
-            if (!page.hasMore() || page.items().isEmpty()) {
-                break;
-            }
-            page = conceptGateway.query(new ConceptQueryRequest(
-                    document.concept(), context.tenantId(),
-                    new ConceptQuery(baseQuery.filters(), baseQuery.sorts(), offset, RENDER_PAGE_SIZE)), context);
-        }
-
-        List<String> columns = resolveColumns(records);
-        String html = buildPrintHtml(document, columns, records);
 
         byte[] pdfBytes;
         try {
@@ -162,6 +146,143 @@ public class DocumentRenderController {
         response.setContentLength(pdfBytes.length);
         response.getOutputStream().write(pdfBytes);
         response.getOutputStream().flush();
+    }
+
+    /**
+     * REP-1: the CSV rendering of a {@code kind: list} document -- the SAME {@link ListReport} the PDF
+     * route renders (same rows, same hidden-column omission, same group/subtotal/grand-total lines),
+     * so "what downloads as CSV" and "what renders as PDF" cannot disagree. Only list documents have a
+     * CSV form; a one-record or aggregate document answers 400 and points at render.pdf.
+     */
+    @GetMapping("/{document}/render.csv")
+    public void renderCsv(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            @PathVariable("document") String documentName
+    ) throws IOException {
+        if (conceptGateway == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "concept gateway not configured");
+        }
+        CompiledDocument document = findDocument(documentName);
+        if (!document.listReport()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Document '" + document.name() + "' is not a list report (no kind: list) -- only list "
+                            + "reports have a CSV form; use GET /{document}/render.pdf instead.");
+        }
+        ExecutionContext context = runtimeContextService.currentContext(request);
+        ListReport report = buildListReport(document, request, context);
+        byte[] csv = report.toCsv().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+        response.setContentType("text/csv;charset=UTF-8");
+        response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName(document.name(), "csv") + "\"");
+        response.setContentLength(csv.length);
+        response.getOutputStream().write(csv);
+        response.getOutputStream().flush();
+    }
+
+    /**
+     * REP-1: rows -> {@link ListReport} for a list document. The rows come from {@code
+     * ConceptGateway.query} (tenant, permission, row-level {@code access.read} and field visibility
+     * all enforced there), and grouping/subtotals/grand total are computed over THOSE rows in Java --
+     * never via {@code ConceptGateway.aggregate}, which does not strip fields the viewer may not read.
+     * A declared {@code query} contributes its {@code where}/{@code orderBy}/{@code limit}; its
+     * {@code parameters[]} bind from the request exactly as {@code GET /api/queries/{name}} binds them.
+     * Remaining request parameters are equality filters, as on the flat document and the CSV export.
+     */
+    private ListReport buildListReport(CompiledDocument document, HttpServletRequest request, ExecutionContext context) {
+        ConceptQuery urlQuery = ConceptQueryController.parseConceptQuery(request.getParameterMap());
+        List<ConceptQuery.Filter> filters = new ArrayList<>();
+        List<ConceptQuery.Sort> sorts = new ArrayList<>(urlQuery.sorts());
+        Integer rowLimit = null;
+
+        CompiledQuery query = document.query() == null || document.query().isBlank() ? null : findQuery(document.query());
+        java.util.Set<String> parameterNames = new java.util.HashSet<>();
+        if (query != null) {
+            for (CompiledProcedureParameter parameter : query.parameters()) {
+                parameterNames.add(parameter.name().toLowerCase(Locale.ROOT));
+            }
+        }
+        for (ConceptQuery.Filter filter : urlQuery.filters()) {
+            if (!parameterNames.contains(filter.field().toLowerCase(Locale.ROOT))) {
+                filters.add(filter);
+            }
+        }
+        if (query != null) {
+            try {
+                Map<String, Object> bound = NamedQueryBinding.bind(request::getParameter, query.parameters());
+                filters.addAll(0, ConceptQueryPredicateCompiler.compileToConceptQueryFilters(
+                        query.where(), query.parameters(), bound, context));
+                if (sorts.isEmpty()) {
+                    sorts.addAll(ConceptQueryPredicateCompiler.compileOrderBy(query.orderBy()));
+                }
+            } catch (ConceptQueryPredicateCompiler.UnsupportedPredicateException | IllegalArgumentException ex) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
+            }
+            rowLimit = query.limit() != null && query.limit() > 0 ? query.limit() : null;
+        }
+
+        List<ConceptRecord> rows;
+        try {
+            rows = fetchAllRows(document, filters, sorts, rowLimit, context);
+        } catch (ConceptGatewayAccessDeniedException denied) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, denied.getMessage());
+        }
+        ListReport report = ListReport.build(document, rows);
+        if (!rows.isEmpty() && report.columns().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "None of the columns of report '" + document.name() + "' is visible to you.");
+        }
+        return report;
+    }
+
+    /**
+     * Pages {@code conceptGateway.query} to completion, 413 past {@link #MAX_DOCUMENT_ROWS} (REG-16-resid
+     * R6-F1 -- the render path holds the whole result set, so it refuses rather than truncates).
+     * {@code rowLimit} (a declared query's own {@code limit}) stops early and trims; null = no limit.
+     */
+    private List<ConceptRecord> fetchAllRows(
+            CompiledDocument document, List<ConceptQuery.Filter> filters, List<ConceptQuery.Sort> sorts,
+            Integer rowLimit, ExecutionContext context) {
+        List<ConceptRecord> records = new ArrayList<>();
+        ConceptPage page;
+        try {
+            page = conceptGateway.query(new ConceptQueryRequest(
+                    document.concept(), context.tenantId(),
+                    new ConceptQuery(filters, sorts, 0, RENDER_PAGE_SIZE)), context);
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
+        }
+        int offset = 0;
+        while (true) {
+            records.addAll(page.items());
+            if (records.size() > MAX_DOCUMENT_ROWS) {
+                throw new ResponseStatusException(
+                        HttpStatus.PAYLOAD_TOO_LARGE,
+                        "Document '" + document.name() + "' matched more than " + MAX_DOCUMENT_ROWS
+                                + " rows. A PDF must be materialized in full before it can be rendered, so narrow "
+                                + "the query (filters) or use the CSV export, which streams without this limit.");
+            }
+            if (rowLimit != null && records.size() >= rowLimit) {
+                return new ArrayList<>(records.subList(0, rowLimit));
+            }
+            offset += page.items().size();
+            if (!page.hasMore() || page.items().isEmpty()) {
+                break;
+            }
+            page = conceptGateway.query(new ConceptQueryRequest(
+                    document.concept(), context.tenantId(),
+                    new ConceptQuery(filters, sorts, offset, RENDER_PAGE_SIZE)), context);
+        }
+        return records;
+    }
+
+    private CompiledQuery findQuery(String queryName) {
+        for (CompiledQuery candidate : modelHolder.get().getQueries()) {
+            if (candidate.name().equalsIgnoreCase(queryName)) {
+                return candidate;
+            }
+        }
+        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown query: " + queryName);
     }
 
     /**
@@ -337,8 +458,20 @@ public class DocumentRenderController {
     }
 
     private static String pdfFilename(String documentName) {
+        return fileName(documentName, "pdf");
+    }
+
+    private static String fileName(String documentName, String extension) {
         String safe = documentName == null ? "document" : documentName.replaceAll("[^A-Za-z0-9_-]", "_");
-        return (safe.isBlank() ? "document" : safe) + ".pdf";
+        return (safe.isBlank() ? "document" : safe) + "." + extension;
+    }
+
+    private static String titleOf(CompiledDocument document) {
+        return (document.title() == null || document.title().isBlank()) ? document.name() : document.title();
+    }
+
+    private static String printedAt() {
+        return ZonedDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.ROOT));
     }
 
     /** Mirrors {@link ConceptQueryController}'s own {@code resolveColumns} (a private helper there,

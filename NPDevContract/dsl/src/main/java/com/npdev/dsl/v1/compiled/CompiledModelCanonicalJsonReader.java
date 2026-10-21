@@ -451,8 +451,40 @@ public final class CompiledModelCanonicalJsonReader {
                 toObjectMap(node.get("metadata")),
                 optionalText(node, "aggregate"),
                 toDocumentBands(node.get("bands")),
-                toDocumentLogo(node.get("logo"))
+                toDocumentLogo(node.get("logo")),
+                optionalText(node, "kind"),
+                optionalText(node, "query"),
+                toDocumentColumns(node.get("columns")),
+                toDocumentGroupBy(node.get("groupBy")),
+                node.has("subtotals") ? optionalBoolean(node.get("subtotals")) : null,
+                node.has("grandTotal") ? optionalBoolean(node.get("grandTotal")) : null
         );
+    }
+
+    /** REP-1: reads a list-report document's columns (absent for every pre-REP-1 canonical file). */
+    private static List<CompiledDocumentColumn> toDocumentColumns(JsonNode node) {
+        List<CompiledDocumentColumn> out = new ArrayList<>();
+        if (node == null || !node.isArray()) {
+            return out;
+        }
+        for (JsonNode columnNode : node) {
+            out.add(new CompiledDocumentColumn(
+                    text(columnNode, "field"),
+                    optionalText(columnNode, "label"),
+                    optionalText(columnNode, "total")));
+        }
+        return out;
+    }
+
+    private static List<String> toDocumentGroupBy(JsonNode node) {
+        List<String> out = new ArrayList<>();
+        if (node == null || !node.isArray()) {
+            return out;
+        }
+        for (JsonNode item : node) {
+            out.add(item.asText());
+        }
+        return out;
     }
 
     /** R5.7: reads a document band's {@code fields} through the same {@link #toPanelFieldBindings}

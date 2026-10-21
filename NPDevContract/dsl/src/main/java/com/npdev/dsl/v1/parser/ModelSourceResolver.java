@@ -1368,6 +1368,11 @@ public final class ModelSourceResolver {
             // PACK-11: both name exactly one concept, on the member object itself.
             if (parentKey.isBlank()) {
                 rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
+                if ("documents".equals(rootKey)) {
+                    // REP-1: a kind:list document names a queries[] member in `query`; without this a
+                    // pack-contributed report kept the bare name while the query was pack-qualified.
+                    rewriteTextField(object, "query", resolverFor(rewriteMaps, ambiguousNames, "queries"), qualifiedReferenceValidator);
+                }
             }
         } else if ("aggregates".equals(rootKey)) {
             // PACK-11: the aggregate root, plus each collection's own concept (nested arbitrarily
