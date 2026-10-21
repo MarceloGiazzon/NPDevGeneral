@@ -1,0 +1,27 @@
+id: IMP-GAPS-1
+title: >-
+  The database-first importer (npdev import db) recovers about half the hand-built WmsOffice concepts and almost no field names, no enums, and few references; the missing half needs the GeneXus semantics pass (IMP-2) and a rename policy
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-21
+closed: null
+source: >-
+  IMP-3 scorecard: npdev import score, draft from the 56-table WmsOffice DDL (WmsLabs_CreateTables.html loaded into H2) against
+  AppGen/apps/_official/WmsOffice/definition/model.json. Numbers as measured, importer not tuned to the oracle.
+surface: NPDevGenerator/generator importer, NPDevCli import score
+detail: |
+  Measured (2026-10-21): concepts 14 matched of 56 drafted / 26 in the oracle (precision 0.25, recall 0.54);
+  fields of matched concepts recall 0.06 exact, 0.36 with prefix matching (the importer keeps the legacy column
+  prefix, armNome, where the hand-built model says nome); references 12 of 22 between matched concepts (52 in the
+  oracle); enums 0 of 17. 12 oracle concepts have no counterpart: the hand-built model merged, split or renamed
+  legacy tables (CrossDocking, DocumentoFiscal, Romaneio, ...), which a database-only pass cannot see.
+  Also found: the platform's technology-neutrality rule (ExpressionValidation.FORBIDDEN_TECH_KEYWORDS) rejects a name
+  that merely CONTAINS rest/jpa/smtp/..., so ordinary words such as Portuguese "Restricao" fail validation; the importer
+  works around it by splitting the word (ruaRecRe_stricao) and listing it under namingAdjustments. The rule itself is
+  arguably too blunt (substring, not word); changing it is an owner decision.
+  Validated on ONE source kind (a MySQL-flavoured DDL from one GeneXus export); a second, non-GeneXus source (IMP-4) is not done.
+resolution: >-
+  IMP-2 (domains to enums, transactions/descriptions to captions, rules to invariant candidates) closes the enum and caption
+  gaps; a field-prefix rename policy (propose the readable name, keep the legacy one) closes the field-name gap; entity
+  merging stays a human decision. Re-run npdev import score after each and record the new numbers here.
