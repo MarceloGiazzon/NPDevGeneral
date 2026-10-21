@@ -19,3 +19,9 @@ detail: |
 resolution: >-
   Fix the runtime, then remove "knownFailure": "REG-258" from probe cf-softdelete-restore-brings-row-back; the runner turns that probe red
   the moment it passes with the marker still set, so the marker cannot outlive the bug.
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/inproc/InMemoryConceptStoreIndexSoftDeleteAtomicTest.java
+  asserts: >-
+    a soft-deleted row is restored by POST /{id}/restore instead of answering 404
+  provenRed: true

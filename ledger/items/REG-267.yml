@@ -21,3 +21,9 @@ detail: |
 resolution: >-
   Fix the runtime, then remove "knownFailure": "REG-267" from probe qil-aggregate-oncommit-failure-rolls-back-tree; the runner turns that probe red
   the moment it passes with the marker still set, so the marker cannot outlive the bug.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/npdev/service/AggregateRuntimeInProcAtomicityAndVetoTest.java
+  asserts: >-
+    a failing onCommit procedure rolls the aggregate commit back
+  provenRed: true

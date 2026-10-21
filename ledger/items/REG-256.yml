@@ -20,3 +20,9 @@ detail: |
 resolution: >-
   Fix the runtime, then remove "knownFailure": "REG-256" from probe cf-field-precision-scale-enforced; the runner turns that probe red
   the moment it passes with the marker still set, so the marker cannot outlive the bug.
+guard:
+  kind: live
+  ref: NPDevSamples/dsl-conformance-max/behavior-probes/10-concept-field.json
+  asserts: >-
+    behaviour probe cf-field-precision-scale-enforced: a decimal wider than its precision/scale is refused
+  provenRed: true
