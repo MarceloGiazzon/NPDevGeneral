@@ -17023,6 +17023,13 @@ def build_parser() -> argparse.ArgumentParser:
              "available; PostgreSQL, SQL Server, MySQL and others need their driver passed here.",
     )
 
+    import_score = import_sub.add_parser(
+        "score", help="IMP-3: score a drafted model against a hand-built oracle model (concept / field / "
+                      "reference precision and recall). Reports the numbers as measured.")
+    import_score.add_argument("--model", required=True, help="The drafted model.json.")
+    import_score.add_argument("--oracle", required=True, help="The hand-built model.json to compare with.")
+    import_score.add_argument("--out", default=None, help="Write the scorecard JSON here.")
+
     generate = subparsers.add_parser(
         "generate", help="Generate a complete, runnable app (or a single screen) from a model."
     )
@@ -18152,6 +18159,9 @@ def main(argv: list[str] | None = None) -> int:
             return npdev_truth.run(args, repo_root())
         if args.command == "import" and args.import_command == "db":
             return run_import_db(args)
+        if args.command == "import" and args.import_command == "score":
+            import npdev_import_score
+            return npdev_import_score.run(args)
         if args.command == "init":
             return run_init(args)
         if args.command == "setup":
