@@ -128,6 +128,12 @@
       "hostedIn": "scripts/quality/run-weekly-paperwork-checks.ps1",
       "movedToWeekly": true
     },
+    "check-doc-references.py": {
+      "classification": "paperwork",
+      "reason": "DOCS-1: a doc's inline paths, scripts, CLI commands and symbols still exist -- documentation accuracy, not product runtime behavior.",
+      "hostedIn": "scripts/quality/run-weekly-paperwork-checks.ps1",
+      "movedToWeekly": true
+    },
     "check-markdown-links.py": {
       "classification": "paperwork",
       "reason": "Checks relative markdown links resolve -- pure documentation hygiene.",

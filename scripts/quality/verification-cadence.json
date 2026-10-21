@@ -62,6 +62,13 @@
       "description": "S4 Phase B: an ADR decision the owner accepted (opt-in, via a ```decision-check fenced block naming a file + required substring) still has live code behind it. Closes the gap ADR-0011 D4 exposed -- accepted in S2's own gate, recorded in the ADR, never implemented, found only by running the S3 codemod against real content. Starts with ADR-0011's D1-D4 only. 2026-08-23 (Wave 6 of the 2026-08-23 defect-remediation session): invokedBy corrected -- R4 Part C moved the underlying check from run-ai-knowledge-gate.ps1 to run-weekly-paperwork-checks.ps1, but this entry still named the old caller, so cadence_state.py could never see a fresh run recorded against reality; also wired the missing cadence_state.py record call into the check's real host."
     },
     {
+      "id": "check-doc-references",
+      "tier": "T1",
+      "maxStaleness": "1-wave",
+      "invokedBy": "scripts/quality/run-weekly-paperwork-checks.ps1",
+      "description": "DOCS-1: every inline path, script name, CLI subcommand/flag and symbol that a docs/content/*.json doc names still exists in the tracked tree (CLI checked against the real argparse tree). Reads JSON only, never markdown. Allowlist: scripts/policy/doc-reference-policy.json (frozenCount only shrinks). Runs its own planted-defect calibration every time."
+    },
+    {
       "id": "canary-build-boot-smoke",
       "tier": "T1",
       "maxStaleness": "1-wave",

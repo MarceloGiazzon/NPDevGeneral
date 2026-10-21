@@ -1,0 +1,52 @@
+{
+  "description": "DOCS-1 allowlist for scripts/quality/check-doc-references.py: names a doc legitimately uses that do not live in the tracked tree. Each entry needs a reason. frozenCount counts ignored values (a prefix entry counts once) and may only be lowered, in the commit that removes the entry; an entry nothing matches fails the check.",
+  "frozenCount": 18,
+  "ignore": [
+    {
+      "id": "user-app-paths",
+      "kind": "path",
+      "reason": "The user's own app is scaffolded OUTSIDE this clone (`npdev init` refuses to scaffold inside it), so every `../my-app/...` path in a quickstart is a path in the reader's tree, not ours.",
+      "prefixes": [
+        "../"
+      ]
+    },
+    {
+      "id": "user-app-build-output",
+      "kind": "path",
+      "reason": "Gradle build output of the reader's generated app (`build/libs/FinalExec-<version>.jar`); the version is the generator's, the directory exists only after the reader builds.",
+      "prefixes": [
+        "build/libs/"
+      ]
+    },
+    {
+      "id": "illustrative-example-names",
+      "kind": "symbol",
+      "reason": "Example domain names the prose invents to explain a concept (an invoice app, a support desk, a library catalogue). They are the READER's model names, deliberately not identifiers in the platform source. TriageAssistantCapability.java is the illustrative file name for the example capability.",
+      "values": [
+        "RegisterUserProcedure",
+        "InvoiceConsolePanel",
+        "NotifyOnInvoiceIssued",
+        "UserAdminPanel",
+        "RegisterUser",
+        "CreateNote",
+        "InvoiceItem",
+        "InvoiceNotification",
+        "triageAssistant",
+        "SupportAgent",
+        "SupportTicket",
+        "InvoiceCompleted",
+        "invoiceService",
+        "RentalInvoice",
+        "isbnCode"
+      ]
+    },
+    {
+      "id": "illustrative-example-file",
+      "kind": "path",
+      "reason": "Illustrative file name of the example `triageAssistant` capability in the user manual; it is the reader's source file, not one of ours.",
+      "values": [
+        "TriageAssistantCapability.java"
+      ]
+    }
+  ]
+}

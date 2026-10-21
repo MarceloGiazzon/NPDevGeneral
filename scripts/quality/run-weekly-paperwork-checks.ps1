@@ -75,7 +75,7 @@ try {
 
     Write-Host "== Weekly paperwork checks (R4 Part C) ==" -ForegroundColor Cyan
 
-    Write-Host "[1/11] Checking accepted ADR decisions carrying a decision-check claim are implemented..."
+    Write-Host "[1/12] Checking accepted ADR decisions carrying a decision-check claim are implemented..."
     & $py "scripts/quality/check-adr-decision-implementation.py"
     $exitCode = $LASTEXITCODE
     Record-Cadence -Id "check-adr-decision-implementation" -Tier "T1" -Result $(if ($exitCode -eq 0) { "passed" } else { "failed" })
@@ -84,7 +84,7 @@ try {
         $failures += "an ADR decision-check block's claim no longer holds: see scripts/quality/check-adr-decision-implementation.py output above"
     }
 
-    Write-Host "[2/11] Checking allowlist entries carry a REG/B citation, reporting allowlist sizes..."
+    Write-Host "[2/12] Checking allowlist entries carry a REG/B citation, reporting allowlist sizes..."
     & $py "scripts/quality/check-allowlist-citations.py"
     $exitCode = $LASTEXITCODE
     [void]$checks.Add((New-NPDevCheckResult "allowlist-citations" $(if ($exitCode -eq 0) { "passed" } else { "failed" }) $(if ($exitCode -eq 0) { "check-allowlist-citations.py passed." } else { "an allowlist entry has no REG-nn/B-nn citation." }) @{ scriptPath = "scripts/quality/check-allowlist-citations.py"; exitCode = $exitCode }))
@@ -92,7 +92,7 @@ try {
         $failures += "an allowlist entry has no REG-nn/B-nn citation: see scripts/quality/check-allowlist-citations.py output above"
     }
 
-    Write-Host "[3/11] Checking every run-all-gates.ps1 gate has a verification-cadence.json staleness deadline..."
+    Write-Host "[3/12] Checking every run-all-gates.ps1 gate has a verification-cadence.json staleness deadline..."
     & $py "scripts/quality/check-cadence-coverage.py"
     $exitCode = $LASTEXITCODE
     [void]$checks.Add((New-NPDevCheckResult "cadence-coverage" $(if ($exitCode -eq 0) { "passed" } else { "failed" }) $(if ($exitCode -eq 0) { "check-cadence-coverage.py passed." } else { "a run-all-gates.ps1 gate has no entry (or the wrong tier) in verification-cadence.json." }) @{ scriptPath = "scripts/quality/check-cadence-coverage.py"; exitCode = $exitCode }))
@@ -100,7 +100,7 @@ try {
         $failures += "a run-all-gates.ps1 gate has no entry (or the wrong tier) in scripts/quality/verification-cadence.json: see scripts/quality/check-cadence-coverage.py output above"
     }
 
-    Write-Host "[4/11] Checking no new process document (plan/checklist/findings/register) entered the repo..."
+    Write-Host "[4/12] Checking no new process document (plan/checklist/findings/register) entered the repo..."
     & $py "scripts/quality/check-doc-inventory.py"
     $exitCode = $LASTEXITCODE
     [void]$checks.Add((New-NPDevCheckResult "doc-inventory" $(if ($exitCode -eq 0) { "passed" } else { "failed" }) $(if ($exitCode -eq 0) { "check-doc-inventory.py passed." } else { "a banned process document was added, or the frozen legacy list grew/rotted." }) @{ scriptPath = "scripts/quality/check-doc-inventory.py"; exitCode = $exitCode }))
@@ -108,7 +108,7 @@ try {
         $failures += "a banned process document was added, or the frozen legacy list grew/rotted: see scripts/quality/check-doc-inventory.py output above"
     }
 
-    Write-Host "[5/11] Checking external-AI mission run coverage + provenance audit (ADR-0009)..."
+    Write-Host "[5/12] Checking external-AI mission run coverage + provenance audit (ADR-0009)..."
     & $py "scripts/quality/check-external-ai-mission-coverage.py"
     $exitCode = $LASTEXITCODE
     [void]$checks.Add((New-NPDevCheckResult "external-ai-mission-coverage" $(if ($exitCode -eq 0) { "passed" } else { "failed" }) $(if ($exitCode -eq 0) { "check-external-ai-mission-coverage.py passed." } else { "external-AI mission coverage check failed." }) @{ scriptPath = "scripts/quality/check-external-ai-mission-coverage.py"; exitCode = $exitCode }))
@@ -116,7 +116,7 @@ try {
         $failures += "external-AI mission coverage check failed: see scripts/quality/check-external-ai-mission-coverage.py output above -- missing mission run records, or a stale/unverified pack"
     }
 
-    Write-Host "[6/11] Checking no OPEN ledger item has a fix that already landed..."
+    Write-Host "[6/12] Checking no OPEN ledger item has a fix that already landed..."
     & $py "scripts/quality/check-ledger-status-reverse-freshness.py"
     $exitCode = $LASTEXITCODE
     [void]$checks.Add((New-NPDevCheckResult "ledger-status-reverse-freshness" $(if ($exitCode -eq 0) { "passed" } else { "failed" }) $(if ($exitCode -eq 0) { "check-ledger-status-reverse-freshness.py passed." } else { "a ledger item marked OPEN has its remedy already in the tree." }) @{ scriptPath = "scripts/quality/check-ledger-status-reverse-freshness.py"; exitCode = $exitCode }))
@@ -124,7 +124,7 @@ try {
         $failures += "a ledger item marked OPEN has its remedy already in the tree: see scripts/quality/check-ledger-status-reverse-freshness.py output above"
     }
 
-    Write-Host "[7/11] Checking every relative markdown link resolves..."
+    Write-Host "[7/12] Checking every relative markdown link resolves..."
     & $py "scripts/quality/check-markdown-links.py"
     $exitCode = $LASTEXITCODE
     [void]$checks.Add((New-NPDevCheckResult "markdown-links" $(if ($exitCode -eq 0) { "passed" } else { "failed" }) $(if ($exitCode -eq 0) { "check-markdown-links.py passed." } else { "a relative markdown link is broken." }) @{ scriptPath = "scripts/quality/check-markdown-links.py"; exitCode = $exitCode }))
@@ -132,7 +132,7 @@ try {
         $failures += "a relative markdown link is broken: see scripts/quality/check-markdown-links.py output above"
     }
 
-    Write-Host "[8/11] Checking no script reads markdown content with no exemption..."
+    Write-Host "[8/12] Checking no script reads markdown content with no exemption..."
     & $py "scripts/quality/check-no-markdown-reads.py"
     $exitCode = $LASTEXITCODE
     [void]$checks.Add((New-NPDevCheckResult "no-markdown-reads" $(if ($exitCode -eq 0) { "passed" } else { "failed" }) $(if ($exitCode -eq 0) { "check-no-markdown-reads.py passed." } else { "a script reads markdown content with no exemption." }) @{ scriptPath = "scripts/quality/check-no-markdown-reads.py"; exitCode = $exitCode }))
@@ -140,7 +140,7 @@ try {
         $failures += "a script reads markdown content with no exemption: see scripts/quality/check-no-markdown-reads.py output above, and scripts/policy/markdown-read-exemptions.json for the exemption discipline"
     }
 
-    Write-Host "[9/11] Checking no install guide pins a specific release in a download link..."
+    Write-Host "[9/12] Checking no install guide pins a specific release in a download link..."
     & $py "scripts/quality/check-pinned-download-links.py"
     $exitCode = $LASTEXITCODE
     [void]$checks.Add((New-NPDevCheckResult "pinned-download-links" $(if ($exitCode -eq 0) { "passed" } else { "failed" }) $(if ($exitCode -eq 0) { "check-pinned-download-links.py passed." } else { "a user-facing doc links to a version-pinned release asset." }) @{ scriptPath = "scripts/quality/check-pinned-download-links.py"; exitCode = $exitCode }))
@@ -148,7 +148,7 @@ try {
         $failures += "a user-facing doc links to a version-pinned release asset: see scripts/quality/check-pinned-download-links.py output above"
     }
 
-    Write-Host "[10/11] Checking every documented command/default a reader would copy..."
+    Write-Host "[10/12] Checking every documented command/default a reader would copy..."
     & $py "scripts/quality/check-readme-contract.py"
     $exitCode = $LASTEXITCODE
     [void]$checks.Add((New-NPDevCheckResult "readme-contract" $(if ($exitCode -eq 0) { "passed" } else { "failed" }) $(if ($exitCode -eq 0) { "check-readme-contract.py passed." } else { "a documented command or default cannot be followed as written." }) @{ scriptPath = "scripts/quality/check-readme-contract.py"; exitCode = $exitCode }))
@@ -156,12 +156,21 @@ try {
         $failures += "a documented command or default cannot be followed as written: see scripts/quality/check-readme-contract.py output above"
     }
 
-    Write-Host "[11/11] Checking branch freshness vs. origin/main and record-surfaces.json's large-file size claims..."
+    Write-Host "[11/12] Checking branch freshness vs. origin/main and record-surfaces.json's large-file size claims..."
     & $py "scripts/quality/check-record-surfaces.py"
     $exitCode = $LASTEXITCODE
     [void]$checks.Add((New-NPDevCheckResult "record-surfaces" $(if ($exitCode -eq 0) { "passed" } else { "failed" }) $(if ($exitCode -eq 0) { "check-record-surfaces.py passed." } else { "a record surface has drifted." }) @{ scriptPath = "scripts/quality/check-record-surfaces.py"; exitCode = $exitCode }))
     if ($exitCode -ne 0) {
         $failures += "a record surface has drifted: see scripts/quality/check-record-surfaces.py output above"
+    }
+
+    Write-Host "[12/12] Checking every path, script, CLI subcommand/flag and symbol a docs/content doc names still exists (DOCS-1)..."
+    & $py -I "scripts/quality/check-doc-references.py"
+    $exitCode = $LASTEXITCODE
+    Record-Cadence -Id "check-doc-references" -Tier "T1" -Result $(if ($exitCode -eq 0) { "passed" } else { "failed" })
+    [void]$checks.Add((New-NPDevCheckResult "doc-references" $(if ($exitCode -eq 0) { "passed" } else { "failed" }) $(if ($exitCode -eq 0) { "check-doc-references.py passed." } else { "a doc names a path, script, command, flag or symbol the tree no longer has." }) @{ scriptPath = "scripts/quality/check-doc-references.py"; exitCode = $exitCode }))
+    if ($exitCode -ne 0) {
+        $failures += "a doc names a path, script, command, flag or symbol the tree no longer has: see scripts/quality/check-doc-references.py output above"
     }
 
     $failedChecks = @($checks | Where-Object { $_.status -eq "failed" })
