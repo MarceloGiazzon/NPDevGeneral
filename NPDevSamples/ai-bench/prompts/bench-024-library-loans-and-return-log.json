@@ -1,0 +1,247 @@
+{
+  "id": "bench-024",
+  "tier": "integration-report",
+  "title": "Library loans and return log",
+  "prompt": "I volunteer at a village library and we lend books to local people. Every loan has the book title, the borrower's name and whether it is out or returned. A loan starts as out, and when it is marked returned I want the system to add an entry to a return log automatically, without me typing it, so I can see what came back. A returned loan can never be put back to out, and a loan needs a title and a borrower.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Loan",
+        "fields": [
+          {
+            "name": "bookTitle",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "title",
+              "book"
+            ]
+          },
+          {
+            "name": "borrower",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "borrowerName",
+              "member",
+              "name"
+            ]
+          },
+          {
+            "name": "status",
+            "type": "enum",
+            "required": true,
+            "aliases": [
+              "state"
+            ],
+            "enumValues": [
+              {
+                "key": "out",
+                "aliases": [
+                  "Lent",
+                  "On loan",
+                  "Borrowed"
+                ]
+              },
+              {
+                "key": "returned",
+                "aliases": [
+                  "Back",
+                  "Returned"
+                ]
+              }
+            ]
+          }
+        ],
+        "aliases": [
+          "Lending",
+          "Borrowing"
+        ]
+      },
+      {
+        "name": "ReturnLog",
+        "fields": [
+          {
+            "name": "loan",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "loanId",
+              "loanRef"
+            ],
+            "references": "Loan"
+          }
+        ],
+        "aliases": [
+          "ReturnLogEntry",
+          "ReturnedBooks",
+          "ReturnsLog",
+          "ReturnEntry"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A loan without a borrower is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "out -> returned works; a returned loan cannot go back to out.",
+        "check": {
+          "kind": "lifecycle",
+          "probes": [
+            "p3",
+            "p5"
+          ],
+          "concept": "Loan",
+          "field": "status",
+          "allowed": [
+            [
+              "out",
+              "returned"
+            ]
+          ],
+          "forbidden": [
+            [
+              "returned",
+              "out"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "Marking a loan returned creates a return log entry for it.",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p7"
+          ],
+          "concept": "ReturnLog",
+          "field": "loan"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A loan is accepted, and the return log has no entry for a loan still out.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p8",
+            "p4"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Loan}",
+        "body": {
+          "{field:Loan.bookTitle}": "Ulysses {unique}",
+          "{field:Loan.borrower}": "Ben {unique}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Loan}",
+        "body": {
+          "{field:Loan.bookTitle}": "No borrower"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "{concept:ReturnLog}",
+        "expectStatus": [
+          200,
+          201
+        ],
+        "expectJsonLacks": {
+          "{any:1}": "{id:p1}"
+        }
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Loan}/{id:p1}",
+        "body": {
+          "{field:Loan.status}": "{enum:Loan.status=returned}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Loan}/{id:p1}",
+        "body": {
+          "{field:Loan.status}": "{enum:Loan.status=out}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p7",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "{concept:ReturnLog}",
+        "expectStatus": [
+          200,
+          201
+        ],
+        "expectJsonContains": {
+          "{any:1}": "{id:p1}"
+        }
+      },
+      {
+        "id": "p8",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Loan}",
+        "body": {
+          "{field:Loan.bookTitle}": "Dubliners {unique}",
+          "{field:Loan.borrower}": "Cy {unique}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 4
+    }
+  }
+}

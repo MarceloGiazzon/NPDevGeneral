@@ -1,0 +1,394 @@
+{
+  "id": "bench-014",
+  "tier": "workflow-roles",
+  "title": "IT helpdesk tickets",
+  "prompt": "Our company needs a small helpdesk for computer problems. Staff members report a problem with a subject, a description and a priority of low, normal or high; IT agents work through them. A ticket starts as new, becomes in progress when an agent takes it, and resolved when it is fixed. A resolved ticket can be closed or reopened, and a closed ticket is final. A ticket cannot be set to in progress until it has an assigned agent, and staff can report problems but cannot look at the whole queue.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Agent",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "agentName",
+              "fullName"
+            ]
+          }
+        ],
+        "aliases": [
+          "Technician",
+          "SupportAgent"
+        ]
+      },
+      {
+        "name": "Ticket",
+        "fields": [
+          {
+            "name": "subject",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "title",
+              "summary"
+            ]
+          },
+          {
+            "name": "description",
+            "type": "text",
+            "aliases": [
+              "details",
+              "problem"
+            ]
+          },
+          {
+            "name": "priority",
+            "type": "enum",
+            "aliases": [
+              "urgency"
+            ],
+            "enumValues": [
+              {
+                "key": "low",
+                "aliases": [
+                  "Low"
+                ]
+              },
+              {
+                "key": "normal",
+                "aliases": [
+                  "Normal",
+                  "medium"
+                ]
+              },
+              {
+                "key": "high",
+                "aliases": [
+                  "High",
+                  "urgent"
+                ]
+              }
+            ]
+          },
+          {
+            "name": "assignedAgent",
+            "type": "reference",
+            "aliases": [
+              "agent",
+              "assignee",
+              "assignedTo",
+              "agentId"
+            ],
+            "references": "Agent"
+          },
+          {
+            "name": "status",
+            "type": "enum",
+            "required": true,
+            "aliases": [
+              "state"
+            ],
+            "enumValues": [
+              {
+                "key": "new",
+                "aliases": [
+                  "Open",
+                  "Reported"
+                ]
+              },
+              {
+                "key": "inProgress",
+                "aliases": [
+                  "In progress",
+                  "Working"
+                ]
+              },
+              {
+                "key": "resolved",
+                "aliases": [
+                  "Fixed",
+                  "Solved"
+                ]
+              },
+              {
+                "key": "closed",
+                "aliases": [
+                  "Done"
+                ]
+              }
+            ]
+          }
+        ],
+        "aliases": [
+          "Issue",
+          "Problem",
+          "Request"
+        ]
+      }
+    ],
+    "roles": [
+      {
+        "name": "staff",
+        "aliases": [
+          "employee",
+          "requester",
+          "user"
+        ]
+      },
+      {
+        "name": "agent",
+        "aliases": [
+          "itAgent",
+          "technician",
+          "support"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A ticket cannot be put in progress while it has no assigned agent.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p4"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "With an agent assigned a ticket can be taken, resolved, reopened; a closed ticket is final.",
+        "check": {
+          "kind": "lifecycle",
+          "probes": [
+            "p5",
+            "p6",
+            "p7",
+            "p8",
+            "p9",
+            "p11"
+          ],
+          "concept": "Ticket",
+          "field": "status",
+          "allowed": [
+            [
+              "new",
+              "inProgress"
+            ],
+            [
+              "inProgress",
+              "resolved"
+            ],
+            [
+              "resolved",
+              "inProgress"
+            ],
+            [
+              "resolved",
+              "closed"
+            ]
+          ],
+          "forbidden": [
+            [
+              "closed",
+              "inProgress"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "Staff cannot read the ticket queue.",
+        "check": {
+          "kind": "role-denied",
+          "probes": [
+            "p10"
+          ],
+          "role": "staff",
+          "concept": "Ticket",
+          "action": "read"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "Staff can report a ticket.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p3"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Agent}",
+        "as": "admin",
+        "body": {
+          "{field:Agent.name}": "Dana {unique}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Ticket}",
+        "as": "agent",
+        "body": {
+          "{field:Ticket.subject}": "Printer jams {unique}",
+          "{field:Ticket.description}": "Third floor",
+          "{field:Ticket.priority}": "{enum:Ticket.priority=normal}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Ticket}",
+        "as": "staff",
+        "body": {
+          "{field:Ticket.subject}": "Laptop will not boot {unique}",
+          "{field:Ticket.description}": "Black screen",
+          "{field:Ticket.priority}": "{enum:Ticket.priority=high}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Ticket}/{id:p2}",
+        "as": "agent",
+        "body": {
+          "{field:Ticket.status}": "{enum:Ticket.status=inProgress}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Ticket}/{id:p2}",
+        "as": "agent",
+        "body": {
+          "{field:Ticket.status}": "{enum:Ticket.status=inProgress}",
+          "{field:Ticket.assignedAgent}": "{id:p1}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Ticket}/{id:p2}",
+        "as": "agent",
+        "body": {
+          "{field:Ticket.status}": "{enum:Ticket.status=resolved}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p7",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Ticket}/{id:p2}",
+        "as": "agent",
+        "body": {
+          "{field:Ticket.status}": "{enum:Ticket.status=inProgress}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p8",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Ticket}/{id:p2}",
+        "as": "agent",
+        "body": {
+          "{field:Ticket.status}": "{enum:Ticket.status=resolved}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p9",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Ticket}/{id:p2}",
+        "as": "agent",
+        "body": {
+          "{field:Ticket.status}": "{enum:Ticket.status=closed}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p11",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Ticket}/{id:p2}",
+        "as": "agent",
+        "body": {
+          "{field:Ticket.status}": "{enum:Ticket.status=inProgress}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p10",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "{concept:Ticket}",
+        "as": "staff",
+        "expectStatus": [
+          401,
+          403
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 8
+    }
+  }
+}

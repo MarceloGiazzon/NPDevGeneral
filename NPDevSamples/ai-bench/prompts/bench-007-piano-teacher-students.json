@@ -1,0 +1,248 @@
+{
+  "id": "bench-007",
+  "tier": "simple-crud",
+  "title": "Piano teacher students",
+  "prompt": "I teach piano at home and I want to stop losing track of my students. For each student I keep their name, a parent's email and the day of the week they come (Monday to Friday). I also log every lesson with the student, the date and how many minutes it lasted, and what we worked on. A lesson must belong to a student and must last at least 15 minutes.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Student",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "studentName",
+              "fullName"
+            ]
+          },
+          {
+            "name": "parentEmail",
+            "type": "text",
+            "aliases": [
+              "email",
+              "guardianEmail"
+            ]
+          },
+          {
+            "name": "lessonDay",
+            "type": "enum",
+            "aliases": [
+              "day",
+              "weekday"
+            ],
+            "enumValues": [
+              {
+                "key": "monday",
+                "aliases": [
+                  "Mon"
+                ]
+              },
+              {
+                "key": "tuesday",
+                "aliases": [
+                  "Tue"
+                ]
+              },
+              {
+                "key": "wednesday",
+                "aliases": [
+                  "Wed"
+                ]
+              },
+              {
+                "key": "thursday",
+                "aliases": [
+                  "Thu"
+                ]
+              },
+              {
+                "key": "friday",
+                "aliases": [
+                  "Fri"
+                ]
+              }
+            ]
+          }
+        ],
+        "aliases": [
+          "Pupil"
+        ]
+      },
+      {
+        "name": "Lesson",
+        "fields": [
+          {
+            "name": "student",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "studentId",
+              "pupil"
+            ],
+            "references": "Student"
+          },
+          {
+            "name": "date",
+            "type": "date",
+            "required": true,
+            "aliases": [
+              "lessonDate",
+              "day"
+            ]
+          },
+          {
+            "name": "minutes",
+            "type": "integer",
+            "required": true,
+            "aliases": [
+              "duration",
+              "length",
+              "durationMinutes"
+            ]
+          },
+          {
+            "name": "topic",
+            "type": "text",
+            "aliases": [
+              "workedOn",
+              "notes",
+              "description"
+            ]
+          }
+        ],
+        "aliases": [
+          "Session"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A lesson without a student is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A lesson shorter than 15 minutes is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "A normal lesson is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p4"
+          ]
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A lesson day outside Monday to Friday is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p5"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Student}",
+        "body": {
+          "{field:Student.name}": "Lucia {unique}",
+          "{field:Student.parentEmail}": "parent@example.test",
+          "{field:Student.lessonDay}": "{enum:Student.lessonDay=tuesday}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Lesson}",
+        "body": {
+          "{field:Lesson.date}": "{date:+0}",
+          "{field:Lesson.minutes}": 30,
+          "{field:Lesson.topic}": "Scales"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Lesson}",
+        "body": {
+          "{field:Lesson.student}": "{id:p1}",
+          "{field:Lesson.date}": "{date:+0}",
+          "{field:Lesson.minutes}": 5,
+          "{field:Lesson.topic}": "Scales"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Lesson}",
+        "body": {
+          "{field:Lesson.student}": "{id:p1}",
+          "{field:Lesson.date}": "{date:+0}",
+          "{field:Lesson.minutes}": 30,
+          "{field:Lesson.topic}": "Scales"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Student}",
+        "body": {
+          "{field:Student.name}": "Weekend kid",
+          "{field:Student.lessonDay}": "Sunday"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 8
+    }
+  }
+}

@@ -385,6 +385,14 @@ try {
         $failures += "an engine support claim has no real witness job (or contradicts itself): see scripts/quality/check-engine-matrix.py output above and scripts/policy/engine-capability-matrix.json"
     }
 
+    # BENCH-1: the authoring benchmark's 30 prompts (10 per tier) are well-formed against prompt.schema.json, free of
+    # platform jargon, and every acceptance rule/probe/template resolves. Static: reads JSON only, calls no model.
+    Write-Host "Checking the AI authoring benchmark prompt set (NPDevSamples/ai-bench)..."
+    & $py "scripts/quality/check-ai-bench-prompts.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "the AI benchmark prompt set is malformed or incomplete: see scripts/quality/check-ai-bench-prompts.py output above and NPDevSamples/ai-bench/prompt.schema.json"
+    }
+
     Write-Host "Checking pack-composition surfaces (packs.from / satelliteOf / pack.extends) have corpus coverage..."
     & $py "scripts/quality/check-pack-coverage.py" "--probes" "--strict"
     if ($LASTEXITCODE -ne 0) {

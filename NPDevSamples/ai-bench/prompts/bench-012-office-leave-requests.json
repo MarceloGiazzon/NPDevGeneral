@@ -1,0 +1,254 @@
+{
+  "id": "bench-012",
+  "tier": "workflow-roles",
+  "title": "Office leave requests",
+  "prompt": "We are a ten person office and leave requests are a mess of emails. Employees should be able to submit a leave request with their name, the first and last day off and a reason, and see the list of requests. Only the office manager can approve or reject a request. A request starts as pending and then becomes approved or rejected, and a decision cannot be flipped later on. The last day off must never be before the first day off.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "LeaveRequest",
+        "fields": [
+          {
+            "name": "employeeName",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "employee",
+              "name",
+              "requester"
+            ]
+          },
+          {
+            "name": "startDate",
+            "type": "date",
+            "required": true,
+            "aliases": [
+              "firstDay",
+              "from",
+              "start"
+            ]
+          },
+          {
+            "name": "endDate",
+            "type": "date",
+            "required": true,
+            "aliases": [
+              "lastDay",
+              "to",
+              "end"
+            ]
+          },
+          {
+            "name": "reason",
+            "type": "text",
+            "aliases": [
+              "notes",
+              "comment"
+            ]
+          },
+          {
+            "name": "status",
+            "type": "enum",
+            "required": true,
+            "aliases": [
+              "state"
+            ],
+            "enumValues": [
+              {
+                "key": "pending",
+                "aliases": [
+                  "Requested",
+                  "Submitted"
+                ]
+              },
+              {
+                "key": "approved",
+                "aliases": [
+                  "Accepted"
+                ]
+              },
+              {
+                "key": "rejected",
+                "aliases": [
+                  "Denied",
+                  "Declined"
+                ]
+              }
+            ]
+          }
+        ],
+        "aliases": [
+          "Leave",
+          "TimeOff",
+          "Request",
+          "Vacation"
+        ]
+      }
+    ],
+    "roles": [
+      {
+        "name": "employee",
+        "aliases": [
+          "staff",
+          "worker"
+        ]
+      },
+      {
+        "name": "manager",
+        "aliases": [
+          "officeManager",
+          "approver"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A request whose last day is before its first day is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "An employee can submit a request.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "The manager can approve a pending request; a decision cannot be flipped.",
+        "check": {
+          "kind": "lifecycle",
+          "probes": [
+            "p4",
+            "p5"
+          ],
+          "concept": "LeaveRequest",
+          "field": "status",
+          "allowed": [
+            [
+              "pending",
+              "approved"
+            ]
+          ],
+          "forbidden": [
+            [
+              "approved",
+              "rejected"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "r4",
+        "description": "An employee cannot approve a request.",
+        "check": {
+          "kind": "role-denied",
+          "probes": [
+            "p6"
+          ],
+          "role": "employee",
+          "concept": "LeaveRequest",
+          "action": "update"
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:LeaveRequest}",
+        "as": "employee",
+        "body": {
+          "{field:LeaveRequest.employeeName}": "Zoe",
+          "{field:LeaveRequest.startDate}": "{date:+10}",
+          "{field:LeaveRequest.endDate}": "{date:+5}",
+          "{field:LeaveRequest.reason}": "Trip"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:LeaveRequest}",
+        "as": "employee",
+        "body": {
+          "{field:LeaveRequest.employeeName}": "Zoe {unique}",
+          "{field:LeaveRequest.startDate}": "{date:+10}",
+          "{field:LeaveRequest.endDate}": "{date:+14}",
+          "{field:LeaveRequest.reason}": "Trip"
+        },
+        "expectStatus": [
+          200,
+          201
+        ],
+        "expectJsonContains": {
+          "{field:LeaveRequest.status}": "{enum:LeaveRequest.status=pending}"
+        }
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:LeaveRequest}/{id:p3}",
+        "as": "manager",
+        "body": {
+          "{field:LeaveRequest.status}": "{enum:LeaveRequest.status=approved}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:LeaveRequest}/{id:p3}",
+        "as": "manager",
+        "body": {
+          "{field:LeaveRequest.status}": "{enum:LeaveRequest.status=rejected}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:LeaveRequest}/{id:p3}",
+        "as": "employee",
+        "body": {
+          "{field:LeaveRequest.status}": "{enum:LeaveRequest.status=rejected}"
+        },
+        "expectStatus": [
+          401,
+          403
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 1,
+      "fields": 6
+    }
+  }
+}

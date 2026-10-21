@@ -1,0 +1,275 @@
+{
+  "id": "bench-029",
+  "tier": "integration-report",
+  "title": "Egg farm daily counts",
+  "prompt": "I keep chickens in several coops and I write down the number of eggs collected every day for each coop. A coop has a name, and a daily count has the coop, the date and the number of eggs. For every coop I want to see, calculated for me, how many days have been recorded, the total number of eggs and the best single day. Every count must belong to a coop and the number of eggs cannot be negative.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Coop",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "coopName",
+              "title"
+            ]
+          },
+          {
+            "name": "daysRecorded",
+            "type": "integer",
+            "aliases": [
+              "days",
+              "numberOfDays",
+              "dayCount",
+              "countOfDays"
+            ]
+          },
+          {
+            "name": "totalEggs",
+            "type": "integer",
+            "aliases": [
+              "total",
+              "eggsTotal",
+              "sumEggs",
+              "eggs"
+            ]
+          },
+          {
+            "name": "bestDay",
+            "type": "integer",
+            "aliases": [
+              "maxEggs",
+              "best",
+              "bestCount",
+              "highest"
+            ]
+          }
+        ],
+        "aliases": [
+          "Henhouse",
+          "Pen"
+        ]
+      },
+      {
+        "name": "DailyCount",
+        "fields": [
+          {
+            "name": "coop",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "coopId",
+              "henhouse"
+            ],
+            "references": "Coop"
+          },
+          {
+            "name": "day",
+            "type": "date",
+            "aliases": [
+              "date",
+              "countDate",
+              "collectedOn"
+            ]
+          },
+          {
+            "name": "eggs",
+            "type": "integer",
+            "required": true,
+            "aliases": [
+              "count",
+              "eggCount",
+              "numberOfEggs"
+            ]
+          }
+        ],
+        "aliases": [
+          "Collection",
+          "EggCount",
+          "Count"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "Negative eggs are refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A count without a coop is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "Days recorded is calculated (3).",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p7"
+          ],
+          "concept": "Coop",
+          "field": "daysRecorded"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "Total eggs is calculated (40 + 55 + 47 = 142).",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p7"
+          ],
+          "concept": "Coop",
+          "field": "totalEggs"
+        }
+      },
+      {
+        "id": "r5",
+        "description": "The best single day is calculated (55).",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p7"
+          ],
+          "concept": "Coop",
+          "field": "bestDay"
+        }
+      },
+      {
+        "id": "r6",
+        "description": "A daily count for a coop is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p4"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Coop}",
+        "body": {
+          "{field:Coop.name}": "North coop {unique}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:DailyCount}",
+        "body": {
+          "{field:DailyCount.coop}": "{id:p1}",
+          "{field:DailyCount.day}": "{date:+0}",
+          "{field:DailyCount.eggs}": -1
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:DailyCount}",
+        "body": {
+          "{field:DailyCount.day}": "{date:+0}",
+          "{field:DailyCount.eggs}": 10
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:DailyCount}",
+        "body": {
+          "{field:DailyCount.coop}": "{id:p1}",
+          "{field:DailyCount.day}": "{date:-2}",
+          "{field:DailyCount.eggs}": 40
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:DailyCount}",
+        "body": {
+          "{field:DailyCount.coop}": "{id:p1}",
+          "{field:DailyCount.day}": "{date:-1}",
+          "{field:DailyCount.eggs}": 55
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:DailyCount}",
+        "body": {
+          "{field:DailyCount.coop}": "{id:p1}",
+          "{field:DailyCount.day}": "{date:+0}",
+          "{field:DailyCount.eggs}": 47
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p7",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "{concept:Coop}/{id:p1}",
+        "expectStatus": [
+          200,
+          201
+        ],
+        "expectJsonContains": {
+          "{field:Coop.daysRecorded}": 3,
+          "{field:Coop.totalEggs}": 142,
+          "{field:Coop.bestDay}": 55
+        }
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 7
+    }
+  }
+}

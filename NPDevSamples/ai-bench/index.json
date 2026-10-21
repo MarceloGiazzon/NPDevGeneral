@@ -1,0 +1,186 @@
+{
+  "schema": "prompt.schema.json",
+  "description": "BENCH-1 prompt set index; kept in sync with prompts/ by scripts/quality/check-ai-bench-prompts.py.",
+  "prompts": [
+    {
+      "id": "bench-001",
+      "tier": "simple-crud",
+      "title": "Bike repair shop",
+      "file": "prompts/bench-001-bike-repair-shop.json"
+    },
+    {
+      "id": "bench-002",
+      "tier": "simple-crud",
+      "title": "Home bakery recipe box",
+      "file": "prompts/bench-002-home-bakery-recipe-box.json"
+    },
+    {
+      "id": "bench-003",
+      "tier": "simple-crud",
+      "title": "Neighbourhood tool library",
+      "file": "prompts/bench-003-neighbourhood-tool-library.json"
+    },
+    {
+      "id": "bench-004",
+      "tier": "simple-crud",
+      "title": "Plant nursery stock list",
+      "file": "prompts/bench-004-plant-nursery-stock-list.json"
+    },
+    {
+      "id": "bench-005",
+      "tier": "simple-crud",
+      "title": "Dog daycare roster",
+      "file": "prompts/bench-005-dog-daycare-roster.json"
+    },
+    {
+      "id": "bench-006",
+      "tier": "simple-crud",
+      "title": "Book club meetings",
+      "file": "prompts/bench-006-book-club-meetings.json"
+    },
+    {
+      "id": "bench-007",
+      "tier": "simple-crud",
+      "title": "Piano teacher students",
+      "file": "prompts/bench-007-piano-teacher-students.json"
+    },
+    {
+      "id": "bench-008",
+      "tier": "simple-crud",
+      "title": "Food truck menu",
+      "file": "prompts/bench-008-food-truck-menu.json"
+    },
+    {
+      "id": "bench-009",
+      "tier": "simple-crud",
+      "title": "Gym equipment register",
+      "file": "prompts/bench-009-gym-equipment-register.json"
+    },
+    {
+      "id": "bench-010",
+      "tier": "simple-crud",
+      "title": "Garden club dues",
+      "file": "prompts/bench-010-garden-club-dues.json"
+    },
+    {
+      "id": "bench-011",
+      "tier": "workflow-roles",
+      "title": "Garage work orders",
+      "file": "prompts/bench-011-garage-work-orders.json"
+    },
+    {
+      "id": "bench-012",
+      "tier": "workflow-roles",
+      "title": "Office leave requests",
+      "file": "prompts/bench-012-office-leave-requests.json"
+    },
+    {
+      "id": "bench-013",
+      "tier": "workflow-roles",
+      "title": "Wedding venue bookings",
+      "file": "prompts/bench-013-wedding-venue-bookings.json"
+    },
+    {
+      "id": "bench-014",
+      "tier": "workflow-roles",
+      "title": "IT helpdesk tickets",
+      "file": "prompts/bench-014-it-helpdesk-tickets.json"
+    },
+    {
+      "id": "bench-015",
+      "tier": "workflow-roles",
+      "title": "Purchase approvals",
+      "file": "prompts/bench-015-purchase-approvals.json"
+    },
+    {
+      "id": "bench-016",
+      "tier": "workflow-roles",
+      "title": "Camera rental counter",
+      "file": "prompts/bench-016-camera-rental-counter.json"
+    },
+    {
+      "id": "bench-017",
+      "tier": "workflow-roles",
+      "title": "Food bank volunteer shifts",
+      "file": "prompts/bench-017-food-bank-volunteer-shifts.json"
+    },
+    {
+      "id": "bench-018",
+      "tier": "workflow-roles",
+      "title": "Small insurer claims desk",
+      "file": "prompts/bench-018-small-insurer-claims-desk.json"
+    },
+    {
+      "id": "bench-019",
+      "tier": "workflow-roles",
+      "title": "Classroom homework tracker",
+      "file": "prompts/bench-019-classroom-homework-tracker.json"
+    },
+    {
+      "id": "bench-020",
+      "tier": "workflow-roles",
+      "title": "Landlord maintenance requests",
+      "file": "prompts/bench-020-landlord-maintenance-requests.json"
+    },
+    {
+      "id": "bench-021",
+      "tier": "integration-report",
+      "title": "Tailor shop invoices",
+      "file": "prompts/bench-021-tailor-shop-invoices.json"
+    },
+    {
+      "id": "bench-022",
+      "tier": "integration-report",
+      "title": "Design studio projects and hours",
+      "file": "prompts/bench-022-design-studio-projects-and-hours.json"
+    },
+    {
+      "id": "bench-023",
+      "tier": "integration-report",
+      "title": "Shop sales by salesperson",
+      "file": "prompts/bench-023-shop-sales-by-salesperson.json"
+    },
+    {
+      "id": "bench-024",
+      "tier": "integration-report",
+      "title": "Library loans and return log",
+      "file": "prompts/bench-024-library-loans-and-return-log.json"
+    },
+    {
+      "id": "bench-025",
+      "tier": "integration-report",
+      "title": "Hardware shop low stock list",
+      "file": "prompts/bench-025-hardware-shop-low-stock-list.json"
+    },
+    {
+      "id": "bench-026",
+      "tier": "integration-report",
+      "title": "Restaurant guide ratings",
+      "file": "prompts/bench-026-restaurant-guide-ratings.json"
+    },
+    {
+      "id": "bench-027",
+      "tier": "integration-report",
+      "title": "Fundraiser donor tracking",
+      "file": "prompts/bench-027-fundraiser-donor-tracking.json"
+    },
+    {
+      "id": "bench-028",
+      "tier": "integration-report",
+      "title": "Online shop courier hand-off",
+      "file": "prompts/bench-028-online-shop-courier-hand-off.json"
+    },
+    {
+      "id": "bench-029",
+      "tier": "integration-report",
+      "title": "Egg farm daily counts",
+      "file": "prompts/bench-029-egg-farm-daily-counts.json"
+    },
+    {
+      "id": "bench-030",
+      "tier": "integration-report",
+      "title": "Hair salon appointments",
+      "file": "prompts/bench-030-hair-salon-appointments.json"
+    }
+  ]
+}

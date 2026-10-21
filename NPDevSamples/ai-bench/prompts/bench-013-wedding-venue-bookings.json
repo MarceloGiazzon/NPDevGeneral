@@ -1,0 +1,299 @@
+{
+  "id": "bench-013",
+  "tier": "workflow-roles",
+  "title": "Wedding venue bookings",
+  "prompt": "I manage a small wedding venue and I need to track booking requests. Each booking has the client name, the event date, the number of guests and a status: enquiry, confirmed, paid or cancelled. A booking starts as an enquiry, becomes confirmed when the client agrees, and paid when the deposit arrives; an enquiry or a confirmed booking can be cancelled, but a paid or cancelled booking is final. My assistant can see bookings but must not be able to create or change them, and the guest count must be at least one.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Booking",
+        "fields": [
+          {
+            "name": "clientName",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "client",
+              "name",
+              "customer"
+            ]
+          },
+          {
+            "name": "eventDate",
+            "type": "date",
+            "required": true,
+            "aliases": [
+              "date",
+              "weddingDate"
+            ]
+          },
+          {
+            "name": "guests",
+            "type": "integer",
+            "required": true,
+            "aliases": [
+              "guestCount",
+              "numberOfGuests",
+              "headcount"
+            ]
+          },
+          {
+            "name": "status",
+            "type": "enum",
+            "required": true,
+            "aliases": [
+              "state"
+            ],
+            "enumValues": [
+              {
+                "key": "enquiry",
+                "aliases": [
+                  "Inquiry",
+                  "Request",
+                  "New"
+                ]
+              },
+              {
+                "key": "confirmed",
+                "aliases": [
+                  "Confirmed"
+                ]
+              },
+              {
+                "key": "paid",
+                "aliases": [
+                  "Deposit paid"
+                ]
+              },
+              {
+                "key": "cancelled",
+                "aliases": [
+                  "Canceled"
+                ]
+              }
+            ]
+          }
+        ],
+        "aliases": [
+          "Reservation",
+          "Event"
+        ]
+      }
+    ],
+    "roles": [
+      {
+        "name": "owner",
+        "aliases": [
+          "manager",
+          "venueManager"
+        ]
+      },
+      {
+        "name": "assistant",
+        "aliases": [
+          "viewer",
+          "helper",
+          "readOnly"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A booking with zero guests is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A booking moves enquiry -> confirmed -> paid, may be cancelled before payment, and paid or cancelled bookings are final.",
+        "check": {
+          "kind": "lifecycle",
+          "probes": [
+            "p3",
+            "p4",
+            "p5",
+            "p6"
+          ],
+          "concept": "Booking",
+          "field": "status",
+          "allowed": [
+            [
+              "enquiry",
+              "confirmed"
+            ],
+            [
+              "confirmed",
+              "paid"
+            ]
+          ],
+          "forbidden": [
+            [
+              "paid",
+              "cancelled"
+            ],
+            [
+              "paid",
+              "confirmed"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "The assistant cannot create a booking.",
+        "check": {
+          "kind": "role-denied",
+          "probes": [
+            "p7"
+          ],
+          "role": "assistant",
+          "concept": "Booking",
+          "action": "create"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "The assistant can read bookings.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p8"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Booking}",
+        "as": "owner",
+        "body": {
+          "{field:Booking.clientName}": "Mia {unique}",
+          "{field:Booking.eventDate}": "{date:+90}",
+          "{field:Booking.guests}": 80
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Booking}",
+        "as": "owner",
+        "body": {
+          "{field:Booking.clientName}": "Zero",
+          "{field:Booking.eventDate}": "{date:+90}",
+          "{field:Booking.guests}": 0
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Booking}/{id:p1}",
+        "as": "owner",
+        "body": {
+          "{field:Booking.status}": "{enum:Booking.status=confirmed}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Booking}/{id:p1}",
+        "as": "owner",
+        "body": {
+          "{field:Booking.status}": "{enum:Booking.status=paid}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Booking}/{id:p1}",
+        "as": "owner",
+        "body": {
+          "{field:Booking.status}": "{enum:Booking.status=cancelled}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Booking}/{id:p1}",
+        "as": "owner",
+        "body": {
+          "{field:Booking.status}": "{enum:Booking.status=confirmed}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p7",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Booking}",
+        "as": "assistant",
+        "body": {
+          "{field:Booking.clientName}": "Sneaky",
+          "{field:Booking.eventDate}": "{date:+30}",
+          "{field:Booking.guests}": 10
+        },
+        "expectStatus": [
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p8",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "{concept:Booking}",
+        "as": "assistant",
+        "expectStatus": [
+          200,
+          201
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 1,
+      "fields": 4
+    }
+  }
+}

@@ -1,0 +1,312 @@
+{
+  "id": "bench-027",
+  "tier": "integration-report",
+  "title": "Fundraiser donor tracking",
+  "prompt": "I coordinate fundraising for an animal shelter and I want to track our donors and what they give. A donor has a name and an email, and each donation has the donor, an amount and the date. On each donor I want to see, worked out automatically, how many donations they made and the total they have given. I also want a ready-made list of major donors, those who have given more than 1000 in total. Donations must be for more than zero.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Donor",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "donorName",
+              "fullName"
+            ]
+          },
+          {
+            "name": "email",
+            "type": "text",
+            "aliases": [
+              "emailAddress",
+              "mail"
+            ]
+          },
+          {
+            "name": "donationCount",
+            "type": "integer",
+            "aliases": [
+              "numberOfDonations",
+              "donations",
+              "count"
+            ]
+          },
+          {
+            "name": "totalGiven",
+            "type": "decimal",
+            "aliases": [
+              "total",
+              "totalDonated",
+              "lifetimeTotal",
+              "totalAmount"
+            ]
+          }
+        ],
+        "aliases": [
+          "Supporter",
+          "Contributor"
+        ]
+      },
+      {
+        "name": "Donation",
+        "fields": [
+          {
+            "name": "donor",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "donorId",
+              "supporter"
+            ],
+            "references": "Donor"
+          },
+          {
+            "name": "amount",
+            "type": "decimal",
+            "required": true,
+            "aliases": [
+              "sum",
+              "value",
+              "gift"
+            ]
+          },
+          {
+            "name": "date",
+            "type": "date",
+            "aliases": [
+              "donatedOn",
+              "receivedOn"
+            ]
+          }
+        ],
+        "aliases": [
+          "Gift",
+          "Contribution"
+        ]
+      }
+    ],
+    "views": [
+      {
+        "name": "MajorDonors",
+        "aliases": [
+          "BigDonors",
+          "TopDonors",
+          "LargeDonors",
+          "MajorDonorList"
+        ],
+        "description": "donors whose total is over 1000"
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A donation of zero is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A donation without a donor is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "The donor's donation count is calculated (2).",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p7"
+          ],
+          "concept": "Donor",
+          "field": "donationCount"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "The donor's total is calculated (700 + 600 = 1300).",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p7"
+          ],
+          "concept": "Donor",
+          "field": "totalGiven"
+        }
+      },
+      {
+        "id": "r5",
+        "description": "The major donors list shows the donor with 1300 and hides the donor with 20.",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p8"
+          ],
+          "concept": "MajorDonors",
+          "field": "name"
+        }
+      },
+      {
+        "id": "r6",
+        "description": "A donation for a donor is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p4"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Donor}",
+        "body": {
+          "{field:Donor.name}": "Big {unique}",
+          "{field:Donor.email}": "big.{unique}@example.test"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Donation}",
+        "body": {
+          "{field:Donation.donor}": "{id:p1}",
+          "{field:Donation.amount}": 0,
+          "{field:Donation.date}": "{date:+0}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Donation}",
+        "body": {
+          "{field:Donation.amount}": 10,
+          "{field:Donation.date}": "{date:+0}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Donation}",
+        "body": {
+          "{field:Donation.donor}": "{id:p1}",
+          "{field:Donation.amount}": 700,
+          "{field:Donation.date}": "{date:-3}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Donation}",
+        "body": {
+          "{field:Donation.donor}": "{id:p1}",
+          "{field:Donation.amount}": 600,
+          "{field:Donation.date}": "{date:+0}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Donor}",
+        "body": {
+          "{field:Donor.name}": "Small {unique}",
+          "{field:Donor.email}": "small.{unique}@example.test"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p9",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Donation}",
+        "body": {
+          "{field:Donation.donor}": "{id:p6}",
+          "{field:Donation.amount}": 20,
+          "{field:Donation.date}": "{date:+0}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p7",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "{concept:Donor}/{id:p1}",
+        "expectStatus": [
+          200,
+          201
+        ],
+        "expectJsonContains": {
+          "{field:Donor.donationCount}": 2,
+          "{field:Donor.totalGiven}": 1300
+        }
+      },
+      {
+        "id": "p8",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "{view:MajorDonors}",
+        "expectStatus": [
+          200,
+          201
+        ],
+        "expectJsonContains": {
+          "{any:1}": "Big {unique}"
+        },
+        "expectJsonLacks": {
+          "{any:1}": "Small {unique}"
+        }
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 8
+    }
+  }
+}

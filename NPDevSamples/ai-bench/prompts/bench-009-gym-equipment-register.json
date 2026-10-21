@@ -1,0 +1,220 @@
+{
+  "id": "bench-009",
+  "tier": "simple-crud",
+  "title": "Gym equipment register",
+  "prompt": "I manage a small community gym and I need a register of all our equipment. For every machine I record its name, the serial number, the date we bought it and the room it is in. I also keep a list of rooms with a name and how many people fit in each. Serial numbers are unique, every machine must have a name and a serial number, and a room's capacity has to be at least one.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Room",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "roomName"
+            ]
+          },
+          {
+            "name": "capacity",
+            "type": "integer",
+            "required": true,
+            "aliases": [
+              "maxPeople",
+              "size"
+            ]
+          }
+        ],
+        "aliases": [
+          "Area",
+          "Space"
+        ]
+      },
+      {
+        "name": "Equipment",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "machine",
+              "equipmentName"
+            ]
+          },
+          {
+            "name": "serialNumber",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "serial",
+              "serialNo"
+            ]
+          },
+          {
+            "name": "purchaseDate",
+            "type": "date",
+            "aliases": [
+              "boughtOn",
+              "dateBought",
+              "purchasedOn"
+            ]
+          },
+          {
+            "name": "room",
+            "type": "reference",
+            "aliases": [
+              "roomId",
+              "location"
+            ],
+            "references": "Room"
+          }
+        ],
+        "aliases": [
+          "Machine",
+          "Asset",
+          "Item"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A duplicate serial number is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A machine without a serial number is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p4"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "A room with capacity zero is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p5"
+          ]
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A valid machine is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p6"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Room}",
+        "body": {
+          "{field:Room.name}": "Weights {unique}",
+          "{field:Room.capacity}": 12
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Equipment}",
+        "body": {
+          "{field:Equipment.name}": "Treadmill",
+          "{field:Equipment.serialNumber}": "SN-{unique}",
+          "{field:Equipment.purchaseDate}": "{date:-400}",
+          "{field:Equipment.room}": "{id:p1}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Equipment}",
+        "body": {
+          "{field:Equipment.name}": "Treadmill two",
+          "{field:Equipment.serialNumber}": "SN-{unique}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Equipment}",
+        "body": {
+          "{field:Equipment.name}": "No serial"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Room}",
+        "body": {
+          "{field:Room.name}": "Closet",
+          "{field:Room.capacity}": 0
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Equipment}",
+        "body": {
+          "{field:Equipment.name}": "Rowing machine",
+          "{field:Equipment.serialNumber}": "RW-{unique}",
+          "{field:Equipment.purchaseDate}": "{date:-30}",
+          "{field:Equipment.room}": "{id:p1}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 7
+    }
+  }
+}

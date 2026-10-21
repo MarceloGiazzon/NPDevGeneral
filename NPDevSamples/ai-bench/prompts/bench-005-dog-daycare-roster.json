@@ -1,0 +1,185 @@
+{
+  "id": "bench-005",
+  "tier": "simple-crud",
+  "title": "Dog daycare roster",
+  "prompt": "I run a dog daycare and I need to know who comes in. I want a list of owners with a name and a phone number, and a list of dogs. Each dog has a name, a breed, its weight in kilos and belongs to exactly one owner. I also want to note if a dog needs special food. A dog must always have an owner and a name.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Owner",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "fullName"
+            ]
+          },
+          {
+            "name": "phone",
+            "type": "text",
+            "aliases": [
+              "phoneNumber",
+              "mobile"
+            ]
+          }
+        ],
+        "aliases": [
+          "Client",
+          "Customer"
+        ]
+      },
+      {
+        "name": "Dog",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "dogName"
+            ]
+          },
+          {
+            "name": "owner",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "ownerId",
+              "client"
+            ],
+            "references": "Owner"
+          },
+          {
+            "name": "breed",
+            "type": "text",
+            "aliases": [
+              "race"
+            ]
+          },
+          {
+            "name": "weightKg",
+            "type": "decimal",
+            "aliases": [
+              "weight"
+            ]
+          },
+          {
+            "name": "specialFood",
+            "type": "boolean",
+            "aliases": [
+              "needsSpecialFood",
+              "specialDiet"
+            ]
+          }
+        ],
+        "aliases": [
+          "Pet",
+          "Animal"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A dog without an owner is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A dog without a name is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "A complete dog is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p4"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Owner}",
+        "body": {
+          "{field:Owner.name}": "Marta {unique}",
+          "{field:Owner.phone}": "555-0188"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Dog}",
+        "body": {
+          "{field:Dog.name}": "Rex",
+          "{field:Dog.breed}": "Beagle",
+          "{field:Dog.weightKg}": 12
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Dog}",
+        "body": {
+          "{field:Dog.owner}": "{id:p1}",
+          "{field:Dog.breed}": "Beagle",
+          "{field:Dog.weightKg}": 12
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Dog}",
+        "body": {
+          "{field:Dog.name}": "Rex",
+          "{field:Dog.owner}": "{id:p1}",
+          "{field:Dog.breed}": "Beagle",
+          "{field:Dog.weightKg}": 12,
+          "{field:Dog.specialFood}": true
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 7
+    }
+  }
+}

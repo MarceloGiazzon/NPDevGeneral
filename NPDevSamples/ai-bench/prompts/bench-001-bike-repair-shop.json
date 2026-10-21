@@ -1,0 +1,182 @@
+{
+  "id": "bench-001",
+  "tier": "simple-crud",
+  "title": "Bike repair shop",
+  "prompt": "I run a small bike repair shop and I still keep everything in a paper notebook. I need a list of my customers with their name and phone number, and a list of repairs. Every repair belongs to one customer and records which bike was dropped off, the date it was dropped off and the price I quoted. A repair must never be saved without a customer, and a price can never be negative.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Customer",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "fullName",
+              "customerName"
+            ]
+          },
+          {
+            "name": "phone",
+            "type": "text",
+            "aliases": [
+              "phoneNumber",
+              "telephone"
+            ]
+          }
+        ],
+        "aliases": [
+          "Client"
+        ]
+      },
+      {
+        "name": "Repair",
+        "fields": [
+          {
+            "name": "customer",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "customerId",
+              "client"
+            ],
+            "references": "Customer"
+          },
+          {
+            "name": "bike",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "bikeDescription",
+              "description",
+              "item"
+            ]
+          },
+          {
+            "name": "dropOffDate",
+            "type": "date",
+            "aliases": [
+              "dateIn",
+              "receivedOn",
+              "date"
+            ]
+          },
+          {
+            "name": "price",
+            "type": "decimal",
+            "aliases": [
+              "quote",
+              "amount",
+              "cost"
+            ]
+          }
+        ],
+        "aliases": [
+          "Job",
+          "RepairJob",
+          "Ticket"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A repair cannot be saved without a customer.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A repair with a customer, a bike and a price is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "A negative price is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p4"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Customer}",
+        "body": {
+          "{field:Customer.name}": "Ana {unique}",
+          "{field:Customer.phone}": "555-0101"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Repair}",
+        "body": {
+          "{field:Repair.bike}": "Red road bike",
+          "{field:Repair.price}": 40
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Repair}",
+        "body": {
+          "{field:Repair.customer}": "{id:p1}",
+          "{field:Repair.bike}": "Red road bike",
+          "{field:Repair.dropOffDate}": "{date:+0}",
+          "{field:Repair.price}": 40
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Repair}",
+        "body": {
+          "{field:Repair.customer}": "{id:p1}",
+          "{field:Repair.bike}": "Blue kids bike",
+          "{field:Repair.price}": -5
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 6
+    }
+  }
+}

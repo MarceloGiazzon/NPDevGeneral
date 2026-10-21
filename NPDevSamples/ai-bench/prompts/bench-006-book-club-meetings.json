@@ -1,0 +1,204 @@
+{
+  "id": "bench-006",
+  "tier": "simple-crud",
+  "title": "Book club meetings",
+  "prompt": "I organise a book club that meets once a month in the library. I want to keep the list of books we have read with the title, the author and the year it was published. I also want a list of meetings, each with a date and the book we discussed, plus a short note about how it went. A book needs a title and an author, a meeting needs a date and a book, and the publication year must make sense, meaning no earlier than 1400.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Book",
+        "fields": [
+          {
+            "name": "title",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "name"
+            ]
+          },
+          {
+            "name": "author",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "writer"
+            ]
+          },
+          {
+            "name": "year",
+            "type": "integer",
+            "aliases": [
+              "publicationYear",
+              "publishedYear",
+              "yearPublished"
+            ]
+          }
+        ],
+        "aliases": [
+          "Title"
+        ]
+      },
+      {
+        "name": "Meeting",
+        "fields": [
+          {
+            "name": "date",
+            "type": "date",
+            "required": true,
+            "aliases": [
+              "meetingDate",
+              "heldOn",
+              "day"
+            ]
+          },
+          {
+            "name": "book",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "bookId"
+            ],
+            "references": "Book"
+          },
+          {
+            "name": "notes",
+            "type": "text",
+            "aliases": [
+              "note",
+              "summary",
+              "comment"
+            ]
+          }
+        ],
+        "aliases": [
+          "Session",
+          "Gathering"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A book without an author is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A publication year before 1400 is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "A meeting without a book is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p4"
+          ]
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A meeting for a book is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p5"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Book}",
+        "body": {
+          "{field:Book.title}": "The Remains of the Day {unique}",
+          "{field:Book.author}": "Kazuo Ishiguro",
+          "{field:Book.year}": 1989
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Book}",
+        "body": {
+          "{field:Book.title}": "Anonymous",
+          "{field:Book.year}": 1999
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Book}",
+        "body": {
+          "{field:Book.title}": "Too old",
+          "{field:Book.author}": "Nobody",
+          "{field:Book.year}": 1200
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Meeting}",
+        "body": {
+          "{field:Meeting.date}": "{date:+7}",
+          "{field:Meeting.notes}": "no book"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Meeting}",
+        "body": {
+          "{field:Meeting.date}": "{date:+7}",
+          "{field:Meeting.book}": "{id:p1}",
+          "{field:Meeting.notes}": "Bring snacks"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 7
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "id": "bench-900",
+  "tier": "simple-crud",
+  "title": "Task list (dry-run fixture)",
+  "prompt": "I run a small team and I want a simple task list. Each task has a title that must always be filled in, a priority number and a status. We also keep a list of owners with their names. That is all I need for now, but I want to add, change and look up tasks and owners easily from a screen.",
+  "acceptance": {
+    "concepts": [
+      {"name": "Task", "aliases": ["CanaryTask"], "fields": [
+        {"name": "title", "type": "text", "required": true},
+        {"name": "priority", "type": "integer"},
+        {"name": "status", "type": "text"}]},
+      {"name": "Owner", "aliases": ["CanaryOwner"], "fields": [{"name": "name", "type": "text", "required": true}]}
+    ],
+    "flows": [{"name": "CreateTask", "aliases": ["CreateCanaryTask"]}],
+    "views": [{"name": "OpenHigh", "aliases": ["OpenHighPriorityCanaryTasks"]}],
+    "rules": [
+      {"id": "r1", "description": "A task without a title must be refused.", "check": {"kind": "rest-reject", "probes": ["p2"]}},
+      {"id": "r2", "description": "A complete task can be created and read back.", "check": {"kind": "rest-accept", "probes": ["p1", "p3"]}}
+    ],
+    "probes": [
+      {"id": "p1", "purpose": "setup", "method": "POST", "pathHint": "/api/{concept:Task}",
+       "body": {"{field:Task.title}": "Dry run {unique}", "{field:Task.priority}": 3, "{field:Task.status}": "OPEN"},
+       "expectStatus": [200, 201]},
+      {"id": "p2", "purpose": "assert", "method": "POST", "pathHint": "/api/{concept:Task}",
+       "body": {"{field:Task.priority}": 1, "{field:Task.status}": "OPEN"}, "expectStatus": [400, 422]},
+      {"id": "p3", "purpose": "assert", "method": "GET", "pathHint": "/api/{concept:Task}/{id:p1}",
+       "expectStatus": [200], "expectJsonContains": {"{field:Task.priority}": 3}}
+    ],
+    "minimums": {"concepts": 2, "fields": 4}
+  }
+}

@@ -1,0 +1,232 @@
+{
+  "id": "bench-022",
+  "tier": "integration-report",
+  "title": "Design studio projects and hours",
+  "prompt": "I run a small design studio. I keep a list of projects, and for each project a list of tasks with a title and the hours spent. On every project I want to see, without typing anything, how many tasks it has and the total hours spent on it. A task always belongs to a project and its hours cannot be negative.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Project",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "projectName",
+              "title"
+            ]
+          },
+          {
+            "name": "taskCount",
+            "type": "integer",
+            "aliases": [
+              "tasks",
+              "numberOfTasks",
+              "tasksCount"
+            ]
+          },
+          {
+            "name": "totalHours",
+            "type": "decimal",
+            "aliases": [
+              "hours",
+              "hoursSpent",
+              "hoursTotal",
+              "sumHours"
+            ]
+          }
+        ],
+        "aliases": [
+          "Job",
+          "Engagement"
+        ]
+      },
+      {
+        "name": "Task",
+        "fields": [
+          {
+            "name": "project",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "projectId"
+            ],
+            "references": "Project"
+          },
+          {
+            "name": "title",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "name",
+              "description"
+            ]
+          },
+          {
+            "name": "hours",
+            "type": "decimal",
+            "aliases": [
+              "hoursSpent",
+              "duration"
+            ]
+          }
+        ],
+        "aliases": [
+          "WorkItem",
+          "Activity"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A task without a project is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "Negative hours are refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "The project's task count is calculated (2 tasks).",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p6"
+          ],
+          "concept": "Project",
+          "field": "taskCount"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "The project's total hours are calculated (2 + 3 = 5).",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p6"
+          ],
+          "concept": "Project",
+          "field": "totalHours"
+        }
+      },
+      {
+        "id": "r5",
+        "description": "A task for a project is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p4"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Project}",
+        "body": {
+          "{field:Project.name}": "Brand refresh {unique}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Task}",
+        "body": {
+          "{field:Task.title}": "Orphan",
+          "{field:Task.hours}": 1
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Task}",
+        "body": {
+          "{field:Task.project}": "{id:p1}",
+          "{field:Task.title}": "Negative",
+          "{field:Task.hours}": -2
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Task}",
+        "body": {
+          "{field:Task.project}": "{id:p1}",
+          "{field:Task.title}": "Logo sketches",
+          "{field:Task.hours}": 2
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Task}",
+        "body": {
+          "{field:Task.project}": "{id:p1}",
+          "{field:Task.title}": "Colour palette",
+          "{field:Task.hours}": 3
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "{concept:Project}/{id:p1}",
+        "expectStatus": [
+          200,
+          201
+        ],
+        "expectJsonContains": {
+          "{field:Project.taskCount}": 2,
+          "{field:Project.totalHours}": 5
+        }
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 7
+    }
+  }
+}

@@ -1,0 +1,191 @@
+{
+  "id": "bench-003",
+  "tier": "simple-crud",
+  "title": "Neighbourhood tool library",
+  "prompt": "Our neighbourhood association lends out tools like drills and ladders and we are tired of tracking it on a whiteboard. I need a list of tools with a name, the condition it is in (new, good, worn or broken) and a note. I also need a list of members with their name and email address. Every member must have an email address, and no two members may share the same email address.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Tool",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "toolName"
+            ]
+          },
+          {
+            "name": "condition",
+            "type": "enum",
+            "aliases": [
+              "state",
+              "status"
+            ],
+            "enumValues": [
+              {
+                "key": "new",
+                "aliases": [
+                  "New"
+                ]
+              },
+              {
+                "key": "good",
+                "aliases": [
+                  "Good"
+                ]
+              },
+              {
+                "key": "worn",
+                "aliases": [
+                  "Worn"
+                ]
+              },
+              {
+                "key": "broken",
+                "aliases": [
+                  "Broken"
+                ]
+              }
+            ]
+          },
+          {
+            "name": "note",
+            "type": "text",
+            "aliases": [
+              "notes",
+              "comment",
+              "description"
+            ]
+          }
+        ],
+        "aliases": [
+          "Equipment"
+        ]
+      },
+      {
+        "name": "Member",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "fullName"
+            ]
+          },
+          {
+            "name": "email",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "emailAddress",
+              "mail"
+            ]
+          }
+        ],
+        "aliases": [
+          "Person",
+          "Neighbour"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A member without an email address is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "Two members cannot share an email address.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "A tool with a valid condition is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p4"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Member}",
+        "body": {
+          "{field:Member.name}": "Rosa",
+          "{field:Member.email}": "rosa.{unique}@example.test"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Member}",
+        "body": {
+          "{field:Member.name}": "Nomail"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Member}",
+        "body": {
+          "{field:Member.name}": "Rosa twin",
+          "{field:Member.email}": "rosa.{unique}@example.test"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Tool}",
+        "body": {
+          "{field:Tool.name}": "Cordless drill",
+          "{field:Tool.condition}": "{enum:Tool.condition=good}",
+          "{field:Tool.note}": "Battery is new"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 5
+    }
+  }
+}
