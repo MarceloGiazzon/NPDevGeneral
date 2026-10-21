@@ -855,6 +855,9 @@
     "scripts/load/run_load.py": {
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"
+    },
+    "scripts/load/load_common.py": {
+      "invocation": "orchestrated"
     }
   }
 }
