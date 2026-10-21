@@ -3,9 +3,10 @@ title: >-
   field.min / field.max are not enforced: out-of-range numbers are accepted on create and update
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-10-20
-closed: null
+closed: 2026-10-21
+verification: VERIFIED_LIVE
 source: >-
   ENF-1 behaviour probe cf-field-min-enforced (NPDevSamples/dsl-conformance-max/behavior-probes/10-concept-field.json), found while checking
   that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.

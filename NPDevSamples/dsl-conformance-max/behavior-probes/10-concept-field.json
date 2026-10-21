@@ -10,7 +10,7 @@
         {
           "name": "missing discontinued",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "WID-${rand}",
             "displayName": "cf ${rand}",
@@ -32,7 +32,7 @@
         {
           "name": "null unitPrice",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "WID-${rand}",
             "displayName": "cf ${rand}",
@@ -50,7 +50,7 @@
         {
           "name": "control with every required field",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "WID-${rand}",
             "displayName": "cf ${rand}",
@@ -392,8 +392,7 @@
             }
           }
         }
-      ],
-      "knownFailure": "REG-258"
+      ]
     },
     {
       "id": "cf-field-access-read-masks-field-for-non-owner",
@@ -405,7 +404,7 @@
         {
           "name": "own row",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "WID-${rand}",
             "displayName": "cf ${rand}",
@@ -424,7 +423,7 @@
         {
           "name": "foreign row",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "WID-${rand}",
             "displayName": "cf ${rand}",
@@ -443,7 +442,7 @@
         {
           "name": "owner reads notes",
           "method": "GET",
-          "path": "/api/widget_catalog_entrys/${ownId}",
+          "path": "/api/widget_catalog_entries/${ownId}",
           "expect": {
             "status": 200,
             "json": {
@@ -457,7 +456,7 @@
         {
           "name": "non-owner row masked",
           "method": "GET",
-          "path": "/api/widget_catalog_entrys/${otherId}",
+          "path": "/api/widget_catalog_entries/${otherId}",
           "expect": {
             "status": 200,
             "json": {
@@ -472,7 +471,7 @@
         {
           "name": "paged list: owner row keeps notes",
           "method": "GET",
-          "path": "/api/concepts/widget_catalog_entrys?where=id:eq:${ownId}",
+          "path": "/api/concepts/widget_catalog_entries?where=id:eq:${ownId}",
           "expect": {
             "status": 200,
             "json": {
@@ -485,7 +484,7 @@
         {
           "name": "paged list: foreign row masked",
           "method": "GET",
-          "path": "/api/concepts/widget_catalog_entrys?where=id:eq:${otherId}",
+          "path": "/api/concepts/widget_catalog_entries?where=id:eq:${otherId}",
           "expect": {
             "status": 200,
             "json": {
@@ -559,7 +558,7 @@
         "conceptAccess.read",
         "conceptAccess.write"
       ],
-      "description": "concept.access.read (customerEmail == $user.id) hides a row from the caller once it no longer satisfies the rule: an order handed over to another customer disappears from get-by-id (404) and from the list. NOTE the hand-over PUT itself is accepted (200): the write rule is checked against the stored row, not the new payload - arguably intended pre-image semantics, asserted as-is. WidgetOrder creation answers 500 (known PlaceWidgetOrder defect) although the row is stored, so the order is located by a unique status tag.",
+      "description": "concept.access.read (customerEmail == $user.id) hides a row from the caller once it no longer satisfies the rule: an order handed over to another customer disappears from get-by-id (404) and from the list. NOTE the hand-over PUT itself is accepted (200): the write rule is checked against the stored row, not the new payload - arguably intended pre-image semantics, asserted as-is. WidgetOrder creation used to answer 500 (REG-259, fixed) and now answers 200; the order is still located by a unique status tag.",
       "steps": [
         {
           "name": "tag",
@@ -578,7 +577,7 @@
           }
         },
         {
-          "name": "create own order (500 tolerated, row is stored)",
+          "name": "create own order",
           "method": "POST",
           "path": "/api/concepts/widget_orders",
           "body": {
@@ -589,7 +588,7 @@
           "expect": {
             "status": [
               201,
-              500
+              200
             ]
           }
         },
@@ -659,7 +658,7 @@
         {
           "name": "create entry with private data",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "PUB-${rand}",
             "displayName": "cf ${rand}",
@@ -751,7 +750,7 @@
         {
           "name": "no anonymous access to the private route",
           "method": "GET",
-          "path": "/api/widget_catalog_entrys/${eid}",
+          "path": "/api/widget_catalog_entries/${eid}",
           "auth": "none",
           "expect": {
             "status": [
@@ -772,7 +771,7 @@
         {
           "name": "live entry",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "WID-${rand}",
             "displayName": "cf ${rand}",
@@ -790,7 +789,7 @@
         {
           "name": "discontinued entry",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "WID-${rand}",
             "displayName": "cf ${rand}",
@@ -857,7 +856,7 @@
         {
           "name": "discontinued promoted entry",
           "method": "POST",
-          "path": "/api/promoted_widget_catalog_entrys",
+          "path": "/api/promoted_widget_catalog_entries",
           "body": {
             "sku": "WID-${rand}",
             "displayName": "cf ${rand}",
@@ -894,7 +893,7 @@
         {
           "name": "blank sku hits the inherited invariant",
           "method": "POST",
-          "path": "/api/promoted_widget_catalog_entrys",
+          "path": "/api/promoted_widget_catalog_entries",
           "body": {
             "sku": "",
             "displayName": "cf ${rand}",
@@ -915,7 +914,7 @@
         {
           "name": "own required field",
           "method": "POST",
-          "path": "/api/promoted_widget_catalog_entrys",
+          "path": "/api/promoted_widget_catalog_entries",
           "body": {
             "sku": "WID-${rand}",
             "displayName": "cf ${rand}",
@@ -936,7 +935,7 @@
         {
           "name": "inherited required field",
           "method": "POST",
-          "path": "/api/promoted_widget_catalog_entrys",
+          "path": "/api/promoted_widget_catalog_entries",
           "body": {
             "displayName": "x",
             "sku": "WID-${rand}",
@@ -953,7 +952,7 @@
         {
           "name": "valid promoted entry",
           "method": "POST",
-          "path": "/api/promoted_widget_catalog_entrys",
+          "path": "/api/promoted_widget_catalog_entries",
           "body": {
             "sku": "WID-${rand}",
             "displayName": "cf ${rand}",
@@ -974,7 +973,7 @@
         {
           "name": "foreign-owned promoted entry",
           "method": "POST",
-          "path": "/api/promoted_widget_catalog_entrys",
+          "path": "/api/promoted_widget_catalog_entries",
           "body": {
             "sku": "WID-${rand}",
             "displayName": "cf ${rand}",
@@ -994,7 +993,7 @@
         {
           "name": "inherited field access masks on read",
           "method": "GET",
-          "path": "/api/promoted_widget_catalog_entrys/${pid2}",
+          "path": "/api/promoted_widget_catalog_entries/${pid2}",
           "expect": {
             "status": 200,
             "json": {
@@ -1031,7 +1030,7 @@
         {
           "name": "entry (client tries to write rollups)",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "WID-${rand}",
             "displayName": "cf ${rand}",
@@ -1050,7 +1049,7 @@
         {
           "name": "client-written rollups discarded",
           "method": "GET",
-          "path": "/api/widget_catalog_entrys/${eid}",
+          "path": "/api/widget_catalog_entries/${eid}",
           "expect": {
             "status": 200,
             "json": {
@@ -1096,7 +1095,7 @@
         {
           "name": "count 2 max 5",
           "method": "GET",
-          "path": "/api/widget_catalog_entrys/${eid}",
+          "path": "/api/widget_catalog_entries/${eid}",
           "expect": {
             "status": 200,
             "json": {
@@ -1119,7 +1118,7 @@
         {
           "name": "max recomputed after update",
           "method": "GET",
-          "path": "/api/widget_catalog_entrys/${eid}",
+          "path": "/api/widget_catalog_entries/${eid}",
           "expect": {
             "status": 200,
             "json": {
@@ -1139,7 +1138,7 @@
         {
           "name": "count 1 max 1 after delete",
           "method": "GET",
-          "path": "/api/widget_catalog_entrys/${eid}",
+          "path": "/api/widget_catalog_entries/${eid}",
           "expect": {
             "status": 200,
             "json": {
@@ -1159,7 +1158,7 @@
         {
           "name": "count back to 0, max null",
           "method": "GET",
-          "path": "/api/widget_catalog_entrys/${eid}",
+          "path": "/api/widget_catalog_entries/${eid}",
           "expect": {
             "status": 200,
             "json": {
@@ -1175,12 +1174,12 @@
       "keywords": [
         "concept.temporal"
       ],
-      "description": "On a temporal concept the generic list resolves rows by validFrom <= asOf <= validTo (both ends inclusive), returns nothing outside every window, defaults to today's window when asOf is absent (an expired 2020 row is not returned, the open-ended one is), rejects a malformed asOf (400 invalid_asOf) and rejects asOf on a non-temporal concept. Note: the plain /api/widget_price_list_entrys list and the /api/concepts/<Concept>/page route do not apply asOf at all (they return every row) - only the documented generic list does.",
+      "description": "On a temporal concept the generic list resolves rows by validFrom <= asOf <= validTo (both ends inclusive), returns nothing outside every window, defaults to today's window when asOf is absent (an expired 2020 row is not returned, the open-ended one is), rejects a malformed asOf (400 invalid_asOf) and rejects asOf on a non-temporal concept. Note: the plain /api/widget_price_list_entries list and the /api/concepts/<Concept>/page route do not apply asOf at all (they return every row) - only the documented generic list does.",
       "steps": [
         {
           "name": "expired window 2020",
           "method": "POST",
-          "path": "/api/widget_price_list_entrys",
+          "path": "/api/widget_price_list_entries",
           "body": {
             "productCode": "PC-${rand}",
             "amount": 10,
@@ -1197,7 +1196,7 @@
         {
           "name": "open-ended window from 2021",
           "method": "POST",
-          "path": "/api/widget_price_list_entrys",
+          "path": "/api/widget_price_list_entries",
           "body": {
             "productCode": "${code}",
             "amount": 20,
@@ -1211,7 +1210,7 @@
         {
           "name": "asOf inside the old window",
           "method": "GET",
-          "path": "/api/concepts/widget_price_list_entrys?where=productCode:eq:${code}&asOf=2020-06-15",
+          "path": "/api/concepts/widget_price_list_entries?where=productCode:eq:${code}&asOf=2020-06-15",
           "expect": {
             "status": 200,
             "json": {
@@ -1226,7 +1225,7 @@
         {
           "name": "last day of old window is inclusive",
           "method": "GET",
-          "path": "/api/concepts/widget_price_list_entrys?where=productCode:eq:${code}&asOf=2020-12-31",
+          "path": "/api/concepts/widget_price_list_entries?where=productCode:eq:${code}&asOf=2020-12-31",
           "expect": {
             "status": 200,
             "json": {
@@ -1240,7 +1239,7 @@
         {
           "name": "first day of new window is inclusive",
           "method": "GET",
-          "path": "/api/concepts/widget_price_list_entrys?where=productCode:eq:${code}&asOf=2021-01-01",
+          "path": "/api/concepts/widget_price_list_entries?where=productCode:eq:${code}&asOf=2021-01-01",
           "expect": {
             "status": 200,
             "json": {
@@ -1254,7 +1253,7 @@
         {
           "name": "before every window",
           "method": "GET",
-          "path": "/api/concepts/widget_price_list_entrys?where=productCode:eq:${code}&asOf=2019-12-31",
+          "path": "/api/concepts/widget_price_list_entries?where=productCode:eq:${code}&asOf=2019-12-31",
           "expect": {
             "status": 200,
             "json": {
@@ -1268,7 +1267,7 @@
         {
           "name": "default view is today: only the current row",
           "method": "GET",
-          "path": "/api/concepts/widget_price_list_entrys?where=productCode:eq:${code}",
+          "path": "/api/concepts/widget_price_list_entries?where=productCode:eq:${code}",
           "expect": {
             "status": 200,
             "json": {
@@ -1285,7 +1284,7 @@
         {
           "name": "malformed asOf",
           "method": "GET",
-          "path": "/api/concepts/widget_price_list_entrys?where=productCode:eq:${code}&asOf=yesterday",
+          "path": "/api/concepts/widget_price_list_entries?where=productCode:eq:${code}&asOf=yesterday",
           "expect": {
             "status": 400,
             "json": {
@@ -1384,7 +1383,7 @@
       "keywords": [
         "field.defaultExpression"
       ],
-      "description": "WidgetOrder.orderNumber (defaultExpression nextNumber('orderNumber')) is filled with a distinct ORD-YYYY-NNNN value on each create and WidgetOrder.placedBy ($user.id) with the caller; an explicitly supplied value wins over the default. WidgetOrder creation answers 500 (known PlaceWidgetOrder defect) although the row is stored, so rows are located by a unique status tag.",
+      "description": "WidgetOrder.orderNumber (defaultExpression nextNumber('orderNumber')) is filled with a distinct ORD-YYYY-NNNN value on each create and WidgetOrder.placedBy ($user.id) with the caller; an explicitly supplied value wins over the default. WidgetOrder creation used to answer 500 (REG-259, fixed) and now answers 200; rows are still located by a unique status tag.",
       "steps": [
         {
           "name": "tag",
@@ -1414,7 +1413,7 @@
           "expect": {
             "status": [
               201,
-              500
+              200
             ]
           }
         },
@@ -1430,7 +1429,7 @@
           "expect": {
             "status": [
               201,
-              500
+              200
             ]
           }
         },
@@ -1485,7 +1484,7 @@
           "expect": {
             "status": [
               201,
-              500
+              200
             ]
           }
         },
@@ -1602,8 +1601,7 @@
             }
           }
         }
-      ],
-      "knownFailure": "REG-253"
+      ]
     },
     {
       "id": "cf-field-max-length-enforced",
@@ -1643,8 +1641,7 @@
             ]
           }
         }
-      ],
-      "knownFailure": "REG-254"
+      ]
     },
     {
       "id": "cf-field-min-enforced",
@@ -1701,8 +1698,7 @@
             ]
           }
         }
-      ],
-      "knownFailure": "REG-255"
+      ]
     },
     {
       "id": "cf-field-max-enforced",
@@ -1760,8 +1756,7 @@
             ]
           }
         }
-      ],
-      "knownFailure": "REG-255"
+      ]
     },
     {
       "id": "cf-field-precision-scale-enforced",
@@ -1769,12 +1764,12 @@
         "field.precision",
         "field.scale"
       ],
-      "description": "REAL DEFECT: decimal(12,2) fields (WidgetCatalogEntry.unitPrice, WidgetShowcase.listPrice) accept a value with 14 integer digits and with 3 decimals and store them unchanged. Evidence: POST /api/widget_catalog_entrys {unitPrice: 12345678901234.5} -> 201 and GET returns 12345678901234.5; unitPrice 1.555 -> 201, stored 1.555; expected a 4xx (or rounding to 1.56 for scale). 12.34 round-trips exactly (control).",
+      "description": "REAL DEFECT: decimal(12,2) fields (WidgetCatalogEntry.unitPrice, WidgetShowcase.listPrice) accept a value with 14 integer digits and with 3 decimals and store them unchanged. Evidence: POST /api/widget_catalog_entries {unitPrice: 12345678901234.5} -> 201 and GET returns 12345678901234.5; unitPrice 1.555 -> 201, stored 1.555; expected a 4xx (or rounding to 1.56 for scale). 12.34 round-trips exactly (control).",
       "steps": [
         {
           "name": "fits precision and scale",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "WID-${rand}",
             "displayName": "cf ${rand}",
@@ -1791,7 +1786,7 @@
         {
           "name": "exceeds precision 12",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "WID-${rand}",
             "displayName": "cf ${rand}",
@@ -1806,8 +1801,7 @@
             ]
           }
         }
-      ],
-      "knownFailure": "REG-256"
+      ]
     },
     {
       "id": "cf-index-unique-single-field-rejects-duplicate",
@@ -1860,8 +1854,7 @@
             "status": 201
           }
         }
-      ],
-      "knownFailure": "REG-257"
+      ]
     },
     {
       "id": "cf-index-unique-compound-rejects-duplicate-pair",
@@ -1922,8 +1915,7 @@
             ]
           }
         }
-      ],
-      "knownFailure": "REG-257"
+      ]
     },
     {
       "id": "cf-concept-invariant-expression-enforced-on-create-and-update",

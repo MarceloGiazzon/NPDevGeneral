@@ -8,8 +8,10 @@ import com.npdev.dsl.v1.query.GroupByJoinGrammar;
 import com.npdev.kernel.concepts.ConceptAggregateEngine;
 import com.npdev.kernel.concepts.ConceptAggregateQuery;
 import com.npdev.kernel.concepts.ConceptAggregateResult;
+import com.npdev.dsl.v1.compiled.CompiledIndex;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptStoreOptimisticLockException;
+import com.npdev.kernel.concepts.ConceptStoreUniqueViolationException;
 import com.npdev.kernel.concepts.ReferentialIntegrityException;
 import com.npdev.kernel.ports.ConceptStore;
 
@@ -22,9 +24,20 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 
 public final class InMemoryConceptStore implements ConceptStore {
     private final Map<String, ConceptRecord> records = new LinkedHashMap<>();
+    // Soft delete (concepts declaring softDelete: true): a deleted row stays in `records` but its key
+    // is listed here, and every read below treats a listed key as absent -- exactly what the JDBC
+    // store's deletedAt column does -- so restore() can bring it back. Guarded by `this`.
+    private final Set<String> softDeletedKeys = new LinkedHashSet<>();
+    // REG-267: per-thread undo journal, non-null only while that thread is inside runAtomically.
+    private final ThreadLocal<List<Undo>> journal = new ThreadLocal<>();
+
+    /** Before-image of one key, enough to put the store back exactly as it was. */
+    private record Undo(String key, ConceptRecord previous, boolean wasSoftDeleted) {
+    }
     // REG-208 (B28 lift): volatile, not final -- setModel lets a RuntimeHost-level reload listener
     // (ModelHolder lives in a module this class must not depend on) point this store at a newly
     // reloaded model IN PLACE, preserving every already-stored record. Only the delete-cascade
@@ -55,7 +68,12 @@ public final class InMemoryConceptStore implements ConceptStore {
 
     @Override
     public synchronized Optional<ConceptRecord> findById(String tenantId, String conceptName, String id) {
-        return Optional.ofNullable(records.get(key(tenantId, conceptName, id)));
+        return Optional.ofNullable(live(key(tenantId, conceptName, id)));
+    }
+
+    /** The row under {@code key}, or null when absent or soft-deleted. */
+    private ConceptRecord live(String key) {
+        return softDeletedKeys.contains(key) ? null : records.get(key);
     }
 
     @Override
@@ -63,7 +81,7 @@ public final class InMemoryConceptStore implements ConceptStore {
         String prefix = keyPrefix(tenantId, conceptName);
         List<ConceptRecord> out = new ArrayList<>();
         for (Map.Entry<String, ConceptRecord> entry : records.entrySet()) {
-            if (entry.getKey().startsWith(prefix)) {
+            if (entry.getKey().startsWith(prefix) && !softDeletedKeys.contains(entry.getKey())) {
                 out.add(entry.getValue());
             }
         }
@@ -212,10 +230,11 @@ public final class InMemoryConceptStore implements ConceptStore {
     @Override
     public synchronized ConceptRecord save(ConceptRecord record) {
         String key = key(record.tenantId(), record.conceptName(), record.id());
-        ConceptRecord current = records.get(key);
+        ConceptRecord stored = records.get(key);
+        ConceptRecord current = live(key);
         long newVersion;
         if (record.rowVersion() == null) {
-            newVersion = current == null ? 0L : current.rowVersion() + 1;
+            newVersion = stored == null ? 0L : stored.rowVersion() + 1;
         } else {
             if (current == null || !record.rowVersion().equals(current.rowVersion())) {
                 throw new ConceptStoreOptimisticLockException(
@@ -225,8 +244,156 @@ public final class InMemoryConceptStore implements ConceptStore {
         }
         ConceptRecord toStore = new ConceptRecord(
                 record.conceptName(), record.id(), record.tenantId(), record.data(), newVersion);
+        enforceUniqueIndexes(toStore, key);
+        remember(key);
         records.put(key, toStore);
+        softDeletedKeys.remove(key);
         return toStore;
+    }
+
+    /**
+     * REG-257: a concept's declared {@code unique} index (single or compound) is enforced here, the
+     * in-memory counterpart of the UNIQUE index the schema emits for a database. Same collision rule
+     * as every other unique check ({@link ConceptStore#uniqueValuesCollide}: a null never collides,
+     * strings compare trimmed and case-insensitively), against LIVE rows only -- a soft-deleted row
+     * frees its value. A no-model store knows no indexes and enforces nothing.
+     */
+    private void enforceUniqueIndexes(ConceptRecord candidate, String candidateKey) {
+        CompiledModel current = model;
+        if (current == null) {
+            return;
+        }
+        CompiledConcept concept = findConcept(current, candidate.conceptName());
+        if (concept == null || concept.getIndexes() == null) {
+            return;
+        }
+        for (CompiledIndex index : concept.getIndexes()) {
+            if (!index.isUnique() || index.getFields().isEmpty()) {
+                continue;
+            }
+            List<Object> values = new ArrayList<>();
+            boolean anyNull = false;
+            for (String field : index.getFields()) {
+                Object value = valueOf(candidate.data(), field);
+                if (value == null) {
+                    anyNull = true;
+                    break;
+                }
+                values.add(value);
+            }
+            if (anyNull) {
+                continue;
+            }
+            String prefix = keyPrefix(candidate.tenantId(), candidate.conceptName());
+            for (Map.Entry<String, ConceptRecord> entry : records.entrySet()) {
+                if (!entry.getKey().startsWith(prefix) || entry.getKey().equals(candidateKey)
+                        || softDeletedKeys.contains(entry.getKey())) {
+                    continue;
+                }
+                boolean allMatch = true;
+                for (int i = 0; i < values.size(); i++) {
+                    if (!ConceptStore.uniqueValuesCollide(
+                            valueOf(entry.getValue().data(), index.getFields().get(i)), values.get(i))) {
+                        allMatch = false;
+                        break;
+                    }
+                }
+                if (allMatch) {
+                    throw new ConceptStoreUniqueViolationException(
+                            candidate.conceptName(), index.getName(), index.getFields());
+                }
+            }
+        }
+    }
+
+    private static Object valueOf(Map<String, Object> data, String field) {
+        if (data.containsKey(field)) {
+            return data.get(field);
+        }
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
+            if (entry.getKey() != null && entry.getKey().equalsIgnoreCase(field)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    private static CompiledConcept findConcept(CompiledModel model, String conceptName) {
+        for (CompiledConcept concept : model.getConcepts()) {
+            if (concept.getName().equalsIgnoreCase(conceptName)) {
+                return concept;
+            }
+        }
+        return null;
+    }
+
+    private boolean isSoftDelete(String conceptName) {
+        CompiledModel current = model;
+        if (current == null) {
+            return false;
+        }
+        CompiledConcept concept = findConcept(current, conceptName);
+        return concept != null && concept.isSoftDelete();
+    }
+
+    /** Records {@code key}'s current state in the calling thread's undo journal, if it has one. */
+    private void remember(String key) {
+        List<Undo> active = journal.get();
+        if (active != null) {
+            active.add(new Undo(key, records.get(key), softDeletedKeys.contains(key)));
+        }
+    }
+
+    /**
+     * REG-267: undo journal. Every write made by the calling thread inside {@code work} is recorded
+     * as a before-image; if {@code work} throws, they are replayed newest-first and the exception
+     * propagates, so a failing unit leaves the store exactly as it found it. Nested calls join the
+     * outer unit. There is no isolation (other threads see the writes while the unit runs); this is
+     * the in-process development store, which has no database to provide it.
+     */
+    @Override
+    public <T> T runAtomically(Supplier<T> work) {
+        if (journal.get() != null) {
+            return work.get();
+        }
+        List<Undo> entries = new ArrayList<>();
+        journal.set(entries);
+        try {
+            return work.get();
+        } catch (RuntimeException | Error failure) {
+            synchronized (this) {
+                for (int i = entries.size() - 1; i >= 0; i--) {
+                    Undo undo = entries.get(i);
+                    if (undo.previous() == null) {
+                        records.remove(undo.key());
+                    } else {
+                        records.put(undo.key(), undo.previous());
+                    }
+                    if (undo.wasSoftDeleted()) {
+                        softDeletedKeys.add(undo.key());
+                    } else {
+                        softDeletedKeys.remove(undo.key());
+                    }
+                }
+            }
+            throw failure;
+        } finally {
+            journal.remove();
+        }
+    }
+
+    @Override
+    public synchronized boolean restore(String tenantId, String conceptName, String id) {
+        String key = key(tenantId, conceptName, id);
+        if (!softDeletedKeys.contains(key) || !records.containsKey(key)) {
+            return false;
+        }
+        // The restored row becomes live again, so it must not collide with a row that took its unique
+        // value while it was deleted.
+        enforceUniqueIndexes(records.get(key), key);
+        remember(key);
+        softDeletedKeys.remove(key);
+        return true;
     }
 
     @Override
@@ -235,7 +402,7 @@ public final class InMemoryConceptStore implements ConceptStore {
         // (referential-integrity cascades in the 3-arg form below), so a CAS loser never triggers a
         // cascade on a row it did not actually delete.
         if (expectedRowVersion != null) {
-            ConceptRecord current = records.get(key(tenantId, conceptName, id));
+            ConceptRecord current = live(key(tenantId, conceptName, id));
             if (current == null || !expectedRowVersion.equals(current.rowVersion())) {
                 throw new ConceptStoreOptimisticLockException(
                         conceptName, id, tenantId, Optional.ofNullable(current));
@@ -249,7 +416,17 @@ public final class InMemoryConceptStore implements ConceptStore {
         if (model != null) {
             enforceReferentialIntegrity(tenantId, conceptName, id);
         }
-        records.remove(key(tenantId, conceptName, id));
+        String key = key(tenantId, conceptName, id);
+        if (isSoftDelete(conceptName)) {
+            if (live(key) != null) {
+                remember(key);
+                softDeletedKeys.add(key);
+            }
+            return;
+        }
+        remember(key);
+        records.remove(key);
+        softDeletedKeys.remove(key);
     }
 
     /**

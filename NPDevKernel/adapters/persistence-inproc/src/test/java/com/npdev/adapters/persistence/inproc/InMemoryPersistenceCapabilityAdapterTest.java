@@ -9,6 +9,7 @@ import com.npdev.dsl.v1.compiler.ModelCompiler;
 import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.kernel.concepts.LiveConceptGatewaySemanticPolicy;
 import com.npdev.kernel.inproc.InMemoryConceptStore;
+import com.npdev.kernel.ports.PersistenceCapabilityContract;
 import com.npdev.kernel.ports.SequenceAllocator;
 import org.junit.jupiter.api.Test;
 
@@ -122,11 +123,13 @@ class InMemoryPersistenceCapabilityAdapterTest {
             assertEquals("NEW", created.get("status"), "lifecycle initialState (store=" + withStore + ")");
             assertEquals("normal", created.get("priority"));
 
-            // The in-memory save replaces the whole record, so an update that omits priority leaves it
-            // absent -- what matters is that it is NOT re-defaulted to "normal" on the update.
-            Object id = created.get("id");
+            // REG-263: an existing row is merged into, so an update that omits priority keeps the
+            // stored value -- it is neither reset nor re-defaulted. A row stored as "high" proves the
+            // difference (a re-default would turn it back into "normal").
+            Map<?, ?> high = (Map<?, ?>) adapter.save("Order", Map.of("note", "urgent", "priority", "high"));
+            Object id = high.get("id");
             Map<?, ?> updated = (Map<?, ?>) adapter.save("Order", Map.of("id", id, "status", "NEW", "note", "x"));
-            assertEquals(null, updated.get("priority"), "an update must not re-default priority (store=" + withStore + ")");
+            assertEquals("high", updated.get("priority"), "an update must not re-default priority (store=" + withStore + ")");
             assertEquals("x", updated.get("note"));
 
             Map<?, ?> first = (Map<?, ?>) adapter.save("Ticket", Map.of("title", "a"));
@@ -177,5 +180,73 @@ class InMemoryPersistenceCapabilityAdapterTest {
 
         adapter.save("Note", Map.of("id", "X", "name", "A-second", "tenantId", "tenantA"));
         assertEquals("A-second", ((Map<?, ?>) adapter.findById("Note", "X")).get("name"));
+    }
+
+    private static Map<String, Object> updateMarked(Object... keyValues) {
+        Map<String, Object> entity = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < keyValues.length; i += 2) {
+            entity.put((String) keyValues[i], keyValues[i + 1]);
+        }
+        entity.put(PersistenceCapabilityContract.WRITE_MODE_KEY, PersistenceCapabilityContract.WRITE_MODE_UPDATE);
+        return entity;
+    }
+
+    @Test
+    void updateModeSaveMergesIntoTheStoredRowAndMovesItToTheNextVersion() {
+        // REG-263: the untouched fields survive and the version advances (isolated map store).
+        InMemoryPersistenceCapabilityAdapter adapter = new InMemoryPersistenceCapabilityAdapter();
+        adapter.save("Line", Map.of("id", "l-1", "sku", "SKU-A", "quantity", 2, "version", 0L));
+
+        Map<?, ?> saved = (Map<?, ?>) adapter.save("Line", updateMarked("id", "l-1", "quantity", 7));
+
+        Map<?, ?> stored = (Map<?, ?>) adapter.findById("Line", "l-1");
+        assertEquals("SKU-A", stored.get("sku"));
+        assertEquals(7, stored.get("quantity"));
+        assertEquals(1L, stored.get("version"));
+        assertFalse(saved.containsKey(PersistenceCapabilityContract.WRITE_MODE_KEY));
+        assertFalse(stored.containsKey(PersistenceCapabilityContract.WRITE_MODE_KEY));
+    }
+
+    @Test
+    void updateModeSaveMergesThroughTheSharedConceptStoreToo() {
+        // REG-263 with the runtime's wiring: the SAME ConceptStore the generated service reads.
+        InMemoryConceptStore store = new InMemoryConceptStore();
+        InMemoryPersistenceCapabilityAdapter adapter = new InMemoryPersistenceCapabilityAdapter(null, store);
+        adapter.save("Line", Map.of("id", "l-1", "sku", "SKU-A", "quantity", 2));
+
+        adapter.save("Line", updateMarked("id", "l-1", "quantity", 7));
+
+        Map<String, Object> stored = store.findById("default", "line", "l-1").orElseThrow().data();
+        assertEquals("SKU-A", stored.get("sku"));
+        assertEquals(7, stored.get("quantity"));
+        assertEquals(1L, stored.get("version"));
+    }
+
+    @Test
+    void updateModeSaveOfAnIdWithNoRowIsRefusedAndCreatesNothing() {
+        // REG-264: the REST PUT answers 404; a flow updateConcept must not upsert the id into existence.
+        InMemoryPersistenceCapabilityAdapter adapter = new InMemoryPersistenceCapabilityAdapter();
+
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+                () -> adapter.save("Line", updateMarked("id", "ghost", "quantity", 5)));
+
+        assertTrue(refused.getMessage().contains("PERSISTENCE_RECORD_NOT_FOUND"), refused.getMessage());
+        assertEquals(null, adapter.findById("Line", "ghost"));
+        // An ordinary save of the same id is still a create -- only the update marker refuses.
+        adapter.save("Line", Map.of("id", "ghost", "quantity", 5));
+        assertEquals(5, ((Map<?, ?>) adapter.findById("Line", "ghost")).get("quantity"));
+    }
+
+    @Test
+    void anOrdinarySaveOfAnExistingRowMergesWithoutTouchingItsVersion() {
+        InMemoryPersistenceCapabilityAdapter adapter = new InMemoryPersistenceCapabilityAdapter();
+        adapter.save("Line", Map.of("id", "l-1", "sku", "SKU-A", "quantity", 2, "version", 4L));
+
+        adapter.save("Line", Map.of("id", "l-1", "quantity", 8));
+
+        Map<?, ?> stored = (Map<?, ?>) adapter.findById("Line", "l-1");
+        assertEquals("SKU-A", stored.get("sku"));
+        assertEquals(8, stored.get("quantity"));
+        assertEquals(4L, stored.get("version"));
     }
 }

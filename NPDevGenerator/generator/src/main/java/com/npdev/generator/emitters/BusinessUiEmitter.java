@@ -402,7 +402,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             // card's whole point) silently 404s every existing client of
             // /api/concepts/{tableName}. "tableName" above is left alone -- ConceptMetadata's own
             // record of the real physical name, read by other metadata surfaces, not a route.
-            view.put("route", javaString(SqlIdentifierSupport.aliasPreservingTableName(concept, contexts)));
+            view.put("route", javaString(SqlIdentifierSupport.restCollectionName(concept, contexts)));
             view.put("idField", javaString(idField.getName()));
             view.put("endpointBase", javaString(endpointBase(concept, contexts)));
             view.put("className", concept.getClassName());
@@ -573,7 +573,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             // PK-2: route stays LOGICAL (alias-preserving), deliberately decoupled from the physical
             // SQL table name below -- a pack version bump must never silently rename a client's
             // already-bookmarked REST URL.
-            node.put("route", "/" + SqlIdentifierSupport.aliasPreservingTableName(concept, contexts));
+            node.put("route", "/" + SqlIdentifierSupport.restCollectionName(concept, contexts));
             node.put("tableName", SqlIdentifierSupport.tableName(concept));
             node.put("idField", idField.getName());
             if (concept.getCollaboration() != null) {
@@ -1487,7 +1487,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             // PK-2: must match ControllerEmitter.java's own "route" derivation exactly (this base is
             // documented above as the per-entity controller's real route) -- alias-preserving, not
             // the physical table name.
-            reference.put("bondEndpointBase", "/api/" + SqlIdentifierSupport.aliasPreservingTableName(sourceConcept, contexts));
+            reference.put("bondEndpointBase", "/api/" + SqlIdentifierSupport.restCollectionName(sourceConcept, contexts));
             reference.put("bondFieldName", field.getName());
         }
         return Optional.of(reference);
@@ -1834,14 +1834,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         if (value == null || value.isBlank()) {
             return "Records";
         }
-        String trimmed = value.trim();
-        if (trimmed.endsWith("y") && trimmed.length() > 1) {
-            return trimmed.substring(0, trimmed.length() - 1) + "ies";
-        }
-        if (trimmed.endsWith("s")) {
-            return trimmed;
-        }
-        return trimmed + "s";
+        // REG-270: one shared English rule (also used for the REST collection name).
+        return com.npdev.dsl.v1.compiled.EnglishPlurals.pluralize(value.trim());
     }
 
     private static String humanize(String value) {

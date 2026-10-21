@@ -1,8 +1,11 @@
 package com.finalexec.api;
 
+import com.finalexec.npdev.service.AggregateCommitVetoException;
 import com.finalexec.npdev.service.AggregateRuntime;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.concepts.ConceptGatewaySemanticException;
+import com.npdev.kernel.concepts.ConceptStoreUniqueViolationException;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.test.web.servlet.MockMvc;
@@ -103,6 +106,46 @@ class AggregateApiControllerTest {
                         .contentType("application/json").content("{}"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.message").value("balance rule not declared"));
+    }
+
+    @Test
+    void commit_invariantVeto_returnsUnprocessableEntityNotServiceUnavailable() throws Exception {
+        when(aggregateRuntime.commit(anyString(), anyMap(), any()))
+                .thenThrow(new AggregateCommitVetoException("Aggregate StockTransferAggregate invariant(s) violated: X"));
+        mockMvc().perform(post("/api/runtime/aggregate/StockTransfer")
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.message").value("Aggregate StockTransferAggregate invariant(s) violated: X"));
+    }
+
+    @Test
+    void commit_lifecycleRefusal_returnsUnprocessableEntityWithItsCode() throws Exception {
+        when(aggregateRuntime.commit(anyString(), anyMap(), any()))
+                .thenThrow(new ConceptGatewaySemanticException(
+                        "CONCEPT_LIFECYCLE_TRANSITION_INVALID", "Concept lifecycle transition is not allowed: Committed -> Draft"));
+        mockMvc().perform(post("/api/runtime/aggregate/StockTransfer")
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("CONCEPT_LIFECYCLE_TRANSITION_INVALID"));
+    }
+
+    @Test
+    void commit_uniqueIndexCollision_returnsConflict() throws Exception {
+        when(aggregateRuntime.commit(anyString(), anyMap(), any()))
+                .thenThrow(new ConceptStoreUniqueViolationException("StockLocation", "ux_stock_location_local_id", List.of("localId")));
+        mockMvc().perform(post("/api/runtime/aggregate/StockTransfer")
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("unique_integrity_failed"));
+    }
+
+    @Test
+    void commit_plainIllegalState_stillReturnsServiceUnavailable() throws Exception {
+        when(aggregateRuntime.commit(anyString(), anyMap(), any()))
+                .thenThrow(new IllegalStateException("onCommit procedure X failed"));
+        mockMvc().perform(post("/api/runtime/aggregate/StockTransfer")
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isServiceUnavailable());
     }
 
     @Test

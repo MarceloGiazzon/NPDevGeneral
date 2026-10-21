@@ -1,8 +1,11 @@
 package com.finalexec.api;
 
+import com.finalexec.npdev.service.AggregateCommitVetoException;
 import com.finalexec.npdev.service.AggregateRuntime;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.concepts.ConceptGatewaySemanticException;
+import com.npdev.kernel.concepts.ConceptStoreUniqueViolationException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -68,6 +71,21 @@ public class AggregateApiController {
             return ResponseEntity.ok(requireAggregateRuntime().commit(aggregateName, draft, currentContext(request)));
         } catch (IllegalArgumentException ex) {
             return errorBody(HttpStatus.BAD_REQUEST, ex.getMessage());
+        } catch (AggregateCommitVetoException ex) {
+            // REG-265: the draft breaks an invariant/balance the aggregate declares -- a client error.
+            return errorBody(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
+        } catch (ConceptGatewaySemanticException ex) {
+            // REG-266: a row of the tree is refused by its concept's governed rules (illegal lifecycle
+            // transition, invariant, ...) -- the same 422 + code the single-record endpoints answer,
+            // not a bare 500.
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                    "code", ex.code(),
+                    "message", ex.getMessage() == null ? "" : ex.getMessage()));
+        } catch (ConceptStoreUniqueViolationException ex) {
+            // REG-257: a row of the tree collides with a declared unique index.
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "code", "unique_integrity_failed",
+                    "message", ex.getMessage() == null ? "" : ex.getMessage()));
         } catch (IllegalStateException ex) {
             return errorBody(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
         }

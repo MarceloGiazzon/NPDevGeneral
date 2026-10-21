@@ -46,7 +46,7 @@ final class AgentPhotoIntake {
                 .filter(a -> a.root() != null && a.root().equalsIgnoreCase(concept.getName()))
                 .map(CompiledAggregate::name).findFirst().orElse(null);
         return Optional.of(new Target(intake, concept,
-                SqlIdentifierSupport.aliasPreservingTableName(concept, model.getContexts()), aggregate));
+                SqlIdentifierSupport.restCollectionName(concept, model.getContexts()), aggregate));
     }
 
     /** The draft sent to the procedure: the image handle plus the caption, nothing else. */

@@ -3,9 +3,10 @@ title: >-
   A flow updateConcept step replaces the row instead of merging: untouched fields are nulled and the version is not bumped
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-10-20
-closed: null
+closed: 2026-10-21
+verification: VERIFIED_LIVE
 source: >-
   ENF-1 behaviour probe fl-update-concept-keeps-untouched-fields (NPDevSamples/dsl-conformance-max/behavior-probes/20-flow.json), found while checking
   that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.

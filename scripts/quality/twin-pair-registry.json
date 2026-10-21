@@ -729,6 +729,27 @@
         "NPDevGenerator/generator/src/main/resources/npdev-templates/entity.mustache",
         "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/reflection/ExtraFieldAccess.java"
       ]
+  },
+  {
+    "id": "rest-collection-name-one-derivation",
+    "citedBy": "REG-270 (a concept ending in y was served at /ticket_categorys)",
+    "description": "A concept's REST collection name (the path segment after /api/ and /api/concepts/) has ONE derivation, SqlIdentifierSupport.restCollectionName, whose plural comes from EnglishPlurals. Every place that publishes or resolves a route must call it: the per-entity controller, the generic CRUD binding map, the UI manifest route, the live-concept CRUD matcher, the agent tool catalog and photo intake, the info page, and the invocation catalog. A site that goes back to aliasPreservingTableName/toSnakePlural/getTableName for a ROUTE serves the old wrong plural again (the physical table name keeps its own, deliberately unchanged, derivation).",
+    "kind": "field-in-all-files",
+    "trackedFields": [
+      "restCollectionName"
+    ],
+    "caseSensitive": true,
+    "files": [
+      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/SqlIdentifierSupport.java",
+      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledMetadataCanonicalJson.java",
+      "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/ControllerEmitter.java",
+      "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java",
+      "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/InfoPageEmitter.java",
+      "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptUiManifestSupport.java",
+      "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptCrudSupport.java",
+      "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/agent/AgentToolCatalog.java",
+      "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/agent/AgentPhotoIntake.java"
+    ]
   }
   ]
 }

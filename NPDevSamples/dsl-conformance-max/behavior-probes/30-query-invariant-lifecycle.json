@@ -513,7 +513,7 @@
         {
           "name": "active",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "!1-qil-act",
             "displayName": "qil",
@@ -534,7 +534,7 @@
         {
           "name": "discontinued",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "!0-qil-disc",
             "displayName": "qil",
@@ -571,13 +571,13 @@
         {
           "name": "cleanup a",
           "method": "DELETE",
-          "path": "/api/widget_catalog_entrys/${a}",
+          "path": "/api/widget_catalog_entries/${a}",
           "stopOnFail": false
         },
         {
           "name": "cleanup d",
           "method": "DELETE",
-          "path": "/api/widget_catalog_entrys/${d}",
+          "path": "/api/widget_catalog_entries/${d}",
           "stopOnFail": false
         }
       ]
@@ -593,7 +593,7 @@
         {
           "name": "create c",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "!2-qil-c",
             "displayName": "qil",
@@ -611,7 +611,7 @@
         {
           "name": "create a",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "!2-qil-a",
             "displayName": "qil",
@@ -629,7 +629,7 @@
         {
           "name": "create b",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "!2-qil-b",
             "displayName": "qil",
@@ -710,19 +710,19 @@
         {
           "name": "cleanup a",
           "method": "DELETE",
-          "path": "/api/widget_catalog_entrys/${a}",
+          "path": "/api/widget_catalog_entries/${a}",
           "stopOnFail": false
         },
         {
           "name": "cleanup b",
           "method": "DELETE",
-          "path": "/api/widget_catalog_entrys/${b}",
+          "path": "/api/widget_catalog_entries/${b}",
           "stopOnFail": false
         },
         {
           "name": "cleanup c",
           "method": "DELETE",
-          "path": "/api/widget_catalog_entrys/${c}",
+          "path": "/api/widget_catalog_entries/${c}",
           "stopOnFail": false
         }
       ]
@@ -1997,7 +1997,6 @@
         "aggregate.invariants",
         "aggregate.balances"
       ],
-      "knownFailure": "REG-265",
       "steps": [
         {
           "name": "stock location (disponivel 10)",
@@ -2112,7 +2111,6 @@
         "lifecycle.transitions",
         "aggregate.root"
       ],
-      "knownFailure": "REG-266",
       "steps": [
         {
           "name": "stock location (disponivel 10)",
@@ -2224,7 +2222,6 @@
         "aggregate.onCommit",
         "aggregate.collections"
       ],
-      "knownFailure": "REG-267",
       "steps": [
         {
           "name": "uuid source 1",

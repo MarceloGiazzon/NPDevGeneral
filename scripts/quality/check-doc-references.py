@@ -65,6 +65,8 @@ SKIP_UNIVERSE_SUFFIXES = {
     "ttf", "eot", "svg", "mp4", "bin", "exe", "dll", "so", "db", "lock",
 }
 UNIVERSE_EXCLUDED_PREFIXES = ("docs/", "ledger/")
+# The checker's own source names its planted-defect fixtures, so it must not count as evidence.
+UNIVERSE_EXCLUDED_FILES = ("scripts/quality/check-doc-references.py", "scripts/policy/doc-reference-policy.json")
 MAX_UNIVERSE_FILE_BYTES = 1_500_000
 
 SPAN_RE = re.compile(r"`([^`\n]+)`")
@@ -102,7 +104,7 @@ class Context:
         flags: set[str] = set()
         files: set[str] = set()
         for rel in self.tracked:
-            if rel.startswith(UNIVERSE_EXCLUDED_PREFIXES):
+            if rel.startswith(UNIVERSE_EXCLUDED_PREFIXES) or rel in UNIVERSE_EXCLUDED_FILES:
                 continue
             if rel.rsplit(".", 1)[-1].lower() in SKIP_UNIVERSE_SUFFIXES:
                 continue

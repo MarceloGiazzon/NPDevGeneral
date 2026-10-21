@@ -5,24 +5,24 @@
       "keywords": ["query.where"],
       "description": "A two-clause where (discontinued == false && unitPrice < 10) must filter on BOTH clauses: four rows each failing a different clause (or both) are excluded and only the row passing both is returned. Two-clause filters were once accepted and silently ignored.",
       "steps": [
-        { "name": "passes both", "method": "POST", "path": "/api/widget_catalog_entrys",
+        { "name": "passes both", "method": "POST", "path": "/api/widget_catalog_entries",
           "body": { "sku": "TWOC-${rand}-A", "displayName": "cheap active", "discontinued": false, "unitPrice": "5.00" },
           "expect": { "status": [200, 201] }, "save": { "passId": "$.id", "passSku": "$.sku" } },
-        { "name": "fails clause 1 only (discontinued)", "method": "POST", "path": "/api/widget_catalog_entrys",
+        { "name": "fails clause 1 only (discontinued)", "method": "POST", "path": "/api/widget_catalog_entries",
           "body": { "sku": "TWOC-${rand}-B", "displayName": "cheap discontinued", "discontinued": true, "unitPrice": "5.00" },
           "expect": { "status": [200, 201] }, "save": { "failOneId": "$.id", "failOneSku": "$.sku" } },
-        { "name": "fails clause 2 only (price)", "method": "POST", "path": "/api/widget_catalog_entrys",
+        { "name": "fails clause 2 only (price)", "method": "POST", "path": "/api/widget_catalog_entries",
           "body": { "sku": "TWOC-${rand}-C", "displayName": "dear active", "discontinued": false, "unitPrice": "50.00" },
           "expect": { "status": [200, 201] }, "save": { "failTwoId": "$.id", "failTwoSku": "$.sku" } },
-        { "name": "fails both clauses", "method": "POST", "path": "/api/widget_catalog_entrys",
+        { "name": "fails both clauses", "method": "POST", "path": "/api/widget_catalog_entries",
           "body": { "sku": "TWOC-${rand}-D", "displayName": "dear discontinued", "discontinued": true, "unitPrice": "50.00" },
           "expect": { "status": [200, 201] }, "save": { "failBothId": "$.id", "failBothSku": "$.sku" } },
         { "name": "run the query: only the row passing both clauses is returned", "method": "GET", "path": "/api/queries/CheapActiveCatalogEntries?limit=500",
           "expect": { "status": 200, "text": ["${passSku}"], "notText": ["${failOneSku}", "${failTwoSku}", "${failBothSku}"] } },
-        { "name": "cleanup 1", "always": true, "method": "DELETE", "path": "/api/widget_catalog_entrys/${passId}" },
-        { "name": "cleanup 2", "always": true, "method": "DELETE", "path": "/api/widget_catalog_entrys/${failOneId}" },
-        { "name": "cleanup 3", "always": true, "method": "DELETE", "path": "/api/widget_catalog_entrys/${failTwoId}" },
-        { "name": "cleanup 4", "always": true, "method": "DELETE", "path": "/api/widget_catalog_entrys/${failBothId}" }
+        { "name": "cleanup 1", "always": true, "method": "DELETE", "path": "/api/widget_catalog_entries/${passId}" },
+        { "name": "cleanup 2", "always": true, "method": "DELETE", "path": "/api/widget_catalog_entries/${failOneId}" },
+        { "name": "cleanup 3", "always": true, "method": "DELETE", "path": "/api/widget_catalog_entries/${failTwoId}" },
+        { "name": "cleanup 4", "always": true, "method": "DELETE", "path": "/api/widget_catalog_entries/${failBothId}" }
       ]
     }
   ]

@@ -3,9 +3,10 @@ title: >-
   field.default is ignored: a field omitted on create is rejected as missing instead of taking its declared default
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-10-20
-closed: null
+closed: 2026-10-21
+verification: VERIFIED_LIVE
 source: >-
   ENF-1 behaviour probe cf-field-default-value-fills-omitted-field (NPDevSamples/dsl-conformance-max/behavior-probes/10-concept-field.json), found while checking
   that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.

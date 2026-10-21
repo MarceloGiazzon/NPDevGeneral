@@ -72,7 +72,7 @@ def rows(query, key, value):
     return [x for x in ((r or {}).get("rows", []) if isinstance(r, dict) else []) if x.get(key) == value]
 
 
-cat = make("mgr", P + "ticket_categorys", {"code": "C" + R, "name": "Billing " + R, "active": True})
+cat = make("mgr", P + "ticket_categories", {"code": "C" + R, "name": "Billing " + R, "active": True})
 ag = make("mgr", P + "helpdesk_agents", {"fullName": "Ada " + R, "email": f"ada{R}@example.test", "active": True})
 cid, aid = cat.get("id"), ag.get("id")
 
@@ -85,9 +85,9 @@ def ticket(n, **kw):
 
 # roles
 refused("a requester cannot create an agent", "req", P + "helpdesk_agents", {"fullName": "x", "email": f"x{R}@example.test", "active": True}, (401, 403))
-refused("an agent cannot create a category", "agent", P + "ticket_categorys", {"code": "X" + R, "name": "x", "active": True}, (401, 403))
+refused("an agent cannot create a category", "agent", P + "ticket_categories", {"code": "X" + R, "name": "x", "active": True}, (401, 403))
 refused("a duplicate agent email is refused", "mgr", P + "helpdesk_agents", {"fullName": "dup", "email": f"ada{R}@example.test", "active": True}, (409, 422))
-refused("a duplicate category code is refused", "mgr", P + "ticket_categorys", {"code": "C" + R, "name": "dup", "active": True}, (409, 422))
+refused("a duplicate category code is refused", "mgr", P + "ticket_categories", {"code": "C" + R, "name": "dup", "active": True}, (409, 422))
 
 # a requester raises a ticket
 t1 = make("req", P + "tickets", ticket("1", priority="HIGH"))

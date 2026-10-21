@@ -3,9 +3,10 @@ title: >-
   A flow with a generatedAction step fails at runtime in a generated app: no generated-action capability binding exists, so the create returns 500 after the row was already saved
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-10-20
-closed: null
+closed: 2026-10-21
+verification: VERIFIED_LIVE
 source: >-
   ENF-1 behaviour probe fl-generated-action-completes (NPDevSamples/dsl-conformance-max/behavior-probes/20-flow.json), found while checking
   that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.

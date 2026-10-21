@@ -11,7 +11,6 @@
     "summary": "Handles time off. An employee asks for leave of a given type between two dates; an approver sees the request in their task list and approves or rejects it with a comment; HR can cancel a request. The days each employee has taken are always calculated from approved requests, never typed in.",
     "reviewNotes": [
       "There is no balance check: a request is accepted even when the employee has used up the leave type's yearly allowance, and the allowance is not reset each year. Say how balances accrue, carry over and expire.",
-      "The end date is not checked against the start date: the expression language has no working date comparison (comparing two date fields passes silently), so a request ending before it starts is accepted. Say whether that needs a platform rule.",
       "The number of days is typed in by the employee; it is not calculated from the two dates, and weekends and public holidays are not excluded. Say how days are counted.",
       "Any approver can decide any request: there is no link between an employee and their own manager. Say who approves whom and whether an approver may decide their own request.",
       "Overlap is not checked: one employee can have two approved requests on the same dates.",
@@ -217,6 +216,11 @@
           "name": "DaysPositive",
           "type": "expression",
           "expr": "days > 0"
+        },
+        {
+          "name": "EndNotBeforeStart",
+          "type": "expression",
+          "expr": "endDate >= startDate"
         }
       ],
       "lifecycle": {
@@ -315,7 +319,8 @@
           "type": "invariantCheck",
           "scope": "LeaveRequest",
           "invariants": [
-            "DaysPositive"
+            "DaysPositive",
+            "EndNotBeforeStart"
           ]
         },
         {

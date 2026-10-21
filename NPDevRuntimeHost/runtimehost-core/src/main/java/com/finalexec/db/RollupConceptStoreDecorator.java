@@ -103,6 +103,11 @@ public final class RollupConceptStoreDecorator implements ConceptStore {
     }
 
     @Override
+    public <T> T runAtomically(Supplier<T> work) {
+        return delegate.runAtomically(work);
+    }
+
+    @Override
     public boolean restore(String tenantId, String conceptName, String id) {
         boolean restored = delegate.restore(tenantId, conceptName, id);
         if (restored) {

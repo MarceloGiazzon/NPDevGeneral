@@ -102,6 +102,9 @@ public final class PostgresPersistenceCapabilityAdapter
     public Object save(Object concept, Object entity) {
         String table = tableName(concept);
         Map<String, Object> runtimeRecord = mutableRecord(entity);
+        // REG-264: a flow updateConcept step marks its save; the marker is never a column.
+        boolean updateOnly = PersistenceCapabilityContract.WRITE_MODE_UPDATE.equals(
+                runtimeRecord.remove(PersistenceCapabilityContract.WRITE_MODE_KEY));
         String conceptIdField = inferredRuntimeIdField(concept, table);
 
         Object id = runtimeRecord.get("id");
@@ -141,8 +144,19 @@ public final class PostgresPersistenceCapabilityAdapter
                         "PERSISTENCE_RECORD_NOT_IN_TENANT: record not found for this tenant in " + table);
             }
             boolean creating = ownership == RowOwnership.ABSENT;
+            if (creating && updateOnly) {
+                // REG-264: the REST PUT answers 404 for an id with no row; an updateConcept step must
+                // not turn the same id into a create. IllegalArgumentException is the adapter's
+                // CONTRACT-failure signal (the caller named something that is not there).
+                throw new IllegalArgumentException(
+                        "PERSISTENCE_RECORD_NOT_FOUND: no " + table + " record with id " + id + " to update");
+            }
             if (creating) {
                 applyCreateDefaults(concept, runtimeRecord);
+            } else if (updateOnly) {
+                // REG-263: a modified row moves to the next version, as the REST PUT does. Only when
+                // the caller did not name a version itself and the table keeps one.
+                bumpVersion(connection, table, tableColumns, idColumn, id, runtimeRecord);
             }
             enforceLifecycleTransition(connection, concept, table, tableColumns, id, runtimeRecord,
                     tenantScoped ? recordTenant : null);
@@ -183,6 +197,36 @@ public final class PostgresPersistenceCapabilityAdapter
                         "Referential/constraint violation persisting table " + table + ": " + e.getMessage(), e);
             }
             throw new IllegalStateException("Postgres persistence save failed for table " + table + ": " + e.getMessage(), e);
+        }
+    }
+
+    private static final String VERSION_FIELD = "version";
+
+    /**
+     * REG-263: an updateConcept step changes the row, so its {@code version} moves to the next value
+     * the way the REST PUT's does. Leaves the record alone when the caller already named a version, or
+     * the table keeps none, or the stored value is not a number.
+     */
+    private void bumpVersion(Connection connection, String table, TableColumns tableColumns, String idColumn,
+                             Object id, Map<String, Object> runtimeRecord) throws SQLException {
+        if (runtimeRecord.containsKey(VERSION_FIELD) || !tableColumns.hasColumn(VERSION_FIELD)) {
+            return;
+        }
+        String versionColumn = tableColumns.columnName(VERSION_FIELD);
+        String sql = SqlIdentifierSupport.sqlWithIdentifiers(
+                "SELECT {2} FROM {1} WHERE {0} = ?", idColumn, table, versionColumn);
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setObject(1, bindable(ps, coerceValueForColumn(idColumn, id)));
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs == null || !rs.next()) {
+                    return;
+                }
+                Object stored = rs.getObject(1);
+                long current = stored instanceof Number number ? number.longValue() : 0L;
+                if (stored == null || stored instanceof Number) {
+                    runtimeRecord.put(VERSION_FIELD, current + 1);
+                }
+            }
         }
     }
 

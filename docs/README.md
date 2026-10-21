@@ -57,6 +57,7 @@ One file per built-in feature.
 [USING_MYSQL_AND_SQL_SERVER.md](reference/USING_MYSQL_AND_SQL_SERVER.md) ·
 [ENGINE_MATRIX.md](reference/ENGINE_MATRIX.md) ·
 [PLUGIN_SANDBOX.md](reference/PLUGIN_SANDBOX.md) ·
+[LEAVING_NPDEV.md](reference/LEAVING_NPDEV.md) ·
 [LEGACY_SCHEMA_MIGRATION.md](reference/LEGACY_SCHEMA_MIGRATION.md)
 
 ## Understand it

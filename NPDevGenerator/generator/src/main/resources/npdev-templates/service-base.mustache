@@ -678,7 +678,10 @@ public class {{entityName}}ServiceBase {
         if (!update) {
             for (String requiredField : REQUIRED_CREATE_FIELD_NAMES) {
                 Object value = normalized.get(requiredField);
-                if (value == null || (value instanceof String text && text.trim().isEmpty())) {
+                if ((value == null || (value instanceof String text && text.trim().isEmpty()))
+                        // REG-253: a field with a declared default is filled by the create payload
+                        // (buildCreateInvariantPayload) -- omitting it is not "missing".
+                        && !(value == null && runtimeSupport.hasCreateDefault(CONCEPT_NAME, requiredField))) {
                     throw new IllegalArgumentException("Required field is missing for {{conceptName}}: " + requiredField);
                 }
             }
@@ -919,6 +922,21 @@ public class {{entityName}}ServiceBase {
 {{/hasDeleteFlow}}
 {{#hasAnyFlow}}
     private static void requireFlowSucceeded(String flowName, ExecutionResult result) {
+        if (result != null && result.getStatus() != ExecutionStatus.OK && result.getError() != null) {
+            // REG-257: a unique violation raised by the flow's own write (a declared unique index, or
+            // the database's unique constraint) is the caller's conflict -- the same 409
+            // unique_integrity_failed a plain CRUD write answers -- not a runtime failure.
+            String lowered = String.valueOf(result.getError()).toLowerCase(java.util.Locale.ROOT);
+            if (lowered.contains("unique constraint") || lowered.contains("duplicate key")
+                    || lowered.contains("violates unique") || lowered.contains("duplicate entry")) {
+                java.util.Optional<GeneratedCrudRuntimeSupport.InvariantViolationException> conflict =
+                        GeneratedCrudRuntimeSupport.mapDataIntegrityViolation(
+                                "{{conceptName}}", null, new IllegalStateException(String.valueOf(result.getError())));
+                if (conflict.isPresent()) {
+                    throw conflict.get();
+                }
+            }
+        }
         if (result == null || result.getStatus() != ExecutionStatus.OK) {
             throw new IllegalStateException("Flow \"" + flowName + "\" for {{conceptName}} did not complete successfully: "
                     + (result == null ? "null result" : result.getStatus() + " " + result.getError()));

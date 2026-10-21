@@ -59,6 +59,17 @@ public interface ConceptGateway {
     ConceptRecord save(ConceptWriteRequest request, ExecutionContext context);
 
     /**
+     * REG-267: runs {@code work} (typically several {@link #save}/delete calls) as one all-or-nothing
+     * unit: if it throws, every write this gateway made from the calling thread inside it is undone
+     * where the backing store can undo it. The default is a passthrough (no atomicity promise);
+     * {@code DefaultConceptGateway} overrides it. Callers that own a real database transaction
+     * (the aggregate runtime with a transaction manager) do not need it.
+     */
+    default <T> T runAtomically(java.util.function.Supplier<T> work) {
+        return work.get();
+    }
+
+    /**
      * REG-16-resid Round 3 (R3-F2): answer "may this actor write this record?" WITHOUT writing it.
      *
      * <p>Runs exactly the two gates {@link #save} runs — {@code concept.write} permission and the

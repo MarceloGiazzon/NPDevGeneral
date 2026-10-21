@@ -223,6 +223,9 @@ public final class GeneratedCrudRuntimeSupport {
     private final KernelRunner kernelRunner;
     private final EntityManager entityManager;
     private final DataSource dataSource;
+    /** Delayed flow events pending in an in-memory (no DataSource) app; see scheduleDeferredFlowEventInMemory. */
+    private final Set<String> inMemoryScheduleKeys = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private java.util.concurrent.ScheduledExecutorService inMemoryScheduler;
     private final RuntimeClock runtimeClock;
     private final RuntimeInvariantEngineFactory runtimeInvariantEngineFactory;
     private final AuditLogStore auditLogStore;
@@ -1357,6 +1360,20 @@ public final class GeneratedCrudRuntimeSupport {
                     false
             ))));
         }
+        if (exception instanceof com.npdev.kernel.concepts.ConceptStoreUniqueViolationException storeUnique) {
+            // REG-257: the in-process store enforcing a declared unique index (compound included);
+            // names the index's first field the way a database unique violation names its column.
+            String indexField = safeField != null ? safeField
+                    : (storeUnique.getFieldNames().isEmpty() ? null : storeUnique.getFieldNames().get(0));
+            return Optional.of(new InvariantViolationException(List.of(new InvariantViolationDetail(
+                    "unique_integrity_failed",
+                    safeConcept != null ? safeConcept : storeUnique.getConceptName(),
+                    "in_memory_unique_index",
+                    indexField,
+                    storeUnique.getMessage(),
+                    true
+            ))));
+        }
         if (isUniqueViolation(exception)) {
             return Optional.of(new InvariantViolationException(List.of(new InvariantViolationDetail(
                     "unique_integrity_failed",
@@ -1656,9 +1673,7 @@ public final class GeneratedCrudRuntimeSupport {
             return false;
         }
         if (dataSource == null) {
-            LOG.log(Level.WARNING, "Cannot defer scheduled event " + envelope.eventName()
-                    + ": no DataSource is configured, so npdev_scheduled_event cannot be written");
-            return false;
+            return scheduleDeferredFlowEventInMemory(envelope, dueAtEpochMs);
         }
         String payloadJson;
         try {
@@ -1691,6 +1706,59 @@ public final class GeneratedCrudRuntimeSupport {
             LOG.log(Level.WARNING, "Failed to schedule deferred event " + envelope.eventName(), exception);
             return false;
         }
+    }
+
+    /**
+     * An app with no DataSource (npdev.storage.mode=in-memory) has no {@code npdev_scheduled_event}
+     * table, and used to fail every delayed {@code scheduleEvent} step with EVENT_PERSIST_FAILED --
+     * AFTER the steps before it had already written, so a flow with one delayed reminder (the
+     * conformance model's PlaceWidgetOrder) could never complete there. In-memory mode is ephemeral by
+     * definition, so the schedule is too: the envelope is delivered, genuinely LATER, by a daemon timer
+     * through the same {@link #publishScheduledDueEvent} the durable drain uses, and a restart
+     * forgets it exactly as it forgets the rest of the app's data. This is not a publish-now fallback
+     * (the trap {@link com.npdev.kernel.ports.DeferredEventScheduler} rules out): nothing is published
+     * until the delay has elapsed. A re-executed step (same flow, step, execution, correlation, event)
+     * is a no-op while its first delivery is pending, mirroring the durable path's unique key.
+     */
+    private boolean scheduleDeferredFlowEventInMemory(EventEnvelope envelope, long dueAtEpochMs) {
+        String scheduleKey = buildFlowScheduleKey(envelope);
+        if (!inMemoryScheduleKeys.add(scheduleKey)) {
+            return true;
+        }
+        OffsetDateTime dueAt = Instant.ofEpochMilli(dueAtEpochMs).atOffset(ZoneOffset.UTC);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        if (envelope.payload() != null) {
+            payload.putAll(envelope.payload());
+        }
+        ScheduledEventRecord record = new ScheduledEventRecord(
+                UUID.randomUUID(), scheduleKey, envelope.flowName(), envelope.stepIndex(),
+                "flow:" + envelope.flowName(), envelope.causationId(), envelope.correlationId(),
+                envelope.tenantId(), envelope.eventName(), dueAt, "PENDING", 0, null, null, null, payload);
+        long delayMs = Math.max(0L, dueAtEpochMs - System.currentTimeMillis());
+        inMemoryScheduler().schedule(() -> {
+            try {
+                publishScheduledDueEvent(record, payload, Map.of(
+                        "orchestrationAction", "scheduleEvent",
+                        "scheduleId", record.id().toString(),
+                        "sourceEventName", nullToEmpty(record.sourceEventName())));
+            } catch (RuntimeException exception) {
+                LOG.log(Level.WARNING, "Failed to deliver in-memory scheduled event " + record.eventName(), exception);
+            } finally {
+                inMemoryScheduleKeys.remove(scheduleKey);
+            }
+        }, delayMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+        return true;
+    }
+
+    private synchronized java.util.concurrent.ScheduledExecutorService inMemoryScheduler() {
+        if (inMemoryScheduler == null) {
+            inMemoryScheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(task -> {
+                Thread thread = new Thread(task, "npdev-in-memory-scheduled-events");
+                thread.setDaemon(true);
+                return thread;
+            });
+        }
+        return inMemoryScheduler;
     }
 
     private static String buildFlowScheduleKey(EventEnvelope envelope) {
@@ -1884,6 +1952,37 @@ public final class GeneratedCrudRuntimeSupport {
             }
         }
         return names;
+    }
+
+    /**
+     * REG-253: whether a create that omits {@code fieldName} gets a value filled in anyway -- the
+     * field's declared literal {@code default}, its {@code defaultExpression}, or (for the lifecycle
+     * status field) the lifecycle's initial state, i.e. exactly what
+     * {@code applySchemaValueBehaviors} writes when it materialises the create payload. The generated
+     * service's required-field pre-check calls this so a field with a default is NOT refused as
+     * "missing" before the default has had a chance to apply. Reads the live model; false when the
+     * concept or field is unknown.
+     */
+    public boolean hasCreateDefault(String conceptName, String fieldName) {
+        if (conceptName == null || fieldName == null) {
+            return false;
+        }
+        Optional<CompiledConcept> concept = modelSupplier.get().findConcept(conceptName);
+        if (concept.isEmpty()) {
+            return false;
+        }
+        for (CompiledField field : concept.get().getFields()) {
+            if (field == null || !fieldName.equals(field.getName())) {
+                continue;
+            }
+            CompiledSchema schema = field.getSchema();
+            if (schema != null && (schema.getDefaultValue() != null
+                    || (schema.getDefaultExpression() != null && !schema.getDefaultExpression().isBlank()))) {
+                return true;
+            }
+            return lifecycleInitialState(concept.get(), fieldName) != null;
+        }
+        return false;
     }
 
     private Map<String, Object> normalizePayloadForValidation(

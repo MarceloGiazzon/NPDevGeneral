@@ -62,6 +62,13 @@ final class EntityEmitterLiveFieldExtrasTest {
         assertTrue(controller.contains("ExtraFieldAccess.all(source)"));
     }
 
+    /** REG-253: the required pre-check must let a defaulted field through to the create payload. */
+    @Test
+    void theGeneratedServiceDoesNotRefuseARequiredFieldThatHasADeclaredDefault() throws Exception {
+        String service = template("service-base.mustache");
+        assertTrue(service.contains("!(value == null && runtimeSupport.hasCreateDefault(CONCEPT_NAME, requiredField))"));
+    }
+
     private static String template(String name) throws Exception {
         try (InputStream in = EntityEmitterLiveFieldExtrasTest.class.getClassLoader()
                 .getResourceAsStream("npdev-templates/" + name)) {

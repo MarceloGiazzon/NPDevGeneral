@@ -399,6 +399,195 @@ class CompiledModelFlowDefinitionProviderTest {
         assertEquals("postgres:saved:a@b.com", second);
     }
 
+    private static String conceptWriteModel() {
+        return """
+                {
+                  "namespace": "demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    {
+                      "name": "Line",
+                      "fields": [
+                        { "name":"id", "type":"uuid", "id":true, "required":true },
+                        { "name":"sku", "type":"string", "required":true },
+                        { "name":"unitPrice", "type":"integer", "required":true },
+                        { "name":"channel", "type":"string", "required":true, "default":"web" },
+                        { "name":"note", "type":"string" }
+                      ]
+                    }
+                  ],
+                  "capabilities": [
+                    { "name":"persistence", "type":"PersistenceCapability", "operations":["save"] }
+                  ],
+                  "bindings": [
+                    { "capability":"persistence", "adapter":"inmemory" }
+                  ],
+                  "flows": [
+                    {
+                      "name": "RecordLine",
+                      "input": { "concept":"Line", "mode":"create" },
+                      "steps": [
+                        { "name":"save-line", "type":"createConcept", "scope":"Line", "input":"$input", "output":"$saved" },
+                        { "name":"ret", "type":"return", "value":"$saved" }
+                      ]
+                    },
+                    {
+                      "name": "ReviseLine",
+                      "input": { "concept":"Line", "mode":"update" },
+                      "steps": [
+                        { "name":"apply-line", "type":"updateConcept", "scope":"Line", "input":"$input", "output":"$updated" },
+                        { "name":"ret", "type":"return", "value":"$updated" }
+                      ]
+                    }
+                  ]
+                }
+                """;
+    }
+
+    /** Flags {@code required(<field>)} refs whose field is absent from the payload (the real engine's rule). */
+    private static com.npdev.kernel.ports.InvariantEngine requiredFieldEngine() {
+        return new com.npdev.kernel.ports.InvariantEngine() {
+            @Override
+            public List<String> evaluate(String entityName, Object payload) {
+                return List.of();
+            }
+
+            @Override
+            public List<Violation> evaluate(List<String> invariants, EvaluationContext context) {
+                Map<?, ?> payload = (Map<?, ?>) context.payload();
+                List<Violation> out = new ArrayList<>();
+                for (String ref : invariants) {
+                    String field = ref.substring("required(".length(), ref.length() - 1);
+                    if (payload.get(field) == null) {
+                        out.add(new Violation("INVARIANT_FAIL", "Required field missing: " + field, ref));
+                    }
+                }
+                return out;
+            }
+        };
+    }
+
+    @Test
+    void providerMarksCreateAndUpdateConceptStepsAndRequiresOnlyFieldsPersistenceWillNotFill() throws Exception {
+        CompiledModelFlowDefinitionProvider provider = new CompiledModelFlowDefinitionProvider(compile(conceptWriteModel()));
+
+        FlowStepDefinition.ConceptWrite create = provider.getFlow("RecordLine").getSteps().get(0).getConceptWrite();
+        FlowStepDefinition.ConceptWrite update = provider.getFlow("ReviseLine").getSteps().get(0).getConceptWrite();
+
+        assertTrue(create.isCreate());
+        // id is minted, channel has a default: only the two fields nothing else will supply remain.
+        assertEquals(List.of("required(sku)", "required(unitPrice)"), create.requiredInvariantRefs());
+        assertTrue(update.isUpdate());
+        assertTrue(update.requiredInvariantRefs().isEmpty());
+        assertEquals(null, provider.getFlow("RecordLine").getSteps().get(1).getConceptWrite());
+    }
+
+    @Test
+    void createConceptStepRefusesAPayloadMissingARequiredFieldBeforeWriting() throws Exception {
+        List<com.npdev.kernel.CapabilityCall> dispatched = new ArrayList<>();
+        KernelRunner runner = new KernelRunner(
+                envelope -> {
+                },
+                requiredFieldEngine(),
+                new CompiledModelFlowDefinitionProvider(compile(conceptWriteModel())),
+                (call, state) -> {
+                    dispatched.add(call);
+                    return com.npdev.kernel.CapabilityResult.success(call.args().get(0));
+                }
+        );
+
+        ExecutionResult refused = runner.execute("RecordLine", Map.of("sku", "S-1"));
+
+        assertEquals(ExecutionStatus.INVARIANT_FAILED, refused.getStatus());
+        assertEquals("required(unitPrice)", refused.getInvariantViolations().get(0).invariantRef());
+        assertTrue(dispatched.isEmpty(), "a refused create must not reach the persistence capability");
+
+        ExecutionResult accepted = runner.execute("RecordLine", Map.of("sku", "S-1", "unitPrice", 3));
+
+        assertEquals(ExecutionStatus.OK, accepted.getStatus());
+        assertEquals(1, dispatched.size());
+        assertFalse(((Map<?, ?>) dispatched.get(0).args().get(0)).containsKey("__npdevWriteMode"));
+    }
+
+    @Test
+    void updateConceptStepTellsPersistenceItIsAnUpdateAndNeedsNoRequiredFields() throws Exception {
+        List<com.npdev.kernel.CapabilityCall> dispatched = new ArrayList<>();
+        KernelRunner runner = new KernelRunner(
+                envelope -> {
+                },
+                requiredFieldEngine(),
+                new CompiledModelFlowDefinitionProvider(compile(conceptWriteModel())),
+                (call, state) -> {
+                    dispatched.add(call);
+                    return com.npdev.kernel.CapabilityResult.success(call.args().get(0));
+                }
+        );
+
+        // A partial payload: only the id and the one field being changed.
+        ExecutionResult result = runner.execute("ReviseLine", Map.of("id", "11111111-1111-1111-1111-111111111111", "note", "n"));
+
+        assertEquals(ExecutionStatus.OK, result.getStatus());
+        Map<?, ?> sent = (Map<?, ?>) dispatched.get(0).args().get(0);
+        assertEquals(com.npdev.kernel.ports.PersistenceCapabilityContract.WRITE_MODE_UPDATE,
+                sent.get(com.npdev.kernel.ports.PersistenceCapabilityContract.WRITE_MODE_KEY));
+    }
+
+    private static String generatedActionModel() {
+        return """
+                {
+                  "namespace": "demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    { "name": "Order", "fields": [ { "name":"id", "type":"uuid", "id":true, "required":true } ] }
+                  ],
+                  "procedures": [
+                    {
+                      "name": "ScoreOrder",
+                      "steps": [
+                        { "name":"score", "type":"mapValue", "value":"$lineCount", "target":"risk" },
+                        { "name":"ret", "type":"return", "value":"$risk" }
+                      ]
+                    },
+                    {
+                      "name": "PackagedAction",
+                      "metadata": { "untrustedExtensionEntrypoint": "src/PackagedAction.java" },
+                      "steps": [ { "name":"ret", "type":"return", "value":"$input" } ]
+                    }
+                  ],
+                  "flows": [
+                    {
+                      "name": "Place",
+                      "input": { "concept":"Order", "mode":"create" },
+                      "steps": [
+                        { "name":"score-order", "type":"generatedAction", "actionName":"ScoreOrder", "input":"$input", "output":"$risk" },
+                        { "name":"run-packaged", "type":"generatedAction", "actionName":"PackagedAction", "input":"$input", "output":"$packaged" },
+                        { "name":"ret", "type":"return", "value":"$risk" }
+                      ]
+                    }
+                  ]
+                }
+                """;
+    }
+
+    @Test
+    void generatedActionNamingADeclaredProcedureRunsThatProcedureButAPackagedOneKeepsItsCapability() throws Exception {
+        CompiledModelFlowDefinitionProvider provider = new CompiledModelFlowDefinitionProvider(compile(generatedActionModel()));
+        FlowDefinition place = provider.getFlow("Place");
+
+        FlowStepDefinition scored = place.getSteps().get(0);
+        FlowStepDefinition packaged = place.getSteps().get(1);
+        assertEquals(FlowStepDefinition.Type.CALL_PROCEDURE, scored.getType());
+        assertEquals("ScoreOrder", scored.getProcedureName());
+        assertEquals("$input", scored.getInputRef());
+        assertEquals("$risk", scored.getOutputRef());
+        // A trusted-source procedure is run by the generated-action capability the packaged app registers.
+        assertEquals(FlowStepDefinition.Type.CAPABILITY_CALL, packaged.getType());
+        assertEquals("generated.action.PackagedAction", packaged.getCapability());
+        assertEquals("generated-action", packaged.getCapabilityAdapterId());
+    }
+
     private static List<String> runAndCaptureEventOrder(CompiledModel model) {
         List<String> order = new ArrayList<>();
         RecordingEventInfrastructure eventInfrastructure = new RecordingEventInfrastructure(order);

@@ -113,7 +113,7 @@ check("a user with no leave role cannot file a request (flow.execute denied)", s
 
 # invalid requests never reach an approver
 before = len(my_tasks("appr"))
-for name, kw in (("zero days", dict(days=0)),):
+for name, kw in (("zero days", dict(days=0)), ("an end date before the start date", dict(start="2026-12-05", end="2026-12-01"))):
     s, r = call("emp", "POST", "/api/flows/leave::RequestLeave/execute", {"requestNumber": "B" + R + name[0], "employeeName": "Eva " + R, "leaveTypeId": LTID,
                 "startDate": kw.get("start", "2026-12-01"), "endDate": kw.get("end", "2026-12-03"), "days": kw.get("days", 3)})
     check(f"a request with {name} is refused", s in (400, 422) or (isinstance(r, dict) and r.get("status") not in ("WAITING_EVENT", "COMPLETED")), (s, r))

@@ -24,7 +24,7 @@
           }
         },
         {
-          "name": "alice order 1 (Open, 3 lines; 500 tolerated, the row is stored)",
+          "name": "alice order 1 (Open, 3 lines)",
           "apiKey": "${key_alice}",
           "method": "POST",
           "path": "/api/concepts/widget_orders",
@@ -36,7 +36,7 @@
           "expect": {
             "status": [
               201,
-              500
+              200
             ]
           }
         },
@@ -53,7 +53,7 @@
           "expect": {
             "status": [
               201,
-              500
+              200
             ]
           }
         },
@@ -70,7 +70,7 @@
           "expect": {
             "status": [
               201,
-              500
+              200
             ]
           }
         },
@@ -87,7 +87,7 @@
           "expect": {
             "status": [
               201,
-              500
+              200
             ]
           }
         },
@@ -131,7 +131,7 @@
         {
           "name": "catalog entry 1 owned by alice, with an internal note",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "REP1-${rand}-A",
             "displayName": "Rep1 A",
@@ -153,7 +153,7 @@
         {
           "name": "catalog entry 2 owned by alice",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "REP1-${rand}-B",
             "displayName": "Rep1 B",
@@ -387,13 +387,13 @@
           "name": "cleanup catalog 1",
           "always": true,
           "method": "DELETE",
-          "path": "/api/widget_catalog_entrys/${cat1}"
+          "path": "/api/widget_catalog_entries/${cat1}"
         },
         {
           "name": "cleanup catalog 2",
           "always": true,
           "method": "DELETE",
-          "path": "/api/widget_catalog_entrys/${cat2}"
+          "path": "/api/widget_catalog_entries/${cat2}"
         }
       ]
     }

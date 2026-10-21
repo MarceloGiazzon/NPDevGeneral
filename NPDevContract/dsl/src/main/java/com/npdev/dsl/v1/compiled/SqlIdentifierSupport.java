@@ -158,7 +158,7 @@ public final class SqlIdentifierSupport {
      * the SAME generic reference-lookup endpoint an FK field's picker already uses.
      */
     public static String conceptEndpointBase(String qualifiedConceptName, List<CompiledContext> contexts) {
-        return "/api/concepts/" + aliasPreservingTableName(qualifiedConceptName, contexts);
+        return "/api/concepts/" + restCollectionName(qualifiedConceptName, contexts);
     }
 
     /** Same as {@link #conceptEndpointBase(String, List)}, from a {@link CompiledConcept} --
@@ -166,9 +166,51 @@ public final class SqlIdentifierSupport {
      * whatever null-handling {@link #aliasPreservingTableName(CompiledConcept, List)} already gives
      * it rather than needing a second null check of its own. */
     public static String conceptEndpointBase(CompiledConcept concept, List<CompiledContext> contexts) {
-        return "/api/concepts/" + aliasPreservingTableName(concept, contexts);
+        return "/api/concepts/" + restCollectionName(concept, contexts);
     }
 
+    /**
+     * REG-270: the REST collection name of a concept -- the path segment after {@code /api/} (and
+     * {@code /api/concepts/}) that every generated controller, manifest route, OpenAPI path and AI tool
+     * catalog serves it under. It is the {@link #aliasPreservingTableName} derivation (so a pack version
+     * bump or physical-qualifier rename never moves a client's URL) with the plural taken from
+     * {@link EnglishPlurals} instead of "append s": {@code TicketCategory} is served at
+     * {@code ticket_categories}, {@code Box} at {@code boxes}.
+     *
+     * <p>Deliberately NOT the physical table name: the table keeps {@link #toSnakePlural} so an existing
+     * database is not orphaned by the URL fix. Every route consumer must call THIS method (or
+     * {@link #conceptEndpointBase}); twin-pair rule {@code rest-collection-name-one-derivation} fails the
+     * build if a route is derived any other way.
+     */
+    public static String restCollectionName(CompiledConcept entity, List<CompiledContext> contexts) {
+        return entity == null ? "" : restCollectionName(entity.getName(), contexts);
+    }
+
+    /** Same as {@link #restCollectionName(CompiledConcept, List)}, from a bare qualified concept name. */
+    public static String restCollectionName(String qualifiedConceptName, List<CompiledContext> contexts) {
+        if (qualifiedConceptName == null || qualifiedConceptName.isBlank()) {
+            return "";
+        }
+        Map<String, Boolean> contextPhysicallyIsolateByName = new HashMap<>();
+        if (contexts != null) {
+            for (CompiledContext context : contexts) {
+                contextPhysicallyIsolateByName.put(context.name(), context.physicallyIsolate());
+            }
+        }
+        String source = contextAwareIdentifierSource(qualifiedConceptName, contextPhysicallyIsolateByName);
+        return safeSqlIdentifier(pluralSnake(source));
+    }
+
+    /** {@link #toSnake} then the English plural of its last word ({@link EnglishPlurals}); idempotent on a trailing "s". */
+    private static String pluralSnake(String value) {
+        String base = toSnake(value);
+        return base.isBlank() ? base : EnglishPlurals.pluralize(base);
+    }
+
+    /**
+     * The PHYSICAL table-name plural: snake-case plus "s". Kept as is on purpose (REG-270) so existing
+     * databases keep their tables; the REST path uses {@link #restCollectionName} instead.
+     */
     public static String toSnakePlural(String value) {
         String base = toSnake(value);
         if (base.isBlank() || base.endsWith("s")) {

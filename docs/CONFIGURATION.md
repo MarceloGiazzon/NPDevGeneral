@@ -220,7 +220,7 @@ Not part of the mode/auth/postgres contract above, but its own set of startup-ti
 |---|---|---|
 | `npdev.strict-execution.enabled` | `true` | Cannot be set `false` while `npdev.execution.mode=governed` — startup refuses that combination outright. |
 | `npdev.strict-execution.generated-root` | `${user.dir}/npdev-generated` (the Java default; under the `default` Spring profile `application-default.properties` overrides it with a backslash form that does not resolve on Linux) | The directory whose contents get hashed and verified. |
-| `npdev.execution.mode` | `governed` | `governed` or `relaxed`. `relaxed` (used by the `dev` profile) skips the hash check entirely — never use it in a real deployment. |
+| `npdev.execution.mode` | `governed` | `governed` or `relaxed`. `relaxed` (used by the `dev` profile) only allows `npdev.strict-execution.enabled=false`; with the default `enabled=true` a present `npdev-generated/` tree is still hash-verified, and an edited one refuses to start. Never use it in a real deployment. See `docs/reference/LEAVING_NPDEV.md`. |
 | `npdev.runtime.surface-profile` | `supported-core` | In governed mode, must be exactly `supported-core`. |
 | `npdev.runtime.supported-surface-enforced` | `true` | Must stay `true` in governed mode. |
 

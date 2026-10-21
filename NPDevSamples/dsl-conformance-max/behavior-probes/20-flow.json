@@ -3462,8 +3462,7 @@
         "flowStep.actionName",
         "flow.outputSchema"
       ],
-      "description": "KNOWN DEFECT: PlaceWidgetOrder's generatedAction step ScoreWidgetOrderRisk has no runtime adapter. POST /api/flows/PlaceWidgetOrder/execute with a valid body should finish OK and return the saved order (outputSchema id/customerEmail/status/lineCount). ACTUAL: 422 status CAPABILITY_FAILED, errorCode capability_not_found, 'Capability binding not found for capability generated.action.ScoreWidgetOrderRisk and adapter generated-action', capabilityStepName score-order-risk; the order row was already saved by save-order.",
-      "knownFailure": "REG-259",
+      "description": "PlaceWidgetOrder's generatedAction step ScoreWidgetOrderRisk names a procedure declared in the model, so it runs that procedure (REG-259; before, it failed with capability_not_found AFTER save-order had written the row). POST /api/flows/PlaceWidgetOrder/execute with a valid body finishes OK and returns the saved order (outputSchema id/customerEmail/status/lineCount).",
       "steps": [
         {
           "name": "execute PlaceWidgetOrder",
@@ -3526,7 +3525,7 @@
         "flowStep.type",
         "flowStep.policy"
       ],
-      "description": "Saga compensation: when a LATER step fails, the onFailure block of the already-completed save-order step runs (compensate-notify capabilityCall) -- its output variable compensationNotice and the durable __npdev_compensatedSteps__ counter are in the failed execution's state. The forcing failure is the open REG-259 (score-order-risk, index 5); if that defect is fixed, replace the forcing step with another late failure.",
+      "description": "Saga compensation: when a LATER step fails, the onFailure block of the already-completed save-order step runs (compensate-notify capabilityCall) -- its output variable compensationNotice and the durable __npdev_compensatedSteps__ counter are in the failed execution's state. The forcing failure is reject-unscorable-order (index 6): an order with lineCount 99 reaches a generatedAction (UnimplementedRiskPolicy) that no procedure or packaged code implements, so it fails with a capability binding error after save-order completed.",
       "steps": [
         {
           "name": "force a failure after save-order",
@@ -3535,14 +3534,13 @@
           "body": {
             "customerEmail": "developer",
             "status": "NEW",
-            "lineCount": 3
+            "lineCount": 99
           },
           "expect": {
             "status": 422,
             "json": {
               "$.status": "CAPABILITY_FAILED",
-              "$.capabilityStepName": "score-order-risk",
-              "$.capabilityStepIndex": 5
+              "$.capabilityStepName": "score-unimplemented"
             }
           },
           "save": {
@@ -3557,7 +3555,7 @@
             "status": 200,
             "json": {
               "$.status": "FAILED_PERMANENT",
-              "$.currentStepIndex": 5
+              "$.currentStepIndex": 6
             },
             "text": "\"compensationNotice\""
           }
@@ -3606,8 +3604,7 @@
       "keywords": [
         "flowStep.onFailure"
       ],
-      "description": "KNOWN DEFECT (monitoring): after a compensated failure the execution monitor (GET /api/executions/history, documented 'COMPENSATED' when an onFailure block ran) should report compensationStatus COMPENSATED and compensatedSteps >= 1. ACTUAL: compensationStatus NONE, compensatedSteps 0 although the same execution's state holds compensationNotice. Likely cause (unverified): ExecutionMonitorService reads state['__npdev_compensatedSteps__'] from the redacted execution, where only state KEYS survive, so the Number check always fails. Forcing failure = REG-259.",
-      "knownFailure": "REG-260",
+      "description": "After a compensated failure the execution monitor (GET /api/executions/history, documented 'COMPENSATED' when an onFailure block ran) reports compensationStatus COMPENSATED and compensatedSteps >= 1 (REG-260: the redacted execution the monitor reads used to mask the platform's compensation counter, so it said NONE / 0). Forcing failure = lineCount 99 (reject-unscorable-order).",
       "steps": [
         {
           "name": "execute PlaceWidgetOrder",
@@ -3616,7 +3613,7 @@
           "body": {
             "customerEmail": "developer",
             "status": "NEW",
-            "lineCount": 2
+            "lineCount": 99
           },
           "expect": {
             "status": 422,
@@ -3705,7 +3702,7 @@
         "flowStep.event",
         "flowStep.from"
       ],
-      "description": "The 'after save-order' flowHook of PlaceWidgetOrderAudited injects its emitEvent step right after save-order: the execution emits WidgetOrderPlaced from step hook-emit-placed at stepIndex 2 (validate=0, save=1), carrying the saved order; the parent flow without the hook emits no WidgetOrderPlaced from that step. Works whether or not the flow later fails (REG-259).",
+      "description": "The 'after save-order' flowHook of PlaceWidgetOrderAudited injects its emitEvent step right after save-order: the execution emits WidgetOrderPlaced from step hook-emit-placed at stepIndex 2 (validate=0, save=1), carrying the saved order; the parent flow without the hook completes and emits WidgetOrderPlaced only once, from its own scheduleEvent step announce-order-placed, never from hook-emit-placed.",
       "steps": [
         {
           "name": "execute PlaceWidgetOrderAudited",
@@ -3754,7 +3751,7 @@
           }
         },
         {
-          "name": "control: parent flow (no hook) emitted nothing before its failure",
+          "name": "control: parent flow (no hook) emits only its own announce-order-placed event",
           "method": "POST",
           "path": "/api/flows/PlaceWidgetOrder/execute",
           "body": {
@@ -3763,14 +3760,15 @@
             "lineCount": 2
           },
           "expect": {
-            "status": [
-              200,
-              422
-            ],
+            "status": 200,
             "json": {
+              "$.status": "OK",
               "$.emittedEvents": {
-                "len": 0
-              }
+                "len": 1
+              },
+              "$.emittedEvents[0].eventName": "WidgetOrderPlaced",
+              "$.emittedEvents[0].flowName": "PlaceWidgetOrder",
+              "$.emittedEvents[0].payload._meta.step": "announce-order-placed"
             }
           }
         }
@@ -3786,7 +3784,7 @@
         "orchestrationRule.actions",
         "orchestrationAction.type"
       ],
-      "description": "orchestrationRule PushNewOrdersToErp (trigger event WidgetOrderPlaced) starts when a FLOW emits WidgetOrderPlaced: an OrchestrationStarted event whose payload.sourceEventId is that exact event appears. A flow event with another name (WidgetOrderLineRecorded) starts no orchestration. (The rule's webhook action targets 127.0.0.1:9099 which is not served here, so its action outcome is deliberately not asserted.) Relies on probes running sequentially: the OrchestrationStarted list is read newest-first.",
+      "description": "orchestrationRule PushNewOrdersToErp (trigger event WidgetOrderPlaced) starts when a FLOW emits WidgetOrderPlaced: an OrchestrationStarted event whose payload.sourceEventId is that exact event appears. PlaceWidgetOrderAudited emits WidgetOrderPlaced twice (the hook's emitEvent, then the parent's announce-order-placed), so the two newest OrchestrationStarted events name those two events (in either order: both start within the same millisecond, so 'newest first' does not order them). A flow event with another name (WidgetOrderLineRecorded) starts no orchestration. (The rule's webhook action targets 127.0.0.1:9099 which is not served here, so its action outcome is deliberately not asserted.) Relies on probes running sequentially: the OrchestrationStarted list is read newest-first.",
       "steps": [
         {
           "name": "control event of a different name",
@@ -3823,24 +3821,31 @@
               422
             ],
             "json": {
-              "$.emittedEvents[0].eventName": "WidgetOrderPlaced"
+              "$.emittedEvents[0].eventName": "WidgetOrderPlaced",
+              "$.emittedEvents[1].eventName": "WidgetOrderPlaced"
             }
           },
           "save": {
-            "srcEventId": "$.emittedEvents[0].eventId"
+            "firstEventId": "$.emittedEvents[0].eventId",
+            "srcEventId": "$.emittedEvents[1].eventId"
           }
         },
         {
           "name": "orchestration started for the emitted event",
           "method": "GET",
-          "path": "/api/events/by-name/OrchestrationStarted?limit=1",
+          "path": "/api/events/by-name/OrchestrationStarted?limit=2",
           "expect": {
             "status": 200,
             "json": {
               "$[0].payload.orchestration": "PushNewOrdersToErp",
               "$[0].payload.sourceEvent": "WidgetOrderPlaced",
-              "$[0].payload.sourceEventId": "${srcEventId}"
-            }
+              "$[1].payload.orchestration": "PushNewOrdersToErp",
+              "$[1].payload.sourceEvent": "WidgetOrderPlaced"
+            },
+            "text": [
+              "\"sourceEventId\":\"${firstEventId}\"",
+              "\"sourceEventId\":\"${srcEventId}\""
+            ]
           }
         },
         {
@@ -3860,12 +3865,17 @@
         {
           "name": "no new orchestration for a non-matching event",
           "method": "GET",
-          "path": "/api/events/by-name/OrchestrationStarted?limit=1",
+          "path": "/api/events/by-name/OrchestrationStarted?limit=2",
           "expect": {
             "status": 200,
             "json": {
-              "$[0].payload.sourceEventId": "${srcEventId}"
-            }
+              "$[0].payload.orchestration": "PushNewOrdersToErp",
+              "$[1].payload.orchestration": "PushNewOrdersToErp"
+            },
+            "text": [
+              "\"sourceEventId\":\"${firstEventId}\"",
+              "\"sourceEventId\":\"${srcEventId}\""
+            ]
           }
         }
       ]
@@ -4195,7 +4205,7 @@
         "flowStep.input",
         "flowStep.output"
       ],
-      "description": "parallelAwait forEach starts every iteration at once (the map step of BOTH iterations ran before any event: skuSeen exists for 0 and 1), needs ALL iteration events (a resume with only iteration 0 delivered stays WAITING_EVENT), and once both arrived an explicit resume completes the flow with OK and each iteration's emitEvent WidgetOrderLineApprovalRecorded is persisted under its own iteration correlation id.",
+      "description": "parallelAwait forEach starts every iteration at once (the map step of BOTH iterations ran before any event: skuSeen exists for 0 and 1), needs ALL iteration events (after the event of iteration 0 alone the execution stays WAITING_EVENT, iteration 0 consumed, and an explicit resume changes nothing), and the event of the last outstanding iteration completes the flow by itself (REG-261) with each iteration's emitEvent WidgetOrderLineApprovalRecorded persisted under its own iteration correlation id.",
       "steps": [
         {
           "name": "execute ProcessParallelWidgetOrderLineApprovals",
@@ -4246,6 +4256,19 @@
           }
         },
         {
+          "name": "iteration 0 was consumed by its own event; iteration 1 is still outstanding",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "WAITING_EVENT"
+            },
+            "text": "__iterDone.await-line-approvals-parallel.0",
+            "notText": "__iterDone.await-line-approvals-parallel.1"
+          }
+        },
+        {
           "name": "resume with one of two events: join not satisfied",
           "method": "POST",
           "path": "/api/executions/${execId}/resume",
@@ -4273,22 +4296,7 @@
           }
         },
         {
-          "name": "resume with both events: join satisfied",
-          "method": "POST",
-          "path": "/api/executions/${execId}/resume",
-          "body": {},
-          "expect": {
-            "status": 200,
-            "json": {
-              "$.status": "OK",
-              "$.output.skus": {
-                "len": 2
-              }
-            }
-          }
-        },
-        {
-          "name": "execution is COMPLETED",
+          "name": "the last outstanding iteration's event completed the execution by itself",
           "method": "GET",
           "path": "/api/executions/${execId}",
           "expect": {
@@ -4334,8 +4342,7 @@
         "flowStep.parallelAwait",
         "flowStep.awaitEvent"
       ],
-      "description": "KNOWN DEFECT: for a parallelAwait forEach, publishing the awaited event for EVERY iteration (POST /api/events/publish, correlation '<exec>::forEach:await-line-approved-parallel:<i>', i=0,1) should resume the execution to COMPLETED just as a single awaitEvent does (see fl-await-event-resumes-only-on-matching-correlation). ACTUAL: both publishes return 202 and the execution stays WAITING_EVENT (currentStepIndex 0, resumeAttemptCount 0) for at least 30 s -- only an explicit POST /api/executions/<id>/resume completes it (proved by fl-parallel-await-joins-all-iteration-events).",
-      "knownFailure": "REG-261",
+      "description": "For a parallelAwait forEach, publishing the awaited event for EVERY iteration (POST /api/events/publish, correlation '<exec>::forEach:await-line-approved-parallel:<i>', i=0,1) resumes the execution to COMPLETED just as a single awaitEvent does (see fl-await-event-resumes-only-on-matching-correlation), with no explicit /resume (REG-261: the parked iterations' wait descriptors were stored where the event-arrival lookup never looked).",
       "steps": [
         {
           "name": "execute ProcessParallelWidgetOrderLineApprovals",
@@ -4858,7 +4865,6 @@
         "flowStep.scope"
       ],
       "description": "KNOWN DEFECT: createConcept in a flow bypasses the concept's required-field invariants. REST POST /api/widget_order_lines {sku, quantity} is refused 422 invariant_failed required(unitPrice)/required(widgetOrderId); the SAME body through POST /api/flows/RecordOrderLines/execute returns 200 OK and stores a line with widgetOrderId=null and unitPrice=null (observed: lineTotal 0/null). Expected: 422 INVARIANT_FAILED naming required(unitPrice).",
-      "knownFailure": "REG-262",
       "steps": [
         {
           "name": "control: REST create refuses the incomplete line",
@@ -4904,7 +4910,6 @@
         "flow.input"
       ],
       "description": "KNOWN DEFECT: updateConcept replaces the whole row instead of merging. REST PUT {quantity} keeps sku/unitPrice/widgetOrderId (and bumps version), but POST /api/flows/UpdateOrderLineQuantity/execute {id, quantity:7} leaves the stored line with sku=null, unitPrice=null, widgetOrderId=null (data loss), version still 0. Expected: sku unchanged.",
-      "knownFailure": "REG-263",
       "steps": [
         {
           "name": "execute RecordOrderLines",
@@ -4964,7 +4969,6 @@
         "flowInput.mode"
       ],
       "description": "KNOWN DEFECT: a flow with input mode 'update' (UpdateOrderLineQuantity) given an id that does not exist should fail (404/409/422); ACTUAL: 200 OK and it silently CREATES a row with that id (sku/unitPrice/widgetOrderId null) that GET /api/widget_order_lines/<id> then returns. The REST PUT on a missing id is 404 (control).",
-      "knownFailure": "REG-264",
       "steps": [
         {
           "name": "control: REST PUT on a missing id",

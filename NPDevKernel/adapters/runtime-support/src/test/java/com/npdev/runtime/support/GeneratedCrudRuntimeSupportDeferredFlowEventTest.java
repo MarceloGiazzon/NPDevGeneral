@@ -188,21 +188,37 @@ class GeneratedCrudRuntimeSupportDeferredFlowEventTest {
     }
 
     @Test
-    void aDeferredScheduleWithoutADataSourceReportsFailureRatherThanPublishingNow() {
+    void aDeferredScheduleWithoutADataSourceIsHeldInMemoryAndDeliveredOnlyAfterTheDelay() throws Exception {
+        // An in-memory app has no npdev_scheduled_event table. It used to refuse every delayed step
+        // (so a flow with one reminder could never complete there); it now holds the schedule in
+        // memory. What must NOT change is the rule this test always guarded: nothing is published
+        // before the delay has elapsed -- a publish-now fallback would defeat the delay.
+        RecordingEventInfrastructure inMemoryEvents = new RecordingEventInfrastructure();
         GeneratedCrudRuntimeSupport withoutDataSource = new GeneratedCrudRuntimeSupport(
                 () -> new CompiledModel("no-datasource", "1.0.0", "v1", Map.<String, CompiledConcept>of()),
-                new KernelRunner(events, (entityName, payload) -> List.of()),
+                new KernelRunner(inMemoryEvents, (entityName, payload) -> List.of(), flowName -> Optional.empty(),
+                        (call, state) -> CapabilityResult.success(null), inMemoryEvents),
                 null,
                 null,
                 null,
                 null
         );
         EventEnvelope envelope = EventEnvelope.create(
-                REMINDER_EVENT, Map.of(), "corr-none", "exec-none", "ScheduleReminder", 0);
+                REMINDER_EVENT, Map.of("appointmentId", "apt-mem"), "corr-none", "exec-none", "ScheduleReminder", 0);
 
-        assertFalse(withoutDataSource.scheduleDeferredFlowEvent(envelope, System.currentTimeMillis() + 60_000L));
-        assertFalse(events.eventNames().contains(REMINDER_EVENT),
-                "An unwritable schedule must not degrade into an immediate publish");
+        assertTrue(withoutDataSource.scheduleDeferredFlowEvent(envelope, System.currentTimeMillis() + 700L));
+        assertTrue(withoutDataSource.scheduleDeferredFlowEvent(envelope, System.currentTimeMillis() + 700L),
+                "re-scheduling the same (flow, step, execution, correlation, event) is a no-op while pending");
+        assertFalse(inMemoryEvents.eventNames().contains(REMINDER_EVENT),
+                "A delayed schedule must not degrade into an immediate publish");
+
+        long deadline = System.currentTimeMillis() + 10_000L;
+        while (!inMemoryEvents.eventNames().contains(REMINDER_EVENT) && System.currentTimeMillis() < deadline) {
+            Thread.sleep(50L);
+        }
+        assertEquals(1, inMemoryEvents.eventNames().stream().filter(REMINDER_EVENT::equals).count(),
+                "delivered once, after the delay, with the correlation it was scheduled under");
+        assertEquals("corr-none", inMemoryEvents.readByEventName(REMINDER_EVENT).get(0).correlationId());
     }
 
     private static FlowDefinitionProvider scheduleReminderFlowProvider() {
