@@ -4889,6 +4889,48 @@ def run_db_schema_ahead(args: argparse.Namespace) -> int:
     return completed.returncode
 
 
+def run_import_db(args: argparse.Namespace) -> int:
+    """`npdev import db` -- IMP-1. Shells to `com.npdev.generator.importer.IntrospectDbMain` in the staged
+    npdev-ai-tools.jar (pure JDBC metadata + Jackson, no Spring, no app needed). The driver for the
+    source database must be on the classpath: the staged H2 jar is added automatically, anything else
+    comes from --driver-jar. Exit codes pass straight through (0 = written, 2 = could not)."""
+    jar = _default_ai_tools_jar()
+    java_bin = java_launcher()
+    if jar is None:
+        print("npdev import db: npdev-ai-tools.jar is not staged -- run `npdev setup`.", file=sys.stderr)
+        return 2
+    if java_bin is None:
+        print("npdev import db: no java found (see `npdev doctor`).", file=sys.stderr)
+        return 2
+    classpath = [str(jar)]
+    libs = _default_runtimehost_libs_dir()
+    if libs is not None:
+        classpath += [str(p) for p in sorted(Path(libs).glob("h2-*.jar"))]
+    for driver in args.driver_jar:
+        driver_path = Path(driver).expanduser()
+        if not driver_path.is_file():
+            print(f"npdev import db: --driver-jar {driver} does not exist.", file=sys.stderr)
+            return 2
+        classpath.append(str(driver_path))
+    command = [java_bin, "-cp", os.pathsep.join(classpath), "com.npdev.generator.importer.IntrospectDbMain",
+               "--url", args.url, "--out", str(Path(args.out).expanduser().resolve()),
+               "--namespace", args.namespace]
+    if args.db_user is not None:
+        command += ["--user", args.db_user, "--password", args.db_password or ""]
+    if args.schema:
+        command += ["--schema", args.schema]
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=300)
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"npdev import db: could not run the importer ({exc})", file=sys.stderr)
+        return 2
+    if completed.stdout:
+        print(completed.stdout, end="")
+    if completed.stderr:
+        print(completed.stderr, end="", file=sys.stderr)
+    return completed.returncode
+
+
 def run_db_mark_done(args: argparse.Namespace) -> int:
     """`npdev db mark-done` -- Wave 5, boundary B6 lift (docs/ACCEPTED_BOUNDARIES.md). Shells to
     `com.finalexec.db.MigrationMarkDoneMain` the same way `db verify`/`db schema-ahead` shell to their
@@ -16960,6 +17002,27 @@ def build_parser() -> argparse.ArgumentParser:
     truth.add_argument("--sample-id",
                        help="Which sample's reports are evidence (default: read from the app's build info).")
 
+    # IMP-1: migration importer, database-first. A draft model from a live database's metadata.
+    import_cmd = subparsers.add_parser(
+        "import",
+        help="Draft a model from an existing system. `import db` introspects a JDBC database (tables, "
+             "columns, keys, uniques) into model.json plus an import-report.json that lists what was "
+             "mapped, what was left out and what needs a person.",
+    )
+    import_sub = import_cmd.add_subparsers(dest="import_command")
+    import_db = import_sub.add_parser("db", help="Introspect a JDBC database into a draft model.")
+    import_db.add_argument("--url", required=True, help="JDBC URL of the database to read.")
+    import_db.add_argument("--out", required=True, help="Directory to write model.json and import-report.json into.")
+    import_db.add_argument("--db-user", default=None)
+    import_db.add_argument("--db-password", default=None)
+    import_db.add_argument("--schema", default=None, help="Schema to read (default: the connection's own).")
+    import_db.add_argument("--namespace", default="imported.app", help="namespace of the drafted model.")
+    import_db.add_argument(
+        "--driver-jar", action="append", default=[], metavar="JAR",
+        help="JDBC driver jar(s) for the source database (repeatable). The staged H2 driver is always "
+             "available; PostgreSQL, SQL Server, MySQL and others need their driver passed here.",
+    )
+
     generate = subparsers.add_parser(
         "generate", help="Generate a complete, runnable app (or a single screen) from a model."
     )
@@ -18087,6 +18150,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_impact(args)
         if args.command == "truth":
             return npdev_truth.run(args, repo_root())
+        if args.command == "import" and args.import_command == "db":
+            return run_import_db(args)
         if args.command == "init":
             return run_init(args)
         if args.command == "setup":
