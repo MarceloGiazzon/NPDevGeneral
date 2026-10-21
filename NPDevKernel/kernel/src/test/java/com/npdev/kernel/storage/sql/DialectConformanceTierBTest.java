@@ -244,6 +244,40 @@ class DialectConformanceTierBTest {
         }
     }
 
+    // ------------------------------------------------------------------ LIVE-1
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("locallyRunnableDialects")
+    @DisplayName("A1 (LIVE-1): guardedAddColumn adds a nullable column to a table WITH ROWS, and a second run is a no-op")
+    void addColumnToATableWithRowsIsIdempotent(SqlDialect dialect) throws SQLException {
+        // The statement ExistingConceptColumnProvisioner runs against a live business table on a model
+        // reload. Observable behaviour only: the old row survives with NULL in the new column, the new
+        // column is writable, and re-running the guarded statement neither fails nor duplicates it.
+        requireRunnable(dialect, DialectTestSupport.Construct.BASIC_DML);
+        // H2 and Postgres guard with a native IF NOT EXISTS the local H2 backend executes; MySQL (a
+        // PREPARE/EXECUTE script) and SQL Server (COL_LENGTH) are only believable against the real engine.
+        if (!(dialect instanceof H2Dialect) && !(dialect instanceof PostgresDialect)) {
+            assumeTrue(DialectTestSupport.enforces(dialect, DialectTestSupport.Behaviour.CATALOG_INTROSPECTION),
+                    DialectTestSupport.whyNotVerified(dialect, DialectTestSupport.Behaviour.CATALOG_INTROSPECTION));
+        }
+        try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
+            execute(connection, "CREATE TABLE t (id VARCHAR(36) PRIMARY KEY, name VARCHAR(255))");
+            execute(connection, "INSERT INTO t (id, name) VALUES ('A', 'old')");
+            String alter = "ALTER TABLE t ADD COLUMN live_note " + dialect.portableColumnType("VARCHAR(255)");
+            String guarded = dialect.guardedAddColumn("t", "live_note", alter);
+            for (int run = 0; run < 2; run++) {
+                for (String statement : guarded.split(";\\s*\\n")) {
+                    if (!statement.isBlank()) {
+                        execute(connection, statement);
+                    }
+                }
+            }
+            execute(connection, "INSERT INTO t (id, name, live_note) VALUES ('B', 'new', 'hello')");
+            assertEquals(1, count(connection, "SELECT COUNT(*) FROM t WHERE id = 'A' AND live_note IS NULL"), dialect.name());
+            assertEquals("hello", readString(connection, "SELECT live_note FROM t WHERE id = 'B'"), dialect.name());
+        }
+    }
+
     // ------------------------------------------------------------------ T1/T2
 
     @ParameterizedTest(name = "{0}")

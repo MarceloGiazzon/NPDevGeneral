@@ -651,12 +651,15 @@ public class {{entityName}}ServiceBase {
             throw new IllegalArgumentException("Request body is required");
         }
         Map<String, Object> normalized = new LinkedHashMap<>();
+        // LIVE-1: the baked set is only the floor -- a field a live model reload added to this
+        // concept is accepted too (read from the live model, same posture as ENG-4's enum values).
+        Set<String> liveFieldNames = runtimeSupport.liveFieldNames(CONCEPT_NAME);
         for (Map.Entry<String, Object> entry : request.entrySet()) {
             String fieldName = entry.getKey();
             if (fieldName == null || fieldName.isBlank()) {
                 throw new IllegalArgumentException("Unknown blank field in request body");
             }
-            if (!ALL_FIELD_NAMES.contains(fieldName)) {
+            if (!ALL_FIELD_NAMES.contains(fieldName) && !liveFieldNames.contains(fieldName)) {
                 throw new IllegalArgumentException("Unknown field for {{conceptName}}: " + fieldName);
             }
             validateEnumValue(fieldName, entry.getValue());

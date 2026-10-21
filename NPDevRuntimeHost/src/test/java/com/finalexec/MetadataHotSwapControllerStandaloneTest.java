@@ -299,6 +299,109 @@ class MetadataHotSwapControllerStandaloneTest {
                 "expected a 'label' field node, got " + fields);
     }
 
+    // ---- LIVE-1: a new field on an EXISTING concept ----------------------------------------------
+
+    private static String thingModelWith(String... extraFieldJson) {
+        return "{\"dslVersion\":\"1.0.0\",\"namespace\":\"hotswap.test\",\"version\":\"1.0\","
+                + "\"concepts\":[{\"name\":\"Thing\",\"fields\":["
+                + "{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true}"
+                + (extraFieldJson.length == 0 ? "" : "," + String.join(",", extraFieldJson)) + "]}]}";
+    }
+
+    private MockMvc liveFieldMockMvc(com.finalexec.config.ModelHolder holder, DataSource dataSource) {
+        MetadataHotSwapController controller = new MetadataHotSwapController(
+                runtimeMetadataService, runtimeContextService, holder, true,
+                dataSourceProvider(dataSource), true, staticUiPath());
+        when(executionContext.hasRole("SUPERUSER")).thenReturn(true);
+        return MockMvcBuilders.standaloneSetup(controller).build();
+    }
+
+    private static void createThingsTable(String url) throws SQLException {
+        try (Connection connection = DriverManager.getConnection(url); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE things (id UUID NOT NULL, version BIGINT DEFAULT 0, row_version BIGINT DEFAULT 0, "
+                    + "tenant_id VARCHAR(120) NOT NULL DEFAULT 'default', PRIMARY KEY (id))");
+        }
+    }
+
+    @Test
+    void modelReloadAddsTheColumnBeforeSwappingAndAppendsTheUiManifestFieldForANewFieldOnAnExistingConcept() throws Exception {
+        String url = "jdbc:h2:mem:" + getClass().getSimpleName() + System.nanoTime() + ";DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false";
+        createThingsTable(url);
+        Path modelPath = appExternalRoot.resolve("model-with-new-field.json");
+        writeFixture(modelPath, thingModelWith("{\"name\":\"nickname\",\"type\":\"string\"}"));
+        Path manifestFile = Path.of(staticUiPath()).resolve("npdev-business-ui").resolve("generated-ui-manifest.json");
+        writeFixture(manifestFile, "{\"schemaVersion\":\"npdev-generated-ui-manifest.v1\",\"defaultGuidePage\":\"Default\","
+                + "\"concepts\":[{\"conceptName\":\"Thing\",\"fields\":[{\"name\":\"id\"}],\"list\":{\"columns\":[\"id\"]}}]}");
+        com.finalexec.config.ModelHolder holder = new com.finalexec.config.ModelHolder(compiledModel(thingModelWith()));
+
+        liveFieldMockMvc(holder, h2DataSource(url)).perform(post("/api/admin/runtime/metadata-hotswap/model-reload")
+                        .contentType("application/json")
+                        .content("{\"modelPath\":\"" + escapeJson(modelPath.toString()) + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fieldsProvisioned[0]").value("Thing.nickname"))
+                .andExpect(jsonPath("$.uiManifestFieldsRefreshed[0]").value("Thing.nickname"))
+                .andExpect(jsonPath("$.uiManifestFieldsFailed.length()").value(0));
+
+        org.junit.jupiter.api.Assertions.assertTrue(
+                holder.get().findConcept("Thing").orElseThrow().getFields().stream().anyMatch(f -> "nickname".equals(f.getName())),
+                "the model must be swapped");
+        try (Connection connection = DriverManager.getConnection(url);
+                Statement statement = connection.createStatement();
+                ResultSet rs = statement.executeQuery(
+                        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE LOWER(TABLE_NAME) = 'things'")) {
+            java.util.Set<String> columns = new java.util.HashSet<>();
+            while (rs.next()) {
+                columns.add(rs.getString(1));
+            }
+            org.junit.jupiter.api.Assertions.assertTrue(columns.contains("nickname"), "columns were " + columns);
+        }
+        java.util.Map<?, ?> manifest = new ObjectMapper().readValue(manifestFile.toFile(), java.util.Map.class);
+        java.util.Map<?, ?> thing = (java.util.Map<?, ?>) ((java.util.List<?>) manifest.get("concepts")).get(0);
+        org.junit.jupiter.api.Assertions.assertEquals(2, ((java.util.List<?>) thing.get("fields")).size());
+        org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of("id", "nickname"),
+                ((java.util.Map<?, ?>) thing.get("list")).get("columns"));
+    }
+
+    @Test
+    void aFailingAlterMeansNoSwapAndTheOldModelKeepsServing() throws Exception {
+        // No "things" table at all: the ALTER cannot succeed.
+        String url = "jdbc:h2:mem:" + getClass().getSimpleName() + System.nanoTime() + ";DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false";
+        Path modelPath = appExternalRoot.resolve("model-with-new-field-no-table.json");
+        writeFixture(modelPath, thingModelWith("{\"name\":\"nickname\",\"type\":\"string\"}"));
+        com.finalexec.config.ModelHolder holder = new com.finalexec.config.ModelHolder(compiledModel(thingModelWith()));
+        com.npdev.dsl.v1.compiled.CompiledModel before = holder.get();
+
+        liveFieldMockMvc(holder, h2DataSource(url)).perform(post("/api/admin/runtime/metadata-hotswap/model-reload")
+                        .contentType("application/json")
+                        .content("{\"modelPath\":\"" + escapeJson(modelPath.toString()) + "\"}"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.ok").value(false))
+                .andExpect(jsonPath("$.code").value("LIVE_COLUMN_PROVISIONING_FAILED"))
+                .andExpect(jsonPath("$.swapped").value(false))
+                .andExpect(jsonPath("$.failedField").value("Thing.nickname"));
+
+        org.junit.jupiter.api.Assertions.assertSame(before, holder.get(), "the old model must keep serving");
+    }
+
+    @Test
+    void aReloadThatRemovesOrRetypesAFieldIsRefusedAndNothingChanges() throws Exception {
+        String url = "jdbc:h2:mem:" + getClass().getSimpleName() + System.nanoTime() + ";DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false";
+        createThingsTable(url);
+        Path modelPath = appExternalRoot.resolve("model-removing-a-field.json");
+        writeFixture(modelPath, thingModelWith());
+        com.finalexec.config.ModelHolder holder = new com.finalexec.config.ModelHolder(
+                compiledModel(thingModelWith("{\"name\":\"nickname\",\"type\":\"string\"}")));
+        com.npdev.dsl.v1.compiled.CompiledModel before = holder.get();
+
+        liveFieldMockMvc(holder, h2DataSource(url)).perform(post("/api/admin/runtime/metadata-hotswap/model-reload")
+                        .contentType("application/json")
+                        .content("{\"modelPath\":\"" + escapeJson(modelPath.toString()) + "\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("RELOAD_UNSUPPORTED_FIELD_CHANGES"));
+
+        org.junit.jupiter.api.Assertions.assertSame(before, holder.get());
+    }
+
     private String staticUiPath() {
         return appExternalRoot.resolve("npdev-generated/src/main/resources/static").toString();
     }

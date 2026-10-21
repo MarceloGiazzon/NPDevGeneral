@@ -344,6 +344,24 @@ public final class ValueCoercionSupport {
         return null;
     }
 
+    /**
+     * LIVE-1: whether {@code type} was generated WITH a property for {@code fieldName} -- a public
+     * setter or a declared field. False is exactly the case {@link #writeObjectValue} silently drops,
+     * and the case an {@code ExtraFieldAccess} entity must route to its extras bag instead.
+     */
+    public static boolean declaresProperty(Class<?> type, String fieldName) {
+        if (type == null || fieldName == null || fieldName.isBlank()) {
+            return false;
+        }
+        String setterName = "set" + fieldName.substring(0, 1).toUpperCase(Locale.ROOT) + fieldName.substring(1);
+        for (java.lang.reflect.Method method : type.getMethods()) {
+            if (setterName.equals(method.getName()) && method.getParameterCount() == 1) {
+                return true;
+            }
+        }
+        return findField(type, fieldName) != null;
+    }
+
     public static void writeObjectValue(Object target, String fieldName, Object value) {
         if (target == null || fieldName == null || fieldName.isBlank()) {
             return;

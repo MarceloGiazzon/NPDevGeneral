@@ -36,6 +36,12 @@ public class {{entityName}} {
     @Column(name = "tenant_id", nullable = false)
     private String tenantId;
 
+    // LIVE-1: values of fields a live /model-reload added to this concept AFTER this class was
+    // generated. @Transient -- never mapped by JPA (the column is read/written by the JDBC concept
+    // store); the Jackson any-getter/any-setter below carry it through the same entity <-> store-map
+    // conversions every other field uses. Always empty for an app that has never been reloaded.
+    @Transient
+    private final java.util.Map<String, Object> npdevExtraFields = new java.util.LinkedHashMap<>();
 
 {{#fields}}
     public {{javaType}} get{{capName}}() {
@@ -63,6 +69,18 @@ public class {{entityName}} {
 
     public void setVersion(Long version) {
         this.version = version;
+    }
+
+    // The two method names are a contract read by runtime-support's ExtraFieldAccess (duck-typed,
+    // not an interface: this class is also compiled into sealed pack jars that have no runtime-support).
+    @com.fasterxml.jackson.annotation.JsonAnySetter
+    public void putExtraField(String name, Object value) {
+        this.npdevExtraFields.put(name, value);
+    }
+
+    @com.fasterxml.jackson.annotation.JsonAnyGetter
+    public java.util.Map<String, Object> extraFields() {
+        return this.npdevExtraFields;
     }
 
     public String getTenantId() {

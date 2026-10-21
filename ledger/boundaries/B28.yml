@@ -254,5 +254,18 @@ codeLinkedNote: >-
   limitation, not a caching bug, and explicitly a DIFFERENT residual category from "a change built
   once into a snapshot bean" (this boundary's own title). That is named here, not hidden, exactly
   as the paragraph above insisted any future restatement must.
+
+  **LIVE-1 (2026-10-20) closed the one safe slice of "a new CRUD-reachable field still needs a
+  restart":** a new OPTIONAL SCALAR field on an EXISTING concept is now applied live by
+  `/model-reload` -- `ModelReloadPreflight` diffs the field lists (`LiveFieldDiff`), the column is
+  ALTERed in by `ExistingConceptColumnProvisioner` (inside `MigrationMutex`, BEFORE the swap, so a
+  failed ALTER means no swap and the old model keeps serving), the generated entity carries an extras
+  bag, the generated service/controller read the live model for the field whitelist and response
+  metadata, `JdbcBusinessConceptStore` drops its column-catalog cache on a swap, and the served UI
+  manifest gets the field node + list column. Renames, retypes, removals and required/unique/
+  reference/JSON additions are REFUSED by the preflight (`RELOAD_UNSUPPORTED_FIELD_CHANGES`) and stay
+  on the rebuild path. Named residue, not hidden: the typed per-concept `/api/<route>` controllers
+  still bind baked DTOs and do not see the field until a rebuild; only the generic
+  `/api/concepts/<table>` endpoints (what the business UI uses) are live.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B28"
 classification: LIFTED

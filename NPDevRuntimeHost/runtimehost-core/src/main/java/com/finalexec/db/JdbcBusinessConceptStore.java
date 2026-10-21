@@ -80,7 +80,15 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         this.dataSource = dataSource;
         this.shapesByConcept = shapes(modelHolder.get());
         this.dialect = java.util.Objects.requireNonNull(dialect, "dialect");
-        modelHolder.addReloadListener((before, after) -> this.shapesByConcept = shapes(after));
+        // LIVE-1: the DB column catalog is cached per table and was never invalidated, so a column
+        // ALTERed in by a live reload (ExistingConceptColumnProvisioner) stayed invisible to both
+        // save() (which strips keys not in the cached columns) and selectListSql (which filters to
+        // them) until a restart. Cleared AFTER the new shapes are published, so a request that
+        // reloads the catalog always sees the new shape together with the new columns.
+        modelHolder.addReloadListener((before, after) -> {
+            this.shapesByConcept = shapes(after);
+            this.tableColumnsCache.clear();
+        });
     }
 
     /**

@@ -92,6 +92,8 @@ import static com.npdev.runtime.support.crud.executioncontext.PayloadClaimsSuppo
 import static com.npdev.runtime.support.crud.executioncontext.PayloadClaimsSupport.immutablePayload;
 import static com.npdev.runtime.support.crud.executioncontext.PayloadClaimsSupport.parseRoles;
 import static com.npdev.runtime.support.crud.executioncontext.PayloadClaimsSupport.toPayloadMap;
+import com.npdev.runtime.support.crud.reflection.ExtraFieldAccess;
+import com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport;
 import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.extractVersion;
 import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.isLifecycleMissing;
 import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.readLifecycleToken;
@@ -1854,6 +1856,30 @@ public final class GeneratedCrudRuntimeSupport {
         return Optional.empty();
     }
 
+    /**
+     * LIVE-1: the live counterpart of the generated service's baked {@code ALL_FIELD_NAMES}. The names
+     * of every field the LIVE model declares for the concept (empty when the concept is unknown), so a
+     * field added by a model reload is accepted by the generated CRUD service's request whitelist
+     * without a rebuild -- the generated service accepts a name when EITHER its baked set or this one
+     * contains it.
+     */
+    public Set<String> liveFieldNames(String conceptName) {
+        if (conceptName == null) {
+            return Set.of();
+        }
+        Optional<CompiledConcept> concept = modelSupplier.get().findConcept(conceptName);
+        if (concept.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> names = new LinkedHashSet<>();
+        for (CompiledField field : concept.get().getFields()) {
+            if (field != null && field.getName() != null) {
+                names.add(field.getName());
+            }
+        }
+        return names;
+    }
+
     private Map<String, Object> normalizePayloadForValidation(
             CompiledConcept entity,
             Map<String, Object> payload
@@ -2222,7 +2248,17 @@ public final class GeneratedCrudRuntimeSupport {
             if (!materialized.containsKey(field.getName())) {
                 continue;
             }
-            writeObjectValue(target, field.getName(), materialized.get(field.getName()));
+            Object materializedValue = materialized.get(field.getName());
+            // LIVE-1: a field added by a live model reload has no property on an entity generated
+            // before it existed -- write it to the entity's extras bag, coerced by its DSL type (a
+            // typed property would be coerced by its setter's parameter type; the bag has none).
+            if (ExtraFieldAccess.supports(target.getClass())
+                    && !ValueCoercionSupport.declaresProperty(target.getClass(), field.getName())) {
+                ExtraFieldAccess.put(target, field.getName(),
+                        DslTypeCoercionSupport.normalizeByDslType(field.getDslType(), materializedValue));
+                continue;
+            }
+            writeObjectValue(target, field.getName(), materializedValue);
         }
     }
 

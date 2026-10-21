@@ -13552,7 +13552,10 @@ def _run_monitor_hotswap(args: argparse.Namespace) -> int:
 
 # ENG-3: refusal codes MetadataHotSwapController#modelReload returns (HTTP 422) from its preflight.
 _RELOAD_PREFLIGHT_REFUSALS = frozenset(
-    {"RELOAD_REMOVES_CONCEPTS", "MODEL_INVALID", "NEW_CONCEPT_PROVISIONING_DISABLED"})
+    {"RELOAD_REMOVES_CONCEPTS", "MODEL_INVALID", "NEW_CONCEPT_PROVISIONING_DISABLED",
+     # LIVE-1: the app's field-level preflight -- a removal/rename/retype or a required/unique/reference/
+     # JSON new field on an existing concept, or a new field when live column provisioning is off.
+     "RELOAD_UNSUPPORTED_FIELD_CHANGES", "NEW_FIELD_PROVISIONING_DISABLED"})
 
 
 def _model_reload_apply(base_url: str, super_user_key: str, model_path: str, timeout: float) -> dict:
@@ -13582,6 +13585,11 @@ def _model_reload_apply(base_url: str, super_user_key: str, model_path: str, tim
             payload = json.loads(raw_body)
         except json.JSONDecodeError:
             payload = {}
+        if payload.get("swapped") is False:
+            # LIVE-1: a failed live ALTER -- reported verbatim; the app did NOT swap and keeps serving
+            # the previous model (never a NEEDS_REBUILD: this is a real failure to name, not a limit).
+            result["swapped"] = False
+            result["failedField"] = payload.get("failedField")
         if exc.code == 404:
             result["code"] = "ENDPOINT_NOT_FOUND"
             result["message"] = (
@@ -13608,6 +13616,11 @@ def _model_reload_apply(base_url: str, super_user_key: str, model_path: str, tim
     result["conceptsProvisioningFailed"] = payload.get("conceptsProvisioningFailed")
     result["uiManifestConceptsRefreshed"] = payload.get("uiManifestConceptsRefreshed")
     result["uiManifestRefreshFailed"] = payload.get("uiManifestRefreshFailed")
+    # LIVE-1: new fields on EXISTING concepts -- the columns added before the swap and the UI manifest
+    # field nodes appended after it (always present in the response, empty when none).
+    result["fieldsProvisioned"] = payload.get("fieldsProvisioned")
+    result["uiManifestFieldsRefreshed"] = payload.get("uiManifestFieldsRefreshed")
+    result["uiManifestFieldsFailed"] = payload.get("uiManifestFieldsFailed")
     if result["ok"]:
         result["code"] = "RELOADED"
         result["message"] = f"model reloaded live, {result['concepts']} concept(s)"
@@ -13659,19 +13672,26 @@ def _studio_classify_and_route(root: Path, baseline: Path, candidate: Path, dead
 
 def _studio_route_for(report: dict) -> str:
     """Wave 6: `"model-reload"` for anything B28 + REG-244's provisioning can genuinely take live
-    (a METADATA_ONLY diff, always safe to swap; or a diff whose ENTIRE `items[]` is `ADD_TABLE` --
-    brand-new concepts only, nothing touching an existing concept's shape), `"needs-rebuild"`
-    otherwise. Deliberately conservative: a MIXED plan (a new concept plus, say, an `ADD_COLUMN` on
-    an existing one) routes to `needs-rebuild` even though the new-concept half is individually safe
-    -- `/model-reload` would swap the WHOLE model atomically, so the existing concept's new field
-    would appear live in `ModelHolder` with no matching column ever added to its live table, which is
-    worse than refusing (a read/write through it would fail with a raw SQL error instead of the
-    Studio naming the real limit up front)."""
+    (a METADATA_ONLY diff, always safe to swap; or a SAFE_ADDITIVE diff whose entire `items[]` is
+    `ADD_TABLE` (brand-new concepts) and/or `ADD_COLUMN`), `"needs-rebuild"` otherwise.
+
+    LIVE-1 widened this from ADD_TABLE-only: the app now ALTERs a new column in (inside the migration
+    lock, BEFORE swapping the model) for a new optional scalar field on an existing concept, so the
+    "field appears in the model with no column" hazard that made a mixed plan needs-rebuild no longer
+    exists. The classifier cannot tell an optional scalar from a unique/reference/JSON field, so the
+    running app's own preflight is the authority and its refusal comes back as NEEDS_REBUILD."""
     classification = report.get("classification")
     items = report.get("items") or []
     if classification == "METADATA_ONLY":
         return "model-reload"
-    if classification == "SAFE_ADDITIVE" and items and all(item.get("kind") == "ADD_TABLE" for item in items):
+    # LIVE-1: ADD_COLUMN joins ADD_TABLE. The classifier only knows the diff is additive; whether
+    # the running app can ADD that column live (an optional plain scalar on an existing concept) is
+    # the app's own reload preflight's call (ModelReloadPreflight / LiveFieldDiff) -- a required,
+    # unique, reference or JSON field, a removal or a retype comes back as a preflight refusal and is
+    # reported as NEEDS_REBUILD by _live_apply, never swapped. A required column with a backfill is
+    # a different item kind (ADD_COLUMN_BACKFILL) and stays on the rebuild path here.
+    if classification == "SAFE_ADDITIVE" and items and all(
+            item.get("kind") in ("ADD_TABLE", "ADD_COLUMN") for item in items):
         return "model-reload"
     return "needs-rebuild"
 
