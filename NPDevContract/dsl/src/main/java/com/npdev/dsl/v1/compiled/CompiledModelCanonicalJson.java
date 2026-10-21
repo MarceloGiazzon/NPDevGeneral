@@ -505,6 +505,26 @@ public final class CompiledModelCanonicalJson {
             node.put("aggregate", safe(document.aggregate()));
             node.set("bands", toDocumentBands(document.bands()));
             node.set("logo", toDocumentLogo(document.logo()));
+            // REP-1: list-report members. Written only when the document declares any of them, so every
+            // pre-REP-1 canonical file (and its hash) stays byte-identical; a null subtotals/grandTotal
+            // stays null (absent) rather than becoming false.
+            if (document.kind() != null || document.query() != null || !document.columns().isEmpty()
+                    || !document.groupBy().isEmpty() || document.subtotals() != null || document.grandTotal() != null) {
+                node.put("kind", safe(document.kind()));
+                node.put("query", safe(document.query()));
+                node.set("columns", toDocumentColumns(document.columns()));
+                ArrayNode groupBy = JsonNodeFactory.instance.arrayNode();
+                for (String field : document.groupBy()) {
+                    groupBy.add(safe(field));
+                }
+                node.set("groupBy", groupBy);
+                if (document.subtotals() != null) {
+                    node.put("subtotals", document.subtotals());
+                }
+                if (document.grandTotal() != null) {
+                    node.put("grandTotal", document.grandTotal());
+                }
+            }
             documents.add(node);
         }
         return documents;
@@ -526,6 +546,21 @@ public final class CompiledModelCanonicalJson {
                 node.set("label", toLabelNode(band.label(), band.labelLocales()));
             }
             node.set("fields", toPanelFieldBindings(band.fields()));
+            out.add(node);
+        }
+        return out;
+    }
+
+    private static ArrayNode toDocumentColumns(List<CompiledDocumentColumn> columns) {
+        ArrayNode out = JsonNodeFactory.instance.arrayNode();
+        if (columns == null) {
+            return out;
+        }
+        for (CompiledDocumentColumn column : columns) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("field", safe(column.field()));
+            node.put("label", safe(column.label()));
+            node.put("total", safe(column.total()));
             out.add(node);
         }
         return out;

@@ -447,6 +447,32 @@
     return result;
   }
 
+  // REP-1: downloads a `kind: list` report's CSV (GET /api/documents/{name}/render.csv) with the app's
+  // own auth headers and saves it as a file. A refusal (403 no visible column, 413 too many rows, 400)
+  // is surfaced as the server's own message rather than a silent empty download.
+  async function downloadReportCsv(doc) {
+    try {
+      const requestHeaders = headers();
+      delete requestHeaders["Content-Type"];
+      const response = await fetch("/api/documents/" + encodeURIComponent(doc.name) + "/render.csv", { headers: requestHeaders });
+      if (!response.ok) {
+        const failure = await response.text();
+        throw new Error(response.status + " " + (failure || response.statusText));
+      }
+      const blob = await response.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = doc.name + ".csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(function () { URL.revokeObjectURL(link.href); }, 1000);
+      notify("Downloaded " + doc.name + ".csv.", false);
+    } catch (error) {
+      notify("Could not download " + doc.name + ".csv: " + error.message, true);
+    }
+  }
+
   async function fetchJson(url, options) {
     const response = await fetch(url, options || {});
     const contentType = response.headers.get("content-type") || "";
@@ -1193,6 +1219,12 @@
       pdfLink.target = "_blank";
       pdfLink.rel = "noopener";
       actions.appendChild(pdfLink);
+      // REP-1: a `kind: list` report also has a CSV form from the same definition. Fetched with the
+      // app's own request headers (API key / session) and saved as a file, so it works in API-key mode
+      // where a plain <a href> would carry no credential.
+      if (doc.kind === "list") {
+        actions.appendChild(button("Download CSV", "", function () { downloadReportCsv(doc); }));
+      }
     });
     header.appendChild(actions);
     section.appendChild(header);

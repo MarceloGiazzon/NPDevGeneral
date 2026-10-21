@@ -12,6 +12,7 @@ import com.npdev.dsl.v1.ast.ConversionLookupMatchAst;
 import com.npdev.dsl.v1.ast.ConversionSplitTargetAst;
 import com.npdev.dsl.v1.ast.DocumentAst;
 import com.npdev.dsl.v1.ast.DocumentBandAst;
+import com.npdev.dsl.v1.ast.DocumentColumnAst;
 import com.npdev.dsl.v1.ast.DocumentLogoAst;
 import com.npdev.dsl.v1.ast.ExternalAiAst;
 import com.npdev.dsl.v1.ast.FieldAccessAst;
@@ -142,6 +143,7 @@ import com.npdev.dsl.v1.compiled.CompiledAutoPanelDataSource;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelSurface;
 import com.npdev.dsl.v1.compiled.CompiledDocument;
 import com.npdev.dsl.v1.compiled.CompiledDocumentBand;
+import com.npdev.dsl.v1.compiled.CompiledDocumentColumn;
 import com.npdev.dsl.v1.compiled.CompiledDocumentLogo;
 import com.npdev.dsl.v1.compiled.CompiledExternalAi;
 import com.npdev.dsl.v1.compiled.CompiledExternalAiPrompt;
@@ -1103,8 +1105,26 @@ public final class ModelCompiler {
                 sortObjectMap(documentAst.metadata()),
                 documentAst.aggregate(),
                 compileDocumentBands(documentAst.bands()),
-                compileDocumentLogo(documentAst.logo())
+                compileDocumentLogo(documentAst.logo()),
+                documentAst.kind(),
+                documentAst.query(),
+                compileDocumentColumns(documentAst.columns()),
+                documentAst.groupBy(),
+                documentAst.subtotals(),
+                documentAst.grandTotal()
         );
+    }
+
+    /** REP-1: a {@code kind: list} document's columns, in declared order (order is the printed order). */
+    private static List<CompiledDocumentColumn> compileDocumentColumns(List<DocumentColumnAst> columns) {
+        List<CompiledDocumentColumn> out = new ArrayList<>();
+        if (columns == null) {
+            return out;
+        }
+        for (DocumentColumnAst column : columns) {
+            out.add(new CompiledDocumentColumn(column.field(), column.label(), column.total()));
+        }
+        return out;
     }
 
     /**

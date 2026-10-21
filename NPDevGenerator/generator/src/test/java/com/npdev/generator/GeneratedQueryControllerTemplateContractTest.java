@@ -64,10 +64,14 @@ class GeneratedQueryControllerTemplateContractTest {
         String source = renderedController();
         assertTrue(source.contains("private static Map<String, Object> bindParameters("),
                 "a bindParameters helper must exist");
-        assertTrue(source.contains("request.getParameter(parameter.name())"),
-                "declared parameters must bind from request query-string values");
-        assertTrue(source.contains("is required (declared in this"),
-                "an unbound declared parameter must be refused (X0), never dropped from the filter");
+        // REP-1: the binding rule moved verbatim to com.finalexec.api.NamedQueryBinding (shared with the
+        // list-report document); its own unit test (NamedQueryBindingTest in runtimehost-core) pins the
+        // X0 refusal text, so here the contract is that the controller delegates and maps it to 400.
+        assertTrue(source.contains("NamedQueryBinding.bind(request::getParameter, parameters)"),
+                "declared parameters must bind from request query-string values through NamedQueryBinding");
+        assertTrue(source.contains("catch (IllegalArgumentException unbound)")
+                        && source.contains("HttpStatus.BAD_REQUEST, unbound.getMessage()"),
+                "an unbound declared parameter must be refused (X0) as a 400, never dropped from the filter");
         assertTrue(source.contains("HttpStatus.BAD_REQUEST, predicate.getMessage()"),
                 "an unsupported predicate must surface as 400, not 500");
     }
@@ -75,13 +79,12 @@ class GeneratedQueryControllerTemplateContractTest {
     @Test
     void valuesAreCoercedByShapeForColumnTypedFilters() {
         String source = renderedController();
-        assertTrue(source.contains("private static Object coerceLiteral(String raw)"),
-                "a literal coercion helper must exist");
-        assertTrue(source.contains("Long.parseLong(trimmed)") && source.contains("Double.parseDouble(trimmed)"),
-                "numeric query-string values must coerce to their numeric types so the filter literal "
-                        + "matches the stored column type");
-        assertTrue(source.contains("\"true\".equalsIgnoreCase(trimmed)"),
-                "boolean query-string values must coerce to Boolean");
+        // REP-1: coercion lives in com.finalexec.api.NamedQueryBinding.coerceLiteral (pinned by
+        // NamedQueryBindingTest: boolean / long / double / raw string); the controller must go through it.
+        assertTrue(source.contains("import com.finalexec.api.NamedQueryBinding;"),
+                "the controller must use the shared NamedQueryBinding for literal coercion");
+        assertFalse(source.contains("private static Object coerceLiteral(String raw)"),
+                "the coercion rule must live in ONE place (NamedQueryBinding), not be re-declared here");
     }
 
     @Test

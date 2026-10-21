@@ -5411,6 +5411,70 @@
         },
         "logo": {
           "$ref": "#/$defs/documentLogo"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "list"
+          ],
+          "description": "REP-1: 'list' makes this document a multi-record REPORT over 'concept' (rendered to PDF at /api/documents/{name}/render.pdf and to CSV at render.csv from this one definition). Absent = the pre-REP-1 one-record / aggregate document."
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "description": "REP-1 (kind list only): optional name of a plain queries[] entry over the same concept; its where/orderBy/limit/parameters narrow and order the rows. Parameters are bound from the request query string, exactly as GET /api/queries/{name} binds them."
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/documentColumn"
+          },
+          "description": "REP-1 (kind list only): the printed columns, in order -- each a property of 'concept'. A column the viewer may not read (hidden field / field access.read) is omitted from the output, never printed blank."
+        },
+        "groupBy": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "REP-1 (kind list only): concept fields to group the rows by (first entry = outermost group). Grouping and totals are computed over the rows the viewer is allowed to read, never over hidden data."
+        },
+        "subtotals": {
+          "type": "boolean",
+          "description": "REP-1 (kind list only): print a subtotal row per group (needs groupBy and at least one column with 'total')."
+        },
+        "grandTotal": {
+          "type": "boolean",
+          "description": "REP-1 (kind list only): print a grand-total row after the last group (needs at least one column with 'total')."
+        }
+      },
+      "additionalProperties": false
+    },
+    "documentColumn": {
+      "type": "object",
+      "required": [
+        "field"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Printed column heading; defaults to the field name."
+        },
+        "total": {
+          "type": "string",
+          "enum": [
+            "sum",
+            "count",
+            "min",
+            "max",
+            "avg"
+          ],
+          "description": "Aggregate printed in subtotal and grand-total rows for this column."
         }
       },
       "additionalProperties": false

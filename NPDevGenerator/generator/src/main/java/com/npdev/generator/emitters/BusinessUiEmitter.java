@@ -504,6 +504,10 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 documentNode.put("name", document.name());
                 documentNode.put("title", document.title() == null || document.title().isBlank()
                         ? document.name() : document.title());
+                if (document.listReport()) {
+                    // REP-1: tells the grid toolbar this document also has a CSV form.
+                    documentNode.put("kind", document.kind());
+                }
                 documentsByConcept.computeIfAbsent(document.concept(), key -> new ArrayList<>()).add(documentNode);
             }
         }

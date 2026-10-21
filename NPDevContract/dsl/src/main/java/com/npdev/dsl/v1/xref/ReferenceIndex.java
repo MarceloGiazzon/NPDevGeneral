@@ -8,6 +8,7 @@ import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
 import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.ConversionAst;
 import com.npdev.dsl.v1.ast.DocumentAst;
+import com.npdev.dsl.v1.ast.DocumentColumnAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.GroupByFieldAst;
@@ -174,6 +175,9 @@ public final class ReferenceIndex {
     public static final String SITE_GUIDE_PAGE_GADGET_AXIS = "guidePage.gadgets.axis";
 
     public static final String SITE_DOCUMENT_CONCEPT = "document.concept";
+    public static final String SITE_DOCUMENT_QUERY = "document.query";
+    public static final String SITE_DOCUMENT_COLUMN_FIELD = "document.columns.field";
+    public static final String SITE_DOCUMENT_GROUP_BY_FIELD = "document.groupBy";
 
     public static final String SITE_CONVERSION_CONCEPT = "conversion.concept";
     public static final String SITE_CONVERSION_FIELD = "conversion.field";
@@ -1282,6 +1286,24 @@ public final class ReferenceIndex {
                 }
                 concept(safe(document.name()), SITE_DOCUMENT_CONCEPT,
                         "documents[" + safe(document.name()) + "].concept", document.concept(), KIND_DOCUMENT);
+                // REP-1: a kind:list report names a queries[] entry and reads concept fields.
+                String base = "documents[" + safe(document.name()) + "]";
+                named(KIND_DOCUMENT, safe(document.name()), SITE_DOCUMENT_QUERY, base + ".query",
+                        KIND_QUERY, document.query(), queryNames);
+                int columnPosition = 0;
+                for (DocumentColumnAst column : nullSafe(document.columns())) {
+                    if (column != null) {
+                        fieldOf(KIND_DOCUMENT, safe(document.name()), SITE_DOCUMENT_COLUMN_FIELD,
+                                base + ".columns[" + columnPosition + "].field", safe(document.concept()), column.field());
+                    }
+                    columnPosition++;
+                }
+                int groupPosition = 0;
+                for (String groupField : nullSafe(document.groupBy())) {
+                    fieldOf(KIND_DOCUMENT, safe(document.name()), SITE_DOCUMENT_GROUP_BY_FIELD,
+                            base + ".groupBy[" + groupPosition + "]", safe(document.concept()), groupField);
+                    groupPosition++;
+                }
             }
         }
 

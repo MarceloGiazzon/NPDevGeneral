@@ -1,5 +1,6 @@
 package {{controllerPackage}};
 
+import com.finalexec.api.NamedQueryBinding;
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledAggregateFunction;
 import com.npdev.dsl.v1.compiled.CompiledGroupByField;
@@ -84,38 +85,13 @@ public class GeneratedQueryController {
      */
     private static Map<String, Object> bindParameters(
             HttpServletRequest request, List<CompiledProcedureParameter> parameters) {
-        Map<String, Object> bound = new LinkedHashMap<>();
-        for (CompiledProcedureParameter parameter : parameters) {
-            String raw = request.getParameter(parameter.name());
-            if (raw == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Query parameter '" + parameter.name() + "' is required (declared in this "
-                                + "query's parameters[] but not supplied).");
-            }
-            bound.put(parameter.name(), coerceLiteral(raw));
-        }
-        return bound;
-    }
-
-    private static Object coerceLiteral(String raw) {
-        String trimmed = raw.trim();
-        if ("true".equalsIgnoreCase(trimmed)) {
-            return Boolean.TRUE;
-        }
-        if ("false".equalsIgnoreCase(trimmed)) {
-            return Boolean.FALSE;
-        }
         try {
-            return Long.parseLong(trimmed);
-        } catch (NumberFormatException ignored) {
-            // not an integer -- fall through
+            // REP-1: the binding rule lives in com.finalexec.api.NamedQueryBinding so a list-report
+            // document binds its named query's parameters exactly as this endpoint does.
+            return NamedQueryBinding.bind(request::getParameter, parameters);
+        } catch (IllegalArgumentException unbound) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, unbound.getMessage());
         }
-        try {
-            return Double.parseDouble(trimmed);
-        } catch (NumberFormatException ignored) {
-            // not a number -- keep the raw string
-        }
-        return raw;
     }
 
     private static int parseOffset(HttpServletRequest request) {
