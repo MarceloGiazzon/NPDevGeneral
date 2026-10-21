@@ -94,6 +94,22 @@ class FieldValueConstraintsTest {
     }
 
     @Test
+    void regexIsSearchedAndRefusesAMismatchOnFreeTextOnly() {
+        CompiledSchema schema = new CompiledSchema("string", Map.of(), List.of(), "", null, null, null, null, "^[A-Z0-9-]+$");
+
+        assertTrue(FieldValueConstraints.violations("Thing", "code", "string", schema, "AB-12").isEmpty());
+        List<String> bad = FieldValueConstraints.violations("Thing", "code", "string", schema, "a!");
+        assertEquals(1, bad.size());
+        assertTrue(bad.get(0).contains("field 'code'") && bad.get(0).contains("pattern"), bad.get(0));
+        assertTrue(FieldValueConstraints.violations("Thing", "code", "enum", schema, "a!").isEmpty(), "an enum is not free text");
+
+        CompiledSchema broken = new CompiledSchema("string", Map.of(), List.of(), "", null, null, null, null, "[unclosed");
+        List<String> invalid = FieldValueConstraints.violations("Thing", "code", "string", broken, "x");
+        assertEquals(1, invalid.size(), "an uncompilable pattern fails closed instead of silently matching");
+        assertTrue(invalid.get(0).contains("not a valid regular expression"), invalid.get(0));
+    }
+
+    @Test
     void theNestedPathOverloadNamesTheDottedPathAndAppliesTheRangeRules() {
         CompiledSchema level = new CompiledSchema("integer", Map.of(), List.of(), "", null, null, 1.0, 9.0, null);
 

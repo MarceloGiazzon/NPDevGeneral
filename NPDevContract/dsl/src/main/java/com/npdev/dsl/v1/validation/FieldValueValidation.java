@@ -81,6 +81,25 @@ final class FieldValueValidation {
     private FieldValueValidation() {
     }
 
+    /** A {@code regex} that does not compile would never match anything; refuse the model instead of the writes (REG-274). */
+    static void validateSchemaRegexes(String where, SchemaAst schema, List<String> errors) {
+        if (schema == null) {
+            return;
+        }
+        if (hasText(schema.getRegex())) {
+            try {
+                java.util.regex.Pattern.compile(schema.getRegex());
+            } catch (java.util.regex.PatternSyntaxException invalid) {
+                errors.add(where + ": regex is not a valid regular expression: " + invalid.getDescription()
+                        + " near index " + invalid.getIndex() + " in " + schema.getRegex());
+            }
+        }
+        for (Map.Entry<String, SchemaAst> property : schema.getProperties().entrySet()) {
+            validateSchemaRegexes(where + "." + property.getKey(), property.getValue(), errors);
+        }
+        validateSchemaRegexes(where + "[]", schema.getItems(), errors);
+    }
+
     static void validateObjectFieldSchema(String entityName, FieldAst field, List<String> errors) {
         SchemaAst schema = field.getSchema();
         if (schema == null || !"object".equals(normalize(schema.getType()))) {

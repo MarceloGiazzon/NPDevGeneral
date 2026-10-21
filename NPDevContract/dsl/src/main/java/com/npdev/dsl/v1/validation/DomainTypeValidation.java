@@ -116,6 +116,8 @@ final class DomainTypeValidation {
                 errors.add("Domain type " + domainType.getName() + ": unsupported base type " + domainType.getBaseType());
             }
             validateDomainTypeValidationSchema(domainType, errors);
+            FieldValueValidation.validateSchemaRegexes(
+                    "Domain type " + domainType.getName() + " validation", domainType.getValidationSchema(), errors);
             validateDomainTypeExamples(domainType, errors);
             validateDomainTypeNormalization(domainType, errors);
             byLower.put(key, domainType);

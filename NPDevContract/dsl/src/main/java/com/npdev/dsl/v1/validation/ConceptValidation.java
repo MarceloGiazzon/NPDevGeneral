@@ -182,6 +182,8 @@ final class ConceptValidation {
                     }
                 }
 
+                FieldValueValidation.validateSchemaRegexes(
+                        "Entity " + e.getName() + " field " + f.getName(), f.getSchema(), errors);
                 if ("object".equals(normalizedType)) {
                     validateObjectFieldSchema(e.getName(), f, errors);
                 } else if ("array".equals(normalizedType)) {

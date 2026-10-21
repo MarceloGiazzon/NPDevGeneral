@@ -491,11 +491,10 @@
     },
     {
       "id": "ed-domaintype-normalization-and-validation-enforced",
-      "knownFailure": "REG-274",
       "keywords": [
         "domainType.normalization"
       ],
-      "description": "DEFECT: domain type ShortCode declares normalization [trim, uppercase] and validation {minLength 3, maxLength 16, regex ^[A-Z0-9-]+$}. Expected: ' ab-12 ' is stored as 'AB-12', and 'a!' (fails regex and minLength) is refused with 422. Actual: both are stored verbatim (201, code ' ab-12 ' / 'a!'): normalization, minLength and regex are accepted and ignored; only the block's maxLength is enforced (separate passing probe).",
+      "description": "domain type ShortCode declares normalization [trim, uppercase] and validation {minLength 3, maxLength 16, regex ^[A-Z0-9-]+$}. Expected: ' ab-12 ' is stored as 'AB-12', and 'a!' (fails regex and minLength) is refused with 422. Actual: both are stored verbatim (201, code ' ab-12 ' / 'a!'): normalization, minLength and regex are accepted and ignored; only the block's maxLength is enforced (separate passing probe).",
       "steps": [
         {
           "name": "normalised on write",
