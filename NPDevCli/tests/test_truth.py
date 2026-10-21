@@ -54,7 +54,7 @@ def make_app(root: Path, boxes, *, built_at=BUILT_AT, sample="demo-sample", arti
         "specNodes": {b["conceptName"]: {"artifacts": [{"path": f"a{i}.java"} for i in range(artifacts)]} for b in boxes}})
     info = root / "src" / "main" / "resources" / "npdev-build-info.properties"
     info.parent.mkdir(parents=True, exist_ok=True)
-    info.write_text(f"npdev.builtAt={built_at}\nnpdev.model.sourcePath=D:/x/NPDevSamples/{sample}/Input/model.json\n",
+    info.write_text(f"npdev.builtAt={built_at}\nnpdev.model.sourcePath=/x/NPDevSamples/{sample}/Input/model.json\n",
                     encoding="utf-8")
     return root
 
@@ -286,11 +286,11 @@ class RollupTests(unittest.TestCase):
 
     def test_summary_is_the_compact_card_form(self):
         probe_report(self.reports / "behavior-probes-report.json", [probe("p", "passed", "/api/betas")])
-        summary = npdev_truth.summarize(self.rollup(live=True), "X:/rollup.json")
+        summary = npdev_truth.summarize(self.rollup(live=True), "/x/rollup.json")
         self.assertEqual(summary["lowestSupported"], "T3")
         self.assertEqual(summary["testedConcepts"], 1)
         self.assertTrue(summary["live"])
-        self.assertEqual(summary["rollupPath"], "X:/rollup.json")
+        self.assertEqual(summary["rollupPath"], "/x/rollup.json")
         self.assertIsNone(npdev_truth.unknown_summary("why")["lowestSupported"])
 
 
