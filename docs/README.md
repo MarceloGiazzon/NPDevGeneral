@@ -55,6 +55,7 @@ One file per built-in feature.
 [SCHEDULED_FLOWS.md](reference/SCHEDULED_FLOWS.md) ·
 [BACKUP_RESTORE.md](reference/BACKUP_RESTORE.md) ·
 [USING_MYSQL_AND_SQL_SERVER.md](reference/USING_MYSQL_AND_SQL_SERVER.md) ·
+[ENGINE_MATRIX.md](reference/ENGINE_MATRIX.md) ·
 [LEGACY_SCHEMA_MIGRATION.md](reference/LEGACY_SCHEMA_MIGRATION.md)
 
 ## Understand it

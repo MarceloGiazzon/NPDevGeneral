@@ -22,6 +22,9 @@ via environment variables, nothing environment-specific baked into the image.
   alongside them. To get the server compose, regenerate the app with `db.engine: Postgres` (or `MySQL` / `SqlServer`) in
   `db.definition.json` (and set `databaseName` explicitly — see below).
 
+Which engine supports which capability, and the CI job that proves each claim, is in the generated
+[engine support matrix](reference/ENGINE_MATRIX.md).
+
 Both shapes optionally add a `proxy` service (`docker compose --profile proxy up`) — a Caddy
 TLS-terminating reverse proxy in front of the app (see `deploy/Caddyfile`). Generated apps never
 terminate TLS themselves.
