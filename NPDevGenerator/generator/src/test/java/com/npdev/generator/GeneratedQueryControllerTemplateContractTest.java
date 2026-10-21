@@ -41,6 +41,22 @@ class GeneratedQueryControllerTemplateContractTest {
     }
 
     @Test
+    void aggregatePathHonoursTheRequestLimitLikeThePlainPath() {
+        // LOAD-4: ?limit= was ignored for grouped queries, so a 20,000-group query shipped all 20,000
+        // rows (1.5 MB) for limit=50. Both the store-level and the enriched (lookups/computed) limit
+        // must be the request-aware one, never the declared query.limit() alone.
+        String source = compact(renderedController());
+        assertTrue(source.contains("runAggregate(query,context,bound,request)"),
+                "the aggregate path must receive the request so it can read ?limit=:\n" + source);
+        assertTrue(source.contains("newConceptAggregateQuery(filters,groupBy,aggregates,having,sorts,effectiveLimit)"),
+                "the store-level aggregate must be limited by the request-aware limit");
+        assertTrue(source.contains("applyHavingSortAndLimit(rows,having,sorts,effectiveLimit)"),
+                "the enriched aggregate must be limited by the request-aware limit");
+        assertFalse(source.contains("sorts,query.limit()"),
+                "no aggregate path may fall back to the declared limit alone");
+    }
+
+    @Test
     void aggregateAndHavingAlsoUseV2CompilerWithBoundParameters() {
         String source = compact(renderedController());
         assertTrue(source.contains(

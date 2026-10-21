@@ -103,7 +103,8 @@
         "errorRate": 0.01,
         "p95Ms": {
           "default": 800,
-          "list-orders-capped": 2000
+          "list-orders-capped": 2000,
+          "order-totals-report": 1500
         }
       }
     },

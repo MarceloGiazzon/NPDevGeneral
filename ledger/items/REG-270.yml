@@ -1,0 +1,23 @@
+id: REG-270
+title: >-
+  REST collection names are made plural by appending "s", so a concept ending in "y" is served at /ticket_categorys
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-10-21
+closed: null
+source: >-
+  DOM-4 (helpdesk pack). NPDevSamples/dom-helpdesk/probe/helpdesk_probe.py addresses the TicketCategory concept at /api/helpdesk_ticket_categorys
+  (and the probe passes 40 of 40), which shows the path the generated app serves. Filed during LOAD-4.
+surface: generator (REST path derivation for generated CRUD controllers)
+detail: |
+  The collection path of a concept is its snake-case name plus "s", so TicketCategory becomes ticket_categorys, not ticket_categories. A
+  concept ending in "y" (category, company, policy, entry) is therefore confirmed wrong; the endings that need "es" (s, x, ch, sh) are expected
+  to be wrong the same way but were not checked.
+  Why it matters: the URL is the product's public face and the paths are what API clients, the OpenAPI document and the AI authoring surface see;
+  fixing it later is a breaking change to every client, which is why it should be settled before 1.0.
+  Direction for the fix: derive the plural with the usual English rules and let a concept override it explicitly (a "plural" or path field), keeping
+  the old path for one release behind an alias, with an `npdev migrate` codemod per the stability policy in the same commit.
+resolution: >-
+  Decide the rule and the override field, emit it from the generator in one place (the path derivation), pin it in the dsl-conformance-max corpus,
+  and ship the codemod plus a BREAKING.md line in the same commit.
