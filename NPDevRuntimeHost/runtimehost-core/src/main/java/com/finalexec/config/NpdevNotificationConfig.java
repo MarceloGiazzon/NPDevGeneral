@@ -10,6 +10,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.finalexec.db.SideChannelPool;
 import javax.sql.DataSource;
 
 /**
@@ -27,8 +28,8 @@ public class NpdevNotificationConfig {
 
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
-    public NotificationStore jdbcNotificationStore(DataSource dataSource) {
-        return new JdbcNotificationStore(dataSource);
+    public NotificationStore jdbcNotificationStore(SideChannelPool sideChannel) {
+        return new JdbcNotificationStore(sideChannel.dataSource());
     }
 
     /** PROC-5 mentions land in the bell; NpdevCollaborationConfig picks this bean up by type. */

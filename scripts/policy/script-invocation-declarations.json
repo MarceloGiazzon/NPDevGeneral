@@ -847,6 +847,14 @@
     },
     "scripts/tests/fixtures/controlled-runner/slow-build.ps1": {
       "invocation": "orchestrated"
+    },
+    "scripts/load/seed.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
+    "scripts/load/run_load.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
     }
   }
 }
