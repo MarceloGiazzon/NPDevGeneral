@@ -1,0 +1,755 @@
+{
+  "$schema": "../../schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "purchasing",
+  "version": "1.0.0",
+  "namespace": "com.npdev.purchasing",
+  "description": "NPDev purchasing pack: suppliers, a purchasable-item list, purchase orders with lines, and supplier bills. A person with the 'buyer' role drafts purchase orders and adds lines; 'purchasingManager' also approves orders, maintains suppliers and the item list and may do anything a payables clerk can; 'payables' records supplier bills and their payment. An order is DRAFT, then APPROVED, then RECEIVED (or CANCELLED); a bill is OPEN, then PAID (or VOID). Order totals and the amount owed per supplier are derived by queries, never typed in. The three roles are logical: the importing app binds them with provides.roleBindings { \"buyer\": ..., \"purchasingManager\": ..., \"payables\": ... } (composition refuses when one is unbound) and grants them read/create/update on the pack's concepts in its own roles[] (see the dom-purchasing sample). Numeric bounds are declared as invariants (enforced today) beside field min, because field.min/max are not yet enforced by the platform (REG-255).",
+  "category": "other",
+  "author": "NPDev",
+  "metadata": {
+    "summary": "Buys from suppliers. A buyer drafts a purchase order, line by line, from a list of purchasable items; a manager approves it, and it is marked received when the goods arrive. A supplier bill records how much is owed and when, and is later marked paid. Order totals and what is still owed to each supplier are always calculated from the lines and bills, never typed in.",
+    "reviewNotes": [
+      "No tax and no discounts: a line total is quantity times unit cost. Say which taxes and supplier discounts apply, and whether costs include tax.",
+      "Approval has no limit: a buyer-drafted order of any value can be approved by a manager. Say whether approval thresholds exist and who approves above them.",
+      "The pack does not stop a bill being recorded for an order that is not received, or for an amount different from the order total; it records what payables enters. Say whether the bill must match the received order (a three-way match).",
+      "Receiving is all-or-nothing: an order is RECEIVED as a whole. Partial deliveries and back-orders are not modelled. Say whether you need them.",
+      "One bill per order is not enforced; partial and repeated billing are therefore possible. Say which you want.",
+      "A line copies the unit cost when it is entered (so later changes to the standard cost do not rewrite old orders), but nothing checks it against the item's standard cost.",
+      "Payment terms are stored on the supplier but the due date of a bill is typed in, not calculated from them.",
+      "Stock is not increased by receiving an order. Linking purchasing to the inventory pack is a decision for the first app that needs both.",
+      "An approved order may still be cancelled; cancelling an order that already has a bill does not void the bill.",
+      "Today numeric bounds are enforced through the rules above; the field-level min/max declarations are repeated for documentation only because the platform does not enforce them yet."
+    ]
+  },
+  "concepts": [
+    {
+      "name": "Supplier",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Supplier"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "ui": {
+            "label": "Code"
+          },
+          "required": true,
+          "unique": true,
+          "maxLength": 30
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "ui": {
+            "label": "Name"
+          },
+          "required": true,
+          "maxLength": 200
+        },
+        {
+          "name": "taxId",
+          "type": "string",
+          "ui": {
+            "label": "Tax id"
+          },
+          "required": false,
+          "maxLength": 40
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "ui": {
+            "label": "Email"
+          },
+          "required": false,
+          "maxLength": 254
+        },
+        {
+          "name": "paymentTermsDays",
+          "type": "integer",
+          "ui": {
+            "label": "Payment terms (days)"
+          },
+          "required": false,
+          "min": 0
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "ui": {
+            "label": "Active"
+          },
+          "required": true,
+          "default": true
+        }
+      ],
+      "invariants": [
+        {
+          "name": "PaymentTermsNotNegative",
+          "type": "expression",
+          "expr": "paymentTermsDays == null || paymentTermsDays >= 0"
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('purchasingManager')) || $user.roles.contains(role('buyer')) || $user.roles.contains(role('payables'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('purchasingManager'))"
+      }
+    },
+    {
+      "name": "PurchaseItem",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Purchasable item"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "sku",
+          "type": "string",
+          "ui": {
+            "label": "SKU"
+          },
+          "required": true,
+          "unique": true,
+          "maxLength": 40
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "ui": {
+            "label": "Description"
+          },
+          "required": true,
+          "maxLength": 300
+        },
+        {
+          "name": "standardCost",
+          "type": "decimal",
+          "ui": {
+            "label": "Standard cost"
+          },
+          "required": true,
+          "precision": 14,
+          "scale": 2,
+          "min": 0
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "ui": {
+            "label": "Active"
+          },
+          "required": true,
+          "default": true
+        }
+      ],
+      "invariants": [
+        {
+          "name": "StandardCostNotNegative",
+          "type": "expression",
+          "expr": "standardCost >= 0"
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('purchasingManager')) || $user.roles.contains(role('buyer')) || $user.roles.contains(role('payables'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('purchasingManager'))"
+      }
+    },
+    {
+      "name": "PurchaseOrder",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Purchase order"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "orderNumber",
+          "type": "string",
+          "ui": {
+            "label": "Order number"
+          },
+          "required": true,
+          "unique": true,
+          "maxLength": 30
+        },
+        {
+          "name": "supplierId",
+          "type": "reference",
+          "ui": {
+            "label": "Supplier"
+          },
+          "required": true,
+          "reference": {
+            "target": "Supplier",
+            "displayField": "name"
+          }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "ui": {
+            "label": "Status"
+          },
+          "required": true,
+          "default": "DRAFT",
+          "enumValues": [
+            "DRAFT",
+            "APPROVED",
+            "RECEIVED",
+            "CANCELLED"
+          ]
+        },
+        {
+          "name": "orderDate",
+          "type": "datetime",
+          "ui": {
+            "label": "Order date"
+          },
+          "required": false,
+          "defaultExpression": "now()"
+        },
+        {
+          "name": "expectedDate",
+          "type": "datetime",
+          "ui": {
+            "label": "Expected"
+          },
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "string",
+          "ui": {
+            "label": "Notes"
+          },
+          "required": false,
+          "maxLength": 1000
+        }
+      ],
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          {
+            "value": "DRAFT",
+            "label": "Draft",
+            "initial": true
+          },
+          {
+            "value": "APPROVED",
+            "label": "Approved"
+          },
+          {
+            "value": "RECEIVED",
+            "label": "Received",
+            "terminal": true
+          },
+          {
+            "value": "CANCELLED",
+            "label": "Cancelled",
+            "terminal": true
+          }
+        ],
+        "transitions": [
+          {
+            "from": "DRAFT",
+            "to": "APPROVED",
+            "event": "PurchaseOrderApproved",
+            "actionLabel": "Approve"
+          },
+          {
+            "from": "DRAFT",
+            "to": "CANCELLED",
+            "event": "PurchaseOrderCancelled",
+            "actionLabel": "Cancel"
+          },
+          {
+            "from": "APPROVED",
+            "to": "RECEIVED",
+            "event": "PurchaseOrderReceived",
+            "actionLabel": "Mark received"
+          },
+          {
+            "from": "APPROVED",
+            "to": "CANCELLED",
+            "event": "PurchaseOrderCancelled",
+            "actionLabel": "Cancel"
+          }
+        ]
+      },
+      "indexes": [
+        {
+          "name": "idx_purchase_order_supplier",
+          "fields": [
+            "supplierId",
+            "status"
+          ]
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('purchasingManager')) || $user.roles.contains(role('buyer')) || $user.roles.contains(role('payables'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('purchasingManager')) || $user.roles.contains(role('buyer'))"
+      }
+    },
+    {
+      "name": "PurchaseOrderLine",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Order line"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "orderId",
+          "type": "reference",
+          "ui": {
+            "label": "Order"
+          },
+          "required": true,
+          "reference": {
+            "target": "PurchaseOrder",
+            "displayField": "orderNumber",
+            "onDelete": "cascade"
+          }
+        },
+        {
+          "name": "itemId",
+          "type": "reference",
+          "ui": {
+            "label": "Item"
+          },
+          "required": true,
+          "reference": {
+            "target": "PurchaseItem",
+            "displayField": "sku"
+          }
+        },
+        {
+          "name": "quantity",
+          "type": "decimal",
+          "ui": {
+            "label": "Quantity"
+          },
+          "required": true,
+          "precision": 14,
+          "scale": 3,
+          "min": 0.001
+        },
+        {
+          "name": "unitCost",
+          "type": "decimal",
+          "ui": {
+            "label": "Unit cost"
+          },
+          "required": true,
+          "precision": 14,
+          "scale": 2,
+          "min": 0
+        },
+        {
+          "name": "lineTotal",
+          "type": "decimal",
+          "ui": {
+            "label": "Line total"
+          },
+          "required": false,
+          "precision": 16,
+          "scale": 2,
+          "derivedExpression": "quantity * unitCost"
+        }
+      ],
+      "invariants": [
+        {
+          "name": "QuantityPositive",
+          "type": "expression",
+          "expr": "quantity > 0"
+        },
+        {
+          "name": "UnitCostNotNegative",
+          "type": "expression",
+          "expr": "unitCost >= 0"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_purchase_line_order",
+          "fields": [
+            "orderId"
+          ]
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('purchasingManager')) || $user.roles.contains(role('buyer')) || $user.roles.contains(role('payables'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('purchasingManager')) || $user.roles.contains(role('buyer'))"
+      }
+    },
+    {
+      "name": "SupplierBill",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Supplier bill"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "billNumber",
+          "type": "string",
+          "ui": {
+            "label": "Bill number"
+          },
+          "required": true,
+          "unique": true,
+          "maxLength": 30
+        },
+        {
+          "name": "orderId",
+          "type": "reference",
+          "ui": {
+            "label": "Order"
+          },
+          "required": true,
+          "reference": {
+            "target": "PurchaseOrder",
+            "displayField": "orderNumber"
+          }
+        },
+        {
+          "name": "supplierId",
+          "type": "reference",
+          "ui": {
+            "label": "Supplier"
+          },
+          "required": true,
+          "reference": {
+            "target": "Supplier",
+            "displayField": "name"
+          }
+        },
+        {
+          "name": "amount",
+          "type": "decimal",
+          "ui": {
+            "label": "Amount"
+          },
+          "required": true,
+          "precision": 16,
+          "scale": 2,
+          "min": 0.01
+        },
+        {
+          "name": "billDate",
+          "type": "datetime",
+          "ui": {
+            "label": "Billed"
+          },
+          "required": false,
+          "defaultExpression": "now()"
+        },
+        {
+          "name": "dueDate",
+          "type": "datetime",
+          "ui": {
+            "label": "Due"
+          },
+          "required": true
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "ui": {
+            "label": "Status"
+          },
+          "required": true,
+          "default": "OPEN",
+          "enumValues": [
+            "OPEN",
+            "PAID",
+            "VOID"
+          ]
+        }
+      ],
+      "invariants": [
+        {
+          "name": "AmountPositive",
+          "type": "expression",
+          "expr": "amount > 0"
+        }
+      ],
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          {
+            "value": "OPEN",
+            "label": "Open",
+            "initial": true
+          },
+          {
+            "value": "PAID",
+            "label": "Paid",
+            "terminal": true
+          },
+          {
+            "value": "VOID",
+            "label": "Void",
+            "terminal": true
+          }
+        ],
+        "transitions": [
+          {
+            "from": "OPEN",
+            "to": "PAID",
+            "event": "SupplierBillPaid",
+            "actionLabel": "Record payment"
+          },
+          {
+            "from": "OPEN",
+            "to": "VOID",
+            "event": "SupplierBillVoided",
+            "actionLabel": "Void"
+          }
+        ]
+      },
+      "indexes": [
+        {
+          "name": "idx_purchase_bill_supplier",
+          "fields": [
+            "supplierId",
+            "status"
+          ]
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('purchasingManager')) || $user.roles.contains(role('buyer')) || $user.roles.contains(role('payables'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('purchasingManager')) || $user.roles.contains(role('payables'))"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "PurchaseOrderApproved",
+      "payload": [
+        "supplierId"
+      ]
+    },
+    {
+      "name": "PurchaseOrderCancelled",
+      "payload": [
+        "supplierId"
+      ]
+    },
+    {
+      "name": "PurchaseOrderReceived",
+      "payload": [
+        "supplierId"
+      ]
+    },
+    {
+      "name": "SupplierBillPaid",
+      "payload": [
+        "supplierId",
+        "amount"
+      ]
+    },
+    {
+      "name": "SupplierBillVoided",
+      "payload": [
+        "supplierId",
+        "amount"
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "name": "ActiveSuppliers",
+      "concept": "Supplier",
+      "where": "active == true",
+      "orderBy": [
+        "name"
+      ]
+    },
+    {
+      "name": "OpenPurchaseOrders",
+      "concept": "PurchaseOrder",
+      "where": "status == 'DRAFT'",
+      "orderBy": [
+        "orderDate desc"
+      ]
+    },
+    {
+      "name": "PurchaseOrderTotals",
+      "concept": "PurchaseOrderLine",
+      "groupBy": [
+        "orderId"
+      ],
+      "aggregates": [
+        {
+          "name": "total",
+          "fn": "sum",
+          "field": "lineTotal"
+        },
+        {
+          "name": "lines",
+          "fn": "count"
+        }
+      ]
+    },
+    {
+      "name": "AmountOwedToSupplier",
+      "concept": "SupplierBill",
+      "where": "status == 'OPEN'",
+      "groupBy": [
+        "supplierId"
+      ],
+      "aggregates": [
+        {
+          "name": "owed",
+          "fn": "sum",
+          "field": "amount"
+        },
+        {
+          "name": "openBills",
+          "fn": "count"
+        }
+      ],
+      "lookups": [
+        {
+          "name": "paid",
+          "concept": "SupplierBill",
+          "fn": "sum",
+          "field": "amount",
+          "on": {
+            "supplierId": "supplierId"
+          },
+          "where": "status == 'PAID'"
+        }
+      ],
+      "orderBy": [
+        "owed desc"
+      ]
+    }
+  ],
+  "autoPanels": [
+    {
+      "name": "Suppliers",
+      "concept": "Supplier",
+      "route": "/suppliers",
+      "surfaces": [
+        "selection",
+        "detail",
+        "transaction"
+      ],
+      "selection": {
+        "columns": [
+          "code",
+          "name",
+          "email",
+          "paymentTermsDays",
+          "active"
+        ]
+      }
+    },
+    {
+      "name": "PurchaseItems",
+      "concept": "PurchaseItem",
+      "route": "/purchase-items",
+      "surfaces": [
+        "selection",
+        "detail",
+        "transaction"
+      ],
+      "selection": {
+        "columns": [
+          "sku",
+          "description",
+          "standardCost",
+          "active"
+        ]
+      }
+    },
+    {
+      "name": "PurchaseOrders",
+      "concept": "PurchaseOrder",
+      "route": "/purchase-orders",
+      "surfaces": [
+        "selection",
+        "detail",
+        "transaction"
+      ],
+      "selection": {
+        "columns": [
+          "orderNumber",
+          "supplierId",
+          "orderDate",
+          "status"
+        ]
+      }
+    },
+    {
+      "name": "PurchaseOrderLines",
+      "concept": "PurchaseOrderLine",
+      "route": "/purchase-order-lines",
+      "surfaces": [
+        "selection",
+        "detail",
+        "transaction"
+      ],
+      "selection": {
+        "columns": [
+          "orderId",
+          "itemId",
+          "quantity",
+          "unitCost",
+          "lineTotal"
+        ]
+      }
+    },
+    {
+      "name": "SupplierBills",
+      "concept": "SupplierBill",
+      "route": "/supplier-bills",
+      "surfaces": [
+        "selection",
+        "detail",
+        "transaction"
+      ],
+      "selection": {
+        "columns": [
+          "billNumber",
+          "supplierId",
+          "amount",
+          "dueDate",
+          "status"
+        ]
+      }
+    }
+  ]
+}

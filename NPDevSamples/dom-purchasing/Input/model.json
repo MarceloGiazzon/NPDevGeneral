@@ -1,0 +1,105 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.dompurchasing",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "DOM-3: a consumer of the built-in purchasing pack. Binds its three logical roles to BUYER, PURCH_MGR and PAYABLES and grants them the pack's concepts; probe/purchasing_probe.py drives the pack's rules against the booted app (role enforcement, invariants, order and bill lifecycles, derived totals and amount owed)."
+  },
+  "packs": [
+    {
+      "$ref": "packs/purchasing/pack.json",
+      "as": "purchasing"
+    }
+  ],
+  "provides": {
+    "roleBindings": {
+      "buyer": "BUYER",
+      "purchasingManager": "PURCH_MGR",
+      "payables": "PAYABLES"
+    }
+  },
+  "roles": [
+    {
+      "name": "PURCH_MGR",
+      "concepts": {
+        "purchasing::Supplier": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ],
+        "purchasing::PurchaseItem": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ],
+        "purchasing::PurchaseOrder": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ],
+        "purchasing::PurchaseOrderLine": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ],
+        "purchasing::SupplierBill": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      }
+    },
+    {
+      "name": "BUYER",
+      "concepts": {
+        "purchasing::Supplier": [
+          "read"
+        ],
+        "purchasing::PurchaseItem": [
+          "read"
+        ],
+        "purchasing::PurchaseOrder": [
+          "read",
+          "create",
+          "update"
+        ],
+        "purchasing::PurchaseOrderLine": [
+          "read",
+          "create",
+          "update"
+        ],
+        "purchasing::SupplierBill": [
+          "read"
+        ]
+      }
+    },
+    {
+      "name": "PAYABLES",
+      "concepts": {
+        "purchasing::Supplier": [
+          "read"
+        ],
+        "purchasing::PurchaseItem": [
+          "read"
+        ],
+        "purchasing::PurchaseOrder": [
+          "read"
+        ],
+        "purchasing::PurchaseOrderLine": [
+          "read"
+        ],
+        "purchasing::SupplierBill": [
+          "read",
+          "create",
+          "update"
+        ]
+      }
+    }
+  ]
+}
