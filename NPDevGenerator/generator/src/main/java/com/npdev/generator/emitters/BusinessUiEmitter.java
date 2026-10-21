@@ -275,7 +275,9 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     /** PROC-7: the Executions operator page, linked from the shell's super-user NPDev section. */
     static final List<String> BUSINESS_UI_OPS_ASSETS = List.of(
             "executions.html",
-            "executions.js"
+            "executions.js",
+            // FLOW-1: the Analytics tab of the same page
+            "executions-analytics.js"
     );
 
     static final List<String> BUSINESS_UI_VIEW_ASSETS = List.of(

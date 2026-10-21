@@ -118,6 +118,23 @@ public class ExecutionMonitorController {
         return run(() -> executionMonitorService.attention(tenant, currentContext(request)));
     }
 
+    /**
+     * FLOW-1: flow analytics -- where execution time goes. Read posture like {@code /active}: any caller
+     * allowed to read traces sees their OWN tenant. {@code tenant=} naming another tenant is SUPERUSER
+     * only (403 otherwise). {@code from}/{@code to} bound the execution start (epoch millis or ISO-8601).
+     * A literal segment, so it out-ranks the generated {@code /api/executions/{executionId}} route.
+     */
+    @GetMapping({"/api/v1/executions/analytics", "/api/executions/analytics"})
+    public Map<String, Object> analytics(
+            @RequestParam(name = "flow", required = false) String flow,
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to,
+            @RequestParam(name = "tenant", required = false) String tenant,
+            HttpServletRequest request
+    ) {
+        return run(() -> executionMonitorService.analytics(flow, from, to, tenant, currentContext(request)));
+    }
+
     private static HttpStatus statusFor(Object outcome) {
         return switch (String.valueOf(outcome)) {
             case "UNSTUCK", "RETRIED", "CANCELLED" -> HttpStatus.OK;

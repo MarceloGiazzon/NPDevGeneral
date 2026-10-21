@@ -53,6 +53,23 @@ public class BusinessUiEmitterOpsExecutionsPageTest {
     }
 
     @Test
+    void analyticsTabIsEmittedWithItsScriptAndReadsTheAnalyticsEndpoint() throws Exception {
+        Path ops = emit().resolve("src/main/resources/static/npdev-business-ui/ops");
+        String html = Files.readString(ops.resolve("executions.html"));
+        String js = Files.readString(ops.resolve("executions-analytics.js"));
+
+        assertTrue(html.contains("id=\"tabAnalytics\"") && html.contains("id=\"panelAnalytics\""), "an Analytics tab");
+        assertTrue(html.contains("id=\"anBottlenecks\"") && html.contains("id=\"anFlows\""), "bottleneck ranking + flow diagrams");
+        assertTrue(html.contains("<script src=\"./executions-analytics.js\"></script>"));
+        assertTrue(js.contains("/api/executions/analytics"), "reads the analytics endpoint");
+        assertTrue(js.contains("NPDevShell.api.get"), "through the shell's authenticated api");
+        assertTrue(js.contains("flow.slowestStep") && js.contains("body.bottlenecks"), "names the slowest step from the response");
+        assertTrue(js.contains("tenant=") && js.contains("flow=") && js.contains("from=") && js.contains("to="));
+        assertTrue(Files.readString(ops.resolve("executions.js")).contains("/api/executions/attention?tenant="),
+                "the attention tab is untouched");
+    }
+
+    @Test
     void shellNpdevSectionLinksTheExecutionsPage() throws Exception {
         String shell = TEMPLATES.render("shell.js.mustache", Map.of(
                 "shellVersion", "t", "uiContractCompatMin", "1", "uiContractCompatMax", "2"));

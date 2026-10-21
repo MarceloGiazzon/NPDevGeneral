@@ -30,6 +30,12 @@ public final class DefaultTraceRedactionPolicy implements TraceRedactionPolicy {
             "awaitedEventName",
             "awaitedEventFoundEventId",
             "awaitedEventStatus",
+            // FLOW-1: timing/attempt counters written by FlowTraceMerge when a flow resumes or an
+            // operator retries a step. Plain numbers, never user data; the analytics endpoint reads
+            // them through the same redacted traces every other caller gets.
+            "waitedMs",
+            "waitStartedAtEpochMs",
+            "stepAttempts",
             "writtenStateKeys",
             "adapterId",
             "capName",

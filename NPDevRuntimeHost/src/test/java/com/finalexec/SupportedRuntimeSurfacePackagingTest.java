@@ -66,6 +66,7 @@ class SupportedRuntimeSurfacePackagingTest {
         assertPackaged("com.finalexec.npdev.service.BetaSecurityRoleEvaluator");
         assertPackaged("com.finalexec.npdev.service.CrossTenantGovernanceService");
         assertPackaged("com.finalexec.npdev.service.ExecutionMonitorService");
+        assertPackaged("com.finalexec.npdev.service.FlowAnalytics");
         assertPackaged("com.finalexec.npdev.service.FileRuntimePluginExecutionSummaryStore");
         assertPackaged("com.finalexec.npdev.service.PanelRuntime");
         assertPackaged("com.finalexec.npdev.service.PermissionAwareUiMetadataService");

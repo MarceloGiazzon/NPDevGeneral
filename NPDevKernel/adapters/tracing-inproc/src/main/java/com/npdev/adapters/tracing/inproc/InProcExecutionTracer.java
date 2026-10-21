@@ -5,6 +5,7 @@ import com.npdev.kernel.ports.TraceQuery;
 import com.npdev.kernel.ports.TraceSummaryStore;
 import com.npdev.kernel.ports.TraceStore;
 import com.npdev.kernel.trace.FlowTrace;
+import com.npdev.kernel.trace.FlowTraceMerge;
 import com.npdev.kernel.trace.FlowTraceMeta;
 import com.npdev.kernel.trace.StepOutcome;
 import com.npdev.kernel.trace.StepTrace;
@@ -92,7 +93,9 @@ public final class InProcExecutionTracer implements ExecutionTracer, TraceStore,
         if (trace == null) {
             return;
         }
-        flowTraceByExecutionId.put(trace.meta().executionId(), trace);
+        // FLOW-1: a resumed/retried flow saves a new segment under the same executionId; merge it
+        // into what is stored instead of replacing it (see FlowTraceMerge).
+        flowTraceByExecutionId.merge(trace.meta().executionId(), trace, FlowTraceMerge::merge);
     }
 
     @Override

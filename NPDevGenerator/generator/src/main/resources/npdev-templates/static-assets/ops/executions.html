@@ -22,6 +22,24 @@
     .ops-executions .status-FAILED, .ops-executions .status-STUCK { color: var(--np-accent); }
     .ops-executions .actions { display: flex; gap: 6px; flex-wrap: wrap; }
     .ops-executions .message { margin: 8px 0; min-height: 1.4em; }
+    .ops-executions .tabs { display: flex; gap: 4px; margin: 0 0 12px; border-bottom: 1px solid var(--np-border); }
+    .ops-executions .tabs button { border-bottom: 0; border-radius: var(--np-radius) var(--np-radius) 0 0; }
+    .ops-executions .tabs button[aria-selected="true"] { background: var(--np-accent); border-color: var(--np-accent); color: #fff; }
+    .ops-executions .summary { margin: 8px 0; display: flex; flex-wrap: wrap; gap: 16px; }
+    .ops-executions .summary strong { font-size: 18px; }
+    .ops-executions .flow-card { border: 1px solid var(--np-border); border-radius: var(--np-radius);
+      background: var(--np-surface); padding: 12px; margin: 0 0 16px; }
+    .ops-executions .flow-card h2 { margin: 0 0 8px; font-size: 16px; }
+    .ops-executions .diagram { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; margin: 8px 0 12px; }
+    .ops-executions .diagram .arrow { align-self: center; color: var(--np-text-muted); }
+    .ops-executions .step-box { border: 1px solid var(--np-border); border-radius: var(--np-radius); padding: 6px 8px;
+      min-width: 120px; background: var(--np-surface); }
+    .ops-executions .step-box.slowest { border-color: var(--np-accent); border-width: 2px; }
+    .ops-executions .step-box .name { font-weight: 600; }
+    .ops-executions .step-box .counts { color: var(--np-text-muted); font-size: 12px; }
+    .ops-executions .bar-cell { min-width: 140px; }
+    .ops-executions .bar { display: block; height: 8px; margin: 0; background: var(--np-accent); border-radius: 4px; }
+    .ops-executions [hidden] { display: none !important; }
     @media (max-width: 768px) { .ops-executions { padding: 8px; } }
   </style>
 </head>
@@ -30,6 +48,11 @@
     <h1>Executions</h1>
     <p class="hint">Failed and stuck executions of one tenant. Retry re-runs a failed execution from the step that failed;
       Cancel ends a stuck or waiting one for good; Unstick hands a stuck one back to the resume sweep.</p>
+    <div class="tabs" role="tablist">
+      <button id="tabAttention" type="button" role="tab" aria-selected="true" aria-controls="panelAttention">Needs attention</button>
+      <button id="tabAnalytics" type="button" role="tab" aria-selected="false" aria-controls="panelAnalytics">Analytics</button>
+    </div>
+    <section id="panelAttention" role="tabpanel" aria-labelledby="tabAttention">
     <div class="bar">
       <label for="opsTenant">Tenant</label>
       <input id="opsTenant" type="text" autocomplete="off" spellcheck="false">
@@ -44,8 +67,40 @@
         <tbody id="opsRows"></tbody>
       </table>
     </div>
+    </section>
+    <section id="panelAnalytics" role="tabpanel" aria-labelledby="tabAnalytics" hidden>
+      <p class="hint">Where execution time goes. Counts by outcome, median and p95 per flow and per step, time spent
+        waiting on people or events, and the steps that cost the most time. Step times are medians of
+        service time plus any wait; a SUPERUSER can name another tenant.</p>
+      <div class="bar">
+        <label for="anFlow">Flow</label>
+        <input id="anFlow" type="text" list="anFlowList" autocomplete="off" spellcheck="false" placeholder="all flows">
+        <datalist id="anFlowList"></datalist>
+        <label for="anFrom">From</label>
+        <input id="anFrom" type="datetime-local">
+        <label for="anTo">To</label>
+        <input id="anTo" type="datetime-local">
+        <label for="anTenant">Tenant</label>
+        <input id="anTenant" type="text" autocomplete="off" spellcheck="false" placeholder="my tenant">
+        <button id="anLoad" class="primary" type="button">Load</button>
+      </div>
+      <div class="message" id="anMessage" role="status"></div>
+      <div class="summary" id="anSummary"></div>
+      <h2>Bottleneck steps</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Flow</th><th>Step</th><th>Median</th><th>p95</th><th>Median wait</th><th>Samples</th><th></th></tr>
+          </thead>
+          <tbody id="anBottlenecks"></tbody>
+        </table>
+      </div>
+      <h2>Flows</h2>
+      <div id="anFlows"></div>
+    </section>
   </main>
   <script src="/shell.js"></script>
   <script src="./executions.js"></script>
+  <script src="./executions-analytics.js"></script>
 </body>
 </html>
