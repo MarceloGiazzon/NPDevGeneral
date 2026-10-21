@@ -1,0 +1,129 @@
+{
+  "schemaVersion": "npdev-load-proof-baseline.v1",
+  "description": "LOAD-4: measured latency of the dom-sales consumer sample under scripts/load/run_load.py at 100,000 order lines. A run is only comparable to another run of the same machine class, engine and row count; the numbers are a regression reference for this class of machine, not a promise to a customer.",
+  "environment": {
+    "machine": "developer laptop (Windows 11), load generator and application on the same machine",
+    "engine": "h2",
+    "engineMode": "embedded file database, AUTO_SERVER, single JVM",
+    "notEvidenceFor": ["postgres", "sqlserver", "mysql", "multi-node", "1000000 rows"]
+  },
+  "targets": {
+    "sales": {
+      "sample": "NPDevSamples/dom-sales",
+      "rows": 100000,
+      "workload": "NPDevSamples/load/workload.json",
+      "runs": [
+        {
+          "label": "before-load-4-fixes",
+          "recordedAt": "2026-10-21",
+          "users": 8,
+          "seconds": 61,
+          "calls": 1805,
+          "throughputPerSec": 29.7,
+          "errorRate": 0.0,
+          "scenarios": {
+            "open-order": { "calls": 281, "errors": 0, "p50Ms": 10.8, "p95Ms": 34.2, "p99Ms": 56.5 },
+            "query-open-orders": { "calls": 352, "errors": 0, "p50Ms": 188.8, "p95Ms": 276.2, "p99Ms": 322.1 },
+            "list-orders-capped": { "calls": 189, "errors": 0, "p50Ms": 158.3, "p95Ms": 233.2, "p99Ms": 327.4 },
+            "create-order": { "calls": 190, "errors": 0, "p50Ms": 28.7, "p95Ms": 62.9, "p99Ms": 82.1 },
+            "update-order-notes": { "calls": 281, "errors": 0, "p50Ms": 42.0, "p95Ms": 76.3, "p99Ms": 110.0 },
+            "orders-by-customer": { "calls": 191, "errors": 0, "p50Ms": 423.4, "p95Ms": 587.8, "p99Ms": 654.4 },
+            "global-search": { "calls": 143, "errors": 0, "p50Ms": 532.1, "p95Ms": 740.2, "p99Ms": 804.3 },
+            "order-totals-report": { "calls": 178, "errors": 0, "p50Ms": 1186.7, "p95Ms": 2130.8, "p99Ms": 3117.6 }
+          }
+        },
+        {
+          "label": "after-load-4-fixes",
+          "recordedAt": "2026-10-21",
+          "users": 8,
+          "seconds": 61,
+          "calls": 3068,
+          "throughputPerSec": 50.8,
+          "errorRate": 0.0,
+          "scenarios": {
+            "open-order": { "calls": 471, "errors": 0, "p50Ms": 11.2, "p95Ms": 20.5, "p99Ms": 35.0 },
+            "query-open-orders": { "calls": 596, "errors": 0, "p50Ms": 173.9, "p95Ms": 226.6, "p99Ms": 251.8 },
+            "list-orders-capped": { "calls": 326, "errors": 0, "p50Ms": 142.3, "p95Ms": 209.0, "p99Ms": 266.7 },
+            "create-order": { "calls": 309, "errors": 0, "p50Ms": 30.9, "p95Ms": 46.1, "p99Ms": 123.2 },
+            "update-order-notes": { "calls": 458, "errors": 0, "p50Ms": 41.2, "p95Ms": 63.5, "p99Ms": 88.7 },
+            "orders-by-customer": { "calls": 323, "errors": 0, "p50Ms": 13.1, "p95Ms": 21.9, "p99Ms": 30.4 },
+            "global-search": { "calls": 269, "errors": 0, "p50Ms": 281.1, "p95Ms": 380.5, "p99Ms": 433.8 },
+            "order-totals-report": { "calls": 316, "errors": 0, "p50Ms": 755.4, "p95Ms": 1081.9, "p99Ms": 1213.2 }
+          }
+        },
+        {
+          "label": "after-load-4-fixes",
+          "recordedAt": "2026-10-21",
+          "users": 40,
+          "seconds": 61,
+          "calls": 3061,
+          "throughputPerSec": 50.2,
+          "errorRate": 0.0,
+          "scenarios": {
+            "open-order": { "calls": 445, "errors": 0, "p50Ms": 393.2, "p95Ms": 891.2, "p99Ms": 1233.1 },
+            "query-open-orders": { "calls": 603, "errors": 0, "p50Ms": 773.3, "p95Ms": 1364.7, "p99Ms": 1572.6 },
+            "list-orders-capped": { "calls": 295, "errors": 0, "p50Ms": 563.9, "p95Ms": 1190.0, "p99Ms": 1387.0 },
+            "create-order": { "calls": 330, "errors": 0, "p50Ms": 381.7, "p95Ms": 867.1, "p99Ms": 1172.2 },
+            "update-order-notes": { "calls": 449, "errors": 0, "p50Ms": 442.6, "p95Ms": 992.2, "p99Ms": 1327.3 },
+            "orders-by-customer": { "calls": 319, "errors": 0, "p50Ms": 468.6, "p95Ms": 1021.4, "p99Ms": 1522.1 },
+            "global-search": { "calls": 298, "errors": 0, "p50Ms": 1867.3, "p95Ms": 2819.1, "p99Ms": 3653.8 },
+            "order-totals-report": { "calls": 322, "errors": 0, "p50Ms": 1473.8, "p95Ms": 2267.7, "p99Ms": 3456.3 }
+          }
+        }
+      ],
+      "findings": [
+        {
+          "id": "reference-finder-full-scan",
+          "scenario": "orders-by-customer",
+          "cause": "the /by/<referenceField>/<id> finder compared LOWER(CAST(column AS TEXT)), which no index can serve, so every call scanned the whole table",
+          "fix": "a reference or uuid column holding a canonical UUID now compares natively; p95 587.8 ms to 21.9 ms at 8 users",
+          "status": "fixed"
+        },
+        {
+          "id": "aggregate-ignored-request-limit",
+          "scenario": "order-totals-report",
+          "cause": "the generated query controller ignored ?limit= on grouped queries, so 20,000 groups (1.5 MB) were returned for limit=50",
+          "fix": "the aggregate path reads the request limit like the plain path; the response is 4 KB, and the driver stops at the limit when there is no sort or HAVING",
+          "status": "fixed"
+        },
+        {
+          "id": "page-then-count-double-scan",
+          "scenario": "global-search",
+          "cause": "every per-concept query ran a second COUNT(*) with the same predicate even when the page was short",
+          "fix": "a short page answers the total (offset + size) without the count; p95 740.2 ms to 380.5 ms at 8 users",
+          "status": "fixed"
+        },
+        {
+          "id": "aggregate-group-by-is-linear-in-rows",
+          "scenario": "order-totals-report",
+          "cause": "GROUP BY over every order line costs about 0.2 s per call in embedded H2 at 100,000 rows whatever the limit; a covering index (tenant_id, order_id, line_total) measured only about 30% faster, within run-to-run noise. Under 8 concurrent users the calls queue",
+          "fix": "none by SQL tuning; a total that must be read often belongs in a stored rollup, not a query over every row",
+          "status": "open"
+        },
+        {
+          "id": "single-node-capacity-ceiling",
+          "scenario": "all",
+          "cause": "throughput was 50.8 calls/s at 8 users and 50.2 calls/s at 40, so the machine is saturated near 50 calls/s and added users only queue; the 40-user latencies are queueing delay, not slow queries",
+          "fix": "none needed on this class of machine; a capacity figure for Postgres or multi-node needs a run on that setup",
+          "status": "recorded"
+        },
+        {
+          "id": "dev-database-file-growth",
+          "scenario": "all",
+          "cause": "the embedded H2 file reached 12.5 GB for about 400,000 small rows after seeding and load runs (the audit table rows are tiny, so this looks like file garbage rather than data); the cause was not established",
+          "fix": "none yet",
+          "status": "open"
+        }
+      ],
+      "thresholds": {
+        "profile": "8 users; the 40-user run is a capacity record and is not expected to meet them",
+        "errorRate": 0.01,
+        "p95Ms": {
+          "default": 800,
+          "list-orders-capped": 2000,
+          "order-totals-report": 1500
+        }
+      }
+    }
+  }
+}

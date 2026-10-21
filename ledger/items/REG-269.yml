@@ -1,0 +1,23 @@
+id: REG-269
+title: >-
+  A date field cannot be compared with another date field in an invariant: endDate >= startDate is accepted silently, so a leave request can end before it starts
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-21
+closed: null
+source: >-
+  DOM-5 (leave pack). Recorded in NPDevContract/packs/leave/pack.json metadata.reviewNotes by that session; filed here during LOAD-4. NOT re-reproduced
+  in the filing session (the leave sample was not running), so the first step of the fix is a failing probe.
+surface: expression language / invariants (kernel + generated apps), leave pack
+detail: |
+  The leave pack cannot say that a request's end date must not precede its start date. The pack's review note says the expression language
+  has no working date comparison: comparing two date fields passes silently instead of being evaluated, so the invariant would never fire and a
+  request ending before it starts is accepted. The pack therefore ships without that rule.
+  Why it matters: any pack with a period (leave, bookings, contracts, price validity) needs "to >= from". Passing silently is the worse half --
+  an author who writes the rule believes it is enforced.
+  Direction for the fix: make the comparison work, or make it a validation error at model-validate time ("date comparison not supported")
+  so it can never be accepted and ignored; the second is the "accepted implies enforced" rule (ENF-1).
+resolution: >-
+  Add a behaviour probe to NPDevSamples/dsl-conformance-max/behavior-probes (a concept with two date fields and an invariant comparing them: a
+  reversed pair must be refused), make it pass, then add the rule to the leave pack and its rules sheet.

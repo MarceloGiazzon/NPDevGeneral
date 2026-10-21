@@ -65,7 +65,7 @@ public class GeneratedQueryController {
         try {
             Map<String, Object> bound = bindParameters(request, query.parameters());
             return query.isAggregate()
-                    ? runAggregate(query, context, bound)
+                    ? runAggregate(query, context, bound, request)
                     : runPlain(query, context, bound, request);
         } catch (ConceptGatewayAccessDeniedException denied) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, denied.getMessage());
@@ -128,9 +128,15 @@ public class GeneratedQueryController {
     }
 
     private Map<String, Object> runAggregate(
-            CompiledQuery query, ExecutionContext context, Map<String, Object> bound) {
+            CompiledQuery query, ExecutionContext context, Map<String, Object> bound, HttpServletRequest request) {
         List<ConceptQuery.Filter> filters = ConceptQueryPredicateCompiler.compileToConceptQueryFilters(
                 query.where(), query.parameters(), bound, context);
+        // LOAD-4: the request's ?limit= bounds an aggregate the same way it bounds a plain query
+        // (the declared limit is only the default). It was ignored here, so a grouped query over
+        // 20,000 groups shipped all 20,000 rows (1.5 MB) however small a limit the caller asked for.
+        int declaredLimit = query.limit() != null && query.limit() > 0 ? query.limit() : 0;
+        int requestedLimit = parseLimit(request, declaredLimit);
+        Integer effectiveLimit = requestedLimit > 0 ? requestedLimit : null;
         List<ConceptAggregateQuery.GroupByField> groupBy = new ArrayList<>();
         for (CompiledGroupByField field : query.groupBy()) {
             groupBy.add(new ConceptAggregateQuery.GroupByField(field.field(), field.bucket()));
@@ -149,7 +155,7 @@ public class GeneratedQueryController {
         boolean enriched = !query.lookups().isEmpty() || !query.computed().isEmpty();
         ConceptAggregateQuery aggregateQuery = enriched
                 ? new ConceptAggregateQuery(filters, groupBy, aggregates, List.of(), List.of(), null)
-                : new ConceptAggregateQuery(filters, groupBy, aggregates, having, sorts, query.limit());
+                : new ConceptAggregateQuery(filters, groupBy, aggregates, having, sorts, effectiveLimit);
         ConceptAggregateResult result = conceptGateway.aggregate(
                 new ConceptAggregateRequest(query.concept(), aggregateQuery), context);
         if (enriched) {
@@ -168,7 +174,7 @@ public class GeneratedQueryController {
                     (concept, lookupQuery) -> conceptGateway.aggregate(
                             new ConceptAggregateRequest(concept, lookupQuery), context));
             result = new ConceptAggregateResult(
-                    ConceptAggregateEngine.applyHavingSortAndLimit(rows, having, sorts, query.limit()));
+                    ConceptAggregateEngine.applyHavingSortAndLimit(rows, having, sorts, effectiveLimit));
         }
 
         Map<String, Object> body = new LinkedHashMap<>();

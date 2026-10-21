@@ -458,16 +458,6 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
 
         Connection connection = openConnection();
         try {
-            long total;
-            try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT COUNT(*) FROM " + fromSql + " WHERE " + whereSql)) {
-                bindParams(statement, params, 1);
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    resultSet.next();
-                    total = resultSet.getLong(1);
-                }
-            }
-
             List<ConceptRecord> items = new ArrayList<>();
             String pageSql = dialect.paginated("SELECT " + selectList + " FROM " + fromSql + " WHERE " + whereSql
                     + orderSql + " ").stripTrailing();
@@ -481,6 +471,25 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
                 try (ResultSet resultSet = statement.executeQuery()) {
                     while (resultSet.next()) {
                         items.add(toRecord(shape, tenantId, resultSet));
+                    }
+                }
+            }
+            // LOAD-4: the page came first so a short page answers the total for free -- fewer rows
+            // than asked for means the window reached the end of the matches, and (from offset 0, or
+            // with a non-empty page) offset + size is then exact. Only a full page, or an empty one
+            // past the start, still needs the COUNT(*). Global search asks every concept for a handful
+            // of rows and almost none fill the page, so it stopped scanning each table twice.
+            long total;
+            boolean shortPage = effective.limit() > 0 && items.size() < effective.limit();
+            if (shortPage && (effective.offset() == 0 || !items.isEmpty())) {
+                total = (long) effective.offset() + items.size();
+            } else {
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "SELECT COUNT(*) FROM " + fromSql + " WHERE " + whereSql)) {
+                    bindParams(statement, params, 1);
+                    try (ResultSet resultSet = statement.executeQuery()) {
+                        resultSet.next();
+                        total = resultSet.getLong(1);
                     }
                 }
             }
@@ -631,7 +640,17 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
 
         List<Map<String, Object>> rows = new ArrayList<>();
         Connection connection = openConnection();
+        // LOAD-4: with no HAVING and no sort, "the first N groups" is all the Java step below would
+        // keep, so the driver is told to stop there instead of shipping every group (20,000 order
+        // totals to return 50). setMaxRows is JDBC-standard, so it needs no per-engine LIMIT syntax
+        // (T-SQL cannot paginate without an ORDER BY). A sorted or filtered result still needs every
+        // group, because the Java step has to see them all to rank or filter.
+        boolean limitInDriver = query.limit() != null && query.limit() > 0
+                && query.sorts().isEmpty() && query.having().isEmpty() && !groupByExprs.isEmpty();
         try (PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            if (limitInDriver) {
+                statement.setMaxRows(query.limit());
+            }
             bindParams(statement, params, 1);
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
@@ -887,6 +906,16 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             // "compare natively unless the incoming value happens to be a String". See
             // ConceptQuery.Operator#EQ_CI's javadoc.
             case EQ_CI -> {
+                // LOAD-4: a reference/uuid column holding a canonical UUID compares natively. The text
+                // form below wraps the column in LOWER(CAST(..)), which no index can serve, so every
+                // reference finder (/by/customerId/{id}) scanned the whole table (p50 423 ms at 100k
+                // rows). A canonical UUID's text equality IS UUID equality, so nothing is lost.
+                UUID nativeId = !isTextLikeDslType(dslType) && isUuidColumn(rawColumn)
+                        ? canonicalUuidOrNull(clause.value()) : null;
+                if (nativeId != null) {
+                    whereParams.add(nativeId);
+                    yield columnRef + " = ?";
+                }
                 whereParams.add(String.valueOf(clause.value()).trim().toLowerCase(Locale.ROOT));
                 yield "LOWER(" + dialect.trimmedText(dialect.cast(columnRef, SqlType.TEXT)) + ") = ?";
             }
@@ -1571,6 +1600,27 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             return java.time.OffsetDateTime.parse(text).toInstant();
         } catch (java.time.format.DateTimeParseException ignored) {
             return java.time.LocalDateTime.parse(text).atZone(java.time.ZoneId.systemDefault()).toInstant();
+        }
+    }
+
+    /** The UUID {@code value} spells in its canonical 36-character form (any case, surrounding
+     *  whitespace ignored), else null -- {@link UUID#fromString} alone also accepts shortened forms
+     *  such as {@code 1-1-1-1-1}, which are not text-equal to the stored value. */
+    private static UUID canonicalUuidOrNull(Object value) {
+        if (value instanceof UUID uuid) {
+            return uuid;
+        }
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).trim();
+        if (text.length() != 36) {
+            return null;
+        }
+        try {
+            return UUID.fromString(text);
+        } catch (IllegalArgumentException notAUuid) {
+            return null;
         }
     }
 
