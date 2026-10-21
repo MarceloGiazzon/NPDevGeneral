@@ -263,5 +263,25 @@
   "status": "ok",
   "schemaVersion": "npdev-monitor-probe.v1",
   "command": "monitor probe",
-  "ok": true
+  "ok": true,
+  "truth": {
+    "lowestSupported": "T3",
+    "lowestDeclared": "T1",
+    "conceptCount": 28,
+    "supportedHistogram": {
+      "T0": 0,
+      "T1": 0,
+      "T2": 0,
+      "T3": 26,
+      "T4": 2,
+      "T5": 0,
+      "T6": 0
+    },
+    "overclaims": 1,
+    "staleEvidence": 2,
+    "failedEvidence": 0,
+    "testedConcepts": 2,
+    "live": true,
+    "rollupPath": "D:\\WorkSpace\\NPDev\\Build\\generated-finalapps\\auxscreen\\_ops\\truth-rollup.json"
+  }
 }

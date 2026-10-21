@@ -8,14 +8,28 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.InputStream;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
 import com.fasterxml.jackson.core.type.TypeReference;
 
 /**
@@ -25,6 +39,16 @@ import com.fasterxml.jackson.core.type.TypeReference;
  * it to T3 (RunsLocally) at response time, since successfully serving this request IS the evidence
  * that the app is running locally. T4+ (Tested, EvidenceBacked, ReleaseApproved) require external
  * evidence this runtime cannot observe, so they are never claimed here. Super-user only.
+ *
+ * <p>{@code GET /api/admin/box/truth} (TRUTH-1) is the app-level rollup: for every concept the level the
+ * model DECLARES next to the level the evidence SUPPORTS (generated -> T2, serving now -> T3, a fresh
+ * passing probe/smoke/browser run that hit the concept's route -> T4, two kinds of those -> T5; T6 is
+ * never derived), plus the lowest level in the app. The test evidence is never kept here: it is read from
+ * {@code <app>/_ops/truth-rollup.json}, which {@code npdev truth --write} joins from the reports the
+ * platform already writes. Freshness is judged HERE against this build's own {@code npdev.builtAt}.
+ * It only displays -- a missing file, an unreadable manifest or a bad timestamp degrades to fewer
+ * evidence rows / "unknown", never an error, and nothing is blocked by any level. Twin of
+ * {@code NPDevCli/npdev_truth.py}; keep the two in step (twin-pair rule truth-rollup-java-python).
  *
  * <p>The separate {@code /api/admin/box/graph} endpoint serves {@code npdev/semantic-graph.json}
  * as-is -- it is the SAME edges {@code npdev/model-xref.json} already carries, just relabeled with a
@@ -38,6 +62,18 @@ public class GeneratedBoxViewController {
     private static final String SUPER_USER_ROLE = "{{superUserRole}}";
     private static final String BOX_MANIFEST_RESOURCE = "npdev/box/box-manifest.json";
     private static final String SEMANTIC_GRAPH_RESOURCE = "npdev/semantic-graph.json";
+    private static final String PROVENANCE_RESOURCE = "npdev/provenance-index.json";
+    private static final String BUILD_INFO_RESOURCE = "npdev-build-info.properties";
+    private static final String TRUTH_ROLLUP_SCHEMA = "npdev-truth-rollup.v1";
+    private static final List<String> TRUTH_LEVELS = List.of("T0", "T1", "T2", "T3", "T4", "T5", "T6");
+    private static final List<String> TRUTH_ENUM_NAMES = List.of(
+            "T0_IDEA", "T1_DECLARED", "T2_GENERATED", "T3_RUNS_LOCALLY", "T4_TESTED", "T5_EVIDENCE_BACKED",
+            "T6_RELEASE_APPROVED");
+    private static final List<String> TRUTH_LABELS = List.of(
+            "Idea", "Declared", "Generated", "RunsLocally", "Tested", "EvidenceBacked", "ReleaseApproved");
+    private static final Set<String> TEST_KINDS = Set.of("probe", "smoke", "browser");
+    private static final DateTimeFormatter TRUTH_TIME = DateTimeFormatter
+            .ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'").withZone(ZoneOffset.UTC);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final RuntimeContextService runtimeContextService;
@@ -56,6 +92,30 @@ public class GeneratedBoxViewController {
     public Map<String, Object> boxGraph(HttpServletRequest request) {
         requireSuperUser(request);
         return readGraph();
+    }
+
+    @GetMapping("/api/admin/box/truth")
+    public Map<String, Object> boxTruth(HttpServletRequest request) {
+        requireSuperUser(request);
+        return buildTruthRollup();
+    }
+
+    /** The record behind one evidence row (the {@code href} every row carries). */
+    @GetMapping("/api/admin/box/truth/evidence")
+    public Map<String, Object> boxTruthEvidence(@RequestParam("id") String id, HttpServletRequest request) {
+        requireSuperUser(request);
+        Map<String, Object> rollup = buildTruthRollup();
+        List<Map<String, Object>> all = new ArrayList<>();
+        for (Map<String, Object> concept : castList(rollup.get("concepts"))) {
+            all.addAll(castList(concept.get("evidence")));
+        }
+        all.addAll(castList(rollup.get("appEvidence")));
+        for (Map<String, Object> evidence : all) {
+            if (id.equals(evidence.get("id"))) {
+                return evidence;
+            }
+        }
+        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No evidence record " + id);
     }
 
     private void requireSuperUser(HttpServletRequest request) {
@@ -125,5 +185,401 @@ public class GeneratedBoxViewController {
             body.put("nodes", List.of());
             return body;
         }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // TRUTH-1 rollup (twin of NPDevCli/npdev_truth.py)
+    // ---------------------------------------------------------------------------------------
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> castList(Object value) {
+        return value instanceof List ? (List<Map<String, Object>>) value : List.of();
+    }
+
+    private static String normaliseLevel(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String text = value.trim().toLowerCase(Locale.ROOT);
+        for (int i = 0; i < TRUTH_LEVELS.size(); i++) {
+            if (text.equals(TRUTH_LEVELS.get(i).toLowerCase(Locale.ROOT))
+                    || text.equals(TRUTH_LABELS.get(i).toLowerCase(Locale.ROOT))
+                    || text.equals(TRUTH_ENUM_NAMES.get(i).toLowerCase(Locale.ROOT))) {
+                return TRUTH_LEVELS.get(i);
+            }
+        }
+        return null;
+    }
+
+    private static int levelRank(String level) {
+        return level == null ? -1 : TRUTH_LEVELS.indexOf(level);
+    }
+
+    private static String lowestLevel(List<String> levels) {
+        String lowest = null;
+        for (String level : levels) {
+            if (level != null && (lowest == null || levelRank(level) < levelRank(lowest))) {
+                lowest = level;
+            }
+        }
+        return lowest;
+    }
+
+    private static Instant parseInstant(JsonNode node) {
+        if (node == null || !node.isTextual()) {
+            return null;
+        }
+        return parseInstant(node.asText());
+    }
+
+    private static Instant parseInstant(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.parse(text.trim());
+        } catch (Exception exception) {
+            return null;
+        }
+    }
+
+    private static Path truthRollupPath() {
+        String configured = System.getProperty("npdev.truth.rollup");
+        if (configured == null || configured.isBlank()) {
+            configured = System.getenv("NPDEV_TRUTH_ROLLUP");
+        }
+        if (configured != null && !configured.isBlank()) {
+            return Paths.get(configured);
+        }
+        return Paths.get(System.getProperty("user.dir", "."), "_ops", "truth-rollup.json");
+    }
+
+    private static JsonNode readOptionalResource(String resource) {
+        try (InputStream in = new ClassPathResource(resource).getInputStream()) {
+            return OBJECT_MAPPER.readTree(in);
+        } catch (Exception exception) {
+            return OBJECT_MAPPER.createObjectNode();
+        }
+    }
+
+    private static Properties readBuildInfo() {
+        Properties properties = new Properties();
+        try (InputStream in = new ClassPathResource(BUILD_INFO_RESOURCE).getInputStream()) {
+            properties.load(in);
+        } catch (Exception exception) {
+            // absent build info only means "no freshness reference": evidence is then shown unjudged
+        }
+        return properties;
+    }
+
+    /** {@code .../<sampleId>/Input/model.json} -> {@code <sampleId>}; anything else -> null. */
+    private static String sampleIdFrom(Properties info) {
+        String source = info.getProperty("npdev.model.sourcePath", "").replace('\\', '/');
+        String[] parts = source.split("/");
+        int n = parts.length;
+        if (n >= 3 && parts[n - 1].equalsIgnoreCase("model.json") && parts[n - 2].equalsIgnoreCase("input")) {
+            return parts[n - 3];
+        }
+        return null;
+    }
+
+    private static Map<String, Object> evidenceRecord(String id, String kind, String level, String status,
+                                                      String summary, String sourcePath, String sampleId,
+                                                      String concept, Map<String, Object> detail) {
+        Map<String, Object> record = new LinkedHashMap<>();
+        record.put("id", id);
+        record.put("kind", kind);
+        record.put("level", level);
+        record.put("status", status);
+        record.put("summary", summary);
+        record.put("observedAt", null);
+        Map<String, Object> source = new LinkedHashMap<>();
+        source.put("path", sourcePath);
+        source.put("sampleId", sampleId);
+        record.put("source", source);
+        record.put("concepts", List.of(concept));
+        record.put("href", "/api/admin/box/truth/evidence?id=" + URLEncoder.encode(id, StandardCharsets.UTF_8));
+        record.put("detail", detail);
+        return record;
+    }
+
+    /**
+     * Freshness is decided against the build THIS process is running: a result observed before the build
+     * was made says nothing about it. Mirrors {@code npdev_truth.judge}.
+     */
+    private static Map<String, Object> judgeEvidence(JsonNode evidence, Instant builtAt) {
+        Map<String, Object> record = OBJECT_MAPPER.convertValue(evidence, new TypeReference<Map<String, Object>>() { });
+        record.remove("staleReason");
+        record.remove("observedStatus");
+        String raw = evidence.path("observedStatus").asText(evidence.path("status").asText("failed"));
+        if (!"passed".equals(raw) && !"failed".equals(raw) && !"known-failure".equals(raw)) {
+            raw = "failed";
+        }
+        Instant observed = parseInstant(evidence.path("observedAt"));
+        if (observed == null) {
+            record.put("status", "undated");
+            record.put("observedStatus", raw);
+            record.put("staleReason", "the evidence carries no usable timestamp, so it cannot be tied to this build");
+        } else if (builtAt != null && observed.isBefore(builtAt)) {
+            record.put("status", "stale");
+            record.put("observedStatus", raw);
+            record.put("staleReason", "observed " + TRUTH_TIME.format(observed)
+                    + ", before this build was made (" + TRUTH_TIME.format(builtAt) + ")");
+        } else {
+            record.put("status", raw);
+        }
+        record.put("href", "/api/admin/box/truth/evidence?id="
+                + URLEncoder.encode(String.valueOf(record.get("id")), StandardCharsets.UTF_8));
+        return record;
+    }
+
+    private static boolean counts(Map<String, Object> evidence) {
+        Object status = evidence.get("status");
+        return "observed".equals(status) || "passed".equals(status);
+    }
+
+    /**
+     * T2 generated, T3 serving (live), T4 one kind of fresh passing test, T5 two kinds; never T6. A FRESH
+     * failing test on the concept caps it at T3 (a red run contradicts "tested"); a known-failure probe is
+     * shown, never counted and never caps.
+     */
+    private static String supportedLevel(List<Map<String, Object>> evidence, boolean live) {
+        int best = -1;
+        Set<String> kinds = new HashSet<>();
+        boolean failingTest = false;
+        for (Map<String, Object> item : evidence) {
+            if ("failed".equals(item.get("status")) && TEST_KINDS.contains(String.valueOf(item.get("kind")))) {
+                failingTest = true;
+            }
+            if (!counts(item)) {
+                continue;
+            }
+            String kind = String.valueOf(item.get("kind"));
+            if ("generated".equals(kind)) {
+                best = Math.max(best, 2);
+            }
+            if (TEST_KINDS.contains(kind)) {
+                kinds.add(kind);
+            }
+        }
+        if (live) {
+            best = Math.max(best, 3);
+        }
+        if (!kinds.isEmpty()) {
+            best = Math.max(best, 4);
+            if (kinds.size() >= 2) {
+                best = Math.max(best, 5);
+            }
+        }
+        if (best > 3 && failingTest) {
+            best = 3;
+        }
+        return best >= 0 ? TRUTH_LEVELS.get(best) : null;
+    }
+
+    private static String claimOf(String declared, String supported) {
+        if (declared == null || supported == null) {
+            return "unknown";
+        }
+        if (levelRank(declared) > levelRank(supported)) {
+            return "overclaim";
+        }
+        return levelRank(declared) < levelRank(supported) ? "underclaim" : "ok";
+    }
+
+    private Map<String, Object> buildTruthRollup() {
+        try {
+            JsonNode manifest = readOptionalResource(BOX_MANIFEST_RESOURCE);
+            JsonNode specNodes = readOptionalResource(PROVENANCE_RESOURCE).path("specNodes");
+            Properties info = readBuildInfo();
+            Instant builtAt = parseInstant(info.getProperty("npdev.builtAt"));
+            String sampleId = sampleIdFrom(info);
+            Path evidenceFile = truthRollupPath();
+            Map<String, List<JsonNode>> externalByConcept = new LinkedHashMap<>();
+            List<JsonNode> externalAppWide = new ArrayList<>();
+            try {
+                if (Files.isRegularFile(evidenceFile)) {
+                    JsonNode file = OBJECT_MAPPER.readTree(evidenceFile.toFile());
+                    if (TRUTH_ROLLUP_SCHEMA.equals(file.path("schemaVersion").asText())) {
+                        for (JsonNode concept : file.path("concepts")) {
+                            List<JsonNode> rows = new ArrayList<>();
+                            for (JsonNode row : concept.path("evidence")) {
+                                String kind = row.path("kind").asText();
+                                if (!"generated".equals(kind) && !"runtime".equals(kind)) {
+                                    rows.add(row);
+                                }
+                            }
+                            externalByConcept.put(concept.path("conceptName").asText(), rows);
+                        }
+                        for (JsonNode row : file.path("appEvidence")) {
+                            externalAppWide.add(row);
+                        }
+                    }
+                }
+            } catch (Exception unreadable) {
+                externalByConcept.clear();
+                externalAppWide.clear();
+            }
+
+            List<JsonNode> boxes = new ArrayList<>();
+            for (JsonNode box : manifest.path("boxes")) {
+                if (box.hasNonNull("conceptName")) {
+                    boxes.add(box);
+                }
+            }
+            boxes.sort(Comparator.comparing(box -> box.path("conceptName").asText().toLowerCase(Locale.ROOT)));
+
+            List<Map<String, Object>> concepts = new ArrayList<>();
+            Map<String, Map<String, Object>> externalJudged = new LinkedHashMap<>();
+            Map<String, Integer> histogram = new LinkedHashMap<>();
+            for (String level : TRUTH_LEVELS) {
+                histogram.put(level, 0);
+            }
+            List<String> supportedLevels = new ArrayList<>();
+            List<String> declaredLevels = new ArrayList<>();
+            int overclaims = 0;
+            int testedConcepts = 0;
+            for (JsonNode box : boxes) {
+                String name = box.path("conceptName").asText();
+                int artifacts = specNodes.path(name).path("artifacts").size();
+                List<Map<String, Object>> evidence = new ArrayList<>();
+                Map<String, Object> generatedDetail = new LinkedHashMap<>();
+                generatedDetail.put("artifacts", artifacts);
+                generatedDetail.put("table", box.hasNonNull("table") ? box.path("table").asText() : null);
+                generatedDetail.put("manifestLevel", normaliseLevel(box.path("truthLevel").asText(null)));
+                evidence.add(evidenceRecord("generated:" + name, "generated", "T2", "observed",
+                        artifacts > 0
+                                ? "generated: " + artifacts + " artifact(s) in the provenance index"
+                                : "generated: present in the box manifest (no provenance artifacts listed)",
+                        BOX_MANIFEST_RESOURCE, sampleId, name, generatedDetail));
+                Map<String, Object> runtimeDetail = new LinkedHashMap<>();
+                runtimeDetail.put("how", "the app is up and answering (health endpoint / the request this rollup came from)");
+                Map<String, Object> runtime = evidenceRecord("runtime:" + name, "runtime", "T3", "observed",
+                        "runs locally: the app is serving requests right now", null, sampleId, name, runtimeDetail);
+                runtime.put("observedAt", TRUTH_TIME.format(Instant.now()));
+                evidence.add(runtime);
+                for (JsonNode row : externalByConcept.getOrDefault(name, List.of())) {
+                    Map<String, Object> judged = judgeEvidence(row, builtAt);
+                    evidence.add(judged);
+                    externalJudged.put(String.valueOf(judged.get("id")), judged);
+                }
+                String declared = normaliseLevel(box.path("declaredTruthLevel").asText(null));
+                String supported = supportedLevel(evidence, true);
+                String claim = claimOf(declared, supported);
+                if ("overclaim".equals(claim)) {
+                    overclaims++;
+                }
+                if (levelRank(supported) >= 4) {
+                    testedConcepts++;
+                }
+                if (supported != null) {
+                    histogram.merge(supported, 1, Integer::sum);
+                }
+                supportedLevels.add(supported);
+                declaredLevels.add(declared);
+                Map<String, Object> concept = new LinkedHashMap<>();
+                concept.put("conceptName", name);
+                concept.put("displayName", box.hasNonNull("displayName") ? box.path("displayName").asText() : name);
+                concept.put("table", box.hasNonNull("table") ? box.path("table").asText() : null);
+                concept.put("module", box.hasNonNull("module") ? box.path("module").asText() : null);
+                concept.put("declaredLevel", declared);
+                concept.put("supportedLevel", supported);
+                concept.put("claim", claim);
+                concept.put("evidence", evidence);
+                concepts.add(concept);
+            }
+            List<Map<String, Object>> appEvidence = new ArrayList<>();
+            for (JsonNode row : externalAppWide) {
+                Map<String, Object> judged = judgeEvidence(row, builtAt);
+                appEvidence.add(judged);
+                externalJudged.put(String.valueOf(judged.get("id")), judged);
+            }
+            int staleEvidence = 0;
+            int failedEvidence = 0;
+            int knownFailureEvidence = 0;
+            for (Map<String, Object> judged : externalJudged.values()) {
+                if ("stale".equals(judged.get("status"))) {
+                    staleEvidence++;
+                } else if ("failed".equals(judged.get("status"))) {
+                    failedEvidence++;
+                } else if ("known-failure".equals(judged.get("status"))) {
+                    knownFailureEvidence++;
+                }
+            }
+            String lowestSupported = lowestLevel(supportedLevels);
+            List<String> lowestConcepts = new ArrayList<>();
+            for (Map<String, Object> concept : concepts) {
+                if (lowestSupported != null && lowestSupported.equals(concept.get("supportedLevel"))) {
+                    lowestConcepts.add(String.valueOf(concept.get("conceptName")));
+                }
+            }
+            lowestConcepts.sort(String::compareTo);
+
+            Map<String, Object> sources = new LinkedHashMap<>();
+            sources.put("boxManifest", BOX_MANIFEST_RESOURCE);
+            sources.put("provenanceIndex", PROVENANCE_RESOURCE);
+            sources.put("buildInfo", BUILD_INFO_RESOURCE);
+            sources.put("evidenceFile", Files.isRegularFile(evidenceFile) ? evidenceFile.toString() : null);
+            Map<String, Object> app = new LinkedHashMap<>();
+            app.put("namespace", manifest.path("application").hasNonNull("name")
+                    ? manifest.path("application").path("name").asText() : null);
+            app.put("sampleId", sampleId);
+            app.put("builtAt", builtAt == null ? null : TRUTH_TIME.format(builtAt));
+            app.put("live", true);
+            app.put("promotion", null);
+            app.put("sources", sources);
+            Map<String, Object> summary = new LinkedHashMap<>();
+            summary.put("conceptCount", concepts.size());
+            summary.put("lowestSupported", lowestSupported);
+            summary.put("lowestDeclared", lowestLevel(declaredLevels));
+            summary.put("lowestSupportedConcepts", lowestConcepts);
+            summary.put("supportedHistogram", histogram);
+            summary.put("overclaims", overclaims);
+            summary.put("staleEvidence", staleEvidence);
+            summary.put("failedEvidence", failedEvidence);
+            summary.put("knownFailureEvidence", knownFailureEvidence);
+            summary.put("testedConcepts", testedConcepts);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("schemaVersion", TRUTH_ROLLUP_SCHEMA);
+            body.put("app", app);
+            body.put("summary", summary);
+            body.put("concepts", concepts);
+            body.put("appEvidence", appEvidence);
+            body.put("note", "Declared levels are the model's claim; supported levels are derived from evidence. "
+                    + "T6 (ReleaseApproved) is never derived. Display only -- nothing is blocked by this.");
+            return body;
+        } catch (Exception exception) {
+            return unavailableTruthRollup();
+        }
+    }
+
+    /** What the endpoint answers when the rollup cannot be built at all: an honest, empty "unknown". */
+    private Map<String, Object> unavailableTruthRollup() {
+        Map<String, Object> app = new LinkedHashMap<>();
+        app.put("namespace", null);
+        app.put("sampleId", null);
+        app.put("builtAt", null);
+        app.put("live", true);
+        app.put("promotion", null);
+        app.put("sources", Map.of());
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("conceptCount", 0);
+        summary.put("lowestSupported", null);
+        summary.put("lowestDeclared", null);
+        summary.put("lowestSupportedConcepts", List.of());
+        summary.put("supportedHistogram", Map.of());
+        summary.put("overclaims", 0);
+        summary.put("staleEvidence", 0);
+        summary.put("failedEvidence", 0);
+        summary.put("knownFailureEvidence", 0);
+        summary.put("testedConcepts", 0);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("schemaVersion", TRUTH_ROLLUP_SCHEMA);
+        body.put("app", app);
+        body.put("summary", summary);
+        body.put("concepts", List.of());
+        body.put("appEvidence", List.of());
+        body.put("note", "Truth rollup unavailable (the box manifest could not be read) -- every level is unknown.");
+        return body;
     }
 }

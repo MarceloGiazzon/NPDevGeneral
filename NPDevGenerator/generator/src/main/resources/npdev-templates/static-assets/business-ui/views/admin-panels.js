@@ -565,10 +565,13 @@
       state.boxView.loading = true;
       render();
       try {
-        const [manifest, graph] = await Promise.all([
+        const [manifest, graph, truth] = await Promise.all([
           fetchJson("/api/admin/box", { method: "GET", headers: headers() }),
-          fetchJson("/api/admin/box/graph", { method: "GET", headers: headers() }).catch(function () { return null; })
+          fetchJson("/api/admin/box/graph", { method: "GET", headers: headers() }).catch(function () { return null; }),
+          // TRUTH-1: display only -- a failure here leaves the rollup "unknown", it never fails the panel.
+          fetchJson("/api/admin/box/truth", { method: "GET", headers: headers() }).catch(function () { return null; })
         ]);
+        state.boxView.truth = truth;
         state.boxView.application = manifest.application || null;
         state.boxView.modules = Array.isArray(manifest.modules) ? manifest.modules : [];
         state.boxView.boxes = Array.isArray(manifest.boxes) ? manifest.boxes : [];
@@ -729,6 +732,223 @@
     }
 
 
+    // TRUTH-1: the app-level rollup (GET /api/admin/box/truth). For every concept the level the model
+    // DECLARES next to the level the evidence SUPPORTS, and each piece of evidence as a link that opens
+    // its record. Display only -- nothing here blocks anything, and every missing piece reads "unknown".
+    const TRUTH_LEVEL_LABELS = { T0: "Idea", T1: "Declared", T2: "Generated", T3: "RunsLocally",
+      T4: "Tested", T5: "EvidenceBacked", T6: "ReleaseApproved" };
+
+    function levelText(level) {
+      return level ? level + " " + (TRUTH_LEVEL_LABELS[level] || "") : "unknown";
+    }
+
+
+    function levelBadgeClass(level) {
+      const rank = level ? Number(String(level).slice(1)) : -1;
+      if (rank >= 4) return "badge-success";
+      if (rank === 3) return "badge-info";
+      return "badge-neutral";
+    }
+
+
+    function claimBadgeClass(claim) {
+      if (claim === "ok") return "badge-success";
+      if (claim === "overclaim") return "badge-danger";
+      return "badge-neutral";
+    }
+
+
+    function appendDetailRow(table, label, value) {
+      if (value === null || value === undefined || value === "") return;
+      const row = document.createElement("tr");
+      row.appendChild(textCell(label));
+      row.appendChild(textCell(String(value)));
+      table.appendChild(row);
+    }
+
+
+    // The evidence link: fetches the record behind the row's href (the endpoint is super-user gated and
+    // the key travels in a header, so a plain anchor could not open it) and shows it in a modal.
+    async function openEvidence(evidence) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "truth-evidence";
+      const loading = document.createElement("p");
+      loading.textContent = "Loading evidence…";
+      wrapper.appendChild(loading);
+      openModal("Evidence: " + evidence.id, wrapper);
+      let record = null;
+      let problem = "";
+      try {
+        record = evidence.href ? await fetchJson(evidence.href, { method: "GET", headers: headers() }) : evidence;
+      } catch (error) {
+        problem = error.message || String(error);
+      }
+      wrapper.innerHTML = "";
+      if (!record) {
+        const unavailable = document.createElement("p");
+        unavailable.textContent = "Evidence record unavailable (" + problem + "). Recorded summary: " + (evidence.summary || "-");
+        wrapper.appendChild(unavailable);
+        return;
+      }
+      const summary = document.createElement("p");
+      summary.textContent = record.summary || "";
+      wrapper.appendChild(summary);
+      const table = document.createElement("table");
+      table.className = "records truth-evidence-detail";
+      const body = document.createElement("tbody");
+      appendDetailRow(body, "Kind", record.kind);
+      appendDetailRow(body, "Supports level", record.level);
+      appendDetailRow(body, "Status", record.status + (record.observedStatus ? " (was " + record.observedStatus + ")" : ""));
+      appendDetailRow(body, "Observed at", record.observedAt || "unknown");
+      appendDetailRow(body, "Why not counted", record.staleReason);
+      appendDetailRow(body, "Source", record.source && record.source.path);
+      appendDetailRow(body, "Sample", record.source && record.source.sampleId);
+      table.appendChild(body);
+      wrapper.appendChild(table);
+      if (record.detail && Object.keys(record.detail).length) {
+        const detailHeading = document.createElement("h4");
+        detailHeading.textContent = "Detail";
+        wrapper.appendChild(detailHeading);
+        const pre = document.createElement("pre");
+        pre.textContent = JSON.stringify(record.detail, null, 2);
+        wrapper.appendChild(pre);
+      }
+    }
+
+
+    function evidenceButton(evidence, label) {
+      const link = button(label || (evidence.kind + (evidence.status === "observed" ? "" : " " + evidence.status)), "evidence-link", function () {
+        openEvidence(evidence);
+      });
+      link.setAttribute("data-evidence-id", evidence.id);
+      link.setAttribute("data-evidence-status", evidence.status);
+      link.title = evidence.summary || evidence.id;
+      return link;
+    }
+
+
+    // Many concepts carry dozens of test runs: generated/runtime stay one button each, the test runs
+    // collapse into ONE grouped button ("7 passed, 1 known-failure") that lists every run, each of them
+    // a link to its own record.
+    function openEvidenceList(title, list) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "truth-evidence-list";
+      list.forEach(function (evidence) {
+        const row = document.createElement("p");
+        row.appendChild(evidenceButton(evidence, evidence.status));
+        row.appendChild(document.createTextNode(" " + (evidence.summary || evidence.id)));
+        wrapper.appendChild(row);
+      });
+      openModal(title, wrapper);
+    }
+
+
+    function evidenceGroupButton(title, list) {
+      const counts = {};
+      list.forEach(function (evidence) { counts[evidence.status] = (counts[evidence.status] || 0) + 1; });
+      const label = Object.keys(counts).map(function (status) { return counts[status] + " " + status; }).join(", ");
+      const link = button("tests: " + label, "evidence-link evidence-group", function () { openEvidenceList(title, list); });
+      link.setAttribute("data-evidence-group", String(list.length));
+      link.title = "Open the " + list.length + " test run(s) behind this row";
+      return link;
+    }
+
+
+    function evidenceLinks(evidenceList, ownerName) {
+      const cell = document.createElement("td");
+      cell.className = "truth-evidence-cell";
+      const tests = [];
+      (evidenceList || []).forEach(function (evidence) {
+        if (evidence.kind === "generated" || evidence.kind === "runtime") {
+          cell.appendChild(evidenceButton(evidence));
+          cell.appendChild(document.createTextNode(" "));
+        } else {
+          tests.push(evidence);
+        }
+      });
+      if (tests.length) {
+        cell.appendChild(evidenceGroupButton("Test evidence: " + ownerName, tests));
+      }
+      return cell;
+    }
+
+
+    function renderTruthRollup(section) {
+      const heading = document.createElement("h3");
+      heading.textContent = "Truth rollup";
+      section.appendChild(heading);
+      const truth = state.boxView.truth;
+      const lines = document.createElement("div");
+      lines.className = "truth-rollup-summary";
+      if (!truth || !truth.summary) {
+        const unknown = document.createElement("p");
+        unknown.textContent = state.boxView.loading
+            ? "Loading truth rollup…"
+            : "Truth rollup unavailable: every level is unknown.";
+        lines.appendChild(unknown);
+        section.appendChild(lines);
+        return;
+      }
+      const summary = truth.summary;
+      const headline = document.createElement("p");
+      headline.className = "truth-headline";
+      headline.textContent = "Lowest level in this app (supported by evidence): " + levelText(summary.lowestSupported)
+          + " | lowest declared by the model: " + levelText(summary.lowestDeclared);
+      lines.appendChild(headline);
+      const counts = document.createElement("p");
+      counts.className = "truth-counts";
+      counts.textContent = summary.conceptCount + " concepts | " + summary.testedConcepts + " tested (T4 or above) | "
+          + summary.overclaims + " declared above their evidence | " + summary.staleEvidence + " stale evidence | "
+          + summary.failedEvidence + " failed evidence | " + (summary.knownFailureEvidence || 0) + " known failures";
+      lines.appendChild(counts);
+      const promotion = document.createElement("p");
+      promotion.className = "truth-promotion";
+      promotion.textContent = "App-wide promotion stage (a separate S0-S8 ladder, evidence only): "
+          + (state.promotion && state.promotion.currentStage ? state.promotion.currentStage : "unknown");
+      lines.appendChild(promotion);
+      if (truth.note) {
+        const note = document.createElement("p");
+        note.textContent = truth.note;
+        lines.appendChild(note);
+      }
+      section.appendChild(lines);
+
+      const moduleByConcept = {};
+      state.boxView.boxes.forEach(function (box) { moduleByConcept[box.conceptName] = box.module; });
+      const table = document.createElement("table");
+      table.className = "records truth-rollup";
+      const thead = document.createElement("thead");
+      thead.appendChild(headerRow(["Concept", "Declared", "Supported by evidence", "Claim", "Evidence"]));
+      table.appendChild(thead);
+      const tbody = document.createElement("tbody");
+      (truth.concepts || []).forEach(function (concept) {
+        if (state.boxView.moduleFilter && moduleByConcept[concept.conceptName] !== state.boxView.moduleFilter) {
+          return;
+        }
+        const row = document.createElement("tr");
+        row.setAttribute("data-concept", concept.conceptName);
+        row.appendChild(textCell(concept.displayName || concept.conceptName));
+        row.appendChild(badgeCell(levelText(concept.declaredLevel), levelBadgeClass(concept.declaredLevel)));
+        row.appendChild(badgeCell(levelText(concept.supportedLevel), levelBadgeClass(concept.supportedLevel)));
+        row.appendChild(badgeCell(concept.claim || "unknown", claimBadgeClass(concept.claim)));
+        row.appendChild(evidenceLinks(concept.evidence, concept.displayName || concept.conceptName));
+        tbody.appendChild(row);
+      });
+      table.appendChild(tbody);
+      section.appendChild(table);
+
+      if ((truth.appEvidence || []).length) {
+        const appHeading = document.createElement("h4");
+        appHeading.textContent = "App-wide evidence";
+        section.appendChild(appHeading);
+        const appLine = document.createElement("p");
+        appLine.className = "truth-app-evidence";
+        appLine.appendChild(evidenceGroupButton("App-wide evidence", truth.appEvidence || []));
+        section.appendChild(appLine);
+      }
+    }
+
+
     function renderBoxViewPanel() {
       const section = document.createElement("section");
       section.className = "concept-panel";
@@ -793,6 +1013,8 @@
         moduleLabel.appendChild(select);
         section.appendChild(moduleLabel);
       }
+
+      renderTruthRollup(section);
 
       const table = document.createElement("table");
       table.className = "records";

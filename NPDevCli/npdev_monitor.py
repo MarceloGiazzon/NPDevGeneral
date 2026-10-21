@@ -778,6 +778,10 @@ def probe_app(app_dir: Path, *, include_info: bool = False, origin: str = "expli
     # --- explorations at a glance (the EXPLORE light) ----------------------------------------
     record["explorations"] = _exploration_summary(app_root)
 
+    # TRUTH-1: the app's truth rollup at a glance (declared vs evidence-supported level, stale/failed
+    # evidence). Display only: any failure here is an "unknown" badge, never a failed probe.
+    record["truth"] = _truth_summary(app_root, final_app_root, record)
+
     # R3.8: a clone is identified by CONTENTS too -- the small marker `clone_app` writes at
     # `_ops/npdev-clone.json` -- never by name pattern. None for an ordinary app, never guessed.
     record["clone"] = _read_json(app_root / "_ops" / CLONE_INFO_FILENAME)
@@ -791,6 +795,31 @@ def probe_app(app_dir: Path, *, include_info: bool = False, origin: str = "expli
 
     record["status"] = "ok"
     return record
+
+
+def _truth_summary(app_root: Path, final_app_root: Path, record: dict) -> dict:
+    """TRUTH-1 (npdev_truth.py): the compact rollup the Monitor card badges. The join runs on the
+    probe's own facts (health -> live, builtAt) so it costs no second probe. `rollupPath` is the file
+    `npdev truth --write` left in the app's `_ops` (what the running app serves behind
+    GET /api/admin/box/truth), or None when it was never written -- the card's link opens its folder."""
+    try:
+        import npdev_truth
+
+        repo_root = Path(os.environ.get("NPDEV_ROOT") or Path(__file__).resolve().parents[1])
+        rollup = npdev_truth.build_rollup(
+            final_app_root, ops_dir=app_root / "_ops",
+            reports_dir=npdev_truth.default_reports_dir(repo_root),
+            live=record.get("health") == "running",
+            built_at=None if npdev_truth._first_existing(Path(final_app_root), npdev_truth.BUILD_INFO_RELATIVES)
+            else record.get("builtAt"))
+        if not rollup["concepts"]:
+            return npdev_truth.unknown_summary("no box manifest found (app not generated yet?)")
+        rollup_file = app_root / "_ops" / npdev_truth.ROLLUP_FILENAME
+        return npdev_truth.summarize(rollup, str(rollup_file) if rollup_file.is_file() else None)
+    except Exception as exc:  # noqa: BLE001 - a badge must never fail a probe
+        return {"lowestSupported": None, "lowestDeclared": None, "conceptCount": 0, "supportedHistogram": None,
+                "overclaims": 0, "staleEvidence": 0, "failedEvidence": 0, "testedConcepts": 0, "live": False,
+                "rollupPath": None, "unknownReason": f"{type(exc).__name__}: {exc}"}
 
 
 def _exploration_summary(app_root: Path) -> dict:

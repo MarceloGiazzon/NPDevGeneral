@@ -81,7 +81,27 @@
         "lastRunAt": null,
         "lastRunGreen": null
       },
-      "status": "ok"
+      "status": "ok",
+      "truth": {
+        "lowestSupported": "T2",
+        "lowestDeclared": "T2",
+        "conceptCount": 4,
+        "supportedHistogram": {
+          "T0": 0,
+          "T1": 0,
+          "T2": 4,
+          "T3": 0,
+          "T4": 0,
+          "T5": 0,
+          "T6": 0
+        },
+        "overclaims": 0,
+        "staleEvidence": 0,
+        "failedEvidence": 0,
+        "testedConcepts": 0,
+        "live": false,
+        "rollupPath": null
+      }
     },
     {
       "name": "engine-probe",
@@ -141,7 +161,20 @@
         "lastRunAt": null,
         "lastRunGreen": null
       },
-      "status": "ok"
+      "status": "ok",
+      "truth": {
+        "lowestSupported": null,
+        "lowestDeclared": null,
+        "conceptCount": 0,
+        "supportedHistogram": null,
+        "overclaims": 0,
+        "staleEvidence": 0,
+        "failedEvidence": 0,
+        "testedConcepts": 0,
+        "live": false,
+        "rollupPath": null,
+        "unknownReason": "no box manifest found (app not generated yet?)"
+      }
     },
     {
       "name": "npdev-canary",
@@ -199,7 +232,27 @@
         "lastRunAt": null,
         "lastRunGreen": null
       },
-      "status": "ok"
+      "status": "ok",
+      "truth": {
+        "lowestSupported": "T4",
+        "lowestDeclared": "T2",
+        "conceptCount": 12,
+        "supportedHistogram": {
+          "T0": 0,
+          "T1": 0,
+          "T2": 0,
+          "T3": 0,
+          "T4": 12,
+          "T5": 0,
+          "T6": 0
+        },
+        "overclaims": 0,
+        "staleEvidence": 0,
+        "failedEvidence": 0,
+        "testedConcepts": 12,
+        "live": true,
+        "rollupPath": "D:\\WorkSpace\\NPDev\\Build\\generated-finalapps\\npdev-canary\\_ops\\truth-rollup.json"
+      }
     },
     {
       "name": "npdev-canary",
@@ -257,7 +310,27 @@
         "lastRunAt": null,
         "lastRunGreen": null
       },
-      "status": "ok"
+      "status": "ok",
+      "truth": {
+        "lowestSupported": "T3",
+        "lowestDeclared": "T3",
+        "conceptCount": 12,
+        "supportedHistogram": {
+          "T0": 0,
+          "T1": 0,
+          "T2": 0,
+          "T3": 12,
+          "T4": 0,
+          "T5": 0,
+          "T6": 0
+        },
+        "overclaims": 0,
+        "staleEvidence": 3,
+        "failedEvidence": 1,
+        "testedConcepts": 0,
+        "live": false,
+        "rollupPath": null
+      }
     },
     {
       "name": "wordlab",
@@ -313,7 +386,27 @@
         "lastRunAt": null,
         "lastRunGreen": null
       },
-      "status": "ok"
+      "status": "ok",
+      "truth": {
+        "lowestSupported": "T2",
+        "lowestDeclared": "T1",
+        "conceptCount": 7,
+        "supportedHistogram": {
+          "T0": 0,
+          "T1": 0,
+          "T2": 7,
+          "T3": 0,
+          "T4": 0,
+          "T5": 0,
+          "T6": 0
+        },
+        "overclaims": 2,
+        "staleEvidence": 0,
+        "failedEvidence": 0,
+        "testedConcepts": 0,
+        "live": false,
+        "rollupPath": null
+      }
     }
   ]
 }

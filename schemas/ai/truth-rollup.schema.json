@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/truth-rollup.schema.json",
+  "title": "NPDev Truth Rollup",
+  "description": "TRUTH-1: per-concept truth level (T0..T6) joined with the evidence behind it. Produced by `npdev truth --json` (NPDevCli/npdev_truth.py) and by the running app's GET /api/admin/box/truth (GeneratedBoxViewController). Nothing in it is hand-maintained: declared levels come from the box manifest, evidence from the provenance index and the probe / smoke / journey / browser reports. Display only -- it never blocks creation or a release.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "app", "summary", "concepts", "appEvidence", "note"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "npdev-truth-rollup.v1" },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["namespace", "sampleId", "builtAt", "live", "promotion", "sources"],
+      "properties": {
+        "namespace": { "type": ["string", "null"] },
+        "sampleId": { "type": ["string", "null"] },
+        "builtAt": { "type": ["string", "null"], "description": "When this build was made; evidence observed before it is stale." },
+        "live": { "type": "boolean", "description": "True when the app was serving at the time the rollup was made (T3 evidence)." },
+        "promotion": {
+          "description": "The app-wide promotion stage S0..S8 -- a separate ladder from per-concept T0..T6, carried as evidence only. Null when unknown.",
+          "type": ["object", "null"]
+        },
+        "sources": { "type": "object" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conceptCount", "lowestSupported", "lowestDeclared", "lowestSupportedConcepts", "supportedHistogram", "overclaims", "staleEvidence", "failedEvidence", "knownFailureEvidence", "testedConcepts"],
+      "properties": {
+        "conceptCount": { "type": "integer" },
+        "lowestSupported": { "$ref": "#/$defs/levelOrNull" },
+        "lowestDeclared": { "$ref": "#/$defs/levelOrNull" },
+        "lowestSupportedConcepts": { "type": "array", "items": { "type": "string" } },
+        "supportedHistogram": { "type": "object" },
+        "overclaims": { "type": "integer" },
+        "staleEvidence": { "type": "integer" },
+        "failedEvidence": { "type": "integer" },
+        "knownFailureEvidence": { "type": "integer", "description": "Probes pinned to a known defect: shown, never counted as support and never a cap." },
+        "testedConcepts": { "type": "integer" }
+      }
+    },
+    "concepts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["conceptName", "displayName", "table", "module", "declaredLevel", "supportedLevel", "claim", "evidence"],
+        "properties": {
+          "conceptName": { "type": "string" },
+          "displayName": { "type": "string" },
+          "table": { "type": ["string", "null"] },
+          "module": { "type": ["string", "null"] },
+          "declaredLevel": { "$ref": "#/$defs/levelOrNull" },
+          "supportedLevel": { "$ref": "#/$defs/levelOrNull" },
+          "claim": { "enum": ["ok", "overclaim", "underclaim", "unknown"] },
+          "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } }
+        }
+      }
+    },
+    "appEvidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+    "note": { "type": "string" }
+  },
+  "$defs": {
+    "levelOrNull": { "type": ["string", "null"], "enum": ["T0", "T1", "T2", "T3", "T4", "T5", "T6", null] },
+    "evidence": {
+      "type": "object",
+      "required": ["id", "kind", "level", "status", "summary", "observedAt", "source", "concepts", "detail"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "enum": ["generated", "runtime", "probe", "smoke", "journey", "browser", "browser-suite"] },
+        "level": { "$ref": "#/$defs/levelOrNull" },
+        "status": { "enum": ["observed", "passed", "failed", "known-failure", "stale", "undated"] },
+        "observedStatus": { "enum": ["passed", "failed", "known-failure"] },
+        "summary": { "type": "string" },
+        "observedAt": { "type": ["string", "null"] },
+        "staleReason": { "type": "string" },
+        "source": {
+          "type": "object",
+          "properties": {
+            "path": { "type": ["string", "null"] },
+            "sampleId": { "type": ["string", "null"] }
+          }
+        },
+        "concepts": { "type": "array", "items": { "type": "string" } },
+        "href": { "type": ["string", "null"], "description": "Set by the running app: the super-user-gated URL that returns this evidence record." },
+        "detail": { "type": "object" }
+      }
+    }
+  }
+}

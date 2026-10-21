@@ -1489,9 +1489,10 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.4.3: New Evals tab runs `npdev eval` (7.1) over NPDevSamples/ai-scenarios/*/ -- a table of \
-     every scenario with its last verdict/duration, Run all/Run one/Stop, a run selector, a two-run \
-     comparison, and a row-detail view of that scenario's stage-by-stage evidence."
+    "0.4.4: Each Monitor card shows a TRUTH badge -- the lowest concept truth level (T0-T6) the app's \
+     evidence supports, next to what the model declares, with stale/failed evidence counted -- plus a \
+     link to the rollup file and one to the running app's Box Inspector. Display only; it never \
+     blocks a start, stop or build."
         .to_string()
 }
 
@@ -1499,7 +1500,7 @@ fn manager_version_description() -> String {
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "Evals Tab";
+const CURRENT_VERSION_TITLE: &str = "Truth Badge";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {
