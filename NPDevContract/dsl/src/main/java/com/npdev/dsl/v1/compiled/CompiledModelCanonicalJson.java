@@ -448,6 +448,8 @@ public final class CompiledModelCanonicalJson {
                 // the runtime parses it once, and the round trip is exact by construction.
                 if (prompt.outputSchemaJson() != null) promptNode.put("outputSchemaJson", prompt.outputSchemaJson());
                 if (prompt.maxOutputTokens() != null) promptNode.put("maxOutputTokens", prompt.maxOutputTokens());
+                // Only when set, so every model without a review keeps its canonical JSON (and hash) as-is.
+                if (!"none".equals(prompt.review())) promptNode.put("review", prompt.review());
                 prompts.add(promptNode);
             }
             node.set("prompts", prompts);
@@ -2026,6 +2028,13 @@ public final class CompiledModelCanonicalJson {
         }
         if (task.getRecord() != null) {
             node.put("record", task.getRecord());
+        }
+        if (task.getProposalValue() != null) {
+            ObjectNode proposal = node.putObject("proposal");
+            proposal.put("value", task.getProposalValue());
+            if (task.getProposalCurrent() != null) {
+                proposal.put("current", task.getProposalCurrent());
+            }
         }
         return node;
     }

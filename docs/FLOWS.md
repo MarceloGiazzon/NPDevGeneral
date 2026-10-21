@@ -371,6 +371,22 @@ would never match). In the flow the answer is `$<awaitRef>.<outcomeField>`, `$<a
 `task.assignee.roles ["Director"]`. Limit: the per-execution completion lock is per JVM, so on two app
 nodes a double click could publish twice.
 
+**Review before an AI answer applies (AI7-1).** A task may carry `task.proposal: { value, current? }` —
+flow-state refs to the proposed values (usually an `externalAi.generate` output) and to the record they
+would change. The inbox then shows `proposal.diff` (per key: before, after, changed) and a SHA-256 of the
+proposal; the event payload gains `proposal` (the parked values) and `recordId` (from `task.record`),
+both read from the parked instance state, never from the client, so what a later `callProcedure` applies
+is exactly what the reviewer saw. A prompt declared `review: required` makes the validator demand that
+every flow calling it be followed IMMEDIATELY by such an `awaitEvent` task whose `proposal.value` is the
+call's output, and bars procedures from calling it (they cannot wait). `optional` is recorded but not
+enforced; `none` (default) changes nothing. Audit: the `externalAi.generate` row of a reviewed prompt
+carries `review`, `inputHash` and `answerHash` (never the values); EVERY task completion now writes a
+`humanTask.complete` row (`decision`, `reviewer`, and for a proposal task `proposalHash` — equal to the
+generate row's `answerHash` when the reviewer approved what the vendor produced). Limits: the gate is
+structural (author-time), not a runtime interception of arbitrary flows; the diff compares only the
+proposal's own keys. Worked example: `ReviewedCatalogSuggestionFlow` in `dsl-conformance-max`, probes in
+`behavior-probes/70-review-before-apply.json`.
+
 ### Resuming across a reshaped flow — the REG-238 guard
 
 A restart is only "nothing special" when the flow comes back the *same shape*. A restart is usually a

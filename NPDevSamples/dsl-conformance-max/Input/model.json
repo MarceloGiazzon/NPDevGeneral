@@ -23,6 +23,23 @@
           }
         },
         "maxOutputTokens": 256
+      },
+      {
+        "name": "SuggestCatalogDisplayName",
+        "description": "AI7-1 coverage: review required. The answer never reaches a step that applies it until a human approved it on a task (ReviewedCatalogSuggestionFlow).",
+        "vendor": "gemini",
+        "model": "gemini-3.5-flash",
+        "template": "Suggest a display name and one line of internal notes for the widget '{{sku}}'.",
+        "outputSchema": {
+          "type": "object",
+          "required": [ "displayName", "internalNotes" ],
+          "properties": {
+            "displayName": { "type": "string", "maxLength": 80 },
+            "internalNotes": { "type": "string", "maxLength": 200 }
+          }
+        },
+        "maxOutputTokens": 128,
+        "review": "required"
       }
     ],
     "limits": {
@@ -838,6 +855,12 @@
     },
     {
       "name": "CatalogEntryApproved",
+      "payload": [
+        { "name": "correlationId", "type": "string" }
+      ]
+    },
+    {
+      "name": "CatalogSuggestionReviewed",
       "payload": [
         { "name": "correlationId", "type": "string" }
       ]
@@ -1688,6 +1711,16 @@
       ]
     },
     {
+      "name": "ApplyCatalogSuggestionProcedure",
+      "description": "AI7-1: the apply half of ReviewedCatalogSuggestionFlow. Input is the completed review event: recordId and the proposed values come from the parked flow state (HumanTaskService), never from the client, so approval writes exactly what the reviewer saw.",
+      "steps": [
+        { "name": "apply", "type": "patchConcept", "concept": "WidgetCatalogEntry", "id": "$input.recordId",
+          "set": { "displayName": "$input.proposal.displayName", "internalNotes": "$input.proposal.internalNotes" },
+          "target": "updated" },
+        { "name": "return-updated", "type": "return", "value": "$updated" }
+      ]
+    },
+    {
       "name": "ListActiveWidgetCatalogEntriesProcedure",
       "description": "Move 8 D3 (item G6, docs/MOVE8_CLOSE_TABLE_SPEC.md / Move 6 §B.7): the produce-disposition witness -- returns a bare list, which PanelRuntime's loadDataSource takes directly as the Selection surface's rows (result.state().get(\"return\")), replacing the row source the bound concept's table would otherwise supply.",
       "steps": [
@@ -1742,6 +1775,37 @@
         { "name": "call-health", "type": "capabilityCall", "capability": "selfApi", "operation": "health",
           "args": [], "output": "$health" },
         { "name": "return-health", "type": "return", "value": "$health" }
+      ]
+    },
+    {
+      "name": "ReviewedCatalogSuggestionFlow",
+      "input": { "concept": "WidgetCatalogEntry", "mode": "query" },
+      "steps": [
+        { "name": "ask-ai", "type": "capabilityCall", "capability": "externalAi", "operation": "generate",
+          "args": [ "SuggestCatalogDisplayName", "$input" ], "output": "$suggestion" },
+        { "name": "await-suggestion-review", "type": "awaitEvent", "awaitEvent": "CatalogSuggestionReviewed",
+          "awaitRef": "review", "match": { "correlation": true },
+          "task": {
+            "title": "Review AI suggestion for ${input.sku}",
+            "description": "Approve to write the proposed values to the catalog entry; reject to leave it unchanged.",
+            "assignee": { "roles": [ "ADMIN" ] },
+            "outcomeField": "decision",
+            "outcomes": [
+              { "value": "APPROVED", "label": "Approve" },
+              { "value": "REJECTED", "label": "Reject" }
+            ],
+            "fields": [
+              { "name": "comment", "type": "text", "label": "Comment", "required": false, "maxLength": 500 }
+            ],
+            "record": "$input",
+            "proposal": { "value": "$suggestion", "current": "$input" }
+          } },
+        { "name": "apply-if-approved", "type": "branch", "condition": "$review.decision == \"APPROVED\"",
+          "then": [
+            { "name": "apply-suggestion", "type": "callProcedure", "procedure": "ApplyCatalogSuggestionProcedure",
+              "input": "$review", "output": "$applied" }
+          ] },
+        { "name": "return-review", "type": "return", "value": "$review" }
       ]
     },
     {

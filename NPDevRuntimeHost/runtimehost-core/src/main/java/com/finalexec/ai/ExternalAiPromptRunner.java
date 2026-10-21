@@ -231,8 +231,15 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
                     "The answer to prompt '" + promptName + "' does not match its outputSchema: " + problems,
                     CapabilityErrorKind.CONTRACT, Map.of("prompt", promptName, "problems", problems));
         }
+        Object answerValue = MAPPER.convertValue(answer, Object.class);
+        if (!"none".equals(prompt.review())) {
+            // AI7-1: the fingerprints the reviewer's audit row is later compared against (ProposalHash).
+            usage.put("review", prompt.review());
+            usage.put("inputHash", ProposalHash.ofText(renderedPrompt));
+            usage.put("answerHash", ProposalHash.ofJson(answerValue));
+        }
         audit(context, promptName, prompt, "success", null, usage);
-        return CapabilityResult.success(MAPPER.convertValue(answer, Object.class));
+        return CapabilityResult.success(answerValue);
     }
 
     // ------------------------------------------------------------------------------------------

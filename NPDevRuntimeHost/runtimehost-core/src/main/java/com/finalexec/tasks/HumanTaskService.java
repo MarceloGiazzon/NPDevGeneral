@@ -1,13 +1,16 @@
 package com.finalexec.tasks;
 
+import com.finalexec.ai.ProposalHash;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
 import com.npdev.dsl.v1.compiled.CompiledHumanTask;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.audit.AuditRecord;
 import com.npdev.kernel.events.EventEnvelope;
 import com.npdev.kernel.execution.FlowInstance;
 import com.npdev.kernel.execution.FlowInstanceStatus;
+import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.FlowInstanceStore;
 import com.npdev.kernel.ports.MailTemplateRenderer;
 
@@ -72,12 +75,19 @@ public final class HumanTaskService {
     private final Supplier<CompiledModel> model;
     private final FlowInstanceStore instances;
     private final EventPublisher publisher;
+    private final AuditLogStore auditLogStore;
     private final Map<String, Object> completionLocks = new ConcurrentHashMap<>();
 
     public HumanTaskService(Supplier<CompiledModel> model, FlowInstanceStore instances, EventPublisher publisher) {
+        this(model, instances, publisher, null);
+    }
+
+    public HumanTaskService(Supplier<CompiledModel> model, FlowInstanceStore instances, EventPublisher publisher,
+                            AuditLogStore auditLogStore) {
         this.model = model;
         this.instances = instances;
         this.publisher = publisher;
+        this.auditLogStore = auditLogStore == null ? AuditLogStore.noop() : auditLogStore;
     }
 
     /** GET /api/tasks -- open tasks the caller may complete, oldest first. */
@@ -121,6 +131,9 @@ public final class HumanTaskService {
         view.put("fields", fields);
         view.put("outcomes", outcomes);
         view.put("outcomeField", task.getOutcomeField());
+        if (task.getProposalValue() != null) {
+            view.put("proposal", proposalView(located.instance().state(), task));
+        }
         return view;
     }
 
@@ -143,6 +156,17 @@ public final class HumanTaskService {
                 // The resumed flow runs as its ORIGINAL starter, so record who actually answered.
                 payload.put("completedBy", ctx.actorId());
                 Map<String, Object> state = located.instance().state();
+                // AI7-1: a review task hands the flow the proposed values from the PARKED state -- never from the
+                // client -- so what a flow applies on approval is exactly what the reviewer was shown.
+                Object proposed = null;
+                if (task.getProposalValue() != null) {
+                    proposed = StateRefs.resolve(state, task.getProposalValue());
+                    payload.put(PROPOSAL_KEY, proposed);
+                    if (task.getRecord() != null && StateRefs.resolve(state, task.getRecord()) instanceof Map<?, ?> rec
+                            && rec.get("id") != null) {
+                        payload.put(RECORD_ID_KEY, rec.get("id"));
+                    }
+                }
                 // Satisfy the step's own payload match (e.g. tradeId = $saved.id) so the event resumes THIS instance.
                 if (state.get(AWAIT_STATE_KEY) instanceof Map<?, ?> await
                         && await.get(AWAIT_PAYLOAD_MATCH_REFS) instanceof Map<?, ?> refs) {
@@ -156,6 +180,7 @@ public final class HumanTaskService {
                         : String.valueOf(liveCorrelation);
                 EventEnvelope envelope = publisher.publish(located.decl().step().getAwaitEventName(), payload,
                         correlationId, executionId, ctx);
+                auditCompletion(located, ctx, outcome, task.getProposalValue() == null ? null : proposed);
                 Map<String, Object> result = new LinkedHashMap<>();
                 result.put("outcome", "COMPLETED");
                 result.put("eventId", envelope == null ? null : envelope.eventId());
@@ -169,6 +194,73 @@ public final class HumanTaskService {
     }
 
     // ------------------------------------------------------------------------------ internals
+
+    /** Payload keys a proposal task stamps; the DSL validator reserves the same names (HumanTaskValidation). */
+    static final String PROPOSAL_KEY = "proposal";
+    static final String RECORD_ID_KEY = "recordId";
+
+    /**
+     * AI7-1: who answered which task with what, in the audit trail. Written for EVERY task (completion was
+     * not audited before); a review task also carries the hash of the proposal the reviewer saw, comparable
+     * with the {@code answerHash} the externalAi.generate audit row recorded. An audit outage must not undo
+     * an already-published answer, so a store failure is swallowed.
+     */
+    private void auditCompletion(Located located, ExecutionContext ctx, String decision, Object proposed) {
+        Map<String, String> meta = new LinkedHashMap<>();
+        meta.put("flow", located.instance().flowName());
+        meta.put("step", located.decl().step().getName());
+        meta.put("decision", decision);
+        meta.put("reviewer", String.valueOf(ctx.actorId()));
+        if (located.decl().task().getProposalValue() != null) {
+            meta.put("proposalHash", ProposalHash.ofJson(proposed));
+            if (proposed instanceof Map<?, ?> map) {
+                meta.put("proposalFields", String.join(",", map.keySet().stream().map(String::valueOf).toList()));
+            }
+        }
+        try {
+            auditLogStore.append(AuditRecord.create(ctx.tenantId(), ctx.actorId(), ctx.roles(),
+                    "humanTask.complete", "humanTask", located.instance().executionId(),
+                    "success", null, Map.of(), meta));
+        } catch (RuntimeException ignored) {
+            // see above
+        }
+    }
+
+    /** value, current and a per-key diff for a review task; reads parked state only. */
+    private static Map<String, Object> proposalView(Map<String, Object> state, CompiledHumanTask task) {
+        Object value = StateRefs.resolve(state, task.getProposalValue());
+        Object current = task.getProposalCurrent() == null ? null : StateRefs.resolve(state, task.getProposalCurrent());
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("value", value);
+        view.put("current", current);
+        List<Map<String, Object>> diff = new ArrayList<>();
+        if (value instanceof Map<?, ?> proposed) {
+            for (Map.Entry<?, ?> entry : proposed.entrySet()) {
+                String field = String.valueOf(entry.getKey());
+                Object before = currentField(current, field);
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("field", field);
+                row.put("before", before);
+                row.put("after", entry.getValue());
+                row.put("changed", !Objects.equals(ProposalHash.ofJson(before), ProposalHash.ofJson(entry.getValue())));
+                diff.add(row);
+            }
+        }
+        view.put("diff", diff);
+        view.put("hash", ProposalHash.ofJson(value));
+        return view;
+    }
+
+    /** A record in flow state is either the bare field map or {conceptName, id, data:{...}}. */
+    private static Object currentField(Object current, String field) {
+        if (!(current instanceof Map<?, ?> map)) {
+            return null;
+        }
+        if (map.containsKey(field)) {
+            return map.get(field);
+        }
+        return map.get("data") instanceof Map<?, ?> data ? data.get(field) : null;
+    }
 
     private Located locate(String executionId, ExecutionContext ctx) {
         FlowInstance instance = instances.findByExecutionId(executionId)
@@ -266,6 +358,7 @@ public final class HumanTaskService {
         if (decl.task().getRecord() != null && StateRefs.resolve(state, decl.task().getRecord()) instanceof Map<?, ?> rec) {
             m.put("recordId", rec.get("id"));
         }
+        m.put("review", decl.task().getProposalValue() != null);
         return m;
     }
 

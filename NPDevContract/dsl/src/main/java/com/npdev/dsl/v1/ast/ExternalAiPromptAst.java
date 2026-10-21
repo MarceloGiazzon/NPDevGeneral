@@ -8,7 +8,9 @@ package com.npdev.dsl.v1.ast;
  * file reference sent alongside the text for vision. The answer must validate against
  * {@code outputSchemaJson} (a JSON Schema, kept as canonical JSON text) or the step fails -- a flow
  * never sees unvalidated vendor output. {@code vendor} must be one of {@code externalAi.vendors};
- * {@code model} overrides the vendor profile's default model when set.
+ * {@code model} overrides the vendor profile's default model when set. AI7-1: {@code review}
+ * (required|optional|none, default none) says whether a human must approve the answer before a
+ * flow applies it.
  */
 public record ExternalAiPromptAst(
         String name,
@@ -18,6 +20,20 @@ public record ExternalAiPromptAst(
         String template,
         String image,
         String outputSchemaJson,
-        Integer maxOutputTokens
+        Integer maxOutputTokens,
+        String review
 ) {
+    /** AI7-1: {@code review} defaults to {@code none} -- the prompt's answer reaches the flow unreviewed. */
+    public ExternalAiPromptAst {
+        review = review == null || review.isBlank() ? "none" : review.trim();
+    }
+
+    public ExternalAiPromptAst(String name, String description, String vendor, String model, String template,
+                               String image, String outputSchemaJson, Integer maxOutputTokens) {
+        this(name, description, vendor, model, template, image, outputSchemaJson, maxOutputTokens, null);
+    }
+
+    public boolean reviewRequired() {
+        return "required".equals(review);
+    }
 }

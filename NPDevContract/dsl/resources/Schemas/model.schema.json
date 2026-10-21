@@ -1037,6 +1037,11 @@
               "maxOutputTokens": {
                 "type": "integer",
                 "minimum": 1
+              },
+              "review": {
+                "type": "string",
+                "enum": ["required", "optional", "none"],
+                "description": "AI7-1: whether a human reviews this prompt's answer before anything applies it. 'none' (default) keeps today's behaviour. 'required' makes the validator demand that every flow calling the prompt parks the answer on an awaitEvent step whose task.proposal.value is the call's output, directly after the call (and bars procedures from calling it). 'optional' is recorded and audited but not enforced."
               }
             }
           }
@@ -5912,7 +5917,17 @@
             "additionalProperties": false
           }
         },
-        "record": { "type": "string", "minLength": 1, "description": "Optional flow-state ref to the business record the task is about (must carry an id); the inbox links to it." }
+        "record": { "type": "string", "minLength": 1, "description": "Optional flow-state ref to the business record the task is about (must carry an id); the inbox links to it." },
+        "proposal": {
+          "type": "object",
+          "required": ["value"],
+          "additionalProperties": false,
+          "description": "AI7-1: makes this task a REVIEW of a proposed change. The inbox shows value (usually an externalAi.generate output) against current as a field-by-field diff, and the completed event carries the proposed values (payload key 'proposal') plus the record id (payload key 'recordId') read from the parked flow state, never from the client.",
+          "properties": {
+            "value": { "type": "string", "minLength": 1, "description": "Flow-state ref to the proposed values (a map), e.g. $suggestion." },
+            "current": { "type": "string", "minLength": 1, "description": "Flow-state ref to the record the proposal would change; only the keys present in value are compared." }
+          }
+        }
       },
       "additionalProperties": false
     },

@@ -28,6 +28,10 @@ final class HumanTaskValidation {
     /** Payload key the runtime always stamps with the answering user. */
     static final String COMPLETED_BY = "completedBy";
 
+    /** AI7-1: payload keys the runtime stamps from parked flow state when the task carries a proposal. */
+    static final String PROPOSAL = "proposal";
+    static final String RECORD_ID = "recordId";
+
     private HumanTaskValidation() {
     }
 
@@ -126,6 +130,24 @@ final class HumanTaskValidation {
                 errors.add(here + "task.fields name '" + name + "' clashes with a reserved payload key ("
                         + task.getOutcomeField() + ", " + COMPLETED_BY
                         + ") -- suggestedFix: rename the task field");
+            }
+            if (task.getProposalValue() != null && (PROPOSAL.equals(name) || RECORD_ID.equals(name))) {
+                errors.add(here + "task.fields name '" + name + "' clashes with a payload key a task.proposal stamps ("
+                        + PROPOSAL + ", " + RECORD_ID + ") -- suggestedFix: rename the task field");
+            }
+        }
+        if (task.getProposalValue() != null) {
+            if (!task.getProposalValue().trim().startsWith("$")) {
+                errors.add(here + "task.proposal.value '" + task.getProposalValue() + "' is not a flow-state ref"
+                        + " -- suggestedFix: point it at the step output holding the proposed values, e.g. '$suggestion'");
+            }
+            if (task.getProposalCurrent() != null && !task.getProposalCurrent().trim().startsWith("$")) {
+                errors.add(here + "task.proposal.current '" + task.getProposalCurrent() + "' is not a flow-state ref"
+                        + " -- suggestedFix: point it at the record the proposal changes, e.g. '$input'");
+            }
+            if (PROPOSAL.equals(task.getOutcomeField()) || RECORD_ID.equals(task.getOutcomeField())) {
+                errors.add(here + "task.outcomeField '" + task.getOutcomeField() + "' clashes with a payload key a"
+                        + " task.proposal stamps (" + PROPOSAL + ", " + RECORD_ID + ") -- suggestedFix: rename outcomeField");
             }
         }
     }

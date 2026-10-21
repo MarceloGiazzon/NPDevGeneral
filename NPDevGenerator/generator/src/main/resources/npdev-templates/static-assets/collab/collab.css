@@ -28,3 +28,10 @@
 .npdev-shell-bell-body { opacity: .85; margin-top: 2px; }
 .npdev-shell-bell-time { opacity: .6; font-size: 11px; margin-top: 2px; }
 .npdev-shell-bell-empty { padding: 12px 8px; font-size: 13px; color: var(--np-text-muted, #6b7280); }
+.npdev-task-proposal { margin: 8px 0; }
+.npdev-task-proposal-note { margin: 0 0 6px; font-size: 13px; color: var(--np-text-muted, #6b7280); }
+.npdev-task-diff { border-collapse: collapse; width: 100%; font-size: 13px; }
+.npdev-task-diff th, .npdev-task-diff td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--np-border, #eef1f5); vertical-align: top; word-break: break-word; }
+.npdev-task-diff-same { opacity: .6; }
+.npdev-task-diff-changed .npdev-task-diff-before { text-decoration: line-through; opacity: .75; }
+.npdev-task-diff-changed .npdev-task-diff-after { font-weight: 600; }
