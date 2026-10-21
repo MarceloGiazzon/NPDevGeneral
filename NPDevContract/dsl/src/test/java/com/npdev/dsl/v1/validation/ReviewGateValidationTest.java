@@ -192,4 +192,22 @@ class ReviewGateValidationTest {
         List<String> errors = errors(json);
         assertTrue(errors.stream().anyMatch(e -> e.contains("has no output to review")), errors.toString());
     }
+
+    @Test
+    void theOlderConstructorsKeepWorkingAndDefaultToNoReviewAndNoProposal() {
+        var prompt = new com.npdev.dsl.v1.ast.ExternalAiPromptAst("P", null, "gemini", null, "t", null, "{}", null);
+        assertEquals("none", prompt.review());
+        assertFalse(prompt.reviewRequired());
+        var compiledPrompt = new com.npdev.dsl.v1.compiled.CompiledExternalAiPrompt("P", null, "gemini", null, "t", null, "{}", null);
+        assertEquals("none", compiledPrompt.review());
+        assertEquals("none", new com.npdev.dsl.v1.ast.ExternalAiPromptAst("P", null, "g", null, "t", null, "{}", null, "  ").review());
+        var task = new com.npdev.dsl.v1.ast.HumanTaskAst("T", null, null, List.of("ADMIN"), null,
+                List.of(new com.npdev.dsl.v1.ast.HumanTaskAst.Outcome("OK", null)), List.of(), null);
+        assertEquals(null, task.getProposalValue());
+        assertEquals(null, task.getProposalCurrent());
+        var compiledTask = new com.npdev.dsl.v1.compiled.CompiledHumanTask("T", null, null, List.of("ADMIN"), null,
+                List.of(new com.npdev.dsl.v1.compiled.CompiledHumanTask.Outcome("OK", null)), List.of(), null);
+        assertEquals(null, compiledTask.getProposalValue());
+        assertEquals(null, compiledTask.getProposalCurrent());
+    }
 }
