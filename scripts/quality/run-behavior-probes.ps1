@@ -112,6 +112,8 @@ function Add-ProbeIdentities {
         ALICE       = "dev:rep1probe-alice:USER"
         BOB         = "dev:rep1probe-bob:USER"
         OTHERTENANT = "rep1probe-other:rep1probe-carol:USER"
+        WAREHOUSEMANAGER = "dev:rep1probe-wm:WarehouseManager"
+        SUPPLIERVIEWER   = "dev:rep1probe-sv:SupplierViewer"
     }
     $added = @()
     foreach ($name in $identities.Keys) {

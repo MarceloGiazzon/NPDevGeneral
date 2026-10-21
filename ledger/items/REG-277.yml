@@ -1,0 +1,17 @@
+id: REG-277
+title: >-
+  aggregateCollection.orderBy is accepted and read by nothing: aggregate children come back in id order
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-10-21
+closed: null
+source: >-
+  ENF-1 behaviour probe agg-collection-orderby-sorts-children (NPDevSamples/dsl-conformance-max/behavior-probes/85-lifecycle-flows-roles.json), knownFailure REG-277.
+surface: NPDevKernel/adapters/runtime-support aggregate runtime (AggregateRuntime commit / load) and the compiled aggregate collection metadata
+detail: |
+  WidgetOrderAggregate.lines declares orderBy "sku". Committing four lines whose ids sort zz, mm, bb, aa returns (and reads back) the lines in exactly that id order, not aa, bb, mm, zz.
+  No Java outside tests calls getOrderBy for an aggregate collection. Side observation: re-committing an existing aggregate re-runs the root's defaultExpression nextNumber('orderNumber'), so WidgetOrder.orderNumber
+  changes on every commit (ORD-2026-0016 -> ORD-2026-0017 for the same order).
+resolution: >-
+  Sort each collection by its declared orderBy when the tree is loaded and returned; stop re-evaluating default expressions for fields of an existing root (second observation, may deserve its own item); then remove knownFailure from the probe.

@@ -1,0 +1,17 @@
+id: REG-276
+title: >-
+  A model seed's explicit id is ignored: the row is stored under a generated UUID
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-10-21
+closed: null
+source: >-
+  ENF-1 behaviour probe seed-explicit-id-is-used (NPDevSamples/dsl-conformance-max/behavior-probes/85-lifecycle-flows-roles.json), knownFailure REG-276. The companion probe seed-rows-applied-with-alias-count-and-repeatover passes.
+surface: NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/seed/ModelSeedRunner.java (and SeedDataService)
+detail: |
+  The schema documents seed.id as "Explicit id for this record; a generated UUID is used at seed-run time when absent". The first WidgetSeedDemo seed declares id 5eed0000-0000-4000-8000-000000000001 and alias seedParent;
+  after first boot GET /api/widget_seed_demos/5eed0000-0000-4000-8000-000000000001 is 404 and the seed-parent row exists under a different UUID. The alias still resolves ($ref:seedParent -> the generated id), so
+  only a caller that relies on the declared id (a stable link, a test fixture, an external reference) is broken.
+resolution: >-
+  Use the declared id when persisting a single seed record (and keep the alias bound to it), then remove knownFailure from the probe.

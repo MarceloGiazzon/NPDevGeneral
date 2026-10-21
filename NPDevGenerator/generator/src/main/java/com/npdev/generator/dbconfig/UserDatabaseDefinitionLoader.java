@@ -401,6 +401,13 @@ public final class UserDatabaseDefinitionLoader {
             // flush on every commit, trading write throughput for the durability this engine exists
             // to provide. Postgres is unaffected -- COMMIT is synchronous to WAL there, no analogous
             // buffering parameter exists or is needed.
+            // REG-272: WRITE_DELAY=0 makes MVStore write one chunk per commit and switches off its
+            // background thread (the only thing that compacts), while the default RETENTION_TIME=45000
+            // keeps every superseded chunk for 45 s. Measured (H2 2.3.232, 20k rows + 20k event rows,
+            // commit each): 662 MB (~33 KB/row) vs 5.7 MB after SHUTDOWN COMPACT -- the 12.5 GB dom-sales
+            // file. RETENTION_TIME=0 lets freed chunks be reused at once: 210 MB for the same load, and
+            // 8 kill -9 cycles under WRITE_DELAY=0 lost no acknowledged commit and left the index
+            // consistent. Durability is REG-57's WRITE_DELAY=0; this only changes space reuse.
             // PORT-1: "./" + an app-relative root, so Spring resolves it at boot against the app's
             // own working directory instead of against a drive letter from the machine that
             // generated it. H2 resolves a relative file: path against the JVM's working directory.
@@ -418,13 +425,13 @@ public final class UserDatabaseDefinitionLoader {
             // AUTO_SERVER=TRUE is active that concern is AUTO_SERVER's to own, so this reverts to
             // H2's default (DB_CLOSE_ON_EXIT=TRUE).
             case H2_LOCAL -> "jdbc:h2:file:./" + identity.resolvedDataRoot() + "/" + identity.resolvedDatabaseName()
-                    + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;WRITE_DELAY=0;AUTO_SERVER=TRUE";
+                    + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;WRITE_DELAY=0;RETENTION_TIME=0;AUTO_SERVER=TRUE";
             // H2Server resolves the path SERVER-side, so the relative path is relative to the H2
             // process's baseDir -- which Create-Environment sets to the FinalApp directory, the same
             // anchor the client uses. Both halves therefore name <app>/data/<db>, from either end.
             case H2_SERVER -> "jdbc:h2:tcp://" + identity.host() + ":" + identity.hostPort()
                     + "/./" + identity.resolvedDataRoot() + "/" + identity.resolvedDatabaseName()
-                    + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0";
+                    + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0;RETENTION_TIME=0";
             // characterEncoding=UTF-8 and connectionCollation=utf8mb4 are NOT cosmetic. MySQL's
             // legacy "utf8" is a three-byte encoding that cannot represent anything outside the
             // BMP, so on a default connection an emoji or some CJK text is truncated or replaced

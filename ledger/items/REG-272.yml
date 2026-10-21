@@ -3,7 +3,7 @@ title: >-
   The dev H2 database file grew to 12.5 GB for about 400k small rows
 type: GAP
 severity: LOW
-status: OPEN
+status: PARTIAL
 opened: 2026-10-21
 closed: null
 source: >-
@@ -16,3 +16,9 @@ detail: |
 resolution: >-
   Reproduce with a fresh seed of 100k rows, measure file size before and after a SHUTDOWN COMPACT, and attribute the bytes by table; fix the cause or record
   the expected size in the load-proof baseline.
+note: >-
+  Cause established 2026-10-21 (H2 2.3.232, 20k rows + 20k event rows, commit each): WRITE_DELAY=0 turns off the MVStore background thread
+  (the only compactor) and writes one chunk per commit, while default RETENTION_TIME=45000 keeps every superseded chunk: 662 MB (~33 KB/row)
+  vs 5.7 MB after SHUTDOWN COMPACT. Mitigation: RETENTION_TIME=0 on H2_LOCAL/H2_SERVER URLs (UserDatabaseDefinitionLoader + npdev_cli twin):
+  210 MB, 8 kill -9 cycles lost no acknowledged commit. Still ~10 KB/row vs ~0.3 KB compacted; existing apps need regeneration.
+  Stays PARTIAL until a periodic compact or a recorded size baseline lands.

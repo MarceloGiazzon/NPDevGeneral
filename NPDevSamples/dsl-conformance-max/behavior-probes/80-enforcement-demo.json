@@ -1,0 +1,761 @@
+{
+  "probes": [
+    {
+      "id": "ed-enum-value-membership-enforced",
+      "keywords": [
+        "enumOption.value",
+        "field.values",
+        "field.enumValues"
+      ],
+      "description": "An enum field whose options are enumOption objects (state) and one declared through the `values` alias with plain strings (tier) both refuse a value outside the declared set with 422 schema_validation naming the field, and accept every declared value (the control writes the deprecated option too, so deprecation is not a write block).",
+      "steps": [
+        {
+          "name": "undeclared state",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Bogus"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.invariant": "schema_validation",
+              "$.path": "state",
+              "$.message": {
+                "matches": "allowed: \\[Draft, Live, Retired\\]"
+              }
+            }
+          }
+        },
+        {
+          "name": "undeclared tier (values alias)",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "tier": "Platinum"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.invariant": "schema_validation",
+              "$.path": "tier",
+              "$.message": {
+                "matches": "allowed: \\[Bronze, Silver, Gold\\]"
+              }
+            }
+          }
+        },
+        {
+          "name": "declared values accepted",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "tier": "Gold"
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.state": "Live",
+              "$.tier": "Gold"
+            }
+          },
+          "save": {
+            "edId": "$.id"
+          }
+        },
+        {
+          "name": "deprecated option still accepted",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Retired"
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.state": "Retired"
+            }
+          },
+          "save": {
+            "edId2": "$.id"
+          }
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_enforcement_demos/${edId}",
+          "always": true
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_enforcement_demos/${edId2}",
+          "always": true
+        }
+      ]
+    },
+    {
+      "id": "ed-enum-option-metadata-served",
+      "keywords": [
+        "enumOption.label",
+        "enumOption.order",
+        "enumOption.group",
+        "enumOption.default",
+        "enumOption.deprecated",
+        "enumOption.description",
+        "enumOption.icon",
+        "enumOption.iconHint",
+        "enumOption.badge",
+        "enumOption.badgeHint"
+      ],
+      "description": "Each enumOption property reaches the runtime metadata the browser shell is built from: GET /api/admin/runtime/metadata/enums lists every option of WidgetEnforcementDemo.state with its label, order, group, default and deprecated flags and description; icon and badge (Draft, Live) and iconHint and badgeHint (Retired) surface as the catalog's iconHint/badgeHint. Presentation-only, so the check is that the declared value is served exactly, per option.",
+      "steps": [
+        {
+          "name": "enum catalog Draft",
+          "method": "GET",
+          "path": "/api/admin/runtime/metadata/enums",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Draft].label": "Draft",
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Draft].order": 10,
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Draft].group": "Open",
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Draft].default": true,
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Draft].deprecated": false,
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Draft].description": "Not yet published",
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Draft].iconHint": "edit",
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Draft].badgeHint": "info"
+            }
+          }
+        },
+        {
+          "name": "enum catalog Live",
+          "method": "GET",
+          "path": "/api/admin/runtime/metadata/enums",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Live].label": "Live",
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Live].order": 20,
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Live].group": "Open",
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Live].default": false,
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Live].deprecated": false,
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Live].description": "Published",
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Live].iconHint": "check",
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Live].badgeHint": "success"
+            }
+          }
+        },
+        {
+          "name": "enum catalog Retired",
+          "method": "GET",
+          "path": "/api/admin/runtime/metadata/enums",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Retired].order": 30,
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Retired].group": "Closed",
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Retired].default": false,
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Retired].deprecated": true,
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Retired].description": "No longer used",
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Retired].iconHint": "archive",
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Retired].badgeHint": "muted"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "ed-field-ref-alias-enforces-reference-target",
+      "keywords": [
+        "field.ref"
+      ],
+      "description": "A reference field declared with the `ref` alias (catalogRef -> WidgetCatalogEntry) is enforced like `reference`: an id that names no row is refused with 422 bond_target_not_found, a real row id is accepted.",
+      "steps": [
+        {
+          "name": "catalog row",
+          "method": "POST",
+          "path": "/api/widget_catalog_entries",
+          "body": {
+            "sku": "WID-${rand}",
+            "displayName": "ed",
+            "discontinued": false,
+            "unitPrice": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "entryId": "$.id"
+          }
+        },
+        {
+          "name": "dangling",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "catalogRef": "${uuid}"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.code": "bond_target_not_found",
+              "$.path": "catalogRef"
+            }
+          }
+        },
+        {
+          "name": "real target",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "catalogRef": "${entryId}"
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.catalogRef": "${entryId}"
+            }
+          },
+          "save": {
+            "edId": "$.id"
+          }
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_enforcement_demos/${edId}",
+          "always": true
+        },
+        {
+          "name": "cleanup entry",
+          "method": "DELETE",
+          "path": "/api/widget_catalog_entries/${entryId}",
+          "always": true
+        }
+      ]
+    },
+    {
+      "id": "ed-invariant-forms-unique-rule-expression",
+      "keywords": [
+        "invariant.type",
+        "invariant.fields",
+        "invariant.rule",
+        "invariant.expression"
+      ],
+      "description": "The three invariant authoring forms are enforced: type=unique with fields (BadgeCodeUnique -> 409 on a duplicate badgeCode), a bare `rule` (CodeNotReserved: code != 'RESERVED' -> 422) and type=expression with `expression` (CapacityWithinCap -> 422 above 100). Each control with a legal value is accepted, so the refusal is caused by the invariant alone.",
+      "steps": [
+        {
+          "name": "first badge",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "badgeCode": "B-${rand}"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "edId": "$.id",
+            "badge": "$.badgeCode"
+          }
+        },
+        {
+          "name": "duplicate badge",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "badgeCode": "${badge}"
+          },
+          "expect": {
+            "status": 409,
+            "json": {
+              "$.invariant": "BadgeCodeUnique",
+              "$.path": "badgeCode"
+            }
+          }
+        },
+        {
+          "name": "rule form",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "RESERVED",
+            "state": "Live"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.invariant": "CodeNotReserved",
+              "$.path": "code"
+            }
+          }
+        },
+        {
+          "name": "expression form over cap",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "capacity": 101
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.invariant": "CapacityWithinCap",
+              "$.path": "capacity"
+            }
+          }
+        },
+        {
+          "name": "expression form at cap",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "capacity": 100
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.capacity": 100
+            }
+          },
+          "save": {
+            "edId2": "$.id"
+          }
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_enforcement_demos/${edId}",
+          "always": true
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_enforcement_demos/${edId2}",
+          "always": true
+        }
+      ]
+    },
+    {
+      "id": "ed-invariant-override-replaces-inherited-rule",
+      "keywords": [
+        "invariant.specializes",
+        "invariant.override"
+      ],
+      "description": "PromotedWidgetCatalogEntry extends WidgetCatalogEntry and overrides the inherited invariant CatalogSkuRequired with an invariant of the same name (specializes + override=true) whose expression additionally forbids sku WID-BANNED. The same sku is accepted by the parent concept and refused by the child under that name, with the child's replacement expression (naming WID-BANNED) in the message rather than the parent's.",
+      "steps": [
+        {
+          "name": "parent accepts",
+          "method": "POST",
+          "path": "/api/widget_catalog_entries",
+          "body": {
+            "sku": "WID-BANNED",
+            "displayName": "ed",
+            "discontinued": false,
+            "unitPrice": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "parentId": "$.id"
+          }
+        },
+        {
+          "name": "child refuses under its own name",
+          "method": "POST",
+          "path": "/api/promoted_widget_catalog_entries",
+          "body": {
+            "sku": "WID-BANNED",
+            "displayName": "ed",
+            "discontinued": false,
+            "unitPrice": 1,
+            "promotionLabel": "p"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.invariant": "CatalogSkuRequired",
+              "$.path": "sku",
+              "$.message": {
+                "matches": "WID-BANNED"
+              }
+            }
+          }
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_catalog_entries/${parentId}",
+          "always": true
+        }
+      ]
+    },
+    {
+      "id": "ed-field-domaintype-metadata-served",
+      "keywords": [
+        "field.domainType",
+        "domainType.name",
+        "domainType.format",
+        "domainType.examples"
+      ],
+      "description": "A field that names a domain type (WidgetEnforcementDemo.code -> ShortCode) is served with that domain type's format hint and examples in the fields metadata catalog, so a client can build the same input rule the type declares.",
+      "steps": [
+        {
+          "name": "fields catalog",
+          "method": "GET",
+          "path": "/api/admin/runtime/metadata/fields",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=code].domainType": "ShortCode",
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=code].formatHint": "short-code",
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=code].examples": {
+                "contains": "AB-12"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "ed-domaintype-validation-maxlength-enforced",
+      "keywords": [
+        "domainType.validation",
+        "domainType.baseType"
+      ],
+      "description": "The validation block of domain type ShortCode (maxLength 16) is applied to every field that names the type: a 17-character code is refused 422 at path code ('exceeds maxLength 16') and a 16-character one is accepted. The field itself declares no maxLength, so the limit can only come from the domain type. (minLength and regex of the same block are NOT enforced -- see ed-domaintype-normalization-and-validation-enforced.)",
+      "steps": [
+        {
+          "name": "17 characters",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ED-12345678901234",
+            "state": "Live"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.path": "code",
+              "$.message": {
+                "matches": "exceeds maxLength 16"
+              }
+            }
+          }
+        },
+        {
+          "name": "16 characters",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ED-1234567890123",
+            "state": "Live"
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.code": "ED-1234567890123"
+            }
+          },
+          "save": {
+            "edId": "$.id"
+          }
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_enforcement_demos/${edId}",
+          "always": true
+        }
+      ]
+    },
+    {
+      "id": "ed-domaintype-normalization-and-validation-enforced",
+      "knownFailure": "REG-274",
+      "keywords": [
+        "domainType.normalization"
+      ],
+      "description": "DEFECT: domain type ShortCode declares normalization [trim, uppercase] and validation {minLength 3, maxLength 16, regex ^[A-Z0-9-]+$}. Expected: ' ab-12 ' is stored as 'AB-12', and 'a!' (fails regex and minLength) is refused with 422. Actual: both are stored verbatim (201, code ' ab-12 ' / 'a!'): normalization, minLength and regex are accepted and ignored; only the block's maxLength is enforced (separate passing probe).",
+      "steps": [
+        {
+          "name": "normalised on write",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": " ab-12 ",
+            "state": "Live"
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.code": "AB-12"
+            }
+          },
+          "save": {
+            "edId": "$.id"
+          }
+        },
+        {
+          "name": "regex violation refused",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "a!",
+            "state": "Live"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.path": "code"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_enforcement_demos/${edId}",
+          "always": true
+        }
+      ]
+    },
+    {
+      "id": "ed-field-minlength-enforced",
+      "knownFailure": "REG-273",
+      "keywords": [
+        "field.minLength"
+      ],
+      "description": "DEFECT: WidgetEnforcementDemo.shortName declares minLength 3 (maxLength 12). Expected: 'ab' refused 422 at path shortName and 'abc' accepted. Actual: 'ab' is stored (201) -- only maxLength is enforced (REG-254), minLength is accepted and ignored.",
+      "steps": [
+        {
+          "name": "too short refused",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "shortName": "ab"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.path": "shortName"
+            }
+          }
+        },
+        {
+          "name": "long enough accepted",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "shortName": "abc"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "edId": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_enforcement_demos/${edId}",
+          "always": true
+        }
+      ]
+    },
+    {
+      "id": "ed-array-limits-and-identity-enforced",
+      "knownFailure": "REG-273",
+      "keywords": [
+        "field.minItems",
+        "field.maxItems",
+        "field.uniqueItems",
+        "field.itemIdentityField",
+        "field.duplicationPolicy",
+        "field.items"
+      ],
+      "description": "DEFECT: tags declares minItems 1, maxItems 3, uniqueItems true; members declares itemIdentityField memberCode with duplicationPolicy deny. Expected: [] (below min), four tags (above max), ['red','red'] (duplicate) and two members sharing a memberCode are each refused 422. Actual: all four are stored (201); the array schema validator only checks item type/enum membership.",
+      "steps": [
+        {
+          "name": "below minItems",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "tags": []
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.path": "tags"
+            }
+          }
+        },
+        {
+          "name": "above maxItems",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "tags": [
+              "red",
+              "green",
+              "blue",
+              "gold"
+            ]
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.path": "tags"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "duplicate tag",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "tags": [
+              "red",
+              "red"
+            ]
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.path": "tags"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "duplicate member identity",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "members": [
+              {
+                "memberCode": "m1"
+              },
+              {
+                "memberCode": "m1"
+              }
+            ]
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.path": "members"
+            }
+          },
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "ed-object-property-schema-enforced",
+      "knownFailure": "REG-273",
+      "keywords": [
+        "field.properties"
+      ],
+      "description": "DEFECT: profile declares properties nickname {maxLength 5} and level {integer, min 1, max 9}. Expected: nickname 'toolongname', level 12 and level 'abc' are refused 422. Actual: all three are stored (201) -- the nested property schema is only checked for required keys and enum membership, not for the scalar constraints or types it declares.",
+      "steps": [
+        {
+          "name": "nickname too long",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "profile": {
+              "nickname": "toolongname"
+            }
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.path": {
+                "matches": "profile"
+              }
+            }
+          }
+        },
+        {
+          "name": "level above max",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "profile": {
+              "level": 12
+            }
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.path": {
+                "matches": "profile"
+              }
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "level wrong type",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "profile": {
+              "level": "abc"
+            }
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.path": {
+                "matches": "profile"
+              }
+            }
+          },
+          "stopOnFail": false
+        }
+      ]
+    }
+  ]
+}

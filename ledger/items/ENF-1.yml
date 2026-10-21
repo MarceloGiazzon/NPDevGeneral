@@ -22,3 +22,8 @@ detail: |
 resolution: >-
   Open until the allowlist is empty for the high-risk families (flow, query, invariant, lifecycle, role,
   field). Each session shrinks the allowlist and lowers frozenCount in the same commit.
+note: >-
+  2026-10-21: allowlist 130 -> 57 (frozenCount 57); probes 82 -> 111 (110 green, 1 expected live1 skip, 7 knownFailure). New defects filed:
+  REG-273 (minLength/array constraints/nested object not enforced), REG-274 (domain-type normalization/minLength/regex ignored),
+  REG-275 (lifecycle guard/requiredPayload/requires not enforced on REST), REG-276 (seed explicit id ignored), REG-277 (aggregateCollection.orderBy unread).
+  Remaining 57 are identity/metadata/presentation keys plus items needing a DataSource or a fixture no model declares.

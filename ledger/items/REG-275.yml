@@ -1,0 +1,20 @@
+id: REG-275
+title: >-
+  Lifecycle transition guard, requiredPayload and requires are accepted but never enforced on the REST write path; a terminal state does not block an outgoing transition
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-21
+closed: null
+source: >-
+  ENF-1 behaviour probe lc-transition-guard-and-required-payload-enforced (NPDevSamples/dsl-conformance-max/behavior-probes/85-lifecycle-flows-roles.json), knownFailure REG-275.
+surface: ConceptGateway lifecycle check (CONCEPT_LIFECYCLE_TRANSITION_INVALID) versus NPDevKernel/adapters/runtime-support/.../CrudLifecycleSupport.validateLifecycleTransitions
+detail: |
+  WidgetReviewDemo (dsl-conformance-max) declares Draft -> Submitted with requiredPayload [reviewer] and Submitted -> Approved with requires [approvedNote] and guard reviewMode == 'manual'.
+  PUT /api/widget_review_demos/{id} accepts the first move without a reviewer, the second with reviewMode 'auto', and the second without an approvedNote (all 200). Only the from -> to edge is checked,
+  and only by the gateway. The fully-featured check (status_transition_requires_field / status_transition_guard_failed) lives in CrudLifecycleSupport and is not on this path.
+  Side observations from the same fixture: a state marked terminal (Rejected) still accepts the declared Rejected -> Draft transition (the model validator allows it too); and the lifecycle event published
+  on a transition carries only entityId and status, not the payload fields the event declares (id, reviewer).
+resolution: >-
+  Run guard / requiredPayload evaluation in the gateway's lifecycle check (or route it through CrudLifecycleSupport), decide and enforce what terminal means (reject outgoing transitions at validation time, or
+  document it as a board-column marker only), then remove knownFailure from the probe and the lifecycleState.terminal allowlist note.

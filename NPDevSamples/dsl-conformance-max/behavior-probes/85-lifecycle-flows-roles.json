@@ -1,0 +1,1430 @@
+{
+  "probes": [
+    {
+      "id": "lc-transition-event-is-published",
+      "keywords": [
+        "lifecycleTransition.event",
+        "lifecycleState.initial"
+      ],
+      "description": "The Draft -> Submitted transition of WidgetReviewDemo declares event WidgetReviewSubmitted: after the PUT that makes the move, the event store holds a WidgetReviewSubmitted whose payload names the record and the new status; a transition that declares no event (Submitted -> Rejected) publishes nothing named after it.",
+      "steps": [
+        {
+          "name": "create review rid",
+          "method": "POST",
+          "path": "/api/widget_review_demos",
+          "body": {
+            "title": "ev",
+            "status": "Draft"
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.status": "Draft"
+            }
+          },
+          "save": {
+            "rid": "$.id"
+          }
+        },
+        {
+          "name": "submit",
+          "method": "PUT",
+          "path": "/api/widget_review_demos/${rid}",
+          "body": {
+            "title": "t",
+            "status": "Submitted",
+            "reviewer": "bob"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "Submitted"
+            }
+          }
+        },
+        {
+          "name": "event published for this record",
+          "method": "GET",
+          "path": "/api/events/by-name/WidgetReviewSubmitted?limit=5",
+          "expect": {
+            "status": 200,
+            "text": [
+              "\"entityId\":\"${rid}\"",
+              "\"status\":\"Submitted\""
+            ]
+          }
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_review_demos/${rid}",
+          "always": true
+        }
+      ]
+    },
+    {
+      "id": "lc-transition-guard-and-required-payload-enforced",
+      "knownFailure": "REG-275",
+      "keywords": [
+        "lifecycleTransition.guard",
+        "lifecycleTransition.requiredPayload",
+        "lifecycleTransition.requires"
+      ],
+      "description": "DEFECT: WidgetReviewDemo declares Draft -> Submitted with requiredPayload [reviewer], and Submitted -> Approved with requires [approvedNote] and guard reviewMode == 'manual'. Expected: the first move without a reviewer, the second with reviewMode 'auto', and the second without an approvedNote are each refused 422 (CrudLifecycleSupport names these status_transition_requires_field / status_transition_guard_failed). Actual: the REST PUT (ConceptGateway) only checks that the from->to edge exists, so all three are accepted with 200 and the guard and payload requirements are decoration.",
+      "steps": [
+        {
+          "name": "create a",
+          "method": "POST",
+          "path": "/api/widget_review_demos",
+          "body": {
+            "title": "rp",
+            "status": "Draft"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "a": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "submit without reviewer refused",
+          "method": "PUT",
+          "path": "/api/widget_review_demos/${a}",
+          "body": {
+            "title": "t",
+            "status": "Submitted"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.violations[0].path": "reviewer"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "create b",
+          "method": "POST",
+          "path": "/api/widget_review_demos",
+          "body": {
+            "title": "gd",
+            "status": "Draft"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "b": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "submit b with reviewer",
+          "method": "PUT",
+          "path": "/api/widget_review_demos/${b}",
+          "body": {
+            "title": "t",
+            "status": "Submitted",
+            "reviewer": "bob"
+          },
+          "expect": {
+            "status": 200
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "approve with failing guard refused",
+          "method": "PUT",
+          "path": "/api/widget_review_demos/${b}",
+          "body": {
+            "title": "t",
+            "status": "Approved",
+            "reviewer": "bob",
+            "reviewMode": "auto",
+            "approvedNote": "ok"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.violations[0].invariant": "status_transition_guard_failed"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "create c",
+          "method": "POST",
+          "path": "/api/widget_review_demos",
+          "body": {
+            "title": "rq",
+            "status": "Draft"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "c": "$.id"
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "submit c",
+          "method": "PUT",
+          "path": "/api/widget_review_demos/${c}",
+          "body": {
+            "title": "t",
+            "status": "Submitted",
+            "reviewer": "bob"
+          },
+          "expect": {
+            "status": 200
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "approve without approvedNote refused",
+          "method": "PUT",
+          "path": "/api/widget_review_demos/${c}",
+          "body": {
+            "title": "t",
+            "status": "Approved",
+            "reviewer": "bob",
+            "reviewMode": "manual"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.violations[0].path": "approvedNote"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_review_demos/${a}",
+          "always": true
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_review_demos/${b}",
+          "always": true
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_review_demos/${c}",
+          "always": true
+        }
+      ]
+    },
+    {
+      "id": "seed-rows-applied-with-alias-count-and-repeatover",
+      "keywords": [
+        "seed.concept",
+        "seed.data",
+        "seed.alias",
+        "seed.count",
+        "seed.repeatOver"
+      ],
+      "description": "The model's top-level seeds[] were applied once at first boot through the normal write path: the aliased parent row exists, the row whose data says \"$ref:seedParent\" carries that parent's generated id as parentId, count: 3 produced exactly three seed-bulk rows and repeatOver {i:[1,2], j:[1,2]} produced the 2x2 Cartesian product of four seed-grid rows, each with its declared data.",
+      "steps": [
+        {
+          "name": "seeded rows",
+          "method": "GET",
+          "path": "/api/widget_seed_demos?size=200",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$[?label=seed-parent].qty": 1,
+              "$[??label=seed-child]": {
+                "len": 1
+              },
+              "$[??label=seed-bulk]": {
+                "len": 3
+              },
+              "$[??label=seed-grid]": {
+                "len": 4
+              },
+              "$[?label=seed-bulk].qty": 5,
+              "$[?label=seed-grid].qty": 7
+            }
+          },
+          "save": {
+            "seedParentId": "$[?label=seed-parent].id"
+          }
+        },
+        {
+          "name": "child points at the alias' id",
+          "method": "GET",
+          "path": "/api/widget_seed_demos?size=200",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$[?label=seed-child].parentId": "${seedParentId}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "seed-explicit-id-is-used",
+      "knownFailure": "REG-276",
+      "keywords": [
+        "seed.id"
+      ],
+      "description": "DEFECT: the first seed declares id 5eed0000-0000-4000-8000-000000000001 (\"Explicit id for this record; a generated UUID is used when absent\"). Expected: GET /api/widget_seed_demos/5eed0000-... is the seed-parent row. Actual: 404 -- the row was stored under a generated UUID.",
+      "steps": [
+        {
+          "name": "row under its declared id",
+          "method": "GET",
+          "path": "/api/widget_seed_demos/5eed0000-0000-4000-8000-000000000001",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.label": "seed-parent"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-branch-else-arm-runs-when-condition-false",
+      "keywords": [
+        "flowStep.else"
+      ],
+      "description": "Flow ElseArmDemo's branch step has a then arm that stores $input.fastLabel and an else arm that stores $input.slowLabel in the same variable, which the flow returns. mode fast returns the fast label (then arm) and any other mode returns the slow label (else arm), so the two arms are distinguishable from outside.",
+      "steps": [
+        {
+          "name": "then arm",
+          "method": "POST",
+          "path": "/api/flows/ElseArmDemo/execute",
+          "body": {
+            "mode": "fast",
+            "fastLabel": "FAST-${rand}",
+            "slowLabel": "SLOW"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output": {
+                "matches": "^FAST-"
+              }
+            }
+          }
+        },
+        {
+          "name": "else arm",
+          "method": "POST",
+          "path": "/api/flows/ElseArmDemo/execute",
+          "body": {
+            "mode": "slow",
+            "fastLabel": "FAST",
+            "slowLabel": "SLOW-${rand}"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output": {
+                "matches": "^SLOW-"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-invariant-check-phase-alias-blocks-the-write",
+      "keywords": [
+        "flowStep.phase"
+      ],
+      "description": "flowStep.phase is the alias of checkpoint: PhasedLineQuantityUpdate declares its invariantCheck with phase 'pre' instead of checkpoint. An update to quantity 0 is refused 422 INVARIANT_FAILED at step validate-line before updateConcept runs (stored quantity unchanged); a valid quantity is applied.",
+      "steps": [
+        {
+          "name": "create line",
+          "method": "POST",
+          "path": "/api/flows/RecordOrderLines/execute",
+          "body": {
+            "widgetOrderId": "${uuid}",
+            "sku": "PH-${rand}",
+            "quantity": 2,
+            "unitPrice": 3
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK"
+            }
+          },
+          "save": {
+            "lineId": "$.output.id"
+          }
+        },
+        {
+          "name": "update to 0 refused",
+          "method": "POST",
+          "path": "/api/flows/PhasedLineQuantityUpdate/execute",
+          "body": {
+            "id": "${lineId}",
+            "quantity": 0
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "INVARIANT_FAILED",
+              "$.invariantViolations[0].invariantRef": "PositiveQuantity",
+              "$.invariantViolations[0].stepName": "validate-line"
+            }
+          }
+        },
+        {
+          "name": "stored quantity unchanged",
+          "method": "GET",
+          "path": "/api/widget_order_lines/${lineId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.quantity": 2
+            }
+          }
+        },
+        {
+          "name": "valid update applied",
+          "method": "POST",
+          "path": "/api/flows/PhasedLineQuantityUpdate/execute",
+          "body": {
+            "id": "${lineId}",
+            "quantity": 4
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.quantity": 4
+            }
+          }
+        },
+        {
+          "name": "stored quantity is 4",
+          "method": "GET",
+          "path": "/api/widget_order_lines/${lineId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.quantity": 4
+            }
+          }
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_order_lines/${lineId}",
+          "always": true
+        }
+      ]
+    },
+    {
+      "id": "fl-await-timeout-runs-on-timeout-steps",
+      "keywords": [
+        "flowStep.timeout",
+        "flowStep.onTimeout"
+      ],
+      "description": "ShortTimeoutApproval parks on awaitEvent with timeout 3 and an onTimeout step that emits WidgetOrderApprovalEscalated. The execution parks (202 WAITING_EVENT), then within the resume sweep's cadence it leaves the wait on its own: status COMPLETED, and the escalation event exists under the execution's correlation id.",
+      "steps": [
+        {
+          "name": "park",
+          "method": "POST",
+          "path": "/api/flows/ShortTimeoutApproval/execute",
+          "body": {
+            "widgetOrderId": "${uuid}"
+          },
+          "expect": {
+            "status": 202,
+            "json": {
+              "$.status": "WAITING_EVENT"
+            }
+          },
+          "save": {
+            "execId": "$.executionId",
+            "corr": "$.correlationId"
+          }
+        },
+        {
+          "name": "deadline passes, flow resumes into onTimeout",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "COMPLETED"
+            }
+          },
+          "retry": {
+            "attempts": 20,
+            "delaySeconds": 3
+          }
+        },
+        {
+          "name": "escalation event emitted",
+          "method": "GET",
+          "path": "/api/events/by-correlation/${corr}",
+          "expect": {
+            "status": 200,
+            "text": "\"eventName\":\"WidgetOrderApprovalEscalated\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-schedule-event-delay-seconds-ms-minutes",
+      "keywords": [
+        "flowStep.delaySeconds",
+        "flowStep.delayMs",
+        "flowStep.delayMinutes"
+      ],
+      "description": "Three flows each scheduleEvent WidgetOrderReviewDue with a different spelling of the delay: delaySeconds 2, delayMs 2000, delayMinutes 30. None of the events exists right after the flow returns (the delay is real, not published inline); the seconds and milliseconds ones arrive within a few scheduler ticks, and the 30-minute one is still absent at that point (it is a minutes delay, not a zero delay).",
+      "steps": [
+        {
+          "name": "seconds flow",
+          "method": "POST",
+          "path": "/api/flows/DelayedReminderDemo/execute",
+          "body": {
+            "widgetOrderId": "${uuid}"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK"
+            }
+          },
+          "save": {
+            "corrSec": "$.correlationId"
+          }
+        },
+        {
+          "name": "ms flow",
+          "method": "POST",
+          "path": "/api/flows/DelayedReminderMsDemo/execute",
+          "body": {
+            "widgetOrderId": "${uuid}"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK"
+            }
+          },
+          "save": {
+            "corrMs": "$.correlationId"
+          }
+        },
+        {
+          "name": "minutes flow",
+          "method": "POST",
+          "path": "/api/flows/DelayedReminderMinutesDemo/execute",
+          "body": {
+            "widgetOrderId": "${uuid}"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK"
+            }
+          },
+          "save": {
+            "corrMin": "$.correlationId"
+          }
+        },
+        {
+          "name": "nothing published inline",
+          "method": "GET",
+          "path": "/api/events/by-correlation/${corrSec}",
+          "expect": {
+            "status": 200,
+            "notText": "WidgetOrderReviewDue"
+          }
+        },
+        {
+          "name": "delaySeconds event arrives",
+          "method": "GET",
+          "path": "/api/events/by-correlation/${corrSec}",
+          "expect": {
+            "status": 200,
+            "text": "\"eventName\":\"WidgetOrderReviewDue\""
+          },
+          "retry": {
+            "attempts": 12,
+            "delaySeconds": 2
+          }
+        },
+        {
+          "name": "delayMs event arrives",
+          "method": "GET",
+          "path": "/api/events/by-correlation/${corrMs}",
+          "expect": {
+            "status": 200,
+            "text": "\"eventName\":\"WidgetOrderReviewDue\""
+          },
+          "retry": {
+            "attempts": 12,
+            "delaySeconds": 2
+          }
+        },
+        {
+          "name": "delayMinutes event still pending",
+          "method": "GET",
+          "path": "/api/events/by-correlation/${corrMin}",
+          "expect": {
+            "status": 200,
+            "notText": "WidgetOrderReviewDue"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fl-cron-schedule-fires-and-respects-tenant-scope",
+      "keywords": [
+        "flow.schedule",
+        "flowSchedule.cron",
+        "flowSchedule.tenantScope"
+      ],
+      "description": "MinuteHeartbeat declares schedule cron '0 * * * * *' with tenantScope [dev]: within about a minute the scheduler runs it (actor system:scheduler) and its HeartbeatTick event appears. MinuteHeartbeatOtherTenant has the same cron but tenantScope 'tenant-that-does-not-exist': by the time the first tick exists, the scoped-out flow has emitted nothing.",
+      "steps": [
+        {
+          "name": "first tick",
+          "method": "GET",
+          "path": "/api/events/by-name/HeartbeatTick?limit=1",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$[0].flowName": "MinuteHeartbeat",
+              "$[0].actorId": "system:scheduler",
+              "$[0].tenantId": "dev"
+            }
+          },
+          "retry": {
+            "attempts": 16,
+            "delaySeconds": 5
+          }
+        },
+        {
+          "name": "scoped-out flow stayed silent",
+          "method": "GET",
+          "path": "/api/events/by-name/HeartbeatTickOtherTenant?limit=5",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$": {
+                "len": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "role-concept-permissions-follow-the-declared-role",
+      "keywords": [
+        "role.name",
+        "role.concepts"
+      ],
+      "description": "SupplierViewer declares concepts WidgetSupplier: [read] and WarehouseManager declares [read, create, update, delete]. As a SupplierViewer key the list is readable and create, update and delete are 403; as a WarehouseManager key all four succeed. Same concept, same route, only the principal's declared role differs.",
+      "steps": [
+        {
+          "name": "viewer reads",
+          "method": "GET",
+          "path": "/api/widget_suppliers",
+          "expect": {
+            "status": 200
+          },
+          "apiKey": "${key_supplierviewer}"
+        },
+        {
+          "name": "viewer cannot create",
+          "method": "POST",
+          "path": "/api/widget_suppliers",
+          "body": {
+            "supplierCode": "S-${rand}",
+            "displayName": "v"
+          },
+          "expect": {
+            "status": 403
+          },
+          "apiKey": "${key_supplierviewer}"
+        },
+        {
+          "name": "manager creates",
+          "method": "POST",
+          "path": "/api/widget_suppliers",
+          "body": {
+            "supplierCode": "S-${rand}",
+            "displayName": "m"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "supId": "$.id"
+          },
+          "apiKey": "${key_warehousemanager}"
+        },
+        {
+          "name": "viewer cannot update",
+          "method": "PUT",
+          "path": "/api/widget_suppliers/${supId}",
+          "body": {
+            "supplierCode": "S-x",
+            "displayName": "v2"
+          },
+          "expect": {
+            "status": 403
+          },
+          "apiKey": "${key_supplierviewer}"
+        },
+        {
+          "name": "manager updates",
+          "method": "PUT",
+          "path": "/api/widget_suppliers/${supId}",
+          "body": {
+            "supplierCode": "S-${rand}",
+            "displayName": "m2"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.displayName": "m2"
+            }
+          },
+          "apiKey": "${key_warehousemanager}"
+        },
+        {
+          "name": "viewer cannot delete",
+          "method": "DELETE",
+          "path": "/api/widget_suppliers/${supId}",
+          "expect": {
+            "status": 403
+          },
+          "apiKey": "${key_supplierviewer}"
+        },
+        {
+          "name": "manager deletes",
+          "method": "DELETE",
+          "path": "/api/widget_suppliers/${supId}",
+          "expect": {
+            "status": 204
+          },
+          "apiKey": "${key_warehousemanager}",
+          "always": true
+        }
+      ]
+    },
+    {
+      "id": "role-grants-gate-flow-execution-and-monitor",
+      "keywords": [
+        "role.grants"
+      ],
+      "description": "WarehouseManager grants EXECUTE_FLOW, READ_EXECUTIONS and READ_FLOW_DEFINITIONS; SupplierViewer grants nothing. The same flow execution and the same execution-monitor read are 403 for the viewer and succeed for the manager.",
+      "steps": [
+        {
+          "name": "viewer cannot execute a flow",
+          "method": "POST",
+          "path": "/api/flows/ElseArmDemo/execute",
+          "body": {
+            "mode": "fast",
+            "fastLabel": "F",
+            "slowLabel": "S"
+          },
+          "expect": {
+            "status": 403
+          },
+          "apiKey": "${key_supplierviewer}"
+        },
+        {
+          "name": "manager executes it",
+          "method": "POST",
+          "path": "/api/flows/ElseArmDemo/execute",
+          "body": {
+            "mode": "fast",
+            "fastLabel": "F",
+            "slowLabel": "S"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.output": "F"
+            }
+          },
+          "apiKey": "${key_warehousemanager}"
+        },
+        {
+          "name": "viewer cannot read the monitor",
+          "method": "GET",
+          "path": "/api/executions/history",
+          "expect": {
+            "status": 403
+          },
+          "apiKey": "${key_supplierviewer}"
+        },
+        {
+          "name": "manager reads the monitor",
+          "method": "GET",
+          "path": "/api/executions/history",
+          "expect": {
+            "status": 200
+          },
+          "apiKey": "${key_warehousemanager}"
+        }
+      ]
+    },
+    {
+      "id": "fl-human-task-assignee-sees-and-completes-the-task",
+      "keywords": [
+        "humanTask.title",
+        "humanTask.description",
+        "humanTask.record",
+        "humanTask.fields",
+        "humanTask.outcomes",
+        "humanTask.outcomeField"
+      ],
+      "description": "The awaitEvent step AwaitCatalogEntryApproval carries a humanTask for role WarehouseManager. As a WarehouseManager key: the task detail has the interpolated title ('Approve catalog entry <id>'), the declared description, recordId = the flow input's id, the comment field (required false, maxLength 500), both outcomes and outcomeField 'decision'; an outcome outside the declared set is 400 TASK_OUTCOME_INVALID, an over-long comment 400 TASK_FIELD_INVALID, and a valid completion finishes the execution (COMPLETED).",
+      "steps": [
+        {
+          "name": "park",
+          "method": "POST",
+          "path": "/api/flows/AwaitCatalogEntryApproval/execute",
+          "body": {
+            "id": "${uuid}",
+            "sku": "HT-${rand}"
+          },
+          "expect": {
+            "status": 202,
+            "json": {
+              "$.status": "WAITING_EVENT"
+            }
+          },
+          "save": {
+            "execId": "$.executionId"
+          },
+          "apiKey": "${key_warehousemanager}"
+        },
+        {
+          "name": "detail",
+          "method": "GET",
+          "path": "/api/tasks/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.title": {
+                "matches": "^Approve catalog entry [0-9a-f-]{36}$"
+              },
+              "$.description": "Approve or reject the submitted widget catalog entry.",
+              "$.recordId": {
+                "matches": "^[0-9a-f-]{36}$"
+              },
+              "$.fields[?name=comment].maxLength": 500,
+              "$.fields[?name=comment].required": false,
+              "$.outcomes[?value=APPROVED].label": "Approve",
+              "$.outcomes[?value=REJECTED].label": "Reject",
+              "$.outcomeField": "decision"
+            }
+          },
+          "apiKey": "${key_warehousemanager}"
+        },
+        {
+          "name": "listed in the inbox",
+          "method": "GET",
+          "path": "/api/tasks",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?executionId=${execId}].flowName": "AwaitCatalogEntryApproval"
+            }
+          },
+          "apiKey": "${key_warehousemanager}"
+        },
+        {
+          "name": "unknown outcome",
+          "method": "POST",
+          "path": "/api/tasks/${execId}/complete",
+          "body": {
+            "stepName": "await-catalog-approval",
+            "outcome": "MAYBE",
+            "values": {}
+          },
+          "expect": {
+            "status": 400,
+            "json": {
+              "$.error": "TASK_OUTCOME_INVALID"
+            }
+          },
+          "apiKey": "${key_warehousemanager}"
+        },
+        {
+          "name": "over-long comment",
+          "method": "POST",
+          "path": "/api/tasks/${execId}/complete",
+          "body": {
+            "stepName": "await-catalog-approval",
+            "outcome": "APPROVED",
+            "values": {
+              "comment": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            }
+          },
+          "expect": {
+            "status": 400,
+            "json": {
+              "$.error": "TASK_FIELD_INVALID"
+            }
+          },
+          "apiKey": "${key_warehousemanager}"
+        },
+        {
+          "name": "complete",
+          "method": "POST",
+          "path": "/api/tasks/${execId}/complete",
+          "body": {
+            "stepName": "await-catalog-approval",
+            "outcome": "APPROVED",
+            "values": {
+              "comment": "fine"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.executionStatus": "COMPLETED"
+            }
+          },
+          "apiKey": "${key_warehousemanager}"
+        },
+        {
+          "name": "execution finished",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "COMPLETED"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "agg-collection-concept-and-owned-children",
+      "keywords": [
+        "aggregateCollection.concept",
+        "aggregateCollection.ownership"
+      ],
+      "description": "WidgetOrderAggregate.lines is an owned collection of WidgetOrderLine. Committing the tree stores each line as a WidgetOrderLine row pointing at the root; re-committing the tree without one line deletes that line's row (owned children follow the tree) while the kept line stays.",
+      "steps": [
+        {
+          "name": "audit row (onCommit patches it)",
+          "method": "POST",
+          "path": "/api/widget_order_audits",
+          "body": {
+            "quantity": 0,
+            "lastSyncedStatus": "x"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "oid": "$.id"
+          }
+        },
+        {
+          "name": "commit two lines",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/WidgetOrderAggregate",
+          "body": {
+            "id": "${oid}",
+            "customerEmail": "developer",
+            "status": "open",
+            "lineCount": 2,
+            "lines": [
+              {
+                "id": "0e0f1000-0000-4000-8000-000000000005",
+                "sku": "aa",
+                "quantity": 1,
+                "unitPrice": 2
+              },
+              {
+                "id": "0e0f1000-0000-4000-8000-000000000006",
+                "sku": "bb",
+                "quantity": 1,
+                "unitPrice": 2
+              }
+            ]
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.lines": {
+                "len": 2
+              }
+            }
+          }
+        },
+        {
+          "name": "children are WidgetOrderLine rows",
+          "method": "GET",
+          "path": "/api/widget_order_lines/0e0f1000-0000-4000-8000-000000000006",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.sku": "bb",
+              "$.widgetOrderId": "${oid}"
+            }
+          }
+        },
+        {
+          "name": "recommit without bb",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/WidgetOrderAggregate",
+          "body": {
+            "id": "${oid}",
+            "customerEmail": "developer",
+            "status": "open",
+            "lineCount": 1,
+            "lines": [
+              {
+                "id": "0e0f1000-0000-4000-8000-000000000005",
+                "sku": "aa",
+                "quantity": 1,
+                "unitPrice": 2
+              }
+            ]
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.lines": {
+                "len": 1
+              }
+            }
+          }
+        },
+        {
+          "name": "dropped child row is gone",
+          "method": "GET",
+          "path": "/api/widget_order_lines/0e0f1000-0000-4000-8000-000000000006",
+          "expect": {
+            "status": 404
+          }
+        },
+        {
+          "name": "kept child row stays",
+          "method": "GET",
+          "path": "/api/widget_order_lines/0e0f1000-0000-4000-8000-000000000005",
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_order_lines/0e0f1000-0000-4000-8000-000000000005",
+          "always": true
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_orders/${oid}",
+          "always": true
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_order_audits/${oid}",
+          "always": true
+        }
+      ]
+    },
+    {
+      "id": "agg-collection-orderby-sorts-children",
+      "knownFailure": "REG-277",
+      "keywords": [
+        "aggregateCollection.orderBy"
+      ],
+      "description": "DEFECT: WidgetOrderAggregate.lines declares orderBy sku. Expected: the committed tree returns its lines sorted by sku (aa, bb, mm, zz) however they were sent. Actual: the lines come back ordered by their ids (the four fixed child ids are chosen so id order is the reverse of sku order: zz, mm, bb, aa) -- orderBy is read by nothing at runtime.",
+      "steps": [
+        {
+          "name": "audit row (onCommit patches it)",
+          "method": "POST",
+          "path": "/api/widget_order_audits",
+          "body": {
+            "quantity": 0,
+            "lastSyncedStatus": "x"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "oid": "$.id"
+          }
+        },
+        {
+          "name": "commit four lines, ids in reverse sku order",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/WidgetOrderAggregate",
+          "body": {
+            "id": "${oid}",
+            "customerEmail": "developer",
+            "status": "open",
+            "lineCount": 4,
+            "lines": [
+              {
+                "id": "0e0f1000-0000-4000-8000-000000000001",
+                "sku": "zz",
+                "quantity": 1,
+                "unitPrice": 2
+              },
+              {
+                "id": "0e0f1000-0000-4000-8000-000000000002",
+                "sku": "mm",
+                "quantity": 1,
+                "unitPrice": 2
+              },
+              {
+                "id": "0e0f1000-0000-4000-8000-000000000003",
+                "sku": "bb",
+                "quantity": 1,
+                "unitPrice": 2
+              },
+              {
+                "id": "0e0f1000-0000-4000-8000-000000000004",
+                "sku": "aa",
+                "quantity": 1,
+                "unitPrice": 2
+              }
+            ]
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.lines[0].sku": "aa",
+              "$.lines[1].sku": "bb",
+              "$.lines[2].sku": "mm",
+              "$.lines[3].sku": "zz"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "reading the aggregate back is sorted too",
+          "method": "GET",
+          "path": "/api/runtime/aggregate/WidgetOrderAggregate/${oid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.lines[0].sku": "aa",
+              "$.lines[3].sku": "zz"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_order_lines/0e0f1000-0000-4000-8000-000000000001",
+          "always": true
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_order_lines/0e0f1000-0000-4000-8000-000000000002",
+          "always": true
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_order_lines/0e0f1000-0000-4000-8000-000000000003",
+          "always": true
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_order_lines/0e0f1000-0000-4000-8000-000000000004",
+          "always": true
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_orders/${oid}",
+          "always": true
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_order_audits/${oid}",
+          "always": true
+        }
+      ]
+    },
+    {
+      "id": "field-file-upload-enforces-content-type-and-size",
+      "keywords": [
+        "field.file"
+      ],
+      "description": "WidgetOrder.purchaseOrderFile declares file {contentTypes [application/pdf], maxSizeBytes 5242880} and companyLogo {image/png|image/jpeg, 1048576}. The multipart upload endpoint accepts a PDF, refuses text/plain with 415, refuses 5242881 bytes with 413 and a 1048577-byte logo with 413, and refuses a field that is not a file field with 400.",
+      "steps": [
+        {
+          "name": "pdf accepted",
+          "method": "POST",
+          "path": "/api/files/WidgetOrder/purchaseOrderFile",
+          "multipart": {
+            "file": {
+              "field": "file",
+              "filename": "po.pdf",
+              "contentType": "application/pdf",
+              "content": "%PDF-1.4 probe"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.contentType": "application/pdf",
+              "$.sizeBytes": 14
+            }
+          }
+        },
+        {
+          "name": "wrong content type",
+          "method": "POST",
+          "path": "/api/files/WidgetOrder/purchaseOrderFile",
+          "multipart": {
+            "file": {
+              "field": "file",
+              "filename": "po.txt",
+              "contentType": "text/plain",
+              "content": "nope"
+            }
+          },
+          "expect": {
+            "status": 415
+          }
+        },
+        {
+          "name": "pdf over limit",
+          "method": "POST",
+          "path": "/api/files/WidgetOrder/purchaseOrderFile",
+          "multipart": {
+            "file": {
+              "field": "file",
+              "filename": "big.pdf",
+              "contentType": "application/pdf",
+              "repeatBytes": 5242881
+            }
+          },
+          "expect": {
+            "status": 413
+          }
+        },
+        {
+          "name": "logo over its own smaller limit",
+          "method": "POST",
+          "path": "/api/files/WidgetOrder/companyLogo",
+          "multipart": {
+            "file": {
+              "field": "file",
+              "filename": "big.png",
+              "contentType": "image/png",
+              "repeatBytes": 1048577
+            }
+          },
+          "expect": {
+            "status": 413
+          }
+        },
+        {
+          "name": "logo within limit",
+          "method": "POST",
+          "path": "/api/files/WidgetOrder/companyLogo",
+          "multipart": {
+            "file": {
+              "field": "file",
+              "filename": "ok.png",
+              "contentType": "image/png",
+              "content": "png"
+            }
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "name": "not a file field",
+          "method": "POST",
+          "path": "/api/files/WidgetOrder/customerEmail",
+          "multipart": {
+            "file": {
+              "field": "file",
+              "filename": "x.png",
+              "contentType": "image/png",
+              "content": "x"
+            }
+          },
+          "expect": {
+            "status": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "orch-condition-gates-rule-and-capability-action-fires",
+      "keywords": [
+        "orchestrationRule.condition",
+        "orchestrationAction.capability",
+        "orchestrationAction.operation"
+      ],
+      "description": "Rule AuditSubmittedReview triggers on WidgetReviewSubmitted with condition reviewer == 'auditor' and one callCapability action (capability webhook, operation post). Publishing the event with reviewer auditor starts the rule and the action runs (the webhook target is not served in the probe environment, so the runtime records OrchestrationCapabilityFailed naming capability webhook and operation post for that source event); the same event with reviewer bob is skipped with OrchestrationConditionSkipped (reason condition_false) and neither starts the rule nor runs the action.",
+      "steps": [
+        {
+          "name": "publish auditor event",
+          "method": "POST",
+          "path": "/api/events/publish",
+          "body": {
+            "eventName": "WidgetReviewSubmitted",
+            "correlationId": "orch-${rand}",
+            "payload": {
+              "id": "${uuid}",
+              "reviewer": "auditor"
+            }
+          },
+          "expect": {
+            "status": 202
+          },
+          "save": {
+            "eidA": "$.eventId"
+          }
+        },
+        {
+          "name": "publish bob event",
+          "method": "POST",
+          "path": "/api/events/publish",
+          "body": {
+            "eventName": "WidgetReviewSubmitted",
+            "correlationId": "orch-${rand}",
+            "payload": {
+              "id": "${uuid}",
+              "reviewer": "bob"
+            }
+          },
+          "expect": {
+            "status": 202
+          },
+          "save": {
+            "eidB": "$.eventId"
+          }
+        },
+        {
+          "name": "rule started for auditor only",
+          "method": "GET",
+          "path": "/api/events/by-name/OrchestrationStarted?limit=20",
+          "expect": {
+            "status": 200,
+            "text": [
+              "\"sourceEventId\":\"${eidA}\""
+            ],
+            "notText": "${eidB}"
+          },
+          "retry": {
+            "attempts": 5,
+            "delaySeconds": 1
+          }
+        },
+        {
+          "name": "condition skipped for bob only",
+          "method": "GET",
+          "path": "/api/events/by-name/OrchestrationConditionSkipped?limit=20",
+          "expect": {
+            "status": 200,
+            "text": [
+              "\"sourceEventId\":\"${eidB}\"",
+              "condition_false"
+            ],
+            "notText": "${eidA}"
+          },
+          "retry": {
+            "attempts": 5,
+            "delaySeconds": 1
+          }
+        },
+        {
+          "name": "action evidence names capability and operation",
+          "method": "GET",
+          "path": "/api/events/by-name/OrchestrationCapabilityFailed?limit=20",
+          "expect": {
+            "status": 200,
+            "text": [
+              "\"sourceEventId\":\"${eidA}\"",
+              "\"capability\":\"webhook\"",
+              "\"operation\":\"post\""
+            ],
+            "notText": "${eidB}"
+          },
+          "retry": {
+            "attempts": 5,
+            "delaySeconds": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "lc-terminal-states-served-in-concept-metadata",
+      "keywords": [
+        "lifecycleState.terminal"
+      ],
+      "description": "A lifecycle state marked terminal (WidgetReviewDemo Approved and Rejected) is served as such in the concepts metadata catalog: terminalStates lists exactly those two and initialState is Draft. This is a served-metadata check only -- see the allowlist note on lifecycleState.terminal: the REST write path does not treat terminal as a write block.",
+      "steps": [
+        {
+          "name": "concepts catalog",
+          "method": "GET",
+          "path": "/api/admin/runtime/metadata/catalogs/concepts",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?name=WidgetReviewDemo].terminalStates[0]": "Approved",
+              "$.items[?name=WidgetReviewDemo].terminalStates[1]": "Rejected",
+              "$.items[?name=WidgetReviewDemo].terminalStates": {
+                "len": 2
+              },
+              "$.items[?name=WidgetReviewDemo].initialState": "Draft"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "meta-concept-ui-label-and-flow-concept-binding-served",
+      "keywords": [
+        "concept.ui",
+        "flow.concept"
+      ],
+      "description": "Two declarations that only shape what clients are told, checked where the runtime serves them (concepts metadata catalog): WidgetOrder's ui label and its pt-BR locale text are served as declaredand a flow that declares concept WidgetOrder (ShortTimeoutApproval) is listed under that concept's flowNames.",
+      "steps": [
+        {
+          "name": "concepts catalog",
+          "method": "GET",
+          "path": "/api/admin/runtime/metadata/catalogs/concepts",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?name=WidgetOrder].label": "Widget order",
+              "$.items[?name=WidgetOrder].labelLocales.pt-BR": "Pedido de widget",
+              "$.items[?name=WidgetOrder].flowNames": {
+                "contains": "ShortTimeoutApproval"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
