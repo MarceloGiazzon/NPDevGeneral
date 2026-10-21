@@ -63,6 +63,50 @@ class GeneratedCrudRuntimeSupportStateMachineTest {
         );
     }
 
+    /**
+     * REG-275: with in-memory storage there is no EntityManager, so the previous status was never
+     * read and the transition check (requiredPayload, guard) skipped itself on every REST write.
+     */
+    @Test
+    void inMemoryStorageReadsThePreviousStatusFromTheConceptGateway() {
+        UUID id = UUID.randomUUID();
+        GeneratedCrudRuntimeSupport support = inMemorySupport(id, "Scheduled");
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", id);
+        payload.put("__id", id);
+        payload.put("status", "CheckedIn");
+
+        List<GeneratedCrudRuntimeSupport.InvariantViolationDetail> refused =
+                support.validateEntityDetailed("Appointment", payload, (entity, field, value, currentId, rawPayload) -> false);
+        assertEquals(2, refused.size(), refused.toString());
+        assertTrue(refused.stream().anyMatch(v -> "status_transition_requires_field".equals(v.invariant())));
+        assertTrue(refused.stream().anyMatch(v -> "status_transition_guard_failed".equals(v.invariant())));
+
+        payload.put("checkInTime", "2026-03-30T10:30:00Z");
+        assertTrue(support.validateEntityDetailed("Appointment", payload, (entity, field, value, currentId, rawPayload) -> false)
+                .stream().noneMatch(v -> v.invariant() != null && v.invariant().startsWith("status_transition")));
+    }
+
+    @Test
+    void inMemoryStorageLeavesAnUndeclaredEdgeToTheGatewayAndIgnoresAnUnknownRow() {
+        UUID id = UUID.randomUUID();
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", id);
+        payload.put("__id", id);
+        payload.put("status", "Completed");
+
+        var undeclaredEdge = inMemorySupport(id, "Scheduled")
+                .validateEntityDetailed("Appointment", payload, (entity, field, value, currentId, rawPayload) -> false);
+        assertTrue(undeclaredEdge.stream().noneMatch(v -> v.invariant() != null && v.invariant().startsWith("status_transition")),
+                "the gateway answers CONCEPT_LIFECYCLE_TRANSITION_INVALID for an undeclared edge: " + undeclaredEdge);
+
+        var unknownRow = inMemorySupport(UUID.randomUUID(), "Scheduled")
+                .validateEntityDetailed("Appointment", payload, (entity, field, value, currentId, rawPayload) -> false);
+        assertTrue(unknownRow.stream().noneMatch(v -> v.invariant() != null && v.invariant().startsWith("status_transition")),
+                "a row the store does not hold is a create, not a transition");
+    }
+
     /** Pigmentampas P9: a REST create omitting the status field failed required(status) instead of starting in the initial state. */
     @Test
     void createPayloadStartsInLifecycleInitialStateButUpdateKeepsExistingStatus() {
@@ -78,7 +122,30 @@ class GeneratedCrudRuntimeSupportStateMachineTest {
         assertEquals("Completed", updated.get("status"));
     }
 
+    /** The same Appointment model with NO EntityManager and a ConceptGateway that holds one row. */
+    private static GeneratedCrudRuntimeSupport inMemorySupport(UUID storedId, String storedStatus) {
+        com.npdev.kernel.concepts.ConceptGateway gateway = (com.npdev.kernel.concepts.ConceptGateway) Proxy.newProxyInstance(
+                com.npdev.kernel.concepts.ConceptGateway.class.getClassLoader(),
+                new Class<?>[]{com.npdev.kernel.concepts.ConceptGateway.class},
+                (proxy, method, args) -> {
+                    if ("read".equals(method.getName())) {
+                        com.npdev.kernel.concepts.ConceptReadRequest request = (com.npdev.kernel.concepts.ConceptReadRequest) args[0];
+                        return storedId.toString().equals(request.id())
+                                ? java.util.Optional.of(new com.npdev.kernel.concepts.ConceptRecord(
+                                        request.conceptName(), request.id(), request.tenantId(),
+                                        Map.of("status", storedStatus), 1L))
+                                : java.util.Optional.empty();
+                    }
+                    return null;
+                });
+        return supportWith(null).withConceptGateway(gateway);
+    }
+
     private static GeneratedCrudRuntimeSupport supportWithPreviousStatus(String previousStatus) {
+        return supportWith(stubEntityManager(previousStatus));
+    }
+
+    private static GeneratedCrudRuntimeSupport supportWith(EntityManager entityManager) {
         CompiledEntity appointment = new CompiledEntity(
                 "Appointment",
                 "Appointment",
@@ -134,7 +201,7 @@ class GeneratedCrudRuntimeSupportStateMachineTest {
         return new GeneratedCrudRuntimeSupport(
                 () -> compiledModel,
                 kernelRunner,
-                stubEntityManager(previousStatus),
+                entityManager,
                 null,
                 null,
                 null,

@@ -1,0 +1,17 @@
+id: REG-278
+title: >-
+  A lifecycle state marked terminal still accepts a declared outgoing transition, and the lifecycle event carries only entityId and status, not the payload fields it declares
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-10-21
+closed: null
+source: >-
+  Side observations from the REG-275 probe fixture (WidgetReviewDemo in dsl-conformance-max): Rejected is terminal yet Rejected -> Draft is declared, validates and is accepted at runtime.
+surface: NPDevContract/dsl/.../validation/LifecycleValidation.java, CrudLifecycleSupport, GeneratedCrudRuntimeSupport.publishLifecycleTransitionEvent
+detail: |
+  terminal is read only by presentation code (AutoPanelExpander makes a terminal row non-editable, BoardManifestBuilder marks the board column); no validator or runtime path treats it as "no outgoing transitions".
+  The model validator accepts a transition whose from state is terminal, and the REST write path applies it. This is a DECISION, not just a bug: either terminal means final (validator error, fix the fixture), or it stays a presentation marker (document it in the schema description).
+  Second observation: the event published on a transition carries entityId and status only, not the payload fields the event declares (id, reviewer).
+resolution: >-
+  Owner decides terminal semantics; then enforce it in LifecycleValidation (and the fixture), or document it as a board/editability marker only. Carry the declared payload fields on the lifecycle event.

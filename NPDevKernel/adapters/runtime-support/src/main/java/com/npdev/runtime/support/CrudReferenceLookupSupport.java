@@ -143,6 +143,25 @@ final class CrudReferenceLookupSupport {
         }
     }
 
+    /**
+     * One field of the stored row {@code id}, read through the ConceptGateway: the in-memory storage
+     * mode has no EntityManager, so the row lives only in the ConceptStore (REG-275: the lifecycle
+     * transition check needs the row's CURRENT status and silently skipped itself without one).
+     * Empty when there is no gateway, no such row, or the read fails.
+     */
+    Optional<Object> readFieldViaConceptGateway(CompiledConcept entity, UUID id, String fieldName) {
+        if (conceptGateway == null || entity == null || id == null || fieldName == null) {
+            return Optional.empty();
+        }
+        try {
+            ExecutionContext context = resolveCurrentCrudContext();
+            return conceptGateway.read(new ConceptReadRequest(entity.getName(), id.toString(), context.tenantId()), context)
+                    .map(record -> record.data().get(fieldName));
+        } catch (Exception ignored) {
+            return Optional.empty();
+        }
+    }
+
     boolean resourceHasConflict(
             String entityName,
             String resourceFieldPath,

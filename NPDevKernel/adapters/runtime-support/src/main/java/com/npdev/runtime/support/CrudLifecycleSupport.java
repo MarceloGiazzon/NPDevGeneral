@@ -83,6 +83,12 @@ final class CrudLifecycleSupport {
 
         CompiledStateTransition matchingTransition = findLifecycleTransition(lifecycle, previousStatus, nextStatus);
         if (matchingTransition == null) {
+            if (entityManager == null) {
+                // in-memory storage: the ConceptGateway already refuses an undeclared edge with its
+                // own CONCEPT_LIFECYCLE_TRANSITION_INVALID answer; keep that contract (REG-275 only
+                // adds the requiredPayload / guard checks the gateway never ran).
+                return;
+            }
             violations.add(new InvariantViolationDetail(
                     "invariant_failed",
                     entityName,
@@ -189,8 +195,14 @@ final class CrudLifecycleSupport {
     }
 
     private String fetchCurrentStatus(CompiledConcept entity, UUID id, String statusField) {
-        if (entityManager == null || entity == null || id == null) {
+        if (entity == null || id == null) {
             return null;
+        }
+        if (entityManager == null) {
+            // in-memory storage: the row lives in the ConceptStore, not a table (REG-275)
+            return owner.readFieldViaConceptGateway(entity, id, statusField)
+                    .map(value -> readLifecycleToken(value))
+                    .orElse(null);
         }
         String table = tableName(entity);
         if (table == null || table.isBlank()) {
