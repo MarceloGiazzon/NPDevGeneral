@@ -39,6 +39,8 @@ import npdev_monitor
 # self-contained SVG/HTML page. Stdlib-only inside, same rule as the two imports above.
 import npdev_diagram
 import npdev_rename_cascade
+# TRUTH-1: `npdev truth` -- per-concept truth level + the evidence behind it. Stdlib-only, like the rest.
+import npdev_truth
 
 VERSION = "0.9.0"
 # REG-130: the three numbers a bug report could cite, none of them derived from the others.
@@ -16917,6 +16919,27 @@ def build_parser() -> argparse.ArgumentParser:
              "(S16 blast radius). No effect when the app has no provenance index.",
     )
 
+    # TRUTH-1: the app-level truth rollup. A JOIN over files the platform already writes (box
+    # manifest, provenance index, probe / smoke / journey / browser reports) -- see npdev_truth.py.
+    # Display only: it never blocks a build, a boot or a release.
+    truth = subparsers.add_parser(
+        "truth",
+        help="Per-concept truth level (T0..T6): the level the model DECLARES next to the level the "
+             "evidence SUPPORTS (generated / runs / tested), with stale or failed evidence flagged "
+             "and the lowest level in the app. Never blocks anything.",
+    )
+    truth.add_argument("--app", required=True, help="A generated app directory (the one holding _ops).")
+    truth.add_argument("--json", action="store_true", help="Emit the npdev-truth-rollup.v1 document.")
+    truth.add_argument("--write", action="store_true",
+                       help="Also write <app>/_ops/truth-rollup.json, which the running app serves "
+                            "behind GET /api/admin/box/truth.")
+    truth.add_argument("--out", help="Write the rollup to this path instead of (or as well as) stdout.")
+    truth.add_argument("--reports-dir",
+                       help="Where the probe / smoke / journey reports live (default: the repo's "
+                            "scripts/reports/out).")
+    truth.add_argument("--sample-id",
+                       help="Which sample's reports are evidence (default: read from the app's build info).")
+
     generate = subparsers.add_parser(
         "generate", help="Generate a complete, runnable app (or a single screen) from a model."
     )
@@ -18042,6 +18065,8 @@ def main(argv: list[str] | None = None) -> int:
             return inspect_usage(args)
         if args.command == "impact":
             return run_impact(args)
+        if args.command == "truth":
+            return npdev_truth.run(args, repo_root())
         if args.command == "init":
             return run_init(args)
         if args.command == "setup":

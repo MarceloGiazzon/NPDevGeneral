@@ -54,6 +54,17 @@ Everything machine-specific — the jar, the `_ops` toolbox, the model, the DB f
 file, the port, the PID, health, container state — comes from `probe`, at display time. Baking those
 into generated output is precisely the defect PORT-1 removed from six emitters.
 
+### The truth badge (`probe`'s `truth` field, `npdev truth`)
+
+Each card shows the lowest concept truth level (T0-T6) the app's *evidence* supports next to what the
+model *declares*. It is a join over files the platform already writes — the box manifest, provenance
+index and build info inside the app, plus the probe / smoke / journey / browser reports under
+`scripts/reports/out` and the app's `_ops/exploration-runs` — computed by `NPDevCli/npdev_truth.py`.
+`npdev truth --app <dir> [--json] [--write]` prints the full rollup; `--write` leaves
+`_ops/truth-rollup.json`, which the running app serves behind `GET /api/admin/box/truth` (Box Inspector)
+and which the badge's "rollup" link opens. Evidence observed before the build was made is **stale** and
+never counts; a failing run caps a concept at T3; T6 is never derived. Display only — nothing is blocked.
+
 ### Logs (three sources, one surface)
 
 1. `<app>/logs/app-<timestamp>.log` — the app's own stdout+stderr, written by `_ops/Run-FinalApp.ps1`.

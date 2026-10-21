@@ -207,6 +207,41 @@ function modelSyncBadge(probe) {
     : `<span class="badge diverged" title="${esc(sync.message || "")}">DIVERGED</span>`;
 }
 
+// TRUTH-1: the app's truth rollup (npdev_truth.py via `monitor probe`'s `truth` field) as a badge + two
+// links. The badge is the lowest concept level the evidence SUPPORTS; the tooltip carries what the model
+// declares and the stale/failed evidence counts. Display only: no truth state disables anything, and a
+// missing rollup is a dashed "?" badge, never an error.
+const TRUTH_LABEL = { T0: "Idea", T1: "Declared", T2: "Generated", T3: "RunsLocally", T4: "Tested", T5: "EvidenceBacked", T6: "ReleaseApproved" };
+function truthRow(app) {
+  const t = app.truth;
+  if (!t) return "<small>—</small>";
+  if (!t.lowestSupported) {
+    return `<span class="badge truthunknown" title="${esc(t.unknownReason || "no truth rollup could be built for this app")}">TRUTH ?</span>`;
+  }
+  const rank = Number(String(t.lowestSupported).slice(1));
+  const cls = rank >= 4 ? "truthhigh" : rank === 3 ? "truthmid" : "truthlow";
+  const flags = [];
+  if (t.staleEvidence) flags.push(`${t.staleEvidence} stale`);
+  if (t.failedEvidence) flags.push(`${t.failedEvidence} failed`);
+  if (t.overclaims) flags.push(`${t.overclaims} overclaimed`);
+  const tip = `lowest supported by evidence: ${t.lowestSupported} ${TRUTH_LABEL[t.lowestSupported] || ""}; `
+    + `lowest declared by the model: ${t.lowestDeclared || "unknown"}; ${t.conceptCount} concept(s), `
+    + `${t.testedConcepts} tested (T4+)${flags.length ? "; " + flags.join(", ") : ""}`
+    + `${t.live ? "" : "; app not running, so no T3 (RunsLocally) claim"}`;
+  const rollupTarget = t.rollupPath || app.opsDir || "";
+  const rollupTip = t.rollupPath
+    ? "open the truth rollup file (npdev-truth-rollup.v1) this badge was joined from"
+    : "no rollup file yet: run `npdev truth --app <dir> --write`; opens the _ops folder";
+  const rollupLink = rollupTarget
+    ? ` <a href="#" class="truthlink" data-truth-folder="${esc(rollupTarget)}" title="${esc(rollupTip)}">rollup</a>`
+    : "";
+  const boxLink = app.baseUrl && statusOf(app) === "running"
+    ? ` <a href="#" class="truthlink" data-truth-url="${esc(app.baseUrl)}/npdev-business-ui/#concept-__boxview__" title="open this app's Box Inspector (super-user sign-in required)">box view</a>`
+    : "";
+  return `<span class="badge ${cls}" title="${esc(tip)}">${esc(t.lowestSupported)} ${esc(TRUTH_LABEL[t.lowestSupported] || "")}</span>`
+    + (flags.length ? ` <small>${esc(flags.join(" · "))}</small>` : "") + rollupLink + boxLink;
+}
+
 function cardHtml(app) {
   const state = statusOf(app);
   const dir = esc(app.appDir);
@@ -220,6 +255,7 @@ function cardHtml(app) {
     ["OPS", app.opsDir ? esc(shortPath(app.opsDir, 34)) : "—"],
     ["PID", app.pid ? `${app.pid} · port ${app.port || "—"}` : `port ${app.port || "—"}`],
     ["BUILT", app.builtAt ? esc(app.builtAt) : "<small>not built yet</small>"],
+    ["TRUTH", truthRow(app)],
     ["ORIGIN", esc(app.origin) + ` <small>(${esc(app.discoveredBy || "?")})</small>`],
   ]
     .map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`)
@@ -308,6 +344,21 @@ function wireCards() {
   );
   grid.querySelectorAll("[data-folder]").forEach((btn) =>
     btn.addEventListener("click", () => mInvoke("open_folder", { path: btn.dataset.folder }))
+  );
+  // TRUTH-1 links live inside the card's screen, which opens the Inspector on click -- so they stop it.
+  grid.querySelectorAll("[data-truth-folder]").forEach((el) =>
+    el.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      mInvoke("open_folder", { path: el.dataset.truthFolder });
+    })
+  );
+  grid.querySelectorAll("[data-truth-url]").forEach((el) =>
+    el.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      mInvoke("open_url", { url: el.dataset.truthUrl });
+    })
   );
   grid.querySelectorAll("[data-start]").forEach((btn) =>
     btn.addEventListener("click", async () => {

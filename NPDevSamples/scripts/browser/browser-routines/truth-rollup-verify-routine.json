@@ -1,0 +1,31 @@
+{
+  "scenarioName": "truth-rollup-verify",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "valueFromCredential": "apiKey" },
+    { "action": "reload" },
+    { "action": "waitForLoadState", "state": "networkidle", "label": "Let the signed-in shell finish loading before navigating by hash" },
+    { "action": "evaluate", "name": "open_box_inspector", "script": "window.location.hash = '#concept-__boxview__'; return window.location.hash;", "label": "Open the Box Inspector by hash (needs -AllowEvaluate; the shell nav lists it only with admin concepts)" },
+    { "action": "waitForSelector", "selector": "#concept-__boxview__", "state": "visible", "label": "Box Inspector panel visible" },
+    { "action": "waitForSelector", "selector": "#concept-__boxview__ table.truth-rollup tr[data-concept=\"WidgetOrder\"]", "state": "visible", "label": "Box Inspector opened by hash (shell nav lists it only with admin concepts): truth rollup table rendered from /api/admin/box/truth" },
+    { "action": "assertTextContains", "selector": "#concept-__boxview__ .truth-headline", "text": "Lowest level in this app", "label": "The computed lowest level in the app is shown" },
+    { "action": "assertTextContains", "selector": "#concept-__boxview__ .truth-headline", "text": "T1 Declared", "label": "Lowest DECLARED level is the model's default T1 (WidgetShowcase omits truthLevel)" },
+    { "action": "assertTextContains", "selector": "#concept-__boxview__ .truth-promotion", "text": "separate S0-S8 ladder", "label": "The app-wide promotion stage is shown as its own ladder, evidence only" },
+    { "action": "assertTextContains", "selector": "#concept-__boxview__ table.truth-rollup tr[data-concept=\"WidgetOrder\"]", "text": "T4 Tested", "label": "A concept declared T4 shows its declared level" },
+    { "action": "assertTextContains", "selector": "#concept-__boxview__ table.truth-rollup tr[data-concept=\"WidgetSupplier\"]", "text": "T3 RunsLocally", "label": "A concept declared T3 shows its declared level" },
+    { "action": "assertTextContains", "selector": "#concept-__boxview__ table.truth-rollup tr[data-concept=\"WidgetShowcase\"]", "text": "T1 Declared", "label": "A concept that omits truthLevel shows the default T1" },
+    { "action": "assertTextContains", "selector": "#concept-__boxview__ table.truth-rollup tr[data-concept=\"WidgetOrderLineNote\"]", "text": "overclaim", "label": "A concept declared T4 with no test evidence is flagged as an overclaim (display only, nothing blocked)" },
+    { "action": "assertTextContains", "selector": "#concept-__boxview__ table.truth-rollup tr[data-concept=\"WidgetShowcase\"]", "text": "T3 RunsLocally", "label": "Supported level: the running app is T3 evidence for every concept" },
+    { "action": "assertVisible", "selector": "#concept-__boxview__ table.truth-rollup tr[data-concept=\"WidgetShowcase\"] button[data-evidence-id=\"generated:WidgetShowcase\"]", "label": "Every concept row carries evidence links" },
+    { "action": "click", "selector": "#concept-__boxview__ table.truth-rollup tr[data-concept=\"WidgetShowcase\"] button[data-evidence-id=\"generated:WidgetShowcase\"]", "label": "Follow the generated-evidence link" },
+    { "action": "waitForSelector", "selector": "#modalRoot .modal .truth-evidence-detail", "state": "visible", "label": "The evidence record resolved (fetched from /api/admin/box/truth/evidence)" },
+    { "action": "assertTextContains", "selector": "#modalRoot .modal", "text": "Supports level", "label": "Evidence modal states which level it supports" },
+    { "action": "assertTextContains", "selector": "#modalRoot .modal", "text": "provenance index", "label": "Generated evidence is backed by the provenance index" },
+    { "action": "click", "selector": "#modalRoot .modal button:has-text(\"Close\")", "label": "Close the evidence modal" },
+    { "action": "screenshot", "name": "truth_rollup_panel" },
+    { "action": "collect", "what": ["domText", "url"] }
+  ]
+}
