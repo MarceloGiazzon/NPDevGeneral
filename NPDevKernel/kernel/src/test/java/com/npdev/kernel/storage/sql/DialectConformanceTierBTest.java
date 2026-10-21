@@ -265,11 +265,19 @@ class DialectConformanceTierBTest {
             execute(connection, "INSERT INTO t (id, name) VALUES ('A', 'old')");
             String alter = "ALTER TABLE t ADD COLUMN live_note " + dialect.portableColumnType("VARCHAR(255)");
             String guarded = dialect.guardedAddColumn("t", "live_note", alter);
+            // Mirror ExistingConceptColumnProvisioner: only MySQL's guard is a multi-statement script
+            // (SET/PREPARE/EXECUTE/DEALLOCATE) that must be split; every other dialect's guard is ONE batch
+            // (SQL Server's is an IF ... BEGIN ... END block with an inner ';' a naive split would cut in two).
+            boolean script = guarded.contains("SET @npdev_ddl");
             for (int run = 0; run < 2; run++) {
-                for (String statement : guarded.split(";\\s*\\n")) {
-                    if (!statement.isBlank()) {
-                        execute(connection, statement);
+                if (script) {
+                    for (String statement : guarded.split(";\\s*\\n")) {
+                        if (!statement.isBlank()) {
+                            execute(connection, statement);
+                        }
                     }
+                } else {
+                    execute(connection, guarded);
                 }
             }
             execute(connection, "INSERT INTO t (id, name, live_note) VALUES ('B', 'new', 'hello')");
