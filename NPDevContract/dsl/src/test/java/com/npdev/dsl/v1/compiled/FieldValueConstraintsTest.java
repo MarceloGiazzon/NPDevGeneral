@@ -84,6 +84,27 @@ class FieldValueConstraintsTest {
     }
 
     @Test
+    void minLengthAcceptsTheBoundaryAndRejectsOneUnder() {
+        CompiledSchema schema = new CompiledSchema("string", Map.of(), List.of(), "", 3, 12, null, null, null);
+
+        assertTrue(FieldValueConstraints.violations("Thing", "shortName", "string", schema, "abc").isEmpty());
+        List<String> under = FieldValueConstraints.violations("Thing", "shortName", "string", schema, "ab");
+        assertEquals(1, under.size());
+        assertTrue(under.get(0).contains("field 'shortName'") && under.get(0).contains("minLength 3"), under.get(0));
+    }
+
+    @Test
+    void theNestedPathOverloadNamesTheDottedPathAndAppliesTheRangeRules() {
+        CompiledSchema level = new CompiledSchema("integer", Map.of(), List.of(), "", null, null, 1.0, 9.0, null);
+
+        List<String> over = FieldValueConstraints.violations("Thing", "profile.level", "integer", level, 12);
+        assertEquals(1, over.size());
+        assertTrue(over.get(0).contains("field 'profile.level'") && over.get(0).contains("above max 9"), over.get(0));
+        assertTrue(FieldValueConstraints.isNumericType("Integer") && FieldValueConstraints.isIntegralType("integer"));
+        assertTrue(!FieldValueConstraints.isIntegralType("decimal"));
+    }
+
+    @Test
     void aTextLimitIsNotAppliedToNonTextTypes() {
         assertTrue(check(field("when", "datetime", 3, null, null, null, null), "2026-01-01T00:00:00Z").isEmpty());
         assertTrue(check(field("kind", "enum", 3, null, null, null, null), "LONGVALUE").isEmpty());

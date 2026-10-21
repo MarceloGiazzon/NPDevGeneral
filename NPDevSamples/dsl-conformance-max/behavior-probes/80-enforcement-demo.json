@@ -541,11 +541,10 @@
     },
     {
       "id": "ed-field-minlength-enforced",
-      "knownFailure": "REG-273",
       "keywords": [
         "field.minLength"
       ],
-      "description": "DEFECT: WidgetEnforcementDemo.shortName declares minLength 3 (maxLength 12). Expected: 'ab' refused 422 at path shortName and 'abc' accepted. Actual: 'ab' is stored (201) -- only maxLength is enforced (REG-254), minLength is accepted and ignored.",
+      "description": "WidgetEnforcementDemo.shortName declares minLength 3 (maxLength 12). Expected: 'ab' refused 422 at path shortName and 'abc' accepted. Actual: 'ab' is stored (201) -- only maxLength is enforced (REG-254), minLength is accepted and ignored.",
       "steps": [
         {
           "name": "too short refused",
@@ -590,7 +589,6 @@
     },
     {
       "id": "ed-array-limits-and-identity-enforced",
-      "knownFailure": "REG-273",
       "keywords": [
         "field.minItems",
         "field.maxItems",
@@ -599,7 +597,7 @@
         "field.duplicationPolicy",
         "field.items"
       ],
-      "description": "DEFECT: tags declares minItems 1, maxItems 3, uniqueItems true; members declares itemIdentityField memberCode with duplicationPolicy deny. Expected: [] (below min), four tags (above max), ['red','red'] (duplicate) and two members sharing a memberCode are each refused 422. Actual: all four are stored (201); the array schema validator only checks item type/enum membership.",
+      "description": "tags declares minItems 1, maxItems 3, uniqueItems true; members declares itemIdentityField memberCode with duplicationPolicy deny. Expected: [] (below min), four tags (above max), ['red','red'] (duplicate) and two members sharing a memberCode are each refused 422. Actual: all four are stored (201); the array schema validator only checks item type/enum membership.",
       "steps": [
         {
           "name": "below minItems",
@@ -687,11 +685,10 @@
     },
     {
       "id": "ed-object-property-schema-enforced",
-      "knownFailure": "REG-273",
       "keywords": [
         "field.properties"
       ],
-      "description": "DEFECT: profile declares properties nickname {maxLength 5} and level {integer, min 1, max 9}. Expected: nickname 'toolongname', level 12 and level 'abc' are refused 422. Actual: all three are stored (201) -- the nested property schema is only checked for required keys and enum membership, not for the scalar constraints or types it declares.",
+      "description": "profile declares properties nickname {maxLength 5} and level {integer, min 1, max 9}. Expected: nickname 'toolongname', level 12 and level 'abc' are refused 422. Actual: all three are stored (201) -- the nested property schema is only checked for required keys and enum membership, not for the scalar constraints or types it declares.",
       "steps": [
         {
           "name": "nickname too long",

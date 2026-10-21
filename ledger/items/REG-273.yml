@@ -3,9 +3,10 @@ title: >-
   Field minLength, array minItems/maxItems/uniqueItems/itemIdentityField/duplicationPolicy and nested object-property constraints are accepted by the schema and never enforced on write
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-21
-closed: null
+closed: 2026-10-21
+verification: VERIFIED_LIVE
 source: >-
   ENF-1 behaviour probes (ed-field-minlength-enforced, ed-array-limits-and-identity-enforced, ed-object-property-schema-enforced in NPDevSamples/dsl-conformance-max/behavior-probes/80-enforcement-demo.json), each carrying knownFailure REG-273.
 surface: NPDevKernel/adapters/runtime-support/.../CrudSchemaValidationSupport.java (validateArraySchemaValue, validateObjectSchemaValue, validateFieldTypesAndReferences) and NPDevContract/dsl/.../compiled/FieldValueConstraints.java
@@ -17,3 +18,9 @@ detail: |
 resolution: >-
   Apply minLength in FieldValueConstraints, add the array limits and identity/duplication checks to validateArraySchemaValue, and run the scalar FieldValueConstraints rules (and type checks) for nested
   object properties; then remove knownFailure from the three probes.
+guard:
+  kind: live
+  ref: NPDevSamples/dsl-conformance-max/behavior-probes/80-enforcement-demo.json
+  asserts: >-
+    behaviour probes ed-field-minlength-enforced, ed-array-limits-and-identity-enforced and ed-object-property-schema-enforced: minLength, array limits/identity and nested property constraints are refused 422
+  provenRed: true
