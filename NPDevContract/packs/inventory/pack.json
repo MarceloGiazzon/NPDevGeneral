@@ -1,0 +1,639 @@
+{
+  "$schema": "../../schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "inventory",
+  "version": "1.0.0",
+  "namespace": "com.npdev.inventory",
+  "description": "NPDev inventory and warehouse pack: warehouses, storage locations, products and a stock-movement ledger. A person with the 'stockkeeper' role records movements (receipt, issue, transfer, adjustment in/out) as DRAFT and posts them; only POSTED movements count towards stock, and a posted movement is undone by reversing it, never by editing it. A person with the 'inventoryManager' role does the same and also maintains warehouses, locations and products. The two roles are logical: the importing app binds them to its own role names with provides.roleBindings { \"stockkeeper\": ..., \"inventoryManager\": ... } (composition refuses when either is unbound) and grants those roles read/create/update on the pack's concepts in its own roles[] (manager: also delete; stockkeeper: read-only on warehouses, locations and products). On-hand stock is derived (queries StockByProduct and StockByProductLocation), not stored, so it cannot drift from the ledger. NOT enforced by the pack: a movement that would take a location below zero (that needs a read of the current balance inside the posting transaction); the rules sheet lists it as a rule for the importing app to add. Numeric bounds and the per-warehouse unique location code are declared as invariants (enforced today) in addition to field min and the unique index, because field.min/max and compound unique indexes are not yet enforced by the platform (REG-255, REG-257).",
+  "category": "other",
+  "author": "NPDev",
+  "metadata": {
+    "summary": "Keeps track of what is in which warehouse. Warehouses have storage locations; products are received, issued, transferred between locations or adjusted by stock movements. A movement starts as a draft, becomes real when posted, and a posted movement is undone by reversing it. Stock on hand is always calculated from the posted movements, never typed in.",
+    "reviewNotes": [
+      "Negative stock is NOT prevented: nothing stops a posted issue or transfer taking a location below zero. Decide whether your business forbids it; enforcing it needs a balance check inside the posting step, which an app can add.",
+      "A reversed movement is not replaced by an opposite movement; it simply stops counting. If you need an audit trail of the correction as its own ledger line, say so.",
+      "One product per movement line (no multi-line documents). A receipt of ten products is ten movements sharing a document reference.",
+      "No lots, serial numbers, expiry dates or cost/valuation. Quantities only. Say which of these your domain needs first.",
+      "Units are labels only; there is no conversion between box and unit.",
+      "Who may post and who may reverse is not separated: both roles may do both. If reversing should need a manager, say so.",
+      "Today, numeric bounds and the per-warehouse location-code uniqueness are enforced through the rules above; the field-level min/max and unique-index declarations are repeated for documentation only because the platform does not enforce them yet."
+    ]
+  },
+  "concepts": [
+    {
+      "name": "Warehouse",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Warehouse"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "required": true,
+          "unique": true,
+          "maxLength": 20,
+          "ui": {
+            "label": "Code"
+          }
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "maxLength": 150,
+          "ui": {
+            "label": "Name"
+          }
+        },
+        {
+          "name": "address",
+          "type": "string",
+          "required": false,
+          "maxLength": 300,
+          "ui": {
+            "label": "Address"
+          }
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "required": true,
+          "default": true,
+          "ui": {
+            "label": "Active"
+          }
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('inventoryManager')) || $user.roles.contains(role('stockkeeper'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('inventoryManager'))"
+      }
+    },
+    {
+      "name": "StorageLocation",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Storage location"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "warehouseId",
+          "type": "reference",
+          "required": true,
+          "ui": {
+            "label": "Warehouse"
+          },
+          "reference": {
+            "target": "Warehouse",
+            "displayField": "name"
+          }
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "required": true,
+          "maxLength": 30,
+          "ui": {
+            "label": "Code"
+          }
+        },
+        {
+          "name": "kind",
+          "type": "enum",
+          "required": true,
+          "default": "STORAGE",
+          "enumValues": [
+            "RECEIVING",
+            "STORAGE",
+            "PICKING",
+            "SHIPPING",
+            "DAMAGED"
+          ],
+          "ui": {
+            "label": "Kind"
+          }
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "required": true,
+          "default": true,
+          "ui": {
+            "label": "Active"
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_inventory_location_code",
+          "fields": [
+            "warehouseId",
+            "code"
+          ],
+          "unique": true
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('inventoryManager')) || $user.roles.contains(role('stockkeeper'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('inventoryManager'))"
+      },
+      "invariants": [
+        {
+          "name": "LocationCodeUniquePerWarehouse",
+          "type": "unique",
+          "fields": [
+            "warehouseId",
+            "code"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Product",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Product"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "sku",
+          "type": "string",
+          "required": true,
+          "unique": true,
+          "maxLength": 40,
+          "ui": {
+            "label": "SKU"
+          }
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "maxLength": 200,
+          "ui": {
+            "label": "Name"
+          }
+        },
+        {
+          "name": "unit",
+          "type": "enum",
+          "required": true,
+          "default": "UNIT",
+          "enumValues": [
+            "UNIT",
+            "BOX",
+            "KG",
+            "LITER",
+            "METER"
+          ],
+          "ui": {
+            "label": "Unit"
+          }
+        },
+        {
+          "name": "minimumStock",
+          "type": "decimal",
+          "required": false,
+          "precision": 14,
+          "scale": 3,
+          "min": 0,
+          "ui": {
+            "label": "Minimum stock"
+          }
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "required": true,
+          "default": true,
+          "ui": {
+            "label": "Active"
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_inventory_product_name",
+          "fields": [
+            "name"
+          ]
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('inventoryManager')) || $user.roles.contains(role('stockkeeper'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('inventoryManager'))"
+      },
+      "invariants": [
+        {
+          "name": "MinimumStockNotNegative",
+          "type": "expression",
+          "expr": "minimumStock == null || minimumStock >= 0"
+        }
+      ]
+    },
+    {
+      "name": "StockMovement",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Stock movement"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "type",
+          "type": "enum",
+          "required": true,
+          "enumValues": [
+            "RECEIPT",
+            "ISSUE",
+            "TRANSFER",
+            "ADJUST_IN",
+            "ADJUST_OUT"
+          ],
+          "ui": {
+            "label": "Type"
+          }
+        },
+        {
+          "name": "productId",
+          "type": "reference",
+          "required": true,
+          "ui": {
+            "label": "Product"
+          },
+          "reference": {
+            "target": "Product",
+            "displayField": "name"
+          }
+        },
+        {
+          "name": "fromLocationId",
+          "type": "reference",
+          "required": false,
+          "ui": {
+            "label": "From location"
+          },
+          "reference": {
+            "target": "StorageLocation",
+            "displayField": "code"
+          }
+        },
+        {
+          "name": "toLocationId",
+          "type": "reference",
+          "required": false,
+          "ui": {
+            "label": "To location"
+          },
+          "reference": {
+            "target": "StorageLocation",
+            "displayField": "code"
+          }
+        },
+        {
+          "name": "quantity",
+          "type": "decimal",
+          "required": true,
+          "precision": 14,
+          "scale": 3,
+          "min": 0.001,
+          "ui": {
+            "label": "Quantity"
+          }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "required": true,
+          "default": "DRAFT",
+          "enumValues": [
+            "DRAFT",
+            "POSTED",
+            "REVERSED",
+            "CANCELLED"
+          ],
+          "ui": {
+            "label": "Status"
+          }
+        },
+        {
+          "name": "reference",
+          "type": "string",
+          "required": false,
+          "maxLength": 80,
+          "ui": {
+            "label": "Document reference"
+          }
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "required": false,
+          "maxLength": 300,
+          "ui": {
+            "label": "Reason"
+          }
+        },
+        {
+          "name": "movementDate",
+          "type": "datetime",
+          "required": false,
+          "defaultExpression": "now()",
+          "ui": {
+            "label": "Movement date"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "QuantityPositive",
+          "type": "expression",
+          "expr": "quantity > 0"
+        },
+        {
+          "name": "MovementLocationsMatchType",
+          "type": "expression",
+          "expr": "((type != 'RECEIPT' && type != 'ADJUST_IN') || toLocationId != null) && ((type != 'ISSUE' && type != 'ADJUST_OUT') || fromLocationId != null) && (type != 'TRANSFER' || (fromLocationId != null && toLocationId != null && fromLocationId != toLocationId))"
+        }
+      ],
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          {
+            "value": "DRAFT",
+            "label": "Draft",
+            "initial": true
+          },
+          {
+            "value": "POSTED",
+            "label": "Posted"
+          },
+          {
+            "value": "REVERSED",
+            "label": "Reversed",
+            "terminal": true
+          },
+          {
+            "value": "CANCELLED",
+            "label": "Cancelled",
+            "terminal": true
+          }
+        ],
+        "transitions": [
+          {
+            "from": "DRAFT",
+            "to": "POSTED",
+            "event": "StockMovementPosted",
+            "actionLabel": "Post"
+          },
+          {
+            "from": "DRAFT",
+            "to": "CANCELLED",
+            "event": "StockMovementCancelled",
+            "actionLabel": "Cancel"
+          },
+          {
+            "from": "POSTED",
+            "to": "REVERSED",
+            "event": "StockMovementReversed",
+            "actionLabel": "Reverse"
+          }
+        ]
+      },
+      "indexes": [
+        {
+          "name": "idx_inventory_movement_product",
+          "fields": [
+            "productId",
+            "status"
+          ]
+        },
+        {
+          "name": "idx_inventory_movement_status",
+          "fields": [
+            "status"
+          ]
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('inventoryManager')) || $user.roles.contains(role('stockkeeper'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('inventoryManager')) || $user.roles.contains(role('stockkeeper'))"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "StockMovementPosted",
+      "payload": [
+        "productId",
+        "quantity",
+        "type"
+      ]
+    },
+    {
+      "name": "StockMovementCancelled",
+      "payload": [
+        "productId"
+      ]
+    },
+    {
+      "name": "StockMovementReversed",
+      "payload": [
+        "productId",
+        "quantity",
+        "type"
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "name": "ActiveProducts",
+      "concept": "Product",
+      "where": "active == true",
+      "orderBy": [
+        "name"
+      ]
+    },
+    {
+      "name": "OpenMovements",
+      "concept": "StockMovement",
+      "where": "status == 'DRAFT'",
+      "orderBy": [
+        "movementDate desc"
+      ]
+    },
+    {
+      "name": "StockByProduct",
+      "concept": "StockMovement",
+      "where": "status == 'POSTED' && type != 'ISSUE' && type != 'ADJUST_OUT'",
+      "groupBy": [
+        "productId"
+      ],
+      "aggregates": [
+        {
+          "name": "received",
+          "fn": "sum",
+          "field": "quantity"
+        }
+      ],
+      "lookups": [
+        {
+          "name": "issued",
+          "concept": "StockMovement",
+          "fn": "sum",
+          "field": "quantity",
+          "on": {
+            "productId": "productId"
+          },
+          "where": "status == 'POSTED' && type != 'RECEIPT' && type != 'ADJUST_IN'"
+        }
+      ],
+      "computed": [
+        {
+          "name": "onHand",
+          "expression": "received - issued"
+        }
+      ],
+      "orderBy": [
+        "onHand desc"
+      ]
+    },
+    {
+      "name": "StockByProductLocation",
+      "concept": "StockMovement",
+      "where": "status == 'POSTED' && type != 'ISSUE' && type != 'ADJUST_OUT'",
+      "groupBy": [
+        "productId",
+        "toLocationId"
+      ],
+      "aggregates": [
+        {
+          "name": "received",
+          "fn": "sum",
+          "field": "quantity"
+        }
+      ],
+      "lookups": [
+        {
+          "name": "issued",
+          "concept": "StockMovement",
+          "fn": "sum",
+          "field": "quantity",
+          "on": {
+            "productId": "productId",
+            "fromLocationId": "toLocationId"
+          },
+          "where": "status == 'POSTED' && type != 'RECEIPT' && type != 'ADJUST_IN'"
+        }
+      ],
+      "computed": [
+        {
+          "name": "onHand",
+          "expression": "received - issued"
+        }
+      ],
+      "orderBy": [
+        "onHand desc"
+      ]
+    }
+  ],
+  "autoPanels": [
+    {
+      "name": "Warehouses",
+      "concept": "Warehouse",
+      "route": "/warehouses",
+      "surfaces": [
+        "selection",
+        "detail",
+        "transaction"
+      ],
+      "selection": {
+        "columns": [
+          "code",
+          "name",
+          "active"
+        ]
+      }
+    },
+    {
+      "name": "StorageLocations",
+      "concept": "StorageLocation",
+      "route": "/storage-locations",
+      "surfaces": [
+        "selection",
+        "detail",
+        "transaction"
+      ],
+      "selection": {
+        "columns": [
+          "warehouseId",
+          "code",
+          "kind",
+          "active"
+        ]
+      }
+    },
+    {
+      "name": "Products",
+      "concept": "Product",
+      "route": "/products",
+      "surfaces": [
+        "selection",
+        "detail",
+        "transaction"
+      ],
+      "selection": {
+        "columns": [
+          "sku",
+          "name",
+          "unit",
+          "minimumStock",
+          "active"
+        ]
+      }
+    },
+    {
+      "name": "StockMovements",
+      "concept": "StockMovement",
+      "route": "/stock-movements",
+      "surfaces": [
+        "selection",
+        "detail",
+        "transaction"
+      ],
+      "selection": {
+        "columns": [
+          "movementDate",
+          "type",
+          "productId",
+          "quantity",
+          "status"
+        ]
+      }
+    }
+  ]
+}

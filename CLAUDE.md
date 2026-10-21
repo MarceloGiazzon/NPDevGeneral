@@ -270,7 +270,7 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   `//packs/<id>` subpath (`git+file:///<repo>//packs/<id>@<id>-<version>`, leading slash before the
   drive letter) since that's where the publisher lays each pack out, then `python
   NPDevCli/npdev_cli.py pack update --model <path> --allow-unsigned` resolves and writes
-  `npdev.lock`. `python scripts/docs/capture-capability-docs.py` (Session 13) points at a running
+  `npdev.lock`. `python scripts/pack-repo/generate-pack-rules-sheet.py <packId>` (DOM-0) renders one pack as a single reviewable page of business rules (concepts, lifecycles, invariants, who may read/write, derived views, and the pack's own `metadata.reviewNotes` gaps) into `<BuildRoot>/reports/pack-rules-sheets/`, the sign-off artifact for each domain pack. `python scripts/docs/capture-capability-docs.py` (Session 13) points at a running
   app and a route list, captures screenshots via the `verify-in-browser` skill's ScrapForAI harness,
   and renders an HTML capability doc — reusable across capabilities, not bespoke per feature.
 - **Local machine resource policy:** `scripts/policy/local-test-profile.json` (read via

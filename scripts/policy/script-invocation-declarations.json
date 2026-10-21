@@ -9,6 +9,10 @@
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"
     },
+    "scripts/pack-repo/generate-pack-rules-sheet.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/pack-repo/publish-pack-repo.py": {
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"
