@@ -1,0 +1,45 @@
+/* NPDev service worker (MOB-1). Caches the APP SHELL only -- the static files that draw the UI -- so
+ * an installed app opens with no network. It never touches /api/: list data is cached by the page
+ * itself, per tenant and user, and is cleared on sign-out (shell.js), which a service worker shared by
+ * every user of a device could not do safely. Network-first, so a deployed update is picked up at the
+ * next load and the cache is only the offline fallback. The cache name carries the shell version, so a
+ * new platform version drops the old shell on activate. */
+var CACHE = "npdev-shell-{{{shellVersion}}}";
+var SHELL = {{{shellAssetsJson}}};
+
+function isShellPath(pathname) {
+  return pathname.indexOf("/npdev-business-ui/") === 0 || pathname === "/shell.js" || pathname === "/shell.css"
+    || pathname === "/theme.css" || pathname === "/npdev-xlsx.js" || pathname === "/npdev-manifest.json"
+    || pathname.indexOf("/npdev-icon-") === 0;
+}
+
+self.addEventListener("install", function (event) {
+  event.waitUntil(caches.open(CACHE).then(function (cache) {
+    // One missing file must not abort the install: add each on its own.
+    return Promise.all(SHELL.map(function (url) { return cache.add(url).catch(function () {}); }));
+  }).then(function () { return self.skipWaiting(); }));
+});
+
+self.addEventListener("activate", function (event) {
+  event.waitUntil(caches.keys().then(function (names) {
+    return Promise.all(names.filter(function (name) {
+      return name.indexOf("npdev-shell-") === 0 && name !== CACHE;
+    }).map(function (name) { return caches.delete(name); }));
+  }).then(function () { return self.clients.claim(); }));
+});
+
+self.addEventListener("fetch", function (event) {
+  var request = event.request;
+  if (request.method !== "GET") { return; }
+  var url = new URL(request.url);
+  if (url.origin !== self.location.origin || !isShellPath(url.pathname)) { return; }
+  event.respondWith(fetch(request).then(function (response) {
+    if (response && response.ok && response.type === "basic") {
+      var copy = response.clone();
+      caches.open(CACHE).then(function (cache) { cache.put(request, copy); });
+    }
+    return response;
+  }).catch(function () {
+    return caches.match(request, { ignoreSearch: true });
+  }));
+});
