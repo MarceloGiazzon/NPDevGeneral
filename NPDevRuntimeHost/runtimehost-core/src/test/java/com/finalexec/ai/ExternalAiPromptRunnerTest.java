@@ -38,6 +38,10 @@ class ExternalAiPromptRunnerTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static CompiledModel model(String egress) throws Exception {
+        return model(egress, "");
+    }
+
+    private static CompiledModel model(String egress, String promptExtra) throws Exception {
         String json = """
             {
               "dslVersion": "1.0.0", "namespace": "wms.ai", "version": "1.0",
@@ -52,11 +56,11 @@ class ExternalAiPromptRunnerTest {
                 "prompts": [ { "name": "IdentifyCap", "vendor": "gemini", "model": "gemini-3.5-flash",
                   "template": "Identify {{cap.name}} ({{colors}}) missing={{nope}}", "image": "photo",
                   "outputSchema": { "type": "object", "required": ["brewery"],
-                    "properties": { "brewery": { "type": "string" } } } } ],
+                    "properties": { "brewery": { "type": "string" } } }%s } ],
                 "limits": { "callsPerUserPerDay": "aiCalls", "monthlyCostCapUsd": "aiBudget" }
               }
             }
-            """.formatted(egress);
+            """.formatted(egress, promptExtra);
         return new ModelCompiler().compile(new JsonModelParser().parse(MAPPER.readTree(json)));
     }
 
@@ -119,6 +123,30 @@ class ExternalAiPromptRunnerTest {
 
     private List<AuditRecord> auditRows() {
         return audit.search(new AuditQuery("t1", null, ExternalAiPromptRunner.AUDIT_ACTION, null, null, null, null, 100, 0));
+    }
+
+    @Test
+    void aReviewedPromptStampsHashesOfItsInputAndAnswerIntoTheAuditRowButNeverTheValues() throws Exception {
+        FakeVendor vendor = new FakeVendor();
+        ExternalAiPromptRunner runner = runner(model("apiEnabled", ", \"review\": \"required\""), vendor);
+
+        CapabilityResult result = call(runner, "IdentifyCap", Map.of("cap", Map.of("name", "Branik 10")), "tito");
+
+        assertTrue(result.ok(), String.valueOf(result.error()));
+        AuditRecord row = auditRows().get(0);
+        assertEquals("required", row.meta().get("review"));
+        assertEquals(ProposalHash.ofText(vendor.requests.get(0).prompt()), row.meta().get("inputHash"));
+        assertEquals(ProposalHash.ofJson(result.value()), row.meta().get("answerHash"));
+        assertFalse(row.toString().contains("Branik"), "hashes only, never the values: " + row);
+    }
+
+    @Test
+    void anUnreviewedPromptAddsNoReviewKeysToTheAuditRow() throws Exception {
+        ExternalAiPromptRunner runner = runner(model("apiEnabled"), new FakeVendor());
+        call(runner, "IdentifyCap", Map.of("cap", Map.of("name", "x")), "tito");
+        AuditRecord row = auditRows().get(0);
+        assertFalse(row.meta().containsKey("review"));
+        assertFalse(row.meta().containsKey("answerHash"));
     }
 
     @Test

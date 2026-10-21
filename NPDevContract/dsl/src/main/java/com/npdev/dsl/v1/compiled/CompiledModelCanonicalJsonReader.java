@@ -341,7 +341,8 @@ public final class CompiledModelCanonicalJsonReader {
                         optionalText(prompt, "template"),
                         optionalText(prompt, "image"),
                         optionalText(prompt, "outputSchemaJson"),
-                        optionalIntegerObject(prompt.get("maxOutputTokens"))
+                        optionalIntegerObject(prompt.get("maxOutputTokens")),
+                        optionalText(prompt, "review")
                 ));
             }
         }
@@ -1295,7 +1296,9 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "outcomeField"),
                 outcomes,
                 fields,
-                optionalText(node, "record"));
+                optionalText(node, "record"),
+                node.path("proposal").isObject() ? optionalText(node.get("proposal"), "value") : null,
+                node.path("proposal").isObject() ? optionalText(node.get("proposal"), "current") : null);
     }
 
     private static CompiledCapabilityCall toCapabilityCall(JsonNode node) {

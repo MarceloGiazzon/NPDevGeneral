@@ -90,12 +90,38 @@
     return values;
   }
 
+  function show(value) {
+    if (value === null || value === undefined) return "(empty)";
+    return typeof value === "string" ? value : JSON.stringify(value);
+  }
+
+  // AI7-1: a review task shows the proposed values against the current ones, field by field. Text only.
+  function proposalTable(proposal) {
+    var wrap = el("div", "npdev-task-proposal");
+    wrap.appendChild(el("p", "npdev-task-proposal-note",
+      "Proposed change - nothing is applied until you approve."));
+    var table = el("table", "npdev-task-diff");
+    var head = el("tr");
+    ["Field", "Current", "Proposed"].forEach(function (h) { head.appendChild(el("th", "", h)); });
+    table.appendChild(head);
+    (proposal.diff || []).forEach(function (d) {
+      var tr = el("tr", d.changed ? "npdev-task-diff-changed" : "npdev-task-diff-same");
+      tr.appendChild(el("td", "", d.field));
+      tr.appendChild(el("td", "npdev-task-diff-before", show(d.before)));
+      tr.appendChild(el("td", "npdev-task-diff-after", show(d.after)));
+      table.appendChild(tr);
+    });
+    wrap.appendChild(table);
+    return wrap;
+  }
+
   function openTask(task, body) {
     body.dataset.loaded = "1";
     shell.renderLoading(body, { message: "Loading..." });
     shell.api.get("/api/tasks/" + encodeURIComponent(task.executionId)).then(function (detail) {
       body.innerHTML = "";
       if (detail.description) body.appendChild(el("p", "npdev-task-description", detail.description));
+      if (detail.proposal) body.appendChild(proposalTable(detail.proposal));
       var form = el("form", "npdev-task-form");
       (detail.fields || []).forEach(function (f) { form.appendChild(input(f)); });
       var status = el("div", "npdev-task-status");

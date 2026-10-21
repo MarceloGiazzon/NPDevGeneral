@@ -34,6 +34,7 @@ final class ExternalAiValidation {
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{\\s*([^{}]*?)\\s*}}");
     private static final Pattern PLACEHOLDER_PATH = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*");
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final Set<String> REVIEW_MODES = Set.of("required", "optional", "none");
 
     private ExternalAiValidation() {
     }
@@ -42,6 +43,7 @@ final class ExternalAiValidation {
         ExternalAiAst externalAi = modelAst.getExternalAi();
         List<ExternalAiPromptAst> prompts = externalAi == null ? List.of() : externalAi.getPrompts();
         Set<String> promptNames = new HashSet<>();
+        Set<String> reviewRequired = new HashSet<>();
 
         if (externalAi != null) {
             boolean egressDenied = "denied".equalsIgnoreCase(externalAi.getEgress());
@@ -55,6 +57,9 @@ final class ExternalAiValidation {
                     .collect(Collectors.toSet());
             for (ExternalAiPromptAst prompt : prompts) {
                 validatePrompt(prompt, vendors, promptNames, errors);
+                if (prompt.reviewRequired() && prompt.name() != null) {
+                    reviewRequired.add(prompt.name().trim());
+                }
             }
             Map<String, PropertyAst> properties = modelAst.getProperties().stream()
                     .collect(Collectors.toMap(PropertyAst::name, Function.identity(), (left, right) -> left));
@@ -66,10 +71,10 @@ final class ExternalAiValidation {
         }
 
         for (FlowAst flow : modelAst.getFlows()) {
-            validateGenerateCalls(flow, flow.getSteps(), promptNames, errors);
+            validateGenerateCalls(flow, flow.getSteps(), promptNames, reviewRequired, errors);
         }
         for (ProcedureAst procedure : modelAst.getProcedures()) {
-            validateProcedureGenerateCalls(procedure.name(), procedure.steps(), promptNames, errors);
+            validateProcedureGenerateCalls(procedure.name(), procedure.steps(), promptNames, reviewRequired, errors);
         }
     }
 
@@ -126,6 +131,11 @@ final class ExternalAiValidation {
         if (prompt.maxOutputTokens() != null && prompt.maxOutputTokens() < 1) {
             errors.add(prefix + "maxOutputTokens must be >= 1");
         }
+        if (!REVIEW_MODES.contains(prompt.review())) {
+            errors.add(prefix + "review '" + prompt.review() + "' is not one of " + REVIEW_MODES
+                    + " -- suggestedFix: use 'required' (a human approves before anything applies the answer), "
+                    + "'optional' or 'none'");
+        }
     }
 
     private static void validateLimit(
@@ -149,29 +159,57 @@ final class ExternalAiValidation {
     }
 
     private static void validateGenerateCalls(
-            FlowAst flow, List<StepAst> steps, Set<String> promptNames, List<String> errors) {
+            FlowAst flow, List<StepAst> steps, Set<String> promptNames, Set<String> reviewRequired,
+            List<String> errors) {
         if (steps == null) {
             return;
         }
-        for (StepAst step : steps) {
+        for (int i = 0; i < steps.size(); i++) {
+            StepAst step = steps.get(i);
             if (step == null) {
                 continue;
             }
             if (isGenerate(step.getCapability(), step.getOperation())) {
                 List<String> args = step.getArgs();
-                checkPromptArg(args == null || args.isEmpty() ? null : args.get(0),
-                        "Flow " + flow.getName() + " step " + step.getName() + ": ", promptNames, errors);
+                String prefix = "Flow " + flow.getName() + " step " + step.getName() + ": ";
+                String promptArg = args == null || args.isEmpty() ? null : args.get(0);
+                checkPromptArg(promptArg, prefix, promptNames, errors);
+                if (reviewRequired.contains(trim(promptArg))) {
+                    checkReviewGate(prefix, trim(promptArg), step, i + 1 < steps.size() ? steps.get(i + 1) : null, errors);
+                }
             }
-            validateGenerateCalls(flow, step.getThenSteps(), promptNames, errors);
-            validateGenerateCalls(flow, step.getElseSteps(), promptNames, errors);
-            validateGenerateCalls(flow, step.getLoopSteps(), promptNames, errors);
-            validateGenerateCalls(flow, step.getOnFailureSteps(), promptNames, errors);
-            validateGenerateCalls(flow, step.getOnTimeoutSteps(), promptNames, errors);
+            validateGenerateCalls(flow, step.getThenSteps(), promptNames, reviewRequired, errors);
+            validateGenerateCalls(flow, step.getElseSteps(), promptNames, reviewRequired, errors);
+            validateGenerateCalls(flow, step.getLoopSteps(), promptNames, reviewRequired, errors);
+            validateGenerateCalls(flow, step.getOnFailureSteps(), promptNames, reviewRequired, errors);
+            validateGenerateCalls(flow, step.getOnTimeoutSteps(), promptNames, reviewRequired, errors);
+        }
+    }
+
+    /**
+     * AI7-1: a {@code review: required} prompt's answer may not reach any step before a human has seen
+     * it, so the call must be followed IMMEDIATELY (same step list) by the awaitEvent task that
+     * presents exactly that output as its proposal. Anything between the two could read the answer.
+     */
+    private static void checkReviewGate(String prefix, String promptName, StepAst call, StepAst next, List<String> errors) {
+        String output = trim(call.getOutput());
+        String fix = " -- suggestedFix: put an awaitEvent step with a task block directly after this step, with"
+                + " task.proposal.value set to the call's output (e.g. \"output\": \"$suggestion\" and"
+                + " \"proposal\": { \"value\": \"$suggestion\" }), and apply the values only after it";
+        if (output.isEmpty()) {
+            errors.add(prefix + "prompt '" + promptName + "' has review: required but this call has no output to review" + fix);
+            return;
+        }
+        boolean gated = next != null && next.getTask() != null && output.equals(trim(next.getTask().getProposalValue()));
+        if (!gated) {
+            errors.add(prefix + "prompt '" + promptName + "' has review: required, so the next step must be an awaitEvent"
+                    + " task whose proposal.value is '" + output + "'" + fix);
         }
     }
 
     private static void validateProcedureGenerateCalls(
-            String procedureName, List<ProcedureStepAst> steps, Set<String> promptNames, List<String> errors) {
+            String procedureName, List<ProcedureStepAst> steps, Set<String> promptNames, Set<String> reviewRequired,
+            List<String> errors) {
         if (steps == null) {
             return;
         }
@@ -187,12 +225,17 @@ final class ExternalAiValidation {
                         .filter(value -> value instanceof String text && !text.trim().startsWith("$"))
                         .map(String::valueOf)
                         .findFirst().orElse(null);
-                checkPromptArg(literal,
-                        "Procedure " + procedureName + " step " + step.name() + ": ", promptNames, errors);
+                String prefix = "Procedure " + procedureName + " step " + step.name() + ": ";
+                checkPromptArg(literal, prefix, promptNames, errors);
+                if (reviewRequired.contains(trim(literal))) {
+                    errors.add(prefix + "prompt '" + trim(literal) + "' has review: required, and a procedure cannot wait"
+                            + " for a human -- suggestedFix: call it from a flow, followed by an awaitEvent task whose"
+                            + " proposal.value is the call's output");
+                }
             }
-            validateProcedureGenerateCalls(procedureName, step.thenSteps(), promptNames, errors);
-            validateProcedureGenerateCalls(procedureName, step.elseSteps(), promptNames, errors);
-            validateProcedureGenerateCalls(procedureName, step.steps(), promptNames, errors);
+            validateProcedureGenerateCalls(procedureName, step.thenSteps(), promptNames, reviewRequired, errors);
+            validateProcedureGenerateCalls(procedureName, step.elseSteps(), promptNames, reviewRequired, errors);
+            validateProcedureGenerateCalls(procedureName, step.steps(), promptNames, reviewRequired, errors);
         }
     }
 

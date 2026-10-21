@@ -5,6 +5,7 @@ import com.finalexec.tasks.HumanTaskService;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.KernelRunner;
+import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.FlowInstanceStore;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.ObjectProvider;
@@ -49,11 +50,13 @@ public class HumanTaskController {
             ModelHolder modelHolder,
             FlowInstanceStore flowInstanceStore,
             ObjectProvider<KernelRunner> kernelRunner,
-            RuntimeContextService runtimeContextService
+            RuntimeContextService runtimeContextService,
+            AuditLogStore auditLogStore
     ) {
         this(new HumanTaskService(modelHolder::get, flowInstanceStore,
                         (name, payload, correlationId, causationId, ctx) ->
-                                kernelRunner.getObject().publishExternalEvent(name, payload, correlationId, causationId, ctx)),
+                                kernelRunner.getObject().publishExternalEvent(name, payload, correlationId, causationId, ctx),
+                        auditLogStore),
                 runtimeContextService);
     }
 

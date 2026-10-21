@@ -787,7 +787,7 @@ public final class ModelCompiler {
                         .map(prompt -> new CompiledExternalAiPrompt(
                                 prompt.name(), prompt.description(), prompt.vendor(), prompt.model(),
                                 prompt.template(), prompt.image(), prompt.outputSchemaJson(),
-                                prompt.maxOutputTokens()))
+                                prompt.maxOutputTokens(), prompt.review()))
                         .toList(),
                 externalAiAst.getCallsPerUserPerDayProperty(),
                 externalAiAst.getMonthlyCostCapUsdProperty());
@@ -2042,7 +2042,8 @@ public final class ModelCompiler {
             fields.add(new CompiledHumanTask.Field(f.name(), f.type(), f.label(), f.required(), f.maxLength()));
         }
         return new CompiledHumanTask(task.getTitle(), task.getDescription(), task.getAssigneeUser(),
-                task.getAssigneeRoles(), task.getOutcomeField(), outcomes, fields, task.getRecord());
+                task.getAssigneeRoles(), task.getOutcomeField(), outcomes, fields, task.getRecord(),
+                task.getProposalValue(), task.getProposalCurrent());
     }
 
     private static CompiledActionMetadata toCompiledActionMetadata(ActionMetadataAst actionMetadata) {

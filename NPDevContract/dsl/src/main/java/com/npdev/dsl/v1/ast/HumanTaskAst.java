@@ -27,9 +27,17 @@ public final class HumanTaskAst {
     private final List<Outcome> outcomes;
     private final List<Field> fields;
     private final String record;
+    private final String proposalValue;
+    private final String proposalCurrent;
 
     public HumanTaskAst(String title, String description, String assigneeUser, List<String> assigneeRoles,
                         String outcomeField, List<Outcome> outcomes, List<Field> fields, String record) {
+        this(title, description, assigneeUser, assigneeRoles, outcomeField, outcomes, fields, record, null, null);
+    }
+
+    public HumanTaskAst(String title, String description, String assigneeUser, List<String> assigneeRoles,
+                        String outcomeField, List<Outcome> outcomes, List<Field> fields, String record,
+                        String proposalValue, String proposalCurrent) {
         this.title = title;
         this.description = description;
         this.assigneeUser = assigneeUser;
@@ -38,6 +46,8 @@ public final class HumanTaskAst {
         this.outcomes = outcomes == null ? List.of() : List.copyOf(outcomes);
         this.fields = fields == null ? List.of() : List.copyOf(fields);
         this.record = record;
+        this.proposalValue = proposalValue;
+        this.proposalCurrent = proposalCurrent;
     }
 
     public String getTitle() { return title; }
@@ -59,4 +69,10 @@ public final class HumanTaskAst {
 
     /** Optional flow-state ref to the business record this task is about. */
     public String getRecord() { return record; }
+
+    /** AI7-1: flow-state ref to the proposed values this task asks a human to review; null for a plain task. */
+    public String getProposalValue() { return proposalValue; }
+
+    /** AI7-1: flow-state ref to the current record the proposal is diffed against; may be null. */
+    public String getProposalCurrent() { return proposalCurrent; }
 }

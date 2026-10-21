@@ -1,0 +1,211 @@
+{
+  "probes": [
+    {
+      "id": "ai71-review-required-approve-applies-exactly-the-proposal",
+      "keywords": [
+        "humanTask.proposal",
+        "flowStep.task"
+      ],
+      "description": "AI7-1: SuggestCatalogDisplayName is review: required. ReviewedCatalogSuggestionFlow asks the AI, then PARKS the answer on a human task instead of applying it. Before approval the catalog entry is untouched; the task detail shows the proposal as a diff against the current record. Approving (while the client tries to smuggle its own proposal into the form values) writes exactly the values the parked flow held -- the entry's displayName becomes the proposed one, not the tampered one.",
+      "steps": [
+        {
+          "name": "create the catalog entry the AI will rename",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "AI71-${rand}",
+            "displayName": "Before review",
+            "discontinued": false,
+            "unitPrice": 2.5,
+            "ownerEmail": "developer",
+            "internalNotes": "original notes"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "entryId": "$.id",
+            "entrySku": "$.sku"
+          }
+        },
+        {
+          "name": "run the reviewed flow: it parks, it does not apply",
+          "method": "POST",
+          "path": "/api/flows/ReviewedCatalogSuggestionFlow/execute",
+          "body": {
+            "id": "${entryId}",
+            "sku": "${entrySku}"
+          },
+          "expect": {
+            "status": 202,
+            "json": {
+              "$.status": "WAITING_EVENT"
+            }
+          },
+          "save": {
+            "execId": "$.executionId"
+          }
+        },
+        {
+          "name": "nothing applied while the proposal waits",
+          "method": "GET",
+          "path": "/api/widget_catalog_entrys/${entryId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.displayName": "Before review",
+              "$.internalNotes": "original notes"
+            }
+          }
+        },
+        {
+          "name": "the task shows the proposal as a diff against the current record",
+          "method": "GET",
+          "path": "/api/tasks/${execId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.review": true,
+              "$.proposal.diff": {
+                "len": 2
+              },
+              "$.proposal.current.sku": "${entrySku}",
+              "$.proposal.hash": {
+                "matches": "^[0-9a-f]{64}$"
+              }
+            }
+          },
+          "save": {
+            "proposedName": "$.proposal.value.displayName",
+            "proposedNotes": "$.proposal.value.internalNotes"
+          }
+        },
+        {
+          "name": "approve, with the client trying to supply its own proposal",
+          "method": "POST",
+          "path": "/api/tasks/${execId}/complete",
+          "body": {
+            "stepName": "await-suggestion-review",
+            "outcome": "APPROVED",
+            "values": {
+              "comment": "looks right",
+              "proposal": {
+                "displayName": "TAMPERED"
+              },
+              "recordId": "00000000-0000-0000-0000-000000000000"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.outcome": "COMPLETED",
+              "$.executionStatus": "COMPLETED"
+            }
+          }
+        },
+        {
+          "name": "the entry now carries exactly the values the reviewer was shown",
+          "method": "GET",
+          "path": "/api/widget_catalog_entrys/${entryId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.displayName": "${proposedName}",
+              "$.internalNotes": "${proposedNotes}",
+              "$.sku": "${entrySku}"
+            }
+          }
+        },
+        {
+          "name": "the task is gone once answered",
+          "method": "GET",
+          "path": "/api/tasks/${execId}",
+          "expect": {
+            "status": 409,
+            "json": {
+              "$.error": "TASK_NOT_OPEN"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "ai71-review-required-reject-changes-nothing",
+      "keywords": [
+        "humanTask.proposal",
+        "flowStep.task"
+      ],
+      "description": "AI7-1: rejecting the proposal completes the flow without ever calling the apply procedure -- the catalog entry keeps every original value.",
+      "steps": [
+        {
+          "name": "create the catalog entry",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "AI71R-${rand}",
+            "displayName": "Keep me",
+            "discontinued": false,
+            "unitPrice": 3.5,
+            "ownerEmail": "developer",
+            "internalNotes": "keep these notes"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "entryId": "$.id",
+            "entrySku": "$.sku"
+          }
+        },
+        {
+          "name": "run the reviewed flow",
+          "method": "POST",
+          "path": "/api/flows/ReviewedCatalogSuggestionFlow/execute",
+          "body": {
+            "id": "${entryId}",
+            "sku": "${entrySku}"
+          },
+          "expect": {
+            "status": 202,
+            "json": {
+              "$.status": "WAITING_EVENT"
+            }
+          },
+          "save": {
+            "execId": "$.executionId"
+          }
+        },
+        {
+          "name": "reject",
+          "method": "POST",
+          "path": "/api/tasks/${execId}/complete",
+          "body": {
+            "stepName": "await-suggestion-review",
+            "outcome": "REJECTED",
+            "values": {
+              "comment": "not this time"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.executionStatus": "COMPLETED"
+            }
+          }
+        },
+        {
+          "name": "the entry is unchanged",
+          "method": "GET",
+          "path": "/api/widget_catalog_entrys/${entryId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.displayName": "Keep me",
+              "$.internalNotes": "keep these notes"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

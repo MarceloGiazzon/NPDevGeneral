@@ -1014,7 +1014,8 @@ public final class JsonModelParser {
                         readText(prompt, "template"),
                         readText(prompt, "image"),
                         outputSchema == null || outputSchema.isNull() ? null : outputSchema.toString(),
-                        readOptionalInt(prompt, "maxOutputTokens")
+                        readOptionalInt(prompt, "maxOutputTokens"),
+                        readText(prompt, "review")
                 ));
             }
         }
@@ -2851,7 +2852,9 @@ public final class JsonModelParser {
         return new HumanTaskAst(readText(node, "title"), readText(node, "description"),
                 assignee == null ? null : readText(assignee, "user"),
                 assignee == null ? List.of() : parseTextArray(assignee.get("roles")),
-                readText(node, "outcomeField"), outcomes, fields, readText(node, "record"));
+                readText(node, "outcomeField"), outcomes, fields, readText(node, "record"),
+                node.path("proposal").isObject() ? readText(node.get("proposal"), "value") : null,
+                node.path("proposal").isObject() ? readText(node.get("proposal"), "current") : null);
     }
 
     private List<CapabilityAst> parseCapabilitiesArray(
