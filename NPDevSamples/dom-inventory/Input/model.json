@@ -1,0 +1,25 @@
+{
+  "$schema": "..\..\..\NPDevContract\schemas\model.schema.json",
+  "namespace": "sample.dominventory",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "DOM-1: a consumer of the built-in inventory pack. Binds the pack's two logical roles to WH_MANAGER and KEEPER and grants them the pack's concepts; probe/inventory_probe.py drives the pack's rules against the booted app (role enforcement, movement invariants, lifecycle, derived stock on hand)."
+  },
+  "packs": [
+    { "$ref": "packs/inventory/pack.json", "as": "inventory" }
+  ],
+  "provides": {
+    "roleBindings": { "stockkeeper": "KEEPER", "inventoryManager": "WH_MANAGER" }
+  },
+  "roles": [
+    { "name": "WH_MANAGER", "concepts": {
+        "inventory::Warehouse": ["read", "create", "update", "delete"],
+        "inventory::StorageLocation": ["read", "create", "update", "delete"],
+        "inventory::Product": ["read", "create", "update", "delete"],
+        "inventory::StockMovement": ["read", "create", "update", "delete"] } },
+    { "name": "KEEPER", "concepts": {
+        "inventory::Warehouse": ["read"], "inventory::StorageLocation": ["read"], "inventory::Product": ["read"],
+        "inventory::StockMovement": ["read", "create", "update"] } }
+  ]
+}
