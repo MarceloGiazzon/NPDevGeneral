@@ -21,14 +21,12 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Wave 4 (BOUNDARY_LIFT_PLAN_2026-09-02.md package 4.4, B30-B): proves the generator itself warns,
- * at generation time, for every {@code plugin:java-controller} mount -- the deliverable of that
- * package is the trusted-tier-by-design DECISION (recorded in {@code docs/ACCEPTED_BOUNDARIES.md}
- * B13/B30), and this is the code that makes an author actually see it, rather than only an operator
- * who later reads the doc. {@link RuntimeApiEmitter#emitJavaControllerMounts} prints one line per
- * mounted controller naming its capability -- unlike {@code plugin:java-source} (real OS-process
- * isolation + a memory/CPU ceiling since SEC-5), a mounted controller runs IN-PROCESS with the
- * application's full privileges and is never sandboxed.
+ * Proves the generator itself warns, at generation time, for every {@code plugin:java-controller}
+ * mount, so an author sees the containment posture rather than only an operator who later reads the
+ * doc. {@link RuntimeApiEmitter#emitJavaControllerMounts} prints one line per mounted controller
+ * naming its capability. Since SEC-9 a mounted controller runs in the isolated plugin worker pool, so
+ * the line states what that does and does not cover (SBX-1) and points at
+ * {@code docs/reference/PLUGIN_SANDBOX.md}.
  */
 class RuntimeApiEmitterPluginControllerWarningTest {
 
@@ -62,7 +60,8 @@ class RuntimeApiEmitterPluginControllerWarningTest {
                 "expected a B30 trusted-tier warning naming 'adminTools':\n" + console);
         assertTrue(console.contains("WARNING (B30) -- plugin:java-controller 'superOnlyTools'"),
                 "expected a B30 trusted-tier warning naming 'superOnlyTools':\n" + console);
-        assertTrue(console.contains("TRUSTED tier by design"), console);
-        assertTrue(console.contains("docs/ACCEPTED_BOUNDARIES.md#B30"), console);
+        assertTrue(console.contains("isolated plugin worker process"), console);
+        assertTrue(console.contains("Linux-only"), console);
+        assertTrue(console.contains("docs/reference/PLUGIN_SANDBOX.md"), console);
     }
 }
