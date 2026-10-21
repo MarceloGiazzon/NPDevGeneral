@@ -946,7 +946,23 @@ public final class PostgresPersistenceCapabilityAdapter
         return dbRecord;
     }
 
-    private static String tableName(Object concept) {
+    /**
+     * The concept's physical table: the compiled model's own name when it knows the concept (a
+     * pack-composed concept lives in a pack-versioned table such as {@code leave_v1_leave_requests}
+     * that no derivation from the bare name can reach), else the derivation below.
+     */
+    private String tableName(Object concept) {
+        CompiledConcept compiled = findCompiledConcept(concept);
+        if (compiled != null) {
+            String resolved = SqlIdentifierSupport.tableName(compiled);
+            if (!resolved.isBlank()) {
+                return resolved;
+            }
+        }
+        return derivedTableName(concept);
+    }
+
+    private static String derivedTableName(Object concept) {
         String raw = Objects.toString(concept, "default").trim();
         if (raw.isBlank()) {
             raw = "default";

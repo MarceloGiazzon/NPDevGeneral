@@ -1,0 +1,506 @@
+{
+  "$schema": "../../schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "leave",
+  "version": "1.0.0",
+  "namespace": "com.npdev.leave",
+  "description": "NPDev leave-request pack: leave types and leave requests decided by an approver. A person with the 'employee' role files a request through the RequestLeave flow; the flow first checks the request's rules (a request that breaks them never reaches an approver) and then puts a task on My tasks for anyone with the 'leaveApprover' role, who approves or rejects it with a comment (the same human-task pattern as the approvals pack); 'hrAdmin' maintains the leave types and may cancel. A request is PENDING, then APPROVED or REJECTED, and a PENDING or APPROVED request may be CANCELLED. How many days each employee has had approved is derived by a query, never typed in. A resumed flow applies the decision as the person who started it and without that person's roles, so the rules also admit the platform's trusted resume principal (role ADMIN). The three roles are logical: the importing app binds them with provides.roleBindings { \"employee\": ..., \"leaveApprover\": ..., \"hrAdmin\": ... } (composition refuses when one is unbound) and grants them on the pack's concepts in its own roles[]. The flow persists, so the importing app must also declare a persistence capability and bind it (and bind the eventBus): see the dom-leave sample.",
+  "category": "other",
+  "author": "NPDev",
+  "metadata": {
+    "summary": "Handles time off. An employee asks for leave of a given type between two dates; an approver sees the request in their task list and approves or rejects it with a comment; HR can cancel a request. The days each employee has taken are always calculated from approved requests, never typed in.",
+    "reviewNotes": [
+      "There is no balance check: a request is accepted even when the employee has used up the leave type's yearly allowance, and the allowance is not reset each year. Say how balances accrue, carry over and expire.",
+      "The end date is not checked against the start date: the expression language has no working date comparison (comparing two date fields passes silently), so a request ending before it starts is accepted. Say whether that needs a platform rule.",
+      "The number of days is typed in by the employee; it is not calculated from the two dates, and weekends and public holidays are not excluded. Say how days are counted.",
+      "Any approver can decide any request: there is no link between an employee and their own manager. Say who approves whom and whether an approver may decide their own request.",
+      "Overlap is not checked: one employee can have two approved requests on the same dates.",
+      "A request that nobody decides stays PENDING; there is no reminder and no expiry. The flow waits 14 days and then stops waiting, leaving the request PENDING.",
+      "Cancelling a request that is waiting on a task leaves the task open; a later decision on it is ignored.",
+      "Part-days are allowed down to half a day; hours are not modelled.",
+      "Employees can read every leave request, not only their own, because the platform has no per-row visibility. Say whether that is acceptable.",
+      "Creating a request directly (not through the RequestLeave flow) leaves it PENDING with no task for any approver; only the flow puts it in front of someone.",
+      "Nobody is notified when a request is decided."
+    ]
+  },
+  "concepts": [
+    {
+      "name": "LeaveType",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Leave type"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "ui": {
+            "label": "Code"
+          },
+          "required": true,
+          "unique": true,
+          "maxLength": 30
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "ui": {
+            "label": "Name"
+          },
+          "required": true,
+          "maxLength": 120
+        },
+        {
+          "name": "paid",
+          "type": "boolean",
+          "ui": {
+            "label": "Paid"
+          },
+          "required": true,
+          "default": true
+        },
+        {
+          "name": "annualAllowanceDays",
+          "type": "decimal",
+          "ui": {
+            "label": "Days per year"
+          },
+          "required": false,
+          "precision": 5,
+          "scale": 1,
+          "min": 0
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "ui": {
+            "label": "Active"
+          },
+          "required": true,
+          "default": true
+        }
+      ],
+      "invariants": [
+        {
+          "name": "AllowanceNotNegative",
+          "type": "expression",
+          "expr": "annualAllowanceDays == null || annualAllowanceDays >= 0"
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('employee')) || $user.roles.contains(role('leaveApprover')) || $user.roles.contains(role('hrAdmin'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('hrAdmin'))"
+      }
+    },
+    {
+      "name": "LeaveRequest",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Leave request"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "requestNumber",
+          "type": "string",
+          "ui": {
+            "label": "Request number"
+          },
+          "required": true,
+          "unique": true,
+          "maxLength": 30
+        },
+        {
+          "name": "employeeName",
+          "type": "string",
+          "ui": {
+            "label": "Employee"
+          },
+          "required": true,
+          "maxLength": 200
+        },
+        {
+          "name": "leaveTypeId",
+          "type": "reference",
+          "ui": {
+            "label": "Leave type"
+          },
+          "required": true,
+          "reference": {
+            "target": "LeaveType",
+            "displayField": "name"
+          }
+        },
+        {
+          "name": "startDate",
+          "type": "date",
+          "ui": {
+            "label": "From"
+          },
+          "required": true
+        },
+        {
+          "name": "endDate",
+          "type": "date",
+          "ui": {
+            "label": "To"
+          },
+          "required": true
+        },
+        {
+          "name": "days",
+          "type": "decimal",
+          "ui": {
+            "label": "Days"
+          },
+          "required": true,
+          "precision": 5,
+          "scale": 1,
+          "min": 0.5
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "ui": {
+            "label": "Reason"
+          },
+          "required": false,
+          "maxLength": 1000
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "ui": {
+            "label": "Status"
+          },
+          "required": true,
+          "default": "PENDING",
+          "enumValues": [
+            "PENDING",
+            "APPROVED",
+            "REJECTED",
+            "CANCELLED"
+          ]
+        },
+        {
+          "name": "decidedBy",
+          "type": "string",
+          "ui": {
+            "label": "Decided by"
+          },
+          "required": false,
+          "maxLength": 200
+        },
+        {
+          "name": "decisionComment",
+          "type": "string",
+          "ui": {
+            "label": "Decision comment"
+          },
+          "required": false,
+          "maxLength": 1000
+        }
+      ],
+      "invariants": [
+        {
+          "name": "DaysPositive",
+          "type": "expression",
+          "expr": "days > 0"
+        }
+      ],
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          {
+            "value": "PENDING",
+            "label": "Pending",
+            "initial": true
+          },
+          {
+            "value": "APPROVED",
+            "label": "Approved"
+          },
+          {
+            "value": "REJECTED",
+            "label": "Rejected",
+            "terminal": true
+          },
+          {
+            "value": "CANCELLED",
+            "label": "Cancelled",
+            "terminal": true
+          }
+        ],
+        "transitions": [
+          {
+            "from": "PENDING",
+            "to": "APPROVED",
+            "event": "LeaveDecided",
+            "actionLabel": "Approve"
+          },
+          {
+            "from": "PENDING",
+            "to": "REJECTED",
+            "event": "LeaveDecided",
+            "actionLabel": "Reject"
+          },
+          {
+            "from": "PENDING",
+            "to": "CANCELLED",
+            "event": "LeaveCancelled",
+            "actionLabel": "Cancel"
+          },
+          {
+            "from": "APPROVED",
+            "to": "CANCELLED",
+            "event": "LeaveCancelled",
+            "actionLabel": "Cancel"
+          }
+        ]
+      },
+      "indexes": [
+        {
+          "name": "idx_leave_request_employee",
+          "fields": [
+            "employeeName",
+            "status"
+          ]
+        }
+      ],
+      "access": {
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('employee')) || $user.roles.contains(role('leaveApprover')) || $user.roles.contains(role('hrAdmin'))",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('employee')) || $user.roles.contains(role('leaveApprover')) || $user.roles.contains(role('hrAdmin'))"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "LeaveDecided",
+      "payload": [
+        "requestId",
+        "status",
+        "comment",
+        "completedBy"
+      ]
+    },
+    {
+      "name": "LeaveCancelled",
+      "payload": [
+        "employeeName",
+        "days"
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "RequestLeave",
+      "input": {
+        "concept": "LeaveRequest",
+        "mode": "create"
+      },
+      "steps": [
+        {
+          "name": "validate-request",
+          "type": "invariantCheck",
+          "scope": "LeaveRequest",
+          "invariants": [
+            "DaysPositive"
+          ]
+        },
+        {
+          "name": "save-request",
+          "type": "createConcept",
+          "scope": "LeaveRequest",
+          "input": "$input",
+          "output": "$saved"
+        },
+        {
+          "name": "await-decision",
+          "type": "awaitEvent",
+          "awaitEvent": "LeaveDecided",
+          "awaitRef": "decision",
+          "match": {
+            "correlation": false,
+            "payload": {
+              "requestId": "$saved.id"
+            }
+          },
+          "timeout": 1209600,
+          "task": {
+            "title": "Leave: ${saved.employeeName} (${saved.days} days)",
+            "description": "${saved.reason}",
+            "assignee": {
+              "roles": [
+                "role('leaveApprover')"
+              ]
+            },
+            "outcomeField": "status",
+            "outcomes": [
+              {
+                "value": "APPROVED",
+                "label": "Approve"
+              },
+              {
+                "value": "REJECTED",
+                "label": "Reject"
+              }
+            ],
+            "fields": [
+              {
+                "name": "comment",
+                "type": "text",
+                "label": "Comment",
+                "required": false,
+                "maxLength": 1000
+              }
+            ],
+            "record": "$saved"
+          }
+        },
+        {
+          "name": "has-decision",
+          "type": "branch",
+          "condition": "$decision.status",
+          "then": [
+            {
+              "name": "apply-decision",
+              "type": "callProcedure",
+              "procedure": "ApplyLeaveDecision",
+              "input": "$decision",
+              "output": "$applied"
+            }
+          ]
+        },
+        {
+          "name": "return-request",
+          "type": "return",
+          "value": "$saved"
+        }
+      ]
+    }
+  ],
+  "procedures": [
+    {
+      "name": "ApplyLeaveDecision",
+      "description": "A human task answered from My tasks publishes LeaveDecided {requestId, status, comment, completedBy}; this moves the request to the chosen status and records who decided and why, unless the request already left PENDING (for example the employee's leave was cancelled meanwhile).",
+      "steps": [
+        {
+          "name": "read-request",
+          "type": "readConcept",
+          "concept": "LeaveRequest",
+          "id": "$input.requestId",
+          "target": "request"
+        },
+        {
+          "name": "still-pending",
+          "type": "if",
+          "condition": "$request.status == 'PENDING'",
+          "then": [
+            {
+              "name": "apply",
+              "type": "patchConcept",
+              "concept": "LeaveRequest",
+              "id": "$input.requestId",
+              "set": {
+                "status": "$input.status",
+                "decidedBy": "$input.completedBy",
+                "decisionComment": "$input.comment"
+              },
+              "target": "request"
+            }
+          ]
+        },
+        {
+          "name": "return-request",
+          "type": "return",
+          "value": "$request"
+        }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "name": "PendingLeave",
+      "concept": "LeaveRequest",
+      "where": "status == 'PENDING'",
+      "orderBy": [
+        "startDate"
+      ]
+    },
+    {
+      "name": "LeaveTakenByEmployee",
+      "concept": "LeaveRequest",
+      "where": "status == 'APPROVED'",
+      "groupBy": [
+        "employeeName"
+      ],
+      "aggregates": [
+        {
+          "name": "daysApproved",
+          "fn": "sum",
+          "field": "days"
+        },
+        {
+          "name": "requests",
+          "fn": "count"
+        }
+      ],
+      "orderBy": [
+        "daysApproved desc"
+      ]
+    }
+  ],
+  "autoPanels": [
+    {
+      "name": "LeaveTypes",
+      "concept": "LeaveType",
+      "route": "/leave-types",
+      "surfaces": [
+        "selection",
+        "detail",
+        "transaction"
+      ],
+      "selection": {
+        "columns": [
+          "code",
+          "name",
+          "paid",
+          "annualAllowanceDays",
+          "active"
+        ]
+      }
+    },
+    {
+      "name": "LeaveRequests",
+      "concept": "LeaveRequest",
+      "route": "/leave-requests",
+      "surfaces": [
+        "selection",
+        "detail",
+        "transaction"
+      ],
+      "selection": {
+        "columns": [
+          "requestNumber",
+          "employeeName",
+          "leaveTypeId",
+          "startDate",
+          "endDate",
+          "days",
+          "status"
+        ]
+      }
+    }
+  ]
+}

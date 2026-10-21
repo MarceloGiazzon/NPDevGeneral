@@ -71,6 +71,7 @@
     "NPDevSamples/npdev-init-seed": "showcase",
     "NPDevSamples/dom-helpdesk": "showcase",
     "NPDevSamples/dom-inventory": "showcase",
+    "NPDevSamples/dom-leave": "showcase",
     "NPDevSamples/dom-purchasing": "showcase",
     "NPDevSamples/dom-sales": "showcase",
     "NPDevSamples/pack9-role-binding-a": "repro-case",

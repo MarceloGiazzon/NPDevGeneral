@@ -1,0 +1,90 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.domleave",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "DOM-5: a consumer of the built-in leave pack. Binds its three logical roles to EMPLOYEE, LEAVE_APPROVER and HR_ADMIN and grants them the pack's concepts; probe/leave_probe.py files requests through the RequestLeave flow, decides them from My tasks and checks the rules, lifecycle and derived days."
+  },
+  "packs": [
+    {
+      "$ref": "packs/leave/pack.json",
+      "as": "leave"
+    }
+  ],
+  "provides": {
+    "roleBindings": {
+      "employee": "EMPLOYEE",
+      "leaveApprover": "LEAVE_APPROVER",
+      "hrAdmin": "HR_ADMIN"
+    }
+  },
+  "roles": [
+    {
+      "name": "HR_ADMIN",
+      "concepts": {
+        "leave::LeaveType": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ],
+        "leave::LeaveRequest": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      "grants": [
+        "READ_EXECUTIONS"
+      ]
+    },
+    {
+      "name": "LEAVE_APPROVER",
+      "concepts": {
+        "leave::LeaveType": [
+          "read"
+        ],
+        "leave::LeaveRequest": [
+          "read"
+        ]
+      }
+    },
+    {
+      "name": "EMPLOYEE",
+      "concepts": {
+        "leave::LeaveType": [
+          "read"
+        ],
+        "leave::LeaveRequest": [
+          "read",
+          "create"
+        ]
+      },
+      "grants": [
+        "EXECUTE_FLOW"
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save",
+        "findById"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    },
+    {
+      "capability": "eventBus",
+      "adapter": "inproc"
+    }
+  ]
+}
