@@ -204,4 +204,62 @@ class LiveConceptUiManifestSupportTest {
         Map<String, Object> manifest = readManifest(manifestFile);
         assertEquals(1, ((List<?>) manifest.get("concepts")).size(), "manifest must be unchanged");
     }
+
+    // ---- LIVE-1: a new field on a concept that already has a manifest node -----------------------
+
+    private static final String MANIFEST_WITH_THING_FIELDS = """
+            { "schemaVersion": "npdev-generated-ui-manifest.v1", "defaultGuidePage": "Default",
+              "concepts": [ { "conceptName": "Thing", "route": "/things",
+                "fields": [ { "name": "id", "label": "Id" } ],
+                "list": { "columns": ["id"], "pageSize": 20 } } ] }
+            """;
+
+    private static final String THING_WITH_NICKNAME = """
+            { "namespace": "live1.manifest", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+              { "name": "Thing", "fields": [
+                { "name": "id", "type": "uuid", "id": true, "required": true },
+                { "name": "nickname", "type": "string", "ui": { "label": "Nick" } },
+                { "name": "meta", "type": "object", "properties": { "a": { "type": "string" } } }
+              ] }
+            ] }
+            """;
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void refreshFieldsAppendsTheFieldNodeAndListColumnAndIsIdempotent() throws Exception {
+        Path manifestFile = writeManifest(MANIFEST_WITH_THING_FIELDS);
+        CompiledModel model = compile(THING_WITH_NICKNAME);
+        List<LiveFieldDiff.AddedField> added = List.of(
+                new LiveFieldDiff.AddedField("Thing", "nickname", "things", "nickname", "VARCHAR(255)"));
+
+        LiveConceptUiManifestSupport.Result first = LiveConceptUiManifestSupport.refreshFields(manifestFile, model, added);
+        assertEquals(List.of("Thing.nickname"), first.refreshed());
+        assertTrue(first.failed().isEmpty(), String.valueOf(first.failed()));
+
+        Map<String, Object> thing = ((List<Map<String, Object>>) (List<?>) readManifest(manifestFile).get("concepts")).get(0);
+        List<Map<String, Object>> fields = (List<Map<String, Object>>) thing.get("fields");
+        assertEquals(2, fields.size(), String.valueOf(fields));
+        assertEquals("Id", fields.get(0).get("label"), "the existing field node must be untouched");
+        assertEquals("nickname", fields.get(1).get("name"));
+        assertEquals("Nick", fields.get(1).get("label"));
+        assertEquals(List.of("id", "nickname"), ((Map<String, Object>) thing.get("list")).get("columns"));
+        assertEquals(20, ((Map<String, Object>) thing.get("list")).get("pageSize"), "other list keys untouched");
+
+        LiveConceptUiManifestSupport.Result second = LiveConceptUiManifestSupport.refreshFields(manifestFile, model, added);
+        assertEquals(List.of("Thing.nickname"), second.refreshed());
+        Map<String, Object> again = ((List<Map<String, Object>>) (List<?>) readManifest(manifestFile).get("concepts")).get(0);
+        assertEquals(2, ((List<?>) again.get("fields")).size(), "a repeated reload must not duplicate the node");
+    }
+
+    @Test
+    void refreshFieldsNamesAConceptWithNoManifestNodeInsteadDroppingIt() throws Exception {
+        Path manifestFile = writeManifest(EXISTING_MANIFEST);
+        CompiledModel model = compile(THING_WITH_NICKNAME);
+
+        LiveConceptUiManifestSupport.Result result = LiveConceptUiManifestSupport.refreshFields(manifestFile, model,
+                List.of(new LiveFieldDiff.AddedField("Ghost", "x", "ghosts", "x", "VARCHAR(255)")));
+
+        assertTrue(result.refreshed().isEmpty());
+        assertTrue(result.failed().get("Ghost.x").contains("no node"), String.valueOf(result.failed()));
+    }
 }

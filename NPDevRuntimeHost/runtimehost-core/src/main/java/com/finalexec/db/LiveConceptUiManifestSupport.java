@@ -161,6 +161,111 @@ public final class LiveConceptUiManifestSupport {
         return new Result(List.copyOf(refreshed), Map.copyOf(failed));
     }
 
+    /**
+     * LIVE-1: appends the manifest field node (and, when it shows by default, the list column) for
+     * each NEW field a reload added to a concept that ALREADY has a manifest node -- the existing-
+     * concept twin of {@link #refresh}. Same additive-only discipline: every existing field node and
+     * every other part of the node stays byte-for-byte untouched (a full rebuild would drop the
+     * widget-cascade/extension attribution a live process cannot recompute, see the class javadoc),
+     * and a field already present counts as refreshed (a repeated reload is a no-op, not a failure).
+     * {@code failed} maps {@code Concept.field} to why it was not written (no manifest node for the
+     * concept, concept/field missing from the model, unreadable or unwritable manifest).
+     */
+    @SuppressWarnings("unchecked")
+    public static Result refreshFields(Path manifestFile, CompiledModel newModel, List<LiveFieldDiff.AddedField> added) {
+        List<String> refreshed = new ArrayList<>();
+        Map<String, String> failed = new LinkedHashMap<>();
+        if (added == null || added.isEmpty()) {
+            return new Result(List.of(), Map.of());
+        }
+        Map<String, Object> root;
+        try {
+            root = OBJECT_MAPPER.readValue(manifestFile.toFile(), new TypeReference<LinkedHashMap<String, Object>>() {
+            });
+        } catch (IOException failure) {
+            String reason = "could not read existing manifest at " + manifestFile + ": " + failure.getMessage();
+            for (LiveFieldDiff.AddedField field : added) {
+                failed.put(field.label(), reason);
+            }
+            return new Result(List.of(), Map.copyOf(failed));
+        }
+        Object conceptsRaw = root.get("concepts");
+        List<Map<String, Object>> nodes = conceptsRaw instanceof List
+                ? (List<Map<String, Object>>) (List<?>) conceptsRaw : new ArrayList<>();
+        List<CompiledContext> contexts = newModel.getContexts();
+        List<String> newlyBuilt = new ArrayList<>();
+        for (LiveFieldDiff.AddedField addedField : added) {
+            Map<String, Object> node = null;
+            for (Map<String, Object> candidate : nodes) {
+                if (addedField.concept().equals(String.valueOf(candidate.get("conceptName")))) {
+                    node = candidate;
+                    break;
+                }
+            }
+            CompiledConcept concept = newModel.findConcept(addedField.concept()).orElse(null);
+            CompiledField field = null;
+            if (concept != null) {
+                for (CompiledField candidate : concept.getFields()) {
+                    if (addedField.field().equals(candidate.getName())) {
+                        field = candidate;
+                        break;
+                    }
+                }
+            }
+            if (node == null) {
+                failed.put(addedField.label(), "the concept has no node in the served UI manifest");
+                continue;
+            }
+            if (field == null) {
+                failed.put(addedField.label(), "concept or field not found in the reloaded model");
+                continue;
+            }
+            Object fieldsRaw = node.get("fields");
+            List<Map<String, Object>> fieldNodes = fieldsRaw instanceof List
+                    ? (List<Map<String, Object>>) (List<?>) fieldsRaw : new ArrayList<>();
+            node.put("fields", fieldNodes);
+            boolean present = false;
+            for (Map<String, Object> existing : fieldNodes) {
+                if (addedField.field().equals(String.valueOf(existing.get("name")))) {
+                    present = true;
+                    break;
+                }
+            }
+            if (present) {
+                refreshed.add(addedField.label());
+                continue;
+            }
+            for (Map<String, Object> built : fieldNodes(concept, newModel, contexts)) {
+                if (addedField.field().equals(String.valueOf(built.get("name")))) {
+                    fieldNodes.add(built);
+                    break;
+                }
+            }
+            if (isShowInUi(field) && node.get("list") instanceof Map<?, ?> listRaw) {
+                Map<String, Object> list = (Map<String, Object>) listRaw;
+                Object columnsRaw = list.get("columns");
+                List<Object> columns = columnsRaw instanceof List ? new ArrayList<>((List<Object>) columnsRaw) : new ArrayList<>();
+                if (!columns.contains(field.getName())) {
+                    columns.add(field.getName());
+                }
+                list.put("columns", columns);
+            }
+            newlyBuilt.add(addedField.label());
+        }
+        if (!newlyBuilt.isEmpty()) {
+            try {
+                Files.writeString(manifestFile, OBJECT_MAPPER.writeValueAsString(root) + System.lineSeparator());
+                refreshed.addAll(newlyBuilt);
+            } catch (IOException failure) {
+                String reason = "could not write manifest at " + manifestFile + ": " + failure.getMessage();
+                for (String label : newlyBuilt) {
+                    failed.put(label, reason);
+                }
+            }
+        }
+        return new Result(List.copyOf(refreshed), Map.copyOf(failed));
+    }
+
     private static Map<String, Object> conceptNode(
             CompiledConcept concept, CompiledModel model, List<CompiledContext> contexts, String defaultGuidePage
     ) {
@@ -320,7 +425,7 @@ public final class LiveConceptUiManifestSupport {
         return fields;
     }
 
-    private static String widget(CompiledField field, boolean isReference) {
+    static String widget(CompiledField field, boolean isReference) {
         CompiledPresentationMetadata ui = field.getUi();
         String declaredWidget = ui == null ? null : ui.getWidget();
         if (declaredWidget != null && !declaredWidget.isBlank()) {
@@ -377,13 +482,13 @@ public final class LiveConceptUiManifestSupport {
         return value == null ? fallback : value;
     }
 
-    private static String fieldLabel(CompiledField field) {
+    static String fieldLabel(CompiledField field) {
         CompiledPresentationMetadata ui = field.getUi();
         String label = ui == null ? null : ui.getLabel();
         return label == null || label.isBlank() ? humanize(field.getName()) : label.trim();
     }
 
-    private static String manifestType(CompiledField field) {
+    static String manifestType(CompiledField field) {
         String type = field.getDslType();
         if (type == null || type.isBlank()) {
             return "string";
@@ -391,16 +496,16 @@ public final class LiveConceptUiManifestSupport {
         return type.trim().toLowerCase(Locale.ROOT);
     }
 
-    private static boolean isSortable(CompiledField field) {
+    static boolean isSortable(CompiledField field) {
         return !List.of("object", "array", "file").contains(manifestType(field));
     }
 
-    private static boolean isFilterable(CompiledField field) {
+    static boolean isFilterable(CompiledField field) {
         String type = manifestType(field);
         return "string".equals(type) || "enum".equals(type);
     }
 
-    private static boolean isShowInUi(CompiledField field) {
+    static boolean isShowInUi(CompiledField field) {
         CompiledPresentationMetadata ui = field.getUi();
         if (ui != null) {
             Boolean explicit = ui.getShowInDefaultWebUi();

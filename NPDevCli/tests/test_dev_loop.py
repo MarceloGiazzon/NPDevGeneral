@@ -142,6 +142,28 @@ class HotSwapFastPath(unittest.TestCase):
             cli._generate_phase_captured.assert_not_called()
             cli._build_phase.assert_not_called()
 
+    def test_new_field_on_an_existing_concept_is_applied_live_and_reported_honestly(self):
+        """LIVE-1: the router now takes a new optional scalar field live; `npdev dev` names the field
+        and says the typed /api/<route> controllers do not see it until a rebuild (never over-claims)."""
+        with TemporaryDirectory() as tmp:
+            options = make_options(Path(tmp))
+            current = FakeAppProcess()
+            cli = make_cli(_live_apply=mock.MagicMock(return_value={
+                "ok": True, "code": "APPLIED_LIVE", "route": "model-reload",
+                "modelReload": {"ok": True, "fieldsProvisioned": ["Thing.nickname"],
+                                "uiManifestFieldsFailed": {"Thing.other": "no node"}}}))
+            buf = io.StringIO()
+            with mock.patch.object(dev_loop, "_super_user_key", return_value="a-key"),                     redirect_stderr(buf):
+                result, app = dev_loop.run_cycle(options, current, silent_output(), cli)
+
+            self.assertTrue(result.ok)
+            self.assertIs(app, current)
+            self.assertFalse(current.stopped)
+            cli._build_phase.assert_not_called()
+            self.assertIn("Thing.nickname", buf.getvalue())
+            self.assertIn("typed /api/<route> controllers", buf.getvalue())
+            self.assertIn("served UI manifest NOT updated for: Thing.other", buf.getvalue())
+
     def test_needs_rebuild_falls_back_to_the_existing_restart_path(self):
         """Never silent: a change the router cannot take live must still reach GENERATE."""
         with TemporaryDirectory() as tmp:

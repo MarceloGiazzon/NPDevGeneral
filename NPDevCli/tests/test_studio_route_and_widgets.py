@@ -37,12 +37,18 @@ class StudioRouteForTest(unittest.TestCase):
                   "items": [{"kind": "ADD_TABLE"}, {"kind": "ADD_TABLE"}]}
         self.assertEqual("model-reload", npdev_cli._studio_route_for(report))
 
-    def test_mixed_additive_diff_needs_a_rebuild(self):
-        # A new concept plus a new column on an EXISTING one: /model-reload would swap the whole
-        # model and expose a field whose column was never added.
-        report = {"classification": "SAFE_ADDITIVE",
-                  "items": [{"kind": "ADD_TABLE"}, {"kind": "ADD_COLUMN"}]}
-        self.assertEqual("needs-rebuild", npdev_cli._studio_route_for(report))
+    def test_new_column_on_an_existing_concept_goes_live_alone_or_mixed_with_new_tables(self):
+        # LIVE-1: the app ALTERs the column in BEFORE it swaps the model, so ADD_COLUMN is live-able.
+        self.assertEqual("model-reload", npdev_cli._studio_route_for(
+            {"classification": "SAFE_ADDITIVE", "items": [{"kind": "ADD_COLUMN"}]}))
+        self.assertEqual("model-reload", npdev_cli._studio_route_for(
+            {"classification": "SAFE_ADDITIVE", "items": [{"kind": "ADD_TABLE"}, {"kind": "ADD_COLUMN"}]}))
+
+    def test_a_backfilled_or_destructive_column_change_still_needs_a_rebuild(self):
+        self.assertEqual("needs-rebuild", npdev_cli._studio_route_for(
+            {"classification": "BACKFILL_REQUIRED", "items": [{"kind": "ADD_COLUMN_BACKFILL"}]}))
+        self.assertEqual("needs-rebuild", npdev_cli._studio_route_for(
+            {"classification": "SAFE_ADDITIVE", "items": [{"kind": "ADD_COLUMN"}, {"kind": "DROP_COLUMN"}]}))
 
     def test_additive_with_no_items_needs_a_rebuild(self):
         self.assertEqual("needs-rebuild",
@@ -209,11 +215,31 @@ class LiveApplyTest(unittest.TestCase):
         self.assertNotIn("hotswap", calls)
 
     def test_structural_change_needs_a_rebuild_and_never_calls_the_app(self):
-        live, reload, _ = self._run({"classification": "SAFE_ADDITIVE",
-                                      "items": [{"kind": "ADD_COLUMN"}]})
+        # A backfilled/destructive column change is still classified rebuild-only and never reaches the app.
+        live, reload, _ = self._run({"classification": "BACKFILL_REQUIRED",
+                                      "items": [{"kind": "ADD_COLUMN_BACKFILL"}]})
         self.assertTrue(live["ok"])
         self.assertEqual("NEEDS_REBUILD", live["code"])
         reload.assert_not_called()
+
+    def test_live1_new_column_goes_to_the_app_and_reports_applied_live(self):
+        live, reload, _ = self._run({"classification": "SAFE_ADDITIVE", "items": [{"kind": "ADD_COLUMN"}]})
+        self.assertEqual("APPLIED_LIVE", live["code"])
+        reload.assert_called_once()
+
+    def test_live1_field_preflight_refusals_become_needs_rebuild(self):
+        for code in ("RELOAD_UNSUPPORTED_FIELD_CHANGES", "NEW_FIELD_PROVISIONING_DISABLED"):
+            live, _, _ = self._run({"classification": "SAFE_ADDITIVE", "items": [{"kind": "ADD_COLUMN"}]},
+                                   {"ok": False, "code": code, "message": "no", "details": ["Thing.qty: required"]})
+            self.assertTrue(live["ok"], code)
+            self.assertEqual("NEEDS_REBUILD", live["code"], code)
+            self.assertIn("Thing.qty: required", live["message"])
+
+    def test_live1_failed_alter_is_a_failure_not_a_rebuild_hint(self):
+        live, _, _ = self._run({"classification": "SAFE_ADDITIVE", "items": [{"kind": "ADD_COLUMN"}]},
+                               {"ok": False, "code": "LIVE_COLUMN_PROVISIONING_FAILED", "message": "alter failed"})
+        self.assertFalse(live["ok"])
+        self.assertEqual("LIVE_COLUMN_PROVISIONING_FAILED", live["code"])
 
     def test_eng3_preflight_refusal_becomes_needs_rebuild(self):
         live, _, _ = self._run(

@@ -2,6 +2,7 @@ package com.finalexec.api;
 
 import com.finalexec.config.ModelHolder;
 import com.finalexec.config.ModelReloadPreflight;
+import com.finalexec.db.ExistingConceptColumnProvisioner;
 import com.finalexec.db.LiveConceptUiManifestSupport;
 import com.finalexec.db.NewConceptSchemaProvisioner;
 import com.finalexec.npdev.service.RuntimeMetadataService;
@@ -85,14 +86,28 @@ import java.util.Map;
  * checkpointed, via a fingerprint stamped at {@code execute()} time and checked at resume.
  * ({@code GeneratedCrudRuntimeSupport} was also in this list until REG-235 (2026-09-21)
  * converted it to read a live {@code Supplier<CompiledModel>}; it is no longer a residual for its
- * OWN invariant/event/capability/binding lookups. That fix does NOT extend to the generated REST
- * CRUD surface itself -- {@code GeneratedConceptCrudController} and its per-concept JPA entity are
- * plain Java baked once from the model at generation time with zero {@code ModelHolder} reference
- * anywhere in either template (entity.mustache, business-concept-crud-controller.mustache): a
- * brand-new FIELD on an existing concept is structurally unreachable through that surface without
- * regenerate + rebuild + restart, confirmed by reading both templates, not just by this class's own
- * residual list.) See {@code NpdevCapabilityBindingConfig}'s own per-bean javadoc for the complete,
- * current list.
+ * OWN invariant/event/capability/binding lookups. LIVE-1 (below) is what closed the generated REST
+ * CRUD surface for the one safe case; the rest of it is still baked.) See
+ * {@code NpdevCapabilityBindingConfig}'s own per-bean javadoc for the complete, current list.
+ *
+ * <p><b>New optional scalar field on an EXISTING concept (LIVE-1).</b> A reload whose model adds an
+ * optional, plain scalar field (string/int/long/decimal/boolean/date/datetime/uuid/enum) to a concept
+ * that already exists is applied live: {@link com.finalexec.config.ModelReloadPreflight} diffs the
+ * field lists ({@link com.finalexec.db.LiveFieldDiff}); the column is added by
+ * {@link com.finalexec.db.ExistingConceptColumnProvisioner} (idempotent {@code guardedAddColumn}, inside
+ * the migration lock) BEFORE {@link ModelHolder#swap} -- a column that cannot be added means no swap, a
+ * {@code LIVE_COLUMN_PROVISIONING_FAILED} body naming the field, and the old model keeps serving; after
+ * the swap the new field is appended to the served UI manifest ({@code fieldsProvisioned},
+ * {@code uiManifestFieldsRefreshed}/{@code uiManifestFieldsFailed} in the response). Gated by the same
+ * property as new-concept provisioning. Anything else that changes an existing concept's fields
+ * (removal, rename, retype, a required/unique/reference/JSON addition) is refused by the preflight with
+ * {@code RELOAD_UNSUPPORTED_FIELD_CHANGES} and stays on the rebuild path.
+ * <b>Live:</b> the generic {@code /api/concepts/<table>} endpoints (what the business UI uses) -- the
+ * generated entity's extras bag, the service whitelist, the controller's response metadata, the JDBC
+ * store's column catalog and the UI manifest all follow the swap. <b>NOT live:</b> the typed per-concept
+ * {@code /api/<route>} controllers bind baked DTOs (an unknown JSON property is ignored there), the
+ * baked {@code ConceptMetadata} of other generated surfaces (OpenAPI, descriptive catalogs), and a
+ * Postgres/MySQL/SQL Server ALTER is only proven by CI (guardedAddColumn text per dialect), not locally.
  *
  * <p><b>New-concept schema provisioning</b> (REG-244 Phase 4B, {@code
  * npdev.runtime.hotswap.new-concept-provisioning-enabled}, default {@code false}): when enabled AND
@@ -296,6 +311,33 @@ public class MetadataHotSwapController {
                 return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(refusal);
             }
             CompiledModel newModel = preflight.model();
+
+            // LIVE-1: a new optional scalar field on an EXISTING concept needs its column BEFORE the
+            // swap, inside the migration lock: a column that cannot be added means no swap, a clear
+            // error, and the old model keeps serving (the ALTERs already applied are additive,
+            // nullable and idempotent, so they are harmless to the old model). Same property as
+            // new-concept provisioning gates it -- ModelReloadPreflight already refused the reload
+            // when the property is off and a DataSource exists. No DataSource (InMemory app): nothing
+            // to alter, InMemoryConceptStore picks the field up through its own reload listener.
+            List<String> fieldsProvisioned = List.of();
+            if (!preflight.addedFields().isEmpty() && preflightDataSource != null) {
+                try {
+                    fieldsProvisioned = ExistingConceptColumnProvisioner
+                            .provision(preflightDataSource, preflight.addedFields()).provisioned();
+                } catch (ExistingConceptColumnProvisioner.ProvisioningFailedException failed) {
+                    LOG.warn("LIVE-1 hot model reload: adding columns failed, model NOT swapped: {}", failed.getMessage());
+                    Map<String, Object> refusal = new LinkedHashMap<>();
+                    refusal.put("ok", false);
+                    refusal.put("code", "LIVE_COLUMN_PROVISIONING_FAILED");
+                    refusal.put("message", "a new field's column could not be added; nothing was swapped and the "
+                            + "previous model keeps serving: " + failed.getMessage());
+                    refusal.put("failedField", failed.failedField());
+                    refusal.put("columnsAlreadyAdded", failed.alreadyApplied());
+                    refusal.put("swapped", false);
+                    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(refusal);
+                }
+            }
+
             CompiledModel oldModel = modelHolder.swap(newModel);
             LOG.info("B28 hot model reload: swapped successfully (old concepts={}, new concepts={})",
                     oldModel.getConcepts().size(), newModel.getConcepts().size());
@@ -332,6 +374,9 @@ public class MetadataHotSwapController {
                     conceptsProvisioningFailed = result.failed();
                 }
             }
+            // LIVE-1: always named, like conceptsProvisioned -- the columns this reload added (and the
+            // UI manifest nodes it appended) for new fields on EXISTING concepts.
+            response.put("fieldsProvisioned", fieldsProvisioned);
             response.put("conceptsProvisioned", conceptsProvisioned);
             response.put("conceptsProvisioningFailed", conceptsProvisioningFailed);
 
@@ -346,6 +391,16 @@ public class MetadataHotSwapController {
                 uiManifestConceptsRefreshed = manifestResult.refreshed();
                 uiManifestRefreshFailed = manifestResult.failed();
             }
+            List<String> uiManifestFieldsRefreshed = List.of();
+            Map<String, String> uiManifestFieldsFailed = Map.of();
+            if (newConceptProvisioningEnabled && !preflight.addedFields().isEmpty()) {
+                LiveConceptUiManifestSupport.Result fieldResult =
+                        LiveConceptUiManifestSupport.refreshFields(uiManifestFile, newModel, preflight.addedFields());
+                uiManifestFieldsRefreshed = fieldResult.refreshed();
+                uiManifestFieldsFailed = fieldResult.failed();
+            }
+            response.put("uiManifestFieldsRefreshed", uiManifestFieldsRefreshed);
+            response.put("uiManifestFieldsFailed", uiManifestFieldsFailed);
             response.put("uiManifestConceptsRefreshed", uiManifestConceptsRefreshed);
             response.put("uiManifestRefreshFailed", uiManifestRefreshFailed);
             return ResponseEntity.ok(response);

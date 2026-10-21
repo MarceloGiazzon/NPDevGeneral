@@ -1,5 +1,6 @@
 package com.finalexec.config;
 
+import com.finalexec.db.LiveFieldDiff;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -27,6 +28,10 @@ import java.util.List;
  *       raw model.json does not contain (GeneratorMain.java:101-131). Swapping such a model silently
  *       drops e.g. identity::User, which turns off IdentityAwareContextResolver's revoked-token check.
  *       Removing a concept is also a DROP_TABLE (MANUAL_REVIEW) change that must go through a rebuild.</li>
+ *   <li>{@code RELOAD_UNSUPPORTED_FIELD_CHANGES} (LIVE-1): an existing concept lost, renamed or retyped a
+ *       field, or gained a field that is not an optional plain scalar (required, unique, reference, JSON).
+ *       See {@link LiveFieldDiff}. A new optional scalar field is NOT a refusal: it is returned in
+ *       {@link Outcome#addedFields()} for the caller to ALTER in before the swap.</li>
  * </ul>
  */
 public final class ModelReloadPreflight {
@@ -34,17 +39,20 @@ public final class ModelReloadPreflight {
     private ModelReloadPreflight() {
     }
 
-    public record Outcome(CompiledModel model, String code, String message, List<String> details) {
+    /** {@code addedFields} (LIVE-1): the new optional scalar fields on EXISTING concepts this reload
+     *  carries -- columns the caller must add (before the swap) for the new model to be servable. */
+    public record Outcome(CompiledModel model, String code, String message, List<String> details,
+            List<LiveFieldDiff.AddedField> addedFields) {
         public boolean ok() {
             return model != null;
         }
 
-        static Outcome accepted(CompiledModel model, List<String> warnings) {
-            return new Outcome(model, null, null, List.copyOf(warnings));
+        static Outcome accepted(CompiledModel model, List<String> warnings, List<LiveFieldDiff.AddedField> addedFields) {
+            return new Outcome(model, null, null, List.copyOf(warnings), List.copyOf(addedFields));
         }
 
         static Outcome refused(String code, String message, List<String> details) {
-            return new Outcome(null, code, message, List.copyOf(details));
+            return new Outcome(null, code, message, List.copyOf(details), List.of());
         }
     }
 
@@ -53,7 +61,8 @@ public final class ModelReloadPreflight {
      *        npdev.runtime.hotswap.new-concept-provisioning-enabled is off -- then a brand-new concept would
      *        be swapped into ModelHolder with no table behind it (every CRUD call a raw SQL error), while
      *        `npdev monitor studio-apply` reports APPLIED_LIVE. InMemory apps (no DataSource) pass true:
-     *        InMemoryConceptStore picks new concepts up through its own reload listener.
+     *        InMemoryConceptStore picks new concepts up through its own reload listener. The same flag
+     *        gates LIVE-1's new field on an existing concept: with it false such a field has no column.
      */
     public static Outcome prepare(Path modelFile, CompiledModel liveModel, boolean newConceptsServable)
             throws java.io.IOException {
@@ -93,6 +102,29 @@ public final class ModelReloadPreflight {
                         added);
             }
         }
-        return Outcome.accepted(candidate, validation.getWarnings());
+
+        // LIVE-1: field-level diff on every concept both models share. Anything beyond "a new
+        // optional plain scalar field" (removal, rename, retype, required/unique/reference/JSON
+        // additions) changes the physical table in a way only a rebuild can do safely -- refused here,
+        // BEFORE the swap, with every offending field named, instead of swapping silently as this
+        // check used to.
+        LiveFieldDiff.Result fieldDiff = LiveFieldDiff.compute(liveModel, candidate);
+        if (fieldDiff.refused()) {
+            return Outcome.refused("RELOAD_UNSUPPORTED_FIELD_CHANGES",
+                    "the reloaded model changes existing concepts in ways a running app cannot apply live "
+                            + "(only a new optional scalar field can); rebuild instead -- nothing was swapped",
+                    fieldDiff.refusals());
+        }
+        if (!newConceptsServable && !fieldDiff.added().isEmpty()) {
+            List<String> labels = new ArrayList<>();
+            for (LiveFieldDiff.AddedField added : fieldDiff.added()) {
+                labels.add(added.label());
+            }
+            return Outcome.refused("NEW_FIELD_PROVISIONING_DISABLED",
+                    "the model adds fields to existing concepts but this app cannot add their columns live "
+                            + "(npdev.runtime.hotswap.new-concept-provisioning-enabled=false); rebuild, or enable it",
+                    labels);
+        }
+        return Outcome.accepted(candidate, validation.getWarnings(), fieldDiff.added());
     }
 }

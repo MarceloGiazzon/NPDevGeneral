@@ -298,8 +298,13 @@ def _try_hot_swap(options: DevOptions, current: AppProcess, out: "Output", cli, 
     takes effect, and (with the opt-in `boot()` passes) a brand-new concept is provisioned live too.
     Only for a METADATA_ONLY diff does it additionally refresh the descriptive catalogs and patch
     `generated-ui-manifest.json` so the SERVED business-ui grid follows (RUN-24 gap 2). A change the
-    router cannot take live (a column on an existing concept, a removed concept, ...) comes back as
-    NEEDS_REBUILD.
+    router cannot take live comes back as NEEDS_REBUILD: a removed concept, a removed/renamed/retyped
+    field, a required/unique/reference/JSON field on an existing concept. LIVE-1: a new OPTIONAL
+    SCALAR field on an existing concept IS live -- the app ALTERs the column in (inside the migration
+    lock) before swapping the model, and appends the field to the served UI manifest. The generic
+    `/api/concepts/<table>` endpoints (what the business UI uses) serve it at once; the typed
+    per-concept `/api/<route>` controllers still bind their baked DTOs and do not see it until a
+    rebuild -- `npdev dev` says so rather than claiming otherwise.
 
     Same safe-fallback-never-silent contract `npdev monitor hotswap` follows: ANY refusal -- no key
     issued (the default in-memory dev DB never issues one), the endpoint missing (an app generated
@@ -320,6 +325,14 @@ def _try_hot_swap(options: DevOptions, current: AppProcess, out: "Output", cli, 
     patch = (live.get("metadataHotswap") or {}).get("uiManifestPatch") or {}
     if patch.get("patched"):
         out.note(f"served UI manifest patched: {', '.join(patch.get('fieldsChanged') or [])}")
+    reload_info = live.get("modelReload") or {}
+    if reload_info.get("fieldsProvisioned"):
+        out.note("new field(s) live via /api/concepts/<table> (column added, no restart): "
+                 f"{', '.join(reload_info['fieldsProvisioned'])}; the typed /api/<route> controllers "
+                 "keep their baked DTOs until the next rebuild")
+    if reload_info.get("uiManifestFieldsFailed"):
+        out.note("served UI manifest NOT updated for: "
+                 f"{', '.join(sorted(reload_info['uiManifestFieldsFailed']))}")
     return True, str(live.get("route") or "model-reload")
 
 

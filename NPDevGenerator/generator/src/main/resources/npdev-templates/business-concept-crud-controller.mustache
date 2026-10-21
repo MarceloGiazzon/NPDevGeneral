@@ -87,12 +87,39 @@ public class GeneratedConceptCrudController {
     private ConceptBinding<?> resolveBinding(String conceptName, HttpServletRequest request) {
         ConceptBinding<?> baked = concepts.get(conceptName);
         if (baked != null) {
-            return baked;
+            return withLiveFields(baked);
         }
         com.npdev.kernel.ExecutionContext context = runtimeContextService.currentContext(request);
         return com.finalexec.db.LiveConceptCrudSupport.resolve(modelHolder.get(), conceptName, conceptGateway, context)
                 .map(this::toConceptBinding)
                 .orElse(null);
+    }
+
+    /**
+     * LIVE-1: a baked binding's {@code ConceptMetadata} only knows the fields that existed at
+     * generation time. A field a live {@code /model-reload} added to this concept is appended to a
+     * COPY of that metadata (response projection, sort and where validation all read it) -- the
+     * baked binding itself is never mutated, and when the live model adds nothing the baked binding
+     * is returned untouched (same object, one field-name scan per request).
+     */
+    private <T> ConceptBinding<T> withLiveFields(ConceptBinding<T> binding) {
+        ConceptMetadata base = binding.metadata();
+        com.npdev.dsl.v1.compiled.CompiledConcept live = modelHolder.get().findConcept(base.conceptName()).orElse(null);
+        List<com.finalexec.db.LiveFieldMetadata.Meta> added =
+                com.finalexec.db.LiveFieldMetadata.addedFields(live, base.fieldsByName().keySet());
+        if (added.isEmpty()) {
+            return binding;
+        }
+        ConceptMetadata merged = new ConceptMetadata(
+                base.conceptName(), base.displayName(), base.tableName(), base.idField(), base.endpointBase(), base.temporal());
+        base.fields().forEach(merged::addField);
+        for (com.finalexec.db.LiveFieldMetadata.Meta meta : added) {
+            merged.addField(new FieldMetadata(
+                    meta.name(), meta.label(), meta.columnName(), meta.type(),
+                    meta.required(), false, false, meta.sortable(), meta.filterable(), meta.widget(), meta.enumValues()));
+        }
+        return new ConceptBinding<>(merged, binding.list(), binding.getById(), binding.create(),
+                binding.update(), binding.delete(), binding.page());
     }
 
     private ConceptBinding<ConceptRecord> toConceptBinding(com.finalexec.db.LiveConceptCrudSupport.LiveConceptOps ops) {
@@ -806,7 +833,10 @@ public class GeneratedConceptCrudController {
                 // Keep reflection localized to generic response projection.
             }
         }
-        return null;
+        // LIVE-1: a field added by a live model reload has no getter on an entity generated before it
+        // existed; its value lives in the entity's extras bag.
+        java.util.Map<String, Object> extras = com.npdev.runtime.support.crud.reflection.ExtraFieldAccess.all(source);
+        return extras == null ? null : extras.get(fieldName);
     }
 
     /**
