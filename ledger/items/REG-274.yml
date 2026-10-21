@@ -3,9 +3,10 @@ title: >-
   Domain type normalization, validation.minLength and validation.regex are accepted and never applied; only validation.maxLength is enforced
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-21
-closed: null
+closed: 2026-10-21
+verification: VERIFIED_LIVE
 source: >-
   ENF-1 behaviour probe ed-domaintype-normalization-and-validation-enforced (NPDevSamples/dsl-conformance-max/behavior-probes/80-enforcement-demo.json), knownFailure REG-274. The companion probe ed-domaintype-validation-maxlength-enforced passes.
 surface: NPDevContract/dsl/.../compiled (domain type -> field schema merge) and NPDevKernel/adapters/runtime-support/.../CrudSchemaValidationSupport.java
@@ -15,3 +16,9 @@ detail: |
   The fields metadata catalog does serve the normalizationRules, so clients are told a rule the server never applies.
 resolution: >-
   Apply the declared normalization rules before validation on create and update, and carry validation.minLength and validation.regex from the domain type onto the field's runtime constraints next to maxLength.
+guard:
+  kind: live
+  ref: NPDevSamples/dsl-conformance-max/behavior-probes/80-enforcement-demo.json
+  asserts: >-
+    behaviour probe ed-domaintype-normalization-and-validation-enforced: a domain type's normalization is stored and its minLength and regex are refused 422
+  provenRed: true

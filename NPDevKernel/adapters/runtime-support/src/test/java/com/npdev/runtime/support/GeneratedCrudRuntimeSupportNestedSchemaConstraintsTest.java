@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledDomainType;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
@@ -40,7 +41,17 @@ class GeneratedCrudRuntimeSupportNestedSchemaConstraintsTest {
     }
 
     private static CompiledField field(String name, String type, CompiledSchema schema) {
-        return new CompiledField(name, type, "Object", false, false, false, List.of(), null, null, null, schema, List.of());
+        return field(name, type, schema, null);
+    }
+
+    private static CompiledField field(String name, String type, CompiledSchema schema, String domainType) {
+        return new CompiledField(name, type, "Object", false, false, false, List.of(), null, null, domainType, schema, List.of());
+    }
+
+    /** ShortCode as in dsl-conformance-max: trim + uppercase, 3..16 characters, ^[A-Z0-9-]+$ (REG-274). */
+    private static CompiledSchema shortCodeSchema() {
+        return new CompiledSchema("string", Map.of(), null, List.of(), List.of(), null, null, null, "",
+                3, 16, null, null, null, null, null, null, null, null, null, "^[A-Z0-9-]+$");
     }
 
     private static GeneratedCrudRuntimeSupport support() {
@@ -58,8 +69,12 @@ class GeneratedCrudRuntimeSupportNestedSchemaConstraintsTest {
                         null, "memberCode", "deny")),
                 field("plain", "array", arraySchema(scalarSchema("string", null, null, null, null), null, null,
                         null, null, "deny")),
-                field("profile", "object", objectSchema(profileProps, List.of()))));
-        CompiledModel model = new CompiledModel("demo", "1.0.0", "v1", Map.of("Thing", thing));
+                field("profile", "object", objectSchema(profileProps, List.of())),
+                field("code", "string", shortCodeSchema(), "ShortCode")));
+        CompiledDomainType shortCode = new CompiledDomainType("ShortCode", "string", "String", shortCodeSchema(),
+                List.of("trim", "uppercase"), null, List.of(), null);
+        CompiledModel model = new CompiledModel("demo", "1.0.0", "v1", Map.of("Thing", thing), List.of(shortCode),
+                List.of(), List.of(), List.of(), List.of(), List.of());
         InvariantEngine noInvariants = new InvariantEngine() {
             @Override
             public List<String> evaluate(String entityName, Object payload) {
@@ -123,6 +138,17 @@ class GeneratedCrudRuntimeSupportNestedSchemaConstraintsTest {
     void denyPolicyWithoutAnIdentityFieldComparesWholeItems() {
         assertEquals(1, validate("plain", List.of("x", "x")).size());
         assertTrue(validate("plain", List.of("x", "y")).isEmpty());
+    }
+
+    @Test
+    void aDomainTypeNormalizesTheStoredValueThenAppliesItsMinLengthAndRegex() {
+        // the persisted payload is the normalized one: " ab-12 " is stored as "AB-12"
+        Map<String, Object> created = support().buildCreateInvariantPayload("Thing", Map.of("code", " ab-12 "));
+        assertEquals("AB-12", created.get("code"));
+        assertTrue(validate("code", " ab-12 ").isEmpty(), "validation sees the normalized value");
+
+        assertRefused("code", "a!", "code", "minLength 3");
+        assertRefused("code", "ab!", "code", "pattern");
     }
 
     @Test

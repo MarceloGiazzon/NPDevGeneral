@@ -2010,7 +2010,8 @@ public final class GeneratedCrudRuntimeSupport {
             if (rawValue == null) {
                 continue;
             }
-            Object normalizedValue = DslTypeCoercionSupport.normalizeFieldValue(field, rawValue);
+            Object normalizedValue = applyDomainNormalization(
+                    field, DslTypeCoercionSupport.normalizeFieldValue(field, rawValue));
             normalized.put(field.getName(), normalizedValue);
         }
         return immutablePayload(normalized);
@@ -2024,7 +2025,21 @@ public final class GeneratedCrudRuntimeSupport {
                 return normalizeByDslType(anchor.getDslType(), rawValue);
             }
         }
-        return DslTypeCoercionSupport.normalizeFieldValue(field, rawValue);
+        return applyDomainNormalization(field, DslTypeCoercionSupport.normalizeFieldValue(field, rawValue));
+    }
+
+    /** REG-274: the field's domain type's normalization rules (trim, uppercase, ...) applied to a text value. */
+    private Object applyDomainNormalization(CompiledField field, Object value) {
+        String domain = field == null ? null : field.getDomainType();
+        if (domain == null || domain.isBlank() || !(value instanceof CharSequence)) {
+            return value;
+        }
+        for (com.npdev.dsl.v1.compiled.CompiledDomainType type : modelSupplier.get().getDomainTypes()) {
+            if (type != null && domain.equalsIgnoreCase(type.getName())) {
+                return com.npdev.dsl.v1.compiled.DomainNormalization.apply(type.getNormalizationRules(), value);
+            }
+        }
+        return value;
     }
 
     private Map<String, Object> materializeEntityValues(

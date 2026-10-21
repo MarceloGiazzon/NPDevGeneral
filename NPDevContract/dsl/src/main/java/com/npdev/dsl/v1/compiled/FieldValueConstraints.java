@@ -4,7 +4,11 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 /**
  * The declared value constraints of a scalar field ({@code maxLength}, {@code min}/{@code max},
@@ -32,7 +36,14 @@ public final class FieldValueConstraints {
     /** The scale a decimal column really has when only its precision is declared (SqlTypeSupport). */
     private static final int DEFAULT_SCALE = 4;
 
+    /** Compiled once per distinct regex. A pattern the JDK cannot compile is never cached (computeIfAbsent propagates). */
+    private static final Map<String, Pattern> PATTERNS = new ConcurrentHashMap<>();
+
     private FieldValueConstraints() {
+    }
+
+    private static Pattern pattern(String regex) {
+        return PATTERNS.computeIfAbsent(regex, Pattern::compile);
     }
 
     /**
@@ -74,6 +85,17 @@ public final class FieldValueConstraints {
             Integer minLength = schema.getMinLength();
             if (minLength != null && freeText && text.length() < minLength) {
                 out.add(where + " is shorter than minLength " + minLength + " (got " + text.length() + " characters)");
+            }
+            String regex = schema.getRegex();
+            if (regex != null && !regex.isBlank() && freeText) {
+                try {
+                    if (!pattern(regex).matcher(text).find()) {
+                        out.add(where + " does not match the pattern " + regex);
+                    }
+                } catch (PatternSyntaxException invalid) {
+                    // SemanticValidator refuses such a model; if one gets here anyway the write fails closed.
+                    out.add(where + " declares a pattern that is not a valid regular expression: " + regex);
+                }
             }
             if (!NUMERIC_TYPES.contains(type)) {
                 return out;

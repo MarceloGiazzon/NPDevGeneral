@@ -96,7 +96,33 @@ def calibrate() -> int:
             "concepts": [{"name": "C", "fields": [
                 {"name": "f", "type": "reference", "picker": {"selectorRef": "S"}}]}]
         }), encoding="utf-8")
-        models = [("calibrate/used", used), ("calibrate/picker_selector_ref", picker_selector_ref)]
+        # The F6 surface detectors (layoutSlot, console/dashboard widgets, third aggregate level,
+        # client-side computed/derived expressions, row-load data sources) carried no calibration
+        # witness, so their branching sat uncovered in the scripts coverage ratchet. One fixture
+        # that uses every one of them keeps the detectors honest and the module's floor earned.
+        f6_surface = tmp_path / "f6_surface.json"
+        f6_surface.write_text(json.dumps({
+            "panels": [
+                {"name": "P", "layout": {"type": "console", "slots": [{"name": "s"}],
+                                         "widgets": [{"kind": "stat", "chart": "bar", "aggregate": "count",
+                                                      "filter": {"field": "x"}}]}},
+                {"name": "D", "layout": {"type": "dashboard", "widgets": [{"kind": "chart"}]},
+                 "dataSources": [{"name": "d", "onRowLoad": "proc"}]},
+                {"name": "N", "layout": None, "dataSources": [None, {"name": "e"}]},
+            ],
+            "aggregates": [{"name": "A", "collections": [{"name": "c1", "collections": [
+                {"name": "c2", "collections": [{"name": "c3"}]}]}]}],
+            "autoPanels": [
+                {"name": "AP", "selection": {"dataSource": {"procedure": "p"}},
+                 "transaction": {"computed": [{"collection": "lines", "name": "t"}],
+                                 "derivedFields": {"total": {"expression": "a + b", "tier": "client"},
+                                                   "legacy": {"expression": "sum(x[])"}},
+                                 "regions": {"r": {"render": "component"}}}},
+                {"name": "plain", "transaction": None},
+            ],
+        }), encoding="utf-8")
+        models = [("calibrate/used", used), ("calibrate/picker_selector_ref", picker_selector_ref),
+                  ("calibrate/f6_surface", f6_surface)]
         cov = coverage(models)
 
         def report(label: str, feature: str, expect_fail: bool) -> None:
@@ -111,6 +137,11 @@ def calibrate() -> int:
         report("selectors (unused by the fixture above)", "selectors", expect_fail=True)
         report("field.picker.selectorRef (used by the picker_selector_ref fixture)",
                "field.picker.selectorRef", expect_fail=False)
+        for feature in ("panel.layout.slots", "panel.layout.console", "panel.layout.dashboard",
+                        "aggregate.collections.depth3", "workbench.computed.collection",
+                        "workbench.derived.expression", "panelDataSource.onRowLoad",
+                        "autoPanel.selection.dataSource.procedure", "panel.widget.filter"):
+            report(f"{feature} (used by the f6_surface fixture)", feature, expect_fail=False)
 
     if not ok:
         print("\nFAIL: at least one control did not behave as required.", file=sys.stderr)
