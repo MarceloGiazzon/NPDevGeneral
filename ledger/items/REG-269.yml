@@ -3,9 +3,10 @@ title: >-
   A date field cannot be compared with another date field in an invariant: endDate >= startDate is accepted silently, so a leave request can end before it starts
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-21
-closed: null
+closed: 2026-10-21
+verification: UNIT_TESTED
 source: >-
   DOM-5 (leave pack). Recorded in NPDevContract/packs/leave/pack.json metadata.reviewNotes by that session; filed here during LOAD-4. NOT re-reproduced
   in the filing session (the leave sample was not running), so the first step of the fix is a failing probe.

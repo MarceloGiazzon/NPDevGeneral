@@ -49,6 +49,52 @@ class DefaultReadRedactionPoliciesTest {
     }
 
     @Test
+    void compensationBookkeepingKeepsItsValueForEveryRequesterSoTheMonitorCanReportIt() {
+        // REG-260: the monitor derives COMPENSATED / COMPENSATING from these two platform counters.
+        DefaultExecutionRedactionPolicy policy = new DefaultExecutionRedactionPolicy();
+        FlowInstance instance = new FlowInstance(
+                "exec-2",
+                "PlaceOrder",
+                "corr-2",
+                "tenant-1",
+                "actor-1",
+                5,
+                FlowInstanceStatus.FAILED_PERMANENT,
+                Map.of(
+                        "__npdev_compensatedSteps__", 2,
+                        "__npdev_compensating__", Boolean.TRUE,
+                        "compensationNotice", Map.of("to", "ana@acme.com"),
+                        "email", "ana@acme.com"),
+                null,
+                1000L,
+                2000L
+        );
+
+        for (ExecutionContext requester : new ExecutionContext[] {
+                ExecutionContext.of("tenant-1", "actor-1"),
+                ExecutionContext.of("tenant-1", "actor-1").withRoles(Set.of("DEBUG"))}) {
+            FlowInstance redacted = policy.redact(instance, requester);
+            assertEquals(2, redacted.state().get("__npdev_compensatedSteps__"));
+            assertEquals(Boolean.TRUE, redacted.state().get("__npdev_compensating__"));
+            // everything else stays masked: only the platform's own two counters are exempt
+            assertEquals("***", redacted.state().get("compensationNotice"));
+            assertEquals("***", redacted.state().get("email"));
+        }
+    }
+
+    @Test
+    void aCompensationKeyHoldingAnythingButAPlainCounterIsStillMasked() {
+        DefaultExecutionRedactionPolicy policy = new DefaultExecutionRedactionPolicy();
+        FlowInstance instance = new FlowInstance(
+                "exec-3", "PlaceOrder", "corr-3", "tenant-1", "actor-1", 1, FlowInstanceStatus.FAILED,
+                Map.of("__npdev_compensatedSteps__", "ana@acme.com"), null, 1000L, 2000L);
+
+        FlowInstance redacted = policy.redact(instance, ExecutionContext.of("tenant-1", "actor-1"));
+
+        assertEquals("***", redacted.state().get("__npdev_compensatedSteps__"));
+    }
+
+    @Test
     void eventRedactionUsesDebugAllowlistAndMasksSecrets() {
         DefaultEventRedactionPolicy policy = new DefaultEventRedactionPolicy();
         EventEnvelope event = EventEnvelope.of(

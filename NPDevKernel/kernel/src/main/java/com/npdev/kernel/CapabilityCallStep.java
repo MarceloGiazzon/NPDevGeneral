@@ -2,6 +2,7 @@ package com.npdev.kernel;
 
 import com.npdev.kernel.capabilities.CapabilityExecutionPolicy;
 import com.npdev.kernel.events.EventEnvelope;
+import com.npdev.kernel.ports.InvariantEngine;
 import com.npdev.kernel.security.PermissionDecision;
 import com.npdev.kernel.security.PermissionRequirement;
 import com.npdev.kernel.trace.FlowTraceMeta;
@@ -128,6 +129,68 @@ final class CapabilityCallStep {
                     Objects.toString(state.get("correlationId"), defaultCorrelationId),
                     executionId
             ));
+        }
+
+        // REG-262: a createConcept step must satisfy the concept's required-field invariants exactly
+        // as the REST create does -- the persistence adapter only fills defaults, it never refuses a
+        // row for a missing required field, so without this a flow stored nulls in required columns.
+        // Same engine, same required(<field>) refs and the same INVARIANT_FAILED outcome an
+        // invariantCheck step produces, so a caller sees one failure shape for one kind of failure.
+        FlowStepDefinition.ConceptWrite conceptWrite = step.getConceptWrite();
+        if (conceptWrite != null
+                && conceptWrite.isCreate()
+                && !conceptWrite.requiredInvariantRefs().isEmpty()
+                && args != null
+                && !args.isEmpty()
+                && args.get(0) instanceof Map<?, ?>) {
+            String conceptName = KernelRunner.resolveInvariantConceptName(step, flow);
+            List<String> invariantRefs = conceptWrite.requiredInvariantRefs();
+            InvariantEngine.InvariantEvaluationResult evalResult = runner.invariantEngine.evaluate(
+                    new InvariantEngine.InvariantEvaluationRequest(
+                            conceptName,
+                            args.get(0),
+                            invariantRefs,
+                            new InvariantEngine.EvaluationMetadata(
+                                    flow.getName(),
+                                    step.getName(),
+                                    traceStepIndex,
+                                    FlowStepDefinition.InvariantCheckpoint.PRE,
+                                    Objects.toString(state.get("correlationId"), defaultCorrelationId)
+                            ),
+                            state
+                    )
+            );
+            List<InvariantEngine.Violation> violations = KernelRunner.enrichInvariantViolations(
+                    evalResult.violations(),
+                    conceptName,
+                    flow.getName(),
+                    step.getName(),
+                    traceStepIndex,
+                    invariantRefs
+            );
+            if (!violations.isEmpty()) {
+                runner.traceFailedStep(
+                        traceMeta,
+                        step,
+                        traceStepIndex,
+                        stepStartedAt,
+                        stateBefore,
+                        state,
+                        stepInfo,
+                        violations,
+                        null,
+                        stepTraces
+                );
+                return KernelRunner.StepExecutionOutcome.failed(ExecutionResult.invariantFailed(
+                        flow.getName(),
+                        violations,
+                        emittedEvents,
+                        "Required-field check failed at step: " + step.getName(),
+                        executionId,
+                        Objects.toString(state.get("correlationId"), defaultCorrelationId),
+                        executionId
+                ));
+            }
         }
 
         String correlationId = Objects.toString(state.get("correlationId"), null);

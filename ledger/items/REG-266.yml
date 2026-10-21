@@ -3,9 +3,10 @@ title: >-
   An aggregate commit that makes an illegal lifecycle transition answers a bare 500 where the single-record PUT answers 422 CONCEPT_LIFECYCLE_TRANSITION_INVALID
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-20
-closed: null
+closed: 2026-10-21
+verification: VERIFIED_LIVE
 source: >-
   ENF-1 behaviour probe qil-aggregate-lifecycle-refusal-is-client-error (NPDevSamples/dsl-conformance-max/behavior-probes/30-query-invariant-lifecycle.json), found while checking
   that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.

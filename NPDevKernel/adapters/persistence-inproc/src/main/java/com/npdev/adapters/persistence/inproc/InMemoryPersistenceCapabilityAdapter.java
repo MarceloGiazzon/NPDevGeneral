@@ -68,6 +68,9 @@ public final class InMemoryPersistenceCapabilityAdapter
     public Object save(Object concept, Object entity) {
         String conceptKey = normalizeConcept(concept);
         Map<String, Object> record = mutableRecord(entity);
+        // REG-264: a flow updateConcept step marks its save; the marker is never stored.
+        boolean updateOnly = PersistenceCapabilityContract.WRITE_MODE_UPDATE.equals(
+                record.remove(PersistenceCapabilityContract.WRITE_MODE_KEY));
         String conceptIdField = inferredRuntimeIdField(concept);
 
         Object id = record.get("id");
@@ -80,10 +83,29 @@ public final class InMemoryPersistenceCapabilityAdapter
             idWasGenerated = true;
         }
         refuseOtherTenantsRecord(conceptKey, record, id);
+        // REG-263: an existing row is MERGED into, never replaced -- a partial payload (an
+        // updateConcept naming only the fields it changes) must leave the others as they were.
+        Map<String, Object> stored = idWasGenerated ? null : storedData(conceptKey, record, id);
+        if (updateOnly && stored == null) {
+            // REG-264: the REST PUT answers 404 for an id with no row; an updateConcept step must not
+            // turn the same id into a create.
+            throw new IllegalArgumentException(
+                    "PERSISTENCE_RECORD_NOT_FOUND: no " + conceptKey + " record with id " + id + " to update");
+        }
         // ENG-6: defaults are a CREATE-time concern -- a minted id, or an explicit id with no stored
         // record yet. An update never re-defaults (a partial payload must not reset untouched fields).
-        if (idWasGenerated || !recordExists(conceptKey, record, id)) {
+        if (stored == null) {
             applyCreateDefaults(concept, record, id);
+        } else {
+            Map<String, Object> merged = new LinkedHashMap<>(stored);
+            merged.putAll(record);
+            if (updateOnly && !record.containsKey("version")) {
+                // REG-263: a modified row moves to the next version, as the REST PUT's does.
+                Object previous = stored.get("version");
+                merged.put("version", (previous instanceof Number number ? number.longValue() : 0L) + 1);
+            }
+            record.clear();
+            record.putAll(merged);
         }
         // The in-memory store is keyed on the canonical "id" field. Always expose it
         // so callers, findById, and delete all agree on the same key. Any concept-specific
@@ -293,12 +315,16 @@ public final class InMemoryPersistenceCapabilityAdapter
         return tenant == null || String.valueOf(tenant).isBlank() ? null : String.valueOf(tenant);
     }
 
-    private boolean recordExists(String conceptKey, Map<String, Object> record, Object id) {
+    /** The stored row's data for this concept + id (this record's tenant), or null when there is none. */
+    private Map<String, Object> storedData(String conceptKey, Map<String, Object> record, Object id) {
         if (conceptStore != null) {
-            return conceptStore.findById(tenantOf(record), conceptKey, String.valueOf(id)).isPresent();
+            return conceptStore.findById(tenantOf(record), conceptKey, String.valueOf(id))
+                    .map(found -> found.data() == null ? new LinkedHashMap<String, Object>() : new LinkedHashMap<>(found.data()))
+                    .orElse(null);
         }
         Map<Object, Map<String, Object>> byId = storeByConcept.get(conceptKey);
-        return byId != null && byId.containsKey(id);
+        Map<String, Object> existing = byId == null ? null : byId.get(id);
+        return existing == null ? null : new LinkedHashMap<>(existing);
     }
 
     // ENG-6: same shape as PostgresPersistenceCapabilityAdapter#applyCreateDefaults -- with a

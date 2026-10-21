@@ -3,9 +3,10 @@ title: >-
   REST collection names are made plural by appending "s", so a concept ending in "y" is served at /ticket_categorys
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-10-21
-closed: null
+closed: 2026-10-21
+verification: VERIFIED_LIVE
 source: >-
   DOM-4 (helpdesk pack). NPDevSamples/dom-helpdesk/probe/helpdesk_probe.py addresses the TicketCategory concept at /api/helpdesk_ticket_categorys
   (and the probe passes 40 of 40), which shows the path the generated app serves. Filed during LOAD-4.

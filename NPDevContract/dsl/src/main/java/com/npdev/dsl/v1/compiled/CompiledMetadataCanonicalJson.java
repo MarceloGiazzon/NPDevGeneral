@@ -111,10 +111,10 @@ public final class CompiledMetadataCanonicalJson {
         List<ObjectNode> entries = new ArrayList<>();
 
         for (CompiledConcept concept : sortedConcepts(model)) {
-            entries.add(listInvocation(concept));
+            entries.add(listInvocation(model, concept));
             entries.add(pagedQueryInvocation(concept));
             entries.add(exportCsvInvocation(concept));
-            entries.add(readInvocation(concept));
+            entries.add(readInvocation(model, concept));
             for (String mode : List.of("create", "update", "delete")) {
                 entries.add(directMutationInvocation(model, concept, mode));
             }
@@ -153,16 +153,22 @@ public final class CompiledMetadataCanonicalJson {
         return toArray(entries);
     }
 
+    /** REG-270: the REST collection name the generic CRUD controller binds a concept under -- NOT its
+     * physical table name (they differ for a pack concept and for a concept ending in "y"). */
+    private static String restCollection(CompiledModel model, CompiledConcept concept) {
+        return safe(SqlIdentifierSupport.restCollectionName(concept, model.getContexts()));
+    }
+
     /** {@code GET /api/concepts/&lt;tableName&gt;} -- the generic CRUD controller's raw list
      * (business-concept-crud-controller.mustache:78). Always preferred: a read has no
      * flow-bypass ambiguity. */
-    private static ObjectNode listInvocation(CompiledConcept concept) {
+    private static ObjectNode listInvocation(CompiledModel model, CompiledConcept concept) {
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         node.put("id", "list:" + safe(concept.getName()));
         node.put("kind", "list");
         node.put("concept", safe(concept.getName()));
         node.put("method", "GET");
-        node.put("path", "/api/concepts/" + safe(concept.getTableName()));
+        node.put("path", "/api/concepts/" + restCollection(model, concept));
         node.put("successStatus", 200);
         node.put("preferred", true);
         node.put("requiredPermission", "list:" + normalize(concept.getName()));
@@ -210,13 +216,13 @@ public final class CompiledMetadataCanonicalJson {
 
     /** {@code GET /api/concepts/&lt;tableName&gt;/{id}} -- generic CRUD read-by-id
      * (business-concept-crud-controller.mustache:184), 404 when the id does not resolve. */
-    private static ObjectNode readInvocation(CompiledConcept concept) {
+    private static ObjectNode readInvocation(CompiledModel model, CompiledConcept concept) {
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         node.put("id", "read:" + safe(concept.getName()));
         node.put("kind", "read");
         node.put("concept", safe(concept.getName()));
         node.put("method", "GET");
-        node.put("path", "/api/concepts/" + safe(concept.getTableName()) + "/{id}");
+        node.put("path", "/api/concepts/" + restCollection(model, concept) + "/{id}");
         node.put("successStatus", 200);
         node.put("preferred", true);
         node.put("requiredPermission", "read:" + normalize(concept.getName()));
@@ -244,7 +250,7 @@ public final class CompiledMetadataCanonicalJson {
             default -> "POST";
         };
         int successStatus = "delete".equals(mode) ? 204 : 200;
-        String basePath = "/api/concepts/" + safe(concept.getTableName());
+        String basePath = "/api/concepts/" + restCollection(model, concept);
         String path = "create".equals(mode) ? basePath : basePath + "/{id}";
 
         node.put("id", kind + ":" + safe(concept.getName()));

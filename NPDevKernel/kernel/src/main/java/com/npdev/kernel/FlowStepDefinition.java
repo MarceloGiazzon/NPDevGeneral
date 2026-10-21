@@ -75,6 +75,7 @@ public final class FlowStepDefinition {
     private final String procedureName;
     private final Long timeoutSeconds;
     private final List<FlowStepDefinition> onTimeoutSteps;
+    private final ConceptWrite conceptWrite;
 
     private FlowStepDefinition(
             String name,
@@ -318,6 +319,7 @@ public final class FlowStepDefinition {
         this.parallelAwait = parallelAwait;
         this.timeoutSeconds = null;
         this.onTimeoutSteps = List.of();
+        this.conceptWrite = null;
     }
 
     /**
@@ -366,6 +368,93 @@ public final class FlowStepDefinition {
         this.parallelAwait = source.parallelAwait;
         this.timeoutSeconds = source.timeoutSeconds;
         this.onTimeoutSteps = source.onTimeoutSteps;
+        this.conceptWrite = source.conceptWrite;
+    }
+
+    /**
+     * What a {@code createConcept}/{@code updateConcept} flow step MEANS, as opposed to the bare
+     * {@code persistence.save} capability call both compile to (REG-262/263/264). The kernel cannot
+     * tell the two apart from the call alone, and the difference is the whole point: a create must
+     * satisfy the concept's required-field invariants, an update must find the row it names and merge
+     * into it.
+     *
+     * @param mode                    {@code "create"} or {@code "update"}
+     * @param requiredInvariantRefs   for a create: the {@code required(field)} refs the persistence
+     *                                layer will NOT satisfy by itself (no default, no derived value, not
+     *                                the lifecycle status field), checked against the payload before the
+     *                                write. Empty for an update.
+     */
+    public record ConceptWrite(String mode, List<String> requiredInvariantRefs) {
+        public static final String CREATE = "create";
+        public static final String UPDATE = "update";
+
+        public ConceptWrite {
+            if (!CREATE.equals(mode) && !UPDATE.equals(mode)) {
+                throw new IllegalArgumentException("mode must be create or update: " + mode);
+            }
+            requiredInvariantRefs = requiredInvariantRefs == null ? List.of() : List.copyOf(requiredInvariantRefs);
+        }
+
+        public boolean isCreate() {
+            return CREATE.equals(mode);
+        }
+
+        public boolean isUpdate() {
+            return UPDATE.equals(mode);
+        }
+    }
+
+    /** Copy constructor used only by {@link #withConceptWrite}. */
+    private FlowStepDefinition(FlowStepDefinition source, ConceptWrite conceptWrite) {
+        this.name = source.name;
+        this.type = source.type;
+        this.checkpoint = source.checkpoint;
+        this.invariantScope = source.invariantScope;
+        this.invariants = source.invariants;
+        this.capability = source.capability;
+        this.capabilityType = source.capabilityType;
+        this.capabilityAdapterId = source.capabilityAdapterId;
+        this.capabilityExecutionPolicy = source.capabilityExecutionPolicy;
+        this.capabilityInputSchema = source.capabilityInputSchema;
+        this.capabilityOutputSchema = source.capabilityOutputSchema;
+        this.operation = source.operation;
+        this.inputRef = source.inputRef;
+        this.argsRefs = source.argsRefs;
+        this.outputRef = source.outputRef;
+        this.eventName = source.eventName;
+        this.payloadRef = source.payloadRef;
+        this.eventDataRefs = source.eventDataRefs;
+        this.condition = source.condition;
+        this.thenSteps = source.thenSteps;
+        this.elseSteps = source.elseSteps;
+        this.awaitEventName = source.awaitEventName;
+        this.awaitRef = source.awaitRef;
+        this.awaitMatchCorrelation = source.awaitMatchCorrelation;
+        this.awaitPayloadMatchRefs = source.awaitPayloadMatchRefs;
+        this.delaySeconds = source.delaySeconds;
+        this.mapFromRef = source.mapFromRef;
+        this.mapToRef = source.mapToRef;
+        this.returnRef = source.returnRef;
+        this.collectionRef = source.collectionRef;
+        this.itemKey = source.itemKey;
+        this.loopSteps = source.loopSteps;
+        this.maxLoopIterations = source.maxLoopIterations;
+        this.onFailureSteps = source.onFailureSteps;
+        this.procedureName = source.procedureName;
+        this.parallelAwait = source.parallelAwait;
+        this.timeoutSeconds = source.timeoutSeconds;
+        this.onTimeoutSteps = source.onTimeoutSteps;
+        this.conceptWrite = conceptWrite;
+    }
+
+    /** Marks a capability-call step as a concept create/update (see {@link ConceptWrite}). */
+    public FlowStepDefinition withConceptWrite(ConceptWrite conceptWrite) {
+        return new FlowStepDefinition(this, conceptWrite);
+    }
+
+    /** {@code null} for every step that is not a createConcept/updateConcept. */
+    public ConceptWrite getConceptWrite() {
+        return conceptWrite;
     }
 
     /** LNCH-17: attaches declared compensation steps to an already-built step. */
@@ -424,6 +513,7 @@ public final class FlowStepDefinition {
         this.onTimeoutSteps = onTimeoutSteps == null
                 ? List.of()
                 : Collections.unmodifiableList(new ArrayList<>(onTimeoutSteps));
+        this.conceptWrite = source.conceptWrite;
     }
 
     /** R2.5: attaches a durable await deadline (seconds from when the step first parks) and the

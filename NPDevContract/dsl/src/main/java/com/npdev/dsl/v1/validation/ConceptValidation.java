@@ -332,6 +332,9 @@ final class ConceptValidation {
                                 + " invariant expression: unsupported expression format: " + expression);
                     } else {
                         validateInvariantExpressionShape(e.getName(), expression, errors);
+                        // REG-269: a date ordered against a non-date is refused, not silently true.
+                        InvariantTemporalComparisonValidation.validate(
+                                e.getName(), expression, effective.fields(), errors);
                     }
                 }
             }

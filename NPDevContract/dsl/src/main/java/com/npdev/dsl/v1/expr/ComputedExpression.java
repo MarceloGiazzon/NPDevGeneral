@@ -63,6 +63,14 @@ public final class ComputedExpression {
         }
 
         /**
+         * REG-269: collect every ordered comparison ({@code < <= > >=}) in this node (and its
+         * children) with a description of each operand, so a semantic validator can check the
+         * operand TYPES the engine will compare (e.g. a date field against a number).
+         */
+        default void collectOrderedComparisons(List<OrderedComparison> out) {
+        }
+
+        /**
          * LNCH-15: invoke this node as a one-argument lambda (only {@code Lambda} overrides this
          * -- see its javadoc), binding {@code item} to the lambda's parameter for one evaluation
          * of its body. Lets a {@link FunctionRegistry} function (e.g. a quantifier) call a lambda
@@ -253,6 +261,36 @@ public final class ComputedExpression {
         return parse(expression).looksBoolean();
     }
 
+    /**
+     * One operand of an ordered comparison: {@code kind} is {@code "field"} (a field reference,
+     * {@code field} holds its dotted path), {@code "literal"} ({@code literal} holds the parsed value,
+     * possibly null) or {@code "other"} (arithmetic, a call, a nested expression).
+     */
+    public record Operand(String kind, String field, Object literal) {
+    }
+
+    /** REG-269: an ordered comparison ({@code < <= > >=}) found in an expression. */
+    public record OrderedComparison(String op, Operand left, Operand right) {
+    }
+
+    /** REG-269: every ordered comparison in the expression, in source order. Throws
+     *  {@link ExpressionException} if the expression doesn't parse. */
+    public static List<OrderedComparison> orderedComparisons(String expression) {
+        List<OrderedComparison> out = new ArrayList<>();
+        parse(expression).collectOrderedComparisons(out);
+        return out;
+    }
+
+    private static Operand operandOf(Node node) {
+        if (node instanceof Var var) {
+            return new Operand("field", var.name(), null);
+        }
+        if (node instanceof Literal literal) {
+            return new Operand("literal", null, literal.value());
+        }
+        return new Operand("other", null, null);
+    }
+
     // ---- AST ---------------------------------------------------------------
 
     private record Literal(Object value) implements Node {
@@ -310,10 +348,16 @@ public final class ComputedExpression {
             operand.collectFields(out);
         }
 
+        public void collectOrderedComparisons(List<OrderedComparison> out) {
+            operand.collectOrderedComparisons(out);
+        }
+
         public void collectFunctionCalls(java.util.Set<String> out) {
             operand.collectFunctionCalls(out);
         }
     }
+
+    private static final java.util.Set<String> ORDERED_OPS = java.util.Set.of("<", "<=", ">", ">=");
 
     private static final java.util.Set<String> BOOLEAN_OPS = java.util.Set.of(
             "&&", "||", "==", "!=", "<", "<=", ">", ">=");
@@ -331,6 +375,14 @@ public final class ComputedExpression {
         public void collectFunctionCalls(java.util.Set<String> out) {
             left.collectFunctionCalls(out);
             right.collectFunctionCalls(out);
+        }
+
+        public void collectOrderedComparisons(List<OrderedComparison> out) {
+            if (ORDERED_OPS.contains(op)) {
+                out.add(new OrderedComparison(op, operandOf(left), operandOf(right)));
+            }
+            left.collectOrderedComparisons(out);
+            right.collectOrderedComparisons(out);
         }
 
         public Object eval(Map<String, Object> vars) {
@@ -354,10 +406,10 @@ public final class ComputedExpression {
                 case "%": { double d = toNumber(r); return number(d == 0 ? 0 : toNumber(l) % d); }
                 case "==": return equalsLoose(l, r);
                 case "!=": return !equalsLoose(l, r);
-                case "<": return toNumber(l) < toNumber(r);
-                case "<=": return toNumber(l) <= toNumber(r);
-                case ">": return toNumber(l) > toNumber(r);
-                case ">=": return toNumber(l) >= toNumber(r);
+                case "<": return ordered(l, r, c -> c < 0);
+                case "<=": return ordered(l, r, c -> c <= 0);
+                case ">": return ordered(l, r, c -> c > 0);
+                case ">=": return ordered(l, r, c -> c >= 0);
                 default: throw new ExpressionException("unknown operator: " + op);
             }
         }
@@ -408,6 +460,12 @@ public final class ComputedExpression {
             out.add(name);
             for (Node arg : args) {
                 arg.collectFunctionCalls(out);
+            }
+        }
+
+        public void collectOrderedComparisons(List<OrderedComparison> out) {
+            for (Node arg : args) {
+                arg.collectOrderedComparisons(out);
             }
         }
     }
@@ -511,6 +569,82 @@ public final class ComputedExpression {
             }
         }
         return 0;
+    }
+
+    /**
+     * REG-269: the relational operators ({@code < <= > >=}). Two numeric(-looking) operands compare as
+     * numbers, as before. Two temporal operands -- a {@code LocalDate}/{@code LocalDateTime}/
+     * {@code OffsetDateTime}/{@code Instant}/{@code java.util.Date}, or an ISO-8601 date or date-time
+     * string as a JSON payload carries one -- compare chronologically. Before this, a date was passed
+     * through {@code toNumber} (a non-number is 0), so {@code endDate >= startDate} compared 0 with 0 and
+     * was always true: an invariant that looked enforced never fired. A temporal operand against anything
+     * that is not temporal (null, a number, free text) cannot be ordered and is {@code false}, never
+     * silently true. Everything else keeps the lenient legacy numeric coercion.
+     */
+    private static boolean ordered(Object l, Object r, java.util.function.IntPredicate test) {
+        if (isNumericLike(l) && isNumericLike(r)) {
+            return test.test(Double.compare(toNumber(l), toNumber(r)));
+        }
+        java.time.Instant li = toInstant(l);
+        java.time.Instant ri = toInstant(r);
+        if (li != null && ri != null) {
+            return test.test(li.compareTo(ri));
+        }
+        if (li != null || ri != null) {
+            return false;
+        }
+        return test.test(Double.compare(toNumber(l), toNumber(r)));
+    }
+
+    private static final java.util.regex.Pattern ISO_DATE_PREFIX =
+            java.util.regex.Pattern.compile("^\\d{4}-\\d{2}-\\d{2}([T ].*)?$");
+
+    /** @return the instant a temporal value denotes (a date at 00:00 UTC, a local date-time as UTC), or null. */
+    private static java.time.Instant toInstant(Object v) {
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof java.time.Instant i) {
+            return i;
+        }
+        if (v instanceof java.time.OffsetDateTime o) {
+            return o.toInstant();
+        }
+        if (v instanceof java.time.ZonedDateTime z) {
+            return z.toInstant();
+        }
+        if (v instanceof java.time.LocalDateTime ldt) {
+            return ldt.toInstant(java.time.ZoneOffset.UTC);
+        }
+        if (v instanceof java.time.LocalDate d) {
+            return d.atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+        }
+        if (v instanceof java.sql.Date sd) {
+            return sd.toLocalDate().atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+        }
+        if (v instanceof java.util.Date date) {
+            return date.toInstant();
+        }
+        if (v instanceof String s) {
+            String t = s.trim();
+            if (!ISO_DATE_PREFIX.matcher(t).matches()) {
+                return null;
+            }
+            try {
+                if (t.length() == 10) {
+                    return java.time.LocalDate.parse(t).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+                }
+                String iso = t.replace(' ', 'T');
+                try {
+                    return java.time.OffsetDateTime.parse(iso).toInstant();
+                } catch (java.time.format.DateTimeParseException notOffset) {
+                    return java.time.LocalDateTime.parse(iso).toInstant(java.time.ZoneOffset.UTC);
+                }
+            } catch (java.time.format.DateTimeParseException notTemporal) {
+                return null;
+            }
+        }
+        return null;
     }
 
     /** Return a whole double as Long (so totals render without a trailing .0), else Double. */

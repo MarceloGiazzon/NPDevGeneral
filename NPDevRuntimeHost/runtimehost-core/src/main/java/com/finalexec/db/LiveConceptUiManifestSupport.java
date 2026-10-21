@@ -274,7 +274,7 @@ public final class LiveConceptUiManifestSupport {
         node.put("conceptName", concept.getName());
         node.put("displayName", displayName(concept));
         node.put("admin", false);
-        node.put("route", "/" + SqlIdentifierSupport.aliasPreservingTableName(concept, contexts));
+        node.put("route", "/" + SqlIdentifierSupport.restCollectionName(concept, contexts));
         node.put("tableName", SqlIdentifierSupport.tableName(concept));
         node.put("idField", idField.getName());
         node.put("endpointBase", SqlIdentifierSupport.conceptEndpointBase(concept, contexts));
@@ -660,14 +660,8 @@ public final class LiveConceptUiManifestSupport {
         if (value == null || value.isBlank()) {
             return "Records";
         }
-        String trimmed = value.trim();
-        if (trimmed.endsWith("y") && trimmed.length() > 1) {
-            return trimmed.substring(0, trimmed.length() - 1) + "ies";
-        }
-        if (trimmed.endsWith("s")) {
-            return trimmed;
-        }
-        return trimmed + "s";
+        // REG-270: one shared English rule (also used for the REST collection name).
+        return com.npdev.dsl.v1.compiled.EnglishPlurals.pluralize(value.trim());
     }
 
     private static String humanize(String value) {

@@ -5,6 +5,49 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-21 — flow createConcept/updateConcept behave like the REST create/PUT (REG-262/263/264)
+
+**What changes.** A `createConcept` step now refuses a payload missing a required field that nothing else will
+fill (no default, `defaultExpression`, `derivedExpression`, not the lifecycle status), failing the flow with
+`INVARIANT_FAILED` / `required(<field>)` before anything is written. An `updateConcept` step now merges into the
+stored row (untouched fields survive, `version` moves to the next value) and fails with
+`PERSISTENCE_RECORD_NOT_FOUND` when the id has no row, where it used to create it. A `generatedAction` step whose
+`actionName` is a procedure declared in the model (and not a packaged trusted-source one) now runs that procedure.
+
+**Who is affected.** Flows that created rows with required fields missing, or updated an id that did not exist and
+relied on the upsert. Any persistence adapter outside this repo sees a new reserved entity key
+`__npdevWriteMode` on an update and should strip it (`PersistenceCapabilityContract.WRITE_MODE_KEY`).
+
+**Codemod.** None - the failure names the field or id.
+
+## 2026-10-21 — dates compare as dates in expressions; ordering a date against a non-date is a validation error
+
+**What changes.** `<`, `<=`, `>`, `>=` in an invariant or other expression used to read a date as the number 0,
+so `endDate >= startDate` was always true (REG-269). Two dates (ISO strings or java.time values) now compare
+chronologically; a date against null, a number or free text is false. `model validate` refuses an invariant
+that orders a `date`/`datetime` field against a number, a text literal or a non-date field.
+
+**Who is affected.** Models whose invariant relied on a date comparison being silently true (it now fires), or
+orders a date against a non-date (now an error). The leave pack gains `EndNotBeforeStart`.
+
+**Codemod.** None - the message names the comparison to fix.
+
+## 2026-10-21 — REST collection names use English plurals (`/ticket_categorys` is now `/ticket_categories`)
+
+**What changes.** A concept's REST collection name (the path after `/api/` and `/api/concepts/`) was its
+snake-case name plus `s`, so `TicketCategory` was served at `/api/ticket_categorys`. It now takes the
+English plural of the last word (REG-270): consonant+`y` becomes `ies` (`ticket_categories`,
+`widget_catalog_entries`), a trailing `x`/`ch`/`sh` takes `es` (`boxes`, `batches`), everything else keeps
+`s`; a name already ending in `s` is unchanged. The same rule now builds the plural display label. The
+physical table name is NOT changed (`ticket_categorys` stays the table), so no database is touched.
+
+**Who is affected.** Clients (scripts, probes, bookmarks, browser routines) calling a collection whose
+concept name ends in `y`, `x`, `ch` or `sh`. Paths of every other concept are unchanged. The corpus
+fixtures that named such a path (`dsl-conformance-max` behaviour probes, the helpdesk probe) are updated.
+
+**Codemod.** None - the path is not part of any model, so `npdev migrate` has nothing to rewrite; update
+the client path. No alias for the old path is kept (no external users, pre-1.0).
+
 ## 2026-10-18 — UX references that can never take effect are validation errors, not warnings
 
 **What changes.** Four `ui` presentation diagnostics used to be warnings although each describes a

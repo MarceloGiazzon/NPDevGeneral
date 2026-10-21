@@ -224,6 +224,17 @@ final class FlowStateCodec {
         List<ParallelAwaitSlot> slots = new ArrayList<>();
         for (Map.Entry<String, Object> entry : state.entrySet()) {
             String key = entry.getKey();
+            // REG-261: where a parked parallel iteration's wait descriptor ACTUALLY lives.
+            // AwaitEventStep writes it to the bare AWAIT_STATE_KEY; ParallelLoopIterationScope.exit then
+            // relocates it into the iteration's own scope ("__iterScope.<loopStep>.<i>._npdev.await")
+            // so the next iteration's await cannot overwrite it. Nothing ever wrote the
+            // "_npdev.parallelAwait.*" family scanned below, so this scan found no slot, an incoming
+            // event matched nothing, and the execution sat in WAITING_EVENT until an explicit /resume.
+            ParallelAwaitSlot scoped = scopedAwaitSlot(executionId, key, entry.getValue());
+            if (scoped != null) {
+                slots.add(scoped);
+                continue;
+            }
             if (key == null || !key.startsWith(PARALLEL_AWAIT_STATE_KEY_PREFIX)) {
                 continue;
             }
@@ -251,6 +262,37 @@ final class FlowStateCodec {
             slots.add(new ParallelAwaitSlot(stepName, iterationIndex, correlationId, criteria));
         }
         return List.copyOf(slots);
+    }
+
+    /** REG-261: the slot for one relocated per-iteration await descriptor, or null when {@code key}
+     *  is not one. The descriptor names its own await step ({@link #AWAIT_FIELD_STEP_NAME}) -- that,
+     *  not the enclosing forEach step, is what the iteration correlation id is derived from. */
+    private static ParallelAwaitSlot scopedAwaitSlot(String executionId, String key, Object value) {
+        String awaitSuffix = "." + AWAIT_STATE_KEY;
+        if (key == null || !key.startsWith(PARALLEL_LOOP_SCOPE_KEY_PREFIX) || !key.endsWith(awaitSuffix)
+                || !(value instanceof Map<?, ?> waitMap)) {
+            return null;
+        }
+        String loopAndIteration = key.substring(
+                PARALLEL_LOOP_SCOPE_KEY_PREFIX.length(), key.length() - awaitSuffix.length());
+        int lastDot = loopAndIteration.lastIndexOf('.');
+        if (lastDot <= 0 || lastDot == loopAndIteration.length() - 1) {
+            return null;
+        }
+        Integer iterationIndex = tryParsePositiveInt(loopAndIteration.substring(lastDot + 1));
+        String awaitStepName = Objects.toString(waitMap.get(AWAIT_FIELD_STEP_NAME), "");
+        if (iterationIndex == null || awaitStepName.isBlank()) {
+            return null;
+        }
+        String correlationId = deriveForEachIterationCorrelationId(executionId, awaitStepName, iterationIndex);
+        if (correlationId == null) {
+            return null;
+        }
+        KernelRunner.WaitCriteria criteria = parseWaitCriteria(waitMap, null, -1);
+        if (criteria.awaitEventName() == null || criteria.awaitEventName().isBlank()) {
+            return null;
+        }
+        return new ParallelAwaitSlot(awaitStepName, iterationIndex, correlationId, criteria);
     }
 
     private static Integer tryParsePositiveInt(String text) {

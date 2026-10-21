@@ -3,9 +3,10 @@ title: >-
   A failing aggregate onCommit procedure does not roll the commit back: the root and its lines stay persisted although the request failed
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-10-20
-closed: null
+closed: 2026-10-21
+verification: VERIFIED_LIVE
 source: >-
   ENF-1 behaviour probe qil-aggregate-oncommit-failure-rolls-back-tree (NPDevSamples/dsl-conformance-max/behavior-probes/30-query-invariant-lifecycle.json), found while checking
   that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.

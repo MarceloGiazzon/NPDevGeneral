@@ -67,7 +67,7 @@ public final class LiveConceptCrudSupport {
     /**
      * Matches {@code requestedRoute} against the live model's concepts using the EXACT SAME route
      * derivation the generated controller's own baked {@code {{route}}} template variable uses
-     * ({@link SqlIdentifierSupport#aliasPreservingTableName}), and the EXACT SAME eligibility check
+     * ({@link SqlIdentifierSupport#restCollectionName}), and the EXACT SAME eligibility check
      * {@link NewConceptSchemaProvisioner} uses to decide whether a concept gets a table -- a concept
      * only gets a live REST binding if it is exactly the shape that class would provision a table
      * for, so "has a table" and "is CRUD-reachable" can never drift apart.
@@ -83,7 +83,7 @@ public final class LiveConceptCrudSupport {
             CompiledModel liveModel, String requestedRoute, ConceptGateway gateway, ExecutionContext context
     ) {
         for (CompiledConcept concept : liveModel.getConcepts()) {
-            String route = SqlIdentifierSupport.aliasPreservingTableName(concept, liveModel.getContexts());
+            String route = SqlIdentifierSupport.restCollectionName(concept, liveModel.getContexts());
             if (route.equals(requestedRoute)
                     && NewConceptSchemaProvisioner.outOfScopeReason(concept, liveModel) == null) {
                 return Optional.of(buildOps(concept, route, gateway, context));

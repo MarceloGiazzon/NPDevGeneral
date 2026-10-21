@@ -4,6 +4,7 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.runtime.support.GeneratedCrudRuntimeSupport.InvariantViolationDetail;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
+import com.npdev.dsl.v1.compiled.FieldValueConstraints;
 import com.npdev.kernel.ports.InvariantEngine;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -83,6 +84,10 @@ final class CrudSchemaValidationSupport {
                     // Validation for required/unique/expression invariants is handled by invariant engine.
                 }
             }
+            // REG-254/255/256: the declared maxLength / min / max / precision / scale are enforced on
+            // create AND update (the update payload is the merged record), 422 like every other
+            // field-level violation here. Shared with the flow createConcept path.
+            violations.addAll(FieldValueConstraints.violations(entity.getName(), field, value));
         }
         return violations;
     }

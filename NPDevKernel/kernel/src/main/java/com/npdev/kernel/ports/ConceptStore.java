@@ -92,6 +92,17 @@ public interface ConceptStore {
     }
 
     /**
+     * REG-267: runs {@code work} as one all-or-nothing unit against THIS store. A runtime exception
+     * escaping {@code work} undoes every write this store accepted from the calling thread inside
+     * it, then propagates. The default is a bare passthrough: a database-backed store is made
+     * atomic by the host's real transaction (see {@link TransactionRunner}), which is why only the
+     * in-process store -- with no database to roll back -- overrides this with an undo journal.
+     */
+    default <T> T runAtomically(java.util.function.Supplier<T> work) {
+        return work.get();
+    }
+
+    /**
      * Rollups: writes PLATFORM-MAINTAINED field values (a concept's declared {@code rollups[]}
      * targets) onto an existing row without touching anything else about it -- above all not its
      * row version, so a like landing on a Mosaic never turns the owner's open edit into an

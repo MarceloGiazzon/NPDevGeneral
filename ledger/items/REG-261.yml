@@ -3,9 +3,10 @@ title: >-
   A parallelAwait forEach is not resumed by publishing its events: it stays WAITING_EVENT until an explicit /resume
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-10-20
-closed: null
+closed: 2026-10-21
+verification: VERIFIED_LIVE
 source: >-
   ENF-1 behaviour probe fl-parallel-await-resumes-itself-when-last-event-arrives (NPDevSamples/dsl-conformance-max/behavior-probes/20-flow.json), found while checking
   that the booted dsl-conformance-max app OBEYS what the DSL schema accepts.

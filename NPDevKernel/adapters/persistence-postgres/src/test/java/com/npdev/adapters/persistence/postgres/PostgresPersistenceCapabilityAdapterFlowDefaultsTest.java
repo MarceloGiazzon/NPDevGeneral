@@ -5,6 +5,7 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiler.ModelCompiler;
 import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.kernel.concepts.LiveConceptGatewaySemanticPolicy;
+import com.npdev.kernel.ports.PersistenceCapabilityContract;
 import com.npdev.kernel.ports.SequenceAllocator;
 import com.npdev.kernel.storage.sql.H2Dialect;
 import com.npdev.kernel.storage.sql.SqlDialect;
@@ -49,7 +50,12 @@ class PostgresPersistenceCapabilityAdapterFlowDefaultsTest {
             + "{\"name\":\"Ticket\",\"fields\":["
             + "{\"name\":\"id\",\"type\":\"string\",\"id\":true,\"required\":true},"
             + "{\"name\":\"code\",\"type\":\"string\",\"defaultExpression\":\"nextNumber('ticketCode')\"},"
-            + "{\"name\":\"title\",\"type\":\"string\"}]}"
+            + "{\"name\":\"title\",\"type\":\"string\"}]},"
+            + "{\"name\":\"Line\",\"fields\":["
+            + "{\"name\":\"id\",\"type\":\"string\",\"id\":true,\"required\":true},"
+            + "{\"name\":\"sku\",\"type\":\"string\",\"required\":true},"
+            + "{\"name\":\"quantity\",\"type\":\"integer\"},"
+            + "{\"name\":\"version\",\"type\":\"integer\"}]}"
             + "]}";
 
     private SqlDialect previousDialect;
@@ -69,6 +75,8 @@ class PostgresPersistenceCapabilityAdapterFlowDefaultsTest {
                     + " priority VARCHAR(32), note VARCHAR(200))");
             statement.execute("CREATE TABLE tickets (id VARCHAR(64) PRIMARY KEY, code VARCHAR(32),"
                     + " title VARCHAR(200))");
+            statement.execute("CREATE TABLE lines (id VARCHAR(64) PRIMARY KEY, sku VARCHAR(64),"
+                    + " quantity INT, version BIGINT)");
         }
         CompiledModel model = new ModelCompiler().compile(
                 new JsonModelParser().parse(new ObjectMapper().readTree(MODEL)));
@@ -135,6 +143,73 @@ class PostgresPersistenceCapabilityAdapterFlowDefaultsTest {
         Map<?, ?> saved = (Map<?, ?>) adapter.save("Order", Map.of("note", "legacy"));
 
         assertEquals("normal", saved.get("priority"));
+    }
+
+    private static Map<String, Object> updateMarked(Object... keyValues) {
+        Map<String, Object> entity = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < keyValues.length; i += 2) {
+            entity.put((String) keyValues[i], keyValues[i + 1]);
+        }
+        entity.put(PersistenceCapabilityContract.WRITE_MODE_KEY, PersistenceCapabilityContract.WRITE_MODE_UPDATE);
+        return entity;
+    }
+
+    @Test
+    void updateModeSaveOfAnIdWithNoRowIsRefusedAndCreatesNothing() throws SQLException {
+        // REG-264: the REST PUT answers 404; a flow updateConcept must not upsert the id into existence.
+        IllegalArgumentException refused = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> adapter.save("Line", updateMarked("id", "ghost", "quantity", 5)));
+
+        assertTrue(refused.getMessage().contains("PERSISTENCE_RECORD_NOT_FOUND"), refused.getMessage());
+        assertEquals(0L, count("lines"));
+    }
+
+    @Test
+    void updateModeSaveMergesIntoTheStoredRowAndMovesItToTheNextVersion() throws SQLException {
+        // REG-263: the untouched columns survive and the version advances, as the REST PUT does.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO lines (id, sku, quantity, version) VALUES ('l-1', 'SKU-A', 2, 0)");
+        }
+
+        Map<?, ?> saved = (Map<?, ?>) adapter.save("Line", updateMarked("id", "l-1", "quantity", 7));
+
+        assertEquals("SKU-A", column("lines", "sku", "l-1"));
+        assertEquals(7, ((Number) column("lines", "quantity", "l-1")).intValue());
+        assertEquals(1L, ((Number) column("lines", "version", "l-1")).longValue());
+        assertTrue(!saved.containsKey(PersistenceCapabilityContract.WRITE_MODE_KEY), "the marker is never persisted or echoed");
+    }
+
+    @Test
+    void updateModeSaveKeepsAVersionTheCallerNamedItself() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO lines (id, sku, quantity, version) VALUES ('l-2', 'SKU-B', 2, 4)");
+        }
+
+        adapter.save("Line", updateMarked("id", "l-2", "quantity", 3, "version", 9L));
+
+        assertEquals(9L, ((Number) column("lines", "version", "l-2")).longValue());
+    }
+
+    @Test
+    void anOrdinarySaveOfAnExistingRowDoesNotTouchItsVersion() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO lines (id, sku, quantity, version) VALUES ('l-3', 'SKU-C', 2, 4)");
+        }
+
+        adapter.save("Line", Map.of("id", "l-3", "quantity", 8));
+
+        assertEquals(4L, ((Number) column("lines", "version", "l-3")).longValue());
+        assertEquals("SKU-C", column("lines", "sku", "l-3"));
+    }
+
+    private long count(String table) throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet rs = statement.executeQuery("SELECT COUNT(*) FROM " + table)) {
+            rs.next();
+            return rs.getLong(1);
+        }
     }
 
     private Object column(String table, String column, Object id) throws SQLException {

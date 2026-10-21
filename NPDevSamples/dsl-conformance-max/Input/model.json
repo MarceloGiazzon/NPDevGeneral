@@ -1737,6 +1737,14 @@
           "target": "summary" },
         { "name": "return-summary", "type": "return", "value": "$summary" }
       ]
+    },
+    {
+      "name": "ScoreWidgetOrderRisk",
+      "description": "Coverage for REG-259: the implementation behind PlaceWidgetOrder's generatedAction step (actionName ScoreWidgetOrderRisk). A generatedAction names an action; one with no packaged trusted-source code behind it resolves to the procedure of that name, so this step runs instead of failing after the order row was already written. Scores an order by its line count.",
+      "steps": [
+        { "name": "score-by-line-count", "type": "mapValue", "value": "$lineCount", "target": "riskScore" },
+        { "name": "return-score", "type": "return", "value": "$riskScore" }
+      ]
     }
   ],
 
@@ -1910,6 +1918,17 @@
           "actionName": "ScoreWidgetOrderRisk",
           "input": "$saved",
           "output": "$riskScore"
+        },
+        {
+          "name": "reject-unscorable-order",
+          "type": "branch",
+          "condition": "$saved.lineCount == 99",
+          "then": [
+            { "name": "score-unimplemented", "type": "generatedAction", "actionName": "UnimplementedRiskPolicy", "input": "$saved", "output": "$policyScore" }
+          ],
+          "else": [
+            { "name": "mark-scorable-order", "type": "map", "input": "$saved.status", "output": "$scorableStatus" }
+          ]
         },
         {
           "name": "announce-order-placed",

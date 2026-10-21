@@ -895,6 +895,13 @@ final class CapabilityInvoker {
                         stamped.put(String.valueOf(entry.getKey()), entry.getValue());
                     }
                     stamped.put("tenantId", flowStateTenantId(state));
+                    // REG-264: tell the adapter this save is an updateConcept, so it refuses an id
+                    // with no row instead of creating one (and merges into the row it finds).
+                    FlowStepDefinition.ConceptWrite conceptWrite = step.getConceptWrite();
+                    if (conceptWrite != null && conceptWrite.isUpdate()) {
+                        stamped.put(com.npdev.kernel.ports.PersistenceCapabilityContract.WRITE_MODE_KEY,
+                                com.npdev.kernel.ports.PersistenceCapabilityContract.WRITE_MODE_UPDATE);
+                    }
                     callArgs = List.of(stamped);
                     effectiveArgs = callArgs;
                 }

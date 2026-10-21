@@ -205,7 +205,14 @@ public class AggregateRuntime {
         if (transactionTemplate != null) {
             return transactionTemplate.execute(status -> commitInternal(aggregateName, draft, context));
         }
-        return commitInternal(aggregateName, draft, context);
+        // REG-267: with no transaction manager (the in-process store has no database) the gateway's
+        // store-level undo journal gives the same all-or-nothing guarantee, so a failing onCommit
+        // procedure still takes the root and every child write of this commit with it.
+        ConceptGateway gateway = conceptGateway;
+        if (gateway == null) {
+            return commitInternal(aggregateName, draft, context);
+        }
+        return gateway.runAtomically(() -> commitInternal(aggregateName, draft, context));
     }
 
     private Map<String, Object> commitInternal(String aggregateName, Map<String, Object> draft, ExecutionContext context) {
@@ -393,7 +400,7 @@ public class AggregateRuntime {
             }
         }
         if (!violations.isEmpty()) {
-            throw new IllegalStateException(
+            throw new AggregateCommitVetoException(
                     "Aggregate " + aggregate.name() + " balance(s) violated: " + String.join("; ", violations));
         }
     }
@@ -671,7 +678,7 @@ public class AggregateRuntime {
             names.append(violation.invariantRef());
             details.append(violation.message());
         }
-        throw new IllegalStateException(
+        throw new AggregateCommitVetoException(
                 "Aggregate " + aggregate.name() + " invariant(s) violated: " + names + " -- " + details);
     }
 

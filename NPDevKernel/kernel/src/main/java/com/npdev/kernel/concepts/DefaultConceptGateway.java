@@ -454,6 +454,18 @@ public final class DefaultConceptGateway implements ConceptGateway {
         return Objects.equals(actual == null ? null : String.valueOf(actual), value);
     }
 
+    /**
+     * REG-267: with a real transaction manager wired in, the host's transaction is the unit of work;
+     * with none (an in-process store has no database to roll back) the store's own undo journal is.
+     */
+    @Override
+    public <T> T runAtomically(java.util.function.Supplier<T> work) {
+        if (transactionRunner.isTransactional()) {
+            return transactionRunner.runInTransaction(work);
+        }
+        return store.runAtomically(work);
+    }
+
     @Override
     public ConceptRecord save(ConceptWriteRequest request, ExecutionContext context) {
         ExecutionContext effectiveContext = normalizeContext(context);

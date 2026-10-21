@@ -11,7 +11,7 @@
         {
           "name": "create the catalog entry the AI will rename",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "AI71-${rand}",
             "displayName": "Before review",
@@ -49,7 +49,7 @@
         {
           "name": "nothing applied while the proposal waits",
           "method": "GET",
-          "path": "/api/widget_catalog_entrys/${entryId}",
+          "path": "/api/widget_catalog_entries/${entryId}",
           "expect": {
             "status": 200,
             "json": {
@@ -106,7 +106,7 @@
         {
           "name": "the entry now carries exactly the values the reviewer was shown",
           "method": "GET",
-          "path": "/api/widget_catalog_entrys/${entryId}",
+          "path": "/api/widget_catalog_entries/${entryId}",
           "expect": {
             "status": 200,
             "json": {
@@ -140,7 +140,7 @@
         {
           "name": "create the catalog entry",
           "method": "POST",
-          "path": "/api/widget_catalog_entrys",
+          "path": "/api/widget_catalog_entries",
           "body": {
             "sku": "AI71R-${rand}",
             "displayName": "Keep me",
@@ -196,7 +196,7 @@
         {
           "name": "the entry is unchanged",
           "method": "GET",
-          "path": "/api/widget_catalog_entrys/${entryId}",
+          "path": "/api/widget_catalog_entries/${entryId}",
           "expect": {
             "status": 200,
             "json": {

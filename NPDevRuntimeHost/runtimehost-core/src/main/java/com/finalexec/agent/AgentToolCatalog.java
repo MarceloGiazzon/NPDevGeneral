@@ -91,7 +91,7 @@ public final class AgentToolCatalog {
             CompiledAgentAccessExposure exposure, List<AgentTool> out) {
         // The REST route the generated CRUD controller registers this concept under -- ControllerEmitter
         // computes it exactly like this; using anything else gives 404s.
-        String route = SqlIdentifierSupport.aliasPreservingTableName(concept, model.getContexts());
+        String route = SqlIdentifierSupport.restCollectionName(concept, model.getContexts());
         String toolSuffix = safeName(concept.getName());
         String label = concept.getUi() != null && concept.getUi().getLabel() != null
                 ? concept.getUi().getLabel() : concept.getName();

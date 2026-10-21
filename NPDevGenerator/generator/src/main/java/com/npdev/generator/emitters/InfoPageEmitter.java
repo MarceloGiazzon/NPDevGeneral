@@ -180,7 +180,8 @@ public final class InfoPageEmitter extends AbstractEmitter {
             }
             Map<String, String> row = new LinkedHashMap<>();
             row.put("name", concept.getName());
-            row.put("route", tableName);
+            // REG-270: the served REST collection name, not the physical table name.
+            row.put("route", com.npdev.dsl.v1.compiled.SqlIdentifierSupport.restCollectionName(concept, model.getContexts()));
             concepts.add(row);
         }
         concepts.sort(Comparator.comparing(row -> row.get("name"), String.CASE_INSENSITIVE_ORDER));
