@@ -26,6 +26,15 @@
 
 .PARAMETER Only
     Run only probe files whose name contains this text.
+
+.PARAMETER LiveFieldVariant
+    LIVE-1: the default app is generated against dsl-conformance-max's InMemory db.definition.json, which has
+    no DataSource and issues no SUPERUSER key -- so POST /model-reload (and the live ALTER behind it) cannot be
+    exercised on it, and the probes that need them (`"requires": ["superUser"]`, e.g. 60-live-add-field.json)
+    are SKIPPED in a normal run. This switch generates the SAME model against
+    NPDevSamples/dsl-conformance-max/variants/h2local/db.definition.json (H2Local: a physical database), boots
+    it with npdev.runtime.hotswap.new-concept-provisioning-enabled=true, hands the app's SUPER_USER_KEY.txt to
+    the runner as NPDEV_PROBE_SUPER_USER_KEY and runs only the live-add-field probe. Does not record cadence.
 #>
 param(
     [string]$SampleId = "dsl-conformance-max",
@@ -35,6 +44,7 @@ param(
     [switch]$Explore,
     [string]$StopFile = "",
     [string]$Only = "",
+    [switch]$LiveFieldVariant,
     [string]$ReportPath = "scripts/reports/out/behavior-probes-report.json"
 )
 
@@ -84,6 +94,37 @@ function Write-JsonReport {
     $report | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $ReportPath -Encoding UTF8
 }
 
+# REP-1: the probes that prove row/field visibility need RESTRICTED (non-ADMIN) callers, and a dsl-conformance-max
+# app runs without a database, so POST /api/admin/credentials (503: no DataSource) cannot mint them at run time.
+# They are static api-key mappings instead: extend the app's key file (secrets/api-key.env, spared by
+# regeneration) with throwaway keys for three fixed identities, re-export the mapping env vars the boot reads, and
+# hand each raw key to run_probes.py as NPDEV_PROBE_KEY_<NAME> (probes see it as ${key_<name>}). Idempotent:
+# earlier rep1probe-* mappings are dropped first, so keys never accumulate across runs.
+function Add-ProbeIdentities {
+    param([string]$AppRoot)
+    $keyFile = Join-Path (Join-Path $AppRoot "secrets") "api-key.env"
+    if (-not (Test-Path -LiteralPath $keyFile)) { return }
+    $prefix = "NPDEV_AUTH_API_KEYS="
+    $line = (Get-Content -LiteralPath $keyFile | Where-Object { $_.Trim().StartsWith($prefix) } | Select-Object -First 1)
+    if ($null -eq $line) { return }
+    $kept = @($line.Trim().Substring($prefix.Length).Split(";") | Where-Object { $_ -and $_ -notmatch ":rep1probe-" })
+    $identities = [ordered]@{
+        ALICE       = "dev:rep1probe-alice:USER"
+        BOB         = "dev:rep1probe-bob:USER"
+        OTHERTENANT = "rep1probe-other:rep1probe-carol:USER"
+    }
+    $added = @()
+    foreach ($name in $identities.Keys) {
+        $key = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
+        $added += ($key + "=" + $identities[$name])
+        Set-Item -Path ("env:NPDEV_PROBE_KEY_" + $name) -Value $key
+    }
+    $mapping = (($kept + $added) -join ";")
+    Set-Content -LiteralPath $keyFile -Value ($prefix + $mapping) -Encoding UTF8 -NoNewline
+    Set-Item -Path "env:NPDEV_AUTH_API_KEYS" -Value $mapping
+    Set-Item -Path "env:NPDEV_AUTH_APIKEYS" -Value $mapping
+}
+
 $samplesRoot = Get-NPDevSamplesRoot -ScriptRoot (Join-Path $repoRoot "NPDevSamples\scripts")
 New-Item -ItemType Directory -Force -Path (Join-Path $samplesRoot "$SampleId\Output") | Out-Null
 $sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId $SampleId
@@ -95,7 +136,11 @@ if (-not (Test-PortFree -PortNumber $Port)) {
 
 if (-not $ReuseBuild) {
     Write-Section "Generating $SampleId"
-    & pwsh -NoProfile -File (Join-Path $repoRoot "NPDevSamples\scripts\generate-sample-app.ps1") -SampleId $SampleId | Out-Host
+    $generateArgs = @("-SampleId", $SampleId)
+    if ($LiveFieldVariant) {
+        $generateArgs += @("-DbDefinitionPath", (Join-Path $repoRoot "NPDevSamples\$SampleId\variants\h2local\db.definition.json"))
+    }
+    & pwsh -NoProfile -File (Join-Path $repoRoot "NPDevSamples\scripts\generate-sample-app.ps1") @generateArgs | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "Generation failed for $SampleId." }
     $report.stages.generate = "passed"
 
@@ -129,10 +174,13 @@ try {
         Remove-Item -LiteralPath $dataDir -Recurse -Force
     }
 
+    Add-ProbeIdentities -AppRoot $appRoot
     Write-Section "Booting $SampleId on port $Port"
     $bootOut = Join-Path $appRoot "behavior-probes-boot.stdout.log"
     $bootErr = Join-Path $appRoot "behavior-probes-boot.stderr.log"
-    $app = Start-Process -FilePath $gradlew -ArgumentList @("--no-daemon", "bootRun", ('--args="--server.port=' + $Port + '"')) -WorkingDirectory $appRoot -NoNewWindow -PassThru -RedirectStandardOutput $bootOut -RedirectStandardError $bootErr
+    $bootArgsLine = "--server.port=$Port"
+    if ($LiveFieldVariant) { $bootArgsLine += " --npdev.runtime.hotswap.new-concept-provisioning-enabled=true" }
+    $app = Start-Process -FilePath $gradlew -ArgumentList @("--no-daemon", "bootRun", ('--args="' + $bootArgsLine + '"')) -WorkingDirectory $appRoot -NoNewWindow -PassThru -RedirectStandardOutput $bootOut -RedirectStandardError $bootErr
 
     $baseUrl = "http://127.0.0.1:$Port"
     $deadline = (Get-Date).AddSeconds($BootTimeoutSeconds)
@@ -165,18 +213,32 @@ try {
     }
 
     Write-Section "Behaviour probes"
+    if ($LiveFieldVariant -and [string]::IsNullOrWhiteSpace($Only)) { $Only = "live-add-field" }
     $probesDir = Join-Path $sample.SampleRoot "behavior-probes"
     $probeReport = Join-Path $evidenceDir "probe-report.json"
     $probeArgs = @((Join-Path $repoRoot "scripts\quality\behavior_probes\run_probes.py"), "--base-url", $baseUrl, "--probes-dir", $probesDir, "--report", $probeReport)
     if (-not [string]::IsNullOrWhiteSpace($Only)) { $probeArgs += @("--only", $Only) }
     $env:NPDEV_PROBE_API_KEY = $apiKey
-    try { & $py @probeArgs | Out-Host } finally { Remove-Item Env:\NPDEV_PROBE_API_KEY -ErrorAction SilentlyContinue }
+    if ($LiveFieldVariant) {
+        # SuperUserBootstrapper writes SUPER_USER_KEY.txt into the app's working directory (bootRun's cwd).
+        $superKeyFile = Join-Path $appRoot "SUPER_USER_KEY.txt"
+        if (-not (Test-Path -LiteralPath $superKeyFile)) { throw "LiveFieldVariant: no $superKeyFile -- the app has no physical database / SUPERUSER key." }
+        $env:NPDEV_PROBE_SUPER_USER_KEY = (Get-Content -Raw -LiteralPath $superKeyFile).Trim()
+    }
+    try { & $py @probeArgs | Out-Host } finally {
+        Remove-Item Env:\NPDEV_PROBE_API_KEY -ErrorAction SilentlyContinue
+        Remove-Item Env:\NPDEV_PROBE_SUPER_USER_KEY -ErrorAction SilentlyContinue
+    }
     $probeExit = $LASTEXITCODE
     if (Test-Path -LiteralPath $probeReport) { $report.probes = Get-Content -Raw -LiteralPath $probeReport | ConvertFrom-Json }
 
     $allGreen = ($probeExit -eq 0)
     $report.status = if ($allGreen) { "passed" } else { "failed" }
     Write-JsonReport
+
+    # TRUTH-1: join this run into the app's own truth rollup (<app>/_ops/truth-rollup.json, what the running app
+    # serves behind GET /api/admin/box/truth). Best-effort and display-only: it can never fail the probe run.
+    try { & $py (Join-Path $repoRoot "NPDevCli\npdev_cli.py") truth --app $appRoot --write 2>&1 | Out-Null } catch { }
 
     if ([string]::IsNullOrWhiteSpace($Only)) {
         & $py (Join-Path $repoRoot "scripts\quality\cadence_state.py") record --id "enf-behavior-probes" --tier T1 --result ($(if ($allGreen) { "passed" } else { "failed" })) 2>&1 | Out-Null

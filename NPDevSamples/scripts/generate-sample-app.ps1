@@ -7,7 +7,10 @@ param(
     [switch]$NoAssembleFinalApp,
     # The itemized token a refused boot prints ("Expected acknowledgment token: ...") -- written into
     # the generated schema manifest so the next boot applies exactly those destructive items.
-    [string]$DestructiveAcknowledgment = ""
+    [string]$DestructiveAcknowledgment = "",
+    # LIVE-1: generate against a DIFFERENT db.definition.json than the sample's own (e.g. an H2Local
+    # variant of an InMemory fixture, so /model-reload has a DataSource and a SUPERUSER key to work with).
+    [string]$DbDefinitionPath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -44,7 +47,7 @@ $artifactRoot = Join-Path $OutputRoot "ArtifactNP"
 $finalAppRoot = Join-Path $OutputRoot "App"
 $reportsRoot = Join-Path $OutputRoot "Reports"
 $generationMarkerPath = Join-Path $reportsRoot "generation-run.json"
-$dbDefinitionPath = Join-Path $sample.InputRoot "db.definition.json"
+$dbDefinitionPath = if ([string]::IsNullOrWhiteSpace($DbDefinitionPath)) { Join-Path $sample.InputRoot "db.definition.json" } else { Normalize-AbsolutePath $DbDefinitionPath }
 
 Ensure-File -PathValue $gradlew -Label "Generator Gradle wrapper"
 Ensure-Directory -PathValue $runtimeHostRoot -Label "RuntimeHost base template"

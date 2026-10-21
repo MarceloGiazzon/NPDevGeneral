@@ -1,0 +1,401 @@
+{
+  "probes": [
+    {
+      "id": "rep1-list-report-restricted-callers-see-only-their-rows-and-visible-fields",
+      "keywords": [
+        "query.parameters"
+      ],
+      "description": "REP-1: a kind:list document (grouped, subtotals, grand total) downloads as PDF and CSV for RESTRICTED (non-ADMIN) identities (${key_alice}/${key_bob}/${key_othertenant}, provisioned by run-behavior-probes.ps1). Two users each create WidgetOrders; WidgetOrder.access.read (customerEmail == $user.id) must scope every row, subtotal and the grand total to the caller, so alice's report totals 12 (7 Open + 5 Shipped) and never contains bob's 100, and bob's totals 100. WidgetCatalogEntry.internalNotes has field-level access.read (ownerEmail == $user.id): the owner's report carries the column and the note, another user's report has NO such column and no trace of the note, while the visible unitPrice subtotal is unchanged. A caller in ANOTHER TENANT gets an empty report (no rows, no totals) for the same documents. The catalog report binds the declared parameter of its named query (CatalogEntriesOwnedBy) exactly like GET /api/queries does, and refuses to run without it (400, never an unfiltered report) -- that is the witnessed keyword, query.parameters.",
+      "steps": [
+        {
+          "name": "tag",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "tag-${rand}",
+            "rows": 1,
+            "cols": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "tag": "$.name"
+          }
+        },
+        {
+          "name": "alice order 1 (Open, 3 lines; 500 tolerated, the row is stored)",
+          "apiKey": "${key_alice}",
+          "method": "POST",
+          "path": "/api/concepts/widget_orders",
+          "body": {
+            "customerEmail": "rep1probe-alice",
+            "status": "Open-${tag}",
+            "lineCount": 3
+          },
+          "expect": {
+            "status": [
+              201,
+              500
+            ]
+          }
+        },
+        {
+          "name": "alice order 2 (Open, 4 lines)",
+          "apiKey": "${key_alice}",
+          "method": "POST",
+          "path": "/api/concepts/widget_orders",
+          "body": {
+            "customerEmail": "rep1probe-alice",
+            "status": "Open-${tag}",
+            "lineCount": 4
+          },
+          "expect": {
+            "status": [
+              201,
+              500
+            ]
+          }
+        },
+        {
+          "name": "alice order 3 (Shipped, 5 lines)",
+          "apiKey": "${key_alice}",
+          "method": "POST",
+          "path": "/api/concepts/widget_orders",
+          "body": {
+            "customerEmail": "rep1probe-alice",
+            "status": "Shipped-${tag}",
+            "lineCount": 5
+          },
+          "expect": {
+            "status": [
+              201,
+              500
+            ]
+          }
+        },
+        {
+          "name": "bob order (Open, 100 lines) -- must never reach alice",
+          "apiKey": "${key_bob}",
+          "method": "POST",
+          "path": "/api/concepts/widget_orders",
+          "body": {
+            "customerEmail": "rep1probe-bob",
+            "status": "Open-${tag}",
+            "lineCount": 100
+          },
+          "expect": {
+            "status": [
+              201,
+              500
+            ]
+          }
+        },
+        {
+          "name": "find alice's Open orders (for cleanup)",
+          "apiKey": "${key_alice}",
+          "method": "GET",
+          "path": "/api/concepts/widget_orders?where=status:eq:Open-${tag}",
+          "expect": {
+            "status": 200
+          },
+          "save": {
+            "aliceO1": "$.content[0].id",
+            "aliceO2": "$.content[1].id"
+          }
+        },
+        {
+          "name": "find alice's Shipped order",
+          "apiKey": "${key_alice}",
+          "method": "GET",
+          "path": "/api/concepts/widget_orders?where=status:eq:Shipped-${tag}",
+          "expect": {
+            "status": 200
+          },
+          "save": {
+            "aliceO3": "$.content[0].id"
+          }
+        },
+        {
+          "name": "find bob's order",
+          "apiKey": "${key_bob}",
+          "method": "GET",
+          "path": "/api/concepts/widget_orders?where=status:eq:Open-${tag}",
+          "expect": {
+            "status": 200
+          },
+          "save": {
+            "bobO1": "$.content[0].id"
+          }
+        },
+        {
+          "name": "catalog entry 1 owned by alice, with an internal note",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "REP1-${rand}-A",
+            "displayName": "Rep1 A",
+            "discontinued": false,
+            "unitPrice": "10.50",
+            "ownerEmail": "rep1probe-alice",
+            "internalNotes": "SECRET-NOTE-ALPHA"
+          },
+          "expect": {
+            "status": [
+              200,
+              201
+            ]
+          },
+          "save": {
+            "cat1": "$.id"
+          }
+        },
+        {
+          "name": "catalog entry 2 owned by alice",
+          "method": "POST",
+          "path": "/api/widget_catalog_entrys",
+          "body": {
+            "sku": "REP1-${rand}-B",
+            "displayName": "Rep1 B",
+            "discontinued": false,
+            "unitPrice": "4.25",
+            "ownerEmail": "rep1probe-alice",
+            "internalNotes": "SECRET-NOTE-BETA"
+          },
+          "expect": {
+            "status": [
+              200,
+              201
+            ]
+          },
+          "save": {
+            "cat2": "$.id"
+          }
+        },
+        {
+          "name": "alice CSV: grouped, subtotals and grand total over HER rows only",
+          "apiKey": "${key_alice}",
+          "method": "GET",
+          "path": "/api/documents/WidgetOrderLinesByStatus/render.csv",
+          "expect": {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/csv",
+              "Content-Disposition": "WidgetOrderLinesByStatus.csv"
+            },
+            "text": [
+              "Order,Customer,Lines",
+              "status: Open-${tag},,",
+              "status: Shipped-${tag},,",
+              "Subtotal Open-${tag},,7\r\n",
+              "Subtotal Shipped-${tag},,5\r\n",
+              "Grand total,,12\r\n",
+              "rep1probe-alice"
+            ],
+            "notText": [
+              "rep1probe-bob",
+              "Subtotal Open-${tag},,107",
+              "Grand total,,112"
+            ]
+          }
+        },
+        {
+          "name": "bob CSV: only his own order, total 100",
+          "apiKey": "${key_bob}",
+          "method": "GET",
+          "path": "/api/documents/WidgetOrderLinesByStatus/render.csv",
+          "expect": {
+            "status": 200,
+            "text": [
+              "Subtotal Open-${tag},,100\r\n",
+              "Grand total,,100\r\n",
+              "rep1probe-bob"
+            ],
+            "notText": [
+              "rep1probe-alice",
+              "Shipped-${tag}",
+              "Grand total,,112"
+            ]
+          }
+        },
+        {
+          "name": "alice PDF: a real PDF",
+          "apiKey": "${key_alice}",
+          "method": "GET",
+          "path": "/api/documents/WidgetOrderLinesByStatus/render.pdf",
+          "expect": {
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/pdf"
+            },
+            "text": [
+              "%PDF-"
+            ]
+          }
+        },
+        {
+          "name": "other-tenant caller: no rows, no totals, no trace of either user",
+          "apiKey": "${key_othertenant}",
+          "method": "GET",
+          "path": "/api/documents/WidgetOrderLinesByStatus/render.csv",
+          "expect": {
+            "status": 200,
+            "text": [
+              "Order,Customer,Lines"
+            ],
+            "notText": [
+              "rep1probe-",
+              "Grand total",
+              "Subtotal"
+            ]
+          }
+        },
+        {
+          "name": "owner CSV: the internal-notes column and the notes are there",
+          "apiKey": "${key_alice}",
+          "method": "GET",
+          "path": "/api/documents/WidgetCatalogPriceReport/render.csv?owner=rep1probe-alice",
+          "expect": {
+            "status": 200,
+            "text": [
+              "SKU,Name,Unit price,Internal notes",
+              "SECRET-NOTE-ALPHA",
+              "SECRET-NOTE-BETA",
+              "Subtotal rep1probe-alice,,14.75",
+              "Grand total,,14.75"
+            ]
+          }
+        },
+        {
+          "name": "other user CSV: no internal-notes column, no trace of the notes, same visible total",
+          "apiKey": "${key_bob}",
+          "method": "GET",
+          "path": "/api/documents/WidgetCatalogPriceReport/render.csv?owner=rep1probe-alice",
+          "expect": {
+            "status": 200,
+            "text": [
+              "SKU,Name,Unit price\r\n",
+              "Subtotal rep1probe-alice,,14.75",
+              "Grand total,,14.75"
+            ],
+            "notText": [
+              "Internal notes",
+              "SECRET-NOTE",
+              "ALPHA",
+              "BETA"
+            ]
+          }
+        },
+        {
+          "name": "other user PDF of the same report is a PDF too",
+          "apiKey": "${key_bob}",
+          "method": "GET",
+          "path": "/api/documents/WidgetCatalogPriceReport/render.pdf?owner=rep1probe-alice",
+          "expect": {
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/pdf"
+            },
+            "text": [
+              "%PDF-"
+            ]
+          }
+        },
+        {
+          "name": "other-tenant caller: the same catalog report is empty",
+          "apiKey": "${key_othertenant}",
+          "method": "GET",
+          "path": "/api/documents/WidgetCatalogPriceReport/render.csv?owner=rep1probe-alice",
+          "expect": {
+            "status": 200,
+            "notText": [
+              "REP1-",
+              "14.75",
+              "SECRET-NOTE",
+              "Grand total"
+            ]
+          }
+        },
+        {
+          "name": "the named query's declared parameter is required: no owner -> 400, never an unfiltered report",
+          "apiKey": "${key_alice}",
+          "method": "GET",
+          "path": "/api/documents/WidgetCatalogPriceReport/render.csv",
+          "expect": {
+            "status": 400
+          }
+        },
+        {
+          "name": "a one-record document has no CSV form -> 400",
+          "apiKey": "${key_alice}",
+          "method": "GET",
+          "path": "/api/documents/WidgetOrderSummary/render.csv",
+          "expect": {
+            "status": 400
+          }
+        },
+        {
+          "name": "an unknown document -> 404",
+          "apiKey": "${key_alice}",
+          "method": "GET",
+          "path": "/api/documents/NoSuchReport/render.csv",
+          "expect": {
+            "status": 404
+          }
+        },
+        {
+          "name": "unauthenticated -> 401",
+          "auth": "none",
+          "method": "GET",
+          "path": "/api/documents/WidgetOrderLinesByStatus/render.csv",
+          "expect": {
+            "status": [
+              401,
+              403
+            ]
+          }
+        },
+        {
+          "name": "cleanup alice order 1",
+          "always": true,
+          "apiKey": "${key_alice}",
+          "method": "DELETE",
+          "path": "/api/widget_orders/${aliceO1}"
+        },
+        {
+          "name": "cleanup alice order 2",
+          "always": true,
+          "apiKey": "${key_alice}",
+          "method": "DELETE",
+          "path": "/api/widget_orders/${aliceO2}"
+        },
+        {
+          "name": "cleanup alice order 3",
+          "always": true,
+          "apiKey": "${key_alice}",
+          "method": "DELETE",
+          "path": "/api/widget_orders/${aliceO3}"
+        },
+        {
+          "name": "cleanup bob order",
+          "always": true,
+          "apiKey": "${key_bob}",
+          "method": "DELETE",
+          "path": "/api/widget_orders/${bobO1}"
+        },
+        {
+          "name": "cleanup catalog 1",
+          "always": true,
+          "method": "DELETE",
+          "path": "/api/widget_catalog_entrys/${cat1}"
+        },
+        {
+          "name": "cleanup catalog 2",
+          "always": true,
+          "method": "DELETE",
+          "path": "/api/widget_catalog_entrys/${cat2}"
+        }
+      ]
+    }
+  ]
+}

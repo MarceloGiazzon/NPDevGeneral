@@ -21,10 +21,16 @@ Expectations:
 A probe that exposes a REAL defect carries "knownFailure": "<ledger id>": it counts as green only while
 it still fails (status "known-failure"); once the defect is fixed it turns red ("now passes -- remove
 knownFailure") so the marker can never outlive the bug. Never weaken an assertion to make a probe pass.
+A probe with "requires": ["superUser"] is skipped (status "skipped", not a failure) when no SUPERUSER key is supplied.
 A step marked "always": true (or, equivalently, "stopOnFail": false) is cleanup: it runs even after an earlier step failed (and its own status is not
 checked unless it carries an `expect`). `text`/`notText` accept a string or a list and substitute placeholders.
 `expect` may be omitted on a setup step (any status is accepted). A probe step may set
-"auth": "none" to send no API key. Exit code is 0 only when every probe is green.
+"auth": "none" to send no API key, or "apiKey": "${savedKey}" to act as another identity (REP-1: a restricted
+key issued by an earlier step); `expect.headers` ({"Content-Type": "application/pdf"}) checks response-header
+substrings. LIVE-1: a step may set "auth": "superUser" (sends X-Super-User-Key from env NPDEV_PROBE_SUPER_USER_KEY)
+and "reloadRevision": {"file": "<f>.json", "revision": "<name>"} (the body becomes {"modelPath": <scratch copy of the
+sample's Input/ with that revision's addField/removeField ops applied>}, see model-revisions/); json rule op
+{"contains": x} checks list/string/dict membership. Exit code is 0 only when every probe is green.
 """
 from __future__ import annotations
 
@@ -36,18 +42,28 @@ import sys
 import urllib.error
 import urllib.request
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 PLACEHOLDER = re.compile(r"\$\{([A-Za-z0-9_.-]+)\}")
 
 
 def resolve_path(doc, path: str):
-    """Minimal JSONPath: $.a.b[0].c ; returns (found, value)."""
+    """Minimal JSONPath: $.a.b[0].c ; returns (found, value). `[?key=value]` selects the first array
+    element whose `key` equals `value` (string compare), e.g. $.concepts[?conceptName=WidgetOrder].declaredLevel."""
     if path in ("$", ""):
         return True, doc
     cur = doc
-    for part in re.findall(r"[^.\[\]]+|\[\d+\]", path.lstrip("$").lstrip(".")):
-        if part.startswith("["):
+    for part in re.findall(r"\[\?[^\]]*\]|[^.\[\]]+|\[\d+\]", path.lstrip("$").lstrip(".")):
+        if part.startswith("[?"):
+            key, _, want = part[2:-1].partition("=")
+            if not isinstance(cur, list):
+                return False, None
+            matches = [item for item in cur if isinstance(item, dict) and str(item.get(key)) == want]
+            if not matches:
+                return False, None
+            cur = matches[0]
+        elif part.startswith("["):
             index = int(part[1:-1])
             if not isinstance(cur, list) or index >= len(cur):
                 return False, None
@@ -59,13 +75,57 @@ def resolve_path(doc, path: str):
     return True, cur
 
 
+def materialize_revision(sample_dir: Path | None, revision_file: str, revision: str) -> str:
+    """LIVE-1: build a second revision of the sample's model WITHOUT touching the checked-in one. The
+    sample's Input/ directory (model + the fragments/packs/contexts it composes from, all relative to
+    model.json) is copied to a scratch directory and model.json there gets the revision's ops applied
+    (`addField` / `removeField` on a named concept). Returns the scratch model.json path -- what
+    /model-reload reads. The revision file lives in <sample>/model-revisions/ and is a delta, so it can
+    never go stale against a model.json other work keeps editing."""
+    import shutil
+    import tempfile
+    if sample_dir is None:
+        raise RuntimeError("a reloadRevision step needs --sample-dir (or a probes dir inside a sample)")
+    spec = json.loads((sample_dir / "model-revisions" / revision_file).read_text(encoding="utf-8"))
+    ops = spec["revisions"][revision]
+    scratch = Path(tempfile.mkdtemp(prefix=f"npdev-live1-{revision}-"))
+    shutil.copytree(sample_dir / "Input", scratch, dirs_exist_ok=True)
+    model_path = scratch / "model.json"
+    model = json.loads(model_path.read_text(encoding="utf-8"))
+    for op in ops:
+        concept = next(c for c in model["concepts"] if c["name"] == op["concept"])
+        if op["op"] == "addField":
+            concept["fields"].append(op["field"])
+        elif op["op"] == "removeField":
+            concept["fields"] = [f for f in concept["fields"] if f["name"] != op["field"]]
+        else:
+            raise RuntimeError(f"unknown revision op {op['op']!r}")
+    model_path.write_text(json.dumps(model, indent=2), encoding="utf-8")
+    return str(model_path)
+
+
 class Probe:
-    def __init__(self, base_url: str, api_key: str, spec: dict, source: str) -> None:
+    def __init__(self, base_url: str, api_key: str, spec: dict, source: str,
+                 super_key: str = "", sample_dir: Path | None = None) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
+        # LIVE-1: the SUPERUSER key (X-Super-User-Key) and the sample directory a model-revision step reads.
+        self.super_key = super_key
+        self.sample_dir = sample_dir
         self.spec = spec
         self.source = source
-        self.saved: dict[str, object] = {}
+        # REP-1: restricted identities provisioned by run-behavior-probes.ps1 (Add-ProbeIdentities) arrive as
+        # NPDEV_PROBE_KEY_<NAME> and are visible to every probe as ${key_<name>} (e.g. ${key_alice}); a probe that
+        # names one the run did not provision fails loudly with "unknown placeholder".
+        self.saved: dict[str, object] = {
+            "key_" + name[len("NPDEV_PROBE_KEY_"):].lower(): value
+            for name, value in os.environ.items() if name.startswith("NPDEV_PROBE_KEY_") and value
+        }
+        self.last_headers: dict[str, str] = {}
+        # TRUTH-1: every request the probe made, as the AUTHORED route (placeholders unresolved, so the
+        # record is stable run to run) plus the status that came back. `npdev truth` maps these routes
+        # onto concepts to decide which concepts a passing probe actually exercised.
+        self.steps: list[dict] = []
 
     def subst(self, value):
         if isinstance(value, str):
@@ -92,19 +152,33 @@ class Probe:
         method = step.get("method", "GET").upper()
         url = self.base_url + self.subst(step["path"])
         headers = {"Accept": "application/json"}
-        if step.get("auth") != "none":
-            headers["X-Api-Key"] = self.api_key
+        if step.get("auth") == "superUser":
+            # LIVE-1: admin endpoints (POST .../metadata-hotswap/model-reload) need the SUPERUSER key, not the business key.
+            if not self.super_key:
+                raise RuntimeError("step needs auth=superUser but NPDEV_PROBE_SUPER_USER_KEY is not set")
+            headers["X-Super-User-Key"] = self.super_key
+        elif step.get("auth") != "none":
+            # REP-1: a step may act as a RESTRICTED identity by naming its own key ("apiKey": "${aliceKey}",
+            # a key an earlier step issued via POST /api/admin/credentials); default stays the run's ADMIN key.
+            headers["X-Api-Key"] = str(self.subst(step["apiKey"])) if step.get("apiKey") else self.api_key
         for key, val in (step.get("headers") or {}).items():
             headers[key] = self.subst(val)
         data = None
+        if "reloadRevision" in step:
+            # LIVE-1: {"reloadRevision": {"file": "live1-add-field.json", "revision": "addField"}} -- materialise
+            # that revision of the sample's model (see materialize_revision) and POST its path as the reload body.
+            rev = step["reloadRevision"]
+            step = {**step, "body": {"modelPath": materialize_revision(self.sample_dir, rev["file"], rev["revision"])}}
         if "body" in step:
             data = json.dumps(self.subst(step["body"])).encode("utf-8")
             headers["Content-Type"] = "application/json"
         request = urllib.request.Request(url, data=data, method=method, headers=headers)
         try:
             with urllib.request.urlopen(request, timeout=60) as resp:
+                self.last_headers = {k.lower(): v for k, v in resp.headers.items()}
                 return resp.status, resp.read().decode("utf-8", "replace")
         except urllib.error.HTTPError as err:
+            self.last_headers = {k.lower(): v for k, v in err.headers.items()}
             return err.code, err.read().decode("utf-8", "replace")
 
     def as_list(self, value) -> list[str]:
@@ -133,11 +207,13 @@ class Probe:
                     problems.append(f"{path}: {got!r} not in {arg}")
                 elif op == "gt" and not (isinstance(got, (int, float)) and got > arg):
                     problems.append(f"{path}: {got!r} not > {arg}")
+                elif op == "contains" and (not hasattr(got, "__contains__") or self.subst(arg) not in got):
+                    problems.append(f"{path}: {got!r} does not contain {arg!r}")
                 elif op == "len" and (not hasattr(got, "__len__") or len(got) != arg):
                     problems.append(f"{path}: length {len(got) if hasattr(got, '__len__') else '?'} != {arg}")
                 elif op == "distinctFrom" and got == self.saved.get(arg):
                     problems.append(f"{path}: {got!r} equals saved {arg!r}, wanted distinct")
-                elif op not in ("exists", "matches", "not", "in", "gt", "len", "distinctFrom"):
+                elif op not in ("exists", "matches", "not", "in", "gt", "len", "distinctFrom", "contains"):
                     problems.append(f"{path}: unknown operator {op}")
             elif not found:
                 problems.append(f"{path}: missing, wanted {want!r}")
@@ -147,6 +223,14 @@ class Probe:
 
     def run(self) -> dict:
         failures: list[str] = []
+        # LIVE-1: "requires": ["superUser"] -- a probe that can only run where a SUPERUSER key exists (a
+        # physical-database app; the default InMemory dsl-conformance-max issues none) is SKIPPED, loudly and
+        # in the report, when the run has no key -- never silently green and never a false failure.
+        if "superUser" in (self.spec.get("requires") or []) and not self.super_key:
+            return {"id": self.spec["id"], "source": self.source, "keywords": self.spec.get("keywords", []),
+                    "description": self.spec.get("description", ""), "knownFailure": None, "status": "skipped",
+                    "failures": ["needs NPDEV_PROBE_SUPER_USER_KEY (run scripts/quality/run-behavior-probes.ps1 -LiveFieldVariant)"],
+                    "steps": []}
         for index, step in enumerate(self.spec["steps"], 1):
             if failures and not (step.get("always") or step.get("stopOnFail") is False):
                 continue  # an earlier step failed: only cleanup steps ("always": true) still run
@@ -156,6 +240,8 @@ class Probe:
             except Exception as exc:  # noqa: BLE001 - a probe reports, never crashes the run
                 failures.append(f"{label}: {exc}")
                 break
+            self.steps.append({"name": step.get("name"), "method": step.get("method", "GET").upper(),
+                               "path": step["path"], "status": status})
             doc = None
             try:
                 doc = json.loads(body) if body.strip() else None
@@ -172,6 +258,11 @@ class Probe:
                 for text in self.as_list(expect.get("notText")):
                     if text in body:
                         failures.append(f"{label}: body must not contain {text!r}")
+                # REP-1: expect.headers = {"Content-Type": "application/pdf"} -- each value must be a substring
+                for name, fragment in (expect.get("headers") or {}).items():
+                    got = getattr(self, "last_headers", {}).get(name.lower(), "")
+                    if str(self.subst(fragment)) not in got:
+                        failures.append(f"{label}: header {name} is {got!r}, wanted it to contain {fragment!r}")
                 if "json" in expect:
                     failures += [f"{label}: {p}" for p in self.check_json(doc, expect["json"])]
             for name, path in (step.get("save") or {}).items():
@@ -189,7 +280,7 @@ class Probe:
             status = "passed" if not failures else "failed"
         return {"id": self.spec["id"], "source": self.source, "keywords": self.spec.get("keywords", []),
                 "description": self.spec.get("description", ""), "knownFailure": known,
-                "status": status, "failures": failures}
+                "status": status, "failures": failures, "steps": self.steps}
 
 
 def load_probes(directory: Path, only: str) -> list[tuple[dict, str]]:
@@ -209,27 +300,41 @@ def main() -> int:
     parser.add_argument("--probes-dir", required=True)
     parser.add_argument("--report")
     parser.add_argument("--only", default="")
+    parser.add_argument("--sample-dir", default="",
+                        help="LIVE-1: the sample directory a reloadRevision step reads (default: the probes dir's parent)")
+    parser.add_argument("--sample-id", default="",
+                        help="recorded in the report so `npdev truth` can attribute it to the right app")
     args = parser.parse_args()
     api_key = os.environ.get("NPDEV_PROBE_API_KEY", "")
     if not api_key:
         print("NPDEV_PROBE_API_KEY is not set", file=sys.stderr)
         return 2
+    # LIVE-1: optional -- only probes with an auth=superUser / reloadRevision step need these.
+    super_key = os.environ.get("NPDEV_PROBE_SUPER_USER_KEY", "")
+    sample_dir = Path(args.sample_dir) if args.sample_dir else Path(args.probes_dir).resolve().parent
     results = []
     for spec, source in load_probes(Path(args.probes_dir), args.only):
-        result = Probe(args.base_url, api_key, spec, source).run()
+        result = Probe(args.base_url, api_key, spec, source, super_key=super_key, sample_dir=sample_dir).run()
         results.append(result)
-        label = {"passed": "PASS", "known-failure": "KNOWN"}.get(result["status"], "FAIL")
+        label = {"passed": "PASS", "known-failure": "KNOWN", "skipped": "SKIP"}.get(result["status"], "FAIL")
         print(f"{label}  {result['id']}" + (f"  (known failure {result['knownFailure']})" if result["knownFailure"] else ""))
         for failure in result["failures"]:
             print(f"        {failure}")
-    failed = [r for r in results if r["status"] not in ("passed", "known-failure")]
+    failed = [r for r in results if r["status"] not in ("passed", "known-failure", "skipped")]
     known = [r for r in results if r["status"] == "known-failure"]
     report = {"schemaVersion": "npdev-behavior-probes-run.v1", "total": len(results), "failed": len(failed),
-              "status": "passed" if results and not failed else "failed", "results": results}
+              "status": "passed" if results and not failed else "failed",
+              # when the run FINISHED -- `npdev truth` compares it with the build's own timestamp (TRUTH-1)
+              "generatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "results": results}
+    if args.sample_id:
+        report["sampleId"] = args.sample_id
     if args.report:
         Path(args.report).parent.mkdir(parents=True, exist_ok=True)
         Path(args.report).write_text(json.dumps(report, indent=2), encoding="utf-8")
-    print(f"{len(results) - len(failed)}/{len(results)} behaviour probes passed ({len(known)} known failure(s))")
+    skipped = [r for r in results if r["status"] == "skipped"]
+    print(f"{len(results) - len(failed) - len(skipped)}/{len(results) - len(skipped)} behaviour probes passed "
+          f"({len(known)} known failure(s), {len(skipped)} skipped)")
     return 0 if report["status"] == "passed" else 1
 
 
