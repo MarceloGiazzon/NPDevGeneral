@@ -41,24 +41,39 @@ public final class FieldValueConstraints {
      * declares none.
      */
     public static List<String> violations(String entityName, CompiledField field, Object value) {
+        if (field == null) {
+            return new ArrayList<>();
+        }
+        return violations(entityName, field.getName(), field.getDslType(), field.getSchema(), value);
+    }
+
+    /**
+     * Same rules for a value that has no {@link CompiledField} of its own: a property of a nested
+     * {@code object} schema or an array item (REG-273). {@code path} is what the message names in
+     * single quotes ({@code profile.level}), {@code dslType} the scalar type of that schema node.
+     */
+    public static List<String> violations(String entityName, String path, String dslType, CompiledSchema schema, Object value) {
         List<String> out = new ArrayList<>();
-        if (field == null || value == null || field.getSchema() == null) {
+        if (value == null || schema == null) {
             return out;
         }
-        CompiledSchema schema = field.getSchema();
         if (schema.getDerivedExpression() != null && !schema.getDerivedExpression().isBlank()) {
             // A derived value is computed by the platform (in floating point), never supplied by the
             // caller: 3 * 12.34 may come out as 37.019999999999996. Not the caller's to be refused for.
             return out;
         }
-        String type = field.getDslType() == null ? "" : field.getDslType().trim().toLowerCase(Locale.ROOT);
-        String where = "Entity " + entityName + ": field '" + field.getName() + "'";
+        String type = dslType == null ? "" : dslType.trim().toLowerCase(Locale.ROOT);
+        String where = "Entity " + entityName + ": field '" + path + "'";
 
         if (value instanceof CharSequence text) {
             Integer maxLength = schema.getMaxLength();
-            if (maxLength != null && !NON_TEXT_TYPES.contains(type) && !NUMERIC_TYPES.contains(type)
-                    && text.length() > maxLength) {
+            boolean freeText = !NON_TEXT_TYPES.contains(type) && !NUMERIC_TYPES.contains(type);
+            if (maxLength != null && freeText && text.length() > maxLength) {
                 out.add(where + " exceeds maxLength " + maxLength + " (got " + text.length() + " characters)");
+            }
+            Integer minLength = schema.getMinLength();
+            if (minLength != null && freeText && text.length() < minLength) {
+                out.add(where + " is shorter than minLength " + minLength + " (got " + text.length() + " characters)");
             }
             if (!NUMERIC_TYPES.contains(type)) {
                 return out;
@@ -82,6 +97,16 @@ public final class FieldValueConstraints {
             decimalViolations(where, schema, number, out);
         }
         return out;
+    }
+
+    /** True for the numeric scalar types ({@code integer}, {@code decimal}, ...). */
+    public static boolean isNumericType(String dslType) {
+        return dslType != null && NUMERIC_TYPES.contains(dslType.trim().toLowerCase(Locale.ROOT));
+    }
+
+    /** True for the whole-number scalar types, which refuse a fractional value. */
+    public static boolean isIntegralType(String dslType) {
+        return dslType != null && Set.of("int", "integer", "long", "short").contains(dslType.trim().toLowerCase(Locale.ROOT));
     }
 
     private static void decimalViolations(String where, CompiledSchema schema, BigDecimal number, List<String> out) {

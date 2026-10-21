@@ -6,6 +6,7 @@ import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.FieldValueConstraints;
 import com.npdev.kernel.ports.InvariantEngine;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -13,6 +14,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -254,10 +256,50 @@ final class CrudSchemaValidationSupport {
                     violations.add("Entity " + entityName + ": field '" + path + "' must be boolean");
                 }
             }
-            default -> {
-                // Scalar type rules already covered by existing field validators when applicable.
+            default -> validateScalarSchemaValue(entityName, path, schema, type, value, violations);
+        }
+    }
+
+    /**
+     * A scalar inside a nested object property or an array item (REG-273). A top-level scalar field
+     * is checked by {@link #validateFieldTypesAndReferences}; this is the same rule set for the
+     * nodes that have no {@link CompiledField}: a numeric type must hold a number, then the declared
+     * maxLength/minLength/min/max/precision/scale apply.
+     */
+    private void validateScalarSchemaValue(
+            String entityName,
+            String path,
+            CompiledSchema schema,
+            String type,
+            Object value,
+            List<String> violations
+    ) {
+        if (FieldValueConstraints.isNumericType(type)) {
+            BigDecimal number = parseNumber(value);
+            if (number == null) {
+                violations.add("Entity " + entityName + ": field '" + path + "' must be a number");
+                return;
+            }
+            if (FieldValueConstraints.isIntegralType(type) && number.stripTrailingZeros().scale() > 0) {
+                violations.add("Entity " + entityName + ": field '" + path + "' must be a whole number");
+                return;
             }
         }
+        violations.addAll(FieldValueConstraints.violations(entityName, path, type, schema, value));
+    }
+
+    private static BigDecimal parseNumber(Object value) {
+        if (value instanceof BigDecimal decimal) {
+            return decimal;
+        }
+        if (value instanceof Number || value instanceof CharSequence) {
+            try {
+                return new BigDecimal(value.toString().trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private void validateObjectSchemaValue(
@@ -331,6 +373,7 @@ final class CrudSchemaValidationSupport {
             violations.add("Entity " + entityName + ": field '" + path + "' must be an array");
             return;
         }
+        validateArrayLimits(entityName, path, schema, values, violations);
         if (schema.getItems() == null) {
             return;
         }
@@ -338,6 +381,50 @@ final class CrudSchemaValidationSupport {
         for (Object item : values) {
             validateSchemaValue(entityName, path + "[" + index + "]", schema.getItems(), item, violations);
             index++;
+        }
+    }
+
+    /** minItems / maxItems / uniqueItems and the itemIdentityField + duplicationPolicy "deny" pair (REG-273). */
+    private void validateArrayLimits(
+            String entityName,
+            String path,
+            CompiledSchema schema,
+            Collection<?> values,
+            List<String> violations
+    ) {
+        String where = "Entity " + entityName + ": field '" + path + "'";
+        if (schema.getMinItems() != null && values.size() < schema.getMinItems()) {
+            violations.add(where + " must contain at least " + schema.getMinItems() + " item(s) (got " + values.size() + ")");
+        }
+        if (schema.getMaxItems() != null && values.size() > schema.getMaxItems()) {
+            violations.add(where + " must contain at most " + schema.getMaxItems() + " item(s) (got " + values.size() + ")");
+        }
+        if (Boolean.TRUE.equals(schema.getUniqueItems())) {
+            Set<Object> seen = new HashSet<>();
+            for (Object item : values) {
+                if (!seen.add(item instanceof CharSequence text ? text.toString().trim() : item)) {
+                    violations.add(where + " must not contain duplicate items (" + item + ")");
+                    break;
+                }
+            }
+        }
+        if ("deny".equalsIgnoreCase(schema.getDuplicationPolicy())) {
+            String identityField = schema.getItemIdentityField();
+            boolean whole = identityField == null || identityField.isBlank();
+            Set<Object> seen = new HashSet<>();
+            for (Object item : values) {
+                Object identity = whole
+                        ? item
+                        : item instanceof Map<?, ?> raw ? readMapValue(mapWithStringKeys(raw), identityField) : null;
+                if (identity == null) {
+                    continue;
+                }
+                if (!seen.add(identity instanceof CharSequence text ? text.toString().trim() : identity)) {
+                    violations.add(where + " must not contain duplicate items" + (whole ? "" : " by " + identityField)
+                            + " (" + identity + ")");
+                    break;
+                }
+            }
         }
     }
 
