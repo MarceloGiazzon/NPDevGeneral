@@ -1,0 +1,226 @@
+{
+  "id": "bench-002",
+  "tier": "simple-crud",
+  "title": "Home bakery recipe box",
+  "prompt": "I bake bread and cakes at home to sell at the weekend market and I want my recipes in one place. Each recipe has a title, the number of servings and the minutes it takes to make. Each recipe has a list of ingredients, and each ingredient has a name, an amount and the unit it is measured in, like grams or cups. Two recipes must not have the same title, and servings must be at least one.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Recipe",
+        "fields": [
+          {
+            "name": "title",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "name"
+            ]
+          },
+          {
+            "name": "servings",
+            "type": "integer",
+            "aliases": [
+              "portions",
+              "yield"
+            ]
+          },
+          {
+            "name": "minutes",
+            "type": "integer",
+            "aliases": [
+              "prepTime",
+              "duration",
+              "timeMinutes"
+            ]
+          }
+        ],
+        "aliases": [
+          "Receipt"
+        ]
+      },
+      {
+        "name": "Ingredient",
+        "fields": [
+          {
+            "name": "recipe",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "recipeId"
+            ],
+            "references": "Recipe"
+          },
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "ingredient",
+              "item"
+            ]
+          },
+          {
+            "name": "amount",
+            "type": "decimal",
+            "aliases": [
+              "quantity",
+              "qty"
+            ]
+          },
+          {
+            "name": "unit",
+            "type": "text",
+            "aliases": [
+              "measure",
+              "uom"
+            ]
+          }
+        ],
+        "aliases": [
+          "RecipeIngredient"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A second recipe with the same title is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "Zero servings is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p4"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "An ingredient attached to a recipe is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p5"
+          ]
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A recipe without a title is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p6"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Recipe}",
+        "body": {
+          "{field:Recipe.title}": "Sourdough {unique}",
+          "{field:Recipe.servings}": 8,
+          "{field:Recipe.minutes}": 240
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Recipe}",
+        "body": {
+          "{field:Recipe.title}": "Banana cake {unique}",
+          "{field:Recipe.servings}": 10,
+          "{field:Recipe.minutes}": 60
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Recipe}",
+        "body": {
+          "{field:Recipe.title}": "Sourdough {unique}",
+          "{field:Recipe.servings}": 4,
+          "{field:Recipe.minutes}": 30
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Recipe}",
+        "body": {
+          "{field:Recipe.title}": "Zero {unique}",
+          "{field:Recipe.servings}": 0,
+          "{field:Recipe.minutes}": 30
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Ingredient}",
+        "body": {
+          "{field:Ingredient.recipe}": "{id:p1}",
+          "{field:Ingredient.name}": "Flour",
+          "{field:Ingredient.amount}": 500,
+          "{field:Ingredient.unit}": "g"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Recipe}",
+        "body": {
+          "{field:Recipe.servings}": 4,
+          "{field:Recipe.minutes}": 30
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 7
+    }
+  }
+}

@@ -1,0 +1,198 @@
+{
+  "id": "bench-010",
+  "tier": "simple-crud",
+  "title": "Garden club dues",
+  "prompt": "I am the treasurer of a garden club and I keep track of who has paid their yearly dues. I need a list of members with their name and email, and a list of payments. Each payment records the member, the amount and the date it was received. Payments must be for more than zero, each belongs to a member, and no two members may use the same email.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Member",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "fullName"
+            ]
+          },
+          {
+            "name": "email",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "emailAddress",
+              "mail"
+            ]
+          }
+        ],
+        "aliases": [
+          "Person",
+          "Gardener"
+        ]
+      },
+      {
+        "name": "Payment",
+        "fields": [
+          {
+            "name": "member",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "memberId",
+              "payer"
+            ],
+            "references": "Member"
+          },
+          {
+            "name": "amount",
+            "type": "decimal",
+            "required": true,
+            "aliases": [
+              "sum",
+              "total",
+              "value"
+            ]
+          },
+          {
+            "name": "receivedOn",
+            "type": "date",
+            "aliases": [
+              "paidOn",
+              "date",
+              "paymentDate"
+            ]
+          }
+        ],
+        "aliases": [
+          "Dues",
+          "Fee",
+          "Receipt"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A payment of zero is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A payment without a member is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "Two members with the same email are refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p4"
+          ]
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A payment for a member is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p5"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Member}",
+        "body": {
+          "{field:Member.name}": "Helen {unique}",
+          "{field:Member.email}": "helen.{unique}@example.test"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Payment}",
+        "body": {
+          "{field:Payment.member}": "{id:p1}",
+          "{field:Payment.amount}": 0,
+          "{field:Payment.receivedOn}": "{date:+0}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Payment}",
+        "body": {
+          "{field:Payment.amount}": 25,
+          "{field:Payment.receivedOn}": "{date:+0}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Member}",
+        "body": {
+          "{field:Member.name}": "Helen again",
+          "{field:Member.email}": "helen.{unique}@example.test"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Payment}",
+        "body": {
+          "{field:Payment.member}": "{id:p1}",
+          "{field:Payment.amount}": 25,
+          "{field:Payment.receivedOn}": "{date:+0}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 5
+    }
+  }
+}

@@ -1,0 +1,314 @@
+{
+  "id": "bench-016",
+  "tier": "workflow-roles",
+  "title": "Camera rental counter",
+  "prompt": "I rent out cameras and lenses from a small shop with two counter staff. For each rental I note the equipment, the customer name, the pick-up date and a status: reserved, picked up, returned or cancelled. A rental starts as reserved, becomes picked up when the customer collects it and returned when it comes back; a reservation may be cancelled, but a returned rental can never be reopened. The counter staff can enter and update rentals but only I, the owner, may delete anything.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Equipment",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "item",
+              "model",
+              "equipmentName"
+            ]
+          }
+        ],
+        "aliases": [
+          "Camera",
+          "Gear",
+          "Item",
+          "Asset"
+        ]
+      },
+      {
+        "name": "Rental",
+        "fields": [
+          {
+            "name": "equipment",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "equipmentId",
+              "item",
+              "camera"
+            ],
+            "references": "Equipment"
+          },
+          {
+            "name": "customerName",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "customer",
+              "renter",
+              "name"
+            ]
+          },
+          {
+            "name": "pickupDate",
+            "type": "date",
+            "aliases": [
+              "pickUpDate",
+              "startDate",
+              "date"
+            ]
+          },
+          {
+            "name": "status",
+            "type": "enum",
+            "required": true,
+            "aliases": [
+              "state"
+            ],
+            "enumValues": [
+              {
+                "key": "reserved",
+                "aliases": [
+                  "Booked"
+                ]
+              },
+              {
+                "key": "pickedUp",
+                "aliases": [
+                  "Picked up",
+                  "Collected",
+                  "Out"
+                ]
+              },
+              {
+                "key": "returned",
+                "aliases": [
+                  "Returned",
+                  "Back"
+                ]
+              },
+              {
+                "key": "cancelled",
+                "aliases": [
+                  "Canceled"
+                ]
+              }
+            ]
+          }
+        ],
+        "aliases": [
+          "Booking",
+          "Loan",
+          "Reservation"
+        ]
+      }
+    ],
+    "roles": [
+      {
+        "name": "owner",
+        "aliases": [
+          "manager",
+          "admin"
+        ]
+      },
+      {
+        "name": "counterStaff",
+        "aliases": [
+          "counter",
+          "staff",
+          "clerk"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A rental without equipment is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "reserved -> picked up -> returned works; a returned rental is never reopened.",
+        "check": {
+          "kind": "lifecycle",
+          "probes": [
+            "p4",
+            "p5",
+            "p6"
+          ],
+          "concept": "Rental",
+          "field": "status",
+          "allowed": [
+            [
+              "reserved",
+              "pickedUp"
+            ],
+            [
+              "pickedUp",
+              "returned"
+            ]
+          ],
+          "forbidden": [
+            [
+              "returned",
+              "pickedUp"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "Counter staff cannot delete a rental.",
+        "check": {
+          "kind": "role-denied",
+          "probes": [
+            "p7"
+          ],
+          "role": "counterStaff",
+          "concept": "Rental",
+          "action": "delete"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "Counter staff can enter a rental.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p8"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Equipment}",
+        "as": "owner",
+        "body": {
+          "{field:Equipment.name}": "Mirrorless body {unique}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Rental}",
+        "as": "counterStaff",
+        "body": {
+          "{field:Rental.equipment}": "{id:p1}",
+          "{field:Rental.customerName}": "Ivy {unique}",
+          "{field:Rental.pickupDate}": "{date:+1}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Rental}",
+        "as": "counterStaff",
+        "body": {
+          "{field:Rental.customerName}": "No gear",
+          "{field:Rental.pickupDate}": "{date:+1}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Rental}/{id:p2}",
+        "as": "counterStaff",
+        "body": {
+          "{field:Rental.status}": "{enum:Rental.status=pickedUp}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Rental}/{id:p2}",
+        "as": "counterStaff",
+        "body": {
+          "{field:Rental.status}": "{enum:Rental.status=returned}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Rental}/{id:p2}",
+        "as": "counterStaff",
+        "body": {
+          "{field:Rental.status}": "{enum:Rental.status=pickedUp}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p7",
+        "purpose": "assert",
+        "method": "DELETE",
+        "pathHint": "{concept:Rental}/{id:p2}",
+        "as": "counterStaff",
+        "expectStatus": [
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p8",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Rental}",
+        "as": "counterStaff",
+        "body": {
+          "{field:Rental.equipment}": "{id:p1}",
+          "{field:Rental.customerName}": "Walk-in {unique}",
+          "{field:Rental.pickupDate}": "{date:+2}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 6
+    }
+  }
+}

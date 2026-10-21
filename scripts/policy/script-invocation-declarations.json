@@ -35,6 +35,26 @@
     "scripts/ai/Test-AiShiftLeftSafety.ps1": {
       "invocation": "orchestrated"
     },
+    "scripts/ai/bench/author.py": {
+      "invocation": "orchestrated"
+    },
+    "scripts/ai/bench/backends.py": {
+      "invocation": "orchestrated"
+    },
+    "scripts/ai/bench/probes.py": {
+      "invocation": "orchestrated"
+    },
+    "scripts/ai/bench/run_bench.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
+    "scripts/ai/bench/stages.py": {
+      "invocation": "orchestrated"
+    },
+    "scripts/ai/bench/test_bench.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/ai/build_core_context.py": {
       "invocation": "manual-runbook",
       "documentedIn": "docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md"
@@ -268,6 +288,9 @@
       "invocation": "orchestrated"
     },
     "scripts/quality/check-adr-decision-implementation.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-ai-bench-prompts.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-allowlist-citations.py": {

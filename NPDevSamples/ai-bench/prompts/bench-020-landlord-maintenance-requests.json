@@ -1,0 +1,303 @@
+{
+  "id": "bench-020",
+  "tier": "workflow-roles",
+  "title": "Landlord maintenance requests",
+  "prompt": "I am a landlord with three apartment buildings and tenants keep phoning me about repairs. I want tenants to report a problem with their unit number and a description, and my caretaker to schedule and complete the work. A request starts as reported, becomes scheduled once there is a visit date, then completed, and finally closed by me; a request cannot be scheduled without a visit date and a closed request is final. Tenants can report problems but must not be able to read other people's requests or change anything.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "MaintenanceRequest",
+        "fields": [
+          {
+            "name": "unit",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "apartment",
+              "unitNumber",
+              "flat"
+            ]
+          },
+          {
+            "name": "issue",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "description",
+              "problem",
+              "details"
+            ]
+          },
+          {
+            "name": "visitDate",
+            "type": "date",
+            "aliases": [
+              "scheduledDate",
+              "visitOn",
+              "appointmentDate"
+            ]
+          },
+          {
+            "name": "status",
+            "type": "enum",
+            "required": true,
+            "aliases": [
+              "state"
+            ],
+            "enumValues": [
+              {
+                "key": "reported",
+                "aliases": [
+                  "New",
+                  "Open"
+                ]
+              },
+              {
+                "key": "scheduled",
+                "aliases": [
+                  "Booked"
+                ]
+              },
+              {
+                "key": "completed",
+                "aliases": [
+                  "Done",
+                  "Finished"
+                ]
+              },
+              {
+                "key": "closed",
+                "aliases": [
+                  "Closed"
+                ]
+              }
+            ]
+          }
+        ],
+        "aliases": [
+          "Request",
+          "Repair",
+          "Issue",
+          "WorkRequest"
+        ]
+      }
+    ],
+    "roles": [
+      {
+        "name": "tenant",
+        "aliases": [
+          "resident",
+          "renter"
+        ]
+      },
+      {
+        "name": "caretaker",
+        "aliases": [
+          "handyman",
+          "maintenance",
+          "janitor"
+        ]
+      },
+      {
+        "name": "landlord",
+        "aliases": [
+          "owner",
+          "admin",
+          "manager"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A request cannot be scheduled without a visit date.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "reported -> scheduled (with a date) -> completed -> closed; a closed request is final.",
+        "check": {
+          "kind": "lifecycle",
+          "probes": [
+            "p3",
+            "p4",
+            "p5",
+            "p6"
+          ],
+          "concept": "MaintenanceRequest",
+          "field": "status",
+          "allowed": [
+            [
+              "reported",
+              "scheduled"
+            ],
+            [
+              "scheduled",
+              "completed"
+            ],
+            [
+              "completed",
+              "closed"
+            ]
+          ],
+          "forbidden": [
+            [
+              "closed",
+              "reported"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "A tenant cannot read the requests list.",
+        "check": {
+          "kind": "role-denied",
+          "probes": [
+            "p7"
+          ],
+          "role": "tenant",
+          "concept": "MaintenanceRequest",
+          "action": "read"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A tenant can report a problem.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p8"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:MaintenanceRequest}",
+        "as": "tenant",
+        "body": {
+          "{field:MaintenanceRequest.unit}": "4B",
+          "{field:MaintenanceRequest.issue}": "Leaking tap {unique}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:MaintenanceRequest}/{id:p1}",
+        "as": "caretaker",
+        "body": {
+          "{field:MaintenanceRequest.status}": "{enum:MaintenanceRequest.status=scheduled}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:MaintenanceRequest}/{id:p1}",
+        "as": "caretaker",
+        "body": {
+          "{field:MaintenanceRequest.status}": "{enum:MaintenanceRequest.status=scheduled}",
+          "{field:MaintenanceRequest.visitDate}": "{date:+3}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:MaintenanceRequest}/{id:p1}",
+        "as": "caretaker",
+        "body": {
+          "{field:MaintenanceRequest.status}": "{enum:MaintenanceRequest.status=completed}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:MaintenanceRequest}/{id:p1}",
+        "as": "landlord",
+        "body": {
+          "{field:MaintenanceRequest.status}": "{enum:MaintenanceRequest.status=closed}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:MaintenanceRequest}/{id:p1}",
+        "as": "landlord",
+        "body": {
+          "{field:MaintenanceRequest.status}": "{enum:MaintenanceRequest.status=reported}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p7",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "{concept:MaintenanceRequest}",
+        "as": "tenant",
+        "expectStatus": [
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p8",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:MaintenanceRequest}",
+        "as": "tenant",
+        "body": {
+          "{field:MaintenanceRequest.unit}": "2A",
+          "{field:MaintenanceRequest.issue}": "No hot water {unique}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 1,
+      "fields": 5
+    }
+  }
+}

@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai-bench/prompt.schema.json",
+  "title": "AI authoring benchmark prompt (BENCH-1)",
+  "description": "One benchmark case: a plain-English app request plus machine-checkable acceptance. The prompt is written as a non-technical business owner would and never names the platform or its file formats. The acceptance is checked by REST calls against the generated app and must test behaviour, not exact naming: concept, field, role, flow and view names are matched case-insensitively against `name` and `aliases`, resolved by the runner from the app's metadata endpoint (GET /api/admin/runtime/metadata/concepts). TEMPLATE SYNTAX used in probe `pathHint`, `body` keys/values and `expectJsonContains`: {concept:Name} = the collection route of the concept matched by Name (Name must be an acceptance.concepts[].name); {concept:Name}/{id:probeId} = the item route of the row created by an earlier probe; {id:probeId} = the id captured from the response of an earlier probe (body value); {field:Concept.field} as an object KEY or inside a string = the real field name the app uses for that logical field; {enum:Concept.field=key} = the real enum value matched by the logical key declared in that field's enumValues; {flow:Name} = the flow-execution route of an acceptance.flows[] entry; {view:Name} = the query/report route of an acceptance.views[] entry; {unique} = a short random token, the SAME value everywhere within one run (so two probes that both use it send equal values, which is how duplicate-value rules are probed) and different on every run (so repeated runs do not collide on unique fields); {uuid} = a random UUID; {date:+N} / {date:-N} = an ISO date N days from today; {now} = the current ISO date-time; {any:N} used as an expectJsonContains / expectJsonLacks KEY (N = 1, 2, ...) = 'any column of the row', so a report row can be matched by value when the app's column names are unknowable. Probes run in array order. `as` names the acting identity: 'admin' (super user) or an acceptance.roles[].name; the runner maps each logical role to the app's real role by name or alias. A runner that cannot resolve a template or logical name marks the probe 'unresolved' (not 'failed'); the scorecard reports both.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "tier", "title", "prompt", "acceptance"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^bench-[0-9]{3}$", "description": "Matches the file name prefix, e.g. bench-001." },
+    "tier": { "enum": ["simple-crud", "workflow-roles", "integration-report"] },
+    "title": { "type": "string", "minLength": 3, "maxLength": 80 },
+    "prompt": { "type": "string", "minLength": 200, "maxLength": 1400, "description": "3 to 8 sentences, English, written by a business owner. Must not contain platform or technical jargon (the validator rejects NPDev, DSL, JSON, schema, API, REST, Gradle)." },
+    "acceptance": { "$ref": "#/$defs/acceptance" }
+  },
+  "$defs": {
+    "logicalName": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*$" },
+    "aliases": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true, "description": "Synonyms the matcher also accepts (case-insensitive, ignoring spaces, underscores and a trailing plural s)." },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["concepts", "rules", "probes", "minimums"],
+      "properties": {
+        "concepts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/concept" }, "description": "What a correct app MUST expose. Extra concepts and fields the model invents are allowed." },
+        "roles": { "type": "array", "items": { "$ref": "#/$defs/named" }, "description": "Logical roles the prompt implies. Required when any probe uses `as` other than admin or any rule uses role-denied." },
+        "flows": { "type": "array", "items": { "$ref": "#/$defs/named" }, "description": "Logical flows (multi-step processes triggered by a person) that the prompt asks for; addressed with {flow:Name}." },
+        "views": { "type": "array", "items": { "$ref": "#/$defs/named" }, "description": "Logical reports / filtered lists / totals that the prompt asks for; addressed with {view:Name}." },
+        "rules": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/rule" } },
+        "probes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/probe" } },
+        "minimums": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["concepts", "fields"],
+          "properties": {
+            "concepts": { "type": "integer", "minimum": 1, "description": "At least this many concepts in the whole app (a floor against a trivially small answer)." },
+            "fields": { "type": "integer", "minimum": 1, "description": "At least this many fields in total, excluding the id." }
+          }
+        }
+      }
+    },
+    "named": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "$ref": "#/$defs/logicalName" },
+        "aliases": { "$ref": "#/$defs/aliases" },
+        "description": { "type": "string" }
+      }
+    },
+    "concept": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "fields"],
+      "properties": {
+        "name": { "$ref": "#/$defs/logicalName" },
+        "aliases": { "$ref": "#/$defs/aliases" },
+        "fields": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/field" } }
+      }
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "$ref": "#/$defs/logicalName" },
+        "aliases": { "$ref": "#/$defs/aliases" },
+        "type": { "enum": ["text", "integer", "decimal", "boolean", "date", "datetime", "enum", "reference"], "description": "Logical type; the runner accepts any storage type that carries it (text = string, decimal also accepts integer)." },
+        "required": { "type": "boolean", "description": "True when the prompt makes the field mandatory; a create without it must be rejected." },
+        "references": { "$ref": "#/$defs/logicalName", "description": "For type reference: the acceptance concept it points at." },
+        "enumValues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key"],
+            "properties": { "key": { "$ref": "#/$defs/logicalName" }, "aliases": { "$ref": "#/$defs/aliases" } }
+          },
+          "description": "For type enum: the logical values the prompt names. Addressed by {enum:Concept.field=key}."
+        }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description", "check"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^r[0-9]+$" },
+        "description": { "type": "string", "minLength": 10, "description": "The business behaviour, in words." },
+        "check": { "$ref": "#/$defs/check" }
+      }
+    },
+    "check": {
+      "type": "object",
+      "required": ["kind", "probes"],
+      "properties": {
+        "kind": { "enum": ["rest-reject", "rest-accept", "lifecycle", "role-denied", "derived-value"] },
+        "probes": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Ids of the probes whose outcome decides this rule; the rule passes only if all of them pass." }
+      },
+      "oneOf": [
+        {
+          "properties": { "kind": { "const": "rest-reject" }, "probes": true },
+          "additionalProperties": false,
+          "description": "A write that breaks a business rule (missing mandatory field, out-of-range value, duplicate) must be refused with a 4xx. Every named probe must expect only 4xx statuses."
+        },
+        {
+          "properties": { "kind": { "const": "rest-accept" }, "probes": true },
+          "additionalProperties": false,
+          "description": "A valid write or read must succeed (2xx). Positive control that pairs with a rest-reject rule."
+        },
+        {
+          "properties": {
+            "kind": { "const": "lifecycle" }, "probes": true,
+            "concept": { "$ref": "#/$defs/logicalName" },
+            "field": { "$ref": "#/$defs/logicalName", "description": "The enum field holding the state." },
+            "allowed": { "type": "array", "items": { "type": "array", "prefixItems": [{ "type": "string" }, { "type": "string" }], "minItems": 2, "maxItems": 2 }, "description": "[fromKey, toKey] moves that must succeed." },
+            "forbidden": { "type": "array", "items": { "type": "array", "prefixItems": [{ "type": "string" }, { "type": "string" }], "minItems": 2, "maxItems": 2 }, "description": "[fromKey, toKey] moves that must be refused." }
+          },
+          "required": ["concept", "field"],
+          "additionalProperties": false,
+          "description": "State changes (by updating the state field) obey the allowed/forbidden pairs. The keys must be enumValues keys of that field."
+        },
+        {
+          "properties": {
+            "kind": { "const": "role-denied" }, "probes": true,
+            "role": { "$ref": "#/$defs/logicalName" },
+            "concept": { "$ref": "#/$defs/logicalName" },
+            "action": { "enum": ["create", "read", "update", "delete", "transition"] }
+          },
+          "required": ["role", "concept", "action"],
+          "additionalProperties": false,
+          "description": "The role performs the action and is refused (401/403 or a 4xx rule refusal). `role` must be in acceptance.roles."
+        },
+        {
+          "properties": {
+            "kind": { "const": "derived-value" }, "probes": true,
+            "concept": { "$ref": "#/$defs/logicalName" },
+            "field": { "$ref": "#/$defs/logicalName", "description": "The calculated field, or the view column for a report." }
+          },
+          "required": ["concept", "field"],
+          "additionalProperties": false,
+          "description": "A calculated value (line total, rollup, report total) is correct for rows the runner created; the probe's expectJsonContains carries the expected number."
+        }
+      ]
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "purpose", "method", "pathHint", "expectStatus"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^p[0-9]+$" },
+        "purpose": { "enum": ["setup", "assert"], "description": "setup probes create context rows and must succeed; assert probes are referenced by a rule." },
+        "as": { "type": "string", "default": "admin", "description": "'admin' or an acceptance.roles[].name." },
+        "method": { "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"], "description": "State changes use PATCH; the runner retries a 405 with PUT." },
+        "pathHint": { "type": "string", "minLength": 1, "description": "A path template; see the schema description for the syntax." },
+        "body": { "type": ["object", "null"], "description": "Request body; keys and string values may use templates." },
+        "expectStatus": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 200, "maximum": 599 }, "description": "Any listed status passes." },
+        "expectJsonContains": { "type": "object", "description": "Subset match on the JSON response: every key present with an equal value (numbers compared numerically). For list or report responses the runner looks for one row, among the rows in the response, that contains this subset. Keys may use {field:...}." },
+        "expectJsonLacks": { "type": "object", "description": "Negative subset match: NO row in the response may contain this subset (same matching and templates as expectJsonContains). Used for filtered lists, e.g. a 'low stock' list must not contain a well-stocked product." },
+        "capture": { "type": "boolean", "description": "Keep the response id so later probes can use {id:thisProbeId}. Implied for POST setup probes." }
+      }
+    }
+  }
+}

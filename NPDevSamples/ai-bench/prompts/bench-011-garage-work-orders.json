@@ -1,0 +1,307 @@
+{
+  "id": "bench-011",
+  "tier": "workflow-roles",
+  "title": "Garage work orders",
+  "prompt": "I own a car garage with two mechanics and a receptionist. Every car that comes in gets a work order with the customer name, the car, a description of the problem and a status. A job starts as open, then goes to in progress when a mechanic starts, then done when the work is finished, and finally invoiced once the bill is sent. A job can never go backwards, and it cannot be invoiced before it is done. The receptionist can open new jobs and look at them but must not change them afterwards, while the mechanics can do everything with jobs.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "WorkOrder",
+        "fields": [
+          {
+            "name": "customerName",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "customer",
+              "clientName",
+              "owner"
+            ]
+          },
+          {
+            "name": "car",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "vehicle",
+              "carDescription"
+            ]
+          },
+          {
+            "name": "problem",
+            "type": "text",
+            "aliases": [
+              "description",
+              "issue",
+              "notes"
+            ]
+          },
+          {
+            "name": "status",
+            "type": "enum",
+            "required": true,
+            "aliases": [
+              "state",
+              "stage"
+            ],
+            "enumValues": [
+              {
+                "key": "open",
+                "aliases": [
+                  "New",
+                  "Opened"
+                ]
+              },
+              {
+                "key": "inProgress",
+                "aliases": [
+                  "In progress",
+                  "Started",
+                  "Working"
+                ]
+              },
+              {
+                "key": "done",
+                "aliases": [
+                  "Finished",
+                  "Completed"
+                ]
+              },
+              {
+                "key": "invoiced",
+                "aliases": [
+                  "Billed",
+                  "Invoice sent"
+                ]
+              }
+            ]
+          }
+        ],
+        "aliases": [
+          "Job",
+          "RepairOrder",
+          "Ticket"
+        ]
+      }
+    ],
+    "roles": [
+      {
+        "name": "mechanic",
+        "aliases": [
+          "mechanics",
+          "technician"
+        ]
+      },
+      {
+        "name": "receptionist",
+        "aliases": [
+          "reception",
+          "frontDesk",
+          "clerk"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A new job starts as open.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A job moves forward open -> in progress -> done, and never backwards or skipping to invoiced.",
+        "check": {
+          "kind": "lifecycle",
+          "probes": [
+            "p3",
+            "p4",
+            "p5",
+            "p6"
+          ],
+          "concept": "WorkOrder",
+          "field": "status",
+          "allowed": [
+            [
+              "open",
+              "inProgress"
+            ],
+            [
+              "inProgress",
+              "done"
+            ]
+          ],
+          "forbidden": [
+            [
+              "open",
+              "invoiced"
+            ],
+            [
+              "done",
+              "open"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "The receptionist cannot change a job.",
+        "check": {
+          "kind": "role-denied",
+          "probes": [
+            "p7"
+          ],
+          "role": "receptionist",
+          "concept": "WorkOrder",
+          "action": "update"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A job without a car is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p8"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:WorkOrder}",
+        "as": "mechanic",
+        "body": {
+          "{field:WorkOrder.customerName}": "Bob {unique}",
+          "{field:WorkOrder.car}": "Blue hatchback",
+          "{field:WorkOrder.problem}": "Brakes squeal"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:WorkOrder}",
+        "as": "receptionist",
+        "body": {
+          "{field:WorkOrder.customerName}": "Eve {unique}",
+          "{field:WorkOrder.car}": "Red van",
+          "{field:WorkOrder.problem}": "Oil change"
+        },
+        "expectStatus": [
+          200,
+          201
+        ],
+        "expectJsonContains": {
+          "{field:WorkOrder.status}": "{enum:WorkOrder.status=open}"
+        }
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:WorkOrder}/{id:p1}",
+        "as": "mechanic",
+        "body": {
+          "{field:WorkOrder.status}": "{enum:WorkOrder.status=inProgress}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:WorkOrder}/{id:p1}",
+        "as": "mechanic",
+        "body": {
+          "{field:WorkOrder.status}": "{enum:WorkOrder.status=invoiced}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:WorkOrder}/{id:p1}",
+        "as": "mechanic",
+        "body": {
+          "{field:WorkOrder.status}": "{enum:WorkOrder.status=done}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:WorkOrder}/{id:p1}",
+        "as": "mechanic",
+        "body": {
+          "{field:WorkOrder.status}": "{enum:WorkOrder.status=open}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p7",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:WorkOrder}/{id:p1}",
+        "as": "receptionist",
+        "body": {
+          "{field:WorkOrder.problem}": "Receptionist edit"
+        },
+        "expectStatus": [
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p8",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:WorkOrder}",
+        "as": "mechanic",
+        "body": {
+          "{field:WorkOrder.customerName}": "Nocar"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 1,
+      "fields": 4
+    }
+  }
+}

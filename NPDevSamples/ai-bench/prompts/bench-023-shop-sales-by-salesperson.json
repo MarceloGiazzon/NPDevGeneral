@@ -1,0 +1,213 @@
+{
+  "id": "bench-023",
+  "tier": "integration-report",
+  "title": "Shop sales by salesperson",
+  "prompt": "I own a furniture shop with four salespeople and at the end of each month I add up their sales by hand. I want to record every sale with the salesperson's name, what was sold, the amount and the date. Then I want a report that shows each salesperson with the total they sold. A sale must have a salesperson and an amount greater than zero.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Sale",
+        "fields": [
+          {
+            "name": "salesperson",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "salesman",
+              "seller",
+              "employee",
+              "salespersonName"
+            ]
+          },
+          {
+            "name": "product",
+            "type": "text",
+            "aliases": [
+              "item",
+              "description",
+              "soldItem"
+            ]
+          },
+          {
+            "name": "amount",
+            "type": "decimal",
+            "required": true,
+            "aliases": [
+              "price",
+              "total",
+              "value"
+            ]
+          },
+          {
+            "name": "saleDate",
+            "type": "date",
+            "aliases": [
+              "date",
+              "soldOn"
+            ]
+          }
+        ],
+        "aliases": [
+          "Sales",
+          "Transaction",
+          "Order"
+        ]
+      }
+    ],
+    "views": [
+      {
+        "name": "SalesBySalesperson",
+        "aliases": [
+          "SalesReport",
+          "TotalsBySeller",
+          "SalesPerPerson",
+          "SalespersonTotals"
+        ],
+        "description": "one row per salesperson with the total sold"
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A sale of zero is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A sale without a salesperson is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p4"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "The report shows each salesperson's total (100 + 50 = 150).",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p5"
+          ],
+          "concept": "SalesBySalesperson",
+          "field": "total"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A valid sale is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p6"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Sale}",
+        "body": {
+          "{field:Sale.salesperson}": "Jo {unique}",
+          "{field:Sale.product}": "Sofa",
+          "{field:Sale.amount}": 100,
+          "{field:Sale.saleDate}": "{date:-1}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Sale}",
+        "body": {
+          "{field:Sale.salesperson}": "Jo {unique}",
+          "{field:Sale.product}": "Lamp",
+          "{field:Sale.amount}": 50,
+          "{field:Sale.saleDate}": "{date:+0}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Sale}",
+        "body": {
+          "{field:Sale.salesperson}": "Jo {unique}",
+          "{field:Sale.product}": "Free gift",
+          "{field:Sale.amount}": 0
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Sale}",
+        "body": {
+          "{field:Sale.product}": "Mystery",
+          "{field:Sale.amount}": 20
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "{view:SalesBySalesperson}",
+        "expectStatus": [
+          200,
+          201
+        ],
+        "expectJsonContains": {
+          "{any:1}": "Jo {unique}",
+          "{any:2}": 150
+        }
+      },
+      {
+        "id": "p6",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Sale}",
+        "body": {
+          "{field:Sale.salesperson}": "Kim {unique}",
+          "{field:Sale.product}": "Rug",
+          "{field:Sale.amount}": 75,
+          "{field:Sale.saleDate}": "{date:+0}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 1,
+      "fields": 4
+    }
+  }
+}

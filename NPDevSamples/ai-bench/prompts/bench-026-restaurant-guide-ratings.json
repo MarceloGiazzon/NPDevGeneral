@@ -1,0 +1,271 @@
+{
+  "id": "bench-026",
+  "tier": "integration-report",
+  "title": "Restaurant guide ratings",
+  "prompt": "I write a small local food guide and I collect ratings from readers. I need a list of restaurants with a name and a neighbourhood, and every reader review has a rating from 1 to 5 stars and a short comment. On each restaurant I want to see, calculated automatically, how many reviews it has and its average rating. A review must belong to a restaurant and a rating outside 1 to 5 must be refused.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Restaurant",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "restaurantName",
+              "title"
+            ]
+          },
+          {
+            "name": "neighbourhood",
+            "type": "text",
+            "aliases": [
+              "area",
+              "district",
+              "neighborhood",
+              "location"
+            ]
+          },
+          {
+            "name": "reviewCount",
+            "type": "integer",
+            "aliases": [
+              "reviews",
+              "numberOfReviews",
+              "ratingCount"
+            ]
+          },
+          {
+            "name": "averageRating",
+            "type": "decimal",
+            "aliases": [
+              "avgRating",
+              "rating",
+              "averageStars",
+              "average"
+            ]
+          }
+        ],
+        "aliases": [
+          "Place",
+          "Venue"
+        ]
+      },
+      {
+        "name": "Review",
+        "fields": [
+          {
+            "name": "restaurant",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "restaurantId",
+              "place"
+            ],
+            "references": "Restaurant"
+          },
+          {
+            "name": "rating",
+            "type": "integer",
+            "required": true,
+            "aliases": [
+              "stars",
+              "score"
+            ]
+          },
+          {
+            "name": "comment",
+            "type": "text",
+            "aliases": [
+              "text",
+              "remarks",
+              "notes"
+            ]
+          }
+        ],
+        "aliases": [
+          "Rating",
+          "Feedback"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A rating of 6 is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A rating of 0 is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "A review without a restaurant is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p4"
+          ]
+        }
+      },
+      {
+        "id": "r4",
+        "description": "The review count is calculated (2).",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p7"
+          ],
+          "concept": "Restaurant",
+          "field": "reviewCount"
+        }
+      },
+      {
+        "id": "r5",
+        "description": "The average rating is calculated ((4 + 5) / 2 = 4.5).",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p7"
+          ],
+          "concept": "Restaurant",
+          "field": "averageRating"
+        }
+      },
+      {
+        "id": "r6",
+        "description": "A valid review is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p5"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Restaurant}",
+        "body": {
+          "{field:Restaurant.name}": "La Tavola {unique}",
+          "{field:Restaurant.neighbourhood}": "Old town"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Review}",
+        "body": {
+          "{field:Review.restaurant}": "{id:p1}",
+          "{field:Review.rating}": 6,
+          "{field:Review.comment}": "Too good"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Review}",
+        "body": {
+          "{field:Review.restaurant}": "{id:p1}",
+          "{field:Review.rating}": 0,
+          "{field:Review.comment}": "Zero"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Review}",
+        "body": {
+          "{field:Review.rating}": 3,
+          "{field:Review.comment}": "Nowhere"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Review}",
+        "body": {
+          "{field:Review.restaurant}": "{id:p1}",
+          "{field:Review.rating}": 4,
+          "{field:Review.comment}": "Lovely pasta"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Review}",
+        "body": {
+          "{field:Review.restaurant}": "{id:p1}",
+          "{field:Review.rating}": 5,
+          "{field:Review.comment}": "Perfect"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p7",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "{concept:Restaurant}/{id:p1}",
+        "expectStatus": [
+          200,
+          201
+        ],
+        "expectJsonContains": {
+          "{field:Restaurant.reviewCount}": 2,
+          "{field:Restaurant.averageRating}": 4.5
+        }
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 7
+    }
+  }
+}

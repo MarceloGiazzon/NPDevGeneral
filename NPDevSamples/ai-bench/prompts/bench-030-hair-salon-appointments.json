@@ -1,0 +1,248 @@
+{
+  "id": "bench-030",
+  "tier": "integration-report",
+  "title": "Hair salon appointments",
+  "prompt": "I own a hair salon with a few stylists and I book appointments in a diary. I need a list of stylists, and appointments with the stylist, the customer name, the start date and time and the length in minutes. A stylist must never be booked for two appointments that overlap in time, and an appointment must last at least 15 minutes. I would also like a report showing how many appointments each stylist has.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Stylist",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "stylistName",
+              "fullName"
+            ]
+          }
+        ],
+        "aliases": [
+          "Hairdresser",
+          "Barber",
+          "Employee"
+        ]
+      },
+      {
+        "name": "Appointment",
+        "fields": [
+          {
+            "name": "stylist",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "stylistId",
+              "hairdresser"
+            ],
+            "references": "Stylist"
+          },
+          {
+            "name": "customerName",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "customer",
+              "client",
+              "name"
+            ]
+          },
+          {
+            "name": "startsAt",
+            "type": "datetime",
+            "required": true,
+            "aliases": [
+              "start",
+              "startTime",
+              "dateTime",
+              "appointmentTime"
+            ]
+          },
+          {
+            "name": "minutes",
+            "type": "integer",
+            "required": true,
+            "aliases": [
+              "duration",
+              "length",
+              "durationMinutes"
+            ]
+          }
+        ],
+        "aliases": [
+          "Booking",
+          "Reservation",
+          "Slot"
+        ]
+      }
+    ],
+    "views": [
+      {
+        "name": "AppointmentsByStylist",
+        "aliases": [
+          "StylistAppointments",
+          "AppointmentCounts",
+          "BookingsPerStylist",
+          "StylistSchedule"
+        ],
+        "description": "one row per stylist with the number of appointments"
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "An overlapping appointment for the same stylist is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p4"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "An appointment shorter than 15 minutes is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p5"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "The same time with a different stylist is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p7"
+          ]
+        }
+      },
+      {
+        "id": "r4",
+        "description": "The report shows one appointment for the first stylist.",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p8"
+          ],
+          "concept": "AppointmentsByStylist",
+          "field": "count"
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Stylist}",
+        "body": {
+          "{field:Stylist.name}": "Rita {unique}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Stylist}",
+        "body": {
+          "{field:Stylist.name}": "Sol {unique}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Appointment}",
+        "body": {
+          "{field:Appointment.stylist}": "{id:p1}",
+          "{field:Appointment.customerName}": "Cora {unique}",
+          "{field:Appointment.startsAt}": "{date:+3}T10:00:00Z",
+          "{field:Appointment.minutes}": 60
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Appointment}",
+        "body": {
+          "{field:Appointment.stylist}": "{id:p1}",
+          "{field:Appointment.customerName}": "Dex {unique}",
+          "{field:Appointment.startsAt}": "{date:+3}T10:30:00Z",
+          "{field:Appointment.minutes}": 60
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Appointment}",
+        "body": {
+          "{field:Appointment.stylist}": "{id:p1}",
+          "{field:Appointment.customerName}": "Eli {unique}",
+          "{field:Appointment.startsAt}": "{date:+3}T14:00:00Z",
+          "{field:Appointment.minutes}": 5
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p8",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "{view:AppointmentsByStylist}",
+        "expectStatus": [
+          200,
+          201
+        ],
+        "expectJsonContains": {
+          "{any:1}": "{id:p1}",
+          "{any:2}": 1
+        }
+      },
+      {
+        "id": "p7",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Appointment}",
+        "body": {
+          "{field:Appointment.stylist}": "{id:p2}",
+          "{field:Appointment.customerName}": "Fay {unique}",
+          "{field:Appointment.startsAt}": "{date:+3}T10:30:00Z",
+          "{field:Appointment.minutes}": 60
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 6
+    }
+  }
+}

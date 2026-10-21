@@ -1,0 +1,393 @@
+{
+  "id": "bench-015",
+  "tier": "workflow-roles",
+  "title": "Purchase approvals",
+  "prompt": "In our workshop anyone on the team can ask to buy something, but only the owner may approve the spending. A purchase request has the item name, the amount in dollars, who is asking and a status. It begins as a draft, is then submitted, and the owner either approves it or rejects it; once approved it can be marked as ordered. A request cannot jump from draft straight to approved, and a rejected request stays rejected. The amount must be more than zero, and team members cannot approve or reject anything.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "PurchaseRequest",
+        "fields": [
+          {
+            "name": "item",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "itemName",
+              "description",
+              "what"
+            ]
+          },
+          {
+            "name": "amount",
+            "type": "decimal",
+            "required": true,
+            "aliases": [
+              "cost",
+              "price",
+              "total"
+            ]
+          },
+          {
+            "name": "requestedBy",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "requester",
+              "askedBy",
+              "teamMember"
+            ]
+          },
+          {
+            "name": "status",
+            "type": "enum",
+            "required": true,
+            "aliases": [
+              "state"
+            ],
+            "enumValues": [
+              {
+                "key": "draft",
+                "aliases": [
+                  "Draft"
+                ]
+              },
+              {
+                "key": "submitted",
+                "aliases": [
+                  "Pending",
+                  "Requested"
+                ]
+              },
+              {
+                "key": "approved",
+                "aliases": [
+                  "Approved"
+                ]
+              },
+              {
+                "key": "rejected",
+                "aliases": [
+                  "Denied",
+                  "Declined"
+                ]
+              },
+              {
+                "key": "ordered",
+                "aliases": [
+                  "Purchased",
+                  "Bought"
+                ]
+              }
+            ]
+          }
+        ],
+        "aliases": [
+          "Request",
+          "Purchase",
+          "Requisition"
+        ]
+      }
+    ],
+    "roles": [
+      {
+        "name": "owner",
+        "aliases": [
+          "approver",
+          "boss",
+          "manager"
+        ]
+      },
+      {
+        "name": "teamMember",
+        "aliases": [
+          "team",
+          "staff",
+          "employee"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A request for zero dollars is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A request goes draft -> submitted -> approved -> ordered; it cannot jump from draft to approved and a rejected request stays rejected.",
+        "check": {
+          "kind": "lifecycle",
+          "probes": [
+            "p3",
+            "p4",
+            "p5",
+            "p6",
+            "p11",
+            "p12",
+            "p7"
+          ],
+          "concept": "PurchaseRequest",
+          "field": "status",
+          "allowed": [
+            [
+              "draft",
+              "submitted"
+            ],
+            [
+              "submitted",
+              "approved"
+            ],
+            [
+              "approved",
+              "ordered"
+            ]
+          ],
+          "forbidden": [
+            [
+              "draft",
+              "approved"
+            ],
+            [
+              "rejected",
+              "approved"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "A team member cannot approve a request.",
+        "check": {
+          "kind": "role-denied",
+          "probes": [
+            "p8"
+          ],
+          "role": "teamMember",
+          "concept": "PurchaseRequest",
+          "action": "transition"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A team member can submit a new request.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p13"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:PurchaseRequest}",
+        "as": "teamMember",
+        "body": {
+          "{field:PurchaseRequest.item}": "Band saw blade {unique}",
+          "{field:PurchaseRequest.amount}": 85,
+          "{field:PurchaseRequest.requestedBy}": "Leo"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:PurchaseRequest}",
+        "as": "teamMember",
+        "body": {
+          "{field:PurchaseRequest.item}": "Freebie",
+          "{field:PurchaseRequest.amount}": 0,
+          "{field:PurchaseRequest.requestedBy}": "Leo"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:PurchaseRequest}/{id:p1}",
+        "as": "owner",
+        "body": {
+          "{field:PurchaseRequest.status}": "{enum:PurchaseRequest.status=approved}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:PurchaseRequest}/{id:p1}",
+        "as": "owner",
+        "body": {
+          "{field:PurchaseRequest.status}": "{enum:PurchaseRequest.status=submitted}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:PurchaseRequest}/{id:p1}",
+        "as": "owner",
+        "body": {
+          "{field:PurchaseRequest.status}": "{enum:PurchaseRequest.status=approved}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:PurchaseRequest}/{id:p1}",
+        "as": "owner",
+        "body": {
+          "{field:PurchaseRequest.status}": "{enum:PurchaseRequest.status=ordered}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p9",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:PurchaseRequest}",
+        "as": "teamMember",
+        "body": {
+          "{field:PurchaseRequest.item}": "Gold plated hammer {unique}",
+          "{field:PurchaseRequest.amount}": 900,
+          "{field:PurchaseRequest.requestedBy}": "Leo"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p8",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:PurchaseRequest}/{id:p9}",
+        "as": "teamMember",
+        "body": {
+          "{field:PurchaseRequest.status}": "{enum:PurchaseRequest.status=approved}"
+        },
+        "expectStatus": [
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p10",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:PurchaseRequest}",
+        "as": "teamMember",
+        "body": {
+          "{field:PurchaseRequest.item}": "Rejected thing {unique}",
+          "{field:PurchaseRequest.amount}": 50,
+          "{field:PurchaseRequest.requestedBy}": "Leo"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p11",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:PurchaseRequest}/{id:p10}",
+        "as": "owner",
+        "body": {
+          "{field:PurchaseRequest.status}": "{enum:PurchaseRequest.status=submitted}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p12",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:PurchaseRequest}/{id:p10}",
+        "as": "owner",
+        "body": {
+          "{field:PurchaseRequest.status}": "{enum:PurchaseRequest.status=rejected}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p13",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:PurchaseRequest}",
+        "as": "teamMember",
+        "body": {
+          "{field:PurchaseRequest.item}": "Safety glasses {unique}",
+          "{field:PurchaseRequest.amount}": 12,
+          "{field:PurchaseRequest.requestedBy}": "Leo"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p7",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:PurchaseRequest}/{id:p10}",
+        "as": "owner",
+        "body": {
+          "{field:PurchaseRequest.status}": "{enum:PurchaseRequest.status=approved}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 1,
+      "fields": 5
+    }
+  }
+}

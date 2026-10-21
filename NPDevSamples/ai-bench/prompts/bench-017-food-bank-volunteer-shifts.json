@@ -1,0 +1,334 @@
+{
+  "id": "bench-017",
+  "tier": "workflow-roles",
+  "title": "Food bank volunteer shifts",
+  "prompt": "I coordinate volunteers at a food bank. I publish shifts with a date, a title and the number of volunteers needed, and volunteers sign up for them with their name. A shift starts as a draft while I prepare it, is then published so people can sign up, and is closed when it is full or over; a closed shift cannot be published again. Volunteers may sign up and look at shifts but must not be able to create or change shifts, and a shift needs at least one volunteer.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Shift",
+        "fields": [
+          {
+            "name": "title",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "name",
+              "shiftName"
+            ]
+          },
+          {
+            "name": "date",
+            "type": "date",
+            "required": true,
+            "aliases": [
+              "shiftDate",
+              "day"
+            ]
+          },
+          {
+            "name": "volunteersNeeded",
+            "type": "integer",
+            "required": true,
+            "aliases": [
+              "slots",
+              "capacity",
+              "needed",
+              "volunteers"
+            ]
+          },
+          {
+            "name": "status",
+            "type": "enum",
+            "required": true,
+            "aliases": [
+              "state"
+            ],
+            "enumValues": [
+              {
+                "key": "draft",
+                "aliases": [
+                  "Draft"
+                ]
+              },
+              {
+                "key": "published",
+                "aliases": [
+                  "Open",
+                  "Published"
+                ]
+              },
+              {
+                "key": "closed",
+                "aliases": [
+                  "Closed",
+                  "Full"
+                ]
+              }
+            ]
+          }
+        ],
+        "aliases": [
+          "Slot",
+          "Event"
+        ]
+      },
+      {
+        "name": "Signup",
+        "fields": [
+          {
+            "name": "shift",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "shiftId"
+            ],
+            "references": "Shift"
+          },
+          {
+            "name": "volunteerName",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "name",
+              "volunteer"
+            ]
+          }
+        ],
+        "aliases": [
+          "Registration",
+          "Volunteer",
+          "Enrollment"
+        ]
+      }
+    ],
+    "roles": [
+      {
+        "name": "coordinator",
+        "aliases": [
+          "manager",
+          "organiser",
+          "admin"
+        ]
+      },
+      {
+        "name": "volunteer",
+        "aliases": [
+          "helper",
+          "member"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A shift needing zero volunteers is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "draft -> published -> closed works; a closed shift cannot be published again.",
+        "check": {
+          "kind": "lifecycle",
+          "probes": [
+            "p3",
+            "p4",
+            "p5",
+            "p9"
+          ],
+          "concept": "Shift",
+          "field": "status",
+          "allowed": [
+            [
+              "draft",
+              "published"
+            ],
+            [
+              "published",
+              "closed"
+            ]
+          ],
+          "forbidden": [
+            [
+              "closed",
+              "published"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "A volunteer cannot create a shift.",
+        "check": {
+          "kind": "role-denied",
+          "probes": [
+            "p6"
+          ],
+          "role": "volunteer",
+          "concept": "Shift",
+          "action": "create"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A volunteer can sign up for a shift.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p7"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Shift}",
+        "as": "coordinator",
+        "body": {
+          "{field:Shift.title}": "Saturday sorting {unique}",
+          "{field:Shift.date}": "{date:+6}",
+          "{field:Shift.volunteersNeeded}": 6
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Shift}",
+        "as": "coordinator",
+        "body": {
+          "{field:Shift.title}": "Nobody",
+          "{field:Shift.date}": "{date:+6}",
+          "{field:Shift.volunteersNeeded}": 0
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Shift}/{id:p1}",
+        "as": "coordinator",
+        "body": {
+          "{field:Shift.status}": "{enum:Shift.status=published}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Shift}/{id:p1}",
+        "as": "coordinator",
+        "body": {
+          "{field:Shift.status}": "{enum:Shift.status=closed}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Shift}/{id:p1}",
+        "as": "coordinator",
+        "body": {
+          "{field:Shift.status}": "{enum:Shift.status=published}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Shift}",
+        "as": "volunteer",
+        "body": {
+          "{field:Shift.title}": "Rogue shift",
+          "{field:Shift.date}": "{date:+9}",
+          "{field:Shift.volunteersNeeded}": 3
+        },
+        "expectStatus": [
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p8",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Shift}",
+        "as": "coordinator",
+        "body": {
+          "{field:Shift.title}": "Sunday packing {unique}",
+          "{field:Shift.date}": "{date:+7}",
+          "{field:Shift.volunteersNeeded}": 4
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p9",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Shift}/{id:p8}",
+        "as": "coordinator",
+        "body": {
+          "{field:Shift.status}": "{enum:Shift.status=published}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p7",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Signup}",
+        "as": "volunteer",
+        "body": {
+          "{field:Signup.shift}": "{id:p8}",
+          "{field:Signup.volunteerName}": "Priya {unique}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 7
+    }
+  }
+}

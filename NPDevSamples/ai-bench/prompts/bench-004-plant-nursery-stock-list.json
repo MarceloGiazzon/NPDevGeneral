@@ -1,0 +1,201 @@
+{
+  "id": "bench-004",
+  "tier": "simple-crud",
+  "title": "Plant nursery stock list",
+  "prompt": "I own a plant nursery and I want a simple stock list. For every plant I need its name, the price in dollars and how many I have on the shelf. I also want to group plants by category such as shrubs, herbs and indoor plants. The price and the stock count can never be below zero, and every plant needs a name and a category.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Category",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "categoryName",
+              "title"
+            ]
+          }
+        ],
+        "aliases": [
+          "PlantCategory",
+          "Group",
+          "Type"
+        ]
+      },
+      {
+        "name": "Plant",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "plantName",
+              "title"
+            ]
+          },
+          {
+            "name": "category",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "categoryId",
+              "group"
+            ],
+            "references": "Category"
+          },
+          {
+            "name": "price",
+            "type": "decimal",
+            "aliases": [
+              "unitPrice",
+              "cost"
+            ]
+          },
+          {
+            "name": "stock",
+            "type": "integer",
+            "aliases": [
+              "quantity",
+              "onHand",
+              "count"
+            ]
+          }
+        ],
+        "aliases": [
+          "Product",
+          "Item"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A negative price is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A negative stock count is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "A plant without a category is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p4"
+          ]
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A valid plant is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p5"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Category}",
+        "body": {
+          "{field:Category.name}": "Herbs {unique}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Plant}",
+        "body": {
+          "{field:Plant.name}": "Basil",
+          "{field:Plant.category}": "{id:p1}",
+          "{field:Plant.price}": -1,
+          "{field:Plant.stock}": 10
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Plant}",
+        "body": {
+          "{field:Plant.name}": "Mint",
+          "{field:Plant.category}": "{id:p1}",
+          "{field:Plant.price}": 3,
+          "{field:Plant.stock}": -4
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Plant}",
+        "body": {
+          "{field:Plant.name}": "Thyme",
+          "{field:Plant.price}": 3,
+          "{field:Plant.stock}": 4
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Plant}",
+        "body": {
+          "{field:Plant.name}": "Rosemary",
+          "{field:Plant.category}": "{id:p1}",
+          "{field:Plant.price}": 4.5,
+          "{field:Plant.stock}": 12
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 6
+    }
+  }
+}

@@ -1,0 +1,224 @@
+{
+  "id": "bench-008",
+  "tier": "simple-crud",
+  "title": "Food truck menu",
+  "prompt": "I run a food truck and I need a menu I can change quickly. Each menu item has a name, a price, a short description and a yes or no for whether it is vegetarian. Items are grouped into sections like mains, sides and drinks. No two items may have the same name, the price must be more than zero, and each item must sit in a section.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Section",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "title",
+              "category"
+            ]
+          }
+        ],
+        "aliases": [
+          "Category",
+          "MenuSection",
+          "Group"
+        ]
+      },
+      {
+        "name": "MenuItem",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "itemName",
+              "title"
+            ]
+          },
+          {
+            "name": "section",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "sectionId",
+              "category"
+            ],
+            "references": "Section"
+          },
+          {
+            "name": "price",
+            "type": "decimal",
+            "required": true,
+            "aliases": [
+              "cost",
+              "amount"
+            ]
+          },
+          {
+            "name": "description",
+            "type": "text",
+            "aliases": [
+              "details"
+            ]
+          },
+          {
+            "name": "vegetarian",
+            "type": "boolean",
+            "aliases": [
+              "isVegetarian",
+              "veggie"
+            ]
+          }
+        ],
+        "aliases": [
+          "Item",
+          "Dish",
+          "Product"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "Two items with the same name are refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A price of zero is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p4"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "An item without a section is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p5"
+          ]
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A valid item is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p6"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Section}",
+        "body": {
+          "{field:Section.name}": "Mains {unique}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:MenuItem}",
+        "body": {
+          "{field:MenuItem.name}": "Taco {unique}",
+          "{field:MenuItem.section}": "{id:p1}",
+          "{field:MenuItem.price}": 4.5,
+          "{field:MenuItem.vegetarian}": false
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:MenuItem}",
+        "body": {
+          "{field:MenuItem.name}": "Taco {unique}",
+          "{field:MenuItem.section}": "{id:p1}",
+          "{field:MenuItem.price}": 5,
+          "{field:MenuItem.vegetarian}": false
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:MenuItem}",
+        "body": {
+          "{field:MenuItem.name}": "Free taco {unique}",
+          "{field:MenuItem.section}": "{id:p1}",
+          "{field:MenuItem.price}": 0
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:MenuItem}",
+        "body": {
+          "{field:MenuItem.name}": "Orphan {unique}",
+          "{field:MenuItem.price}": 3
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:MenuItem}",
+        "body": {
+          "{field:MenuItem.name}": "Elote {unique}",
+          "{field:MenuItem.section}": "{id:p1}",
+          "{field:MenuItem.price}": 3.5,
+          "{field:MenuItem.description}": "Corn on the cob",
+          "{field:MenuItem.vegetarian}": true
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 7
+    }
+  }
+}

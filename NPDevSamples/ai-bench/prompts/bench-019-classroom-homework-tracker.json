@@ -1,0 +1,290 @@
+{
+  "id": "bench-019",
+  "tier": "workflow-roles",
+  "title": "Classroom homework tracker",
+  "prompt": "I teach a class of twenty children and I want to track homework. I post assignments with a title and a due date, and each child hands in a submission with their name and the assignment it belongs to. A submission starts as submitted and I change it to graded once I have marked it, and I record a grade from 0 to 100; a graded submission cannot go back to submitted. Students may hand in work but must not be able to post assignments or change anything after handing in.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Assignment",
+        "fields": [
+          {
+            "name": "title",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "name",
+              "homework"
+            ]
+          },
+          {
+            "name": "dueDate",
+            "type": "date",
+            "required": true,
+            "aliases": [
+              "due",
+              "deadline"
+            ]
+          }
+        ],
+        "aliases": [
+          "Homework",
+          "Task"
+        ]
+      },
+      {
+        "name": "Submission",
+        "fields": [
+          {
+            "name": "assignment",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "assignmentId",
+              "homework"
+            ],
+            "references": "Assignment"
+          },
+          {
+            "name": "studentName",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "student",
+              "name",
+              "pupil"
+            ]
+          },
+          {
+            "name": "grade",
+            "type": "integer",
+            "aliases": [
+              "mark",
+              "score",
+              "points"
+            ]
+          },
+          {
+            "name": "status",
+            "type": "enum",
+            "required": true,
+            "aliases": [
+              "state"
+            ],
+            "enumValues": [
+              {
+                "key": "submitted",
+                "aliases": [
+                  "Handed in",
+                  "New"
+                ]
+              },
+              {
+                "key": "graded",
+                "aliases": [
+                  "Marked",
+                  "Graded"
+                ]
+              }
+            ]
+          }
+        ],
+        "aliases": [
+          "Handin",
+          "Work",
+          "Answer"
+        ]
+      }
+    ],
+    "roles": [
+      {
+        "name": "teacher",
+        "aliases": [
+          "instructor",
+          "admin"
+        ]
+      },
+      {
+        "name": "student",
+        "aliases": [
+          "pupil",
+          "child"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A grade above 100 is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p4"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "submitted -> graded works; graded cannot go back.",
+        "check": {
+          "kind": "lifecycle",
+          "probes": [
+            "p5",
+            "p6"
+          ],
+          "concept": "Submission",
+          "field": "status",
+          "allowed": [
+            [
+              "submitted",
+              "graded"
+            ]
+          ],
+          "forbidden": [
+            [
+              "graded",
+              "submitted"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "A student cannot post an assignment.",
+        "check": {
+          "kind": "role-denied",
+          "probes": [
+            "p7"
+          ],
+          "role": "student",
+          "concept": "Assignment",
+          "action": "create"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A student can hand in a submission.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p3"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Assignment}",
+        "as": "teacher",
+        "body": {
+          "{field:Assignment.title}": "Fractions worksheet {unique}",
+          "{field:Assignment.dueDate}": "{date:+5}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Submission}",
+        "as": "student",
+        "body": {
+          "{field:Submission.assignment}": "{id:p1}",
+          "{field:Submission.studentName}": "Tom {unique}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Submission}",
+        "as": "student",
+        "body": {
+          "{field:Submission.assignment}": "{id:p1}",
+          "{field:Submission.studentName}": "Ada {unique}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Submission}/{id:p2}",
+        "as": "teacher",
+        "body": {
+          "{field:Submission.status}": "{enum:Submission.status=graded}",
+          "{field:Submission.grade}": 140
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Submission}/{id:p2}",
+        "as": "teacher",
+        "body": {
+          "{field:Submission.status}": "{enum:Submission.status=graded}",
+          "{field:Submission.grade}": 88
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Submission}/{id:p2}",
+        "as": "teacher",
+        "body": {
+          "{field:Submission.status}": "{enum:Submission.status=submitted}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p7",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Assignment}",
+        "as": "student",
+        "body": {
+          "{field:Assignment.title}": "Student made",
+          "{field:Assignment.dueDate}": "{date:+2}"
+        },
+        "expectStatus": [
+          401,
+          403
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 8
+    }
+  }
+}

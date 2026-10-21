@@ -1,0 +1,374 @@
+{
+  "id": "bench-018",
+  "tier": "workflow-roles",
+  "title": "Small insurer claims desk",
+  "prompt": "I work at a small insurance broker and we handle damage claims for our clients. A claim has the policy number, the amount claimed, a description and a status. Claims are filed, then go under review, then are either approved or denied, and an approved claim is finally paid; a denied claim cannot be approved later and nothing can be paid before it is approved. Clerks can file claims and look at them but only adjusters can move a claim along, and the claimed amount has to be above zero.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Claim",
+        "fields": [
+          {
+            "name": "policyNumber",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "policy",
+              "policyNo",
+              "policyId"
+            ]
+          },
+          {
+            "name": "amount",
+            "type": "decimal",
+            "required": true,
+            "aliases": [
+              "claimedAmount",
+              "sum",
+              "value"
+            ]
+          },
+          {
+            "name": "description",
+            "type": "text",
+            "aliases": [
+              "details",
+              "notes",
+              "damage"
+            ]
+          },
+          {
+            "name": "status",
+            "type": "enum",
+            "required": true,
+            "aliases": [
+              "state"
+            ],
+            "enumValues": [
+              {
+                "key": "filed",
+                "aliases": [
+                  "New",
+                  "Submitted"
+                ]
+              },
+              {
+                "key": "underReview",
+                "aliases": [
+                  "Under review",
+                  "Review",
+                  "In review"
+                ]
+              },
+              {
+                "key": "approved",
+                "aliases": [
+                  "Accepted"
+                ]
+              },
+              {
+                "key": "denied",
+                "aliases": [
+                  "Rejected",
+                  "Declined"
+                ]
+              },
+              {
+                "key": "paid",
+                "aliases": [
+                  "Settled"
+                ]
+              }
+            ]
+          }
+        ],
+        "aliases": [
+          "InsuranceClaim",
+          "Case"
+        ]
+      }
+    ],
+    "roles": [
+      {
+        "name": "clerk",
+        "aliases": [
+          "frontDesk",
+          "staff",
+          "assistant"
+        ]
+      },
+      {
+        "name": "adjuster",
+        "aliases": [
+          "claimsAdjuster",
+          "assessor",
+          "manager"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A claim for zero is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "filed -> under review -> approved -> paid; no payment before approval; a denied claim is never approved.",
+        "check": {
+          "kind": "lifecycle",
+          "probes": [
+            "p3",
+            "p4",
+            "p5",
+            "p6",
+            "p8",
+            "p9",
+            "p10"
+          ],
+          "concept": "Claim",
+          "field": "status",
+          "allowed": [
+            [
+              "filed",
+              "underReview"
+            ],
+            [
+              "underReview",
+              "approved"
+            ],
+            [
+              "approved",
+              "paid"
+            ]
+          ],
+          "forbidden": [
+            [
+              "filed",
+              "paid"
+            ],
+            [
+              "denied",
+              "approved"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "A clerk cannot move a claim along.",
+        "check": {
+          "kind": "role-denied",
+          "probes": [
+            "p7"
+          ],
+          "role": "clerk",
+          "concept": "Claim",
+          "action": "transition"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A clerk can file a claim.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p11"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Claim}",
+        "as": "clerk",
+        "body": {
+          "{field:Claim.policyNumber}": "POL-{unique}",
+          "{field:Claim.amount}": 1200,
+          "{field:Claim.description}": "Storm damage"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Claim}",
+        "as": "clerk",
+        "body": {
+          "{field:Claim.policyNumber}": "POL-0",
+          "{field:Claim.amount}": 0
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Claim}/{id:p1}",
+        "as": "adjuster",
+        "body": {
+          "{field:Claim.status}": "{enum:Claim.status=paid}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Claim}/{id:p1}",
+        "as": "adjuster",
+        "body": {
+          "{field:Claim.status}": "{enum:Claim.status=underReview}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Claim}/{id:p1}",
+        "as": "adjuster",
+        "body": {
+          "{field:Claim.status}": "{enum:Claim.status=approved}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p6",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Claim}/{id:p1}",
+        "as": "adjuster",
+        "body": {
+          "{field:Claim.status}": "{enum:Claim.status=paid}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p7",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Claim}/{id:p1}",
+        "as": "clerk",
+        "body": {
+          "{field:Claim.status}": "{enum:Claim.status=denied}"
+        },
+        "expectStatus": [
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p12",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Claim}",
+        "as": "clerk",
+        "body": {
+          "{field:Claim.policyNumber}": "POL-D{unique}",
+          "{field:Claim.amount}": 300
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p8",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Claim}/{id:p12}",
+        "as": "adjuster",
+        "body": {
+          "{field:Claim.status}": "{enum:Claim.status=underReview}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p9",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Claim}/{id:p12}",
+        "as": "adjuster",
+        "body": {
+          "{field:Claim.status}": "{enum:Claim.status=denied}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p10",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:Claim}/{id:p12}",
+        "as": "adjuster",
+        "body": {
+          "{field:Claim.status}": "{enum:Claim.status=approved}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p11",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Claim}",
+        "as": "clerk",
+        "body": {
+          "{field:Claim.policyNumber}": "POL-N{unique}",
+          "{field:Claim.amount}": 50,
+          "{field:Claim.description}": "Cracked window"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 1,
+      "fields": 5
+    }
+  }
+}

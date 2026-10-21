@@ -1,0 +1,200 @@
+{
+  "id": "bench-025",
+  "tier": "integration-report",
+  "title": "Hardware shop low stock list",
+  "prompt": "I own a hardware shop and I keep running out of things without noticing. I want a list of products with the name, the price and how many I have in stock. I also want a ready-made list that shows only the products that have fewer than 5 units left, so I know what to reorder. Stock cannot be negative and every product needs a name.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Product",
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "productName",
+              "title"
+            ]
+          },
+          {
+            "name": "price",
+            "type": "decimal",
+            "aliases": [
+              "unitPrice",
+              "cost"
+            ]
+          },
+          {
+            "name": "stock",
+            "type": "integer",
+            "required": true,
+            "aliases": [
+              "quantity",
+              "inStock",
+              "onHand",
+              "unitsLeft"
+            ]
+          }
+        ],
+        "aliases": [
+          "Item",
+          "Article"
+        ]
+      }
+    ],
+    "views": [
+      {
+        "name": "LowStockProducts",
+        "aliases": [
+          "LowStock",
+          "ReorderList",
+          "ProductsToReorder",
+          "LowStockList"
+        ],
+        "description": "products with fewer than 5 units"
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "Negative stock is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p3"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A product without a name is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p4"
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "The low stock list shows a product with 2 units and hides one with 50.",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p5"
+          ],
+          "concept": "LowStockProducts",
+          "field": "name"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A valid product is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p6"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Product}",
+        "body": {
+          "{field:Product.name}": "Hinge {unique}",
+          "{field:Product.price}": 2.5,
+          "{field:Product.stock}": 2
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Product}",
+        "body": {
+          "{field:Product.name}": "Anvil {unique}",
+          "{field:Product.price}": 180,
+          "{field:Product.stock}": 50
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Product}",
+        "body": {
+          "{field:Product.name}": "Bad stock {unique}",
+          "{field:Product.stock}": -3
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Product}",
+        "body": {
+          "{field:Product.price}": 1,
+          "{field:Product.stock}": 3
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "{view:LowStockProducts}",
+        "expectStatus": [
+          200,
+          201
+        ],
+        "expectJsonContains": {
+          "{any:1}": "Hinge {unique}"
+        },
+        "expectJsonLacks": {
+          "{any:1}": "Anvil {unique}"
+        }
+      },
+      {
+        "id": "p6",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:Product}",
+        "body": {
+          "{field:Product.name}": "Screw box {unique}",
+          "{field:Product.price}": 6,
+          "{field:Product.stock}": 40
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      }
+    ],
+    "minimums": {
+      "concepts": 1,
+      "fields": 3
+    }
+  }
+}

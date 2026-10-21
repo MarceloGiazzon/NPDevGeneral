@@ -1,0 +1,267 @@
+{
+  "id": "bench-028",
+  "tier": "integration-report",
+  "title": "Online shop courier hand-off",
+  "prompt": "I sell handmade soap online and a separate courier program picks up my shipments from a list. I need to record orders with the customer name, the item and a status of placed, shipped or cancelled. When I mark an order as shipped, the system must automatically add a message to an outgoing messages list saying which order to collect, so that the courier program can read it later. An order can only be shipped from placed, a cancelled order stays cancelled, and an order needs a customer name.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "ShopOrder",
+        "fields": [
+          {
+            "name": "customerName",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "customer",
+              "name",
+              "buyer"
+            ]
+          },
+          {
+            "name": "item",
+            "type": "text",
+            "aliases": [
+              "product",
+              "description"
+            ]
+          },
+          {
+            "name": "status",
+            "type": "enum",
+            "required": true,
+            "aliases": [
+              "state"
+            ],
+            "enumValues": [
+              {
+                "key": "placed",
+                "aliases": [
+                  "New",
+                  "Ordered"
+                ]
+              },
+              {
+                "key": "shipped",
+                "aliases": [
+                  "Sent",
+                  "Dispatched"
+                ]
+              },
+              {
+                "key": "cancelled",
+                "aliases": [
+                  "Canceled"
+                ]
+              }
+            ]
+          }
+        ],
+        "aliases": [
+          "Order",
+          "Purchase",
+          "SalesOrder"
+        ]
+      },
+      {
+        "name": "OutgoingMessage",
+        "fields": [
+          {
+            "name": "order",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "orderId",
+              "shopOrder",
+              "orderRef"
+            ],
+            "references": "ShopOrder"
+          }
+        ],
+        "aliases": [
+          "Outbox",
+          "OutgoingMessages",
+          "CourierMessage",
+          "Message",
+          "Shipment"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "An order without a customer name is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "placed -> shipped works; a cancelled order stays cancelled.",
+        "check": {
+          "kind": "lifecycle",
+          "probes": [
+            "p3",
+            "p5"
+          ],
+          "concept": "ShopOrder",
+          "field": "status",
+          "allowed": [
+            [
+              "placed",
+              "shipped"
+            ]
+          ],
+          "forbidden": [
+            [
+              "cancelled",
+              "shipped"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "r3",
+        "description": "Shipping an order queues a message for it.",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p4"
+          ],
+          "concept": "OutgoingMessage",
+          "field": "order"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "An order can be cancelled, and a cancelled order queues no courier message.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p8",
+            "p7"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:ShopOrder}",
+        "body": {
+          "{field:ShopOrder.customerName}": "Nina {unique}",
+          "{field:ShopOrder.item}": "Lavender soap"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:ShopOrder}",
+        "body": {
+          "{field:ShopOrder.item}": "Nameless soap"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:ShopOrder}/{id:p1}",
+        "body": {
+          "{field:ShopOrder.status}": "{enum:ShopOrder.status=shipped}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p4",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "{concept:OutgoingMessage}",
+        "expectStatus": [
+          200,
+          201
+        ],
+        "expectJsonContains": {
+          "{any:1}": "{id:p1}"
+        }
+      },
+      {
+        "id": "p6",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:ShopOrder}",
+        "body": {
+          "{field:ShopOrder.customerName}": "Omar {unique}",
+          "{field:ShopOrder.item}": "Rose soap"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p8",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:ShopOrder}/{id:p6}",
+        "body": {
+          "{field:ShopOrder.status}": "{enum:ShopOrder.status=cancelled}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "PATCH",
+        "pathHint": "{concept:ShopOrder}/{id:p6}",
+        "body": {
+          "{field:ShopOrder.status}": "{enum:ShopOrder.status=shipped}"
+        },
+        "expectStatus": [
+          400,
+          409,
+          422,
+          401,
+          403
+        ]
+      },
+      {
+        "id": "p7",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "{concept:OutgoingMessage}",
+        "expectStatus": [
+          200,
+          201
+        ],
+        "expectJsonLacks": {
+          "{any:1}": "{id:p6}"
+        }
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 4
+    }
+  }
+}

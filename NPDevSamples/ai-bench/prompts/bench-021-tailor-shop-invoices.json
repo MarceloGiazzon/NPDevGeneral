@@ -1,0 +1,237 @@
+{
+  "id": "bench-021",
+  "tier": "integration-report",
+  "title": "Tailor shop invoices",
+  "prompt": "I run a tailoring shop and I make a paper invoice for every customer. Each invoice has the customer name, the date and a number of lines, and each line has a description, a quantity and a price per unit. The total for each line, quantity times price, must be worked out by the system and never typed in. I also want a report that lists every invoice with its grand total, and a line's quantity must be at least one.",
+  "acceptance": {
+    "concepts": [
+      {
+        "name": "Invoice",
+        "fields": [
+          {
+            "name": "customerName",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "customer",
+              "clientName",
+              "name"
+            ]
+          },
+          {
+            "name": "invoiceDate",
+            "type": "date",
+            "aliases": [
+              "date",
+              "issuedOn"
+            ]
+          }
+        ],
+        "aliases": [
+          "Bill",
+          "SalesInvoice"
+        ]
+      },
+      {
+        "name": "InvoiceLine",
+        "fields": [
+          {
+            "name": "invoice",
+            "type": "reference",
+            "required": true,
+            "aliases": [
+              "invoiceId"
+            ],
+            "references": "Invoice"
+          },
+          {
+            "name": "description",
+            "type": "text",
+            "required": true,
+            "aliases": [
+              "item",
+              "service",
+              "text"
+            ]
+          },
+          {
+            "name": "quantity",
+            "type": "integer",
+            "required": true,
+            "aliases": [
+              "qty",
+              "amount",
+              "units"
+            ]
+          },
+          {
+            "name": "unitPrice",
+            "type": "decimal",
+            "required": true,
+            "aliases": [
+              "price",
+              "pricePerUnit"
+            ]
+          },
+          {
+            "name": "lineTotal",
+            "type": "decimal",
+            "aliases": [
+              "total",
+              "lineAmount",
+              "subtotal"
+            ]
+          }
+        ],
+        "aliases": [
+          "Line",
+          "Item",
+          "LineItem"
+        ]
+      }
+    ],
+    "views": [
+      {
+        "name": "InvoiceTotals",
+        "aliases": [
+          "InvoiceReport",
+          "TotalsPerInvoice",
+          "InvoiceSummary"
+        ],
+        "description": "one row per invoice with its grand total"
+      }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "description": "A line with quantity zero is refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "The line total is quantity times price (3 x 10 = 30).",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p3"
+          ],
+          "concept": "InvoiceLine",
+          "field": "lineTotal"
+        }
+      },
+      {
+        "id": "r3",
+        "description": "The invoice report shows the grand total over all lines (30 + 40 = 70).",
+        "check": {
+          "kind": "derived-value",
+          "probes": [
+            "p5"
+          ],
+          "concept": "InvoiceTotals",
+          "field": "total"
+        }
+      },
+      {
+        "id": "r4",
+        "description": "A line attached to an invoice is accepted.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p3"
+          ]
+        }
+      }
+    ],
+    "probes": [
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:Invoice}",
+        "body": {
+          "{field:Invoice.customerName}": "Hugo {unique}",
+          "{field:Invoice.invoiceDate}": "{date:+0}"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:InvoiceLine}",
+        "body": {
+          "{field:InvoiceLine.invoice}": "{id:p1}",
+          "{field:InvoiceLine.description}": "Hem trousers",
+          "{field:InvoiceLine.quantity}": 0,
+          "{field:InvoiceLine.unitPrice}": 10
+        },
+        "expectStatus": [
+          400,
+          409,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "{concept:InvoiceLine}",
+        "body": {
+          "{field:InvoiceLine.invoice}": "{id:p1}",
+          "{field:InvoiceLine.description}": "Hem trousers",
+          "{field:InvoiceLine.quantity}": 3,
+          "{field:InvoiceLine.unitPrice}": 10
+        },
+        "expectStatus": [
+          200,
+          201
+        ],
+        "expectJsonContains": {
+          "{field:InvoiceLine.lineTotal}": 30
+        }
+      },
+      {
+        "id": "p4",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "{concept:InvoiceLine}",
+        "body": {
+          "{field:InvoiceLine.invoice}": "{id:p1}",
+          "{field:InvoiceLine.description}": "Replace zipper",
+          "{field:InvoiceLine.quantity}": 2,
+          "{field:InvoiceLine.unitPrice}": 20
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p5",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "{view:InvoiceTotals}",
+        "expectStatus": [
+          200,
+          201
+        ],
+        "expectJsonContains": {
+          "{any:1}": "{id:p1}",
+          "{any:2}": 70
+        }
+      }
+    ],
+    "minimums": {
+      "concepts": 2,
+      "fields": 8
+    }
+  }
+}
