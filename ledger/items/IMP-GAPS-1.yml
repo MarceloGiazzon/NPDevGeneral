@@ -1,6 +1,6 @@
 id: IMP-GAPS-1
 title: >-
-  The database-first importer (npdev import db) recovers about half the hand-built WmsOffice concepts and almost no field names, no enums, and few references; the missing half needs the GeneXus semantics pass (IMP-2) and a rename policy
+  The importer recovers about half the hand-built WmsOffice concepts, most enums (after IMP-2) but few field names and few references; what remains is a rename policy, entity merging and a second, non-GeneXus source (IMP-4)
 type: GAP
 severity: MEDIUM
 status: OPEN
@@ -11,17 +11,33 @@ source: >-
   AppGen/apps/_official/WmsOffice/definition/model.json. Numbers as measured, importer not tuned to the oracle.
 surface: NPDevGenerator/generator importer, NPDevCli import score
 detail: |
-  Measured (2026-10-21): concepts 14 matched of 56 drafted / 26 in the oracle (precision 0.25, recall 0.54);
+  Measured 2026-10-21, importer not tuned to the oracle (npdev import score, draft from the 56-table WmsOffice DDL;
+  enriched by npdev import genexus against the two GeneXus exports).
+  After IMP-1 (database only): concepts 14 matched of 56 drafted / 26 in the oracle (precision 0.25, recall 0.54);
   fields of matched concepts recall 0.06 exact, 0.36 with prefix matching (the importer keeps the legacy column
   prefix, armNome, where the hand-built model says nome); references 12 of 22 between matched concepts (52 in the
-  oracle); enums 0 of 17. 12 oracle concepts have no counterpart: the hand-built model merged, split or renamed
-  legacy tables (CrossDocking, DocumentoFiscal, Romaneio, ...), which a database-only pass cannot see.
+  oracle); enums 0. 12 oracle concepts have no counterpart: the hand-built model merged, split or renamed legacy tables
+  (CrossDocking, DocumentoFiscal, Romaneio, ...), which neither the database nor the GeneXus export can say.
+  After IMP-2 (npdev import genexus): concepts, field and reference numbers unchanged (it does not touch names or
+  keys). Enums: 9 of the 12 oracle enum fields in matched concepts are found by field name, 4 of those with identical
+  value sets, mean value recall 0.737; the draft makes 82 enum fields against 17 in the oracle (the legacy model
+  enumerates far more domains than the hand-built one kept). Captions: 643 of 646 columns got a ui.label, the
+  validator's warnings went 695 -> 3 (the 3 left are a concept and two fields with no GeneXus counterpart).
+  Transactions: 32 of 34 map to tables (74 levels, 72 mapped; SisArqTemp and Momentum have no table with their key
+  set). Domains: 87 in the export, 64 enumerated, 82 fields converted, 0 skipped. Rules: 150 statements, 124 are
+  parameter binding or screen behaviour (dropped by design), 3 invariant candidates translated (unverified), 3
+  source-only, 3 default candidates, 17 manual. Manual-port inventory with source attached: 241 procedures, 92 web
+  panels, 68 SDTs, 11 queries (40 subtype groups counted only).
+  Not done in IMP-2, on purpose: web-panel STUBS (the inventory lists the 92 panels with their event source; a stub
+  needs bindings the export does not carry); rule candidates are never applied to the model. An enum field stores
+  the NAME while the legacy column stores the CODE, so a data load must translate (legacyCodes in the report).
   Also found: the platform's technology-neutrality rule (ExpressionValidation.FORBIDDEN_TECH_KEYWORDS) rejects a name
   that merely CONTAINS rest/jpa/smtp/..., so ordinary words such as Portuguese "Restricao" fail validation; the importer
   works around it by splitting the word (ruaRecRe_stricao) and listing it under namingAdjustments. The rule itself is
   arguably too blunt (substring, not word); changing it is an owner decision.
   Validated on ONE source kind (a MySQL-flavoured DDL from one GeneXus export); a second, non-GeneXus source (IMP-4) is not done.
 resolution: >-
-  IMP-2 (domains to enums, transactions/descriptions to captions, rules to invariant candidates) closes the enum and caption
-  gaps; a field-prefix rename policy (propose the readable name, keep the legacy one) closes the field-name gap; entity
-  merging stays a human decision. Re-run npdev import score after each and record the new numbers here.
+  A field-prefix rename policy (propose the readable name, keep the legacy one in an alias) closes the field-name gap;
+  entity merging stays a human decision; IMP-4 (a non-GeneXus source) and the owner's technology-neutrality ruling remain.
+  Re-run npdev import score after each and record the new numbers here. IMP-2 itself (captions, enums, rule candidates,
+  manual-port inventory) is done.

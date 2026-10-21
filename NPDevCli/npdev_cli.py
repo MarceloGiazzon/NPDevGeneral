@@ -4931,6 +4931,36 @@ def run_import_db(args: argparse.Namespace) -> int:
     return completed.returncode
 
 
+def run_import_genexus(args: argparse.Namespace) -> int:
+    """`npdev import genexus` -- IMP-2. Shells to `com.npdev.generator.importer.EnrichGeneXusMain` in the staged
+    npdev-ai-tools.jar: layers a GeneXus export's captions, enumerated domains, transaction labels and rule
+    candidates onto a draft made by `npdev import db`. Exit codes pass straight through (0 = written, 2 = could not)."""
+    jar = _default_ai_tools_jar()
+    java_bin = java_launcher()
+    if jar is None:
+        print("npdev import genexus: npdev-ai-tools.jar is not staged -- run `npdev setup`.", file=sys.stderr)
+        return 2
+    if java_bin is None:
+        print("npdev import genexus: no java found (see `npdev doctor`).", file=sys.stderr)
+        return 2
+    command = [java_bin, "-cp", str(jar), "com.npdev.generator.importer.EnrichGeneXusMain",
+               "--draft", str(Path(args.draft).expanduser().resolve()),
+               "--tables-xml", str(Path(args.tables_xml).expanduser().resolve()),
+               "--out", str(Path(args.out).expanduser().resolve())]
+    if args.module_xml:
+        command += ["--module-xml", str(Path(args.module_xml).expanduser().resolve())]
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=600)
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"npdev import genexus: could not run the importer ({exc})", file=sys.stderr)
+        return 2
+    if completed.stdout:
+        print(completed.stdout, end="")
+    if completed.stderr:
+        print(completed.stderr, end="", file=sys.stderr)
+    return completed.returncode
+
+
 def run_db_mark_done(args: argparse.Namespace) -> int:
     """`npdev db mark-done` -- Wave 5, boundary B6 lift (docs/ACCEPTED_BOUNDARIES.md). Shells to
     `com.finalexec.db.MigrationMarkDoneMain` the same way `db verify`/`db schema-ahead` shell to their
@@ -17023,6 +17053,15 @@ def build_parser() -> argparse.ArgumentParser:
              "available; PostgreSQL, SQL Server, MySQL and others need their driver passed here.",
     )
 
+    import_genexus = import_sub.add_parser(
+        "genexus", help="IMP-2: layer a GeneXus export (captions, enumerated domains, transaction labels, rule "
+                        "candidates, a manual-port inventory) onto a draft made by `import db`. Rule candidates are "
+                        "reported, never applied.")
+    import_genexus.add_argument("--draft", required=True, help="The `import db` output directory (model.json + import-report.json).")
+    import_genexus.add_argument("--tables-xml", required=True, help="The GeneXus tables/attributes/subtypes export.")
+    import_genexus.add_argument("--module-xml", default=None, help="The GeneXus module export (transactions, rules, procedures, panels).")
+    import_genexus.add_argument("--out", required=True, help="Directory for the enriched model.json, import-report.json and manual-port/.")
+
     import_score = import_sub.add_parser(
         "score", help="IMP-3: score a drafted model against a hand-built oracle model (concept / field / "
                       "reference precision and recall). Reports the numbers as measured.")
@@ -18159,6 +18198,8 @@ def main(argv: list[str] | None = None) -> int:
             return npdev_truth.run(args, repo_root())
         if args.command == "import" and args.import_command == "db":
             return run_import_db(args)
+        if args.command == "import" and args.import_command == "genexus":
+            return run_import_genexus(args)
         if args.command == "import" and args.import_command == "score":
             import npdev_import_score
             return npdev_import_score.run(args)
