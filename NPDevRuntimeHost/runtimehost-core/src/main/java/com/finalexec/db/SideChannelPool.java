@@ -37,6 +37,12 @@ public final class SideChannelPool implements DisposableBean {
                 side.setDriverClassName(hikari.getDriverClassName());
             }
             side.setMaximumPoolSize(Math.max(2, maxPoolSize));
+            // Hikari's minimumIdle defaults to maximumPoolSize, which would open maxPoolSize idle
+            // connections per context on top of the main pool. A test JVM caches several Spring
+            // contexts against one Postgres (default max_connections=100), and that doubling ran it
+            // out of clients ("sorry, too many clients already"). Bookkeeping traffic is bursty, so
+            // let the pool grow on demand and shrink back.
+            side.setMinimumIdle(0);
             this.owned = side;
             this.dataSource = side;
         } else {
