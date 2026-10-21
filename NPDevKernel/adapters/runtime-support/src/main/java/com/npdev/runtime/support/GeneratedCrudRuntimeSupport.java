@@ -46,6 +46,7 @@ import com.npdev.runtime.support.crud.uniqueness.CompoundUniqueValueLookup;
 import com.npdev.runtime.support.crud.uniqueness.UniqueFieldLookup;
 import com.npdev.runtime.support.crud.uniqueness.UniqueValueLookup;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.datasource.DataSourceUtils;
 import org.springframework.web.server.ResponseStatusException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.persistence.EntityManager;
@@ -578,8 +579,11 @@ public final class GeneratedCrudRuntimeSupport {
 
     private boolean bondTargetExistsForTenant(String table, String column, Object value, String tenantId) {
         String sql = "SELECT 1 FROM " + table + " WHERE " + column + " = ? AND tenant_id = ?";
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        // This runs inside the create's @Transactional, which already holds one pool connection. Joining it (instead
+        // of dataSource.getConnection()) keeps a create at one connection: with two, N concurrent creates (N >= pool
+        // size) each hold one and wait for another until the 30 s pool timeout (found by the LOAD-2 harness).
+        Connection connection = DataSourceUtils.getConnection(dataSource);
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, value);
             statement.setString(2, tenantId);
             try (ResultSet resultSet = statement.executeQuery()) {
@@ -587,6 +591,8 @@ public final class GeneratedCrudRuntimeSupport {
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed validating bond target tenant for table " + table, exception);
+        } finally {
+            DataSourceUtils.releaseConnection(connection, dataSource);
         }
     }
 

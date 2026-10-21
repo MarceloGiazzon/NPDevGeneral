@@ -1,0 +1,150 @@
+{
+  "schema": "npdev-load-workload.v1",
+  "description": "LOAD-1: what a load run does, in a form no tool owns. scripts/load/run_load.py executes it today; a k6 script can read the same file later. Each target is a booted consumer sample; each scenario is one weighted user action.",
+  "volumes": [
+    10000,
+    100000,
+    1000000
+  ],
+  "targets": {
+    "sales": {
+      "sample": "NPDevSamples/dom-sales",
+      "baseUrl": "http://127.0.0.1:8421",
+      "identities": {
+        "mgr": "SALES_MGR",
+        "rep": "REP",
+        "acct": "ACCT"
+      },
+      "seed": {
+        "largestConcept": "sales_order_lines",
+        "ratio": {
+          "customers": 0.01,
+          "items": 0.002,
+          "orders": 0.2,
+          "lines": 1.0
+        }
+      },
+      "scenarios": [
+        {
+          "name": "query-open-orders",
+          "weight": 20,
+          "as": "rep",
+          "kind": "list",
+          "path": "/api/queries/sales::OpenOrders",
+          "query": {
+            "limit": 50
+          }
+        },
+        {
+          "name": "list-orders-capped",
+          "weight": 10,
+          "as": "rep",
+          "kind": "list",
+          "path": "/api/sales_sales_orders"
+        },
+        {
+          "name": "orders-by-customer",
+          "weight": 10,
+          "as": "rep",
+          "kind": "list",
+          "path": "/api/sales_sales_orders/by/customerId/{customers}"
+        },
+        {
+          "name": "open-order",
+          "weight": 15,
+          "as": "rep",
+          "kind": "read",
+          "path": "/api/sales_sales_orders/{orders}"
+        },
+        {
+          "name": "create-order",
+          "weight": 10,
+          "as": "rep",
+          "kind": "create",
+          "path": "/api/sales_sales_orders",
+          "body": {
+            "orderNumber": "{unique}",
+            "customerId": "{customers}"
+          }
+        },
+        {
+          "name": "update-order-notes",
+          "weight": 15,
+          "as": "rep",
+          "kind": "update",
+          "path": "/api/sales_sales_orders/{orders}",
+          "body": {
+            "notes": "touched {unique}"
+          }
+        },
+        {
+          "name": "global-search",
+          "weight": 10,
+          "as": "rep",
+          "kind": "list",
+          "path": "/api/search",
+          "query": {
+            "q": "Customer",
+            "limit": 5
+          }
+        },
+        {
+          "name": "order-totals-report",
+          "weight": 10,
+          "as": "mgr",
+          "kind": "list",
+          "path": "/api/queries/sales::OrderTotals",
+          "query": {
+            "limit": 50
+          }
+        }
+      ],
+      "thresholds": {
+        "errorRate": 0.01,
+        "p95Ms": {
+          "default": 800,
+          "list-orders-capped": 2000
+        }
+      }
+    },
+    "leave": {
+      "sample": "NPDevSamples/dom-leave",
+      "baseUrl": "http://127.0.0.1:8424",
+      "identities": {
+        "emp": "EMPLOYEE",
+        "hr": "HR_ADMIN"
+      },
+      "seed": {
+        "largestConcept": "leave_v1_leave_requests",
+        "ratio": {
+          "leaveTypes": 0.0001,
+          "requests": 1.0
+        }
+      },
+      "scenarios": [
+        {
+          "name": "start-leave-flow",
+          "weight": 100,
+          "as": "emp",
+          "kind": "flow",
+          "path": "/api/flows/leave::RequestLeave/execute",
+          "expectStatus": 202,
+          "body": {
+            "requestNumber": "{unique}",
+            "employeeName": "Load {unique}",
+            "leaveTypeId": "{leaveTypes}",
+            "startDate": "2026-12-01",
+            "endDate": "2026-12-02",
+            "days": 2
+          }
+        }
+      ],
+      "thresholds": {
+        "errorRate": 0.01,
+        "p95Ms": {
+          "default": 1500
+        }
+      }
+    }
+  }
+}

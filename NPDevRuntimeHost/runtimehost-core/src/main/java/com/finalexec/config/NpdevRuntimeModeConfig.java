@@ -19,6 +19,7 @@ import com.npdev.adapters.tracestore.PersistentExecutionTracer;
 import com.npdev.adapters.tracestore.jdbc.JdbcTraceStore;
 import com.npdev.adapters.tracing.inproc.InProcExecutionTracer;
 import com.finalexec.db.JdbcBusinessConceptStore;
+import com.finalexec.db.SideChannelPool;
 import com.finalexec.tracing.ChainedExecutionTracer;
 import com.finalexec.tracing.TracingPackBridge;
 import com.npdev.kernel.capability.CapabilityPolicyOverrides;
@@ -59,10 +60,18 @@ public class NpdevRuntimeModeConfig {
         return new InProcEventStore();
     }
 
+    /** See {@link SideChannelPool}: bookkeeping stores get their own small pool so they cannot starve the request pool. */
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
-    public EventStore jdbcEventStore(DataSource dataSource) {
-        return new JdbcEventStore(dataSource);
+    public SideChannelPool sideChannelPool(DataSource dataSource,
+                                           @Value("${npdev.datasource.side-channel.max-pool-size:10}") int maxPoolSize) {
+        return new SideChannelPool(dataSource, maxPoolSize);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
+    public EventStore jdbcEventStore(SideChannelPool sideChannel) {
+        return new JdbcEventStore(sideChannel.dataSource());
     }
 
     /**
@@ -105,14 +114,14 @@ public class NpdevRuntimeModeConfig {
 
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
-    public FlowInstanceStore jdbcFlowInstanceStore(DataSource dataSource) {
-        return new JdbcFlowInstanceStore(dataSource);
+    public FlowInstanceStore jdbcFlowInstanceStore(SideChannelPool sideChannel) {
+        return new JdbcFlowInstanceStore(sideChannel.dataSource());
     }
 
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
-    public CorrelationOwnershipStore jdbcCorrelationOwnershipStore(DataSource dataSource) {
-        return new JdbcCorrelationOwnershipStore(dataSource);
+    public CorrelationOwnershipStore jdbcCorrelationOwnershipStore(SideChannelPool sideChannel) {
+        return new JdbcCorrelationOwnershipStore(sideChannel.dataSource());
     }
 
     @Bean
@@ -161,8 +170,8 @@ public class NpdevRuntimeModeConfig {
 
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
-    public TraceStore jdbcTraceStore(DataSource dataSource) {
-        return new JdbcTraceStore(dataSource);
+    public TraceStore jdbcTraceStore(SideChannelPool sideChannel) {
+        return new JdbcTraceStore(sideChannel.dataSource());
     }
 
     @Bean
@@ -173,8 +182,8 @@ public class NpdevRuntimeModeConfig {
 
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
-    public AuditLogStore jdbcAuditLogStore(DataSource dataSource) {
-        return new JdbcAuditLogStore(dataSource);
+    public AuditLogStore jdbcAuditLogStore(SideChannelPool sideChannel) {
+        return new JdbcAuditLogStore(sideChannel.dataSource());
     }
 
     @Bean
@@ -185,8 +194,8 @@ public class NpdevRuntimeModeConfig {
 
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
-    public CircuitBreakerStateStore jdbcCircuitBreakerStateStore(DataSource dataSource) {
-        return new JdbcCircuitBreakerStateStore(dataSource);
+    public CircuitBreakerStateStore jdbcCircuitBreakerStateStore(SideChannelPool sideChannel) {
+        return new JdbcCircuitBreakerStateStore(sideChannel.dataSource());
     }
 
     @Bean
@@ -213,8 +222,8 @@ public class NpdevRuntimeModeConfig {
 
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
-    public IdempotencyStore jdbcIdempotencyStore(DataSource dataSource) {
-        return new JdbcIdempotencyStore(dataSource);
+    public IdempotencyStore jdbcIdempotencyStore(SideChannelPool sideChannel) {
+        return new JdbcIdempotencyStore(sideChannel.dataSource());
     }
 
     @Bean
@@ -254,8 +263,8 @@ public class NpdevRuntimeModeConfig {
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
     @ConditionalOnExpression("${npdev.tracing.pack-bridge.enabled:true}")
-    public TracingPackBridge tracingPackBridge(DataSource dataSource) {
-        return new TracingPackBridge(dataSource);
+    public TracingPackBridge tracingPackBridge(SideChannelPool sideChannel) {
+        return new TracingPackBridge(sideChannel.dataSource());
     }
 
     @Bean
