@@ -1,0 +1,19 @@
+id: REG-271
+title: >-
+  MigrationClaimStoreLegacyTableShapeTest waits out the 300 s default schema-lock wait, adding about 5 minutes to every RuntimeHost gate run
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-10-21
+closed: null
+source: >-
+  Handoff from the LOAD-4 session (2026-10-21): the runtimeHost gate carries a fixed ~5 minute stall that matches the default of
+  npdev.schema.lock.waitSeconds (MigrationMutex.WAIT_SECONDS_PROPERTY).
+surface: NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationClaimStoreLegacyTableShapeTest.java
+detail: |
+  The test does not set a short lock wait, so a lock it expects to be contended is waited out for the full 300 s default.
+  MigrationLockConcurrentBootTest and MigrationMutexProgressAwareWaitTest already set the property to a few seconds and are the pattern to copy.
+  Not yet confirmed by a timed run which step inside the test blocks; confirm that before changing the wait, so the fix does not hide a real deadlock.
+resolution: >-
+  Set npdev.schema.lock.waitSeconds to a few seconds for this test (restore it afterwards), confirm the test still proves what it was written for,
+  and check the runtimeHost gate loses about 5 minutes.
