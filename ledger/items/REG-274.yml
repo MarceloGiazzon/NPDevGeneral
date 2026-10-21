@@ -1,0 +1,17 @@
+id: REG-274
+title: >-
+  Domain type normalization, validation.minLength and validation.regex are accepted and never applied; only validation.maxLength is enforced
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-21
+closed: null
+source: >-
+  ENF-1 behaviour probe ed-domaintype-normalization-and-validation-enforced (NPDevSamples/dsl-conformance-max/behavior-probes/80-enforcement-demo.json), knownFailure REG-274. The companion probe ed-domaintype-validation-maxlength-enforced passes.
+surface: NPDevContract/dsl/.../compiled (domain type -> field schema merge) and NPDevKernel/adapters/runtime-support/.../CrudSchemaValidationSupport.java
+detail: |
+  Domain type ShortCode declares normalization [trim, uppercase] and validation {minLength 3, maxLength 16, regex ^[A-Z0-9-]+$}. A field naming it (WidgetEnforcementDemo.code) gets the maxLength
+  (17 characters -> 422 "exceeds maxLength 16") but " ab-12 " is stored verbatim instead of "AB-12" and "a!" (too short, regex mismatch) is stored with 201.
+  The fields metadata catalog does serve the normalizationRules, so clients are told a rule the server never applies.
+resolution: >-
+  Apply the declared normalization rules before validation on create and update, and carry validation.minLength and validation.regex from the domain type onto the field's runtime constraints next to maxLength.

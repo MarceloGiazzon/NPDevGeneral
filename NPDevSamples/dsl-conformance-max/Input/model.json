@@ -150,6 +150,21 @@
         "label": "SKU",
         "placeholder": "WID-0000"
       }
+    },
+    {
+      "name": "ShortCode",
+      "baseType": "string",
+      "validation": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 16,
+        "regex": "^[A-Z0-9-]+$",
+        "description": "ENF-1: a short upper-case code"
+      },
+      "normalization": ["trim", "uppercase"],
+      "format": "short-code",
+      "examples": ["AB-12", "ZZZ"],
+      "ui": { "label": "Short code" }
     }
   ],
 
@@ -451,6 +466,14 @@
       "ui": {
         "label": "Promoted widget catalog entry"
       },
+      "invariants": [
+        {
+          "name": "CatalogSkuRequired",
+          "specializes": "CatalogSkuRequired",
+          "override": true,
+          "expression": "sku != null && sku != '' && sku != 'WID-BANNED'"
+        }
+      ],
       "fields": [
         {
           "name": "promotionLabel",
@@ -705,6 +728,128 @@
         { "name": "sku", "type": "string", "required": true, "domainType": "Sku", "ui": { "label": "SKU" } },
         { "name": "validity", "type": "date", "required": true, "ui": { "label": "Validity" } }
       ]
+    },
+    {
+      "name": "WidgetEnforcementDemo",
+      "truthLevel": "T2",
+      "ui": { "label": "Widget enforcement demo" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "code", "type": "string", "required": true, "domainType": "ShortCode", "ui": { "label": "Code" } },
+        { "name": "badgeCode", "type": "string", "required": false, "ui": { "label": "Badge code" } },
+        { "name": "capacity", "type": "integer", "required": false, "ui": { "label": "Capacity" } },
+        {
+          "name": "state",
+          "type": "enum",
+          "enumValues": [
+            {
+              "value": "Draft", "label": "Draft", "displayLabel": "In draft", "order": 10, "group": "Open",
+              "default": true, "icon": "edit", "iconHint": "pencil", "badge": "info", "badgeHint": "not yet live",
+              "description": "Not yet published", "help": "Drafts can still change"
+            },
+            {
+              "value": "Live", "label": "Live", "order": 20, "group": "Open", "icon": "check", "badge": "success",
+              "description": "Published"
+            },
+            {
+              "value": "Retired", "label": "Retired", "order": 30, "group": "Closed", "deprecated": true,
+              "iconHint": "archive", "badgeHint": "muted",
+              "description": "No longer used"
+            }
+          ],
+          "required": true,
+          "ui": { "label": "State" }
+        },
+        { "name": "tier", "type": "enum", "values": ["Bronze", "Silver", "Gold"], "required": false, "ui": { "label": "Tier" } },
+        { "name": "shortName", "type": "string", "required": false, "minLength": 3, "maxLength": 12, "ui": { "label": "Short name" } },
+        {
+          "name": "tags",
+          "type": "array",
+          "required": false,
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": { "type": "enum", "enumValues": ["red", "green", "blue", "gold"] },
+          "ui": { "label": "Tags" }
+        },
+        {
+          "name": "members",
+          "type": "array",
+          "required": false,
+          "itemIdentityField": "memberCode",
+          "duplicationPolicy": "deny",
+          "items": {
+            "type": "object",
+            "required": ["memberCode"],
+            "properties": {
+              "memberCode": { "type": "string" },
+              "role": { "type": "string" }
+            }
+          },
+          "ui": { "label": "Members" }
+        },
+        {
+          "name": "profile",
+          "type": "object",
+          "required": false,
+          "properties": {
+            "nickname": { "type": "string", "maxLength": 5 },
+            "level": { "type": "integer", "min": 1, "max": 9 }
+          },
+          "ui": { "label": "Profile" }
+        },
+        { "name": "catalogRef", "type": "reference", "ref": "WidgetCatalogEntry", "required": false, "ui": { "label": "Catalog entry" } }
+      ],
+      "invariants": [
+        { "name": "BadgeCodeUnique", "type": "unique", "fields": ["badgeCode"] },
+        { "name": "CodeNotReserved", "rule": "code != 'RESERVED'" },
+        { "name": "CapacityWithinCap", "type": "expression", "expression": "capacity == null || capacity <= 100" }
+      ]
+    },
+    {
+      "name": "WidgetReviewDemo",
+      "truthLevel": "T2",
+      "ui": { "label": "Widget review demo" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "title", "type": "string", "required": true, "ui": { "label": "Title" } },
+        { "name": "reviewer", "type": "string", "required": false, "ui": { "label": "Reviewer" } },
+        { "name": "reviewMode", "type": "string", "required": false, "ui": { "label": "Review mode" } },
+        { "name": "approvedNote", "type": "string", "required": false, "ui": { "label": "Approved note" } },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": ["Draft", "Submitted", "Approved", "Rejected"],
+          "required": true,
+          "ui": { "label": "Status" }
+        }
+      ],
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          { "value": "Draft", "initial": true },
+          { "value": "Submitted" },
+          { "value": "Approved", "terminal": true },
+          { "value": "Rejected", "terminal": true }
+        ],
+        "transitions": [
+          { "from": "Draft", "to": "Submitted", "event": "WidgetReviewSubmitted", "requiredPayload": ["reviewer"] },
+          { "from": "Submitted", "to": "Approved", "event": "WidgetReviewApproved", "requires": ["approvedNote"], "guard": "reviewMode == 'manual'" },
+          { "from": "Submitted", "to": "Rejected" },
+          { "from": "Rejected", "to": "Draft" }
+        ]
+      }
+    },
+    {
+      "name": "WidgetSeedDemo",
+      "truthLevel": "T2",
+      "ui": { "label": "Widget seed demo" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "label", "type": "string", "required": true, "ui": { "label": "Label" } },
+        { "name": "qty", "type": "integer", "required": false, "ui": { "label": "Quantity" } },
+        { "name": "parentId", "type": "uuid", "required": false, "ui": { "label": "Parent" } }
+      ]
     }
   ],
 
@@ -802,6 +947,10 @@
   ],
 
   "events": [
+    { "name": "WidgetReviewSubmitted", "payload": [ { "name": "id", "type": "uuid" }, { "name": "reviewer", "type": "string" } ] },
+    { "name": "WidgetReviewApproved", "payload": [ { "name": "approvedNote", "type": "string" } ] },
+    { "name": "HeartbeatTick", "payload": [] },
+    { "name": "HeartbeatTickOtherTenant", "payload": [] },
     {
       "name": "WidgetOrderPlaced",
       "payload": [
@@ -904,6 +1053,13 @@
       "signature": { "scheme": "hmac-sha256-base64", "header": "X-Shopify-Hmac-Sha256" },
       "idempotencyKey": "$header.X-Shopify-Webhook-Id"
     }
+  ],
+
+  "seeds": [
+    { "concept": "WidgetSeedDemo", "alias": "seedParent", "id": "5eed0000-0000-4000-8000-000000000001", "data": { "label": "seed-parent", "qty": 1 } },
+    { "concept": "WidgetSeedDemo", "data": { "label": "seed-child", "qty": 2, "parentId": "$ref:seedParent" } },
+    { "concept": "WidgetSeedDemo", "count": 3, "data": { "label": "seed-bulk", "qty": 5 } },
+    { "concept": "WidgetSeedDemo", "repeatOver": { "vars": { "i": [1, 2], "j": [1, 2] } }, "data": { "label": "seed-grid", "qty": 7 } }
   ],
 
   "sequences": [
@@ -1750,6 +1906,19 @@
 
   "orchestrationRules": [
     {
+      "name": "AuditSubmittedReview",
+      "condition": "reviewer == 'auditor'",
+      "trigger": { "type": "event", "event": "WidgetReviewSubmitted" },
+      "actions": [
+        {
+          "type": "callCapability",
+          "capability": "webhook",
+          "operation": "post",
+          "map": { "url": "http://127.0.0.1:9099/hooks/reviews", "reviewer": "$event.reviewer", "reviewId": "$event.id" }
+        }
+      ]
+    },
+    {
       "name": "PushNewOrdersToErp",
       "trigger": { "type": "event", "event": "WidgetOrderPlaced" },
       "actions": [
@@ -2248,6 +2417,87 @@
           "type": "return",
           "value": "$input"
         }
+      ]
+    },
+    {
+      "name": "ElseArmDemo",
+      "concept": "WidgetCatalogEntry",
+      "steps": [
+        {
+          "name": "pick-arm",
+          "type": "branch",
+          "condition": "$input.mode == \"fast\"",
+          "then": [ { "name": "take-fast", "type": "map", "input": "$input.fastLabel", "output": "$picked" } ],
+          "else": [ { "name": "take-slow", "type": "map", "input": "$input.slowLabel", "output": "$picked" } ]
+        },
+        { "name": "return-picked", "type": "return", "value": "$picked" }
+      ]
+    },
+    {
+      "name": "PhasedLineQuantityUpdate",
+      "concept": "WidgetOrderLine",
+      "steps": [
+        { "name": "validate-line", "type": "invariantCheck", "phase": "pre", "scope": "WidgetOrderLine", "invariants": [ "PositiveQuantity" ] },
+        { "name": "apply-quantity", "type": "updateConcept", "scope": "WidgetOrderLine", "input": "$input", "output": "$updatedLine" },
+        { "name": "return-line", "type": "return", "value": "$updatedLine" }
+      ]
+    },
+    {
+      "name": "ShortTimeoutApproval",
+      "concept": "WidgetOrder",
+      "steps": [
+        {
+          "name": "await-quick-approval",
+          "type": "awaitEvent",
+          "awaitEvent": "WidgetOrderManagerApproved",
+          "match": { "correlation": true },
+          "awaitRef": "quickApproval",
+          "timeout": 3,
+          "onTimeout": [ { "name": "escalate-quick", "type": "emitEvent", "event": "WidgetOrderApprovalEscalated", "payload": "$input" } ]
+        },
+        { "name": "return-quick", "type": "return", "value": "$input" }
+      ]
+    },
+    {
+      "name": "DelayedReminderDemo",
+      "concept": "WidgetOrder",
+      "steps": [
+        { "name": "remind-seconds", "type": "scheduleEvent", "event": "WidgetOrderReviewDue", "from": "$input", "delaySeconds": 2 },
+        { "name": "return-delayed", "type": "return", "value": "$input" }
+      ]
+    },
+    {
+      "name": "DelayedReminderMsDemo",
+      "concept": "WidgetOrder",
+      "steps": [
+        { "name": "remind-ms", "type": "scheduleEvent", "event": "WidgetOrderReviewDue", "from": "$input", "delayMs": 2000 },
+        { "name": "return-delayed-ms", "type": "return", "value": "$input" }
+      ]
+    },
+    {
+      "name": "DelayedReminderMinutesDemo",
+      "concept": "WidgetOrder",
+      "steps": [
+        { "name": "remind-minutes", "type": "scheduleEvent", "event": "WidgetOrderReviewDue", "from": "$input", "delayMinutes": 30 },
+        { "name": "return-delayed-minutes", "type": "return", "value": "$input" }
+      ]
+    },
+    {
+      "name": "MinuteHeartbeat",
+      "concept": "WidgetCatalogEntry",
+      "schedule": { "cron": "0 * * * * *", "tenantScope": ["dev"] },
+      "steps": [
+        { "name": "tick", "type": "emitEvent", "event": "HeartbeatTick", "payload": "$input" },
+        { "name": "return-tick", "type": "return", "value": "$input" }
+      ]
+    },
+    {
+      "name": "MinuteHeartbeatOtherTenant",
+      "concept": "WidgetCatalogEntry",
+      "schedule": { "cron": "0 * * * * *", "tenantScope": "tenant-that-does-not-exist" },
+      "steps": [
+        { "name": "tick-other", "type": "emitEvent", "event": "HeartbeatTickOtherTenant", "payload": "$input" },
+        { "name": "return-tick-other", "type": "return", "value": "$input" }
       ]
     }
   ]

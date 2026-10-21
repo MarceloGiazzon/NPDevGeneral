@@ -4622,7 +4622,7 @@ def _jdbc_url_for_verify(engine_key: str, app_root: Path, database: dict) -> str
         return f"jdbc:sqlserver://{host}:{port};databaseName={db_name};encrypt=true;trustServerCertificate=true"
     if engine_key == "h2server":
         return (f"jdbc:h2:tcp://{host}:{port}/./data/{db_name};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;"
-                f"DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0")
+                f"DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0;RETENTION_TIME=0")
     if engine_key == "h2local":
         # "./data/..." is resolved against the JVM's OWN working directory (PORT-1) -- the caller
         # below launches SchemaVerifyMain with cwd=app_root, exactly as a real boot does, so this
@@ -4636,7 +4636,7 @@ def _jdbc_url_for_verify(engine_key: str, app_root: Path, database: dict) -> str
         # FALSE"); AUTO_SERVER's own TCP-server lifecycle is what DB_CLOSE_ON_EXIT=FALSE used to
         # protect, so this reverts to H2's default (DB_CLOSE_ON_EXIT=TRUE).
         return (f"jdbc:h2:file:./data/{db_name};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;"
-                f"WRITE_DELAY=0;AUTO_SERVER=TRUE")
+                f"WRITE_DELAY=0;RETENTION_TIME=0;AUTO_SERVER=TRUE")
     return None
 
 

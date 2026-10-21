@@ -53,16 +53,31 @@ class MigrationClaimStoreLegacyTableShapeTest {
                     + " (claim_key TEXT PRIMARY KEY, instance_id TEXT NOT NULL, hostname TEXT, "
                     + "claimed_at_utc BIGINT NOT NULL)";
 
+    /**
+     * REG-271: {@code currentShapeIsUnaffected} deliberately contends a second claim against a held one,
+     * which waits out {@code npdev.schema.lock.waitSeconds} (production default 300 s) before refusing.
+     * A 1 s budget proves the same refusal; the production default is untouched.
+     */
+    private static final String WAIT_SECONDS_PROPERTY = "npdev.schema.lock.waitSeconds";
+
     private DataSource dataSource;
+    private String previousWaitSeconds;
 
     @BeforeEach
     void setUp() {
+        previousWaitSeconds = System.getProperty(WAIT_SECONDS_PROPERTY);
+        System.setProperty(WAIT_SECONDS_PROPERTY, "1");
         String url = "jdbc:h2:mem:" + getClass().getSimpleName() + System.nanoTime() + ";DB_CLOSE_DELAY=-1";
         dataSource = new UrlDataSource(url);
     }
 
     @AfterEach
     void tearDown() throws SQLException {
+        if (previousWaitSeconds == null) {
+            System.clearProperty(WAIT_SECONDS_PROPERTY);
+        } else {
+            System.setProperty(WAIT_SECONDS_PROPERTY, previousWaitSeconds);
+        }
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("DROP ALL OBJECTS");
         }

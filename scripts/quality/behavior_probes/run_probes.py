@@ -30,7 +30,10 @@ key issued by an earlier step); `expect.headers` ({"Content-Type": "application/
 substrings. LIVE-1: a step may set "auth": "superUser" (sends X-Super-User-Key from env NPDEV_PROBE_SUPER_USER_KEY)
 and "reloadRevision": {"file": "<f>.json", "revision": "<name>"} (the body becomes {"modelPath": <scratch copy of the
 sample's Input/ with that revision's addField/removeField ops applied>}, see model-revisions/); json rule op
-{"contains": x} checks list/string/dict membership. Exit code is 0 only when every probe is green.
+{"contains": x} checks list/string/dict membership. A step may carry "retry": {"attempts": N, "delaySeconds": S}: it is re-sent until its expectations hold (for asynchronous effects such as a
+scheduler tick); the last attempt's result is the one reported. Json rule ops also include {"secondsFromNow": [lo, hi]} (an ISO timestamp lo..hi seconds ahead) and a `[??k=v]` path selector
+that returns every matching array element (count them with {"len": n}). A step may send "multipart": {"fields": {...}, "file": {"field",
+"filename", "contentType", "content" | "repeatBytes"}} instead of a JSON body. Exit code is 0 only when every probe is green.
 """
 from __future__ import annotations
 
@@ -39,6 +42,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -50,16 +54,24 @@ PLACEHOLDER = re.compile(r"\$\{([A-Za-z0-9_.-]+)\}")
 
 def resolve_path(doc, path: str):
     """Minimal JSONPath: $.a.b[0].c ; returns (found, value). `[?key=value]` selects the first array
-    element whose `key` equals `value` (string compare), e.g. $.concepts[?conceptName=WidgetOrder].declaredLevel."""
+    element whose `key` equals `value` (string compare), e.g. $.concepts[?conceptName=WidgetOrder].declaredLevel;
+    several `&`-joined conditions must all hold: $.items[?concept=X&fieldPath=state&value=Draft].order."""
     if path in ("$", ""):
         return True, doc
     cur = doc
     for part in re.findall(r"\[\?[^\]]*\]|[^.\[\]]+|\[\d+\]", path.lstrip("$").lstrip(".")):
-        if part.startswith("[?"):
-            key, _, want = part[2:-1].partition("=")
+        if part.startswith("[??"):
+            # [??k=v&k2=v2] selects EVERY matching element (a list), so {"len": n} can count them
+            conds = [c.partition("=") for c in part[3:-1].split("&")]
             if not isinstance(cur, list):
                 return False, None
-            matches = [item for item in cur if isinstance(item, dict) and str(item.get(key)) == want]
+            cur = [item for item in cur if isinstance(item, dict) and all(str(item.get(k)) == w for k, _, w in conds)]
+        elif part.startswith("[?"):
+            conds = [c.partition("=") for c in part[2:-1].split("&")]
+            if not isinstance(cur, list):
+                return False, None
+            matches = [item for item in cur if isinstance(item, dict)
+                       and all(str(item.get(k)) == w for k, _, w in conds)]
             if not matches:
                 return False, None
             cur = matches[0]
@@ -148,6 +160,20 @@ class Probe:
             return {k: self.subst(v) for k, v in value.items()}
         return value
 
+    def build_multipart(self, mp: dict, boundary: str) -> bytes:
+        crlf = "\r\n"
+        chunks: list[bytes] = []
+        for key, val in (mp.get("fields") or {}).items():
+            chunks.append(f'--{boundary}{crlf}Content-Disposition: form-data; name="{key}"{crlf}{crlf}{self.subst(val)}{crlf}'.encode("utf-8"))
+        if mp.get("file"):
+            f = mp["file"]
+            payload = b"x" * int(f["repeatBytes"]) if f.get("repeatBytes") else str(self.subst(f.get("content", ""))).encode("utf-8")
+            head = (f'--{boundary}{crlf}Content-Disposition: form-data; name="{f.get("field", "file")}"; filename="{f.get("filename", "a.bin")}"{crlf}'
+                    f'Content-Type: {f.get("contentType", "application/octet-stream")}{crlf}{crlf}')
+            chunks.append(head.encode("utf-8") + payload + crlf.encode("utf-8"))
+        chunks.append(f"--{boundary}--{crlf}".encode("utf-8"))
+        return b"".join(chunks)
+
     def call(self, step: dict):
         method = step.get("method", "GET").upper()
         url = self.base_url + self.subst(step["path"])
@@ -169,7 +195,14 @@ class Probe:
             # that revision of the sample's model (see materialize_revision) and POST its path as the reload body.
             rev = step["reloadRevision"]
             step = {**step, "body": {"modelPath": materialize_revision(self.sample_dir, rev["file"], rev["revision"])}}
-        if "body" in step:
+        if "multipart" in step:
+            # {"multipart": {"fields": {"k": "v"}, "file": {"field": "file", "filename": "a.pdf", "contentType":
+            # "application/pdf", "content": "text or ${placeholder}", "repeatBytes": 0}}} -- one multipart/form-data
+            # body; "repeatBytes": n makes the file n bytes of "x" (for size-limit probes) instead of "content".
+            boundary = "----enf1" + uuid.uuid4().hex
+            data = self.build_multipart(step["multipart"], boundary)
+            headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
+        elif "body" in step:
             data = json.dumps(self.subst(step["body"])).encode("utf-8")
             headers["Content-Type"] = "application/json"
         request = urllib.request.Request(url, data=data, method=method, headers=headers)
@@ -187,9 +220,22 @@ class Probe:
             return []
         return [str(self.subst(v)) for v in (value if isinstance(value, list) else [value])]
 
+    @staticmethod
+    def seconds_from_now_in_range(value, bounds) -> bool:
+        """{"secondsFromNow": [lo, hi]}: an ISO-8601 timestamp that lies lo..hi seconds after the moment of the check."""
+        try:
+            stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            delta = (stamp - datetime.now(timezone.utc)).total_seconds()
+            return float(bounds[0]) <= delta <= float(bounds[1])
+        except (ValueError, TypeError, IndexError):
+            return False
+
     def check_json(self, doc, rules: dict) -> list[str]:
         problems = []
         for path, want in rules.items():
+            path = self.subst(path)
             found, got = resolve_path(doc, path)
             want = self.subst(want) if not isinstance(want, dict) else want
             if isinstance(want, dict) and len(want) == 1:
@@ -209,17 +255,47 @@ class Probe:
                     problems.append(f"{path}: {got!r} not > {arg}")
                 elif op == "contains" and (not hasattr(got, "__contains__") or self.subst(arg) not in got):
                     problems.append(f"{path}: {got!r} does not contain {arg!r}")
+                elif op == "secondsFromNow" and not self.seconds_from_now_in_range(got, arg):
+                    problems.append(f"{path}: {got!r} is not within {arg} seconds from now")
                 elif op == "len" and (not hasattr(got, "__len__") or len(got) != arg):
                     problems.append(f"{path}: length {len(got) if hasattr(got, '__len__') else '?'} != {arg}")
                 elif op == "distinctFrom" and got == self.saved.get(arg):
                     problems.append(f"{path}: {got!r} equals saved {arg!r}, wanted distinct")
-                elif op not in ("exists", "matches", "not", "in", "gt", "len", "distinctFrom", "contains"):
+                elif op not in ("exists", "matches", "not", "in", "gt", "len", "distinctFrom", "contains", "secondsFromNow"):
                     problems.append(f"{path}: unknown operator {op}")
             elif not found:
                 problems.append(f"{path}: missing, wanted {want!r}")
             elif got != want:
                 problems.append(f"{path}: {got!r} != {want!r}")
         return problems
+
+    def step_problems(self, step: dict, label: str, status: int, body: str) -> list[str]:
+        """Every unmet expectation of one executed step (empty list = the step passed)."""
+        failures: list[str] = []
+        doc = None
+        try:
+            doc = json.loads(body) if body.strip() else None
+        except ValueError:
+            pass
+        expect = step.get("expect")
+        if expect is not None:
+            want = expect.get("status")
+            if want is not None and status not in (want if isinstance(want, list) else [want]):
+                failures.append(f"{label}: status {status}, wanted {want}; body {body[:300]!r}")
+            for text in self.as_list(expect.get("text")):
+                if text not in body:
+                    failures.append(f"{label}: body lacks {text!r}; body {body[:300]!r}")
+            for text in self.as_list(expect.get("notText")):
+                if text in body:
+                    failures.append(f"{label}: body must not contain {text!r}")
+            # REP-1: expect.headers = {"Content-Type": "application/pdf"} -- each value must be a substring
+            for name, fragment in (expect.get("headers") or {}).items():
+                got = getattr(self, "last_headers", {}).get(name.lower(), "")
+                if str(self.subst(fragment)) not in got:
+                    failures.append(f"{label}: header {name} is {got!r}, wanted it to contain {fragment!r}")
+            if "json" in expect:
+                failures += [f"{label}: {p}" for p in self.check_json(doc, expect["json"])]
+        return failures
 
     def run(self) -> dict:
         failures: list[str] = []
@@ -235,8 +311,15 @@ class Probe:
             if failures and not (step.get("always") or step.get("stopOnFail") is False):
                 continue  # an earlier step failed: only cleanup steps ("always": true) still run
             label = f"step {index} ({step.get('name', step.get('path'))})"
+            retry = step.get("retry") or {}
+            attempts = max(1, int(retry.get("attempts", 1)))
             try:
-                status, body = self.call(step)
+                for attempt in range(attempts):
+                    status, body = self.call(step)
+                    if attempt + 1 < attempts and self.step_problems(step, label, status, body):
+                        time.sleep(float(retry.get("delaySeconds", 5)))
+                        continue
+                    break
             except Exception as exc:  # noqa: BLE001 - a probe reports, never crashes the run
                 failures.append(f"{label}: {exc}")
                 break
@@ -247,24 +330,7 @@ class Probe:
                 doc = json.loads(body) if body.strip() else None
             except ValueError:
                 pass
-            expect = step.get("expect")
-            if expect is not None:
-                want = expect.get("status")
-                if want is not None and status not in (want if isinstance(want, list) else [want]):
-                    failures.append(f"{label}: status {status}, wanted {want}; body {body[:300]!r}")
-                for text in self.as_list(expect.get("text")):
-                    if text not in body:
-                        failures.append(f"{label}: body lacks {text!r}; body {body[:300]!r}")
-                for text in self.as_list(expect.get("notText")):
-                    if text in body:
-                        failures.append(f"{label}: body must not contain {text!r}")
-                # REP-1: expect.headers = {"Content-Type": "application/pdf"} -- each value must be a substring
-                for name, fragment in (expect.get("headers") or {}).items():
-                    got = getattr(self, "last_headers", {}).get(name.lower(), "")
-                    if str(self.subst(fragment)) not in got:
-                        failures.append(f"{label}: header {name} is {got!r}, wanted it to contain {fragment!r}")
-                if "json" in expect:
-                    failures += [f"{label}: {p}" for p in self.check_json(doc, expect["json"])]
+            failures += self.step_problems(step, label, status, body)
             for name, path in (step.get("save") or {}).items():
                 found, value = resolve_path(doc, path)
                 if found:

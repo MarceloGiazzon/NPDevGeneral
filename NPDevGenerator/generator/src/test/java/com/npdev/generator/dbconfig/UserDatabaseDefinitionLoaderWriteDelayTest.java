@@ -31,6 +31,8 @@ class UserDatabaseDefinitionLoaderWriteDelayTest {
         GeneratedDatabasePlan plan = new UserDatabaseDefinitionLoader().load(definitionPath, null);
 
         assertTrue(plan.jdbcUrl().contains(";WRITE_DELAY=0"), plan.jdbcUrl());
+        // REG-272: without this, one chunk per commit is retained for 45 s and the file grows ~33 KB/row.
+        assertTrue(plan.jdbcUrl().contains(";RETENTION_TIME=0"), plan.jdbcUrl());
     }
 
     @Test
@@ -49,6 +51,8 @@ class UserDatabaseDefinitionLoaderWriteDelayTest {
         GeneratedDatabasePlan plan = new UserDatabaseDefinitionLoader().load(definitionPath, null);
 
         assertTrue(plan.jdbcUrl().contains(";WRITE_DELAY=0"), plan.jdbcUrl());
+        // REG-272: without this, one chunk per commit is retained for 45 s and the file grows ~33 KB/row.
+        assertTrue(plan.jdbcUrl().contains(";RETENTION_TIME=0"), plan.jdbcUrl());
     }
 
     private static Path writeDefinition(Path tempDir, String json) throws Exception {

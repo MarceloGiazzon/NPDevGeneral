@@ -1,0 +1,19 @@
+id: REG-273
+title: >-
+  Field minLength, array minItems/maxItems/uniqueItems/itemIdentityField/duplicationPolicy and nested object-property constraints are accepted by the schema and never enforced on write
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-21
+closed: null
+source: >-
+  ENF-1 behaviour probes (ed-field-minlength-enforced, ed-array-limits-and-identity-enforced, ed-object-property-schema-enforced in NPDevSamples/dsl-conformance-max/behavior-probes/80-enforcement-demo.json), each carrying knownFailure REG-273.
+surface: NPDevKernel/adapters/runtime-support/.../CrudSchemaValidationSupport.java (validateArraySchemaValue, validateObjectSchemaValue, validateFieldTypesAndReferences) and NPDevContract/dsl/.../compiled/FieldValueConstraints.java
+detail: |
+  On WidgetEnforcementDemo (dsl-conformance-max) every one of these is stored with 201: shortName "ab" against minLength 3; tags [] / four tags / ["red","red"] against minItems 1, maxItems 3, uniqueItems true;
+  two members sharing memberCode against itemIdentityField + duplicationPolicy deny; profile.nickname "toolongname" (maxLength 5), profile.level 12 (max 9) and profile.level "abc" (integer).
+  What IS enforced next to them: maxLength/min/max/precision/scale on top-level scalars (REG-254..256), enum membership including array items, required nested keys.
+  FieldValueConstraints covers maxLength but not minLength; validateArraySchemaValue only walks the items; validateObjectSchemaValue recurses into validateSchemaValue, whose scalar branch applies no constraints.
+resolution: >-
+  Apply minLength in FieldValueConstraints, add the array limits and identity/duplication checks to validateArraySchemaValue, and run the scalar FieldValueConstraints rules (and type checks) for nested
+  object properties; then remove knownFailure from the three probes.
