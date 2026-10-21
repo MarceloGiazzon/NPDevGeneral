@@ -6,6 +6,7 @@ import com.npdev.kernel.ports.TraceQuery;
 import com.npdev.kernel.ports.TraceSummaryStore;
 import com.npdev.kernel.ports.TraceStore;
 import com.npdev.kernel.trace.FlowTrace;
+import com.npdev.kernel.trace.FlowTraceMerge;
 import com.npdev.kernel.trace.StepOutcome;
 import com.npdev.kernel.trace.TraceSummary;
 
@@ -25,6 +26,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 public class JdbcTraceStore implements TraceStore, TraceSummaryStore {
+    private static final System.Logger LOG = System.getLogger(JdbcTraceStore.class.getName());
+
     private final DataSource dataSource;
     private final ObjectMapper objectMapper;
     private final SqlDialect dialect;
@@ -53,9 +56,15 @@ public class JdbcTraceStore implements TraceStore, TraceSummaryStore {
     }
 
     @Override
-    public void save(FlowTrace trace) {
-        Objects.requireNonNull(trace, "trace");
-        String executionId = trace.meta().executionId();
+    public void save(FlowTrace incoming) {
+        Objects.requireNonNull(incoming, "trace");
+        String executionId = incoming.meta().executionId();
+        // FLOW-1: a resumed or retried flow saves a new segment under the same executionId. Merge
+        // it into the stored trace (see FlowTraceMerge) rather than overwriting, so the steps run
+        // before the flow parked and the original start time survive the resume. The read and the
+        // write below use separate connections; a flow instance is claimed by one resumer at a
+        // time, so two segments of one execution are never saved concurrently.
+        FlowTrace trace = FlowTraceMerge.merge(existingOrNull(executionId), incoming);
         String flowName = trace.meta().flowName();
         String correlationId = trace.meta().correlationId();
         String tenantId = trace.meta().tenantId();
@@ -115,6 +124,20 @@ public class JdbcTraceStore implements TraceStore, TraceSummaryStore {
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed saving trace for executionId=" + executionId, exception);
+        }
+    }
+
+    /** The stored trace, or null when there is none or it cannot be read (the new trace then wins). */
+    private FlowTrace existingOrNull(String executionId) {
+        try {
+            return findByExecutionId(executionId).orElse(null);
+        } catch (IllegalStateException unreadable) {
+            // Tracing is observability: an unreadable stored trace must not stop the flow's own save, so the
+            // incoming segment is stored alone -- but say so, because the earlier segments are then lost.
+            LOG.log(System.Logger.Level.WARNING,
+                    "Stored trace for executionId=" + executionId + " is unreadable; saving the new segment alone",
+                    unreadable);
+            return null;
         }
     }
 

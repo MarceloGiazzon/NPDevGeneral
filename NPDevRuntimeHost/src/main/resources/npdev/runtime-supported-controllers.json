@@ -62,6 +62,7 @@
     "CrossTenantGovernanceService",
     "DynamicCapabilityHandler",
     "ExecutionMonitorService",
+  "FlowAnalytics",
     "FileRuntimePluginExecutionSummaryStore",
     "GenericMountedCapabilityHandler",
     "PanelRuntime",

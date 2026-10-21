@@ -177,6 +177,30 @@ class SupportedCoreControllerBlackBoxStandaloneTest {
     }
 
     @Test
+    void executionMonitorAnalyticsRouteForwardsFiltersAndMapsForbidden() throws Exception {
+        ExecutionMonitorService service = Mockito.mock(ExecutionMonitorService.class);
+        RuntimeContextService runtimeContextService = Mockito.mock(RuntimeContextService.class);
+        when(runtimeContextService.currentContext(any()))
+                .thenReturn(ExecutionContext.of("dev", "operator").withRoles(Set.of("USER")));
+        when(service.analytics(eq("Order"), eq("1000"), eq("2000"), eq(null), any())).thenReturn(Map.of(
+                "mode", "analytics", "executionCount", 3));
+        when(service.analytics(any(), any(), any(), eq("other"), any())).thenThrow(new SecurityException("forbidden"));
+        when(service.analytics(any(), eq("nope"), any(), any(), any())).thenThrow(new IllegalArgumentException("from must be a time"));
+
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
+                new ExecutionMonitorController(service, runtimeContextService)
+        ).build();
+
+        mockMvc.perform(get("/api/v1/executions/analytics").param("flow", "Order").param("from", "1000").param("to", "2000"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.executionCount").value(3));
+        mockMvc.perform(get("/api/executions/analytics").param("tenant", "other"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/executions/analytics").param("from", "nope"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void runtimeSchedulesExposeListAndProcessDueOperations() throws Exception {
         GeneratedCrudRuntimeSupport runtimeSupport = Mockito.mock(GeneratedCrudRuntimeSupport.class);
         when(runtimeSupport.listScheduledEvents(50, 5))

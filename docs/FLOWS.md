@@ -697,6 +697,31 @@ plus `STUCK` executions. The generated **NPDev > Executions** page
 (`/npdev-business-ui/ops/executions.html`, super-user section of the shell) drives all of it:
 tenant box, a table, and Retry / Cancel / Unstick buttons per row.
 
+**Flow analytics (FLOW-1): where the time goes.** `GET /api/executions/analytics?flow=&from=&to=&tenant=`
+(any caller allowed to read traces; `from`/`to` bound the execution START, epoch millis or ISO-8601)
+returns counts by outcome (`OK` / `FAILED` / `WAITING`), median and p95 duration per flow and per
+step, the time spent waiting (`humanWait`), and `bottlenecks[]` ranked by median step time **including
+waits**. It is computed in Java over the viewer's own tenant-scoped, redacted traces: no new table, no
+new SQL. A viewer sees their own tenant; naming another tenant with `tenant=` is **SUPERUSER only** and
+is `403` for everyone else (it never silently falls back to the caller's own tenant). Definitions: a
+step's *service time* is `endedAt - startedAt`; its *wait* is `info.waitedMs`; *elapsed* is the sum;
+median is the middle sample (mean of the two middles when even), p95 is nearest-rank
+`sorted[ceil(0.95 n) - 1]`. A step the flow is still parked on is a live `waiting` count, never a duration
+sample. The **Analytics** tab of the Executions page draws the per-flow step diagram (counts per step,
+the slowest step outlined) and the ranking.
+
+*Why the trace now carries waits:* the kernel builds a fresh step list for every segment of an
+execution (first run, resume after a wait, operator retry), and the trace stores used to overwrite by
+execution id, so a resumed flow kept only its last segment and its start time was the resume time.
+Both stores (`JdbcTraceStore`, and the in-memory `InProcExecutionTracer`, the default) now **merge on
+save** (`FlowTraceMerge`): steps before the resume point are kept, the parked step is replaced (not
+duplicated) by the step that completed it with `waitStartedAtEpochMs` / `waitedMs` recorded, an
+operator retry replaces the failed step and counts `stepAttempts`, and the trace starts at the
+FIRST segment. A trace's `meta.tags` carry `startStepIndex`, `resumed` and `segments`. To see it with
+real numbers, boot a sample and run `python scripts/quality/flow_analytics_proof.py seed ...`, then
+`verify` (compares every endpoint number to a recomputation from raw `/api/v1/traces`) and `tenancy`
+(cross-tenant probe).
+
 **Two things to know before you reach for these:**
 
 - **They need DIFFERENT credentials today, which is a wart, not a design.** `unstick` is

@@ -691,6 +691,10 @@
     "scripts/quality/behavior_probes/run_probes.py": {
       "invocation": "orchestrated"
     },
+    "scripts/quality/flow_analytics_proof.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "docs/FLOWS.md"
+    },
     "scripts/quality/run-journeys.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"

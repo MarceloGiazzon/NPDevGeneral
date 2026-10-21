@@ -622,6 +622,37 @@ public class KernelFacade {
         return rows;
     }
 
+    /**
+     * FLOW-1: trace search for ONE EXPLICIT tenant, which may differ from the requester's own -- the
+     * flow-analytics endpoint's SUPERUSER path (the super-key lives under tenant {@code __system__}, so
+     * the tenant-forced {@link #searchTraces} would show it nothing). Same contract as
+     * {@link #listAttentionExecutions}: the controller has ALREADY required SUPERUSER, this method does
+     * no authorization of its own, and writes an audit row naming the tenant it read. Rows are still
+     * redacted for the requester like every other trace read.
+     */
+    public List<FlowTrace> searchTracesForTenant(TraceQuery query, String tenantId, ExecutionContext requesterContext) {
+        ExecutionContext requester = normalizeContext(requesterContext);
+        ExecutionContext redactionContext = redactionContextFor(requester);
+        TraceQuery effective = query == null ? TraceQuery.empty() : query;
+        TraceQuery scopedQuery = new TraceQuery(
+                effective.correlationId(),
+                effective.flowName(),
+                effective.status(),
+                effective.fromEpochMs(),
+                effective.toEpochMs(),
+                effective.limit(),
+                effective.offset(),
+                tenantId,
+                effective.actorId()
+        );
+        List<FlowTrace> rows = traceStore.search(scopedQuery).stream()
+                .map(trace -> traceRedactionPolicy.redact(trace, redactionContext))
+                .toList();
+        audit(requester, "ADMIN_SEARCH_TRACES", "TRACE", "<query>", OUTCOME_ALLOW, "ok",
+                Map.of("tenant", safe(tenantId), "count", String.valueOf(rows.size())));
+        return rows;
+    }
+
     public List<TraceSummary> searchTraceSummaries(TraceQuery query, ExecutionContext requesterContext) {
         long startedAtMs = System.currentTimeMillis();
         ExecutionContext requester = normalizeContext(requesterContext);

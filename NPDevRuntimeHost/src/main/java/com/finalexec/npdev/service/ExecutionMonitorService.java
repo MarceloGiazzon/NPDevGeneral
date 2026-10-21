@@ -5,9 +5,13 @@ import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.exec.ExecutionSummary;
 import com.npdev.kernel.execution.FlowInstance;
 import com.npdev.kernel.execution.FlowInstanceStatus;
+import com.npdev.kernel.ports.TraceQuery;
+import com.npdev.kernel.trace.FlowTrace;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -214,6 +218,93 @@ public class ExecutionMonitorService {
         response.put("attentionCount", items.size());
         response.put("items", items);
         return response;
+    }
+
+    /** FLOW-1: how many traces one analytics request will read before it reports {@code truncated}. */
+    static final int ANALYTICS_MAX_TRACES = 20_000;
+    private static final int ANALYTICS_PAGE = 1000;
+
+    /**
+     * FLOW-1: where the time goes -- counts by outcome, median/p95 duration per flow and per step, time
+     * spent waiting (resumed human/event waits), and a ranked list of bottleneck steps. Computed in
+     * Java by {@link FlowAnalytics} over the viewer's own tenant-scoped, redacted traces
+     * ({@code KernelFacade.searchTraces}); no new SQL.
+     *
+     * <p>Authorization: any caller who may read traces sees THEIR tenant. Naming a different tenant is
+     * the SUPERUSER path (the super-key lives under {@code __system__}), which goes through
+     * {@code KernelFacade.searchTracesForTenant}; anyone else gets a {@link SecurityException} (403) --
+     * never a silent fall back to their own tenant, which would hand the caller the wrong data.
+     *
+     * @param from inclusive lower bound on the execution's START, epoch millis or ISO-8601 instant
+     * @param to   inclusive upper bound on the execution's START, same formats
+     */
+    public Map<String, Object> analytics(
+            String flowName,
+            String from,
+            String to,
+            String tenant,
+            ExecutionContext requesterContext
+    ) {
+        Long fromMs = parseInstant("from", from);
+        Long toMs = parseInstant("to", to);
+        if (fromMs != null && toMs != null && fromMs > toMs) {
+            throw new IllegalArgumentException("from must not be after to");
+        }
+        String requesterTenant = canonicalTenant(requesterContext == null ? null : requesterContext.tenantId());
+        String requestedTenant = tenant == null || tenant.isBlank() ? requesterTenant : canonicalTenant(tenant);
+        boolean crossTenant = !requestedTenant.equals(requesterTenant);
+        if (crossTenant && (requesterContext == null || !requesterContext.hasRole("SUPERUSER"))) {
+            throw new SecurityException("forbidden");
+        }
+        String flowFilter = flowName == null || flowName.isBlank() ? null : flowName.trim();
+
+        List<FlowTrace> traces = new ArrayList<>();
+        boolean truncated = false;
+        for (int offset = 0; ; offset += ANALYTICS_PAGE) {
+            TraceQuery query = new TraceQuery(null, flowFilter, null, fromMs, toMs, ANALYTICS_PAGE, offset);
+            List<FlowTrace> page = crossTenant
+                    ? kernelFacade.searchTracesForTenant(query, requestedTenant, requesterContext)
+                    : kernelFacade.searchTraces(query, requesterContext);
+            traces.addAll(page);
+            if (page.size() < ANALYTICS_PAGE) {
+                break;
+            }
+            if (traces.size() >= ANALYTICS_MAX_TRACES) {
+                truncated = true;
+                break;
+            }
+        }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("surfaceName", "Execution Monitor");
+        response.put("mode", "analytics");
+        response.put("tenant", requestedTenant);
+        response.put("flow", flowFilter == null ? "" : flowFilter);
+        response.put("from", fromMs);
+        response.put("to", toMs);
+        response.put("generatedAtEpochMs", System.currentTimeMillis());
+        response.put("truncated", truncated);
+        response.put("scanLimit", ANALYTICS_MAX_TRACES);
+        response.putAll(FlowAnalytics.compute(traces));
+        return response;
+    }
+
+    private static String canonicalTenant(String tenantId) {
+        return tenantId == null || tenantId.isBlank() ? "default" : tenantId.trim();
+    }
+
+    private static Long parseInstant(String name, String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        try {
+            return trimmed.chars().allMatch(Character::isDigit)
+                    ? Long.valueOf(trimmed)
+                    : Instant.parse(trimmed).toEpochMilli();
+        } catch (NumberFormatException | DateTimeParseException invalid) {
+            throw new IllegalArgumentException(name + " must be epoch milliseconds or an ISO-8601 instant");
+        }
     }
 
     private Map<String, Object> attentionCard(ExecutionSummary summary) {

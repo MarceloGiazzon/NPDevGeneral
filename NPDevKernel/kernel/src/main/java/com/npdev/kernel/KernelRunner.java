@@ -31,6 +31,7 @@ import com.npdev.kernel.procedures.ProcedureDefinition;
 import com.npdev.kernel.procedures.ProcedureExecutor;
 import com.npdev.kernel.schema.SchemaObject;
 import com.npdev.kernel.trace.FlowTrace;
+import com.npdev.kernel.trace.FlowTraceMerge;
 import com.npdev.kernel.trace.FlowTraceMeta;
 import com.npdev.kernel.trace.StepOutcome;
 import com.npdev.kernel.trace.StepTrace;
@@ -836,7 +837,7 @@ final EventBus eventBus;
         );
         flowInstanceStore.save(initialInstance);
 
-        return executeFlowInstanceTracked(flow, input, initialInstance, 0, traceId, effectiveContext);
+        return executeFlowInstanceTracked(flow, input, initialInstance, 0, traceId, effectiveContext, false);
     }
 
     @Override
@@ -939,7 +940,8 @@ final EventBus eventBus;
                 existing,
                 existing.currentStepIndex(),
                 existing.executionId(),
-                resumeContext
+                resumeContext,
+                true
         );
     }
 
@@ -1064,7 +1066,8 @@ final EventBus eventBus;
             FlowInstance initialInstance,
             int startStepIndex,
             String traceId,
-            ExecutionContext executionContext
+            ExecutionContext executionContext,
+            boolean resumed
     ) {
         Map<String, Object> state = new LinkedHashMap<>(initialInstance.state());
         String executionId = initialInstance.executionId();
@@ -1074,13 +1077,17 @@ final EventBus eventBus;
         long flowStartedAt = nowEpochMillis();
         int safeStartStepIndex = Math.max(0, startStepIndex);
 
+        // FLOW-1: "resumed" tells a trace store this segment CONTINUES an earlier one (resume after a
+        // WAITING step, operator retry) rather than starting the execution -- see FlowTraceMerge.
         FlowTraceMeta traceMeta = new FlowTraceMeta(
                 executionId,
                 correlationId,
                 flow.getName(),
                 initialInstance.tenantId(),
                 initialInstance.actorId(),
-                Map.of("startStepIndex", safeStartStepIndex)
+                resumed
+                        ? Map.of(FlowTraceMerge.START_STEP_INDEX_TAG, safeStartStepIndex, FlowTraceMerge.RESUMED_TAG, true)
+                        : Map.of(FlowTraceMerge.START_STEP_INDEX_TAG, safeStartStepIndex)
         );
         executionTracer.onFlowStart(traceMeta, flowStartedAt);
 
@@ -1498,10 +1505,11 @@ final EventBus eventBus;
             FlowInstance initialInstance,
             int startStepIndex,
             String traceId,
-            ExecutionContext executionContext
+            ExecutionContext executionContext,
+            boolean resumed
     ) {
         long startedAtMs = nowEpochMillis();
-        ExecutionResult result = executeFlowInstance(flow, input, initialInstance, startStepIndex, traceId, executionContext);
+        ExecutionResult result = executeFlowInstance(flow, input, initialInstance, startStepIndex, traceId, executionContext, resumed);
         long durationMs = nowEpochMillis() - startedAtMs;
         String outcome = FlowRunOutcomes.flowOutcomeTag(result.getStatus());
         FlowRunOutcomes.logFlowOutcome(flow.getName(), result, outcome, durationMs);
