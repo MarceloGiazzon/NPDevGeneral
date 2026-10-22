@@ -36,7 +36,9 @@ param(
     [string]$SampleId = "dsl-conformance-max",
     [int]$Port = 0,
     [int]$BootTimeoutSeconds = 300,
-    [string]$ReportPath = "scripts/reports/out/shell-scenarios-report.json"
+    [string]$ReportPath = "scripts/reports/out/shell-scenarios-report.json",
+    [switch]$ReuseBuild,
+    [string]$Only = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -104,6 +106,10 @@ if ($Port -le 0) {
 }
 $appRootFull = $sample.AppRoot
 
+if ($ReuseBuild) {
+    Info "ReuseBuild: skipping generate + build, booting what is already under $SampleId\Output\App"
+    $report.generate = New-StageResult -Status "skipped" -Message "ReuseBuild."
+} else {
 Write-Section "Generating $SampleId"
 $generateScript = Join-Path $repoRoot "NPDevSamples\scripts\generate-sample-app.ps1"
 & pwsh -NoProfile -File $generateScript -SampleId $SampleId | Out-Host
@@ -111,12 +117,16 @@ $generateExit = $LASTEXITCODE
 $report.generate = New-StageResult -Status ($(if ($generateExit -eq 0) { "passed" } else { "failed" })) -Message "Generator exit $generateExit."
 Write-JsonReport $report
 if ($generateExit -ne 0) { throw "Generation failed for $SampleId." }
+}
 
 Ensure-NpdevSampleApiKey -AppRoot $appRootFull
 
 $gradlew = Get-NPDevGradleWrapperExecutable $appRootFull
 Ensure-File -PathValue $gradlew -Label "Generated app Gradle wrapper"
 
+if ($ReuseBuild) {
+    $report.build = New-StageResult -Status "skipped" -Message "ReuseBuild."
+} else {
 Write-Section "Building $SampleId"
 $buildStdout = Join-Path $appRootFull "shell-scenarios-build.stdout.log"
 $buildStderr = Join-Path $appRootFull "shell-scenarios-build.stderr.log"
@@ -127,6 +137,7 @@ $report.build = New-StageResult -Status ($(if ($build.ExitCode -eq 0) { "passed"
 })
 Write-JsonReport $report
 if ($build.ExitCode -ne 0) { throw "Build failed for $SampleId." }
+}
 
 $process = $null
 $scrapCtx = $null
@@ -179,13 +190,15 @@ try {
         "workbench-verify-routine.json"           = @{}
         "longrunning-flow-verify-routine.json"    = @{ sku = "FLOW-SCENARIO-SKU-$runStamp"; name = "Flow Scenario Widget" }
         "permission-denied-verify-routine.json"   = @{ skuOwn = "DENIED-SCENARIO-OWNED-$runStamp"; skuOther = "DENIED-SCENARIO-OTHER-$runStamp" }
+        "mob2-offline-write-verify-routine.json"  = @{ code = "M$runStamp" }  # the field allows 16 characters; a longer code is (correctly) refused on replay
     }
     $routineOrder = @(
         "list-verify-routine.json",
         "detail-verify-routine.json",
         "workbench-verify-routine.json",
         "longrunning-flow-verify-routine.json",
-        "permission-denied-verify-routine.json"
+        "permission-denied-verify-routine.json",
+        "mob2-offline-write-verify-routine.json"
     )
     $routineDir = Join-Path $repoRoot "NPDevSamples\scripts\browser\browser-routines"
     $evidenceDir = Join-Path $sample.RunOutputRoot "browser"
@@ -203,6 +216,7 @@ try {
 
     $allGreen = $true
     foreach ($routineName in $routineOrder) {
+        if ($Only -ne "" -and $routineName -notlike "*$Only*") { continue }
         $routinePath = Join-Path $routineDir $routineName
         Ensure-File -PathValue $routinePath -Label "Browser routine"
         $name = [System.IO.Path]::GetFileNameWithoutExtension($routineName)
@@ -222,12 +236,15 @@ try {
             # apiKey reload), 404 (theme.css -- no custom theme, by design; a stray retried
             # /api/workspace_menus), 503 (/api/admin/promotion -- ControlPanel's own "no promotion
             # in progress" poll), 500 (/api/admin/packs/install-intents under this dev profile).
-            Assert-RoutineGreen -Result $result -Label $name -AllowConsoleErrorSubstrings @(
+            $allowedConsoleErrors = @(
                 "responded with a status of 401",
                 "responded with a status of 404",
                 "responded with a status of 503",
                 "responded with a status of 500"
-            ) | Out-Null
+            )
+            # MOB-2: this routine cuts the network on purpose, so Chrome logs every blocked fetch.
+            if ($routineName -like "mob2-*") { $allowedConsoleErrors += "net::ERR_INTERNET_DISCONNECTED" }
+            Assert-RoutineGreen -Result $result -Label $name -AllowConsoleErrorSubstrings $allowedConsoleErrors | Out-Null
         } catch {
             $routineStatus = "failed"
             $routineMessage = $_.Exception.Message

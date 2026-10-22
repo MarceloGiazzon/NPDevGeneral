@@ -1,0 +1,146 @@
+{
+  "scenarioName": "mob2-offline-write",
+  "targetPath": "/npdev-business-ui/",
+  "options": {
+    "headless": true,
+    "screenshots": "always",
+    "collectDomOnFailure": true,
+    "viewport": {
+      "width": 1400,
+      "height": 900
+    }
+  },
+  "steps": [
+    {
+      "action": "goto",
+      "url": "$targetUrl"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#apiKey",
+      "state": "visible"
+    },
+    {
+      "action": "fill",
+      "selector": "#apiKey",
+      "valueFromCredential": "apiKey"
+    },
+    {
+      "action": "reload"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#sideNav",
+      "state": "visible",
+      "label": "Signed in, shell nav rendered"
+    },
+    {
+      "action": "goto",
+      "url": "http://127.0.0.1:8099/npdev-business-ui/#concept-WidgetEnforcementDemo",
+      "label": "Open the offline-write concept (ui.offlineWrite)"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#concept-WidgetEnforcementDemo",
+      "state": "visible"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 800
+    },
+    {
+      "action": "setOffline",
+      "offline": true,
+      "label": "Cut the network for the whole browser context"
+    },
+    {
+      "action": "click",
+      "selector": "#concept-WidgetEnforcementDemo .panel-actions button:has-text(\"New\")",
+      "label": "Open the create form while offline"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 400
+    },
+    {
+      "action": "fill",
+      "selector": "#concept-WidgetEnforcementDemo [name=\"code\"]",
+      "valueFromVariable": "code"
+    },
+    {
+      "action": "evaluate",
+      "name": "set_tags",
+      "script": "(function(){var c=document.querySelector('#concept-WidgetEnforcementDemo [name=\"tags\"]'); c.value='[\"red\"]'; return c.value;})()",
+      "label": "tags needs at least one item (field constraint); the Tags widget keeps its rows in this hidden JSON control"
+    },
+    {
+      "action": "click",
+      "selector": "#concept-WidgetEnforcementDemo button:has-text(\"Create\")",
+      "label": "Submit while offline: the write is queued on this device"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": ".offline-banner.pending-sync",
+      "state": "visible",
+      "label": "The pending-sync banner appears"
+    },
+    {
+      "action": "assertTextContains",
+      "selector": ".offline-banner.pending-sync",
+      "text": "pending sync",
+      "label": "The queued change is shown as pending sync"
+    },
+    {
+      "action": "screenshot",
+      "name": "mob2_pending_banner"
+    },
+    {
+      "action": "setOffline",
+      "offline": false,
+      "label": "Restore the network: the page gets its online event and replays the queue"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 2500
+    },
+    {
+      "action": "assertCount",
+      "selector": ".offline-banner.pending-sync",
+      "operator": "=",
+      "count": 0,
+      "label": "The queue replayed: no pending-sync banner is left"
+    },
+    {
+      "action": "fill",
+      "selector": "#concept-WidgetEnforcementDemo .filters input[type=\"search\"]",
+      "valueFromVariable": "code",
+      "label": "Filter to just this run's record"
+    },
+    {
+      "action": "click",
+      "selector": "#concept-WidgetEnforcementDemo .filters button:has-text(\"Search\")"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 800
+    },
+    {
+      "action": "assertCount",
+      "selector": "#concept-WidgetEnforcementDemo tbody tr",
+      "operator": "=",
+      "count": 1,
+      "label": "The offline-created record reached the server exactly once"
+    },
+    {
+      "action": "screenshot",
+      "name": "mob2_synced"
+    },
+    {
+      "action": "collect",
+      "what": [
+        "console",
+        "pageErrors"
+      ]
+    }
+  ]
+}

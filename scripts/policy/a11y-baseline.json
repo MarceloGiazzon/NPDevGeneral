@@ -9,7 +9,7 @@
       "moderate": 0,
       "minor": 0,
       "ruleCount": 0,
-      "measuredOn": "2026-10-17T16:23:46.4670215Z"
+      "measuredOn": "2026-10-22T04:10:19.6975138Z"
     },
     "detail-verify-routine": {
       "critical": 0,
@@ -25,7 +25,7 @@
       "moderate": 0,
       "minor": 0,
       "ruleCount": 0,
-      "measuredOn": "2026-10-17T16:23:46.4670215Z"
+      "measuredOn": "2026-10-22T04:10:19.6975138Z"
     },
     "longrunning-flow-verify-routine": {
       "critical": 0,
@@ -33,7 +33,7 @@
       "moderate": 0,
       "minor": 0,
       "ruleCount": 0,
-      "measuredOn": "2026-10-17T16:23:46.4670215Z"
+      "measuredOn": "2026-10-22T04:10:19.6975138Z"
     },
     "permission-denied-verify-routine": {
       "critical": 0,
@@ -41,7 +41,15 @@
       "moderate": 0,
       "minor": 0,
       "ruleCount": 0,
-      "measuredOn": "2026-10-17T16:23:46.4670215Z"
+      "measuredOn": "2026-10-22T04:10:19.6975138Z"
+    },
+    "mob2-offline-write-verify-routine": {
+      "critical": 0,
+      "serious": 2,
+      "moderate": 0,
+      "minor": 0,
+      "ruleCount": 1,
+      "measuredOn": "2026-10-22T04:43:30.8561322Z"
     }
   }
 }
