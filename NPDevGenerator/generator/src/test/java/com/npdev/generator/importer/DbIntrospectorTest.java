@@ -196,4 +196,68 @@ class DbIntrospectorTest {
             assertFalse(result.model().has("aggregates"), "proposals are never applied to the model");
         }
     }
+
+    /** REG-280: a native ENUM column becomes an enum field with the values the type name lists. */
+    @Test
+    void aNativeEnumColumnBecomesAnEnumFieldWithItsValues() throws Exception {
+        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:reg280enum;DB_CLOSE_DELAY=-1")) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE FILM (FILM_ID INTEGER NOT NULL PRIMARY KEY, "
+                        + "RATING ENUM('G','PG','PG-13','R','NC-17') DEFAULT 'G', TITLE VARCHAR(50))");
+            }
+            DbIntrospector.Result result = DbIntrospector.introspect(connection, "PUBLIC", "legacy.film", "jdbc:h2:mem:reg280enum");
+            JsonNode rating = field(concept(result.model(), "Film"), "rating");
+            assertEquals("enum", rating.get("type").asText());
+            assertEquals(List.of("G", "PG", "PG-13", "R", "NC-17"),
+                    StreamSupport.stream(rating.get("enumValues").spliterator(), false).map(JsonNode::asText).toList());
+            assertEquals(0, result.report().get("unmappedColumns").size());
+            ModelAst ast = new JsonModelParser().parse(result.model());
+            assertTrue(new SemanticValidator().validate(ast).isEmpty(), "the drafted enum model validates");
+        }
+    }
+
+    @Test
+    void enumValuesAreParsedFromTheTypeNameOrNotAtAll() {
+        java.util.function.Function<String, List<String>> parse =
+                name -> DbIntrospector.enumValues(new DbIntrospector.Column("c", 1111, name, 0, 0, true, null));
+        assertEquals(List.of("a", "it's"), parse.apply("enum('a', 'it''s')"));
+        assertEquals(List.of("x"), parse.apply("ENUM ( 'x' )"));
+        assertEquals(null, parse.apply("ENUM"), "a bare ENUM carries no values");
+        assertEquals(null, parse.apply("ENUM()"));
+        assertEquals(null, parse.apply("ENUM('a','')"), "a blank value would fail the DSL's enum rules");
+        assertEquals(null, parse.apply("ENUM('a','A')"), "a duplicate value would fail the DSL's enum rules");
+        assertEquals(null, parse.apply("ENUM('a"), "an unterminated list is not guessed at");
+        assertEquals(null, parse.apply("VARCHAR(5)"));
+        assertEquals(null, parse.apply(null));
+    }
+
+    /** Audit columns (last_update, created_at ...) do not turn a pure link into an association-with-data. */
+    @Test
+    void auditColumnsDoNotMakeALinkTableCarryItsOwnData() throws Exception {
+        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:impauditlink;DB_CLOSE_DELAY=-1")) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE ACTOR (ACTOR_ID INTEGER NOT NULL PRIMARY KEY)");
+                statement.execute("CREATE TABLE FILM (FILM_ID INTEGER NOT NULL PRIMARY KEY)");
+                statement.execute("CREATE TABLE FILM_ACTOR (ACTOR_ID INTEGER NOT NULL, FILM_ID INTEGER NOT NULL, "
+                        + "LAST_UPDATE TIMESTAMP NOT NULL, CREATED_AT TIMESTAMP, PRIMARY KEY (ACTOR_ID, FILM_ID), "
+                        + "FOREIGN KEY (ACTOR_ID) REFERENCES ACTOR (ACTOR_ID), FOREIGN KEY (FILM_ID) REFERENCES FILM (FILM_ID))");
+                statement.execute("CREATE TABLE FILM_CAST (ACTOR_ID INTEGER NOT NULL, FILM_ID INTEGER NOT NULL, "
+                        + "BILLING INTEGER, LAST_UPDATE TIMESTAMP, PRIMARY KEY (ACTOR_ID, FILM_ID), "
+                        + "FOREIGN KEY (ACTOR_ID) REFERENCES ACTOR (ACTOR_ID), FOREIGN KEY (FILM_ID) REFERENCES FILM (FILM_ID))");
+            }
+            DbIntrospector.Result result = DbIntrospector.introspect(connection, "PUBLIC", "legacy.audit", "jdbc:h2:mem:impauditlink");
+            JsonNode proposals = result.report().get("linkTableProposals");
+            JsonNode pure = StreamSupport.stream(proposals.spliterator(), false)
+                    .filter(p -> "FILM_ACTOR".equals(p.get("table").asText())).findFirst().orElseThrow();
+            assertEquals("pureLink", pure.get("kind").asText());
+            assertEquals(List.of("lastUpdate", "createdAt"),
+                    StreamSupport.stream(pure.get("auditFieldsIgnored").spliterator(), false).map(JsonNode::asText).toList());
+            JsonNode cast = StreamSupport.stream(proposals.spliterator(), false)
+                    .filter(p -> "FILM_CAST".equals(p.get("table").asText())).findFirst().orElseThrow();
+            assertEquals("associationWithData", cast.get("kind").asText());
+            assertEquals(List.of("billing"),
+                    StreamSupport.stream(cast.get("extraFields").spliterator(), false).map(JsonNode::asText).toList());
+            assertTrue(field(concept(result.model(), "FilmActor"), "lastUpdate") != null, "audit fields stay in the model");
+        }
+    }
 }

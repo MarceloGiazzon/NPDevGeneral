@@ -48,4 +48,4 @@ resolution: >-
   Re-run npdev import score after each and record the new numbers here. IMP-2 itself (captions, enums, rule candidates,
   manual-port inventory) is done.
 note: >-
-  2026-10-22 owner rulings: the technology-neutrality name rule is now a warning (REG-281, done), so the importer keeps legacy names readable; a composite primary key gets a synthetic id plus a unique index on the original pair (done, DbIntrospectorTest). Still open: field-prefix rename policy, entity merging (human), REG-280 native ENUM columns.
+  2026-10-22 owner rulings: the technology-neutrality name rule is now a warning (REG-281, done), so the importer keeps legacy names readable; a composite primary key gets a synthetic id plus a unique index on the original pair (done, DbIntrospectorTest). REG-280 native ENUM columns are now enum fields (done); audit columns (last_update, created_at ...) no longer make a link table look like it carries data (Sakila film_actor and film_category are pureLink proposals, auditFieldsIgnored in the report). Still open: field-prefix rename policy, entity merging (human).
