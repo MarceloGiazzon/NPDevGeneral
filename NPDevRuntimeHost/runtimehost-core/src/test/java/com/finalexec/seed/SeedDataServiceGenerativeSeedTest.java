@@ -175,6 +175,45 @@ class SeedDataServiceGenerativeSeedTest {
         assertTrue(exception.getMessage().contains("both 'alias' and 'count'"), exception.getMessage());
     }
 
+    /** REG-276: the schema documents seed.id as the record's explicit id; a smart seed stored it under a random UUID. */
+    @Test
+    void aSmartSeedRecordIsStoredUnderItsDeclaredIdAndItsAliasBindsToThatId() {
+        String declaredId = "5eed0000-0000-4000-8000-000000000001";
+        String seedJson = """
+                {"id": "withid", "label": "WithId", "records": [
+                  {"concept": "Owner", "alias": "owner1", "id": "5eed0000-0000-4000-8000-000000000001", "data": {"name": "Fixed"}},
+                  {"concept": "Pet", "data": {"name": "Rex", "ownerId": "$ref:owner1"}},
+                  {"concept": "Pet", "data": {"name": "NoId"}}
+                ]}""";
+        FakeConceptGateway gateway = new FakeConceptGateway();
+
+        SeedDataService.SeedRunResult result = serviceFor(seedJson, gateway).run("withid", CONTEXT);
+
+        assertTrue(result.ok(), () -> "expected success, got: " + result.failureMessage());
+        assertEquals(declaredId, gateway.savedFor("Owner").get(0).id());
+        assertEquals(declaredId, gateway.savedFor("Pet").get(0).data().get("ownerId"), "the alias resolves to the declared id");
+        assertNotEquals(declaredId, gateway.savedFor("Pet").get(1).id());
+    }
+
+    @Test
+    void anExplicitIdWithCountOrRepeatOverIsRejected() {
+        String withCount = """
+                {"id": "bad3", "label": "Bad3", "records": [
+                  {"concept": "Item", "id": "5eed0000-0000-4000-8000-000000000002", "count": 2, "data": {"label": "x"}}
+                ]}""";
+        IllegalArgumentException countFailure = assertThrows(IllegalArgumentException.class,
+                () -> serviceFor(withCount, new FakeConceptGateway()).run("bad3", CONTEXT));
+        assertTrue(countFailure.getMessage().contains("both 'id' and 'count'"), countFailure.getMessage());
+
+        String withRepeat = """
+                {"id": "bad4", "label": "Bad4", "records": [
+                  {"concept": "Item", "id": "5eed0000-0000-4000-8000-000000000003", "repeatOver": {"vars": {"n": [1, 2]}}, "data": {"label": "x"}}
+                ]}""";
+        IllegalArgumentException repeatFailure = assertThrows(IllegalArgumentException.class,
+                () -> serviceFor(withRepeat, new FakeConceptGateway()).run("bad4", CONTEXT));
+        assertTrue(repeatFailure.getMessage().contains("both 'id' and 'repeatOver'"), repeatFailure.getMessage());
+    }
+
     @Test
     void rawSeedRejectsCountAndGenTokens() {
         String countJson = """

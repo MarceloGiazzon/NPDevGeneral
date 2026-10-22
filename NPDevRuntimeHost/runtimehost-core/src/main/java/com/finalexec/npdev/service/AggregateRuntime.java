@@ -28,6 +28,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -595,9 +596,9 @@ public class AggregateRuntime {
             ExecutionContext context,
             Map<String, List<ConceptRecord>> lookupQueryResults
     ) {
-        List<ConceptRecord> children = gateway.list(
+        List<ConceptRecord> children = sortedByOrderBy(gateway.list(
                 new ConceptListRequest(collection.concept(), null, collection.childField(), parentId),
-                context);
+                context), collection.orderBy());
         // Session 1: one join index per declared lookupField, built once for this collection call
         // (not once per row) from the query results already fetched by runLookupQueries.
         List<CompiledAggregateCollectionLookupField> lookupFields = collection.lookupFields();
@@ -624,6 +625,56 @@ public class AggregateRuntime {
             rows.add(row);
         }
         return rows;
+    }
+
+    /**
+     * REG-277: a collection's declared {@code orderBy} ("sku", "sku desc", "group, sku desc") was
+     * accepted and read by nothing, so children came back in id order. Stable (ties keep the store's
+     * order), nulls last, numbers compared as numbers; a blank or unusable spec leaves the order alone.
+     */
+    static List<ConceptRecord> sortedByOrderBy(List<ConceptRecord> children, String orderBy) {
+        if (children == null || children.size() < 2 || orderBy == null || orderBy.isBlank()) {
+            return children;
+        }
+        List<Comparator<ConceptRecord>> keys = new ArrayList<>();
+        for (String part : orderBy.split(",")) {
+            String[] tokens = part.trim().split("\s+");
+            if (tokens.length == 0 || tokens[0].isBlank()) {
+                continue;
+            }
+            String field = tokens[0];
+            boolean descending = tokens.length > 1 && "desc".equalsIgnoreCase(tokens[1]);
+            keys.add((left, right) -> {
+                Object a = fieldValue(left, field);
+                Object b = fieldValue(right, field);
+                if (a == null || b == null) {
+                    return a == b ? 0 : (a == null ? 1 : -1); // a row with no value sorts after rows that have one, in both directions
+                }
+                int c = compareOrderValues(a, b);
+                return descending ? -c : c;
+            });
+        }
+        if (keys.isEmpty()) {
+            return children;
+        }
+        Comparator<ConceptRecord> all = keys.get(0);
+        for (int i = 1; i < keys.size(); i++) {
+            all = all.thenComparing(keys.get(i));
+        }
+        List<ConceptRecord> sorted = new ArrayList<>(children);
+        sorted.sort(all);
+        return sorted;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static int compareOrderValues(Object left, Object right) {
+        if (left instanceof Number a && right instanceof Number b) {
+            return new java.math.BigDecimal(a.toString()).compareTo(new java.math.BigDecimal(b.toString()));
+        }
+        if (left.getClass() == right.getClass() && left instanceof Comparable comparable) {
+            return comparable.compareTo(right);
+        }
+        return String.valueOf(left).compareTo(String.valueOf(right));
     }
 
     /** {@code joinField} value (from each fetched query row) -> {@code valueField} value, so
