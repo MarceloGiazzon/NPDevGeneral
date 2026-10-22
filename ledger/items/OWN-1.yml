@@ -2,9 +2,9 @@ id: OWN-1
 title: Revoke the exposed classic GitHub personal access token (owner-only, flagged in four consecutive plans)
 type: PROCESS
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-10-17
-closed: null
+closed: 2026-10-22
 source: >-
   Carried out of the four archived plans that each listed it as owner-only and never closed it
   (docs/archive/RECORD_SURFACES_PLAN.md P7, INVOCATION_TOPOLOGY_PLAN.md T6, FAIL_OPEN_PLAN.md R5),
@@ -20,3 +20,5 @@ resolution: >-
   token; create a replacement only if needed, narrowly scoped, set in the environment and never
   typed into a chat; check Settings -> Security log for unrecognised use. Done when the token is
   absent from the token list and the security log has been checked.
+note: >-
+  Owner reported 2026-10-22: the exposed classic token is revoked and a replacement is set via the GH_TOKEN user environment variable. Security-log check and a fresh-terminal gh auth status were not confirmed in-session (the agent session still held the stale token).
