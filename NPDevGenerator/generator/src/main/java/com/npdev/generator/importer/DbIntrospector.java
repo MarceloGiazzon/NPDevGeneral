@@ -199,6 +199,7 @@ public final class DbIntrospector {
         ArrayNode warnings = report.putArray("warnings");
         ArrayNode defaults = report.putArray("defaultsNotImported");
         ArrayNode manual = report.putArray("manualItems");
+        ArrayNode linkProposals = report.putArray("linkTableProposals");
 
         int mappedColumns = 0;
         int totalColumns = 0;
@@ -339,6 +340,7 @@ public final class DbIntrospector {
                     conceptNode.remove("indexes");
                 }
             }
+            proposeForLinkTable(table, concept, conceptByTable, singleFkByColumn, fieldByColumn, linkProposals);
         }
         for (String view : skippedViews) {
             manual.add("view " + view + " skipped (views are not concepts; recreate it as a query if needed)");
@@ -400,6 +402,65 @@ public final class DbIntrospector {
                 field.put("precision", column.size());
             }
             field.put("scale", Math.max(0, column.scale()));
+        }
+    }
+
+    /**
+     * A table whose composite primary key is made of foreign keys to two imported tables is a link table.
+     * The report only PROPOSES what to do with it (never applied): a pure link (key columns only) stays its own
+     * concept; a link that carries its own data is an association, or an aggregate child of whichever side is
+     * the parent -- the aggregate snippet uses only constructs the DSL has (aggregates[].collections).
+     */
+    private static void proposeForLinkTable(Table table, String concept, Map<String, String> conceptByTable,
+                                            Map<String, ForeignKey> singleFkByColumn, Map<String, String> fieldByColumn,
+                                            ArrayNode proposals) {
+        if (table.primaryKey().size() < 2) {
+            return;
+        }
+        List<String> keyFkColumns = new ArrayList<>();
+        for (String column : table.primaryKey()) {
+            if (singleFkByColumn.containsKey(column) && fieldByColumn.containsKey(column)) {
+                keyFkColumns.add(column);
+            }
+        }
+        if (keyFkColumns.size() != 2 || table.primaryKey().size() != 2) {
+            return;
+        }
+        Set<String> keyColumns = new HashSet<>(table.primaryKey());
+        List<String> extra = table.columns().stream().map(Column::name)
+                .filter(c -> !keyColumns.contains(c) && fieldByColumn.containsKey(c)).map(fieldByColumn::get).toList();
+        String first = conceptByTable.get(singleFkByColumn.get(keyFkColumns.get(0)).pkTable());
+        String second = conceptByTable.get(singleFkByColumn.get(keyFkColumns.get(1)).pkTable());
+        ObjectNode proposal = proposals.addObject();
+        proposal.put("table", table.name());
+        proposal.put("concept", concept);
+        proposal.putArray("between").add(first).add(second);
+        ArrayNode extraNode = proposal.putArray("extraFields");
+        extra.forEach(extraNode::add);
+        if (extra.isEmpty()) {
+            proposal.put("kind", "pureLink");
+            proposal.put("suggestion", "Pure link between " + first + " and " + second + ": keep " + concept
+                    + " as its own concept; the sourceKey unique index already stops the same pair twice.");
+            return;
+        }
+        proposal.put("kind", "associationWithData");
+        proposal.put("suggestion", concept + " links " + first + " and " + second + " and carries its own data (" + String.join(", ", extra)
+                + "): keep it as an association concept, or model it as an aggregate child of whichever side is the parent "
+                + "(see aggregateOptions). Which side owns it is a business decision, so nothing is applied.");
+        ArrayNode options = proposal.putArray("aggregateOptions");
+        for (int i = 0; i < 2; i++) {
+            String parent = i == 0 ? first : second;
+            String childField = fieldByColumn.get(keyFkColumns.get(i));
+            ObjectNode option = options.addObject();
+            option.put("parent", parent);
+            ObjectNode snippet = option.putObject("aggregate");
+            snippet.put("name", parent + "Aggregate");
+            snippet.put("root", parent);
+            ObjectNode collection = snippet.putArray("collections").addObject();
+            collection.put("name", NameStyle.camel(table.name()));
+            collection.put("concept", concept);
+            collection.put("childField", childField);
+            collection.put("ownership", "owned");
         }
     }
 
