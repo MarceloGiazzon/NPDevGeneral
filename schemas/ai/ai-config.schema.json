@@ -32,7 +32,7 @@
       "properties": {
         "allowPaid": {
           "type": "object",
-          "propertyNames": { "pattern": "^(prompter|scrap-assistant|bench|review|tester|routine|app:[a-z0-9][a-z0-9-]*)$" },
+          "propertyNames": { "pattern": "^(prompter|scrap-assistant|bench|review|tester|app:[a-z0-9][a-z0-9-]*)$" },
           "additionalProperties": { "type": "boolean" }
         },
         "monthlyCapUsd": { "anyOf": [{ "type": "number", "minimum": 0 }, { "type": "null" }] }
@@ -41,7 +41,7 @@
     "bindings": {
       "description": "Which profiles a feature uses, in failover order. An overlay binding replaces the shipped one for that feature.",
       "type": "object",
-      "propertyNames": { "pattern": "^(prompter|scrap-assistant|bench|review|tester|routine|app:[a-z0-9][a-z0-9-]*)$" },
+      "propertyNames": { "pattern": "^(prompter|scrap-assistant|bench|review|tester|app:[a-z0-9][a-z0-9-]*)$" },
       "additionalProperties": {
         "type": "array",
         "minItems": 1,

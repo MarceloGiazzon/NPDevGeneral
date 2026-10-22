@@ -12276,6 +12276,45 @@ def _collect_gradle_distribution_urls(root: Path) -> list:
     return urls
 
 
+def _tester_credentials(allow_paid: bool) -> tuple[str | None, str, str, str | None]:
+    """(key, model, keySource, refusal) for `npdev tester`. NPDEV_TESTER_ANTHROPIC_API_KEY set explicitly
+    still wins and counts as the opt-in it always was; otherwise the Anthropic key comes from
+    `npdev providers` (environment, then the OS store), and spending it needs --allow-paid or
+    `npdev ai spend allow-paid tester` -- a stored key alone never starts a paid run. The model is the
+    first anthropic-messages profile bound to `tester` (`npdev ai bind tester <profile>`), else the
+    catalogue's Anthropic default."""
+    import npdev_ai_config
+    import npdev_providers
+
+    model, config = "claude-opus-5-5", None
+    try:
+        config = npdev_ai_config.load()
+        for name in config.bindings.get("tester") or []:
+            profile = config.profile(name)
+            if (config.profile_problem(name) is None
+                    and config.providers[profile["provider"]]["protocol"] == "anthropic-messages"):
+                model = profile["model"]
+                break
+        else:
+            model = (config.providers.get("anthropic") or {}).get("defaultModel") or model
+    except npdev_ai_config.AiConfigError:
+        pass
+    explicit = (os.environ.get("NPDEV_TESTER_ANTHROPIC_API_KEY") or "").strip()
+    if explicit:
+        return explicit, model, "NPDEV_TESTER_ANTHROPIC_API_KEY", None
+    try:
+        key = npdev_providers.resolve_key("anthropic")
+    except npdev_providers.ProviderError:
+        key = None
+    if not key:
+        return None, model, "missing", None
+    opted_in = allow_paid or bool(config and (config.spend.get("allowPaid") or {}).get("tester"))
+    if not opted_in:
+        return None, model, "npdev providers", ("the stored Anthropic key is PAID; pass --allow-paid "
+                                                "(or `npdev ai spend allow-paid tester`) to spend it")
+    return key, model, "npdev providers", None
+
+
 def run_tester(args: argparse.Namespace) -> int:
     """`npdev tester` -- REG-234 (EXT-9): drives a genuinely independent AI agent through the
     REG-13/14/17 cold-start claims (author an app with the tools, build the tutorial from docs
@@ -12326,23 +12365,27 @@ def run_tester(args: argparse.Namespace) -> int:
     run_cmd = [
         "docker", "run", "--rm", "--network", "bridge",
         "-e", "NPDEV_TESTER_ANTHROPIC_API_KEY",
+        "-e", "NPDEV_TESTER_MODEL",
         "-e", f"NPDEV_TESTER_TASK={args.task}",
         "-e", f"NPDEV_TESTER_REF={args.ref}",
         "-v", f"{run_dir}:/work/output",
         image_tag,
     ]
 
-    api_key_present = bool(os.environ.get("NPDEV_TESTER_ANTHROPIC_API_KEY"))
+    api_key, model, key_source, refusal = _tester_credentials(getattr(args, "allow_paid", False))
+    api_key_present = bool(api_key)
     if args.dry_run or not api_key_present:
         if not args.dry_run and not api_key_present:
-            print("npdev tester: NPDEV_TESTER_ANTHROPIC_API_KEY is not set -- showing the "
-                  "assembled commands only (same as --dry-run); set it in your environment to "
-                  "actually run.", file=sys.stderr)
+            reason = refusal or ("no Anthropic key: `npdev providers add anthropic` or set "
+                                 "NPDEV_TESTER_ANTHROPIC_API_KEY")
+            print(f"npdev tester: {reason} -- showing the assembled commands only (same as --dry-run).",
+                  file=sys.stderr)
         result = {
             "schemaVersion": "npdev-cli-result.v1", "command": "tester",
             "ok": True, "exitCode": 0, "dryRun": True,
             "buildCommand": build_cmd, "runCommand": run_cmd,
-            "outputDir": str(run_dir), "apiKeySet": api_key_present,
+            "outputDir": str(run_dir), "apiKeySet": api_key_present, "keySource": key_source,
+            "model": model, "refused": refusal,
         }
         if args.json:
             print(json.dumps(result, indent=2))
@@ -12351,8 +12394,7 @@ def run_tester(args: argparse.Namespace) -> int:
             print("  build: " + " ".join(build_cmd))
             print("  run:   " + " ".join(run_cmd))
             print(f"  output would land in: {run_dir}")
-            if not api_key_present:
-                print("  NOTE: NPDEV_TESTER_ANTHROPIC_API_KEY is not set in this shell.")
+            print(f"  model: {model}; key: {key_source}" + (f" -- {refusal}" if refusal else ""))
         return 0
 
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -12369,9 +12411,11 @@ def run_tester(args: argparse.Namespace) -> int:
         log.write("\n--- docker run ---\n")
         log.flush()
         try:
+            # The key reaches docker through this child's environment only; run_cmd names the variable.
+            run_env = {**os.environ, "NPDEV_TESTER_ANTHROPIC_API_KEY": api_key, "NPDEV_TESTER_MODEL": model}
             run_proc = subprocess.run(
                 run_cmd, cwd=root, stdout=log, stderr=subprocess.STDOUT,
-                timeout=args.timeout_minutes * 60,
+                timeout=args.timeout_minutes * 60, env=run_env,
             )
             exit_code = run_proc.returncode
         except subprocess.TimeoutExpired:
@@ -15455,7 +15499,9 @@ def run_ai_generate_routine(args: argparse.Namespace) -> int:
     anything anywhere. Two provider shapes, both entirely the user's:
 
       command  their own CLI, invoked with the payload's PATH substituted into the argv template.
-      http     an endpoint they named, with a key they typed.
+      ai       `npdev ai`'s one client: a profile (or the scrap-assistant binding) they configured,
+               with the key from `npdev providers` -- spend guard and usage log included.
+      http     an endpoint they named, with a key they typed (legacy).
 
     The response is parsed leniently -- a provider that returns prose with a fenced JSON block is
     the common case -- and then VALIDATED against the pinned engine schema before being returned, so
@@ -15480,6 +15526,19 @@ def run_ai_generate_routine(args: argparse.Namespace) -> int:
             raise CliError(f"the assistant command exited {completed.returncode}: "
                            f"{(completed.stderr or completed.stdout).strip()[:600]}")
         raw = completed.stdout
+    elif args.provider == "ai":
+        import npdev_ai_client
+        import npdev_ai_config
+        try:
+            config = npdev_ai_config.load()
+            answer = npdev_ai_client.complete(
+                config, payload.get("prompt") or json.dumps(payload), profile=getattr(args, "profile", None),
+                feature="scrap-assistant", timeout=args.timeout)
+        except (npdev_ai_config.AiConfigError, npdev_ai_client.AiCallError) as exc:
+            raise CliError(str(exc)) from None
+        if not answer["ok"]:
+            raise CliError(answer["error"])
+        raw = answer["text"]
     else:
         if not args.endpoint:
             raise CliError("provider=http needs --endpoint")
@@ -16275,6 +16334,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true",
         help="Assemble and print the docker build/run commands without touching Docker, the "
              "network, or the Anthropic API. Works without NPDEV_TESTER_ANTHROPIC_API_KEY set.",
+    )
+    tester_parser.add_argument(
+        "--allow-paid", action="store_true",
+        help="Spend the Anthropic key stored in `npdev providers` (not needed when "
+             "NPDEV_TESTER_ANTHROPIC_API_KEY is set explicitly).",
     )
     tester_parser.add_argument("--json", action="store_true")
 
@@ -18043,7 +18107,11 @@ def build_parser() -> argparse.ArgumentParser:
                              help="The file `npdev explore repair-payload` wrote. A file rather than "
                                   "an argument on purpose: a DOM excerpt on a command line lands in "
                                   "shell history and in every process listing.")
-    ai_generate.add_argument("--provider", default="command", choices=["command", "http"])
+    ai_generate.add_argument("--provider", default="command", choices=["command", "http", "ai"],
+                             help="command = your own CLI; ai = `npdev ai`'s one client (catalogue "
+                                  "providers, keys from `npdev providers`); http = a raw endpoint (legacy).")
+    ai_generate.add_argument("--profile", default=None,
+                             help="provider=ai: the profile to use (default: the scrap-assistant binding).")
     ai_generate.add_argument("--command", action="append", default=[],
                              help="provider=command: the argv, repeatable. `{payload_file}` is "
                                   "substituted with the payload's path.")

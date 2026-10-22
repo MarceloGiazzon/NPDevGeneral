@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 import unittest
 from argparse import Namespace
 from contextlib import redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "independent_tester"))
@@ -72,6 +74,30 @@ class RunTesterDryRunTest(unittest.TestCase):
         # The key is forwarded by NAME only ("-e VAR", no "=value") -- never present as a value.
         self.assertIn("NPDEV_TESTER_ANTHROPIC_API_KEY", result["runCommand"])
         self.assertNotIn("NPDEV_TESTER_ANTHROPIC_API_KEY=", " ".join(result["runCommand"]))
+
+    def test_a_stored_key_alone_never_starts_a_paid_run(self):
+        with mock.patch.dict(os.environ, {"NPDEV_TESTER_ANTHROPIC_API_KEY": ""}), \
+                mock.patch("npdev_providers.resolve_key", return_value="stored-key"):
+            key, model, source, refusal = npdev_cli._tester_credentials(allow_paid=False)
+            self.assertIsNone(key)
+            self.assertIn("--allow-paid", refusal)
+            key, model, source, refusal = npdev_cli._tester_credentials(allow_paid=True)
+            self.assertEqual((key, source, refusal), ("stored-key", "npdev providers", None))
+            self.assertTrue(model.startswith("claude-"))
+
+    def test_explicit_tester_key_still_wins_and_is_its_own_opt_in(self):
+        with mock.patch.dict(os.environ, {"NPDEV_TESTER_ANTHROPIC_API_KEY": "explicit"}), \
+                mock.patch("npdev_providers.resolve_key", return_value="stored-key"):
+            key, _, source, refusal = npdev_cli._tester_credentials(allow_paid=False)
+        self.assertEqual((key, source, refusal), ("explicit", "NPDEV_TESTER_ANTHROPIC_API_KEY", None))
+
+    def test_the_model_is_forwarded_by_name_too(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            npdev_cli.run_tester(self._namespace())
+        result = json.loads(buf.getvalue())
+        self.assertIn("NPDEV_TESTER_MODEL", result["runCommand"])
+        self.assertTrue(result["model"].startswith("claude-"))
 
     def test_task_and_ref_flow_into_run_command(self):
         buf = io.StringIO()

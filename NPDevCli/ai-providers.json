@@ -188,8 +188,6 @@
     "prompter": ["deep"],
     "scrap-assistant": ["fast"],
     "bench": ["deep", "fast"],
-    "review": ["deep"],
-    "tester": ["deep"],
-    "routine": ["fast"]
+    "review": ["deep"]
   }
 }

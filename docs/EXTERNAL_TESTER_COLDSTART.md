@@ -17,7 +17,11 @@
 > CLAUDE.md the way any Claude Code session would. `NPDevCli/independent_tester/brief.json` is the
 > machine-readable mirror of the "Brief to paste" section below; keep the two in sync by hand if you
 > edit either. Manual, cost-incurring (`npdev tester --dry-run` previews the run for free) — see
-> `run_tester()`'s docstring in `NPDevCli/npdev_cli.py` for the full design.
+> `run_tester()`'s docstring in `NPDevCli/npdev_cli.py` for the full design. The Anthropic key is the
+> one stored with `npdev providers add anthropic`; spending it needs `--allow-paid` (or
+> `npdev ai spend allow-paid tester`), unless `NPDEV_TESTER_ANTHROPIC_API_KEY` is set explicitly. The
+> model is the first Anthropic profile bound to `tester` (`npdev ai bind tester claude`), else the
+> catalogue's Anthropic default.
 
 ---
 

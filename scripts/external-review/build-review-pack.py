@@ -51,8 +51,6 @@ import os
 import re
 import subprocess
 import sys
-import urllib.error
-import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -442,25 +440,14 @@ def verify_second_build_matches(
         )
 
 
-# ADR-0009 D1 (revised 2026-07-27): NVIDIA Build + Google Gemini. Model ids are overridable via env
-# var since vendor catalogs move faster than this script; the defaults here are a best-known-good
-# starting point, not a guarantee the exact string is still current.
-VENDOR_PROFILES = {
-    "nvidia": {
-        "base_url": "https://integrate.api.nvidia.com/v1/chat/completions",
-        "model_env": "NPDEV_EXTERNALAI_NVIDIA_MODEL",
-        "default_model": "meta/llama-3.3-70b-instruct",  # confirmed working against this key 2026-07-27
-        "api_key_env": "NPDEV_EXTERNALAI_NVIDIA_API_KEY",
-        "format": "openai_chat",
-    },
-    "gemini": {
-        "base_url": "https://generativelanguage.googleapis.com/v1beta",
-        "model_env": "NPDEV_EXTERNALAI_GEMINI_MODEL",
-        "default_model": "gemini-3.5-flash",
-        "api_key_env": "NPDEV_EXTERNALAI_GEMINI_API_KEY",
-        "format": "gemini_generate_content",
-    },
-}
+# ADR-0009 D1 (revised 2026-07-27): NVIDIA Build + Google Gemini. The vendor id is a provider of the AI
+# catalogue (`npdev ai providers`), called through `npdev ai`'s one client: endpoint, protocol and key
+# resolution (environment, then the `npdev providers` store) live there, not here. The model is the
+# catalogue's default for the vendor unless NPDEV_EXTERNALAI_<ID>_MODEL names another, since vendor
+# catalogs move faster than any default.
+REVIEW_MAX_TOKENS = 16384
+REVIEW_TEMPERATURE = 0.2
+
 
 REVIEW_PROMPT_TEMPLATE = """You are an independent security reviewer with NO access to any filesystem, repository, network, or tool beyond the text below. Do not assume anything about this codebase beyond what is shown here.
 
@@ -483,17 +470,6 @@ def build_review_prompt(pack: dict) -> str:
     return REVIEW_PROMPT_TEMPLATE.format(chunks_text=chunks_text)
 
 
-def _http_post_json(url: str, headers: dict[str, str], body: dict) -> dict:
-    data = json.dumps(body).encode("utf-8")
-    request = urllib.request.Request(url, data=data, method="POST", headers=headers)
-    try:
-        with urllib.request.urlopen(request, timeout=480) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise SystemExit(f"ERROR: vendor HTTP call failed ({exc.code}): {detail[:1000]}")
-
-
 def _extract_json_object(text: str) -> str:
     """Vendors sometimes wrap JSON in markdown fences or add prose; extract the outermost {...}."""
     stripped = text.strip()
@@ -508,63 +484,33 @@ def _extract_json_object(text: str) -> str:
     return stripped[start:end + 1]
 
 
-def _resolve_env(name: str) -> str | None:
-    """Reads a config value from this process's own environment first; on Windows, falls back to
-    the User-scope registry value directly (winreg, no subprocess) if this process's environment
-    doesn't have it. This lets a caller invoke this script as a single, stable command with no
-    inline env-var-fetching wrapper needed -- the secret never has to appear on any command line."""
-    value = os.environ.get(name)
-    if value:
-        return value
-    if sys.platform == "win32":
-        try:
-            import winreg
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
-                value, _ = winreg.QueryValueEx(key, name)
-                return value
-        except OSError:
-            return None
-    return None
+def _ai_client():
+    sys.path.insert(0, str(PLATFORM_REPO_ROOT / "NPDevCli"))
+    import npdev_ai_client
+    import npdev_ai_config
+    return npdev_ai_config, npdev_ai_client
 
 
 def _call_vendor(vendor_id: str, prompt: str) -> tuple[str, str]:
     """Real network egress -- the actual publish action (honesty rule 6). Prompt-agnostic: callers
     supply the task-specific prompt (a security-review ask for submit_pack_to_vendor, an authoring
     ask for submit_coldstart_pack_to_vendor). Returns (model, raw_response_text)."""
-    if vendor_id not in VENDOR_PROFILES:
-        raise SystemExit(f"ERROR: unknown vendor '{vendor_id}'; known: {sorted(VENDOR_PROFILES)}")
-    profile = VENDOR_PROFILES[vendor_id]
-    model = _resolve_env(profile["model_env"]) or profile["default_model"]
-    api_key = _resolve_env(profile["api_key_env"])
-    if not api_key:
-        raise SystemExit(f"ERROR: {profile['api_key_env']} is not set")
-
-    if profile["format"] == "openai_chat":
-        response = _http_post_json(
-            profile["base_url"],
-            {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            {
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.2,
-                "top_p": 1,
-                "max_tokens": 16384,
-                "seed": 0,
-                "stream": False,
-            },
-        )
-        raw_text = response["choices"][0]["message"]["content"]
-    elif profile["format"] == "gemini_generate_content":
-        url = f"{profile['base_url']}/models/{model}:generateContent"
-        response = _http_post_json(
-            url,
-            {"x-goog-api-key": api_key, "Content-Type": "application/json"},
-            {"contents": [{"parts": [{"text": prompt}]}]},
-        )
-        raw_text = response["candidates"][0]["content"]["parts"][0]["text"]
-    else:
-        raise SystemExit(f"ERROR: unsupported vendor format {profile['format']}")
-    return model, raw_text
+    aicfg, client = _ai_client()
+    try:
+        config = aicfg.load()
+        provider = config.provider(vendor_id)
+    except aicfg.AiConfigError as exc:
+        raise SystemExit(f"ERROR: {exc}")
+    model = (os.environ.get(provider["keyEnvVar"].replace("_API_KEY", "_MODEL")) if provider.get("keyEnvVar") else None) \
+        or provider.get("defaultModel")
+    try:
+        result = client.complete(config, prompt, provider=vendor_id, model=model, feature="review",
+                                 max_tokens=REVIEW_MAX_TOKENS, temperature=REVIEW_TEMPERATURE, timeout=480)
+    except client.AiCallError as exc:
+        raise SystemExit(f"ERROR: {exc}")
+    if not result["ok"]:
+        raise SystemExit(f"ERROR: vendor call failed: {result['error'][:1000]}")
+    return result["model"], result["text"]
 
 
 AUDIT_PROMPT_TEMPLATE = """You are an independent auditor with NO access to any filesystem, repository, network, or tool beyond the text below. Do not assume anything beyond what is shown here.

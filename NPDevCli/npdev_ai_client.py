@@ -57,10 +57,11 @@ class Target:
 
 def targets_for(config, *, profile: str | None = None, feature: str | None = None, provider: str | None = None,
                 model: str | None = None, effort: str | None = None, max_tokens: int | None = None,
-                account: str | None = None) -> tuple[list[Target], list[str]]:
+                account: str | None = None, temperature: float | None = None) -> tuple[list[Target], list[str]]:
     """The ordered list of targets to try, and warnings for the profiles skipped on the way. A profile or a
     provider names what to call; without either, the feature's binding does (with one, `feature` only
-    labels the call for the spend guard and the usage log). effort and max_tokens override every target."""
+    labels the call for the spend guard and the usage log). effort, max_tokens and temperature override
+    every target."""
     if profile and provider:
         raise AiCallError("name either --profile or --provider, not both")
     if not (profile or provider or feature):
@@ -72,7 +73,8 @@ def targets_for(config, *, profile: str | None = None, feature: str | None = Non
         if not model_id:
             raise AiCallError(f"{provider} has no default model; pass --model "
                               f"(or run `npdev ai models refresh {provider}`)")
-        return [Target(entry, model_id, config.model(provider, model_id), None, effort, max_tokens, None, account)], warnings
+        return [Target(entry, model_id, config.model(provider, model_id), None, effort, max_tokens, temperature,
+                       account)], warnings
     names = [profile] if profile else config.binding(feature)
     if feature and not names:
         raise AiCallError(f"feature {feature!r} has no binding; run `npdev ai bind {feature} <profile>`")
@@ -94,7 +96,8 @@ def targets_for(config, *, profile: str | None = None, feature: str | None = Non
         targets.append(Target(config.provider(entry["provider"]), entry["model"],
                               config.model(entry["provider"], entry["model"]), name,
                               effort or entry.get("effort"), max_tokens or entry.get("maxTokens"),
-                              entry.get("temperature"), account or entry.get("account")))
+                              temperature if temperature is not None else entry.get("temperature"),
+                              account or entry.get("account")))
     if not targets:
         raise AiCallError("no usable profile: " + "; ".join(warnings))
     return targets, warnings
@@ -379,7 +382,8 @@ def complete(config, prompt: str, *, system: str | None = None, json_schema: dic
              messages: list[dict] | None = None,
              profile: str | None = None, feature: str | None = None, provider: str | None = None,
              model: str | None = None, effort: str | None = None, max_tokens: int | None = None,
-             account: str | None = None, allow_paid: bool = False, key_resolver: Callable | None = None,
+             temperature: float | None = None, account: str | None = None, allow_paid: bool = False,
+             key_resolver: Callable | None = None,
              usage: UsageLog | None = None, timeout: float = 120.0, opener: Callable = urllib.request.urlopen,
              sleep: Callable = time.sleep, backoff: tuple | None = None, clock: Callable = time.monotonic) -> dict:
     """Try each target in order until one answers. The result names what actually answered and every
@@ -391,7 +395,7 @@ def complete(config, prompt: str, *, system: str | None = None, json_schema: dic
             return npdev_providers.resolve_key(provider_id, account=account)
     usage = usage or UsageLog()
     targets, warnings = targets_for(config, profile=profile, feature=feature, provider=provider, model=model,
-                                    effort=effort, max_tokens=max_tokens, account=account)
+                                    effort=effort, max_tokens=max_tokens, account=account, temperature=temperature)
     attempts = []
     for index, target in enumerate(targets):
         label = {"profile": target.profile, "provider": target.provider_id, "model": target.model_id}

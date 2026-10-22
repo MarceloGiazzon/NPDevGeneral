@@ -9,6 +9,7 @@
 #
 # Env vars (all set by NPDevCli's run_tester(), never read from anywhere else):
 #   NPDEV_TESTER_ANTHROPIC_API_KEY  required -- the tester agent's own Anthropic API key.
+#   NPDEV_TESTER_MODEL              set by `npdev tester` from the AI config (default claude-opus-5-5).
 #   NPDEV_TESTER_REF                default "main" -- branch/tag the brief tells the agent to clone.
 #   NPDEV_TESTER_REPO_URL           default the public NPDevGeneral remote.
 #   NPDEV_TESTER_TASK               default "all" -- one of A, B, C, all.

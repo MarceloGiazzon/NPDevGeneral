@@ -12,6 +12,7 @@ Dockerfile has already `pip install`-ed `anthropic` for it.
 
 Env vars (all set by NPDevCli's run_tester(), never read from anywhere else):
   NPDEV_TESTER_ANTHROPIC_API_KEY  required.
+  NPDEV_TESTER_MODEL              the model, from the host's AI config (default claude-opus-5-5).
   NPDEV_TESTER_TASK               "A" | "B" | "C" | "all" (default "all").
   NPDEV_TESTER_MAX_TURNS          loop-runaway guard, default 200 (the host's --timeout-minutes
                                    wall-clock cap is the backstop if this is set too high).
@@ -172,7 +173,7 @@ def main() -> int:
     )
 
     runner = client.beta.messages.tool_runner(
-        model="claude-opus-5",
+        model=os.environ.get("NPDEV_TESTER_MODEL") or "claude-opus-5-5",
         max_tokens=16000,
         system=brief["systemPrompt"],
         tools=make_tools(),
