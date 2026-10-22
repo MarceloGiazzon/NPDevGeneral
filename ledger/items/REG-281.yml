@@ -1,0 +1,13 @@
+id: REG-281
+title: >-
+  The technology-neutrality name rule rejected ordinary words that merely contain spring, jpa, hibernate, kafka, smtp, rest or soap (Restricao, Interest)
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-10-22
+closed: 2026-10-22
+source: >-
+  IMP-2/IMP-4 import work: the importer had to rewrite the Portuguese word Restricao to ruaRecRe_stricao so the draft would validate. Owner ruling 2026-10-22: the rule is too extreme and should be a warning at most.
+surface: NPDevContract/dsl ExpressionValidation.validateTechnologyNeutrality, ConceptValidation.validateCapabilities, NPDevGenerator importer DbIntrospector
+resolution: >-
+  A technology word inside a concept, field, capability, event, flow or step name (and a capability type) is now a validation WARNING, not an error. The importer no longer splits such words: legacy names stay readable (the namingAdjustments report key is gone). Tests: DslFlowModelTest, DbIntrospectorTest.aLegacyWordThatContainsATechnologyNameKeepsItsNameAndOnlyWarns.

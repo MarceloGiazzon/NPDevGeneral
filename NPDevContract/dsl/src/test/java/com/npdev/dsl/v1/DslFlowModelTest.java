@@ -7,6 +7,7 @@ import com.npdev.dsl.v1.compiled.CompiledFlowStep;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.dsl.v1.validation.SemanticValidator;
+import com.npdev.dsl.v1.validation.ValidationResult;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -15,6 +16,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DslFlowModelTest {
@@ -148,11 +150,14 @@ class DslFlowModelTest {
                 }
                 """;
 
-        List<String> errors = new SemanticValidator().validate(parse(json));
+        ValidationResult result = new SemanticValidator().validateWithWarnings(parse(json));
+        List<String> errors = result.getErrors();
         assertTrue(errors.stream().anyMatch(e -> e.contains("unknown invariant")));
         assertTrue(errors.stream().anyMatch(e -> e.contains("unknown operation")));
         assertTrue(errors.stream().anyMatch(e -> e.contains("unknown event")));
-        assertTrue(errors.stream().anyMatch(e -> e.contains("technology-neutral")));
+        // a technology word inside a name is a warning, never an error (REG-281)
+        assertFalse(errors.stream().anyMatch(e -> e.contains("technology-neutral")));
+        assertTrue(result.getWarnings().stream().anyMatch(w -> w.contains("technology-neutral")));
     }
 
     @Test

@@ -121,7 +121,7 @@ public final class SemanticValidator {
         ConceptValidation.validateConceptSatelliteOf(effectiveModel, entitiesByLower, errors, semanticWarnings);
         ConceptValidation.validateConceptTemporal(effectiveModel, errors);
 
-        ConceptValidation.validateCapabilities(effectiveModel, errors);
+        ConceptValidation.validateCapabilities(effectiveModel, errors, semanticWarnings);
         ConceptValidation.validateBindings(effectiveModel, errors);
         PackValidation.validateExternalAiEgress(effectiveModel, errors);
         ExternalAiValidation.validate(effectiveModel, errors);
@@ -132,7 +132,7 @@ public final class SemanticValidator {
         // before effectiveModel exists, and throws before this method reaches here on a bad model) --
         // see ConceptValidation.resolveEffective's javadoc for why the old extends-only checker here
         // was already dead code (specializes-only cycles were never actually "invisible").
-        ExpressionValidation.validateTechnologyNeutrality(effectiveModel, errors);
+        ExpressionValidation.validateTechnologyNeutrality(effectiveModel, semanticWarnings);
 
         Map<String, EffectiveEntity> effectiveCache = new HashMap<>();
         ConceptValidation.validateConceptsAndFields(

@@ -1,0 +1,15 @@
+id: REG-280
+title: >-
+  npdev import db reports a native ENUM column as unmapped instead of creating an enum field with its values
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-10-22
+closed: null
+source: >-
+  IMP-4 run on the public Sakila sample database (MySQL dialect, loaded into H2): film.rating is ENUM('G','PG','PG-13','R','NC-17') and came back under unmappedColumns with jdbcType 1111.
+surface: NPDevGenerator/generator importer (IntrospectDbMain type mapping)
+detail: |
+  The platform has enum fields, and the source database states the allowed values in the column type. The importer lists the column as optional-unmapped, so the draft model silently loses the field. MySQL ENUM and H2 ENUM report as an "other" JDBC type, so the type-name text has to be parsed.
+resolution: >-
+  Map an ENUM(...) type name to an enum field with the listed values (keep the original type in the report), add a test with the Sakila shape, and re-run npdev import db on Sakila to record the new counts.

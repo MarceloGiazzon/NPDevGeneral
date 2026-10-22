@@ -139,10 +139,31 @@ class DbIntrospectorTest {
         assertEquals("jdbc:sqlserver://h;user=u;password=***;db=x", IntrospectDbMain.redact("jdbc:sqlserver://h;user=u;password=s3cret;db=x"));
     }
 
+    /** REG-281: the neutrality rule only warns, so a legacy word like "Restricao" keeps its readable name. */
     @Test
-    void namesThePlatformWouldRejectAreSplitSoTheDraftValidates() {
-        assertEquals("ruaRecRe_stricao", DbIntrospector.neutral("ruaRecRestricao"));
-        assertEquals("clienteNome", DbIntrospector.neutral("clienteNome"));
-        assertFalse(DbIntrospector.neutral("interestRate").toLowerCase().contains("rest"));
+    void aLegacyWordThatContainsATechnologyNameKeepsItsNameAndOnlyWarns() throws Exception {
+        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:imp1n;DB_CLOSE_DELAY=-1")) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE RESTRICAO (ID INTEGER NOT NULL PRIMARY KEY, INTEREST_RATE NUMERIC(5,2))");
+            }
+            DbIntrospector.Result result = DbIntrospector.introspect(connection, "PUBLIC", "legacy.rules", "jdbc:h2:mem:imp1n");
+            JsonNode restricao = concept(result.model(), "Restricao");
+            assertEquals("interestRate", field(restricao, "interestRate").get("name").asText());
+            var validation = new SemanticValidator().validateWithWarnings(new JsonModelParser().parse(result.model()));
+            assertEquals(List.of(), validation.getErrors());
+            assertTrue(validation.getWarnings().stream().anyMatch(w -> w.contains("technology-neutral")));
+        }
+    }
+
+    /** A composite primary key gets a synthetic id AND stays unique as the original pair. */
+    @Test
+    void aCompositePrimaryKeyBecomesAUniqueIndexOnTheOriginalPair() throws Exception {
+        JsonNode item = concept(drafted("imp1g").model(), "PedidoItem");
+        assertTrue(field(item, "id").get("id").asBoolean());
+        JsonNode index = StreamSupport.stream(item.get("indexes").spliterator(), false)
+                .filter(i -> "sourceKey".equals(i.get("name").asText())).findFirst().orElseThrow();
+        assertTrue(index.get("unique").asBoolean());
+        assertEquals(List.of("pedcod", "itemseq"),
+                StreamSupport.stream(index.get("fields").spliterator(), false).map(JsonNode::asText).toList());
     }
 }

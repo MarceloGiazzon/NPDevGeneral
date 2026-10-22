@@ -142,6 +142,52 @@ class StateMachineSupportTest {
         );
     }
 
+    /** REG-278: terminal means final -- a transition out of a terminal state is a model error, one into it is not. */
+    @Test
+    void semanticValidationRejectsATransitionOutOfATerminalState() throws Exception {
+        Path modelPath = Files.createTempFile("npdev-state-machine-terminal-", ".json");
+        Files.writeString(modelPath, """
+                {
+                  "namespace": "state.machine.demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    {
+                      "name": "Review",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        {
+                          "name": "status",
+                          "type": "enum",
+                          "required": true,
+                          "enumValues": ["Draft", "Rejected"]
+                        }
+                      ],
+                      "lifecycle": {
+                        "statusField": "status",
+                        "states": [
+                          { "value": "Draft", "initial": true },
+                          { "value": "Rejected", "terminal": true }
+                        ],
+                        "transitions": [
+                          { "from": "Draft", "to": "Rejected" },
+                          { "from": "Rejected", "to": "Draft" }
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """);
+
+        List<String> errors = new SemanticValidator().validate(new JsonModelParser().parse(modelPath));
+        assertTrue(
+                errors.stream().anyMatch(error -> error.contains("leaves terminal state 'Rejected'")),
+                "Expected the terminal-state exit to be rejected, got: " + errors
+        );
+        assertEquals(1, errors.stream().filter(error -> error.contains("terminal state")).count(),
+                "Only the exit from Rejected is wrong; Draft -> Rejected (into a terminal state) is fine: " + errors);
+    }
+
     /** Pigmentampas 2026-10-07: a guard naming $user (role-gated transition) validates; a malformed one does not. */
     @Test
     void semanticValidationAcceptsUserGuardsAndRejectsMalformedOnes() throws Exception {

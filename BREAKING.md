@@ -5,6 +5,22 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-22 — a technology word inside a name is a warning, not an error (REG-281)
+
+**What changes.** A concept, field, capability, event, flow or step name (and a capability type) that contains `spring`, `jpa`, `hibernate`, `kafka`, `smtp`, `rest` or `soap` anywhere, even inside an ordinary word such as "Restricao" or "Interest", used to fail validation. It now produces a warning. `npdev import db` no longer rewrites such words, and its report no longer has a `namingAdjustments` key.
+
+**Who is affected.** Nobody loses anything: a model that validated still validates. Tooling that read `namingAdjustments` from an import report must stop.
+
+**Codemod.** None needed.
+
+## 2026-10-22 — a lifecycle `terminal` state is final; a transition out of it is a validation error (REG-278)
+
+**What changes.** `terminal: true` on a lifecycle state used to be only a presentation marker (read-only row, marked board column) and the runtime still accepted a declared transition out of it. The validator now refuses any transition whose `from` is a terminal state.
+
+**Who is affected.** A model that marks a state `terminal` and also declares a transition out of it (for example `Rejected -> Draft`).
+
+**Codemod.** `npdev migrate dsl-2 --input <path...> [--write]` drops `terminal` from a state that has an outgoing transition, which keeps the runtime behaviour as it was. If the state really is final, delete the transition instead.
+
 ## 2026-10-21 — flow createConcept/updateConcept behave like the REST create/PUT (REG-262/263/264)
 
 **What changes.** A `createConcept` step now refuses a payload missing a required field that nothing else will

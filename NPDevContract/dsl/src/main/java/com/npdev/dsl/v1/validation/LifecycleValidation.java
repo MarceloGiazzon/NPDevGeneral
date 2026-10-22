@@ -135,6 +135,7 @@ final class LifecycleValidation {
         Set<String> declaredActionProcedures = workbenchActionProcedures(conceptName, autoPanels, aggregates);
 
         Set<String> declaredStates = new LinkedHashSet<>();
+        Set<String> terminalStates = new HashSet<>();
         int initialStateCount = 0;
         for (StateMachineStateAst state : lifecycle.getStates()) {
             if (state == null) {
@@ -158,6 +159,9 @@ final class LifecycleValidation {
             }
             if (state.isInitial()) {
                 initialStateCount++;
+            }
+            if (state.isTerminal()) {
+                terminalStates.add(valueKey);
             }
             for (Map.Entry<String, String> metadataEntry : state.getMetadata().entrySet()) {
                 String key = metadataEntry.getKey() == null ? "" : metadataEntry.getKey().trim();
@@ -207,6 +211,12 @@ final class LifecycleValidation {
             if (!statusValues.contains(toKey)) {
                 errors.add("Entity " + conceptName + " lifecycle: transition to '" + to
                         + "' is not a valid value of status field '" + statusFieldName + "'");
+            }
+            // REG-278: terminal means final -- a terminal state has no way out.
+            if (terminalStates.contains(fromKey)) {
+                errors.add("Entity " + conceptName + " lifecycle: transition " + from + " -> " + to
+                        + " leaves terminal state '" + from + "' -- suggestedFix: Delete this transition if '" + from
+                        + "' is final, or remove 'terminal' from that state if it can still be left.");
             }
             String pairKey = fromKey + "->" + toKey;
             if (!transitionPairs.add(pairKey)) {

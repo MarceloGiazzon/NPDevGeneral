@@ -748,7 +748,7 @@ final class ConceptValidation {
         return effective;
     }
 
-    static void validateCapabilities(ModelAst modelAst, List<String> errors) {
+    static void validateCapabilities(ModelAst modelAst, List<String> errors, List<String> warnings) {
         Set<String> names = new HashSet<>();
         for (CapabilityAst capability : modelAst.getCapabilities()) {
             if (!names.add(normalize(capability.getName()))) {
@@ -756,7 +756,7 @@ final class ConceptValidation {
             }
             String type = normalize(capability.getType());
             if (!type.isBlank() && FORBIDDEN_TECH_KEYWORDS.stream().anyMatch(type::contains)) {
-                errors.add("Capability type must be technology-neutral: " + capability.getType());
+                warnings.add("Capability type should be technology-neutral: " + capability.getType());
             }
 
             Set<String> opNames = new HashSet<>();

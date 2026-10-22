@@ -105,60 +105,61 @@ final class ExpressionValidation {
         }
     }
 
-    static void validateTechnologyNeutrality(ModelAst modelAst, List<String> errors) {
+    static void validateTechnologyNeutrality(ModelAst modelAst, List<String> warnings) {
         for (ConceptAst entity : modelAst.getConcepts()) {
-            validateNameAgainstForbiddenKeywords("Entity", entity.getName(), errors);
+            validateNameAgainstForbiddenKeywords("Entity", entity.getName(), warnings);
             for (FieldAst field : entity.getFields()) {
-                validateNameAgainstForbiddenKeywords("Field", field.getName(), errors);
+                validateNameAgainstForbiddenKeywords("Field", field.getName(), warnings);
             }
         }
 
         for (CapabilityAst capability : modelAst.getCapabilities()) {
-            validateNameAgainstForbiddenKeywords("Capability", capability.getName(), errors);
-            validateNameAgainstForbiddenKeywords("Capability type", capability.getType(), errors);
+            validateNameAgainstForbiddenKeywords("Capability", capability.getName(), warnings);
+            validateNameAgainstForbiddenKeywords("Capability type", capability.getType(), warnings);
             for (CapabilityOperationAst operation : capability.getOperations()) {
-                validateNameAgainstForbiddenKeywords("Capability operation", operation.getName(), errors);
+                validateNameAgainstForbiddenKeywords("Capability operation", operation.getName(), warnings);
             }
         }
 
         for (EventAst event : modelAst.getEvents()) {
-            validateNameAgainstForbiddenKeywords("Event", event.getName(), errors);
+            validateNameAgainstForbiddenKeywords("Event", event.getName(), warnings);
         }
 
         for (FlowAst flow : modelAst.getFlows()) {
-            validateNameAgainstForbiddenKeywords("Flow", flow.getName(), errors);
-            validateFlowStepTechnologyNeutrality(flow.getSteps(), errors);
+            validateNameAgainstForbiddenKeywords("Flow", flow.getName(), warnings);
+            validateFlowStepTechnologyNeutrality(flow.getSteps(), warnings);
         }
     }
 
-    private static void validateFlowStepTechnologyNeutrality(List<StepAst> steps, List<String> errors) {
+    private static void validateFlowStepTechnologyNeutrality(List<StepAst> steps, List<String> warnings) {
         for (StepAst step : steps) {
-            validateNameAgainstForbiddenKeywords("Flow step", step.getName(), errors);
-            validateNameAgainstForbiddenKeywords("Capability reference", step.getCapability(), errors);
-            validateNameAgainstForbiddenKeywords("Event reference", step.getEvent(), errors);
-            validateNameAgainstForbiddenKeywords("Await event reference", step.getAwaitEvent(), errors);
+            validateNameAgainstForbiddenKeywords("Flow step", step.getName(), warnings);
+            validateNameAgainstForbiddenKeywords("Capability reference", step.getCapability(), warnings);
+            validateNameAgainstForbiddenKeywords("Event reference", step.getEvent(), warnings);
+            validateNameAgainstForbiddenKeywords("Await event reference", step.getAwaitEvent(), warnings);
 
             if (!step.getThenSteps().isEmpty()) {
-                validateFlowStepTechnologyNeutrality(step.getThenSteps(), errors);
+                validateFlowStepTechnologyNeutrality(step.getThenSteps(), warnings);
             }
             if (!step.getElseSteps().isEmpty()) {
-                validateFlowStepTechnologyNeutrality(step.getElseSteps(), errors);
+                validateFlowStepTechnologyNeutrality(step.getElseSteps(), warnings);
             }
             if (!step.getLoopSteps().isEmpty()) {
-                validateFlowStepTechnologyNeutrality(step.getLoopSteps(), errors);
+                validateFlowStepTechnologyNeutrality(step.getLoopSteps(), warnings);
             }
         }
     }
 
-    private static void validateNameAgainstForbiddenKeywords(String label, String value, List<String> errors) {
+    private static void validateNameAgainstForbiddenKeywords(String label, String value, List<String> warnings) {
         if (value == null || value.isBlank()) {
             return;
         }
         String normalized = normalize(value);
         for (String keyword : FORBIDDEN_TECH_KEYWORDS) {
             if (normalized.contains(keyword)) {
-                errors.add(label + " name must be technology-neutral; found forbidden keyword '" + keyword
-                        + "' in '" + value + "'");
+                warnings.add(label + " name should be technology-neutral; found keyword '" + keyword
+                        + "' in '" + value + "' (a warning only: the check matches the word anywhere in the name,"
+                        + " even inside an ordinary word)");
                 return;
             }
         }
