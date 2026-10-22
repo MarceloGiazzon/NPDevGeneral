@@ -12,7 +12,7 @@
 
 ## AI provider keys
 
-`npdev providers` is NPDev's own store for AI-provider API keys (Gemini, NVIDIA, Groq, Cerebras, OpenRouter `:free`, Mistral, local Ollama; Anthropic/OpenAI are catalogued as paid). Keys live in `%APPDATA%\NPDev\providers.vault.json`, encrypted per Windows user with DPAPI -- never in a repo, Build root or log. The catalogue is `NPDevCli/ai-providers.json` (no keys). A key is typed once and serves both the authoring benchmark and every generated app:
+`npdev providers` is NPDev's own store for AI-provider API keys (Gemini, NVIDIA, Groq, Cerebras, OpenRouter `:free`, Mistral, local Ollama; Anthropic/OpenAI are catalogued as paid). Keys live in the current user's OS store -- on Windows encrypted with DPAPI inside `%APPDATA%\NPDev\providers.vault.json`, on Linux in the desktop keyring (GNOME Keyring / KWallet, via `secret-tool` from `libsecret-tools`), with that JSON file under `~/.config/NPDev/` holding only the index -- never in a repo, Build root or log, and never as plain text: with no store, only environment variables work. `npdev providers list --json` is the key-free listing the Manager reads. The catalogue is `NPDevCli/ai-providers.json` (no keys). A key is typed once and serves both the authoring benchmark and every generated app:
 
 ```bash
 ./npdev providers list
