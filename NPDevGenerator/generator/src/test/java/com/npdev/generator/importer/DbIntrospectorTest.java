@@ -166,4 +166,34 @@ class DbIntrospectorTest {
         assertEquals(List.of("pedcod", "itemseq"),
                 StreamSupport.stream(index.get("fields").spliterator(), false).map(JsonNode::asText).toList());
     }
+
+    /** Link tables are only PROPOSED about: a pure link stays a concept, a link with data lists aggregate options. */
+    @Test
+    void linkTablesGetProposalsInTheReportAndNothingIsApplied() throws Exception {
+        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:imp1l;DB_CLOSE_DELAY=-1")) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE ORDERS (ID INTEGER NOT NULL PRIMARY KEY)");
+                statement.execute("CREATE TABLE PRODUCTS (ID INTEGER NOT NULL PRIMARY KEY)");
+                statement.execute("CREATE TABLE TAGS (ID INTEGER NOT NULL PRIMARY KEY)");
+                statement.execute("CREATE TABLE ORDER_DETAILS (ORDER_ID INTEGER NOT NULL, PRODUCT_ID INTEGER NOT NULL, QTY INTEGER, "
+                        + "PRIMARY KEY (ORDER_ID, PRODUCT_ID), FOREIGN KEY (ORDER_ID) REFERENCES ORDERS (ID), "
+                        + "FOREIGN KEY (PRODUCT_ID) REFERENCES PRODUCTS (ID))");
+                statement.execute("CREATE TABLE PRODUCT_TAGS (PRODUCT_ID INTEGER NOT NULL, TAG_ID INTEGER NOT NULL, "
+                        + "PRIMARY KEY (PRODUCT_ID, TAG_ID), FOREIGN KEY (PRODUCT_ID) REFERENCES PRODUCTS (ID), "
+                        + "FOREIGN KEY (TAG_ID) REFERENCES TAGS (ID))");
+            }
+            DbIntrospector.Result result = DbIntrospector.introspect(connection, "PUBLIC", "legacy.links", "jdbc:h2:mem:imp1l");
+            JsonNode proposals = result.report().get("linkTableProposals");
+            JsonNode details = StreamSupport.stream(proposals.spliterator(), false)
+                    .filter(p -> "ORDER_DETAILS".equals(p.get("table").asText())).findFirst().orElseThrow();
+            assertEquals("associationWithData", details.get("kind").asText());
+            assertEquals("Orders", details.get("aggregateOptions").get(0).get("parent").asText());
+            assertEquals("orderId", details.get("aggregateOptions").get(0).get("aggregate").get("collections").get(0)
+                    .get("childField").asText());
+            JsonNode tags = StreamSupport.stream(proposals.spliterator(), false)
+                    .filter(p -> "PRODUCT_TAGS".equals(p.get("table").asText())).findFirst().orElseThrow();
+            assertEquals("pureLink", tags.get("kind").asText());
+            assertFalse(result.model().has("aggregates"), "proposals are never applied to the model");
+        }
+    }
 }
