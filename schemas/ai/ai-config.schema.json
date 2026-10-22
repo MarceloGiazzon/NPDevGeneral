@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.dev/schemas/ai/ai-config.schema.json",
+  "title": "NPDev AI configuration (providers, models, profiles, bindings)",
+  "description": "ONE schema for both layers: the catalogue NPDev ships (NPDevCli/ai-providers.json) and the user's own overlay (~/.config/NPDev/ai.json, or %APPDATA%\\NPDev\\ai.json; NPDEV_AI_CONFIG overrides the path). An overlay entry whose id matches a shipped one overrides only the fields it sets, so only ids are required here; completeness and every cross-reference (a profile naming an unknown model, a protocol no client implements) are checked on the MERGED view by NPDevCli/npdev_ai_config.py. Neither file ever holds a secret: keys live in the OS key store (`npdev providers`).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion"],
+  "properties": {
+    "schemaVersion": { "const": "npdev-ai-config.v1" },
+    "description": { "type": "string" },
+    "protocols": {
+      "description": "The closed list of wire protocols NPDev clients implement. Shipped only: both the Python client (npdev ai complete) and the Java external-ai-http adapter must implement every entry. Adding one is an adapter per side plus tests.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description"],
+        "properties": {
+          "id": { "$ref": "#/$defs/slug" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "providers": { "type": "array", "items": { "$ref": "#/$defs/provider" } },
+    "models": { "type": "array", "items": { "$ref": "#/$defs/model" } },
+    "profiles": { "type": "array", "items": { "$ref": "#/$defs/profile" } },
+    "bindings": {
+      "description": "Which profiles a feature uses, in failover order. An overlay binding replaces the shipped one for that feature.",
+      "type": "object",
+      "propertyNames": { "pattern": "^(prompter|scrap-assistant|bench|review|tester|routine|app:[a-z0-9][a-z0-9-]*)$" },
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": { "$ref": "#/$defs/slug" }
+      }
+    }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "maxLength": 64 },
+    "effort": { "enum": ["none", "low", "medium", "high", "xhigh", "max"] },
+    "provider": {
+      "description": "How to reach a server.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "name": { "type": "string" },
+        "kind": { "enum": ["free", "local", "paid"], "description": "local = runs on this machine, free = hosted free tier, paid = billed. The spend guard refuses a paid call without an opt-in." },
+        "protocol": { "$ref": "#/$defs/slug", "description": "One of the shipped protocols[].id." },
+        "baseUrl": { "type": "string", "pattern": "^https?://[^\\s]+$" },
+        "aliasBaseUrls": { "type": "array", "items": { "type": "string", "pattern": "^https?://[^\\s]+$" } },
+        "authStyle": { "enum": ["bearer", "x-api-key", "x-goog-api-key", "api-key", "none"] },
+        "needsKey": { "type": "boolean" },
+        "keyEnvVar": {
+          "description": "The NPDev convention NPDEV_EXTERNALAI_<ID>_API_KEY. null for a keyless provider.",
+          "anyOf": [
+            { "type": "string", "pattern": "^NPDEV_EXTERNALAI_[A-Z0-9_]+_API_KEY$" },
+            { "type": "null" }
+          ]
+        },
+        "extraHeaders": {
+          "description": "Fixed, non-secret headers (e.g. anthropic-version). Lower-case names; an auth header is refused here: the key is added by authStyle at call time.",
+          "type": "object",
+          "propertyNames": { "allOf": [{ "pattern": "^[a-z0-9-]+$" }, { "not": { "pattern": "^(authorization|x-api-key|api-key|x-goog-api-key|cookie|proxy-authorization)$" } }] },
+          "additionalProperties": { "type": "string", "maxLength": 200 }
+        },
+        "queryParams": {
+          "description": "Fixed, non-secret query parameters (e.g. Azure's api-version). A key-like name is refused.",
+          "type": "object",
+          "propertyNames": { "allOf": [{ "pattern": "^[a-z0-9_.-]+$" }, { "not": { "pattern": "^(key|api[-_]?key|token|access[-_]?token|secret|password)$" } }] },
+          "additionalProperties": { "type": "string", "maxLength": 200 }
+        },
+        "modelInPath": { "type": "boolean", "description": "Deployment-style URLs: {model} in baseUrl is replaced by the model id." },
+        "signupUrl": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "defaultModel": { "anyOf": [{ "type": "string" }, { "type": "null" }], "description": "A models[] id of this provider, or null when the account decides (run discovery)." },
+        "freeModelSuffix": { "type": "string", "description": "Only model ids ending with this are free on this endpoint; any other is billed." },
+        "appVendor": { "type": "boolean", "description": "Generated apps' external-ai-http adapter may use it." },
+        "disabled": { "type": "boolean" },
+        "notes": { "type": "string" }
+      }
+    },
+    "model": {
+      "description": "One model on a provider, with its facts. A fact NPDev does not know is left out (unknown), never guessed: an unknown price counts as paid.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "id"],
+      "properties": {
+        "provider": { "$ref": "#/$defs/slug" },
+        "id": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "name": { "type": "string" },
+        "contextTokens": { "type": "integer", "minimum": 1 },
+        "maxOutputTokens": { "type": "integer", "minimum": 1 },
+        "vision": { "type": "boolean" },
+        "tools": { "type": "boolean" },
+        "structuredOutput": { "type": "boolean" },
+        "effortLevels": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/effort" }, "description": "Levels the model really accepts. Empty: no effort parameter is ever sent." },
+        "price": {
+          "description": "USD per million tokens. null = unknown.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "in": { "anyOf": [{ "type": "number", "minimum": 0 }, { "type": "null" }] },
+            "out": { "anyOf": [{ "type": "number", "minimum": 0 }, { "type": "null" }] }
+          }
+        },
+        "enabled": { "type": "boolean" },
+        "status": { "enum": ["available", "retired"] },
+        "disabled": { "type": "boolean" },
+        "notes": { "type": "string" }
+      }
+    },
+    "profile": {
+      "description": "A named, ready-to-use setting: provider + model + effort + limits, with optional fallback profiles.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "$ref": "#/$defs/slug" },
+        "description": { "type": "string" },
+        "provider": { "$ref": "#/$defs/slug" },
+        "model": { "type": "string", "minLength": 1 },
+        "account": { "$ref": "#/$defs/slug", "description": "Which stored key of the provider (D5: <provider>:<account>). Absent = the provider's default key." },
+        "effort": { "$ref": "#/$defs/effort" },
+        "maxTokens": { "type": "integer", "minimum": 1 },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2, "description": "Sent only where the protocol accepts it (never on anthropic-messages)." },
+        "fallback": { "type": "array", "items": { "$ref": "#/$defs/slug" } },
+        "disabled": { "type": "boolean" }
+      }
+    }
+  }
+}

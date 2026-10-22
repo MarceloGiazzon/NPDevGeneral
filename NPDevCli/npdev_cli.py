@@ -18055,6 +18055,8 @@ def build_parser() -> argparse.ArgumentParser:
     ai_generate.add_argument("--model", default=None)
     ai_generate.add_argument("--timeout", type=float, default=120.0)
     ai_generate.add_argument("--json", action="store_true")
+    import npdev_ai
+    npdev_ai.add_arguments(ai_sub)
 
     review = subparsers.add_parser(
         "review", help="Build a review pack, or ingest a review verdict."
@@ -18359,6 +18361,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_explore(args)
         if args.command == "ai" and args.ai_command == "generate-routine":
             return run_ai_generate_routine(args)
+        if args.command == "ai" and args.ai_command in ("providers", "models", "profiles", "bindings", "bind",
+                                                        "reset", "validate"):
+            import npdev_ai
+            return npdev_ai.run(args)
         if args.command == "review" and args.review_command == "pack":
             run_review_pack(args)
             return 0

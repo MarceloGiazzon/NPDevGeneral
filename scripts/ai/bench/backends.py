@@ -73,9 +73,22 @@ def load_allowlist(path: Path | None = None) -> list[dict]:
         if provider.get("kind") not in ("free", "local"):
             continue
         for url in [provider["baseUrl"], *(provider.get("aliasBaseUrls") or [])]:
-            entries.append({"id": provider["id"], "kind": provider["kind"], "baseUrl": url,
-                            "pricePer1kTokens": provider.get("pricePer1kTokens") or {}})
+            entries.append({"id": provider["id"], "kind": provider["kind"], "baseUrl": url})
     return entries
+
+
+def catalogue_price_per_1k(provider_id: str, model: str) -> tuple[float, float]:
+    """USD per 1k tokens from the AI config's model entry (which holds USD per million). An unknown price
+    reads as 0 here: the bench only reaches a model without a price on a free/local provider, or under
+    --allow-paid, where the cost is reported as untracked."""
+    sys.path.insert(0, str(REPO_ROOT / "NPDevCli"))
+    import npdev_ai_config
+
+    try:
+        price_in, price_out = npdev_ai_config.load().price(provider_id, model)
+    except npdev_ai_config.AiConfigError:
+        return 0.0, 0.0
+    return (price_in or 0.0) / 1000.0, (price_out or 0.0) / 1000.0
 
 
 def _norm(url: str):
@@ -106,9 +119,10 @@ def resolve_backend(base_url: str, model: str, allow_paid: bool, entries: list[d
     entries = load_allowlist() if entries is None else entries
     entry = match_allowlist(base_url, entries)
     if entry is not None:
-        price = entry.get("pricePer1kTokens") or {}
-        return BackendInfo(entry["id"], entry.get("kind", "free"), base_url, model,
-                           float(price.get("input", 0)), float(price.get("output", 0)), allow_paid)
+        price = entry.get("pricePer1kTokens")  # the retired standalone allowlist format carried its own
+        price_in, price_out = ((float(price.get("input", 0)), float(price.get("output", 0))) if price
+                               else catalogue_price_per_1k(entry["id"], model))
+        return BackendInfo(entry["id"], entry.get("kind", "free"), base_url, model, price_in, price_out, allow_paid)
     if not allow_paid:
         raise BackendRefused(
             f"base URL {base_url!r} is not on the free/local allowlist ({ALLOWLIST_PATH.name}); "
@@ -242,9 +256,8 @@ def build_provider_backends(spec: str, allow_paid: bool, timeout: float, resolve
         if entry.get("keyEnvVar") and not key:
             raise BackendRefused(f"no key for {provider_id}: run `npdev providers add {provider_id}` "
                                  f"(or set {entry['keyEnvVar']})")
-        price = entry.get("pricePer1kTokens") or {}
-        info = BackendInfo(provider_id, entry["kind"], entry["baseUrl"], model,
-                           float(price.get("input", 0)), float(price.get("output", 0)), allow_paid)
+        price_in, price_out = catalogue_price_per_1k(provider_id, model)
+        info = BackendInfo(provider_id, entry["kind"], entry["baseUrl"], model, price_in, price_out, allow_paid)
         last = index == len(parsed) - 1
         built.append(OpenAICompatBackend(info, api_key=key or "", timeout=timeout,
                                          backoff=None if last else (15, 30)))

@@ -3,7 +3,9 @@
 One place holds every provider key, so the key is typed once and then serves both the AI authoring
 benchmark (scripts/ai/bench) and every generated app's agent proxy (`npdev providers export-env`).
 
-  * Catalogue  : NPDevCli/ai-providers.json (no keys, ever) -- id, endpoint, free/paid/local, signup link.
+  * Catalogue  : the merged AI config (npdev_ai_config: NPDevCli/ai-providers.json + the user's ai.json; no
+                 keys, ever) -- id, endpoint, protocol, free/paid/local, signup link. A provider the user
+                 added gets a key slot like a shipped one.
   * Vault      : providers.vault.json under %APPDATA%\\NPDev (Windows) or $XDG_CONFIG_HOME/NPDev, default
                  ~/.config/NPDev (Linux). It is the index -- which providers have a key, since when, in
                  which store -- and the secret goes to the OS store for the current user:
@@ -32,7 +34,6 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
-CATALOGUE_PATH = Path(__file__).resolve().parent / "ai-providers.json"
 VAULT_SCHEMA = "npdev-provider-vault.v1"
 DPAPI_ENTROPY = b"npdev-provider-vault.v1"
 SECRET_SERVICE_ATTRIBUTE = ("service", "npdev-providers")
@@ -53,8 +54,14 @@ class VaultUnavailable(ProviderError):
 # --------------------------------------------------------------------------- catalogue
 
 def load_catalogue(path: Path | None = None) -> list[dict]:
-    data = json.loads((path or CATALOGUE_PATH).read_text(encoding="utf-8"))
-    return list(data.get("providers") or [])
+    """The active providers of the merged AI config. `path` loads that one catalogue file alone, with no
+    user overlay."""
+    import npdev_ai_config
+
+    try:
+        return npdev_ai_config.load(path, use_mine=path is None).active_providers()
+    except npdev_ai_config.AiConfigError as exc:
+        raise ProviderError(str(exc)) from None
 
 
 def get_provider(provider_id: str, catalogue: list[dict] | None = None) -> dict:
