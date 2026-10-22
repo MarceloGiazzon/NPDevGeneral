@@ -732,7 +732,7 @@
     {
       "name": "WidgetEnforcementDemo",
       "truthLevel": "T2",
-      "ui": { "label": "Widget enforcement demo" },
+      "ui": { "label": "Widget enforcement demo", "offlineWrite": true },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "code", "type": "string", "required": true, "domainType": "ShortCode", "ui": { "label": "Code" } },

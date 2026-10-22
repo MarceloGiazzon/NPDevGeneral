@@ -3258,7 +3258,8 @@ public final class JsonModelParser {
                 readText(node, "customWidgetRef"),
                 readText(node, "currency"),
                 readLabelLocales(node, "label"),
-                readLabelLocales(node, "shortLabel")
+                readLabelLocales(node, "shortLabel"),
+                readOptionalBoolean(node, "offlineWrite")
         );
     }
 

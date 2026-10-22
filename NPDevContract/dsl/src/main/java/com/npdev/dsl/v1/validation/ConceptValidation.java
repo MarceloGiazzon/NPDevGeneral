@@ -182,6 +182,11 @@ final class ConceptValidation {
                     }
                 }
 
+                if (f.getUi() != null && f.getUi().getOfflineWrite() != null) {
+                    errors.add("Entity " + e.getName() + " field " + f.getName()
+                            + ": ui.offlineWrite is a concept-level setting"
+                            + " -- suggestedFix: move offlineWrite to the concept's own ui block and remove it from this field's ui");
+                }
                 FieldValueValidation.validateSchemaRegexes(
                         "Entity " + e.getName() + " field " + f.getName(), f.getSchema(), errors);
                 if ("object".equals(normalizedType)) {

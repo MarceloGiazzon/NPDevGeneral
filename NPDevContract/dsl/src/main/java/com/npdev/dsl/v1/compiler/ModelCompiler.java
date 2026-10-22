@@ -2399,7 +2399,8 @@ public final class ModelCompiler {
                 metadata.getCustomWidgetRef(),
                 metadata.getCurrency(),
                 metadata.getLabelLocales(),
-                metadata.getShortLabelLocales()
+                metadata.getShortLabelLocales(),
+                metadata.getOfflineWrite()
         );
     }
 

@@ -1055,7 +1055,8 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "customWidgetRef"),
                 optionalText(node, "currency"),
                 readLabelLocales(node, "label"),
-                readLabelLocales(node, "shortLabel")
+                readLabelLocales(node, "shortLabel"),
+                optionalBooleanObject(node.get("offlineWrite"))
         );
     }
 

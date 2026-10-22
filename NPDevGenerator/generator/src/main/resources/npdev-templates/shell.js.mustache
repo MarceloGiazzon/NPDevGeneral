@@ -109,6 +109,52 @@
     return entry && entry.payload ? entry : null;
   }
 
+  // MOB-2: queued offline writes, per tenant AND user, under the same prefix as the read cache so
+  // offlineClearAll (sign-out, or a different principal) drops them too. An entry is "pending" until
+  // the app replays it, then removed; a server refusal turns it "rejected" and keeps it, with the
+  // server's message, for the person to redo -- a stale edit is never merged or overwritten.
+  function queueKey() { return OFFLINE_PREFIX + "q:" + offlineScope; }
+  function queueRead() {
+    if (!offlineScope) { return []; }
+    var list = offlineJson(queueKey());
+    return Array.isArray(list) ? list : [];
+  }
+  function queueWrite(list) {
+    var store = offlineStore();
+    if (!store || !offlineScope) { return false; }
+    try { store.setItem(queueKey(), JSON.stringify(list)); return true; } catch (e) { return false; }
+  }
+  function queueAdd(entry) {
+    if (!offlineScope || !entry) { return null; }
+    var list = queueRead();
+    var item = {
+      id: "q" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+      concept: entry.concept, conceptLabel: entry.conceptLabel || entry.concept,
+      method: entry.method, url: entry.url, body: entry.body || {},
+      baseVersion: entry.baseVersion === undefined ? null : entry.baseVersion,
+      summary: entry.summary || "", queuedAt: Date.now(), status: "pending", message: ""
+    };
+    list.push(item);
+    return queueWrite(list) ? item : null;
+  }
+  function queueList(concept) {
+    return queueRead().filter(function (item) { return !concept || item.concept === concept; });
+  }
+  function queueUpdate(id, patch) {
+    var list = queueRead();
+    var hit = false;
+    list.forEach(function (item) {
+      if (item.id === id) { Object.keys(patch).forEach(function (key) { item[key] = patch[key]; }); hit = true; }
+    });
+    return hit && queueWrite(list);
+  }
+  function queueRemove(id) {
+    return queueWrite(queueRead().filter(function (item) { return item.id !== id; }));
+  }
+  function queuePendingCount() {
+    return queueRead().filter(function (item) { return item.status === "pending"; }).length;
+  }
+
   var TOKEN_STORAGE_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"];
   var BUSINESS_UI_ROOT = "/npdev-business-ui/index.html";
   var TASKS_PAGE = "/npdev-business-ui/collab/tasks.html";
@@ -706,6 +752,13 @@
       logoutBtn.type = "button";
       logoutBtn.textContent = shellString("shell.signOut", "Sign out");
       logoutBtn.addEventListener("click", function () {
+        // MOB-2: signing out wipes this device's offline cache AND its queue; do not do that silently
+        // while edits have not reached the server yet.
+        var unsynced = queuePendingCount();
+        if (unsynced > 0 && !window.confirm(shellString("shell.signOutUnsynced",
+            "You have " + unsynced + " change(s) saved on this device that have not synced yet. Signing out discards them. Sign out anyway?"))) {
+          return;
+        }
         // SEC-2: the npdev_jwt cookie is HttpOnly, so only the server can expire it. Reload after
         // the call settles (success, failure or an apiKey app with no logout endpoint alike).
         var headers = authHeaders(findToken());
@@ -2503,7 +2556,12 @@
       restorePrincipal: offlineRestorePrincipal,
       put: offlinePut,
       get: offlineGet,
-      clearAll: offlineClearAll
+      clearAll: offlineClearAll,
+      queueAdd: queueAdd,
+      queueList: queueList,
+      queueUpdate: queueUpdate,
+      queueRemove: queueRemove,
+      queuePendingCount: queuePendingCount
     },
     // `context.title` becomes the topbar breadcrumb (e.g. the active section's display name);
     // `context.path` (W1.6), when given, is an ordered array of segments (e.g. [groupLabel, title])

@@ -830,7 +830,10 @@
 
   // MOB-1 (M3): no-ops until shell.js is present, so a page without it behaves exactly as before.
   const OFFLINE_NOOP = { setPrincipal: function () {}, restorePrincipal: function () { return null; },
-    put: function () { return false; }, get: function () { return null; }, clearAll: function () {} };
+    put: function () { return false; }, get: function () { return null; }, clearAll: function () {},
+    queueAdd: function () { return null; }, queueList: function () { return []; },
+    queueUpdate: function () { return false; }, queueRemove: function () { return false; },
+    queuePendingCount: function () { return 0; } };
   function shellOffline() {
     return (window.NPDevShell && window.NPDevShell.offline) || OFFLINE_NOOP;
   }
@@ -888,6 +891,104 @@
     }
     render();
   }
+
+  // MOB-2: a concept with ui.offlineWrite queues its creates and updates on this device while the
+  // network is down (see submitForm) and replays them, in order, when it is back. Each entry is shown
+  // as pending sync; the server's refusal (a row edited elsewhere meanwhile, a rule, a permission
+  // withdrawn) keeps it visible as "needs attention" instead of overwriting anything.
+  function queueOfflineWrite(concept, mode, id, record, payload, hasBondSync) {
+    if (hasBondSync) { return false; }
+    const off = shellOffline();
+    const body = Object.assign({}, payload);
+    const url = mode === "edit" ? concept.endpointBase + "/" + encodeURIComponent(id) : concept.endpointBase;
+    let baseVersion = null;
+    if (mode === "edit") {
+      baseVersion = record && record.version !== undefined && record.version !== null ? record.version : null;
+      // Without the version the row was edited from there is nothing to reject a stale edit against.
+      if (baseVersion === null) { return false; }
+      const earlier = off.queueList(concept.conceptName).filter(function (item) {
+        return item.status === "pending" && item.method === "PUT" && item.url === url;
+      })[0];
+      if (earlier) {
+        // A second edit of the same row on this device continues the first: keep the version the FIRST
+        // edit started from, or the device would conflict with itself once the first one applied.
+        off.queueRemove(earlier.id);
+        baseVersion = earlier.baseVersion;
+        Object.keys(earlier.body).forEach(function (key) { if (!(key in body)) { body[key] = earlier.body[key]; } });
+      }
+      body.version = baseVersion;
+    }
+    return Boolean(off.queueAdd({
+      concept: concept.conceptName, conceptLabel: concept.displayName,
+      method: mode === "edit" ? "PUT" : "POST", url: url, body: body, baseVersion: baseVersion,
+      summary: (mode === "edit" ? "Update " : "New ") + concept.displayName
+    }));
+  }
+
+  let pendingSyncRunning = false;
+  async function syncPendingWrites() {
+    if (pendingSyncRunning) { return; }
+    const off = shellOffline();
+    const queued = off.queueList().filter(function (item) { return item.status === "pending"; });
+    if (!queued.length) { return; }
+    pendingSyncRunning = true;
+    const touched = {};
+    try {
+      for (const item of queued) {
+        try {
+          await fetchJson(item.url, { method: item.method, headers: headers(), body: JSON.stringify(item.body) });
+          off.queueRemove(item.id);
+        } catch (error) {
+          // No HTTP status = still offline: stop and keep the order for the next attempt.
+          if (error.status === undefined) { break; }
+          off.queueUpdate(item.id, { status: "rejected", message: error.message });
+        }
+        touched[item.concept] = true;
+      }
+    } finally {
+      pendingSyncRunning = false;
+    }
+    (state.manifest.concepts || []).forEach(function (concept) {
+      if (touched[concept.conceptName]) { loadPanel(concept); }
+    });
+    render();
+  }
+
+  function appendPendingSyncBanner(section, concept) {
+    if (!concept.offlineWrite) { return; }
+    const entries = shellOffline().queueList(concept.conceptName);
+    if (!entries.length) { return; }
+    const pending = entries.filter(function (item) { return item.status === "pending"; });
+    const box = document.createElement("div");
+    box.className = "offline-banner pending-sync";
+    box.setAttribute("role", "status");
+    const head = document.createElement("div");
+    head.textContent = pending.length
+      ? pending.length + " change(s) saved on this device, pending sync."
+      : "Some changes could not be synced and need attention.";
+    box.appendChild(head);
+    if (pending.length) {
+      box.appendChild(button("Sync now", "", function () { syncPendingWrites(); }));
+    }
+    entries.forEach(function (item) {
+      const row = document.createElement("div");
+      row.className = "pending-sync-item";
+      const label = document.createElement("span");
+      label.textContent = item.summary + " - "
+        + (item.status === "pending" ? "pending sync" : "needs attention: " + item.message);
+      row.appendChild(label);
+      if (item.status !== "pending") {
+        row.appendChild(button("Discard", "", function () {
+          shellOffline().queueRemove(item.id);
+          render();
+        }));
+      }
+      box.appendChild(row);
+    });
+    section.appendChild(box);
+  }
+
+  window.addEventListener("online", function () { syncPendingWrites(); });
 
   // Back online: replace a stale list with a fresh one.
   window.addEventListener("online", function () {
@@ -1280,6 +1381,7 @@
         : "You are offline and " + concept.displayName + " has not been opened on this device yet, so there is nothing to show.";
       section.appendChild(banner);
     }
+    appendPendingSyncBanner(section, concept);
 
     // UI-0: Table | Board | Calendar switcher; null (nothing rendered) when only "table" is available.
     const viewSwitcher = buildViewSwitcher(concept);
@@ -3069,6 +3171,15 @@
       notify(mode === "edit" ? "Record updated." : "Record created.", false);
       await reloadAfterMutation(concept);
     } catch (error) {
+      // MOB-2: no HTTP status = the request never reached the server. A concept that opted in keeps the
+      // write on this device instead of losing it; anything the server answered is shown as before.
+      if (error.status === undefined && concept.offlineWrite
+          && queueOfflineWrite(concept, mode, id, record, payload, bondFieldsToSync.length > 0)) {
+        onDone();
+        notify("You are offline - saved on this device, pending sync.", false);
+        render();
+        return;
+      }
       // The form -- modal or inline -- stays exactly as the user left it: onDone() and
       // reloadAfterMutation() run only on the success path above, so nothing re-renders or rebuilds
       // it here, and applyFieldErrors touches no control's value. Everything typed is preserved.
@@ -3412,6 +3523,8 @@
       state.roles = Array.isArray(me.roles) ? me.roles : [];
       state.actorId = me.actorId || "";
       shellOffline().setPrincipal({ tenantId: me.tenantId || "", actorId: state.actorId, roles: state.roles });
+      // MOB-2: changes queued during an earlier offline session go up as soon as we are signed in again.
+      window.setTimeout(function () { syncPendingWrites(); }, 0);
     } catch (error) {
       // MOB-1 (M3): with no network (not an HTTP refusal) reuse the principal this device last saw, so
       // the app opens with the same navigation; any HTTP error, e.g. 401, still means "not signed in".

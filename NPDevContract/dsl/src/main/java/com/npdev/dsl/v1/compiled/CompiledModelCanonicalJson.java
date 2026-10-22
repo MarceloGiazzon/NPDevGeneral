@@ -1201,6 +1201,9 @@ public final class CompiledModelCanonicalJson {
         node.put("imageField", safe(metadata.getImageField()));
         node.put("customWidgetRef", safe(metadata.getCustomWidgetRef()));
         node.put("currency", safe(metadata.getCurrency()));
+        if (metadata.getOfflineWrite() != null) {
+            node.put("offlineWrite", metadata.getOfflineWrite());
+        }
         return node;
     }
 
