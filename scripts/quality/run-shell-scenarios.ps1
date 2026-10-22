@@ -98,21 +98,24 @@ $report = [ordered]@{
     status        = "failed"
 }
 
-$samplesRoot = Get-NPDevSamplesRoot -ScriptRoot (Join-Path $repoRoot "NPDevSamples\scripts")
-$sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId $SampleId
-$config = Read-SampleConfig -Sample $sample
+# Output goes to <Build root>\samples\<id>, never inside the repo (BUILD_OUTPUT_LOCATION_POLICY); read the sample's
+# config directly because Resolve-NPDevSample insists on an in-repo Output folder.
+$configPath = Join-Path $repoRoot "NPDevSamples\$SampleId\Input\config.json"
+if (-not (Test-Path -LiteralPath $configPath)) { throw "Sample config not found: $configPath" }
+$config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+$outputRoot = Join-Path (Join-Path (Get-NPDevBuildRoot $repoRoot) "samples") $SampleId
 if ($Port -le 0) {
     $Port = Get-ConfigInt -Config $config -Path @("runtime", "serverPort") -Fallback 8099
 }
-$appRootFull = $sample.AppRoot
+$appRootFull = Join-Path $outputRoot "App"
 
 if ($ReuseBuild) {
-    Info "ReuseBuild: skipping generate + build, booting what is already under $SampleId\Output\App"
+    Info "ReuseBuild: skipping generate + build, booting what is already under $appRootFull"
     $report.generate = New-StageResult -Status "skipped" -Message "ReuseBuild."
 } else {
 Write-Section "Generating $SampleId"
 $generateScript = Join-Path $repoRoot "NPDevSamples\scripts\generate-sample-app.ps1"
-& pwsh -NoProfile -File $generateScript -SampleId $SampleId | Out-Host
+& pwsh -NoProfile -File $generateScript -SampleId $SampleId -OutputRoot $outputRoot | Out-Host
 $generateExit = $LASTEXITCODE
 $report.generate = New-StageResult -Status ($(if ($generateExit -eq 0) { "passed" } else { "failed" })) -Message "Generator exit $generateExit."
 Write-JsonReport $report
@@ -201,7 +204,7 @@ try {
         "mob2-offline-write-verify-routine.json"
     )
     $routineDir = Join-Path $repoRoot "NPDevSamples\scripts\browser\browser-routines"
-    $evidenceDir = Join-Path $sample.RunOutputRoot "browser"
+    $evidenceDir = Join-Path (Join-Path $outputRoot "RunOutput") "browser"
     New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
 
     Initialize-ScrapForAI | Out-Null
