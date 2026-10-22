@@ -22,3 +22,8 @@ resolution: >-
   absent from the token list and the security log has been checked.
 note: >-
   Owner reported 2026-10-22: the exposed classic token is revoked and a replacement is set via the GH_TOKEN user environment variable. Security-log check and a fresh-terminal gh auth status were not confirmed in-session (the agent session still held the stale token).
+guard:
+  kind: manual
+  ref: "Owner: GitHub -> Settings -> Developer settings -> Personal access tokens; the exposed classic token is absent from the list."
+  asserts: the exposed classic GitHub PAT no longer exists
+  provenRed: false

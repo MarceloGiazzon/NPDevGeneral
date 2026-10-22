@@ -1,0 +1,25 @@
+id: AIP-2
+title: One key store and one AI client for every developer and Manager feature (AI providers plan, Phase 2)
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-22
+closed: null
+source: >-
+  AI providers unification plan, revision 2 (2026-10-22), NPDev_General__OutsideRepo/AI_PROVIDERS_UNIFICATION_PLAN_2026-10-22.md (outside the repo), built on the AI contact-point inventory AI_CONTACT_POINTS_2026-10-22.md in the same folder. Findings F2, F3, F4, F7.
+surface: cli/providers
+detail: |
+  Keys live in four places (npdev providers, the Manager's prompter/<id> keyring entries, manager.json
+  api_key, a Windows-registry fallback) and each feature has its own HTTP client.
+  2.1 npdev ai complete (--profile | --feature | --provider --model [--effort]) --json, with profile
+  fallbacks. 2.2 a usage log under <Build>/ai-usage/usage.jsonl (no prompt, no key) + npdev ai usage.
+  2.3 spend guard: paid providers need per-feature opt-in, optional monthly USD cap (D2).
+  2.4 Manager Prompter calls npdev ai complete; the key never enters the Manager. 2.5 one-time
+  migration of prompter/<id> keyring entries into npdev providers. 2.6 Scrap assistant on the same
+  client, manager.json api_key removed. 2.7 generate-routine, the review and the tester resolve keys via
+  npdev_providers.resolve_key; registry fallback dropped. 2.8 the Manager's own keyring uses Secret
+  Service on Linux instead of the session keyring (lost at reboot).
+  D5 (decided yes): several keys per provider as <provider>:<account>.
+resolution: >-
+  Done when api_key is gone from AssistantConfig, no Manager feature holds a provider key, and every
+  developer feature resolves keys through npdev_providers.resolve_key.

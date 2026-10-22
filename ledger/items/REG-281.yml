@@ -9,5 +9,12 @@ closed: 2026-10-22
 source: >-
   IMP-2/IMP-4 import work: the importer had to rewrite the Portuguese word Restricao to ruaRecRe_stricao so the draft would validate. Owner ruling 2026-10-22: the rule is too extreme and should be a warning at most.
 surface: NPDevContract/dsl ExpressionValidation.validateTechnologyNeutrality, ConceptValidation.validateCapabilities, NPDevGenerator importer DbIntrospector
+detail: >-
+  The technology-neutrality rule matched technology words as substrings and failed validation, so an ordinary domain word that happens to contain one (Restricao contains "rest", Interest contains "rest") made a model invalid, and the importer mangled legacy names to get past it.
 resolution: >-
   A technology word inside a concept, field, capability, event, flow or step name (and a capability type) is now a validation WARNING, not an error. The importer no longer splits such words: legacy names stay readable (the namingAdjustments report key is gone). Tests: DslFlowModelTest, DbIntrospectorTest.aLegacyWordThatContainsATechnologyNameKeepsItsNameAndOnlyWarns.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/importer/DbIntrospectorTest.java#aLegacyWordThatContainsATechnologyNameKeepsItsNameAndOnlyWarns
+  asserts: a legacy name containing a technology word keeps its name and yields only a validation warning
+  provenRed: false

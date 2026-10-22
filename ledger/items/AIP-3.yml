@@ -1,0 +1,22 @@
+id: AIP-3
+title: Generated apps use the same AI providers via a protocol-driven external-ai-http (AI providers plan, Phase 3)
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-22
+closed: null
+source: >-
+  AI providers unification plan, revision 2 (2026-10-22), NPDev_General__OutsideRepo/AI_PROVIDERS_UNIFICATION_PLAN_2026-10-22.md (outside the repo), built on the AI contact-point inventory AI_CONTACT_POINTS_2026-10-22.md in the same folder. Finding F6.
+surface: kernel/adapters/external-ai-http
+detail: |
+  external-ai-http hard-codes four vendor factories, so free and local providers are unusable by apps.
+  3.1 protocol-driven profiles (openai-chat / gemini-native / anthropic-messages) built from a catalogue
+  copy bundled into the app. 3.2 SemanticValidator: externalAi.vendors and prompt vendors must be
+  catalogue ids with appVendor: true, plus a dsl-conformance-max example with an OpenAI-compatible free
+  vendor. 3.3 prices from the catalogue (npdev.externalai.price.* stay as overrides). 3.4 npdev providers
+  run-env starts an app with keys in its environment, writing no key file (D3). 3.5 agent-channel
+  vendor/model defaults come from the model, not a hard-coded gemini.
+  Verify on the notebook with the adapter's and the DSL's own tests only; CI runs T2 after the push.
+resolution: >-
+  Done when an app can declare a catalogue vendor by id and call it through the protocol profile, the
+  validator rejects a non-catalogue vendor, and the corpus example is covered.

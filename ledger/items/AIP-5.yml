@@ -1,0 +1,19 @@
+id: AIP-5
+title: AI providers hygiene, docs and guard rails -- digest-hook precision, docs/AI_PROVIDERS.md, endpoint checker (AI providers plan, Phase 5)
+type: PROCESS
+severity: LOW
+status: OPEN
+opened: 2026-10-22
+closed: null
+source: >-
+  AI providers unification plan, revision 2 (2026-10-22), NPDev_General__OutsideRepo/AI_PROVIDERS_UNIFICATION_PLAN_2026-10-22.md (outside the repo), built on the AI contact-point inventory AI_CONTACT_POINTS_2026-10-22.md in the same folder. Finding F9.
+surface: quality/ai-providers
+detail: |
+  5.1 require-digest.py matches the executable being run, not any mention of its name in arguments.
+  5.2 one curated docs/AI_PROVIDERS.md (catalogue, store, resolution order, env vars, how apps get keys,
+  spend rules) indexed in docs/README.md, plus an NPDevMcp knowledge card. 5.3 new
+  check-no-hardcoded-ai-endpoints.py in run-ai-knowledge-gate.ps1: a vendor host outside the catalogue,
+  the bundled copy and the adapter tests fails. 5.4 close AIP-0..AIP-6.
+resolution: >-
+  Done when the checker runs in the aiKnowledge gate and was proven red on a planted endpoint, and the
+  doc passes check-markdown-links.

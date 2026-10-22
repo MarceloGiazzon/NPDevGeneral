@@ -15,3 +15,8 @@ resolution: >-
   Map an ENUM(...) type name to an enum field with the listed values (keep the original type in the report), add a test with the Sakila shape, and re-run npdev import db on Sakila to record the new counts.
 note: >-
   Fixed in DbIntrospector.enumValues/mapType/applyType: a type name of the form ENUM('a', 'b') (H2 and MySQL-mode H2 put the values there) maps to an enum field with those values; a bare ENUM, or a list the DSL would reject (empty, blank or duplicate value), stays unmapped. Tests aNativeEnumColumnBecomesAnEnumFieldWithItsValues and enumValuesAreParsedFromTheTypeNameOrNotAtAll. Sakila re-run: 88 of 89 columns mapped (was 87), film.rating is an enum with 5 values, model validates with 0 errors. Not covered: a real MySQL driver reports a bare ENUM in TYPE_NAME, so its values would need a driver-specific lookup (not tried; no MySQL available locally).
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/importer/DbIntrospectorTest.java#aNativeEnumColumnBecomesAnEnumFieldWithItsValues
+  asserts: an ENUM('a', 'b') column type is imported as an enum field carrying those values
+  provenRed: false

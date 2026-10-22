@@ -1,0 +1,25 @@
+id: AIP-1
+title: One AI catalogue (providers, models, profiles, bindings) as the single source of truth (AI providers plan, Phase 1)
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-22
+closed: null
+source: >-
+  AI providers unification plan, revision 2 (2026-10-22), NPDev_General__OutsideRepo/AI_PROVIDERS_UNIFICATION_PLAN_2026-10-22.md (outside the repo), built on the AI contact-point inventory AI_CONTACT_POINTS_2026-10-22.md in the same folder. Finding F5.
+surface: cli/providers
+detail: |
+  Endpoints, models and prices are repeated in several places (npdev providers' catalogue,
+  build-review-pack.py VENDOR_PROFILES, the tester, the Java external-ai-http factories).
+  1.1 schemas/ai/ai-config.schema.json with four sections: providers (id, name, kind, protocol, baseUrl,
+  keyEnvVar, authStyle, needsKey, appVendor, signupUrl), models, profiles, bindings.
+  1.2 restructure the shipped catalogue into those sections (per-model prices and effort levels;
+  default profiles fast/deep/offline). 1.3 layering: a per-machine ai.json ("mine") adds or overrides any
+  shipped field, or disables an entry (D6: per machine, no export/import). 1.3b npdev ai detect probes
+  local LLM servers (Ollama, LM Studio, llama.cpp, vLLM, Jan) on loopback and adds the picked models.
+  1.4 the review script and the tester read the catalogue. 1.5 twin-pair rule: Java vendor profiles
+  match the catalogue.
+resolution: >-
+  Done when VENDOR_PROFILES is gone from build-review-pack.py, the schema validates both the shipped
+  catalogue and ai.json, and breaking either side of the Java/catalogue pair fails
+  check-twin-pair-consistency.py.

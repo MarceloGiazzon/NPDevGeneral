@@ -520,6 +520,79 @@ def sweep_unprovisioned_java_launch(scan: Scan) -> list[Hit]:
 
 
 # --------------------------------------------------------------------------------------
+# Pattern 7 -- a provider key or token written into a file as a literal.
+# F1 of the AI providers plan (2026-10-22): `launch-claude.ps1` at the repo ROOT carried
+# `$env:ANTHROPIC_API_KEY = "sk-<32 hex>"` (a DeepSeek key) for months. Patterns 1-6 never saw it:
+# the root is not a SCAN_ROOT, and none of them looks for secrets. So this one is repo-wide --
+# every file git would commit (tracked, plus untracked-not-ignored, so a key is caught BEFORE the
+# commit) -- and ignores SKIP: a real key in a test directory is still a real key.
+# The snippet carries a digest of the secret, never the secret: this sweep's own output (CI logs,
+# --format md pasted into a doc) must not become the next leak.
+# --------------------------------------------------------------------------------------
+
+SECRET_TOKEN = re.compile(
+    r"(?<![\w-])(sk-(?:ant-|proj-)?[A-Za-z0-9_-]{32,}|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{60,})"
+)
+SECRET_ENV_ASSIGN = re.compile(
+    r"""(?:\$env:|\bexport\s+)(\w*(?:API_KEY|TOKEN|SECRET|PASSWORD))\s*=\s*["']?([^"'$\s<>{}]{16,})""",
+    re.I,
+)
+SECRET_PLACEHOLDER = re.compile(r"(x{6,}|your|example|placeholder|redacted|changeme|dummy|fake|\.\.\.)", re.I)
+SECRET_MAX_BYTES = 2_000_000
+
+
+def looks_like_secret(value: str) -> bool:
+    return (
+        not SECRET_PLACEHOLDER.search(value)
+        and any(c.isdigit() for c in value)
+        and any(c.isalpha() for c in value)
+    )
+
+
+def sweep_hardcoded_secrets(scan: Scan) -> list[Hit]:
+    hits: list[Hit] = []
+    found: list[tuple[int, str, str]] = []
+    for match in SECRET_TOKEN.finditer(scan.text):
+        found.append((match.start(), match.group(1), f"a `{match.group(1)[:4]}...` key/token literal"))
+    for match in SECRET_ENV_ASSIGN.finditer(scan.text):
+        found.append((match.start(), match.group(2), f"a literal assigned to `{match.group(1)}`"))
+    seen: set[str] = set()
+    for offset, value, what in found:
+        if value in seen or not looks_like_secret(value):
+            continue
+        seen.add(value)
+        digest = hashlib.sha256(value.encode()).hexdigest()[:16]
+        hits.append(
+            Hit(
+                "hardcoded-secret",
+                scan.path,
+                scan.line_of(offset),
+                f"{what} ({len(value)} chars) -- revoke it at the provider, then keep it in "
+                f"`npdev providers` (the key store) and read it at run time. Allowlist only a "
+                f"value that is provably not a credential.",
+                f"secret sha256:{digest}",
+                scan.root,
+            )
+        )
+    return hits
+
+
+def repo_files(root: Path) -> list[Path]:
+    """Every file git would commit: tracked, plus untracked files not ignored."""
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            check=True, capture_output=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError) as error:
+        print(f"ERROR: cannot list repo files for the repo-wide sweeps: {error}", file=sys.stderr)
+        raise SystemExit(2)
+    return [root / name for name in out.decode("utf-8", "replace").split("\0") if name]
+
+
+# --------------------------------------------------------------------------------------
 # Driver
 # --------------------------------------------------------------------------------------
 
@@ -532,7 +605,11 @@ SWEEPS = [
     (sweep_unbounded_input, ("*.java",), ("unbounded-caller-input",)),
     (sweep_unprovisioned_java_launch, ("*.ps1", "*.sh", "*.py"), ("unprovisioned-java-launch",)),
 ]
-PATTERN_NAMES = sorted(name for _, _, names in SWEEPS for name in names)
+# Swept over repo_files() instead of SCAN_ROOTS, and not filtered by SKIP (see Pattern 7).
+REPO_WIDE_SWEEPS = [
+    (sweep_hardcoded_secrets, ("*",), ("hardcoded-secret",)),
+]
+PATTERN_NAMES = sorted(name for _, _, names in SWEEPS + REPO_WIDE_SWEEPS for name in names)
 
 # The four surfaces of ONE_PLAN §3-4, plus the two already reviewed (regressions land there too).
 SCAN_ROOTS = [
@@ -631,6 +708,20 @@ def collect(root: Path, only: str | None) -> list[Hit]:
                     except OSError:
                         continue
                     hits.extend(function(Scan(path, root, text)))
+    wide = [function for function, _, emits in REPO_WIDE_SWEEPS if not only or only in emits]
+    if wide:
+        for path in repo_files(root):
+            try:
+                if not path.is_file() or path.stat().st_size > SECRET_MAX_BYTES:
+                    continue
+                raw = path.read_bytes()
+            except OSError:
+                continue
+            if b"\0" in raw:
+                continue
+            scan = Scan(path, root, raw.decode("utf-8", errors="replace"))
+            for function in wide:
+                hits.extend(function(scan))
     if only:
         hits = [h for h in hits if h.pattern == only]
     return hits
@@ -774,6 +865,36 @@ SELF_TEST: list[tuple[str, str, str, str, bool]] = [
         "unprovisioned-java-launch",
         False,
     ),
+    # Fixture keys are assembled at run time so this file never holds a key-shaped literal itself --
+    # Pattern 7 sweeps this file too.
+    (
+        "F1 as it actually shipped: launch-claude.ps1 set a DeepSeek key (sk- + 32 hex) as a literal",
+        "launch-claude.ps1",
+        "# Set DeepSeek Authentication\n$env:ANTHROPIC_API_KEY = \"" + "sk-" + "c0ffee12" * 4 + "\"\n",
+        "hardcoded-secret",
+        True,
+    ),
+    (
+        "OWN-1's shape: a GitHub token pasted into a script",
+        "push.sh",
+        "export GH_TOKEN=" + "ghp_" + "A1b2C3d4E5" * 3 + "f6G7h8" + "\n",
+        "hardcoded-secret",
+        True,
+    ),
+    (
+        "the same launcher, fixed: the key comes from the key store at run time",
+        "launch-claude.ps1",
+        "$key = npdev providers export-env deepseek\n$env:ANTHROPIC_API_KEY = $key\n",
+        "hardcoded-secret",
+        False,
+    ),
+    (
+        "a documented placeholder is not a key",
+        "README.md",
+        "Set `$env:DEEPSEEK_API_KEY = \"" + "sk-" + "your-deepseek-key-goes-here-xxxxxxxx" + "\"`.\n",
+        "hardcoded-secret",
+        False,
+    ),
 ]
 
 
@@ -783,7 +904,7 @@ def self_test(root: Path) -> int:
     for description, filename, source, expected, should_hit in SELF_TEST:
         scan = Scan(root / filename, root, source)
         hits: list[Hit] = []
-        for function, globs, emits in SWEEPS:
+        for function, globs, emits in SWEEPS + REPO_WIDE_SWEEPS:
             if expected not in emits:
                 continue
             if filename.endswith(".mustache") != (globs == ("*.mustache",)):

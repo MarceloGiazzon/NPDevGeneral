@@ -1,0 +1,20 @@
+id: AIP-4
+title: The Manager as the single AI control point -- AI Providers tab, profiles, per-app AI panel (AI providers plan, Phase 4)
+type: FEATURE
+severity: LOW
+status: OPEN
+opened: 2026-10-22
+closed: null
+source: >-
+  AI providers unification plan, revision 2 (2026-10-22), NPDev_General__OutsideRepo/AI_PROVIDERS_UNIFICATION_PLAN_2026-10-22.md (outside the repo), built on the AI contact-point inventory AI_CONTACT_POINTS_2026-10-22.md in the same folder.
+surface: manager/ai-keys
+detail: |
+  4.1 the AI Keys tab shows which features use which provider, plus the month's usage and cost.
+  4.2 rename to AI Providers, with Providers / Models / Profiles / Bindings sub-views over ai.json and a
+  "Find local LLMs" button (npdev ai detect). 4.3 Prompter and Scrap assistant pick a profile instead of
+  typing an endpoint. 4.4 a per-app AI panel: opted-in vendors, key availability, run-env start.
+  4.5 look at the tab in a running Manager (fake mode, then real) and fix what the screenshots show --
+  the AI Keys tab (7798391a) has so far only passed cargo check.
+resolution: >-
+  Done when no known provider needs endpoint typing anywhere in the Manager and screenshots of a real
+  run are filed in the evidence folder.

@@ -1,0 +1,29 @@
+id: AIP-0
+title: Contain the leaked DeepSeek key and remove stale AI configs (AI providers plan, Phase 0)
+type: PROCESS
+severity: HIGH
+status: PARTIAL
+opened: 2026-10-22
+closed: null
+source: >-
+  AI providers unification plan, revision 2 (2026-10-22), NPDev_General__OutsideRepo/AI_PROVIDERS_UNIFICATION_PLAN_2026-10-22.md (outside the repo), built on the AI contact-point inventory AI_CONTACT_POINTS_2026-10-22.md in the same folder. Findings F1 (key literal) and F8 (stale configs).
+surface: process/ai-providers
+detail: |
+  launch-claude.ps1 at the repo root set $env:ANTHROPIC_API_KEY to a literal DeepSeek key (sk- + 32 hex)
+  and was committed and pushed. No sweep saw it: security-pattern-sweep.py only read SCAN_ROOTS and had
+  no secret pattern. .continue/ was an unused example config.
+  Steps: 0.1 owner revokes the key; 0.2 remove the literal; 0.3 teach the sweep the shape, with a
+  fixture; 0.4 owner decides on a history scrub (D1, tracked in AIP-6); 0.5 delete .continue/;
+  0.6 file AIP-0..AIP-6.
+resolution: >-
+  Done when the owner reports the key revoked (DeepSeek has no key-management API; console only --
+  confirm with GET https://api.deepseek.com/models returning 401) and D1 is recorded in AIP-6.
+files:
+  - scripts/quality/security-pattern-sweep.py
+verification: UNIT_TESTED
+note: >-
+  2026-10-22: 0.2 done by deleting launch-claude.ps1 and claude-deepseek-settings.json (nothing referenced
+  them); 0.5 .continue/ deleted; 0.3 Pattern 7 hardcoded-secret added (repo-wide over git ls-files incl.
+  untracked, sk-/ghp_/github_pat_ tokens and $env:/export *_API_KEY|TOKEN|SECRET|PASSWORD literals;
+  output carries a sha256 digest, never the value), 4 self-test fixtures, fails on a planted copy of
+  the old line, 0 hits on the tree; 0.6 these items. Open: 0.1 revocation (owner), 0.4/D1.
