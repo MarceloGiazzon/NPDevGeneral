@@ -97,6 +97,77 @@ class BusinessUiEmitterOfflineWriteTest {
         }
     }
 
+    /**
+     * Runs the EMITTED offline cache + write-queue code (the block of shell.js between OFFLINE_PREFIX and
+     * TOKEN_STORAGE_KEYS) in Node against a fake localStorage, so the queue's behaviour is proven on the
+     * code every generated app actually ships, not only that it parses.
+     */
+    @Test
+    void theEmittedQueueIsPerUserOrderedAndWipedOnSignOut() throws Exception {
+        Assumptions.assumeTrue(nodeAvailable(), "node not on PATH");
+        String shell = Files.readString(find(emit(), "shell.js"));
+        int from = shell.indexOf("var OFFLINE_PREFIX");
+        int to = shell.indexOf("var TOKEN_STORAGE_KEYS");
+        assertTrue(from > 0 && to > from, "the offline block must be contiguous and findable");
+
+        String script = """
+                var store = {};
+                var window = { localStorage: {
+                  getItem: function (k) { return Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null; },
+                  setItem: function (k, v) { store[k] = String(v); },
+                  removeItem: function (k) { delete store[k]; },
+                  get length() { return Object.keys(store).length; },
+                  key: function (i) { return Object.keys(store)[i]; } } };
+                %s
+                var out = {};
+                out.noScopeAdd = queueAdd({ concept: "Visit", method: "POST", url: "/api/visits", body: {} });
+                offlineSetPrincipal({ tenantId: "t1", actorId: "ana" });
+                var first = queueAdd({ concept: "Visit", method: "PUT", url: "/api/visits/1", body: { note: "a", version: 3 }, baseVersion: 3, summary: "Update Visit" });
+                var second = queueAdd({ concept: "Visit", method: "POST", url: "/api/visits", body: { note: "b" }, summary: "New Visit" });
+                queueAdd({ concept: "Other", method: "POST", url: "/api/others", body: {} });
+                out.order = queueList("Visit").map(function (i) { return i.summary; });
+                out.allCount = queueList().length;
+                out.pending = queuePendingCount();
+                out.firstVersion = first.baseVersion;
+                queueUpdate(first.id, { status: "rejected", message: "stale" });
+                out.pendingAfterReject = queuePendingCount();
+                out.rejected = queueList("Visit").filter(function (i) { return i.status === "rejected"; }).map(function (i) { return i.message; });
+                queueRemove(second.id);
+                out.afterRemove = queueList("Visit").length;
+                offlineSetPrincipal({ tenantId: "t1", actorId: "bruno" });
+                out.otherUserSeesQueue = queueList().length;
+                offlineSetPrincipal({ tenantId: "t1", actorId: "ana" });
+                queueAdd({ concept: "Visit", method: "POST", url: "/api/visits", body: {}, summary: "again" });
+                out.beforeSignOut = queueList().length;
+                offlineClearAll();
+                offlineSetPrincipal({ tenantId: "t1", actorId: "ana" });
+                out.afterSignOut = queueList().length;
+                out.leftoverKeys = Object.keys(store).filter(function (k) { return k.indexOf("q:") >= 0; }).length;
+                console.log(JSON.stringify(out));
+                """.formatted(shell.substring(from, to));
+        Path file = Files.createTempFile("npdev-offline-queue-", ".js");
+        Files.writeString(file, script);
+        Process run = new ProcessBuilder("node", file.toString()).redirectErrorStream(true).start();
+        String output = new String(run.getInputStream().readAllBytes()).trim();
+        assertTrue(run.waitFor(30, TimeUnit.SECONDS));
+        assertEquals(0, run.exitValue(), output);
+
+        JsonNode result = new ObjectMapper().readTree(output.substring(output.lastIndexOf((char) 10) + 1));
+        assertTrue(result.get("noScopeAdd").isNull(), "nothing is queued before a principal is known");
+        assertEquals("Update Visit", result.get("order").get(0).asText());
+        assertEquals("New Visit", result.get("order").get(1).asText());
+        assertEquals(3, result.get("allCount").asInt(), "the queue is shared across concepts, listed per concept");
+        assertEquals(3, result.get("pending").asInt());
+        assertEquals(3, result.get("firstVersion").asInt(), "the version the edit started from is kept for the server to check");
+        assertEquals(2, result.get("pendingAfterReject").asInt(), "a rejected entry stops counting as pending but is kept");
+        assertEquals("stale", result.get("rejected").get(0).asText());
+        assertEquals(1, result.get("afterRemove").asInt());
+        assertEquals(0, result.get("otherUserSeesQueue").asInt(), "another user on the same device never sees or inherits the queue");
+        assertEquals(1, result.get("beforeSignOut").asInt(), "switching principals already wiped the first user's queue");
+        assertEquals(0, result.get("afterSignOut").asInt());
+        assertEquals(0, result.get("leftoverKeys").asInt(), "sign-out leaves no queue key behind");
+    }
+
     private static boolean nodeAvailable() {
         try {
             Process p = new ProcessBuilder("node", "--version").redirectErrorStream(true).start();
