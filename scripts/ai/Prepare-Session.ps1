@@ -117,13 +117,15 @@ try {
     if (-not $SkipIndexes) {
         Write-Host ''
         Write-Host 'refreshing indexes...' -ForegroundColor DarkGray
-        & python (Join-Path $repo 'scripts/ai/build_symbol_map.py') --quiet
+        # Ubuntu ships only `python3` unless python-is-python3 is installed.
+        $python = (Get-Command python, python3 -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+        & $python (Join-Path $repo 'scripts/ai/build_symbol_map.py') --quiet
         if ($LASTEXITCODE -eq 0) { Write-Host '  symbol map    ok' } else { Write-Host '  symbol map    FAILED' -ForegroundColor Red }
 
-        & python (Join-Path $repo 'scripts/ai/build_knowledge.py') 2>&1 | Out-Null
+        & $python (Join-Path $repo 'scripts/ai/build_knowledge.py') 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) { Write-Host '  knowledge     ok' } else { Write-Host '  knowledge     skipped' -ForegroundColor DarkGray }
 
-        & python (Join-Path $repo 'scripts/ai/build_open_state.py') 2>&1 | Out-Null
+        & $python (Join-Path $repo 'scripts/ai/build_open_state.py') 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) { Write-Host '  open state    ok' } else { Write-Host '  open state    FAILED' -ForegroundColor Red }
     }
 
