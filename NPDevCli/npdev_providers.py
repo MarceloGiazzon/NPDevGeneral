@@ -429,9 +429,11 @@ def add_arguments(subparsers) -> None:
     add = sub.add_parser("add", help="Store a provider's key in the vault (hidden prompt; never argv).")
     add.add_argument("provider")
     add.add_argument("--key-stdin", action="store_true", help="Read the key from stdin instead of prompting.")
+    add.add_argument("--json", action="store_true", help="Answer with one JSON object (the Manager reads this).")
 
     remove = sub.add_parser("remove", help="Delete a provider's key from the vault.")
     remove.add_argument("provider")
+    remove.add_argument("--json", action="store_true", help="Answer with one JSON object.")
 
     test = sub.add_parser("test", help="Check that the stored key authenticates (lists models).")
     test.add_argument("provider")
@@ -469,14 +471,22 @@ def run(args) -> int:
             if not entry.get("keyEnvVar"):
                 raise ProviderError(f"{args.provider} needs no key")
             if entry["kind"] == "paid":
-                print(f"NOTE: {args.provider} is a PAID provider; the benchmark will refuse it without --allow-paid.")
+                print(f"NOTE: {args.provider} is a PAID provider; the benchmark will refuse it without --allow-paid.",
+                      file=sys.stderr if args.json else sys.stdout)
             key = (sys.stdin.readline().strip() if args.key_stdin
                    else getpass.getpass(f"{entry['name']} API key (input hidden; get one at {entry['signupUrl']}): ").strip())
             vault.set(args.provider, key)
-            print(f"stored {args.provider} in the {vault.store.name} store (current user; index {vault.path})")
+            if args.json:
+                print(json.dumps({"ok": True, "provider": args.provider, "store": vault.store.name}))
+            else:
+                print(f"stored {args.provider} in the {vault.store.name} store (current user; index {vault.path})")
             return 0
         if command == "remove":
-            print("removed" if vault.remove(args.provider) else "not in the vault")
+            removed = vault.remove(args.provider)
+            if args.json:
+                print(json.dumps({"ok": True, "provider": args.provider, "removed": removed}))
+            else:
+                print("removed" if removed else "not in the vault")
             return 0
         if command in ("test", "models"):
             key = resolve_key(args.provider, vault)
@@ -494,7 +504,10 @@ def run(args) -> int:
             print(json.dumps(export_env(Path(args.app), args.providers, vault), indent=2))
             return 0
     except ProviderError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        if getattr(args, "json", False) or command in ("test", "export-env"):  # JSON-answering commands
+            print(json.dumps({"ok": False, "error": str(exc)}))
+        else:
+            print(f"error: {exc}", file=sys.stderr)
         return 2
     print("usage: npdev providers {list,add,remove,test,models,import-env,export-env}", file=sys.stderr)
     return 2
