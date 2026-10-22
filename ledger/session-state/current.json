@@ -1,13 +1,13 @@
 {
-  "closedAt": "2026-10-18T21:51:36.2504179Z",
+  "closedAt": "2026-10-22T01:35:47.9798639Z",
   "branch": "main",
-  "head": "a9ecf0ca",
-  "headSubject": "chore(quality): coverage floors auto-ratcheted after the SESS-1 coverage tests (dsl 86.5352, kernel 67.8258)",
-  "summary": "Finished publishing PLAN_DEFERRED_ITEMS_2026-10-18: the full gate run on 3b2890e9 was red (dsl and kernel coverage floors, 8 new security-sweep fingerprints from SESS-1), so added IdentityPackTableNamesTest and IdentityRoleLookupSessionRevocationTest, triaged the 8 sweep verdicts (frozenCount 638->646, with approval), re-ran gates, and pushed 3b2890e9, 70171368, 738ae63a, a9ecf0ca to origin/main.",
-  "nextStep": "Open the VIEW-2 donut in a real browser (verify-in-browser skill against a freshly built dsl-conformance-max or Pigmentampas app) and fix anything wrong; then read ledger/session-state/open-state.md and pick up OWN-1 / OWN-2, the only two non-DONE ledger items. BKP-1 restore drill still needs a CI job with a real SQL Server container.",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_DEFERRED_ITEMS_2026-10-18",
-  "blocked": "BKP-1 restore drill needs a Docker host or CI with a real SQL Server container (Docker is off locally by policy); only generator output and bash -n verified.",
-  "verified": "run-all-gates: kernel and aiKnowledge passed in the full run; generator and runtimeHost failed there only from a partial kernel jacoco left by a filtered test run, then passed on a -Only generator,runtimeHost re-run (ALL 2 GATES GREEN). Narrow tests IdentityPackTableNamesTest (6) and IdentityRoleLookupSessionRevocationTest (7) green. CI on a9ecf0ca: NPDev CI Validation, AI Knowledge Gate, Engine support, F6 showcase, Kernel quality gate, Security scan all success. NOT verified: VIEW-2 donut in a browser, BKP-1 restore drill.",
+  "head": "daf72ac1",
+  "headSubject": "test(ui): MOB-2 - run the emitted offline queue in Node: per-user scope, order, rejected entries kept, another user sees nothing, sign-out leaves no queue key",
+  "summary": "Fixed the red CI (Postgres pool exhaustion from the side-channel pool, then a 7-char MRN test vs REG-274's minLength 8) and closed REG-273/274/275/276/277 (field+array+nested constraints, domain normalization+regex, lifecycle requiredPayload/guard on in-memory storage, seed explicit id, aggregate orderBy); built MOB-2 offline write (ui.offlineWrite, per-user queue, reject-on-conflict, pending banner) and installed the Ollama path for BENCH-3 (qwen2.5-coder:3b downloading). Filed REG-278 (terminal semantics) and REG-279 (re-commit regenerates nextNumber).",
+  "nextStep": "1) Check the 3B pull: Get-Content -Tail 3 D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\ollama-pull-3b.log (it was 34% at 23:xx; if it stopped, re-run C:\\Users\\Marcelo\\AppData\\Local\\Programs\\Ollama\\ollama.exe pull qwen2.5-coder:3b, it resumes). 2) When done, run the BENCH-3 pilot: set NPDEV_BENCH_BASE_URL=http://localhost:11434/v1 and NPDEV_BENCH_MODEL=qwen2.5-coder:3b, then python scripts/ai/bench/run_bench.py run --prompt bench-001 --prompt bench-002 --prompt bench-003 --run-id pilot-1, and report the 3B result as a free-model floor. 3) Then REG-279 (apply root defaultExpression only on create; add a commit-twice probe), then REG-278 needs an owner decision on what terminal means.",
+  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PRODUCT_GAPS_2026-10-19.md",
+  "blocked": "BENCH-3 waits on the 3B model download only; MOB-2 browser flow cannot be proven because ScrapForAI routines have no offline switch (external engine); IMP-4 needs a non-GeneXus database; Postgres/SQL Server local runs blocked by the local profile; owner decisions open: REG-278 terminal-state semantics, order-totals-report load threshold, prune BENCH-1 prompts, rules-sheet sign-off.",
+  "verified": "Behaviour probes 112/112 with 0 known failures (full run after REG-276/277); dsl suite 1258+ tests green; runtime-support, generator OfflineWrite (3 tests incl. Node queue run) and runtimehost-core seed/aggregate tests green; aiKnowledge, kernel, generator and RuntimeHost gates each passed on their final trees; CI on daf72ac1: NPDev CI Validation (incl. Postgres IT), AI Knowledge, Security scan, Engine support, Identity journeys, F6 showcase all success. NOT run: MOB-2 in a real browser, any real-model BENCH run, full T2 sweep (-IncludePaperwork) on the final tree, Postgres/SQL Server locally.",
   "dirtyCount": 2,
   "dirtyFiles": [
     " M ledger/session-state/current.json",
@@ -15,8 +15,13 @@
   ],
   "unpushed": 0,
   "landedCommits": [
-    "a9ecf0ca chore(quality): coverage floors auto-ratcheted after the SESS-1 coverage tests (dsl 86.5352, kernel 67.8258)",
-    "738ae63a chore(security): triage the 8 new sweep fingerprints from per-device sessions (SESS-1)",
-    "70171368 test(auth): cover the SESS-1 session-revocation lookup and the optional sessions table"
+    "daf72ac1 test(ui): MOB-2 - run the emitted offline queue in Node: per-user scope, order, rejected entries kept, another user sees nothing, sign-out leaves no queue key",
+    "e1f44bc3 fix(test,runtime): canonical-demo IT used a 7-character MRN against a domain type that declares minLength 8 (REG-274 now enforces it); implement the digitsOnly normalization rule the model already declares",
+    "59af0646 fix(runtime): close REG-276 (a smart seed's explicit id is used, and refused with count/repeatOver) and REG-277 (aggregate collection orderBy sorts children on commit and read); file REG-279 (re-commit regenerates nextNumber)",
+    "b900b582 feat(ui): MOB-2 - offline write for concepts that opt in (ui.offlineWrite): queued create/update, pending-sync banner, replay on reconnect, stale update rejected (never merged), queue cleared on sign-out; probes for the manifest flag and the two-device conflict",
+    "a7e92cd6 fix(runtime): close REG-275 - lifecycle requiredPayload and guard enforced on the REST write path under in-memory storage (previous status read through the ConceptGateway); file REG-278 (terminal semantics, lifecycle event payload)",
+    "f99c3b3c fix(runtime): close REG-274 - domain type normalization applied on write, validation.regex enforced, uncompilable regex refused by the model validator and fails closed at runtime; dsl-coverage calibrate gains an F6 fixture (scripts floor earned, not lowered)",
+    "aaa191c7 fix(runtime): close REG-273 - field minLength, array minItems/maxItems/uniqueItems/itemIdentityField+duplicationPolicy deny, and nested object property constraints are enforced on write; 3 ENF-1 probes unmarked; kernel floor 69.38 -> 69.63",
+    "ab372d4a fix(runtimehost): side-channel pool minimumIdle=0 - the ba069523 pool doubled idle connections per Spring context and exhausted Postgres max_connections in the CI IT step"
   ]
 }
