@@ -102,11 +102,107 @@ class OpenAICompatTests(unittest.TestCase):
         self.assertEqual((comp.prompt_tokens, comp.completion_tokens), (11, 7))
         self.assertEqual(_ChatHandler.seen_auth, "Bearer sekret-key")
 
+    def test_429_and_503_are_retried_with_backoff_then_succeed(self):
+        class Flaky(_ChatHandler):
+            codes = [429, 503]
+
+            def do_POST(self):
+                if Flaky.codes:
+                    self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                    raw = b"busy"
+                    self.send_response(Flaky.codes.pop(0))
+                    self.send_header("Content-Length", str(len(raw)))
+                    self.end_headers()
+                    self.wfile.write(raw)
+                    return
+                super().do_POST()
+
+        srv = HTTPServer(("127.0.0.1", 0), Flaky)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        waits = []
+        try:
+            info = backends.BackendInfo("t", "local", f"http://127.0.0.1:{srv.server_port}/v1", "m")
+            backend = backends.OpenAICompatBackend(info, api_key="k")
+            backend._sleep = waits.append
+            comp = backend.complete([{"role": "user", "content": "hi"}])
+        finally:
+            srv.shutdown()
+            srv.server_close()
+        self.assertEqual(comp.completion_tokens, 7)
+        self.assertEqual(waits, list(backends.RETRY_BACKOFF_SECONDS[:2]))
+
     def test_connection_error_does_not_leak_key(self):
         info = backends.BackendInfo("t", "local", "http://127.0.0.1:1/v1", "m")
         with self.assertRaises(backends.BackendError) as ctx:
             backends.OpenAICompatBackend(info, api_key="sekret-key", timeout=2).complete([{"role": "user", "content": "x"}])
         self.assertNotIn("sekret-key", str(ctx.exception))
+
+
+class _Stub:
+    def __init__(self, info, fail=False):
+        self.info, self.fail, self.calls = info, fail, 0
+
+    def complete(self, messages):
+        self.calls += 1
+        if self.fail:
+            raise backends.BackendError("HTTP 429 quota")
+        return backends.Completion("ok", 1, 1, 0.0)
+
+
+class ProviderBackendTests(unittest.TestCase):
+    CATALOGUE = [
+        {"id": "a", "name": "A", "kind": "free", "baseUrl": "https://a.example/v1", "keyEnvVar": "A_KEY", "defaultModel": "ma"},
+        {"id": "b", "name": "B", "kind": "free", "baseUrl": "https://b.example/v1", "keyEnvVar": "B_KEY", "defaultModel": "mb"},
+        {"id": "or", "name": "OR", "kind": "free", "baseUrl": "https://or.example/v1", "keyEnvVar": "OR_KEY",
+         "defaultModel": "x:free", "freeModelSuffix": ":free"},
+        {"id": "p", "name": "P", "kind": "paid", "baseUrl": "https://p.example/v1", "keyEnvVar": "P_KEY", "defaultModel": "mp"},
+    ]
+
+    def build(self, spec, keys=None, allow_paid=False):
+        keys = {"a": "ka", "b": "kb", "or": "ko", "p": "kp"} if keys is None else keys
+        return backends.build_provider_backends(spec, allow_paid, 5.0, resolve_key=keys.get, catalogue=self.CATALOGUE)
+
+    def test_spec_parses_ids_and_models(self):
+        self.assertEqual(backends.parse_provider_spec("a, b=m2"), [("a", None), ("b", "m2")])
+
+    def test_single_provider_is_a_plain_backend_with_catalogue_model(self):
+        backend = self.build("a")
+        self.assertIsInstance(backend, backends.OpenAICompatBackend)
+        self.assertEqual((backend.info.id, backend.info.model), ("a", "ma"))
+
+    def test_paid_provider_refused_without_allow_paid(self):
+        with self.assertRaises(backends.BackendRefused):
+            self.build("p")
+        self.assertEqual(self.build("p", allow_paid=True).info.kind, "paid")
+
+    def test_missing_key_is_refused_with_the_fix_in_the_message(self):
+        with self.assertRaises(backends.BackendRefused) as ctx:
+            self.build("a", keys={})
+        self.assertIn("npdev providers add a", str(ctx.exception))
+
+    def test_openrouter_style_non_free_model_refused(self):
+        with self.assertRaises(backends.BackendRefused):
+            self.build("or=expensive-model")
+        self.assertEqual(self.build("or=y:free").info.model, "y:free")
+
+    def test_failover_retires_an_exhausted_provider_for_the_rest_of_the_run(self):
+        first = _Stub(backends.BackendInfo("a", "free", "u", "m"), fail=True)
+        second = _Stub(backends.BackendInfo("b", "free", "u", "m"))
+        fo = backends.FailoverBackend([first, second])
+        self.assertEqual(fo.complete([]).text, "ok")
+        self.assertEqual(fo.info.id, "b")
+        fo.complete([])
+        self.assertEqual((first.calls, second.calls, fo.retired), (1, 2, ["a"]))
+
+    def test_failover_raises_when_the_last_provider_fails_too(self):
+        only = _Stub(backends.BackendInfo("a", "free", "u", "m"), fail=True)
+        with self.assertRaises(backends.BackendError):
+            backends.FailoverBackend([only]).complete([])
+
+    def test_real_catalogue_allowlists_free_and_local_but_not_paid(self):
+        entries = backends.load_allowlist()
+        self.assertIsNotNone(backends.match_allowlist("https://integrate.api.nvidia.com/v1", entries))
+        self.assertIsNone(backends.match_allowlist("https://api.openai.com/v1", entries))
 
 
 class AuthorTests(unittest.TestCase):

@@ -8,11 +8,15 @@ text is fed back to the model). Stdlib only.
   python scripts/ai/bench/run_bench.py run --ablation no-knowledge ...     # knowledge cards off
   python scripts/ai/bench/run_bench.py report <run-dir> [<run-dir> ...]    # scorecard JSON
 
-NO PAID API SPEND (owner decision 2026-10-19). Backend = OpenAI-compatible chat completions, env only:
+NO PAID API SPEND (owner decision 2026-10-19). Backend = OpenAI-compatible chat completions.
+Preferred: the NPDev provider vault --
+  python scripts/ai/bench/run_bench.py run --provider nvidia,gemini     # failover in that order
+  python scripts/ai/bench/run_bench.py run --provider groq=llama-3.3-70b-versatile
+(keys: `npdev providers add <id>`; catalogue: NPDevCli/ai-providers.json). Or, env only:
   NPDEV_BENCH_BASE_URL   e.g. http://localhost:11434/v1   (local Ollama)
   NPDEV_BENCH_MODEL      e.g. qwen2.5-coder:14b
   NPDEV_BENCH_API_KEY    optional for local; NEVER printed or logged
-The base URL must be on scripts/policy/ai-bench-backends.json unless --allow-paid is passed.
+The base URL must be a free/local provider of NPDevCli/ai-providers.json unless --allow-paid is passed.
 
 Modules next to this file: author.py (prompts + model extraction), backends.py (allowlist + OpenAI-compatible
 and fake backends), stages.py (validate/generate/build/boot), probes.py (acceptance probes), test_bench.py
@@ -254,6 +258,8 @@ def build_backend(args):
     if args.dry_run:
         canary = REPO_ROOT / "NPDevSamples" / "npdev-canary" / "Input" / "model.json"
         return backends.FakeBackend(canary)
+    if args.provider:
+        return backends.build_provider_backends(args.provider, args.allow_paid, args.model_timeout)
     info = backends.resolve_backend(os.environ.get("NPDEV_BENCH_BASE_URL", "").strip(),
                                     os.environ.get("NPDEV_BENCH_MODEL", "").strip(), args.allow_paid)
     return backends.OpenAICompatBackend(info, timeout=args.model_timeout)
@@ -321,8 +327,12 @@ def make_parser() -> argparse.ArgumentParser:
     r.add_argument("--dry-run", action="store_true",
                    help="use the built-in deterministic FAKE backend (replies with the canary model.json); "
                         "defaults to the bundled fixture prompt and 0 repair loops")
+    r.add_argument("--provider", metavar="ID[=MODEL][,ID[=MODEL]...]",
+                   help="use providers from the NPDev catalogue with keys from the NPDev vault "
+                        "(`npdev providers`); several = failover in order when one runs out of quota. "
+                        "Replaces the NPDEV_BENCH_* environment variables.")
     r.add_argument("--allow-paid", action="store_true",
-                   help="permit a base URL that is NOT on scripts/policy/ai-bench-backends.json (paid spend: owner approval required)")
+                   help="permit a PAID provider or a base URL that is not a free/local provider in NPDevCli/ai-providers.json (paid spend: owner approval required)")
     r.add_argument("--ablation", choices=["none", "no-knowledge"], default="none",
                    help="no-knowledge omits the knowledge-card context from the system prompt")
     r.add_argument("--prompts-dir", help="directory of bench-NNN-*.json (default NPDevSamples/ai-bench/prompts)")

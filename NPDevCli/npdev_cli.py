@@ -16166,6 +16166,9 @@ def build_parser() -> argparse.ArgumentParser:
                                       "the candidate manifest covers.")
     gpu_check_plan.add_argument("--json", action="store_true", help="Emit an npdev-cli-result.v1 object.")
 
+    import npdev_providers
+    npdev_providers.add_arguments(subparsers)
+
     # SEC-8 (docs/ACCEPTED_BOUNDARIES.md B17): the bootstrap Super User key is meant to be a
     # short-lived handoff, not a permanent identity -- these two commands are the operator side of
     # that: hash-key for a deployment supplying its OWN bootstrap key (no plaintext secret in a
@@ -18255,6 +18258,9 @@ def main(argv: list[str] | None = None) -> int:
             return run_db_surplus(args)
         if args.command == "db" and args.db_command in _DB_OPERATIONS:
             return run_db_operation(args)
+        if args.command == "providers":
+            import npdev_providers
+            return npdev_providers.run(args)
         if args.command == "gpu-check" and args.gpu_check_command == "list":
             return run_gpu_check_list(args)
         if args.command == "gpu-check" and args.gpu_check_command == "run":

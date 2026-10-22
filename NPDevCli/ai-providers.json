@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "npdev-ai-providers.v1",
+  "description": "Catalogue of AI model providers NPDev knows about. Single source of truth for `npdev providers` (key vault + connectivity test + export into an app's secrets/agent-proxy.env) AND for the AI authoring benchmark's allowlist (scripts/ai/bench). Owner decision 2026-10-19: no paid API spend -- the bench refuses any provider whose kind is 'paid' unless --allow-paid is passed. kind: local = runs on this machine, free = hosted free tier, paid = billed. keyEnvVar is the NPDev convention NPDEV_EXTERNALAI_<ID>_API_KEY; the key itself NEVER appears in this file. defaultModel is a hint only: run `npdev providers models <id>` to see what the account can actually call. appVendor is true only for vendors the generated apps' external-ai-http adapter speaks today.",
+  "providers": [
+    {
+      "id": "gemini",
+      "name": "Google Gemini (AI Studio free tier)",
+      "kind": "free",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "keyEnvVar": "NPDEV_EXTERNALAI_GEMINI_API_KEY",
+      "signupUrl": "https://aistudio.google.com/apikey",
+      "defaultModel": "gemini-3.6-flash",
+      "appVendor": true,
+      "pricePer1kTokens": { "input": 0, "output": 0 },
+      "notes": "Daily quota is small and 429/503 are common under load."
+    },
+    {
+      "id": "nvidia",
+      "name": "NVIDIA API catalog (free developer tier)",
+      "kind": "free",
+      "baseUrl": "https://integrate.api.nvidia.com/v1",
+      "keyEnvVar": "NPDEV_EXTERNALAI_NVIDIA_API_KEY",
+      "signupUrl": "https://build.nvidia.com",
+      "defaultModel": "nvidia/nemotron-3-ultra-550b-a55b",
+      "appVendor": true,
+      "pricePer1kTokens": { "input": 0, "output": 0 },
+      "notes": "Many models listed by /models answer 404 for a given account; probe before using one."
+    },
+    {
+      "id": "groq",
+      "name": "Groq (free tier)",
+      "kind": "free",
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "keyEnvVar": "NPDEV_EXTERNALAI_GROQ_API_KEY",
+      "signupUrl": "https://console.groq.com/keys",
+      "defaultModel": "llama-3.3-70b-versatile",
+      "appVendor": false,
+      "pricePer1kTokens": { "input": 0, "output": 0 },
+      "notes": "Very fast; tight per-minute token limits."
+    },
+    {
+      "id": "cerebras",
+      "name": "Cerebras Inference (free tier)",
+      "kind": "free",
+      "baseUrl": "https://api.cerebras.ai/v1",
+      "keyEnvVar": "NPDEV_EXTERNALAI_CEREBRAS_API_KEY",
+      "signupUrl": "https://cloud.cerebras.ai",
+      "defaultModel": "llama-3.3-70b",
+      "appVendor": false,
+      "pricePer1kTokens": { "input": 0, "output": 0 },
+      "notes": "Model names change; use `npdev providers models cerebras`."
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter (':free' models only)",
+      "kind": "free",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "keyEnvVar": "NPDEV_EXTERNALAI_OPENROUTER_API_KEY",
+      "signupUrl": "https://openrouter.ai/keys",
+      "defaultModel": "deepseek/deepseek-chat-v3-0324:free",
+      "freeModelSuffix": ":free",
+      "appVendor": false,
+      "pricePer1kTokens": { "input": 0, "output": 0 },
+      "notes": "ONLY model ids ending ':free' are free; any other model id on this endpoint is billed. The bench refuses a non-':free' model id for this provider."
+    },
+    {
+      "id": "mistral",
+      "name": "Mistral La Plateforme (free Experiment tier)",
+      "kind": "free",
+      "baseUrl": "https://api.mistral.ai/v1",
+      "keyEnvVar": "NPDEV_EXTERNALAI_MISTRAL_API_KEY",
+      "signupUrl": "https://console.mistral.ai/api-keys",
+      "defaultModel": "mistral-small-latest",
+      "appVendor": false,
+      "pricePer1kTokens": { "input": 0, "output": 0 },
+      "notes": "Free only while the workspace is on the Experiment plan; make sure no billing is attached."
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama (local)",
+      "kind": "local",
+      "baseUrl": "http://localhost:11434/v1",
+      "aliasBaseUrls": ["http://127.0.0.1:11434/v1"],
+      "keyEnvVar": null,
+      "signupUrl": "https://ollama.com/download",
+      "defaultModel": "qwen2.5-coder:3b",
+      "appVendor": false,
+      "pricePer1kTokens": { "input": 0, "output": 0 },
+      "notes": "No key. CPU-only machines are very slow (a 3B model took ~50 min per bench prompt)."
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic (paid)",
+      "kind": "paid",
+      "baseUrl": "https://api.anthropic.com/v1",
+      "keyEnvVar": "NPDEV_EXTERNALAI_ANTHROPIC_API_KEY",
+      "signupUrl": "https://console.anthropic.com/settings/keys",
+      "defaultModel": null,
+      "appVendor": true,
+      "pricePer1kTokens": { "input": 0, "output": 0 },
+      "notes": "Billed. Stored for generated apps; the benchmark refuses it without --allow-paid."
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI (paid)",
+      "kind": "paid",
+      "baseUrl": "https://api.openai.com/v1",
+      "keyEnvVar": "NPDEV_EXTERNALAI_OPENAI_API_KEY",
+      "signupUrl": "https://platform.openai.com/api-keys",
+      "defaultModel": null,
+      "appVendor": true,
+      "pricePer1kTokens": { "input": 0, "output": 0 },
+      "notes": "Billed. Stored for generated apps; the benchmark refuses it without --allow-paid."
+    }
+  ]
+}
