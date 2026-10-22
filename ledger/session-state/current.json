@@ -1,27 +1,24 @@
 {
-  "closedAt": "2026-10-22T01:35:47.9798639Z",
+  "closedAt": "2026-10-22T04:33:35.5880901Z",
   "branch": "main",
-  "head": "daf72ac1",
-  "headSubject": "test(ui): MOB-2 - run the emitted offline queue in Node: per-user scope, order, rejected entries kept, another user sees nothing, sign-out leaves no queue key",
-  "summary": "Fixed the red CI (Postgres pool exhaustion from the side-channel pool, then a 7-char MRN test vs REG-274's minLength 8) and closed REG-273/274/275/276/277 (field+array+nested constraints, domain normalization+regex, lifecycle requiredPayload/guard on in-memory storage, seed explicit id, aggregate orderBy); built MOB-2 offline write (ui.offlineWrite, per-user queue, reject-on-conflict, pending banner) and installed the Ollama path for BENCH-3 (qwen2.5-coder:3b downloading). Filed REG-278 (terminal semantics) and REG-279 (re-commit regenerates nextNumber).",
-  "nextStep": "1) Check the 3B pull: Get-Content -Tail 3 D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\ollama-pull-3b.log (it was 34% at 23:xx; if it stopped, re-run C:\\Users\\Marcelo\\AppData\\Local\\Programs\\Ollama\\ollama.exe pull qwen2.5-coder:3b, it resumes). 2) When done, run the BENCH-3 pilot: set NPDEV_BENCH_BASE_URL=http://localhost:11434/v1 and NPDEV_BENCH_MODEL=qwen2.5-coder:3b, then python scripts/ai/bench/run_bench.py run --prompt bench-001 --prompt bench-002 --prompt bench-003 --run-id pilot-1, and report the 3B result as a free-model floor. 3) Then REG-279 (apply root defaultExpression only on create; add a commit-twice probe), then REG-278 needs an owner decision on what terminal means.",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PRODUCT_GAPS_2026-10-19.md",
-  "blocked": "BENCH-3 waits on the 3B model download only; MOB-2 browser flow cannot be proven because ScrapForAI routines have no offline switch (external engine); IMP-4 needs a non-GeneXus database; Postgres/SQL Server local runs blocked by the local profile; owner decisions open: REG-278 terminal-state semantics, order-totals-report load threshold, prune BENCH-1 prompts, rules-sheet sign-off.",
-  "verified": "Behaviour probes 112/112 with 0 known failures (full run after REG-276/277); dsl suite 1258+ tests green; runtime-support, generator OfflineWrite (3 tests incl. Node queue run) and runtimehost-core seed/aggregate tests green; aiKnowledge, kernel, generator and RuntimeHost gates each passed on their final trees; CI on daf72ac1: NPDev CI Validation (incl. Postgres IT), AI Knowledge, Security scan, Engine support, Identity journeys, F6 showcase all success. NOT run: MOB-2 in a real browser, any real-model BENCH run, full T2 sweep (-IncludePaperwork) on the final tree, Postgres/SQL Server locally.",
-  "dirtyCount": 2,
+  "head": "959e9e58",
+  "headSubject": "feat(importer): npdev import db proposes what to do with link tables (pure link, or association with aggregate-child options) in the report; never applied",
+  "summary": "Closed REG-279 (defaultExpression kept on update), REG-278 (terminal means final: validator, migrate dsl-2 codemod, fixture, schema), REG-281 (technology words in names only warn; importer keeps readable names); importer: composite keys get a unique index sourceKey and link-table proposals in the report; IMP-4 done on Northwind and Sakila (validate 0 errors, generate OK; REG-280 filed for native ENUM columns). BENCH-3 pilot (3 simple prompts): local qwen2.5-coder:3b 0/3, free gemini-3.6-flash 3/3 within 5 loops (1 repair loop each, 0 cost). ScrapForAI got a setOffline step (committed locally in D:\\WorkSpace\\ScrapForAI as e75f162, NOT pushed). MOB-2 proven in a real browser up to replay: offline create queued with banner, server refusal kept as needs attention; routine mob2-offline-write-verify-routine.json and run-shell-scenarios.ps1 -ReuseBuild/-Only are UNCOMMITTED and the routine's last re-run (tags value added) was still running.",
+  "nextStep": "1) Check scripts/reports/out/shell-scenarios-report.json from the last 'run-shell-scenarios.ps1 -ReuseBuild -Only mob2' run; if the mob2 routine is green, commit the routine + runner options + a11y baseline if needed, push. If it failed, read the failure screenshot under D:\\WorkSpace\\NPDev\\Build\\scrapforai-artifacts\\<jobId>\\screenshots (jobId in NPDevSamples/dsl-conformance-max/Output/RunOutput/browser/mob2-*.json) and fix the routine data. 2) detail-verify-routine fails with missing_api_key (key lost after the goto-hash step) -- unknown if regression from the MOB-2 UI commits or a flake; re-run it alone with -ReuseBuild -Only detail. 3) Push ScrapForAI setOffline (local commit e75f162) when ready. 4) Optional: sakila link tables flagged associationWithData only because of last_update; ignore audit columns. 5) Full BENCH-3 run and no-knowledge ablation on the free Gemini (see memory reference_bench_free_gemini_backend).",
+  "plan": "",
+  "blocked": "Owner decisions still open: order-totals-report load threshold, prune BENCH-1 prompts, rules-sheet sign-off. IMP-4 done; MOB-2 browser flow nearly proven. Postgres/SQL Server local runs blocked by the local profile.",
+  "verified": "dsl suite green after REG-278/281 (1259 tests); importer tests; migration tests; behaviour probes 85-lifecycle 19/19; shell scenarios: list, workbench, longrunning-flow, permission-denied pass; detail-verify FAILS (missing_api_key), mob2 routine not yet green. NOT run: full T2 sweep, other gates after these changes.",
+  "dirtyCount": 3,
   "dirtyFiles": [
-    " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl"
+    " M scripts/policy/a11y-baseline.json",
+    " M scripts/quality/run-shell-scenarios.ps1",
+    "?? NPDevSamples/scripts/browser/browser-routines/mob2-offline-write-verify-routine.json"
   ],
   "unpushed": 0,
   "landedCommits": [
-    "daf72ac1 test(ui): MOB-2 - run the emitted offline queue in Node: per-user scope, order, rejected entries kept, another user sees nothing, sign-out leaves no queue key",
-    "e1f44bc3 fix(test,runtime): canonical-demo IT used a 7-character MRN against a domain type that declares minLength 8 (REG-274 now enforces it); implement the digitsOnly normalization rule the model already declares",
-    "59af0646 fix(runtime): close REG-276 (a smart seed's explicit id is used, and refused with count/repeatOver) and REG-277 (aggregate collection orderBy sorts children on commit and read); file REG-279 (re-commit regenerates nextNumber)",
-    "b900b582 feat(ui): MOB-2 - offline write for concepts that opt in (ui.offlineWrite): queued create/update, pending-sync banner, replay on reconnect, stale update rejected (never merged), queue cleared on sign-out; probes for the manifest flag and the two-device conflict",
-    "a7e92cd6 fix(runtime): close REG-275 - lifecycle requiredPayload and guard enforced on the REST write path under in-memory storage (previous status read through the ConceptGateway); file REG-278 (terminal semantics, lifecycle event payload)",
-    "f99c3b3c fix(runtime): close REG-274 - domain type normalization applied on write, validation.regex enforced, uncompilable regex refused by the model validator and fails closed at runtime; dsl-coverage calibrate gains an F6 fixture (scripts floor earned, not lowered)",
-    "aaa191c7 fix(runtime): close REG-273 - field minLength, array minItems/maxItems/uniqueItems/itemIdentityField+duplicationPolicy deny, and nested object property constraints are enforced on write; 3 ENF-1 probes unmarked; kernel floor 69.38 -> 69.63",
-    "ab372d4a fix(runtimehost): side-channel pool minimumIdle=0 - the ba069523 pool doubled idle connections per Spring context and exhausted Postgres max_connections in the CI IT step"
+    "959e9e58 feat(importer): npdev import db proposes what to do with link tables (pure link, or association with aggregate-child options) in the report; never applied",
+    "82fb19d6 feat(dsl,importer): terminal means final (REG-278), technology words in names only warn (REG-281), composite keys keep a unique index; file REG-280",
+    "b5938784 fix(kernel): close REG-279 - a defaultExpression fills a field on create only; saving the row again keeps the stored value (orderNumber no longer changes on re-commit)",
+    "2c5bbe0f chore(session): handoff 2026-10-22 - REG-273..277 closed, MOB-2 built, BENCH-3 waiting on the 3B model"
   ]
 }
