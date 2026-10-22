@@ -1,8 +1,8 @@
 dependencies {
     implementation project(':kernel')
-    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.22.4'
 
     testImplementation project(':adapters:postgres-test-support')
     // FLOW-1: merge-on-save is proven against a real H2 database locally (real Postgres runs in CI).
-    testImplementation 'com.h2database:h2:2.4.240'
+    testImplementation 'com.h2database:h2:2.5.252'
 }
