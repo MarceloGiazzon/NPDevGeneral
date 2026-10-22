@@ -3,9 +3,10 @@ title: >-
   A model seed's explicit id is ignored: the row is stored under a generated UUID
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-10-21
-closed: null
+closed: 2026-10-22
+verification: VERIFIED_LIVE
 source: >-
   ENF-1 behaviour probe seed-explicit-id-is-used (NPDevSamples/dsl-conformance-max/behavior-probes/85-lifecycle-flows-roles.json), knownFailure REG-276. The companion probe seed-rows-applied-with-alias-count-and-repeatover passes.
 surface: NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/seed/ModelSeedRunner.java (and SeedDataService)
@@ -15,3 +16,9 @@ detail: |
   only a caller that relies on the declared id (a stable link, a test fixture, an external reference) is broken.
 resolution: >-
   Use the declared id when persisting a single seed record (and keep the alias bound to it), then remove knownFailure from the probe.
+guard:
+  kind: live
+  ref: NPDevSamples/dsl-conformance-max/behavior-probes/85-lifecycle-flows-roles.json
+  asserts: >-
+    behaviour probe seed-explicit-id-is-used: a model seed with an explicit id is stored under exactly that id
+  provenRed: true

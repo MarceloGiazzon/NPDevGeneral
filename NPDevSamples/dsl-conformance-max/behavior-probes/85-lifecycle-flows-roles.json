@@ -271,11 +271,10 @@
     },
     {
       "id": "seed-explicit-id-is-used",
-      "knownFailure": "REG-276",
       "keywords": [
         "seed.id"
       ],
-      "description": "DEFECT: the first seed declares id 5eed0000-0000-4000-8000-000000000001 (\"Explicit id for this record; a generated UUID is used when absent\"). Expected: GET /api/widget_seed_demos/5eed0000-... is the seed-parent row. Actual: 404 -- the row was stored under a generated UUID.",
+      "description": "the first seed declares id 5eed0000-0000-4000-8000-000000000001 (\"Explicit id for this record; a generated UUID is used when absent\"). Expected: GET /api/widget_seed_demos/5eed0000-... is the seed-parent row. Actual: 404 -- the row was stored under a generated UUID.",
       "steps": [
         {
           "name": "row under its declared id",
@@ -1047,11 +1046,10 @@
     },
     {
       "id": "agg-collection-orderby-sorts-children",
-      "knownFailure": "REG-277",
       "keywords": [
         "aggregateCollection.orderBy"
       ],
-      "description": "DEFECT: WidgetOrderAggregate.lines declares orderBy sku. Expected: the committed tree returns its lines sorted by sku (aa, bb, mm, zz) however they were sent. Actual: the lines come back ordered by their ids (the four fixed child ids are chosen so id order is the reverse of sku order: zz, mm, bb, aa) -- orderBy is read by nothing at runtime.",
+      "description": "WidgetOrderAggregate.lines declares orderBy sku. Expected: the committed tree returns its lines sorted by sku (aa, bb, mm, zz) however they were sent. Actual: the lines come back ordered by their ids (the four fixed child ids are chosen so id order is the reverse of sku order: zz, mm, bb, aa) -- orderBy is read by nothing at runtime.",
       "steps": [
         {
           "name": "audit row (onCommit patches it)",

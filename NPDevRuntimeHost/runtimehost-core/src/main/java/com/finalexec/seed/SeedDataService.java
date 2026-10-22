@@ -316,6 +316,12 @@ public class SeedDataService {
         // resolve $gen tokens, so every copy shares the same unresolved template object -- safe
         // because resolveGenerators()/resolveReferences() always build a NEW map and never mutate
         // their input.
+        if ((hasCount || hasRepeatOver) && declared.has("id")) {
+            // REG-276: an explicit id names ONE row; a bulk block makes many.
+            throw new IllegalArgumentException(
+                    "Seed record for concept '" + concept + "' declares both 'id' and '" + (hasCount ? "count" : "repeatOver")
+                            + "' -- bulk-generated rows can't share one explicit id");
+        }
         if (hasCount) {
             if (declared.has("alias")) {
                 throw new IllegalArgumentException(
@@ -340,7 +346,8 @@ public class SeedDataService {
         if (!hasRepeatOver) {
             String alias = textOrNull(declared, "alias");
             Map<String, Object> data = toMap(declared.get("data"));
-            return List.of(new ExpandedRecord(alias, concept, null, data));
+            // REG-276: the declared id is the row's id (and what its alias binds to); it was dropped here.
+            return List.of(new ExpandedRecord(alias, concept, textOrNull(declared, "id"), data));
         }
         if (declared.has("alias")) {
             throw new IllegalArgumentException(
