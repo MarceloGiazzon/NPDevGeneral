@@ -254,8 +254,16 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         Map<String, Object> data = new LinkedHashMap<>(request.data());
         List<String> defaults = new ArrayList<>();
         List<String> derived = new ArrayList<>();
+        Map<String, Object> previousData = request.previousRecord().map(ConceptRecord::data).orElse(Map.of());
         for (FieldDefinition field : concept.fields().values()) {
-            if (isBlankValue(data.get(field.name()))) {
+            // REG-279: a defaultExpression fills a field when its row is CREATED. On an update the
+            // stored value is kept and the expression is not evaluated, so a nextNumber() identifier
+            // does not change (or burn a counter value) every time the row is saved again.
+            boolean keepStored = isBlankValue(data.get(field.name())) && hasText(field.defaultExpression())
+                    && !isBlankValue(previousData.get(field.name()));
+            if (keepStored) {
+                data.put(field.name(), previousData.get(field.name()));
+            } else if (isBlankValue(data.get(field.name()))) {
                 Object defaultValue = field.defaultValue();
                 if (defaultValue == null && hasText(field.defaultExpression())) {
                     defaultValue = UserScopedExpressions.referencesUser(field.defaultExpression())

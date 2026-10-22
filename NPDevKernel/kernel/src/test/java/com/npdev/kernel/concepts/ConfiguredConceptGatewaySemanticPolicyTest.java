@@ -67,6 +67,24 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
         assertEquals("tavo", explicit.data().get("ownerUsername"));
     }
 
+    /** REG-279: a defaultExpression fills the field on create only; saving the row again keeps the stored value. */
+    @Test
+    void defaultExpressionIsKeptOnUpdateNotRecomputed() {
+        ConceptGateway gateway = ConceptGateways.inMemory(new ConfiguredConceptGatewaySemanticPolicy(List.of(
+                ConfiguredConceptGatewaySemanticPolicy.ConceptDefinition.of(
+                        "Mosaic",
+                        List.of(new ConfiguredConceptGatewaySemanticPolicy.FieldDefinition(
+                                "ownerUsername", false, List.of(), null, "$user.id", null)),
+                        List.of(),
+                        null))));
+
+        gateway.save(new ConceptWriteRequest("Mosaic", "m-1", null, Map.of()), ExecutionContext.of("tenant-a", "tito"));
+        ConceptRecord resaved = gateway.save(new ConceptWriteRequest("Mosaic", "m-1", null, Map.of()),
+                ExecutionContext.of("tenant-a", "tavo"));
+
+        assertEquals("tito", resaved.data().get("ownerUsername"));
+    }
+
     /** Pigmentampas 2026-10-07: "only a Curator approves a cap" -- a lifecycle guard naming $user. */
     @Test
     void lifecycleGuardNamingTheUserGatesTheTransitionByRole() {

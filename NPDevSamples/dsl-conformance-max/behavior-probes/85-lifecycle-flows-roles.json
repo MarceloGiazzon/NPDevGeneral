@@ -1165,6 +1165,104 @@
       ]
     },
     {
+      "id": "field-default-expression-kept-on-recommit",
+      "keywords": [
+        "field.defaultExpression"
+      ],
+      "description": "REG-279: WidgetOrder.orderNumber defaults to nextNumber('orderNumber') when the order is created. Committing the same aggregate a second time (same id, draft carrying no orderNumber) keeps the number the first commit allocated; it does not allocate a new one.",
+      "steps": [
+        {
+          "name": "audit row (onCommit patches it)",
+          "method": "POST",
+          "path": "/api/widget_order_audits",
+          "body": {
+            "quantity": 0,
+            "lastSyncedStatus": "x"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "oid": "$.id"
+          }
+        },
+        {
+          "name": "first commit allocates the number",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/WidgetOrderAggregate",
+          "body": {
+            "id": "${oid}",
+            "customerEmail": "developer",
+            "status": "open",
+            "lineCount": 1,
+            "lines": [
+              {
+                "id": "0e0f1100-0000-4000-8000-000000000001",
+                "sku": "aa",
+                "quantity": 1,
+                "unitPrice": 2
+              }
+            ]
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.orderNumber": {
+                "matches": "^ORD-[0-9]{4}-[0-9]{4}$"
+              }
+            }
+          },
+          "save": {
+            "firstNumber": "$.orderNumber"
+          }
+        },
+        {
+          "name": "second commit of the same order keeps it",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/WidgetOrderAggregate",
+          "body": {
+            "id": "${oid}",
+            "customerEmail": "developer",
+            "status": "open",
+            "lineCount": 1,
+            "lines": [
+              {
+                "id": "0e0f1100-0000-4000-8000-000000000001",
+                "sku": "aa",
+                "quantity": 1,
+                "unitPrice": 2
+              }
+            ]
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.orderNumber": "${firstNumber}"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_order_lines/0e0f1100-0000-4000-8000-000000000001",
+          "always": true
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_orders/${oid}",
+          "always": true
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_order_audits/${oid}",
+          "always": true
+        }
+      ]
+    },
+    {
       "id": "field-file-upload-enforces-content-type-and-size",
       "keywords": [
         "field.file"
