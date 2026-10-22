@@ -587,6 +587,10 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("formColumns", formColumns(concept));
             node.put("displayMode", displayMode(concept));
             node.put("formPresentation", formPresentation(concept));
+            if (concept.getUi() != null && Boolean.TRUE.equals(concept.getUi().getOfflineWrite())) {
+                // MOB-2: key present only when declared, so existing manifests stay byte-identical.
+                node.put("offlineWrite", true);
+            }
             node.put("frameMode", resolveFrameMode(concept, settingResolver));
             node.put("guidePage", resolveGuidePage(concept, settingResolver, knownGuidePageNames, guidePages.defaultGuidePage()));
             node.put("fields", manifestFields(concept, conceptsByName(concepts), settingResolver, contexts,

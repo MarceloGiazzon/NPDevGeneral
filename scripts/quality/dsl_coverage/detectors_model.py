@@ -99,6 +99,16 @@ def _has_renamed_field(model: dict) -> bool:
     return False
 
 
+def _has_concept_offline_write(model: dict) -> bool:
+    """MOB-2: a concept whose ui.offlineWrite lets the generated UI queue creates and updates while the
+    device is offline and replay them on reconnect (a stale update is rejected, never merged)."""
+    for concept in (model.get("concepts", None) or []):
+        ui = concept.get("ui") if isinstance(concept, dict) else None
+        if isinstance(ui, dict) and ui.get("offlineWrite"):
+            return True
+    return False
+
+
 def _has_concept_uid(model: dict) -> bool:
     """REG-209 (B1 lift, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P7): a concept declaring a
     stable uid -- the mechanism that lets attemptInPlaceRenames resolve a rename by identity even

@@ -19,7 +19,7 @@ from .detectors_model import (  # noqa: F401 - every name the table below refere
     _has_aggregate_invariants, _has_aggregate_on_commit, _has_aggregate_on_validate,
     _has_arithmetic_derived_expression,
     _has_capability_policy, _has_composite_index, _has_concept_access, _has_concept_extends,
-    _has_concept_rollups, _has_concept_soft_delete, _has_concept_temporal, _has_concept_uid, _has_field_access,
+    _has_concept_offline_write, _has_concept_rollups, _has_concept_soft_delete, _has_concept_temporal, _has_concept_uid, _has_field_access,
     _has_field_uid, _has_locale_label,
     _has_conversion_java_hook, _has_conversion_op, _has_date_field, _has_decimal_field, _has_file_field,
     _has_flow_io_schema,
@@ -51,6 +51,7 @@ FEATURE_DETECTORS = {
     # REG-209 (B1 lift, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P7): a stable uid, tracked at
     # both levels independently (same discipline as concept.access/field.access above).
     "concept.uid": _has_concept_uid,
+    "concept.ui.offlineWrite": _has_concept_offline_write,
     "field.uid": _has_field_uid,
     "selectors": lambda m: _nonempty(m, "selectors"),
     # Wave 3 (RC-B1, MOVE11_RUNTIME_CONFIGURATION_PLAN Part B.1): app-defined role -> permission-

@@ -752,6 +752,103 @@
           "stopOnFail": false
         }
       ]
+    },
+    {
+      "id": "mob2-offline-write-flag-served-in-ui-manifest",
+      "keywords": [
+        "concept.ui"
+      ],
+      "description": "MOB-2: WidgetEnforcementDemo declares ui.offlineWrite, so the served UI manifest flags it and the generated UI may queue its creates and updates while the device is offline.",
+      "steps": [
+        {
+          "name": "manifest flags the opted-in concept",
+          "method": "GET",
+          "auth": "none",
+          "path": "/npdev-business-ui/generated-ui-manifest.json",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.concepts[?conceptName=WidgetEnforcementDemo].offlineWrite": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "mob2-stale-queued-update-is-rejected-two-devices",
+      "keywords": [
+        "concept.ui"
+      ],
+      "description": "MOB-2 conflict policy (reject): two devices edit the same row offline from the same version. The first to sync is applied; the second, replayed with the now-stale version, is refused by the server and the row keeps the first device's value -- nothing is merged or overwritten. Replays are ordinary REST writes, so authorization and row rules are re-checked at sync time by construction.",
+      "steps": [
+        {
+          "name": "create the row both devices start from",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "shortName": "abc"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "edId": "$.id",
+            "edVersion": "$.version"
+          }
+        },
+        {
+          "name": "device A syncs its queued edit with the version it started from",
+          "method": "PUT",
+          "path": "/api/widget_enforcement_demos/${edId}",
+          "body": {
+            "shortName": "aaa",
+            "version": "${edVersion}"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.shortName": "aaa"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "device B replays its edit from the same, now stale, version: refused",
+          "method": "PUT",
+          "path": "/api/widget_enforcement_demos/${edId}",
+          "body": {
+            "shortName": "bbb",
+            "version": "${edVersion}"
+          },
+          "expect": {
+            "status": 409,
+            "json": {
+              "$.code": "version_conflict"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "the row holds device A's value",
+          "method": "GET",
+          "path": "/api/widget_enforcement_demos/${edId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.shortName": "aaa"
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_enforcement_demos/${edId}",
+          "always": true
+        }
+      ]
     }
   ]
 }
