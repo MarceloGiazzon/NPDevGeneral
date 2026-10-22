@@ -158,7 +158,7 @@ class AiConfig:
 
 
 def model_active(model: dict) -> bool:
-    return not model.get("disabled") and model.get("enabled", True) and model.get("status", "available") != "retired"
+    return model.get("enabled", True) and model.get("status", "available") != "retired"
 
 
 def check_feature(feature: str) -> None:

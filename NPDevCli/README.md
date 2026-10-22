@@ -39,6 +39,10 @@ The environment variable wins over the vault. Generated apps can use `appVendor`
 ./npdev ai providers set gemini --base-url https://proxy.corp.example/gemini/v1
 ./npdev ai reset provider gemini            # back to the shipped value
 ./npdev ai validate
+./npdev ai detect --add                     # local Ollama / LM Studio / llama.cpp / vLLM / Jan -> keyless providers + offline profile
+./npdev ai detect --host 192.168.1.20       # a server on another machine, only when named
+./npdev ai models refresh groq              # new models recorded (not enabled), vanished ones marked retired
+./npdev ai models enable groq qwen3-32b
 ```
 
 Effort is one word (`none`, `low`, `medium`, `high`, `xhigh`, `max`) mapped per protocol (`output_config.effort`, `reasoning_effort`, Gemini's thinking level); a level the model does not declare is never sent.

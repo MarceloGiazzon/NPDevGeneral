@@ -118,9 +118,9 @@
             "out": { "anyOf": [{ "type": "number", "minimum": 0 }, { "type": "null" }] }
           }
         },
-        "enabled": { "type": "boolean" },
-        "status": { "enum": ["available", "retired"] },
-        "disabled": { "type": "boolean" },
+        "enabled": { "type": "boolean", "description": "false = known but not offered (a newly discovered model starts here)." },
+        "status": { "enum": ["available", "retired"], "description": "retired = the provider's model list no longer has it (set by `npdev ai models refresh`)." },
+        "discovered": { "type": "string", "description": "When `npdev ai models refresh` or `npdev ai detect` first saw it (ISO date)." },
         "notes": { "type": "string" }
       }
     },

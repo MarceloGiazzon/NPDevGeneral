@@ -156,7 +156,7 @@ def set_disabled(document: dict, config, section: str, key, disabled: bool) -> d
     elif section == "models":
         if key not in config.models:
             raise AiConfigError(f"unknown model {key[0]}/{key[1]}")
-        entry = {"provider": key[0], "id": key[1]}
+        return aicfg.upsert_mine(document, section, {"provider": key[0], "id": key[1], "enabled": not disabled})
     else:
         config.profile(key)
         entry = {"name": key}
@@ -231,6 +231,12 @@ def add_arguments(ai_sub) -> None:
         p.add_argument("--price-out", type=float, help="USD per million output tokens.")
         p.add_argument("--notes")
         json_flag(p)
+    refresh = msub.add_parser("refresh", help="Ask the provider's server for its model list: new ones are "
+                                              "recorded (not enabled), vanished ones marked retired.")
+    refresh.add_argument("provider")
+    refresh.add_argument("--only", help="Record only new model ids containing this text.")
+    refresh.add_argument("--account")
+    json_flag(refresh)
     for verb in ("disable", "enable"):
         p = msub.add_parser(verb, help=f"{verb.capitalize()} a model.")
         p.add_argument("provider")
@@ -256,6 +262,15 @@ def add_arguments(ai_sub) -> None:
         p = prsub.add_parser(verb, help=f"{verb.capitalize()} a profile.")
         p.add_argument("name")
         json_flag(p)
+
+    detect = ai_sub.add_parser("detect", help="Find local LLM servers (Ollama, LM Studio, llama.cpp, vLLM, Jan) "
+                                              "on this machine, or on --host, and list their models.")
+    detect.add_argument("--host", action="append", help="Also probe this host (repeatable). Default: loopback only.")
+    detect.add_argument("--add", action="store_true", help="Record what was found as keyless local providers, "
+                                                           "and point the offline profile at it.")
+    detect.add_argument("--pick", action="append", metavar="PROVIDER/MODEL", help="With --add: only these models.")
+    detect.add_argument("--timeout", type=float, default=1.0)
+    json_flag(detect)
 
     bindings = ai_sub.add_parser("bindings", help="Which profiles each feature uses.")
     json_flag(bindings)
@@ -322,7 +337,7 @@ def argparse_bool():
 
 
 COMMANDS = ("providers", "models", "profiles", "bindings", "bind", "reset", "validate", "complete", "test",
-            "usage", "spend")
+            "usage", "spend", "detect")
 
 
 def run(args) -> int:
@@ -365,6 +380,42 @@ def run(args) -> int:
             allowed = ", ".join(f for f, on in spend["allowPaid"].items() if on) or "none"
             cap_text = "none" if spend["monthlyCapUsd"] is None else f"${spend['monthlyCapUsd']:.2f}"
             return _answer(args, {"ok": True, **spend}, f"paid calls allowed for: {allowed}; monthly cap: {cap_text}")
+
+        if command == "detect":
+            import npdev_ai_discovery
+
+            found = npdev_ai_discovery.detect(args.host, args.timeout)
+            payload = {"ok": True, "servers": found}
+            text = "\n".join(f"{s['name']} at {s['baseUrl']}: {', '.join(s['models']) or '(no models)'}"
+                             for s in found) or "no local LLM server answered"
+            if args.add and found:
+                document = aicfg.read_mine()
+                added = npdev_ai_discovery.add_detected(document, config, found, set(args.pick or []) or None)
+                if added:
+                    payload.update(added=added, file=str(aicfg.write_mine(document)))
+                    text += f"\nadded {len(added)} model(s); offline profile -> {aicfg.load().profile('offline')['model']}"
+            return _answer(args, payload, text)
+        if command == "models" and action == "refresh":
+            import npdev_ai_client
+            import npdev_providers
+
+            provider = config.provider(args.provider)
+            try:
+                key = npdev_providers.resolve_key(args.provider, account=args.account)
+                listed = npdev_ai_client.list_models(provider, key)
+            except (npdev_ai_client.AiCallError, npdev_providers.ProviderError) as exc:
+                raise AiConfigError(str(exc)) from None
+            import npdev_ai_discovery
+
+            document = aicfg.read_mine()
+            report = npdev_ai_discovery.refresh(document, config, args.provider, listed, args.only)
+            changed = bool(report["new"] or report["retired"] or report["back"])
+            path = aicfg.write_mine(document) if changed else aicfg.mine_path()
+            return _answer(args, {"ok": True, "provider": args.provider, "listed": len(listed), **report,
+                                  "file": str(path)},
+                           f"{args.provider}: {len(listed)} listed; new {len(report['new'])} (not enabled: "
+                           f"`npdev ai models enable {args.provider} <model>`), retired {len(report['retired'])}, "
+                           f"back {len(report['back'])}")
 
         document = aicfg.read_mine()
         if command == "spend":
