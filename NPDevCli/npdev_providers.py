@@ -29,7 +29,6 @@ import shutil
 import subprocess
 import sys
 import time
-import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Callable
@@ -272,57 +271,59 @@ class Vault:
         return {pid: e.get("addedAt", "") for pid, e in self._read()["providers"].items()}
 
 
+def account_key_id(provider_id: str, account: str | None) -> str:
+    """The vault id of one stored key: `<provider>` for the default key, `<provider>:<account>` for another
+    (owner decision D5: several keys per provider)."""
+    return f"{provider_id}:{account}" if account else provider_id
+
+
+def account_env_var(key_env_var: str, account: str) -> str:
+    """NPDEV_EXTERNALAI_<ID>_API_KEY -> NPDEV_EXTERNALAI_<ID>_<ACCOUNT>_API_KEY."""
+    return key_env_var[: -len("_API_KEY")] + "_" + account.upper().replace("-", "_") + "_API_KEY"
+
+
 def resolve_key(provider_id: str, vault: Vault | None = None, environ=None,
-                catalogue: list[dict] | None = None) -> str | None:
+                catalogue: list[dict] | None = None, account: str | None = None) -> str | None:
     """Environment variable first (CI / one-off override), then the vault. None for a keyless provider
-    or when no key is stored anywhere."""
+    or when no key is stored anywhere. With `account`, that account's own variable and vault entry."""
     environ = os.environ if environ is None else environ
     entry = get_provider(provider_id, catalogue)
     var = entry.get("keyEnvVar")
     if not var:
         return None
+    if account:
+        var = account_env_var(var, account)
     value = (environ.get(var) or "").strip()
     if value:
         return value
     vault = vault or Vault()
     try:
-        return vault.get(provider_id)
+        return vault.get(account_key_id(provider_id, account))
     except VaultUnavailable:
         return None
 
 
 # --------------------------------------------------------------------------- network
-
-def _request(url: str, key: str | None, body: dict | None, timeout: float, opener: Callable):
-    headers = {"Content-Type": "application/json"}
-    if key:
-        headers["Authorization"] = "Bearer " + key
-    data = json.dumps(body).encode("utf-8") if body is not None else None
-    request = urllib.request.Request(url, data=data, headers=headers, method="POST" if body else "GET")
-    with opener(request, timeout=timeout) as response:
-        return response.status, json.loads(response.read().decode("utf-8"))
-
-
-def _http_failure(exc: Exception) -> str:
-    if isinstance(exc, urllib.error.HTTPError):
-        return f"HTTP {exc.code}"
-    return f"{type(exc).__name__}"
-
+# The wire lives in npdev_ai_client (one client, every protocol); these keep the `npdev providers` verbs.
 
 def list_models(provider_id: str, key: str | None, timeout: float = 30.0,
                 opener: Callable = urllib.request.urlopen) -> list[str]:
-    entry = get_provider(provider_id)
+    import npdev_ai_client
+
     try:
-        _, payload = _request(entry["baseUrl"].rstrip("/") + "/models", key, None, timeout, opener)
-    except (urllib.error.URLError, OSError, ValueError) as exc:
-        raise ProviderError(f"{provider_id}: could not list models ({_http_failure(exc)})") from None
-    return sorted(m.get("id", "") for m in (payload.get("data") or []) if m.get("id"))
+        return npdev_ai_client.list_models(get_provider(provider_id), key, timeout, opener)
+    except npdev_ai_client.AiCallError as exc:
+        raise ProviderError(str(exc)) from None
 
 
 def check_provider(provider_id: str, key: str | None, model: str | None = None, chat: bool = False,
-                   timeout: float = 60.0, opener: Callable = urllib.request.urlopen) -> dict:
+                   timeout: float = 60.0, opener: Callable = urllib.request.urlopen,
+                   allow_paid: bool = False) -> dict:
     """Does the key authenticate? With chat=True also send a one-word prompt to `model` (default: the
-    catalogue's defaultModel). Returns a result dict; the key is never part of it."""
+    catalogue's defaultModel) -- refused for a paid provider unless allow_paid. Returns a result dict;
+    the key is never part of it."""
+    import npdev_ai_client
+
     entry = get_provider(provider_id)
     result: dict = {"provider": provider_id, "ok": False, "keyPresent": bool(key) or not entry.get("keyEnvVar")}
     if entry.get("keyEnvVar") and not key:
@@ -342,14 +343,16 @@ def check_provider(provider_id: str, key: str | None, model: str | None = None, 
         if not chosen:
             result.update(ok=False, error="no model given and the catalogue has no defaultModel")
             return result
+        if entry["kind"] == "paid" and not allow_paid:
+            result.update(ok=False, chatOk=False, error=f"{provider_id} is PAID: a test chat needs --allow-paid")
+            return result
+        target = npdev_ai_client.Target(entry, chosen, None, max_tokens=16)
         try:
-            _, reply = _request(entry["baseUrl"].rstrip("/") + "/chat/completions", key,
-                                {"model": chosen, "max_tokens": 16, "stream": False,
-                                 "messages": [{"role": "user", "content": "Reply with the single word OK"}]},
-                                timeout, opener)
-            result["chatOk"] = bool(reply.get("choices"))
-        except (urllib.error.URLError, OSError, ValueError) as exc:
-            result.update(ok=False, chatOk=False, error=f"chat call to {chosen} failed ({_http_failure(exc)})")
+            npdev_ai_client.call(target, key, "Reply with the single word OK", timeout=timeout, backoff=(),
+                                 opener=opener)
+            result["chatOk"] = True
+        except npdev_ai_client.AiCallError as exc:
+            result.update(ok=False, chatOk=False, error=f"chat call to {chosen} failed ({exc})")
     result["seconds"] = round(time.monotonic() - started, 2)
     return result
 
@@ -411,6 +414,11 @@ def list_providers(vault: Vault, environ=None) -> dict:
     """The catalogue with, per provider, where its key would come from -- never the key itself."""
     environ = os.environ if environ is None else environ
     stored = vault.ids() if vault.path.exists() else {}
+    accounts: dict[str, list[str]] = {}
+    for key_id in stored:
+        provider_id, sep, account = key_id.partition(":")
+        if sep:
+            accounts.setdefault(provider_id, []).append(account)
     rows = []
     for entry in load_catalogue():
         var = entry.get("keyEnvVar")
@@ -418,7 +426,8 @@ def list_providers(vault: Vault, environ=None) -> dict:
                   else "vault" if entry["id"] in stored else "missing")
         rows.append({"id": entry["id"], "name": entry["name"], "kind": entry["kind"], "keyEnvVar": var,
                      "keySource": source, "addedAt": stored.get(entry["id"]) or None,
-                     "signupUrl": entry.get("signupUrl"), "appVendor": entry.get("appVendor")})
+                     "signupUrl": entry.get("signupUrl"), "appVendor": entry.get("appVendor"),
+                     "accounts": sorted(accounts.get(entry["id"], []))})
     return {"store": vault.store_status(), "providers": rows}
 
 
@@ -435,20 +444,25 @@ def add_arguments(subparsers) -> None:
 
     add = sub.add_parser("add", help="Store a provider's key in the vault (hidden prompt; never argv).")
     add.add_argument("provider")
+    add.add_argument("--account", help="Store a second key for this provider under this name (default: the main key).")
     add.add_argument("--key-stdin", action="store_true", help="Read the key from stdin instead of prompting.")
     add.add_argument("--json", action="store_true", help="Answer with one JSON object (the Manager reads this).")
 
     remove = sub.add_parser("remove", help="Delete a provider's key from the vault.")
     remove.add_argument("provider")
+    remove.add_argument("--account")
     remove.add_argument("--json", action="store_true", help="Answer with one JSON object.")
 
     test = sub.add_parser("test", help="Check that the stored key authenticates (lists models).")
     test.add_argument("provider")
     test.add_argument("--chat", action="store_true", help="Also send a one-word prompt.")
     test.add_argument("--model", default=None)
+    test.add_argument("--account")
+    test.add_argument("--allow-paid", action="store_true", help="Permit the one-word test chat on a paid provider.")
 
     models = sub.add_parser("models", help="List the model ids this key can see.")
     models.add_argument("provider")
+    models.add_argument("--account")
 
     sub.add_parser("import-env", help="Copy NPDEV_EXTERNALAI_*_API_KEY environment variables into the vault.")
 
@@ -482,25 +496,27 @@ def run(args) -> int:
                       file=sys.stderr if args.json else sys.stdout)
             key = (sys.stdin.readline().strip() if args.key_stdin
                    else getpass.getpass(f"{entry['name']} API key (input hidden; get one at {entry['signupUrl']}): ").strip())
-            vault.set(args.provider, key)
+            vault.set(account_key_id(args.provider, args.account), key)
             if args.json:
-                print(json.dumps({"ok": True, "provider": args.provider, "store": vault.store.name}))
+                print(json.dumps({"ok": True, "provider": args.provider, "account": args.account,
+                                  "store": vault.store.name}))
             else:
                 print(f"stored {args.provider} in the {vault.store.name} store (current user; index {vault.path})")
             return 0
         if command == "remove":
-            removed = vault.remove(args.provider)
+            get_provider(args.provider)
+            removed = vault.remove(account_key_id(args.provider, args.account))
             if args.json:
-                print(json.dumps({"ok": True, "provider": args.provider, "removed": removed}))
+                print(json.dumps({"ok": True, "provider": args.provider, "account": args.account, "removed": removed}))
             else:
                 print("removed" if removed else "not in the vault")
             return 0
         if command in ("test", "models"):
-            key = resolve_key(args.provider, vault)
+            key = resolve_key(args.provider, vault, account=args.account)
             if command == "models":
                 print("\n".join(list_models(args.provider, key)))
                 return 0
-            result = check_provider(args.provider, key, args.model, args.chat)
+            result = check_provider(args.provider, key, args.model, args.chat, allow_paid=args.allow_paid)
             print(json.dumps(result, indent=2))
             return 0 if result["ok"] else 1
         if command == "import-env":

@@ -150,40 +150,101 @@ class _Stub:
 
 
 class ProviderBackendTests(unittest.TestCase):
-    CATALOGUE = [
-        {"id": "a", "name": "A", "kind": "free", "baseUrl": "https://a.example/v1", "keyEnvVar": "A_KEY", "defaultModel": "ma"},
-        {"id": "b", "name": "B", "kind": "free", "baseUrl": "https://b.example/v1", "keyEnvVar": "B_KEY", "defaultModel": "mb"},
-        {"id": "or", "name": "OR", "kind": "free", "baseUrl": "https://or.example/v1", "keyEnvVar": "OR_KEY",
-         "defaultModel": "x:free", "freeModelSuffix": ":free"},
-        {"id": "p", "name": "P", "kind": "paid", "baseUrl": "https://p.example/v1", "keyEnvVar": "P_KEY", "defaultModel": "mp"},
-    ]
+    """--provider / --profile against the real catalogue, through npdev ai's one client (fake transport)."""
 
-    def build(self, spec, keys=None, allow_paid=False):
-        keys = {"a": "ka", "b": "kb", "or": "ko", "p": "kp"} if keys is None else keys
-        return backends.build_provider_backends(spec, allow_paid, 5.0, resolve_key=keys.get, catalogue=self.CATALOGUE)
+    KEYS = {"groq": "kg", "nvidia": "kn", "openrouter": "ko", "anthropic": "ka", "gemini": "kgm"}
+
+    def build(self, spec, keys=None, allow_paid=False, opener=None):
+        keys = self.KEYS if keys is None else keys
+        aicfg, _ = backends._ai_modules()
+        return backends.build_provider_backends(spec, allow_paid, 5.0, resolve_key=keys.get,
+                                                config=aicfg.load(use_mine=False), opener=opener)
 
     def test_spec_parses_ids_and_models(self):
         self.assertEqual(backends.parse_provider_spec("a, b=m2"), [("a", None), ("b", "m2")])
 
     def test_single_provider_is_a_plain_backend_with_catalogue_model(self):
-        backend = self.build("a")
-        self.assertIsInstance(backend, backends.OpenAICompatBackend)
-        self.assertEqual((backend.info.id, backend.info.model), ("a", "ma"))
+        backend = self.build("groq")
+        self.assertIsInstance(backend, backends.ClientBackend)
+        self.assertEqual((backend.info.id, backend.info.model), ("groq", "llama-3.3-70b-versatile"))
 
     def test_paid_provider_refused_without_allow_paid(self):
         with self.assertRaises(backends.BackendRefused):
-            self.build("p")
-        self.assertEqual(self.build("p", allow_paid=True).info.kind, "paid")
+            self.build("anthropic")
+        self.assertEqual(self.build("anthropic", allow_paid=True).info.kind, "paid")
 
     def test_missing_key_is_refused_with_the_fix_in_the_message(self):
         with self.assertRaises(backends.BackendRefused) as ctx:
-            self.build("a", keys={})
-        self.assertIn("npdev providers add a", str(ctx.exception))
+            self.build("groq", keys={})
+        self.assertIn("npdev providers add groq", str(ctx.exception))
 
     def test_openrouter_style_non_free_model_refused(self):
         with self.assertRaises(backends.BackendRefused):
-            self.build("or=expensive-model")
-        self.assertEqual(self.build("or=y:free").info.model, "y:free")
+            self.build("openrouter=expensive-model")
+        self.assertEqual(self.build("openrouter=y:free").info.model, "y:free")
+
+    def test_a_call_goes_through_the_one_client_with_the_conversation(self):
+        sent = []
+
+        class Reply:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return json.dumps({"choices": [{"message": {"content": "done"}}],
+                                   "usage": {"prompt_tokens": 3, "completion_tokens": 1}}).encode()
+
+        def opener(request, timeout=None):
+            sent.append(json.loads(request.data))
+            return Reply()
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"NPDEV_AI_USAGE_LOG": tmp + "/u.jsonl"}):
+            backend = self.build("groq", opener=opener)
+            messages = [{"role": "system", "content": "s"}, {"role": "user", "content": "u1"},
+                        {"role": "assistant", "content": "a1"}, {"role": "user", "content": "u2"}]
+            completion = backend.complete(messages)
+            usage = Path(tmp, "u.jsonl").read_text(encoding="utf-8")
+        self.assertEqual((completion.text, completion.prompt_tokens), ("done", 3))
+        self.assertEqual([m["role"] for m in sent[0]["messages"]], ["system", "user", "assistant", "user"])
+        self.assertIn('"feature": "bench"', usage)
+
+    def test_profile_backend_follows_the_fallback_and_then_sticks_to_it(self):
+        import urllib.error
+
+        calls = []
+
+        class Reply:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return json.dumps({"choices": [{"message": {"content": "ok"}}]}).encode()
+
+        def opener(request, timeout=None):
+            calls.append(request.full_url)
+            if "generativelanguage" in request.full_url:
+                raise urllib.error.HTTPError(request.full_url, 401, "no", {}, io.BytesIO(b""))
+            return Reply()
+
+        aicfg, _ = backends._ai_modules()
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"NPDEV_AI_USAGE_LOG": tmp + "/u.jsonl"}):
+            backend = backends.ProfileBackend(aicfg.load(use_mine=False), "fast", False, 5.0,
+                                              key_resolver=lambda pid, account=None: "k", opener=opener)
+            self.assertEqual(backend.info.id, "gemini")
+            backend.complete([{"role": "user", "content": "x"}])
+            self.assertEqual((backend.info.id, backend.retired), ("groq", ["fast"]))
+            backend.complete([{"role": "user", "content": "y"}])
+        self.assertEqual(sum("generativelanguage" in url for url in calls), 1)
 
     def test_failover_retires_an_exhausted_provider_for_the_rest_of_the_run(self):
         first = _Stub(backends.BackendInfo("a", "free", "u", "m"), fail=True)

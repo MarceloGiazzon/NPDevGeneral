@@ -226,41 +226,115 @@ def parse_provider_spec(spec: str) -> list[tuple[str, str | None]]:
     return out
 
 
-def build_provider_backends(spec: str, allow_paid: bool, timeout: float, resolve_key=None,
-                            catalogue: list[dict] | None = None):
+def _ai_modules():
+    sys.path.insert(0, str(REPO_ROOT / "NPDevCli"))
+    import npdev_ai_client
+    import npdev_ai_config
+    return npdev_ai_config, npdev_ai_client
+
+
+def _completion(result: dict, messages: list[dict]) -> Completion:
+    if not result["ok"]:
+        raise BackendError(result["error"])
+    pt = result.get("inputTokens") or _estimate_tokens(messages)
+    ct = result.get("outputTokens") or _estimate_tokens([{"content": result["text"]}])
+    return Completion(result["text"], int(pt), int(ct), float(result.get("seconds") or 0.0))
+
+
+def _info(config, provider_id: str, model: str, allow_paid: bool) -> BackendInfo:
+    provider = config.provider(provider_id)
+    price_in, price_out = config.price(provider_id, model)
+    return BackendInfo(provider_id, "paid" if config.is_paid(provider_id, model) else provider["kind"],
+                       provider["baseUrl"], model, (price_in or 0.0) / 1000.0, (price_out or 0.0) / 1000.0, allow_paid)
+
+
+class ClientBackend:
+    """One catalogue provider + model, called through `npdev ai`'s one client (npdev_ai_client): the same
+    wire, retry, spend guard and usage log every other NPDev feature uses."""
+
+    def __init__(self, config, provider_id: str, model: str, allow_paid: bool, timeout: float,
+                 backoff: tuple | None = None, key_resolver=None, opener=None):
+        self.info = _info(config, provider_id, model, allow_paid)
+        self._config, self._allow_paid, self._timeout, self._backoff = config, allow_paid, timeout, backoff
+        self._key_resolver, self._opener = key_resolver, opener
+
+    def complete(self, messages: list[dict]) -> Completion:
+        _, client = _ai_modules()
+        extra = {"opener": self._opener} if self._opener else {}
+        result = client.complete(self._config, "", messages=messages, provider=self.info.id, model=self.info.model,
+                                 feature="bench", allow_paid=self._allow_paid, timeout=self._timeout,
+                                 backoff=self._backoff, key_resolver=self._key_resolver, **extra)
+        return _completion(result, messages)
+
+
+class ProfileBackend:
+    """--profile NAME, or the `bench` feature binding by default: the client walks the profile's fallback
+    chain itself. Once a fallback answers, the run sticks to it (a provider whose quota is gone stays
+    gone), so one run is one model unless that model becomes unreachable."""
+
+    def __init__(self, config, profile: str | None, allow_paid: bool, timeout: float, key_resolver=None, opener=None):
+        _, client = _ai_modules()
+        try:
+            targets, _ = client.targets_for(config, profile=profile, feature=None if profile else "bench")
+        except client.AiCallError as exc:
+            raise BackendRefused(str(exc)) from None
+        first = targets[0]
+        self.info = _info(config, first.provider_id, first.model_id, allow_paid)
+        self._config, self._profile, self._allow_paid, self._timeout = config, profile, allow_paid, timeout
+        self._key_resolver, self._opener = key_resolver, opener
+        self.retired: list[str] = []
+
+    def complete(self, messages: list[dict]) -> Completion:
+        _, client = _ai_modules()
+        extra = {"opener": self._opener} if self._opener else {}
+        result = client.complete(self._config, "", messages=messages, profile=self._profile, feature="bench",
+                                 allow_paid=self._allow_paid, timeout=self._timeout,
+                                 key_resolver=self._key_resolver, **extra)
+        completion = _completion(result, messages)
+        if result.get("attempts") and result.get("profile"):
+            self.retired += [a["profile"] or a["provider"] for a in result["attempts"]]
+            self._profile = result["profile"]
+        self.info = _info(self._config, result["provider"], result["model"], self._allow_paid)
+        return completion
+
+
+def build_provider_backends(spec: str, allow_paid: bool, timeout: float, resolve_key=None, config=None, opener=None):
     """Backends for `--provider`: catalogue endpoint + the key from the NPDev vault / environment
     (npdev_providers.resolve_key). One provider -> that backend; several -> FailoverBackend, and every
-    backend but the last gives up after a short retry budget so failover is quick."""
-    sys.path.insert(0, str(REPO_ROOT / "NPDevCli"))
+    backend but the last gives up after a short retry budget so failover is quick. Refusals happen here,
+    before any prompt is sent."""
+    aicfg, _ = _ai_modules()
     import npdev_providers
-    catalogue = npdev_providers.load_catalogue() if catalogue is None else catalogue
-    resolve_key = resolve_key or (lambda pid: npdev_providers.resolve_key(pid, catalogue=catalogue))
+    try:
+        config = config or aicfg.load()
+    except aicfg.AiConfigError as exc:
+        raise BackendRefused(str(exc)) from None
+    resolve_key = resolve_key or (lambda pid: npdev_providers.resolve_key(pid))
     parsed = parse_provider_spec(spec)
     built = []
     for index, (provider_id, model) in enumerate(parsed):
         try:
-            entry = npdev_providers.get_provider(provider_id, catalogue)
-        except npdev_providers.ProviderError as exc:
+            entry = config.provider(provider_id)
+        except aicfg.AiConfigError as exc:
             raise BackendRefused(str(exc)) from None
-        if entry["kind"] == "paid" and not allow_paid:
-            raise BackendRefused(f"provider {provider_id!r} is PAID; no paid API spend is permitted "
-                                 f"(owner approval required, then --allow-paid)")
         model = model or entry.get("defaultModel")
         if not model:
             raise BackendRefused(f"provider {provider_id!r} has no default model; give one: --provider {provider_id}=<model>")
-        suffix = entry.get("freeModelSuffix")
-        if suffix and not model.endswith(suffix) and not allow_paid:
-            raise BackendRefused(f"{provider_id}: model {model!r} is not a free one (must end {suffix!r}); "
-                                 f"other models on this endpoint are billed")
+        if config.is_paid(provider_id, model) and not allow_paid:
+            suffix = entry.get("freeModelSuffix")
+            raise BackendRefused(
+                f"{provider_id}: model {model!r} is not a free one (must end {suffix!r}); other models on this "
+                f"endpoint are billed" if entry["kind"] != "paid" else
+                f"provider {provider_id!r} is PAID; no paid API spend is permitted (owner approval required, "
+                f"then --allow-paid)")
         key = resolve_key(provider_id)
-        if entry.get("keyEnvVar") and not key:
+        if entry.get("needsKey") and not key:
             raise BackendRefused(f"no key for {provider_id}: run `npdev providers add {provider_id}` "
                                  f"(or set {entry['keyEnvVar']})")
-        price_in, price_out = catalogue_price_per_1k(provider_id, model)
-        info = BackendInfo(provider_id, entry["kind"], entry["baseUrl"], model, price_in, price_out, allow_paid)
         last = index == len(parsed) - 1
-        built.append(OpenAICompatBackend(info, api_key=key or "", timeout=timeout,
-                                         backoff=None if last else (15, 30)))
+        built.append(ClientBackend(config, provider_id, model, allow_paid, timeout,
+                                   backoff=None if last else (15, 30),
+                                   key_resolver=lambda pid, account=None, _key=key: _key, opener=opener))
     return built[0] if len(built) == 1 else FailoverBackend(built)
 
 

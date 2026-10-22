@@ -8,11 +8,14 @@ text is fed back to the model). Stdlib only.
   python scripts/ai/bench/run_bench.py run --ablation no-knowledge ...     # knowledge cards off
   python scripts/ai/bench/run_bench.py report <run-dir> [<run-dir> ...]    # scorecard JSON
 
-NO PAID API SPEND (owner decision 2026-10-19). Backend = OpenAI-compatible chat completions.
-Preferred: the NPDev provider vault --
+NO PAID API SPEND (owner decision 2026-10-19). Calls go through `npdev ai`'s one client (NPDevCli/
+npdev_ai_client.py): every catalogue protocol, retry, spend guard, and the usage log (`npdev ai usage`).
+Default: the `bench` binding (`npdev ai bindings`); or name it --
+  python scripts/ai/bench/run_bench.py run --profile deep                # a profile and its fallbacks
   python scripts/ai/bench/run_bench.py run --provider nvidia,gemini     # failover in that order
   python scripts/ai/bench/run_bench.py run --provider groq=llama-3.3-70b-versatile
-(keys: `npdev providers add <id>`; catalogue: NPDevCli/ai-providers.json). Or, env only:
+(keys: `npdev providers add <id>`; catalogue: `npdev ai providers`). Or, env only (legacy, any
+OpenAI-compatible URL):
   NPDEV_BENCH_BASE_URL   e.g. http://localhost:11434/v1   (local Ollama)
   NPDEV_BENCH_MODEL      e.g. qwen2.5-coder:14b
   NPDEV_BENCH_API_KEY    optional for local; NEVER printed or logged
@@ -260,6 +263,13 @@ def build_backend(args):
         return backends.FakeBackend(canary)
     if args.provider:
         return backends.build_provider_backends(args.provider, args.allow_paid, args.model_timeout)
+    if args.profile or not os.environ.get("NPDEV_BENCH_BASE_URL", "").strip():
+        aicfg, _ = backends._ai_modules()
+        try:
+            config = aicfg.load()
+        except aicfg.AiConfigError as exc:
+            raise backends.BackendRefused(str(exc)) from None
+        return backends.ProfileBackend(config, args.profile, args.allow_paid, args.model_timeout)
     info = backends.resolve_backend(os.environ.get("NPDEV_BENCH_BASE_URL", "").strip(),
                                     os.environ.get("NPDEV_BENCH_MODEL", "").strip(), args.allow_paid)
     return backends.OpenAICompatBackend(info, timeout=args.model_timeout)
@@ -331,6 +341,9 @@ def make_parser() -> argparse.ArgumentParser:
                    help="use providers from the NPDev catalogue with keys from the NPDev vault "
                         "(`npdev providers`); several = failover in order when one runs out of quota. "
                         "Replaces the NPDEV_BENCH_* environment variables.")
+    r.add_argument("--profile", help="an `npdev ai` profile (its fallbacks fail over in order). With no --profile, "
+                                     "--provider or NPDEV_BENCH_BASE_URL, the `bench` binding decides "
+                                     "(`npdev ai bindings`).")
     r.add_argument("--allow-paid", action="store_true",
                    help="permit a PAID provider or a base URL that is not a free/local provider in NPDevCli/ai-providers.json (paid spend: owner approval required)")
     r.add_argument("--ablation", choices=["none", "no-knowledge"], default="none",

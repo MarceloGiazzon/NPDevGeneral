@@ -42,3 +42,15 @@ The environment variable wins over the vault. Generated apps can use `appVendor`
 ```
 
 Effort is one word (`none`, `low`, `medium`, `high`, `xhigh`, `max`) mapped per protocol (`output_config.effort`, `reasoning_effort`, Gemini's thinking level); a level the model does not declare is never sent.
+
+`npdev ai complete` is the one client every developer feature calls (the benchmark already does): it speaks the three catalogue protocols, fails over along a profile's `fallback` chain, retries 429/5xx, refuses to send without a key, and returns text plus token usage -- never the key. Every call appends `{when, feature, provider, model, inTok, outTok, estUsd, ok}` (no prompt, no key) to `ai-usage.jsonl` next to `ai.json` (`NPDEV_AI_USAGE_LOG` overrides). Paid calls are off until opted in per feature; a monthly cap also refuses models of unknown price, since it could not be enforced on them.
+
+```bash
+./npdev ai complete --feature prompter --prompt-file q.txt --json   # binding -> profiles -> fallbacks
+./npdev ai complete --profile deep --effort low --prompt-file q.txt
+./npdev ai test fast                       # one-word prompt through a profile
+./npdev ai usage                           # this month: calls, tokens, estimated USD
+./npdev ai spend allow-paid review         # let one feature make paid calls; --off to undo
+./npdev ai spend cap 20                    # monthly USD cap ('off' removes it)
+./npdev providers add gemini --account work   # a second key; profiles pick it with "account": "work"
+```

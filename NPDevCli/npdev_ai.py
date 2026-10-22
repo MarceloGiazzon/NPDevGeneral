@@ -273,6 +273,47 @@ def add_arguments(ai_sub) -> None:
     validate = ai_sub.add_parser("validate", help="Check the shipped catalogue and your overlay together.")
     json_flag(validate)
 
+    def target_flags(p):
+        p.add_argument("--profile")
+        p.add_argument("--feature", help=f"Resolve through the feature's binding ({', '.join(aicfg.FEATURES)}, app:<name>).")
+        p.add_argument("--provider")
+        p.add_argument("--model", help="With --provider (default: the provider's defaultModel).")
+        p.add_argument("--effort", choices=list(aicfg.EFFORT_LEVELS), help="Override the profile's effort for this run.")
+        p.add_argument("--max-tokens", type=int)
+        p.add_argument("--account", help="Use this stored key of the provider (<provider>:<account>).")
+        p.add_argument("--allow-paid", action="store_true", help="Permit a paid call for this direct run.")
+        p.add_argument("--timeout", type=float, default=120.0)
+        json_flag(p)
+
+    complete = ai_sub.add_parser("complete", help="Send a prompt through ONE client (failover, retry, spend "
+                                                  "guard, usage log). The key never leaves this process.")
+    target_flags(complete)
+    complete.add_argument("--prompt-file", required=True, help="The prompt ('-' = stdin). A file, not argv: "
+                                                               "a prompt on a command line shows in process listings.")
+    complete.add_argument("--system-file")
+    complete.add_argument("--json-schema", metavar="FILE", help="Ask for one JSON value valid against this schema.")
+
+    test = ai_sub.add_parser("test", help="Send a one-word prompt through a profile (and its fallbacks).")
+    test.add_argument("profile")
+    test.add_argument("--allow-paid", action="store_true")
+    test.add_argument("--timeout", type=float, default=60.0)
+    json_flag(test)
+
+    usage = ai_sub.add_parser("usage", help="What the AI calls cost: calls, tokens and estimated USD, never prompts.")
+    usage.add_argument("--since", help="ISO date (default: the start of this month, UTC).")
+    json_flag(usage)
+
+    spend = ai_sub.add_parser("spend", help="The spend guard: which features may make paid calls, monthly cap.")
+    json_flag(spend)
+    ssub = spend.add_subparsers(dest="ai_action")
+    allow = ssub.add_parser("allow-paid", help="Let a feature make paid calls (--off to take it back).")
+    allow.add_argument("feature")
+    allow.add_argument("--off", action="store_true")
+    json_flag(allow)
+    cap = ssub.add_parser("cap", help="Monthly USD cap across all paid calls ('off' removes it).")
+    cap.add_argument("usd")
+    json_flag(cap)
+
 
 def argparse_bool():
     import argparse
@@ -280,7 +321,8 @@ def argparse_bool():
     return argparse.BooleanOptionalAction
 
 
-COMMANDS = ("providers", "models", "profiles", "bindings", "bind", "reset", "validate")
+COMMANDS = ("providers", "models", "profiles", "bindings", "bind", "reset", "validate", "complete", "test",
+            "usage", "spend")
 
 
 def run(args) -> int:
@@ -305,8 +347,48 @@ def run(args) -> int:
             rows = binding_rows(config)
             return _answer(args, {"ok": True, "bindings": rows}, _table(rows, ("feature", "profiles", "source")))
 
+        if command in ("complete", "test"):
+            return _run_call(args, config)
+        if command == "usage":
+            import npdev_ai_client
+
+            since = args.since or npdev_ai_client.month_start()
+            log = npdev_ai_client.UsageLog()
+            summary = {"ok": True, "since": since, "log": str(log.path), **npdev_ai_client.summarize(log.records(since))}
+            text = _table(summary["rows"], ("feature", "provider", "model", "calls", "failed", "inTok", "outTok", "estUsd"))
+            text += f"\nestimated total since {since}: ${summary['estUsd']:.4f}"
+            if summary["paidCallsWithoutPrice"]:
+                text += f" (+{summary['paidCallsWithoutPrice']} paid call(s) of unknown price)"
+            return _answer(args, summary, text)
+        if command == "spend" and action is None:
+            spend = {"allowPaid": config.spend.get("allowPaid") or {}, "monthlyCapUsd": config.spend.get("monthlyCapUsd")}
+            allowed = ", ".join(f for f, on in spend["allowPaid"].items() if on) or "none"
+            cap_text = "none" if spend["monthlyCapUsd"] is None else f"${spend['monthlyCapUsd']:.2f}"
+            return _answer(args, {"ok": True, **spend}, f"paid calls allowed for: {allowed}; monthly cap: {cap_text}")
+
         document = aicfg.read_mine()
-        if command == "providers":
+        if command == "spend":
+            spend = document.setdefault("spend", {})
+            if action == "allow-paid":
+                aicfg.check_feature(args.feature)
+                allow_map = spend.setdefault("allowPaid", {})
+                if args.off:
+                    allow_map.pop(args.feature, None)
+                else:
+                    allow_map[args.feature] = True
+                if not allow_map:
+                    spend.pop("allowPaid")
+                subject = f"paid calls for {args.feature} {'off' if args.off else 'on'}"
+            else:
+                if args.usd.lower() == "off":
+                    spend.pop("monthlyCapUsd", None)
+                else:
+                    try:
+                        spend["monthlyCapUsd"] = float(args.usd)
+                    except ValueError:
+                        raise AiConfigError(f"cap expects a USD amount or 'off', got {args.usd!r}") from None
+                subject = f"monthly cap {args.usd}"
+        elif command == "providers":
             if action in ("add", "set"):
                 if action == "add" and args.id in config.providers:
                     raise AiConfigError(f"provider {args.id!r} exists: use `npdev ai providers set {args.id}`")
@@ -356,6 +438,52 @@ def run(args) -> int:
         else:
             print(f"error: {exc}", file=sys.stderr)
         return 2
+
+
+def _read_text(path: str | None) -> str | None:
+    if path is None:
+        return None
+    if path == "-":
+        return sys.stdin.read()
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return handle.read()
+    except OSError as exc:
+        raise AiConfigError(f"cannot read {path} ({type(exc).__name__})") from None
+
+
+def _run_call(args, config) -> int:
+    import npdev_ai_client
+
+    try:
+        if args.ai_command == "test":
+            result = npdev_ai_client.complete(config, "Reply with the single word OK", profile=args.profile,
+                                              max_tokens=64, allow_paid=args.allow_paid, timeout=args.timeout,
+                                              backoff=())
+        else:
+            schema_text = _read_text(args.json_schema)
+            try:
+                schema = json.loads(schema_text) if schema_text is not None else None
+            except json.JSONDecodeError as exc:
+                raise AiConfigError(f"--json-schema is not valid JSON: {exc}") from None
+            result = npdev_ai_client.complete(
+                config, _read_text(args.prompt_file) or "", system=_read_text(args.system_file), json_schema=schema,
+                profile=args.profile, feature=args.feature, provider=args.provider, model=args.model,
+                effort=args.effort, max_tokens=args.max_tokens, account=args.account, allow_paid=args.allow_paid,
+                timeout=args.timeout)
+    except npdev_ai_client.AiCallError as exc:
+        result = {"ok": False, "error": str(exc)}
+    if getattr(args, "json", False):
+        print(json.dumps(result, indent=2))
+    elif result["ok"]:
+        for warning in result.get("warnings") or []:
+            print(f"warning: {warning}", file=sys.stderr)
+        print(result["text"] if args.ai_command == "complete" else
+              f"ok: {result['profile'] or result['provider']} -> {result['provider']}/{result['model']} "
+              f"answered in {result['seconds']}s")
+    else:
+        print(f"error: {result['error']}", file=sys.stderr)
+    return 0 if result["ok"] else 1
 
 
 def _answer(args, payload: dict, text: str) -> int:

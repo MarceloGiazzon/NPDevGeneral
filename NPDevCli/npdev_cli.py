@@ -18361,8 +18361,7 @@ def main(argv: list[str] | None = None) -> int:
             return run_explore(args)
         if args.command == "ai" and args.ai_command == "generate-routine":
             return run_ai_generate_routine(args)
-        if args.command == "ai" and args.ai_command in ("providers", "models", "profiles", "bindings", "bind",
-                                                        "reset", "validate"):
+        if args.command == "ai" and args.ai_command != "generate-routine":
             import npdev_ai
             return npdev_ai.run(args)
         if args.command == "review" and args.review_command == "pack":

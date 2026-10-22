@@ -99,6 +99,7 @@ class AiConfig:
     profiles: dict
     bindings: dict
     origin: dict = field(default_factory=dict)      # (section, key) -> {"source", "overrides"}
+    spend: dict = field(default_factory=dict)       # {"allowPaid": {feature: bool}, "monthlyCapUsd": n|None}
     mine_file: Path | None = None
 
     # ---- lookups (active = not disabled)
@@ -204,7 +205,13 @@ def merge(shipped: dict, mine: dict | None = None, mine_file: Path | None = None
         origin[("bindings", feature)] = {"source": source,
                                          "overrides": {} if source != "overridden" else
                                          {"profiles": {"shipped": before, "mine": list(names)}}}
-    return AiConfig(protocols, merged["providers"], merged["models"], merged["profiles"], bindings, origin, mine_file)
+    spend = copy.deepcopy(shipped.get("spend") or {})
+    mine_spend = (mine or {}).get("spend") or {}
+    spend.setdefault("allowPaid", {}).update(mine_spend.get("allowPaid") or {})
+    if "monthlyCapUsd" in mine_spend:
+        spend["monthlyCapUsd"] = mine_spend["monthlyCapUsd"]
+    return AiConfig(protocols, merged["providers"], merged["models"], merged["profiles"], bindings,
+                    origin=origin, spend=spend, mine_file=mine_file)
 
 
 def semantic_errors(config: AiConfig) -> list[str]:
@@ -249,6 +256,11 @@ def semantic_errors(config: AiConfig) -> list[str]:
     for name in config.profiles:
         if _fallback_cycle(config, name):
             errors.append(f"profile {name}: its fallback chain loops")
+    for feature in (config.spend.get("allowPaid") or {}):
+        try:
+            check_feature(feature)
+        except AiConfigError as exc:
+            errors.append(f"spend.allowPaid: {exc}")
     for feature, names in config.bindings.items():
         try:
             check_feature(feature)
@@ -334,8 +346,9 @@ def write_mine(document: dict, path: Path | None = None, shipped_path: Path | No
     for section in SECTIONS:
         if section in document and not document[section]:
             del document[section]
-    if "bindings" in document and not document["bindings"]:
-        del document["bindings"]
+    for section in ("bindings", "spend"):
+        if section in document and not document[section]:
+            del document[section]
     errors = schema_errors(document, "your AI config")
     if errors:
         raise AiConfigError("\n".join(errors))
