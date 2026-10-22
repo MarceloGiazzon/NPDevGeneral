@@ -1,0 +1,99 @@
+{
+  "store": {
+    "available": true,
+    "store": "secret-service",
+    "vault": "~/.config/NPDev/providers.vault.json"
+  },
+  "providers": [
+    {
+      "id": "gemini",
+      "name": "Google Gemini (AI Studio free tier)",
+      "kind": "free",
+      "keyEnvVar": "NPDEV_EXTERNALAI_GEMINI_API_KEY",
+      "keySource": "vault",
+      "addedAt": "2026-10-22T19:30:40",
+      "signupUrl": "https://aistudio.google.com/apikey",
+      "appVendor": true
+    },
+    {
+      "id": "nvidia",
+      "name": "NVIDIA API catalog (free developer tier)",
+      "kind": "free",
+      "keyEnvVar": "NPDEV_EXTERNALAI_NVIDIA_API_KEY",
+      "keySource": "missing",
+      "addedAt": null,
+      "signupUrl": "https://build.nvidia.com",
+      "appVendor": true
+    },
+    {
+      "id": "groq",
+      "name": "Groq (free tier)",
+      "kind": "free",
+      "keyEnvVar": "NPDEV_EXTERNALAI_GROQ_API_KEY",
+      "keySource": "env",
+      "addedAt": null,
+      "signupUrl": "https://console.groq.com/keys",
+      "appVendor": false
+    },
+    {
+      "id": "cerebras",
+      "name": "Cerebras Inference (free tier)",
+      "kind": "free",
+      "keyEnvVar": "NPDEV_EXTERNALAI_CEREBRAS_API_KEY",
+      "keySource": "missing",
+      "addedAt": null,
+      "signupUrl": "https://cloud.cerebras.ai",
+      "appVendor": false
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter (':free' models only)",
+      "kind": "free",
+      "keyEnvVar": "NPDEV_EXTERNALAI_OPENROUTER_API_KEY",
+      "keySource": "missing",
+      "addedAt": null,
+      "signupUrl": "https://openrouter.ai/keys",
+      "appVendor": false
+    },
+    {
+      "id": "mistral",
+      "name": "Mistral La Plateforme (free Experiment tier)",
+      "kind": "free",
+      "keyEnvVar": "NPDEV_EXTERNALAI_MISTRAL_API_KEY",
+      "keySource": "missing",
+      "addedAt": null,
+      "signupUrl": "https://console.mistral.ai/api-keys",
+      "appVendor": false
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama (local)",
+      "kind": "local",
+      "keyEnvVar": null,
+      "keySource": "none-needed",
+      "addedAt": null,
+      "signupUrl": "https://ollama.com/download",
+      "appVendor": false
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic (paid)",
+      "kind": "paid",
+      "keyEnvVar": "NPDEV_EXTERNALAI_ANTHROPIC_API_KEY",
+      "keySource": "missing",
+      "addedAt": null,
+      "signupUrl": "https://console.anthropic.com/settings/keys",
+      "appVendor": true
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI (paid)",
+      "kind": "paid",
+      "keyEnvVar": "NPDEV_EXTERNALAI_OPENAI_API_KEY",
+      "keySource": "missing",
+      "addedAt": null,
+      "signupUrl": "https://platform.openai.com/api-keys",
+      "appVendor": true
+    }
+  ]
+}

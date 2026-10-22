@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="dbio.css" />
 <link rel="stylesheet" href="gpuchecks.css" />
 <link rel="stylesheet" href="secrets.css" />
+<link rel="stylesheet" href="providers.css" />
 <link rel="stylesheet" href="studio.css" />
 <link rel="stylesheet" href="evals.css" />
 </head>
@@ -44,6 +45,7 @@
     <button class="tab" data-screen="provenance">Impact</button>
     <button class="tab" data-screen="dbio">DB Import/Export</button>
     <button class="tab" data-screen="gpuchecks">GPU Checks</button>
+    <button class="tab" data-screen="providers">AI Keys</button>
     <button class="tab" data-screen="secrets">Secrets</button>
     <button class="tab" data-screen="studio">Studio</button>
     <button class="tab" data-screen="evals">Evals</button>
@@ -722,6 +724,49 @@
       </div>
     </section>
 
+    <section id="screen-providers" class="screen" hidden>
+      <h1>&#129302; AI KEYS <span class="dim">// one key per AI provider, shared by NPDev everywhere</span></h1>
+      <p class="subtitle">
+        Kept by <code>npdev providers</code> in your OS store (Windows: DPAPI; Linux: the desktop
+        keyring). The same key serves the authoring benchmark, the CLI and any generated app you export
+        it to. This tab can store, test and remove a key -- it never shows one back.
+      </p>
+      <div id="providers-store" class="providers-store"></div>
+
+      <div class="secrets-columns">
+        <div class="secrets-table">
+          <div class="packs-toolbar">
+            <button class="btn" id="providers-refresh">&#8635; REFRESH</button>
+            <span id="providers-status" class="status-line"></span>
+          </div>
+          <div id="providers-list"></div>
+        </div>
+
+        <div class="secrets-panel">
+          <h3>ADD OR REPLACE A KEY</h3>
+          <label>Provider
+            <select id="providers-form-id"></select>
+          </label>
+          <p class="secrets-note" id="providers-form-hint"></p>
+          <label>API key
+            <input type="password" id="providers-form-key" placeholder="never shown once saved" autocomplete="new-password" />
+          </label>
+          <button class="btn" id="providers-form-save">SAVE</button>
+
+          <h3 class="providers-gap">USE IN A GENERATED APP</h3>
+          <p class="secrets-note">
+            Writes the checked providers' keys into the app's <code>secrets/agent-proxy.env</code>
+            (gitignored, spared by regeneration). Only providers marked "app" are supported there.
+          </p>
+          <label>App folder
+            <input type="text" id="providers-export-app" placeholder="/path/to/generated/App" autocomplete="off" />
+          </label>
+          <div id="providers-export-choices"></div>
+          <button class="btn" id="providers-export-go">EXPORT</button>
+        </div>
+      </div>
+    </section>
+
     <section id="screen-secrets" class="screen" hidden>
       <h1>&#128272; SECRETS <span class="dim">// db and deploy credentials, in the OS keyring</span></h1>
       <p class="subtitle">
@@ -998,6 +1043,7 @@
   <script src="dbio.js"></script>
   <script src="gpuchecks.js"></script>
   <script src="secrets.js"></script>
+  <script src="providers.js"></script>
   <script src="studio.js"></script>
   <script src="evals.js"></script>
   <script>
@@ -1014,6 +1060,7 @@
     try { window.__npdevInitDbio(); } catch (e) { console.error("DB Import/Export init failed", e); }
     try { window.__npdevInitGpuChecks(); } catch (e) { console.error("GPU Checks init failed", e); }
     try { window.__npdevInitSecrets(); } catch (e) { console.error("Secrets init failed", e); }
+    try { window.__npdevInitProviders(); } catch (e) { console.error("AI Keys init failed", e); }
     try { window.__npdevInitStudio(); } catch (e) { console.error("Studio init failed", e); }
     try { window.__npdevInitEvals(); } catch (e) { console.error("Evals init failed", e); }
   </script>

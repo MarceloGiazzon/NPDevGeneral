@@ -1,0 +1,7 @@
+{
+  "provider": "gemini",
+  "ok": true,
+  "keyPresent": true,
+  "models": 42,
+  "seconds": 0.61
+}

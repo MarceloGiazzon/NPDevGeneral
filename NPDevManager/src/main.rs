@@ -926,6 +926,69 @@ async fn host_keys(state: State<'_, AppState>, app_dir: String, new: Option<bool
     npdev::run_host_keys(&python, &cli, java_home.as_deref(), &app_dir, new).await
 }
 
+/// The AI Keys tab: every call is `npdev providers ... --json` (see npdev::run_providers). A provider
+/// id is checked here so a value like `--json` can never reach argparse as a flag.
+async fn providers_call(state: &State<'_, AppState>, args: Vec<String>, stdin: Option<String>) -> Result<Value, String> {
+    let java_home = resolve_java_home(state);
+    let (python, cli) = if npdev::fake_mode() {
+        (PathBuf::from("python"), PathBuf::from("npdev_cli.py"))
+    } else {
+        (resolve_python_exe(state).await?, resolve_npdev_cli(state)?)
+    };
+    npdev::run_providers(&python, &cli, java_home.as_deref(), &args, stdin).await
+}
+
+fn provider_id_ok(id: &str) -> Result<String, String> {
+    let id = id.trim();
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') || id.starts_with('-') {
+        return Err(format!("not a provider id: {id:?}"));
+    }
+    Ok(id.to_string())
+}
+
+#[tauri::command]
+async fn providers_list(state: State<'_, AppState>) -> Result<Value, String> {
+    providers_call(&state, vec!["list".into(), "--json".into()], None).await
+}
+
+#[tauri::command]
+async fn providers_add(state: State<'_, AppState>, provider: String, key: String) -> Result<Value, String> {
+    let provider = provider_id_ok(&provider)?;
+    let key = key.trim().to_string();
+    if key.is_empty() || key.contains('\n') {
+        return Err("the key is empty or has a line break".into());
+    }
+    providers_call(&state, vec!["add".into(), provider, "--key-stdin".into(), "--json".into()], Some(key)).await
+}
+
+#[tauri::command]
+async fn providers_remove(state: State<'_, AppState>, provider: String) -> Result<Value, String> {
+    let provider = provider_id_ok(&provider)?;
+    providers_call(&state, vec!["remove".into(), provider, "--json".into()], None).await
+}
+
+#[tauri::command]
+async fn providers_test(state: State<'_, AppState>, provider: String, chat: Option<bool>) -> Result<Value, String> {
+    let mut args = vec!["test".into(), provider_id_ok(&provider)?];
+    if chat.unwrap_or(false) {
+        args.push("--chat".into());
+    }
+    providers_call(&state, args, None).await
+}
+
+#[tauri::command]
+async fn providers_export(state: State<'_, AppState>, app_dir: String, providers: Vec<String>) -> Result<Value, String> {
+    if providers.is_empty() {
+        return Err("choose at least one provider to export".into());
+    }
+    let mut args = vec!["export-env".into(), "--app".into(), app_dir];
+    for p in providers {
+        args.push("--provider".into());
+        args.push(provider_id_ok(&p)?);
+    }
+    providers_call(&state, args, None).await
+}
+
 /// VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 3: the Verification tab reads one
 /// npdev-verification-panel.v1 document from `npdev verify --panel --json`. Thin command, same
 /// shape as monitor_scan -- no decision lives in Rust.
@@ -3059,6 +3122,11 @@ the blast radius needs a baseline to diff against"
             host_down,
             host_deploy,
             host_keys,
+            providers_list,
+            providers_add,
+            providers_remove,
+            providers_test,
+            providers_export,
             fake_host_scenarios,
             set_fake_host_scenario,
             rebuild_app_engine,

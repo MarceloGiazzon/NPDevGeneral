@@ -71,6 +71,9 @@ captured honestly rather than left "not covered".
 | `host-targets.json` | `npdev host plan --app <app> --list-targets --json` | the ladder's 7 targets, each annotated `compatible`/`incompatibleReason` against this app's H2Server engine -- see the `--list-targets` flag this fixture drove, npdev_cli.py `_run_host_plan_list_targets` |
 | `host-keys-list.json` | `npdev host keys --app <app> --json` | one masked key, `{masked, tenant, actor, role}` -- never the raw value |
 | `host-keys-new.json` | `npdev host keys --app <app> --new --json` | the raw key exactly once, immediately after minting (M9's one exception to "never render a key in full") |
+| `providers-list.json` | `npdev providers list --json` | store status + each AI provider's key SOURCE (vault/env/missing/none-needed) -- never a key |
+| `providers-ok.json` | `npdev providers add <id> --key-stdin --json` (also remove / export-env in fake mode) | `{ok, provider, store}` |
+| `providers-test.json` | `npdev providers test <id>` | the key authenticated: model count and seconds, no key |
 
 **Not covered:** an `npdev host deploy` success carrying an `"npdev"`-sourced `requiredEnv` entry.
 Those only appear for a Postgres/MySQL/SqlServer-profiled deployment (`npdev_host.py`'s

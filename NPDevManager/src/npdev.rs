@@ -13,7 +13,7 @@ use std::sync::Mutex;
 
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 
 use crate::state::AppState;
@@ -77,6 +77,9 @@ const FIXTURE_HOST_DEPLOY_WRITTEN: &str = include_str!("../fixtures/host-deploy-
 const FIXTURE_HOST_TARGETS: &str = include_str!("../fixtures/host-targets.json");
 const FIXTURE_HOST_KEYS_LIST: &str = include_str!("../fixtures/host-keys-list.json");
 const FIXTURE_HOST_KEYS_NEW: &str = include_str!("../fixtures/host-keys-new.json");
+const FIXTURE_PROVIDERS_LIST: &str = include_str!("../fixtures/providers-list.json");
+const FIXTURE_PROVIDERS_OK: &str = include_str!("../fixtures/providers-ok.json");
+const FIXTURE_PROVIDERS_TEST: &str = include_str!("../fixtures/providers-test.json");
 /// Phase F. The one fixture here that is hand-authored rather than captured, and the file says why
 /// in its own `_captured` header: capturing it means paying a third-party provider with a real key.
 /// Same documented-exception shape as the two doctor fixtures above.
@@ -1173,6 +1176,45 @@ pub async fn run_host_keys(
         args.push("--new".to_string());
     }
     run_json(python_exe, npdev_cli, &args, java_home, "host keys").await
+}
+
+// ---------------------------------------------------------------------------------------------
+// providers: AI-provider API keys
+// ---------------------------------------------------------------------------------------------
+
+/// `npdev providers <args>`. The CLI owns the catalogue and the key store (DPAPI on Windows, the
+/// desktop keyring on Linux), so the benchmark, `export-env` and this window share one set of keys.
+/// A key goes in on stdin only -- never argv, where a process listing would show it -- and nothing
+/// the CLI answers ever carries one back.
+pub async fn run_providers(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    args: &[String],
+    stdin: Option<String>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        let text = match args.first().map(String::as_str) {
+            Some("list") => FIXTURE_PROVIDERS_LIST,
+            Some("test") => FIXTURE_PROVIDERS_TEST,
+            _ => FIXTURE_PROVIDERS_OK,
+        };
+        return serde_json::from_str(text).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let mut full = vec!["providers".to_string()];
+    full.extend(args.iter().cloned());
+    let label = format!("providers {}", args.first().map(String::as_str).unwrap_or(""));
+    let borrowed: Vec<&str> = full.iter().map(String::as_str).collect();
+    let mut cmd = build_command(python_exe, npdev_cli, &borrowed, java_home, None);
+    cmd.stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() });
+    let mut child = cmd.spawn().map_err(|e| format!("could not run {label}: {e}"))?;
+    if let Some(text) = stdin {
+        let mut pipe = child.stdin.take().ok_or("providers: no stdin pipe")?;
+        pipe.write_all(format!("{text}\n").as_bytes()).await.map_err(|e| format!("{label}: {e}"))?;
+        drop(pipe);
+    }
+    let output = child.wait_with_output().await.map_err(|e| format!("could not run {label}: {e}"))?;
+    parse_single_json(&output.stdout, &output.stderr, &label)
 }
 
 // ---------------------------------------------------------------------------------------------
