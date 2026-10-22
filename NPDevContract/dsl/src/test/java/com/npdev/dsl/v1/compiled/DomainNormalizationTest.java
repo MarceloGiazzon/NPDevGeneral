@@ -15,6 +15,7 @@ class DomainNormalizationTest {
         assertEquals("AB-12", DomainNormalization.apply(List.of("trim", "uppercase"), " ab-12 "));
         assertEquals("ab-12", DomainNormalization.apply(List.of("Trim", "LOWERCASE"), " AB-12 "));
         assertEquals("a b c", DomainNormalization.apply(List.of("collapseWhitespace"), "a  b \t c"));
+        assertEquals("1234567890", DomainNormalization.apply(List.of("digitsOnly", "trim"), " 123-456 7890 "));
     }
 
     @Test

@@ -125,7 +125,7 @@ class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
     private UUID createPatient() throws Exception {
         String body = objectMapper.writeValueAsString(Map.of(
                 "id", UUID.randomUUID().toString(),
-                "mrn", "MRN-001",
+                "mrn", "MRN-0001", // the MRN domain type needs 8..12 characters (REG-274 enforces its minLength)
                 "firstName", "Ada",
                 "lastName", "Lovelace",
                 "emergencyContact", Map.of(

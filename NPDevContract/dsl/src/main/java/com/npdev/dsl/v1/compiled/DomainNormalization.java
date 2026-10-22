@@ -8,7 +8,7 @@ import java.util.Locale;
  * served them to clients but the server never applied them, so {@code " ab-12 "} was stored as sent.
  *
  * <p>Vocabulary (case-insensitive, applied in declared order): {@code trim}, {@code uppercase},
- * {@code lowercase}, {@code collapseWhitespace}. A rule outside it is ignored, not an error: the
+ * {@code lowercase}, {@code collapseWhitespace}, {@code digitsOnly}. A rule outside it is ignored, not an error: the
  * schema types the list as free-form strings. Pure; non-text values come back untouched.
  */
 public final class DomainNormalization {
@@ -30,6 +30,7 @@ public final class DomainNormalization {
                 case "uppercase" -> text = text.toUpperCase(Locale.ROOT);
                 case "lowercase" -> text = text.toLowerCase(Locale.ROOT);
                 case "collapsewhitespace" -> text = text.replaceAll("\\s+", " ");
+                case "digitsonly" -> text = text.replaceAll("\\D+", "");
                 default -> {
                     // not a rule the runtime knows; the catalog still serves it to clients
                 }
