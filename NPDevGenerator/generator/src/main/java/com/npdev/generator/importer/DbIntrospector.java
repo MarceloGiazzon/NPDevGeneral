@@ -70,6 +70,7 @@ public final class DbIntrospector {
         map.put("DATE", "date");
         map.put("TIMESTAMP, TIMESTAMP WITH TIME ZONE", "datetime");
         map.put("UUID (driver type name)", "uuid");
+        map.put("ENUM('a', 'b', ...) (the driver type name lists the values)", "enum (enumValues = the listed values; a driver that reports a bare ENUM is NOT MAPPED)");
         map.put("TIME, BINARY, VARBINARY, BLOB, ARRAY, STRUCT, OTHER ...", "NOT MAPPED -- column omitted and listed in unmappedColumns");
         return map;
     }
@@ -362,6 +363,9 @@ public final class DbIntrospector {
         if ("UUID".equalsIgnoreCase(column.typeName())) {
             return "uuid";
         }
+        if (enumValues(column) != null) {
+            return "enum";
+        }
         switch (column.jdbcType()) {
             case Types.CHAR: case Types.VARCHAR: case Types.NCHAR: case Types.NVARCHAR: case Types.LONGVARCHAR:
             case Types.LONGNVARCHAR: case Types.CLOB: case Types.NCLOB:
@@ -391,8 +395,75 @@ public final class DbIntrospector {
         }
     }
 
+    /**
+     * The values of a native ENUM column, parsed from a type name such as {@code ENUM('G', 'PG-13')}; null when the
+     * type is not an ENUM, the driver reports a bare {@code ENUM} (values unknown), or the list would not pass the
+     * DSL's enum rules (empty, blank or duplicate value).
+     */
+    static List<String> enumValues(Column column) {
+        String typeName = column.typeName();
+        if (typeName == null) {
+            return null;
+        }
+        String text = typeName.trim();
+        if (text.length() < 6 || !text.regionMatches(true, 0, "ENUM", 0, 4)) {
+            return null;
+        }
+        int i = 4;
+        while (i < text.length() && Character.isWhitespace(text.charAt(i))) {
+            i++;
+        }
+        if (i >= text.length() || text.charAt(i) != '(') {
+            return null;
+        }
+        i++;
+        List<String> values = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        while (true) {
+            while (i < text.length() && (Character.isWhitespace(text.charAt(i)) || text.charAt(i) == ',')) {
+                i++;
+            }
+            if (i >= text.length()) {
+                return null;
+            }
+            if (text.charAt(i) == ')') {
+                break;
+            }
+            if (text.charAt(i) != '\'') {
+                return null;
+            }
+            i++;
+            StringBuilder value = new StringBuilder();
+            boolean closed = false;
+            while (i < text.length()) {
+                char c = text.charAt(i);
+                if (c == '\'') {
+                    if (i + 1 < text.length() && text.charAt(i + 1) == '\'') {
+                        value.append('\'');
+                        i += 2;
+                        continue;
+                    }
+                    closed = true;
+                    i++;
+                    break;
+                }
+                value.append(c);
+                i++;
+            }
+            if (!closed || value.toString().isBlank() || !seen.add(value.toString().trim().toLowerCase(Locale.ROOT))) {
+                return null;
+            }
+            values.add(value.toString());
+        }
+        return values.isEmpty() ? null : values;
+    }
+
     private static void applyType(ObjectNode field, String type, Column column) {
         field.put("type", type);
+        if ("enum".equals(type)) {
+            ArrayNode values = field.putArray("enumValues");
+            enumValues(column).forEach(values::add);
+        }
         if ("string".equals(type) && column.jdbcType() != Types.CLOB && column.jdbcType() != Types.NCLOB
                 && column.size() > 0 && column.size() <= 100_000) {
             field.put("maxLength", column.size());
@@ -411,6 +482,17 @@ public final class DbIntrospector {
      * concept; a link that carries its own data is an association, or an aggregate child of whichever side is
      * the parent -- the aggregate snippet uses only constructs the DSL has (aggregates[].collections).
      */
+    /** Audit columns (who/when a row was touched) do not make a link table "carry its own data". */
+    private static boolean isAuditColumn(String column) {
+        return AUDIT_COLUMNS.contains(column.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", ""));
+    }
+
+    private static final Set<String> AUDIT_COLUMNS = Set.of(
+            "createdat", "createdon", "createddate", "createdtime", "createdts", "createdby", "createdate", "creationdate",
+            "updatedat", "updatedon", "updateddate", "updatedtime", "updatedts", "updatedby", "updatedate",
+            "modifiedat", "modifiedon", "modifieddate", "modifiedby", "lastupdate", "lastupdated", "lastmodified",
+            "lastmodifiedat", "lastmodifiedby", "lastupdatedat", "lastupdatedby");
+
     private static void proposeForLinkTable(Table table, String concept, Map<String, String> conceptByTable,
                                             Map<String, ForeignKey> singleFkByColumn, Map<String, String> fieldByColumn,
                                             ArrayNode proposals) {
@@ -427,8 +509,10 @@ public final class DbIntrospector {
             return;
         }
         Set<String> keyColumns = new HashSet<>(table.primaryKey());
-        List<String> extra = table.columns().stream().map(Column::name)
-                .filter(c -> !keyColumns.contains(c) && fieldByColumn.containsKey(c)).map(fieldByColumn::get).toList();
+        List<String> candidates = table.columns().stream().map(Column::name)
+                .filter(c -> !keyColumns.contains(c) && fieldByColumn.containsKey(c)).toList();
+        List<String> extra = candidates.stream().filter(c -> !isAuditColumn(c)).map(fieldByColumn::get).toList();
+        List<String> audit = candidates.stream().filter(DbIntrospector::isAuditColumn).map(fieldByColumn::get).toList();
         String first = conceptByTable.get(singleFkByColumn.get(keyFkColumns.get(0)).pkTable());
         String second = conceptByTable.get(singleFkByColumn.get(keyFkColumns.get(1)).pkTable());
         ObjectNode proposal = proposals.addObject();
@@ -437,6 +521,10 @@ public final class DbIntrospector {
         proposal.putArray("between").add(first).add(second);
         ArrayNode extraNode = proposal.putArray("extraFields");
         extra.forEach(extraNode::add);
+        if (!audit.isEmpty()) {
+            ArrayNode auditNode = proposal.putArray("auditFieldsIgnored");
+            audit.forEach(auditNode::add);
+        }
         if (extra.isEmpty()) {
             proposal.put("kind", "pureLink");
             proposal.put("suggestion", "Pure link between " + first + " and " + second + ": keep " + concept
