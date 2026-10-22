@@ -6,7 +6,7 @@
         "lifecycleTransition.event",
         "lifecycleState.initial"
       ],
-      "description": "The Draft -> Submitted transition of WidgetReviewDemo declares event WidgetReviewSubmitted: after the PUT that makes the move, the event store holds a WidgetReviewSubmitted whose payload names the record and the new status; a transition that declares no event (Submitted -> Rejected) publishes nothing named after it.",
+      "description": "The Draft -> Submitted transition of WidgetReviewDemo declares event WidgetReviewSubmitted: after the PUT that makes the move, the event store holds a WidgetReviewSubmitted whose payload names the record and the new status (the events endpoint redacts every other payload key to a small allowlist, so declared payload fields such as reviewer are not visible here); a transition that declares no event (Submitted -> Rejected) publishes nothing named after it.",
       "steps": [
         {
           "name": "create review rid",
@@ -1476,7 +1476,7 @@
       "keywords": [
         "lifecycleState.terminal"
       ],
-      "description": "A lifecycle state marked terminal (WidgetReviewDemo Approved and Rejected) is served as such in the concepts metadata catalog: terminalStates lists exactly those two and initialState is Draft. This is a served-metadata check only -- see the allowlist note on lifecycleState.terminal: the REST write path does not treat terminal as a write block.",
+      "description": "A lifecycle state marked terminal (WidgetReviewDemo Approved and Rejected) is served as such in the concepts metadata catalog: terminalStates lists exactly those two and initialState is Draft. Terminal means final (REG-278): the model validator refuses a transition out of a terminal state, so no booted app can declare one -- that rule is tested in StateMachineSupportTest, this probe only covers the served metadata.",
       "steps": [
         {
           "name": "concepts catalog",

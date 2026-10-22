@@ -1983,7 +1983,8 @@
           "type": "boolean"
         },
         "terminal": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "A final state. The validator refuses any transition that leaves it. The row is also read-only and the board column is marked terminal."
         },
         "allowedActions": {
           "type": "array",

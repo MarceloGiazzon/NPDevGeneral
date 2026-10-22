@@ -723,5 +723,37 @@ class PanelLayoutTypeMigrationTest(unittest.TestCase):
         self.assertFalse(migrate_document(doc).changed)
 
 
+class TerminalStateWithExitMigrationTest(unittest.TestCase):
+    """REG-278: a terminal state with an outgoing transition loses the flag; a really final one is untouched."""
+
+    @staticmethod
+    def _model(transitions: list[dict]) -> dict:
+        lifecycle = {
+            "statusField": "status",
+            "states": [{"value": "Draft", "initial": True}, {"value": "Rejected", "terminal": True},
+                       {"value": "Approved", "terminal": True}],
+            "transitions": transitions,
+        }
+        return {"namespace": "test", "dslVersion": "1.0.0", "version": "1.0",
+                "concepts": [{"name": "Review", "lifecycle": lifecycle}]}
+
+    def test_terminal_with_exit_loses_the_flag(self):
+        doc = self._model([{"from": "Draft", "to": "Rejected"}, {"from": "Rejected", "to": "Draft"}])
+        result = migrate_document(doc)
+        states = {s["value"]: s for s in doc["concepts"][0]["lifecycle"]["states"]}
+        self.assertTrue(result.changed)
+        self.assertNotIn("terminal", states["Rejected"])
+        self.assertTrue(states["Approved"]["terminal"])
+
+    def test_really_final_state_is_untouched_and_rerun_is_idempotent(self):
+        doc = self._model([{"from": "Draft", "to": "Rejected"}])
+        before = copy.deepcopy(doc)
+        self.assertFalse(migrate_document(doc).changed)
+        self.assertEqual(before, doc)
+        doc2 = self._model([{"from": "Draft", "to": "Rejected"}, {"from": "Rejected", "to": "Draft"}])
+        migrate_document(doc2)
+        self.assertFalse(migrate_document(doc2).changed)
+
+
 if __name__ == "__main__":
     unittest.main()

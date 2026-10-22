@@ -835,8 +835,7 @@
         "transitions": [
           { "from": "Draft", "to": "Submitted", "event": "WidgetReviewSubmitted", "requiredPayload": ["reviewer"] },
           { "from": "Submitted", "to": "Approved", "event": "WidgetReviewApproved", "requires": ["approvedNote"], "guard": "reviewMode == 'manual'" },
-          { "from": "Submitted", "to": "Rejected" },
-          { "from": "Rejected", "to": "Draft" }
+          { "from": "Submitted", "to": "Rejected" }
         ]
       }
     },

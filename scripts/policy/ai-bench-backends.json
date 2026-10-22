@@ -13,6 +13,12 @@
       "kind": "local",
       "baseUrl": "http://127.0.0.1:11434/v1",
       "pricePer1kTokens": { "input": 0, "output": 0 }
+    },
+    {
+      "id": "gemini-free-tier",
+      "kind": "free",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "pricePer1kTokens": { "input": 0, "output": 0 }
     }
   ]
 }

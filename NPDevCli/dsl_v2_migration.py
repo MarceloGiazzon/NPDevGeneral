@@ -717,6 +717,35 @@ def migrate_label_locales(doc: dict, locale: str) -> MigrationResult:
     return result
 
 
+def _migrate_terminal_states_with_exits(obj, where: str, result: MigrationResult) -> None:
+    """REG-278: `terminal` now means final -- the validator refuses a transition out of a terminal state.
+
+    Until then nothing enforced it (the flag only made a row read-only and marked a board column), so a model
+    could declare `Rejected` terminal AND `Rejected -> Draft`, and the runtime allowed the move. The rewrite that
+    keeps the runtime behaviour is to drop the flag from a state that still has a way out: the state was never
+    really final. Authors who meant final delete the transition instead.
+    """
+    if isinstance(obj, list):
+        for i, item in enumerate(obj):
+            _migrate_terminal_states_with_exits(item, f"{where}[{i}]", result)
+        return
+    if not isinstance(obj, dict):
+        return
+    lifecycle = obj.get("lifecycle")
+    if isinstance(lifecycle, dict) and isinstance(lifecycle.get("states"), list):
+        sources = {t.get("from") for t in (lifecycle.get("transitions") or []) if isinstance(t, dict)}
+        for state in lifecycle["states"]:
+            if isinstance(state, dict) and state.get("terminal") is True and state.get("value") in sources:
+                del state["terminal"]
+                result.changed = True
+                result.changes.append(
+                    f"{where}.lifecycle: state '{state.get('value')}' has an outgoing transition, so it is not final "
+                    f"-- dropped 'terminal' (delete the transition instead if the state really is final)")
+    for key, value in obj.items():
+        if isinstance(value, (dict, list)):
+            _migrate_terminal_states_with_exits(value, f"{where}.{key}" if where else key, result)
+
+
 def migrate_document(doc: dict) -> MigrationResult:
     """Migrates `doc` IN PLACE to DSL 2.0 canonical spellings. Returns what happened."""
     result = MigrationResult()
@@ -725,6 +754,7 @@ def migrate_document(doc: dict) -> MigrationResult:
         return result
 
     _migrate_orchestrations_key(doc, result)
+    _migrate_terminal_states_with_exits(doc.get("concepts", None) or [], "concepts", result)
 
     for i, flow in enumerate(doc.get("flows", None) or []):
         if not isinstance(flow, dict):

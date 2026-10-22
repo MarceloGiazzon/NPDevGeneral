@@ -172,18 +172,11 @@ public final class DbIntrospector {
     }
 
     static Result draft(List<Table> tables, List<String> skippedViews, String namespace, String sourceLabel) {
-        ArrayNode adjustments = MAPPER.createArrayNode();
         // Concept names first: references need the target's final name.
         Map<String, String> conceptByTable = new LinkedHashMap<>();
         Set<String> usedConcepts = new HashSet<>();
         for (Table table : tables) {
-            String proposed = NameStyle.pascal(table.name());
-            String neutral = neutral(proposed);
-            if (!neutral.equals(proposed)) {
-                adjustments.addObject().put("kind", "concept").put("legacy", table.name()).put("readable", proposed)
-                        .put("used", neutral).put("reason", "contains a word the platform's technology-neutrality rule rejects");
-            }
-            conceptByTable.put(table.name(), unique(neutral, usedConcepts));
+            conceptByTable.put(table.name(), unique(NameStyle.pascal(table.name()), usedConcepts));
         }
         Map<String, Table> tableByName = new HashMap<>();
         tables.forEach(t -> tableByName.put(t.name(), t));
@@ -206,7 +199,6 @@ public final class DbIntrospector {
         ArrayNode warnings = report.putArray("warnings");
         ArrayNode defaults = report.putArray("defaultsNotImported");
         ArrayNode manual = report.putArray("manualItems");
-        report.set("namingAdjustments", adjustments);
 
         int mappedColumns = 0;
         int totalColumns = 0;
@@ -234,9 +226,15 @@ public final class DbIntrospector {
                 id.put("required", true);
                 id.put("description", "Synthetic identity: source table " + table.name() + " " + why + ".");
                 tableReport.put("idStrategy", "synthetic");
-                warnings.add(table.name() + " " + why + " -> a synthetic uuid id was added; decide whether the source key "
-                        + "should become a unique index or the identity.");
-                manual.add(table.name() + ": decide identity (" + why + ")");
+                if (table.primaryKey().isEmpty()) {
+                    warnings.add(table.name() + " " + why + " -> a synthetic uuid id was added.");
+                    manual.add(table.name() + ": decide identity (" + why + ")");
+                } else {
+                    warnings.add(table.name() + " " + why + " -> a synthetic uuid id was added and the source key is kept as a "
+                            + "unique index (sourceKey).");
+                    manual.add(table.name() + ": review the link table (" + why + "); it keeps a unique index on that key, "
+                            + "consider an aggregate child or a many-to-many instead.");
+                }
             } else {
                 tableReport.put("idStrategy", "source-primary-key");
             }
@@ -260,6 +258,11 @@ public final class DbIntrospector {
                     multiColumnIndexes.add(index);
                 }
             }
+            if (table.primaryKey().size() > 1 && multiColumnIndexes.stream()
+                    .noneMatch(i -> new HashSet<>(i.columns()).equals(new HashSet<>(table.primaryKey())))) {
+                // The synthetic id carries identity; the source key stays unique so the same pair cannot repeat.
+                multiColumnIndexes.add(new Index("source_key", true, table.primaryKey()));
+            }
 
             for (Column column : table.columns()) {
                 totalColumns++;
@@ -274,14 +277,7 @@ public final class DbIntrospector {
                     continue;
                 }
                 mappedColumns++;
-                String readable = NameStyle.camel(column.name());
-                String neutralName = neutral(readable);
-                if (!neutralName.equals(readable)) {
-                    adjustments.addObject().put("kind", "field").put("table", table.name()).put("legacy", column.name())
-                            .put("readable", readable).put("used", neutralName)
-                            .put("reason", "contains a word the platform's technology-neutrality rule rejects");
-                }
-                String fieldName = unique(neutralName, usedFields);
+                String fieldName = unique(NameStyle.camel(column.name()), usedFields);
                 fieldByColumn.put(column.name(), fieldName);
                 columnMap.put(column.name(), fieldName);
                 ObjectNode field = fields.addObject();
@@ -405,32 +401,6 @@ public final class DbIntrospector {
             }
             field.put("scale", Math.max(0, column.scale()));
         }
-    }
-
-    /**
-     * The platform refuses any name containing one of these as a SUBSTRING (ExpressionValidation
-     * .FORBIDDEN_TECH_KEYWORDS), so ordinary legacy words such as "Restricao" or "Interest" trip it.
-     * The draft must pass the platform's own rule, so the offending word is split with an underscore and
-     * the change is listed in the report for a person to rename properly. Keep in step with that set.
-     */
-    private static final List<String> FORBIDDEN_NAME_PARTS = List.of("spring", "jpa", "hibernate", "kafka", "smtp", "rest", "soap");
-
-    static String neutral(String name) {
-        String result = name;
-        boolean changed = true;
-        while (changed) {
-            changed = false;
-            String lower = result.toLowerCase(Locale.ROOT);
-            for (String part : FORBIDDEN_NAME_PARTS) {
-                int at = lower.indexOf(part);
-                if (at >= 0) {
-                    result = result.substring(0, at + 2) + "_" + result.substring(at + 2);
-                    changed = true;
-                    break;
-                }
-            }
-        }
-        return result;
     }
 
     private static String unique(String base, Set<String> used) {

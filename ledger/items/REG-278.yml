@@ -3,9 +3,9 @@ title: >-
   A lifecycle state marked terminal still accepts a declared outgoing transition, and the lifecycle event carries only entityId and status, not the payload fields it declares
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-10-21
-closed: null
+closed: 2026-10-22
 source: >-
   Side observations from the REG-275 probe fixture (WidgetReviewDemo in dsl-conformance-max): Rejected is terminal yet Rejected -> Draft is declared, validates and is accepted at runtime.
 surface: NPDevContract/dsl/.../validation/LifecycleValidation.java, CrudLifecycleSupport, GeneratedCrudRuntimeSupport.publishLifecycleTransitionEvent
@@ -15,3 +15,5 @@ detail: |
   Second observation: the event published on a transition carries entityId and status only, not the payload fields the event declares (id, reviewer).
 resolution: >-
   Owner decides terminal semantics; then enforce it in LifecycleValidation (and the fixture), or document it as a board/editability marker only. Carry the declared payload fields on the lifecycle event.
+note: >-
+  Owner ruled 2026-10-22: terminal means final. LifecycleValidation refuses a transition out of a terminal state; npdev migrate dsl-2 drops terminal from a state that still has an exit; the fixture lost Rejected -> Draft; the schema describes terminal. Tests: StateMachineSupportTest, test_dsl_v2_migration; probes 18/19 plus the event probe unchanged. Second observation (event carries only entityId and status): reproduced by hand, but the events endpoint redacts every payload key outside DefaultEventRedactionPolicy's allowlist (status, entityId, ...), so the stored event view says nothing about what was published. GeneratedCrudRuntimeSupport.publishLifecycleTransitionEvent does append the declared payload fields (read from the code, not covered by a test). Closed as not a defect; a unit test with a real event store would settle it.

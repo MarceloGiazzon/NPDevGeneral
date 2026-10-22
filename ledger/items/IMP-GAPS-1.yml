@@ -35,9 +35,17 @@ detail: |
   that merely CONTAINS rest/jpa/smtp/..., so ordinary words such as Portuguese "Restricao" fail validation; the importer
   works around it by splitting the word (ruaRecRe_stricao) and listing it under namingAdjustments. The rule itself is
   arguably too blunt (substring, not word); changing it is an owner decision.
-  Validated on ONE source kind (a MySQL-flavoured DDL from one GeneXus export); a second, non-GeneXus source (IMP-4) is not done.
+  IMP-4 (2026-10-22), second source, two public non-GeneXus databases, DDL only, loaded into H2: Northwind (Postgres dump, 14 tables:
+  90 of 92 columns mapped, 3 composite-key tables left for a human identity decision, model validates with 0 errors and generates)
+  and Sakila (MySQL, 16 tables: 87 of 89 columns mapped, 2 composite-key tables, 0 errors, generates). What generalized: tables,
+  columns, types, foreign keys to references, nullability. What did not: a native ENUM column is reported unmapped instead of
+  becoming an enum field (film.rating, REG-280) and a BLOB column is unmapped; every concept and field still lacks a ui label
+  (about 90 validator warnings each); composite keys need a decision. Sources and outputs: NPDev_General__OutsideRepo/imp4-sources.
+  Validated on one GeneXus export plus (IMP-4) two public sample databases, which is still a small sample.
 resolution: >-
   A field-prefix rename policy (propose the readable name, keep the legacy one in an alias) closes the field-name gap;
   entity merging stays a human decision; IMP-4 (a non-GeneXus source) and the owner's technology-neutrality ruling remain.
   Re-run npdev import score after each and record the new numbers here. IMP-2 itself (captions, enums, rule candidates,
   manual-port inventory) is done.
+note: >-
+  2026-10-22 owner rulings: the technology-neutrality name rule is now a warning (REG-281, done), so the importer keeps legacy names readable; a composite primary key gets a synthetic id plus a unique index on the original pair (done, DbIntrospectorTest). Still open: field-prefix rename policy, entity merging (human), REG-280 native ENUM columns.
