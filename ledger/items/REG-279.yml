@@ -3,9 +3,9 @@ title: >-
   Re-committing an existing aggregate re-runs the root's defaultExpression nextNumber(), so a generated number such as orderNumber changes on every commit
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-10-21
-closed: null
+closed: 2026-10-22
 source: >-
   Side observation from the REG-277 probe fixture (WidgetOrder in dsl-conformance-max): ORD-2026-0016 became ORD-2026-0017 for the same order after a second commit.
 surface: NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/AggregateRuntime.java (commitInternal) and the default-expression allocation for the root
@@ -13,3 +13,5 @@ detail: |
   A defaultExpression is meant to fill a field when a row is CREATED. commitInternal applies the root's defaults on every commit, including an update of an existing root, and nextNumber() allocates a fresh counter value each time, so the identifier a customer was given changes silently and the counter burns a number per edit.
 resolution: >-
   Apply the root's defaultExpression fields only when the root id is new (the persisted row does not exist yet); keep the stored value on a re-commit. Add a probe that commits twice and asserts orderNumber is unchanged.
+note: >-
+  Fixed in ConfiguredConceptGatewaySemanticPolicy.applyDefaultsAndDerivedValues: a blank field with a defaultExpression keeps the stored value on update and the expression is not evaluated. Unit test defaultExpressionIsKeptOnUpdateNotRecomputed; probe field-default-expression-kept-on-recommit (85-lifecycle probes 19/19).
