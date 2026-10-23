@@ -450,6 +450,9 @@ public final class CompiledModelCanonicalJson {
                 if (prompt.maxOutputTokens() != null) promptNode.put("maxOutputTokens", prompt.maxOutputTokens());
                 // Only when set, so every model without a review keeps its canonical JSON (and hash) as-is.
                 if (!"none".equals(prompt.review())) promptNode.put("review", prompt.review());
+                // AIP-3 (3.4a): same only-when-set rule. vendor/model above are already the profile's.
+                if (prompt.profile() != null) promptNode.put("profile", prompt.profile());
+                if (prompt.effort() != null) promptNode.put("effort", prompt.effort());
                 prompts.add(promptNode);
             }
             node.set("prompts", prompts);

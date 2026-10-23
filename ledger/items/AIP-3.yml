@@ -49,3 +49,11 @@ note: >-
   own agent-proxy.env loader (run after) still wins. Monitor inspector reports keyAtManagerStart per
   vendor (Manager 0.5.1). Tests: test_providers RunEnvTests. Not verified: a real app boot with a store
   key (no long runs on this notebook). Open: 3.4a, 3.4b, 3.6.
+  2026-10-23: 3.4a prompts half done -- externalAi.prompts[] takes `profile` (catalogue profile, resolved
+  by ModelCompiler via AiCatalogueProfiles to provider/model/effort; fallback lists not used) instead of
+  vendor+model, and `effort` (low|medium|high, overrides the profile's); four schema copies mirrored;
+  ExternalAiStructuredRequest carries effort (Anthropic output_config.effort, dropped elsewhere); audit
+  row meta gets profile + effort. dsl-conformance-max SuggestCatalogBlurb(+Flow) and probe
+  72-ai-profile-effort.json (ai34a-*). Tests: dsl full suite, external-ai-http/inproc, runtimehost-core
+  com.finalexec.ai/agent (against scratch fresh jars). Not run: the probe itself (boots the sample; T1/T2,
+  not on this notebook). Open: 3.4a agentAccess.assistant profile/effort, 3.4b, 3.6.

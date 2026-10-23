@@ -1,0 +1,32 @@
+{
+  "probes": [
+    {
+      "id": "ai34a-profile-prompt-sends-its-effort-to-the-vendor",
+      "keywords": ["flowStep.capability", "flowStep.operation", "flowStep.args"],
+      "description": "AIP-3 (3.4a): SuggestCatalogBlurb names the catalogue profile 'fast' instead of vendor + model, and its own effort 'low'. Running SuggestCatalogBlurbFlow calls the vendor the profile resolves to (gemini), and the audit row of that call records the profile and the effort the request carried. Against the offline inproc adapter, so no key and no network.",
+      "steps": [
+        {
+          "name": "run the flow whose prompt names a profile",
+          "method": "POST",
+          "path": "/api/flows/SuggestCatalogBlurbFlow/execute",
+          "body": { "sku": "AI34A-${rand}" },
+          "expect": { "status": 200 }
+        },
+        {
+          "name": "the audit row shows the resolved vendor, the profile and the effort",
+          "method": "GET",
+          "path": "/api/audit?action=externalAi.generate&resourceId=SuggestCatalogBlurb&limit=1",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$[0].outcome": "success",
+              "$[0].meta.profile": "fast",
+              "$[0].meta.effort": "low",
+              "$[0].meta.model": "gemini-3.6-flash"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

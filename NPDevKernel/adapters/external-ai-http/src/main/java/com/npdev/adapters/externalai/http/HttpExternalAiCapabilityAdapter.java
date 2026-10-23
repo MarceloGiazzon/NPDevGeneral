@@ -258,7 +258,7 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
         applyUriAndAuth(builder, profile, apiKey, model);
         String body;
         try {
-            body = objectMapper.writeValueAsString(structuredBody(profile.requestFormat(), model, request));
+            body = objectMapper.writeValueAsString(structuredBody(profile, model, request));
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Failed building external AI structured request body", e);
         }
@@ -302,7 +302,8 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
     }
 
     private Map<String, Object> structuredBody(
-            ExternalAiRequestFormat format, String model, ExternalAiStructuredRequest request) {
+            ExternalAiVendorProfile profile, String model, ExternalAiStructuredRequest request) {
+        ExternalAiRequestFormat format = profile.requestFormat();
         JsonNode schema = readTree(request.responseSchemaJson());
         String imageBase64 = request.hasImage() ? Base64.getEncoder().encodeToString(request.imageBytes()) : null;
         String instructedPrompt = request.prompt()
@@ -351,6 +352,10 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
                 payload.put("messages", List.of(Map.of("role", "user", "content", content)));
             }
             default -> throw new IllegalStateException("Unhandled request format " + format);
+        }
+        // AIP-3 (3.4a): a prompt's effort, only where the vendor has a real knob (same rule as generateText).
+        if (profile.supportsEffort() && request.effort() != null && !request.effort().isBlank()) {
+            payload.put("output_config", Map.of("effort", request.effort()));
         }
         return payload;
     }

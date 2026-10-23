@@ -9,6 +9,15 @@
     "vendors": ["gemini", "groq"],
     "prompts": [
       {
+        "name": "SuggestCatalogBlurb",
+        "description": "AIP-3 (3.4a) coverage: a catalogue profile ('fast' = gemini and its model) instead of vendor + model, with the prompt's own effort. Probe ai34a-* proves the effort reaches the vendor call (audit row meta.effort). Runs against the offline inproc adapter unless npdev.externalai.provider=http.",
+        "profile": "fast",
+        "effort": "low",
+        "template": "Write a one-line shop blurb for the widget '{{sku}}'.",
+        "outputSchema": { "type": "object", "required": ["blurb"], "properties": { "blurb": { "type": "string" } } },
+        "maxOutputTokens": 64
+      },
+      {
         "name": "SuggestCatalogSynonyms",
         "description": "AIP-3 (3.2) coverage: a free OpenAI-compatible catalogue vendor (groq) with no model, so the app calls the catalogue's default model for it. Runs against the offline inproc adapter unless npdev.externalai.provider=http.",
         "vendor": "groq",
@@ -2005,6 +2014,15 @@
         { "name": "ask-ai", "type": "capabilityCall", "capability": "externalAi", "operation": "generate",
           "args": [ "SuggestCatalogTags", "$input" ], "output": "$suggestion" },
         { "name": "return-suggestion", "type": "return", "value": "$suggestion" }
+      ]
+    },
+    {
+      "name": "SuggestCatalogBlurbFlow",
+      "input": { "concept": "WidgetCatalogEntry", "mode": "query" },
+      "steps": [
+        { "name": "ask-ai", "type": "capabilityCall", "capability": "externalAi", "operation": "generate",
+          "args": [ "SuggestCatalogBlurb", "$input" ], "output": "$blurb" },
+        { "name": "return-blurb", "type": "return", "value": "$blurb" }
       ]
     },
     {

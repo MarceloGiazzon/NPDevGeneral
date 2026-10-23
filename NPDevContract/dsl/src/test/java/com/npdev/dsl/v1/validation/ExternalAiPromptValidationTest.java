@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** P4 (G3): externalAi.prompts / externalAi.limits and the flow-side externalAi.generate call. */
@@ -210,5 +211,55 @@ class ExternalAiPromptValidationTest {
                         + "\"properties\":{\"cells\":{\"type\":\"array\"}}}"),
                 MAPPER.readTree(prompt.outputSchemaJson()));
         assertEquals(compiled.getExternalAi().getPrompts(), externalAi.getPrompts());
+    }
+
+    /** AIP-3 (3.4a): a catalogue profile instead of vendor + model, and the prompt's effort over the profile's. */
+    @Test
+    void aProfileCompilesToItsVendorModelAndEffortAndSurvivesTheRoundTrip() throws Exception {
+        String byProfile = GOOD_PROMPT.replace("\"vendor\": \"gemini\"", "\"profile\": \"claude\"");
+        ModelAst ast = parse("""
+                { "egress": "apiEnabled", "vendors": ["anthropic"], "prompts": [ %s,
+                  %s ] }
+                """.formatted(byProfile, byProfile.replace("PaintMosaic", "QuickMosaic")
+                        .replace("\"profile\": \"claude\"", "\"profile\": \"claude\", \"effort\": \"low\"")),
+                "PaintMosaic");
+        assertEquals(List.of(), new SemanticValidator().validate(ast).stream()
+                .filter(error -> error.contains("externalAi")).toList());
+
+        CompiledModel compiled = new ModelCompiler().compile(ast);
+        CompiledExternalAi reread = CompiledModelCanonicalJsonReader.fromJson(
+                CompiledModelCanonicalJson.toJson(compiled)).getExternalAi();
+        CompiledExternalAiPrompt paint = reread.findPrompt("PaintMosaic").orElseThrow();
+        assertEquals(List.of("anthropic", "claude-opus-5-5", "high", "claude"),
+                List.of(paint.vendor(), paint.model(), paint.effort(), paint.profile()));
+        assertEquals("low", reread.findPrompt("QuickMosaic").orElseThrow().effort());
+        assertEquals(compiled.getExternalAi().getPrompts(), reread.getPrompts());
+    }
+
+    @Test
+    void profileErrorsNameTheProblem() throws Exception {
+        String both = GOOD_PROMPT.replace("\"vendor\": \"gemini\"", "\"vendor\": \"gemini\", \"profile\": \"fast\"");
+        String withModel = GOOD_PROMPT.replace("\"vendor\": \"gemini\"", "\"profile\": \"fast\", \"model\": \"x\"");
+        String unknown = GOOD_PROMPT.replace("\"vendor\": \"gemini\"", "\"profile\": \"turbo\"");
+        String notListed = GOOD_PROMPT.replace("\"vendor\": \"gemini\"", "\"profile\": \"fast-alt\"");
+        String badEffort = GOOD_PROMPT.replace("\"vendor\": \"gemini\"", "\"vendor\": \"gemini\", \"effort\": \"max\"");
+        String neither = GOOD_PROMPT.replace("\"vendor\": \"gemini\",", "");
+        List<String> errors = new java.util.ArrayList<>();
+        for (String prompt : List.of(both, withModel, unknown, notListed, neither)) {
+            errors.addAll(aiErrors("""
+                    { "egress": "apiEnabled", "vendors": ["gemini"], "prompts": [ %s ] }
+                    """.formatted(prompt), "PaintMosaic"));
+        }
+        String all = String.join("\n", errors);
+        assertTrue(all.contains("give vendor or profile, not both"), all);
+        assertTrue(all.contains("model cannot be set with a profile"), all);
+        assertTrue(all.contains("profile 'turbo' is not in the NPDev AI catalogue") && all.contains("fast"), all);
+        assertTrue(all.contains("vendor 'groq' (from profile 'fast-alt') is not in externalAi.vendors"), all);
+        // A bad effort never gets this far: the schema's enum names the allowed values.
+        Exception schema = assertThrows(Exception.class, () -> parse("""
+                { "egress": "apiEnabled", "vendors": ["gemini"], "prompts": [ %s ] }
+                """.formatted(badEffort), "PaintMosaic"));
+        assertTrue(schema.getMessage().contains("effort") && schema.getMessage().contains("medium"), schema.getMessage());
+        assertTrue(all.contains("vendor or profile is required"), all);
     }
 }

@@ -15,6 +15,7 @@ import com.npdev.dsl.v1.ast.DocumentBandAst;
 import com.npdev.dsl.v1.ast.DocumentColumnAst;
 import com.npdev.dsl.v1.ast.DocumentLogoAst;
 import com.npdev.dsl.v1.ast.ExternalAiAst;
+import com.npdev.dsl.v1.ast.ExternalAiPromptAst;
 import com.npdev.dsl.v1.ast.FieldAccessAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FieldPickerAst;
@@ -784,13 +785,31 @@ public final class ModelCompiler {
                 externalAiAst.getEgress(),
                 externalAiAst.getVendors(),
                 externalAiAst.getPrompts().stream()
-                        .map(prompt -> new CompiledExternalAiPrompt(
-                                prompt.name(), prompt.description(), prompt.vendor(), prompt.model(),
-                                prompt.template(), prompt.image(), prompt.outputSchemaJson(),
-                                prompt.maxOutputTokens(), prompt.review()))
+                        .map(ModelCompiler::toCompiledPrompt)
                         .toList(),
                 externalAiAst.getCallsPerUserPerDayProperty(),
                 externalAiAst.getMonthlyCostCapUsdProperty());
+    }
+
+    /**
+     * AIP-3 (3.4a): a prompt naming a catalogue {@code profile} compiles to that profile's provider and model,
+     * with the prompt's own {@code effort} over the profile's. The profile name is kept for the audit trail.
+     * An unknown profile compiles with no vendor; validation has already reported it.
+     */
+    private static CompiledExternalAiPrompt toCompiledPrompt(ExternalAiPromptAst prompt) {
+        String vendor = prompt.vendor();
+        String model = prompt.model();
+        String effort = prompt.effort();
+        if (prompt.profile() != null && !prompt.profile().isBlank()) {
+            AiCatalogueProfiles.Profile profile = AiCatalogueProfiles.find(prompt.profile()).orElse(null);
+            vendor = profile == null ? null : profile.provider();
+            model = profile == null ? null : profile.model();
+            effort = effort != null && !effort.isBlank() ? effort : (profile == null ? null : profile.effort());
+        }
+        return new CompiledExternalAiPrompt(
+                prompt.name(), prompt.description(), vendor, model,
+                prompt.template(), prompt.image(), prompt.outputSchemaJson(),
+                prompt.maxOutputTokens(), prompt.review(), prompt.profile(), effort);
     }
 
     /** Move 6 Move A: compiles the app-level settings block, merging platform string defaults. */

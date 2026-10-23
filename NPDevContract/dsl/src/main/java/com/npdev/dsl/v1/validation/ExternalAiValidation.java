@@ -10,6 +10,7 @@ import com.npdev.dsl.v1.ast.ProcedureAst;
 import com.npdev.dsl.v1.ast.ProcedureStepAst;
 import com.npdev.dsl.v1.ast.PropertyAst;
 import com.npdev.dsl.v1.ast.StepAst;
+import com.npdev.dsl.v1.compiler.AiCatalogueProfiles;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -93,15 +94,24 @@ final class ExternalAiValidation {
     private ExternalAiValidation() {
     }
 
+    /** AIP-3 (3.4a): the vendor a prompt calls -- its own, or its catalogue profile's; "" when neither resolves. */
+    private static String resolvedVendor(ExternalAiPromptAst prompt) {
+        String vendor = prompt.vendor();
+        if (prompt.profile() != null && !prompt.profile().isBlank()) {
+            vendor = AiCatalogueProfiles.find(prompt.profile()).map(AiCatalogueProfiles.Profile::provider).orElse(null);
+        }
+        return vendor == null ? "" : vendor.trim().toLowerCase(Locale.ROOT);
+    }
+
     /**
      * AIP-3 (3.4c): a keyless local provider is a valid app vendor, but its loopback address is the
      * machine the APP runs on -- fine on a developer laptop, unreachable from a server deployment unless
      * the same server also runs the LLM. A warning, never an error.
      */
     private static void warnIfLocal(ExternalAiPromptAst prompt, List<String> warnings) {
-        String vendor = prompt.vendor() == null ? "" : prompt.vendor().trim().toLowerCase(Locale.ROOT);
+        String vendor = resolvedVendor(prompt);
         if (AppVendorCatalogue.isLoopback(vendor)) {
-            warnings.add("externalAi.prompts['" + prompt.name() + "'] uses vendor '" + prompt.vendor()
+            warnings.add("externalAi.prompts['" + prompt.name() + "'] uses vendor '" + vendor
                     + "', a local LLM server at " + AppVendorCatalogue.BASE_URLS.get(vendor) + " -- a deployed app "
                     + "reaches it only if that server runs on the same host as the app; pick a cloud vendor for a "
                     + "server deployment.");
@@ -167,12 +177,27 @@ final class ExternalAiValidation {
         if (!promptNames.add(name)) {
             errors.add(prefix + "duplicate prompt name");
         }
-        String vendor = prompt.vendor() == null ? "" : prompt.vendor().trim().toLowerCase(Locale.ROOT);
-        if (vendor.isEmpty()) {
-            errors.add(prefix + "vendor is required");
+        boolean hasVendor = prompt.vendor() != null && !prompt.vendor().isBlank();
+        boolean hasProfile = prompt.profile() != null && !prompt.profile().isBlank();
+        String vendor = resolvedVendor(prompt);
+        if (hasVendor && hasProfile) {
+            errors.add(prefix + "give vendor or profile, not both -- suggestedFix: keep the profile and drop vendor"
+                    + " (and model), or keep vendor and drop profile");
+        } else if (hasProfile && prompt.model() != null && !prompt.model().isBlank()) {
+            errors.add(prefix + "model cannot be set with a profile (the profile names its model) -- suggestedFix:"
+                    + " drop model, or replace the profile with vendor + model");
+        } else if (!hasVendor && !hasProfile) {
+            errors.add(prefix + "vendor or profile is required");
+        } else if (hasProfile && AiCatalogueProfiles.find(prompt.profile()).isEmpty()) {
+            errors.add(prefix + "profile '" + prompt.profile() + "' is not in the NPDev AI catalogue -- known: "
+                    + AiCatalogueProfiles.names() + " -- suggestedFix: use one of the known profiles (`npdev ai profiles`)");
         } else if (!vendors.contains(vendor)) {
-            errors.add(prefix + "vendor '" + prompt.vendor() + "' is not in externalAi.vendors " + vendors
+            errors.add(prefix + "vendor '" + vendor + "'" + (hasProfile ? " (from profile '" + prompt.profile() + "')" : "")
+                    + " is not in externalAi.vendors " + vendors
                     + " -- suggestedFix: add it to externalAi.vendors (the app-level allow-list) or pick a listed vendor");
+        }
+        if (prompt.effort() != null && !Set.of("low", "medium", "high").contains(prompt.effort())) {
+            errors.add(prefix + "effort '" + prompt.effort() + "' must be low, medium or high");
         }
         String template = prompt.template() == null ? "" : prompt.template();
         if (template.isBlank()) {

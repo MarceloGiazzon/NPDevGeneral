@@ -216,7 +216,7 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
         try {
             result = contract.generateStructured(new ExternalAiStructuredRequest(
                     vendor, prompt.model(), renderedPrompt, prompt.outputSchemaJson(),
-                    imageBytes, imageMime, prompt.maxOutputTokens()));
+                    imageBytes, imageMime, prompt.maxOutputTokens(), prompt.effort()));
         } catch (ExternalAiEgressDeniedException exception) {
             // e.g. EGRESS_DENIED_NO_API_KEY: the http adapter has no key for this vendor.
             return deny(context, promptName, prompt, exception.code(), exception.getMessage(), Map.of());
@@ -446,6 +446,8 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
         if (prompt != null) {
             meta.putIfAbsent("vendor", String.valueOf(prompt.vendor()));
             meta.putIfAbsent("model", prompt.model() == null ? "(vendor default)" : prompt.model());
+            if (prompt.profile() != null) meta.putIfAbsent("profile", prompt.profile());
+            if (prompt.effort() != null) meta.putIfAbsent("effort", prompt.effort());
         }
         try {
             auditLogStore.append(AuditRecord.create(

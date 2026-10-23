@@ -140,6 +140,17 @@ class ExternalAiPromptRunnerTest {
         assertFalse(row.toString().contains("Branik"), "hashes only, never the values: " + row);
     }
 
+    /** AIP-3 (3.4a): the prompt's effort reaches the vendor request and the audit row. */
+    @Test
+    void aPromptsEffortReachesTheVendorRequestAndTheAuditRow() throws Exception {
+        FakeVendor vendor = new FakeVendor();
+        ExternalAiPromptRunner runner = runner(model("apiEnabled", ", \"effort\": \"high\""), vendor);
+
+        assertTrue(call(runner, "IdentifyCap", Map.of("cap", Map.of("name", "x")), "tito").ok());
+        assertEquals("high", vendor.requests.get(0).effort());
+        assertEquals("high", auditRows().get(0).meta().get("effort"));
+    }
+
     @Test
     void anUnreviewedPromptAddsNoReviewKeysToTheAuditRow() throws Exception {
         ExternalAiPromptRunner runner = runner(model("apiEnabled"), new FakeVendor());

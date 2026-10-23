@@ -1015,7 +1015,9 @@ public final class JsonModelParser {
                         readText(prompt, "image"),
                         outputSchema == null || outputSchema.isNull() ? null : outputSchema.toString(),
                         readOptionalInt(prompt, "maxOutputTokens"),
-                        readText(prompt, "review")
+                        readText(prompt, "review"),
+                        readText(prompt, "profile"),
+                        readText(prompt, "effort")
                 ));
             }
         }

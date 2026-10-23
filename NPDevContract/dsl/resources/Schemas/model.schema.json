@@ -998,7 +998,6 @@
             "additionalProperties": false,
             "required": [
               "name",
-              "vendor",
               "template",
               "outputSchema"
             ],
@@ -1013,7 +1012,17 @@
               "vendor": {
                 "type": "string",
                 "minLength": 1,
-                "description": "One of externalAi.vendors."
+                "description": "One of externalAi.vendors. Give vendor (and optionally model), or profile -- not both; the validator names the problem when neither or both are set."
+              },
+              "profile": {
+                "type": "string",
+                "minLength": 1,
+                "description": "AIP-3 (3.4a): a profile of the NPDev AI catalogue (e.g. 'fast', 'claude'; `npdev ai profiles`) instead of vendor + model. The generator resolves it to the profile's provider, model and effort; that provider must be in externalAi.vendors."
+              },
+              "effort": {
+                "type": "string",
+                "enum": ["low", "medium", "high"],
+                "description": "AIP-3 (3.4a): how hard the model should think. Overrides a profile's effort. Sent only to a vendor that has such a setting (Anthropic: output_config.effort); dropped for the others."
               },
               "model": {
                 "type": "string",

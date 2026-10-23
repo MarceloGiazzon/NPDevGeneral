@@ -74,6 +74,12 @@ command prints a key back. Listings say only where a key would come from: `env`,
   marked `appVendor`. An unknown id is a validation error that names the known ones. A prompt on a
   local LLM server (`ollama`) validates with a warning, because a deployed app reaches it only if the
   server runs on the app's own host.
+- A prompt (`externalAi.prompts[]`) names either a `vendor` (optionally with a `model`) or a catalogue
+  `profile` such as `fast` or `claude`. The generator resolves a profile to its provider, model and
+  effort, and that provider must still be listed in `vendors`. A profile's fallback list is not used:
+  an app calls one vendor per prompt. `effort` (`low` / `medium` / `high`) overrides the profile's. It
+  is sent only to a vendor that has such a setting (Anthropic) and dropped for the others. The audit
+  row of each call records the profile and the effort.
 - The `external-ai-http` jar bundles the shipped catalogue as `npdev/ai-providers.json`. The app builds
   one vendor profile per app vendor from it and calls the catalogue's default model unless a prompt
   names one. Your overlay is **not** bundled: a generated app sees only shipped providers.

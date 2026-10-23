@@ -342,7 +342,9 @@ public final class CompiledModelCanonicalJsonReader {
                         optionalText(prompt, "image"),
                         optionalText(prompt, "outputSchemaJson"),
                         optionalIntegerObject(prompt.get("maxOutputTokens")),
-                        optionalText(prompt, "review")
+                        optionalText(prompt, "review"),
+                        optionalText(prompt, "profile"),
+                        optionalText(prompt, "effort")
                 ));
             }
         }

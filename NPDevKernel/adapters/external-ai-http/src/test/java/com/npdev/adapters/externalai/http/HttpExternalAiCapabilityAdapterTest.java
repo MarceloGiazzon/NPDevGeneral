@@ -566,6 +566,40 @@ class HttpExternalAiCapabilityAdapterTest {
         assertEquals(4, result.outputTokens());
     }
 
+    /** AIP-3 (3.4a): a prompt's effort rides in output_config on Anthropic, and is dropped on OpenAI chat. */
+    @Test
+    void generateStructuredSendsEffortOnlyWhereTheVendorHasTheKnob() throws IOException {
+        AtomicReference<String> anthropicBody = new AtomicReference<>();
+        server = startStubServer("/v1/messages", exchange -> {
+            anthropicBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            writeJson(exchange, "{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"ok\\\":true}\"}],"
+                    + "\"usage\":{\"input_tokens\":3,\"output_tokens\":2}}");
+        });
+        HttpExternalAiCapabilityAdapter anthropic = new HttpExternalAiCapabilityAdapter(
+                List.of(new ExternalAiVendorProfile(
+                        "anthropic", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/messages",
+                        "claude-test", "NPDEV_TEST_ANTHROPIC_KEY", ExternalAiRequestFormat.ANTHROPIC_MESSAGES)),
+                HttpClient.newHttpClient(), env -> "test-key");
+        anthropic.generateStructured(new ExternalAiStructuredRequest(
+                "anthropic", null, "say ok", "{\"type\":\"object\"}", null, null, null, "low"));
+        assertEquals("low", new ObjectMapper().readTree(anthropicBody.get()).at("/output_config/effort").asText());
+        server.stop(0);
+
+        AtomicReference<String> openAiBody = new AtomicReference<>();
+        server = startStubServer("/v1/chat/completions", exchange -> {
+            openAiBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            writeJson(exchange, "{\"choices\":[{\"message\":{\"content\":\"{}\"}}]}");
+        });
+        HttpExternalAiCapabilityAdapter openAi = new HttpExternalAiCapabilityAdapter(
+                List.of(new ExternalAiVendorProfile(
+                        "openai", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions",
+                        "gpt-test", "NPDEV_TEST_OPENAI_KEY", ExternalAiRequestFormat.OPENAI_CHAT)),
+                HttpClient.newHttpClient(), env -> "test-key");
+        openAi.generateStructured(new ExternalAiStructuredRequest(
+                "openai", null, "say ok", "{\"type\":\"object\"}", null, null, null, "high"));
+        assertFalse(openAiBody.get().contains("effort"), openAiBody.get());
+    }
+
     @Test
     void generateStructuredDeniesWhenTheApiKeyEnvVarIsUnset() {
         HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(
