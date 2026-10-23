@@ -10,6 +10,7 @@ import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptAggregateRequest;
 import com.npdev.kernel.concepts.ConceptAggregateResult;
 import com.npdev.kernel.concepts.ConceptGateway;
+import com.npdev.kernel.ports.PermissionEvaluator;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.test.web.servlet.MockMvc;
@@ -91,7 +92,7 @@ class GeneratedQueryControllerLookupTest {
         when(contexts.currentContext(any())).thenReturn(ExecutionContext.of("tenant-a", "tito"));
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(
-                new GeneratedQueryController(new ModelHolder(model), gateway, contexts)).build();
+                new GeneratedQueryController(new ModelHolder(model), gateway, contexts, PermissionEvaluator.allowAll())).build();
         mvc.perform(get("/api/queries/ToDrink"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.rows.length()").value(2))

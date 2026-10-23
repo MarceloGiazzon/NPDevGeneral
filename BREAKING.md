@@ -5,6 +5,14 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-23 — a query's `permissionRequirements[]` are enforced on `GET /api/queries/{name}` and on a list document that names it (REG-301)
+
+**What changes.** `queries[].permissionRequirements` validated and compiled but was never checked, so any caller with read access to the concept got the rows. Every listed permission must now be held, or the call returns 403. A requirement may name a declared permission, which the generated manifest grants to the super-user only, or a manifest one such as `update:order`, held by every role that may update orders. `GeneratedQueryController` and `DocumentRenderController` each take a `PermissionEvaluator` as a new last constructor argument.
+
+**Who is affected.** A model whose queries declare `permissionRequirements` and that is called by non-super-users, and hand-written code that constructs either controller.
+
+**Codemod.** None possible: the model is already correct, and this is enforcement, not a model change. Remove a requirement that should not gate the query, or name a permission the intended roles hold. Code that constructs either controller adds `PermissionEvaluator` (`PermissionEvaluator.allowAll()` in a test).
+
 ## 2026-10-23 — publication, rollback and semantic write-back POSTs and their `/history` reads require SUPERUSER; `/api/admin/storage/summary` requires ADMIN
 
 **What changes.** `real-publication-executor`, `publication-executor`, `publication-rollback`, `rollback-execution`, `source-mutation-approval`, `semantic-publication-mapping`, `structural-publication-mapping` and `model/semantic-behavior-writeback` (under `/api/admin` and `/api/v1/admin`) answered any ADMIN on every POST and history read. They drive the shared model and source pipeline and keep one untenanted history, so a tenant ADMIN — and every anonymous caller of an `auth.mode=none` app — could rewrite the model all tenants run on. Those calls now return 403 without SUPERUSER, the `metadata-hotswap /apply` posture; each summary GET stays ADMIN. `/api/admin/storage/summary` had no role check at all; it now needs ADMIN (an auth-disabled app still answers, as its every caller is ADMIN).

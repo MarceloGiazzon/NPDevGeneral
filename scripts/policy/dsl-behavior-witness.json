@@ -114,10 +114,9 @@
     },
     {
       "keywords": [
-        "query.permissionRequirements",
         "query.tracePolicy"
       ],
-      "reason": "Declared by no query in the corpus (permissionRequirements, tracePolicy); add a fixture query that sets them first, then a probe that asserts a caller lacking the requirement is refused and the trace policy changes what is recorded.",
+      "reason": "Declared by no query in the corpus and read by nothing at runtime (REG-301); add a fixture query that sets it, then a probe asserting the trace policy changes what is recorded. (permissionRequirements was witnessed by probe 30's query-permission-requirements-refuse-a-caller-lacking-them.)",
       "ledger": "ENF-1"
     },
     {
@@ -139,5 +138,5 @@
       "ledger": "ENF-1"
     }
   ],
-  "frozenCount": 48
+  "frozenCount": 47
 }

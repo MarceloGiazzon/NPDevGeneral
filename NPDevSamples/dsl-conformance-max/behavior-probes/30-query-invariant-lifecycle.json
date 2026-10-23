@@ -2501,6 +2501,44 @@
           "stopOnFail": false
         }
       ]
+    },
+    {
+      "id": "query-permission-requirements-refuse-a-caller-lacking-them",
+      "keywords": [
+        "query.permissionRequirements"
+      ],
+      "description": "REG-301: AuditedCatalogEntries declares permissionRequirements [report.catalog.audit], which the generated manifest grants to the super-user only. A plain USER (${key_alice}) who reads the same concept through ActiveCatalogEntries (200) is refused AuditedCatalogEntries with 403 -- the refusal comes from the requirement, not from concept access -- while the super-user runs it (200).",
+      "steps": [
+        {
+          "name": "user may read the concept through the unguarded query",
+          "apiKey": "${key_alice}",
+          "method": "GET",
+          "path": "/api/queries/ActiveCatalogEntries?limit=1",
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "name": "user lacking report.catalog.audit is refused",
+          "apiKey": "${key_alice}",
+          "method": "GET",
+          "path": "/api/queries/AuditedCatalogEntries?limit=1",
+          "expect": {
+            "status": 403
+          }
+        },
+        {
+          "name": "super-user holds the requirement",
+          "method": "GET",
+          "path": "/api/queries/AuditedCatalogEntries?limit=1",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.query": "AuditedCatalogEntries"
+            }
+          }
+        }
+      ]
     }
   ]
 }

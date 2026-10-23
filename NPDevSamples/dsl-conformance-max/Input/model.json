@@ -1144,6 +1144,14 @@
       "orderBy": [ "sku" ]
     },
     {
+      "name": "AuditedCatalogEntries",
+      "concept": "WidgetCatalogEntry",
+      "where": "discontinued == false",
+      "orderBy": [ "sku" ],
+      "permissionRequirements": [ "report.catalog.audit" ],
+      "metadata": { "purpose": "REG-301: the same rows as ActiveCatalogEntries, but only for a caller holding report.catalog.audit (granted to the super-user only) -- a plain USER who can read the concept is refused with 403." }
+    },
+    {
       "name": "CatalogEntriesOwnedBy",
       "concept": "WidgetCatalogEntry",
       "where": "ownerEmail == :owner",

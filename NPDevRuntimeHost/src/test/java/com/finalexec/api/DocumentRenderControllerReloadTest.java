@@ -10,6 +10,7 @@ import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptPage;
 import com.npdev.kernel.ports.DocumentRenderContract;
 import com.npdev.kernel.ports.FileStoreContract;
+import com.npdev.kernel.ports.PermissionEvaluator;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -67,7 +68,8 @@ class DocumentRenderControllerReloadTest {
                 conceptGateway,
                 documentRenderer,
                 Mockito.mock(AggregateRuntime.class),
-                Mockito.mock(FileStoreContract.class)
+                Mockito.mock(FileStoreContract.class),
+                PermissionEvaluator.allowAll()
         );
 
         MockHttpServletRequest requestBeforeReload =

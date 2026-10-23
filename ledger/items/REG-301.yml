@@ -29,3 +29,12 @@ resolution: >-
 note: >-
   2026-10-23: opened. Not yet fixed; no fixture query declares permissionRequirements or tracePolicy and no collection
   declares via, so the dsl-conformance-max corpus must gain a declaring example before a probe can witness it.
+  2026-10-23 (later): query.permissionRequirements ENFORCED on GET /api/queries/{name} and on a kind:list document that
+  names a query -- both call runtimehost-core NamedQueryPermissions (every requirement must be held, via the app's
+  PermissionEvaluator; fail-closed with no evaluator), and RuntimeApiEmitter now grants each query requirement to the
+  super-user in the permission manifest (before, nobody held it). Witnessed by probe 30
+  query-permission-requirements-refuse-a-caller-lacking-them on fixture query AuditedCatalogEntries; allowlist 48 -> 47.
+  STILL OPEN for this keyword: a panel dataSource naming a guarded query (PanelRuntime.resolveDataSourceQuery) and an
+  aggregate lookup query (AggregateRuntime.runLookupQueries) still run it without the check; procedure runQuery steps
+  are deliberately left under the procedure's own permissionRequirements. Remaining keywords: query.tracePolicy,
+  aggregateCollection.via, flowStep.data.

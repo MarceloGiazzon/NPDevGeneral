@@ -23,6 +23,7 @@ import com.npdev.kernel.ports.CapabilityAdapter;
 import com.npdev.kernel.ports.DocumentRenderContract;
 import com.npdev.kernel.ports.FileHandle;
 import com.npdev.kernel.ports.FileStoreContract;
+import com.npdev.kernel.ports.PermissionEvaluator;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
@@ -89,6 +90,7 @@ public class DocumentRenderController {
     private final DocumentRenderContract documentRenderer;
     private final AggregateRuntime aggregateRuntime;
     private final FileStoreContract fileStore;
+    private final PermissionEvaluator permissionEvaluator;
 
     public DocumentRenderController(
             ModelHolder modelHolder,
@@ -96,7 +98,8 @@ public class DocumentRenderController {
             ConceptGateway conceptGateway,
             DocumentRenderContract documentRenderer,
             AggregateRuntime aggregateRuntime,
-            FileStoreContract fileStore
+            FileStoreContract fileStore,
+            PermissionEvaluator permissionEvaluator
     ) {
         this.modelHolder = modelHolder;
         this.runtimeContextService = runtimeContextService;
@@ -104,6 +107,7 @@ public class DocumentRenderController {
         this.documentRenderer = documentRenderer;
         this.aggregateRuntime = aggregateRuntime;
         this.fileStore = fileStore;
+        this.permissionEvaluator = permissionEvaluator;
     }
 
     @GetMapping("/{document}/render.pdf")
@@ -196,6 +200,13 @@ public class DocumentRenderController {
         Integer rowLimit = null;
 
         CompiledQuery query = document.query() == null || document.query().isBlank() ? null : findQuery(document.query());
+        if (query != null) {
+            // REG-301: the named query's permissionRequirements[] gate the report exactly as they
+            // gate GET /api/queries/{name}.
+            NamedQueryPermissions.denial(query, context, permissionEvaluator).ifPresent(message -> {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, message);
+            });
+        }
         java.util.Set<String> parameterNames = new java.util.HashSet<>();
         if (query != null) {
             for (CompiledProcedureParameter parameter : query.parameters()) {

@@ -1,6 +1,7 @@
 package {{controllerPackage}};
 
 import com.finalexec.api.NamedQueryBinding;
+import com.finalexec.api.NamedQueryPermissions;
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledAggregateFunction;
 import com.npdev.dsl.v1.compiled.CompiledGroupByField;
@@ -22,6 +23,7 @@ import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptQueryPredicateCompiler;
 import com.npdev.kernel.concepts.ConceptQueryRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
+import com.npdev.kernel.ports.PermissionEvaluator;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -41,8 +43,9 @@ import java.util.Map;
  * {@code /api/concepts/{conceptName}} surface, so a hand-written screen (and Move 10 B2's
  * chart/KPI gadgets) can use a declared query directly instead of re-deriving its filter/grouping
  * client-side. Routes through {@link ConceptGateway#query}/{@link ConceptGateway#aggregate}, which
- * enforce tenant isolation and permissions exactly as every other concept read does -- this
- * controller adds no authorization logic of its own.
+ * enforce tenant isolation and permissions exactly as every other concept read does. The one
+ * check of its own is the query's declared {@code permissionRequirements[]} (REG-301), applied
+ * before any row is read via {@link NamedQueryPermissions}.
  */
 @RestController
 public class GeneratedQueryController {
@@ -50,18 +53,24 @@ public class GeneratedQueryController {
     private final ModelHolder modelHolder;
     private final ConceptGateway conceptGateway;
     private final RuntimeContextService runtimeContextService;
+    private final PermissionEvaluator permissionEvaluator;
 
     public GeneratedQueryController(
-            ModelHolder modelHolder, ConceptGateway conceptGateway, RuntimeContextService runtimeContextService) {
+            ModelHolder modelHolder, ConceptGateway conceptGateway, RuntimeContextService runtimeContextService,
+            PermissionEvaluator permissionEvaluator) {
         this.modelHolder = modelHolder;
         this.conceptGateway = conceptGateway;
         this.runtimeContextService = runtimeContextService;
+        this.permissionEvaluator = permissionEvaluator;
     }
 
     @GetMapping("/api/queries/{queryName}")
     public Map<String, Object> run(@PathVariable String queryName, HttpServletRequest request) {
         ExecutionContext context = runtimeContextService.currentContext(request);
         CompiledQuery query = findQuery(queryName);
+        NamedQueryPermissions.denial(query, context, permissionEvaluator).ifPresent(message -> {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, message);
+        });
         try {
             Map<String, Object> bound = bindParameters(request, query.parameters());
             return query.isAggregate()

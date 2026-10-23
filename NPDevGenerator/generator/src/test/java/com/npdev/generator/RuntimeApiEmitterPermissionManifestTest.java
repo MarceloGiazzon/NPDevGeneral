@@ -1,5 +1,8 @@
 package com.npdev.generator;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.compiler.ModelCompiler;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -71,5 +74,31 @@ class RuntimeApiEmitterPermissionManifestTest {
                 "Expected generated permission manifest to grant delete on the persisted User concept");
         assertTrue(uiPolicyManifestContent.contains("\"policyVersion\": \"1.0.0\""),
                 "Expected generated UI metadata policy manifest version");
+    }
+
+    @Test
+    void queryPermissionRequirementsAreGrantedToTheSuperUser() throws Exception {
+        // REG-301: the query endpoint enforces permissionRequirements[], so each one must reach the
+        // manifest -- otherwise nobody, not even the super-user, could run the query.
+        ObjectMapper mapper = new ObjectMapper();
+        Path source = Path.of("..", "test-models", "user-minimal", "model.json").normalize();
+        ObjectNode root = (ObjectNode) mapper.readTree(source.toFile());
+        ArrayNode queries = root.putArray("queries");
+        ObjectNode query = queries.addObject();
+        query.put("name", "AuditedUsers");
+        query.put("concept", "User");
+        query.putArray("permissionRequirements").add("report.user.audit");
+        Path model = Files.createTempDirectory("npdev-runtime-permission-query-").resolve("model.json");
+        Files.writeString(model, mapper.writeValueAsString(root));
+
+        CompiledModel compiled = new ModelCompiler().compile(new JsonModelParser().parse(model));
+        Path out = Files.createTempDirectory("npdev-runtime-permission-query-out-");
+        Path migrations = Files.createTempDirectory("npdev-runtime-permission-query-migrations-");
+        new GeneratorFacade(new TemplateEngine("npdev-templates/"), new GeneratedSourceWriter(out, new RegenerationPolicy()))
+                .generate(compiled, out, migrations, model);
+
+        String manifest = Files.readString(out.resolve("src/main/resources/npdev/security/dev.permissions.json"));
+        assertTrue(manifest.contains("\"report.user.audit\""),
+                "Expected the query's permission requirement in the generated permission manifest");
     }
 }

@@ -17,6 +17,7 @@ import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
 import com.npdev.dsl.v1.compiled.CompiledProcedure;
+import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.compiled.CompiledRole;
 import com.npdev.dsl.v1.parser.ResolvedModelSource;
 import com.npdev.generator.packs.BuiltinPackComposer;
@@ -583,6 +584,14 @@ writer.writeRelative(
         }
         for (CompiledProcedure procedure : model.getProcedures()) {
             for (String requirement : procedure.permissionRequirements()) {
+                addIfPresent(permissions, requirement);
+            }
+        }
+        // REG-301: GET /api/queries/{name} now enforces a query's permissionRequirements[]
+        // (NamedQueryPermissions), so a requirement this manifest never grants would lock the query
+        // even for the super-user.
+        for (CompiledQuery query : model.getQueries()) {
+            for (String requirement : query.permissionRequirements()) {
                 addIfPresent(permissions, requirement);
             }
         }
