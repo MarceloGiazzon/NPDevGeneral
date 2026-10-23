@@ -1,0 +1,59 @@
+id: REG-292
+title: >-
+  NPDevRuntimeHost/build.gradle still defaulted the RuntimeHost jar dir to <repo>__OutsideRepo/runtimehost-libs
+  (REG-128 fixed only the template), and both Gradle files ended on a last-resort path inside the source tree
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-10-23
+closed: 2026-10-23
+verification: LOCAL_PROOF_DONE
+surface: build-tooling/runtimehost-libs-staging
+source: >-
+  Audit of the runtimehost-libs defaults against CLAUDE.md's claim that "Both defaults now resolve to
+  <BuildRoot>/runtimehost-libs via Get-NPDevRuntimeHostLibsDir".
+files:
+  - NPDevRuntimeHost/build.gradle
+  - NPDevRuntimeHost/build.gradle.template
+  - scripts/npdev-common.ps1
+  - scripts/quality/twin-pair-registry.json
+  - BREAKING.md
+detail: |
+  Before (resolveNpdevRuntimeLibsDir, after the explicit npdevRuntimeHostLibsDir /
+  NPDEV_RUNTIMEHOST_LIBS_DIR branch, which was and still is honoured first):
+  - NPDevRuntimeHost/build.gradle lines 42-50: walked up for '.npdev-root' (present at the repo root)
+    and returned new File(current.parentFile, "${current.name}__OutsideRepo/runtimehost-libs") -- the
+    pre-LC-C4 location sync-runtimehost-libs.ps1 no longer writes; last resort
+    file("${rootProject.projectDir.name}__OutsideRepo/runtimehost-libs"), i.e.
+    NPDevRuntimeHost/NPDevRuntimeHost__OutsideRepo/runtimehost-libs, INSIDE the repo.
+  - NPDevRuntimeHost/build.gradle.template lines 97-108: same '.npdev-root' walk returning
+    <marker parent>/Build/runtimehost-libs, plus the same in-tree last resort. The marker is also
+    written by OperationalRunbookEmitter into every generated app's own root, so in a generated app
+    the walk matched the APP, not the repo, and pointed beside the app.
+  REG-128 had fixed only the template's walk branch.
+resolution: |
+  Both Gradle files now, after the unchanged explicit-dir branch: honour npdevBuildRoot /
+  NPDEV_BUILD_ROOT (-> <BuildRoot>/runtimehost-libs), else walk up for the OUTERMOST directory holding
+  NPDevContract + NPDevGenerator + NPDevKernel (Get-NPDevBuildRoot's predicate and REG-162 outermost rule)
+  and use <its parent>/Build/runtimehost-libs, else throw a GradleException naming
+  -PnpdevRuntimeHostLibsDir / NPDEV_RUNTIMEHOST_LIBS_DIR. No in-repo fallback remains. Normal generated
+  apps are unaffected: FinalAppAssembler bakes npdevRuntimeHostLibsDir (libs/npdev-runtime or the
+  absolute staging dir) into gradle.properties, which the first branch reads. New twin-pair rule
+  runtimehost-libs-default-three-place (token npdev-runtimehost-libs-default) ties npdev-common.ps1 and
+  the two Gradle files; both Gradle files also joined build-root-resolution-eleven-place. BREAKING.md
+  entry added (no codemod needed).
+guard:
+  kind: script
+  ref: python3 scripts/quality/check-twin-pair-consistency.py
+  asserts: >-
+    Rule runtimehost-libs-default-three-place: scripts/npdev-common.ps1, NPDevRuntimeHost/build.gradle
+    and NPDevRuntimeHost/build.gradle.template all carry 'npdev-runtimehost-libs-default'; all 47 rules OK.
+  provenRed: true
+  provenRedNote: >-
+    Removed the token from build.gradle.template: the checker reported [DIVERGED]
+    runtimehost-libs-default-three-place naming the template, exit 1. Token restored.
+notes: |
+  NOT verified: no Gradle run of NPDevRuntimeHost/build.gradle or of a generated app with the new
+  template (another agent held the Gradle build; the Linux notebook runs no gates/boots). The Groovy is
+  a straight-line closure using only APIs already used in these files (providers.*, File, GradleException);
+  the first real generator/runtimehost gate run on a machine that allows it is the live check.

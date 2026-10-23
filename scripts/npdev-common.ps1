@@ -430,6 +430,10 @@ function Get-NPDevGradleUserHome([string]$WorkingDirectory) {
 # and the standing policy is that build output lives under the Build root (never in the repo, and
 # OutsideRepo is for evidence/scratch). NPDEV_RUNTIMEHOST_LIBS_DIR still overrides, and every
 # caller's explicit -RuntimeHostLibsDir still wins over both.
+#
+# npdev-runtimehost-libs-default (REG-292): NPDevRuntimeHost/build.gradle and
+# NPDevRuntimeHost/build.gradle.template resolve the same <BuildRoot>/runtimehost-libs default in
+# Groovy; twin-pair rule runtimehost-libs-default-three-place keeps the three together.
 function Get-NPDevRuntimeHostLibsDir([string]$WorkspaceRoot) {
     if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_RUNTIMEHOST_LIBS_DIR)) {
         return Normalize-NPDevPath $env:NPDEV_RUNTIMEHOST_LIBS_DIR

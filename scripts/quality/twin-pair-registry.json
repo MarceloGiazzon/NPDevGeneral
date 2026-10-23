@@ -208,7 +208,9 @@
         "npdev-gradlew.sh",
         "NPDevCli/npdev_cli.py",
         "NPDevMcp/server.py",
-        "scripts/ai/npdev_ai_common.py"
+        "scripts/ai/npdev_ai_common.py",
+        "NPDevRuntimeHost/build.gradle",
+        "NPDevRuntimeHost/build.gradle.template"
       ]
     },
     {
@@ -766,6 +768,21 @@
       "NPDevCli/ai-providers.json",
       "NPDevCli/npdev_ai_client.py",
       "NPDevKernel/adapters/external-ai-http/src/main/java/com/npdev/adapters/externalai/http/ExternalAiCatalogue.java"
+    ]
+  },
+  {
+    "id": "runtimehost-libs-default-three-place",
+    "citedBy": "REG-292 (follow-up to REG-128)",
+    "description": "The no-override default for the staged RuntimeHost jar directory is resolved three times: scripts/npdev-common.ps1's Get-NPDevRuntimeHostLibsDir (which sync-runtimehost-libs.ps1 writes to), NPDevRuntimeHost/build.gradle's resolveNpdevRuntimeLibsDir (bare-checkout build), and NPDevRuntimeHost/build.gradle.template's copy of it (materialized into every generated app). All three must answer <BuildRoot>/runtimehost-libs, where BuildRoot is NPDEV_BUILD_ROOT or the parent of the outermost directory holding NPDevContract + NPDevGenerator + NPDevKernel, plus '/Build'. REG-128 fixed only the template; build.gradle kept the pre-LC-C4 <repo>__OutsideRepo/runtimehost-libs default and an in-repo last-resort fallback for ~2.5 months, so a bare-checkout build read jars the sync never wrote. Neither Gradle copy may fall back to a path inside the repo: with nothing configured and no checkout found they throw a GradleException. Each carries the 'npdev-runtimehost-libs-default' token; FinalAppAssembler.resolveRuntimeHostLibsDir bakes the same answer into a generated app's gradle.properties.",
+    "kind": "field-in-all-files",
+    "trackedFields": [
+      "npdev-runtimehost-libs-default"
+    ],
+    "caseSensitive": true,
+    "files": [
+      "scripts/npdev-common.ps1",
+      "NPDevRuntimeHost/build.gradle",
+      "NPDevRuntimeHost/build.gradle.template"
     ]
   }
 ]

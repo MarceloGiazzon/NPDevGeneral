@@ -39,15 +39,39 @@ def resolveNpdevRuntimeLibsDir = {
         return file(configured.toString().trim())
     }
 
-    def current = projectDir
+    // npdev-runtimehost-libs-default / npdev-build-root-resolution (REG-292): the default is
+    // <BuildRoot>/runtimehost-libs, the SAME answer as scripts/npdev-common.ps1's
+    // Get-NPDevRuntimeHostLibsDir -> Get-NPDevBuildRoot. NPDEV_BUILD_ROOT / -PnpdevBuildRoot win;
+    // otherwise walk UP for the OUTERMOST directory holding NPDevContract + NPDevGenerator +
+    // NPDevKernel (the repo identified by its CONTENTS, never its name -- REG-144; outermost so a
+    // nested checkout lands on the shared root -- REG-162) and use its parent's Build. NOT the
+    // '.npdev-root' marker: every generated app writes one beside its own _ops, so it does not
+    // identify the repo. No repo found and nothing configured -> fail loud; never fall back to a
+    // path inside the source tree (build output never lives in the repo).
+    def configuredBuildRoot = providers.gradleProperty('npdevBuildRoot')
+            .orElse(providers.environmentVariable('NPDEV_BUILD_ROOT'))
+            .orNull
+    if (configuredBuildRoot != null && !configuredBuildRoot.toString().trim().isEmpty()) {
+        return new File(file(configuredBuildRoot.toString().trim()), 'runtimehost-libs')
+    }
+    def repoRoot = null
+    def current = projectDir.canonicalFile
     while (current != null) {
-        if (new File(current, '.npdev-root').isFile()) {
-            return new File(current.parentFile, "${current.name}__OutsideRepo/runtimehost-libs")
+        if (new File(current, 'NPDevContract').isDirectory()
+                && new File(current, 'NPDevGenerator').isDirectory()
+                && new File(current, 'NPDevKernel').isDirectory()) {
+            repoRoot = current
         }
         current = current.parentFile
     }
-
-    return file("${rootProject.projectDir.name}__OutsideRepo/runtimehost-libs")
+    if (repoRoot != null && repoRoot.parentFile != null) {
+        return new File(new File(repoRoot.parentFile, 'Build'), 'runtimehost-libs')
+    }
+    throw new GradleException("Cannot resolve the NPDev RuntimeHost libs dir for ${projectDir}: no "
+            + "npdevRuntimeHostLibsDir / NPDEV_RUNTIMEHOST_LIBS_DIR / npdevBuildRoot / NPDEV_BUILD_ROOT "
+            + "is set and no NPDev checkout (NPDevContract + NPDevGenerator + NPDevKernel) encloses this "
+            + "project. Pass -PnpdevRuntimeHostLibsDir=<dir> (or set NPDEV_RUNTIMEHOST_LIBS_DIR) pointing "
+            + "at the jars scripts/runtimehost/sync-runtimehost-libs.ps1 staged, normally <BuildRoot>/runtimehost-libs.")
 }
 
 def npdevRuntimeHostLibsDir = resolveNpdevRuntimeLibsDir()

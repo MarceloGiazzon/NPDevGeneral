@@ -5,6 +5,14 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-23 — the RuntimeHost jar directory defaults to `<BuildRoot>/runtimehost-libs` in both Gradle files, and never falls back into the repo (REG-292)
+
+**What changes.** With no `npdevRuntimeHostLibsDir` / `NPDEV_RUNTIMEHOST_LIBS_DIR` set, `NPDevRuntimeHost/build.gradle` used `<repo>__OutsideRepo/runtimehost-libs`, and both it and the generated app's `build.gradle` ended on a path inside the source tree. Both now honour `npdevBuildRoot` / `NPDEV_BUILD_ROOT`, else use `<parent of the NPDev checkout>/Build/runtimehost-libs` (the checkout found by its NPDevContract + NPDevGenerator + NPDevKernel contents), the same directory `sync-runtimehost-libs.ps1` writes; with neither, the build stops with a `GradleException` naming the property to set.
+
+**Who is affected.** A bare-checkout RuntimeHost build that relied on jars staged in `NPDev_General__OutsideRepo/runtimehost-libs`, and a generated app whose `gradle.properties` lost its baked `npdevRuntimeHostLibsDir` line and sits outside any checkout (it used to pick a directory beside the app that held no jars). An explicit directory, and every app generated since REG-128, are unaffected.
+
+**Codemod.** None needed: pass `-PnpdevRuntimeHostLibsDir=<dir>` (or set `NPDEV_RUNTIMEHOST_LIBS_DIR`), or regenerate the app.
+
 ## 2026-10-23 — `npdev import db` proposes readable field names: table prefix stripped, key `id`, the one foreign key to a table `{target}Id` (IMP-GAPS-1)
 
 **What changes.** A drafted field used to be the legacy column in camelCase (`armNome`, `armCod`, `entCod`). The importer now applies a rename policy (`npdev/importer/rename-policy.json` in the jar): the first word shared by most of a table's columns is stripped (`nome`), a single-column primary key is `id`, and the only foreign key from a table to another table is `{target}Id` (`entidadeId`); a name that would collide, start with a digit, be empty or be a reserved word keeps its legacy form. Every rename is listed in `import-report.json` `renames[]`, and each field's description still names its column. The DSL, generated code and existing models are untouched — this is draft output only.
