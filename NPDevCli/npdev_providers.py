@@ -386,6 +386,8 @@ def export_env(app_dir: Path, provider_ids: list[str], vault: Vault | None = Non
         if not entry.get("appVendor"):
             raise ProviderError(f"{provider_id}: generated apps cannot use this provider yet "
                                 f"(supported: {', '.join(e['id'] for e in load_catalogue() if e.get('appVendor'))})")
+        if not entry.get("keyEnvVar"):
+            continue  # a keyless (local) provider needs no line
         key = resolve_key(provider_id, vault, environ)
         if not key:
             raise ProviderError(f"{provider_id}: no key stored -- run `npdev providers add {provider_id}`")

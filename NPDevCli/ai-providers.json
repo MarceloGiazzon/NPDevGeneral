@@ -1,6 +1,6 @@
 {
   "schemaVersion": "npdev-ai-config.v1",
-  "description": "The AI catalogue NPDev ships: providers (how to reach a server), models (facts per model), profiles (provider + model + effort, ready to use) and bindings (which profiles a feature uses). Schema: schemas/ai/ai-config.schema.json; loader: NPDevCli/npdev_ai_config.py, which layers the user's ~/.config/NPDev/ai.json on top (mine wins, field by field). No key ever appears here -- keys live in the OS store (`npdev providers`). kind: local = runs on this machine, free = hosted free tier, paid = billed; owner decision 2026-10-19: no paid spend by default. A fact NPDev cannot vouch for (a price, an effort level) is left out, never guessed: an unknown price counts as paid, and an empty effortLevels means no effort parameter is ever sent. Prices are USD per million tokens. appVendor is true only for vendors the generated apps' external-ai-http adapter speaks today.",
+  "description": "The AI catalogue NPDev ships: providers (how to reach a server), models (facts per model), profiles (provider + model + effort, ready to use) and bindings (which profiles a feature uses). Schema: schemas/ai/ai-config.schema.json; loader: NPDevCli/npdev_ai_config.py, which layers the user's ~/.config/NPDev/ai.json on top (mine wins, field by field). No key ever appears here -- keys live in the OS store (`npdev providers`). kind: local = runs on this machine, free = hosted free tier, paid = billed; owner decision 2026-10-19: no paid spend by default. A fact NPDev cannot vouch for (a price, an effort level) is left out, never guessed: an unknown price counts as paid, and an empty effortLevels means no effort parameter is ever sent. Prices are USD per million tokens. appVendor marks the providers a generated app may call: external-ai-http builds its vendor profiles from this file (bundled into its jar), driven by each provider's protocol.",
   "protocols": [
     { "id": "openai-chat", "description": "POST {baseUrl}/chat/completions, OpenAI chat-completions shape. Effort -> reasoning_effort." },
     { "id": "anthropic-messages", "description": "POST {baseUrl}/messages, Anthropic Messages API (x-api-key + anthropic-version). Effort -> output_config.effort; temperature is never sent." },
@@ -46,7 +46,7 @@
       "keyEnvVar": "NPDEV_EXTERNALAI_GROQ_API_KEY",
       "signupUrl": "https://console.groq.com/keys",
       "defaultModel": "llama-3.3-70b-versatile",
-      "appVendor": false,
+      "appVendor": true,
       "notes": "Very fast; tight per-minute token limits."
     },
     {
@@ -60,7 +60,7 @@
       "keyEnvVar": "NPDEV_EXTERNALAI_CEREBRAS_API_KEY",
       "signupUrl": "https://cloud.cerebras.ai",
       "defaultModel": "llama-3.3-70b",
-      "appVendor": false,
+      "appVendor": true,
       "notes": "Model names change; use `npdev ai models refresh cerebras`."
     },
     {
@@ -75,7 +75,7 @@
       "signupUrl": "https://openrouter.ai/keys",
       "defaultModel": "deepseek/deepseek-chat-v3-0324:free",
       "freeModelSuffix": ":free",
-      "appVendor": false,
+      "appVendor": true,
       "notes": "ONLY model ids ending ':free' are free; any other model id on this endpoint is billed and is refused without a paid opt-in."
     },
     {
@@ -89,7 +89,7 @@
       "keyEnvVar": "NPDEV_EXTERNALAI_MISTRAL_API_KEY",
       "signupUrl": "https://console.mistral.ai/api-keys",
       "defaultModel": "mistral-small-latest",
-      "appVendor": false,
+      "appVendor": true,
       "notes": "Free only while the workspace is on the Experiment plan; make sure no billing is attached."
     },
     {
@@ -104,7 +104,7 @@
       "keyEnvVar": null,
       "signupUrl": "https://ollama.com/download",
       "defaultModel": "qwen2.5-coder:3b",
-      "appVendor": false,
+      "appVendor": true,
       "notes": "No key. CPU-only machines are very slow (a 3B model took ~50 min per bench prompt)."
     },
     {

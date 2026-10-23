@@ -230,9 +230,18 @@ class ExportEnvTests(unittest.TestCase):
         root = self.app()
         vault = providers.Vault(root / "v.json", ReversibleProtector())
         with self.assertRaises(providers.ProviderError):
-            providers.export_env(root, ["groq"], vault, {"NPDEV_EXTERNALAI_GROQ_API_KEY": "k"})
+            providers.export_env(root, ["deepseek"], vault, {"NPDEV_EXTERNALAI_DEEPSEEK_API_KEY": "k"})
         with self.assertRaises(providers.ProviderError):
             providers.export_env(Path(tempfile.mkdtemp()), ["nvidia"], vault, {"NPDEV_EXTERNALAI_NVIDIA_API_KEY": "k"})
+
+
+    def test_keyless_app_vendor_needs_no_key_line(self):
+        root = self.app()
+        vault = providers.Vault(root / "v.json", ReversibleProtector())
+        providers.export_env(root, ["ollama", "groq"], vault, {"NPDEV_EXTERNALAI_GROQ_API_KEY": "k"})
+        text = (root / "secrets" / "agent-proxy.env").read_text(encoding="utf-8")
+        self.assertIn("NPDEV_EXTERNALAI_GROQ_API_KEY=k", text)
+        self.assertNotIn("OLLAMA", text)
 
 
 class CatalogueTests(unittest.TestCase):

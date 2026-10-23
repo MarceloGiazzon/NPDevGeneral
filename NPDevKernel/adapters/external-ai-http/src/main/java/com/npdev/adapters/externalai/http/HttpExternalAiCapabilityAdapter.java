@@ -386,7 +386,7 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
                         profile.vendorId(),
                         profile.model(),
                         profile.apiKeyEnvVar(),
-                        isPresent(apiKeyLookup.apply(profile.apiKeyEnvVar())),
+                        profile.keyless() || isPresent(apiKeyLookup.apply(profile.apiKeyEnvVar())),
                         profile.supportsEffort()))
                 .toList();
     }
@@ -406,7 +406,11 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
         return profile;
     }
 
+    /** null for a keyless vendor (no auth header is sent); otherwise the key, or a denial. */
     private String requireApiKey(ExternalAiVendorProfile profile, String what) {
+        if (profile.keyless()) {
+            return null;
+        }
         String apiKey = apiKeyLookup.apply(profile.apiKeyEnvVar());
         if (!isPresent(apiKey)) {
             throw new ExternalAiEgressDeniedException(
@@ -531,14 +535,24 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
     private void applyUriAndAuth(
             HttpRequest.Builder builder, ExternalAiVendorProfile profile, String apiKey, String model) {
         switch (profile.requestFormat()) {
-            case OPENAI_CHAT -> builder.uri(URI.create(profile.baseUrl()))
-                    .header("Authorization", "Bearer " + apiKey);
-            case GEMINI_GENERATE_CONTENT -> builder
-                    .uri(URI.create(profile.baseUrl() + "/models/" + model + ":generateContent"))
-                    .header("x-goog-api-key", apiKey);
-            case ANTHROPIC_MESSAGES -> builder.uri(URI.create(profile.baseUrl()))
-                    .header("x-api-key", apiKey)
-                    .header("anthropic-version", ANTHROPIC_VERSION);
+            case OPENAI_CHAT -> {
+                builder.uri(URI.create(profile.baseUrl()));
+                if (apiKey != null) {
+                    builder.header("Authorization", "Bearer " + apiKey);
+                }
+            }
+            case GEMINI_GENERATE_CONTENT -> {
+                builder.uri(URI.create(profile.baseUrl() + "/models/" + model + ":generateContent"));
+                if (apiKey != null) {
+                    builder.header("x-goog-api-key", apiKey);
+                }
+            }
+            case ANTHROPIC_MESSAGES -> {
+                builder.uri(URI.create(profile.baseUrl())).header("anthropic-version", ANTHROPIC_VERSION);
+                if (apiKey != null) {
+                    builder.header("x-api-key", apiKey);
+                }
+            }
         }
     }
 

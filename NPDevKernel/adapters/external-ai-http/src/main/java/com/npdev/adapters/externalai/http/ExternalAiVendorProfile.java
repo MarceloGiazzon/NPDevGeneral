@@ -4,7 +4,9 @@ package com.npdev.adapters.externalai.http;
  * Per-vendor config for {@link HttpExternalAiCapabilityAdapter}, supplied by the caller at
  * construction time -- same pattern as {@code SmtpMailCapabilityAdapter}'s host/port/credentials
  * (RuntimeHost wires this from env vars via {@code @Value}). The API key itself is never held here:
- * only the name of the env var to read it from, so a profile is safe to log or serialize.
+ * only the name of the env var to read it from, so a profile is safe to log or serialize. A generated
+ * app builds its profiles from the AI catalogue NPDev ships ({@link ExternalAiCatalogue}); the static
+ * factories below remain for tests and for code that wires one vendor by hand.
  *
  * <p>The two static factories cover D1's vendor choice (revised 2026-07-26: NVIDIA Build + Gemini,
  * replacing the original OpenAI + xAI Grok answer) with well-known public default endpoints; the
@@ -28,8 +30,10 @@ public record ExternalAiVendorProfile(
         if (model == null || model.isBlank()) {
             throw new IllegalArgumentException("model must be non-blank");
         }
-        if (apiKeyEnvVar == null || apiKeyEnvVar.isBlank()) {
-            throw new IllegalArgumentException("apiKeyEnvVar must be non-blank");
+        // null = a keyless vendor (a local server such as Ollama: kind "local" in the AI catalogue);
+        // the adapter then sends no auth header. Blank is still a mistake, never a quiet "keyless".
+        if (apiKeyEnvVar != null && apiKeyEnvVar.isBlank()) {
+            throw new IllegalArgumentException("apiKeyEnvVar must be non-blank, or null for a keyless vendor");
         }
         if (requestFormat == null) {
             throw new IllegalArgumentException("requestFormat must be non-null");
@@ -75,6 +79,11 @@ public record ExternalAiVendorProfile(
         return new ExternalAiVendorProfile(
                 "openai", "https://api.openai.com/v1/chat/completions", model, apiKeyEnvVar,
                 ExternalAiRequestFormat.OPENAI_CHAT);
+    }
+
+    /** A vendor that needs no key (a local server); {@link HttpExternalAiCapabilityAdapter} sends no auth header. */
+    public boolean keyless() {
+        return apiKeyEnvVar == null;
     }
 
     /**
