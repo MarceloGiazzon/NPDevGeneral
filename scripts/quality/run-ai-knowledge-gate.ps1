@@ -992,7 +992,7 @@ try {
     # AIP-5 (5.3, 2026-10-22): an AI vendor's host lives in ONE place, NPDevCli/ai-providers.json.
     # Before AIP-1 the same vendors were hard-coded in eight places that each drifted and none
     # honoured the key store or spend guard; this keeps the count at zero. RED-verified by planting
-    # api.groq.com in a tracked script. Allowed places (tests, fixtures, prose) are
+    # a vendor host in a tracked script. Allowed places (tests, fixtures, prose) are
     # scripts/policy/ai-endpoint-policy.json's allowedPaths.
     Write-Host '[52/52] Checking no AI vendor host is hard-coded outside the catalogue...'
     & $py "scripts/quality/check-no-hardcoded-ai-endpoints.py" --self-test

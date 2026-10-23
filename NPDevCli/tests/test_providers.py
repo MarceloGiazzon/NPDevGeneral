@@ -224,6 +224,10 @@ class AppAiStatusTests(unittest.TestCase):
         self.assertFalse(rows["mistral"]["ready"], "an empty value is not a key")
         self.assertEqual((rows["ollama"]["keyInApp"], rows["ollama"]["ready"]), (None, True), "keyless")
         self.assertEqual((rows["acme"]["appVendor"], rows["acme"]["ready"]), (False, False))
+        self.assertEqual((rows["groq"]["keyAtManagerStart"], rows["groq"]["readyAtManagerStart"]), ("env", True),
+                         "the Manager's Start passes your env/store keys to the app (3.4)")
+        self.assertEqual(rows["gemini"]["keyAtManagerStart"], "file")
+        self.assertEqual((rows["mistral"]["keyAtManagerStart"], rows["acme"]["readyAtManagerStart"]), ("missing", False))
         self.assertEqual(status["egress"], "apiEnabled")
         self.assertTrue(status["providerSwitch"])
         self.assertNotIn("secret-value", json.dumps(status))
@@ -275,6 +279,65 @@ class ExportEnvTests(unittest.TestCase):
         text = (root / "secrets" / "agent-proxy.env").read_text(encoding="utf-8")
         self.assertIn("NPDEV_EXTERNALAI_GROQ_API_KEY=k", text)
         self.assertNotIn("OLLAMA", text)
+
+
+class RunEnvTests(unittest.TestCase):
+    """AIP-3 3.4 (owner decision D3): a dev start gets the store's keys in its environment, no file written."""
+
+    def app(self, external):
+        root = Path(tempfile.mkdtemp())
+        (root / "secrets").mkdir()
+        model = root / providers.APP_COMPILED_MODEL
+        model.parent.mkdir(parents=True)
+        model.write_text(json.dumps({"externalAi": external}), encoding="utf-8")
+        return root
+
+    def test_keys_for_the_apps_own_vendors_reach_the_process_and_no_file_is_written(self):
+        root = self.app({"egress": "allowed", "vendors": ["groq", "ollama", "anthropic"]})
+        vault = providers.Vault(root / "v.json", ReversibleProtector())
+        vault.set("groq", "gk")
+        seen = {}
+
+        def runner(command, env):
+            seen.update(command=command, env=env)
+            return 7
+
+        code = providers.run_env(root, ["java", "-jar", "app.jar"], vault=vault, environ={"PATH": "/bin"},
+                                 runner=runner)
+        self.assertEqual(code, 7)
+        self.assertEqual(seen["command"], ["java", "-jar", "app.jar"])
+        self.assertEqual(seen["env"]["NPDEV_EXTERNALAI_GROQ_API_KEY"], "gk")
+        self.assertEqual(seen["env"]["NPDEV_EXTERNALAI_PROVIDER"], "http")
+        self.assertEqual(seen["env"]["PATH"], "/bin")
+        self.assertNotIn("NPDEV_EXTERNALAI_ANTHROPIC_API_KEY", seen["env"])
+        self.assertFalse((root / "secrets" / "agent-proxy.env").exists())
+
+    def test_report_names_keys_and_missing_vendors_never_a_value(self):
+        root = self.app({"egress": "allowed", "vendors": ["groq", "anthropic"]})
+        vault = providers.Vault(root / "v.json", ReversibleProtector())
+        vault.set("groq", "secret-groq-value")
+        _, report = providers.app_key_env(root, vault=vault, environ={})
+        line = providers.describe_key_env(report)
+        self.assertIn("NPDEV_EXTERNALAI_GROQ_API_KEY (groq)", line)
+        self.assertIn("missing: anthropic", line)
+        self.assertNotIn("secret-groq-value", json.dumps(report) + line)
+
+    def test_egress_denied_needs_nothing_and_an_explicit_non_app_vendor_is_refused(self):
+        root = self.app({"egress": "denied", "vendors": ["groq"]})
+        vault = providers.Vault(root / "v.json", ReversibleProtector())
+        self.assertEqual(providers.app_key_env(root, vault=vault, environ={})[0], {})
+        with self.assertRaises(providers.ProviderError):
+            providers.app_key_env(root, ["deepseek"], vault, {"NPDEV_EXTERNALAI_DEEPSEEK_API_KEY": "k"})
+
+    def test_monitor_ops_injects_keys_only_into_the_app_start(self):
+        import npdev_cli
+
+        root = self.app({"egress": "allowed", "vendors": ["groq"]})
+        with mock.patch.dict("os.environ", {"NPDEV_EXTERNALAI_GROQ_API_KEY": "gk"}):
+            env, line = npdev_cli._ops_provider_key_env(root, "run-finalapp")
+            self.assertEqual(env["NPDEV_EXTERNALAI_GROQ_API_KEY"], "gk")
+            self.assertNotIn("gk", line)
+            self.assertEqual(npdev_cli._ops_provider_key_env(root, "build-finalapp"), (None, None))
 
 
 class CatalogueTests(unittest.TestCase):

@@ -1552,10 +1552,9 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.5.0: The AI Keys tab is now AI Providers -- providers, models, profiles and which feature uses \
-     which, with this month's calls and cost per feature and per provider, all over `npdev ai`. The \
-     Prompter and the Scrap assistant pick a profile and effort instead of an endpoint, and the \
-     Monitor's inspector shows whether an app will find a key for each AI vendor its model uses."
+    "0.5.1: Start passes each AI vendor's key from your key store straight into the app's process, \
+     so an app started here needs no secrets/agent-proxy.env. The Monitor inspector says where each \
+     key will come from, and offers the key file only for starts outside this window."
         .to_string()
 }
 
@@ -1563,7 +1562,7 @@ fn manager_version_description() -> String {
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "AI Providers";
+const CURRENT_VERSION_TITLE: &str = "Keys at Start";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {

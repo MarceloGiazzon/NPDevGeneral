@@ -664,16 +664,20 @@ async function loadAppAi(probe) {
         <span class="v">${!v.appVendor ? "<b>not an app vendor</b> -- the app cannot call it"
           : v.keyInApp === null ? "ready -- no key needed"
           : v.keyInApp ? "ready -- key set in secrets/agent-proxy.env"
+          : v.readyAtManagerStart ? `ready when started from here -- key ${esc(KEY_IN_STORE[v.keyInStore] || v.keyInStore)}, passed to the app's process (no file written)`
           : `<b>NO KEY for the app</b> (${esc(v.keyEnvVar)}) -- ${esc(KEY_IN_STORE[v.keyInStore] || v.keyInStore)}`}</span>
       </div>`).join("");
     const exportable = status.vendors.filter((v) => v.appVendor && (v.keyInStore === "vault" || v.keyInStore === "env"));
-    const missing = status.vendors.filter((v) => !v.ready);
-    const action = exportable.length && missing.some((v) => exportable.includes(v))
+    // 3.4: Start here passes store keys to the app, so "not ready" means not ready even from here. The
+    // key file is still offered for a start from a terminal, a service or Docker, which get no store keys.
+    const missing = status.vendors.filter((v) => !(v.readyAtManagerStart ?? v.ready));
+    const fileless = status.vendors.filter((v) => !v.ready && exportable.includes(v));
+    const action = fileless.length
       ? `<div class="irow"><span class="k"></span><span class="v">
-           <button class="run" id="insp-ai-export">Write ${exportable.map((v) => esc(v.id)).join(", ")} key(s) from your store into the app</button>
+           <button class="run" id="insp-ai-export">Write ${exportable.map((v) => esc(v.id)).join(", ")} key(s) into secrets/agent-proxy.env (for starts outside this window)</button>
          </span></div>`
       : "";
-    const switchRow = status.providerSwitch ? "" : `<div class="irow"><span class="k"></span><span class="v">
+    const switchRow = (status.providerSwitchAtManagerStart ?? status.providerSwitch) ? "" : `<div class="irow"><span class="k"></span><span class="v">
       NPDEV_EXTERNALAI_PROVIDER is not set: the app answers from its offline stand-in, not a real vendor.</span></div>`;
     slot.innerHTML = accordion(`AI providers -- ${missing.length ? `${missing.length} not ready` : "ready"}`,
       rows + switchRow + action, status.vendors.length, missing.length > 0);

@@ -14015,6 +14015,22 @@ def _follow_logs(app_dir: Path, args: argparse.Namespace) -> int:
         return 0
 
 
+def _ops_provider_key_env(app_dir: Path, script_key: str) -> tuple[dict | None, str | None]:
+    """AIP-3 (3.4, owner decision D3): an app started from here (the Manager's Start button) gets its AI
+    vendors' keys from the key store in its process environment, with no key file written. Only the
+    app-starting script; any failure leaves the start alone (None env = inherit), and the launcher's own
+    secrets/agent-proxy.env, loaded after this, still wins."""
+    if script_key != "run-finalapp":
+        return None, None
+    import npdev_providers
+
+    try:
+        extra, report = npdev_providers.app_key_env(app_dir)
+    except Exception as exc:  # noqa: BLE001 -- a key-store problem must never block starting the app
+        return None, f"provider keys: not loaded ({type(exc).__name__}: {exc})"
+    return ({**os.environ, **extra} if extra else None), npdev_providers.describe_key_env(report)
+
+
 def _run_monitor_ops(args: argparse.Namespace) -> int:
     script = npdev_monitor.ops_script_path(Path(args.app_dir), args.script)
     if script is None:
@@ -14042,10 +14058,15 @@ def _run_monitor_ops(args: argparse.Namespace) -> int:
     if required_token:
         command += ["-Confirm", required_token]
     captured: list[str] = []
+    env, key_line = _ops_provider_key_env(Path(args.app_dir), args.script)
     with log_path.open("w", encoding="utf-8") as log_file:
         log_file.write(f"# npdev monitor ops {args.script}\n# {script}\n# started {_utc_now()}\n")
+        if key_line:
+            log_file.write(f"# {key_line}\n")  # names only -- logs/ ships in `npdev monitor logs export`
+            print(json.dumps({"kind": "line", "text": key_line}) if args.json else key_line, flush=True)
         process = subprocess.Popen(command, cwd=str(script.parent), stdout=subprocess.PIPE,
-                                   stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
+                                   stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
+                                   env=env)
         for line in process.stdout:
             line = line.rstrip("\n")
             captured.append(line)

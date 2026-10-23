@@ -79,10 +79,19 @@ command prints a key back. Listings say only where a key would come from: `env`,
   names one. Your overlay is **not** bundled: a generated app sees only shipped providers.
 - **Keys.** The app reads the same `NPDEV_EXTERNALAI_<ID>_API_KEY` variables, with
   `NPDEV_EXTERNALAI_PROVIDER=http` selecting the real adapter. Without it the app answers from an
-  offline stand-in. `_ops` loads them from `<app>/secrets/agent-proxy.env`. Write that file's managed
-  block with `npdev providers export-env --app <dir> --provider <id>...`, or with the button in the
-  Monitor inspector's **AI providers** section. That section also shows, per vendor, whether the app
-  will find a key (`npdev ai app --app-dir <dir> --model <model.json>`).
+  offline stand-in. Two ways to get them in:
+  - **On your machine, no key file.** The Manager's **Start** button (`npdev monitor ops run-finalapp`)
+    passes the keys of the app's own vendors from your key store into the app's process. From a
+    terminal: `npdev providers run-env --app <dir> -- pwsh -File <dir>/_ops/Start-App.ps1` (vendors
+    default to the app's `externalAi.vendors`, read from its compiled model; `--provider <id>` names
+    them instead). Only names are printed or logged, never a key.
+  - **Anywhere else (a server, a service, Docker):** `_ops` loads `<app>/secrets/agent-proxy.env`. Write
+    its managed block with `npdev providers export-env --app <dir> --provider <id>...`, or with the
+    button in the Monitor inspector's **AI providers** section. The file is loaded after the store
+    keys, so a line in it wins.
+
+  The inspector section shows, per vendor, where the app's key will come from
+  (`npdev ai app --app-dir <dir> --model <model.json>`).
 - **Operator properties:**
   - `npdev.externalai.http.<id>.model` and `.apiKeyEnvVar` override the model and the key variable.
   - `npdev.externalai.price.<id>.inputUsdPerMTok` and `.outputUsdPerMTok` override the catalogue

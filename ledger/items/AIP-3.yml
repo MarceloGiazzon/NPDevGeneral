@@ -41,3 +41,11 @@ note: >-
   real vendor yet.
   2026-10-22: owner decisions (AIP-6) -- D3 yes for dev starts, so 3.4 is unblocked; D4 yes, so new step
   3.6: a custom endpoint (ai.json) may be an app vendor, the operator vouching for it.
+  2026-10-23: 3.4 done -- `npdev providers run-env --app DIR [--provider ID] -- CMD` starts CMD with the
+  app's vendor keys from the store (vendors default to externalAi.vendors in the app's compiled-model.json),
+  writing no file; `npdev monitor ops run-finalapp` (the Manager's Start) does the same in-process, so a
+  Manager start needs no agent-proxy.env. Deviation from the plan: the emitted _ops launchers are NOT
+  changed -- they would have had to read keys back over stdout; instead the launcher is wrapped, and its
+  own agent-proxy.env loader (run after) still wins. Monitor inspector reports keyAtManagerStart per
+  vendor (Manager 0.5.1). Tests: test_providers RunEnvTests. Not verified: a real app boot with a store
+  key (no long runs on this notebook). Open: 3.4a, 3.4b, 3.6.

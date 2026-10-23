@@ -17,6 +17,7 @@
   "allowedPaths": [
     { "pattern": "^NPDevCli/ai-providers\\.json$", "reason": "the catalogue itself" },
     { "pattern": "^scripts/policy/ai-endpoint-policy\\.json$", "reason": "this policy's own host list" },
+    { "pattern": "^scripts/quality/check-no-hardcoded-ai-endpoints\\.py$", "reason": "the checker's own self-test plants and names vendor hosts" },
     { "pattern": "(^|/)tests?/", "reason": "tests pin the wire shape against a known host" },
     { "pattern": "/src/test/", "reason": "Java/Rust tests, same reason" },
     { "pattern": "(^|/)test_[^/]+\\.py$", "reason": "Python tests outside a tests/ folder (scripts/ai/bench/test_bench.py)" },

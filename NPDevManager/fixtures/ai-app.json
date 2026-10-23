@@ -5,6 +5,7 @@
   "egress": "apiEnabled",
   "providerSwitch": true,
   "envFile": "/home/user/NPDev/Build/apps/dsl-conformance-max/App/secrets/agent-proxy.env",
+  "providerSwitchAtManagerStart": true,
   "envFileExists": true,
   "vendors": [
     {
@@ -15,7 +16,9 @@
       "keyEnvVar": "NPDEV_EXTERNALAI_GEMINI_API_KEY",
       "keyInApp": true,
       "keyInStore": "missing",
-      "ready": true
+      "ready": true,
+      "keyAtManagerStart": "file",
+      "readyAtManagerStart": true
     },
     {
       "id": "groq",
@@ -25,7 +28,9 @@
       "keyEnvVar": "NPDEV_EXTERNALAI_GROQ_API_KEY",
       "keyInApp": false,
       "keyInStore": "missing",
-      "ready": false
+      "ready": false,
+      "keyAtManagerStart": "missing",
+      "readyAtManagerStart": false
     }
   ]
 }
