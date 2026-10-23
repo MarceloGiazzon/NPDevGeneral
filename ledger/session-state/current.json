@@ -1,19 +1,20 @@
 {
-  "closedAt": "2026-10-23T04:43:39.1354061Z",
+  "closedAt": "2026-10-23T05:34:35.3850812Z",
   "branch": "main",
-  "head": "11c3f66d",
-  "headSubject": "feat(dsl): externalAi.providers -- an app's own AI endpoint is an app vendor (AIP-3: 3.6, D4)",
-  "summary": "AIP-3 3.4b: ExternalAiPromptRunner applies operator overrides npdev.externalai.prompt.<name>.profile|model|effort per call via the property cascade, denying invalid ones (001490eb). AIP-3 3.6 (owner chose option A): externalAi.providers[] lets a model declare its own AI endpoint as an app vendor, key var derived from id, through schema x4/parser/compiler/canonical JSON/validator, http adapter (reload-aware), pricing and CLI run-env (11c3f66d).",
-  "nextStep": "Check the CI run on main for 11c3f66d (gh run list --branch main --limit 5): if the four T2 gates are green, mark ledger/items/AIP-3.yml DONE (closed 2026-10-23, note that probe 72-ai-profile-effort.json still needs a T1/T2 run off this notebook) and commit; if a gate is red, fix it first. Then pick up AIP-4 from ledger/session-state/open-state.md.",
-  "plan": "",
-  "blocked": "Probe 72-ai-profile-effort.json not run (boots dsl-conformance-max; T1/T2, not on this notebook). No generated app has yet called a custom externalAi.providers endpoint or a real vendor. GitHub refs/pull/N/head of ~200 old PRs still reach pre-scrub commits; only GitHub Support can purge (key revoked). Windows checkout must re-clone or reset --hard origin/main. OWNER RULE: no long gates on this notebook. pytest not installed here: use python3 -m unittest for NPDevCli tests.",
-  "verified": "Targeted only, no T1/T2 gate: dsl full suite (:NPDevContract:dsl:test green); external-ai-http test (26 green); runtimehost-core com.finalexec.ai/agent/config (69 green, against fresh dsl+external-ai-http jars in scratch rh-libs); NPDevCli test_providers (27) + test_ai_* (75) via unittest; validateModel dsl-conformance-max passed; checkers schema-mirror, twin-pair, dsl-coverage, dsl-behavior-witness, no-hardcoded-ai-endpoints, markdown-links, done-item-guards, record-surfaces, model-provider-injection all exit 0.",
+  "head": "b3dec421",
+  "headSubject": "chore(ledger): X0 register caught up -- X0-1/3/6/7 FIXED with proof tests; REG-282 files the X0-11 audit",
+  "summary": "Greened CI on main: AI Knowledge Gate fixed in c1e9b9c6 (3.4b overrideText sweep hit triaged, routine schema re-pinned from live ScrapForAI 1.1.0 with setOffline); all workflows green at c1e9b9c6, so AIP-3 closed DONE (2143f88d). Ran a full open-state audit (3 Explore agents) written to NPDev_General__OutsideRepo/OPEN_STATE_AUDIT_2026-10-23.md; X0 register caught up (X0-1/3/6/7 FIXED with proof tests) and X0-11 filed as REG-282 (b3dec421).",
+  "nextStep": "Start REG-282 (X0-11 audit of the runtime-support expression engine): for each entry point -- CelInvariantEngine invariant rules, access.read, access.write, defaultExpression, derivedExpression, CrudOrchestrationSupport.toRuntimeOrchestration (drops a whole rule silently if one action cannot be built) -- find what it returns for input it cannot handle; record each as FIXED/CLEAN (with must-error test + testMarker), ACCEPTED (reason) or a new REG item in scripts/quality/x0-evaluator-registry.json; widen its evaluatorShapedGlobs so CelInvariantEngine is covered; run check-x0-evaluator-coverage.py. After that: ENF-1 high-risk unwitnessed keywords (audit doc sections 2 and 9).",
+  "plan": "NPDev_General__OutsideRepo/OPEN_STATE_AUDIT_2026-10-23.md (section 9, proposed order of work)",
+  "blocked": "Probe 72-ai-profile-effort.json not run (T1/T2, not on this notebook). AIP-4 4.5 needs the owner to look at the real Manager window with a real key or local LLM. Owner decisions pending: order-totals load threshold 800->1500ms, prune 30 BENCH-1 prompts, sign off dom1-5 rules sheets (regenerate on Linux), REG-278 terminal-state semantics, OWN-2 outreach. GitHub refs/pull purge needs GitHub Support. OWNER RULE: no long gates on this notebook; python-is-python3 missing, pytest not installed.",
+  "verified": "CI on main at c1e9b9c6 all green (NPDev CI Validation, AI Knowledge Gate, Kernel quality gate, Engine support, F6 showcase, Identity journeys, Security scan). Local targeted only: security-pattern-sweep (0 needing triage), check-routine-corpus-conformance (46/46), check-x0-evaluator-coverage OK, check-done-item-guards 0 blocking, check-ledger-status-reverse-freshness OK, check-twin-pair-consistency OK (46). No local T1/T2 gate.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "11c3f66d feat(dsl): externalAi.providers -- an app's own AI endpoint is an app vendor (AIP-3: 3.6, D4)",
-    "001490eb feat(ai): operator overrides a prompt's profile, model or effort per call, no regeneration (AIP-3: 3.4b)",
-    "dba5b278 chore(session): handoff -- D1-D4 done, key scrubbed, 3.4 and 3.4a landed; 3.4b next"
+    "b3dec421 chore(ledger): X0 register caught up -- X0-1/3/6/7 FIXED with proof tests; REG-282 files the X0-11 audit",
+    "2143f88d chore(ledger): AIP-3 DONE -- CI green on main at c1e9b9c6",
+    "c1e9b9c6 fix(gates): green the AI knowledge gate -- triage the 3.4b override hit, re-pin the routine schema with setOffline",
+    "ed58642d chore(session): handoff -- AIP-3 3.4b and 3.6 landed; check CI then close AIP-3"
   ]
 }
