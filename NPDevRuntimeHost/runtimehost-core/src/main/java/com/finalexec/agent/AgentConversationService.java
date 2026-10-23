@@ -71,10 +71,19 @@ public final class AgentConversationService {
     private final ObjectMapper mapper;
     private final String vendorId;
     private final String modelId;
+    private final String effort;
 
     public AgentConversationService(Supplier<com.npdev.dsl.v1.compiled.CompiledModel> model,
             ExternalAiCapabilityContract ai, AgentApiExecutor executor, AgentLinkService links, ObjectMapper mapper,
             String vendorId, String modelId) {
+        this(model, ai, executor, links, mapper, vendorId, modelId, null);
+    }
+
+    /** AIP-3 (3.4a): {@code effort} is the assistant's (agentAccess.assistant.effort or its profile's); may be null. */
+    public AgentConversationService(Supplier<com.npdev.dsl.v1.compiled.CompiledModel> model,
+            ExternalAiCapabilityContract ai, AgentApiExecutor executor, AgentLinkService links, ObjectMapper mapper,
+            String vendorId, String modelId, String effort) {
+        this.effort = effort;
         this.model = model;
         this.ai = ai;
         this.executor = executor;
@@ -224,7 +233,7 @@ public final class AgentConversationService {
             ExternalAiToolChatResult result;
             try {
                 result = ai.chatWithTools(new ExternalAiToolChatRequest(
-                        vendorId, modelId, systemPrompt(speaker), specs, List.copyOf(turns)));
+                        vendorId, modelId, systemPrompt(speaker), specs, List.copyOf(turns), effort));
             } catch (RuntimeException failed) {
                 return Reply.text("Sorry, the assistant is unavailable right now (" + failed.getClass().getSimpleName() + ").");
             }

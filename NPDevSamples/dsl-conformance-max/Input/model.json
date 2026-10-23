@@ -93,6 +93,7 @@
   },
 
   "agentAccess": {
+    "assistant": { "name": "Widget Bot", "profile": "fast", "effort": "low" },
     "channels": { "mcp": { "enabled": true } },
     "expose": [
       { "concept": "WidgetOrder", "operations": ["list", "get"], "description": "Widget orders placed by customers." },

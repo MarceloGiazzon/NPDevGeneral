@@ -395,7 +395,11 @@ public final class CompiledModelCanonicalJsonReader {
             assistant = new CompiledAgentAccessAssistant(
                     optionalText(assistantNode, "name"),
                     optionalText(assistantNode, "instructions"),
-                    optionalText(assistantNode, "language"));
+                    optionalText(assistantNode, "language"),
+                    optionalText(assistantNode, "profile"),
+                    optionalText(assistantNode, "vendor"),
+                    optionalText(assistantNode, "model"),
+                    optionalText(assistantNode, "effort"));
         }
         CompiledAgentAccessChannels channels = null;
         JsonNode channelsNode = node.get("channels");

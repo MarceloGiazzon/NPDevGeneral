@@ -123,6 +123,12 @@ public final class CompiledModelCanonicalJson {
             if (agentAccess.getAssistant().getLanguage() != null) {
                 assistant.put("language", safe(agentAccess.getAssistant().getLanguage()));
             }
+            // AIP-3 (3.4a): only when set, so a model without a profile keeps its canonical JSON (and hash).
+            CompiledAgentAccessAssistant compiledAssistant = agentAccess.getAssistant();
+            if (compiledAssistant.getProfile() != null) assistant.put("profile", compiledAssistant.getProfile());
+            if (compiledAssistant.getVendor() != null) assistant.put("vendor", compiledAssistant.getVendor());
+            if (compiledAssistant.getModel() != null) assistant.put("model", compiledAssistant.getModel());
+            if (compiledAssistant.getEffort() != null) assistant.put("effort", compiledAssistant.getEffort());
             node.set("assistant", assistant);
         }
         if (agentAccess.getChannels() != null) {

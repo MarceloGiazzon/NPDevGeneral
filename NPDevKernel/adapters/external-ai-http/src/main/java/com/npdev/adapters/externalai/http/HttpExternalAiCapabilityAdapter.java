@@ -739,6 +739,10 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
         if (hasText(request.systemInstruction())) {
             root.put("system", request.systemInstruction());
         }
+        if (hasText(request.effort())) {
+            // AIP-3 (3.4a): the assistant's effort; Anthropic is the only protocol with this knob.
+            root.putObject("output_config").put("effort", request.effort());
+        }
         ArrayNode tools = JsonNodeFactory.instance.arrayNode();
         for (ExternalAiToolSpec tool : request.tools()) {
             ObjectNode toolNode = JsonNodeFactory.instance.objectNode();

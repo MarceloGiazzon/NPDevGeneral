@@ -1,5 +1,6 @@
 package com.npdev.dsl.v1.validation;
 
+import com.npdev.dsl.v1.ast.AgentAccessAssistantAst;
 import com.npdev.dsl.v1.ast.AgentAccessAst;
 import com.npdev.dsl.v1.ast.AgentAccessExposureAst;
 import com.npdev.dsl.v1.ast.AgentAccessPhotoIntakeAst;
@@ -8,6 +9,7 @@ import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.ModelAst;
+import com.npdev.dsl.v1.compiler.AiCatalogueProfiles;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -36,6 +38,7 @@ final class AgentAccessValidation {
         if (agentAccess == null) {
             return;
         }
+        validateAssistantProfile(agentAccess.getAssistant(), errors);
         Set<String> flowNames = new HashSet<>();
         for (FlowAst flow : modelAst.getFlows()) {
             flowNames.add(normalize(flow.getName()));
@@ -120,6 +123,27 @@ final class AgentAccessValidation {
 
     /** P8: an aggregate exposure reads ({@code get}) or saves ({@code save}) the whole tree -- root plus
      *  owned collections -- in one call, through the same commit path the workbench's Save uses. */
+    /**
+     * AIP-3 (3.4a): {@code assistant.profile} must be a catalogue profile whose provider a generated app can
+     * call. Unlike a prompt it need not be in {@code externalAi.vendors}: the assistant was never bound to that
+     * list (NPDEV_AGENT_VENDOR may name any app vendor). A bad effort is the schema enum's to report.
+     */
+    private static void validateAssistantProfile(AgentAccessAssistantAst assistant, List<String> errors) {
+        if (assistant == null || !hasText(assistant.getProfile())) {
+            return;
+        }
+        AiCatalogueProfiles.Profile profile = AiCatalogueProfiles.find(assistant.getProfile()).orElse(null);
+        if (profile == null) {
+            errors.add("agentAccess.assistant: profile '" + assistant.getProfile() + "' is not in the NPDev AI "
+                    + "catalogue -- known: " + AiCatalogueProfiles.names()
+                    + " -- suggestedFix: use one of the known profiles (`npdev ai profiles`)");
+        } else if (!ExternalAiValidation.AppVendorCatalogue.IDS.contains(profile.provider())) {
+            errors.add("agentAccess.assistant: profile '" + assistant.getProfile() + "' uses provider '"
+                    + profile.provider() + "', which a generated app cannot call -- known app vendors: "
+                    + ExternalAiValidation.AppVendorCatalogue.IDS);
+        }
+    }
+
     private static void validateAggregateExposure(AgentAccessExposureAst exposure, String here,
             Set<String> aggregateNames, Set<String> aggregatesSeen, List<String> errors) {
         if (!aggregateNames.contains(normalize(exposure.getAggregate()))) {

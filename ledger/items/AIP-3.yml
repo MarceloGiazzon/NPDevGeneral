@@ -57,3 +57,10 @@ note: >-
   72-ai-profile-effort.json (ai34a-*). Tests: dsl full suite, external-ai-http/inproc, runtimehost-core
   com.finalexec.ai/agent (against scratch fresh jars). Not run: the probe itself (boots the sample; T1/T2,
   not on this notebook). Open: 3.4a agentAccess.assistant profile/effort, 3.4b, 3.6.
+  2026-10-23: 3.4a done -- agentAccess.assistant takes `profile` + `effort` too (compiled to vendor/model/
+  effort, canonical JSON only when set; validator: known profile whose provider is an app vendor, NOT
+  required in externalAi.vendors since the assistant never was bound to it). Runtime precedence:
+  NPDEV_AGENT_VENDOR/MODEL, then the profile, then the first externalAi vendor (AgentChannelsStarter.
+  chooseAssistant); ExternalAiToolChatRequest carries effort (Anthropic output_config.effort).
+  dsl-conformance-max assistant example. Tests: dsl suite (AgentAssistantProfileValidationTest),
+  kernel + external-ai-http/inproc, runtimehost-core ai/agent (scratch fresh jars). Open: 3.4b, 3.6.

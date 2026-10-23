@@ -1108,7 +1108,9 @@ public final class JsonModelParser {
             assistant = new com.npdev.dsl.v1.ast.AgentAccessAssistantAst(
                     readText(assistantNode, "name"),
                     readText(assistantNode, "instructions"),
-                    readText(assistantNode, "language")
+                    readText(assistantNode, "language"),
+                    readText(assistantNode, "profile"),
+                    readText(assistantNode, "effort")
             );
         }
         com.npdev.dsl.v1.ast.AgentAccessChannelsAst channels = null;

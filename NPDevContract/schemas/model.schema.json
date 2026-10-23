@@ -885,7 +885,9 @@
           "properties": {
             "name": { "type": "string", "minLength": 1, "description": "Shown in greetings, e.g. 'Pizza Bot'." },
             "instructions": { "type": "string", "minLength": 1, "description": "Plain-language guidance added to the system prompt, e.g. 'Answer in Portuguese. Staff manage stock; customers order pizzas.'" },
-            "language": { "type": "string", "minLength": 2, "description": "Default reply language tag, e.g. 'pt-BR'. Optional." }
+            "language": { "type": "string", "minLength": 2, "description": "Default reply language tag, e.g. 'pt-BR'. Optional." },
+            "profile": { "type": "string", "minLength": 1, "description": "AIP-3 (3.4a): the NPDev AI catalogue profile the assistant chats with (e.g. 'fast', 'claude'; `npdev ai profiles`): its provider, model and effort. NPDEV_AGENT_VENDOR / NPDEV_AGENT_MODEL still override it on a running app. Absent: the first externalAi.vendors entry and its default model." },
+            "effort": { "type": "string", "enum": ["low", "medium", "high"], "description": "AIP-3 (3.4a): how hard the assistant's model should think; overrides the profile's. Sent only to a vendor with such a setting (Anthropic)." }
           },
           "additionalProperties": false
         },

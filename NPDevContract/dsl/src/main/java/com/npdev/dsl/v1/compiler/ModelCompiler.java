@@ -1,5 +1,6 @@
 package com.npdev.dsl.v1.compiler;
 
+import com.npdev.dsl.v1.ast.AgentAccessAssistantAst;
 import com.npdev.dsl.v1.ast.AgentAccessAst;
 import com.npdev.dsl.v1.ast.AgentAccessExposureAst;
 import com.npdev.dsl.v1.ast.AppShellAst;
@@ -722,10 +723,13 @@ public final class ModelCompiler {
         }
         CompiledAgentAccessAssistant assistant = null;
         if (agentAccessAst.getAssistant() != null) {
+            AgentAccessAssistantAst source = agentAccessAst.getAssistant();
+            // AIP-3 (3.4a): resolved here, like a prompt's profile; unknown = left unresolved (validation reports it).
+            AiCatalogueProfiles.Profile profile = AiCatalogueProfiles.find(source.getProfile()).orElse(null);
+            String effort = source.getEffort() != null ? source.getEffort() : profile == null ? null : profile.effort();
             assistant = new CompiledAgentAccessAssistant(
-                    agentAccessAst.getAssistant().getName(),
-                    agentAccessAst.getAssistant().getInstructions(),
-                    agentAccessAst.getAssistant().getLanguage());
+                    source.getName(), source.getInstructions(), source.getLanguage(), source.getProfile(),
+                    profile == null ? null : profile.provider(), profile == null ? null : profile.model(), effort);
         }
         CompiledAgentAccessChannels channels = null;
         if (agentAccessAst.getChannels() != null) {

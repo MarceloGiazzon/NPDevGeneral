@@ -103,9 +103,11 @@ command prints a key back. Listings say only where a key would come from: `env`,
   - `npdev.externalai.price.<id>.inputUsdPerMTok` and `.outputUsdPerMTok` override the catalogue
     price. Each call is otherwise priced for the model it used. The price feeds
     `externalAi.limits.monthlyCostCapUsd`.
-- **The chat assistant** uses `NPDEV_AGENT_VENDOR`, or the model's first `externalAi.vendors` entry
-  when that is unset (`gemini` when the model lists none). It uses `NPDEV_AGENT_MODEL`, or the
-  vendor's catalogue default model.
+- **The chat assistant** uses `NPDEV_AGENT_VENDOR` if set. Otherwise it uses the catalogue profile
+  named in `agentAccess.assistant.profile`. Failing both, it uses the model's first `externalAi.vendors`
+  entry (`gemini` when the model lists none). Its model is `NPDEV_AGENT_MODEL`, else the profile's model
+  (only when the profile's vendor is the one in use), else the vendor's catalogue default model.
+  `agentAccess.assistant.effort`, or the profile's effort, is sent where the vendor supports it.
 
 An app's own budget (`externalAi.limits`) is enforced inside the app and is separate from the developer
 spend guard above.

@@ -2,6 +2,8 @@ package com.finalexec.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finalexec.config.ModelHolder;
+import com.npdev.dsl.v1.compiled.CompiledAgentAccessAssistant;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.ports.ExternalAiCapabilityContract;
 import com.npdev.kernel.ports.ExternalAiVendorSummary;
 import jakarta.annotation.PreDestroy;
@@ -141,11 +143,13 @@ public final class AgentChannelsStarter {
                         + "(set NPDEV_EXTERNALAI_PROVIDER=http); the channel will start but every "
                         + "chat answer will fail.");
             }
+            CompiledModel model = modelHolder.get();
+            AssistantChoice choice = chooseAssistant(agentVendor, agentModel,
+                    model.getAgentAccess() == null ? null : model.getAgentAccess().getAssistant(),
+                    model.getExternalAi() == null ? List.of() : model.getExternalAi().getVendors());
             conversations = new AgentConversationService(
                     modelHolder::get, ai == null ? new DenyingAi() : ai, executor, links, mapper,
-                    agentVendor != null ? agentVendor : defaultVendor(modelHolder.get().getExternalAi() == null
-                            ? List.of() : modelHolder.get().getExternalAi().getVendors()),
-                    agentModel);
+                    choice.vendor(), choice.model(), choice.effort());
         }
         return conversations;
     }
@@ -155,6 +159,30 @@ public final class AgentChannelsStarter {
      * ({@code externalAi.vendors}); a model that lists none keeps the old {@code gemini}. The model then
      * defaults to that vendor's catalogue model unless NPDEV_AGENT_MODEL names one.
      */
+    /** The vendor, model (null = the vendor's catalogue default) and effort the assistant chats with. */
+    record AssistantChoice(String vendor, String model, String effort) {
+    }
+
+    /**
+     * AIP-3 (3.4a): NPDEV_AGENT_VENDOR / NPDEV_AGENT_MODEL (an operator's override on the running app) win; then
+     * the model's {@code agentAccess.assistant.profile}, already resolved by the compiler; then the first
+     * {@code externalAi.vendors} entry (3.5). The profile's model is used only with the profile's vendor. The
+     * effort is the assistant's own or its profile's, whichever vendor ends up chosen; a vendor without an
+     * effort setting drops it.
+     */
+    static AssistantChoice chooseAssistant(String envVendor, String envModel, CompiledAgentAccessAssistant assistant,
+                                           List<String> modelVendors) {
+        String profileVendor = assistant == null ? null : assistant.getVendor();
+        String effort = assistant == null ? null : assistant.getEffort();
+        if (envVendor != null) {
+            return new AssistantChoice(envVendor, envModel, effort);
+        }
+        if (present(profileVendor)) {
+            return new AssistantChoice(profileVendor, envModel != null ? envModel : assistant.getModel(), effort);
+        }
+        return new AssistantChoice(defaultVendor(modelVendors), envModel, effort);
+    }
+
     static String defaultVendor(List<String> modelVendors) {
         return modelVendors.stream().filter(AgentChannelsStarter::present).map(String::trim).findFirst()
                 .orElse("gemini");

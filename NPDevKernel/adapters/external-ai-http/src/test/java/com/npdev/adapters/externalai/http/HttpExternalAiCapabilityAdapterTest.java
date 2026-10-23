@@ -465,10 +465,11 @@ class HttpExternalAiCapabilityAdapterTest {
                         ExternalAiChatTurn.toolResult("toolu_0", "x", "{\"ok\":true}"),
                         ExternalAiChatTurn.toolResult("toolu_00", "x", null),
                         assistantText("done"),
-                        ExternalAiChatTurn.user(null))));
+                        ExternalAiChatTurn.user(null)), "medium"));
 
         JsonNode body = new ObjectMapper().readTree(seenBody.get());
         assertEquals("be brief", body.path("system").asText());
+        assertEquals("medium", body.at("/output_config/effort").asText(), "AIP-3 3.4a: the assistant's effort");
         assertTrue(body.path("max_tokens").isNumber());
         assertEquals("list_StockEntry", body.at("/tools/0/name").asText());
         assertTrue(body.at("/tools/0/input_schema").isObject());
