@@ -275,8 +275,8 @@ final class CrudOrchestrationSupport {
 
     private EventCreateOrchestration toRuntimeCreateOrchestration(CompiledOrchestrationAction action, int index) {
         if (entityManager == null) {
-            throw new UnbuildableOrchestrationException("actions[" + index + "] (create " + action.getConcept()
-                    + ") needs an EntityManager and this runtime has none (npdev.storage.mode=in-memory?)");
+            throw new UnbuildableOrchestrationException("actions[" + index + "] needs an EntityManager to add a "
+                    + action.getConcept() + " row, and this runtime has none (npdev.storage.mode=in-memory?)");
         }
         CompiledConcept targetEntity = findEntity(action.getConcept()).orElseThrow(() -> new UnbuildableOrchestrationException(
                 "actions[" + index + "] creates unknown concept '" + action.getConcept() + "'"));
