@@ -1,5 +1,6 @@
 package com.finalexec.npdev.service;
 
+import com.finalexec.api.NamedQueryPermissions;
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledAggregate;
 import com.npdev.dsl.v1.compiled.CompiledAggregateBalance;
@@ -10,6 +11,7 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGateway;
+import com.npdev.kernel.concepts.ConceptGatewayAccessDeniedException;
 import com.npdev.kernel.concepts.ConceptListRequest;
 import com.npdev.kernel.concepts.ConceptPage;
 import com.npdev.kernel.concepts.ConceptQuery;
@@ -19,6 +21,7 @@ import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
 import com.npdev.kernel.ports.InvariantEngine;
+import com.npdev.kernel.ports.PermissionEvaluator;
 import com.npdev.kernel.procedures.ProcedureExecutionResult;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -61,6 +64,10 @@ public class AggregateRuntime {
     // absent an engine entirely (no bean, or a direct constructor call that predates this field)
     // declared invariants are simply not evaluated -- today's behaviour for every existing caller.
     private final Supplier<InvariantEngine> invariantEngine;
+    // REG-301: a lookup field's query is gated by its permissionRequirements[], exactly as
+    // GET /api/queries/{name} is. Null for direct construction -- which only matters for a query
+    // that declares requirements, and then fails closed.
+    private final PermissionEvaluator permissionEvaluator;
 
     @Autowired
     public AggregateRuntime(
@@ -68,14 +75,16 @@ public class AggregateRuntime {
             ObjectProvider<ConceptGateway> conceptGateway,
             ObjectProvider<ProcedureRunner> procedureRunner,
             ObjectProvider<PlatformTransactionManager> transactionManager,
-            ObjectProvider<InvariantEngine> invariantEngine
+            ObjectProvider<InvariantEngine> invariantEngine,
+            ObjectProvider<PermissionEvaluator> permissionEvaluator
     ) {
         this(
                 modelHolder,
                 conceptGateway == null ? null : conceptGateway.getIfAvailable(),
                 procedureRunner == null ? null : procedureRunner.getIfAvailable(),
                 transactionManager == null ? null : transactionManager.getIfAvailable(),
-                invariantEngine == null ? () -> null : invariantEngine::getIfAvailable
+                invariantEngine == null ? () -> null : invariantEngine::getIfAvailable,
+                permissionEvaluator == null ? null : permissionEvaluator.getIfAvailable()
         );
     }
 
@@ -133,7 +142,7 @@ public class AggregateRuntime {
             PlatformTransactionManager transactionManager,
             Supplier<InvariantEngine> invariantEngine
     ) {
-        this(new ModelHolder(compiledModel), conceptGateway, procedureRunner, transactionManager, invariantEngine);
+        this(new ModelHolder(compiledModel), conceptGateway, procedureRunner, transactionManager, invariantEngine, null);
     }
 
     private AggregateRuntime(
@@ -141,13 +150,15 @@ public class AggregateRuntime {
             ConceptGateway conceptGateway,
             ProcedureRunner procedureRunner,
             PlatformTransactionManager transactionManager,
-            Supplier<InvariantEngine> invariantEngine
+            Supplier<InvariantEngine> invariantEngine,
+            PermissionEvaluator permissionEvaluator
     ) {
         this.modelHolder = modelHolder;
         this.conceptGateway = conceptGateway;
         this.procedureRunner = procedureRunner;
         this.transactionTemplate = transactionManager == null ? null : new TransactionTemplate(transactionManager);
         this.invariantEngine = invariantEngine;
+        this.permissionEvaluator = permissionEvaluator;
     }
 
     /**
@@ -435,6 +446,10 @@ public class AggregateRuntime {
             if (query == null) {
                 out.put(queryName, List.of());
                 continue;
+            }
+            Optional<String> denied = NamedQueryPermissions.denial(query, context, permissionEvaluator);
+            if (denied.isPresent()) {
+                throw new ConceptGatewayAccessDeniedException("PERMISSION_DENIED", denied.get());
             }
             List<ConceptQuery.Filter> filters;
             try {

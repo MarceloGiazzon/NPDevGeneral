@@ -15,8 +15,11 @@ import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.generated.runtime.service.KernelFacade;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.ExecutionResult;
+import com.npdev.kernel.ports.PermissionEvaluator;
 import com.npdev.kernel.i18n.LabelResolver;
+import com.finalexec.api.NamedQueryPermissions;
 import com.npdev.kernel.concepts.ConceptGateway;
+import com.npdev.kernel.concepts.ConceptGatewayAccessDeniedException;
 import com.npdev.kernel.concepts.ConceptGatewayTraceRecord;
 import com.npdev.kernel.concepts.ConceptPage;
 import com.npdev.kernel.concepts.ConceptQuery;
@@ -63,6 +66,10 @@ public class PanelRuntime {
     private final AggregateRuntime aggregateRuntime;
     private final ProcedureRunner procedureRunner;
     private final KernelFacade kernelFacade;
+    // REG-301: a dataSource naming a query is gated by that query's permissionRequirements[],
+    // exactly as GET /api/queries/{name} is. Null outside production wiring -- which only matters
+    // for a query that declares requirements, and then fails closed.
+    private final PermissionEvaluator permissionEvaluator;
 
     public PanelRuntime(
             RuntimeMetadataService runtimeMetadataService,
@@ -88,7 +95,8 @@ public class PanelRuntime {
             ObjectProvider<CapabilityDispatcher> capabilityDispatcher,
             ObjectProvider<EventBus> eventBus,
             ObjectProvider<AggregateRuntime> aggregateRuntime,
-            ObjectProvider<KernelFacade> kernelFacade
+            ObjectProvider<KernelFacade> kernelFacade,
+            ObjectProvider<PermissionEvaluator> permissionEvaluator
     ) {
         this(
                 runtimeMetadataService,
@@ -98,7 +106,8 @@ public class PanelRuntime {
                 capabilityDispatcher == null ? null : capabilityDispatcher.getIfAvailable(),
                 eventBus == null ? null : eventBus.getIfAvailable(),
                 aggregateRuntime == null ? null : aggregateRuntime.getIfAvailable(),
-                kernelFacade == null ? null : kernelFacade.getIfAvailable()
+                kernelFacade == null ? null : kernelFacade.getIfAvailable(),
+                permissionEvaluator == null ? null : permissionEvaluator.getIfAvailable()
         );
     }
 
@@ -137,6 +146,7 @@ public class PanelRuntime {
         this.aggregateRuntime = null;
         this.procedureRunner = procedureRunner;
         this.kernelFacade = null;
+        this.permissionEvaluator = null;
     }
 
     public PanelRuntime(
@@ -179,6 +189,21 @@ public class PanelRuntime {
             AggregateRuntime aggregateRuntime,
             KernelFacade kernelFacade
     ) {
+        this(runtimeMetadataService, permissionAwareUiMetadataService, modelHolder, conceptGateway,
+                capabilityDispatcher, eventBus, aggregateRuntime, kernelFacade, null);
+    }
+
+    public PanelRuntime(
+            RuntimeMetadataService runtimeMetadataService,
+            PermissionAwareUiMetadataService permissionAwareUiMetadataService,
+            ModelHolder modelHolder,
+            ConceptGateway conceptGateway,
+            CapabilityDispatcher capabilityDispatcher,
+            EventBus eventBus,
+            AggregateRuntime aggregateRuntime,
+            KernelFacade kernelFacade,
+            PermissionEvaluator permissionEvaluator
+    ) {
         this.runtimeMetadataService = runtimeMetadataService;
         this.permissionAwareUiMetadataService = permissionAwareUiMetadataService;
         this.modelHolder = modelHolder;
@@ -188,6 +213,7 @@ public class PanelRuntime {
         this.aggregateRuntime = aggregateRuntime;
         this.procedureRunner = new ProcedureRunner(modelHolder, conceptGateway, capabilityDispatcher, eventBus);
         this.kernelFacade = kernelFacade;
+        this.permissionEvaluator = permissionEvaluator;
     }
 
     public Map<String, Object> renderConceptPanel(String conceptName, ExecutionContext context) {
@@ -511,6 +537,12 @@ public class PanelRuntime {
                 );
             }
             Optional<CompiledQuery> query = resolveDataSourceQuery(dataSource);
+            if (query.isPresent()) {
+                Optional<String> denied = NamedQueryPermissions.denial(query.get(), context, permissionEvaluator);
+                if (denied.isPresent()) {
+                    throw new ConceptGatewayAccessDeniedException("PERMISSION_DENIED", denied.get());
+                }
+            }
             // LC-P0 scale half (MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 0): where/orderBy/limit are
             // pushed down through ConceptGateway.query -- the same pushdown DefaultProcedureExecutor's
             // runQuery step uses -- instead of fetching every row via list() and filtering in the JVM.

@@ -34,7 +34,9 @@ note: >-
   PermissionEvaluator; fail-closed with no evaluator), and RuntimeApiEmitter now grants each query requirement to the
   super-user in the permission manifest (before, nobody held it). Witnessed by probe 30
   query-permission-requirements-refuse-a-caller-lacking-them on fixture query AuditedCatalogEntries; allowlist 48 -> 47.
-  STILL OPEN for this keyword: a panel dataSource naming a guarded query (PanelRuntime.resolveDataSourceQuery) and an
-  aggregate lookup query (AggregateRuntime.runLookupQueries) still run it without the check; procedure runQuery steps
-  are deliberately left under the procedure's own permissionRequirements. Remaining keywords: query.tracePolicy,
-  aggregateCollection.via, flowStep.data.
+  2026-10-23 (later still): the two side doors are closed too -- a panel dataSource naming a guarded query
+  (PanelRuntime.loadDataSource) and an aggregate lookup field's query (AggregateRuntime.runLookupQueries, on load and
+  commit) now refuse with ConceptGatewayAccessDeniedException PERMISSION_DENIED (403 via ConceptAccessDeniedAdvice);
+  PanelRuntimeQueryPermissionTest and AggregateRuntimeLookupQueryPermissionTest. Procedure runQuery steps are
+  deliberately left under the procedure's own permissionRequirements. query.permissionRequirements is DONE; remaining
+  keywords: query.tracePolicy, aggregateCollection.via, flowStep.data.

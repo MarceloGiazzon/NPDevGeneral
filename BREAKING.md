@@ -7,7 +7,7 @@ codemod that rewrites existing models automatically.
 
 ## 2026-10-23 — a query's `permissionRequirements[]` are enforced on `GET /api/queries/{name}` and on a list document that names it (REG-301)
 
-**What changes.** `queries[].permissionRequirements` validated and compiled but was never checked, so any caller with read access to the concept got the rows. Every listed permission must now be held, or the call returns 403. A requirement may name a declared permission, which the generated manifest grants to the super-user only, or a manifest one such as `update:order`, held by every role that may update orders. `GeneratedQueryController` and `DocumentRenderController` each take a `PermissionEvaluator` as a new last constructor argument.
+**What changes.** `queries[].permissionRequirements` validated and compiled but was never checked, so any caller with read access to the concept got the rows. Every listed permission must now be held, or the call returns 403. The same check applies to a panel `dataSource` that names the query and to an aggregate `lookupFields[]` entry that runs it. A requirement may name a declared permission, which the generated manifest grants to the super-user only, or a manifest one such as `update:order`, held by every role that may update orders. `GeneratedQueryController` and `DocumentRenderController` each take a `PermissionEvaluator` as a new last constructor argument, and so do the `@Autowired` constructors of `PanelRuntime` and `AggregateRuntime` (as an `ObjectProvider`).
 
 **Who is affected.** A model whose queries declare `permissionRequirements` and that is called by non-super-users, and hand-written code that constructs either controller.
 
