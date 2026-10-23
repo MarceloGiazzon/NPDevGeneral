@@ -2,9 +2,9 @@ id: AIP-3
 title: Generated apps use the same AI providers via a protocol-driven external-ai-http (AI providers plan, Phase 3)
 type: FEATURE
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-10-22
-closed: null
+closed: 2026-10-23
 source: >-
   AI providers unification plan, revision 2 (2026-10-22), NPDev_General__OutsideRepo/AI_PROVIDERS_UNIFICATION_PLAN_2026-10-22.md (outside the repo), built on the AI contact-point inventory AI_CONTACT_POINTS_2026-10-22.md in the same folder. Finding F6.
 surface: kernel/adapters/external-ai-http
@@ -79,3 +79,8 @@ note: >-
   reload; pricing per call. CLI: own_providers() feeds app_key_env / app_ai_status. dsl-conformance-max
   acme-gw. Tests: dsl full suite, external-ai-http (26), runtimehost-core ai/agent/config (69, scratch
   fresh jars), NPDevCli test_providers + test_ai_*. Every step landed; DONE waits on CI T2 and probe 72.
+  2026-10-23: DONE -- CI on main green at c1e9b9c6 (NPDev CI Validation, AI Knowledge Gate, Kernel quality
+  gate, engine support, F6, journeys, security scan); the AI knowledge gate needed c1e9b9c6 itself (3.4b
+  overrideText sweep hit triaged, routine schema re-pinned with setOffline). Still not run: probe
+  72-ai-profile-effort.json (boots dsl-conformance-max; T1/T2, off this notebook). No generated app has
+  yet called a real vendor or a custom externalAi.providers endpoint.
