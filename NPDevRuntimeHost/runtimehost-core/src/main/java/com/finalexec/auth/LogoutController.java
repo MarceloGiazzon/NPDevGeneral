@@ -6,6 +6,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import javax.sql.DataSource;
+import java.sql.SQLException;
+import java.util.Map;
+import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
@@ -29,6 +34,8 @@ import org.springframework.web.bind.annotation.RestController;
 @ConditionalOnProperty(name = "npdev.auth.mode", havingValue = "jwt")
 public class LogoutController {
 
+    private static final Logger LOG = Logger.getLogger(LogoutController.class.getName());
+
     private final DataSource dataSource;
     private final ModelHolder modelHolder;
 
@@ -49,26 +56,43 @@ public class LogoutController {
     }
 
     @PostMapping({"/api/auth/logout", "/api/v1/auth/logout"})
-    public ResponseEntity<Void> logout(HttpServletRequest request) {
-        endSession(request);
+    public ResponseEntity<?> logout(HttpServletRequest request) {
+        Exception revokeFailure = endSession(request);
         ResponseCookie expired = SessionCookies.expired(request != null && request.isSecure());
+        if (revokeFailure != null) {
+            // REG-293: the cookie is still cleared (this browser is signed out), but the caller is told
+            // the server-side session was NOT revoked, so the token stays valid until it expires.
+            return ResponseEntity.status(503).header(HttpHeaders.SET_COOKIE, expired.toString())
+                    .body(Map.of("error", "session_revoke_failed",
+                            "detail", "This browser is signed out, but the session could not be ended on the "
+                                    + "server; the token stays valid until it expires. Try signing out again, "
+                                    + "or sign out of all devices."));
+        }
         return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, expired.toString()).build();
     }
 
-    /** SESS-1: revoke the session this sign-out belongs to (best effort; the cookie is cleared regardless). */
-    private void endSession(HttpServletRequest request) {
+    /**
+     * SESS-1: revoke the session this sign-out belongs to. Answers {@code null} when it was ended or
+     * there was none to end (sessions off, or a token without a {@code sid}), and the failure itself when
+     * revocation was attempted and failed (REG-293: it used to be swallowed and logout still answered 204).
+     */
+    private Exception endSession(HttpServletRequest request) {
         if (dataSource == null || modelHolder == null) {
-            return;
+            return null;
+        }
+        String[] session = UserSessionStore.sessionFromToken(request);
+        if (session == null) {
+            return null;
         }
         try {
-            String[] session = UserSessionStore.sessionFromToken(request);
-            if (session == null) {
-                return;
+            Optional<IdentityPackTableNames> tables = IdentityPackTableNames.tryResolve(modelHolder.get());
+            if (tables.isPresent()) {
+                UserSessionStore.revokeBySessionId(dataSource, tables.get(), session[0], session[1]);
             }
-            IdentityPackTableNames.tryResolve(modelHolder.get()).ifPresent(tables ->
-                    UserSessionStore.revokeBySessionId(dataSource, tables, session[0], session[1]));
-        } catch (RuntimeException ignored) {
-            // sign-out must always succeed
+            return null;
+        } catch (SQLException | RuntimeException failure) {
+            LOG.log(Level.SEVERE, "Sign-out could not end the server-side session: " + failure.getMessage(), failure);
+            return failure;
         }
     }
 }

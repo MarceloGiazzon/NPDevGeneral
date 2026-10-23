@@ -190,24 +190,32 @@ public final class UserSessionStore {
                 ? HandleResult.REVOKED : HandleResult.NOT_FOUND;
     }
 
-    /** Logout: ends the session a token names. No user lookup -- the sender of the token holds the id. */
+    /**
+     * Logout: ends the session a token names. No user lookup -- the sender of the token holds the id.
+     *
+     * <p>REG-293 (X0 rule): a failure THROWS instead of being logged and swallowed, so the caller can
+     * tell the device it is NOT signed out server-side (the token would otherwise stay valid until it
+     * expires). A blank tenant is refused ({@link IllegalArgumentException}) rather than defaulted to
+     * {@code "default"}, which revoked nothing and looked successful. "Sessions are off" (no DataSource,
+     * no tables, an identity pack older than 1.4.0) and a blank session id remain a no-op.</p>
+     */
     public static void revokeBySessionId(DataSource dataSource, IdentityPackTableNames tables, String tenantId,
-                                         String sessionId) {
+                                         String sessionId) throws SQLException {
         if (dataSource == null || tables == null || tables.userSessionsTable() == null
                 || sessionId == null || sessionId.isBlank()) {
             return;
         }
-        String tenant = tenantId == null || tenantId.isBlank() ? "default" : tenantId;
+        if (tenantId == null || tenantId.isBlank()) {
+            throw new IllegalArgumentException("Cannot end a user session without its tenant");
+        }
         try (Connection connection = dataSource.getConnection();
              PreparedStatement ps = connection.prepareStatement("UPDATE " + tables.userSessionsTable()
                      + " SET revoked_at = ? WHERE session_id = ? AND tenant_id = ? AND revoked_at IS NULL")) {
             ps.setTimestamp(1, Timestamp.from(Instant.now()));
             ps.setString(2, sessionId);
-            ps.setString(3, tenant);
+            ps.setString(3, tenantId);
             ps.executeUpdate();
-            IdentityRoleLookup.forgetSession(tenant, sessionId);
-        } catch (SQLException | RuntimeException failure) {
-            LOG.log(Level.WARNING, "Could not end the user session on sign-out: " + failure.getMessage());
+            IdentityRoleLookup.forgetSession(tenantId, sessionId);
         }
     }
 

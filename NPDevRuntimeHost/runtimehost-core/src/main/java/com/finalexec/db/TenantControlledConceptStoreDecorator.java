@@ -26,10 +26,12 @@ import java.util.Optional;
  * {@code PUT /api/admin/tenants/{tenantId}/persistence-mode} and every subsequent request for that
  * tenant (only) is affected immediately -- no regenerate, no reboot.
  *
- * <p>Fails safe (not-audited) on any DB error or missing DataSource, matching every other
- * fail-open/fail-safe runtime lookup in this codebase (e.g. {@code TenantRegistryService.isActive}).
- * The delegate's data/correctness are identical either way -- this only changes whether accesses are
- * additionally logged.</p>
+ * <p>REG-293 (X0 rule): when the tenant's persistence mode cannot be resolved -- no DataSource bean,
+ * or an {@link SQLException} reading {@code npdev_tenant} -- the access REFUSES with an
+ * {@link IllegalStateException} and the delegate is never called. It used to answer "not audited",
+ * so an audited tenant's writes silently left no audit trail during a database hiccup. A blank tenant
+ * (no row can exist for it) and a tenant with no {@code npdev_tenant} row are a resolved "not
+ * audited", not a failure.</p>
  */
 public final class TenantControlledConceptStoreDecorator implements ConceptStore {
     private final ConceptStore delegate;
@@ -120,7 +122,8 @@ public final class TenantControlledConceptStoreDecorator implements ConceptStore
         }
         DataSource dataSource = dataSourceProvider.getIfAvailable();
         if (dataSource == null) {
-            return false;
+            throw new IllegalStateException("Refusing " + conceptName + " access for tenant '" + tenantId
+                    + "': its persistence mode cannot be resolved (no DataSource), so whether it must be audited is unknown");
         }
         String sql = "SELECT persistence_mode FROM npdev_tenant WHERE tenant_id = ?";
         try (Connection connection = dataSource.getConnection();
@@ -130,7 +133,8 @@ public final class TenantControlledConceptStoreDecorator implements ConceptStore
                 return resultSet.next() && "audited".equalsIgnoreCase(resultSet.getString("persistence_mode"));
             }
         } catch (SQLException exception) {
-            return false;
+            throw new IllegalStateException("Refusing " + conceptName + " access for tenant '" + tenantId
+                    + "': its persistence mode cannot be resolved: " + exception.getMessage(), exception);
         }
     }
 

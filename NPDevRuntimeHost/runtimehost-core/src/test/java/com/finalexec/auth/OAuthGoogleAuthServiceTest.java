@@ -357,6 +357,115 @@ class OAuthGoogleAuthServiceTest {
                 "the live stored version must reflect the bump");
     }
 
+    // ------------------------------------------------------------------ REG-293: a DB failure is an error, never "nothing found"
+
+    /** A service whose JDBC statements fail (SQLState 08006, a connection failure) when their SQL contains {@code sqlFragment}. */
+    private OAuthGoogleAuthService serviceFailingOn(String sqlFragment) {
+        return new OAuthGoogleAuthService(new FailingOnSqlDataSource(dataSource, sqlFragment),
+                new ModelHolder(identityModel()), provider, signer);
+    }
+
+    @Test
+    void aFailedLinkLookupIsIdentityStoreUnavailableNotASignup() throws Exception {
+        insertUser("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "linked@example.com", "linked@example.com", true, 0);
+        link("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "sub-linked");
+        // The provider now reports a different email for the already-linked subject.
+        provider.stub("sub-linked", "renamed@example.com", true, "Renamed", null);
+
+        var ticket = serviceFailingOn("SELECT user_id FROM identity_external_identity")
+                .resolveAndSignIn("code-r1", "http://localhost/api/auth/oauth/google/callback", TENANT);
+
+        assertEquals(OAuthGoogleAuthService.Outcome.IDENTITY_STORE_UNAVAILABLE, ticket.outcome());
+        assertEquals("identity_store_unavailable", ticket.errorCode());
+        assertNull(ticket.token());
+        assertUserCount(1, "a failed link lookup must not sign anyone up");
+    }
+
+    @Test
+    void aFailedUserLookupIsIdentityStoreUnavailableNotASignupThatBypassesTheCollisionRule() throws Exception {
+        // SEC-11: this email belongs to an unlinked account -- the answer must never be a fresh signup.
+        insertUser("cccccccc-cccc-cccc-cccc-cccccccccccc", "Existing User", "collide@example.com", true, 0);
+        provider.stub("sub-attacker", "collide@example.com", true, "Attacker", null);
+
+        var ticket = serviceFailingOn("LOWER(username)")
+                .resolveAndSignIn("code-r2", "http://localhost/api/auth/oauth/google/callback", TENANT);
+
+        assertEquals(OAuthGoogleAuthService.Outcome.IDENTITY_STORE_UNAVAILABLE, ticket.outcome());
+        assertNull(ticket.token());
+        assertUserCount(1, "a failed user lookup must not create a second account for the same email");
+        assertNoLinkForSubject("sub-attacker");
+    }
+
+    @Test
+    void aNonConstraintInsertLinkFailureIsIdentityStoreUnavailableNotLinkAlreadyUsed() throws Exception {
+        insertUser("dddddddd-dddd-dddd-dddd-dddddddddddd", "me@example.com", "me@example.com", true, 0);
+        provider.stub("sub-me", "me@example.com", true, "Me", null);
+
+        var ticket = serviceFailingOn("INSERT INTO identity_external_identity")
+                .linkToAuthenticatedUser("code-r3", "http://localhost/api/auth/oauth/google/callback", TENANT,
+                        "me@example.com");
+
+        assertEquals(OAuthGoogleAuthService.Outcome.IDENTITY_STORE_UNAVAILABLE, ticket.outcome());
+        assertEquals("identity_store_unavailable", ticket.errorCode());
+    }
+
+    @Test
+    void aFailedLinkOwnerLookupOnTheLinkLegIsIdentityStoreUnavailable() throws Exception {
+        insertUser("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee", "me2@example.com", "me2@example.com", true, 0);
+        provider.stub("sub-me2", "me2@example.com", true, "Me", null);
+
+        var ticket = serviceFailingOn("SELECT user_id FROM identity_external_identity")
+                .linkToAuthenticatedUser("code-r4", "http://localhost/api/auth/oauth/google/callback", TENANT,
+                        "me2@example.com");
+
+        assertEquals(OAuthGoogleAuthService.Outcome.IDENTITY_STORE_UNAVAILABLE, ticket.outcome());
+    }
+
+    private void assertUserCount(int expected, String message) throws Exception {
+        try (Connection c = dataSource.getConnection(); Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM identity_users")) {
+            assertTrue(rs.next());
+            assertEquals(expected, rs.getInt(1), message);
+        }
+    }
+
+    /** Wraps a real DataSource; {@code prepareStatement} throws SQLState 08006 when the SQL contains the fragment. */
+    private static final class FailingOnSqlDataSource implements DataSource {
+        private final DataSource real;
+        private final String fragment;
+
+        private FailingOnSqlDataSource(DataSource real, String fragment) {
+            this.real = real;
+            this.fragment = fragment;
+        }
+
+        @Override
+        public Connection getConnection() throws SQLException {
+            Connection connection = real.getConnection();
+            return (Connection) java.lang.reflect.Proxy.newProxyInstance(
+                    Connection.class.getClassLoader(), new Class<?>[] {Connection.class}, (proxy, method, args) -> {
+                        if ("prepareStatement".equals(method.getName()) && args != null && args.length > 0
+                                && String.valueOf(args[0]).contains(fragment)) {
+                            throw new SQLException("simulated connection failure", "08006");
+                        }
+                        try {
+                            return method.invoke(connection, args);
+                        } catch (java.lang.reflect.InvocationTargetException e) {
+                            throw e.getCause();
+                        }
+                    });
+        }
+
+        @Override public Connection getConnection(String u, String p) throws SQLException { return getConnection(); }
+        @Override public java.io.PrintWriter getLogWriter() { return null; }
+        @Override public void setLogWriter(java.io.PrintWriter out) { }
+        @Override public void setLoginTimeout(int seconds) { }
+        @Override public int getLoginTimeout() { return 0; }
+        @Override public java.util.logging.Logger getParentLogger() { return java.util.logging.Logger.getLogger(getClass().getName()); }
+        @Override public <T> T unwrap(Class<T> iface) throws SQLException { throw new SQLException("not a wrapper"); }
+        @Override public boolean isWrapperFor(Class<?> iface) { return false; }
+    }
+
     private static int tvClaim(String token) throws Exception {
         String payload = token.split("\\.")[1];
         byte[] decoded = java.util.Base64.getUrlDecoder().decode(payload);

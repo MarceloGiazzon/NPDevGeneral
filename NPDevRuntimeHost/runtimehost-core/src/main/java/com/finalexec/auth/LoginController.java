@@ -243,10 +243,23 @@ public class LoginController {
                 LOG.log(Level.SEVERE, "Login failed: identity pack schema mismatch", schemaCandidate);
                 return identityPackSchemaError(schemaCandidate);
             }
-            return unauthorized(tenantId, username, clientIp);
+            return loginUnavailable(schemaCandidate);
         } catch (Exception exception) {
-            return unauthorized(tenantId, username, clientIp);
+            return loginUnavailable(exception);
         }
+    }
+
+    /**
+     * REG-293 (X0 rule): a database or runtime failure while checking credentials is NOT a wrong
+     * password. It answers 503 {@code login_unavailable} and records NO throttle failure -- reporting it
+     * as {@code invalid_credentials} and counting it against the REG-20 throttle meant an outage locked
+     * real users out and told them their password was wrong.
+     */
+    private ResponseEntity<Map<String, Object>> loginUnavailable(Exception failure) {
+        LOG.log(Level.SEVERE, "Login could not be completed: the identity store failed", failure);
+        return ResponseEntity.status(503).body(Map.of(
+                "error", "login_unavailable",
+                "detail", "Sign-in is temporarily unavailable because the identity store could not be read. Try again."));
     }
 
     public record MfaLoginRequest(String challenge, String code, String recoveryCode) {

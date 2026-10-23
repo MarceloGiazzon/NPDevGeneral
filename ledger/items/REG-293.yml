@@ -3,9 +3,9 @@ title: >-
   Five RuntimeHost auth/audit/session paths answer instead of refusing when the database fails (X0 rule, RuntimeHost side)
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-10-23
-closed: null
+closed: 2026-10-23
 source: >-
   Read-only X0 audit of NPDevRuntimeHost/runtimehost-core (2026-10-23), the RuntimeHost counterpart of REG-282's
   kernel audit. Not yet reproduced by a test -- every line below is from reading the code.
@@ -32,5 +32,26 @@ resolution: >-
   SQLException in the OAuth lookups is an error outcome (identity_store_unavailable), never "no link"; (4) insertLink is
   false only for SQLState 23505; (5) logout answers 503 session_revoke_failed (cookie still cleared) when revocation
   fails, and a blank tenant is refused, not defaulted -- each with a must-error unit test proven red on the old code.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/auth/OAuthGoogleAuthServiceTest.java#aFailedUserLookupIsIdentityStoreUnavailableNotASignupThatBypassesTheCollisionRule
+  asserts: >-
+    a database failure in the OAuth user lookup answers IDENTITY_STORE_UNAVAILABLE and creates no second account
+    for an email an unlinked account already owns (on the old code it signed the email up, bypassing SEC-11).
+    Siblings, all proven red on HEAD 3073c141 and green after: TenantControlledConceptStoreDecoratorTest (2),
+    LoginControllerDatabaseFailureTest (2), LogoutControllerRevocationFailureTest (3) and three more
+    OAuthGoogleAuthServiceTest REG-293 cases (failed link lookup on both legs, non-23505 insertLink failure).
+  provenRed: true
 note: >-
   2026-10-23: filed from the read-only audit; fixes need the RuntimeHost unit-test path (assembled app), not run yet.
+  2026-10-23 (closed): all five confirmed by reading the code, all five fixed in runtimehost-core. (1)
+  TenantControlledConceptStoreDecorator throws IllegalStateException (delegate never called) when the tenant's
+  persistence mode cannot be resolved -- missing DataSource or SQLException; its javadoc had called the fail-open
+  deliberate, now rewritten. (2) LoginController answers 503 login_unavailable for any non-schema SQLException or
+  RuntimeException, recording no throttle failure. (3) OAuthGoogleAuthService: new Outcome IDENTITY_STORE_UNAVAILABLE
+  (error code identity_store_unavailable); findLinkOwner / findLinkedUser / findUserByEmailOrUsername /
+  findUserByUsername throw on every SQLException (schema mismatch keeps its REG-39 IllegalStateException) and both
+  callback legs map it to that outcome. (4) insertLink is false only for SQLState 23505. (5)
+  UserSessionStore.revokeBySessionId throws on failure and refuses a blank tenant (sole caller LogoutController);
+  logout answers 503 session_revoke_failed with the expiring cookie still set. 11 new tests red on HEAD, green after;
+  full runtimehost-core test task green.

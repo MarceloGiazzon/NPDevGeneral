@@ -16,7 +16,7 @@ class LogoutControllerTest {
 
     @Test
     void logoutExpiresTheSessionCookie() {
-        ResponseEntity<Void> res = new LogoutController().logout(new MockHttpServletRequest());
+        ResponseEntity<?> res = new LogoutController().logout(new MockHttpServletRequest());
 
         assertEquals(HttpStatus.NO_CONTENT, res.getStatusCode());
         String cookie = res.getHeaders().getFirst(HttpHeaders.SET_COOKIE);

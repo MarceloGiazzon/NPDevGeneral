@@ -69,7 +69,23 @@ public final class OAuthGoogleAuthService {
         /** Link leg: the signed-in account cannot be resolved (should be unreachable for a valid JWT). */
         LINK_ACCOUNT_UNRESOLVED,
         /** Link leg success (the session itself is unchanged). */
-        LINKED
+        LINKED,
+        /**
+         * REG-293: the identity store could not be read or written (a database failure that is not a
+         * unique-constraint collision). Never reported as "no link" / "no user" / "already used".
+         */
+        IDENTITY_STORE_UNAVAILABLE
+    }
+
+    /** REG-293: thrown by the lookup helpers on a database failure; each entry point maps it to an outcome. */
+    private static final class IdentityStoreUnavailable extends RuntimeException {
+        IdentityStoreUnavailable(String what, SQLException cause) {
+            super("identity store unavailable while " + what + ": " + cause.getMessage(), cause);
+        }
+    }
+
+    private static SessionTicket identityStoreUnavailable() {
+        return SessionTicket.error(Outcome.IDENTITY_STORE_UNAVAILABLE, "identity_store_unavailable");
     }
 
     /** Immutable ticket for the controller: like {@code LoginController}'s body, but only when login succeeded. */
@@ -174,12 +190,19 @@ public final class OAuthGoogleAuthService {
             return SessionTicket.error(Outcome.PROVIDER_REFUSED, "identity_pack_not_composed");
         }
 
-        Optional<String> linkedUserId = findLinkedUser(tables, verified.subject(), normalizedTenant);
-        if (linkedUserId.isPresent()) {
-            return signInExistingUser(tables, linkedUserId.get(), normalizedTenant);
+        Optional<String> linkedUserId;
+        Optional<ExistingUser> owner;
+        try {
+            linkedUserId = findLinkedUser(tables, verified.subject(), normalizedTenant);
+            if (linkedUserId.isPresent()) {
+                return signInExistingUser(tables, linkedUserId.get(), normalizedTenant);
+            }
+            owner = findUserByEmailOrUsername(tables, verified.email(), normalizedTenant);
+        } catch (IdentityStoreUnavailable failure) {
+            // REG-293: a failed lookup is not "no link / no user" -- proceeding would skip the SEC-11
+            // explicit-link rule and sign a colliding email up.
+            return identityStoreUnavailable();
         }
-
-        Optional<ExistingUser> owner = findUserByEmailOrUsername(tables, verified.email(), normalizedTenant);
         if (owner.isPresent()) {
             // Collision policy (settled with the owner, SEC-11): never auto-link, never take over.
             // The account owner signs in with password and links Google explicitly.
@@ -225,6 +248,15 @@ public final class OAuthGoogleAuthService {
             return SessionTicket.error(Outcome.PROVIDER_REFUSED, "identity_pack_not_composed");
         }
 
+        try {
+            return linkVerified(tables, verified, normalizedTenant, actorUsername);
+        } catch (IdentityStoreUnavailable failure) {
+            return identityStoreUnavailable();
+        }
+    }
+
+    private SessionTicket linkVerified(Tables tables, IdentityProvider.IdentityProviderClaims verified,
+                                       String normalizedTenant, String actorUsername) {
         Optional<ExistingUser> account = findUserByUsername(tables, actorUsername, normalizedTenant);
         if (account.isEmpty()) {
             return SessionTicket.error(Outcome.LINK_ACCOUNT_UNRESOLVED, "oauth_link_account_unresolved");
@@ -375,7 +407,7 @@ public final class OAuthGoogleAuthService {
                 }
             }
         } catch (SQLException ex) {
-            return Optional.empty();
+            throw lookupFailure("checking the linked user's tenant", ex);
         }
     }
 
@@ -391,7 +423,7 @@ public final class OAuthGoogleAuthService {
                 }
             }
         } catch (SQLException ex) {
-            return Optional.empty();
+            throw lookupFailure("looking up the provider link", ex);
         }
     }
 
@@ -418,10 +450,7 @@ public final class OAuthGoogleAuthService {
             }
         } catch (SQLException ex) {
             // REG-39 posture: never treat the identity pack's own query failure as "no user".
-            if (SqlSchemaErrors.isSchemaMismatch(ex)) {
-                throw new IllegalStateException("identity pack schema mismatch while resolving external identity", ex);
-            }
-            return Optional.empty();
+            throw lookupFailure("resolving the user", ex);
         }
     }
 
@@ -443,19 +472,36 @@ public final class OAuthGoogleAuthService {
                 }
             }
         } catch (SQLException ex) {
-            if (SqlSchemaErrors.isSchemaMismatch(ex)) {
-                throw new IllegalStateException("identity pack schema mismatch while resolving external identity", ex);
-            }
-            return Optional.empty();
+            throw lookupFailure("resolving the user", ex);
         }
     }
 
+    /**
+     * {@code false} ONLY for SQLState 23505 (the provider subject's unique constraint fired: a concurrent
+     * link won the race). REG-293: any other failure used to be {@code false} too, which the link leg
+     * reported as LINK_ALREADY_USED -- telling the user their identity belonged to someone else.
+     */
     private boolean insertLink(Tables tables, String userId, String subject, String tenantId) {
         try (Connection connection = dataSource.getConnection()) {
             return insertLink(connection, tables, userId, subject, tenantId);
         } catch (SQLException ex) {
-            return false;
+            if ("23505".equals(ex.getSQLState())) {
+                return false;
+            }
+            throw lookupFailure("recording the provider link", ex);
         }
+    }
+
+    /**
+     * REG-39 + REG-293: a schema mismatch keeps its own loud {@link IllegalStateException} (a stale
+     * identity-pack copy, never a generic auth failure); every other database failure is
+     * {@link IdentityStoreUnavailable}. Neither is ever "nothing found".
+     */
+    private static RuntimeException lookupFailure(String what, SQLException ex) {
+        if (SqlSchemaErrors.isSchemaMismatch(ex)) {
+            return new IllegalStateException("identity pack schema mismatch while resolving external identity", ex);
+        }
+        return new IdentityStoreUnavailable(what, ex);
     }
 
     private boolean insertLink(Connection connection, Tables tables, String userId, String subject, String tenantId) throws SQLException {
