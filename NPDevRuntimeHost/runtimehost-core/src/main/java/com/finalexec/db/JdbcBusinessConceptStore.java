@@ -15,6 +15,7 @@ import com.npdev.kernel.concepts.ConceptPage;
 import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptStoreOptimisticLockException;
+import com.npdev.kernel.concepts.ConceptStoreUniqueViolationException;
 import com.npdev.kernel.ports.ConceptStore;
 import com.npdev.kernel.storage.sql.H2Dialect;
 import com.npdev.kernel.storage.sql.PostgresDialect;
@@ -972,6 +973,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             TableColumns columns = tableColumns(connection, shape.tableName());
             dbRecord.keySet().removeIf(column -> !columns.has(column));
             dbRecord.putIfAbsent(shape.idColumn(), coerceId(record.id()));
+            refuseIdOwnedByAnotherTenant(connection, shape, record, columns);
             if (!columns.has("row_version")) {
                 executeUpsert(connection, shape, dbRecord, columns);
                 return record;
@@ -1029,6 +1031,46 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             throw new IllegalStateException("Failed writing maintained fields of " + conceptName + " to JDBC store", exception);
         } finally {
             releaseConnection(connection);
+        }
+    }
+
+    /**
+     * REG-295: every engine's upsert is keyed on the id column alone (the business-table PK is
+     * {@code (id)}) and writes {@code tenant_id} as an ordinary column, so a create carrying a
+     * caller-supplied id that already belongs to ANOTHER tenant used to overwrite that row and
+     * re-home it into the caller's tenant -- on both the unversioned and the {@code row_version}
+     * path ({@link #currentRowVersion} is tenant-filtered, finds nothing, and falls through to the
+     * id-keyed upsert). Refuse instead, before either branch runs.
+     *
+     * <p>Tenant-neutral on purpose and with NO {@code deleted_at} filter: another tenant's
+     * soft-deleted row is still that tenant's row. The refusal is the generic unique violation
+     * (409 {@code unique_integrity_failed}); its message names the concept and the id field only,
+     * never the other tenant or any of its data -- the caller learns nothing beyond "this UUID,
+     * which you supplied, is taken".
+     *
+     * <p>Check-then-act: a concurrent create of the same id under another tenant between this
+     * probe and the upsert is not excluded by a lock. The probe runs on the same connection as the
+     * write (and therefore inside the caller's transaction when one is active, see
+     * {@link #openConnection}), which narrows but does not close the window; closing it needs a
+     * (tenant_id, id) key or a tenant-guarded upsert per dialect. Plain portable SQL -- no dialect
+     * method needed.
+     */
+    private void refuseIdOwnedByAnotherTenant(
+            Connection connection, ConceptShape shape, ConceptRecord record, TableColumns columns
+    ) throws SQLException {
+        if (record.tenantId() == null || !columns.has("tenant_id")) {
+            return;
+        }
+        String sql = "SELECT 1 FROM " + sqlId(shape.tableName())
+                + " WHERE " + sqlId(shape.idColumn()) + " = ? AND tenant_id <> ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            bindObject(statement, 1, coerceId(record.id()));
+            bindObject(statement, 2, record.tenantId());
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    throw new ConceptStoreUniqueViolationException(record.conceptName(), null, List.of("id"));
+                }
+            }
         }
     }
 

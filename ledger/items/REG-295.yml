@@ -3,9 +3,9 @@ title: >-
   A create (POST) carrying a caller-supplied id that belongs to another tenant overwrites that tenant's row and moves it into the caller's tenant
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-10-23
-closed: null
+closed: 2026-10-23
 source: >-
   Read-only audit of generated-CRUD tenant isolation (2026-10-23). Every read/update/delete/restore/bond path is
   tenant-filtered; this create path is the one exception. Upsert keying confirmed by reading
@@ -25,6 +25,11 @@ resolution: >-
   Done when a create whose id already exists in another tenant is refused (a generic conflict that reveals nothing
   beyond the UUID the caller supplied) and never rewrites that row, on every engine path (native upsert, MySQL
   two-step, row_version), with a must-error test proven red at the store level, plus a gateway/HTTP-level test.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/JdbcBusinessConceptStoreCrossTenantCreateTest.java#createWithIdOwnedByAnotherTenantIsRefusedOnTheVersionedPath
+  asserts: a save of an id already held by tenant-b, made as tenant-a, throws ConceptStoreUniqueViolationException whose message names neither tenant-b nor its data; tenant-b's row keeps its name and tenant_id (raw SELECT), tenant-a findById is empty. Siblings in the same class cover the unversioned path, another tenant's soft-deleted row, and the controls (same-tenant re-save, fresh-id create).
+  provenRed: true
 note: >-
   2026-10-23: filed. Candidate fixes: refuse in the store's create path when the id exists under another tenant
   (dialect-free, one choke point); or tenant-guard the upsert's UPDATE branch per dialect; or a (tenant_id, id) PK
@@ -54,3 +59,19 @@ note: >-
   NPDEV_PROBE_STORAGE) and run-behavior-probes.ps1 -StorageVariant h2local. Awaits a Windows T1 run:
   run-behavior-probes.ps1 -StorageVariant h2local -Only 90-cross-tenant (expect KNOWN until the store fix lands,
   then drop knownFailure), plus a default run (expect PASS + SKIP).
+  2026-10-23: FIXED. JdbcBusinessConceptStore.save now runs refuseIdOwnedByAnotherTenant before both the unversioned
+  and the row_version branch: SELECT 1 FROM <table> WHERE <id> = ? AND tenant_id <> ? (no deleted_at filter,
+  identifiers via sqlId/dialect, id bound through coerceId, same connection as the write, so inside the caller's
+  transaction when one is active) -> ConceptStoreUniqueViolationException(concept, null, [id]) -> 409
+  unique_integrity_failed; the message names neither tenant nor any data. Engine-independent (plain portable SQL,
+  check-dialect-sites PASS), so it covers native upsert, the MySQL two-step and saveVersioned alike. Check-then-act
+  without a row lock remains (comment in code; closing it fully needs a (tenant_id, id) key or a tenant-guarded
+  upsert). AggregateRuntime commit (~270/~538) writes through gateway.save -> the same store save, so it is covered by
+  construction; no separate test added. Seed (SeedDataService) also goes through save: a seed with a FIXED id applied
+  under a second tenant now fails with 409 instead of stealing tenant 1's row -- correct, but seed files that hardcode
+  ids are single-tenant by nature. Data promotion / snapshot restore / import use plain INSERT and never reach save().
+  JdbcBusinessConceptStoreCrossTenantCreateTest: 3/4 RED against HEAD (control green), 4/4 GREEN after; full
+  runtimehost-core test green. Allowlist entry a327ecda55c3 (frozenCount 656 -> 657). OPEN FOLLOW-UP: the probe
+  NPDevSamples/dsl-conformance-max/behavior-probes/90-cross-tenant-crud.json still carries knownFailure: REG-295 --
+  remove it once a Windows T1 run (run-behavior-probes.ps1 -StorageVariant h2local -Only 90-cross-tenant) proves the
+  fix (it will report the probe as unexpectedly passing until then).
