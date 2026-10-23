@@ -6,6 +6,7 @@ import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptListRequest;
 import com.npdev.kernel.concepts.ConceptReadRequest;
+import com.npdev.kernel.concepts.ConceptRecord;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import java.time.OffsetDateTime;
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import static com.npdev.runtime.support.crud.bonds.BondNamingSupport.normalizeTenantForBondCheck;
 import static com.npdev.runtime.support.crud.sqlnaming.SqlNamingSupport.columnName;
 import static com.npdev.runtime.support.crud.sqlnaming.SqlNamingSupport.existsByIdSql;
 import static com.npdev.runtime.support.crud.sqlnaming.SqlNamingSupport.tableName;
@@ -32,6 +34,10 @@ import static com.npdev.runtime.support.GeneratedCrudRuntimeSupport.readMapValue
 final class CrudReferenceLookupSupport {
     private final GeneratedCrudRuntimeSupport owner;
     private final EntityManager entityManager;
+    // The lookup names CelInvariantEngine.Lookups uses, so an INVARIANT_UNCHECKABLE names the same one.
+    private static final String CONFLICT_LOOKUP = "conflict";
+    private static final String SCOPE_LOOKUP = "scope";
+
     private ConceptGateway conceptGateway;
 
     CrudReferenceLookupSupport(GeneratedCrudRuntimeSupport owner, EntityManager entityManager) {
@@ -162,6 +168,13 @@ final class CrudReferenceLookupSupport {
         }
     }
 
+    /**
+     * REG-287: backs a REST write's conflicts()/overlapsProvider() rule. Searches only the caller's
+     * tenant -- a booking in another tenant must not block this tenant's slot -- and refuses with
+     * {@link CelInvariantEngine.LookupUnavailableException} (INVARIANT_UNCHECKABLE) when the rule names
+     * an unknown concept or field or the query fails, instead of answering "no conflict". A payload
+     * missing the resource, start or duration has nothing to collide with and is still "no conflict".
+     */
     boolean resourceHasConflict(
             String entityName,
             String resourceFieldPath,
@@ -173,108 +186,11 @@ final class CrudReferenceLookupSupport {
             Object excludeIdValue,
             Object payload
     ) {
-        if (entityName == null
-                || entityName.isBlank()
-                || resourceFieldPath == null
-                || resourceFieldPath.isBlank()
-                || startsAtFieldPath == null
-                || startsAtFieldPath.isBlank()
-                || durationMinutesFieldPath == null
-                || durationMinutesFieldPath.isBlank()) {
-            return false;
-        }
-        if (entityManager == null) {
-            return resourceHasConflictViaConceptGateway(
-                    entityName,
-                    resourceFieldPath,
-                    resourceIdValue,
-                    startsAtFieldPath,
-                    scheduledAtValue,
-                    durationMinutesFieldPath,
-                    durationMinutesValue,
-                    excludeIdValue,
-                    payload
-            );
-        }
+        CompiledConcept entity = requireLookupEntity(CONFLICT_LOOKUP, entityName);
+        requireLookupField(CONFLICT_LOOKUP, entity, resourceFieldPath);
+        requireLookupField(CONFLICT_LOOKUP, entity, startsAtFieldPath);
+        requireLookupField(CONFLICT_LOOKUP, entity, durationMinutesFieldPath);
 
-        Optional<CompiledConcept> entityOpt = findEntity(entityName);
-        if (entityOpt.isEmpty()) {
-            return false;
-        }
-        CompiledConcept entity = entityOpt.get();
-        String table = tableName(entity);
-        if (table.isBlank()) {
-            return false;
-        }
-
-        String resourceColumn = columnName(entity, resourceFieldPath);
-        String startsAtColumn = columnName(entity, startsAtFieldPath);
-        String durationColumn = columnName(entity, durationMinutesFieldPath);
-        Optional<CompiledField> idField = idField(entity);
-        if (resourceColumn.isBlank() || startsAtColumn.isBlank() || durationColumn.isBlank() || idField.isEmpty()) {
-            return false;
-        }
-        String idColumn = columnName(idField.get());
-
-        Object effectiveExcludeId = resolveConflictExcludeId(excludeIdValue, payload);
-        UUID resourceId = toUuid(resourceIdValue);
-        OffsetDateTime start = toOffsetDateTime(scheduledAtValue);
-        Integer durationMinutes = toInteger(durationMinutesValue);
-        UUID excludeId = toUuid(effectiveExcludeId);
-        if (resourceId == null || start == null || durationMinutes == null || durationMinutes <= 0) {
-            return false;
-        }
-
-        try {
-            Query query = entityManager.createNativeQuery(
-                    "SELECT " + idColumn + ", " + startsAtColumn + ", " + durationColumn + " "
-                            + "FROM " + table + " "
-                            + "WHERE CAST(" + resourceColumn + " AS VARCHAR) = :resourceId "
-                            + "  AND (:excludeId = '' OR CAST(" + idColumn + " AS VARCHAR) <> :excludeId)"
-            );
-            query.setParameter("resourceId", resourceId.toString());
-            query.setParameter("excludeId", excludeId == null ? "" : excludeId.toString());
-            List<?> rows = query.getResultList();
-            OffsetDateTime newEnd = start.plusMinutes(durationMinutes);
-            if (rows == null || rows.isEmpty()) {
-                return false;
-            }
-            for (Object row : rows) {
-                if (!(row instanceof Object[] values) || values.length < 3) {
-                    continue;
-                }
-                OffsetDateTime existingStart = toOffsetDateTime(values[1]);
-                Integer existingDuration = toInteger(values[2]);
-                if (existingStart == null || existingDuration == null || existingDuration <= 0) {
-                    continue;
-                }
-                OffsetDateTime existingEnd = existingStart.plusMinutes(existingDuration);
-                if (start.isBefore(existingEnd) && existingStart.isBefore(newEnd)) {
-                    return true;
-                }
-            }
-            return false;
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    // Conflict-detection fallback for npdev.storage.mode=in-memory, where there is no
-    // EntityManager and the resource's existing bookings live only in the ConceptGateway/ConceptStore.
-    private boolean resourceHasConflictViaConceptGateway(
-            String entityName,
-            String resourceFieldPath,
-            Object resourceIdValue,
-            String startsAtFieldPath,
-            Object scheduledAtValue,
-            String durationMinutesFieldPath,
-            Object durationMinutesValue,
-            Object excludeIdValue,
-            Object payload
-    ) {
-        if (conceptGateway == null) {
-            return false;
-        }
         Object effectiveExcludeId = resolveConflictExcludeId(excludeIdValue, payload);
         UUID resourceId = toUuid(resourceIdValue);
         OffsetDateTime start = toOffsetDateTime(scheduledAtValue);
@@ -284,80 +200,160 @@ final class CrudReferenceLookupSupport {
             return false;
         }
         OffsetDateTime newEnd = start.plusMinutes(durationMinutes);
+        if (entityManager == null) {
+            return resourceHasConflictViaConceptGateway(
+                    entity, resourceFieldPath, resourceId, startsAtFieldPath, start, durationMinutesFieldPath, newEnd, excludeId);
+        }
 
+        String table = tableName(entity);
+        Optional<CompiledField> idField = idField(entity);
+        if (table.isBlank() || idField.isEmpty()) {
+            throw unavailable(CONFLICT_LOOKUP, "entity " + entityName + " has no table or id column to search");
+        }
+        String resourceColumn = columnName(entity, resourceFieldPath);
+        String startsAtColumn = columnName(entity, startsAtFieldPath);
+        String durationColumn = columnName(entity, durationMinutesFieldPath);
+        String idColumn = columnName(idField.get());
+
+        List<?> rows;
         try {
-            ExecutionContext context = resolveCurrentCrudContext();
-            return conceptGateway.list(new ConceptListRequest(entityName, context.tenantId()), context)
-                    .stream()
-                    .anyMatch(record -> {
-                        Map<String, Object> data = record.data();
-                        if (!referenceValuesEqual(data.get(resourceFieldPath), resourceId.toString())) {
-                            return false;
-                        }
-                        UUID rowId = toUuid(data.get("id"));
-                        if (excludeId != null && excludeId.equals(rowId)) {
-                            return false;
-                        }
-                        OffsetDateTime existingStart = toOffsetDateTime(data.get(startsAtFieldPath));
-                        Integer existingDuration = toInteger(data.get(durationMinutesFieldPath));
-                        if (existingStart == null || existingDuration == null || existingDuration <= 0) {
-                            return false;
-                        }
-                        OffsetDateTime existingEnd = existingStart.plusMinutes(existingDuration);
-                        return start.isBefore(existingEnd) && existingStart.isBefore(newEnd);
-                    });
-        } catch (Exception ignored) {
+            Query query = entityManager.createNativeQuery(
+                    "SELECT " + idColumn + ", " + startsAtColumn + ", " + durationColumn + " "
+                            + "FROM " + table + " "
+                            + "WHERE CAST(" + resourceColumn + " AS VARCHAR) = :resourceId "
+                            + "  AND tenant_id = :tenantId "
+                            + "  AND (:excludeId = '' OR CAST(" + idColumn + " AS VARCHAR) <> :excludeId)"
+            );
+            query.setParameter("resourceId", resourceId.toString());
+            query.setParameter("tenantId", callerTenant());
+            query.setParameter("excludeId", excludeId == null ? "" : excludeId.toString());
+            rows = query.getResultList();
+        } catch (RuntimeException failure) {
+            throw unavailable(CONFLICT_LOOKUP, "searching " + table + " failed: " + failure.getMessage());
+        }
+        if (rows == null) {
             return false;
         }
+        for (Object row : rows) {
+            if (!(row instanceof Object[] values) || values.length < 3) {
+                continue;
+            }
+            if (overlaps(start, newEnd, values[1], values[2])) {
+                return true;
+            }
+        }
+        return false;
     }
 
+    // Conflict-detection fallback for npdev.storage.mode=in-memory, where there is no
+    // EntityManager and the resource's existing bookings live only in the ConceptGateway/ConceptStore.
+    private boolean resourceHasConflictViaConceptGateway(
+            CompiledConcept entity,
+            String resourceFieldPath,
+            UUID resourceId,
+            String startsAtFieldPath,
+            OffsetDateTime start,
+            String durationMinutesFieldPath,
+            OffsetDateTime newEnd,
+            UUID excludeId
+    ) {
+        return listViaConceptGateway(CONFLICT_LOOKUP, entity).stream().anyMatch(record -> {
+            Map<String, Object> data = record.data();
+            if (!referenceValuesEqual(data.get(resourceFieldPath), resourceId.toString())) {
+                return false;
+            }
+            UUID rowId = toUuid(data.get("id"));
+            if (excludeId != null && excludeId.equals(rowId)) {
+                return false;
+            }
+            return overlaps(start, newEnd, data.get(startsAtFieldPath), data.get(durationMinutesFieldPath));
+        });
+    }
+
+    private static boolean overlaps(OffsetDateTime start, OffsetDateTime newEnd, Object existingStartValue, Object existingDurationValue) {
+        OffsetDateTime existingStart = toOffsetDateTime(existingStartValue);
+        Integer existingDuration = toInteger(existingDurationValue);
+        if (existingStart == null || existingDuration == null || existingDuration <= 0) {
+            return false;
+        }
+        OffsetDateTime existingEnd = existingStart.plusMinutes(existingDuration);
+        return start.isBefore(existingEnd) && existingStart.isBefore(newEnd);
+    }
+
+    /**
+     * REG-287: backs a REST write's scope.exists(concept, field, value). Searches only the caller's
+     * tenant -- another tenant's row must neither satisfy the rule nor reveal that it exists -- and
+     * refuses with {@link CelInvariantEngine.LookupUnavailableException} when the concept or field is
+     * unknown (a dotted path included) or the query fails, instead of answering "not found". A null or
+     * blank expected value matches nothing and is still "not found".
+     */
     boolean scopeExists(String conceptName, String fieldPath, Object expectedValue) {
-        if (entityManager == null
-                || conceptName == null
-                || conceptName.isBlank()
-                || fieldPath == null
-                || fieldPath.isBlank()
-                || expectedValue == null) {
-            return false;
-        }
-
-        String trimmedFieldPath = fieldPath.trim();
-        if (trimmedFieldPath.contains(".") || trimmedFieldPath.contains("[") || trimmedFieldPath.contains("]")) {
-            return false;
-        }
-
-        Optional<CompiledConcept> entityOpt = findEntity(conceptName);
-        if (entityOpt.isEmpty()) {
-            return false;
-        }
-
-        CompiledConcept entity = entityOpt.get();
-        String table = tableName(entity);
-        if (table.isBlank()) {
-            return false;
-        }
-
-        String column = columnName(entity, trimmedFieldPath);
-        if (column.isBlank()) {
-            return false;
-        }
-
-        String expectedText = String.valueOf(expectedValue).trim();
+        CompiledConcept entity = requireLookupEntity(SCOPE_LOOKUP, conceptName);
+        String field = fieldPath == null ? "" : fieldPath.trim();
+        requireLookupField(SCOPE_LOOKUP, entity, field);
+        String expectedText = expectedValue == null ? "" : String.valueOf(expectedValue).trim();
         if (expectedText.isEmpty()) {
             return false;
         }
+        if (entityManager == null) {
+            return listViaConceptGateway(SCOPE_LOOKUP, entity).stream()
+                    .anyMatch(record -> referenceValuesEqual(record.data().get(field), expectedText));
+        }
 
+        String table = tableName(entity);
+        if (table.isBlank()) {
+            throw unavailable(SCOPE_LOOKUP, "entity " + conceptName + " has no table to search");
+        }
+        String column = columnName(entity, field);
         try {
             Query query = entityManager.createNativeQuery(
-                    "SELECT 1 FROM " + table + " WHERE CAST(" + column + " AS VARCHAR) = :expectedValue"
+                    "SELECT 1 FROM " + table + " WHERE CAST(" + column + " AS VARCHAR) = :expectedValue AND tenant_id = :tenantId"
             );
             query.setParameter("expectedValue", expectedText);
+            query.setParameter("tenantId", callerTenant());
             query.setMaxResults(1);
             List<?> rows = query.getResultList();
             return rows != null && !rows.isEmpty();
-        } catch (Exception ignored) {
-            return false;
+        } catch (RuntimeException failure) {
+            throw unavailable(SCOPE_LOOKUP, "searching " + table + " failed: " + failure.getMessage());
         }
+    }
+
+    // The tenant the generated service writes into tenant_id: the caller's, "default" when there is none.
+    private String callerTenant() {
+        return normalizeTenantForBondCheck(resolveCurrentCrudContext().tenantId());
+    }
+
+    private CompiledConcept requireLookupEntity(String lookup, String entityName) {
+        if (entityName == null || entityName.isBlank()) {
+            throw unavailable(lookup, "the rule names no entity");
+        }
+        return findEntity(entityName)
+                .orElseThrow(() -> unavailable(lookup, "unknown entity " + entityName));
+    }
+
+    private static void requireLookupField(String lookup, CompiledConcept entity, String fieldName) {
+        boolean declared = fieldName != null && !fieldName.isBlank() && entity.getFields().stream()
+                .anyMatch(field -> field != null && fieldName.trim().equalsIgnoreCase(field.getName()));
+        if (!declared) {
+            throw unavailable(lookup, "entity " + entity.getName() + " has no field '" + fieldName + "'");
+        }
+    }
+
+    private List<ConceptRecord> listViaConceptGateway(String lookup, CompiledConcept entity) {
+        if (conceptGateway == null) {
+            throw unavailable(lookup, "there is neither an EntityManager nor a ConceptGateway to search");
+        }
+        try {
+            ExecutionContext context = resolveCurrentCrudContext();
+            return conceptGateway.list(new ConceptListRequest(entity.getName(), context.tenantId()), context);
+        } catch (RuntimeException failure) {
+            throw unavailable(lookup, "listing " + entity.getName() + " failed: " + failure.getMessage());
+        }
+    }
+
+    private static CelInvariantEngine.LookupUnavailableException unavailable(String lookup, String reason) {
+        return new CelInvariantEngine.LookupUnavailableException(lookup, reason);
     }
 
     private Object resolveConflictExcludeId(Object excludeIdValue, Object payload) {

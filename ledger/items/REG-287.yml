@@ -3,9 +3,9 @@ title: >-
   The generated-CRUD scope.exists and conflicts() lookups query the whole table across tenants and turn any error into "not found / no conflict"
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-10-23
-closed: null
+closed: 2026-10-23
 source: >-
   Found while fixing REG-283, 2026-10-23.
 surface: NPDevKernel/adapters/runtime-support CrudReferenceLookupSupport (scopeExists, resourceHasConflict, resourceHasConflictViaConceptGateway)
@@ -19,6 +19,14 @@ detail: |
   same answer-instead-of-refuse shape REG-283 removed from the engine. Only the in-memory conflict fallback
   (resourceHasConflictViaConceptGateway) is tenant-scoped, and it also swallows errors.
   The flow path (REG-283) uses ConceptStore.existsUnique with an explicit tenant and is not affected.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/CrudReferenceLookupSupportTenantScopeTest.java#anotherTenantsRowDoesNotSatisfyScopeExists
+  asserts: >-
+    Against real H2 tables with the caller in tenant-a, a tenant-b row neither satisfies scope.exists nor blocks
+    the slot (anotherTenantsBookingDoesNotBlockTheSlot); an unknown concept, unknown or dotted field and a failing
+    query raise LookupUnavailableException naming the scope / conflict lookup instead of answering.
+  provenRed: true
 resolution: >-
   Done when the CRUD scope and conflict lookups search only the caller's tenant (ConceptStore.existsUnique /
   ConceptStore.query with the tenant the generated service already resolves), an unknown concept/field or a query
@@ -26,3 +34,13 @@ resolution: >-
   test proves a row in tenant B neither satisfies tenant A's scope.exists nor blocks tenant A's slot.
 note: >-
   2026-10-23: filed while closing REG-283.
+  2026-10-23: DONE. scopeExists and resourceHasConflict add "tenant_id = :tenantId" for the caller's tenant
+  ("default" when none -- the value the generated service writes into tenant_id, the column enforceBondTargetTenant
+  already relies on), rather than going through ConceptStore: GeneratedCrudRuntimeSupport holds no ConceptStore and the
+  predicate gives the same tenant guarantee on the EntityManager path the write already uses. An unknown entity, a
+  field the entity does not declare (dotted paths included), a table-less entity or a query/list error now raise
+  CelInvariantEngine.LookupUnavailableException (INVARIANT_UNCHECKABLE); a payload missing the value / resource /
+  start / duration still answers "not found / no conflict". In-memory mode: scope.exists used to answer false
+  unconditionally with no EntityManager; it now searches the tenant-keyed ConceptGateway like conflicts() does.
+  All four tests proven red against the old class. Not covered here: existsById / existsByAnchor (reference
+  validation) still query without a tenant and swallow errors -- the bond tenant check covers scalar references.
