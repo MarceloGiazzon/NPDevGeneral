@@ -60,7 +60,12 @@ def _packs_iter(obj: object) -> list[dict]:
     return []
 
 
-def _scan_root(root: Path, include_probes: bool, from_use: set, sat_use: set, ext_use: set) -> None:
+def _scan_root(root: Path, include_probes: bool, from_use: set, sat_use: set, ext_use: set,
+               parse_errors: list[str] | None = None) -> None:
+    """REG-299 (X0 rule): a model.json/pack.json that will not read/parse is appended to
+    `parse_errors` (main() fails on it) instead of silently skipped."""
+    if parse_errors is None:
+        parse_errors = []
     if not root.exists():
         return
 
@@ -72,7 +77,8 @@ def _scan_root(root: Path, include_probes: bool, from_use: set, sat_use: set, ex
             continue
         try:
             data = json.loads(f.read_text(encoding="utf-8-sig"))
-        except json.JSONDecodeError:
+        except (OSError, ValueError) as exc:
+            parse_errors.append(f"{f}: {exc}")
             continue
         if not isinstance(data, dict):
             continue
@@ -89,12 +95,13 @@ def _scan_root(root: Path, include_probes: bool, from_use: set, sat_use: set, ex
                 sat_use.add(rel)
 
 
-def scan(roots: list[Path], include_probes: bool) -> tuple[set[str], set[str], set[str]]:
+def scan(roots: list[Path], include_probes: bool,
+         parse_errors: list[str] | None = None) -> tuple[set[str], set[str], set[str]]:
     from_use: set[str] = set()
     sat_use: set[str] = set()
     ext_use: set[str] = set()
     for root in roots:
-        _scan_root(root, include_probes, from_use, sat_use, ext_use)
+        _scan_root(root, include_probes, from_use, sat_use, ext_use, parse_errors)
     return from_use, sat_use, ext_use
 
 
@@ -107,7 +114,14 @@ def main(argv: list[str]) -> int:
     args = ap.parse_args(argv[1:])
 
     roots = [Path(args.appgen_root), Path(args.samples_root)]
-    from_use, sat_use, ext_use = scan(roots, include_probes=args.probes)
+    parse_errors: list[str] = []
+    from_use, sat_use, ext_use = scan(roots, include_probes=args.probes, parse_errors=parse_errors)
+    if parse_errors:
+        print("FAIL: model.json/pack.json file(s) that do not read/parse as JSON -- their pack surfaces "
+              "cannot be counted, refusing to skip them (REG-299):", file=sys.stderr)
+        for err in parse_errors:
+            print(f"  - {err}", file=sys.stderr)
+        return 1
 
     # packs[].from is a REMOTE coordinate: resolving one needs a live git/OCI source at resolve time,
     # so it cannot exist as a static corpus fixture -- there are zero in NPDevSamples by construction,

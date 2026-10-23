@@ -63,8 +63,13 @@ def _digest(data: dict) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def scan(roots: list[Path], include_probes: bool) -> dict[tuple[str, str], list[tuple[str, str, str]]]:
-    """(pack name, version) -> list of (app label, rel path, digest)."""
+def scan(roots: list[Path], include_probes: bool,
+         parse_errors: list[str] | None = None) -> dict[tuple[str, str], list[tuple[str, str, str]]]:
+    """(pack name, version) -> list of (app label, rel path, digest). REG-299 (X0 rule): a pack.json
+    that will not read/parse is appended to `parse_errors` instead of silently skipped -- a corrupt
+    fork is still a fork nobody compared."""
+    if parse_errors is None:
+        parse_errors = []
     groups: dict[tuple[str, str], list[tuple[str, str, str]]] = {}
     for root in roots:
         if not root.exists():
@@ -77,7 +82,8 @@ def scan(roots: list[Path], include_probes: bool) -> dict[tuple[str, str], list[
                 continue
             try:
                 data = json.loads(pack_json.read_text(encoding="utf-8-sig"))
-            except (OSError, json.JSONDecodeError):
+            except (OSError, ValueError) as exc:
+                parse_errors.append(f"{pack_json}: {exc}")
                 continue
             if not isinstance(data, dict):
                 continue
@@ -103,7 +109,14 @@ def main(argv: list[str]) -> int:
     roots = [Path(args.samples_root), Path(args.packs_root)]
     if args.appgen_root:
         roots.append(Path(args.appgen_root))
-    groups = scan(roots, include_probes=args.probes)
+    parse_errors: list[str] = []
+    groups = scan(roots, include_probes=args.probes, parse_errors=parse_errors)
+    if parse_errors:
+        print("FAIL: pack.json file(s) that do not read/parse as JSON -- cannot be compared, refusing "
+              "to skip them (REG-299):", file=sys.stderr)
+        for err in parse_errors:
+            print(f"  - {err}", file=sys.stderr)
+        return 1
 
     print(f"Pack shared-not-forked check: roots={[str(r) for r in roots]}, probes={'on' if args.probes else 'off'}\n")
 

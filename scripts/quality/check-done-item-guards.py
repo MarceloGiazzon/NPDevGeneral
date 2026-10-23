@@ -51,11 +51,15 @@ R4  HISTORY-ANCHORED RATCHET.  R1 says the legacy list is "shrink-only", but com
     item did not exist at the merge-base at all, or existed but was not yet `DONE`, or already had a
     guard, is newly-manufactured debt laundered through the freeze list and FAILS. `frozenCount` is
     also required to equal `len(legacy.ids)` exactly, so the ceiling can never be pre-raised
-    independent of the ids actually declared. If no merge-base can be resolved (no network, no `origin`
-    remote, a shallow/detached checkout with no history) R4 is SKIPPED for that run, not failed --
-    same "no baseline, nothing to compare" convention `check-pack-diff-gate.py` already established;
-    this repo's own CI (`fetch-depth: 0` in `.github/workflows/ai-knowledge-gate.yml`) does not hit
-    that case.
+    independent of the ids actually declared. REG-296 (X0 rule): this repo commits straight to
+    `main` and CI runs on push to `main`, where origin/main == HEAD, so the merge-base WAS HEAD and a
+    laundered id committed in the pushed commit was its own baseline -- R4 passed vacuously. The
+    baseline now comes from `resolve_baseline()` (twin of `check-pack-diff-gate.py`'s): `--base <rev>`
+    (default env NPDEV_BASELINE_REV, which ai-knowledge-gate.yml exports as the push's `before` sha;
+    all-zeros = not given), else the merge-base with `@{push}` / `origin/main` that differs from HEAD.
+    No baseline, or a baseline that IS HEAD, is a blocking finding unless `--no-baseline-ok` is given
+    (run-ai-knowledge-gate.ps1 passes it only outside CI, where a fully-pushed tree's uncommitted edits
+    against HEAD are a real comparison; with no baseline at all R4 is then skipped, loudly).
 
 HONEST LIMIT -- kind: manual guards
 ------------------------------------
@@ -92,6 +96,7 @@ import argparse
 import bisect
 import glob
 import json
+import os
 import re
 import subprocess
 import sys
@@ -313,9 +318,9 @@ def load_policy(path: Path) -> dict:
 # --------------------------------------------------------------------------------------------------
 
 def resolve_merge_base(root: Path, base_ref: str = "origin/main") -> str | None:
-    """The commit this checkout diverged from `origin/main`, or None if it cannot be determined --
-    mirrors `check-pack-diff-gate.py`'s own `resolve_merge_base()` exactly (best-effort fetch first;
-    a failed fetch still leaves a possibly-stale `origin/main` to try against rather than aborting)."""
+    """Raw `git merge-base HEAD <base_ref>` (best-effort fetch first), or None. Used only by
+    calibrate()'s fixtures -- main() resolves its baseline with resolve_baseline() (REG-296), which
+    refuses a baseline that IS HEAD instead of passing vacuously."""
     try:
         subprocess.run(["git", "fetch", "origin", "main"], cwd=str(root),
                         capture_output=True, text=True, timeout=60)
@@ -326,6 +331,43 @@ def resolve_merge_base(root: Path, base_ref: str = "origin/main") -> str | None:
     if result.returncode != 0:
         return None
     return result.stdout.strip() or None
+
+
+ZERO_SHA_RE = re.compile(r"^0+$")
+
+
+def _git_out(root: Path, *args: str) -> str | None:
+    try:
+        result = subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def resolve_baseline(root: Path, explicit_base: str | None) -> tuple[str | None, str | None, str]:
+    """(baseline sha or None, HEAD sha or None, how it was chosen). REG-296 -- twin of
+    check-pack-diff-gate.py's resolve_baseline(); keep the two in step."""
+    head = _git_out(root, "rev-parse", "HEAD")
+    explicit = (explicit_base or "").strip()
+    if explicit and not ZERO_SHA_RE.match(explicit):
+        base = _git_out(root, "merge-base", "HEAD", explicit)
+        if base is None:
+            return None, head, f"--base {explicit} does not resolve to a commit sharing history with HEAD"
+        return base, head, f"merge-base with --base {explicit[:12]}"
+    _git_out(root, "fetch", "origin", "main")
+    saw_head = False
+    for ref in ("@{push}", "origin/main"):
+        base = _git_out(root, "merge-base", "HEAD", ref)
+        if base is None:
+            continue
+        if base != head:
+            return base, head, f"merge-base with {ref}"
+        saw_head = True
+    if saw_head:
+        return head, head, "every candidate baseline (@{push}, origin/main) IS HEAD"
+    return None, head, "no baseline resolvable (no --base, no @{push}, no origin/main)"
 
 
 def git_show(root: Path, rev: str, rel_path: str) -> str | None:
@@ -746,7 +788,8 @@ def calibrate() -> int:
             report("frozenCount not equal to len(legacy.ids) MUST fire even with no id added",
                    bool(r4(mismatch_policy)), True)
 
-            report("merge-base unresolved (None) MUST skip R4 silently, not fail",
+            report("check_history_anchored_ratchet(None) adds nothing itself (main() owns the "
+                   "REG-296 no-baseline refusal)",
                    bool(check_history_anchored_ratchet(attack_policy, root, None)), False)
 
     print("\nCalibration -- against the REAL ledger and policy:")
@@ -775,6 +818,11 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--calibrate", action="store_true", help="run the required controls and exit")
+    parser.add_argument("--base", default=os.environ.get("NPDEV_BASELINE_REV") or None,
+                        help="R4 baseline revision (default: env NPDEV_BASELINE_REV; CI passes the push's "
+                             "`before` sha). An all-zeros sha counts as not given.")
+    parser.add_argument("--no-baseline-ok", action="store_true",
+                        help="R4: do not fail when no baseline resolves or the only one IS HEAD (local runs only)")
     args = parser.parse_args(argv)
 
     if args.calibrate:
@@ -788,8 +836,20 @@ def main(argv: list[str]) -> int:
         return 2
 
     policy = load_policy(POLICY_PATH)
-    merge_base = resolve_merge_base(REPO_ROOT)
+    merge_base, head, how = resolve_baseline(REPO_ROOT, args.base)
+    baseline_refusal = None
+    if merge_base is None or merge_base == head:
+        if args.no_baseline_ok:
+            how = f"{how} -- allowed by --no-baseline-ok" + ("" if merge_base else "; R4 SKIPPED")
+        else:
+            baseline_refusal = (
+                f"NO BASELINE (R4): {how}. Comparing the freeze list against HEAD itself cannot see an id "
+                f"laundered in the commit being checked (REG-296). Pass --base <rev> (CI exports "
+                f"NPDEV_BASELINE_REV), or --no-baseline-ok for a local run.")
+            merge_base = None
     findings = evaluate(items, policy, REPO_ROOT, merge_base)
+    if baseline_refusal:
+        findings.append(baseline_refusal)
 
     done = sum(1 for i in items if i.get("status") == "DONE")
     guarded = sum(1 for i in items if i.get("guard"))
@@ -797,8 +857,7 @@ def main(argv: list[str]) -> int:
     print("Falsifiable-DONE guard check (scripts/policy/done-item-guard-policy.json)")
     print(f"  ledger items: {len(items)} | DONE: {done} | with guard: {guarded} | "
           f"legacy frozen at: {frozen} (may only shrink)")
-    print(f"  R4 history anchor: merge-base with origin/main = "
-          f"{merge_base[:12] if merge_base else 'UNRESOLVED (R4 skipped this run)'}")
+    print(f"  R4 history anchor: {merge_base[:12] if merge_base else 'NONE'} ({how})")
     for f in findings:
         print(f"  {f}")
     print(f"\n{len(findings)} blocking finding(s).")

@@ -3388,9 +3388,9 @@ def _check_remote_ci_status(branch: str = "main", lookback: int = 20) -> dict:
     2026-08-05 (12 days, including nightly scheduled runs on `main`) while local T2 stayed green
     throughout, because nothing connected the two. Queries the live GitHub Actions run history for
     `branch` so `verify --tier T2/T3` can never again report a green local run while the same
-    branch's remote CI is red. Best-effort: any network failure marks `checked: false` rather than
-    failing the whole `verify` call -- an offline `verify` is still a real local claim, just not
-    one that could cross-check the remote signal that day.
+    branch's remote CI is red. Any network/HTTP failure or empty run list marks `checked: false`
+    with a `reason` -- and REG-297: run_verify() treats unchecked as NOT ok (see
+    _remote_ci_verdict); only an explicit `--offline` waives the cross-check.
     """
     import urllib.error
     import urllib.request
@@ -3403,12 +3403,15 @@ def _check_remote_ci_status(branch: str = "main", lookback: int = 20) -> dict:
     try:
         with urllib.request.urlopen(request, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, OSError, ValueError):
-        return {"checked": False, "branch": branch}
+    except urllib.error.HTTPError as exc:
+        return {"checked": False, "branch": branch, "reason": f"GitHub API answered HTTP {exc.code} for {url}"}
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        return {"checked": False, "branch": branch, "reason": f"could not query {url}: {exc}"}
 
-    runs = data.get("workflow_runs", [])
+    runs = data.get("workflow_runs", []) if isinstance(data, dict) else []
     if not runs:
-        return {"checked": False, "branch": branch}
+        return {"checked": False, "branch": branch,
+                "reason": f"no {_CI_VALIDATION_WORKFLOW_FILE} runs found on {branch}"}
 
     latest = runs[0]
     conclusion = latest.get("conclusion")
@@ -3427,6 +3430,25 @@ def _check_remote_ci_status(branch: str = "main", lookback: int = 20) -> dict:
         "latestRunUrl": latest.get("html_url"),
         "failingSince": failing_since,
     }
+
+
+def _remote_ci_verdict(remote_ci: dict | None, offline: bool) -> tuple[bool, str | None]:
+    """REG-297 (X0 rule -- refuse, never guess): (ok, message). An UNCHECKED remote CI is not green:
+    a 403, an unreachable api.github.com or an empty run list used to leave verify's remote_ci_ok at
+    True, so `npdev verify --tier T2/T3` claimed a Move/release-ready verdict nobody cross-checked.
+    Only `--offline` waives it, and says so."""
+    if remote_ci is None:
+        return True, None
+    if remote_ci.get("checked"):
+        if remote_ci.get("latestConclusion") == "success":
+            return True, None
+        return False, (f"REMOTE CI ON {remote_ci.get('branch', 'main')}: FAILING since "
+                       f"{remote_ci.get('failingSince')} -- {remote_ci.get('latestRunUrl')}")
+    reason = remote_ci.get("reason") or "remote CI could not be checked"
+    if offline:
+        return True, f"REMOTE CI NOT CHECKED (--offline): {reason}"
+    return False, (f"REMOTE CI UNVERIFIED: {reason}. An unchecked remote CI is not green -- fix access "
+                   f"or pass --offline to make a local-only claim.")
 
 
 def run_setup(args: argparse.Namespace) -> int:
@@ -10163,15 +10185,15 @@ def run_verify(args: argparse.Namespace) -> dict:
     # CI_RED_PLAN.md I3: T2/T3 are the tiers used to claim "closing a Move" / "release-ready" --
     # exactly the claims that stayed green locally for 12 days while main's own scheduled CI run
     # was red. Cross-check it here so that claim can no longer be made without also being true.
-    remote_ci = _check_remote_ci_status() if tier in ("T2", "T3") else None
-    remote_ci_ok = True
-    if remote_ci is not None and remote_ci.get("checked"):
-        remote_ci_ok = remote_ci.get("latestConclusion") == "success"
-        if not remote_ci_ok:
-            print(
-                f"REMOTE CI ON main: FAILING since {remote_ci.get('failingSince')} -- {remote_ci.get('latestRunUrl')}",
-                file=sys.stderr,
-            )
+    offline = bool(getattr(args, "offline", False))
+    if tier in ("T2", "T3"):
+        remote_ci = ({"checked": False, "branch": "main", "reason": "skipped by --offline"} if offline
+                     else _check_remote_ci_status())
+    else:
+        remote_ci = None
+    remote_ci_ok, remote_ci_message = _remote_ci_verdict(remote_ci, offline)
+    if remote_ci_message:
+        print(remote_ci_message, file=sys.stderr)
 
     return {
         "ok": exit_code == 0 and cadence_passed and remote_ci_ok,
@@ -17702,6 +17724,9 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--timeout-seconds", type=int, default=0,
                          help="--run only: timeout for the controlled runner, capped by its own "
                               "policy maximum.")
+    verify.add_argument("--offline", action="store_true",
+                         help="T2/T3: do not cross-check main's remote CI. Without it, a remote CI that "
+                              "cannot be checked (offline, HTTP 403, no runs) fails the tier claim.")
     verify.add_argument("--model-path", help="T0/T1: the model.json currently being edited.")
     verify.add_argument("--dsl-test-filter", help="T0/T1: --tests filter for gradlew :NPDevContract:dsl:test.")
     verify.add_argument("--generate-reports", action="store_true",

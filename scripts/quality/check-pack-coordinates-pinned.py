@@ -60,11 +60,15 @@ def _repo_root(explicit: str | None) -> Path:
     )
 
 
-def extract_from_coordinates(root: Path) -> list[dict]:
+def extract_from_coordinates(root: Path, parse_errors: list[dict] | None = None) -> list[dict]:
     """Walk the repo finding every `from` field in model.json and pack.json files.
 
-    Returns a list of dicts with keys: file, path, coordinate.
+    Returns a list of dicts with keys: file, path, coordinate. REG-299 (X0 rule): a model.json /
+    pack.json that will not read or parse is appended to `parse_errors` (file, error) -- it used to
+    be skipped, so a truncated file's mutable coordinates were simply never looked at.
     """
+    if parse_errors is None:
+        parse_errors = []
     findings = []
     # Scan model.json files (app-level packs[].from)
     for model_file in root.rglob("model.json"):
@@ -73,8 +77,9 @@ def extract_from_coordinates(root: Path) -> list[dict]:
         if any(part.startswith((".", "build", "node_modules")) for part in rel.parts):
             continue
         try:
-            data = json.loads(model_file.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+            data = json.loads(model_file.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError) as exc:
+            parse_errors.append({"file": str(rel).replace("\\", "/"), "error": str(exc)})
             continue
         if not isinstance(data, dict):
             continue
@@ -95,8 +100,9 @@ def extract_from_coordinates(root: Path) -> list[dict]:
         if any(part.startswith((".", "build", "node_modules")) for part in rel.parts):
             continue
         try:
-            data = json.loads(pack_file.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+            data = json.loads(pack_file.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError) as exc:
+            parse_errors.append({"file": str(rel).replace("\\", "/"), "error": str(exc)})
             continue
         if not isinstance(data, dict) or "pack" not in data:
             continue  # not a real pack.json
@@ -144,7 +150,17 @@ def classify_coordinate(coord: str) -> str:
 
 def check(root: Path) -> list[dict]:
     problems: list[dict] = []
-    coordinates = extract_from_coordinates(root)
+    parse_errors: list[dict] = []
+    coordinates = extract_from_coordinates(root, parse_errors)
+    for err in parse_errors:
+        problems.append({
+            "kind": "unparseable",
+            "file": err["file"],
+            "path": "/",
+            "coordinate": None,
+            "message": (f"'{err['file']}' does not read/parse as JSON ({err['error']}) -- its `from` "
+                        f"coordinates cannot be checked, so this is a finding, not a skip (REG-299)."),
+        })
 
     for entry in coordinates:
         classification = classify_coordinate(entry["coordinate"])

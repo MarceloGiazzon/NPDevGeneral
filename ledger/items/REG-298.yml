@@ -1,0 +1,27 @@
+id: REG-298
+title: >-
+  npdev probe fell back to port 8080 when resolved-db-plan.json was missing, corrupt or had no serverPort
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-10-23
+closed: 2026-10-23
+source: >-
+  X0-rule read-only audit of the Python gates, 2026-10-23.
+surface: NPDevCli/npdev_probe.py _resolve_final_app
+detail: |
+  _read_json swallowed every exception into {}, and `int(plan.get("serverPort") or 0) or 8080` then probed
+  whatever app listened on 8080 and attributed its coverage to this one. OperationalRunbookEmitter always writes
+  serverPort into the plan, so its absence is never a legitimate default.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_probe.py#test_corrupt_plan_is_a_probe_error_not_port_8080
+  asserts: >-
+    A truncated plan, a plan without serverPort and a missing plan each raise ProbeError; a valid plan's port is
+    returned.
+  provenRed: true
+resolution: >-
+  Done when an unusable plan is a ProbeError instead of port 8080.
+note: >-
+  2026-10-23: DONE. New _read_plan() raises ProbeError on missing / unreadable / non-object / no valid
+  serverPort (1-65535). _read_json is kept for the probe's own active-state file. Red against HEAD.

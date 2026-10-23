@@ -196,5 +196,44 @@ class EnvironmentDiscoveryTest(unittest.TestCase):
             self.assertIsNone(npdev_probe.find_agent_dist_jar())
 
 
+class ResolvedDbPlanRefusalTest(unittest.TestCase):
+    """REG-298 (X0 rule): a missing/corrupt plan, or one with no serverPort, must not become port 8080."""
+
+    def _app(self, tmp: str, plan_text: str | None) -> Path:
+        app = Path(tmp)
+        (app / "App" / "build" / "libs").mkdir(parents=True)
+        (app / "_ops").mkdir()
+        if plan_text is not None:
+            (app / "_ops" / "resolved-db-plan.json").write_text(plan_text, encoding="utf-8")
+        return app
+
+    def test_corrupt_plan_is_a_probe_error_not_port_8080(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp, '{"serverPort": 81')
+            with self.assertRaises(npdev_probe.ProbeError):
+                npdev_probe._resolve_final_app(app)
+
+    def test_plan_without_server_port_is_a_probe_error(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp, '{"engine": "h2"}')
+            with self.assertRaises(npdev_probe.ProbeError):
+                npdev_probe._resolve_final_app(app)
+
+    def test_missing_plan_is_a_probe_error(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp, None)
+            with self.assertRaises(npdev_probe.ProbeError):
+                npdev_probe._resolve_final_app(app)
+
+    def test_valid_plan_port_is_used(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp, '{"serverPort": 8123}')
+            self.assertEqual(npdev_probe._resolve_final_app(app)[1], 8123)
+
+
 if __name__ == "__main__":
     unittest.main()

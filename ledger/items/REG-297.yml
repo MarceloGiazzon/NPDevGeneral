@@ -1,0 +1,28 @@
+id: REG-297
+title: >-
+  npdev verify --tier T2/T3 treated an unreachable or 403 remote CI as green
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-10-23
+closed: 2026-10-23
+source: >-
+  X0-rule read-only audit of the Python gates, 2026-10-23.
+surface: NPDevCli/npdev_cli.py _check_remote_ci_status / run_verify
+detail: |
+  _check_remote_ci_status returned checked:false on any URLError/HTTPError/empty run list and run_verify
+  started from remote_ci_ok = True, only lowering it for a checked, failing run -- so a rate-limited or
+  offline verify claimed T2/T3 green without the remote cross-check the tier exists for.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_x0_refusals.py#test_http_403_is_not_ok
+  asserts: >-
+    With the gate and cadence subprocesses faked green and urlopen raising HTTPError 403, run_verify(T2) returns
+    ok false with remoteCi.checked false; with --offline it returns ok true.
+  provenRed: true
+resolution: >-
+  Done when an unchecked remote CI blocks the tier claim unless --offline is passed.
+note: >-
+  2026-10-23: DONE. New _remote_ci_verdict(): unchecked is not ok and prints "REMOTE CI UNVERIFIED: <reason>";
+  `npdev verify --offline` waives it and says so. _check_remote_ci_status now records a reason (HTTP code,
+  network error, no runs). Red against HEAD (ok was true).

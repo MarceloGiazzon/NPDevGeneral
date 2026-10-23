@@ -1,0 +1,28 @@
+id: REG-299
+title: >-
+  Three pack checkers silently skipped a model.json/pack.json that would not parse
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-10-23
+closed: 2026-10-23
+source: >-
+  X0-rule read-only audit of the Python gates, 2026-10-23.
+surface: >-
+  scripts/quality/check-pack-coordinates-pinned.py, check-pack-shared-not-forked.py, check-pack-coverage.py
+detail: |
+  Each caught the JSON parse error and `continue`d, so a truncated model.json's mutable `from` coordinate, or a
+  corrupt forked pack.json, was never looked at and the checker reported OK.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_x0_refusals.py#test_coordinates_pinned_fails_on_truncated_model_json
+  asserts: >-
+    A truncated model.json / pack.json under a temp root makes check-pack-coordinates-pinned,
+    check-pack-shared-not-forked and check-pack-coverage each exit non-zero.
+  provenRed: true
+resolution: >-
+  Done when an unparseable model.json/pack.json is a finding in all three.
+note: >-
+  2026-10-23: DONE. Parse/read errors (OSError, ValueError incl. UnicodeDecodeError) are collected and fail the
+  run; coordinates-pinned now reads utf-8-sig like the other two. All three still exit 0 on the real repo. Red
+  against HEAD.

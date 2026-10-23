@@ -786,7 +786,13 @@ try {
     # the checker's own module docstring for the RED-proven reasoning. A branch that never touches
     # either pack.json (the common case) always passes trivially.
     Write-Host "[35/39] Checking every built-in pack's own branch-relative change has a correctly-sized version bump..."
-    & $py "scripts/quality/check-pack-diff-gate.py"
+    # REG-296: the baseline must not be HEAD itself. CI exports NPDEV_BASELINE_REV (the push's
+    # `before` sha / the PR base) and the checker refuses without one; a local run may legitimately
+    # sit on a fully-pushed main (origin/main == HEAD, uncommitted edits compared against HEAD), so
+    # only outside CI is --no-baseline-ok passed.
+    $baselineArgs = @()
+    if ($env:CI -ne 'true') { $baselineArgs += '--no-baseline-ok' }
+    & $py "scripts/quality/check-pack-diff-gate.py" @baselineArgs
     if ($LASTEXITCODE -ne 0) {
         $failures += "a built-in pack changed on this branch without a correctly-sized version bump: see scripts/quality/check-pack-diff-gate.py output above -- bump the version (major for a BREAKING change, minor for ADDITIVE, patch for PATCH-only), then `npdev pack publish <old> <new> --write` to also stamp the empty migrations chain entry"
     }
@@ -813,7 +819,10 @@ try {
     # ($script:GateSteps + a Write-Step helper, instead of hand-typed literals like this one) is R11's
     # own explicitly deferred follow-up, not redone here.
     Write-Host "[37/39] Checking every DONE ledger item's DONE claim is falsifiable..."
-    & $py "scripts/quality/check-done-item-guards.py"
+    # REG-296: same baseline rule as check-pack-diff-gate.py above.
+    $baselineArgs = @()
+    if ($env:CI -ne 'true') { $baselineArgs += '--no-baseline-ok' }
+    & $py "scripts/quality/check-done-item-guards.py" @baselineArgs
     if ($LASTEXITCODE -ne 0) {
         $failures += "a ledger item's falsifiable-DONE guard is missing or unresolvable: see scripts/quality/check-done-item-guards.py output above, and scripts/policy/done-item-guard-policy.json"
     }

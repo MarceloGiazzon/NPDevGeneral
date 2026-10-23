@@ -157,12 +157,37 @@ def _read_json(path: Path) -> dict:
         return {}
 
 
+def _read_plan(plan_path: Path) -> dict:
+    """REG-298 (X0 rule -- refuse, never guess): the generator ALWAYS writes serverPort into
+    _ops/resolved-db-plan.json (OperationalRunbookEmitter). A missing, unreadable or corrupt plan, or one
+    without a valid serverPort, used to become {} -> port 8080, so the probe dumped coverage from
+    whatever app happened to listen there and attributed it to this one."""
+    try:
+        plan = json.loads(plan_path.read_text(encoding="utf-8-sig"))
+    except FileNotFoundError:
+        raise ProbeError(f"no {plan_path} -- not a generated app, or generate it first "
+                         "(the probe takes the app's port from this plan).") from None
+    except (OSError, ValueError) as exc:
+        raise ProbeError(f"{plan_path} is unreadable or not valid JSON ({exc}) -- regenerate the app; "
+                         "refusing to guess its port.") from exc
+    if not isinstance(plan, dict):
+        raise ProbeError(f"{plan_path} is not a JSON object -- regenerate the app; refusing to guess its port.")
+    port = plan.get("serverPort")
+    if isinstance(port, str) and port.strip().isdigit():
+        port = int(port.strip())
+    if isinstance(port, bool) or not isinstance(port, int) or not 0 < port < 65536:
+        raise ProbeError(f"{plan_path} has no valid serverPort ({plan.get('serverPort')!r}) -- regenerate "
+                         "the app; refusing to guess its port.")
+    plan["serverPort"] = port
+    return plan
+
+
 def _resolve_final_app(app_dir: Path) -> tuple[Path, int]:
     """(finalAppRoot, port). Identified by CONTENTS, never by name (monitor's REG-144 discipline):
     the plan names finalAppPath/appRoot; given an App module directory, its parent hosts _ops."""
     app_dir = app_dir.expanduser().resolve()
-    plan = _read_json(app_dir / "_ops" / "resolved-db-plan.json")
-    port = int(plan.get("serverPort") or 0) or 8080
+    plan = _read_plan(app_dir / "_ops" / "resolved-db-plan.json")
+    port = plan["serverPort"]
     declared = plan.get("finalAppPath") or plan.get("appRoot")
     if isinstance(declared, str) and declared.strip():
         candidate = Path(declared.strip()).expanduser()

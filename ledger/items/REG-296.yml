@@ -1,0 +1,33 @@
+id: REG-296
+title: >-
+  check-pack-diff-gate.py and check-done-item-guards.py R4 compared HEAD to itself on every push to main
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-10-23
+closed: 2026-10-23
+source: >-
+  X0-rule read-only audit of the Python gates, 2026-10-23.
+surface: scripts/quality/check-pack-diff-gate.py, scripts/quality/check-done-item-guards.py (R4)
+detail: |
+  Both took their baseline from `git merge-base HEAD origin/main`. This repo commits straight to main and
+  ai-knowledge-gate.yml runs on push to main, where origin/main == HEAD: every built-in pack compared equal to
+  itself (pass), and an id laundered into done-item-guard-policy.json's legacy list in the pushed commit was its
+  own baseline (pass). An unresolvable merge-base was "skipped, not a failure".
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_x0_refusals.py#test_origin_main_equal_to_head_refuses_instead_of_passing
+  asserts: >-
+    In a temp git repo whose origin/main == HEAD, a committed pack change without a version bump makes
+    check-pack-diff-gate exit non-zero, and a committed laundered legacy id makes check-done-item-guards exit
+    non-zero; with --base <first commit> R4 names the laundered id; an all-zeros base is not a baseline.
+  provenRed: true
+resolution: >-
+  Done when both checkers take a baseline that is meaningful on main and refuse when it is missing or IS HEAD.
+note: >-
+  2026-10-23: DONE. Twin resolve_baseline() in both: --base <rev> (default env NPDEV_BASELINE_REV; all-zeros =
+  not given) as merge-base HEAD <rev>, else the merge-base with @{push} then origin/main that differs from HEAD.
+  None, or a baseline equal to HEAD, fails unless --no-baseline-ok. ai-knowledge-gate.yml gains a "Resolve diff
+  baseline" step exporting NPDEV_BASELINE_REV (PR base sha / push before sha / HEAD^ for dispatch or a new ref;
+  fetch-depth 0 already). run-ai-knowledge-gate.ps1 passes --no-baseline-ok only when $env:CI is not 'true'.
+  Red against HEAD (both exited 0).

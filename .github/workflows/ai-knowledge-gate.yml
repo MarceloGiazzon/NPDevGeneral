@@ -93,6 +93,25 @@ jobs:
           chmod +x NPDevKernel/gradlew NPDevGenerator/gradlew NPDevRuntimeHost/gradlew 2>/dev/null || true
           pwsh -NoProfile -File scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars
 
+      # REG-296: check-pack-diff-gate.py and check-done-item-guards.py diff against a baseline. On a
+      # push to main origin/main == HEAD, so the old merge-base-with-origin/main baseline was HEAD and
+      # both passed vacuously. Export the real start of the pushed range; a new ref's `before` is all
+      # zeros, and workflow_dispatch has none -- fall back to HEAD^ (the last commit's own diff). The
+      # checkers refuse (fail) when this is missing or resolves to HEAD. fetch-depth: 0 above keeps
+      # the sha reachable.
+      - name: Resolve diff baseline
+        shell: bash
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          base=""
+          if [ -n "$PR_BASE" ]; then base="$PR_BASE"
+          elif [ -n "$PUSH_BEFORE" ] && ! [[ "$PUSH_BEFORE" =~ ^0+$ ]]; then base="$PUSH_BEFORE"
+          else base="$(git rev-parse HEAD^)"; fi
+          echo "NPDEV_BASELINE_REV=$base" >> "$GITHUB_ENV"
+          echo "diff baseline: $base"
+
       - name: Run AI knowledge gate
         shell: pwsh
         run: pwsh -NoProfile -File scripts/quality/run-ai-knowledge-gate.ps1

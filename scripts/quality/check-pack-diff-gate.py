@@ -26,13 +26,23 @@ BRANCH did wrong to report. A merge-base-relative comparison asks the right ques
 never touches either pack.json (the overwhelming common case) always gets a trivial pass, and the
 old pre-enforcement drift stops being anyone's problem to fix.
 
-Trivial-pass cases, by design (never a false red):
-  - The pack's content at the merge-base is byte-identical to the current working tree (this
-    branch never touched the pack -- the common case on nearly every run).
-  - The merge-base itself, or origin/main, cannot be resolved at all (no network, no origin remote,
-    a shallow/detached checkout with no history) -- there being no established baseline to diff
-    against is the same "nothing to compare" case the PK-4 card's own test plan describes, not a
-    failure of the pack.
+Trivial-pass case, by design (never a false red):
+  - The pack's content at the baseline is byte-identical to the current working tree (this
+    change never touched the pack -- the common case on nearly every run).
+
+REG-296 (X0 rule -- refuse, never guess): this repo commits straight to `main` and CI runs on push to
+`main`, where origin/main == HEAD -- so `git merge-base HEAD origin/main` was HEAD itself, every pack
+compared equal to itself, and the gate passed vacuously on exactly the runs that mattered. The
+baseline is now resolved by `resolve_baseline()`:
+  1. `--base <rev>` (default: env NPDEV_BASELINE_REV; an all-zeros sha -- a new ref's `before` -- counts
+     as not given). ai-knowledge-gate.yml exports `github.event.before` on push and the PR base sha on
+     pull_request. Used as `git merge-base HEAD <rev>`; an unresolvable rev is a refusal.
+  2. Otherwise the merge-base with `@{push}`, then `origin/main`, taking the first that differs from HEAD.
+When no baseline can be resolved, or the only one resolved IS HEAD, the gate FAILS -- unless
+`--no-baseline-ok` is given, which run-ai-knowledge-gate.ps1 passes only outside CI (a local run
+before push has origin/main != HEAD and gets a real baseline anyway; a fully-pushed local tree
+compares its uncommitted edits against HEAD, which is meaningful there and never in CI, whose working
+tree IS HEAD).
 
 Mirrors validate-corpus.py's own established shape: calls gradlew directly (not a nested pwsh
 wrapper -- see that script's docstring for why the nested route mangles -P... arguments), and passes
@@ -44,12 +54,15 @@ Exit 0 when every pack's own branch-relative change (if any) carried a correctly
 
     python scripts/quality/check-pack-diff-gate.py
     python scripts/quality/check-pack-diff-gate.py --json pack-diff-gate-report.json
+    python scripts/quality/check-pack-diff-gate.py --base <sha>          # CI: the pushed range's start
+    python scripts/quality/check-pack-diff-gate.py --no-baseline-ok      # local: allow HEAD / no baseline
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -77,20 +90,43 @@ def project_cache_dir() -> Path:
     return external_root / "gradle-cache" / REPO_ROOT.name
 
 
-def resolve_merge_base() -> str | None:
-    """The commit this branch diverged from `origin/main`, or None if it cannot be determined (no
-    network/remote/history -- see module docstring for why that is a trivial pass, not a failure).
-    Best-effort `git fetch` first (check-record-surfaces.py's own established pattern): a failed
-    fetch still leaves a possibly-stale `origin/main` to try against rather than aborting outright.
-    """
-    subprocess.run(["git", "fetch", "origin", "main"], cwd=REPO_ROOT, capture_output=True, text=True)
-    result = subprocess.run(
-        ["git", "merge-base", "HEAD", "origin/main"],
-        cwd=REPO_ROOT, capture_output=True, text=True,
-    )
+ZERO_SHA_RE = re.compile(r"^0+$")
+
+
+def _git_out(*args: str) -> str | None:
+    try:
+        result = subprocess.run(["git", *args], cwd=REPO_ROOT, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
     if result.returncode != 0:
         return None
     return result.stdout.strip() or None
+
+
+def resolve_baseline(explicit_base: str | None) -> tuple[str | None, str | None, str]:
+    """(baseline sha or None, HEAD sha or None, how it was chosen). REG-296: see module docstring.
+    Twin of check-done-item-guards.py's resolve_baseline() -- keep the two in step."""
+    head = _git_out("rev-parse", "HEAD")
+    explicit = (explicit_base or "").strip()
+    if explicit and not ZERO_SHA_RE.match(explicit):
+        base = _git_out("merge-base", "HEAD", explicit)
+        if base is None:
+            return None, head, f"--base {explicit} does not resolve to a commit sharing history with HEAD"
+        return base, head, f"merge-base with --base {explicit[:12]}"
+    # Best-effort fetch (check-record-surfaces.py's established pattern): a failed fetch still leaves a
+    # possibly-stale origin/main to try against.
+    _git_out("fetch", "origin", "main")
+    saw_head = False
+    for ref in ("@{push}", "origin/main"):
+        base = _git_out("merge-base", "HEAD", ref)
+        if base is None:
+            continue
+        if base != head:
+            return base, head, f"merge-base with {ref}"
+        saw_head = True
+    if saw_head:
+        return head, head, "every candidate baseline (@{push}, origin/main) IS HEAD"
+    return None, head, "no baseline resolvable (no --base, no @{push}, no origin/main)"
 
 
 def content_at(commit: str, path: Path) -> str | None:
@@ -129,13 +165,13 @@ def check_one(pack_path: Path, merge_base: str | None, tmp_dir: Path) -> dict:
     current_content = pack_path.read_text(encoding="utf-8")
 
     if merge_base is None:
-        return {"label": label, "status": "skipped", "reason": "could not resolve merge-base with origin/main"}
+        return {"label": label, "status": "skipped", "reason": "no baseline (allowed by --no-baseline-ok)"}
 
     old_content = content_at(merge_base, pack_path)
     if old_content is None:
-        return {"label": label, "status": "skipped", "reason": "did not exist at the merge-base -- newly added on this branch"}
+        return {"label": label, "status": "skipped", "reason": "did not exist at the baseline -- newly added since"}
     if old_content == current_content:
-        return {"label": label, "status": "skipped", "reason": "unchanged relative to origin/main's merge-base"}
+        return {"label": label, "status": "skipped", "reason": "unchanged relative to the baseline"}
 
     old_path = tmp_dir / (pack_path.stem + "-old.json")
     old_path.write_text(old_content, encoding="utf-8")
@@ -152,9 +188,22 @@ def check_one(pack_path: Path, merge_base: str | None, tmp_dir: Path) -> dict:
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--json", default=None, help="also write the full result set to this path")
+    ap.add_argument("--base", default=os.environ.get("NPDEV_BASELINE_REV") or None,
+                    help="baseline revision (default: env NPDEV_BASELINE_REV; CI passes the push's "
+                         "`before` sha). An all-zeros sha counts as not given.")
+    ap.add_argument("--no-baseline-ok", action="store_true",
+                    help="do not fail when no baseline resolves or the only one IS HEAD (local runs only)")
     args = ap.parse_args(argv[1:])
 
-    merge_base = resolve_merge_base()
+    merge_base, head, how = resolve_baseline(args.base)
+    if merge_base is None or merge_base == head:
+        if not args.no_baseline_ok:
+            print(f"FAIL: no meaningful baseline to diff the built-in packs against -- {how}. Comparing "
+                  f"HEAD to itself proves nothing (REG-296). Pass --base <rev> (CI exports "
+                  f"NPDEV_BASELINE_REV), or --no-baseline-ok for a local run.", file=sys.stderr)
+            return 1
+        print(f"NOTE: --no-baseline-ok: {how}; comparing the working tree against "
+              f"{'HEAD' if merge_base else 'nothing (every pack skipped)'}.")
     results = []
     with tempfile.TemporaryDirectory(prefix="npdev-pack-diff-gate-") as tmp:
         tmp_dir = Path(tmp)
@@ -166,7 +215,7 @@ def main(argv: list[str]) -> int:
             results.append(check_one(pack_path, merge_base, tmp_dir))
 
     print(f"Pack diff gate: {len(results)} built-in pack(s) checked"
-          + (f" against merge-base {merge_base[:12]}.\n" if merge_base else " (no merge-base resolved).\n"))
+          + (f" against {merge_base[:12]} ({how}).\n" if merge_base else " (no baseline resolved).\n"))
     for r in results:
         if r["status"] == "skipped":
             print(f"  SKIP     {r['label']}: {r['reason']}")
