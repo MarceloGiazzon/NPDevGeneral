@@ -26,7 +26,7 @@
     "models": { "type": "array", "items": { "$ref": "#/$defs/model" } },
     "profiles": { "type": "array", "items": { "$ref": "#/$defs/profile" } },
     "spend": {
-      "description": "The spend guard. A paid call (kind paid, or a non-free model id on a freeModelSuffix provider) is refused unless its feature is opted in here, or a direct call passes --allow-paid. With a monthly cap, a model of unknown price is refused too, because the cap could not be enforced on it. Never shipped: the default is no paid spend.",
+      "description": "The spend guard. A paid call (kind paid, or a non-free model id on a freeModelSuffix provider) is refused unless its feature is opted in here, or a direct call passes --allow-paid. With a monthly cap, a model of unknown price is refused too, because the cap could not be enforced on it. Never shipped: the default is no paid spend, and a $10 monthly cap once a feature opts in (owner decision D2); monthlyCapUsd null means no cap.",
       "type": "object",
       "additionalProperties": false,
       "properties": {

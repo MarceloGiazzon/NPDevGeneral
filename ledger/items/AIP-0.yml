@@ -27,3 +27,5 @@ note: >-
   untracked, sk-/ghp_/github_pat_ tokens and $env:/export *_API_KEY|TOKEN|SECRET|PASSWORD literals;
   output carries a sha256 digest, never the value), 4 self-test fixtures, fails on a planted copy of
   the old line, 0 hits on the tree; 0.6 these items. Open: 0.1 revocation (owner), 0.4/D1.
+  2026-10-22: D1 answered -- scrub the history too (AIP-6). 0.4 is now: git filter-repo removing
+  launch-claude.ps1 and claude-deepseek-settings.json from every commit, then force-push main.

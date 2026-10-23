@@ -40,3 +40,6 @@ note: >-
   2026-10-22: 2.1-2.3 in 5eb2127e (npdev ai complete, usage log, spend guard), 2.7 in 091a6f56, 2.4/2.5/
   2.6/2.8 in b23f0705 (Prompter ai profiles + keyring migration, Scrap assistant ai default, Linux Secret
   Service). Not verified: any real AI call (no key, no local LLM on the machine that built it).
+  2026-10-22: owner decision D2 (AIP-6) -- opt-in per feature stays; the monthly cap now defaults to $10
+  (DEFAULT_MONTHLY_CAP_USD; `npdev ai spend cap off` writes null = no cap), test_ai_config
+  test_monthly_cap_defaults_to_ten_dollars_and_null_turns_it_off.

@@ -2,9 +2,9 @@ id: AIP-6
 title: Owner decisions for the AI providers plan (D1 history scrub, D2 paid spend, D3 app keys from the store, D4 custom app vendors)
 type: PROCESS
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-22
-closed: null
+closed: 2026-10-22
 source: >-
   AI providers unification plan, revision 2 (2026-10-22), NPDev_General__OutsideRepo/AI_PROVIDERS_UNIFICATION_PLAN_2026-10-22.md (outside the repo), built on the AI contact-point inventory AI_CONTACT_POINTS_2026-10-22.md in the same folder. Section "Decisions only the owner can make".
 surface: process/ai-providers
@@ -18,3 +18,18 @@ detail: |
   D6 no (ai.json is per machine, no export/import).
 resolution: >-
   Owner answers each of D1-D4; each answer is recorded here and in the item whose step it gates.
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_ai_config.py#test_monthly_cap_defaults_to_ten_dollars_and_null_turns_it_off
+  asserts: >-
+    decision D2 holds in code: with no cap set anywhere the spend guard caps paid calls at $10 a month,
+    and an explicit null in ai.json means no cap
+  provenRed: false
+note: >-
+  2026-10-22, owner answers: D1 SCRUB the history too (git filter-repo + force-push to main), on top of
+  revocation -- tracked in AIP-0 step 0.4. D2 paid providers stay opt-in per feature, with a $10 monthly
+  cap by default (DEFAULT_MONTHLY_CAP_USD in NPDevCli/npdev_ai_config.py; ai.json monthlyCapUsd null =
+  no cap) -- recorded in AIP-2. D3 yes, for dev starts only: run-env may start an app with keys from the
+  store; deployed apps still read only secrets/agent-proxy.env -- unblocks AIP-3 step 3.4. D4 yes: a
+  custom endpoint may become an app vendor, the app operator vouching for it -- new AIP-3 step 3.6.

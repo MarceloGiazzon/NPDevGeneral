@@ -61,9 +61,9 @@ command prints a key back. Listings say only where a key would come from: `env`,
 - A **paid** provider or model is refused unless the calling feature has opted in, with
   `npdev ai spend allow-paid <feature>` or the **Paid** box in the Manager's Uses view. A direct
   `npdev ai complete` or `test` call can opt in with `--allow-paid` instead.
-- With a **monthly cap** (`npdev ai spend cap <usd>`, removed with `off`), a paid call is refused once
-  this month's estimate reaches the cap. A paid model with no known price is also refused, because the
-  cap could not be enforced for it.
+- Under a **monthly cap** -- **$10 by default**; change it with `npdev ai spend cap <usd>`, or `off` for
+  no cap -- a paid call is refused once this month's estimate reaches the cap. A paid model with no
+  known price is also refused, because the cap could not be enforced for it.
 - Every call is appended to the **usage log** (`ai-usage.jsonl` next to your `ai.json`;
   `NPDEV_AI_USAGE_LOG` overrides the path). The log records the feature, provider, model, tokens,
   estimated USD and time, never a prompt. `npdev ai usage` summarises it.

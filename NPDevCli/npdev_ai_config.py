@@ -167,6 +167,11 @@ def check_feature(feature: str) -> None:
     raise AiConfigError(f"unknown feature {feature!r}; features: {', '.join(FEATURES)}, or app:<name>")
 
 
+# Owner decision D2 (2026-10-22): paid calls stay opt-in per feature, under a $10 monthly cap unless
+# ai.json sets another (`null` = no cap).
+DEFAULT_MONTHLY_CAP_USD = 10.0
+
+
 def merge(shipped: dict, mine: dict | None = None, mine_file: Path | None = None) -> AiConfig:
     if mine and mine.get("protocols"):
         raise AiConfigError("protocols are shipped only: a protocol is client code, not configuration")
@@ -208,6 +213,7 @@ def merge(shipped: dict, mine: dict | None = None, mine_file: Path | None = None
     spend = copy.deepcopy(shipped.get("spend") or {})
     mine_spend = (mine or {}).get("spend") or {}
     spend.setdefault("allowPaid", {}).update(mine_spend.get("allowPaid") or {})
+    spend.setdefault("monthlyCapUsd", DEFAULT_MONTHLY_CAP_USD)
     if "monthlyCapUsd" in mine_spend:
         spend["monthlyCapUsd"] = mine_spend["monthlyCapUsd"]
     return AiConfig(protocols, merged["providers"], merged["models"], merged["profiles"], bindings,

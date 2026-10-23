@@ -332,7 +332,7 @@ def add_arguments(ai_sub) -> None:
     allow.add_argument("feature")
     allow.add_argument("--off", action="store_true")
     json_flag(allow)
-    cap = ssub.add_parser("cap", help="Monthly USD cap across all paid calls ('off' removes it).")
+    cap = ssub.add_parser("cap", help="Monthly USD cap across all paid calls (default $10; 'off' means no cap).")
     cap.add_argument("usd")
     json_flag(cap)
 
@@ -449,7 +449,7 @@ def run(args) -> int:
                 subject = f"paid calls for {args.feature} {'off' if args.off else 'on'}"
             else:
                 if args.usd.lower() == "off":
-                    spend.pop("monthlyCapUsd", None)
+                    spend["monthlyCapUsd"] = None  # explicit: absent means the $10 default
                 else:
                     try:
                         spend["monthlyCapUsd"] = float(args.usd)

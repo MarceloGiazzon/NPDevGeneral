@@ -39,3 +39,5 @@ note: >-
   deployment target, agent vendor from the model). Open: 3.4 run-env start (gated on owner decision D3,
   AIP-6), 3.4a prompt effort/profile in the DSL, 3.4b operator override per call. No app has called a
   real vendor yet.
+  2026-10-22: owner decisions (AIP-6) -- D3 yes for dev starts, so 3.4 is unblocked; D4 yes, so new step
+  3.6: a custom endpoint (ai.json) may be an app vendor, the operator vouching for it.

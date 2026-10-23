@@ -63,6 +63,11 @@ class LayeringTests(unittest.TestCase):
         config = aicfg.merge(shipped(), mine(providers=[{"id": "groq", "kind": "free"}]))
         self.assertEqual(config.origin[("providers", "groq")]["source"], "shipped")
 
+    def test_monthly_cap_defaults_to_ten_dollars_and_null_turns_it_off(self):
+        self.assertEqual(aicfg.merge(shipped()).spend["monthlyCapUsd"], 10.0)
+        self.assertEqual(aicfg.merge(shipped(), mine(spend={"monthlyCapUsd": 3})).spend["monthlyCapUsd"], 3)
+        self.assertIsNone(aicfg.merge(shipped(), mine(spend={"monthlyCapUsd": None})).spend["monthlyCapUsd"])
+
     def test_a_new_local_provider_with_its_own_model_and_profile(self):
         overlay = mine(
             providers=[{"id": "lmstudio-desk", "name": "LM Studio on the desk", "kind": "local",
