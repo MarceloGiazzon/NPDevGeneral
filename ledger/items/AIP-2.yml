@@ -2,9 +2,9 @@ id: AIP-2
 title: One key store and one AI client for every developer and Manager feature (AI providers plan, Phase 2)
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-22
-closed: null
+closed: 2026-10-22
 source: >-
   AI providers unification plan, revision 2 (2026-10-22), NPDev_General__OutsideRepo/AI_PROVIDERS_UNIFICATION_PLAN_2026-10-22.md (outside the repo), built on the AI contact-point inventory AI_CONTACT_POINTS_2026-10-22.md in the same folder. Findings F2, F3, F4, F7.
 surface: cli/providers
@@ -23,3 +23,20 @@ detail: |
 resolution: >-
   Done when api_key is gone from AssistantConfig, no Manager feature holds a provider key, and every
   developer feature resolves keys through npdev_providers.resolve_key.
+files:
+  - NPDevCli/npdev_ai_client.py
+  - NPDevCli/npdev_providers.py
+  - NPDevManager/src/main.rs
+  - NPDevManager/src/secrets.rs
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_ai_client.py#test_paid_is_refused_without_an_opt_in_and_nothing_is_sent
+  asserts: >-
+    a call to a paid provider/model with no per-feature opt-in and no --allow-paid is refused by the
+    one client before any request leaves the machine
+  provenRed: false
+note: >-
+  2026-10-22: 2.1-2.3 in 5eb2127e (npdev ai complete, usage log, spend guard), 2.7 in 091a6f56, 2.4/2.5/
+  2.6/2.8 in b23f0705 (Prompter ai profiles + keyring migration, Scrap assistant ai default, Linux Secret
+  Service). Not verified: any real AI call (no key, no local LLM on the machine that built it).

@@ -2,7 +2,7 @@ id: AIP-4
 title: The Manager as the single AI control point -- AI Providers tab, profiles, per-app AI panel (AI providers plan, Phase 4)
 type: FEATURE
 severity: LOW
-status: OPEN
+status: PARTIAL
 opened: 2026-10-22
 closed: null
 source: >-
@@ -18,3 +18,22 @@ detail: |
 resolution: >-
   Done when no known provider needs endpoint typing anywhere in the Manager and screenshots of a real
   run are filed in the evidence folder.
+files:
+  - NPDevManager/ui/providers.js
+  - NPDevManager/ui/monitor.js
+  - NPDevManager/src/npdev.rs
+  - NPDevCli/npdev_ai.py
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_providers.py#test_reports_per_vendor_readiness_without_any_key_value
+  asserts: >-
+    `npdev ai app` (the Monitor inspector's AI section) reports, per vendor of an app's model, whether the
+    app will find a key -- a commented or empty line is not a key -- without ever emitting a key value
+  provenRed: false
+note: >-
+  2026-10-22: 4.1+4.2 (dc844a32 AI Providers tab), 4.3 (0bc78ddc Scrap assistant profile/effort per run),
+  4.4 (b4f4fcd0 Monitor inspector AI section + npdev ai app). Manager 0.5.0 (9aa3fa8a). Open: 4.5 -- the
+  fake-mode screenshots in NPDev_General__OutsideRepo/evidence/aip-4-manager-2026-10-22/ are headless-
+  Chrome renders of the real UI files over captured fixtures, NOT the Tauri window; a real run (key or
+  local LLM) and a look at the actual window remain.

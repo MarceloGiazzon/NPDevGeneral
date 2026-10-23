@@ -2,9 +2,9 @@ id: AIP-1
 title: One AI catalogue (providers, models, profiles, bindings) as the single source of truth (AI providers plan, Phase 1)
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-22
-closed: null
+closed: 2026-10-22
 source: >-
   AI providers unification plan, revision 2 (2026-10-22), NPDev_General__OutsideRepo/AI_PROVIDERS_UNIFICATION_PLAN_2026-10-22.md (outside the repo), built on the AI contact-point inventory AI_CONTACT_POINTS_2026-10-22.md in the same folder. Finding F5.
 surface: cli/providers
@@ -23,3 +23,22 @@ resolution: >-
   Done when VENDOR_PROFILES is gone from build-review-pack.py, the schema validates both the shipped
   catalogue and ai.json, and breaking either side of the Java/catalogue pair fails
   check-twin-pair-consistency.py.
+files:
+  - schemas/ai/ai-config.schema.json
+  - NPDevCli/ai-providers.json
+  - NPDevCli/npdev_ai_config.py
+  - NPDevCli/npdev_ai.py
+  - NPDevCli/npdev_ai_discovery.py
+  - scripts/quality/twin-pair-registry.json
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_ai_config.py#test_mine_overrides_only_the_fields_it_sets_and_says_so
+  asserts: >-
+    the user's ai.json overlay changes only the fields it sets on a shipped entry and the listing
+    reports the entry as overridden -- the "mine wins, field by field" layering the whole catalogue rests on
+  provenRed: false
+note: >-
+  2026-10-22: all steps landed -- 1.1/1.2/1.3/1.3a/1.3d/1.3f in c205b1d0 (schema, catalogue v1, overlay,
+  effort table, npdev ai CLI), 1.3e in 5eb2127e, 1.3b/1.3c in 9354df6f (detect, models refresh), 1.4 in
+  091a6f56 (VENDOR_PROFILES deleted), 1.5 in edec1acd (twin-pair rule ai-protocols-three-place).

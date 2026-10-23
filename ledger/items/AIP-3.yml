@@ -2,7 +2,7 @@ id: AIP-3
 title: Generated apps use the same AI providers via a protocol-driven external-ai-http (AI providers plan, Phase 3)
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: PARTIAL
 opened: 2026-10-22
 closed: null
 source: >-
@@ -20,3 +20,22 @@ detail: |
 resolution: >-
   Done when an app can declare a catalogue vendor by id and call it through the protocol profile, the
   validator rejects a non-catalogue vendor, and the corpus example is covered.
+files:
+  - NPDevKernel/adapters/external-ai-http/src/main/java/com/npdev/adapters/externalai/http/ExternalAiCatalogue.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ExternalAiValidation.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/NpdevExternalAiConfig.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/agent/AgentChannelsStarter.java
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/external-ai-http/src/test/java/com/npdev/adapters/externalai/http/ExternalAiCatalogueTest.java#bundledCatalogueCarriesTheFreeAndLocalVendors
+  asserts: >-
+    the catalogue bundled into the adapter jar yields app vendors groq, cerebras, openrouter, mistral,
+    ollama (keyless) and anthropic
+  provenRed: false
+note: >-
+  2026-10-22: done -- 3.1 (6e747e99), 3.2 (edec1acd: unknown vendor is a validation error), 3.3 + 3.4c +
+  3.5 (865c5912: per-model pricing, loopback-vendor warning -- unconditional because the DSL has no
+  deployment target, agent vendor from the model). Open: 3.4 run-env start (gated on owner decision D3,
+  AIP-6), 3.4a prompt effort/profile in the DSL, 3.4b operator override per call. No app has called a
+  real vendor yet.

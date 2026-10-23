@@ -2,9 +2,9 @@ id: AIP-5
 title: AI providers hygiene, docs and guard rails -- digest-hook precision, docs/AI_PROVIDERS.md, endpoint checker (AI providers plan, Phase 5)
 type: PROCESS
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-10-22
-closed: null
+closed: 2026-10-22
 source: >-
   AI providers unification plan, revision 2 (2026-10-22), NPDev_General__OutsideRepo/AI_PROVIDERS_UNIFICATION_PLAN_2026-10-22.md (outside the repo), built on the AI contact-point inventory AI_CONTACT_POINTS_2026-10-22.md in the same folder. Finding F9.
 surface: quality/ai-providers
@@ -17,3 +17,23 @@ detail: |
 resolution: >-
   Done when the checker runs in the aiKnowledge gate and was proven red on a planted endpoint, and the
   doc passes check-markdown-links.
+files:
+  - scripts/hooks/require-digest.py
+  - scripts/hooks/test_require_digest.py
+  - docs/AI_PROVIDERS.md
+  - NPDevMcp/knowledge/cards/recipe-ai-providers.json
+  - scripts/quality/check-no-hardcoded-ai-endpoints.py
+  - scripts/policy/ai-endpoint-policy.json
+verification: UNIT_TESTED
+guard:
+  kind: script
+  ref: "python scripts/quality/check-no-hardcoded-ai-endpoints.py --self-test"
+  asserts: >-
+    an AI vendor host planted outside the catalogue (a script, a Manager source file) is flagged while
+    the same host in a test, a captured fixture, a doc or the catalogue is not; the gate runs this and
+    the real scan as aiKnowledge step [52/52]
+  provenRed: true
+note: >-
+  2026-10-22: 5.1 f23463a2 (the digest hook matches the program run, tests for both sides), 5.2 9aa2c39a
+  (docs/AI_PROVIDERS.md + card), 5.3 9aa3fa8a (checker, RED-verified by planting api.groq.com in a
+  tracked script), 5.4 this item set. ACCEPTED_BOUNDARIES unchanged: no boundary moved.
