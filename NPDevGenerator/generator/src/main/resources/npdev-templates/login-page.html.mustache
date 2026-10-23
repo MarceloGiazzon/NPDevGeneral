@@ -125,6 +125,9 @@
   var MESSAGES = {
     invalid_credentials: "Incorrect username or password.",
     too_many_attempts: "Too many attempts. Wait a moment and try again.",
+    // REG-293 / X0: a store outage is not a wrong password -- say so, and never suggest retyping it.
+    login_unavailable: "Sign-in is temporarily unavailable. Your password was not checked. Try again shortly.",
+    identity_store_unavailable: "Sign-in is temporarily unavailable. Try again shortly.",
     email_exists_requires_link: "This email already has an account. Sign in with your password, then link the provider account from your profile.",
     oauth_state_invalid: "That sign-in request expired or was already used. Start again.",
     oauth_unverified_email: "The provider did not verify this email address, so it cannot be used to sign in.",

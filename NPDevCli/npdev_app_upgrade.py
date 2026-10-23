@@ -130,19 +130,37 @@ def _service_slug(app_id: str) -> str:
     return slug or "app"
 
 
-def service_installed(app_id: str, is_windows: bool) -> bool:
-    """Best effort: the supervisor `Install-Service.ps1` / `install-service.sh` registers is named
-    `npdev-<slug(appId)>` (a Scheduled Task, or a systemd unit). If it is registered, it would restart
-    the OLD jar in the middle of the upgrade. A probe that cannot run says 'not installed'."""
+def service_state(app_id: str, is_windows: bool) -> str:
+    """Is the supervisor `Install-Service.ps1` / `install-service.sh` registers -- `npdev-<slug(appId)>`,
+    a root-path Scheduled Task or the system unit /etc/systemd/system/<name>.service -- present? If it
+    is, it would restart the OLD jar in the middle of the upgrade.
+
+    Answers "yes", "no" or "unknown" (X0: a probe that cannot run is NOT evidence of absence; the
+    caller refuses on "unknown" unless --force). Both probes are locale-independent: the task list is
+    matched by name rather than by parsing an error message."""
     name = f"npdev-{_service_slug(app_id)}"
     try:
         if is_windows:
-            probe = ["schtasks", "/Query", "/TN", name]
-        else:
-            probe = ["systemctl", "is-enabled", f"{name}.service"]
-        return subprocess.run(probe, capture_output=True, text=True, timeout=20).returncode == 0
+            listing = subprocess.run(["schtasks", "/Query", "/FO", "CSV", "/NH"],
+                                     capture_output=True, text=True, timeout=30)
+            if listing.returncode != 0:
+                return "unknown"
+            wanted = f'"\\{name}"'.lower()
+            return "yes" if any(line.strip().lower().startswith(wanted + ",")
+                                for line in listing.stdout.splitlines()) else "no"
+        if Path(f"/etc/systemd/system/{name}.service").exists():
+            return "yes"
+        if shutil.which("systemctl") is None:
+            # install-service.sh refuses without systemctl, so no unit can have been registered.
+            return "no"
+        shown = subprocess.run(["systemctl", "show", "-p", "LoadState", "--value", f"{name}.service"],
+                               capture_output=True, text=True, timeout=20)
+        state = shown.stdout.strip()
+        if shown.returncode != 0 or not state:
+            return "unknown"
+        return "no" if state in ("not-found", "masked") else "yes"
     except (OSError, subprocess.SubprocessError):
-        return False
+        return "unknown"
 
 
 def _stop_app(cli, app_root: Path, record: dict, wait_seconds: int = 60) -> bool:
@@ -227,12 +245,20 @@ def upgrade_app(args: argparse.Namespace, cli) -> dict:
         if not _stop_app(cli, app_root, record):
             return refuse("STOP_FAILED", f"could not stop the app on port {port} with its _ops stop script.",
                           "Stop it manually, then re-run.")
-    if service_installed(str(record.get("name") or ""), cli._is_windows_platform()):
+    service = service_state(str(record.get("name") or ""), cli._is_windows_platform())
+    if service == "yes":
         return refuse("SERVICE_INSTALLED",
                       "an installed service/scheduled task supervises this app and would restart the old "
                       "jar in the middle of the upgrade.",
                       "Stop the service first (_ops/Uninstall-Service.ps1 or uninstall-service.sh), upgrade, "
                       "then install it again.")
+    if service == "unknown" and not getattr(args, "force", False):
+        return refuse("SERVICE_STATE_UNKNOWN",
+                      "could not determine whether an installed service/scheduled task supervises this app "
+                      "(the schtasks/systemctl probe did not answer); one would restart the old jar in the "
+                      "middle of the upgrade.",
+                      "Check by hand (schtasks /Query /TN npdev-<appId>, or systemctl status "
+                      "npdev-<appId>.service); if none is installed, re-run with --force.")
 
     infer_args = _run_app_args(args, app_root, int(port), remaining())
     failure = cli._infer_run_app_paths(infer_args)

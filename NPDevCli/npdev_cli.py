@@ -17660,7 +17660,8 @@ def build_parser() -> argparse.ArgumentParser:
     upgrade_parser.add_argument(
         "--force", action="store_true",
         help="upgrade even though the target looks like it is still running (NOT recommended -- "
-             "stop it first with _ops/Stop-App.ps1)")
+             "stop it first with _ops/Stop-App.ps1); with --app: proceed when it cannot be determined "
+             "whether a service/scheduled task supervises the app")
     # OPS-12: the guarded in-place upgrade -- backup, validate, regenerate, build, impact check, boot,
     # health, and an automatic rollback if any step after the backup fails.
     upgrade_parser.add_argument(

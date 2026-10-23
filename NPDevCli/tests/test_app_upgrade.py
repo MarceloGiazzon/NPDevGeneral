@@ -89,7 +89,7 @@ class FakeApp:
 
 def _args(app: FakeApp, **overrides) -> argparse.Namespace:
     values = dict(app=str(app.root), model=str(app.model), config=None, port=8299, profile="dev",
-                  stop=False, allow_destructive=False, skip_db_backup=False, timeout=900,
+                  stop=False, force=False, allow_destructive=False, skip_db_backup=False, timeout=900,
                   output=None, baseline_model=None, keep_running=False, clean=False,
                   require_db_definition=False)
     values.update(overrides)
@@ -104,7 +104,7 @@ class UpgradeAppTest(unittest.TestCase):
         self.report = {"status": "passed", "diagnostics": []}
         self.impact = 0
         self.listening = False
-        self.service = False
+        self.service = "no"
         self.stop_calls = 0
 
     def _upgrade(self, **overrides):
@@ -128,7 +128,7 @@ class UpgradeAppTest(unittest.TestCase):
             mock.patch.object(npdev_cli, "run_app", side_effect=app.run_app),
             mock.patch.object(npdev_cli, "run_validate_semantic", side_effect=fake_validate),
             mock.patch.object(npdev_app_upgrade, "impact_exit_code", side_effect=lambda *a, **k: self.impact),
-            mock.patch.object(npdev_app_upgrade, "service_installed", side_effect=lambda *a, **k: self.service),
+            mock.patch.object(npdev_app_upgrade, "service_state", side_effect=lambda *a, **k: self.service),
             mock.patch.object(npdev_app_upgrade, "_stop_app", side_effect=fake_stop),
         ]
         for p in patches:
@@ -155,11 +155,29 @@ class UpgradeAppTest(unittest.TestCase):
         self.assertEqual(result["outcome"], "UPGRADED")
 
     def test_installed_service_is_refused(self):
-        self.service = True
+        self.service = "yes"
         result = self._upgrade()
         self.assertEqual(result["outcome"], "REFUSED")
         self.assertEqual(result["diagnostics"][0]["code"], "SERVICE_INSTALLED")
         self.assertEqual(self.app.calls, [])
+
+    def test_unknown_service_state_is_refused_without_force(self):
+        self.service = "unknown"
+        result = self._upgrade()
+        self.assertEqual(result["outcome"], "REFUSED")
+        self.assertEqual(result["diagnostics"][0]["code"], "SERVICE_STATE_UNKNOWN")
+        self.assertEqual(self._backups(), [])
+        self.assertEqual(self.app.calls, [])
+
+    def test_unknown_service_state_with_force_upgrades(self):
+        self.service = "unknown"
+        result = self._upgrade(force=True)
+        self.assertEqual(result["outcome"], "UPGRADED")
+
+    def test_force_does_not_override_a_service_that_is_installed(self):
+        self.service = "yes"
+        result = self._upgrade(force=True)
+        self.assertEqual(result["diagnostics"][0]["code"], "SERVICE_INSTALLED")
 
     def test_happy_path_backs_up_code_and_data_and_ends_upgraded(self):
         result = self._upgrade()
@@ -273,6 +291,40 @@ class UpgradeAppTest(unittest.TestCase):
             result = npdev_app_upgrade.upgrade_app(_args(self.app), npdev_cli)
         self.assertEqual(result["outcome"], "REFUSED")
         self.assertEqual(result["diagnostics"][0]["code"], "NOT_AN_APP")
+
+
+class ServiceStateTest(unittest.TestCase):
+    """X0: a probe that cannot run answers "unknown", never "no"."""
+
+    def _run(self, returncode=0, stdout=""):
+        return mock.patch.object(npdev_app_upgrade.subprocess, "run",
+                                 return_value=mock.Mock(returncode=returncode, stdout=stdout))
+
+    def test_windows_task_listed_is_yes_and_absent_is_no(self):
+        listing = '"\\Other","N/A","Ready"\n"\\npdev-my-app","N/A","Ready"\n'
+        with self._run(stdout=listing):
+            self.assertEqual(npdev_app_upgrade.service_state("my app", True), "yes")
+        with self._run(stdout='"\\npdev-my-app-2","N/A","Ready"\n'):
+            self.assertEqual(npdev_app_upgrade.service_state("my app", True), "no")
+
+    def test_windows_query_failure_or_missing_binary_is_unknown(self):
+        with self._run(returncode=1):
+            self.assertEqual(npdev_app_upgrade.service_state("a", True), "unknown")
+        with mock.patch.object(npdev_app_upgrade.subprocess, "run", side_effect=FileNotFoundError):
+            self.assertEqual(npdev_app_upgrade.service_state("a", True), "unknown")
+
+    def test_linux_load_state(self):
+        with mock.patch.object(npdev_app_upgrade.shutil, "which", return_value="/bin/systemctl"):
+            for stdout, returncode, expected in [("not-found\n", 0, "no"), ("masked\n", 0, "no"),
+                                                 ("loaded\n", 0, "yes"), ("", 0, "unknown"),
+                                                 ("loaded\n", 1, "unknown")]:
+                with self._run(returncode=returncode, stdout=stdout):
+                    self.assertEqual(npdev_app_upgrade.service_state("zz-no-such-npdev-app", False),
+                                     expected, stdout)
+
+    def test_linux_without_systemctl_is_no(self):
+        with mock.patch.object(npdev_app_upgrade.shutil, "which", return_value=None):
+            self.assertEqual(npdev_app_upgrade.service_state("zz-no-such-npdev-app", False), "no")
 
 
 class UpgradeParserTest(unittest.TestCase):
