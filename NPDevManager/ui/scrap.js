@@ -455,6 +455,19 @@ async function openAssistant(runId) {
     : "provider: NPDev AI (the scrap-assistant binding — keys in the AI Providers tab, profiles via `npdev ai bind " +
       "scrap-assistant <profile>`). You can also write the routine by hand in the JSON tab.";
   document.getElementById("assistant-send").hidden = false;
+  // AIP-4 (4.3): for the `ai` kind, this run's profile and effort -- picked, never typed.
+  const aiKind = !config.configured || config.kind === "ai";
+  document.getElementById("assistant-ai-choice").hidden = !aiKind;
+  if (aiKind) {
+    const select = document.getElementById("assistant-profile");
+    const previous = select.value || config.profile || "";
+    const profiles = await sInvoke("ai_command", { args: ["profiles"] }).catch(() => ({ profiles: [] }));
+    select.innerHTML = `<option value="">scrap-assistant binding</option>` + (profiles.profiles || [])
+      .filter((p) => !p.disabled)
+      .map((p) => `<option value="${sEsc(p.name)}">${sEsc(p.name)} · ${sEsc(p.provider)}/${sEsc(p.model)}</option>`)
+      .join("");
+    if ([...select.options].some((o) => o.value === previous)) select.value = previous;
+  }
 }
 
 async function composePayload() {
@@ -489,7 +502,11 @@ async function sendPayload() {
   try {
     // Sends EXACTLY the object that was displayed. Not a re-composition: if the bytes that leave
     // were not the bytes that were shown, the guarantee is worthless.
-    const result = await sInvoke("assistant_generate", { payload: scrapState.payload });
+    const result = await sInvoke("assistant_generate", {
+      payload: scrapState.payload,
+      profile: document.getElementById("assistant-profile").value || null,
+      effort: document.getElementById("assistant-effort").value || null,
+    });
     if (result.routine) {
       document.getElementById("create-json").value = JSON.stringify(result.routine, null, 2);
       view.innerHTML = result.ok

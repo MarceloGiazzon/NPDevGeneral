@@ -1681,9 +1681,16 @@ async fn assistant_compose(
 
 /// Sends EXACTLY the payload it is given -- which is the payload the user saw. It deliberately does
 /// not re-compose: re-composing would mean the bytes that leave are not provably the bytes that
-/// were displayed, and that difference is the entire guarantee.
+/// were displayed, and that difference is the entire guarantee. `profile`/`effort` (AIP-4, 4.3) are
+/// this run's choice from the modal, for the `ai` kind only; absent, the configured profile (or the
+/// scrap-assistant binding) and the profile's own effort apply.
 #[tauri::command]
-async fn assistant_generate(state: State<'_, AppState>, payload: Value) -> Result<Value, String> {
+async fn assistant_generate(
+    state: State<'_, AppState>,
+    payload: Value,
+    profile: Option<String>,
+    effort: Option<String>,
+) -> Result<Value, String> {
     let config = state.manager.lock().expect("lock poisoned").assistant.clone();
     // Nothing configured means the `ai` kind: the scrap-assistant binding of `npdev ai`, with the key
     // from the AI Providers tab -- a working default that still sends nothing without a stored key.
@@ -1706,9 +1713,14 @@ async fn assistant_generate(state: State<'_, AppState>, payload: Value) -> Resul
     let mut args = vec!["ai".to_string(), "generate-routine".to_string(), "--json".to_string(),
                         "--payload-file".to_string(), payload_path.to_string_lossy().to_string(),
                         "--provider".to_string(), config.kind.clone()];
-    if let Some(profile) = config.profile.as_ref().filter(|p| config.kind == "ai" && !p.is_empty()) {
+    let run_profile = profile.filter(|p| !p.is_empty()).or_else(|| config.profile.clone().filter(|p| !p.is_empty()));
+    if let Some(profile) = run_profile.filter(|_| config.kind == "ai") {
         args.push("--profile".to_string());
-        args.push(profile.clone());
+        args.push(profile);
+    }
+    if let Some(effort) = effort.filter(|e| config.kind == "ai" && !e.is_empty()) {
+        args.push("--effort".to_string());
+        args.push(effort);
     }
     for part in &config.command {
         args.push("--command".to_string());

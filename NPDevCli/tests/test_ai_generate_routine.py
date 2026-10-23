@@ -47,6 +47,12 @@ class GenerateRoutineThroughTheClientTest(unittest.TestCase):
         _, _, complete = self.run_cli({"ok": True, "text": "{}"}, profile="fast")
         self.assertEqual(complete.call_args.kwargs["profile"], "fast")
 
+    def test_a_run_effort_is_passed_through_and_none_leaves_the_profiles(self):
+        _, _, complete = self.run_cli({"ok": True, "text": "{}"}, profile="deep", effort="low")
+        self.assertEqual(complete.call_args.kwargs["effort"], "low")
+        _, _, complete = self.run_cli({"ok": True, "text": "{}"})
+        self.assertIsNone(complete.call_args.kwargs["effort"])
+
     def test_a_failed_call_is_a_cli_error(self):
         with self.assertRaises(npdev_cli.CliError) as ctx:
             self.run_cli({"ok": False, "error": "every target failed: fast: no key for gemini"})

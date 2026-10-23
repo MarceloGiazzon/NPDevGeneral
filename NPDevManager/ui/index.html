@@ -436,9 +436,12 @@
           <label class="subtitle" style="margin:0">Effort
             <select id="prompter-effort">
               <option value="">default</option>
+              <option value="none">none</option>
               <option value="low">low</option>
               <option value="medium">medium</option>
               <option value="high">high</option>
+              <option value="xhigh">xhigh</option>
+              <option value="max">max</option>
             </select>
           </label>
           <button class="btn ghost" id="prompter-providers">⚙ PROVIDERS</button>
@@ -994,7 +997,7 @@
           <select id="pf-kind">
             <option value="ai">ai — an NPDev AI profile (keys live in the AI Providers tab)</option>
             <option value="command">command — your own CLI</option>
-            <option value="http">http — a raw endpoint (legacy; moved to an AI profile on first use)</option>
+            <option value="http" hidden disabled>http — a raw endpoint (legacy; moved to an AI profile on first use)</option>
           </select></label>
         <div id="pf-ai-fields">
           <label class="subtitle" style="display:block;margin-top:8px">AI profile (<code>npdev ai profiles</code>; the key is never in this window)
@@ -1101,6 +1104,22 @@
       <div class="mbody">
         <label>What should it do?</label>
         <input type="text" id="assistant-prompt" placeholder="log in and create an order, then check it appears in the list" />
+        <div id="assistant-ai-choice" style="display:flex; gap:12px; margin-top:10px" hidden>
+          <label class="subtitle" style="margin:0">Profile
+            <select id="assistant-profile"><option value="">scrap-assistant binding</option></select>
+          </label>
+          <label class="subtitle" style="margin:0">Effort
+            <select id="assistant-effort">
+              <option value="">default</option>
+              <option value="none">none</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+              <option value="xhigh">xhigh</option>
+              <option value="max">max</option>
+            </select>
+          </label>
+        </div>
         <label style="display:flex; gap:8px; align-items:center; margin-top:10px">
           <input type="checkbox" id="assistant-include-text" />
           Include page TEXT as well as structure

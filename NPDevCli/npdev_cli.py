@@ -15533,7 +15533,7 @@ def run_ai_generate_routine(args: argparse.Namespace) -> int:
             config = npdev_ai_config.load()
             answer = npdev_ai_client.complete(
                 config, payload.get("prompt") or json.dumps(payload), profile=getattr(args, "profile", None),
-                feature="scrap-assistant", timeout=args.timeout)
+                effort=getattr(args, "effort", None), feature="scrap-assistant", timeout=args.timeout)
         except (npdev_ai_config.AiConfigError, npdev_ai_client.AiCallError) as exc:
             raise CliError(str(exc)) from None
         if not answer["ok"]:
@@ -18112,6 +18112,8 @@ def build_parser() -> argparse.ArgumentParser:
                                   "providers, keys from `npdev providers`); http = a raw endpoint (legacy).")
     ai_generate.add_argument("--profile", default=None,
                              help="provider=ai: the profile to use (default: the scrap-assistant binding).")
+    ai_generate.add_argument("--effort", default=None, choices=["none", "low", "medium", "high", "xhigh", "max"],
+                             help="provider=ai: this run's effort, instead of the profile's.")
     ai_generate.add_argument("--command", action="append", default=[],
                              help="provider=command: the argv, repeatable. `{payload_file}` is "
                                   "substituted with the payload's path.")
