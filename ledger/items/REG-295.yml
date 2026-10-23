@@ -88,3 +88,9 @@ note: >-
   / rowOwnership checks are check-then-act without a row lock.
   2026-10-23 owner ruling: a NULL tenant_id row being claimable by any tenant (rowOwnership -> SAME_TENANT) is the
   intended behaviour, not a residual. Only the check-then-act race remains.
+  2026-10-23: HTTP proof GREEN (Linux notebook): run-behavior-probes.ps1 -StorageVariant h2local -Only 90-cross-tenant,
+  2/2 -- cross-tenant-create-with-existing-id-is-refused (409, B's row unchanged, A still cannot read it) and
+  cross-tenant-get-put-delete-answers-not-found. Caveat found on the way: the first run FAILED exactly as the bug
+  describes because <BuildRoot>/runtimehost-libs still held jars staged at 04:02, before the 11:15 fix; the probe runner
+  regenerates the app but does not restage jars, so a stale stage silently tests old code. After
+  sync-runtimehost-libs.ps1 -BuildLocalJars it passed.
