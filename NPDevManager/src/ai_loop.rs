@@ -527,7 +527,7 @@ pub async fn run(app_state: &AppState, config: LoopConfig, sink: Sink, cancel: A
         }
 
         emit(json!({"kind": "prompt-composed", "iteration": iteration, "prompt": prompt}));
-        let response_text = match crate::generate_via_profile(&profile, &model, effort.as_deref(), &prompt).await {
+        let response_text = match crate::generate_via_profile(app_state, &profile, &model, effort.as_deref(), &prompt).await {
             Ok(v) => v.get("text").and_then(|t| t.as_str()).unwrap_or_default().to_string(),
             Err(e) => break json!({"outcome": "aborted", "reason": e, "iteration": iteration}),
         };

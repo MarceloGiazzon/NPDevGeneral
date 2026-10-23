@@ -903,10 +903,15 @@
           <input type="text" id="pf-label" placeholder="Anthropic (work account)" autocomplete="off" style="width:100%"></label>
         <label class="subtitle" style="display:block;margin-top:8px">Kind
           <select id="pf-kind">
-            <option value="http">http — an endpoint you name</option>
+            <option value="ai">ai — an NPDev AI profile (keys live in the AI Keys tab)</option>
             <option value="command">command — your own CLI</option>
+            <option value="http">http — a raw endpoint (legacy; moved to an AI profile on first use)</option>
           </select></label>
-        <div id="pf-http-fields">
+        <div id="pf-ai-fields">
+          <label class="subtitle" style="display:block;margin-top:8px">AI profile (<code>npdev ai profiles</code>; the key is never in this window)
+            <select id="pf-ai-profile"></select></label>
+        </div>
+        <div id="pf-http-fields" hidden>
           <label class="subtitle" style="display:block;margin-top:8px">Endpoint
             <input type="text" id="pf-endpoint" placeholder="https://api.anthropic.com/v1/messages"
                    autocomplete="off" style="width:100%"></label>

@@ -24,6 +24,10 @@
       "note": "The Python CLI (npdev_cli, npdev_monitor, npdev_explore, npdev_diagram, npdev_engines, migrations, ...). Top level only -- NPDevCli/tests/ is content-excluded, tree-listed only."
     },
     {
+      "pattern": "^NPDevCli/ai-providers\\.json$",
+      "note": "The AI catalogue npdev_ai_config.py loads (providers, models, profiles, bindings)."
+    },
+    {
       "pattern": "^NPDevCli/static_page_templates/.*\\.tpl$",
       "note": "npdev_static_pages.py's HTML/CSS/JS templates (control-panel, app-tree, app-tree-v2, agent-prompter, properties, verification)."
     },

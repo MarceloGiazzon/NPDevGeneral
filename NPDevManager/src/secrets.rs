@@ -22,7 +22,7 @@
 use keyring::Entry;
 
 /// What this shows as in Windows Credential Manager (`cmdkey /list`), the macOS Keychain, and the
-/// Linux keyutils session keyring. Chosen to be recognisable to a user auditing their own
+/// Linux Secret Service (Seahorse / KWalletManager). Chosen to be recognisable to a user auditing their own
 /// credentials, who did not read this file.
 const SERVICE: &str = "NPDev Manager";
 
@@ -51,14 +51,47 @@ fn entry_for(scope: &str, env: Option<&str>, profile_id: &str) -> Result<Entry, 
         .map_err(|e| format!("could not open the OS credential store: {e}"))
 }
 
+/// Runs `op` against the platform store; on Linux, when the Secret Service itself is unreachable (no
+/// D-Bus daemon, as in the --selftest container), runs it again against the session keyring alone.
+/// The fallback keeps the Manager usable there, and the log says once that such a credential is lost
+/// at the next reboot -- a silent downgrade would look exactly like persistence until it is not.
+fn with_store<T>(
+    scope: &str,
+    env: Option<&str>,
+    profile_id: &str,
+    op: impl Fn(&Entry) -> keyring::Result<T>,
+) -> Result<keyring::Result<T>, String> {
+    let result = op(&entry_for(scope, env, profile_id)?);
+    #[cfg(target_os = "linux")]
+    if let Err(keyring::Error::NoStorageAccess(_) | keyring::Error::PlatformFailure(_)) = &result {
+        let account = account_key(scope, env, profile_id);
+        let session = keyring::keyutils::KeyutilsCredential::new_with_target(None, SERVICE, &account)
+            .map_err(|e| format!("could not open the session keyring: {e}"))?;
+        warn_session_only();
+        return Ok(op(&Entry::new_with_credential(Box::new(session))));
+    }
+    Ok(result)
+}
+
+#[cfg(target_os = "linux")]
+fn warn_session_only() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static WARNED: AtomicBool = AtomicBool::new(false);
+    if !WARNED.swap(true, Ordering::Relaxed) {
+        crate::log::info(
+            "no Secret Service (GNOME Keyring / KWallet) is reachable: credentials are kept in the \
+             session keyring only and are lost at the next reboot",
+        );
+    }
+}
+
 pub fn set_secret(profile_id: &str, value: &str) -> Result<(), String> {
     set_secret_scoped("prompter", None, profile_id, value)
 }
 
 /// S17b: scoped twin of [`set_secret`] -- `db/prod/warehouse`, `deploy/staging/gateway`, etc.
 pub fn set_secret_scoped(scope: &str, env: Option<&str>, profile_id: &str, value: &str) -> Result<(), String> {
-    entry_for(scope, env, profile_id)?
-        .set_password(value)
+    with_store(scope, env, profile_id, |entry| entry.set_password(value))?
         .map_err(|e| format!("could not store the credential: {e}"))
 }
 
@@ -74,7 +107,7 @@ pub fn get_secret(profile_id: &str) -> Result<Option<String>, String> {
 
 /// S17b: scoped twin of [`get_secret`].
 pub fn get_secret_scoped(scope: &str, env: Option<&str>, profile_id: &str) -> Result<Option<String>, String> {
-    match entry_for(scope, env, profile_id)?.get_password() {
+    match with_store(scope, env, profile_id, |entry| entry.get_password())? {
         Ok(value) => Ok(Some(value)),
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(e) => Err(format!("could not read the credential: {e}")),
@@ -89,7 +122,7 @@ pub fn delete_secret(profile_id: &str) -> Result<(), String> {
 
 /// S17b: scoped twin of [`delete_secret`].
 pub fn delete_secret_scoped(scope: &str, env: Option<&str>, profile_id: &str) -> Result<(), String> {
-    match entry_for(scope, env, profile_id)?.delete_credential() {
+    match with_store(scope, env, profile_id, |entry| entry.delete_credential())? {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(format!("could not delete the credential: {e}")),

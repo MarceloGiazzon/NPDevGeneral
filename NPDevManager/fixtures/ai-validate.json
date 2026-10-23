@@ -1,0 +1,7 @@
+{
+  "ok": true,
+  "mine": "/home/user/.config/NPDev/ai.json",
+  "providers": 10,
+  "models": 10,
+  "profiles": 5
+}

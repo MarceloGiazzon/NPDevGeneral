@@ -35,8 +35,11 @@ rfd = "0.15"
 
 # The Prompter's provider credentials live in the OS credential store, never in manager.json.
 # Per-target because the crate needs a platform backend chosen at compile time, and the right one
-# differs: Windows Credential Manager, the Linux kernel keyutils keyring (no D-Bus daemon required,
-# which matters because the --selftest container has none), and the macOS Keychain.
+# differs: Windows Credential Manager, the macOS Keychain, and on Linux the freedesktop Secret Service
+# (GNOME Keyring / KWallet) behind a kernel keyutils cache. keyutils alone (the old choice) is the
+# session keyring, emptied at every reboot, so a stored db/deploy secret did not survive one. Where no
+# Secret Service daemon runs (the --selftest container), secrets.rs falls back to the session keyring
+# and says so in the log.
 [target.'cfg(windows)'.dependencies]
 win32job = "2"
 keyring = { version = "3", features = ["windows-native"] }
@@ -45,7 +48,7 @@ keyring = { version = "3", features = ["windows-native"] }
 libc = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-keyring = { version = "3", features = ["linux-native"] }
+keyring = { version = "3", features = ["linux-native-sync-persistent", "crypto-rust"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", features = ["apple-native"] }

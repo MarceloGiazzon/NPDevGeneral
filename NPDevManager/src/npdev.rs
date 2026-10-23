@@ -80,6 +80,7 @@ const FIXTURE_HOST_KEYS_NEW: &str = include_str!("../fixtures/host-keys-new.json
 const FIXTURE_PROVIDERS_LIST: &str = include_str!("../fixtures/providers-list.json");
 const FIXTURE_PROVIDERS_OK: &str = include_str!("../fixtures/providers-ok.json");
 const FIXTURE_PROVIDERS_TEST: &str = include_str!("../fixtures/providers-test.json");
+const FIXTURE_AI_VALIDATE: &str = include_str!("../fixtures/ai-validate.json");
 /// Phase F. The one fixture here that is hand-authored rather than captured, and the file says why
 /// in its own `_captured` header: capturing it means paying a third-party provider with a real key.
 /// Same documented-exception shape as the two doctor fixtures above.
@@ -1201,15 +1202,49 @@ pub async fn run_providers(
         };
         return serde_json::from_str(text).map_err(|e| format!("fixture did not parse: {e}"));
     }
-    let mut full = vec!["providers".to_string()];
+    run_json_with_stdin(python_exe, npdev_cli, java_home, "providers", args, stdin).await
+}
+
+/// `npdev ai <args>` (AIP-2, 2.4): the AI configuration and `npdev ai complete`, the one client. The
+/// Prompter and the AI Providers tab reach a provider ONLY through this -- the CLI resolves the key
+/// from `npdev providers` inside its own process, so no provider key ever enters the Manager. A prompt
+/// goes in on stdin (`--prompt-file -`), never on argv.
+pub async fn run_ai(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    args: &[String],
+    stdin: Option<String>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        let text = match args.first().map(String::as_str) {
+            Some("complete") => FIXTURE_PROMPTER_GENERATE,
+            _ => FIXTURE_AI_VALIDATE,
+        };
+        return serde_json::from_str(text).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    run_json_with_stdin(python_exe, npdev_cli, java_home, "ai", args, stdin).await
+}
+
+/// `npdev <command> <args>` answering one JSON object, with `stdin` (a key, a prompt) piped in rather
+/// than put on argv, where a process listing would show it.
+async fn run_json_with_stdin(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    command: &str,
+    args: &[String],
+    stdin: Option<String>,
+) -> Result<Value, String> {
+    let mut full = vec![command.to_string()];
     full.extend(args.iter().cloned());
-    let label = format!("providers {}", args.first().map(String::as_str).unwrap_or(""));
+    let label = format!("{command} {}", args.first().map(String::as_str).unwrap_or(""));
     let borrowed: Vec<&str> = full.iter().map(String::as_str).collect();
     let mut cmd = build_command(python_exe, npdev_cli, &borrowed, java_home, None);
     cmd.stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() });
     let mut child = cmd.spawn().map_err(|e| format!("could not run {label}: {e}"))?;
     if let Some(text) = stdin {
-        let mut pipe = child.stdin.take().ok_or("providers: no stdin pipe")?;
+        let mut pipe = child.stdin.take().ok_or_else(|| format!("{label}: no stdin pipe"))?;
         pipe.write_all(format!("{text}\n").as_bytes()).await.map_err(|e| format!("{label}: {e}"))?;
         drop(pipe);
     }

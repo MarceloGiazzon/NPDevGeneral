@@ -1607,10 +1607,12 @@ fn assistant_config(state: State<'_, AppState>) -> Value {
         .unwrap_or(false)
         || secrets::has_secret(LEGACY_ASSISTANT_PROFILE_ID);
     match &manager.assistant {
-        None => serde_json::json!({"configured": false, "prompterProfiles": prompter_profiles}),
+        None => serde_json::json!({"configured": false, "kind": "ai", "prompterProfiles": prompter_profiles,
+                                   "note": "uses the scrap-assistant binding of `npdev ai`; keys in the AI Keys tab"}),
         Some(config) => serde_json::json!({
             "configured": true,
             "kind": config.kind,
+            "profile": config.profile,
             "command": config.command,
             "endpoint": config.endpoint,
             "model": config.model,
@@ -1630,19 +1632,24 @@ fn set_assistant_config(
     endpoint: Option<String>,
     api_key: Option<String>,
     model: Option<String>,
+    profile: Option<String>,
 ) -> Result<(), String> {
+    // A key typed now goes straight to the OS credential store, never into manager.json (AIP-2, 2.6).
+    // An empty box means "leave it alone", not "erase it" -- the UI cannot show the key, so it cannot
+    // send it back either, and treating blank as a delete would wipe the key every save. Stored BEFORE
+    // the config changes, so a refusing store leaves an unchanged configuration.
+    if let Some(key) = api_key.filter(|k| !k.is_empty()) {
+        secrets::set_secret(LEGACY_ASSISTANT_PROFILE_ID, &key)?;
+    }
     let mut manager = state.manager.lock().expect("lock poisoned");
-    let existing_key = manager.assistant.as_ref().and_then(|a| a.api_key.clone());
+    let legacy_key = manager.assistant.as_ref().and_then(|a| a.api_key.clone());
     manager.assistant = Some(state::AssistantConfig {
         kind,
+        profile: profile.filter(|p| !p.is_empty()),
         command: command.unwrap_or_default(),
         endpoint,
-        // An empty box means "leave it alone", not "erase it" -- the UI cannot show the key, so it
-        // cannot send it back either, and treating blank as a delete would wipe the key every save.
-        api_key: match api_key {
-            Some(key) if !key.is_empty() => Some(key),
-            _ => existing_key,
-        },
+        // Only a not-yet-migrated plaintext key survives here (see AssistantConfig::api_key).
+        api_key: legacy_key,
         model,
     });
     log::info("assistant provider configured");
@@ -1678,10 +1685,9 @@ async fn assistant_compose(
 #[tauri::command]
 async fn assistant_generate(state: State<'_, AppState>, payload: Value) -> Result<Value, String> {
     let config = state.manager.lock().expect("lock poisoned").assistant.clone();
-    let config = config.ok_or_else(|| {
-        "no assistant provider is configured -- set one in Settings, or write the routine in the \
-         JSON tab (which never needs one)".to_string()
-    })?;
+    // Nothing configured means the `ai` kind: the scrap-assistant binding of `npdev ai`, with the key
+    // from the AI Keys tab -- a working default that still sends nothing without a stored key.
+    let config = config.unwrap_or_else(|| state::AssistantConfig { kind: "ai".to_string(), ..Default::default() });
     let java_home = resolve_java_home(&state);
     let (python, cli) = if npdev::fake_mode() {
         (PathBuf::from("python"), PathBuf::from("npdev_cli.py"))
@@ -1700,6 +1706,10 @@ async fn assistant_generate(state: State<'_, AppState>, payload: Value) -> Resul
     let mut args = vec!["ai".to_string(), "generate-routine".to_string(), "--json".to_string(),
                         "--payload-file".to_string(), payload_path.to_string_lossy().to_string(),
                         "--provider".to_string(), config.kind.clone()];
+    if let Some(profile) = config.profile.as_ref().filter(|p| config.kind == "ai" && !p.is_empty()) {
+        args.push("--profile".to_string());
+        args.push(profile.clone());
+    }
     for part in &config.command {
         args.push("--command".to_string());
         args.push(part.clone());
@@ -1724,11 +1734,17 @@ async fn assistant_generate(state: State<'_, AppState>, payload: Value) -> Resul
     //
     // Read from the OS credential store first (where migrate_legacy_assistant_key put it), falling
     // back to whatever is still in manager.json on a machine where that migration could not run.
-    let api_key = secrets::get_secret(LEGACY_ASSISTANT_PROFILE_ID)
-        .ok()
-        .flatten()
-        .filter(|k| !k.is_empty())
-        .or_else(|| config.api_key.clone());
+    //
+    // The "ai" kind needs no key here at all: the CLI resolves it from `npdev providers` itself.
+    let api_key = if config.kind == "ai" {
+        None
+    } else {
+        secrets::get_secret(LEGACY_ASSISTANT_PROFILE_ID)
+            .ok()
+            .flatten()
+            .filter(|k| !k.is_empty())
+            .or_else(|| config.api_key.clone())
+    };
 
     log::info(format!("assistant_generate via provider kind={}", config.kind));
     let result = npdev::run_explore_with_env(
@@ -1776,6 +1792,7 @@ fn prompter_profiles(state: State<'_, AppState>) -> Value {
                 "models": p.models,
                 "defaultModel": p.default_model,
                 "defaultEffort": p.default_effort,
+                "aiProfile": p.ai_profile,
                 // Whether a credential EXISTS. Never the credential. Same rule as
                 // assistant_config's hasApiKey: a window that can read a key back is a window that
                 // can leak it into a screenshot.
@@ -2025,23 +2042,261 @@ async fn prompter_generate(
     // The id and model, never the prompt and never the key.
     log::info(format!("prompter_generate profile={} model={}", profile.id, model));
 
-    generate_via_profile(&profile, &model, effort.as_deref(), &prompt).await
+    generate_via_profile(&state, &profile, &model, effort.as_deref(), &prompt).await
 }
 
 /// The dispatch body of `prompter_generate` above, pulled out so `ai_loop::run` (Session 2,
 /// NPDEV_MEGA_ROADMAP.md) calls the exact same "command" vs "http" send rather than a second copy --
 /// the manual Prompter tab and the automatic AI loop must speak to a provider identically.
 pub(crate) async fn generate_via_profile(
+    app_state: &AppState,
     profile: &state::PrompterProfile,
     model: &str,
     effort: Option<&str>,
     prompt: &str,
 ) -> Result<Value, String> {
     match profile.kind.as_str() {
+        "ai" => prompter_generate_via_ai(app_state, profile, effort, prompt).await,
         "command" => prompter_generate_via_command(profile, prompt).await,
-        "http" => prompter_generate_via_http(profile, model, effort, prompt).await,
-        other => Err(format!("unknown provider kind '{other}' -- expected 'command' or 'http'")),
+        // Legacy: move the key into `npdev providers` and the endpoint into an `npdev ai` profile the
+        // first time the profile is used, then send through the one client. A migration that cannot
+        // finish leaves the profile and its key untouched and sends the old way, so nobody loses a
+        // working Prompter to an upgrade step.
+        "http" => match migrate_http_profile(app_state, profile).await {
+            Ok((migrated, _)) => prompter_generate_via_ai(app_state, &migrated, effort, prompt).await,
+            Err(e) => {
+                log::info(format!("prompter profile {} not migrated ({e}); sending the legacy way", profile.id));
+                prompter_generate_via_http(profile, model, effort, prompt).await
+            }
+        },
+        other => Err(format!("unknown provider kind '{other}' -- expected 'ai', 'command' or 'http'")),
     }
+}
+
+/// `npdev ai <args>` with python/cli/JAVA_HOME resolved the way every command here does.
+pub(crate) async fn ai_call(app_state: &AppState, args: Vec<String>, stdin: Option<String>) -> Result<Value, String> {
+    let java_home = resolve_java_home(app_state);
+    let (python, cli) = if npdev::fake_mode() {
+        (PathBuf::from("python"), PathBuf::from("npdev_cli.py"))
+    } else {
+        (resolve_python_exe(app_state).await?, resolve_npdev_cli(app_state)?)
+    };
+    npdev::run_ai(&python, &cli, java_home.as_deref(), &args, stdin).await
+}
+
+/// A CLI answer of `{"ok": true, ...}`, or its `error` as the Err.
+fn cli_ok(answer: Value, what: &str) -> Result<Value, String> {
+    if answer.get("ok").and_then(Value::as_bool) == Some(true) {
+        Ok(answer)
+    } else {
+        Err(format!("{what}: {}", answer.get("error").and_then(Value::as_str).unwrap_or("failed")))
+    }
+}
+
+/// The Prompter through `npdev ai complete` (AIP-2, 2.4). The prompt travels on stdin; the key is
+/// resolved by the CLI from `npdev providers` and never reaches this process. `--feature prompter`
+/// labels the call for the spend guard and the usage log.
+async fn prompter_generate_via_ai(
+    app_state: &AppState,
+    profile: &state::PrompterProfile,
+    effort: Option<&str>,
+    prompt: &str,
+) -> Result<Value, String> {
+    let mut args: Vec<String> = ["complete", "--json", "--prompt-file", "-", "--feature", "prompter", "--timeout", "600"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    if let Some(name) = profile.ai_profile.as_deref().filter(|n| !n.is_empty()) {
+        args.push("--profile".to_string());
+        args.push(name.to_string());
+    }
+    if let Some(level) = effort.filter(|e| !e.is_empty()) {
+        args.push("--effort".to_string());
+        args.push(level.to_string());
+    }
+    let answer = cli_ok(ai_call(app_state, args, Some(prompt.to_string())).await?, "the AI call failed")?;
+    let text = answer.get("text").cloned().unwrap_or(Value::String(String::new()));
+    Ok(serde_json::json!({
+        "ok": true, "text": text, "raw": text,
+        "provider": answer.get("provider"), "model": answer.get("model"), "profile": answer.get("profile"),
+        "warnings": answer.get("warnings"),
+    }))
+}
+
+/// Lower-case letters, digits and single dashes -- the id shape `npdev ai` accepts.
+fn slug(text: &str) -> String {
+    let mut out = String::new();
+    for c in text.to_ascii_lowercase().chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c);
+        } else if !out.ends_with('-') && !out.is_empty() {
+            out.push('-');
+        }
+    }
+    out.trim_end_matches('-').chars().take(60).collect()
+}
+
+fn url_host(url: &str) -> &str {
+    let rest = url.split_once("://").map(|(_, r)| r).unwrap_or(url);
+    rest.split('/').next().unwrap_or(rest)
+}
+
+/// AIP-2, 2.5: one legacy `http` Prompter profile becomes an `npdev ai` profile.
+///
+/// The key moves from the Manager's `prompter/<id>` keyring entry into `npdev providers` (piped on
+/// stdin), under the catalogue provider whose endpoint matches -- as a second account of it when it
+/// already holds a key (D5) -- or under a custom provider in the user's ai.json for an endpoint NPDev
+/// does not know. The old entry is deleted only after the profile was rewritten, so a step that fails
+/// leaves everything exactly as it was. A paid provider gets `spend allow-paid prompter`: this
+/// profile was already sending to it, and the migration keeps what worked working.
+async fn migrate_http_profile(
+    app_state: &AppState,
+    profile: &state::PrompterProfile,
+) -> Result<(state::PrompterProfile, Value), String> {
+    let endpoint = profile.endpoint.clone().filter(|e| !e.is_empty())
+        .ok_or_else(|| "the profile has no endpoint".to_string())?;
+    let key = secrets::get_secret(&profile.id)?.filter(|k| !k.is_empty())
+        .ok_or_else(|| "no credential stored for it".to_string())?;
+    let listing = cli_ok(ai_call(app_state, vec!["providers".into(), "--json".into()], None).await?, "ai providers")?;
+    let rows = listing.get("providers").and_then(Value::as_array).cloned().unwrap_or_default();
+    let matches_prefix = |row: &&Value| {
+        let mut urls = vec![row.get("baseUrl").and_then(Value::as_str).unwrap_or("").to_string()];
+        if let Some(aliases) = row.get("aliasBaseUrls").and_then(Value::as_array) {
+            urls.extend(aliases.iter().filter_map(Value::as_str).map(str::to_string));
+        }
+        urls.iter().any(|u| !u.is_empty() && endpoint.starts_with(u.trim_end_matches('/')))
+    };
+    let found = rows.iter().find(matches_prefix)
+        .or_else(|| rows.iter().find(|row| url_host(row.get("baseUrl").and_then(Value::as_str).unwrap_or("")) == url_host(&endpoint)))
+        .cloned();
+    let auth_style = profile.auth_style.clone().unwrap_or_else(|| "bearer".to_string());
+    let (provider_id, paid, key_present) = match &found {
+        Some(row) => (
+            row.get("id").and_then(Value::as_str).unwrap_or_default().to_string(),
+            row.get("kind").and_then(Value::as_str) == Some("paid"),
+            !matches!(row.get("keySource").and_then(Value::as_str), Some("missing") | None),
+        ),
+        None => {
+            let id = slug(&format!("prompter-{}", profile.id));
+            let protocol = match auth_style.as_str() {
+                "x-api-key" => "anthropic-messages",
+                "x-goog-api-key" => "gemini-native",
+                _ => "openai-chat",
+            };
+            let base = endpoint.split("/chat/completions").next().unwrap_or(&endpoint);
+            let base = base.split("/messages").next().unwrap_or(base);
+            let base = base.split("/models/").next().unwrap_or(base).to_string();
+            let args = ["providers", "add", &id, "--name", &profile.label, "--kind", "paid", "--protocol", protocol,
+                        "--auth-style", &auth_style, "--base-url", &base, "--json"];
+            cli_ok(ai_call(app_state, args.iter().map(|s| s.to_string()).collect(), None).await?, "ai providers add")?;
+            (id, true, false)
+        }
+    };
+    let account = if key_present { Some(slug(&profile.id)) } else { None };
+    let mut add_key = vec!["add".to_string(), provider_id.clone(), "--key-stdin".to_string(), "--json".to_string()];
+    if let Some(a) = &account {
+        add_key.extend(["--account".to_string(), a.clone()]);
+    }
+    let java_home = resolve_java_home(app_state);
+    let (python, cli) = (resolve_python_exe(app_state).await?, resolve_npdev_cli(app_state)?);
+    cli_ok(npdev::run_providers(&python, &cli, java_home.as_deref(), &add_key, Some(key)).await?, "providers add")?;
+
+    let model = profile.default_model.clone().filter(|m| !m.is_empty())
+        .or_else(|| profile.models.first().cloned())
+        .or_else(|| found.as_ref().and_then(|r| r.get("defaultModel")).and_then(Value::as_str).map(str::to_string))
+        .ok_or_else(|| "the profile names no model".to_string())?;
+    let known = cli_ok(ai_call(app_state, vec!["models".into(), "--provider".into(), provider_id.clone(), "--all".into(),
+                                             "--json".into()], None).await?, "ai models")?;
+    let has_model = known.get("models").and_then(Value::as_array)
+        .is_some_and(|ms| ms.iter().any(|m| m.get("id").and_then(Value::as_str) == Some(model.as_str())));
+    if !has_model {
+        cli_ok(ai_call(app_state, vec!["models".into(), "add".into(), provider_id.clone(), model.clone(), "--json".into()],
+                       None).await?, "ai models add")?;
+    }
+    let name = slug(&format!("prompter-{}", profile.id));
+    let mut fields = vec!["--provider".to_string(), provider_id.clone(), "--model".to_string(), model.clone(),
+                          "--max-tokens".to_string(), "16000".to_string(), "--json".to_string()];
+    if let Some(level) = profile.default_effort.clone().filter(|e| !e.is_empty()) {
+        fields.extend(["--effort".to_string(), level]);
+    }
+    if let Some(a) = &account {
+        fields.extend(["--account".to_string(), a.clone()]);
+    }
+    let mut add = vec!["profiles".to_string(), "add".to_string(), name.clone()];
+    add.extend(fields.clone());
+    if cli_ok(ai_call(app_state, add, None).await?, "ai profiles add").is_err() {
+        let mut set = vec!["profiles".to_string(), "set".to_string(), name.clone()];
+        set.extend(fields);
+        cli_ok(ai_call(app_state, set, None).await?, "ai profiles set")?;
+    }
+    if paid {
+        cli_ok(ai_call(app_state, vec!["spend".into(), "allow-paid".into(), "prompter".into(), "--json".into()], None)
+                   .await?, "ai spend allow-paid")?;
+    }
+
+    let mut migrated = profile.clone();
+    migrated.kind = "ai".to_string();
+    migrated.ai_profile = Some(name.clone());
+    migrated.endpoint = None;
+    migrated.auth_style = None;
+    {
+        let mut manager = app_state.manager.lock().expect("lock poisoned");
+        if let Some(existing) = manager.prompter_profiles.iter_mut().find(|p| p.id == profile.id) {
+            *existing = migrated.clone();
+        }
+        manager.save().map_err(|e| e.to_string())?;
+    }
+    if let Err(e) = secrets::delete_secret(&profile.id) {
+        log::info(format!("prompter profile {} migrated, but its old keyring entry stays: {e}", profile.id));
+    }
+    // Ids only -- never the key, the endpoint the user typed, or the model list.
+    log::info(format!("prompter profile {} migrated to npdev ai profile {name} (provider {provider_id})", profile.id));
+    Ok((migrated, serde_json::json!({
+        "id": profile.id, "aiProfile": name, "provider": provider_id, "account": account,
+        "customProvider": found.is_none(), "paidAllowed": paid,
+    })))
+}
+
+/// AIP-2, 2.5: migrate every legacy `http` Prompter profile that still holds a key. The Prompter tab
+/// calls this when it opens; `generate_via_profile` also migrates one on first use.
+#[tauri::command]
+async fn migrate_prompter_profiles(state: State<'_, AppState>) -> Result<Value, String> {
+    if npdev::fake_mode() {
+        return Ok(serde_json::json!({ "migrated": [], "failed": [] }));
+    }
+    let legacy: Vec<state::PrompterProfile> = {
+        let manager = state.manager.lock().expect("lock poisoned");
+        manager.prompter_profiles.iter().filter(|p| p.kind == "http").cloned().collect()
+    };
+    let mut migrated = Vec::new();
+    let mut failed = Vec::new();
+    for profile in legacy {
+        if !secrets::has_secret(&profile.id) {
+            continue;
+        }
+        match migrate_http_profile(&state, &profile).await {
+            Ok((_, report)) => migrated.push(report),
+            Err(e) => failed.push(serde_json::json!({ "id": profile.id, "error": e })),
+        }
+    }
+    Ok(serde_json::json!({ "migrated": migrated, "failed": failed }))
+}
+
+/// The AI Providers tab (AIP-4): `npdev ai <args> --json`, a thin pipe. `complete` is not reachable
+/// from here -- sending a prompt is the Prompter's job, with its own compose-then-send rule.
+#[tauri::command]
+async fn ai_command(state: State<'_, AppState>, args: Vec<String>) -> Result<Value, String> {
+    const ALLOWED: [&str; 11] = ["providers", "models", "profiles", "bindings", "bind", "reset", "validate", "test",
+                                 "usage", "spend", "detect"];
+    match args.first().map(String::as_str) {
+        Some(first) if ALLOWED.contains(&first) => {}
+        other => return Err(format!("not an `npdev ai` command this window may run: {other:?}")),
+    }
+    let mut args = args;
+    if !args.iter().any(|a| a == "--json") {
+        args.push("--json".to_string());
+    }
+    ai_call(&state, args, None).await
 }
 
 /// Validates a candidate model.json the Prompter got back from an AI answer, BEFORE anything
@@ -3150,6 +3405,8 @@ the blast radius needs a baseline to diff against"
             prompter_profiles,
             save_prompter_profile,
             delete_prompter_profile,
+            migrate_prompter_profiles,
+            ai_command,
             // S17b (Track B): DB/deploy secret profiles with per-environment isolation
             secret_profiles,
             save_secret_profile,
@@ -3181,4 +3438,25 @@ the blast radius needs a baseline to diff against"
         ])
         .run(tauri::generate_context!())
         .expect("error while running the NPDev Manager");
+}
+
+
+#[cfg(test)]
+mod prompter_migration_tests {
+    use super::{slug, url_host};
+
+    /// The ids `npdev ai` accepts: lower-case letters, digits, single dashes.
+    #[test]
+    fn slug_makes_an_npdev_ai_id() {
+        assert_eq!(slug("prompter-Anthropic Work"), "prompter-anthropic-work");
+        assert_eq!(slug("--a__b--"), "a-b");
+        assert_eq!(slug(&"x".repeat(80)).len(), 60);
+    }
+
+    #[test]
+    fn url_host_is_scheme_free_and_path_free() {
+        assert_eq!(url_host("https://api.anthropic.com/v1/messages"), "api.anthropic.com");
+        assert_eq!(url_host("http://127.0.0.1:1234/v1"), "127.0.0.1:1234");
+        assert_eq!(url_host("api.example.com/x"), "api.example.com");
+    }
 }

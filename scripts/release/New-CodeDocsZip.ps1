@@ -190,7 +190,7 @@ foreach ($path in ($tracked | Sort-Object)) {
             continue
         }
         $zippedPaths.Add($path)
-        $totalZippedBytes += (Get-Item -LiteralPath $full).Length
+        $totalZippedBytes += (Get-Item -LiteralPath $full -Force).Length
         $treeEntries.Add($path + "  [zipped]")
     }
     else {

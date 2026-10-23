@@ -157,8 +157,12 @@ pub struct PrompterProfile {
     /// Slug, unique within the list, e.g. "anthropic-work". Also the credential-store account key.
     pub id: String,
     pub label: String,
-    /// "command" or "http".
+    /// "ai" (an `npdev ai` profile: the CLI holds the key, the Manager never sees it), "command", or
+    /// "http" (legacy: migrated to "ai" the first time it is used, see main.rs migrate_http_profile).
     pub kind: String,
+    /// ai kind: the `npdev ai` profile to call. None = the `prompter` feature binding.
+    #[serde(default)]
+    pub ai_profile: Option<String>,
     /// command kind: the argv template. `{prompt_file}` is substituted with a path to a temp file --
     /// never with the prompt itself, which on an argv lands in shell history and every process
     /// listing on the machine.
@@ -183,8 +187,12 @@ pub struct PrompterProfile {
 /// Claude CLI, say) or an HTTP endpoint plus a key they typed. Nothing here ships with the Manager.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AssistantConfig {
-    /// "command" or "http".
+    /// "ai" (`npdev ai generate-routine --provider ai`: a catalogue profile, the key held by the CLI),
+    /// "command", or "http" (legacy: a raw endpoint of the user's own).
     pub kind: String,
+    /// ai kind: the `npdev ai` profile. None = the `scrap-assistant` feature binding.
+    #[serde(default)]
+    pub profile: Option<String>,
     /// command kind: the argv template. `{prompt_file}` and `{context_file}` are substituted with
     /// paths to temp files -- never with the content itself, which would put a user's DOM excerpt
     /// on a command line where it lands in shell history and process listings.
@@ -192,6 +200,9 @@ pub struct AssistantConfig {
     pub command: Vec<String>,
     #[serde(default)]
     pub endpoint: Option<String>,
+    /// LEGACY, read-only: a key that an old manager.json still holds in plaintext. Nothing writes it
+    /// any more (a key typed now goes to the OS credential store); `migrate_legacy_assistant_key` moves
+    /// it out at startup and blanks it, and keeps it here only while no store can take it.
     #[serde(default)]
     pub api_key: Option<String>,
     #[serde(default)]

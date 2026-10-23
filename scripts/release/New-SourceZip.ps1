@@ -132,7 +132,7 @@ foreach ($path in $selected) {
         continue
     }
     $present.Add($path)
-    $totalBytes += (Get-Item -LiteralPath $full).Length
+    $totalBytes += (Get-Item -LiteralPath $full -Force).Length
 }
 
 foreach ($path in $missing) {

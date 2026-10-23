@@ -172,16 +172,33 @@ function onProfileChanged() {
   list.innerHTML = (profile.models || []).map((m) => `<option value="${pEsc(m)}"></option>`).join("");
   document.getElementById("prompter-effort").value = profile.defaultEffort || "";
 
-  // A `command` profile runs a CLI the user already authenticated separately, so it needs no stored
-  // credential; an `http` one cannot send without a key, and saying so up front beats a failed send.
-  const usable = profile.kind === "command" || profile.hasCredential;
+  // A `command` profile runs a CLI the user already authenticated separately, and an `ai` one sends
+  // through `npdev ai complete`, which holds the key itself (and says so if there is none) -- so
+  // neither needs a credential here. An `http` one cannot send without a key, and saying so up front
+  // beats a failed send.
+  const usable = profile.kind === "command" || profile.kind === "ai" || profile.hasCredential;
   sendBtn.disabled = !usable;
+  const target = profile.kind === "ai" ? `ai profile ${profile.aiProfile || "(prompter binding)"}` : profile.kind;
   note.textContent = usable
-    ? `${profile.label || profile.id} — ${profile.kind}${profile.hasCredential ? ", key stored in this machine's credential store" : ""}`
+    ? `${profile.label || profile.id} — ${target}${profile.hasCredential ? ", key stored in this machine's credential store" : ""}`
     : `${profile.label || profile.id} — no key stored. Press ⚙ PROVIDERS and paste one.`;
 }
 
 async function refreshPrompterProfiles() {
+  // Once per window: legacy `http` profiles move their key into `npdev providers` and become `ai`
+  // profiles (main.rs migrate_http_profile). A profile that cannot move keeps working as it was.
+  if (!prompterState.migrationTried) {
+    prompterState.migrationTried = true;
+    try {
+      const report = await pInvoke("migrate_prompter_profiles");
+      if ((report.migrated || []).length) {
+        pStatus(`moved ${report.migrated.length} provider(s) to NPDev AI profiles; their keys are in the AI Keys tab now`);
+      }
+    } catch (e) {
+      // Not fatal: the profiles still work the legacy way.
+    }
+  }
+  await refreshAiProfileChoices();
   const result = await pInvoke("prompter_profiles");
   prompterState.profiles = result.profiles || [];
   const picker = document.getElementById("prompter-profile");
@@ -223,16 +240,36 @@ function renderProfileList() {
 }
 
 function setProfileKindFields() {
-  const http = document.getElementById("pf-kind").value === "http";
-  document.getElementById("pf-http-fields").hidden = !http;
-  document.getElementById("pf-command-fields").hidden = http;
+  const kind = document.getElementById("pf-kind").value;
+  document.getElementById("pf-ai-fields").hidden = kind !== "ai";
+  document.getElementById("pf-http-fields").hidden = kind !== "http";
+  document.getElementById("pf-command-fields").hidden = kind !== "command";
+}
+
+/// The `npdev ai` profiles a Prompter profile can point at. The first choice is the prompter
+/// binding itself (`npdev ai bind prompter ...`), so changing that binding retargets the Prompter.
+async function refreshAiProfileChoices() {
+  const picker = document.getElementById("pf-ai-profile");
+  let names = [];
+  try {
+    const result = await pInvoke("ai_command", { args: ["profiles"] });
+    names = (result.profiles || []).filter((p) => !p.problem).map((p) => p.name);
+  } catch (e) {
+    // No CLI yet (nothing installed): only the binding choice is offered.
+  }
+  const previous = picker.value;
+  picker.innerHTML = [`<option value="">(the prompter binding)</option>`]
+    .concat(names.map((n) => `<option value="${pEsc(n)}">${pEsc(n)}</option>`))
+    .join("");
+  if (names.includes(previous)) picker.value = previous;
 }
 
 function clearProfileForm() {
   ["pf-id", "pf-label", "pf-endpoint", "pf-key", "pf-models", "pf-command"].forEach(
     (id) => (document.getElementById(id).value = "")
   );
-  document.getElementById("pf-kind").value = "http";
+  document.getElementById("pf-kind").value = "ai";
+  document.getElementById("pf-ai-profile").value = "";
   document.getElementById("pf-auth").value = "x-api-key";
   document.getElementById("pf-id").disabled = false;
   document.getElementById("prompter-editor-title").textContent = "Add a provider";
@@ -248,7 +285,8 @@ function editProfile(id) {
   // under the old name, so editing keeps it fixed -- a rename is a delete plus an add.
   document.getElementById("pf-id").disabled = true;
   document.getElementById("pf-label").value = profile.label || "";
-  document.getElementById("pf-kind").value = profile.kind || "http";
+  document.getElementById("pf-kind").value = profile.kind || "ai";
+  document.getElementById("pf-ai-profile").value = profile.aiProfile || "";
   document.getElementById("pf-endpoint").value = profile.endpoint || "";
   document.getElementById("pf-auth").value = profile.authStyle || "x-api-key";
   document.getElementById("pf-models").value = (profile.models || []).join(", ");
@@ -292,6 +330,7 @@ async function saveProfile() {
     id,
     label: document.getElementById("pf-label").value.trim() || id,
     kind,
+    ai_profile: kind === "ai" ? document.getElementById("pf-ai-profile").value || null : null,
     command: kind === "command" ? command : [],
     endpoint: kind === "http" ? document.getElementById("pf-endpoint").value.trim() || null : null,
     auth_style: kind === "http" ? document.getElementById("pf-auth").value : null,

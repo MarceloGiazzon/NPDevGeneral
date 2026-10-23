@@ -5,6 +5,14 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-22 — one AI configuration: `NPDevCli/ai-providers.json` is `npdev-ai-config.v1`, and the Manager's Prompter keys move into `npdev providers` (AIP-1, AIP-2)
+
+**What changes.** The provider catalogue gained `protocols`, `models` (prices per model, USD per million tokens, replacing each provider's `pricePer1kTokens`), `profiles` and `bindings`; a user overlay `~/.config/NPDev/ai.json` layers on top (`npdev ai ...`). The NPDev Manager's legacy `http` Prompter profiles move, the first time they are used or the Prompter tab opens, to `ai` profiles: the key goes from the Manager's `prompter/<id>` keyring entry into `npdev providers` (a second account of the matching provider when it already has a key), the endpoint becomes a catalogue provider (or a custom one in `ai.json`), and a paid provider gets `npdev ai spend allow-paid prompter` so what worked keeps working. On Linux the Manager's own credentials (db/deploy secrets) now live in the Secret Service instead of the session keyring, so they survive a reboot; a credential stored in the session keyring before this change must be stored again after the next reboot. `scripts/ai/bench/run_bench.py run` with no `--provider` and no `NPDEV_BENCH_BASE_URL` now uses the `bench` binding instead of refusing. `build-review-pack.py` calls the catalogue's default model for a vendor (`NPDEV_EXTERNALAI_<ID>_MODEL` still overrides) and no longer reads keys from the Windows registry. `npdev tester` spends a stored Anthropic key only with `--allow-paid`.
+
+**Who is affected.** Tooling that read `pricePer1kTokens` or `defaultModel` straight from `ai-providers.json` (read `npdev ai providers --json` / `npdev ai models --json` instead). Prompter users: nothing to retype. A review run relying on a registry-only key: `npdev providers add <id>` once.
+
+**Codemod.** The Prompter migration is automatic (`migrate_http_profile` in the Manager); a profile that cannot move keeps working the old way and is retried.
+
 ## 2026-10-22 — a technology word inside a name is a warning, not an error (REG-281)
 
 **What changes.** A concept, field, capability, event, flow or step name (and a capability type) that contains `spring`, `jpa`, `hibernate`, `kafka`, `smtp`, `rest` or `soap` anywhere, even inside an ordinary word such as "Restricao" or "Interest", used to fail validation. It now produces a warning. `npdev import db` no longer rewrites such words, and its report no longer has a `namingAdjustments` key.
