@@ -71,7 +71,10 @@ function Resolve-H2Jar {
         if (-not (Test-Path $Explicit)) { throw "H2 jar not found at -H2JarPath '$Explicit'." }
         return (Resolve-Path $Explicit).Path
     }
-    $roots = @('D:\WorkSpace\NPDev\Build', (Join-Path $env:USERPROFILE '.gradle\caches'))
+    # PORT-1: was a literal D:\WorkSpace build root and $env:USERPROFILE (unset off Windows).
+    . (Join-Path $PSScriptRoot '../npdev-common.ps1')
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+    $roots = @((Get-NPDevBuildRoot $repoRoot), (Join-Path $HOME '.gradle' 'caches'))
     $jar = Get-ChildItem -Path $roots -Recurse -Filter 'h2-2*.jar' -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -notmatch 'sources|javadoc' } |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1

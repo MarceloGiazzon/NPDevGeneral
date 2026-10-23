@@ -35,6 +35,7 @@ try {
 }
 
 $samplesRoot = Normalize-AbsolutePath (Join-Path $PSScriptRoot "..\..")
+$buildRoot = Get-NPDevSampleBuildRoot (Normalize-AbsolutePath (Join-Path $samplesRoot ".."))
 $sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId "12works\gift-idea-tracker"
 
 # R7 Stage D: resolve whatever key actually authenticates against THIS running app right now,
@@ -79,7 +80,7 @@ $sharedVars = @{
 
 Initialize-ScrapForAI -Root $ScrapForAIRoot | Out-Null
 $ctx = Start-ScrapForAI -AppBaseUrl $BaseUrl -Root $ScrapForAIRoot -Port $ScraperPort `
-    -ArtifactDir (Join-Path "D:\WorkSpace\NPDev\Build\scrapforai-artifacts" "12works-gift-idea-tracker")
+    -ArtifactDir (Join-Path (Join-Path $buildRoot "scrapforai-artifacts") "12works-gift-idea-tracker")
 
 $results = @()
 try {

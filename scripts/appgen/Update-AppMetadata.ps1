@@ -195,7 +195,7 @@ if ($SkipRestart) {
 # Silent-safe, not silent (this script's own contract): every refusal reason -- app not running, no
 # SUPER_USER_KEY.txt on disk, the endpoint rejecting the classification, or the endpoint simply not
 # existing on an app generated before R1.7 -- is printed before falling back, never swallowed.
-$py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "py" }
+$py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } elseif (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "py" }
 $cliScript = Join-Path $repo "NPDevCli\npdev_cli.py"
 $hotswapApplied = $false
 

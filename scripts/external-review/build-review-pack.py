@@ -56,15 +56,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 DEFAULT_MISSIONS_FILE = Path(__file__).parent / "missions.json"
-DEFAULT_OUTPUT_DIR = Path(
-    r"D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\external-ai-review\packs"
-)
 
 # This platform repo's own root (NPDev_General) -- scripts/external-review/build-review-pack.py is
 # two levels down from it. Deliberately NOT the same thing as --repo-root: a mission whose content
 # lives elsewhere (M1/M6 read a generated app under D:\WorkSpace\NPDev\Build) still redacts and
 # sanitizes using THIS repo's rule files, never a copy that may or may not exist at --repo-root.
 PLATFORM_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# PORT-1: was a literal D:\WorkSpace path; the evidence directory sits beside the repo checkout.
+DEFAULT_OUTPUT_DIR = PLATFORM_REPO_ROOT.parent / "NPDev_General__OutsideRepo" / "external-ai-review" / "packs"
 
 # The single redaction rule source (ADR-0009 / P2) -- one file, read by this Python producer AND
 # by the Java SensitiveKeyPolicy in tracing-redaction-default, so "what is sensitive" never drifts

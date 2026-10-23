@@ -146,7 +146,7 @@ else {
 $evidenceDir = Join-Path $sample.RunOutputRoot "journeys"
 New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
 $mailFile = Join-Path $evidenceDir "mail.jsonl"
-$py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "py" }
+$py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } elseif (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "py" }
 
 $sink = $null
 $app = $null

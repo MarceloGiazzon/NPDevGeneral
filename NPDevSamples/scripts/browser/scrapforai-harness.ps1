@@ -59,7 +59,7 @@ function Find-NpdevScrapEngine {
     $cli = Get-NpdevCliPath
     if (-not (Test-Path -LiteralPath $cli)) { return $null }
     try {
-        $json = & python $cli monitor engine --json 2>$null
+        $json = & $(if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "python3" }) $cli monitor engine --json 2>$null
         if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($json)) { return $null }
         return ($json | ConvertFrom-Json)
     } catch { return $null }
@@ -586,7 +586,7 @@ function Add-RoutineRunToHistory {
         if (-not [string]::IsNullOrWhiteSpace($RoutinePath)) { $args += @("--routine-file", $RoutinePath) }
         if (-not [string]::IsNullOrWhiteSpace($LedgerId))    { $args += @("--ledger-id", $LedgerId) }
         if (-not [string]::IsNullOrWhiteSpace($ArtifactDir)) { $args += @("--artifact-dir", $ArtifactDir) }
-        $json = & python @args 2>&1
+        $json = & $(if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "python3" }) @args 2>&1
         if ($LASTEXITCODE -ne 0) {
             # Never fail the SAMPLE because history could not be written. The run itself already
             # passed or failed on its own evidence; losing the history line is a smaller problem than

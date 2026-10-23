@@ -31,12 +31,13 @@ $port = 8094
 $appBaseUrl = "http://localhost:$port"
 
 $samplesRoot = Normalize-AbsolutePath (Join-Path $PSScriptRoot "..\..")
+$buildRoot = Get-NPDevSampleBuildRoot (Normalize-AbsolutePath (Join-Path $samplesRoot ".."))
 $scriptsRoot = Join-Path $samplesRoot "scripts"
 $sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId $sampleId
 $evidenceDir = Join-Path $sample.RunOutputRoot "schema-evolution"
 New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
 
-$bootLogRoot = Join-Path "D:\WorkSpace\NPDev\Build\schema-evolution-logs" $sampleId
+$bootLogRoot = Join-Path (Join-Path $buildRoot "schema-evolution-logs") $sampleId
 New-Item -ItemType Directory -Force -Path $bootLogRoot | Out-Null
 
 $workspaceRoot = Normalize-AbsolutePath (Join-Path $samplesRoot "..\..")
@@ -140,7 +141,7 @@ try {
     Info "=== Phase 2: populate one Project + one Note through the real UI (Note is the leaf table this demo targets -- nothing has an FK pointing at it, so dropping it alone never hits the pre-existing FK-ordering limitation that dropping the referenced Project table would) ==="
     Initialize-ScrapForAI -Root $ScrapForAIRoot | Out-Null
     $scrapCtx = Start-ScrapForAI -AppBaseUrl $appBaseUrl -Root $ScrapForAIRoot -Port $ScraperPort `
-        -ArtifactDir (Join-Path "D:\WorkSpace\NPDev\Build\scrapforai-artifacts" $sampleId)
+        -ArtifactDir (Join-Path (Join-Path $buildRoot "scrapforai-artifacts") $sampleId)
     $populateResult = Invoke-ScrapRoutine -Context $scrapCtx `
         -RoutinePath (Join-Path $PSScriptRoot "browser-routines\04-create-project-and-note-via-ui.json") `
         -Variables $sharedVars -Credentials $liveCreds

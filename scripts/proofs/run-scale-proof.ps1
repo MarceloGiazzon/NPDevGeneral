@@ -207,7 +207,7 @@ Write-Host "== R9 scale proof: $Concepts concepts ==" -ForegroundColor Cyan
 Write-Host "-- synthesize --"
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $modelPath = Join-Path $inputRoot "model.json"
-$py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "py" }
+$py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } elseif (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "py" }
 & $py (Join-Path $repoRoot "scripts\proofs\synthesize_scale_model.py") --concepts $Concepts --out $modelPath
 $synthesizeOk = $LASTEXITCODE -eq 0
 

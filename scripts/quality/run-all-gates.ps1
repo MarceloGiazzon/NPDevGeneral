@@ -142,7 +142,7 @@ else {
 
 function Record-CadenceRun {
     param([string]$Id, [string]$Tier, [string]$Result, [float]$DurationSeconds = 0)
-    $py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "py" }
+    $py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } elseif (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "py" }
     & $py "scripts/quality/cadence_state.py" record --id $Id --tier $Tier --result $Result `
         --duration-seconds $DurationSeconds 2>&1 | Out-Null
 }

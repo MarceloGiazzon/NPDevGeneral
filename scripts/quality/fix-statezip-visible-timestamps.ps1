@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$ZipRoot = "D:\WorkSpace\NPDev_General__OutsideRepo\state-zips"
+    # PORT-1: was a literal D:\WorkSpace path; the evidence directory sits beside the repo checkout.
+    [string]$ZipRoot = (Join-Path $PSScriptRoot "../../../NPDev_General__OutsideRepo/state-zips")
 )
 
 Set-StrictMode -Version Latest

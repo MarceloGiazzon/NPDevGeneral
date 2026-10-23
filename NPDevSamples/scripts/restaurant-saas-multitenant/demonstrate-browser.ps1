@@ -35,6 +35,7 @@ try {
 }
 
 $samplesRoot = Normalize-AbsolutePath (Join-Path $PSScriptRoot "..\..")
+$buildRoot = Get-NPDevSampleBuildRoot (Normalize-AbsolutePath (Join-Path $samplesRoot ".."))
 $sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId "restaurant-saas-multitenant"
 $evidenceDir = Join-Path $sample.RunOutputRoot "browser"
 New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
@@ -54,7 +55,7 @@ $uniqueCode = "UITEST-" + $runStamp
 
 Initialize-ScrapForAI -Root $ScrapForAIRoot | Out-Null
 $ctx = Start-ScrapForAI -AppBaseUrl $BaseUrl -Root $ScrapForAIRoot -Port $ScraperPort `
-    -ArtifactDir (Join-Path "D:\WorkSpace\NPDev\Build\scrapforai-artifacts" "restaurant-saas-multitenant")
+    -ArtifactDir (Join-Path (Join-Path $buildRoot "scrapforai-artifacts") "restaurant-saas-multitenant")
 
 $results = @()
 try {

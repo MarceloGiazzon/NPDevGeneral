@@ -180,7 +180,7 @@ else {
 
 $evidenceDir = Join-Path $sample.RunOutputRoot "behavior-probes"
 New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
-$py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "py" }
+$py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } elseif (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "py" }
 
 $app = $null
 try {

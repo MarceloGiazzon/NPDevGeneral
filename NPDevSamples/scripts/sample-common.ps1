@@ -81,6 +81,15 @@ function Get-NPDevLocalCacheRoot([string]$WorkspaceRoot) {
     return Normalize-AbsolutePath (Join-Path $WorkspaceRoot ".npdev-cache")
 }
 
+# PORT-1: the build root for sample evidence (boot logs, browser artifacts) -- these demos used to write
+# to a literal "D:\WorkSpace\NPDev\Build". Dot-sourced INSIDE this function so npdev-common.ps1's
+# same-named helpers (Get-NPDevWorkspaceRoot takes a different argument there) never leak into this
+# self-contained family, and so there is still ONE build-root resolver (REG-144).
+function Get-NPDevSampleBuildRoot([string]$WorkspaceRoot) {
+    . (Join-Path $WorkspaceRoot "scripts/npdev-common.ps1")
+    return Get-NPDevBuildRoot $WorkspaceRoot
+}
+
 function Get-NPDevGradleUserHome([string]$WorkspaceRoot) {
     $gradleUserHome = if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_GRADLE_USER_HOME)) {
         Normalize-AbsolutePath $env:NPDEV_GRADLE_USER_HOME
@@ -125,7 +134,7 @@ function Get-NpdevLiveApiKey([string]$AppRoot) {
     $cli = Join-Path $repoRoot "NPDevCli\npdev_cli.py"
     Ensure-File -PathValue $cli -Label "npdev CLI (npdev_cli.py)"
     Ensure-Directory -PathValue $AppRoot -Label "Generated app root"
-    $json = & python $cli monitor probe --app-dir $AppRoot --json 2>&1
+    $json = & $(if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "python3" }) $cli monitor probe --app-dir $AppRoot --json 2>&1
     if ($LASTEXITCODE -ne 0) {
         Fail ("'npdev monitor probe --app-dir " + $AppRoot + "' failed: " + ($json | Out-String).Trim())
     }

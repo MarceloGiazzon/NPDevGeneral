@@ -46,12 +46,13 @@ $port = 8094
 $appBaseUrl = "http://localhost:$port"
 
 $samplesRoot = Normalize-AbsolutePath (Join-Path $PSScriptRoot "..\..")
+$buildRoot = Get-NPDevSampleBuildRoot (Normalize-AbsolutePath (Join-Path $samplesRoot ".."))
 $scriptsRoot = Join-Path $samplesRoot "scripts"
 $sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId $sampleId
 $evidenceDir = Join-Path $sample.RunOutputRoot "promotion"
 New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
 
-$bootLogRoot = Join-Path "D:\WorkSpace\NPDev\Build\schema-evolution-logs" $sampleId
+$bootLogRoot = Join-Path (Join-Path $buildRoot "schema-evolution-logs") $sampleId
 New-Item -ItemType Directory -Force -Path $bootLogRoot | Out-Null
 
 $workspaceRoot = Normalize-AbsolutePath (Join-Path $samplesRoot "..\..")
@@ -182,7 +183,7 @@ try {
 
     Initialize-ScrapForAI -Root $ScrapForAIRoot | Out-Null
     $scrapCtx = Start-ScrapForAI -AppBaseUrl $appBaseUrl -Root $ScrapForAIRoot -Port $ScraperPort `
-        -ArtifactDir (Join-Path "D:\WorkSpace\NPDev\Build\scrapforai-artifacts" $sampleId)
+        -ArtifactDir (Join-Path (Join-Path $buildRoot "scrapforai-artifacts") $sampleId)
 
     # Explicit order, not a generic glob: the missing_role HTTP check must run between
     # "02-evidence-backed" (ends at S6) and "03-release-and-terminal" (assumes S6,

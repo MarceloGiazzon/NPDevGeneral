@@ -38,6 +38,7 @@ try {
 }
 
 $samplesRoot = Normalize-AbsolutePath (Join-Path $PSScriptRoot "..\..")
+$buildRoot = Get-NPDevSampleBuildRoot (Normalize-AbsolutePath (Join-Path $samplesRoot ".."))
 $sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId "superuser-admin-console"
 $evidenceDir = Join-Path $sample.RunOutputRoot "browser"
 New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
@@ -65,7 +66,7 @@ $sharedVars = @{
 
 Initialize-ScrapForAI -Root $ScrapForAIRoot | Out-Null
 $ctx = Start-ScrapForAI -AppBaseUrl $BaseUrl -Root $ScrapForAIRoot -Port $ScraperPort `
-    -ArtifactDir (Join-Path "D:\WorkSpace\NPDev\Build\scrapforai-artifacts" "superuser-admin-console")
+    -ArtifactDir (Join-Path (Join-Path $buildRoot "scrapforai-artifacts") "superuser-admin-console")
 
 $results = @()
 try {

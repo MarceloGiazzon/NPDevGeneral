@@ -37,12 +37,13 @@ $port = 8094
 $appBaseUrl = "http://localhost:$port"
 
 $samplesRoot = Normalize-AbsolutePath (Join-Path $PSScriptRoot "..\..")
+$buildRoot = Get-NPDevSampleBuildRoot (Normalize-AbsolutePath (Join-Path $samplesRoot ".."))
 $scriptsRoot = Join-Path $samplesRoot "scripts"
 $sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId $sampleId
 $evidenceDir = Join-Path $sample.RunOutputRoot "schema-evolution"
 New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
 
-$bootLogRoot = Join-Path "D:\WorkSpace\NPDev\Build\schema-evolution-logs" $sampleId
+$bootLogRoot = Join-Path (Join-Path $buildRoot "schema-evolution-logs") $sampleId
 New-Item -ItemType Directory -Force -Path $bootLogRoot | Out-Null
 
 $workspaceRoot = Normalize-AbsolutePath (Join-Path $samplesRoot "..\..")
@@ -151,7 +152,7 @@ try {
     Info "=== Phase 2: populate one row through the real UI (the row whose survival proves no data loss) ==="
     Initialize-ScrapForAI -Root $ScrapForAIRoot | Out-Null
     $scrapCtx = Start-ScrapForAI -AppBaseUrl $appBaseUrl -Root $ScrapForAIRoot -Port $ScraperPort `
-        -ArtifactDir (Join-Path "D:\WorkSpace\NPDev\Build\scrapforai-artifacts" $sampleId)
+        -ArtifactDir (Join-Path (Join-Path $buildRoot "scrapforai-artifacts") $sampleId)
     $populateResult = Invoke-ScrapRoutine -Context $scrapCtx `
         -RoutinePath (Join-Path $PSScriptRoot "browser-routines\schema-evolution\01-populate-before.json") `
         -Variables $sharedVars -Credentials $liveCreds
@@ -198,7 +199,7 @@ try {
 
     Info "=== Phase 5: browser-verify no data loss + the new column is usable ==="
     $scrapCtx = Start-ScrapForAI -AppBaseUrl $appBaseUrl -Root $ScrapForAIRoot -Port $ScraperPort `
-        -ArtifactDir (Join-Path "D:\WorkSpace\NPDev\Build\scrapforai-artifacts" $sampleId)
+        -ArtifactDir (Join-Path (Join-Path $buildRoot "scrapforai-artifacts") $sampleId)
     $verifyResult = Invoke-ScrapRoutine -Context $scrapCtx `
         -RoutinePath (Join-Path $PSScriptRoot "browser-routines\schema-evolution\02-verify-after.json") `
         -Variables $sharedVars -Credentials $liveCreds

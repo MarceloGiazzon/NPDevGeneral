@@ -273,7 +273,7 @@ try {
     $report.status = if ($allGreen) { "passed" } else { "failed" }
     Write-JsonReport $report
 
-    $py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "py" }
+    $py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } elseif (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "py" }
 
     # W1.8: the accessibility ratchet reads THIS SAME report's routines[].a11y (written above) --
     # runs only after every routine has had its chance to record a scan, never on a filtered/partial

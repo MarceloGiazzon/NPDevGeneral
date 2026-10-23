@@ -310,7 +310,7 @@ try {
     # caller like the T1 fast gate gets real behavioural assertions (seed -> query -> assert),
     # not just the smoke check's structural health/flow/panel reachability, at no extra boot cost.
     if (-not [string]::IsNullOrWhiteSpace($AcceptanceScenariosPath)) {
-        $py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "py" }
+        $py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } elseif (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "py" }
         $acceptanceOutput = & $py (Join-Path $workspaceRoot "NPDevCli\npdev_cli.py") acceptance run `
             --base-url $report.baseUrl --scenarios $AcceptanceScenariosPath --api-key $AcceptanceApiKey 2>&1
         $acceptanceExit = $LASTEXITCODE

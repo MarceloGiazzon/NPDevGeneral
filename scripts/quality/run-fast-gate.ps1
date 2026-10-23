@@ -92,7 +92,7 @@ Set-StrictMode -Off
 if ([string]::IsNullOrWhiteSpace($RuntimeHostLibsDir)) {
     $RuntimeHostLibsDir = Get-NPDevRuntimeHostLibsDir $repoRoot
 }
-$py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "py" }
+$py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } elseif (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "py" }
 # Every path below is built from $repoRoot and passed absolute -- deliberately never relying on
 # the process's current directory staying put across a run this long (several child pwsh.exe/java
 # processes, one of which failed mid-run once and left the caller's $PWD pointed at the generated

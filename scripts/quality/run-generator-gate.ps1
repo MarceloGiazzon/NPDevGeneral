@@ -201,7 +201,7 @@ $dslReferenceError = $null
 $dslReferenceExitCode = $null
 $dslReferenceOutput = @()
 try {
-    $dslReferenceOutput = & python $dslReferenceScript 2>&1 | ForEach-Object { $_.ToString() }
+    $dslReferenceOutput = & $(if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "python3" }) $dslReferenceScript 2>&1 | ForEach-Object { $_.ToString() }
     $dslReferenceExitCode = $LASTEXITCODE
 }
 catch {
@@ -227,7 +227,7 @@ $dslReferenceFloorError = $null
 $dslReferenceFloorExitCode = $null
 $dslReferenceFloorOutput = @()
 try {
-    $dslReferenceFloorOutput = & python $dslReferenceFloorScript 2>&1 | ForEach-Object { $_.ToString() }
+    $dslReferenceFloorOutput = & $(if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "python3" }) $dslReferenceFloorScript 2>&1 | ForEach-Object { $_.ToString() }
     $dslReferenceFloorExitCode = $LASTEXITCODE
 }
 catch {
