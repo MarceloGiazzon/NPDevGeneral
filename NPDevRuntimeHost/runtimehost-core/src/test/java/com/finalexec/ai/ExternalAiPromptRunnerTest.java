@@ -16,6 +16,7 @@ import com.npdev.kernel.ports.ExternalAiStructuredRequest;
 import com.npdev.kernel.ports.ExternalAiStructuredResult;
 import com.npdev.kernel.ports.ExternalAiVerdictRecord;
 import com.npdev.kernel.properties.PropertyExplanation;
+import com.npdev.kernel.properties.PropertyNotDeclaredException;
 import com.npdev.kernel.properties.PropertyResolver;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -88,6 +89,9 @@ class ExternalAiPromptRunnerTest {
 
         @Override
         public Object resolve(String propertyKey, ExecutionContext context) {
+            if (!values.containsKey(propertyKey)) {
+                throw new PropertyNotDeclaredException(propertyKey); // like the real resolver
+            }
             return values.get(propertyKey);
         }
 
@@ -149,6 +153,62 @@ class ExternalAiPromptRunnerTest {
         assertTrue(call(runner, "IdentifyCap", Map.of("cap", Map.of("name", "x")), "tito").ok());
         assertEquals("high", vendor.requests.get(0).effort());
         assertEquals("high", auditRows().get(0).meta().get("effort"));
+    }
+
+    /** AIP-3 (3.4b): an operator's model + effort properties win over the compiled prompt, per call. */
+    @Test
+    void operatorModelAndEffortPropertiesOverrideTheCompiledPromptWithoutRegenerating() throws Exception {
+        FakeVendor vendor = new FakeVendor();
+        ExternalAiPromptRunner runner = runner(model("apiEnabled"), vendor);
+        assertTrue(call(runner, "IdentifyCap", Map.of(), "tito").ok());
+
+        properties.values.put("npdev.externalai.prompt.IdentifyCap.model", "gemini-3.5-pro");
+        properties.values.put("npdev.externalai.prompt.IdentifyCap.effort", "low");
+        assertTrue(call(runner, "IdentifyCap", Map.of(), "tito").ok());
+
+        assertEquals("gemini-3.5-flash", vendor.requests.get(0).model());
+        assertEquals("gemini-3.5-pro", vendor.requests.get(1).model());
+        assertEquals("low", vendor.requests.get(1).effort());
+        AuditRecord row = auditRows().stream().filter(r -> r.meta().containsKey("overridden")).findFirst().orElseThrow();
+        assertEquals("gemini-3.5-pro", row.meta().get("model"));
+        assertEquals("model,effort", row.meta().get("overridden"));
+    }
+
+    /** AIP-3 (3.4b): a profile override swaps the vendor too -- and the vendor must still be allowed. */
+    @Test
+    void aProfileOverrideCannotWidenEgressPastExternalAiVendors() throws Exception {
+        FakeVendor vendor = new FakeVendor();
+        ExternalAiPromptRunner runner = runner(model("apiEnabled"), vendor);
+
+        properties.values.put("npdev.externalai.prompt.IdentifyCap.profile", "fast");
+        assertTrue(call(runner, "IdentifyCap", Map.of(), "tito").ok(), "'fast' is a gemini profile");
+        assertEquals("fast", auditRows().get(0).meta().get("profile"));
+
+        properties.values.put("npdev.externalai.prompt.IdentifyCap.profile", "claude");
+        CapabilityResult denied = call(runner, "IdentifyCap", Map.of(), "tito");
+        assertEquals("EXTERNAL_AI_VENDOR_NOT_ALLOWED", denied.error().code());
+        assertEquals(1, vendor.requests.size());
+    }
+
+    @Test
+    void anOverrideTheRunnerCannotHonourDeniesInsteadOfFallingBack() throws Exception {
+        FakeVendor vendor = new FakeVendor();
+        ExternalAiPromptRunner runner = runner(model("apiEnabled"), vendor);
+
+        properties.values.put("npdev.externalai.prompt.IdentifyCap.profile", "no-such-profile");
+        assertEquals("EXTERNAL_AI_OVERRIDE_INVALID", call(runner, "IdentifyCap", Map.of(), "tito").error().code());
+        properties.values.put("npdev.externalai.prompt.IdentifyCap.profile", "fast");
+        properties.values.put("npdev.externalai.prompt.IdentifyCap.model", "x");
+        assertEquals("EXTERNAL_AI_OVERRIDE_INVALID", call(runner, "IdentifyCap", Map.of(), "tito").error().code());
+        properties.values.remove("npdev.externalai.prompt.IdentifyCap.profile");
+        properties.values.put("npdev.externalai.prompt.IdentifyCap.model", null);
+        properties.values.put("npdev.externalai.prompt.IdentifyCap.effort", "max");
+        assertEquals("EXTERNAL_AI_OVERRIDE_INVALID", call(runner, "IdentifyCap", Map.of(), "tito").error().code());
+        assertTrue(vendor.requests.isEmpty());
+
+        properties.values.put("npdev.externalai.prompt.IdentifyCap.effort", "  ");
+        assertTrue(call(runner, "IdentifyCap", Map.of(), "tito").ok(), "null and blank mean: not overridden");
+        assertEquals("gemini-3.5-flash", vendor.requests.get(0).model());
     }
 
     @Test

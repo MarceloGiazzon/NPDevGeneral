@@ -103,6 +103,15 @@ command prints a key back. Listings say only where a key would come from: `env`,
   - `npdev.externalai.price.<id>.inputUsdPerMTok` and `.outputUsdPerMTok` override the catalogue
     price. Each call is otherwise priced for the model it used. The price feeds
     `externalAi.limits.monthlyCostCapUsd`.
+  - `npdev.externalai.prompt.<prompt>.profile`, `.model` and `.effort` change one prompt per call,
+    without regenerating. They apply only when the model declares them in `properties[]` (type
+    `string`, with the `settableAt` scopes an operator may use). Set them through `/api/properties`,
+    for example per tenant. A profile replaces the vendor, the model and the effort, and an `effort`
+    override still wins over it. A `model` override keeps the vendor. An unset, null or blank value
+    leaves the compiled prompt alone. The vendor must still be in `externalAi.vendors`. An unknown
+    profile, a profile set together with a model, or an effort other than `low` / `medium` / `high`
+    denies the call (`EXTERNAL_AI_OVERRIDE_INVALID`) rather than falling back. The audit row records
+    the vendor, model and effort actually used, and an `overridden` list.
 - **The chat assistant** uses `NPDEV_AGENT_VENDOR` if set. Otherwise it uses the catalogue profile
   named in `agentAccess.assistant.profile`. Failing both, it uses the model's first `externalAi.vendors`
   entry (`gemini` when the model lists none). Its model is `NPDEV_AGENT_MODEL`, else the profile's model

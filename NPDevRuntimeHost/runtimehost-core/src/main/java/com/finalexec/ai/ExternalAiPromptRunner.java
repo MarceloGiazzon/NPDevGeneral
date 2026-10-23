@@ -10,6 +10,7 @@ import com.networknt.schema.ValidationMessage;
 import com.npdev.dsl.v1.compiled.CompiledExternalAi;
 import com.npdev.dsl.v1.compiled.CompiledExternalAiPrompt;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiler.AiCatalogueProfiles;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityErrorKind;
 import com.npdev.kernel.CapabilityResult;
@@ -23,6 +24,7 @@ import com.npdev.kernel.ports.ExternalAiEgressDeniedException;
 import com.npdev.kernel.ports.ExternalAiStructuredRequest;
 import com.npdev.kernel.ports.ExternalAiStructuredResult;
 import com.npdev.kernel.ports.FileStoreContract;
+import com.npdev.kernel.properties.PropertyNotDeclaredException;
 import com.npdev.kernel.properties.PropertyResolver;
 
 import java.math.BigDecimal;
@@ -45,6 +47,9 @@ import java.util.regex.Pattern;
  * {@code capabilityCall externalAi.generate args: ["<prompt>", "$input"]}. It owns everything between
  * the flow and the vendor port, in this order, each step able to stop the call:
  * <ol>
+ *   <li>AIP-3 (3.4b) operator overrides: properties {@code npdev.externalai.prompt.<name>.profile|model|effort},
+ *       when the app declares them, resolved through the scoped-property cascade per call -- a profile,
+ *       model or effort changes without regenerating the app;</li>
  *   <li>ADR-0009 egress: the model's {@code externalAi.egress} must be {@code apiEnabled} and the
  *       prompt's vendor in {@code externalAi.vendors} (re-checked here, not only at validate time);</li>
  *   <li>limits: {@code externalAi.limits} names properties resolved through the scoped-property cascade
@@ -62,6 +67,7 @@ import java.util.regex.Pattern;
 public final class ExternalAiPromptRunner implements CapabilityAdapter {
 
     public static final String AUDIT_ACTION = "externalAi.generate";
+    public static final String OVERRIDE_PREFIX = "npdev.externalai.prompt.";
     static final String AUDIT_RESOURCE_TYPE = "externalAiPrompt";
     static final long MAX_IMAGE_BYTES = 8L * 1024 * 1024;
 
@@ -69,6 +75,7 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final JsonSchemaFactory SCHEMAS = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
     private static final BigDecimal MILLION = BigDecimal.valueOf(1_000_000);
+    private static final List<String> EFFORTS = List.of("low", "medium", "high");
 
     /** USD per million tokens, input and output. */
     public record Price(BigDecimal inputPerMillion, BigDecimal outputPerMillion) {
@@ -176,20 +183,29 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
             return deny(context, promptName, null, "EGRESS_DENIED",
                     "externalAi.egress is not 'apiEnabled' for this app (ADR-0009) -- nothing is sent", Map.of());
         }
-        CompiledExternalAiPrompt prompt = externalAi.findPrompt(promptName).orElse(null);
-        if (prompt == null) {
+        CompiledExternalAiPrompt declared = externalAi.findPrompt(promptName).orElse(null);
+        if (declared == null) {
             return deny(context, promptName, null, "UNKNOWN_PROMPT",
                     "No externalAi.prompts entry named '" + promptName + "'", Map.of());
         }
+        Overridden overridden;
+        try {
+            overridden = applyOverrides(declared, context);
+        } catch (IllegalArgumentException exception) {
+            return deny(context, promptName, declared, "OVERRIDE_INVALID", exception.getMessage(), Map.of());
+        }
+        CompiledExternalAiPrompt prompt = overridden.prompt();
+        Map<String, String> base = overridden.keys().isEmpty()
+                ? Map.of() : Map.of("overridden", String.join(",", overridden.keys()));
         String vendor = prompt.vendor() == null ? "" : prompt.vendor().trim().toLowerCase(Locale.ROOT);
         boolean allowed = externalAi.getVendors().stream()
                 .anyMatch(listed -> listed.trim().equalsIgnoreCase(vendor));
         if (!allowed) {
             return deny(context, promptName, prompt, "VENDOR_NOT_ALLOWED",
-                    "Vendor '" + prompt.vendor() + "' is not in externalAi.vendors", Map.of());
+                    "Vendor '" + prompt.vendor() + "' is not in externalAi.vendors", base);
         }
 
-        CapabilityResult limitDenial = checkLimits(externalAi, prompt, context);
+        CapabilityResult limitDenial = checkLimits(externalAi, prompt, context, base);
         if (limitDenial != null) {
             return limitDenial;
         }
@@ -204,7 +220,7 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
                 try {
                     image = fileReader.readImage(imageValue, context.tenantId(), MAX_IMAGE_BYTES);
                 } catch (IllegalArgumentException exception) {
-                    return deny(context, promptName, prompt, "IMAGE_REJECTED", exception.getMessage(), Map.of());
+                    return deny(context, promptName, prompt, "IMAGE_REJECTED", exception.getMessage(), base);
                 }
                 imageBytes = image.bytes();
                 imageMime = image.mimeType();
@@ -219,18 +235,19 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
                     imageBytes, imageMime, prompt.maxOutputTokens(), prompt.effort()));
         } catch (ExternalAiEgressDeniedException exception) {
             // e.g. EGRESS_DENIED_NO_API_KEY: the http adapter has no key for this vendor.
-            return deny(context, promptName, prompt, exception.code(), exception.getMessage(), Map.of());
+            return deny(context, promptName, prompt, exception.code(), exception.getMessage(), base);
         } catch (RuntimeException exception) {
-            audit(context, promptName, prompt, "failure", "VENDOR_CALL_FAILED", Map.of(
-                    "latencyMs", String.valueOf(clock.millis() - started),
-                    "image", String.valueOf(imageBytes != null)));
+            Map<String, String> failure = new LinkedHashMap<>(base);
+            failure.put("latencyMs", String.valueOf(clock.millis() - started));
+            failure.put("image", String.valueOf(imageBytes != null));
+            audit(context, promptName, prompt, "failure", "VENDOR_CALL_FAILED", failure);
             return CapabilityResult.failure("EXTERNAL_AI_VENDOR_CALL_FAILED",
                     "External AI call for prompt '" + promptName + "' failed: " + exception.getMessage(),
                     CapabilityErrorKind.TRANSIENT, Map.of("prompt", promptName, "vendor", vendor));
         }
 
         BigDecimal cost = estimateCost(vendor, prompt.model(), result.inputTokens(), result.outputTokens());
-        Map<String, String> usage = new LinkedHashMap<>();
+        Map<String, String> usage = new LinkedHashMap<>(base);
         usage.put("model", String.valueOf(result.model()));
         usage.put("inputTokens", String.valueOf(result.inputTokens()));
         usage.put("outputTokens", String.valueOf(result.outputTokens()));
@@ -265,11 +282,88 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
     }
 
     // ------------------------------------------------------------------------------------------
+    // Operator overrides
+    // ------------------------------------------------------------------------------------------
+
+    /** The prompt as it will be called, and which override keys changed it (empty: as compiled). */
+    record Overridden(CompiledExternalAiPrompt prompt, List<String> keys) {
+    }
+
+    /**
+     * AIP-3 (3.4b): {@code npdev.externalai.prompt.<name>.profile|model|effort}. A property the app does not
+     * declare, or one resolving to null/blank, leaves the compiled value. A profile replaces vendor, model and
+     * effort (an effort override still wins); a model keeps the vendor. Anything the runner cannot honour --
+     * an unknown profile, profile together with model, an effort outside low|medium|high, a resolver failure
+     * -- is an IllegalArgumentException the caller turns into a denial, never a silent fall-back to the
+     * compiled prompt. The vendor check runs after this, so an override cannot widen egress.
+     */
+    Overridden applyOverrides(CompiledExternalAiPrompt prompt, ExecutionContext context) {
+        PropertyResolver resolver = propertyResolver.get();
+        if (resolver == null) {
+            return new Overridden(prompt, List.of());
+        }
+        String prefix = OVERRIDE_PREFIX + prompt.name() + ".";
+        String profileName = overrideText(resolver, prefix + "profile", context);
+        String model = overrideText(resolver, prefix + "model", context);
+        String effort = overrideText(resolver, prefix + "effort", context);
+        if (profileName == null && model == null && effort == null) {
+            return new Overridden(prompt, List.of());
+        }
+        if (profileName != null && model != null) {
+            throw new IllegalArgumentException("'" + prefix + "profile' and '" + prefix + "model' are both set; "
+                    + "a profile names its own model -- set one of them");
+        }
+        if (effort != null && !EFFORTS.contains(effort)) {
+            throw new IllegalArgumentException("'" + prefix + "effort' is '" + effort + "'; expected one of " + EFFORTS);
+        }
+        List<String> keys = new java.util.ArrayList<>();
+        String vendor = prompt.vendor();
+        String newModel = prompt.model();
+        String newEffort = prompt.effort();
+        String newProfile = prompt.profile();
+        if (profileName != null) {
+            AiCatalogueProfiles.Profile profile = AiCatalogueProfiles.find(profileName).orElseThrow(() ->
+                    new IllegalArgumentException("'" + prefix + "profile' names unknown profile '" + profileName
+                            + "'; known: " + AiCatalogueProfiles.names()));
+            vendor = profile.provider();
+            newModel = profile.model();
+            newEffort = profile.effort();
+            newProfile = profile.name();
+            keys.add("profile");
+        }
+        if (model != null) {
+            newModel = model;
+            keys.add("model");
+        }
+        if (effort != null) {
+            newEffort = effort;
+            keys.add("effort");
+        }
+        return new Overridden(new CompiledExternalAiPrompt(prompt.name(), prompt.description(), vendor, newModel,
+                prompt.template(), prompt.image(), prompt.outputSchemaJson(), prompt.maxOutputTokens(),
+                prompt.review(), newProfile, newEffort), List.copyOf(keys));
+    }
+
+    private static String overrideText(PropertyResolver resolver, String property, ExecutionContext context) {
+        Object value;
+        try {
+            value = resolver.resolve(property, context);
+        } catch (PropertyNotDeclaredException notDeclared) {
+            return null;
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException("Property '" + property + "' could not be resolved: "
+                    + exception.getMessage());
+        }
+        String text = value == null ? "" : String.valueOf(value).trim();
+        return text.isEmpty() ? null : text;
+    }
+
+    // ------------------------------------------------------------------------------------------
     // Limits
     // ------------------------------------------------------------------------------------------
 
     private CapabilityResult checkLimits(CompiledExternalAi externalAi, CompiledExternalAiPrompt prompt,
-                                         ExecutionContext context) {
+                                         ExecutionContext context, Map<String, String> base) {
         String callsProperty = externalAi.getCallsPerUserPerDayProperty();
         String costProperty = externalAi.getMonthlyCostCapUsdProperty();
         if (callsProperty == null && costProperty == null) {
@@ -279,28 +373,28 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
         if (resolver == null) {
             return deny(context, prompt.name(), prompt, "LIMIT_UNRESOLVABLE",
                     "externalAi.limits are declared but no PropertyResolver is available -- denying rather than "
-                            + "running unbounded", Map.of());
+                            + "running unbounded", base);
         }
         LocalDate today = LocalDate.now(clock.withZone(ZoneOffset.UTC));
         if (callsProperty != null) {
             BigDecimal limit = resolveNumber(resolver, callsProperty, context);
             if (limit == null) {
                 return deny(context, prompt.name(), prompt, "LIMIT_UNRESOLVABLE",
-                        "Property '" + callsProperty + "' did not resolve to a number", Map.of());
+                        "Property '" + callsProperty + "' did not resolve to a number", base);
             }
             long since = today.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
             long used = billableRows(context.tenantId(), context.actorId(), since).size();
             if (BigDecimal.valueOf(used).compareTo(limit) >= 0) {
                 return deny(context, prompt.name(), prompt, "QUOTA_EXCEEDED",
                         "Daily AI quota reached (" + used + "/" + limit.toPlainString() + " calls today, property '"
-                                + callsProperty + "')", Map.of("used", String.valueOf(used), "limit", limit.toPlainString()));
+                                + callsProperty + "')", with(base, Map.of("used", String.valueOf(used), "limit", limit.toPlainString())));
             }
         }
         if (costProperty != null) {
             BigDecimal cap = resolveNumber(resolver, costProperty, context);
             if (cap == null) {
                 return deny(context, prompt.name(), prompt, "LIMIT_UNRESOLVABLE",
-                        "Property '" + costProperty + "' did not resolve to a number", Map.of());
+                        "Property '" + costProperty + "' did not resolve to a number", base);
             }
             long since = today.withDayOfMonth(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
             BigDecimal spent = billableRows(context.tenantId(), null, since).stream()
@@ -311,7 +405,7 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
                 return deny(context, prompt.name(), prompt, "BUDGET_EXCEEDED",
                         "Monthly AI budget reached (US$" + spent.setScale(4, RoundingMode.HALF_UP).toPlainString()
                                 + " of US$" + cap.toPlainString() + ", property '" + costProperty + "')",
-                        Map.of("spentUsd", spent.toPlainString(), "capUsd", cap.toPlainString()));
+                        with(base, Map.of("spentUsd", spent.toPlainString(), "capUsd", cap.toPlainString())));
             }
         }
         return null;
@@ -458,6 +552,12 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
             // An audit-store outage must not turn a finished vendor call into a failed flow step; the
             // quota then under-counts, which is the safer direction than double-charging a retry.
         }
+    }
+
+    private static Map<String, String> with(Map<String, String> base, Map<String, String> extra) {
+        Map<String, String> out = new LinkedHashMap<>(base);
+        out.putAll(extra);
+        return out;
     }
 
     private static Map<String, Object> stringKeys(Map<?, ?> map) {

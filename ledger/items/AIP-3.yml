@@ -64,3 +64,9 @@ note: >-
   chooseAssistant); ExternalAiToolChatRequest carries effort (Anthropic output_config.effort).
   dsl-conformance-max assistant example. Tests: dsl suite (AgentAssistantProfileValidationTest),
   kernel + external-ai-http/inproc, runtimehost-core ai/agent (scratch fresh jars). Open: 3.4b, 3.6.
+  2026-10-23: 3.4b done -- ExternalAiPromptRunner resolves npdev.externalai.prompt.<name>.profile|model|
+  effort through the scoped-property cascade per call (only when declared in properties[]; undeclared,
+  null or blank = compiled value). Profile replaces vendor/model/effort, effort still overrides it;
+  vendor check runs after, so an override cannot widen egress; unknown profile / profile+model / bad
+  effort / resolver failure deny EXTERNAL_AI_OVERRIDE_INVALID. Audit row: effective vendor/model/effort
+  + `overridden`. Tests: runtimehost-core com.finalexec.ai (15, 3 new; scratch fresh jars). Open: 3.6.
