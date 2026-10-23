@@ -86,3 +86,5 @@ note: >-
   same-tenant control green; :adapters:runtime-support:test 165 green. Two LOW residuals remain, untouched: rowOwnership
   treats a NULL tenant_id row as SAME_TENANT (an owner semantic call: is an unowned row claimable?), and the save()
   / rowOwnership checks are check-then-act without a row lock.
+  2026-10-23 owner ruling: a NULL tenant_id row being claimable by any tenant (rowOwnership -> SAME_TENANT) is the
+  intended behaviour, not a residual. Only the check-then-act race remains.
