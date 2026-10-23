@@ -78,7 +78,8 @@ class GeneratedCrudRuntimeNamingTest {
 
         String sql = SqlNamingSupport.fetchCurrentStatusSql(order, orderId, "status");
 
-        assertEquals("SELECT status FROM orders WHERE CAST(order_id AS VARCHAR) = :id", sql);
+        // REG-294: the lifecycle status read is tenant-scoped.
+        assertEquals("SELECT status FROM orders WHERE CAST(order_id AS VARCHAR) = :id AND tenant_id = :tenantId", sql);
     }
 
     private static CompiledConcept productConcept() {

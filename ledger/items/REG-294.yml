@@ -3,9 +3,9 @@ title: >-
   Many-to-many bond members accept another tenant's row (add/replace), and the lifecycle status read skips the transition check on any error
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-10-23
-closed: null
+closed: 2026-10-23
 source: >-
   Read-only follow-up of REG-288 (2026-10-23). Not yet reproduced by a test -- from reading the code.
 surface: NPDevKernel/adapters/runtime-support GeneratedCrudRuntimeSupport (addBondMember, replaceBondMembers, listBondMembers), CrudLifecycleSupport.fetchCurrentStatus; NPDevGenerator service-base.mustache / controller-custom.mustache (bond member endpoints)
@@ -21,6 +21,19 @@ detail: |
   and catch (Exception ignored) { return null; } (~225); validateLifecycleTransitions (~79-80) returns early on null,
   skipping undeclared-transition, requiredPayload and guard checks (fail-open). Not reachable cross-tenant: the id is
   __id from the path, already loaded by persistence.findById.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportBondMemberTenantScopeTest.java#addAndReplaceRefuseAnotherTenantsTargetAndLeaveMembersIntact
+  asserts: >-
+    With the caller in tenant-a (request claims, as the generated service resolves it) against real H2 tables carrying
+    tenant_id: adding tenant-a's sku succeeds; adding tenant-b's sku is refused bond_target_not_found with the same code
+    and message as a missing sku; a replace with [own sku, tenant-b sku] is refused and leaves the previous member and
+    junction row count unchanged. listOmitsAMemberWhoseTargetIsInAnotherTenant: a pre-existing cross-tenant junction
+    row is not listed. inMemoryEngineRefusesAnotherTenantsTargetThroughTheGateway: the same add/replace refusals via the
+    tenant-keyed ConceptGateway. CrudLifecycleSupportTenantScopeTest: tenant-b's row is invisible to tenant-a's
+    lifecycle status read (own-row control still refuses an undeclared transition), and a failing status read throws
+    IllegalStateException instead of skipping the transition check.
+  provenRed: true
 resolution: >-
   Done when addBondMember/replaceBondMembers check every target value exists in the caller's tenant (JDBC: the
   bondTargetExistsForTenant predicate; in-memory: the tenant-keyed gateway) and refuse with bond_target_not_found
@@ -29,3 +42,15 @@ resolution: >-
   with a must-error test proven red (JDBC and in-memory for the bond case).
 note: >-
   2026-10-23: filed from the read-only audit; the fix touches the kernel adapter and the generator template.
+  2026-10-23: DONE. GeneratedCrudRuntimeSupport.addBondMember/replaceBondMembers now check every target value exists in
+  the caller's tenant before touching the junction table (requireBondTargetsInCallerTenant: JDBC via
+  bondTargetExistsForTenant, in-memory via existsByAnchorViaConceptGateway with the caller's context), refusing with
+  bond_target_not_found worded as enforceBondTargetTenant; replace validates the whole list before its DELETE, so no
+  partial state. listBondMembers joins the target table and filters t.tenant_id (in-memory: gateway filter). The
+  caller's context is resolved inside the support class (resolveCurrentCrudContext, identical to the generated
+  service's generatedCrudExecutionContext()), so service-base.mustache is unchanged; new public overloads take an
+  explicit ExecutionContext. CrudLifecycleSupport.fetchCurrentStatus binds tenant_id = :tenantId
+  (SqlNamingSupport.fetchCurrentStatusSql, GeneratedCrudRuntimeNamingTest updated) and throws IllegalStateException on
+  a failed read. A missing bond target now answers bond_target_not_found instead of the FK's reference_integrity_failed
+  (GeneratedCrudRuntimeSupportBondJdbcTest updated). All 5 new tests proven red against HEAD's main files;
+  :adapters:runtime-support:test green (35 classes, 163 tests). Sweep allowlist: +3 verdicts, -2 superseded.

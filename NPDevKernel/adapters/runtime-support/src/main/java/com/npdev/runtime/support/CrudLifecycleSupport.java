@@ -16,6 +16,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static com.npdev.runtime.support.GeneratedCrudRuntimeSupport.normalize;
+import static com.npdev.runtime.support.crud.bonds.BondNamingSupport.normalizeTenantForBondCheck;
 import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.asBoolean;
 import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.resolveStateMachineGuardValue;
 import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.valuesEqual;
@@ -216,14 +217,20 @@ final class CrudLifecycleSupport {
         try {
             Query query = entityManager.createNativeQuery(fetchCurrentStatusSql(entity, idField.get(), statusColumn));
             query.setParameter("id", id.toString());
+            // REG-294: the read is scoped to the caller's tenant, like the REG-287/288 lookups.
+            query.setParameter("tenantId", normalizeTenantForBondCheck(resolveCurrentExecutionContext().tenantId()));
             query.setMaxResults(1);
             List<?> rows = query.getResultList();
             if (rows == null || rows.isEmpty()) {
                 return null;
             }
             return readLifecycleToken(rows.get(0));
-        } catch (Exception ignored) {
-            return null;
+        } catch (RuntimeException failure) {
+            // REG-294: a failed read used to return null, which skipped the undeclared-transition,
+            // requiredPayload and guard checks (fail-open). Refuse instead.
+            throw new IllegalStateException(
+                    "Reading the current " + statusField + " of " + entity.getName() + " in table " + table + " failed",
+                    failure);
         }
     }
 }

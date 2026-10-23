@@ -54,7 +54,9 @@ class GeneratedCrudRuntimeSupportBondJdbcTest {
                 () -> support.addBondMember("Catalog", bundleId, "productSkus", "MISSING-SKU")
         );
         assertEquals(422, violation.statusCode());
-        assertEquals("reference_integrity_failed", violation.violations().get(0).code());
+        // REG-294: a missing target is refused by the caller-tenant check before the junction FK
+        // is reached, with the same not-found code a cross-tenant target gets.
+        assertEquals("bond_target_not_found", violation.violations().get(0).code());
 
         support.removeBondMember("Catalog", bundleId, "productSkus", "SKU-1");
         assertEquals(List.of(), support.listBondMembers("Catalog", bundleId, "productSkus"));
@@ -66,7 +68,8 @@ class GeneratedCrudRuntimeSupportBondJdbcTest {
             statement.execute("""
                     CREATE TABLE cat_products (
                       id UUID PRIMARY KEY,
-                      sku_id VARCHAR(255) NOT NULL UNIQUE
+                      sku_id VARCHAR(255) NOT NULL UNIQUE,
+                      tenant_id VARCHAR(120) NOT NULL DEFAULT 'default'
                     )
                     """);
             statement.execute("""

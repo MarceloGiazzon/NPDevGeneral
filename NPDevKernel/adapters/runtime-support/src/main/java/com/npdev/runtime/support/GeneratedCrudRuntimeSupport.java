@@ -66,6 +66,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -704,19 +705,42 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     public List<Object> listBondMembers(String sourceConceptName, Object sourceId, String fieldName) {
+        return listBondMembers(sourceConceptName, sourceId, fieldName, resolveCurrentCrudContext());
+    }
+
+    /**
+     * REG-294: lists only members whose target row is in the CALLER's tenant. The junction table has
+     * no tenant column of its own, so the JDBC path joins the target table on its anchor and filters
+     * by its tenant_id; the in-memory path keeps the members the tenant-keyed gateway resolves.
+     */
+    public List<Object> listBondMembers(String sourceConceptName, Object sourceId, String fieldName, ExecutionContext context) {
         BondRuntimeShape shape = requireBondRuntimeShape(sourceConceptName, fieldName);
         if (dataSource == null) {
             return List.of();
         }
-        String sql = "SELECT " + shape.targetColumn() + " FROM " + shape.junctionTable()
-                + " WHERE CAST(" + shape.sourceColumn() + " AS VARCHAR) = ? ORDER BY " + shape.targetColumn();
+        boolean inMemoryBusinessData = entityManager == null && conceptGateway != null;
+        String sql = inMemoryBusinessData
+                ? "SELECT " + shape.targetColumn() + " FROM " + shape.junctionTable()
+                        + " WHERE CAST(" + shape.sourceColumn() + " AS VARCHAR) = ? ORDER BY " + shape.targetColumn()
+                : "SELECT j." + shape.targetColumn() + " FROM " + shape.junctionTable() + " j"
+                        + " JOIN " + SqlIdentifierSupport.tableName(shape.targetEntity()) + " t"
+                        + " ON t." + SqlIdentifierSupport.columnName(shape.targetAnchorField()) + " = j." + shape.targetColumn()
+                        + " WHERE CAST(j." + shape.sourceColumn() + " AS VARCHAR) = ? AND t.tenant_id = ?"
+                        + " ORDER BY j." + shape.targetColumn();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, String.valueOf(normalizeByDslType(shape.sourceIdField().getDslType(), sourceId)));
+            if (!inMemoryBusinessData) {
+                statement.setString(2, normalizeTenantForBondCheck(context == null ? null : context.tenantId()));
+            }
             try (ResultSet rows = statement.executeQuery()) {
                 List<Object> out = new ArrayList<>();
                 while (rows.next()) {
-                    out.add(rows.getObject(1));
+                    Object member = rows.getObject(1);
+                    if (!inMemoryBusinessData || referenceLookupSupport.existsByAnchorViaConceptGateway(
+                            shape.targetEntity(), shape.targetAnchorField(), member, context)) {
+                        out.add(member);
+                    }
                 }
                 return List.copyOf(out);
             }
@@ -727,8 +751,15 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     public void addBondMember(String sourceConceptName, Object sourceId, String fieldName, Object targetAnchorValue) {
+        addBondMember(sourceConceptName, sourceId, fieldName, targetAnchorValue, resolveCurrentCrudContext());
+    }
+
+    /** REG-294: the target must exist in the caller's tenant (the junction FK checks existence only). */
+    public void addBondMember(String sourceConceptName, Object sourceId, String fieldName, Object targetAnchorValue,
+                              ExecutionContext context) {
         BondRuntimeShape shape = requireBondRuntimeShape(sourceConceptName, fieldName);
         requireDataSourceForBond(shape);
+        requireBondTargetsInCallerTenant(shape, Collections.singletonList(targetAnchorValue), context);
         String sql = "INSERT INTO " + shape.junctionTable()
                 + " (" + shape.sourceColumn() + ", " + shape.targetColumn() + ") VALUES (?, ?)";
         try (Connection connection = dataSource.getConnection();
@@ -762,8 +793,15 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     public void replaceBondMembers(String sourceConceptName, Object sourceId, String fieldName, Collection<?> targetAnchorValues) {
+        replaceBondMembers(sourceConceptName, sourceId, fieldName, targetAnchorValues, resolveCurrentCrudContext());
+    }
+
+    /** REG-294: every target is checked against the caller's tenant BEFORE anything is deleted or inserted. */
+    public void replaceBondMembers(String sourceConceptName, Object sourceId, String fieldName, Collection<?> targetAnchorValues,
+                                   ExecutionContext context) {
         BondRuntimeShape shape = requireBondRuntimeShape(sourceConceptName, fieldName);
         requireDataSourceForBond(shape);
+        requireBondTargetsInCallerTenant(shape, targetAnchorValues == null ? List.of() : targetAnchorValues, context);
         String deleteSql = "DELETE FROM " + shape.junctionTable()
                 + " WHERE CAST(" + shape.sourceColumn() + " AS VARCHAR) = ?";
         String insertSql = "INSERT INTO " + shape.junctionTable()
@@ -790,6 +828,39 @@ public final class GeneratedCrudRuntimeSupport {
             throw mapDataIntegrityViolation(sourceConceptName, fieldName, exception)
                     .orElseThrow(() -> new IllegalStateException("Failed replacing bond members for "
                             + sourceConceptName + "." + fieldName, exception));
+        }
+    }
+
+    /**
+     * REG-294: a many-to-many target must exist in the CALLER's tenant -- the junction FK checks only
+     * that the row exists somewhere, so without this tenant A could link tenant B's row and use
+     * FK-error vs success as a cross-tenant existence oracle. Mirrors enforceBondTargetTenant: JDBC
+     * uses the tenant_id predicate, in-memory the tenant-keyed gateway; a miss is worded not-found.
+     */
+    private void requireBondTargetsInCallerTenant(BondRuntimeShape shape, Collection<?> targetAnchorValues,
+                                                  ExecutionContext context) {
+        boolean inMemoryBusinessData = entityManager == null && conceptGateway != null;
+        String callerTenant = normalizeTenantForBondCheck(context == null ? null : context.tenantId());
+        for (Object rawValue : targetAnchorValues) {
+            Object value = rawValue == null ? null : normalizeByDslType(shape.targetAnchorField().getDslType(), rawValue);
+            boolean exists = value != null && (inMemoryBusinessData
+                    ? referenceLookupSupport.existsByAnchorViaConceptGateway(
+                            shape.targetEntity(), shape.targetAnchorField(), value, context)
+                    : bondTargetExistsForTenant(
+                            SqlIdentifierSupport.tableName(shape.targetEntity()),
+                            SqlIdentifierSupport.columnName(shape.targetAnchorField()),
+                            value,
+                            callerTenant));
+            if (!exists) {
+                throw new InvariantViolationException(List.of(new InvariantViolationDetail(
+                        "bond_target_not_found",
+                        shape.sourceEntity().getName(),
+                        "BondTenantScope",
+                        shape.sourceField().getName(),
+                        "Referenced " + referenceTargetName(shape.sourceField()) + " was not found",
+                        false
+                )));
+            }
         }
     }
 

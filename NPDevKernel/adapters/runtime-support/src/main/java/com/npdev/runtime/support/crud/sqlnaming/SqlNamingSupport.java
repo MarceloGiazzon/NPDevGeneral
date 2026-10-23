@@ -48,7 +48,7 @@ public final class SqlNamingSupport {
 
     public static String fetchCurrentStatusSql(CompiledConcept entity, CompiledField idField, String statusColumn) {
         return "SELECT " + statusColumn + " FROM " + tableName(entity)
-                + " WHERE CAST(" + columnName(idField) + " AS VARCHAR) = :id";
+                + " WHERE CAST(" + columnName(idField) + " AS VARCHAR) = :id AND tenant_id = :tenantId";
     }
 
     public static String truncateIdentifier(String value) {
