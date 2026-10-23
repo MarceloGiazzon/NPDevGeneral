@@ -1,19 +1,18 @@
 {
-  "closedAt": "2026-10-23T21:46:52.5002413Z",
+  "closedAt": "2026-10-23T23:28:54.0879896Z",
   "branch": "main",
-  "head": "d34634bd",
-  "headSubject": "fix(security): REG-301 -- panel dataSources and aggregate lookup fields honour a query's permissionRequirements",
-  "summary": "REG-301 query.permissionRequirements DONE: GET /api/queries/{name}, kind:list documents, panel dataSources and aggregate lookupFields all refuse (403) a caller lacking a requirement via runtimehost-core NamedQueryPermissions (fail-closed); RuntimeApiEmitter grants query requirements to the super-user in the manifest (before, nobody held them). Fixture query AuditedCatalogEntries + probe 30 query-permission-requirements-refuse-a-caller-lacking-them; witness allowlist 48 -> 47; BREAKING.md entry (bcce7d55, d34634bd).",
-  "nextStep": "REG-301 next keyword, query.tracePolicy: decide enforce-vs-refuse (only procedure descriptors carry tracePolicy into TrustedActionRegistryTemplate today); if enforce, have GeneratedQueryController record per none/summary/detailed, add a fixture query + probe in 30-query-invariant-lifecycle.json, drop query.tracePolicy from scripts/policy/dsl-behavior-witness.json and lower frozenCount 47 -> 46. Then aggregateCollection.via and flowStep.data. If the owner sends AIP-4 screenshots or the WmsOffice files, act on those first.",
+  "head": "f72c1d63",
+  "headSubject": "feat(dsl)!: REG-301 -- retire inert query/procedure tracePolicy (ENF-1 46)",
+  "summary": "REG-301: query.permissionRequirements enforced on GET /api/queries, list documents, panel dataSources and aggregate lookupFields (bcce7d55, d34634bd). Owner chose to REFUSE tracePolicy: queries[]/procedures[] tracePolicy retired from schema (4 mirrors), AST/compiled records and canonical JSON; npdev migrate dsl-2 strips it (5 repo models + 13 AppGen definitions migrated); docs regenerated; BREAKING.md; witness allowlist 48 -> 46 (f72c1d63).",
+  "nextStep": "REG-301 remaining keywords: aggregateCollection.via (referenced ownership through a named field -- no runtime reads via()) and flowStep.data (parsed, no flow-step reader); decide enforce-vs-refuse for each like tracePolicy, then drop from scripts/policy/dsl-behavior-witness.json and lower frozenCount 46. Also found: procedureStep.trace/audit are read by nothing (not a tracked family) -- raise with owner. If the owner sends AIP-4 screenshots or the WmsOffice files, act on those first.",
   "plan": "",
   "blocked": "AIP-4 4.5: owner must run the Manager with a real key (free Gemini) or Ollama and take screenshots. IMP-GAPS-1: needs WmsLabs_CreateTables.html, the GeneXus tables export and WmsLabs_Mod_GX17.xml. OWN-2: owner outreach.",
-  "verified": "Probe file 30 (regenerated + booted dsl-conformance-max) 24/24 twice. runtimehost-core: NamedQueryPermissionsTest 4/4, AggregateRuntimeLookupQueryPermissionTest 2/2, all AggregateRuntime* + NamedQueryBindingTest green. Assembled app: PanelRuntimeQueryPermissionTest 2/2 + all PanelRuntime* + WorkbenchRuntimeTest, GeneratedQueryControllerLookupTest, DocumentRenderControllerReloadTest green. Generator RuntimeApiEmitterPermissionManifestTest 2/2. check-dsl-behavior-witness 0 blocking (47), check-dsl-coverage, twin-pair, schema-mirror, markdown-links, doc-inventory, no-markdown-reads OK. NOT run: any T1/T2 gate, other probe files.",
+  "verified": "Full :NPDevContract:dsl:test 217 classes / 1277 tests green (one worker; the default-worker run was OOM-killed on this 7 GB machine). NPDevCli test_dsl_v2_migration 59 OK. Kernel DefaultProcedureExecutor* 10 classes green; generator compileTestJava OK; runtimehost-core NamedQuery* + AggregateRuntime* green after restaging jars. check-dsl-behavior-witness 0 blocking (46), check-dsl-coverage, schema-mirror OK; doc generators reproduce committed output. Earlier in session: probe file 30 24/24 twice, assembled-app PanelRuntime*/controller tests green. NOT run: any T1/T2 gate, full generator/kernel/runtimehost test suites, other probe files, the canary boot after its model lost tracePolicy.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "d34634bd fix(security): REG-301 -- panel dataSources and aggregate lookup fields honour a query's permissionRequirements",
-    "bcce7d55 fix(security): REG-301 -- a query's permissionRequirements are enforced (ENF-1 47)",
-    "79cf575e chore(session): handoff -- SUPERUSER gates, X0 drain failures, ENF-1 49->48, REG-301; next: REG-301 query.permissionRequirements"
+    "f72c1d63 feat(dsl)!: REG-301 -- retire inert query/procedure tracePolicy (ENF-1 46)",
+    "891fa131 chore(session): handoff -- REG-301 query.permissionRequirements done; next: query.tracePolicy"
   ]
 }
