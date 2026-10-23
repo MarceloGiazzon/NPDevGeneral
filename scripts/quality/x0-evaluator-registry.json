@@ -14,8 +14,11 @@
     {
       "id": "X0-1",
       "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptQueryFilterSupport.java",
-      "verdict": "OPEN",
-      "note": "declared queries[].where outside one field==literal passes every row through unfiltered; tracked by LC-P0/Wave 0.3, not required to pass a must-error test yet."
+      "verdict": "FIXED",
+      "fixedBy": "LC-P0",
+      "test": "NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/ConceptQueryFilterSupportRedTest.java",
+      "testMarker": "uncompilablePredicateThrowsInsteadOfGuessing",
+      "note": "LC-P0 (2026-07-31): applyWhere compiles the predicate and an uncompilable where throws UnsupportedPredicateException instead of passing every row. Known residual, asserted by unknownFieldStillSilentlyMatchesNothing in the same test: a typo'd but compilable field name matches nothing at this layer; ConceptValidation rejects an unknown where field at model validation, so it is caught before runtime. Registry corrected 2026-10-23: the entry still said OPEN long after the fix landed. Original finding: declared queries[].where outside one field==literal passes every row through unfiltered; tracked by LC-P0/Wave 0.3, not required to pass a must-error test yet."
     },
     {
       "id": "X0-2",
@@ -28,8 +31,11 @@
     {
       "id": "X0-3",
       "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/ProcedureConditionEvaluator.java",
-      "verdict": "OPEN",
-      "note": "truthiness-only; '== X' is inexpressible. Tracked by REG-96, not required to pass a must-error test yet."
+      "verdict": "FIXED",
+      "fixedBy": "REG-96",
+      "test": "NPDevKernel/kernel/src/test/java/com/npdev/kernel/procedures/ProcedureConditionComparisonTest.java",
+      "testMarker": "malformedConditionFailsTheStep",
+      "note": "REG-96: ProcedureConditionEvaluator supports <ref> (== | != | > | >= | < | <=) <literal|ref>, and an unparseable condition throws UnsupportedConditionException instead of taking the else-path. An absent operand compares as null (absentOperandIsFalseNotAnError) by design. Registry corrected 2026-10-23: the entry still said OPEN long after the fix landed. Original finding: truthiness-only; '== X' is inexpressible. Tracked by REG-96, not required to pass a must-error test yet."
     },
     {
       "id": "X0-4",
@@ -52,15 +58,21 @@
     {
       "id": "X0-6",
       "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java",
-      "verdict": "OPEN",
-      "note": "resolve() returns null for an unresolvable $ref path instead of throwing (resolveSetValue's consumers: patchConcept.set/mapList.select/mapValue). Filed in the register itself, no REG id yet.",
+      "verdict": "FIXED",
+      "fixedBy": "REG-100",
+      "test": "NPDevKernel/kernel/src/test/java/com/npdev/kernel/procedures/DefaultProcedureExecutorRefUnresolvableTest.java",
+      "testMarker": "patchConceptSetWithATypoRefFailsInsteadOfWritingNull",
+      "note": "REG-100: value refs that are about to be WRITTEN (patchConcept.set, mapList.select, mapValue, return values, computeValue operands) go through resolveStrict, which fails REF_UNRESOLVABLE for an unbound key and still accepts an explicit null already in state. Registry corrected 2026-10-23: the entry still said OPEN long after the fix landed. Original finding: resolve() returns null for an unresolvable $ref path instead of throwing (resolveSetValue's consumers: patchConcept.set/mapList.select/mapValue). Filed in the register itself, no REG id yet.",
       "detail": "DefaultProcedureExecutor.resolve(state, ref) walks a dotted path and returns null the moment a segment is missing. It is the resolver behind resolveSetValue, which is what patchConcept.set, mapList.select and mapValue use -- so { \"type\": \"patchConcept\", \"concept\": \"Lote\", \"id\": \"$loteId\", \"set\": { \"quantidade\": \"$item.quantidad\" } } (note the typo: quantidad, not quantidade) writes quantidade: null, with no error anywhere. What makes this a finding rather than a design choice is that the same class already disagrees with itself: requireString and requireMap -- used for idRef and for map-shaped inputs -- call the same resolve and then throw IllegalArgumentException when it comes back null/blank. Id refs are loud; value refs are silent. One of the two is wrong, and nothing records which. Interaction with REG-89's history: patchConcept + createIfMissing builds a brand-new record out of set alone, so a typo'd $ref there creates a record with a null field rather than failing, and a governed gateway then rejects it for a required-field violation naming a field the author never mentioned -- the error surfaces one layer away from its cause. Same fix as X0-7: a filter/ref that cannot be resolved must be an error, never an empty/null one; both should land with LC-P0 in Wave 0.3, not separately."
     },
     {
       "id": "X0-7",
       "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java",
-      "verdict": "OPEN",
-      "note": "runQuery with a query name absent from queriesByName returns an unfiltered list. Filed in the register itself, no REG id yet. Same class as X0-6 (DefaultProcedureExecutor) -- listed separately because the register documented them as two distinct methods/findings.",
+      "verdict": "FIXED",
+      "fixedBy": "REG-100",
+      "test": "NPDevKernel/kernel/src/test/java/com/npdev/kernel/procedures/DefaultProcedureExecutorRunQueryTest.java",
+      "testMarker": "runQueryWithUnknownQueryNameIsRefusedInsteadOfReturningEveryRow",
+      "note": "REG-100: a runQuery step that NAMES a query absent from queriesByName fails QUERY_NOT_FOUND instead of returning every row; a step that names no query is still a plain list. Registry corrected 2026-10-23: the entry still said OPEN long after the fix landed. Original finding: runQuery with a query name absent from queriesByName returns an unfiltered list. Filed in the register itself, no REG id yet. Same class as X0-6 (DefaultProcedureExecutor) -- listed separately because the register documented them as two distinct methods/findings.",
       "detail": "DefaultProcedureExecutor.runQuery says so in its own comment: the query name is threaded through the (legacy-named) 'operation' slot, and when it's absent from queriesByName the result is unfiltered, same as before that fix landed. This is X0-1's exact shape one layer up: X0-1 is about a declared where that does not filter; this is about a declared query that does not filter, because the name did not resolve. It is already acknowledged in a comment, which is the most dangerous state for this class: known, written down, and not surfaced to the author. PackValidation does check that a runQuery step's query names a declared query, so the model-level door is shut -- but the runtime lookup is keyed by a normalized name and falls back to unfiltered rather than failing, so any drift between the two (pack-provided queries, a rename, a case/normalization mismatch) reopens it silently."
     },
     {
@@ -87,7 +99,7 @@
       "id": "X0-11",
       "class": "NPDevKernel/adapters/runtime-support/src/main/java",
       "verdict": "NOT_AUDITED",
-      "note": "runtime-support (invariants, access.read/access.write, defaultExpression, derivedExpression) -- the largest evaluator in the platform, and the only one that is a real expression engine rather than a narrow subset. Not yet audited. Highest-value single item left in X0: access.* is an authorization answer, so a silent-true default would be an information disclosure and a silent-false default would be a support ticket. Not required by this gate until audited; recorded so it cannot be silently dropped from view. (Generated CRUD runtime support / GeneratedCrudRuntimeSupport.java, 158 KB, and the frontend evaluateWhen family beyond visibleWhen/enabledWhen were also out of scope for the original audit.)"
+      "note": "runtime-support (invariants, access.read/access.write, defaultExpression, derivedExpression) -- the largest evaluator in the platform, and the only one that is a real expression engine rather than a narrow subset. Not yet audited. Highest-value single item left in X0: access.* is an authorization answer, so a silent-true default would be an information disclosure and a silent-false default would be a support ticket. Not required by this gate until audited; recorded so it cannot be silently dropped from view. (Generated CRUD runtime support / GeneratedCrudRuntimeSupport.java, 158 KB, and the frontend evaluateWhen family beyond visibleWhen/enabledWhen were also out of scope for the original audit.) Tracked as REG-282 (filed 2026-10-23). The evaluatorShapedGlobs entry for runtime-support only matches *Evaluator.java, which no class there is named, so CelInvariantEngine escapes the shape check entirely."
     },
     {
       "id": "X0-12",

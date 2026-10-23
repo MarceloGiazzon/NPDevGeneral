@@ -1,0 +1,32 @@
+id: REG-282
+title: >-
+  The runtime-support expression evaluator (invariants, access.read/access.write, defaultExpression, derivedExpression) has never had the X0 audit: nobody has checked what it answers for input it cannot handle
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-23
+closed: null
+source: >-
+  Open-state audit 2026-10-23 (NPDev_General__OutsideRepo/OPEN_STATE_AUDIT_2026-10-23.md, outside the repo). scripts/quality/x0-evaluator-registry.json entry X0-11 has carried verdict NOT_AUDITED since 2026-07-31 with no ledger item, while the register's other OPEN entries (X0-1, X0-3, X0-6, X0-7) had in fact been fixed by LC-P0, REG-96 and REG-100 and were corrected to FIXED the same day.
+surface: NPDevKernel/adapters/runtime-support (CelInvariantEngine, SchemaExpressionSupport, CrudSchemaValidationSupport, CrudLifecycleSupport, CrudOrchestrationSupport, GeneratedCrudRuntimeSupport)
+detail: |
+  X0's rule: an input an evaluator cannot handle is an error, never a default answer (silently true, false,
+  null, everything or nothing). Every other evaluator in the register now has a verdict and a must-error
+  test. runtime-support's is the largest and the only real expression engine (CelInvariantEngine, 78 KB),
+  and it answers authorization questions: a silent-true access.read/access.write default is an information
+  disclosure, a silent-false one a support ticket. Invariants, defaultExpression and derivedExpression go
+  through the same family.
+  Not known to be broken -- known to be unchecked. The registry's evaluatorShapedGlobs entry for
+  runtime-support only matches **/*Evaluator.java, and no class there carries that name, so
+  check-x0-evaluator-coverage.py has never asked the question of CelInvariantEngine either.
+  Related, already visible: ENF-1's witness allowlist notes that CrudOrchestrationSupport.toRuntimeOrchestration
+  drops a WHOLE orchestration rule, silently, when any one action cannot be built -- the same shape.
+resolution: >-
+  Done when each evaluation entry point in runtime-support (invariant rules, access.read, access.write,
+  defaultExpression, derivedExpression, orchestration rule building) is classified in
+  x0-evaluator-registry.json as FIXED or CLEAN with a must-error test and testMarker, or ACCEPTED with a
+  reason; each silent default found becomes its own REG item; and evaluatorShapedGlobs covers
+  CelInvariantEngine (and any sibling engine) so a new unregistered evaluator there fails the check.
+note: >-
+  2026-10-23: filed. Register corrected in the same commit: X0-1 (LC-P0), X0-3 (REG-96), X0-6 and X0-7
+  (REG-100) are FIXED with their proof tests; X0-11 points here.
