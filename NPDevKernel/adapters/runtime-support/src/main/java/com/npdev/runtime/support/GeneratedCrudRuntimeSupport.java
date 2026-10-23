@@ -870,15 +870,20 @@ public final class GeneratedCrudRuntimeSupport {
         }
         int safeLimit = sanitizeScheduleLimit(limit);
         int safeOffset = sanitizeScheduleOffset(offset);
+        String tenantFilter = scheduleTenantFilter();
         SqlDialect dialect = SqlDialects.active();
         String sql = dialect.paginated("SELECT id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
                 + "trigger_correlation_id, tenant_id, event_name, due_at, status, attempt_count, created_at, "
                 + "updated_at, processed_at, payload "
                 + "FROM " + SCHEDULE_TABLE + " "
+                + (tenantFilter == null ? "" : "WHERE tenant_id = ? ")
                 + "ORDER BY created_at DESC ").stripTrailing();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             int pageIndex = 1;
+            if (tenantFilter != null) {
+                statement.setString(pageIndex++, tenantFilter);
+            }
             for (int pageValue : dialect.limitOffset().values(safeLimit, safeOffset)) {
                 statement.setInt(pageIndex++, pageValue);
             }
@@ -894,9 +899,27 @@ public final class GeneratedCrudRuntimeSupport {
                 return schedules.isEmpty() ? List.of() : List.copyOf(schedules);
             }
         } catch (Exception exception) {
-            LOG.log(Level.WARNING, "Failed to list scheduled events", exception);
-            return List.of();
+            // X0: a failed read is not "no schedules" (the controller answers 503).
+            throw new IllegalStateException("Failed to list scheduled events", exception);
         }
+    }
+
+    /**
+     * REG-300: the tenant a schedule read or a forced drain is limited to -- null (every tenant) only for
+     * a SUPERUSER. The schedule table is shared by all tenants and its payloads carry business ids, so an
+     * unscoped list let any tenant's USER read every other tenant's schedules, and forceDue let it fire
+     * their not-yet-due events early.
+     */
+    private String scheduleTenantFilter() {
+        ExecutionContext context = resolveCurrentExecutionContext();
+        if (context.hasRole("SUPERUSER")) {
+            return null;
+        }
+        String tenant = context.tenantId();
+        if (tenant == null || tenant.isBlank()) {
+            throw new SecurityException("schedules: the caller has no tenant");
+        }
+        return tenant;
     }
 
     public Map<String, Object> processDueScheduledEvents(Boolean forceDue, Integer limit) {
@@ -915,7 +938,10 @@ public final class GeneratedCrudRuntimeSupport {
             return Map.copyOf(summary);
         }
 
-        List<ScheduledEventRecord> dueRecords = selectDueScheduledEvents(force, safeLimit);
+        // REG-300: an unforced drain only publishes what is already due, for every tenant (the background
+        // drain does exactly that); forcing not-yet-due events is limited to the caller's own tenant.
+        List<ScheduledEventRecord> dueRecords = selectDueScheduledEvents(force, safeLimit,
+                force ? scheduleTenantFilter() : null);
         if (dueRecords.isEmpty()) {
             summary.put("status", "no_due_records");
             return Map.copyOf(summary);
@@ -1630,17 +1656,20 @@ public final class GeneratedCrudRuntimeSupport {
         return isNotNullViolation(exception.getCause());
     }
 
-    private List<ScheduledEventRecord> selectDueScheduledEvents(boolean forceDue, int limit) {
+    private List<ScheduledEventRecord> selectDueScheduledEvents(boolean forceDue, int limit, String tenantFilter) {
         if (dataSource == null) {
             return List.of();
         }
-        String sql = ScheduledEventSql.selectDue(forceDue);
+        String sql = ScheduledEventSql.selectDue(forceDue, tenantFilter != null, SqlDialects.active());
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             int parameterIndex = 1;
             statement.setString(parameterIndex++, SCHEDULE_STATUS_PENDING);
             if (!forceDue) {
                 statement.setTimestamp(parameterIndex++, toTimestamp(runtimeClock.nowUtc()));
+            }
+            if (tenantFilter != null) {
+                statement.setString(parameterIndex++, tenantFilter);
             }
             statement.setInt(parameterIndex, limit);
             try (ResultSet rows = statement.executeQuery()) {

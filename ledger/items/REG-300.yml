@@ -1,0 +1,40 @@
+id: REG-300
+title: >-
+  GET /api/runtime/schedules listed every tenant's scheduled events (payloads included) to any authenticated caller, and a
+  forced drain fired every tenant's not-yet-due events
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-10-23
+closed: 2026-10-23
+source: >-
+  Found by behaviour probe schedules-of-another-tenant-are-not-listed (NPDevSamples/dsl-conformance-max/behavior-probes/
+  91-orchestration-actions-jdbc.json), written while witnessing ENF-1's orchestrationAction keywords on the h2local
+  variant: a USER key of tenant rep1probe-other read tenant dev's schedule, shelf id in its payload.
+surface: NPDevKernel/adapters/runtime-support GeneratedCrudRuntimeSupport (listScheduledEvents, processDueScheduledEvents, selectDueScheduledEvents), crud/scheduling/ScheduledEventSql; NPDevRuntimeHost/runtimehost-core RuntimeSchedulesController
+detail: |
+  npdev_scheduled_event is one table for all tenants (tenant_id column) and its payload carries the orchestration's mapped
+  business values. listScheduledEvents ran SELECT ... ORDER BY created_at with no tenant predicate, and
+  RuntimeSchedulesController (/api/runtime/schedules, /api/admin/schedules) has no role check of its own -- /api/admin/*
+  has no central ADMIN gate -- so any authenticated caller of any tenant listed every tenant's schedules.
+  processDueScheduledEvents(forceDue=true) selected every tenant's PENDING rows regardless of due_at, so the same caller
+  could fire other tenants' delayed events early. listScheduledEvents also swallowed a failed query as an empty list (X0).
+resolution: >-
+  Done when a non-SUPERUSER lists only its own tenant's schedules, a forced drain only touches the caller's tenant (an
+  unforced drain still publishes whatever is already due, as the background drain does), a failed listing is an error
+  rather than an empty list, with a must-error test red on the old code and the HTTP probe green.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportScheduleTenantScopeTest.java#aTenantListsOnlyItsOwnSchedules
+  asserts: >-
+    with schedule rows for tenant-a and tenant-b, a tenant-a USER lists only tenant-a's (a SUPERUSER lists both), and a
+    tenant-a forced drain leaves tenant-b's not-yet-due row PENDING
+  provenRed: true
+note: >-
+  2026-10-23: FIXED the same day. scheduleTenantFilter(): null (all tenants) only for SUPERUSER, else the caller's tenant
+  (no tenant -> SecurityException -> 403). listScheduledEvents adds WHERE tenant_id = ?; processDueScheduledEvents passes
+  the filter only when forceDue; ScheduledEventSql.selectDue gained a tenantScoped overload (portable SQL,
+  check-dialect-sites PASS). The listing's catch now throws IllegalStateException (controller -> 503) instead of returning
+  []. GeneratedCrudRuntimeSupportScheduleTenantScopeTest: 2 of 3 RED on the old code (the SUPERUSER control green), 3/3
+  after; :adapters:runtime-support:test 168 green. Not addressed (wider than this item): /api/admin/* has no central
+  ADMIN gate; each admin controller enforces (or not) its own policy.

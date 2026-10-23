@@ -15,16 +15,22 @@ public final class ScheduledEventSql {
 
     /** Uses the process's configured engine; the overload exists for the conformance suite. */
     public static String selectDue(boolean forceDue) {
-        return selectDue(forceDue, SqlDialects.active());
+        return selectDue(forceDue, false, SqlDialects.active());
     }
 
     public static String selectDue(boolean forceDue, SqlDialect dialect) {
+        return selectDue(forceDue, false, dialect);
+    }
+
+    /** REG-300: {@code tenantScoped} adds {@code AND tenant_id = ?}, bound after the status / due_at parameters. */
+    public static String selectDue(boolean forceDue, boolean tenantScoped, SqlDialect dialect) {
         return dialect.limited("SELECT id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
                 + "trigger_correlation_id, tenant_id, event_name, due_at, status, attempt_count, created_at, updated_at, "
                 + "processed_at, payload "
                 + "FROM " + SCHEDULE_TABLE + " "
                 + "WHERE status = ? "
                 + (forceDue ? "" : "AND due_at <= ? ")
+                + (tenantScoped ? "AND tenant_id = ? " : "")
                 + "ORDER BY due_at ASC, created_at ASC ").stripTrailing();
     }
 
