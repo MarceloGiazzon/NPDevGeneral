@@ -78,3 +78,11 @@ note: >-
   2026-10-23: knownFailure REG-295 removed from probe cross-tenant-create-with-existing-id-is-refused
   (90-cross-tenant-crud.json) -- check-dsl-behavior-witness refuses a marker naming a DONE item. The probe now
   expects 409 outright; the next Windows T1 run (-StorageVariant h2local -Only 90-cross-tenant) is the HTTP proof.
+  2026-10-23: LOW residual closed -- CrudOrchestrationSupport.existsByUniqueFields now adds AND tenant_id = <acting
+  tenant> when the create payload carries one (it always does when the event has a tenant; resolveCreatePayload stamps
+  it), so another tenant's row with the same unique value no longer skips this tenant's orchestration create as
+  unique_exists. A globally unique column still refuses the INSERT itself (unique_violation, unchanged).
+  GeneratedCrudRuntimeSupportCreateOrchestrationTenantUniqueTest: cross-tenant case RED on the old code (unique_exists),
+  same-tenant control green; :adapters:runtime-support:test 165 green. Two LOW residuals remain, untouched: rowOwnership
+  treats a NULL tenant_id row as SAME_TENANT (an owner semantic call: is an unowned row claimable?), and the save()
+  / rowOwnership checks are check-then-act without a row lock.

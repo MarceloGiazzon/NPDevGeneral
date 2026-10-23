@@ -1048,10 +1048,24 @@ final class CrudOrchestrationSupport {
                     .append(" AS VARCHAR) = :u")
                     .append(index);
         }
+        // REG-295 residual: the row about to be inserted is stamped with the acting tenant
+        // (resolveCreatePayload), so "already exists" means in THAT tenant. Unscoped, another tenant's
+        // row with the same unique value silently skipped this tenant's create -- and the skip told the
+        // caller that the value exists elsewhere. A globally unique column still refuses the insert itself.
+        Object tenant = readMapValue(payload, "tenantId");
+        boolean tenantScoped = !isLifecycleMissing(tenant);
+        if (tenantScoped) {
+            sql.append(" AND CAST(")
+                    .append(columnName(orchestration.fieldsByName().get(normalize("tenantId")), "tenantId"))
+                    .append(" AS VARCHAR) = :tenant");
+        }
         try {
             Query query = entityManager.createNativeQuery(sql.toString());
             for (int index = 0; index < checks.size(); index++) {
                 query.setParameter("u" + index, String.valueOf(checks.get(index).getValue()));
+            }
+            if (tenantScoped) {
+                query.setParameter("tenant", String.valueOf(tenant));
             }
             query.setMaxResults(1);
             List<?> rows = query.getResultList();
