@@ -117,16 +117,20 @@
     {
       "id": "X0-14",
       "class": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/schemaexpr/SchemaExpressionSupport.java",
-      "verdict": "OPEN",
+      "verdict": "FIXED",
       "fixedBy": "REG-284",
-      "note": "REG-282 audit (2026-10-23): evaluateSchemaExpression returns null for anything it cannot evaluate, by design ('a malformed expression still yields null at record-save time instead of throwing'); for a derivedExpression the caller then removes the field. Model validation accepts any call syntax, so a typo'd function in a derivedExpression validates clean and erases the field on every save. See REG-284."
+      "note": "REG-282 audit (2026-10-23) found: evaluateSchemaExpression returned null for anything it could not evaluate, and a null derived value removes the field, so a typo'd function in a derivedExpression erased it on every save. REG-284 (2026-10-23): an expression neither ComputedExpression nor the legacy literal/call forms can evaluate rethrows the ExpressionException; a genuinely null result (coalesce of nulls) stays null. FieldValueValidation refuses the functions a model could name (ValueBehaviorFunctions), pinned by DefaultsAndDerivedFieldsSupportTest.aFunctionTheRuntimeDoesNotProvideIsRefused.",
+      "test": "NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/crud/schemaexpr/SchemaExpressionSupportTest.java",
+      "testMarker": "unknownFunctionThrowsInsteadOfYieldingNull"
     },
     {
       "id": "X0-15",
       "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ValueExpressionEvaluator.java",
-      "verdict": "OPEN",
+      "verdict": "FIXED",
       "fixedBy": "REG-284",
-      "note": "REG-282 audit (2026-10-23): the non-strict evaluate(expression, data) -- the defaultExpression path of the governed semantic policy -- evaluates with an EMPTY function registry and returns the expression's own TEXT on ExpressionException. Reproduced: evaluate(\"concat(first, ' ', last)\", ...) returns \"concat(first, ' ', last)\". The $user overload and evaluateStrict are not affected (the first registers ValueExpressionFunctions.base() and rethrows for a real actor; the second throws). See REG-284."
+      "note": "REG-282 audit (2026-10-23) found: the non-strict evaluate(expression, data) evaluated with an EMPTY function registry and returned the expression's own TEXT on failure -- concat(first, ' ', last) was saved as that literal string (gateway defaults and derived values, and CRUD defaults via the semantic policy). REG-284 (2026-10-23): it resolves ValueExpressionFunctions.base() (names from com.npdev.dsl.v1.expr.ValueBehaviorFunctions, the set validation checks against) and lets an unevaluable expression throw. GeneratedCrudRuntimeSupport with no semantic policy wired now evaluates defaults through it too (it used to skip now()/uuid()/function defaults as null).",
+      "test": "NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/ValueExpressionEvaluatorTest.java",
+      "testMarker": "functionCallDefaultEvaluatesAndAnUnknownFunctionThrowsInsteadOfReturningItsText"
     },
     {
       "id": "X0-16",

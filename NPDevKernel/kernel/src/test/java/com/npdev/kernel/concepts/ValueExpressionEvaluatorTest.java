@@ -60,8 +60,19 @@ class ValueExpressionEvaluatorTest {
         assertEquals(4.5, ValueExpressionEvaluator.evaluate("4.5", Map.of()));
         assertEquals(42L, ValueExpressionEvaluator.evaluate(
                 "quantity * unitPrice", Map.of("quantity", 6, "unitPrice", 7)));
-        // Unknown function -- ComputedExpression throws, evaluate() swallows it and returns the raw text.
-        assertEquals("bogus(1)", ValueExpressionEvaluator.evaluate("bogus(1)", Map.of()));
+    }
+
+    /** REG-284 (X0-15): a function-call default used to evaluate with no functions registered and be
+     *  saved as its own source text -- concat(first, ' ', last) became the literal "concat(first, ' ', last)". */
+    @Test
+    void functionCallDefaultEvaluatesAndAnUnknownFunctionThrowsInsteadOfReturningItsText() {
+        assertEquals("Ada Lovelace", ValueExpressionEvaluator.evaluate(
+                "concat(first, ' ', last)", Map.of("first", "Ada", "last", "Lovelace")));
+        assertEquals("ADA", ValueExpressionEvaluator.evaluate("uppercase(first)", Map.of("first", "Ada")));
+        assertThrows(ComputedExpression.ExpressionException.class,
+                () -> ValueExpressionEvaluator.evaluate("bogus(1)", Map.of()));
+        assertThrows(ComputedExpression.ExpressionException.class,
+                () -> ValueExpressionEvaluator.evaluate("uppercse(first)", Map.of("first", "Ada")));
     }
 
     @Test

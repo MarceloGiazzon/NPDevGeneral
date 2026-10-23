@@ -51,13 +51,14 @@ public final class SchemaExpressionSupport {
         }
         // LNCH-15: try the unified ComputedExpression grammar first (concat/coalesce/trim/
         // uppercase/lowercase via SCHEMA_EXPRESSION_FUNCTIONS). Falls through to this method's
-        // own legacy evaluator -- kept as a defensive safety net, not deleted -- for anything it
-        // doesn't recognize, so a malformed expression still yields null at record-save time
-        // instead of throwing.
+        // own legacy literal/identifier/call forms for anything it doesn't recognize. REG-284: an
+        // expression neither can evaluate is an error, never null -- a null derived value REMOVES the
+        // field, so the old "malformed yields null" answer erased it on every save.
+        ComputedExpression.ExpressionException unevaluable;
         try {
             return ComputedExpression.evaluate(trimmed, values, SCHEMA_EXPRESSION_FUNCTIONS);
-        } catch (ComputedExpression.ExpressionException ignored) {
-            // fall through to the legacy evaluator below
+        } catch (ComputedExpression.ExpressionException computedError) {
+            unevaluable = computedError;
         }
         if (isQuotedLiteral(trimmed)) {
             return trimmed.substring(1, trimmed.length() - 1);
@@ -81,16 +82,16 @@ public final class SchemaExpressionSupport {
 
         int openParen = trimmed.indexOf('(');
         if (openParen <= 0 || !trimmed.endsWith(")") || !isBalancedValueExpression(trimmed)) {
-            return null;
+            throw unevaluable;
         }
 
         String functionName = trimmed.substring(0, openParen).trim();
         if (!VALUE_BEHAVIOR_FUNCTIONS.contains(normalize(functionName))) {
-            return null;
+            throw unevaluable;
         }
         List<String> args = splitTopLevelArguments(trimmed.substring(openParen + 1, trimmed.length() - 1));
         if (args == null) {
-            return null;
+            throw unevaluable;
         }
         List<Object> resolvedArgs = new ArrayList<>();
         for (String arg : args) {

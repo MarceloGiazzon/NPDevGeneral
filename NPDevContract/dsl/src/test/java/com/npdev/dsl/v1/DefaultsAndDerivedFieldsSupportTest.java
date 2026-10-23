@@ -90,6 +90,47 @@ class DefaultsAndDerivedFieldsSupportTest {
                 "unknown $user value must be refused: " + errors);
     }
 
+    /** REG-284: any call syntax parses, but only the registered functions evaluate -- an unregistered one
+     *  used to be saved as the expression's own text (default) or as null, erasing the field (derived). */
+    @Test
+    void aFunctionTheRuntimeDoesNotProvideIsRefused() throws Exception {
+        Path modelPath = Files.createTempFile("npdev-defaults-functions-", ".json");
+        Files.writeString(modelPath, """
+                {
+                  "namespace": "value.behavior.functions",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    {
+                      "name": "Patient",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "firstName", "type": "string" },
+                        { "name": "shout", "type": "string", "derivedExpression": "uppercse(firstName)" },
+                        { "name": "code", "type": "string", "defaultExpression": "concat('P-', uuid())" },
+                        { "name": "touchedAt", "type": "string", "derivedExpression": "now()" },
+                        { "name": "label", "type": "string", "derivedExpression": "concat(trim(firstName), '!')" },
+                        { "name": "createdAt", "type": "string", "defaultExpression": "now()" },
+                        { "name": "ref", "type": "string", "defaultExpression": "uuid()" }
+                      ]
+                    }
+                  ]
+                }
+                """);
+
+        List<String> errors = new SemanticValidator().validate(new JsonModelParser().parse(modelPath));
+        assertTrue(errors.stream().anyMatch(error -> error.contains("field shout: derivedExpression calls uppercse()")
+                        && error.contains("suggestedFix")),
+                "a typo'd function must be refused: " + errors);
+        assertTrue(errors.stream().anyMatch(error -> error.contains("field code: defaultExpression calls uuid()")),
+                "uuid() is only a whole defaultExpression, not a nested call: " + errors);
+        assertTrue(errors.stream().anyMatch(error -> error.contains("field touchedAt: derivedExpression calls now()")),
+                "now() is not available to a derivedExpression: " + errors);
+        assertTrue(errors.stream().noneMatch(error -> error.contains("field label:") || error.contains("field createdAt:")
+                        || error.contains("field ref:")),
+                "registered functions and whole now()/uuid() defaults stay valid: " + errors);
+    }
+
     @Test
     void semanticValidationRejectsUnknownSelfReferentialAndCyclicValueBehaviors() throws Exception {
         Path modelPath = Files.createTempFile("npdev-defaults-derived-error-", ".json");

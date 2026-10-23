@@ -28,6 +28,7 @@ import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.dsl.v1.expr.ValueBehaviorFunctions;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
 import com.npdev.dsl.v1.compiled.FieldWidgetDefaults;
 import com.npdev.dsl.v1.compiled.GuidePageDefaults;
@@ -341,6 +342,17 @@ final class FieldValueValidation {
                     + kind + " is invalid: " + analysis.error());
             return;
         }
+        // REG-284: any call syntax parses, but only the registered functions evaluate -- anything else
+        // used to be saved as the expression's own text (defaults) or as null (derived, erasing the field).
+        boolean isDefault = "defaultExpression".equals(kind);
+        String unavailable = ValueBehaviorFunctions.firstUnavailable(expression, isDefault);
+        if (unavailable != null && !(!isDefault && "nextNumber".equals(unavailable))) {
+            errors.add("Entity " + entityName + " field " + fieldName + ": " + kind + " calls " + unavailable
+                    + "(), which the runtime does not provide here (available: " + ValueBehaviorFunctions.NAMES_SORTED
+                    + (isDefault ? ", or the whole expression now(), uuid() or nextNumber('name')" : "")
+                    + ") -- suggestedFix: use one of those"
+                    + (isDefault ? "" : "; now()/uuid() belong in a defaultExpression"));
+        }
         for (String ref : analysis.references()) {
             if (ref.startsWith("$user")) {
                 // Pigmentampas P9: the acting user is a CREATE-time fact. A defaultExpression may
@@ -401,10 +413,10 @@ final class FieldValueValidation {
      * {@code ConceptValidation.validateAccessExpression}/{@code referencedFields} already applied
      * to invariant and row-level access expressions (LIFT-EXPR-P3) -- one grammar, one validator,
      * instead of a second hand-rolled one that only understood a subset. A call to a function the
-     * runtime does not (yet) register -- e.g. a future {@code nextNumber()}/{@code role()} -- now
-     * parses here too, since {@link ComputedExpression} accepts any call syntax; it evaluates to
-     * null at runtime (the existing lenient fallback) until such a function is actually
-     * registered, exactly the "rides the same widened path" future work the roadmap calls out.
+     * runtime does not register still parses here, since {@link ComputedExpression} accepts any call
+     * syntax -- REG-284: {@code validateValueBehaviorExpression} then refuses it against
+     * {@link ValueBehaviorFunctions}, because the runtime used to save such a call as its own text
+     * (defaults) or as null (derived).
      */
     private static ValueExpressionAnalysis analyzeValueBehaviorExpression(String expression) {
         String trimmed = expression == null ? "" : expression.trim();

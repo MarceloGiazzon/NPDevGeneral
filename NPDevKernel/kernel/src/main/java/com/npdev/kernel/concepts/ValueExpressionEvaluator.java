@@ -68,11 +68,11 @@ public final class ValueExpressionEvaluator {
             }
             return Long.parseLong(text);
         } catch (NumberFormatException ignored) {
-            try {
-                return ComputedExpression.evaluate(text, data);
-            } catch (ComputedExpression.ExpressionException stillUnparseable) {
-                return text;
-            }
+            // REG-284: this used to evaluate with NO functions and return the expression's own TEXT on
+            // failure, so a `concat(first, ' ', last)` default was saved as that literal string. The
+            // registered value functions resolve here now, and an expression that still cannot be
+            // evaluated is an error (FieldValueValidation refuses the ones a model can name).
+            return ComputedExpression.evaluate(text, data, ValueExpressionFunctions.base());
         }
     }
 

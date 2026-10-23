@@ -1,6 +1,7 @@
 package com.npdev.kernel.concepts;
 
 import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.dsl.v1.expr.ValueBehaviorFunctions;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,9 +30,9 @@ public final class ValueExpressionFunctions {
     }
 
     /** LNCH-15: {@code concat}/{@code coalesce}/{@code trim}/{@code uppercase}/{@code lowercase} --
-     * moved verbatim from {@code SchemaExpressionSupport}, same name and semantics. */
-    public static final Set<String> VALUE_BEHAVIOR_FUNCTIONS =
-            Set.of("concat", "coalesce", "trim", "uppercase", "lowercase");
+     * moved verbatim from {@code SchemaExpressionSupport}, same name and semantics. REG-284: the names
+     * live in the DSL so model validation refuses any other function against the same set. */
+    public static final Set<String> VALUE_BEHAVIOR_FUNCTIONS = ValueBehaviorFunctions.NAMES;
 
     /**
      * A live existence check for {@code scope.exists(concept, fieldPath, value)}. Deliberately

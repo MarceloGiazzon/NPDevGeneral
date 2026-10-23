@@ -3,7 +3,7 @@ title: >-
   A defaultExpression calling a function stores its own source text as the value, and an unregistered function in a default/derived expression passes validation and evaluates to text or null
 type: BUG
 severity: HIGH
-status: OPEN
+status: PARTIAL
 opened: 2026-10-23
 closed: null
 source: >-
@@ -44,3 +44,13 @@ note: >-
   2026-10-23: filed by the REG-282 audit. (c) is a validation tightening: models that call an unregistered function
   stop validating -- they were storing text or null, so no codemod can recover an intended value; BREAKING.md entry
   without codemod, same shape as earlier validation tightenings.
+  2026-10-23: PARTIAL -- (a), (b), (c) landed; (d) open. (a) ValueExpressionEvaluator.evaluate resolves the registered
+  functions and an unevaluable expression throws (was: its own text); GeneratedCrudRuntimeSupport with no semantic
+  policy evaluates defaults through it (was: now()/uuid()/function defaults silently skipped). (b) evaluateSchemaExpression
+  throws instead of returning null. (c) com.npdev.dsl.v1.expr.ValueBehaviorFunctions.NAMES is the one set -- the kernel's
+  ValueExpressionFunctions.VALUE_BEHAVIOR_FUNCTIONS reads it -- and FieldValueValidation refuses any other call, plus
+  nested or derived now()/uuid(). Must-error tests proven red on the old code: ValueExpressionEvaluatorTest and
+  SchemaExpressionSupportTest (X0-14, X0-15 FIXED); validation: DefaultsAndDerivedFieldsSupportTest. BREAKING.md entry,
+  no codemod. No tracked model uses a refused form. Verified: full :NPDevContract:dsl:test, :kernel:test and
+  :adapters:runtime-support:test. STILL OPEN (d): a dsl-conformance-max behaviour probe witnessing a concat(...) default
+  and a function derived value -- it boots the app (T1/T2), which this Linux notebook does not run.

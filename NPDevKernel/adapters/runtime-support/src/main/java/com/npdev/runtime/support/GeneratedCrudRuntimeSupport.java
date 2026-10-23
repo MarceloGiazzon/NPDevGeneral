@@ -2163,8 +2163,10 @@ public final class GeneratedCrudRuntimeSupport {
                     Object evaluated = userDefault
                             ? com.npdev.kernel.concepts.ValueExpressionEvaluator.evaluate(
                                     schema.getDefaultExpression(), values, resolveCurrentExecutionContext())
+                            // REG-284: with no semantic policy wired this used to be null, so a now()/uuid()/
+                            // concat(...) default was silently not applied; the canonical evaluator answers it.
                             : fieldDefaults == null
-                                    ? null
+                                    ? com.npdev.kernel.concepts.ValueExpressionEvaluator.evaluate(schema.getDefaultExpression(), values)
                                     : fieldDefaults.evaluateFieldDefault(schema.getDefaultExpression(), values, tenantForDefaults(values));
                     if (evaluated == null && !userDefault) {
                         evaluated = evaluateSchemaExpression(schema.getDefaultExpression(), values);
