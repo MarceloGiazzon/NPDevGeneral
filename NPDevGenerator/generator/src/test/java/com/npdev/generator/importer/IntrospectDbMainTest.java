@@ -40,6 +40,25 @@ class IntrospectDbMainTest {
         }
     }
 
+    /** IMP-GAPS-1: --no-rename keeps legacy names, a bad policy file and both flags together exit 2. */
+    @Test
+    void theRenamePolicyFlags(@TempDir Path dir) throws Exception {
+        String url = "jdbc:h2:mem:impren_main;DB_CLOSE_DELAY=-1";
+        try (Connection keepAlive = DriverManager.getConnection(url, "sa", ""); Statement statement = keepAlive.createStatement()) {
+            statement.execute("CREATE TABLE ITEM (ITEMID INT PRIMARY KEY, ITEMNOME VARCHAR(30))");
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ByteArrayOutputStream err = new ByteArrayOutputStream();
+            assertEquals(0, run(out, err, "--url", url, "--user", "sa", "--out", dir.resolve("a").toString()));
+            assertTrue(Files.readString(dir.resolve("a/model.json")).contains("\"name\" : \"id\""));
+            assertEquals(0, run(out, err, "--url", url, "--user", "sa", "--no-rename", "--out", dir.resolve("b").toString()));
+            assertTrue(Files.readString(dir.resolve("b/model.json")).contains("\"name\" : \"itemid\""));
+            Path bad = Files.writeString(dir.resolve("bad.json"), "{\"schemaVersion\":\"v0\"}");
+            assertEquals(2, run(out, err, "--url", url, "--rename-policy", bad.toString(), "--out", dir.toString()));
+            assertTrue(err.toString(StandardCharsets.UTF_8).contains("rename policy"));
+            assertEquals(2, run(out, err, "--url", url, "--no-rename", "--rename-policy", bad.toString(), "--out", dir.toString()));
+        }
+    }
+
     @Test
     void missingOrUnknownArgumentsExitTwoWithUsage() {
         ByteArrayOutputStream out = new ByteArrayOutputStream();

@@ -121,16 +121,24 @@ class GeneXusEnricherTest {
         return null;
     }
 
+    /** IMP-GAPS-1: the draft renamed PedidoSituacao to situacao; the enricher joins by column, so the caption still lands. */
+    @Test
+    void captionsLandOnFieldsTheRenamePolicyRenamed() {
+        assertNull(field("Pedido", "pedidoSituacao"), "the draft strips the shared Pedido prefix");
+        assertEquals("Situacao do pedido", field("Pedido", "situacao").path("ui").path("label").asText());
+        assertEquals("Pedido", field("Pedido", "id").path("ui").path("label").asText());
+    }
+
     @Test
     void captionsComeFromTheContextualTitleThenTheDescription() {
-        assertEquals("Situacao do pedido", field("Pedido", "pedidoSituacao").path("ui").path("label").asText());
-        assertEquals("Valor", field("Pedido", "pedidoValor").path("ui").path("label").asText());
+        assertEquals("Situacao do pedido", field("Pedido", "situacao").path("ui").path("label").asText());
+        assertEquals("Valor", field("Pedido", "valor").path("ui").path("label").asText());
         assertEquals("Pedido de venda", concept("Pedido").path("ui").path("label").asText());
     }
 
     @Test
     void anEnumeratedDomainBecomesAnEnumAndTheLegacyCodesAreKept() {
-        JsonNode f = field("Pedido", "pedidoSituacao");
+        JsonNode f = field("Pedido", "situacao");
         assertEquals("enum", f.path("type").asText());
         assertEquals("Normal", f.path("values").get(0).asText());
         assertEquals("Cancelado", f.path("values").get(1).path("value").asText());
@@ -170,19 +178,19 @@ class GeneXusEnricherTest {
     void anErrorRuleBecomesTheNegatedInvariantAndStaysInTheReport() {
         JsonNode plain = candidate("invariant", "Valor negativo");
         assertEquals("translated-unverified", plain.path("confidence").asText());
-        assertEquals("!(pedidoValor < 0)", plain.path("expression").asText());
+        assertEquals("!(valor < 0)", plain.path("expression").asText());
         assertEquals("Valor negativo; nao pode", plain.path("message").asText());
         assertNull(concept("Pedido").get("invariants"), "candidates are never applied to the model");
     }
 
     @Test
     void notBindsTheWholeComparisonAndDomainValuesBecomeNames() {
-        assertEquals("!(!(pedidoSituacao == 'Cancelado'))", candidate("invariant", "Ja cancelado").path("expression").asText());
+        assertEquals("!(!(situacao == 'Cancelado'))", candidate("invariant", "Ja cancelado").path("expression").asText());
     }
 
     @Test
     void aLegacyCodeComparedWithAnEnumFieldBecomesTheName() {
-        assertEquals("!(pedidoSituacao == 'Cancelado' && pedidoValor > 5)", candidate("invariant", "Codigo").path("expression").asText());
+        assertEquals("!(situacao == 'Cancelado' && valor > 5)", candidate("invariant", "Codigo").path("expression").asText());
     }
 
     @Test
@@ -196,7 +204,7 @@ class GeneXusEnricherTest {
     @Test
     void aDefaultOnInsertIsACandidateAndPlumbingIsDropped() {
         JsonNode d = candidate("default", "TrnMode.Insert");
-        assertEquals("pedidoSituacao", d.path("field").asText());
+        assertEquals("situacao", d.path("field").asText());
         assertEquals("'Normal'", d.path("value").asText());
         var rules = result.report().path("genexus").path("counts").path("rules");
         assertEquals(8, rules.path("statements").asInt());

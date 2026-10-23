@@ -65,23 +65,23 @@ class DbIntrospectorTest {
         assertEquals("string", nome.get("type").asText());
         assertEquals(60, nome.get("maxLength").asInt());
         assertTrue(nome.get("required").asBoolean());
-        // mixed-case legacy names keep their word boundaries
+        // mixed-case legacy names keep their word boundaries; IMP-GAPS-1 strips the shared "Ped" prefix
         assertNotNull(concept(model, "PedidoCab"));
-        assertEquals("pedId", field(concept(model, "PedidoCab"), "pedId").get("name").asText());
+        assertTrue(field(concept(model, "PedidoCab"), "data").get("description").asText().contains("PedidoCab.PedData"));
     }
 
     @Test
     void typesFollowTheDocumentedMappingAndUnmappedColumnsAreListedNotGuessed() throws Exception {
         DbIntrospector.Result result = drafted("imp1b");
         JsonNode clientes = concept(result.model(), "Clientes");
-        assertEquals("integer", field(clientes, "clicod").get("type").asText(), "NUMERIC(8,0) -> integer");
-        assertTrue(field(clientes, "clicod").get("id").asBoolean());
+        assertEquals("integer", field(clientes, "id").get("type").asText(), "NUMERIC(8,0) -> integer");
+        assertTrue(field(clientes, "id").get("id").asBoolean());
         JsonNode saldo = field(clientes, "clisaldo");
         assertEquals("decimal", saldo.get("type").asText());
         assertEquals(12, saldo.get("precision").asInt());
         assertEquals(2, saldo.get("scale").asInt());
         assertEquals("boolean", field(clientes, "cliativo").get("type").asText());
-        assertEquals("long", field(concept(result.model(), "PedidoCab"), "pedId").get("type").asText());
+        assertEquals("long", field(concept(result.model(), "PedidoCab"), "id").get("type").asText());
 
         List<String> unmapped = StreamSupport.stream(result.report().get("unmappedColumns").spliterator(), false)
                 .map(u -> u.get("table").asText() + "." + u.get("column").asText()).toList();
@@ -94,13 +94,13 @@ class DbIntrospectorTest {
     @Test
     void singleColumnForeignKeysBecomeReferencesAndUniquesAreKept() throws Exception {
         JsonNode model = drafted("imp1c").model();
-        JsonNode cliCod = field(concept(model, "PedidoCab"), "cliCod");
+        JsonNode cliCod = field(concept(model, "PedidoCab"), "clienteId");
         assertEquals("reference", cliCod.get("type").asText());
         assertEquals("Clientes", cliCod.get("reference").get("target").asText());
         assertTrue(field(concept(model, "Clientes"), "cliemail").get("unique").asBoolean());
         JsonNode indexes = concept(model, "PedidoCab").get("indexes");
         assertNotNull(indexes);
-        assertEquals(List.of("pedData", "cliCod"),
+        assertEquals(List.of("data", "clienteId"),
                 StreamSupport.stream(indexes.get(0).get("fields").spliterator(), false).map(JsonNode::asText).toList());
     }
 
@@ -132,6 +132,45 @@ class DbIntrospectorTest {
         ModelAst ast = new JsonModelParser().parse(result.model());
         List<String> errors = new SemanticValidator().validate(ast);
         assertEquals(List.of(), errors);
+    }
+
+    /** IMP-GAPS-1: every rename is reported with its rule; the GeneXus join key (columns) names the final field. */
+    @Test
+    void renamesAreListedInTheReportWithTheirRule() throws Exception {
+        DbIntrospector.Result result = drafted("impren1");
+        List<String> renames = StreamSupport.stream(result.report().get("renames").spliterator(), false)
+                .map(r -> r.get("table").asText() + "." + r.get("column").asText() + ":" + r.get("legacyField").asText()
+                        + "->" + r.get("field").asText() + "/" + r.get("rule").asText()).toList();
+        assertEquals(List.of("CLIENTES.CLICOD:clicod->id/primaryKey",
+                "PedidoCab.PedId:pedId->id/primaryKey",
+                "PedidoCab.CliCod:cliCod->clienteId/foreignKey",
+                "PedidoCab.PedData:pedData->data/prefix",
+                "PedidoCab.PedTs:pedTs->ts/prefix"), renames, "PedHora is unmapped (TIME), so it is not reported");
+        assertEquals(5, result.report().get("counts").get("fieldsRenamed").asInt());
+        assertEquals("default", result.report().get("renamePolicy").asText());
+        JsonNode columns = StreamSupport.stream(result.report().get("tables").spliterator(), false)
+                .filter(t -> "PedidoCab".equals(t.get("table").asText())).findFirst().orElseThrow().get("columns");
+        assertEquals("clienteId", columns.get("CliCod").asText());
+    }
+
+    /** --no-rename: the draft keeps the legacy camelCase name of every column (byte-identical to before IMP-GAPS-1). */
+    @Test
+    void withTheRenamePolicyDisabledEveryFieldKeepsItsLegacyName() throws Exception {
+        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:impren0;DB_CLOSE_DELAY=-1")) {
+            try (Statement statement = connection.createStatement()) {
+                for (String ddl : DDL) {
+                    statement.execute(ddl);
+                }
+            }
+            DbIntrospector.Result result = DbIntrospector.introspect(connection, "PUBLIC", "legacy.shop", "x",
+                    ImportRenamePolicy.DISABLED);
+            JsonNode ped = concept(result.model(), "PedidoCab");
+            assertEquals(List.of("pedId", "cliCod", "pedData", "pedTs"),
+                    StreamSupport.stream(ped.get("fields").spliterator(), false).map(f -> f.get("name").asText()).toList());
+            assertTrue(field(concept(result.model(), "Clientes"), "clicod").get("id").asBoolean());
+            assertEquals(0, result.report().get("renames").size());
+            assertEquals("disabled", result.report().get("renamePolicy").asText());
+        }
     }
 
     @Test

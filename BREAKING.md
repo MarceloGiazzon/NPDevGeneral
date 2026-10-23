@@ -5,6 +5,14 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-23 — `npdev import db` proposes readable field names: table prefix stripped, key `id`, the one foreign key to a table `{target}Id` (IMP-GAPS-1)
+
+**What changes.** A drafted field used to be the legacy column in camelCase (`armNome`, `armCod`, `entCod`). The importer now applies a rename policy (`npdev/importer/rename-policy.json` in the jar): the first word shared by most of a table's columns is stripped (`nome`), a single-column primary key is `id`, and the only foreign key from a table to another table is `{target}Id` (`entidadeId`); a name that would collide, start with a digit, be empty or be a reserved word keeps its legacy form. Every rename is listed in `import-report.json` `renames[]`, and each field's description still names its column. The DSL, generated code and existing models are untouched — this is draft output only.
+
+**Who is affected.** Someone who re-imports a database and diffs the new draft against an older one, or tooling that predicted field names from column names instead of reading the report's `columns` map.
+
+**Codemod.** None needed: `npdev import db --no-rename` reproduces the previous draft byte for byte; `--rename-policy <file>` takes a policy of your own.
+
 ## 2026-10-23 — a `defaultExpression`/`derivedExpression` may only call a function the runtime provides; an unevaluable one is an error at save time (REG-284)
 
 **What changes.** Validation now refuses a call to anything but `concat`, `coalesce`, `trim`, `uppercase`, `lowercase` in a default/derived expression; `now()`, `uuid()` and `nextNumber('name')` are accepted only as a whole `defaultExpression`. At runtime a function-call default is now evaluated (it used to be saved as its own source text — `concat(first, ' ', last)` stored that literal string), and an expression that cannot be evaluated throws instead of saving its text (defaults) or null, which erased a derived field.

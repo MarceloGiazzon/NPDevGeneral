@@ -165,14 +165,23 @@ public final class DbIntrospector {
     public record Result(ObjectNode model, ObjectNode report) {
     }
 
+    /** Introspects with the default rename policy ({@link ImportRenamePolicy#defaults()}). */
     public static Result introspect(Connection connection, String schema, String namespace, String sourceLabel)
             throws SQLException {
-        List<String> skippedViews = new ArrayList<>();
-        List<Table> tables = read(connection, schema, skippedViews);
-        return draft(tables, skippedViews, namespace, sourceLabel);
+        return introspect(connection, schema, namespace, sourceLabel, ImportRenamePolicy.defaults());
     }
 
-    static Result draft(List<Table> tables, List<String> skippedViews, String namespace, String sourceLabel) {
+    /** {@code renamePolicy} = {@link ImportRenamePolicy#DISABLED} keeps every legacy camelCase name. */
+    public static Result introspect(Connection connection, String schema, String namespace, String sourceLabel,
+                                    ImportRenamePolicy.Policy renamePolicy) throws SQLException {
+        List<String> skippedViews = new ArrayList<>();
+        List<Table> tables = read(connection, schema, skippedViews);
+        return draft(tables, skippedViews, namespace, sourceLabel, renamePolicy);
+    }
+
+    static Result draft(List<Table> tables, List<String> skippedViews, String namespace, String sourceLabel,
+                        ImportRenamePolicy.Policy renamePolicy) {
+        ImportRenamePolicy.Policy policy = renamePolicy == null ? ImportRenamePolicy.DISABLED : renamePolicy;
         // Concept names first: references need the target's final name.
         Map<String, String> conceptByTable = new LinkedHashMap<>();
         Set<String> usedConcepts = new HashSet<>();
@@ -201,6 +210,9 @@ public final class DbIntrospector {
         ArrayNode defaults = report.putArray("defaultsNotImported");
         ArrayNode manual = report.putArray("manualItems");
         ArrayNode linkProposals = report.putArray("linkTableProposals");
+        report.put("renamePolicy", policy.source());
+        ArrayNode renames = report.putArray("renames");
+        int renamesApplied = 0;
 
         int mappedColumns = 0;
         int totalColumns = 0;
@@ -213,6 +225,7 @@ public final class DbIntrospector {
             tableReport.put("table", table.name());
             tableReport.put("concept", concept);
             ObjectNode columnMap = tableReport.putObject("columns");
+            Map<String, ImportRenamePolicy.Rename> renamePlan = ImportRenamePolicy.plan(table, conceptByTable, policy);
 
             Set<String> usedFields = new HashSet<>();
             Map<String, String> fieldByColumn = new LinkedHashMap<>();
@@ -279,7 +292,19 @@ public final class DbIntrospector {
                     continue;
                 }
                 mappedColumns++;
-                String fieldName = unique(NameStyle.camel(column.name()), usedFields);
+                ImportRenamePolicy.Rename rename = renamePlan.get(column.name());
+                String fieldName = unique(rename != null ? rename.field() : NameStyle.camel(column.name()), usedFields);
+                if (rename != null) {
+                    ObjectNode r = renames.addObject();
+                    r.put("table", table.name());
+                    r.put("column", column.name());
+                    r.put("legacyField", rename.legacyField());
+                    r.put("field", fieldName);
+                    r.put("rule", rename.rule());
+                    if (rename.applied()) {
+                        renamesApplied++;
+                    }
+                }
                 fieldByColumn.put(column.name(), fieldName);
                 columnMap.put(column.name(), fieldName);
                 ObjectNode field = fields.addObject();
@@ -353,6 +378,7 @@ public final class DbIntrospector {
         counts.put("columnsMapped", mappedColumns);
         counts.put("columnsUnmapped", totalColumns - mappedColumns);
         counts.put("manualItems", manual.size());
+        counts.put("fieldsRenamed", renamesApplied);
         return new Result(model, report);
     }
 

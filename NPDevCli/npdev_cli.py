@@ -4919,6 +4919,10 @@ def run_import_db(args: argparse.Namespace) -> int:
         command += ["--user", args.db_user, "--password", args.db_password or ""]
     if args.schema:
         command += ["--schema", args.schema]
+    if getattr(args, "no_rename", False):
+        command += ["--no-rename"]
+    elif getattr(args, "rename_policy", None):
+        command += ["--rename-policy", str(Path(args.rename_policy).expanduser().resolve())]
     try:
         completed = subprocess.run(command, capture_output=True, text=True, timeout=300)
     except (OSError, subprocess.SubprocessError) as exc:
@@ -17139,6 +17143,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--driver-jar", action="append", default=[], metavar="JAR",
         help="JDBC driver jar(s) for the source database (repeatable). The staged H2 driver is always "
              "available; PostgreSQL, SQL Server, MySQL and others need their driver passed here.",
+    )
+    import_rename = import_db.add_mutually_exclusive_group()
+    import_rename.add_argument(
+        "--rename-policy", default=None, metavar="JSON",
+        help="IMP-GAPS-1: field rename policy (npdev-import-rename-policy.v1). Default: the one shipped in the "
+             "jar -- strip the table's shared column prefix, single-column primary key -> id, the one foreign "
+             "key to a table -> {target}Id. Every rename is listed in import-report.json renames[].",
+    )
+    import_rename.add_argument(
+        "--no-rename", action="store_true",
+        help="Keep the legacy camelCase column names (no rename policy).",
     )
 
     import_genexus = import_sub.add_parser(

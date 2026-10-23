@@ -96,5 +96,39 @@ class ImportGeneXusCommandTest(unittest.TestCase):
                 self.assertEqual(2, npdev_cli.run_import_genexus(self._args(tmp_path, None)))
 
 
+
+class ImportDbRenameFlagsTest(unittest.TestCase):
+    """IMP-GAPS-1: `npdev import db` passes the rename-policy choice through to IntrospectDbMain."""
+
+    def _command(self, tmp: Path, **extra) -> list:
+        args = argparse.Namespace(url="jdbc:h2:mem:x", out=str(tmp / "out"), db_user=None, db_password=None,
+                                  schema=None, namespace="n", driver_jar=[], **extra)
+        completed = MagicMock(returncode=0, stdout="", stderr="")
+        with patch.object(npdev_cli, "_default_ai_tools_jar", return_value=Path("ai-tools.jar")), \
+                patch.object(npdev_cli, "java_launcher", return_value="java"), \
+                patch.object(npdev_cli, "_default_runtimehost_libs_dir", return_value=None), \
+                patch.object(npdev_cli.subprocess, "run", return_value=completed) as run:
+            self.assertEqual(0, npdev_cli.run_import_db(args))
+        return run.call_args.args[0]
+
+    def test_default_passes_no_rename_flag(self) -> None:
+        with TemporaryDirectory() as tmp:
+            command = self._command(Path(tmp), rename_policy=None, no_rename=False)
+        self.assertNotIn("--no-rename", command)
+        self.assertNotIn("--rename-policy", command)
+
+    def test_no_rename_and_a_policy_file_are_passed_through(self) -> None:
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self.assertIn("--no-rename", self._command(tmp_path, rename_policy=None, no_rename=True))
+            command = self._command(tmp_path, rename_policy=str(tmp_path / "p.json"), no_rename=False)
+        self.assertEqual(str((tmp_path / "p.json").resolve()), command[command.index("--rename-policy") + 1])
+
+    def test_the_two_flags_exclude_each_other(self) -> None:
+        with self.assertRaises(SystemExit), patch("sys.stderr"):
+            npdev_cli.build_parser().parse_args(["import", "db", "--url", "u", "--out", "o", "--no-rename",
+                                                 "--rename-policy", "p.json"])
+
+
 if __name__ == "__main__":
     unittest.main()

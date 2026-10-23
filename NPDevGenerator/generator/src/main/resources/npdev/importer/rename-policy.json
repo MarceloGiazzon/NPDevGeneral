@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "npdev-import-rename-policy.v1",
+  "description": "IMP-GAPS-1: how `npdev import db` turns legacy column names into readable field names. Read by ImportRenamePolicy; pass --rename-policy <file> for a copy of your own, --no-rename for the legacy camelCase names. Every rename is listed in import-report.json renames[], and each field's description keeps the source column.",
+  "fieldPrefix": {
+    "enabled": true,
+    "minShare": 0.6,
+    "minColumns": 3,
+    "minLength": 2,
+    "maxLength": 6,
+    "mustAbbreviateTable": true
+  },
+  "foreignKey": {
+    "enabled": true,
+    "pattern": "{target}Id",
+    "singular": [
+      {"suffix": "ss", "replace": "ss", "minLength": 0},
+      {"suffix": "ns", "replace": "m", "minLength": 5},
+      {"suffix": "s", "replace": "", "minLength": 4}
+    ]
+  },
+  "primaryKey": {
+    "enabled": true,
+    "name": "id"
+  },
+  "reservedWords": [
+    "version", "rowVersion", "tenantId", "deletedAt",
+    "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue",
+    "default", "do", "double", "else", "enum", "extends", "false", "final", "finally", "float", "for", "goto",
+    "if", "implements", "import", "instanceof", "int", "interface", "long", "native", "new", "null", "package",
+    "private", "protected", "public", "record", "return", "short", "static", "strictfp", "super", "switch",
+    "synchronized", "this", "throw", "throws", "transient", "true", "try", "var", "void", "volatile", "while", "yield",
+    "select", "from", "where", "order", "group", "user", "table", "index", "key"
+  ]
+}
