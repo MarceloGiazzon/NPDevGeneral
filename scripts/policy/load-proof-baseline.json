@@ -110,9 +110,9 @@
         {
           "id": "dev-database-file-growth",
           "scenario": "all",
-          "cause": "the embedded H2 file reached 12.5 GB for about 400,000 small rows after seeding and load runs (the audit table rows are tiny, so this looks like file garbage rather than data); the cause was not established",
-          "fix": "none yet",
-          "status": "open"
+          "cause": "the embedded H2 file reached 12.5 GB for about 400,000 small rows after seeding and load runs. Established 2026-10-21 on H2 2.3.232 (REG-272): WRITE_DELAY=0 turns off the MVStore background thread, the only online compactor, and writes one chunk per commit, while the default RETENTION_TIME=45000 keeps every superseded chunk -- 20k rows + 20k event rows committed one at a time made a 662 MB file (~33 KB/row) that SHUTDOWN COMPACT reduced to 5.7 MB (~0.3 KB/row)",
+          "fix": "RETENTION_TIME=0 on the H2_LOCAL/H2_SERVER URLs (UserDatabaseDefinitionLoader + npdev_cli twin): the same run made 210 MB and 8 kill -9 cycles lost no acknowledged commit. Expected size with it: about 10 KB per committed row on a never-compacted dev file, about 0.3 KB per row after SHUTDOWN COMPACT. Apps generated before the fix keep the old URL until regenerated. Not done: online compaction (MVStore compactFile from the RuntimeHost, H2Local only, needs its own kill -9 durability proof) -- open a new item if dev disk use still hurts",
+          "status": "recorded"
         }
       ],
       "thresholds": {
