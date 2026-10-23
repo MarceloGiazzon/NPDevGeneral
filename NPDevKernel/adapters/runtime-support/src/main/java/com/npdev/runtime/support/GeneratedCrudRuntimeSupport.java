@@ -942,6 +942,12 @@ public final class GeneratedCrudRuntimeSupport {
         // drain does exactly that); forcing not-yet-due events is limited to the caller's own tenant.
         List<ScheduledEventRecord> dueRecords = selectDueScheduledEvents(force, safeLimit,
                 force ? scheduleTenantFilter() : null);
+        if (dueRecords == null) {
+            // A failed query is not an empty queue: reporting no_due_records here hid a broken
+            // schedule table behind a healthy-looking drain.
+            summary.put("status", "query_failed");
+            return Map.copyOf(summary);
+        }
         if (dueRecords.isEmpty()) {
             summary.put("status", "no_due_records");
             return Map.copyOf(summary);
@@ -956,8 +962,15 @@ public final class GeneratedCrudRuntimeSupport {
                 continue;
             }
             scanned++;
-            if (!claimScheduledEvent(record.id())) {
+            ScheduleClaim claim = claimScheduledEvent(record.id());
+            if (claim == ScheduleClaim.TAKEN) {
                 skipped++;
+                continue;
+            }
+            if (claim == ScheduleClaim.FAILED) {
+                // The row is still PENDING and will be retried; it was neither processed nor
+                // legitimately skipped, so it counts as a failure of this drain.
+                failed++;
                 continue;
             }
 
@@ -1656,6 +1669,7 @@ public final class GeneratedCrudRuntimeSupport {
         return isNotNullViolation(exception.getCause());
     }
 
+    /** Due rows, or null when the query itself failed -- never an empty list for a failure. */
     private List<ScheduledEventRecord> selectDueScheduledEvents(boolean forceDue, int limit, String tenantFilter) {
         if (dataSource == null) {
             return List.of();
@@ -1684,13 +1698,16 @@ public final class GeneratedCrudRuntimeSupport {
             }
         } catch (Exception exception) {
             LOG.log(Level.WARNING, "Failed to query due scheduled events", exception);
-            return List.of();
+            return null;
         }
     }
 
-    private boolean claimScheduledEvent(UUID scheduleId) {
+    /** CLAIMED: this drain owns the row. TAKEN: another drain got it first. FAILED: the update threw. */
+    private enum ScheduleClaim { CLAIMED, TAKEN, FAILED }
+
+    private ScheduleClaim claimScheduledEvent(UUID scheduleId) {
         if (dataSource == null || scheduleId == null) {
-            return false;
+            return ScheduleClaim.TAKEN;
         }
         String sql = ScheduledEventSql.claim();
         try (Connection connection = dataSource.getConnection();
@@ -1700,10 +1717,10 @@ public final class GeneratedCrudRuntimeSupport {
             statement.setTimestamp(2, now);
             statement.setString(3, scheduleId.toString());
             statement.setString(4, SCHEDULE_STATUS_PENDING);
-            return statement.executeUpdate() > 0;
+            return statement.executeUpdate() > 0 ? ScheduleClaim.CLAIMED : ScheduleClaim.TAKEN;
         } catch (Exception exception) {
             LOG.log(Level.WARNING, "Failed to claim scheduled event " + scheduleId, exception);
-            return false;
+            return ScheduleClaim.FAILED;
         }
     }
 

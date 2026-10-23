@@ -14,13 +14,17 @@ import com.npdev.kernel.ports.EventStore;
 import com.npdev.kernel.ports.FlowDefinitionProvider;
 import com.npdev.kernel.storage.sql.H2Dialect;
 import com.npdev.kernel.storage.sql.SqlDialects;
+import com.npdev.runtime.support.crud.scheduling.ScheduledEventSql;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.sql.Timestamp;
@@ -31,6 +35,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import javax.sql.DataSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -219,6 +224,67 @@ class GeneratedCrudRuntimeSupportDeferredFlowEventTest {
         assertEquals(1, inMemoryEvents.eventNames().stream().filter(REMINDER_EVENT::equals).count(),
                 "delivered once, after the delay, with the correlation it was scheduled under");
         assertEquals("corr-none", inMemoryEvents.readByEventName(REMINDER_EVENT).get(0).correlationId());
+    }
+
+    /** X0: a failed due-records query is not an empty queue. */
+    @Test
+    void aFailedDueQueryIsReportedAsQueryFailedNotNoDueRecords() throws Exception {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("DROP TABLE npdev_scheduled_event");
+        }
+
+        Map<String, Object> drained = runtimeSupport.processDueScheduledEvents(Boolean.FALSE, 100);
+
+        assertEquals("query_failed", drained.get("status"));
+    }
+
+    /** X0: a claim whose UPDATE throws is a failure, not a row another drain legitimately took. */
+    @Test
+    void aClaimThatThrowsCountsAsFailedNotSkipped() throws Exception {
+        kernelRunner.execute("ScheduleReminder", Map.of("appointmentId", "apt-claim", "correlationId", "corr-claim"));
+        String scheduleId = onlyScheduleId();
+        makeDue(scheduleId);
+        GeneratedCrudRuntimeSupport failingClaims = new GeneratedCrudRuntimeSupport(
+                () -> new CompiledModel("deferred-flow-event", "1.0.0", "v1", Map.<String, CompiledConcept>of()),
+                kernelRunner,
+                null,
+                null,
+                null,
+                failingOn(dataSource, ScheduledEventSql.claim())
+        );
+
+        Map<String, Object> drained = failingClaims.processDueScheduledEvents(Boolean.FALSE, 100);
+
+        assertEquals(1, drained.get("failed"));
+        assertEquals(0, drained.get("skipped"));
+        assertEquals("PENDING", readColumn(scheduleId, "status"), "an unclaimed row stays pending for the next drain");
+    }
+
+    /** A DataSource whose connections refuse to prepare exactly {@code sql}. */
+    private static DataSource failingOn(JdbcDataSource delegate, String sql) {
+        return (DataSource) Proxy.newProxyInstance(DataSource.class.getClassLoader(), new Class<?>[]{DataSource.class},
+                (proxy, method, args) -> {
+                    Object result = invoke(method, delegate, args);
+                    if (!(result instanceof Connection connection)) {
+                        return result;
+                    }
+                    return Proxy.newProxyInstance(Connection.class.getClassLoader(), new Class<?>[]{Connection.class},
+                            (connectionProxy, connectionMethod, connectionArgs) -> {
+                                if ("prepareStatement".equals(connectionMethod.getName())
+                                        && connectionArgs != null && sql.equals(connectionArgs[0])) {
+                                    throw new SQLException("simulated claim failure");
+                                }
+                                return invoke(connectionMethod, connection, connectionArgs);
+                            });
+                });
+    }
+
+    private static Object invoke(java.lang.reflect.Method method, Object target, Object[] args) throws Throwable {
+        try {
+            return method.invoke(target, args);
+        } catch (InvocationTargetException exception) {
+            throw exception.getCause();
+        }
     }
 
     private static FlowDefinitionProvider scheduleReminderFlowProvider() {
