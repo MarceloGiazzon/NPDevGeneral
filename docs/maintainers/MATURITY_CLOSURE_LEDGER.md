@@ -33,7 +33,7 @@ Every new finding must use exactly one allowed classification:
 
 Checkpoint 0 verifies Beta0 using the peeled tag commit from `git rev-parse beta0^{}` or `git rev-list -n 1 beta0`. Beta0 may not be retagged, moved, deleted, recreated, or reinterpreted by this roadmap.
 
-The repository state was declared by `scripts/reports/out/beta0-state-truth-report.json` (no tracked script produces it any more: its checkers were deleted in `83eaf603`, 2026-08-13) as one of:
+The repository state was declared by `scripts/reports/out/beta0-state-truth-report.json` (no tracked script produces it any more: its checkers were deleted in `1965ab55`, 2026-08-13) as one of:
 
 | State | Meaning |
 |---|---|

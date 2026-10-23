@@ -102,7 +102,7 @@ detail: |
     in. This catches the REAL-Google signup and login legs of the done-when.
   - REG-214 filed+fixed from the same live event: ExternalIdentity row was persisted in tenant
     'default' while the user went to 'dev' (insertLink omitted tenant_id) -- fixed, tested
-    (linkage tenant == actor tenant on both legs), committed 473eca07, and redeployed on :8084.
+    (linkage tenant == actor tenant on both legs), committed 808ebf35, and redeployed on :8084.
   - LINK leg (Google -> existing admin account): authorize?purpose=link + state + Google redirect
     all verified server-side; the final Google consent click is BLOCKED BY GOOGLE for the harness
     environment: both the bundled Chrome-for-Testing Chromium (HeadlessChrome UA) and REAL

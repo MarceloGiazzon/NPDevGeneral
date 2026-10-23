@@ -209,7 +209,7 @@ detail: |
   build -> boot -> HTTP CRUD proof.
 
   CORRECTION to this file's own prior record: between this item's PARTIAL close above and this
-  session, an EARLIER session on this same branch (commit ed88325e, "feat(packs): sealed-pack jar
+  session, an EARLIER session on this same branch (commit 378e476d, "feat(packs): sealed-pack jar
   building and app linking (R8.10, BUILD-2 -- still PARTIAL)") already shipped real app-linking
   wiring WITHOUT updating this ledger file -- a real gap in that session's own closeout discipline,
   found and corrected here rather than repeated. That commit shipped, unrecorded until now:
@@ -237,7 +237,7 @@ detail: |
   carried no CRUD grants and `compiled-model.json` carried no metadata for the linked concept --
   either alone is enough to make a real request fail (403 FORBIDDEN from
   `GeneratedCrudRuntimeSupport.checkCrudPermission`, or "Unknown entity for runtime support" from
-  `requireEntity`) even once a controller exists. ed88325e's own commit message named this precisely
+  `requireEntity`) even once a controller exists. 378e476d's own commit message named this precisely
   ("Controller/Dto/Service/RuntimeApi emitters hardcode com.npdev.generated.entities... a linked
   pack's concepts are currently unreachable over HTTP") -- this session's work closes exactly that
   gap.

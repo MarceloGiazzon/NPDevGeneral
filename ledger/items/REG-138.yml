@@ -9,7 +9,7 @@ verification: VERIFIED_LIVE
 surface: runtimehost/supported-surface-allowlist, editor/prompt-history
 source: |
   Found while implementing editor/ANALYSIS.md's E2 ("does semantic writeback actually apply?",
-  __OutsideRepo, 2026-08-06 analysis against 6b1b3fb). That analysis's own §2.1 correction claimed
+  __OutsideRepo, 2026-08-06 analysis against 551418a). That analysis's own §2.1 correction claimed
   "SemanticBehaviorWriteBackService accepts five request types ... validates them, assigns a
   requestId, and journals them" as evidence the editor "has a real write path", contrasting it with
   structural-writeback's missing controller/service (§3). Re-checking that claim against a REAL

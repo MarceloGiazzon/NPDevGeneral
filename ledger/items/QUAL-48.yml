@@ -9,7 +9,7 @@ opened: 2026-08-31
 closed: 2026-08-31
 source: >-
   2026-08-31 (session resume, verifying QUAL-45/46 on live CI). A push touching only golden-ai-
-  scenarios fixtures and a new RuntimeHost test (d70df781, 0bda5a1c -- neither commit touches
+  scenarios fixtures and a new RuntimeHost test (37a26729, d2ecad1d -- neither commit touches
   NPDevContract/dsl) failed "NPDev CI Validation" (run
   https://github.com/MarceloGiazzon/NPDevGeneral/actions/runs/33446595651) on a dsl coverage-ratchet
   regression: 85.0422% (recorded floor) -> 85.0328% (this run's fresh measurement). This exact pair
@@ -39,8 +39,8 @@ detail: |
   the parser/compiler/validator path, JVM warm-up/JIT timing in a race-sensitive test, or parallel
   test execution ordering within the dsl module's own Gradle test task.
 
-  Not caused by this session's changes: this session's two live-CI-triggering pushes (d70df781:
-  golden-ai-scenarios fixtures + ledger; 0bda5a1c: a new RuntimeHost test + coverage-baseline.json's
+  Not caused by this session's changes: this session's two live-CI-triggering pushes (37a26729:
+  golden-ai-scenarios fixtures + ledger; d2ecad1d: a new RuntimeHost test + coverage-baseline.json's
   RuntimeHost entry) touch zero files under NPDevContract/dsl.
 
   Done when: the actual nondeterministic line(s) are identified (not just re-measured) -- e.g. by

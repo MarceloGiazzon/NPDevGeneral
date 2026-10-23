@@ -18,7 +18,7 @@
       "baseUrl": "http://127.0.0.1:8411",
       "engine": "H2Local",
       "modelSha256": null,
-      "platform": "beta1.14-2-g5fe52fad"
+      "platform": "beta1.14-2-g9b1a0a6b"
     },
     "driver": "cli",
     "engineVersion": "installed-stopped",

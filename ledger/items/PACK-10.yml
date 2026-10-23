@@ -34,8 +34,8 @@ detail: |
   of R10 (plugin:java-controller + custom-screen mount, tracked separately as EXT-1).
 
   2026-08-20 (reconciled, no new code): Steps 2-4 are in fact DONE and committed on this branch --
-  df384e9b "additive pack extensions with collision and sealedness refusal (R8.11 steps 1-3)" and
-  b4f88a34 "app-controlled ordering for extension-contributed UI fields (R8.11 step 4)" -- as
+  be3d2c28 "additive pack extensions with collision and sealedness refusal (R8.11 steps 1-3)" and
+  fa0f1d1b "app-controlled ordering for extension-contributed UI fields (R8.11 step 4)" -- as
   com.npdev.generator.packs.PackExtensionComposer (+ PackExtensionComposerTest,
   PackExtensionComposerOrderingTest). It is a DIFFERENT mechanism from PK-4's PackDiffEngine by
   deliberate design (an extension pack is a different document from the pack it targets, not two

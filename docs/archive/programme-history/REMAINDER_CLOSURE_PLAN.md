@@ -14,7 +14,7 @@
 > on owner approval ("full implement"). Same flow as `archive/programme-history/EXTERNAL_AI_DELEGATION_PLAN.md` /
 > `archive/programme-history/REG48_50_CLOSURE_PLAN.md`.
 >
-> Baseline: `97a2491` on `beta1-vision-spine`, pushed. Register: 47 REG rows, **zero open**.
+> Baseline: `b2ce834` on `beta1-vision-spine`, pushed. Register: 47 REG rows, **zero open**.
 
 **Scope.** Everything in the "what remains" survey that does **not** require owner authority — plus
 written decision briefs for the four that do. Nothing here marks an owner decision as made.
@@ -82,7 +82,7 @@ A detector's silence means nothing without a control:
 
 | Control | Expectation |
 |---|---|
-| Register intro at `97a2491^` (pre-fix) | **must fire** on "REG-50 … remains OPEN" |
+| Register intro at `b2ce834^` (pre-fix) | **must fire** on "REG-50 … remains OPEN" |
 | `ADR-0009` header as of today | **must fire** on "D3 … remain pending" |
 | Whole `docs/**` corpus at HEAD after Phase 1 | measure the false-positive count |
 

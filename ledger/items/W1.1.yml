@@ -105,7 +105,7 @@ detail: |
   Found and deliberately deferred, not hidden: running the task's own prescribed
   `run-generator-gate.ps1` surfaced 2 pre-existing `AiModelToDslMappingTest` failures in
   `:dsl:test`, root-caused by tracing (not assumed) to a golden-ai-scenarios commit
-  (2f375da1, "P7.1") that predates this session -- a scenario was added without registering its
+  (29f7b980, "P7.1") that predates this session -- a scenario was added without registering its
   diagnostic code or bumping a hardcoded scenario-count assertion. Filed as `ledger/items/RUN-30.yml`
   (OPEN) with the full empirical trace (including running the normalizer directly against the
   scenario to prove it emits no error today) rather than fixed here: the real fix needs a new
@@ -137,5 +137,5 @@ notes: |
   manual one is a real design choice, not an oversight.
 
   RUN-30 (OPEN): 2 pre-existing AiModelToDslMappingTest failures found while running this task's own
-  prescribed run-generator-gate.ps1, root-caused to a pre-session commit (P7.1, 2f375da1), unrelated
+  prescribed run-generator-gate.ps1, root-caused to a pre-session commit (P7.1, 29f7b980), unrelated
   to appShell/nav. Not fixed here -- see that item for the full trace and what a real fix needs.

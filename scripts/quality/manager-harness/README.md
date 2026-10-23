@@ -49,7 +49,7 @@ dependencies of any Tauri Linux build (the same libraries a `.deb`/AppImage pack
 
 ## Run it
 
-`scripts/quality/run-manager-harness.ps1` no longer exists (retired in `83eaf603`); the runners are
+`scripts/quality/run-manager-harness.ps1` no longer exists (retired in `1965ab55`); the runners are
 `.github/workflows/manager-harness.yml` and these commands:
 
 ```bash

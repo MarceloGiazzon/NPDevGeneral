@@ -9,12 +9,12 @@
       "gitPinned": true,
       "status": "DRAFT",
       "title": "Calibration control -- pre-fix parent of LNCH13-F1 (CRITICAL)",
-      "description": "Row-level write authorization bypass on flow-backed CRUD: a concept declaring a custom create/update/delete flow got ZERO row-level access.write enforcement on its generated REST endpoint. Fixed at commit 22fb5c8. sourceCommit below is that fix's direct parent (git rev-parse 22fb5c8^), i.e. the code exactly as it stood before the fix -- confirmed against this repo's real history on 2026-07-26, not invented.",
-      "sourceCommit": "aeccb9597f2559ab5726bd4dcf00864c4f3df831",
+      "description": "Row-level write authorization bypass on flow-backed CRUD: a concept declaring a custom create/update/delete flow got ZERO row-level access.write enforcement on its generated REST endpoint. Fixed at commit 82d6966. sourceCommit below is that fix's direct parent (git rev-parse 82d6966^), i.e. the code exactly as it stood before the fix -- confirmed against this repo's real history on 2026-07-26, not invented.",
+      "sourceCommit": "800c806df52011ddaf5132278862f3883e0e33d4",
       "paths": [
         "NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache"
       ],
-      "packContents": ["service-base.mustache at the pre-fix parent of 22fb5c8 (LNCH13-F1)"],
+      "packContents": ["service-base.mustache at the pre-fix parent of 82d6966 (LNCH13-F1)"],
       "excluded": [
         "every findings doc",
         "NPDEV_OPEN_ITEMS_REGISTER.md",
@@ -31,12 +31,12 @@
       "gitPinned": true,
       "status": "DRAFT",
       "title": "Calibration control -- pre-fix parent of R3-F2 (HIGH)",
-      "description": "Every many-to-many bond in every generated app exposed four HTTP endpoints with zero authorization. Fixed at commit 75c1b40. sourceCommit below is that fix's direct parent (git rev-parse 75c1b40^) -- confirmed against this repo's real history on 2026-07-26.",
-      "sourceCommit": "0116353046de089d0e1b92433d0857b90f9b74e2",
+      "description": "Every many-to-many bond in every generated app exposed four HTTP endpoints with zero authorization. Fixed at commit 8d4c61c. sourceCommit below is that fix's direct parent (git rev-parse 8d4c61c^) -- confirmed against this repo's real history on 2026-07-26.",
+      "sourceCommit": "d94e4ff25346d3d49caa60e66f1a57da6f3d9a67",
       "paths": [
         "NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache"
       ],
-      "packContents": ["service-base.mustache (m2m bond endpoints) at the pre-fix parent of 75c1b40 (R3-F2)"],
+      "packContents": ["service-base.mustache (m2m bond endpoints) at the pre-fix parent of 8d4c61c (R3-F2)"],
       "excluded": [
         "every findings doc",
         "NPDEV_OPEN_ITEMS_REGISTER.md",

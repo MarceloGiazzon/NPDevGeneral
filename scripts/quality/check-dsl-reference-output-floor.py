@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-"""REG-133 -- the gate that would have caught 8cd9860.
+"""REG-133 -- the gate that would have caught c0ecd84.
 
 WHY THIS EXISTS
 ---------------
 generate_dsl_reference.py's own --check mode is a DRIFT check: it fails only when the
-regenerated content differs from what is already committed. That does not catch 8cd9860's
+regenerated content differs from what is already committed. That does not catch c0ecd84's
 actual failure mode, because the same commit that changed model.schema.json (oneOf ->
 if/then/else) ALSO regenerated and re-committed docs/DSL_REFERENCE.md -- the freshly
 regenerated content matched the freshly committed content perfectly. --check would have passed.
@@ -16,7 +16,7 @@ an absolute floor on the rendered CONTENT itself, independent of whether it matc
 
 WHAT THIS CHECKS (two floors, deliberately)
 --------------------------------------------
-1. THE EXACT 8cd9860 SHAPE: every root model-array field whose schema uses the if/then/else
+1. THE EXACT c0ecd84 SHAPE: every root model-array field whose schema uses the if/then/else
    (or oneOf) discriminator must render BOTH branch type names in the reference's "Root model
    shape" table -- never the bare fallback "any". This is schema-shape-agnostic: it does not
    assume if/then/else specifically, so the NEXT composition keyword the schema grows (anyOf,
@@ -46,7 +46,7 @@ import generate_dsl_reference as gdr  # noqa: E402
 MIN_FLOWSTEP_TYPES = 10
 MIN_PROCEDURESTEP_TYPES = 15
 MIN_CONCEPT_FIELDS = 8
-MIN_DISCRIMINATED_FIELDS = 15  # 19 as of this writing (F5/8cd9860) -- see check_breadth's own guard
+MIN_DISCRIMINATED_FIELDS = 15  # 19 as of this writing (F5/c0ecd84) -- see check_breadth's own guard
 
 
 def discriminated_array_fields(schema: dict) -> list[str]:
@@ -82,7 +82,7 @@ def check_no_bare_any(schema: dict) -> list[str]:
         if rendered_type.strip().lower() in ("any", "array<any>"):
             problems.append(
                 f"root field '{field}' renders as '{rendered_type}' -- describe_type() does not "
-                f"understand this field's current schema shape (the exact 8cd9860 failure mode: "
+                f"understand this field's current schema shape (the exact c0ecd84 failure mode: "
                 f"a real, structured type collapsing to the bare fallback, silently)"
             )
     return problems
@@ -123,7 +123,7 @@ def main() -> int:
     for p in problems:
         print(f"    - {p}")
     print()
-    print("  This is the gate 8cd9860 needed: generate_dsl_reference.py's --check mode only")
+    print("  This is the gate c0ecd84 needed: generate_dsl_reference.py's --check mode only")
     print("  catches 'not regenerated', not 'regenerated but produced less'.")
     return 1
 

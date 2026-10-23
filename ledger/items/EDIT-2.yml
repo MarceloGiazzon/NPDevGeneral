@@ -25,7 +25,7 @@ detail: |
   session's scope (bundled with EDIT-1's fix, same card).
 
   2026-08-14 (ledger-currency sweep): status was still OPEN despite shipping alongside EDIT-1 in
-  commit `74501683` (PR #11, landed 2026-08-12). Confirmed live on the current checkout: grepping
+  commit `f3201108` (PR #11, landed 2026-08-12). Confirmed live on the current checkout: grepping
   `PanelsEditorSection.tsx` and `RuleProfilesEditorSection.tsx` for the specific invalid keys this
   item named (a bare `dataSource`/`concept` field on a panel, a `permissionRequirements` field on a
   rule profile) finds zero matches -- neither file writes them anymore. No dedicated automated guard

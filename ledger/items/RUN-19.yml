@@ -67,7 +67,7 @@ detail: |
   author time (`SequenceValidation`) -- a derived value recomputes on every save, so allowing it
   there would burn a fresh number on every unrelated update.
 
-  REG-108 + REG-104 CHAINS, threaded exactly like R6.2's `webhooks[]` (`git show 13da88a3` was the
+  REG-108 + REG-104 CHAINS, threaded exactly like R6.2's `webhooks[]` (`git show d8fe6885` was the
   worked example): `ModelSourceResolver.MODEL_ARRAY_KEYS`, both `pack.schema.json` copies, all FOUR
   `model.schema.json` mirrors, `ModelResolver.resolve()`'s whole-list pass-through,
   `JsonModelParser`/`ModelCompiler`/the canonical JSON writer+reader pair. New twin-pair rule

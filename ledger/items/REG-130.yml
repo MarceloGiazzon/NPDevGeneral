@@ -43,7 +43,7 @@ resolution: |
     npdev 0.9.0                 (portable CLI)
       model format  dslVersion 1.0.0
       DSL compiler  0.1.0
-      platform      beta1.4-119-gbbc7099  <- cite THIS in a bug report
+      platform      beta1.4-119-g2fe5cfa  <- cite THIS in a bug report
 
   The platform line is `git describe --tags --always` run live against the actual checkout (this
   CLI runs directly from a clone, not a packaged artifact, so the checkout's own git state is the

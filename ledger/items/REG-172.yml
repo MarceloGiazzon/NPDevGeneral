@@ -17,7 +17,7 @@ source: >-
   the run being investigated; the 3 test failures are pure content-assertion mismatches, not startup
   failures. Also confirmed unrelated to any of this session's 7 merged PRs via git log -- the test
   file and superuser-admin-console's model.json both last changed before this session
-  (`fbec1169`/2026-04-27 and `52d27c42`/2026-07-30 respectively).
+  (`fbec1169`/2026-04-27 and `4283cd14`/2026-07-30 respectively).
 surface: runtimehost/ci-fixtures
 files:
   - NPDevRuntimeHost/src/test/java/com/finalexec/Stage12UiModelRuntimeIT.java
@@ -31,12 +31,12 @@ detail: |
     - editorDraft_endpoint_is_reachable() -- same shape, a further assertion against
       canonical-demo-only content.
 
-  Root cause: commit `9af8cd7c` ("ci(NEW-1 Fix A): point postgres ITs at superuser-admin-console...
+  Root cause: commit `71883d15` ("ci(NEW-1 Fix A): point postgres ITs at superuser-admin-console...
   not InMemory canonical-demo", 2026-07-23) changed `.github/workflows/npdev-ci-validation.yml`'s
   `-SampleIds` for this CI step from `canonical-demo` to `superuser-admin-console`, for an unrelated
   DataSource reason -- but `Stage12UiModelRuntimeIT.java` was never updated to match. It still
   expects the concepts and flow `canonical-demo`'s model declares (`Patient`, `Appointment`,
-  `ScheduleAppointmentRunnerV2` -- confirmed via `git show 9af8cd7c~1:NPDevSamples/canonical-demo/
+  `ScheduleAppointmentRunnerV2` -- confirmed via `git show 71883d15~1:NPDevSamples/canonical-demo/
   Input/model.json`), but the app now actually generated and booted for this step is
   `superuser-admin-console`, whose real model exports `Project`/`Note` concepts and zero flows.
 

@@ -45,7 +45,7 @@ detail: |
 
   **What was measured, not assumed.** Grep over every *.java in the tree (excluding /build/ and the
   stale worktree) found zero `rowLimit(` references after the change -- not one call, not one
-  javadoc `{@link}`. The plan's own premise table was re-traced at 20eec948: `rowLimit` declared at
+  javadoc `{@link}`. The plan's own premise table was re-traced at aa63c286: `rowLimit` declared at
   SqlDialect.java:238, four real `rowLimited` call sites, one test stub overriding `rowLimit` (now
   overriding `rowLimited`). Both dialect checkers pass unchanged
   (check-dialect-methods-are-asked.py: 56 methods, all with a production caller or allowlisted;
@@ -73,7 +73,7 @@ detail: |
   returns something it cannot mean.
 
   **provenRed honest note.** The inverted tests were not observed failing against unmodified code:
-  against 20eec948 they would either not compile (`rowLimit(` calls) or pass against SQL Server's
+  against aa63c286 they would either not compile (`rowLimit(` calls) or pass against SQL Server's
   existing `rowLimited` override (`rowLimited("SELECT 1 FROM t", 0)` throws
   IllegalArgumentException there too, whose ordering puts the non-positive check first). The red
   state is compile-level -- the old tests cannot exist against the new interface -- and the

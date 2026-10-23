@@ -20,7 +20,7 @@ resolution: >-
   roots is expected Spring behavior -- not something the sourceSet wiring itself needed to prevent
   -- so this is the more targeted fix of the two candidates the OPEN write-up named, with zero
   changes to `integrationTest`'s classpath/resources composition (no regression surface across the
-  other ~49 integrationTest scenarios). VERIFIED FOR REAL: pushed (commit fb218aad) and watched the
+  other ~49 integrationTest scenarios). VERIFIED FOR REAL: pushed (commit 760fce2b) and watched the
   next CI run (34281980149, both jobs green). Downloaded that run's uploaded JUnit XML
   (npdev-linux-maturity-validation-evidence artifact,
   TEST-com.finalexec.db.ConversionHookRunnerCollectiveRollbackTest.xml) directly -- `failures="0"`,
@@ -34,7 +34,7 @@ resolution: >-
   subtler, non-failing way -- this fix protects it going forward regardless, but its PRE-fix
   behavior was never specifically audited.
 source: >-
-  Immediate follow-on from QUAL-56 (commit 99f9cc08, pushed to main): once
+  Immediate follow-on from QUAL-56 (commit 375f1423, pushed to main): once
   ConversionHookRunnerCollectiveRollbackTest actually ran on Linux CI's `integrationTest` task
   against real Postgres for the first time ever, it failed -- not with the CI-crash QUAL-56 fixed,
   but with a genuine assertion failure, confirmed via the run's uploaded JUnit XML
@@ -116,7 +116,7 @@ guard:
     NOT locally re-runnable (Postgres is CI-only for this repo). Pre-fix, this test's own real CI
     run (34277642866) failed with `failures="1"` and the "already exists" collision described above
     -- the exact JUnit XML was downloaded and inspected, not summarized secondhand. Post-fix, the
-    immediate next CI run (34281980149, pushed as commit fb218aad) was watched to completion and its
+    immediate next CI run (34281980149, pushed as commit 760fce2b) was watched to completion and its
     JUnit XML re-downloaded and re-inspected: `failures="0"`, single (not doubled) hook-selection
     skip-listing, "running 2 conversion hooks" (not 4). Both the red and the green state were
     observed directly from CI-produced evidence in this same session, not assumed from either

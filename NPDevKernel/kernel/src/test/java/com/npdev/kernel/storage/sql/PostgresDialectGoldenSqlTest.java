@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * in, which covers the mechanical pagination sites; this file covers the rest, and it is the
  * stronger proof of the two because it checks the ASSEMBLED string rather than the source text.
  *
- * <p><b>Every expected value below is quoted from the pre-extraction source at commit 5680551</b>,
+ * <p><b>Every expected value below is quoted from the pre-extraction source at commit a4d68bd</b>,
  * with the originating file named. If one of these fails, the dialect changed what the system emits
  * -- fix the dialect, never the expectation.
  */

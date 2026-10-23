@@ -11,7 +11,7 @@ closed: 2026-08-10
 verification: VERIFIED_LIVE
 surface: generator/emitted-output, quality/out-of-tree-check
 source: >-
-  A post-implementation review of 9fd1f74e (the commit that closed PORT-1 and STOR-14), by hand,
+  A post-implementation review of 6128d615 (the commit that closed PORT-1 and STOR-14), by hand,
   against the checklist written before that commit landed. The review copied a generated app to a
   directory sharing no ancestry with its birthplace and read what the copy still pointed at. The
   gates did not find this; a human moving a directory did.

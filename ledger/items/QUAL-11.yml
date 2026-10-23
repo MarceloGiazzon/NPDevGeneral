@@ -10,7 +10,7 @@ closed: 2026-08-14
 verification: VERIFIED_LIVE
 source: >-
   `NPDev_General__OutsideRepo/session-summary-2026-08-14/CLOSEOUT_PLAN.md` finding F3/QUAL-11
-  (suggested id). The prior session's own commit `c2e77672` ("file REG-171/REG-172, two
+  (suggested id). The prior session's own commit `e718a092` ("file REG-171/REG-172, two
   pre-existing test bugs REG-169 was masking") filed both items and moved on, per that session's own
   §9 process note about not over-investigating an unasked-for signal -- correct as far as it went,
   but left `main` red on "Linux post-Beta0 maturity validation" (run 31844310776, 21:52 UTC) with no

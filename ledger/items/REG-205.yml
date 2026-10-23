@@ -18,7 +18,7 @@ source: >-
   one shared one, and two of the three named surfaces were already further along than the plan
   assumed. `query.where` (QueryPredicateGrammar) already had a v2 grammar (OR-groups, AND, IN,
   contains/startsWith, is-null, reference-path joins) wired end-to-end at both authoring-time
-  validation and runtime execution since commit ef168b12 (2026-08-19), predating this plan --
+  validation and runtime execution since commit b5376607 (2026-08-19), predating this plan --
   nothing to do there. Field-level `ui.visibleWhen`/`enabledWhen`/`readonlyWhen`/`requiredWhen`
   (business-ui-app.mustache's `evaluateWhen()`) already had a full OR/AND/parens grammar with
   sibling-field parameterization -- nothing to do there either. The two real gaps were

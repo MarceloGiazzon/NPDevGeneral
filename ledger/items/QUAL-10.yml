@@ -14,7 +14,7 @@ source: >-
   CLOSEOUT_PLAN.md` finding F2. The prior session's own horizontal fix pass (2026-08-13/14) left six
   items (REG-147/153/160/161/162/169) `status: OPEN` with a landed, merged fix and a full
   `resolution:` block each -- and even edited this exact checker (REG-160's own fix commit,
-  eb7fddd1) without the checker catching any of the six, including the one it was itself part of.
+  d13ce6b3) without the checker catching any of the six, including the one it was itself part of.
 surface: quality/ledger-freshness
 files:
   - scripts/quality/check-ledger-status-reverse-freshness.py

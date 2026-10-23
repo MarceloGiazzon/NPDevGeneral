@@ -1,6 +1,6 @@
 # Frontend Strategy — Contract, Coverage & Provenance
 
-> **STATUS: ACTIVE.** Live backlog. Written 2026-07-27 against `beta1-vision-spine` @ `8bc3715`.
+> **STATUS: ACTIVE.** Live backlog. Written 2026-07-27 against `beta1-vision-spine` @ `d4f08c7`.
 >
 > **Supersedes** the separate `2C_CONTRACT_PATH_PLAN.md` and `2D_AGGREGATE_WORKBENCH_PLAN.md`, and
 > replaces `docs/EXECUTION_TREES.md` §2.C **and** §2.D — including the "Week-5 fork" between them,
@@ -27,7 +27,7 @@ halves of that framing were wrong, for different reasons.
 
 **Error 1 — 2.D was scoped as unbuilt.** MEASURED: `docs/architecture/AGGREGATE_WORKBENCH_PLAN.md`
 (411 lines) records P0/P1/P4/P6/P7/Polish as DONE and verified live 2026-07-12; the three PARTIAL
-phases all closed afterwards — **AW-P2** `cd3cbcf`+`7e1096e` (2026-07-24), **AW-P3** `ff4acba`,
+phases all closed afterwards — **AW-P2** `cd3cbcf`+`4f88ddb` (2026-07-24), **AW-P3** `ff4acba`,
 **AW-P5** `0762536`, reconciled by `88e28a1`. The shipped `workbench-page.html.mustache` is 458 lines
 and already carries BandRegion, parallel grids, per-region dirty tracking and revert, debounced
 recompute with caret restoration, lifecycle gating, band pickers, and procedure-over-aggregate.
@@ -725,7 +725,7 @@ document. One-paragraph edit; no corpus rebuild.
 
 ### F5-R4 `selectorRef` owner-descoped — record the boundary · **30 min**
 
-`7e1096e` descoped `selectorRef` unification, so `bandPickers` and `selectors[]` remain two
+`4f88ddb` descoped `selectorRef` unification, so `bandPickers` and `selectors[]` remain two
 mechanisms by decision. Record in `docs/ACCEPTED_BOUNDARIES.md` — a boundary living only in a commit
 message is invisible to everyone who did not write it.
 

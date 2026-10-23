@@ -106,7 +106,7 @@ resolution: >-
   are the argument against assuming. The next scheduled or dispatched run is the measurement, and if
   one of them is red the answer is to fix it, not to re-add the flag.
 
-  MEASURED IN CI, 2026-08-10, AND THE ANSWER WAS "ONE OF THEM IS RED". Run 31421541918 (SHA ae9ef967)
+  MEASURED IN CI, 2026-08-10, AND THE ANSWER WAS "ONE OF THEM IS RED". Run 31421541918 (SHA ce6b82b0)
   is the first run in months where this step executed past its first command. All five ran. Two exit-2
   preconditions were tolerated as ::notice advisories (validate-report-schemas, generate-final-evidence-
   bundle), `postBeta0MaturityCheck` printed PASSED, the 21-of-21 relation assertion held on a real
@@ -115,21 +115,21 @@ resolution: >-
   a green run would only have shown that nothing was broken, not that the step can still say so.
 
   THE DEAD TAIL, MEASURED RATHER THAN ASSERTED. This item claimed the old step died at its first
-  command. Checked against the PREVIOUS run's log (31390400189, SHA 4891a97d, job 93460541139): the step
+  command. Checked against the PREVIOUS run's log (31390400189, SHA 861c990f, job 93460541139): the step
   ended 0.4 s after `npdev report bootstrap` at exit 2, with no gradle line, no producer line and no
   portable-tooling line anywhere in the job -- and the run's conclusion was `success`. Four of five
   commands had not been running, and continue-on-error hid both the abort and the failure. Confirmed.
 
-  THE RED WAS A REAL FINDING, AND IT WAS FIXED FORWARD (3cd2d84f), NOT FLAGGED AWAY.
+  THE RED WAS A REAL FINDING, AND IT WAS FIXED FORWARD (a3363522), NOT FLAGGED AWAY.
   `run-portable-tooling-check.ps1`'s path-neutrality scan read raw text, so it counted six `D:\Apps`
   occurrences that live in COMMENTS AND DOCSTRINGS explaining PORT-2/QUAL-3 -- prose about a
-  drive-letter defect, written in 05452293, days before the scan first ran. Fixed by teaching the scan
+  drive-letter defect, written in b064e89a, days before the scan first ran. Fixed by teaching the scan
   to skip Python comments and docstrings (scripts/quality/strip_python_prose.py, docstrings identified
   structurally via ast) while keeping every other string literal in scope, so a real
   `default = "D:\WorkSpace\Build"` still fails -- proven with an injected probe that yielded exactly one
   hit, the assignment. continue-on-error was NOT restored at any point.
 
-  GREEN CONFIRMED: run 31427192660 (SHA 3cd2d84f) -- both jobs success, and step 16 "Bootstrap
+  GREEN CONFIRMED: run 31427192660 (SHA a3363522) -- both jobs success, and step 16 "Bootstrap
   post-Beta0 maturity reports" success with all five commands executing.
 files:
   - .github/workflows/npdev-ci-validation.yml

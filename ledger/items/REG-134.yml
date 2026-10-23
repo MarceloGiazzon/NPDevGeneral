@@ -38,8 +38,8 @@ resolution: |
   this item's own stated preconditions.
 
     git checkout main
-    git merge --ff-only beta1-vision-spine   # 89eb945..6167403, clean fast-forward, no conflict
-    git push origin main                      # 45218e3..6167403
+    git merge --ff-only beta1-vision-spine   # bfcbd15..431e655, clean fast-forward, no conflict
+    git push origin main                      # a19a0ee..431e655
     git tag -a beta1.5 -m "S2-S8, F1-F9, first-run harness, REG-128..136"
     git push origin beta1.5
 
@@ -48,7 +48,7 @@ resolution: |
   cloning the project's actual default branch as a real stranger would, following README.md
   literally. Before this merge, that exact command could not pass by construction (main was 165
   commits behind, missing every fix this and the prior session's PLAN.md built). Result: GREEN,
-  21 checks, 0 failures -- HEAD correctly resolved to 6167403, every Quickstart command passed,
+  21 checks, 0 failures -- HEAD correctly resolved to 431e655, every Quickstart command passed,
   the generated app booted and responded on :8080, and the new npdev run app check (REG-131, this
   same session) also passed. Evidence saved at
   D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\first-impression\

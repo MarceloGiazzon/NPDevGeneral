@@ -222,7 +222,7 @@ jobs:
       # The buildDir is REDIRECTED (NPDevGenerator/build.gradle:28) to
       # <NPDEV_BUILD_ROOT>/gradle/<rootProject>/<path>, so NPDevGenerator/generator/build/ does not
       # exist and the first version of this step printed "no generator test XML containing failures
-      # was found" on a run that had three failures. Commit eff0f43 had already fixed exactly this
+      # was found" on a run that had three failures. Commit ca1da41 had already fixed exactly this
       # trap for the artifact-upload glob two days earlier; this is the same lesson, third instance.
       # Search the redirected root, and keep the legacy path as a fallback so this still works if the
       # redirect is ever removed.

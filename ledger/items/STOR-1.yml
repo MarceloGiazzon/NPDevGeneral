@@ -10,7 +10,7 @@ closed: 2026-08-08
 verification: UNIT_TESTED
 surface: kernel/storage-dialect, adapters/*-postgres, runtimehost/db, generator/dbconfig
 source: >-
-  storage/PLAN.md S1, executed against 5680551. The plan's own measurement
+  storage/PLAN.md S1, executed against a4d68bd. The plan's own measurement
   (storage/helpers/dialect-site-inventory.py) found 41 real code sites across 19 files -- not the
   ~130 a keyword grep had suggested -- with pagination alone accounting for 23.
 detail: >-

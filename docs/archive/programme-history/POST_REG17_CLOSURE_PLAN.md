@@ -38,7 +38,7 @@
 
 **Goal.** When a generated app's model uses `createConcept`/`updateConcept`/`saveConcept` (or a
 `persistence.*` capabilityCall) but declares **no `persistence` binding**, surface a clear, actionable
-diagnostic instead of a bare Spring 500. The **doc half is already done** (commit `9f180aa` fixed the
+diagnostic instead of a bare Spring 500. The **doc half is already done** (commit `46f1d51` fixed the
 manual examples); this is the code half.
 
 **Investigation already done (do not re-derive):**
@@ -91,7 +91,7 @@ the missing binding and the fix — verified live on a regenerated app; RuntimeH
 **Commit.**
 ```
 git -C D:\WorkSpace\NPDev\NPDev_General add NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevCapabilityBindingConfig.java <any StartupValidator file touched> docs/LAUNCH_READINESS_GAPS.md
-git -C D:\WorkSpace\NPDev\NPDev_General commit -m "feat(LEDGER-1): boot-time diagnostic naming a missing persistence binding instead of a bare 500 (runtime half; doc half was 9f180aa)"
+git -C D:\WorkSpace\NPDev\NPDev_General commit -m "feat(LEDGER-1): boot-time diagnostic naming a missing persistence binding instead of a bare 500 (runtime half; doc half was 46f1d51)"
 ```
 (Update the LEDGER-1 finding in `docs/LAUNCH_READINESS_GAPS.md` from "runtime diagnostic half not yet
 built" to done.)

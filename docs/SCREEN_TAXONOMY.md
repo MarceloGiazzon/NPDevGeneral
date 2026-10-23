@@ -469,7 +469,7 @@ and its 3 client-side reports need `where`-filter support this move did not touc
 
 ## Checklist re-run after Moves 4–7 (2026-07-30) — supersedes the table above for `crossdocking`
 
-The block above was written at `ed94669` (Move 3) and was **four moves stale**: it still cites
+The block above was written at `1a41040` (Move 3) and was **four moves stale**: it still cites
 REG-75 and C10's flag-sync half as open, both of which closed in Moves 4–5. Re-running the same
 20-item `crossdocking` checklist from `docs/MOVE1_PANEL_GAPS.md` against the model at HEAD +
 Moves 6–7's working tree:
@@ -533,7 +533,7 @@ deletion, as the reference copy for closing the 4 remaining cosmetic items (C2, 
   the database, not by eye): `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\move8-a5-crossdocking-live.txt`.
 
 Both re-points landed on the declared panel's own route, `CrossDockingConsolePanel.route =
-"/crossdocking"`. That route only became a genuinely navigable URL in **Move 5 Wave 6** (`52d27c4`) —
+"/crossdocking"`. That route only became a genuinely navigable URL in **Move 5 Wave 6** (`4283cd1`) —
 so the Tier-3 `panel.route` fix, filed as cleanup, is the specific earlier change that made this
 first deletion of the engagement possible.
 

@@ -75,7 +75,7 @@ resolution: |
   one is idempotent, which is mandatory: R__npdev_schema_additive_columns.sql is a REPEATABLE
   migration (REG-38).
 
-  VERIFIED, re-checked at ce57541 rather than taken on trust:
+  VERIFIED, re-checked at dc9297b rather than taken on trust:
 
     - all four guarded idioms route through engine.dialect() in SchemaRealizationEmitter
       (lines 1128, 1597, 1604, 1611)

@@ -170,7 +170,7 @@ ACCEPTED: dict[str, str] = {
 # read as covering the other (they fire on different evidence and can both be wrong independently).
 ACCEPTED_R2: dict[str, str] = {
     "PACK-9": (
-        "The commit R2 names (6250f6b3, the PK-3 merge) genuinely MODIFIED PACK-9.yml -- not a "
+        "The commit R2 names (043c4ada, the PK-3 merge) genuinely MODIFIED PACK-9.yml -- not a "
         "false 'A-commit' positive like REG-146/148 -- adding real substance: 'the DECLARATION and "
         "PRESENCE/BINDING half of this is now done... What's still open, and is this item's real "
         "remaining scope: a pack's own INTERNAL code... still only references concrete role names.' "
@@ -180,7 +180,7 @@ ACCEPTED_R2: dict[str, str] = {
         "conclusion is 'still open', not a code or rule change."
     ),
     "REG-170": (
-        "The commit R2 names (3e17e37a, the 2026-08-14 closeout PR #90 squash-merge) genuinely "
+        "The commit R2 names (1c7c372f, the 2026-08-14 closeout PR #90 squash-merge) genuinely "
         "MODIFIED REG-170.yml -- but the edit was 'CONFIRMED, upgraded from PROBABLE, and scoped to "
         "4 files, deferred' (a triage upgrade), not a fix, and the commit's production-source "
         "changes were for REG-171/172/173 in the SAME squashed PR, unrelated to REG-170's own "
@@ -209,10 +209,10 @@ ACCEPTED_R2: dict[str, str] = {
         "is already done and the conclusion is 'still open, not fixed.'"
     ),
     "SEC-3": (
-        "The commits R2 names are 589cd78d8f (Model A: admission-time static-analysis containment, "
-        "2026-08-27) and 69761543f5 (its CI-calibration follow-up, 2026-08-28), both genuinely "
+        "The commits R2 names are c2d1280b19 (Model A: admission-time static-analysis containment, "
+        "2026-08-27) and c103a85c18 (its CI-calibration follow-up, 2026-08-28), both genuinely "
         "MODIFYING SEC-3.yml with real substance the item's own text already carries in full -- plus "
-        "606d8acc20, an unrelated 7-feature batch commit ('Implement SUPPORT_FEATURES_PLAN_2026-08-26') "
+        "e3bcc5aec5, an unrelated 7-feature batch commit ('Implement SUPPORT_FEATURES_PLAN_2026-08-26') "
         "that happened to touch SEC-3.yml alongside many other ledger items and unrelated production "
         "source, not because it changed SEC-3's own scope. Model A closed the accident/casual-misuse "
         "threat model; Model B (real process isolation for memory/CPU containment) is EXPLICITLY the "

@@ -49,7 +49,7 @@ detail: |
   name Python 3 as a requirement) still leaves both variables empty and both checks correctly
   failing for the RIGHT reason, rather than papering over that case too.
 
-  Verified live: pushed directly to `main` (`4d0d3fa9`) and re-dispatched `firstrun-harness.yml`
+  Verified live: pushed directly to `main` (`efb496d5`) and re-dispatched `firstrun-harness.yml`
   (run `31904390987`) -- both `documents-login-key` and `documents-app-url` now PASS, and the whole
   run finished clean: 85 checks, 0 failures, 1 pre-existing accepted failure, 2 expected skips.
 guard:

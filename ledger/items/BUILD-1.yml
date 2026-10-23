@@ -20,7 +20,7 @@ files:
   - scripts/proofs/classify_runtimehost_sources.py
 detail: |
   Closed by MASTER-ROADMAP.md Step 7 (BT-1 b+c, milestone BM1, PR #14, merged 2026-08-13,
-  4d5b94d8). 244 of the 262 app-independent files moved (via `git mv`, preserving history) into a
+  7ffdf3c0). 244 of the 262 app-independent files moved (via `git mv`, preserving history) into a
   new, independently-built Gradle module, NPDevRuntimeHost/runtimehost-core, shipped as a
   precompiled jar (+ sources jar) staged the same way every kernel/adapter jar already is and
   consumed via the existing npdevRuntimeHostLibsDir fileTree dependency -- no new dependency

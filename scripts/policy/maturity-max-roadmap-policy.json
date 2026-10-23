@@ -129,7 +129,7 @@
       "action": "Independent audit sign-off",
       "owner": "Human owner / independent reviewer",
       "status": "open \u2014 **review now done, sign-off still owner's**",
-      "evidencePath": "(the boundary-check script that produced `maturity-max-roadmap-boundary-report.json` was retired in `83eaf603`); M6's real run: `docs/external-ai-review/runs/M6-AUDIT-VERDICT.json`, verdict (outside the repo, may have been pruned) `NPDev_General__OutsideRepo/external-ai-review/packs/M6-AUDIT-VERDICT/*-nvidia-verdict.json`",
+      "evidencePath": "(the boundary-check script that produced `maturity-max-roadmap-boundary-report.json` was retired in `1965ab55`); M6's real run: `docs/external-ai-review/runs/M6-AUDIT-VERDICT.json`, verdict (outside the repo, may have been pruned) `NPDev_General__OutsideRepo/external-ai-review/packs/M6-AUDIT-VERDICT/*-nvidia-verdict.json`",
       "blockingStatus": "non-blocking-for-cp0",
       "aiDelegable": "\u26a0\ufe0f AI does the **review** (E4, mission M6 \u2014 actually run 2026-07-27 against a real evidence bundle, appropriately skeptical result); the **sign-off** stays the owner's",
       "notes": "Arrange review outside Codex/Cursor. Automation can register the need but cannot perform independent sign-off."

@@ -161,7 +161,7 @@ codeLinkedNote: >-
   pre-existing functional bug in the restricted-classpath mechanism itself -- `PluginChildClasspath`'s
   marker list only recognized PLATFORM classes, so ANY `plugin:java-source`/`plugin:java-controller`
   mount that calls a third-party library (Guava, in E8's own probe) has been broken since this row's
-  105bc7d5 commit, with no way to declare the dependency (no `libraries[]` manifest exists). Fixed
+  969f08f4 commit, with no way to declare the dependency (no `libraries[]` manifest exists). Fixed
   with a constant-pool scan of each plugin's own compiled class (reusing
   `UntrustedExtensionBytecodeInspector`'s existing reader) rather than a new DSL field or a deny-list --
   see `ledger/items/SEC-10.yml`'s second 2026-09-06 entry for the mechanism and why this does not

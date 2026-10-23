@@ -311,7 +311,7 @@ git show --no-patch --decorate --oneline npdev-official-beta-20260428-062512
 ### Problem: Playwright download or browser cache failure
 
 No longer applicable. This troubleshooting step belonged to the React editor (`NPDevEditor/ui-react`)
-and its editor gate, both removed from the repository on 2026-08-17 (commit 7cf1d5f5; see
+and its editor gate, both removed from the repository on 2026-08-17 (commit f5ed1f11; see
 `BREAKING.md`). No part of the Beta 0 release path installs Playwright any more.
 
 ### Problem: Git commit identity missing

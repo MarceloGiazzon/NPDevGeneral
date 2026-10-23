@@ -14,7 +14,7 @@ detail: |
   "Find local LLMs" button (npdev ai detect). 4.3 Prompter and Scrap assistant pick a profile instead of
   typing an endpoint. 4.4 a per-app AI panel: opted-in vendors, key availability, run-env start.
   4.5 look at the tab in a running Manager (fake mode, then real) and fix what the screenshots show --
-  the AI Keys tab (7798391a) has so far only passed cargo check.
+  the AI Keys tab (245bb67f) has so far only passed cargo check.
 resolution: >-
   Done when no known provider needs endpoint typing anywhere in the Manager and screenshots of a real
   run are filed in the evidence folder.
@@ -32,8 +32,8 @@ guard:
     app will find a key -- a commented or empty line is not a key -- without ever emitting a key value
   provenRed: false
 note: >-
-  2026-10-22: 4.1+4.2 (dc844a32 AI Providers tab), 4.3 (0bc78ddc Scrap assistant profile/effort per run),
-  4.4 (b4f4fcd0 Monitor inspector AI section + npdev ai app). Manager 0.5.0 (9aa3fa8a). Open: 4.5 -- the
+  2026-10-22: 4.1+4.2 (37f83f7d AI Providers tab), 4.3 (4b3f0f60 Scrap assistant profile/effort per run),
+  4.4 (a45d8139 Monitor inspector AI section + npdev ai app). Manager 0.5.0 (868a4deb). Open: 4.5 -- the
   fake-mode screenshots in NPDev_General__OutsideRepo/evidence/aip-4-manager-2026-10-22/ are headless-
   Chrome renders of the real UI files over captured fixtures, NOT the Tauri window; a real run (key or
   local LLM) and a look at the actual window remain.

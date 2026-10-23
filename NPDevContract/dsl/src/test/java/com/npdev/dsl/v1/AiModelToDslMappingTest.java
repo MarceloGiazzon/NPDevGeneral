@@ -114,7 +114,7 @@ class AiModelToDslMappingTest {
         }
 
         // 25 ACTIVE scenarios. Was 22 before the trusted-source scenarios were promoted from
-        // deferred/ to active (Wave 4 closeout); was 24 before P7.1 (commit 2f375da1) added
+        // deferred/ to active (Wave 4 closeout); was 24 before P7.1 (commit 29f7b980) added
         // tier-skip-gratuitous-untrusted-extension without bumping this literal (RUN-30). The
         // deferred/ directory is deliberately excluded from this walk -- see scenarioDirs filtering.
         assertEquals(25, aiModelScenarioCount, "golden AI-model scenario count changed; update the mapping evidence deliberately");

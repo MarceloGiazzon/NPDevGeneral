@@ -12,7 +12,7 @@ surface: generator/InfoPageEmitter
 source: >-
   MONITOR_PLAN D2-a, confirmed by measurement 2026-08-10.
 detail: >-
-  `InfoPageEmitter` (landed 30d9743f, shipped in beta1.14) writes
+  `InfoPageEmitter` (landed c1e3a8ff, shipped in beta1.14) writes
   `npdev-generated/src/main/resources/static/info.html` for every generated app.
   `scripts/appgen/New-AppInfoPage.ps1` wrote its own, richer, 38-row page to
   `src/main/resources/static/info.html` for ops-wrapper builds.

@@ -11,10 +11,10 @@ opened: 2026-09-08
 closed: 2026-09-08
 source: >-
   "NPDev CI Validation" (windows-latest ci-validation job, RuntimeHost gate step) failed on the
-  QUAL-55 closure push (commit 5138321e) with a 1-test failure. Confirmed pre-existing and unrelated
-  to that push by checking the two prior main commits (5248e3ab, 5644627a): both failed identically,
-  and `git log 20eec948..5644627a` shows the failure started exactly at STOR-34's own commit
-  (bea2ba01, 2026-09-08 00:33), the first commit after the last green CI Validation run (20eec948,
+  QUAL-55 closure push (commit ab1b408b) with a 1-test failure. Confirmed pre-existing and unrelated
+  to that push by checking the two prior main commits (a44d8c17, be8d8a40): both failed identically,
+  and `git log aa63c286..be8d8a40` shows the failure started exactly at STOR-34's own commit
+  (462065f0, 2026-09-08 00:33), the first commit after the last green CI Validation run (aa63c286,
   2026-09-07 08:10).
 surface: NPDevRuntimeHost/build.gradle, NPDevRuntimeHost/build.gradle.template, ConversionHookRunnerCollectiveRollbackTest
 files:
@@ -41,7 +41,7 @@ detail: |
   Postgres is real (the Linux CI job's `integrationTest -Dspring.profiles.active=test,postgres`
   step). `ConversionHookRunnerPostgresTest` uses the narrower half of the same pattern (compile-time
   exclusion only, on-demand via `-PincludePostgresMatrix`, no integrationTest routing). STOR-34's
-  test (bea2ba01) landed with NEITHER protection -- no tag, no exclude-list entry, no
+  test (462065f0) landed with NEITHER protection -- no tag, no exclude-list entry, no
   integrationTest inclusion -- so it compiled and ran under the plain `test` task everywhere,
   including the Windows job where it cannot possibly succeed. STOR-34's own ledger item explicitly
   intended CI coverage ("Postgres collective-rollback arm only runs in CI"), so plain exclusion

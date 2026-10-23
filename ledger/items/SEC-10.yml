@@ -143,7 +143,7 @@ detail: |
   sandboxed invocation on an actual GitHub-hosted Ubuntu CI runner, because the R10 proof script does
   not run in any CI workflow. The `.github/workflows/engine-support.yml` "E8" job does, against a
   DIFFERENT probe app (`NPDevSamples/probes/lib-probe`, `librarySignature`/Guava capability), and
-  started failing on this item's own commit (105bc7d5) four pushes in a row: every sandboxed
+  started failing on this item's own commit (969f08f4) four pushes in a row: every sandboxed
   invocation died in ~1-18ms with `errorCode=PLUGIN_EXECUTION_PROCESS_KILLED` before the child process
   ever started, and the boot log showed the real cause -- `systemd-run --user --scope` on that host
   accepts a bare scope (so `probeSystemdRunUser()` passes and `MemoryMax=`/`CPUQuota=` keep working)
@@ -177,7 +177,7 @@ detail: |
   to know a plugin's OWN business logic calls into some OTHER library (Guava here), because -- as
   this item's own detail section already established -- no `libraries[]` manifest declaring such a
   dependency exists anywhere in the DSL. Every `plugin:java-source`/`plugin:java-controller` mount
-  that calls an external library has been broken this way since this item shipped (105bc7d5); E8
+  that calls an external library has been broken this way since this item shipped (969f08f4); E8
   exists specifically to catch this and correctly did, four pushes running, once the sandbox crash
   above stopped masking it.
 

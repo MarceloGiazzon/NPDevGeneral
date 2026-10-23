@@ -10,7 +10,7 @@ import java.sql.ResultSet;
  * <p>WHY THIS EXISTS. Five test classes here each hand-rolled the same {@link Proxy}-based
  * {@code Connection}/{@code PreparedStatement} doubles, and four of the five never implemented
  * {@code Connection.getMetaData()} while all five never implemented
- * {@code PreparedStatement.getConnection()}. That cost nothing until STOR-10 (d7f05b2b) made the
+ * {@code PreparedStatement.getConnection()}. That cost nothing until STOR-10 (107806d8) made the
  * adapter ask the connection which engine it is talking to, at two call sites:
  *
  * <pre>

@@ -40,7 +40,7 @@ class RuntimeApiEmitterOperatorUiIndexTest {
         Path indexPath = out.resolve("src/main/resources/static/npdev-ui/index.html");
         assertTrue(Files.exists(indexPath), "Expected generated operator UI index page.");
 
-        // ed160b85 (2026-08-20) deleted the /npdev-ui-react/ bundle and its redirect, but the
+        // 7defc1a8 (2026-08-20) deleted the /npdev-ui-react/ bundle and its redirect, but the
         // emitter kept threading the route into this page, so every generated app shipped a button
         // that 404s. Negative assertion so re-adding it fails here rather than in a user's browser.
         String html = Files.readString(indexPath);

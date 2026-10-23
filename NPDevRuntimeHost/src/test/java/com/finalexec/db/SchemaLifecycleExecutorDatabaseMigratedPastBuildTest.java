@@ -255,7 +255,7 @@ class SchemaLifecycleExecutorDatabaseMigratedPastBuildTest {
     @Test
     @DisplayName("A3: an extra column that is NOT NULL with NO default still refuses (QUAL-55: restored)")
     void additiveNotNullExtraColumnWithNoDefaultStillRefuses() throws SQLException {
-        // Removed in 10daaeef as intermittently failing; the mechanism is now identified and fixed
+        // Removed in 21ef032f as intermittently failing; the mechanism is now identified and fixed
         // (QUAL-55 -- a millisecond tie in npdev_schema_history silenced Trigger C). Restored because
         // it is the ONLY test covering this shape end-to-end: SchemaCompatibilityVerdictTest proves
         // assess() classifies it INCOMPATIBLE, and the pure-column-drop tests prove an INCOMPATIBLE

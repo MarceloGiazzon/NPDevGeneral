@@ -19,13 +19,13 @@ detail: |
   app needs it -- WmsOffice does not); F6-5 client-side CEL evaluator (recompute: proves too slow).
 resolution: >-
   2026-10-18: the owner overrode the recurrence gate and ordered all five built and fully supported, with one growing
-  demo app. Shipped as: F6-1 layoutSlot = panels[].layout.slots[] (680ddccc); F6-2 operator console and F6-3 dashboard =
+  demo app. Shipped as: F6-1 layoutSlot = panels[].layout.slots[] (2f3a2c16); F6-2 operator console and F6-3 dashboard =
   layout.type console|dashboard with declarative layout.widgets[] -- tile, chart (bar/line/donut, inline SVG), actions,
-  history, table (c03d7927); F6-4 third nesting level = section -> band -> sub-band in the aggregate workbench, with a
-  validation warning past three levels (5e785f08); F6-5 client-side expression engine = npdev-expr.js, pinned to the
+  history, table (a9706b75); F6-4 third nesting level = section -> band -> sub-band in the aggregate workbench, with a
+  validation warning past three levels (3c7b579f); F6-5 client-side expression engine = npdev-expr.js, pinned to the
   server ComputedExpression by one shared fixture, driving transaction.computed[].collection live per-row columns and
-  full-language client derivedFields (7bc0731d). Demo and proof: NPDevSamples/f6-showcase, five browser routines, one
-  command (e5626782). The "operator console" taxonomy decision in docs/SCREEN_TAXONOMY.md is superseded by this order.
+  full-language client derivedFields (e8f7ae55). Demo and proof: NPDevSamples/f6-showcase, five browser routines, one
+  command (9dc4cad4). The "operator console" taxonomy decision in docs/SCREEN_TAXONOMY.md is superseded by this order.
 guard:
   kind: script
   ref: scripts/quality/run-f6-showcase.ps1

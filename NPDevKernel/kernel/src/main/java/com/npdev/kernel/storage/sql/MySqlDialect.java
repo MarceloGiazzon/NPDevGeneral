@@ -16,7 +16,7 @@ import java.util.Set;
  * <p><b>{@code RETURNING} does not apply inline here.</b> MySQL's one genuinely structural gap -- it
  * cannot return generated keys inline -- is the thing a text-returning interface cannot hide,
  * because the matching two-statement path ({@code SELECT LAST_INSERT_ID()}) changes the NUMBER of
- * statements a caller runs rather than their spelling. Measured on 5680551: <b>zero production
+ * statements a caller runs rather than their spelling. Measured on a4d68bd: <b>zero production
  * sites use RETURNING</b> (NPDev keys are client-assigned UUIDs), so the two-statement path has no
  * caller today. {@link MySqlReturningStrategy} therefore declares itself non-inline -- {@link
  * ReturningStrategy#inlineClause} still refuses, because MySQL truly has no inline clause -- but now
@@ -765,7 +765,7 @@ public final class MySqlDialect implements SqlDialect {
             // MySQL's generated-key read-back. Only meaningful for an AUTO_INCREMENT column: it reads
             // LAST_INSERT_ID() from the most recent INSERT on this connection. NPDev's entity keys
             // are client-assigned UUIDs, so no production site issues this today (zero RETURNING
-            // sites, measured on 5680551); it is provided so the ReturningStrategy contract is
+            // sites, measured on a4d68bd); it is provided so the ReturningStrategy contract is
             // uniform across all four engines rather than opening a throw for this one.
             return "SELECT LAST_INSERT_ID()";
         }

@@ -1,7 +1,7 @@
 # Next Execution Plan — remaining items + 2.CD Frontend Strategy
 
-> **STATUS: ACTIVE.** Live backlog. Written 2026-07-28 against `beta1-vision-spine` @ `46dbabd`
-> (origin/main `89eb945`, tag `beta1.2`, repo public, **5 commits unpushed**).
+> **STATUS: ACTIVE.** Live backlog. Written 2026-07-28 against `beta1-vision-spine` @ `dfef1fe`
+> (origin/main `bfcbd15`, tag `beta1.2`, repo public, **5 commits unpushed**).
 >
 > **Staged outside the repo.** Move in with:
 > ```powershell
@@ -78,7 +78,7 @@ demonstrates the engine's full path, not a narrowed one.
 
 ## P1.1 Push the 5 unpushed commits · ⚡ 2 min ✅ DONE
 
-MEASURED — `git log origin/beta1-vision-spine..HEAD` = 5, including **`07af4b9` the REG-58 fix**
+MEASURED — `git log origin/beta1-vision-spine..HEAD` = 5, including **`2c4eb0e` the REG-58 fix**
 (drop indexes referencing a narrowed column before `DROP COLUMN`).
 
 The repo is public. A HIGH-severity migration-crash fix that exists only on your laptop is not
@@ -93,10 +93,10 @@ Still reads:
          You have a capability Temporal charges for and zero public evidence it exists.
 ```
 
-**"Zero public evidence" is now false** — it shipped 2026-07-28 (`0384966`). Replace with:
+**"Zero public evidence" is now false** — it shipped 2026-07-28 (`f14e4a3`). Replace with:
 
 ```
-└─ 2.F  Durable-workflow demo app  ✅ DONE 2026-07-28 (0384966, CORE C-3)
+└─ 2.F  Durable-workflow demo app  ✅ DONE 2026-07-28 (f14e4a3, CORE C-3)
          NPDevSamples/durable-workflow-demo + NPDevSamples/scripts/run-durable-resume-demo.ps1
          Park on awaitEvent → hard kill → new JVM → publish → same execution resumes. One command.
          ⚠️ Currently demonstrates a narrower path than the engine: no capabilityCall step
@@ -506,7 +506,7 @@ cannot emit source you own.
 - **F5-V.2 Live re-verification.** ✅ DONE 7/11 (this was completed earlier the same session, before
   F1–F4; see `docs/architecture/AGGREGATE_WORKBENCH_PLAN.md`'s own STATUS header and REG-60).
 - **F5-V.3 Status header.** ✅ Already DONE — same commit that recorded F5-V.2
-  (`38da6c7`) added the `> **STATUS: EXECUTED.**` header to
+  (`8d72305`) added the `> **STATUS: EXECUTED.**` header to
   `AGGREGATE_WORKBENCH_PLAN.md`'s first line, satisfying `check-register-consistency.py`'s
   planning-document coverage. No new work needed; verified by reading the live file, not assumed.
 - **F5-R3** phantom `display` toggle. ✅ DONE. Added a correction note directly at the `display`
@@ -516,7 +516,7 @@ cannot emit source you own.
   stays clean (0 files in `golden-ai-scenarios/**`/`knowledge/**` teach it).
 - **F5-R4** two-picker boundary. ✅ DONE. Added `B19` to `docs/ACCEPTED_BOUNDARIES.md`: `bandPickers`
   (`selectors[]` + `picker:`) and the plain FK auto-picker (already `B16`) are two real, independently
-  working mechanisms that were deliberately not unified (`7e1096e`) — not "one is broken."
+  working mechanisms that were deliberately not unified (`4f88ddb`) — not "one is broken."
 - **F5-R2 `computed[]` warn-only.** ✅ Confirmed already correctly implemented — no code change
   needed. Read `PanelValidation.java`'s `validateSurfaceComputed`: it already warns (does not error)
   when a surface declares `computed[]` with no `transaction.metadata.recompute` procedure, exactly

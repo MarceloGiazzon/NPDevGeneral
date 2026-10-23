@@ -216,7 +216,7 @@ $dslReferenceEvidence = [pscustomobject]@{
 }
 $gateReport | Add-Member -NotePropertyName dslReferenceGeneration -NotePropertyValue $dslReferenceEvidence -Force
 
-# REG-133: the drift check above only catches "not regenerated" -- 8cd9860 regenerated AND
+# REG-133: the drift check above only catches "not regenerated" -- c0ecd84 regenerated AND
 # re-committed the doc in the SAME commit that broke it, so the drift check compared the freshly
 # (badly) regenerated content against the freshly (badly) committed content and passed. This is
 # the companion gate: an absolute floor on the rendered CONTENT itself (no discriminated root

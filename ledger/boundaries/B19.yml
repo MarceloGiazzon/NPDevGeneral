@@ -41,5 +41,5 @@ codeLinkedNote: >-
   multiSelect-only accepted, neither-declared refused, refusal carries boundaryId B19) plus a real
   corpus witness -- NPDevSamples/dsl-conformance-max's new WidgetOrderNoPanelPickerWorkbench autoPanel
   (a no-panel `notes` band picker filtering `text == 'Reviewed'`), generating/building/booting clean.
-ref: "docs/ACCEPTED_BOUNDARIES.md#B19 -- AW-P2 (7e1096e), docs/architecture/AGGREGATE_WORKBENCH_PLAN.md, Move 9 A3, EDIT-17"
+ref: "docs/ACCEPTED_BOUNDARIES.md#B19 -- AW-P2 (4f88ddb), docs/architecture/AGGREGATE_WORKBENCH_PLAN.md, Move 9 A3, EDIT-17"
 classification: LIFTED

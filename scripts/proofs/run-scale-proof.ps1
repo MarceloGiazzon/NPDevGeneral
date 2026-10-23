@@ -331,7 +331,7 @@ if (-not $overallFailed) {
 # 255-parameter ceiling), so `boot` never ran and nobody saw that it could not have worked either.
 # With the build fixed, boot failed immediately on StartupValidator's
 #   "npdev.auth.api-keys must define at least one mapping when auth is enabled"
-# -- the check f11bf212 ("provision API keys on every launcher") added. That commit fixed the
+# -- the check 8795defa ("provision API keys on every launcher") added. That commit fixed the
 # launchers it knew about; this proof was not one of them, because it was already red for a
 # different reason and so produced no new evidence when it stayed red.
 #

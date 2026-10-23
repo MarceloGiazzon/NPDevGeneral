@@ -12,7 +12,7 @@ source: >-
   two-engine (H2 + Postgres) generate->build->boot proof required by that card. The H2 half of the
   proof succeeded; the identical model failed to boot on real Postgres. Confirmed NOT caused by PK-2's
   own changes: reproduces identically with PK-2's source changes fully stashed (unmodified main,
-  commit ff2711d6).
+  commit 6cab6f27).
 surface: generator/schema-realization-ddl
 files:
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java
@@ -67,7 +67,7 @@ correction: |
   variant). **Only PostgresDialect.guardedConstraintDdl
   (NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java, the method
   starting at line 292) was missing that one line.** Confirmed by git archaeology: the pre-STOR-5
-  addConstraintIfMissing (SchemaRealizationEmitter.java, before commit 2ed5c3ae) had exactly one
+  addConstraintIfMissing (SchemaRealizationEmitter.java, before commit 3fbb2e46) had exactly one
   shared normalization line
   (`addConstraintSql.endsWith(";") ? addConstraintSql : addConstraintSql + ";"`) feeding BOTH the
   H2 and the Postgres DO $$ arms. STOR-5 ("feat(storage): introduce SqlDialect and route all 41

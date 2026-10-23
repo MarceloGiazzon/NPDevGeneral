@@ -1,6 +1,6 @@
 # Invocation Topology Plan
 
-> **STATUS: ACTIVE.** Live backlog. Written 2026-07-29 against `beta1-vision-spine` @ `3f9fa8d`
+> **STATUS: ACTIVE.** Live backlog. Written 2026-07-29 against `beta1-vision-spine` @ `d98e7d9`
 > (repo public, tag `beta1.2`, ledger **68 items / 1 open**, knowledge gate 15/15, tree clean).
 >
 > **Scope:** the master failure pattern behind four separate findings, REG-67 plus its unfiled
@@ -123,7 +123,7 @@ happened to run it by hand while building an unrelated rule.
 **How to solve.**
 
 1. **Pin every real-instance control to a fixed commit SHA**, not `HEAD`. G4's own new Rule T2b
-   control already does this correctly — it names `REG-62 @ 9c3c423`. Use the same durability
+   control already does this correctly — it names `REG-62 @ 961ae75`. Use the same durability
    everywhere: `git show <sha>:<path>`, with a comment saying which bug shape that SHA holds.
    Find each with `git log -S '<the stale wording>' -- <path>`.
 2. **File the second instance** as its own ledger item (or widen REG-67 to name both, with the

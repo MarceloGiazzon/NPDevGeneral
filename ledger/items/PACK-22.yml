@@ -31,10 +31,10 @@ detail: |
   (provider, providerSubject) index; probe lock digest refreshed.
 
   2026-09-19 (closure, roadmap sweep): all three DONE-WHEN criteria formally re-verified. The
-  actual concept landed in commit 504432df (feat(oauth): Google identity-provider abstraction
+  actual concept landed in commit 1d6b45d5 (feat(oauth): Google identity-provider abstraction
   (SEC-11) with identity pack 1.2.0 (PACK-22)) but this ledger item was never flipped to DONE
   afterward -- pure bookkeeping gap, not missing work. (1) `npdev pack diff` against the 1.1.0
-  pack.json (commit 1dba1780) and the current 1.2.0 one returns overallClassification: ADDITIVE,
+  pack.json (commit 09ab3399) and the current 1.2.0 one returns overallClassification: ADDITIVE,
   the sole finding being the new `ExternalIdentity` concept. (2) SEC-11's own M7 fake-Google proof
   (28/28 checks) and the 2026-09-18 real-Google live run both persisted ExternalIdentity rows
   (provider=google, providerSubject=<google sub>) and the unique (provider, providerSubject) index

@@ -10,7 +10,7 @@ closed: 2026-08-13
 verification: VERIFIED_LIVE
 source: >-
   User-reported: the "NPDev CI Validation" workflow's "NPDev segmented CI validation" job has
-  failed at its "Script automation quality" step on every push to main since commit 83eaf603
+  failed at its "Script automation quality" step on every push to main since commit 1965ab55
   (Step 9: hygiene, #17, 2026-08-13) -- not a flake, reproduced locally on a clean worktree at
   the same commit run-script-automation-quality.ps1's own structured-report-contract sub-check
   named run-weekly-paperwork-checks.ps1 as the sole failure.
@@ -25,11 +25,11 @@ detail: |
   runtimehost-automation-contract-helper.psm1 pattern, Write-NPDevJsonFile/
   Write-StructuredRunReport, or (ConvertTo-Json persisted via Set-Content/Out-File AND a
   reports/out or -report.json/ReportPath target). run-weekly-paperwork-checks.ps1 (added in
-  83eaf603, the same PR that classified paperwork checkers and moved 11 of them here) did none
+  1965ab55, the same PR that classified paperwork checkers and moved 11 of them here) did none
   of these -- it only ever did `Write-Host`/`exit 1`/`exit 0`, the exact REG-31-backlog shape
   (see run-script-automation-quality.ps1's $reportContractMigrationBacklog), but was never added
   to that backlog nor given the compliant pattern. Confirmed via git blame that both files'
-  relevant logic predate 83eaf603 unchanged -- the checker was not new or newly-strict; the new
+  relevant logic predate 1965ab55 unchanged -- the checker was not new or newly-strict; the new
   script simply never adopted (or was excused from) its existing contract.
 
   Because "Script automation quality" is an un-guarded step in the middle of the

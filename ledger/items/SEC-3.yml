@@ -181,7 +181,7 @@ detail: |
   refused (documented SEC-3 conservatism, via the LambdaMetafactory member owner). ALSO fixed in the
   same push: npdev_cli.py emitted verification.html against final_app_out.parent/_ops while the
   generator writes the runbook INSIDE the app root (final_app_out/_ops) -- a pre-existing PR #134
-  regression (engine-support red since 50315e0f) that the E15 and engine-probe jobs died on at
+  regression (engine-support red since d0eaf40f) that the E15 and engine-probe jobs died on at
   Resolve-Path; now App/_ops.
 
   ORIGINAL FINDING (2026-08-25, kept as the record; superseded by Model A above for the accident/
@@ -601,7 +601,7 @@ detail: |
     assembled app's test task, 7m 25s including the new tests; runtimehost-core's own test task,
     31s) -- but the gate run as a WHOLE still failed, at its LAST step, on
     run-runtime-surface-evidence.ps1's classification/footprint checks. Isolated via `git stash
-    push -u` (removing every step-4 file back to committed HEAD daccc569) + rerunning that script
+    push -u` (removing every step-4 file back to committed HEAD fafa157f) + rerunning that script
     directly: it fails IDENTICALLY with ZERO step-4 changes applied, proving this is a pre-existing,
     unrelated gate failure, not something step 4 introduced -- `git stash pop` restored the step-4
     work afterward, confirmed via `git status`. Recorded as its own new item, QUAL-49 (OPEN, MEDIUM):

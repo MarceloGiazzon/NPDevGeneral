@@ -99,10 +99,10 @@ detail: |
   build passed, health 200 UP, create-learner POST /api/learners -> **201** (not 401), smoke
   passed, exit 0. The 401 does NOT reproduce on the current tree. The app built and booted from
   today's source differs from the failing CI artifact's code only by an environment axis: the
-  artifact came from the Docker/Linux container run (run 32917370685) on 2026-08-25/26 -- 606d8acc
+  artifact came from the Docker/Linux container run (run 32917370685) on 2026-08-25/26 -- e3bcc5ae
   touched the smoke script only as a comment rename, so the auth chain is functionally identical to
   what that run had. Conclusion recorded: the create-learner 401 is either fixed by the 2026-08-23
-  Ensure-NpdevApiKey wiring (977dbc9a) in a way the CI artifact's pre-commit snapshot did not
+  Ensure-NpdevApiKey wiring (21865abe) in a way the CI artifact's pre-commit snapshot did not
   reflect at dispatch time, or it is Docker/Linux-container-specific; it is NOT reproducible
   on Windows with today's tree. ACTION REQUIRED to close the docker thread definitively: re-dispatch
   the AI Beta Gate workflow (ubuntu docker-linux job) and read the fresh
@@ -113,7 +113,7 @@ detail: |
   Done when: (1) the gate's verdict provably accounts for expectedOutcome (satisfied 2026-08-27 by
   code reading; verdict (a) recorded above), (2) the gate report reads in those terms -- a summary
   that states expected-fail (all as designed) / expected-pass (X passed, Y failed) instead of a bare
-  failure count -- satisfied 2026-08-27, same session, commit ad1987ab: run-ai-beta-gate.ps1's
+  failure count -- satisfied 2026-08-27, same session, commit 18226ae9: run-ai-beta-gate.ps1's
   report.summary now carries expectedFail/expectedFailAsDesigned/expectedFailUnexpected/expectedPass/
   expectedPassPassed/expectedPassFailed, and the printed summary line states counts in exactly these
   terms -- this item's own detail above hadn't caught up to that commit until now, (3) base-ai-loop's
@@ -122,12 +122,12 @@ detail: |
   live boot returned 201; the residual docker-container question is tracked under the re-dispatch
   action above -- and (4) this item records which of (a)/(b) was true -- (a), done above.
 
-  2026-08-31 (session resume): re-dispatched AI Beta Gate fresh against current main (head 2191f6e4)
+  2026-08-31 (session resume): re-dispatched AI Beta Gate fresh against current main (head 008146b0)
   to settle the residual docker-container question -- run
   https://github.com/MarceloGiazzon/NPDevGeneral/actions/runs/33421339702 (databaseId 33421339702).
   RESULT, downloaded and read (docker-linux-ai-beta-gate-report.json, the docker-linux-proof job's
   own artifact, real 12m38s execution not a fast-fail): base-ai-loop's create-learner check PASSES on
-  Docker/Linux CI (status: passed) -- the residual question is answered: the 401 fix from 977dbc9a
+  Docker/Linux CI (status: passed) -- the residual question is answered: the 401 fix from 21865abe
   holds on Linux, it was never Docker/Linux-container-specific, matching the local Windows
   verification from 2026-08-27. QUAL-42 is fully closed on its own original scope.
 
@@ -139,7 +139,7 @@ detail: |
 guard:
   kind: manual
   ref: >-
-    scripts/quality/run-ai-beta-gate.ps1's expected-outcome-aware summary (commit ad1987ab), and
+    scripts/quality/run-ai-beta-gate.ps1's expected-outcome-aware summary (commit 18226ae9), and
     the base-ai-loop scenario result inside the downloaded docker-linux-ai-beta-gate-report.json
     artifact of CI run https://github.com/MarceloGiazzon/NPDevGeneral/actions/runs/33421339702
     (databaseId 33421339702, 2026-08-31, real 12m38s Docker/Linux execution) -- fetched via
@@ -147,5 +147,5 @@ guard:
   asserts: >-
     report.summary reads expectedFail/expectedFailAsDesigned/expectedPass/expectedPassPassed instead
     of a bare failure count; base-ai-loop's create-learner check has status: passed on a live
-    Docker/Linux CI run, settling that the 977dbc9a auth-key fix was never Docker/Linux-specific.
+    Docker/Linux CI run, settling that the 21865abe auth-key fix was never Docker/Linux-specific.
   provenRed: true

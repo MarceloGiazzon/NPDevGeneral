@@ -1,7 +1,7 @@
 # Closeout Plan
 
 > **STATUS: CLOSED except G1's revocation and G5 (both owner-only).** Written 2026-07-29 against
-> `beta1-vision-spine` @ `5892370` (repo public, tag `beta1.2`, ledger **67 items / 0 open**,
+> `beta1-vision-spine` @ `a7ad1b2` (repo public, tag `beta1.2`, ledger **67 items / 0 open**,
 > knowledge gate **15/15 green**, tree clean, all pushed). G2/G3/G4 done 2026-07-29 — full evidence
 > in each item's own Definition of Done below. One new gap (REG-67) found and filed, not fixed,
 > while calibrating G4's Rule T2b — see that item's own note.
@@ -269,7 +269,7 @@ class is an hour and stops the next one.
       cross-referenced against the surface's declared actions"
 - [x] Rule T2 covers titles; calibrated RED against the pre-fix ledger, GREEN after — new Rule T2b
       (`ledger_title_status_contradiction_gaps`), calibrated against the REAL REG-62 @ commit
-      `9c3c423` (fired) plus a synthetic mechanism control, both directions
+      `961ae75` (fired) plus a synthetic mechanism control, both directions
 - [x] `docs/OPEN_ITEMS.md` regenerated; `generate_open_items.py --check` clean
 - [x] A re-scan of all 67 items reports zero title/status contradictions — 68 after REG-67 (filed
       incidentally, see below) was added; still zero contradictions

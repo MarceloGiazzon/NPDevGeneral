@@ -8,7 +8,7 @@ status: DONE
 opened: 2026-09-02
 closed: 2026-09-02
 source: >-
-  Previous session's handoff (ledger/session-state/current.json, closed at 28a385e1) flagged
+  Previous session's handoff (ledger/session-state/current.json, closed at 07145ca3) flagged
   NPDevCli/tests/test_monitor_clone.py::test_concurrent_calls_never_collide as failing
   reproducibly (2/2 runs) with a Windows PermissionError under concurrent port reservation,
   "unrelated to anything touched this session," not filed as a ledger item, left for whoever

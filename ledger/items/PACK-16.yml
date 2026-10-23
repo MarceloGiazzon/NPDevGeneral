@@ -14,7 +14,7 @@ detail: |
   Detached Ed25519 signatures, trust:{mode} config (strict|warn|off), --allow-unsigned recorded
   in npdev.lock. Implemented as PACK-8 Step 5.
 resolution: >-
-  Implemented in PACK-8 Step 5 (commit e3386dc0). PackSignature/PackSigner provide pure-Java
+  Implemented in PACK-8 Step 5 (commit cc3bf362). PackSignature/PackSigner provide pure-Java
   Ed25519/SHA256withRSA signing. PackAddMain verifies on fetch (warn-by-default).
   Ledger item filed retroactively.
 guard:

@@ -31,7 +31,7 @@ source: >-
   check-deterministic-generation.ps1 -SampleId dsl-conformance-max as an additional regression check
   (this sample carries real pack imports, unlike the default simple-contact-intake sample). Confirmed
   NOT caused by PK-2's own changes: reproduces identically on a clean, unmodified main checkout
-  (commit ff2711d6), stash-tested directly -- git stash the PK-2 working tree, rebuild, rerun the
+  (commit 6cab6f27), stash-tested directly -- git stash the PK-2 working tree, rebuild, rerun the
   check, same 8 files flagged, then git stash pop to restore.
 surface: generator/workbench-emission
 files:

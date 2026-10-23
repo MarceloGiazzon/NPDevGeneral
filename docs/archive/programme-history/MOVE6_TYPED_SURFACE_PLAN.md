@@ -4,7 +4,7 @@
 > WmsOffice rebuild+boot+curl-based verification); the §7.5 test-gateway-fidelity fix also shipped.
 > Kept as a record.
 >
-> Written 2026-07-30 against `beta1-vision-spine` @ `4d95dee`, from
+> Written 2026-07-30 against `beta1-vision-spine` @ `5da4db6`, from
 > `D:\WorkSpace\XPZs\NPDEV_PXTOOLS_COMPLETE_ANALYSIS.md`.
 > **Code-focused by instruction.** Docs/verification appear only as build-blocking gates (§7).
 
@@ -377,7 +377,7 @@ way. **Fix the default test gateway once**, rather than remembering per feature.
 
 Two explanations for "0 bytes deleted across five moves" are both true and are not the same:
 
-1. **Nobody re-measured.** `docs/SCREEN_TAXONOMY.md` was last touched at `ed94669` (Move 3); its
+1. **Nobody re-measured.** `docs/SCREEN_TAXONOMY.md` was last touched at `1a41040` (Move 3); its
    verdict still cites blockers closed in Moves 4 and 5. `crossdocking`'s last named blocker is
    genuinely gone — `AtivarCrossDocking` is now `['createConcept','callProcedure','return']` — so it
    may already be at parity, unrecorded.

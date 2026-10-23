@@ -219,7 +219,7 @@ function Get-ScopedPathNeutralityFiles {
 # NPDevCli is exactly where REG-144's "never hardcode a drive letter as a default" would be broken.
 # Excluding the two whole files was the cheap alternative and was rejected for blinding the scan in
 # the file most likely to acquire one. (Get-PathNeutralityExcludedPaths was REPORTED but never
-# applied as a filter until 23a3403f; it is a real filter now -- see Get-HardcodedDriveMatches.)
+# applied as a filter until 83f462c3; it is a real filter now -- see Get-HardcodedDriveMatches.)
 $script:PythonProseStrippedFileCount = 0
 function Get-PythonScannableText {
     param([string]$Root, [string[]]$Paths)

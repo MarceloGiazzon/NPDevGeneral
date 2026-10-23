@@ -17,8 +17,8 @@ source: >-
   the dev loop's existing fast path pushing re-signed compiled-model.json into the live app."
   Done when: "editing a panel label with `npdev dev` running updates the served UI with the same
   app PID, proven by a browser routine." Two prior commits on this branch shipped the mechanism
-  (f46fefe3 -- MetadataHotSwapController + RuntimeMetadataService.applyMetadataOnlyReload;
-  d493e61f -- `npdev monitor hotswap` + Update-AppMetadata.ps1's restart-avoidance) but explicitly
+  (bf927211 -- MetadataHotSwapController + RuntimeMetadataService.applyMetadataOnlyReload;
+  1e9707b9 -- `npdev monitor hotswap` + Update-AppMetadata.ps1's restart-avoidance) but explicitly
   left both named gaps open: the two new RuntimeHost tests had never run, and no live
   boot-edit-swap-observe proof existed against any app (every previously-built app predated
   MetadataHotSwapController).

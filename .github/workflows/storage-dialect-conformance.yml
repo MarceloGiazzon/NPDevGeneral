@@ -15,7 +15,7 @@ name: Storage dialect conformance
 # ---------------------------------------------------------------------------------------------
 # THE TRIGGER, AND THE ORDER IT WAS PROMOTED IN
 #
-# FIRST RUN: 31264977219, at commit 5814886, 2026-08-08. Three jobs red -- and underneath, MySQL 8.4
+# FIRST RUN: 31264977219, at commit c7c6eec, 2026-08-08. Three jobs red -- and underneath, MySQL 8.4
 # passed 13/13 and Postgres 16 passed 13/13, against real containers, with ZERO vectors skipped. The
 # 14 failures per job were 13 harness (h2 has no container image) plus ONE real behavioural finding
 # on SQL Server: J2 stored "cafe [U+2615]" into a hand-written VARCHAR and read back "cafe ?",

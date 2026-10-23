@@ -1,7 +1,7 @@
 # Post-Public Plan — what's open after TREE 1 + DSL 2.0 + decomposition
 
 > **STATUS: DONE except the owner-only item.** Written 2026-07-28 against `beta1-vision-spine` @
-> `b7a4f0f` (origin/main @ `89eb945`, tag `beta1.2`, repo **public**). Every assistant-executable
+> `c7e6bc1` (origin/main @ `bfcbd15`, tag `beta1.2`, repo **public**). Every assistant-executable
 > item (Parts 1-4) closed 2026-07-28 — see the Definition of Done below. Only P2.4's actual outreach
 > ("3 people outside this machine have tried it") remains, and it always was owner-only, not
 > something the assistant does.
@@ -23,9 +23,9 @@
 | Claim | Evidence |
 |---|---|
 | Working tree clean | `git status --short` → empty |
-| Everything pushed | `origin/beta1-vision-spine` = `b7a4f0f` = local HEAD |
-| PR #5 merged | `89eb945` *"Merge PR #5: TREE1 launch-unblock + DSL 2.0 + god-file decomposition"* |
-| `beta1.2` tagged on the merge | `git rev-list -n1 beta1.2` → `89eb9458206b` ✅ |
+| Everything pushed | `origin/beta1-vision-spine` = `c7e6bc1` = local HEAD |
+| PR #5 merged | `bfcbd15` *"Merge PR #5: TREE1 launch-unblock + DSL 2.0 + god-file decomposition"* |
+| `beta1.2` tagged on the merge | `git rev-list -n1 beta1.2` → `bfcbd1524768` ✅ |
 | TREE 1 all 16 tasks | `TREE1_LAUNCH_UNBLOCK_PLAN.md` → `STATUS: DONE (2026-07-28)` |
 | DSL 2.0 + decomposition | `DSL2_AND_DECOMPOSITION_PLAN.md` → `STATUS: DONE (2026-07-28)` |
 | **2.A alias collapse** | `flowStep.type` enum **23 → 12**; parser switch is 1:1 |
@@ -47,7 +47,7 @@ than a `flow/steps/` subpackage — different shape than the plan sketched, same
 ## 0.2 One correction to the report
 
 > *"everything is pushed"* — true. `origin/beta1-vision-spine` matches HEAD exactly.
-> What **is** stale is **local `main`** (`98a3cb9`) vs `origin/main` (`89eb945`). Cosmetic; one
+> What **is** stale is **local `main`** (`5cd1b09`) vs `origin/main` (`bfcbd15`). Cosmetic; one
 > `git checkout main && git pull`. Worth doing so `git log main..HEAD` stops lying by 172 commits.
 
 ## 0.3 The finding CI caught is worth more than its fix
@@ -78,7 +78,7 @@ Still on disk today:
 ```
 
 **Every line of that is false.** The Aggregate Workbench is DONE — `AGGREGATE_WORKBENCH_PLAN.md`
-records P0/P1/P4/P6/P7/Polish complete, and AW-P2 (`cd3cbcf`, `7e1096e`), AW-P3 (`ff4acba`), AW-P5
+records P0/P1/P4/P6/P7/Polish complete, and AW-P2 (`cd3cbcf`, `4f88ddb`), AW-P3 (`ff4acba`), AW-P5
 (`0762536`) all closed afterwards, reconciled by `88e28a1`. There is no P3 spike to run, no 4–8
 weeks of work, and **no fork** — 2.C and 2.D cover disjoint screen classes.
 
@@ -116,7 +116,7 @@ reads *"Reconciled 2026-07-12"* while three phases closed after that date.
 
 ```markdown
 > **STATUS: EXECUTED.** All phases delivered 2026-07-11 … 2026-07-25 (P0/P1/P4/P6/P7/Polish;
-> AW-P2 `7e1096e`, AW-P3 `ff4acba`, AW-P5 `0762536`, reconcile `88e28a1`).
+> AW-P2 `4f88ddb`, AW-P3 `ff4acba`, AW-P5 `0762536`, reconcile `88e28a1`).
 > Kept as the authoritative design record. Residuals: `docs/FRONTEND_STRATEGY_PLAN.md` F5.
 ```
 

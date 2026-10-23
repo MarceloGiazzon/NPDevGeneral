@@ -1,5 +1,5 @@
 id: REG-113
-title: "NPDevRuntimeHost/build.gradle.template silently shadowed the actively-maintained NPDevRuntimeHost/build.gradle in every assembled/generated app -- FinalAppAssembler.materializeRootTemplate() prefers *.template over the legacy file whenever both exist, but nothing has kept .template in sync since before commit 067b987 ('Moves 6-11'), so every FinalApp assembled since then (including the very REG-112 fix landed earlier this same session) got a build.gradle missing everything written after that point"
+title: "NPDevRuntimeHost/build.gradle.template silently shadowed the actively-maintained NPDevRuntimeHost/build.gradle in every assembled/generated app -- FinalAppAssembler.materializeRootTemplate() prefers *.template over the legacy file whenever both exist, but nothing has kept .template in sync since before commit 9c99609 ('Moves 6-11'), so every FinalApp assembled since then (including the very REG-112 fix landed earlier this same session) got a build.gradle missing everything written after that point"
 type: BUG
 severity: MEDIUM
 status: DONE
@@ -10,7 +10,7 @@ surface: generator, runtimehost
 source: |
   Found re-running Move 14 Phase A's mandatory T2 gate sweep (run-all-gates.ps1) after REG-111's
   closure: run-runtimehost-gate.ps1 failed with the EXACT same PanelRuntimeTest NoSuchElementException
-  REG-112 (opened and closed earlier this same session, commit 904fae1) already fixed by adding
+  REG-112 (opened and closed earlier this same session, commit 2a55cb3) already fixed by adding
   'com/finalexec/PanelRuntimeTest.java' to build.gradle's modelSpecificGeneratedAppTests list.
 
   Root cause: NPDevGenerator's FinalAppAssembler.materializeRootTemplate() (assembly/FinalAppAssembler.java)
@@ -23,11 +23,11 @@ source: |
   is a plain Files.copy), so the ".template" naming carries no templating behavior at all; it is purely
   a stale-twin trap.
 
-  git log confirms the drift's age: build.gradle.template's last real commit was fbf3319 (an old
+  git log confirms the drift's age: build.gradle.template's last real commit was a1daad2 (an old
   SER-P7.3+P7.5 commit), while build.gradle (the file everyone has actually been editing) was updated
-  by 067b987 ("feat(Moves 6-11): RuntimeHost -- typed surfaces, silent-answer fixes, query pushdown")
-  and then 904fae1 (REG-112, same session) with neither commit touching .template. So EVERY app
-  assembled by NPDevGenerator since 067b987 -- every AppGen FinalApp, every NPDevSamples fixture,
+  by 9c99609 ("feat(Moves 6-11): RuntimeHost -- typed surfaces, silent-answer fixes, query pushdown")
+  and then 2a55cb3 (REG-112, same session) with neither commit touching .template. So EVERY app
+  assembled by NPDevGenerator since 9c99609 -- every AppGen FinalApp, every NPDevSamples fixture,
   every T1/T2 gate's own generated fixture -- has been built from a build.gradle missing at least
   Moves 6-11's RuntimeHost changes, not just REG-112's one line. Confirmed by diffing the two files:
   build.gradle had 41 lines with no counterpart in .template (real content: the Move 11 W1 derived-

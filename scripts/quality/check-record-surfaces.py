@@ -178,7 +178,7 @@ def calibrate(root: Path) -> int:
 
     print("Calibration -- must catch the real 2026-07-29 CLAUDE.md size drift and a synthetic branch gap:")
 
-    # The real 2026-07-29 drift, reproduced as a synthetic policy (git show 27c984d:CLAUDE.md
+    # The real 2026-07-29 drift, reproduced as a synthetic policy (git show 3b9a0d5:CLAUDE.md
     # confirms these were the actual stale claims at the time -- 197KB/164KB for files now split
     # down to ~12KB by the 2.B decomposition): the drift check must still fire on numbers this far
     # off, regardless of where the claim now lives.

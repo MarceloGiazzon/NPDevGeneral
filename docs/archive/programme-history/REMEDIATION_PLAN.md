@@ -5,7 +5,7 @@
 > `docs/REMEDIATION_PLAN_IMPLEMENTATION_NOTES.md` for the evidence trail and where the
 > implementation measured differently than this plan's original estimates (R-P2's "13" docs, the
 > panel-provenance schema regex bug, the register-parsing edge cases Rule T3 itself surfaced).
-> Written 2026-07-28 against `beta1-vision-spine` @ `40835a6` (tree clean, all pushed, repo public,
+> Written 2026-07-28 against `beta1-vision-spine` @ `d91a848` (tree clean, all pushed, repo public,
 > tag `beta1.2`).
 >
 > **Scope:** the 10 findings from the 2026-07-28 deep audit, **plus** the TREE 3 / blocked-tier items
@@ -21,7 +21,7 @@
 
 | | |
 |---|---|
-| Commits | `38b4107→40835a6`, 8 commits, **all pushed**, tree clean |
+| Commits | `0886b9b→d91a848`, 8 commits, **all pushed**, tree clean |
 | DSL suite | **1,080 tests / 0 failures** (was 355) |
 | Gates | register-consistency OK · knowledge gate PASSED · **13/13** planning docs declare status |
 | Rules T1/T2 | shipped and running — 0 contradictions |

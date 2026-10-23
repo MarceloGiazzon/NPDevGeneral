@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * How a generated key comes back from an insert.
  *
- * <p><b>Measured on 5680551: ZERO production sites use {@code RETURNING}.</b> That matters, because
+ * <p><b>Measured on a4d68bd: ZERO production sites use {@code RETURNING}.</b> That matters, because
  * inline return of generated keys is MySQL's one genuinely structural gap -- it needs a second query
  * plus {@code LAST_INSERT_ID()}, which changes the NUMBER of statements rather than their spelling,
  * and a number of statements is the one thing a text-returning interface cannot hide.
@@ -13,7 +13,7 @@ import java.util.List;
  * <p>So the shape exists here for the engines that need it. The inline engines (Postgres, H2,
  * SQL Server) return their clause from {@link #inlineClause}; MySQL cannot inline, so it offers the
  * two-statement {@code SELECT LAST_INSERT_ID()} from {@link #secondQuerySql()} instead. No production
- * site exercises either contract today (NPDev keys are client-assigned UUIDs, measured on 5680551),
+ * site exercises either contract today (NPDev keys are client-assigned UUIDs, measured on a4d68bd),
  * so these are prepared early rather than wired -- a caller that ever needs a DB-generated key asks
  * {@link #isInline()} first and then runs the matching path. Conformance vector A2 pins this shape.
  */

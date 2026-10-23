@@ -209,7 +209,7 @@ detail: |
   BOTH traced to `NPDevSamples/pack9-role-binding-a`'s `model.json` having no top-level `concepts` key
   (it relies entirely on `packs[]` composition) -- that test reads corpus `model.json` files RAW via
   `ObjectMapper.readTree` with no pack-composition step, a pre-existing gap from the PACK-9 work
-  (commit 340ed423, before this item), confirmed unrelated to R5.8 by inspecting the file directly
+  (commit eccb2c1f, before this item), confirmed unrelated to R5.8 by inspecting the file directly
   (zero `"concepts"` occurrences) and by `scripts/quality/validate-corpus.py` (which DOES pack-compose
   first) parsing the same two samples cleanly. NPDevKernel:kernel compiles clean against the widened
   CompiledConcept API (kernel was not otherwise touched -- Q3's decision keeps ConceptGateway/

@@ -11,7 +11,7 @@ source: |
   and 4.3 (SyncOcupacaoProcedure, closing docs/MOVE3_G2_CHECKLISTS.md's M8/M9 residual). Both were
   scoped by that plan as closeable by patchConcept/onCommit alone ("the same one-liner with true").
   Found live while attempting to implement them, immediately after REG-75 itself was closed by the
-  same session's patchConcept + aggregate.onCommit work (dc35d54..this commit).
+  same session's patchConcept + aggregate.onCommit work (89f7e58..this commit).
 surface: kernel/procedure-runtime, kernel/flow-engine
 files: []
 detail: |

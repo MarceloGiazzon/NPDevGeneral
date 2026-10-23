@@ -98,7 +98,7 @@ detail: |
 
   ---
 
-  **Move 13 P5.1 (2026-08-01, commit bccab1d — retroactive ledger note):** the code widened this
+  **Move 13 P5.1 (2026-08-01, commit 0070750 — retroactive ledger note):** the code widened this
   item's own "narrowed, not fully closed" gap further, but this file was not updated at the time,
   which the Fast Lane plan's research pass caught while grounding item 1a below (`git log --
   ledger/items/REG-103.yml` showed only the Move 12 P2.1 commit touching this file, despite

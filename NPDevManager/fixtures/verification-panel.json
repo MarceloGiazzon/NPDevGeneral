@@ -5,7 +5,7 @@
     "kind": "npdev-repo",
     "name": "NPDev_General",
     "root": "D:\\WorkSpace\\NPDev\\NPDev_General",
-    "commit": "3fde3329f8ff64cbd7e4b097132f3c3d248202b1"
+    "commit": "05a2aff118ff7fe7b5a73f0876f36b428485d2c0"
   },
   "items": [
     {
@@ -21,7 +21,7 @@
         "startedAt": "2026-08-26T03:16:42.230390+00:00",
         "result": "passed",
         "durationSeconds": null,
-        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "commit": "72596d2b599f0b5f9e2d01e24710bb8aaf500198",
         "reportPath": null,
         "logPath": null
       },
@@ -40,7 +40,7 @@
         "startedAt": "2026-08-26T04:07:33.566327+00:00",
         "result": "failed",
         "durationSeconds": null,
-        "commit": "cf4864e46774f83747072e6a65a25159006db27d",
+        "commit": "cee27d167acb43f2b2e16b8230b6a3c35c94e40e",
         "reportPath": null,
         "logPath": null
       },
@@ -59,7 +59,7 @@
         "startedAt": "2026-08-26T01:25:21.137844+00:00",
         "result": "failed",
         "durationSeconds": null,
-        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "commit": "72596d2b599f0b5f9e2d01e24710bb8aaf500198",
         "reportPath": null,
         "logPath": null
       },
@@ -78,7 +78,7 @@
         "startedAt": "2026-08-26T03:36:43.569505+00:00",
         "result": "passed",
         "durationSeconds": null,
-        "commit": "cf4864e46774f83747072e6a65a25159006db27d",
+        "commit": "cee27d167acb43f2b2e16b8230b6a3c35c94e40e",
         "reportPath": null,
         "logPath": null
       },
@@ -97,7 +97,7 @@
         "startedAt": "2026-08-26T00:49:38.000453+00:00",
         "result": "passed",
         "durationSeconds": null,
-        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "commit": "72596d2b599f0b5f9e2d01e24710bb8aaf500198",
         "reportPath": null,
         "logPath": null
       },
@@ -116,7 +116,7 @@
         "startedAt": "2026-08-26T03:36:43.814411+00:00",
         "result": "passed",
         "durationSeconds": null,
-        "commit": "cf4864e46774f83747072e6a65a25159006db27d",
+        "commit": "cee27d167acb43f2b2e16b8230b6a3c35c94e40e",
         "reportPath": null,
         "logPath": null
       },
@@ -135,7 +135,7 @@
         "startedAt": "2026-08-26T03:36:44.014556+00:00",
         "result": "passed",
         "durationSeconds": null,
-        "commit": "cf4864e46774f83747072e6a65a25159006db27d",
+        "commit": "cee27d167acb43f2b2e16b8230b6a3c35c94e40e",
         "reportPath": null,
         "logPath": null
       },
@@ -154,7 +154,7 @@
         "startedAt": "2026-08-26T03:35:46.164053+00:00",
         "result": "passed",
         "durationSeconds": null,
-        "commit": "cf4864e46774f83747072e6a65a25159006db27d",
+        "commit": "cee27d167acb43f2b2e16b8230b6a3c35c94e40e",
         "reportPath": null,
         "logPath": null
       },
@@ -173,7 +173,7 @@
         "startedAt": "2026-08-26T03:16:21.321937+00:00",
         "result": "passed",
         "durationSeconds": null,
-        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "commit": "72596d2b599f0b5f9e2d01e24710bb8aaf500198",
         "reportPath": null,
         "logPath": null
       },
@@ -192,7 +192,7 @@
         "startedAt": "2026-08-26T03:36:48.537537+00:00",
         "result": "passed",
         "durationSeconds": null,
-        "commit": "cf4864e46774f83747072e6a65a25159006db27d",
+        "commit": "cee27d167acb43f2b2e16b8230b6a3c35c94e40e",
         "reportPath": null,
         "logPath": null
       },
@@ -223,7 +223,7 @@
         "startedAt": "2026-08-26T03:03:35.955699+00:00",
         "result": "passed",
         "durationSeconds": null,
-        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "commit": "72596d2b599f0b5f9e2d01e24710bb8aaf500198",
         "reportPath": null,
         "logPath": null
       },
@@ -242,7 +242,7 @@
         "startedAt": "2026-08-26T03:11:55.666324+00:00",
         "result": "passed",
         "durationSeconds": null,
-        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "commit": "72596d2b599f0b5f9e2d01e24710bb8aaf500198",
         "reportPath": null,
         "logPath": null
       },
@@ -273,7 +273,7 @@
         "startedAt": "2026-08-02T06:14:42.020510+00:00",
         "result": "passed",
         "durationSeconds": null,
-        "commit": "904fae14dbc25b7277807dd0461c54ff32a7a129",
+        "commit": "2a55cb38cfe7a997ac338a0be3f3b9663c522e8c",
         "reportPath": null,
         "logPath": null
       },
@@ -292,7 +292,7 @@
         "startedAt": "2026-08-26T03:11:19.591087+00:00",
         "result": "passed",
         "durationSeconds": null,
-        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "commit": "72596d2b599f0b5f9e2d01e24710bb8aaf500198",
         "reportPath": null,
         "logPath": null
       },
@@ -311,7 +311,7 @@
         "startedAt": "2026-08-03T07:15:36.931208+00:00",
         "result": "passed",
         "durationSeconds": null,
-        "commit": "45218e3c239aa35a380d54d332ae6cc523a5eae9",
+        "commit": "a19a0eea4075fb983b7facec4906420a1dec97ab",
         "reportPath": null,
         "logPath": null
       },
@@ -330,7 +330,7 @@
         "startedAt": "2026-08-26T01:26:31.228065+00:00",
         "result": "passed",
         "durationSeconds": null,
-        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "commit": "72596d2b599f0b5f9e2d01e24710bb8aaf500198",
         "reportPath": null,
         "logPath": null
       },
@@ -349,7 +349,7 @@
         "startedAt": "2026-08-26T00:49:42.841315+00:00",
         "result": "failed",
         "durationSeconds": null,
-        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "commit": "72596d2b599f0b5f9e2d01e24710bb8aaf500198",
         "reportPath": null,
         "logPath": null
       },

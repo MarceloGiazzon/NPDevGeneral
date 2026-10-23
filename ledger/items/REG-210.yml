@@ -34,7 +34,7 @@ detail: |
   **PREMISE DEFECT, worth more than the package (found by opening the file, not the note).** B18's
   row, the ACCOUNT_BOUNDARIES.md row, AND DefaultConceptGateway's class javadoc all claimed
   "save()/delete() run their whole check-then-act body ... inside a TransactionRunner, using
-  findByIdForUpdate". Grep at 20eec948 showed that was true of save() (runInTransaction at :389,
+  findByIdForUpdate". Grep at aa63c286 showed that was true of save() (runInTransaction at :389,
   findByIdForUpdate at :411) and FALSE of delete(): no runInTransaction wrapper at all, plain
   store.findById at :460, store.deleteById at :485. The doc, the row and the javadoc all described
   code that did not exist -- the exact stale-premise shape this repo's own recurring failure mode

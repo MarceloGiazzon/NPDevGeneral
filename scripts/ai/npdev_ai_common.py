@@ -19,7 +19,7 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-KNOWLEDGE_REL = "NPDevMcp/knowledge"  # moved from <repo>/knowledge by 5037a47a (2026-09-24)
+KNOWLEDGE_REL = "NPDevMcp/knowledge"  # moved from <repo>/knowledge by c63864f8 (2026-09-24)
 
 
 def knowledge_dir(root: Path | None = None) -> Path:

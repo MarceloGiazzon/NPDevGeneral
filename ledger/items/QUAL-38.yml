@@ -16,7 +16,7 @@ files:
   - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/CrossEngineDataPromotion.java
   - NPDevRuntimeHost/src/test/java/com/finalexec/db/CrossEngineDataPromotionTest.java
 detail: |
-  Commit 50ddf3ea (2026-08-21, "boundary violation envelope -- B2/B4/B5/B8/B9/B10 wired to REST+boot
+  Commit 650263b8 (2026-08-21, "boundary violation envelope -- B2/B4/B5/B8/B9/B10 wired to REST+boot
   channels") changed `CrossEngineDataPromotion.copyTable`'s missing-target-table case from returning
   a per-table `TableCopyResult(..., error="target table does not exist...")` to THROWING
   `BoundaryBootException(new BoundaryViolation("B10", "promotion", ...))`.
@@ -66,12 +66,12 @@ guard:
   provenRed: true
   provenRedNote: >-
     The test pre-existed the regression and asserts the returned-result shape directly, so it could
-    not have passed against commit 50ddf3ea's throwing code (the call never returned). It did not
+    not have passed against commit 650263b8's throwing code (the call never returned). It did not
     FAIL visibly because it is @Tag("integration") and Docker/Testcontainers-gated, excluded from
     the plain `test` task -- the regression was live and unexercised from 2026-08-21 to 2026-08-26.
 resolution: >-
   Fixed as item 4 of SUPPORT_FEATURES_PLAN_2026-08-26 (this item's own first option: the OLD
-  per-table-graceful behaviour was the intended contract, and the throw introduced by 50ddf3ea was
+  per-table-graceful behaviour was the intended contract, and the throw introduced by 650263b8 was
   the bug). copyTable's missing-target-table branch returns a TableCopyResult carrying the
   B10:data_only_promotion message prefix again -- keeping the boundary-id convention W2.3 introduced
   for B2/B4/B5/B9 -- instead of throwing BoundaryBootException, so apply()'s loop completes and the

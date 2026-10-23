@@ -119,7 +119,7 @@ detail: |
     concurrent sibling-worktree agents -- confirmed NOT this change's fault by reproducing the same
     corruption on a fully clean git-stash baseline. Two PRE-EXISTING, unrelated failures remain on a
     clean isolated run: `ModelChangeClassifierTest`'s two corpus property tests choke on
-    `NPDevSamples/pack9-role-binding-a/Input/model.json` (today's earlier PACK-9 commit, `340ed423` --
+    `NPDevSamples/pack9-role-binding-a/Input/model.json` (today's earlier PACK-9 commit, `eccb2c1f` --
     that model has no top-level `"concepts"` key, composing it entirely via `packs[]`, and the test
     parses the raw JSON directly rather than through `ModelSourceResolver`'s pack-composition path).
     Confirmed pre-existing and unrelated by reproducing on a clean stash with no EDIT-12 changes

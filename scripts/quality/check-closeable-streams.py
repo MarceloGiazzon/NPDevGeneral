@@ -18,7 +18,7 @@ the error named `out\\src\\main\\resources\\db`, and it was attributed to "a Win
 harness, not the test body" for long enough that the local generator gate was permanently red and
 people had learned to explain it away. It was one unclosed `Files.list` on line 128.
 
-RED-PROVEN against ec20ae5^ (the commit before S1's fix): this reports that exact line. A checker
+RED-PROVEN against e42283a^ (the commit before S1's fix): this reports that exact line. A checker
 that cannot detect the defect that already happened will not detect the next one.
 
 SCOPE

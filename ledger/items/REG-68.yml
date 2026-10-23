@@ -26,9 +26,9 @@ detail: |
   mode reads the live working tree, not HEAD, so the actual report-only scan was unaffected; only
   the self-test evidence was stale.
 
-  CLOSED 2026-07-29 (`docs/INVOCATION_TOPOLOGY_PLAN.md` T1): pinned to `10d3a88` (the commit
-  immediately before the fix `f76b95f`, confirmed via `git show` to still hold the pre-fix DRAFT
+  CLOSED 2026-07-29 (`docs/INVOCATION_TOPOLOGY_PLAN.md` T1): pinned to `178b3f0` (the commit
+  immediately before the fix `e93b6ca`, confirmed via `git show` to still hold the pre-fix DRAFT
   header), matching the same fixed-revision discipline used for REG-67 and Rule T2b's REG-62 @
-  9c3c423 pin. `--calibrate` now PASSes. `run-ai-knowledge-gate.ps1` gained a new step that runs
+  961ae75 pin. `--calibrate` now PASSes. `run-ai-knowledge-gate.ps1` gained a new step that runs
   every `--calibrate`-capable script (derived from argparse, not hand-maintained) specifically so
   this class of rot announces itself instead of waiting to be found by hand a third time.

@@ -18,7 +18,7 @@ surface: runtimehost/build-config
 detail: |
   See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R1 for the full 6-stage spec. Stage 0
   (delete 4 phantom entries) and Stage 1 (move generatedRuntimeDependentTestSources inside the
-  generatedRuntimeMountPresent() guard, reviving 6 files / 21 @Test) shipped in commit a4ea2ca1,
+  generatedRuntimeMountPresent() guard, reviving 6 files / 21 @Test) shipped in commit 98a27681,
   already on main.
 
   This session (MASTER-ROADMAP.md Track C item C3) did Stages 2, 4, and 5; Stage 3 was stopped

@@ -9,7 +9,7 @@ opened: 2026-09-30
 closed: 2026-09-30
 verification: VERIFIED_LIVE
 source: >-
-  NPDev Release Gate run 36732392584 (a9663766): medium-expense-approval's suite 954/955, the one
+  NPDev Release Gate run 36732392584 (0ab35f87): medium-expense-approval's suite 954/955, the one
   failure at JdbcBusinessConceptStoreExistsUniqueTest.java:194, in a log also reporting "The paging
   file is too small for this operation to complete". The previous run passed all 27 sub-gates.
 surface: NPDevRuntimeHost tests (copied into every generated app)
@@ -25,5 +25,5 @@ guard:
     NPDevRuntimeHost/src/test/java/com/finalexec/db/JdbcBusinessConceptStoreExistsUniqueTest.java#existsUniqueOverOneHundredThousandRowsIsDramaticallyFasterThanTheOldFullScanItReplaced
   asserts: >-
     Best-of-5 warmed existsUnique is at least 3x faster than findAll over the same 100k rows;
-    Release Gate run 36741456192 on e2f44e76 passed end to end.
+    Release Gate run 36741456192 on c0bcb1a9 passed end to end.
   provenRed: false

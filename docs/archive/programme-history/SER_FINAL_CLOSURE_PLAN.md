@@ -4,7 +4,7 @@
 
 
 > **Written:** 2026-07-25 · **Branch:** `beta1-vision-spine` · **Repo root:** `D:\WorkSpace\NPDev\NPDev_General`
-> **HEAD when written:** `fce3eb1` (finding-#1 fix)
+> **HEAD when written:** `ea4304a` (finding-#1 fix)
 > **Audience:** an AI executor with limited autonomy. **Your job is execution, not investigation.**
 > Every fact below was verified against the live tree on 2026-07-25. If reality does not match this
 > document → **STOP and report** (§0.6). Do not improvise.
@@ -84,7 +84,7 @@ not unique, include more surrounding lines. Never edit anything under `D:\WorkSp
 | **G3** | **Backfill-hook path proven only in isolation** — `rule6_hookResolvesTheNeedsHookItem` calls `ConversionHookRunner.run(...)` directly; the only *end-to-end* `beforeMigrate` proofs are destructive-drops. | MED | S | §2.3 |
 | **G4** | **Naive SQL splitter** — `splitStatements` (`ConversionHookRunner:~357`) is single-quote aware only: no `--` / `/* */` comments, no `$$` dollar-quoting. A `;` inside a comment splits wrongly. | MED-LOW | S/M | §2.4 |
 | **G5** | **Per-hook independent transactions** — hook 2 failing leaves hook 1 committed; a re-boot may re-run a non-idempotent hook 1. By design (rule 3) but unenforced and undocumented for operators. | LOW | S | §2.5 |
-| **G6** | **H2 has no transactional DDL** — a failed `verifySql` rolls back DML but not DDL on H2 (Postgres is fine). Already fixed as far as possible + documented (`fce3eb1`); remaining work is a **hard guard**, not a fix. | LOW | S | §2.6 |
+| **G6** | **H2 has no transactional DDL** — a failed `verifySql` rolls back DML but not DDL on H2 (Postgres is fine). Already fixed as far as possible + documented (`ea4304a`); remaining work is a **hard guard**, not a fix. | LOW | S | §2.6 |
 | **G7** | **Two engine-detection paths** — runner uses `getDatabaseProductName()`, the rest of the executor uses `manifest.engine()`. Harmless today, drift-prone. | LOW | S | §2.7 |
 
 ### Group B — Schema engine, known deferrals
@@ -260,7 +260,7 @@ No behavior change. Two edits:
 
 ### §2.6 · G6 — Guard the H2 non-transactional-DDL caveat
 
-The limitation is already fixed-as-far-as-possible and documented (`fce3eb1`). Add a **detection guard**
+The limitation is already fixed-as-far-as-possible and documented (`ea4304a`). Add a **detection guard**
 so an operator is warned at the moment it matters. In `ConversionHookRunner.run(...)`, before executing a
 hook, if `engine` is `h2` **and** the hook has a non-blank `verifySql` **and** its SQL matches
 `(?is).*\b(ALTER|DROP|CREATE)\s+TABLE\b.*`, print:

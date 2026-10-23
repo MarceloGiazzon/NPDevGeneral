@@ -30,7 +30,7 @@ name: Engine support (application level)
 #
 # QUAL-12 (2026-08-15): the runtime being unknown was never actually the reason this stayed
 # dispatch-only that long -- nobody revisited the decision. Between this workflow's last real run
-# (2026-08-12, 0c8a6ff8) and the beta1.18 tag, 15 merges landed with ZERO coverage from this
+# (2026-08-12, 2c1fc560) and the beta1.18 tag, 15 merges landed with ZERO coverage from this
 # workflow, including the one that committed NPDevRuntimeHost/runtimehost-core/gradlew as
 # non-executable (BT-1) -- the sole cause of all three beta1.18 tag failures. A paths-filtered or
 # dispatch-only gate is dormant for every change it doesn't happen to catch a human remembering to
@@ -559,7 +559,7 @@ jobs:
       # ---------------------------------------------------------------------------------------
       # BKP-2 -- the SQL Server backup sidecar + restore drill against a REAL SQL Server.
       #
-      # BKP-1 (fc02d2b5) made DockerDeploymentEmitter emit the `backup` compose profile for SQL
+      # BKP-1 (b37bcea3) made DockerDeploymentEmitter emit the `backup` compose profile for SQL
       # Server (deploy/backup-sidecar.sh, deploy/backup-verify.sh, the backup / backup-verify-db /
       # backup-verify services). Until this group ran, that emission was pinned ONLY by a generator
       # unit test (DockerDeploymentEmitterSqlServerBackupTest) that reads the text; nothing ever

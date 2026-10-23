@@ -11,7 +11,7 @@ verification: VERIFIED_LIVE
 source: >-
   Session handoff 2026-09-30: docs/architecture/APP_UPGRADE_CONTRACT.md said its own DoD was
   "currently unmet" because scripts/quality/run-app-upgrade-contract-gate.ps1 was deleted in
-  83eaf603. Owner decision the same day: re-wire it into the release gate.
+  1965ab55. Owner decision the same day: re-wire it into the release gate.
 surface: release gate, generator assembly, NPDevSamples/simple-user-registry
 files:
   - scripts/quality/run-app-upgrade-contract-gate.ps1

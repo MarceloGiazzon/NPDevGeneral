@@ -33,7 +33,7 @@ detail: |
      scripts/policy/sample-matrix-policy.json's releaseBlockingSamples/fixtureOnlySamples lists (a
      SEPARATE classification from scripts/quality/corpus-roles.json's corpusRole, verified by
      reading run-sample-matrix.ps1's Get-SampleClassification directly) never got an entry for this
-     sample. `git log --follow` shows the sample was added once (b5b06961, "effective-dated values
+     sample. `git log --follow` shows the sample was added once (3acfbda8, "effective-dated values
      -- concept.temporal + asOf resolution R5.8/RUN-22") and never touched again -- a plain
      oversight, not a deliberate omission. corpus-roles.json already classifies it "repro-case";
      every existing repro-case-classified NPDevSamples entry is likewise absent from BOTH

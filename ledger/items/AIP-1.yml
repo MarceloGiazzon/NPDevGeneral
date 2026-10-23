@@ -40,5 +40,5 @@ guard:
   provenRed: false
 note: >-
   2026-10-22: all steps landed -- 1.1/1.2/1.3/1.3a/1.3d/1.3f in c205b1d0 (schema, catalogue v1, overlay,
-  effort table, npdev ai CLI), 1.3e in 5eb2127e, 1.3b/1.3c in 9354df6f (detect, models refresh), 1.4 in
-  091a6f56 (VENDOR_PROFILES deleted), 1.5 in edec1acd (twin-pair rule ai-protocols-three-place).
+  effort table, npdev ai CLI), 1.3e in 4571e89a, 1.3b/1.3c in f3bc9d66 (detect, models refresh), 1.4 in
+  d07d3210 (VENDOR_PROFILES deleted), 1.5 in aedd13da (twin-pair rule ai-protocols-three-place).

@@ -10,7 +10,7 @@ source: LNCH-1 programme inheritance
 surface: process/release
 detail: |
   Release tag beta1.1 (annotated) cut 2026-07-22 on the beta1-vision-spine -> main merge commit
-  3e29cca; run-release-checklist-gate.ps1 no longer lacks a tag. Trademark clearance: owner's final
+  24c9215; run-release-checklist-gate.ps1 no longer lacks a tag. Trademark clearance: owner's final
   decision (2026-07-23) is N/A -- this is an individual, non-commercial hobby/portfolio project with
   no mark to defend and no trademark sought, so there is nothing to clear and nothing to park; the
   item is complete, not deferred. Two preliminary name-collision findings on file ("NP DEV Soluções em

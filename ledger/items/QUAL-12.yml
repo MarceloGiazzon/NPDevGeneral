@@ -10,8 +10,8 @@ closed: 2026-08-15
 verification: VERIFIED_LIVE
 source: >-
   third-person-readiness-2026-08-15/FOLLOWUP-PLAN.md §3, corroborated independently by commit
-  772b2e66's own commit message (already merged to main): "neither Engine support (last run
-  2026-08-12, 0c8a6ff8) nor Manager harness (last main run ef1d9bb8) executed for any of PRs
+  d47c4148's own commit message (already merged to main): "neither Engine support (last run
+  2026-08-12, 2c1fc560) nor Manager harness (last main run f977d239) executed for any of PRs
   #83-#98". Same dormancy CLASS as REG-161 (six other gates with no pull_request trigger, filed and
   fixed 2026-08-14) -- found again, on a sibling workflow, one day later.
 surface: ci/workflows
@@ -22,8 +22,8 @@ detail: |
   `workflow_dispatch` -- a deliberate choice (see the workflow's own header comment) made when its
   runtime was unknown, reasoning "promoting it to a branch push trigger is still a decision to make
   once its runtime is known". That decision was never revisited. Between its last real run
-  (2026-08-12, `0c8a6ff8`) and `beta1.18`'s tag, 15 merges landed with zero coverage from this
-  workflow, including `4d5b94d8` (BT-1, the RuntimeHost jar split) which committed
+  (2026-08-12, `2c1fc560`) and `beta1.18`'s tag, 15 merges landed with zero coverage from this
+  workflow, including `7ffdf3c0` (BT-1, the RuntimeHost jar split) which committed
   `NPDevRuntimeHost/runtimehost-core/gradlew` as mode 100644 (non-executable) -- the sole cause of
   all three `beta1.18` tag failures (Engine support itself, Manager harness, and Publish
   RuntimeHost Libs releasing 4 of 6 assets). The workflow that would have caught this on the very
@@ -60,10 +60,10 @@ detail: |
   anything else on the app-on-engine boot path, so this result still describes current `HEAD`.
 
   **2026-08-15 (closeout): the `push: branches: [main]` trigger is now directly observed firing,
-  not just plausible.** PR #100 was merged (squash, `f11bf212`), and that merge's own push to
+  not just plausible.** PR #100 was merged (squash, `8795defa`), and that merge's own push to
   `main` auto-triggered `engine-support.yml` run `31902732818` -- no manual dispatch, no human
   remembering to press a button, exactly the mechanism this item exists to guarantee. A second
-  push to `main` shortly after (the `REG-183` firstrun-harness fix, commit `4d0d3fa9`) triggered
+  push to `main` shortly after (the `REG-183` firstrun-harness fix, commit `efb496d5`) triggered
   run `31904346866` the same way, confirming this is not a one-off. Both real automatic runs
   observed; promoting to DONE.
 guard:
@@ -74,7 +74,7 @@ guard:
   asserts: >-
     the workflow runs on every push to main, not only on a tag or a manual dispatch
   provenRed: true
-  # RED proven twice over before this fix: commit 772b2e66's own message states the workflow did
+  # RED proven twice over before this fix: commit d47c4148's own message states the workflow did
   # not run for PRs #83-#98; the beta1.18/beta1.19 tag runs immediately preceding this branch's own
   # dispatch (31897619206) both failed. GREEN now observed directly: two real push-to-main-triggered
   # runs (31902732818, 31904346866), not inferred from the YAML.

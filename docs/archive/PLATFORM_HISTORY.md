@@ -116,7 +116,7 @@ agent-proxy work.
 
 ## Why the generated-app test exclusion note flipped
 
-Before commit `a4ea2ca1d` (2026-08-12), `build.gradle.template` excluded RuntimeHost tests naming
+Before commit `98a27681c` (2026-08-12), `build.gradle.template` excluded RuntimeHost tests naming
 `com.npdev.generated.` unconditionally, and `CLAUDE.md` correctly said those tests did not run. The
 commit moved the exclusion inside the `generatedRuntimeMountPresent()` guard, so they do run — but
 the doc went unupdated long enough that a later audit (W5.4, 2026-08-25) re-discovered the

@@ -5,7 +5,7 @@ WHY THIS EXISTS
 ----------------
 Measured on the strategy-2026-08-12 audit's own numbers: 178/178 tracked items were DONE, 154 claimed
 `verification: VERIFIED_LIVE`, and nothing anywhere re-tested any of them. `ledger/README.md` already
-grew an optional `guard: {kind, ref, asserts, provenRed}` field (992d47a8, this session) so a DONE
+grew an optional `guard: {kind, ref, asserts, provenRed}` field (31e39f22, this session) so a DONE
 claim COULD name a test/script/manual proof instead of just asserting one -- but the field was, and
 without this checker still would be, purely decorative: nothing verified a `guard.ref` pointed at
 something real, and nothing required a DONE item to carry one at all. A guard nobody checks is exactly

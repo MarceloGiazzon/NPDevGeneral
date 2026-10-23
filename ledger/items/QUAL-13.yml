@@ -9,8 +9,8 @@ opened: 2026-08-15
 closed: 2026-08-15
 verification: VERIFIED_LIVE
 source: >-
-  third-person-readiness-2026-08-15/FOLLOWUP-PLAN.md §3. Same underlying dormancy commit 772b2e66
-  already documented for this workflow's own last-main-run date (`ef1d9bb8`), read alongside its
+  third-person-readiness-2026-08-15/FOLLOWUP-PLAN.md §3. Same underlying dormancy commit d47c4148
+  already documented for this workflow's own last-main-run date (`f977d239`), read alongside its
   `pull_request.paths` filter.
 surface: ci/workflows
 files:
@@ -61,6 +61,6 @@ guard:
     change) triggers this workflow, where before this fix it would not have
   provenRed: true
   # RED already proven: BT-1's PR (#14) touched NPDevRuntimeHost/runtimehost-core/gradlew and
-  # matched none of the pre-fix paths; commit 772b2e66 independently confirms this workflow's last
+  # matched none of the pre-fix paths; commit d47c4148 independently confirms this workflow's last
   # main-branch run predates PRs #83-#98. GREEN now directly proven via throwaway PR #101 (run
   # 31902871951), which isolates the new rule from the pre-existing "workflow file changed" one.

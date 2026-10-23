@@ -12,7 +12,7 @@ surface: build-tooling/root-resolution, ci/linux-maturity-validation
 source: >-
   Found while fixing three packaged-app proof tests that failed only on the Linux CI runner
   (HardenGcDeleteReplaceCascade / HardenObjstoreFileUpload / UntrustedExtensionEmitter
-  PackagedGeneratedAppRuntimeProofTest), red on main since 5317584 and passing on every local run.
+  PackagedGeneratedAppRuntimeProofTest), red on main since 5db316a and passing on every local run.
 detail: >-
   Eleven independent copies of NPDev's external-build-root resolution located the repo root by
   walking ancestors for a directory literally NAMED 'NPDev_General':
@@ -46,7 +46,7 @@ detail: >-
   Two diagnostics hid the root cause and were fixed alongside it:
     - the CI step that surfaces generator test failures globbed the non-redirected buildDir, so it
       printed "no generator test XML containing failures was found" on a run with three failures.
-      Commit eff0f43 had fixed that identical trap for the artifact-upload glob two days earlier --
+      Commit ca1da41 had fixed that identical trap for the artifact-upload glob two days earlier --
       the redirected buildDir has now caught four separate call sites.
     - NEW-1 declared working-directory on an `if: failure()` step; the runner resolves that before
       the script runs, so a run failing upstream of app generation added a second, purely spurious
@@ -54,7 +54,7 @@ detail: >-
 resolution: >-
   DONE (2026-08-08), in two commits so each isolates one variable.
 
-  865c74b pins NPDEV_BUILD_ROOT=${{ github.workspace }}/Build in the Linux CI job, making both
+  b7158fe pins NPDEV_BUILD_ROOT=${{ github.workspace }}/Build in the Linux CI job, making both
   resolvers take their first branch so agreement is structural rather than coincidental. Verified:
   the full run went green (Linux + Windows), including the three proof tests.
 

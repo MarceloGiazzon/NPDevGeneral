@@ -1,9 +1,9 @@
 {
   "closedAt": "2026-10-23T02:30:53.7873193Z",
   "branch": "main",
-  "head": "8a76f897",
+  "head": "0beb0955",
   "headSubject": "chore(ledger): AIP-1, AIP-2, AIP-5 DONE with guards; AIP-3 and AIP-4 PARTIAL with what is still open (AIP-5: 5.4)",
-  "summary": "AI providers plan: Manager slice + Phase 3 Java committed (b23f0705, 6e747e99); 3.2 vendor check + 1.5 twin-pair (edec1acd); 3.3/3.4c/3.5 (865c5912); Phase 4.1-4.4 AI Providers tab, Scrap assistant profile/effort, Monitor inspector AI section + npdev ai app (dc844a32, 0bc78ddc, b4f4fcd0); Phase 5: digest hook matches the executed program (f23463a2), docs/AI_PROVIDERS.md + card (9aa2c39a), check-no-hardcoded-ai-endpoints gate step 52 + Manager 0.5.0 (9aa3fa8a), ledger AIP-1/2/5 DONE, AIP-3/4 PARTIAL (8a76f897).",
+  "summary": "AI providers plan: Manager slice + Phase 3 Java committed (08f4034d, 09752b1e); 3.2 vendor check + 1.5 twin-pair (aedd13da); 3.3/3.4c/3.5 (e52996e9); Phase 4.1-4.4 AI Providers tab, Scrap assistant profile/effort, Monitor inspector AI section + npdev ai app (37f83f7d, 4b3f0f60, a45d8139); Phase 5: digest hook matches the executed program (787142af), docs/AI_PROVIDERS.md + card (54491111), check-no-hardcoded-ai-endpoints gate step 52 + Manager 0.5.0 (868a4deb), ledger AIP-1/2/5 DONE, AIP-3/4 PARTIAL (0beb0955).",
   "nextStep": "Plan is complete except owner-gated work: ask the owner for D1-D4 (AIP-6) and DeepSeek key revocation (AIP-0). If D3 is answered, do 3.4 (npdev providers run-env --app DIR -- CMD; emitted _ops Start-App uses it; Monitor inspector gets a one-click start). Otherwise the next code step is 3.4a: a DSL prompt may declare effort, or profile instead of vendor+model (mirror the four model.schema.json copies, add the dsl-conformance-max example and a behaviour probe). Before regenerating any app run scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars (Build/runtimehost-libs jars are from 2026-10-18).",
   "plan": "/home/marcelo/repos/NPDev/NPDev_General__OutsideRepo/AI_PROVIDERS_UNIFICATION_PLAN_2026-10-22.md",
   "blocked": "Owner: revoke DeepSeek key (AIP-0 0.1, console only); decide D1 history scrub, D2 paid in Prompter/cap, D3 app keys from store (gates 3.4), D4 custom endpoints as app vendors (AIP-6). AIP-4 4.5 real-window run needs a key or local LLM. Claude shell PATH lacks ~/.local/bin and ~/.cargo/bin (use full paths; /prep fails until fixed). OWNER RULE: no long gates on this notebook.",
@@ -12,17 +12,17 @@
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "8a76f897 chore(ledger): AIP-1, AIP-2, AIP-5 DONE with guards; AIP-3 and AIP-4 PARTIAL with what is still open (AIP-5: 5.4)",
-    "9aa3fa8a feat(quality): check-no-hardcoded-ai-endpoints -- an AI vendor host lives only in the catalogue; gate step [52/52]; Manager 0.5.0 (AIP-5: 5.3)",
-    "9aa2c39a docs(ai): docs/AI_PROVIDERS.md -- catalogue, overlay, keys and their resolution order, spend rules, how generated apps get vendors and keys; knowledge card recipe-ai-providers (AIP-5: 5.2)",
-    "f23463a2 fix(hooks): require-digest blocks a command that RUNS an expensive tool, not one that names it in an argument (AIP-5: 5.1)",
-    "b4f4fcd0 feat(manager): the Monitor's inspector shows each AI vendor an app's model opted into and whether the app will find its key, with a one-click write from your store (AIP-4: 4.4)",
-    "0bc78ddc feat(manager): the Scrap assistant picks a profile and effort per run; Prompter effort covers every level and offers no raw-endpoint kind for a new provider (AIP-4: 4.3)",
-    "dc844a32 feat(manager): AI Keys becomes AI Providers -- providers, models, profiles and uses over `npdev ai`, with what each feature called and cost this month (AIP-4: 4.1, 4.2)",
-    "865c5912 feat(ai): app calls priced per model from the catalogue; a local-LLM prompt warns; the chat assistant defaults to the model's own vendor (AIP-3: 3.3, 3.4c, 3.5)",
-    "edec1acd feat(dsl): externalAi.vendors must be app vendors of the bundled AI catalogue; twin-pair rule ai-protocols-three-place (AIP-3: 3.2; AIP-1: 1.5)",
-    "6eae4c96 chore(session): last session's handoff",
-    "6e747e99 feat(ai): generated apps build their AI vendors from the bundled catalogue -- groq, cerebras, openrouter, mistral and a keyless local ollama join as app vendors (AIP-3: 3.1)",
-    "b23f0705 feat(manager): the Prompter speaks `ai` profiles, http keys migrate into `npdev providers`, Scrap assistant defaults to ai, Linux keyring uses Secret Service (AIP-2: 2.4, 2.5, 2.6, 2.8)"
+    "0beb0955 chore(ledger): AIP-1, AIP-2, AIP-5 DONE with guards; AIP-3 and AIP-4 PARTIAL with what is still open (AIP-5: 5.4)",
+    "868a4deb feat(quality): check-no-hardcoded-ai-endpoints -- an AI vendor host lives only in the catalogue; gate step [52/52]; Manager 0.5.0 (AIP-5: 5.3)",
+    "54491111 docs(ai): docs/AI_PROVIDERS.md -- catalogue, overlay, keys and their resolution order, spend rules, how generated apps get vendors and keys; knowledge card recipe-ai-providers (AIP-5: 5.2)",
+    "787142af fix(hooks): require-digest blocks a command that RUNS an expensive tool, not one that names it in an argument (AIP-5: 5.1)",
+    "a45d8139 feat(manager): the Monitor's inspector shows each AI vendor an app's model opted into and whether the app will find its key, with a one-click write from your store (AIP-4: 4.4)",
+    "4b3f0f60 feat(manager): the Scrap assistant picks a profile and effort per run; Prompter effort covers every level and offers no raw-endpoint kind for a new provider (AIP-4: 4.3)",
+    "37f83f7d feat(manager): AI Keys becomes AI Providers -- providers, models, profiles and uses over `npdev ai`, with what each feature called and cost this month (AIP-4: 4.1, 4.2)",
+    "e52996e9 feat(ai): app calls priced per model from the catalogue; a local-LLM prompt warns; the chat assistant defaults to the model's own vendor (AIP-3: 3.3, 3.4c, 3.5)",
+    "aedd13da feat(dsl): externalAi.vendors must be app vendors of the bundled AI catalogue; twin-pair rule ai-protocols-three-place (AIP-3: 3.2; AIP-1: 1.5)",
+    "d32e04fd chore(session): last session's handoff",
+    "09752b1e feat(ai): generated apps build their AI vendors from the bundled catalogue -- groq, cerebras, openrouter, mistral and a keyless local ollama join as app vendors (AIP-3: 3.1)",
+    "08f4034d feat(manager): the Prompter speaks `ai` profiles, http keys migrate into `npdev providers`, Scrap assistant defaults to ai, Linux keyring uses Secret Service (AIP-2: 2.4, 2.5, 2.6, 2.8)"
   ]
 }

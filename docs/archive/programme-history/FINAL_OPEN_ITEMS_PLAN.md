@@ -1,7 +1,7 @@
 # Final Open-Items Plan
 
 > **STATUS: CLOSED except F11 (owner-only).** Written 2026-07-29 against `beta1-vision-spine` @
-> `3d36df4` (repo public, tag `beta1.2`, ledger authoritative, 12/12 knowledge-gate steps green).
+> `72d44a6` (repo public, tag `beta1.2`, ledger authoritative, 12/12 knowledge-gate steps green).
 > F1-F10 all done 2026-07-29 — full evidence in each item's own Definition of Done below. F11 (three
 > real outreach conversations) is explicitly owner-only per its own framing and was not attempted by
 > an agent.

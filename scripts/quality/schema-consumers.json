@@ -17,7 +17,7 @@
     {
       "path": "scripts/docs/generate_dsl_reference.py",
       "reads": "walks $defs (concept/field/flowStep/procedureStep/...) properties+enums, and the root model's array-field discriminator (if/then/else or oneOf) via describe_type(), to render docs/DSL_REFERENCE.md",
-      "breaksIf": "a new composition keyword (or a changed discriminator shape) that describe_type() does not have a branch for -- it silently falls through to the bare 'any'/'array<any>' fallback instead of erroring. This is the exact 8cd9860 defect: the schema's oneOf->if/then/else migration did this to all 19 model-array fields, and neither generate_dsl_reference.py's own --check drift mode (regenerated+recommitted in the SAME commit, so drift compared clean) nor any other gate caught it -- a human reading the doc did.",
+      "breaksIf": "a new composition keyword (or a changed discriminator shape) that describe_type() does not have a branch for -- it silently falls through to the bare 'any'/'array<any>' fallback instead of erroring. This is the exact c0ecd84 defect: the schema's oneOf->if/then/else migration did this to all 19 model-array fields, and neither generate_dsl_reference.py's own --check drift mode (regenerated+recommitted in the SAME commit, so drift compared clean) nor any other gate caught it -- a human reading the doc did.",
       "assertion": "scripts/quality/check-dsl-reference-output-floor.py (NEW, this item) -- no discriminated root array field renders as the bare fallback; flowStep/procedureStep/concept breadth floors met. Wired into run-generator-gate.ps1 (dslReferenceOutputFloor), alongside the pre-existing dslReferenceDrift check.",
       "status": "PROTECTED (new gate added this item)"
     },

@@ -4,7 +4,7 @@ codeLinked: true
 codeLinkedNote: >-
   2026-08-25 (remediation plan W2.3). SchemaDropSnapshotRestorer.apply already threw
   `BoundaryBootException(new BoundaryViolation("B9", "restore", ...))` before this session (Wave 2,
-  commit 50ddf3ea). This was the boundary's ONE runtime refusal (the named table must exist before it
+  commit 650263b8). This was the boundary's ONE runtime refusal (the named table must exist before it
   can be restored into) -- there was no separate "you asked for more than one table" check to attach
   a code to, because the single-table API signature never accepted more than one; "single_table_scope"
   described the whole endpoint's shape, and this refusal was its one reachable manifestation. Code

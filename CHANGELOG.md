@@ -4,7 +4,7 @@ Format: see `docs/RELEASE_PROCESS.md`. Dates are release-tag dates, not commit d
 
 ## [Unreleased]
 
-Landed on `main` AFTER the `beta1.20` tag (`ec0350a9`) and therefore **not** in that
+Landed on `main` AFTER the `beta1.20` tag (`6ca4edfb`) and therefore **not** in that
 release. Ships in the next tag.
 
 ### Added
@@ -43,7 +43,7 @@ release. Ships in the next tag.
 
 ## [beta1.20] - 2026-08-26
 
-Scoped to the 214 commits between `beta1.19` (`522b0c8c`, 2026-08-15) and this tag (`ec0350a9`).
+Scoped to the 214 commits between `beta1.19` (`522b0c8c`, 2026-08-15) and this tag (`6ca4edfb`).
 Every releases since `beta1.8` landed with no `CHANGELOG.md` entry (recorded as a known gap in
 `scripts/policy/changelog-versions.json`); this entry does not attempt to reconstruct that backlog
 retroactively, only to bring the file current from here forward. Highlights, not an exhaustive

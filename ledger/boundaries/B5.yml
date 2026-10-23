@@ -4,7 +4,7 @@ codeLinked: true
 codeLinkedNote: >-
   2026-08-25 (remediation plan W2.3). SchemaLifecycleExecutor.beforeMigrate already threw
   `BoundaryBootException(new BoundaryViolation("B5", "boot", ...))` for REG-8 Trigger C before this
-  session (Wave 2, commit 50ddf3ea, 2026-08-21 -- landed before the 2026-08-23 audit that produced
+  session (Wave 2, commit 650263b8, 2026-08-21 -- landed before the 2026-08-23 audit that produced
   this remediation plan, which read the OLD pre-Wave-2 note describing this as unwired without
   re-tracing the live code, exactly the same stale-premise shape as B19). `BoundaryViolation` has no
   separate `code` field, only `boundaryId` -- the declared code is now carried as a

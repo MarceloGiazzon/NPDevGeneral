@@ -37,7 +37,7 @@ detail: |
   SECOND DEFECT, found only because the first was fixed. With the build passing, boot failed
   immediately on StartupValidator's "npdev.auth.api-keys must define at least one mapping when auth
   is enabled". run-scale-proof.ps1 never provisioned an API key and hardcoded "dev-key" in its own
-  request headers. Commit f11bf212 ("provision API keys on every launcher") had fixed the launchers
+  request headers. Commit 8795defa ("provision API keys on every launcher") had fixed the launchers
   it knew about; this one was missed, and being already-red for the compile reason meant it produced
   no new signal when it stayed red. The proof now provisions a real key (same secrets\api-key.env
   format and NPDEV_AUTH_API_KEYS contract as Build-NpdevApp.ps1's Ensure-NpdevApiKey) and uses it.

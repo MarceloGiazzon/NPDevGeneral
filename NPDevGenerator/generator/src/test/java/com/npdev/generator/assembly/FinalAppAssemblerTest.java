@@ -552,7 +552,7 @@ class FinalAppAssemblerTest {
      * is unset: {@code NPDEV_BUILD_ROOT}'s own runtimehost-libs, else {@code <repo parent>/Build}.
      * Pinned rather than inherited -- CI sets NPDEV_BUILD_ROOT and a dev box usually does not, so
      * an ambient env covered one branch on each and the generator coverage floor recorded locally
-     * sat 2 lines above what CI could ever reach (CI red on 4ba33be1 and 742138fd).
+     * sat 2 lines above what CI could ever reach (CI red on ca4873f2 and cf29083f).
      */
     @Test
     void bakesBuildRootThenRepoSiblingFallbackWhenLibsDirEnvUnset() throws Exception {

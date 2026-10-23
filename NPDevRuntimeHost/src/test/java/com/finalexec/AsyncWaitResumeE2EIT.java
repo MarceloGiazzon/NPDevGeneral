@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 // hypothesis that this leaked thread was blocking the forked Gradle test JVM's own shutdown --
 // DISPROVEN live in CI (run 36662397857, 2026-09-30): with this annotation in place, the Postgres
 // integration-test step still hung the full 45-minute CI timeout with zero further Gradle output
-// after this test's own (fast, ~14s) HTTP-status assertion failure (line 190 of commit e9aefeca's
+// after this test's own (fast, ~14s) HTTP-status assertion failure (line 190 of commit 6e0da4fa's
 // version of this file, in getJson()'s andExpect(status().is(expectedStatus))) and no completed JUnit XML
 // report, identical to the pre-fix symptom. Left in place because it's harmless and still
 // correct hygiene for a scheduler-enabling test, but it is NOT the fix for the hang. The CI hang

@@ -21,7 +21,7 @@ codeLinkedNote: >-
 
   2026-08-25 (remediation plan W2.3). CrossEngineDataPromotion.copyTable already threw
   `BoundaryBootException(new BoundaryViolation("B10", "promotion", ...))` before this session (Wave
-  2, commit 50ddf3ea). Code carried as a `B10:data_only_promotion:` message prefix, same convention
+  2, commit 650263b8). Code carried as a `B10:data_only_promotion:` message prefix, same convention
   as the other five.
 
   SEPARATE FINDING, not fixed here (outside W2.3's scope, flagged as ledger item QUAL-38): the same

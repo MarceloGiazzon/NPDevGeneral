@@ -19,7 +19,7 @@ detail: |
   2026-07-28 (further closures, REG-59/REG-61 split, register archived-in-place), so the exact
   stale-wording shape the controls look for no longer exists at today's HEAD. Both controls now
   report "silent" instead of "fired", so `--calibrate` FAILS on a clean tree -- confirmed by running
-  the unmodified, pre-this-session script against the current HEAD (5892370) before touching the
+  the unmodified, pre-this-session script against the current HEAD (a7ad1b2) before touching the
   file for Rule T2b: identical two failures, so this is not something this session's edits caused.
   Not a regression in the RULES themselves -- `main()`'s actual blocking checks (T1/T2 run against
   the live working tree, not HEAD) are unaffected; confirmed both report 0 contradictions in the
@@ -28,13 +28,13 @@ detail: |
   runs in the gate). Impact is real but bounded to a maintainer manually running `--calibrate`.
   Fix, when picked up: pin each real-instance control to the actual commit SHA where the bug shape
   is verifiably still present (`git log -S` or a recorded SHA in a comment, the same durability
-  `docs/CLOSEOUT_PLAN.md` G4's own new Rule T2b control uses for REG-62 @ 9c3c423) instead of `HEAD`,
+  `docs/CLOSEOUT_PLAN.md` G4's own new Rule T2b control uses for REG-62 @ 961ae75) instead of `HEAD`,
   or replace the rotted real-instance controls with synthetic fixtures (T2 already has one working
   synthetic control per rule; T1 does too) and drop the real-instance assertion once it can no longer
   be kept current for free.
 
-  CLOSED 2026-07-29 (`docs/INVOCATION_TOPOLOGY_PLAN.md` T1): Rule T1/T2 pinned to `6a58b09` (parent
-  of the fix commit `7ef8af4`, confirmed via `git show` to still hold both stale-wording shapes).
+  CLOSED 2026-07-29 (`docs/INVOCATION_TOPOLOGY_PLAN.md` T1): Rule T1/T2 pinned to `aedd965` (parent
+  of the fix commit `2b257b5`, confirmed via `git show` to still hold both stale-wording shapes).
   `--calibrate` now PASSes on all T1/T2/T2b controls. Corrected-scope lesson: this item was filed as
   ONE rotted control; running all eight then-existing `--calibrate` modes by hand (not just
   re-reading this instance) found a SECOND, unfiled instance with the identical root cause in

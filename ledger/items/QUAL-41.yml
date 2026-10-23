@@ -70,7 +70,7 @@ detail: |
   it should be -- named boot/first-run classes, not whatever was easiest to reach. Traced PORT-1..5
   and REG-177's fix commits first (PORT-1/2/3/5 land in the GENERATOR, not RuntimeHost's own source,
   and PORT-4 is docs-only -- none of the four gave RuntimeHost classes to target). REG-177 (commit
-  276fff20) is the one squarely inside RuntimeHost and boot/first-run-shaped: an eagerly-throwing
+  76bb7ea9) is the one squarely inside RuntimeHost and boot/first-run-shaped: an eagerly-throwing
   `IdentityPackTableNames.resolve()` call in several controllers' constructors that crashed Spring
   `ApplicationContext` startup for any generated app not composing the identity pack -- a real,
   live, previously-reproduced packaged-app boot failure (see REG-177's own "2026-08-15 correction"

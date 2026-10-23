@@ -1,5 +1,5 @@
 id: REG-133
-title: "Doc/report generators (generate_dsl_reference.py and siblings) are undeclared consumers of model.schema.json -- nothing enumerates what reads the schema, so an edit to it can silently degrade a generator with no error anywhere, the same shape commit 8cd9860 demonstrated live"
+title: "Doc/report generators (generate_dsl_reference.py and siblings) are undeclared consumers of model.schema.json -- nothing enumerates what reads the schema, so an edit to it can silently degrade a generator with no error anywhere, the same shape commit c0ecd84 demonstrated live"
 type: GAP
 severity: MEDIUM
 status: DONE
@@ -14,7 +14,7 @@ source: |
   own documented "adding a top-level model array field" section) -- an edit in one place with
   consumers nobody enumerated, discovered only after the fact.
 
-  Commit 8cd9860 (the model that this plan itself was written against) is the concrete evidence:
+  Commit c0ecd84 (the model that this plan itself was written against) is the concrete evidence:
   a schema edit there caused generate_dsl_reference.py to silently degrade its output with no
   error anywhere in the pipeline, caught only by a human noticing the generated reference doc
   looked wrong -- not by any gate. model.schema.json is already known to be duplicated across four
@@ -34,7 +34,7 @@ detail: |
   -- an actual grep for `model.schema.json`/`json.schema` reads across NPDevCli/NPDevMcp/scripts
   has not yet been done as part of filing this item), plus a gate that fails when a schema edit
   lands without a corresponding check that every registered consumer still produces sane output
-  (even a coarse "did the generator's output change unexpectedly" diff would catch the 8cd9860
+  (even a coarse "did the generator's output change unexpectedly" diff would catch the c0ecd84
   shape). This is explicitly the kind of registry-plus-gate pattern
   check-twin-pair-consistency.py already establishes for two other chains; a third instance here
   would be additive, not a new mechanism.
@@ -44,7 +44,7 @@ resolution: |
   `schema-consumer-inventory.py` helper: found 61 files referencing model.schema.json, 14 flagged
   as likely SHAPE-READER by its heuristic. Triaged each by hand against the real file content
   (not the heuristic's guess, per its own instruction) -- only 2 were genuine schema-shape
-  readers: generate_dsl_reference.py (the confirmed 8cd9860 victim, unprotected) and
+  readers: generate_dsl_reference.py (the confirmed c0ecd84 victim, unprotected) and
   check-step-type-test-coverage.py (a real shape-reader, but ALREADY self-protecting -- its own
   run() treats an empty enum read as a hard failure, not a silent pass). Three more
   (FlowStepTypeConformanceTest/ProcedureStepTypeConformanceTest/GeneratedActionFlowStepValidation
@@ -58,15 +58,15 @@ resolution: |
   Built `scripts/quality/schema-consumers.json` (the registry, all 5 real shape-readers) and
   `scripts/quality/check-dsl-reference-output-floor.py` (the new gate for the one unprotected
   consumer) -- two floors: (1) no root array field whose schema uses the if/then/else|oneOf
-  discriminator renders as the bare "any"/"array<any>" fallback (the EXACT 8cd9860 shape,
+  discriminator renders as the bare "any"/"array<any>" fallback (the EXACT c0ecd84 shape,
   schema-shape-agnostic: computed by walking the schema's OWN properties at check time, not a
   hardcoded field list -- a hardcoded list was my own first draft and had a real bug, wrong/
   incomplete field names, caught by cross-checking against the schema directly rather than
   trusting memory); (2) flowStep/procedureStep/concept breadth floors. RED-verified against the
-  ACTUAL pre-fix broken code (git show 8cd9860^, restored after): 19 problems reported, exactly
+  ACTUAL pre-fix broken code (git show c0ecd84^, restored after): 19 problems reported, exactly
   the 19 model-array fields F5 fixed. Wired into run-generator-gate.ps1 as a new
   `dslReferenceOutputFloor` step alongside the pre-existing `dslReferenceDrift` (--check) step --
-  deliberately two separate gates, since 8cd9860 proved a drift check alone is insufficient (the
+  deliberately two separate gates, since c0ecd84 proved a drift check alone is insufficient (the
   schema change regenerated AND re-committed the doc in the same commit, so drift compared
   clean). Registered in twin-pair-registry.json (schema-consumer-registry-gate-wiring): the
   registry's own claim that check-dsl-reference-output-floor.py protects generate_dsl_reference.py

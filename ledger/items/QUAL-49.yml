@@ -1,6 +1,6 @@
 id: QUAL-49
 title: >-
-  run-runtime-surface-evidence.ps1 fails at HEAD (daccc569) with zero code changes -- contradicts
+  run-runtime-surface-evidence.ps1 fails at HEAD (fafa157f) with zero code changes -- contradicts
   SEC-3 step 2/3's own same-session claim that "runtime-surface-evidence checks passed both times"
 type: GAP
 severity: MEDIUM
@@ -13,7 +13,7 @@ source: >-
   classification, footprint") after both real test suites (the assembled sample app's own gradle
   test task, including all new step-4 tests, and runtimehost-core's own gradle test task) had
   already passed BUILD SUCCESSFUL. Before assuming step 4's own new classes caused it, isolated the
-  cause: `git stash push -u` (removing every step-4 file, back to committed HEAD daccc569) and reran
+  cause: `git stash push -u` (removing every step-4 file, back to committed HEAD fafa157f) and reran
   `scripts/quality/run-runtime-surface-evidence.ps1` directly -- it failed IDENTICALLY
   ("classification, footprint") with zero working-tree changes applied. `git stash pop` restored the
   step-4 work afterward, verified via `git status`.
@@ -27,9 +27,9 @@ detail: |
   NOT ROOT-CAUSED. This item exists to record the discrepancy and the concrete failing checks, not to
   explain the mechanism -- that is next-session work.
 
-  The discrepancy: SEC-3's own ledger entry for step 2 (2026-09-01, this session, commit 63bc3e57)
-  and step 3 (commit daccc569) both explicitly state "coverage-floor + runtime-surface-evidence
-  checks passed both times" as part of their full-gate verification. HEAD is still daccc569 --
+  The discrepancy: SEC-3's own ledger entry for step 2 (2026-09-01, this session, commit e443ab2d)
+  and step 3 (commit fafa157f) both explicitly state "coverage-floor + runtime-surface-evidence
+  checks passed both times" as part of their full-gate verification. HEAD is still fafa157f --
   no commit has landed between that claim and this one. Yet running the exact same script against
   that exact same commit, with SEC-3 step 4's own new files stashed away entirely, reproduces the
   failure. Either the step 2/3 claim was inaccurate (the check was not actually reached, or its
@@ -80,9 +80,9 @@ detail: |
   (`-PendingOk`), only 2 of the 17+39+21-class drift this item catalogued were ever blocking:
   `services-classified` / `service-inventory-fully-classified` reporting `unclassifiedServices=2`
   for two classes -- `JavaSourceRuntimeRefManifest` and `JavaSourceRuntimeRefManifestLoader`. Both
-  were added by commit 866c4fb1 (the SEC-3 step-3 follow-up landed the same session as this item was
-  filed); replaying the classification check across history confirmed 0 unclassified at daccc569 and
-  03b123ce, 2 at 866c4fb1 -- a fresh regression from the most recent commit, not the old drift this
+  were added by commit f749c397 (the SEC-3 step-3 follow-up landed the same session as this item was
+  filed); replaying the classification check across history confirmed 0 unclassified at fafa157f and
+  988149ff, 2 at f749c397 -- a fresh regression from the most recent commit, not the old drift this
   item's own detail catalogues (that drift is real but was already advisory-by-design under
   `-PendingOk`, per GATE-OBS-1a; a genuine reconciliation of it stays out of scope, see below).
 

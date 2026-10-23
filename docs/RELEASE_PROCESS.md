@@ -19,7 +19,7 @@ existing gate seed) and the beta0 tag-immutability rules already written into
    for `<version>`, and (after step 4) `HEAD` is tagged `v<version>`. These are the mechanical
    items LNCH-23 asks for, not code quality (the other gates already own that). A script used to
    check them, but it was retired on 2026-08-13 as an orphan gate that nothing ever invoked
-   (commit 83eaf603) -- so today this is a manual step, and nothing enforces it.
+   (commit 1965ab55) -- so today this is a manual step, and nothing enforces it.
 4. **Tag.** `git tag -a v<version> -m "<one-line summary>"`, then push the tag. Per the beta0
    tag-immutability precedent: once pushed, a release tag is never force-moved or deleted — a
    mistake gets a new patch tag, not a rewritten one.

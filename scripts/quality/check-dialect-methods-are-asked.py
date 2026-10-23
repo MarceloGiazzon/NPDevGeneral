@@ -225,7 +225,7 @@ def production_files(root: Path) -> list[Path]:
 # one file -- so it cannot pick up an unrelated caller elsewhere.
 #
 # (This edit also removed two stray backspace bytes (0x08) that had sat either side of `INSTANCE`
-# in this same regex literal since commit d80a9213a (2026-08-09) -- confirmed via a raw byte scan,
+# in this same regex literal since commit 0ca821e27 (2026-08-09) -- confirmed via a raw byte scan,
 # not visible in any normal viewer. They made that one alternative match nothing real; harmless
 # here only because "dialect" already matches every production `XxxDialect.INSTANCE...` call
 # case-insensitively on its own, so no caller was ever missed because of it.)

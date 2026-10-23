@@ -73,7 +73,7 @@ class Stage12UiModelRuntimeIT extends AbstractScenarioIntegrationTest {
 
         assertThat(entities.isArray()).isTrue();
         assertThat(entities).hasSizeGreaterThanOrEqualTo(2);
-        // REG-172: superuser-admin-console (the sample this CI step actually boots since 9af8cd7c)
+        // REG-172: superuser-admin-console (the sample this CI step actually boots since 71883d15)
         // declares no flows at all, so the export omits the "flows" key entirely -- unlike
         // canonical-demo, which this test originally hardcoded (ScheduleAppointmentRunnerV2). Flow
         // export content itself is covered elsewhere (durable-workflow-demo, dsl-conformance-max);

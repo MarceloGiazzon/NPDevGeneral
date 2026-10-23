@@ -1,6 +1,6 @@
 id: QUAL-50
 title: >-
-  run-ai-knowledge-gate.ps1 fails at HEAD (03b123ce) with zero code changes -- two unrelated
+  run-ai-knowledge-gate.ps1 fails at HEAD (988149ff) with zero code changes -- two unrelated
   pre-existing findings, neither caused by the real-plugin-classloading manifest work that
   surfaced them
 type: GAP
@@ -14,7 +14,7 @@ source: >-
   failed with three reported problems after 39/39 numbered checks had otherwise printed OK. Before
   assuming the current session's own changes caused any of them, isolated the cause the same way
   QUAL-49 was isolated: `git stash push -u` (removing every uncommitted file from this session,
-  back to committed HEAD 03b123ce -- the commit made at the START of this session for the
+  back to committed HEAD 988149ff -- the commit made at the START of this session for the
   already-written SEC-3 Model B step 4 work) and reran the two failing checkers directly -- both
   failed IDENTICALLY with zero working-tree changes applied. `git stash pop` restored this
   session's own work afterward, verified via `git status`.
@@ -27,10 +27,10 @@ files:
   - scripts/policy/done-item-guard-policy.json
   - ledger/items/QUAL-46.yml
 detail: |
-  NOT ROOT-CAUSED beyond isolating each to HEAD 03b123ce. Two genuinely independent findings,
+  NOT ROOT-CAUSED beyond isolating each to HEAD 988149ff. Two genuinely independent findings,
   bundled into one item only because both surfaced in the same gate run:
 
-  Finding 1 -- 6 untriaged security-pattern-sweep hits, all pre-existing at 03b123ce (none in any
+  Finding 1 -- 6 untriaged security-pattern-sweep hits, all pre-existing at 988149ff (none in any
   file this session touched -- confirmed by grepping the sweep's own output for this session's new
   file names, zero matches):
   - 2x `sql-string-building` in NPDevRuntimeHost/runtimehost-core/.../db/SchemaLifecycleExecutor.java
@@ -38,7 +38,7 @@ detail: |
     flywayHistoryScriptColumnRef(connection) rather than bound as a parameter. Pre-dates this
     session entirely; unrelated to SEC-3.
   - 4x `swallowed-security-exception`, all introduced by SEC-3 Model B step 4 (the PREVIOUS
-    session's commit 03b123ce, already pushed before this session began, not this session's own
+    session's commit 988149ff, already pushed before this session began, not this session's own
     changes): PluginIpcFrameCodec.java:61 (catch EOFException -> return null), and three in the new
     per-OS resource limiters -- PluginLinuxCgroupResourceLimiter.java:70 and :85, and
     PluginWindowsJobObjectResourceLimiter.java:59 (each catch(...)  -> return false, non-auth path,

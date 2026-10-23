@@ -34,8 +34,8 @@ guard:
     ollama (keyless) and anthropic
   provenRed: false
 note: >-
-  2026-10-22: done -- 3.1 (6e747e99), 3.2 (edec1acd: unknown vendor is a validation error), 3.3 + 3.4c +
-  3.5 (865c5912: per-model pricing, loopback-vendor warning -- unconditional because the DSL has no
+  2026-10-22: done -- 3.1 (09752b1e), 3.2 (aedd13da: unknown vendor is a validation error), 3.3 + 3.4c +
+  3.5 (e52996e9: per-model pricing, loopback-vendor warning -- unconditional because the DSL has no
   deployment target, agent vendor from the model). Open: 3.4 run-env start (gated on owner decision D3,
   AIP-6), 3.4a prompt effort/profile in the DSL, 3.4b operator override per call. No app has called a
   real vendor yet.

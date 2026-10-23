@@ -63,7 +63,7 @@ test or script that proves it, not just a sentence asserting it. Filed OPEN item
 restructuring, derived gate numbers) is separate, larger, and not implied by this field's presence.
 
 **Enforced, not just documented, as of `check-done-item-guards.py` (R11's core mechanism, landed
-2026-08-14).** The field existed from 992d47a8 onward but nothing checked it — a `guard` could be
+2026-08-14).** The field existed from 31e39f22 onward but nothing checked it — a `guard` could be
 absent from a DONE item, or present and pointing at nothing, and neither was ever caught. Four rules
 now run on every gate pass (`scripts/quality/check-done-item-guards.py`, wired into
 `run-ai-knowledge-gate.ps1`, step [37/39] at the time of writing):

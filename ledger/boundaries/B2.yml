@@ -23,7 +23,7 @@ codeLinkedNote: >-
   (GET .../expression-backfill-preview, POST .../acknowledge) are how an operator RESOLVES it, not
   where it fires. The refusal string is now prefixed `B2:expression_backfill_requires_ack:`,
   discoverable in the boot log/exception message; `BoundaryViolation("B2", "backfill", ...)` (Wave 2,
-  commit 50ddf3ea) separately covers a DIFFERENT B2 precondition (no physical database configured)
+  commit 650263b8) separately covers a DIFFERENT B2 precondition (no physical database configured)
   at the REST preview endpoint -- not this code, since that failure is not the "requires ack" case.
   Proven by SchemaLifecycleExecutorRequiredFieldBackfillTest#unacknowledgedExpressionDefaultWithRealExpressionTextStillRefusesUnchanged.
 

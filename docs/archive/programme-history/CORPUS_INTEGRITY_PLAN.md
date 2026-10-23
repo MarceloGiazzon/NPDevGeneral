@@ -1,7 +1,7 @@
 # Corpus Integrity Plan — REG-63 is 17 models, not 2
 
 > **STATUS: EXECUTED (2026-07-29), except C11 which is owner-only.** Written against
-> `beta1-vision-spine` @ `1997939` (tree clean, all pushed, repo public, tag `beta1.2`, ledger
+> `beta1-vision-spine` @ `ee7b161` (tree clean, all pushed, repo public, tag `beta1.2`, ledger
 > authoritative). C1–C10 all done same day; see the Definition of Done and each `ledger/items/*.yml`
 > for the evidence trail (REG-63, REG-64, REG-62, REG-35, REG-34).
 >

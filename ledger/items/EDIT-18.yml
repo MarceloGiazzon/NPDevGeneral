@@ -15,7 +15,7 @@ source: >-
   discipline. Re-verifying that premise against live code (three parallel Explore passes, this
   session, before writing anything) found it stale in the same shape section 1 of the plan document
   itself had already found nine other premises stale: selectors[] already existed (PACK-11, commit
-  1f2fbeb7, 2026-08-18) as a top-level model/pack array (SelectorAst: name/concept/multiSelect/
+  272935f7, 2026-08-18) as a top-level model/pack array (SelectorAst: name/concept/multiSelect/
   filters/columns/returnMapping/metadata), already schema-declared across all 4 model.schema.json
   copies, already pack-composable (ModelSourceResolver.MODEL_ARRAY_KEYS), already validated
   (PanelValidation.validateSelectors), already corpus-covered (dsl-conformance-max's

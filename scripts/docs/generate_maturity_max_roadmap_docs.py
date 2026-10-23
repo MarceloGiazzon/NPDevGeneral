@@ -86,7 +86,7 @@ def render_roadmap_boundary_policy(p: dict) -> str:
     lines += [
         "",
         "**Retired scripts (2026-08-13):** every per-checkpoint script named above except",
-        "`run-portable-tooling-check.ps1` was deleted in commit 83eaf603 (Step 9 R4) as an orphan gate --",
+        "`run-portable-tooling-check.ps1` was deleted in commit 1965ab55 (Step 9 R4) as an orphan gate --",
         "nothing in `run-all-gates.ps1` or any workflow invoked it. The names stay here as the historical",
         "record of how each checkpoint was verified; they are not current commands. The same applies to the",
         "boundary-check claim in the paragraph below: that script is gone, so these rules are not currently",
@@ -243,7 +243,7 @@ def render_maturity_closure_ledger(p: dict) -> str:
         "`git rev-list -n 1 beta0`. Beta0 may not be retagged, moved, deleted, recreated, or "
         "reinterpreted by this roadmap.",
         "",
-        f"The repository state was declared by `{p['beta0StateTruthReportPath']}` (no tracked script produces it any more: its checkers were deleted in `83eaf603`, 2026-08-13) as one of:",
+        f"The repository state was declared by `{p['beta0StateTruthReportPath']}` (no tracked script produces it any more: its checkers were deleted in `1965ab55`, 2026-08-13) as one of:",
         "",
         "| State | Meaning |",
         "|---|---|",

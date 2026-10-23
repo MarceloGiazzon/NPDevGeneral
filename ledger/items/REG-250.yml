@@ -23,7 +23,7 @@ detail: |
   PACK-23 (DONE) moved Pigmentampas to consume identity/tracing/workspace by remote coordinate, but the
   coordinates it committed are `git+file:///<drive>/WorkSpace/NPDev/Build/npdev-pack-repo//packs/<id>@<tag>`
   -- a pack repo that exists only on the machine that ran scripts/pack-repo/publish-pack-repo.py. On any
-  other machine the pack cache is empty and the model does not parse. c8e82b6a worked around the same
+  other machine the pack cache is empty and the model does not parse. 0fe3b9a6 worked around the same
   root cause for PigmentampasSampleTest alone (its @BeforeAll materializes the cache from
   NPDevContract/packs and rewrites npdev.lock); the corpus validator has no such workaround.
 

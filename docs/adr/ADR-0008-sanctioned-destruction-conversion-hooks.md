@@ -58,7 +58,7 @@ this ADR does not touch.
 1. **Generation-time schema validation** — every `hook.json` is validated against
    `conversion-hook.schema.json` when the app is generated; a malformed hook fails the *build*, never
    the boot.
-2. **Rule 4 (verify, now inside the hook's own transaction — `fce3eb1`)** — a hook's `convert.sql` and
+2. **Rule 4 (verify, now inside the hook's own transaction — `ea4304a`)** — a hook's `convert.sql` and
    its optional `verifySql` run in ONE transaction; a verify mismatch (or a `verifySql` that itself
    errors) rolls the *entire hook* back. On Postgres this undoes both data and schema changes
    (transactional DDL); on H2 it undoes data changes but not DDL already executed (H2 has no

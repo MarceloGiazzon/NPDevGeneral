@@ -142,7 +142,7 @@ detail: |
   `UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest.java`'s packaged-app boot
   (`startPackagedApp()`) passed no `--spring.profiles.active` at all, making it a second, real
   caller of the implicit default -- and it is exactly why CI's `:generator:test` genuinely failed
-  on this branch's first commit (`fa90e89c`, run `31754013976`: "322 tests completed, 2 failed"),
+  on this branch's first commit (`6a97580f`, run `31754013976`: "322 tests completed, 2 failed"),
   not merely the repo's pre-existing `HardenGcDeleteReplaceCascade...` flake. Root cause confirmed,
   not guessed: `application-dev.yml` sets `spring.main.allow-bean-definition-overriding: true`,
   which no other profile file (including `application-default.properties`, where this test's boot
@@ -196,7 +196,7 @@ detail: |
   implicit default, the core Stage B claim) and then failed closed the same way as (3), since
   `application-default.properties` also seeds no key.
 
-  **The "regression suites green" claim above (this branch's first commit, `fa90e89c`) was false,
+  **The "regression suites green" claim above (this branch's first commit, `6a97580f`) was false,
   caught by real CI, not by this session's own local run.** `gh pr checks 65`'s "PR gate
   (DSL/kernel/generator/RuntimeHost smoke, Linux)" genuinely FAILED on that commit (run
   `31754013976`): `:generator:test` reported "322 tests completed, 2 failed" -- one was the

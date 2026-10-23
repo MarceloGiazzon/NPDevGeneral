@@ -49,7 +49,7 @@ CALIBRATE BEFORE TRUSTING IT
     python scripts/quality/check-test-task-coverage.py --calibrate
 
 Runs the real historical RED->GREEN pair this gate was built to catch: `:generator:behaviorTest`
-judged UNREACHABLE against the pre-T1.2 workflow text (commit f76b95f, the last commit before the fix)
+judged UNREACHABLE against the pre-T1.2 workflow text (commit e93b6ca, the last commit before the fix)
 and REACHABLE against the current committed workflow text. Exits 1 if either half doesn't behave.
 
 USAGE
@@ -245,7 +245,7 @@ def calibrate(root: Path) -> int:
 
     print("Calibration -- the real 2026-07-27 REG-49/T1.2 instance, before and after the fix:")
 
-    pre_fix_commit = "f76b95f"  # last commit before T1.2 wired :generator:behaviorTest into CI
+    pre_fix_commit = "e93b6ca"  # last commit before T1.2 wired :generator:behaviorTest into CI
     old_workflow_text = {}
     for name in ("npdev-pr-gate.yml", "npdev-ci-validation.yml"):
         rel = f".github/workflows/{name}"

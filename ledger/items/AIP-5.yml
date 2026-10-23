@@ -34,6 +34,6 @@ guard:
     the real scan as aiKnowledge step [52/52]
   provenRed: true
 note: >-
-  2026-10-22: 5.1 f23463a2 (the digest hook matches the program run, tests for both sides), 5.2 9aa2c39a
-  (docs/AI_PROVIDERS.md + card), 5.3 9aa3fa8a (checker, RED-verified by planting api.groq.com in a
+  2026-10-22: 5.1 787142af (the digest hook matches the program run, tests for both sides), 5.2 54491111
+  (docs/AI_PROVIDERS.md + card), 5.3 868a4deb (checker, RED-verified by planting api.groq.com in a
   tracked script), 5.4 this item set. ACCEPTED_BOUNDARIES unchanged: no boundary moved.

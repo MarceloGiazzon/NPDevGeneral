@@ -14,10 +14,10 @@ source: >-
   Surfaced by this session's own adversarial review of PR #67 (REG-158, a narrow
   script-automation-quality reporting-contract fix) before merge. The review's "downstream-skip"
   dimension traced the actual consequence of that broken step failing on every push to `main`
-  since commit `83eaf603`, and found something bigger than the step it was investigating: the six
+  since commit `1965ab55`, and found something bigger than the step it was investigating: the six
   gate scripts it was skipping have no OTHER CI trigger at all, so the skip was never masking a
   passing result being hidden -- these checks have genuinely never run against a pull request in
-  this repo's history since at least `83eaf603`.
+  this repo's history since at least `1965ab55`.
 surface: ci/workflows
 files:
   - .github/workflows/npdev-ci-validation.yml
@@ -38,7 +38,7 @@ detail: |
   not a substitute for the six gates above.
 
   Separately, `scripts/quality/run-weekly-paperwork-checks.ps1`'s reporting-contract break
-  (`REG-158`, commit `83eaf603`, an unrelated PR merged earlier the same day as this finding) has
+  (`REG-158`, commit `1965ab55`, an unrelated PR merged earlier the same day as this finding) has
   caused `npdev-ci-validation.yml`'s `ci-validation` job to fail at its "Script automation
   quality" step and silently skip all 9 steps after it (a GitHub Actions default: an unguarded
   step failure skips every later unguarded step in the same job) on **every one of the 7 confirmed

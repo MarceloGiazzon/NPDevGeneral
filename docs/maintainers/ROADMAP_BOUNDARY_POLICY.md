@@ -46,7 +46,7 @@ The roadmap contains exactly these 16 checkpoints:
 15. CI Parallelization, Caching, Onboarding, and Final Closure (`scripts/quality/run-maturity-max-final-closure-check.ps1`, `scripts/quality/run-maturity-max-roadmap-boundary-check.ps1`, `scripts/quality/run-maturity-score.ps1`)
 
 **Retired scripts (2026-08-13):** every per-checkpoint script named above except
-`run-portable-tooling-check.ps1` was deleted in commit 83eaf603 (Step 9 R4) as an orphan gate --
+`run-portable-tooling-check.ps1` was deleted in commit 1965ab55 (Step 9 R4) as an orphan gate --
 nothing in `run-all-gates.ps1` or any workflow invoked it. The names stay here as the historical
 record of how each checkpoint was verified; they are not current commands. The same applies to the
 boundary-check claim in the paragraph below: that script is gone, so these rules are not currently

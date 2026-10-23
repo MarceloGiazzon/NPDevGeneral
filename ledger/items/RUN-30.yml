@@ -1,6 +1,6 @@
 id: RUN-30
 title: >-
-  golden-ai-scenarios/tier-skip-gratuitous-untrusted-extension (added by P7.1, commit 2f375da1) was
+  golden-ai-scenarios/tier-skip-gratuitous-untrusted-extension (added by P7.1, commit 29f7b980) was
   never registered in scripts/policy/ai-model-to-dsl-mapping-policy.json or its scenario-count
   assertion, so :dsl:test's AiModelToDslMappingTest fails unfiltered on main
 type: GAP
@@ -12,7 +12,7 @@ verification: UNIT_TESTED
 source: >-
   Discovered while running the full run-generator-gate.ps1 as W1.1's own prescribed verification
   (NPDEV_ROADMAP_2026-09-12.md Wave 1) -- confirmed unrelated to W1.1 by tracing the failure to a
-  golden-ai-scenarios/ commit that predates this session (2f375da1, "P7.1 -- rank reuse >
+  golden-ai-scenarios/ commit that predates this session (29f7b980, "P7.1 -- rank reuse >
   specialization > new concept > untrusted extension").
 surface: golden-ai-scenarios, NPDevContract/dsl (AiModelToDslMappingTest), scripts/policy
 detail: |

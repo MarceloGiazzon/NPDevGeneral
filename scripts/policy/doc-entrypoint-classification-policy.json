@@ -120,73 +120,73 @@
       "path": "scripts/quality/run-release-checklist-gate.ps1",
       "classification": "future-non-release",
       "releaseRelevant": false,
-      "reason": "Retired 2026-08-13 (commit 83eaf603, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
+      "reason": "Retired 2026-08-13 (commit 1965ab55, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
     },
     {
       "path": "scripts/quality/run-phase2-residual-fidelity-check.ps1",
       "classification": "future-non-release",
       "releaseRelevant": false,
-      "reason": "Retired 2026-08-13 (commit 83eaf603, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
+      "reason": "Retired 2026-08-13 (commit 1965ab55, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
     },
     {
       "path": "scripts/quality/run-runtimehost-integration-infrastructure-check.ps1",
       "classification": "future-non-release",
       "releaseRelevant": false,
-      "reason": "Retired 2026-08-13 (commit 83eaf603, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
+      "reason": "Retired 2026-08-13 (commit 1965ab55, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
     },
     {
       "path": "scripts/quality/run-scenario-scope-reconciliation-check.ps1",
       "classification": "future-non-release",
       "releaseRelevant": false,
-      "reason": "Retired 2026-08-13 (commit 83eaf603, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
+      "reason": "Retired 2026-08-13 (commit 1965ab55, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
     },
     {
       "path": "scripts/quality/run-schema-consolidation-check.ps1",
       "classification": "future-non-release",
       "releaseRelevant": false,
-      "reason": "Retired 2026-08-13 (commit 83eaf603, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
+      "reason": "Retired 2026-08-13 (commit 1965ab55, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
     },
     {
       "path": "scripts/quality/run-stateful-additive-migrations-check.ps1",
       "classification": "future-non-release",
       "releaseRelevant": false,
-      "reason": "Retired 2026-08-13 (commit 83eaf603, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
+      "reason": "Retired 2026-08-13 (commit 1965ab55, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
     },
     {
       "path": "scripts/quality/run-shift-left-ai-safety-check.ps1",
       "classification": "future-non-release",
       "releaseRelevant": false,
-      "reason": "Retired 2026-08-13 (commit 83eaf603, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
+      "reason": "Retired 2026-08-13 (commit 1965ab55, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
     },
     {
       "path": "scripts/quality/run-custom-ux-extensibility-check.ps1",
       "classification": "future-non-release",
       "releaseRelevant": false,
-      "reason": "Retired 2026-08-13 (commit 83eaf603, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
+      "reason": "Retired 2026-08-13 (commit 1965ab55, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
     },
     {
       "path": "scripts/quality/run-dsl-parser-robustness-check.ps1",
       "classification": "future-non-release",
       "releaseRelevant": false,
-      "reason": "Retired 2026-08-13 (commit 83eaf603, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
+      "reason": "Retired 2026-08-13 (commit 1965ab55, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
     },
     {
       "path": "scripts/quality/run-maturity-max-final-closure-check.ps1",
       "classification": "future-non-release",
       "releaseRelevant": false,
-      "reason": "Retired 2026-08-13 (commit 83eaf603, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
+      "reason": "Retired 2026-08-13 (commit 1965ab55, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
     },
     {
       "path": "scripts/quality/run-maturity-max-roadmap-boundary-check.ps1",
       "classification": "future-non-release",
       "releaseRelevant": false,
-      "reason": "Retired 2026-08-13 (commit 83eaf603, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
+      "reason": "Retired 2026-08-13 (commit 1965ab55, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
     },
     {
       "path": "scripts/quality/run-maturity-score.ps1",
       "classification": "future-non-release",
       "releaseRelevant": false,
-      "reason": "Retired 2026-08-13 (commit 83eaf603, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
+      "reason": "Retired 2026-08-13 (commit 1965ab55, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
     }
   ],
   "reportClassifications": [

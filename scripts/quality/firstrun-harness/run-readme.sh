@@ -464,7 +464,7 @@ section "2. Run README's Quickstart commands, verbatim and in order"
 # only thing that noticed, and it blamed the product.
 #
 # The heading it keys off is a CONTRACT with README.md, and it has already been broken once
-# silently: README was rewritten (188add8, "lead with what NPDev lets you build") and `## Quickstart`
+# silently: README was rewritten (35d9fba, "lead with what NPDev lets you build") and `## Quickstart`
 # became `## See it run`. The extraction then matched nothing, so the command list was EMPTY, so
 # `npdev setup` never ran, so runtimehost-libs were never staged -- and every downstream gradlew
 # bootJar / run app / dev check failed. The harness reported 14 failures as if the product were

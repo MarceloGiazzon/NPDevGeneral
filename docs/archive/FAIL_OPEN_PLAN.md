@@ -1,7 +1,7 @@
 # Fail-Open Plan
 
-> **STATUS: ACTIVE.** Live backlog. Written 2026-07-29 against `beta1-vision-spine` @ `deff9d3`
-> (`origin/main` `4abe231` = `beta1.3`, repo public, ledger **70 items / 0 open**, knowledge gate
+> **STATUS: ACTIVE.** Live backlog. Written 2026-07-29 against `beta1-vision-spine` @ `8e57b5e`
+> (`origin/main` `144c8a3` = `beta1.3`, repo public, ledger **70 items / 0 open**, knowledge gate
 > **18 steps**, DSL suite 372/0).
 >
 > **Staged outside the repo.** Move in with:

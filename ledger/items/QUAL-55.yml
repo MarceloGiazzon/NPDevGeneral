@@ -112,7 +112,7 @@ detail: |
   2026-09-06 EXPERIMENT (negative result, follows the DONE-WHEN's own prescribed methodology -- reproduce
   the ORIGINAL integration test, not just extracted logic, inside the real single-JVM suite): reconstructed
   the exact removed test (`additiveNotNullExtraColumnWithNoDefaultStillRefuses`, from the pre-removal
-  diff embedded in commit 10daaeef's own explanatory comment -- the method itself was never committed, so
+  diff embedded in commit 21ef032f's own explanatory comment -- the method itself was never committed, so
   git history has no literal copy) and re-added it TEMPORARILY to
   `SchemaLifecycleExecutorDatabaseMigratedPastBuildTest`, plus temporarily un-swallowed both
   `SchemaHistoryStore.latestOutcomeTimestamp`/`latestOutcomeOverall`'s `catch (SQLException)` blocks
@@ -317,7 +317,7 @@ detail: |
   GREEN after (the RED proof), and
   #triggerCStaysSilentWhenAnOlderDifferentFingerprintRowTiesOnTheMillisecond was GREEN throughout,
   pinning the case the 2026-09-08 tie-inclusive attempt got wrong so it cannot be reintroduced.
-  #additiveNotNullExtraColumnWithNoDefaultStillRefuses -- removed in 10daaeef as the original flaky
+  #additiveNotNullExtraColumnWithNoDefaultStillRefuses -- removed in 21ef032f as the original flaky
   test, and the only end-to-end coverage of that shape -- was restored and passed 20 consecutive
   narrow runs.
 

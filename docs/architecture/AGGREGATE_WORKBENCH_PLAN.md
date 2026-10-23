@@ -2,8 +2,8 @@
 
 > **STATUS: EXECUTED.** All phases delivered 2026-07-11…2026-07-25 — P0/P1/P4/P6/P7/Polish (this
 > doc's own 2026-07-12 reconciliation, below) plus the three that were PARTIAL there: AW-P2
-> (`cd3cbcf`, closed DONE by `7e1096e` — FK auto-Prompt was already-implemented, `selectorRef`
-> owner-descoped at the time and shipped later, `6542e4b2`), AW-P3 (`ff4acba` — folded `computed[]` into `recompute:`, closed the DOM-weight
+> (`cd3cbcf`, closed DONE by `4f88ddb` — FK auto-Prompt was already-implemented, `selectorRef`
+> owner-descoped at the time and shipped later, `794f077f`), AW-P3 (`ff4acba` — folded `computed[]` into `recompute:`, closed the DOM-weight
 > risk), AW-P5 (`0762536` — per-state `allowedActions` gating), reconciled by `88e28a1`. Kept as the
 > authoritative design record (ADRs + phase contracts below are still the reference). **Live
 > re-verification DONE 2026-07-28** (`docs/archive/FRONTEND_STRATEGY_PLAN.md` F5-V.2): the REG-48 `delete()`
@@ -390,7 +390,7 @@ filled the same way across ≥2 apps becomes an AutoPanel/generator default.
 - *Generator:* `scripts/quality/run-generator-gate.ps1` + emitter tests
   (`BusinessUiEmitterPanelManifestTest` pattern).
 - *Runtime:* `run-runtimehost-gate.ps1` + the `PanelRuntime*Test` classes in `NPDevRuntimeHost/src/test/java/com/finalexec/` beside `WorkbenchRuntimeTest`.
-- *Frontend:* the `run-frontend-gate.ps1` named here was deleted with `NPDevEditor/ui-react` (`7cf1d5f5`); the golden browser scenarios (`scripts/quality/run-shell-scenarios.ps1`) are the frontend check now.
+- *Frontend:* the `run-frontend-gate.ps1` named here was deleted with `NPDevEditor/ui-react` (`f5ed1f11`); the golden browser scenarios (`scripts/quality/run-shell-scenarios.ps1`) are the frontend check now.
 - *End-to-end:* real-browser via ScrapForAI (see [ScrapForAI memory]) against a live FinalApp
   (127.0.0.1, SSRF allowlist gotchas noted there).
 

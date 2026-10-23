@@ -4,7 +4,7 @@
 > `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\external-ai-review\PLAN_REG48_50_AND_REMAINDER_2026-07-27.md`
 > on owner approval ("implement"). Same promotion flow as `EXTERNAL_AI_DELEGATION_PLAN.md`.
 >
-> Branch `beta1-vision-spine` pushed to origin at `10d3a88` (2026-07-27), 107 commits.
+> Branch `beta1-vision-spine` pushed to origin at `178b3f0` (2026-07-27), 107 commits.
 
 ## Progress as of 2026-07-27
 
@@ -32,7 +32,7 @@ the fix for the very bug the vendor reported.**
 
 | Evidence | Value |
 |---|---|
-| LNCH13-F1 fix commit `22fb5c8` | **2026-07-25 03:16:52 -0300** |
+| LNCH13-F1 fix commit `82d6966` | **2026-07-25 03:16:52 -0300** |
 | `wmsoffice` emitted Java reviewed by M1 | generated **2026-07-25 02:14:41** — **62 minutes earlier** |
 | Guard calls in the reviewed (stale) `CrossDockingServiceBase.java` | `enforceWithConceptGateway`: **1** · `LNCH-13` markers: **2** |
 | Guard calls in `reg39-healthy-control`, generated 07:51 (post-fix) | `enforceWithConceptGateway`: **3** · `LNCH-13` markers: **6** |

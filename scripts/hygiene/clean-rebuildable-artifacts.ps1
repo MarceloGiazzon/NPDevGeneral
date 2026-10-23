@@ -163,7 +163,7 @@ foreach ($target in @(
         # and a dirty workspace blocks official eligibility outright.
         #
         # The classification was CORRECT when written (2026-04-27): back then this file really was a
-        # generated artifact. It went stale on 2026-07-27 (97a24914), when the file was committed as
+        # generated artifact. It went stale on 2026-07-27 (b2ce8340), when the file was committed as
         # the deliberate "BARE-CHECKOUT PIN" its own header comment describes -- the copy Dependabot
         # scans, kept manually in sync with build.gradle.template. Nothing updated this list, so a
         # hygiene script has been deleting tracked source ever since.

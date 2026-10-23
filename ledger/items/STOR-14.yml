@@ -66,7 +66,7 @@ detail: >-
   staging. Putting it in the profile model states it in the wrong place, and the profile model
   should not be touched at all.
 
-  TWO ESTIMATE CORRECTIONS, measured against the tree at ac0ccc35 rather than assumed, because the
+  TWO ESTIMATE CORRECTIONS, measured against the tree at f82155b5 rather than assumed, because the
   estimate everyone reaches for is wrong in both directions:
 
     * NO FOUR-COPY MIRROR TAX. `model.schema.json`'s four-place mirror rule (CLAUDE.md) does NOT

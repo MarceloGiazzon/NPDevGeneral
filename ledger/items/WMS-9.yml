@@ -86,7 +86,7 @@ detail: |
   filters/sorts in JS. RESOLVED (2026-09-18, WMS-12 follow-up): the premise was STALE -- the app
   corpus predates the generator-emitted query-execution endpoint:
   GET /api/queries/{queryName} (business-ui-query-controller.mustache, Move 10 B1) routes through
-  ConceptGateway.query/aggregate with full tenant/permission/row scoping since commit e917c628.
+  ConceptGateway.query/aggregate with full tenant/permission/row scoping since commit ec814b3a.
   The endpoint's REAL gaps were closed in this phase's change: (1) v2 grammar (or/in/contains/
   startsWith) via compileToConceptQueryFilters -- a v2-only predicate previously threw
   UnsupportedPredicateException -> 500; (2) declared :param binding from the request query-string

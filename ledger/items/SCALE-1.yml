@@ -140,6 +140,6 @@ resolution: |
   2026-08-20 (CLOSED): the nightly scale ladder is now GREEN for 4 consecutive nights (runs 5-8,
   2026-08-17 through 2026-08-20). All 5 rungs (26/50/100/260/520 concepts) pass all 8 measurement
   phases. The original build-phase failure (run 4) was caused by the 255-parameter JVM compile ceiling
-  in GeneratedConceptCrudController (fixed by SCALE-2, commit ce1fa293: controller now uses
+  in GeneratedConceptCrudController (fixed by SCALE-2, commit 673d36eb: controller now uses
   ApplicationContext lookup instead of constructor injection) plus a missing API key provisioning
   (also fixed in the same commit). Both defects are now resolved and CI-proven at all 5 ladder rungs.

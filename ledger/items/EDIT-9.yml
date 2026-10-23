@@ -48,7 +48,7 @@ detail: |
       dismissing kind, `"pending"` (same rule as `"error"`, just one more excluded kind in the same
       condition). A new `resolveToast(node, success, message)` MORPHS that same pending toast node in
       place into success/error rather than creating a second one.
-    - R7.5/EDIT-8's fix to `NPDevShell.setContext` (commit e6939e5f, the guide-page-reset bug) was
+    - R7.5/EDIT-8's fix to `NPDevShell.setContext` (commit 697a435c, the guide-page-reset bug) was
       read via `git show` before editing shell.js.mustache and left untouched.
     - The REAL trigger for a genuine 202/WAITING response, found by reading `PanelRuntime.java`
       (`NPDevRuntimeHost`, not touched by this item) rather than invented: a declared Panel action

@@ -11,14 +11,14 @@ verification: LOCAL_PROOF_DONE
 source: >-
   Found during a 2026-09-21 verification spot-check of already-shipped NPDEV_MEGA_ROADMAP.md
   sessions (prompted by discovering S14's provenance-index.schema.json was missing despite the
-  emitter referencing it -- see the provenance-index schema fix, commit 7b1188ce). Re-read S6's own
-  commit (41d92fd6, "S6 Pigmentampas greenfield proof app") and its bullet list explicitly requires
+  emitter referencing it -- see the provenance-index schema fix, commit 44a7c617). Re-read S6's own
+  commit (060a53a2, "S6 Pigmentampas greenfield proof app") and its bullet list explicitly requires
   "Consume User + Tracing by remote coordinate" (the whole point being S6 exercises S3-S5 in a
   low-stakes app before WmsOffice depends on them) -- but
   NPDevSamples/pigmentampas/Input/model.json's packs[] array uses three local
   {"$ref": "packs/<name>/pack.json"} entries (identity, tracing, workspace), the same local form
   WmsOffice already used before the roadmap was written. S5 (pack repo + remote consumption,
-  commit 2122d8fb "S5 publisher -- one command publishes built-in packs to a versioned git repo")
+  commit ec32f8a0 "S5 publisher -- one command publishes built-in packs to a versioned git repo")
   is itself shipped, so the remote mechanism this item needs almost certainly already exists --
   this is a matter of pointing Pigmentampas at it, not building new platform capability.
 surface: NPDevSamples/pigmentampas/Input/model.json (packs[] array), packs[].from remote-coordinate

@@ -12,7 +12,7 @@ closed: 2026-08-14
 verification: VERIFIED_LIVE
 source: >-
   Found investigating why "Linux post-Beta0 maturity validation" failed on the fully-reconciled
-  main (run 31840753060, commit 80d6baf0) right after this session's 7-PR fix batch merged. Broke
+  main (run 31840753060, commit b9bceb67) right after this session's 7-PR fix batch merged. Broke
   this session's established "known flake" pattern-matching discipline again: rather than assume
   this was the just-fixed REG-169 recurring, a background investigation confirmed it is a
   completely different, pre-existing bug that REG-169's fix simply stopped masking -- the

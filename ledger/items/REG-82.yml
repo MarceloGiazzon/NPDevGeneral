@@ -27,8 +27,8 @@ detail: |
 
   **Confirmed NOT a regression from this session's work**: reproduced identically, in isolation
   (`--tests` targeting only this one method, ruling out cross-test interference), on THREE points in
-  history -- the current Wave 6 working tree, commit 76c9bfc (Wave 5, capabilityPolicy changes), and
-  commit ed4a48f (Wave 4, before Wave 5 existed). The failure predates Move 5 entirely.
+  history -- the current Wave 6 working tree, commit cd07c87 (Wave 5, capabilityPolicy changes), and
+  commit eda98b0 (Wave 4, before Wave 5 existed). The failure predates Move 5 entirely.
 
   **Confirmed NOT a classpath/schema-resource-wide issue**: the other 5 tests in the same class
   (`circuitBreakerCanBeExercisedFromCliSimulation`, `compileModelFailsFastWhenSchemaIsInvalid`,

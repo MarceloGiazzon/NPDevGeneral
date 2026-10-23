@@ -11,7 +11,7 @@ decision table). P0-P9 are built and verified,
 including real vendor calls under D3's authorization (see `archive/programme-history/EXTERNAL_AI_DELEGATION_PLAN.md` and
 `archive/programme-history/REG48_50_CLOSURE_PLAN.md` for the full run history).
 
-> **Implementation note (2026-10-17).** `run-external-ai-gate.ps1` was deleted in `83eaf603` (orphan-gate retirement);
+> **Implementation note (2026-10-17).** `run-external-ai-gate.ps1` was deleted in `1965ab55` (orphan-gate retirement);
 > `check-external-ai-mission-coverage.py` now runs only from the weekly paperwork gate (`run-weekly-paperwork-checks.ps1`). The documents this ADR
 > cites moved: `docs/maintainers/EXTERNAL_SECURITY_REVIEW_BRIEF.md`, `docs/maintainers/POST_BETA0_HUMAN_ACTION_REGISTER.md` and
 > `docs/archive/programme-history/DECISION_BRIEFS_2026-07.md`.

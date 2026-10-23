@@ -35,7 +35,7 @@ detail: >-
   which is the lesson the first run taught, since it was red on all three jobs while containing the
   best news of the day.
 
-      run 31264977219 (commit 5814886) -- FIRST EVER, jobs red
+      run 31264977219 (commit c7c6eec) -- FIRST EVER, jobs red
       dialect      passed  failed  seconds
       mysql            13       0     23.7    <- real MySQL 8.4 with utf8mb4
       postgres         13       0      8.3    <- no regression from the S1 seam
@@ -43,7 +43,7 @@ detail: >-
       h2                0      13      0.1    <- harness: no container exists for h2
                                      0 skipped
 
-      run 31268402414 (commit bec03b5) -- after F0-F5, ALL JOBS GREEN
+      run 31268402414 (commit 2683a5b) -- after F0-F5, ALL JOBS GREEN
       mysql            13       0     23.8
       postgres         13       0     10.8
       sqlserver        13       0     19.5

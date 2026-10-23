@@ -384,7 +384,7 @@ function New-OfficialModel {
         if ([string]$panel.dataSource.kind -eq "entity") { $dataSource["concept"] = [string]$panel.dataSource.name }
         if ([string]$panel.dataSource.kind -eq "procedure") { $dataSource["procedure"] = [string]$panel.dataSource.name }
         if ([string]$panel.dataSource.kind -eq "workflow") { $dataSource["params"] = [ordered]@{ workflow = [string]$panel.dataSource.name } }
-        # bbaa2d5a: panelLayout.type is table|grid only; every other value already rendered as table.
+        # 75769beb: panelLayout.type is table|grid only; every other value already rendered as table.
         # The AI intent survives in metadata.sourceType below.
         $layoutType = "table"
         $panelActions = @($panel.actions | ForEach-Object {

@@ -22,7 +22,7 @@ detail: |
   pattern. MASTER-ROADMAP.md Step 3, this session's scope.
 
   2026-08-14 (ledger-currency sweep): status was still OPEN despite the fix having shipped days
-  earlier -- commit `74501683` ("fix(editor): bundleIoService loses 17 of 34 schema root sections on
+  earlier -- commit `f3201108` ("fix(editor): bundleIoService loses 17 of 34 schema root sections on
   save (R6)", PR #11) landed on main 2026-08-12. Confirmed live on the current checkout, not just by
   the commit existing: `toCanonicalModelDocument` now opens with `...document` (line 36) instead of a
   hardcoded object literal, and both guard files exist

@@ -681,7 +681,7 @@ try {
     # directory DELETE-PENDING so its PARENT cannot be removed -- and the error names the parent, not
     # the leak. That misdirection is exactly how S1 presented: the generator gate sat permanently red
     # and was attributed to "a Windows file-lock in the harness" until the leak was found on line 128
-    # of a test. RED-proven against ec20ae5^ (the commit before that fix): 11 findings including that
+    # of a test. RED-proven against e42283a^ (the commit before that fix): 11 findings including that
     # very line.
     Write-Host "[30/39] Checking every Files stream is closed (try-with-resources)..."
     & $py "scripts/quality/check-closeable-streams.py"

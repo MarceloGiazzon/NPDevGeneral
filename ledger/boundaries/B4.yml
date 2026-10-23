@@ -27,7 +27,7 @@ codeLinkedNote: >-
   no longer refuses at all since R9.3 (it WAITS for the lock instead), only MigrationMutex's wait
   BUDGET can time out. SchemaLifecycleExecutor.beforeMigrate (line ~474) already wraps that failure
   in `BoundaryBootException(new BoundaryViolation("B4", "boot", lockFailure.getMessage(), ...))`
-  (Wave 2, commit 50ddf3ea) -- boundaryId "B4" already reached the REST 503/boot-log channel before
+  (Wave 2, commit 650263b8) -- boundaryId "B4" already reached the REST 503/boot-log channel before
   this session, but the message carried no specific CODE. `waitedOutMessage` now prefixes its return
   value `B4:migration_lock_held:`, preserved verbatim through the wrapper (BoundaryBootException's
   message IS the violation's message). NPDevCli's MIGRATION_CLAIM_HELD boot-log classifier still

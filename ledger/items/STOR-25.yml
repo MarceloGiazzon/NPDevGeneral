@@ -132,7 +132,7 @@ detail: |
       bypass -- already self-documented at its call site). All 15 individually reviewed and triaged
       into scripts/quality/security-pattern-sweep-allowlist.json (frozenCount 525 -> 538) with a
       per-fingerprint reason; zero blanket allowlisting. (a) and (c) affected code from the PRIOR
-      session's STOR-21/23/24 work (already committed at 8cfe0ec3/a4b11daa/10daaeef) that had never
+      session's STOR-21/23/24 work (already committed at f5ca3ac4/662e98ef/21ef032f) that had never
       had the AI-knowledge gate run against it -- found and fixed while closing THIS package, not
       introduced by it.
 guard:
