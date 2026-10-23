@@ -59,7 +59,7 @@ public final class AgentChannelsStarter {
             // blank = api.telegram.org. Shape: "<base>/bot" -- files are then served from "<base>/file/bot".
             @Value("${NPDEV_TELEGRAM_API_BASE:}") String telegramApiBase,
             @Value("${NPDEV_PUBLIC_BASE_URL:}") String publicBaseUrl,
-            @Value("${NPDEV_AGENT_VENDOR:gemini}") String agentVendor,
+            @Value("${NPDEV_AGENT_VENDOR:}") String agentVendor,
             @Value("${NPDEV_AGENT_MODEL:}") String agentModel,
             @Value("${NPDEV_WHATSAPP_PHONE_NUMBER_ID:}") String whatsappPhoneNumberId,
             @Value("${NPDEV_WHATSAPP_ACCESS_TOKEN:}") String whatsappAccessToken,
@@ -76,7 +76,7 @@ public final class AgentChannelsStarter {
         this.telegramBotToken = telegramBotToken;
         this.telegramApiBase = telegramApiBase;
         this.publicBaseUrl = publicBaseUrl;
-        this.agentVendor = agentVendor == null || agentVendor.isBlank() ? "gemini" : agentVendor;
+        this.agentVendor = agentVendor == null || agentVendor.isBlank() ? null : agentVendor;
         this.agentModel = agentModel == null || agentModel.isBlank() ? null : agentModel;
         this.whatsappPhoneNumberId = whatsappPhoneNumberId;
         this.whatsappAccessToken = whatsappAccessToken;
@@ -143,9 +143,21 @@ public final class AgentChannelsStarter {
             }
             conversations = new AgentConversationService(
                     modelHolder::get, ai == null ? new DenyingAi() : ai, executor, links, mapper,
-                    agentVendor, agentModel);
+                    agentVendor != null ? agentVendor : defaultVendor(modelHolder.get().getExternalAi() == null
+                            ? List.of() : modelHolder.get().getExternalAi().getVendors()),
+                    agentModel);
         }
         return conversations;
+    }
+
+    /**
+     * AIP-3 (3.5): with no NPDEV_AGENT_VENDOR the assistant uses the first vendor the model opted into
+     * ({@code externalAi.vendors}); a model that lists none keeps the old {@code gemini}. The model then
+     * defaults to that vendor's catalogue model unless NPDEV_AGENT_MODEL names one.
+     */
+    static String defaultVendor(List<String> modelVendors) {
+        return modelVendors.stream().filter(AgentChannelsStarter::present).map(String::trim).findFirst()
+                .orElse("gemini");
     }
 
     private static boolean present(String value) {

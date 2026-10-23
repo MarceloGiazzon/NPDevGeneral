@@ -21,7 +21,7 @@ import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -92,7 +92,8 @@ public class NpdevExternalAiConfig {
      * {@code NpdevCapabilityBindingConfig}), on top of whichever contract bean above is active. Prices
      * are USD per million tokens, used only to estimate spend for {@code externalAi.limits
      * .monthlyCostCapUsd}. AIP-3 (3.3): they come from the AI catalogue -- the same table the developer
-     * usage log (`npdev ai usage`) prices with -- for each vendor's model; the
+     * usage log (`npdev ai usage`) prices with -- for the model each prompt asks for (the vendor's
+     * default model when it names none); the
      * {@code npdev.externalai.price.<id>.inputUsdPerMTok|outputUsdPerMTok} properties override per
      * deployment. A vendor whose model has no catalogue price and no override is priced at 0, as
      * before for NVIDIA's free tier; set the properties for a billed one.
@@ -112,25 +113,43 @@ public class NpdevExternalAiConfig {
                 propertyResolver::getIfAvailable,
                 auditLogStore.getIfAvailable(),
                 fileStore::getIfAvailable,
-                cataloguePrices(ExternalAiCatalogue.bundled(), environment::getProperty),
+                cataloguePricing(ExternalAiCatalogue.bundled(), environment::getProperty),
                 Clock.systemUTC());
     }
 
-    /** One price per app vendor: catalogue price of its (possibly overridden) model, then properties. */
-    static Map<String, ExternalAiPromptRunner.Price> cataloguePrices(
+    /**
+     * The catalogue price of the vendor and model a call used; an operator's per-vendor price
+     * properties win over it, and a model the catalogue does not price (and no property) costs 0.
+     */
+    static ExternalAiPromptRunner.Pricing cataloguePricing(
             ExternalAiCatalogue catalogue, Function<String, String> property) {
-        Map<String, ExternalAiPromptRunner.Price> prices = new LinkedHashMap<>();
+        Map<String, String> defaultModels = new HashMap<>();
+        Map<String, BigDecimal> inputOverrides = new HashMap<>();
+        Map<String, BigDecimal> outputOverrides = new HashMap<>();
         for (ExternalAiCatalogue.Vendor vendor : catalogue.appVendors()) {
             String override = property.apply("npdev.externalai.http." + vendor.id() + ".model");
             String model = override != null && !override.isBlank() ? override : vendor.defaultModel();
-            Optional<ExternalAiCatalogue.Price> listed = model == null ? Optional.empty() : catalogue.price(vendor.id(), model);
-            BigDecimal in = decimal(property.apply("npdev.externalai.price." + vendor.id() + ".inputUsdPerMTok"),
-                    listed.map(ExternalAiCatalogue.Price::inputUsdPerMTok).orElse(BigDecimal.ZERO));
-            BigDecimal out = decimal(property.apply("npdev.externalai.price." + vendor.id() + ".outputUsdPerMTok"),
-                    listed.map(ExternalAiCatalogue.Price::outputUsdPerMTok).orElse(BigDecimal.ZERO));
-            prices.put(vendor.id(), new ExternalAiPromptRunner.Price(in, out));
+            if (model != null) {
+                defaultModels.put(vendor.id(), model);
+            }
+            BigDecimal in = decimal(property.apply("npdev.externalai.price." + vendor.id() + ".inputUsdPerMTok"), null);
+            BigDecimal out = decimal(property.apply("npdev.externalai.price." + vendor.id() + ".outputUsdPerMTok"), null);
+            if (in != null) {
+                inputOverrides.put(vendor.id(), in);
+            }
+            if (out != null) {
+                outputOverrides.put(vendor.id(), out);
+            }
         }
-        return prices;
+        return (vendor, model) -> {
+            String priced = model != null && !model.isBlank() ? model : defaultModels.get(vendor);
+            Optional<ExternalAiCatalogue.Price> listed = priced == null ? Optional.empty() : catalogue.price(vendor, priced);
+            return new ExternalAiPromptRunner.Price(
+                    inputOverrides.getOrDefault(vendor,
+                            listed.map(ExternalAiCatalogue.Price::inputUsdPerMTok).orElse(BigDecimal.ZERO)),
+                    outputOverrides.getOrDefault(vendor,
+                            listed.map(ExternalAiCatalogue.Price::outputUsdPerMTok).orElse(BigDecimal.ZERO)));
+        };
     }
 
     private static BigDecimal decimal(String text, BigDecimal fallback) {

@@ -78,12 +78,21 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
         }
     }
 
+    /**
+     * AIP-3 (3.3): the price of one call, from the vendor id and the model the prompt asked for (null
+     * when it names none and the vendor's default model answers). Null means unpriced, counted as 0.
+     */
+    @FunctionalInterface
+    public interface Pricing {
+        Price priceOf(String vendor, String model);
+    }
+
     private final Supplier<CompiledModel> modelSupplier;
     private final ExternalAiCapabilityContract contract;
     private final Supplier<PropertyResolver> propertyResolver;
     private final AuditLogStore auditLogStore;
     private final TenantFileReader fileReader;
-    private final Map<String, Price> pricesByVendor;
+    private final Pricing pricing;
     private final Clock clock;
     private final Map<String, JsonSchema> compiledSchemas = new ConcurrentHashMap<>();
 
@@ -96,12 +105,25 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
             Map<String, Price> pricesByVendor,
             Clock clock
     ) {
+        this(modelSupplier, contract, propertyResolver, auditLogStore, fileStore,
+                perVendor(pricesByVendor), clock);
+    }
+
+    public ExternalAiPromptRunner(
+            Supplier<CompiledModel> modelSupplier,
+            ExternalAiCapabilityContract contract,
+            Supplier<PropertyResolver> propertyResolver,
+            AuditLogStore auditLogStore,
+            Supplier<FileStoreContract> fileStore,
+            Pricing pricing,
+            Clock clock
+    ) {
         this.modelSupplier = Objects.requireNonNull(modelSupplier, "modelSupplier");
         this.contract = Objects.requireNonNull(contract, "contract");
         this.propertyResolver = propertyResolver == null ? () -> null : propertyResolver;
         this.auditLogStore = auditLogStore == null ? AuditLogStore.noop() : auditLogStore;
         this.fileReader = new TenantFileReader(fileStore);
-        this.pricesByVendor = pricesByVendor == null ? Map.of() : Map.copyOf(pricesByVendor);
+        this.pricing = pricing == null ? (vendor, model) -> null : pricing;
         this.clock = clock == null ? Clock.systemUTC() : clock;
     }
 
@@ -207,7 +229,7 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
                     CapabilityErrorKind.TRANSIENT, Map.of("prompt", promptName, "vendor", vendor));
         }
 
-        BigDecimal cost = estimateCost(vendor, result.inputTokens(), result.outputTokens());
+        BigDecimal cost = estimateCost(vendor, prompt.model(), result.inputTokens(), result.outputTokens());
         Map<String, String> usage = new LinkedHashMap<>();
         usage.put("model", String.valueOf(result.model()));
         usage.put("inputTokens", String.valueOf(result.inputTokens()));
@@ -334,8 +356,13 @@ public final class ExternalAiPromptRunner implements CapabilityAdapter {
         }
     }
 
-    private BigDecimal estimateCost(String vendor, long inputTokens, long outputTokens) {
-        Price price = pricesByVendor.get(vendor);
+    private static Pricing perVendor(Map<String, Price> pricesByVendor) {
+        Map<String, Price> prices = pricesByVendor == null ? Map.of() : Map.copyOf(pricesByVendor);
+        return (vendor, model) -> prices.get(vendor);
+    }
+
+    private BigDecimal estimateCost(String vendor, String model, long inputTokens, long outputTokens) {
+        Price price = pricing.priceOf(vendor, model);
         if (price == null) {
             return BigDecimal.ZERO;
         }

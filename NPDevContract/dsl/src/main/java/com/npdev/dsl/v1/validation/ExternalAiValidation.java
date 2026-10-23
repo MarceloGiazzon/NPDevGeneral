@@ -14,9 +14,10 @@ import com.npdev.dsl.v1.ast.StepAst;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.net.URI;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -41,30 +42,48 @@ final class ExternalAiValidation {
     private static final Set<String> REVIEW_MODES = Set.of("required", "optional", "none");
 
     /**
-     * AIP-3 (3.2): the {@code appVendor} provider ids of the AI catalogue bundled into this jar (from
-     * {@code NPDevCli/ai-providers.json}, the file external-ai-http builds its vendor profiles from), in
-     * catalogue order. Loaded once, on first use; missing means a broken build, so it fails loudly.
+     * AIP-3 (3.2): the {@code appVendor} providers of the AI catalogue bundled into this jar (from
+     * {@code NPDevCli/ai-providers.json}, the file external-ai-http builds its vendor profiles from), id to
+     * {@code baseUrl}, in catalogue order. Loaded once, on first use; missing means a broken build, so it
+     * fails loudly.
      */
     static final class AppVendorCatalogue {
         static final String RESOURCE = "npdev/dsl/ai-providers.json";
-        static final Set<String> IDS = load();
+        static final Map<String, String> BASE_URLS = load();
+        static final Set<String> IDS = BASE_URLS.keySet();
 
         private AppVendorCatalogue() {
         }
 
-        private static Set<String> load() {
+        /** AIP-3 (3.4c): a vendor served from the machine the app runs on (a local LLM server). */
+        static boolean isLoopback(String vendorId) {
+            String baseUrl = BASE_URLS.get(vendorId);
+            if (baseUrl == null) {
+                return false;
+            }
+            try {
+                String host = URI.create(baseUrl).getHost();
+                return host != null && (host.equalsIgnoreCase("localhost") || host.startsWith("127.")
+                        || host.equals("[::1]") || host.equals("::1") || host.equals("0.0.0.0"));
+            } catch (IllegalArgumentException e) {
+                return false;
+            }
+        }
+
+        private static Map<String, String> load() {
             try (InputStream in = ExternalAiValidation.class.getClassLoader().getResourceAsStream(RESOURCE)) {
                 if (in == null) {
                     throw new IllegalStateException(RESOURCE + " is not on the classpath -- the dsl build copies it "
                             + "from NPDevCli/ai-providers.json; rebuild the dsl jar");
                 }
-                Set<String> ids = new LinkedHashSet<>();
+                Map<String, String> baseUrls = new LinkedHashMap<>();
                 for (JsonNode provider : MAPPER.readTree(in).path("providers")) {
                     if (provider.path("appVendor").asBoolean(false) && !provider.path("disabled").asBoolean(false)) {
-                        ids.add(provider.path("id").asText().toLowerCase(Locale.ROOT));
+                        baseUrls.put(provider.path("id").asText().toLowerCase(Locale.ROOT),
+                                provider.path("baseUrl").asText());
                     }
                 }
-                return Collections.unmodifiableSet(ids);
+                return Collections.unmodifiableMap(baseUrls);
             } catch (IOException e) {
                 throw new UncheckedIOException("could not read " + RESOURCE, e);
             }
@@ -74,7 +93,22 @@ final class ExternalAiValidation {
     private ExternalAiValidation() {
     }
 
-    static void validate(ModelAst modelAst, List<String> errors) {
+    /**
+     * AIP-3 (3.4c): a keyless local provider is a valid app vendor, but its loopback address is the
+     * machine the APP runs on -- fine on a developer laptop, unreachable from a server deployment unless
+     * the same server also runs the LLM. A warning, never an error.
+     */
+    private static void warnIfLocal(ExternalAiPromptAst prompt, List<String> warnings) {
+        String vendor = prompt.vendor() == null ? "" : prompt.vendor().trim().toLowerCase(Locale.ROOT);
+        if (AppVendorCatalogue.isLoopback(vendor)) {
+            warnings.add("externalAi.prompts['" + prompt.name() + "'] uses vendor '" + prompt.vendor()
+                    + "', a local LLM server at " + AppVendorCatalogue.BASE_URLS.get(vendor) + " -- a deployed app "
+                    + "reaches it only if that server runs on the same host as the app; pick a cloud vendor for a "
+                    + "server deployment.");
+        }
+    }
+
+    static void validate(ModelAst modelAst, List<String> errors, List<String> warnings) {
         ExternalAiAst externalAi = modelAst.getExternalAi();
         List<ExternalAiPromptAst> prompts = externalAi == null ? List.of() : externalAi.getPrompts();
         Set<String> promptNames = new HashSet<>();
@@ -99,6 +133,7 @@ final class ExternalAiValidation {
             }
             for (ExternalAiPromptAst prompt : prompts) {
                 validatePrompt(prompt, vendors, promptNames, errors);
+                warnIfLocal(prompt, warnings);
                 if (prompt.reviewRequired() && prompt.name() != null) {
                     reviewRequired.add(prompt.name().trim());
                 }

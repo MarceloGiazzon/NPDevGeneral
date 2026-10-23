@@ -97,6 +97,27 @@ class ExternalAiPromptValidationTest {
     }
 
     @Test
+    void aPromptOnALocalLlmServerIsValidButWarnsNamingThePromptAndProvider() throws Exception {
+        ValidationResult result = new SemanticValidator().validateWithWarnings(parse("""
+                { "egress": "apiEnabled", "vendors": ["ollama"], "prompts": [ %s ] }
+                """.formatted(GOOD_PROMPT.replace("\"gemini\"", "\"ollama\"")), "PaintMosaic"));
+
+        assertEquals(List.of(), result.getErrors().stream().filter(e -> e.contains("externalAi")).toList());
+        assertTrue(result.getWarnings().stream().anyMatch(w -> w.contains("externalAi.prompts['PaintMosaic']")
+                && w.contains("'ollama'") && w.contains("localhost")), result.getWarnings().toString());
+    }
+
+    @Test
+    void aCloudVendorDoesNotWarn() throws Exception {
+        ValidationResult result = new SemanticValidator().validateWithWarnings(parse("""
+                { "egress": "apiEnabled", "vendors": ["gemini"], "prompts": [ %s ] }
+                """.formatted(GOOD_PROMPT), "PaintMosaic"));
+
+        assertTrue(result.getWarnings().stream().noneMatch(w -> w.contains("local LLM server")),
+                result.getWarnings().toString());
+    }
+
+    @Test
     void vendorOutsideTheAllowListIsRejected() throws Exception {
         List<String> errors = aiErrors("""
                 { "egress": "apiEnabled", "vendors": ["openai"], "prompts": [ %s ] }

@@ -124,7 +124,7 @@ public final class SemanticValidator {
         ConceptValidation.validateCapabilities(effectiveModel, errors, semanticWarnings);
         ConceptValidation.validateBindings(effectiveModel, errors);
         PackValidation.validateExternalAiEgress(effectiveModel, errors);
-        ExternalAiValidation.validate(effectiveModel, errors);
+        ExternalAiValidation.validate(effectiveModel, errors, semanticWarnings);
         FlowValidation.validateEvents(effectiveModel, errors);
         Map<String, DomainTypeAst> domainTypesByLower = DomainTypeValidation.validateDomainTypes(effectiveModel, errors);
         ConceptValidation.validateEntityLocalFields(effectiveModel, errors);

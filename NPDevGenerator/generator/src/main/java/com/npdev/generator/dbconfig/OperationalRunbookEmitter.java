@@ -787,9 +787,10 @@ NPDEV_EXTERNALAI_ANTHROPIC_API_KEY=sk-ant-replace-me
 # MCP clients bring their own AI; these lines are only for the built-in assistant.
 NPDEV_EXTERNALAI_PROVIDER=http
 NPDEV_EXTERNALAI_GEMINI_API_KEY=replace-me
-# Which vendor the assistant uses: gemini | anthropic | openai | nvidia. Default gemini.
-NPDEV_AGENT_VENDOR=gemini
-# Optional model override, e.g. gemini-2.5-flash. Empty = the vendor's configured default.
+# Which vendor the assistant uses, an app vendor id of the NPDev AI catalogue (`npdev ai providers`).
+# Empty = the first of the model's externalAi.vendors (gemini when it lists none).
+# NPDEV_AGENT_VENDOR=
+# Optional model override, e.g. gemini-3.6-flash. Empty = the vendor's catalogue default model.
 # NPDEV_AGENT_MODEL=
 
 # --- 2. Telegram ----------------------------------------------------------------------------------
