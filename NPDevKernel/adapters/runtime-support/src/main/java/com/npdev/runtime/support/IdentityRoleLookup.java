@@ -105,6 +105,9 @@ public final class IdentityRoleLookup {
      * today's lenient behavior. */
     public static final String REJECT_TVLESS_AFTER_PROPERTY = "npdev.auth.jwt.reject-tokens-without-tv-after";
 
+    /** REG-291: the only {@code tv} claim shape {@link #isTokenRevoked} accepts -- an int that cannot overflow. */
+    private static final java.util.regex.Pattern TOKEN_VERSION_CLAIM = java.util.regex.Pattern.compile("-?\\d{1,9}");
+
     /**
      * REG-23: THE single revocation decision point, called by BOTH claim->context paths (RuntimeHost
      * {@code IdentityAwareContextResolver} and {@link GeneratedCrudRuntimeSupport}) so they can never
@@ -112,7 +115,8 @@ public final class IdentityRoleLookup {
      * {@code token_version}. A token WITHOUT a {@code tv} claim (legacy, pre-{@code tv}) is NOT revoked
      * -- backward compatible -- UNTIL the operator sets {@link #REJECT_TVLESS_AFTER_PROPERTY} to a past
      * instant (chosen {@code >= } the max token lifetime after {@code tv} shipped, so no legitimate
-     * tv-less token can still exist), after which every tv-less token is rejected. Never throws; a
+     * tv-less token can still exist), after which every tv-less token is rejected. A {@code tv} claim
+     * that is present but not an integer is revoked (REG-291). Never throws; a
      * malformed cutover fails OPEN (treated as unset) — {@code StartupValidator} rejects a malformed
      * value at boot so it never reaches here.
      */
@@ -121,12 +125,14 @@ public final class IdentityRoleLookup {
         if (rawTokenVersion == null) {
             return rejectTvlessTokensNow();
         }
-        int claimedVersion;
-        try {
-            claimedVersion = Integer.parseInt(String.valueOf(rawTokenVersion));
-        } catch (NumberFormatException malformed) {
-            return false;
+        String claimedText = String.valueOf(rawTokenVersion);
+        if (!TOKEN_VERSION_CLAIM.matcher(claimedText).matches()) {
+            // REG-291/X0: a tv claim that is present but not an integer is not a version this
+            // platform minted (JwtSigner writes an int, Jackson reads it back as one), so it cannot
+            // match the stored token_version -- the token is revoked, never waved through.
+            return true;
         }
+        int claimedVersion = Integer.parseInt(claimedText);
         return claimedVersion != tokenVersion(dataSource, tables, tenantId, actorId);
     }
 

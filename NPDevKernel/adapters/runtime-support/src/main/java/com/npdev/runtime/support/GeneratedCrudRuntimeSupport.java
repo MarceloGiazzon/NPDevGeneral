@@ -2469,24 +2469,39 @@ public final class GeneratedCrudRuntimeSupport {
         appendCrudAudit(conceptName, operation, resourceId, outcome, ctx, before, after);
     }
 
+    /**
+     * The generated create's replay check for an {@code X-Idempotency-Key}: the id a previous
+     * successful create with the same key produced, or empty when there is none.
+     *
+     * <p>REG-290 (X0 rule): a store that cannot answer is NOT "no previous create". The old
+     * {@code catch (Exception) -> Optional.empty()} let a retried create with a key the client had
+     * already used insert a second record whenever the idempotency store was failing -- exactly the
+     * duplicate the key exists to prevent. A lookup failure now throws {@link IllegalStateException}
+     * naming the key's scope (tenant, {@code crud.<Concept>}, {@code create}), which propagates out
+     * of the generated {@code createFromSource} before anything is written, refusing the create.
+     */
     public Optional<String> checkCrudIdempotency(String tenantId, String conceptName,
                                                   String idempotencyKey) {
         if (idempotencyKey == null || idempotencyKey.isBlank() || conceptName == null) {
             return Optional.empty();
         }
         String safeTenant = (tenantId == null || tenantId.isBlank()) ? "default" : tenantId;
+        Optional<IdempotencyRecord> record;
         try {
-            Optional<IdempotencyRecord> record = idempotencyStore.find(
+            record = idempotencyStore.find(
                     safeTenant, "crud." + conceptName, "create", idempotencyKey
             );
-            if (record.isPresent() && record.get().success()) {
-                String stored = record.get().resultJsonRedacted();
-                return Optional.of(stored == null ? "" : stored);
-            }
-            return Optional.empty();
-        } catch (Exception ignored) {
-            return Optional.empty();
+        } catch (RuntimeException storeFailure) {
+            throw new IllegalStateException(
+                    "idempotency lookup failed for tenant '" + safeTenant + "', crud." + conceptName
+                            + " create -- refusing the create rather than risk a duplicate of an"
+                            + " already-applied request", storeFailure);
         }
+        if (record != null && record.isPresent() && record.get().success()) {
+            String stored = record.get().resultJsonRedacted();
+            return Optional.of(stored == null ? "" : stored);
+        }
+        return Optional.empty();
     }
 
     public void recordCrudIdempotencySuccess(String tenantId, String conceptName,

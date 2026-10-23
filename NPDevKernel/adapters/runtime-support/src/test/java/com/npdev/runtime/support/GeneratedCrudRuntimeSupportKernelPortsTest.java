@@ -499,6 +499,43 @@ class GeneratedCrudRuntimeSupportKernelPortsTest {
         assertEquals(storedId, result.get());
     }
 
+    /**
+     * REG-290 (X0 rule): an idempotency store that cannot answer is not "no previous create" --
+     * the old swallow answered empty and the generated create inserted a duplicate for a key the
+     * client had already used. The lookup failure must surface, naming the key's scope.
+     */
+    @Test
+    void checkCrudIdempotency_aFailingStoreRefusesTheCreateNotAnsweredNoPreviousCreate() {
+        IdempotencyStore failingStore = new IdempotencyStore() {
+            @Override
+            public Optional<IdempotencyRecord> find(String tenantId, String capability,
+                                                     String operation, String idempotencyKey) {
+                throw new IllegalStateException("idempotency table unavailable");
+            }
+
+            @Override
+            public void saveSuccess(String tenantId, String capability, String operation,
+                                    String idempotencyKey, String resultJsonRedacted, long createdAtMs) {
+            }
+
+            @Override
+            public void saveFailure(String tenantId, String capability, String operation,
+                                    String idempotencyKey, String errorCode, long createdAtMs) {
+            }
+        };
+        GeneratedCrudRuntimeSupport support = supportWith(
+                AuditLogStore.noop(), PermissionEvaluator.allowAll(), failingStore);
+
+        IllegalStateException refused = assertThrows(IllegalStateException.class,
+                () -> support.checkCrudIdempotency("acme", "Order", "key-abc"));
+        assertTrue(refused.getMessage().contains("acme") && refused.getMessage().contains("crud.Order"),
+                refused.getMessage());
+        assertEquals("idempotency table unavailable", refused.getCause().getMessage());
+
+        // No key: the store is never consulted, so a broken store does not block key-less creates.
+        assertTrue(support.checkCrudIdempotency("acme", "Order", null).isEmpty());
+    }
+
     @Test
     void recordCrudIdempotencySuccess_noopsWhenKeyBlank() {
         boolean[] saveCalled = {false};

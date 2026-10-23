@@ -1,0 +1,46 @@
+id: REG-289
+title: >-
+  A flow branch condition that does not parse or decide to a boolean is answered by a ==/!= substring split instead of refused
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-10-23
+closed: 2026-10-23
+source: >-
+  X0-rule follow-up to REG-286 (the same legacy ==/!= fallback, removed from CrudOrchestrationSupport), 2026-10-23.
+surface: NPDevKernel/kernel KernelRunner.evaluateCondition (only caller BranchStep)
+detail: |
+  evaluateCondition tried ComputedExpression.evaluateBoolean and, on ANY ExpressionException (a parse failure, an
+  unknown function at evaluation, or a result that is not a Boolean), fell through to a hand-rolled matcher: an
+  indexOf("==") / indexOf("!=") split of the raw text, else asBoolean truthiness of the whole text resolved as one
+  reference. So "$input.qty > 5 && nosuch($input.qty)" resolved as a reference, came back unresolved and answered
+  false; "$input.status == 'open' &&" compared "$input.status" to the token "'open' &&"; "$input.qty + 1" answered
+  false. Each silently took the else branch of a flow. The fallback was also the only thing giving a bare
+  non-boolean reference a meaning, and the corpus relies on that: "$decision.status" (approvals and leave packs,
+  dom-leave, dsl-conformance-max's approvals pack) and "$answer.status" (pigmentampas).
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerTest.java#aBranchConditionThatCannotBeDecidedIsRefusedNotAnsweredFalse
+  asserts: >-
+    An unknown-function compound condition, an unparseable condition containing "==", and a numeric-valued
+    condition each throw IllegalStateException naming the condition; run as a flow BRANCH step the flow fails with
+    that exception and neither branch's event is emitted. aBareReferenceBranchConditionKeepsItsTruthyMeaning pins
+    the kept rule: "$decision.status" = "approved" is true; absent, "false", "" and 0 are false; true/false literals
+    and "!$decision.status" unchanged.
+  provenRed: true
+resolution: >-
+  Done when a branch condition that is not a single bare reference must decide to a Boolean under ComputedExpression
+  or the step fails naming it, the bare-reference truthiness rule is explicit and documented with its meaning
+  unchanged, a must-error test pins it, and an X0 registry entry records it FIXED.
+note: >-
+  2026-10-23: DONE. The substring matcher is removed. A condition matching \$?ident(.ident)* (or a true/false/null
+  literal) is resolved through resolveReferenceStrict and decided by the existing asBoolean (null, blank, false,
+  "false", 0, "0", "null" are false) -- exactly what the fallback produced for that shape, documented on
+  evaluateCondition. Everything else goes to ComputedExpression and an ExpressionException becomes
+  IllegalStateException; the runner fails the instance and rethrows, as for any step that throws, with the message
+  in the step trace. Corpus check: every type=branch condition in NPDevSamples, NPDevContract, AppGen/apps and the
+  kernel/generator/RuntimeHost test resources (11 distinct strings, 1030 JSON files) is either a bare reference
+  ($decision.status x4, $answer.status x1) or a ComputedExpression comparison that already decided to a boolean,
+  so none changes meaning. The refusal test was red against HEAD (nothing thrown); the bare-reference test passes
+  both ways (it is the control). X0-18 in scripts/quality/x0-evaluator-registry.json, KernelRunner.java added to
+  evaluatorShapedGlobs.

@@ -43,6 +43,22 @@ class IdentityRoleLookupTvlessRevocationTest {
                 "tv-less token must stay accepted until the cutover instant is reached");
     }
 
+    /**
+     * REG-291 (X0 rule): a tv claim that is present but not an integer cannot match any stored
+     * token_version, so the token is revoked -- it used to be answered "not revoked". Independent of
+     * the tv-less cutover: unset here, which is the lenient setting.
+     */
+    @Test
+    void nonNumericTvClaimIsRevokedNotWavedThrough() {
+        System.clearProperty(IdentityRoleLookup.REJECT_TVLESS_AFTER_PROPERTY);
+        assertTrue(IdentityRoleLookup.isTokenRevoked("abc", null, null, "acme", "alice"),
+                "a non-numeric tv claim must be treated as revoked");
+        assertTrue(IdentityRoleLookup.isTokenRevoked("", null, null, "acme", "alice"),
+                "a blank tv claim must be treated as revoked");
+        // Control: a well-formed tv equal to the stored version (0 with no DataSource) is not revoked.
+        assertFalse(IdentityRoleLookup.isTokenRevoked(0, null, null, "acme", "alice"));
+    }
+
     @Test
     void malformedCutoverFailsOpen() {
         System.setProperty(IdentityRoleLookup.REJECT_TVLESS_AFTER_PROPERTY, "not-a-date");

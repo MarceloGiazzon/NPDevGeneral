@@ -1,0 +1,35 @@
+id: REG-290
+title: >-
+  A failing idempotency store is answered "no previous create", so a retried create with a used X-Idempotency-Key duplicates the record
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-10-23
+closed: 2026-10-23
+source: >-
+  X0-rule sweep of runtime-support lookups after REG-288, 2026-10-23.
+surface: NPDevKernel/adapters/runtime-support GeneratedCrudRuntimeSupport.checkCrudIdempotency
+detail: |
+  The generated create (service-base.mustache createFromSource) asks checkCrudIdempotency whether a request with the
+  client's X-Idempotency-Key already produced a record, and returns that record instead of inserting again. The
+  lookup wrapped IdempotencyStore.find in catch (Exception ignored) { return Optional.empty(); }, so whenever the
+  store failed the answer was "no previous create" and a retry of an already-applied create inserted a duplicate --
+  the exact outcome the key exists to prevent.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportKernelPortsTest.java#checkCrudIdempotency_aFailingStoreRefusesTheCreateNotAnsweredNoPreviousCreate
+  asserts: >-
+    With an IdempotencyStore whose find throws, checkCrudIdempotency throws IllegalStateException naming the tenant
+    and crud.<Concept> scope with the store failure as its cause; with no key the store is not consulted and the
+    answer is still empty.
+  provenRed: true
+resolution: >-
+  Done when an idempotency lookup failure refuses the create instead of being answered "no previous create", and a
+  must-error test with a throwing store pins it.
+note: >-
+  2026-10-23: DONE. A RuntimeException from find is rethrown as IllegalStateException("idempotency lookup failed for
+  tenant '<t>', crud.<Concept> create -- refusing ..."); it propagates out of the generated createFromSource before
+  any write (a 500), so no template change was needed. Red against HEAD (nothing thrown). Left alone:
+  recordCrudIdempotencySuccess still swallows a save failure ("must never break primary execution") -- the record
+  is already written at that point, and throwing would turn a created record into a 500 the client retries;
+  making that durable needs the save inside the create's transaction, a design change, not an X0 fix.

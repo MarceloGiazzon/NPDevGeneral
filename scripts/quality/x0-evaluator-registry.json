@@ -13,7 +13,8 @@
     "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/schemaexpr/*.java",
     "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/CrudOrchestrationSupport.java",
     "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/UserScopedExpressions.java",
-    "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ValueExpressionEvaluator.java"
+    "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ValueExpressionEvaluator.java",
+    "NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java"
   ],
   "entries": [
     {
@@ -153,6 +154,15 @@
       "note": "REG-282 audit (2026-10-23): toRuntimeOrchestration returns null -- and registerOrchestrationSubscribers skips the rule with no log -- when any one action cannot be built (unknown type/concept, missing entityManager/dataSource/dispatcher, blank fields), discarding the rule's buildable actions too. evaluateOrchestrationCondition falls back to a legacy ==/!= substring matcher on a condition that does not parse. See REG-286. REG-286 (2026-10-23): an unbuildable rule is reported at SEVERE naming the rule and the missing piece (still not registered: a partial rule would be a different rule); a condition that does not parse refuses the rule at registration, and one that does not decide to a boolean is reported (OrchestrationConditionSkipped status=failed + SEVERE) instead of the removed legacy matcher's guess.",
       "test": "NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportOrchestrationReloadTest.java",
       "testMarker": "aRuleWithAnUnbuildableActionIsReportedNotSilentlyDropped"
+    },
+    {
+      "id": "X0-18",
+      "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java",
+      "verdict": "FIXED",
+      "fixedBy": "REG-289",
+      "note": "REG-289 (2026-10-23): evaluateCondition (the flow BRANCH step's condition, only caller BranchStep) fell back on any ComputedExpression.ExpressionException to an indexOf(\"==\")/indexOf(\"!=\") substring split and asBoolean truthiness, so a condition that did not parse or did not decide to a boolean (e.g. '$a > 5 && nosuch($a)') silently took the else branch. Now exactly one explicit non-grammar rule remains -- a condition that is a single bare reference or true/false/null literal decides by asBoolean truthiness, unchanged (the corpus's $decision.status / $answer.status branches) -- and every other condition must decide to a Boolean or the step throws IllegalStateException naming the condition. The class is otherwise not an evaluator; this entry covers evaluateCondition only.",
+      "test": "NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerTest.java",
+      "testMarker": "aBranchConditionThatCannotBeDecidedIsRefusedNotAnsweredFalse"
     },
     {
       "id": "X0-12",

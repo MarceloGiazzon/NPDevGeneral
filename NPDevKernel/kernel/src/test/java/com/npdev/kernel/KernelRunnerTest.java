@@ -731,6 +731,82 @@ class KernelRunnerTest {
                 "$saved.needsManagerApproval == true", Map.of("saved", Map.of("needsManagerApproval", false)), null));
     }
 
+    /**
+     * REG-289 (X0 rule): a branch condition that does not decide to a boolean is REFUSED -- the
+     * step fails naming the condition -- instead of the removed {@code indexOf("==")} substring
+     * fallback answering {@code false} and silently taking the else branch.
+     */
+    @Test
+    void aBranchConditionThatCannotBeDecidedIsRefusedNotAnsweredFalse() {
+        Map<String, Object> state = Map.of();
+        Map<String, Object> input = Map.of("qty", 9, "status", "open");
+
+        // Parses, but throws at evaluation (unknown function): was answered false.
+        IllegalStateException unknownFunction = assertThrows(IllegalStateException.class,
+                () -> KernelRunner.evaluateCondition("$input.qty > 5 && nosuch($input.qty)", state, input));
+        assertTrue(unknownFunction.getMessage().contains("$input.qty > 5 && nosuch($input.qty)"),
+                unknownFunction.getMessage());
+
+        // Does not parse, and contains "==": the old split compared "$input.status" to "'open' &&".
+        assertThrows(IllegalStateException.class,
+                () -> KernelRunner.evaluateCondition("$input.status == 'open' &&", state, input));
+
+        // Parses, but decides to a number, not a boolean: was answered by truthiness of an unresolved token.
+        assertThrows(IllegalStateException.class,
+                () -> KernelRunner.evaluateCondition("$input.qty + 1", state, input));
+
+        // Through the runner: the step fails and NEITHER branch runs.
+        InMemoryFlowDefinitionProvider flowProvider = new InMemoryFlowDefinitionProvider()
+                .register(new FlowDefinition(
+                        "UndecidableBranchFlow",
+                        "Order",
+                        List.of(FlowStepDefinition.branch(
+                                "branch-undecidable",
+                                "$input.qty > 5 && nosuch($input.qty)",
+                                List.of(FlowStepDefinition.emitEvent("emit-then", "ThenTaken", null, Map.of())),
+                                List.of(FlowStepDefinition.emitEvent("emit-else", "ElseTaken", null, Map.of()))
+                        ))
+                ));
+        RecordingEventInfrastructure events = new RecordingEventInfrastructure();
+        KernelRunner runner = new KernelRunner(events, new InvariantEngine() {
+            @Override
+            public List<String> evaluate(String entityName, Object payload) {
+                return List.of();
+            }
+
+            @Override
+            public List<InvariantEngine.Violation> evaluate(List<String> invariants, InvariantEngine.EvaluationContext context) {
+                return List.of();
+            }
+        }, flowProvider, new CapabilityDispatcherStub(), events);
+        // A step exception fails the flow instance and propagates to the caller (the runner's
+        // convention for any step that throws) -- here it carries the undecidable condition.
+        IllegalStateException failed = assertThrows(IllegalStateException.class,
+                () -> runner.execute("UndecidableBranchFlow", input));
+        assertTrue(failed.getMessage().contains("cannot be decided"), failed.getMessage());
+        assertTrue(events.published.stream().noneMatch(e -> "ThenTaken".equals(e.eventName()) || "ElseTaken".equals(e.eventName())),
+                "no branch may run on an undecidable condition: " + events.published);
+    }
+
+    /**
+     * REG-289: the one explicit non-grammar rule -- a condition that is a single bare reference
+     * keeps its truthiness meaning exactly (the approvals/leave packs' {@code $decision.status},
+     * pigmentampas' {@code $answer.status}).
+     */
+    @Test
+    void aBareReferenceBranchConditionKeepsItsTruthyMeaning() {
+        assertTrue(KernelRunner.evaluateCondition("$decision.status", Map.of("decision", Map.of("status", "approved")), null));
+        assertFalse(KernelRunner.evaluateCondition("$decision.status", Map.of("decision", Map.of()), null));
+        assertFalse(KernelRunner.evaluateCondition("$decision.status", Map.of(), null));
+        assertFalse(KernelRunner.evaluateCondition("$decision.status", Map.of("decision", Map.of("status", "false")), null));
+        assertFalse(KernelRunner.evaluateCondition("$decision.status", Map.of("decision", Map.of("status", "")), null));
+        assertFalse(KernelRunner.evaluateCondition("$decision.status", Map.of("decision", Map.of("status", 0)), null));
+        assertTrue(KernelRunner.evaluateCondition("$answer.status", Map.of("answer", Map.of("status", true)), null));
+        assertTrue(KernelRunner.evaluateCondition("true", Map.of(), null));
+        assertFalse(KernelRunner.evaluateCondition("false", Map.of(), null));
+        assertTrue(KernelRunner.evaluateCondition("!$decision.status", Map.of(), null));
+    }
+
     @Test
     void executeSupportsAwaitEventUsingEventStore() {
         InMemoryEventStore eventStore = new InMemoryEventStore();

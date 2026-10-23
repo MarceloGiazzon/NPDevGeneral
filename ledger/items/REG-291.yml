@@ -1,0 +1,35 @@
+id: REG-291
+title: >-
+  A JWT whose tv (token version) claim is present but not an integer is treated as not revoked
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-10-23
+closed: 2026-10-23
+source: >-
+  X0-rule sweep of runtime-support lookups after REG-288, 2026-10-23.
+surface: NPDevKernel/adapters/runtime-support IdentityRoleLookup.isTokenRevoked
+detail: |
+  isTokenRevoked is the single revocation decision for both claim->context paths (RuntimeHost
+  IdentityAwareContextResolver and GeneratedCrudRuntimeSupport). A tv claim that failed Integer.parseInt was caught
+  and answered false (not revoked), so a token carrying tv="abc" skipped the token_version check entirely -- after a
+  password change or sign-out-everywhere it kept working. JwtSigner mints tv as an int and JwtBearerAuthFilter reads
+  claims with Jackson (an Integer), so a non-integer tv is never one this platform minted. Low severity: the token
+  still has to carry a valid signature.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/IdentityRoleLookupTvlessRevocationTest.java#nonNumericTvClaimIsRevokedNotWavedThrough
+  asserts: >-
+    isTokenRevoked("abc") and isTokenRevoked("") are true with the tv-less cutover unset; a well-formed tv equal to
+    the stored version (0 with no DataSource) is still not revoked.
+  provenRed: true
+resolution: >-
+  Done when a present but non-integer tv claim is revoked and a test pins it.
+note: >-
+  2026-10-23: DONE. The claim must match -?\d{1,9} (an int that cannot overflow; JwtSigner's counter) before
+  Integer.parseInt, anything else answers true -- no catch left, so the security sweep sees no new swallow.
+  Documented in the method's javadoc. Red against
+  HEAD (answered false). Left alone, already documented as deliberate fail-opens: isSessionRevoked answers false on a
+  SQLException (the token_version check still guards the account) and rejectTvlessTokensNow treats a malformed
+  cutover as unset (StartupValidator rejects it at boot); tokenVersion's own SQLException -> 0 is REG-39's
+  documented "never throws" contract.

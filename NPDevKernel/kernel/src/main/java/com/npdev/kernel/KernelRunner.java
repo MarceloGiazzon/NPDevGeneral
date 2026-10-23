@@ -1851,16 +1851,22 @@ final EventBus eventBus;
     }
 
     /**
-     * R4.2 (roadmap): a BRANCH step's {@code condition} used to be a hand-rolled {@code ==}/
-     * {@code !=}-only matcher -- no {@code &&}, {@code ||}, {@code >}, or arithmetic. Now tries the
-     * full {@link ComputedExpression} grammar FIRST, falling through to the legacy matcher below on
-     * {@link ComputedExpression.ExpressionException} (a parse failure, or a top-level result that
-     * isn't a {@code Boolean} -- e.g. a bare truthy field reference whose value is a non-boolean
-     * String) -- the same ordering {@code CelInvariantEngine.evaluateExpression} already established
-     * for invariant expressions (LIFT-EXPR-P2), so a condition this evaluator cannot make sense of
-     * always falls back rather than throwing. {@link ConditionScope} resolves each {@code $ref}/
-     * bare-token through the SAME {@link #resolveReferenceStrict} the legacy matcher below uses, so
-     * a condition that parses under both engines resolves its operands identically either way.
+     * R4.2 (roadmap): a BRANCH step's {@code condition} is evaluated with the full {@link
+     * ComputedExpression} grammar ({@code &&}, {@code ||}, {@code >}, arithmetic...). {@link
+     * ConditionScope} resolves each {@code $ref}/bare token through {@link #resolveReferenceStrict}.
+     *
+     * <p>REG-289 (X0 rule: an evaluator refuses, it never guesses): there is exactly ONE rule
+     * outside the grammar, and it is explicit -- a condition that is a single bare reference
+     * ({@code $decision.status}, {@code $answer.status}, {@code approved}) or a {@code true}/
+     * {@code false}/{@code null} literal decides by {@link #asBoolean} truthiness of the resolved
+     * value: absent/null, blank, {@code false}, {@code "false"}, {@code 0}, {@code "0"} and
+     * {@code "null"} are false, anything else is true. The approvals/leave packs and pigmentampas
+     * branch on exactly that shape, and this is the meaning they have always had. Every other
+     * condition must parse AND decide to a {@code Boolean}; if it does not, this throws
+     * {@link IllegalStateException} naming the condition, which fails the step (and the flow) with
+     * the reason in its trace. Before REG-289 such a condition fell to an {@code indexOf("==")}/
+     * {@code indexOf("!=")} substring split, so e.g. {@code $a > 5 && nosuch($a)} silently took
+     * the else branch.
      */
     static boolean evaluateCondition(String expression, Map<String, Object> state, Object input) {
         if (expression == null || expression.isBlank()) {
@@ -1868,63 +1874,33 @@ final EventBus eventBus;
         }
         String trimmed = expression.trim();
 
+        if (BARE_CONDITION_REFERENCE.matcher(trimmed).matches()) {
+            return asBoolean(resolveConditionToken(trimmed, state, input));
+        }
+
         try {
             return ComputedExpression.evaluateBoolean(trimmed, new ConditionScope(state, input));
-        } catch (ComputedExpression.ExpressionException notComputedExpression) {
-            // fall through to the legacy matcher below.
+        } catch (ComputedExpression.ExpressionException notDecidable) {
+            throw new IllegalStateException(
+                    "branch condition '" + trimmed + "' cannot be decided: " + notDecidable.getMessage()
+                            + " -- a condition must be a single reference (truthy test) or an expression"
+                            + " that evaluates to true/false",
+                    notDecidable);
         }
-
-        if ("true".equalsIgnoreCase(trimmed)) return true;
-        if ("false".equalsIgnoreCase(trimmed)) return false;
-
-        int equalsIndex = trimmed.indexOf("==");
-        if (equalsIndex >= 0) {
-            Object left = resolveConditionToken(trimmed.substring(0, equalsIndex), state, input);
-            Object right = resolveConditionToken(trimmed.substring(equalsIndex + 2), state, input);
-            return Objects.equals(left, right);
-        }
-
-        int notEqualsIndex = trimmed.indexOf("!=");
-        if (notEqualsIndex >= 0) {
-            Object left = resolveConditionToken(trimmed.substring(0, notEqualsIndex), state, input);
-            Object right = resolveConditionToken(trimmed.substring(notEqualsIndex + 2), state, input);
-            return !Objects.equals(left, right);
-        }
-
-        if (trimmed.startsWith("!")) {
-            return !asBoolean(resolveConditionToken(trimmed.substring(1), state, input));
-        }
-
-        return asBoolean(resolveConditionToken(trimmed, state, input));
     }
 
+    /** REG-289: the one explicit non-grammar condition shape -- a single (optionally {@code $}-prefixed, dotted) reference. */
+    private static final java.util.regex.Pattern BARE_CONDITION_REFERENCE =
+            java.util.regex.Pattern.compile("\\$?[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*");
+
+    /** REG-289: resolves a {@link #BARE_CONDITION_REFERENCE}-shaped condition -- a literal or one reference. */
     private static Object resolveConditionToken(String token, Map<String, Object> state, Object input) {
-        String value = token == null ? "" : token.trim();
-        if (value.isBlank()) return null;
+        if ("null".equalsIgnoreCase(token)) return null;
+        if ("true".equalsIgnoreCase(token)) return true;
+        if ("false".equalsIgnoreCase(token)) return false;
 
-        if ((value.startsWith("'") && value.endsWith("'")) || (value.startsWith("\"") && value.endsWith("\""))) {
-            return value.substring(1, value.length() - 1);
-        }
-        if ("null".equalsIgnoreCase(value)) return null;
-        if ("true".equalsIgnoreCase(value)) return true;
-        if ("false".equalsIgnoreCase(value)) return false;
-
-        Object numeric = parseNumericLiteral(value);
-        if (numeric != null) return numeric;
-
-        Object resolved = resolveReferenceStrict(value, state, input);
+        Object resolved = resolveReferenceStrict(token, state, input);
         return resolved == UNRESOLVED ? null : resolved;
-    }
-
-    private static Object parseNumericLiteral(String value) {
-        try {
-            if (value.contains(".")) {
-                return Double.parseDouble(value);
-            }
-            return Long.parseLong(value);
-        } catch (NumberFormatException ignored) {
-            return null;
-        }
     }
 
     private static boolean asBoolean(Object value) {
@@ -1941,8 +1917,8 @@ final EventBus eventBus;
 
     /**
      * R4.2: bridges a {@link ComputedExpression} variable lookup to the SAME {@link
-     * #resolveReferenceStrict} the legacy condition matcher uses, so {@code $saved.status} /
-     * {@code $input.qty} / a bare state key resolve identically under either engine. {@code
+     * #resolveReferenceStrict} the bare-reference condition rule uses, so {@code $saved.status} /
+     * {@code $input.qty} / a bare state key resolve identically either way. {@code
      * containsKey} always answers {@code true} (mirroring {@code CelInvariantEngine.FieldPathScope})
      * so {@link ComputedExpression.Node#eval} always takes the {@code get} branch instead of trying
      * its own dotted-map walk over this synthetic view.
