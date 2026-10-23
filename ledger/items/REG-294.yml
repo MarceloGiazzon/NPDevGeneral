@@ -1,0 +1,31 @@
+id: REG-294
+title: >-
+  Many-to-many bond members accept another tenant's row (add/replace), and the lifecycle status read skips the transition check on any error
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-10-23
+closed: null
+source: >-
+  Read-only follow-up of REG-288 (2026-10-23). Not yet reproduced by a test -- from reading the code.
+surface: NPDevKernel/adapters/runtime-support GeneratedCrudRuntimeSupport (addBondMember, replaceBondMembers, listBondMembers), CrudLifecycleSupport.fetchCurrentStatus; NPDevGenerator service-base.mustache / controller-custom.mustache (bond member endpoints)
+detail: |
+  (b, reachable) M2M members are written only by POST /{id}/{field}/{targetAnchor} and PUT /{id}/{field}
+  (controller-custom.mustache -> service-base.mustache ~514-536). enforceBondMembershipWrite (~557) authorises the
+  SOURCE row only; addBondMember (GeneratedCrudRuntimeSupport ~729-744) and replaceBondMembers (~764-794) insert the
+  target value with no tenant check -- the junction FK (SchemaRealizationEmitter ~1385) checks existence only. So
+  tenant A can link tenant B's row, and FK-error vs success is a cross-tenant existence oracle. listBondMembers
+  (~706-727) filters by source id only, so such a member is listed back. enforceBondTargetTenant skips isMultiple
+  fields (~544), which is harmless for create/update (M2M fields are not in DTOs/entities) but leaves these endpoints.
+  (a, hardening) CrudLifecycleSupport.fetchCurrentStatus runs SqlNamingSupport.fetchCurrentStatusSql (no tenant_id)
+  and catch (Exception ignored) { return null; } (~225); validateLifecycleTransitions (~79-80) returns early on null,
+  skipping undeclared-transition, requiredPayload and guard checks (fail-open). Not reachable cross-tenant: the id is
+  __id from the path, already loaded by persistence.findById.
+resolution: >-
+  Done when addBondMember/replaceBondMembers check every target value exists in the caller's tenant (JDBC: the
+  bondTargetExistsForTenant predicate; in-memory: the tenant-keyed gateway) and refuse with bond_target_not_found
+  worded like enforceBondTargetTenant, replace leaving no partial rows; the generated service passes its execution
+  context; fetchCurrentStatus is tenant-scoped and a failed read refuses instead of skipping the lifecycle check; each
+  with a must-error test proven red (JDBC and in-memory for the bond case).
+note: >-
+  2026-10-23: filed from the read-only audit; the fix touches the kernel adapter and the generator template.
