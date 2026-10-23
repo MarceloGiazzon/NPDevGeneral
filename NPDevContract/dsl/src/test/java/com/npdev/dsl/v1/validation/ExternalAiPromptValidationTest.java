@@ -78,6 +78,25 @@ class ExternalAiPromptValidationTest {
     }
 
     @Test
+    void aVendorTheCatalogueDoesNotKnowIsRejectedNamingTheKnownOnes() throws Exception {
+        List<String> errors = aiErrors("""
+                { "egress": "apiEnabled", "vendors": ["gemini", "acme-llm"], "prompts": [ %s ] }
+                """.formatted(GOOD_PROMPT), "PaintMosaic");
+        assertTrue(errors.stream().anyMatch(e -> e.contains("externalAi.vendors: 'acme-llm' is not an app vendor")
+                && e.contains("groq") && e.contains("ollama")), errors.toString());
+        assertEquals(1, errors.size(), errors.toString());
+    }
+
+    @Test
+    void freeAndLocalCatalogueVendorsAreAccepted() throws Exception {
+        List<String> errors = aiErrors("""
+                { "egress": "apiEnabled", "vendors": ["Groq", "cerebras", "openrouter", "mistral", "ollama"],
+                  "prompts": [ %s ] }
+                """.formatted(GOOD_PROMPT.replace("\"gemini\"", "\"groq\"")), "PaintMosaic");
+        assertEquals(List.of(), errors);
+    }
+
+    @Test
     void vendorOutsideTheAllowListIsRejected() throws Exception {
         List<String> errors = aiErrors("""
                 { "egress": "apiEnabled", "vendors": ["openai"], "prompts": [ %s ] }

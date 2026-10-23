@@ -6,8 +6,22 @@
 
   "externalAi": {
     "egress": "apiEnabled",
-    "vendors": ["gemini"],
+    "vendors": ["gemini", "groq"],
     "prompts": [
+      {
+        "name": "SuggestCatalogSynonyms",
+        "description": "AIP-3 (3.2) coverage: a free OpenAI-compatible catalogue vendor (groq) with no model, so the app calls the catalogue's default model for it. Runs against the offline inproc adapter unless npdev.externalai.provider=http.",
+        "vendor": "groq",
+        "template": "List up to three search synonyms for the widget '{{sku}}'.",
+        "outputSchema": {
+          "type": "object",
+          "required": ["synonyms"],
+          "properties": {
+            "synonyms": { "type": "array", "items": { "type": "string" }, "maxItems": 3 }
+          }
+        },
+        "maxOutputTokens": 128
+      },
       {
         "name": "SuggestCatalogTags",
         "description": "P4 (G3) coverage: a flow-callable prompt with {{field}} bindings, an optional image and a validated JSON answer. Runs against the offline inproc adapter unless npdev.externalai.provider=http.",

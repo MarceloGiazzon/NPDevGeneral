@@ -12,7 +12,11 @@ import com.npdev.dsl.v1.ast.PropertyAst;
 import com.npdev.dsl.v1.ast.StepAst;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -36,6 +40,37 @@ final class ExternalAiValidation {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Set<String> REVIEW_MODES = Set.of("required", "optional", "none");
 
+    /**
+     * AIP-3 (3.2): the {@code appVendor} provider ids of the AI catalogue bundled into this jar (from
+     * {@code NPDevCli/ai-providers.json}, the file external-ai-http builds its vendor profiles from), in
+     * catalogue order. Loaded once, on first use; missing means a broken build, so it fails loudly.
+     */
+    static final class AppVendorCatalogue {
+        static final String RESOURCE = "npdev/dsl/ai-providers.json";
+        static final Set<String> IDS = load();
+
+        private AppVendorCatalogue() {
+        }
+
+        private static Set<String> load() {
+            try (InputStream in = ExternalAiValidation.class.getClassLoader().getResourceAsStream(RESOURCE)) {
+                if (in == null) {
+                    throw new IllegalStateException(RESOURCE + " is not on the classpath -- the dsl build copies it "
+                            + "from NPDevCli/ai-providers.json; rebuild the dsl jar");
+                }
+                Set<String> ids = new LinkedHashSet<>();
+                for (JsonNode provider : MAPPER.readTree(in).path("providers")) {
+                    if (provider.path("appVendor").asBoolean(false) && !provider.path("disabled").asBoolean(false)) {
+                        ids.add(provider.path("id").asText().toLowerCase(Locale.ROOT));
+                    }
+                }
+                return Collections.unmodifiableSet(ids);
+            } catch (IOException e) {
+                throw new UncheckedIOException("could not read " + RESOURCE, e);
+            }
+        }
+    }
+
     private ExternalAiValidation() {
     }
 
@@ -55,6 +90,13 @@ final class ExternalAiValidation {
             Set<String> vendors = externalAi.getVendors().stream()
                     .map(vendor -> vendor.trim().toLowerCase(Locale.ROOT))
                     .collect(Collectors.toSet());
+            for (String vendor : externalAi.getVendors()) {
+                if (!AppVendorCatalogue.IDS.contains(vendor.trim().toLowerCase(Locale.ROOT))) {
+                    errors.add("externalAi.vendors: '" + vendor + "' is not an app vendor in the NPDev AI catalogue "
+                            + "-- known: " + AppVendorCatalogue.IDS + " -- suggestedFix: use one of the known ids "
+                            + "(`npdev ai providers` lists them); a generated app can only call those.");
+                }
+            }
             for (ExternalAiPromptAst prompt : prompts) {
                 validatePrompt(prompt, vendors, promptNames, errors);
                 if (prompt.reviewRequired() && prompt.name() != null) {

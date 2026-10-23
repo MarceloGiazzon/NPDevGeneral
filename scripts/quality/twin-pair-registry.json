@@ -750,6 +750,23 @@
       "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/agent/AgentToolCatalog.java",
       "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/agent/AgentPhotoIntake.java"
     ]
+  },
+  {
+    "id": "ai-protocols-three-place",
+    "citedBy": "AIP-1 step 1.5 (one AI catalogue; the developer client and generated apps speak the same protocols)",
+    "description": "The AI catalogue's closed protocol list (NPDevCli/ai-providers.json `protocols`) is implemented twice: by the developer client (npdev_ai_client.py) and by the generated-app adapter (ExternalAiCatalogue.PROTOCOLS in external-ai-http). A protocol id present in some of the three and missing from another is a provider `npdev ai complete` can call and an app cannot, or the reverse. A brand-new protocol id this rule does not yet track is caught elsewhere: ExternalAiCatalogue refuses at load an app vendor whose protocol it does not implement, and ExternalAiCatalogueTest loads the bundled catalogue -- add the new id here in the same commit.",
+    "kind": "field-in-all-files",
+    "trackedFields": [
+      "openai-chat",
+      "anthropic-messages",
+      "gemini-native"
+    ],
+    "caseSensitive": true,
+    "files": [
+      "NPDevCli/ai-providers.json",
+      "NPDevCli/npdev_ai_client.py",
+      "NPDevKernel/adapters/external-ai-http/src/main/java/com/npdev/adapters/externalai/http/ExternalAiCatalogue.java"
+    ]
   }
-  ]
+]
 }

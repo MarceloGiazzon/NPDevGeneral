@@ -988,7 +988,7 @@
             "type": "string",
             "minLength": 1
           },
-          "description": "Vendor ids (e.g. \"openai\") this app has opted into. Required non-empty when egress is not \"denied\" -- SemanticValidator rejects egress-enabled with no vendor configured."
+          "description": "Vendor ids this app has opted into -- each must be an appVendor provider id of the NPDev AI catalogue (NPDevCli/ai-providers.json; `npdev ai providers` lists them), or SemanticValidator rejects it. Required non-empty when egress is not \"denied\" -- SemanticValidator rejects egress-enabled with no vendor configured."
         },
         "prompts": {
           "type": "array",

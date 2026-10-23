@@ -74,6 +74,15 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.0'
 }
 
+// AIP-3 (3.2): the AI catalogue `npdev ai` reads, bundled as npdev/dsl/ai-providers.json so
+// SemanticValidator accepts only the app vendors a generated app can actually call. Copied at build
+// time from NPDevCli/ -- the same file external-ai-http bundles, never a second list.
+processResources {
+    from("${projectDir}/../../NPDevCli/ai-providers.json") {
+        into 'npdev/dsl'
+    }
+}
+
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
     // Perf: forked test JVMs default to 512m and ignore org.gradle.jvmargs.
