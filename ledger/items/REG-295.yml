@@ -37,3 +37,12 @@ note: >-
   re-home silently. No JPA on the path; both service writes (gateway save, then saveToConceptStore) go through it.
   Chosen fix: in JdbcBusinessConceptStore.save, before either branch, SELECT 1 WHERE id=? AND tenant_id<>? (no
   deleted_at filter) -> ConceptStoreUniqueViolationException (409 unique_integrity_failed), message naming no tenant.
+  2026-10-23: write-path audit (non-CRUD). Every caller-id write either reaches JdbcBusinessConceptStore.save (aggregate
+  commit AggregateRuntime ~266/~538 -- a SECOND HTTP entry point to test; panel conceptMutation; procedure saveConcept;
+  batch PATCH reads tenant-filtered first; seed), has its own guard (flow createConcept/updateConcept via
+  PostgresPersistenceCapabilityAdapter rowOwnership, TEN-1), or is a plain INSERT that fails on the PK (orchestration
+  create, CSV/SQL import, data promotion, snapshot restore). Restore is already tenant-scoped. LOW residuals, not in
+  this item's done-when: rowOwnership (~270) treats a NULL tenant_id row as SAME_TENANT; both that guard and the
+  planned save() SELECT are check-then-act without a row lock (do the check inside the same transaction / lock the
+  row); CrudOrchestrationSupport.existsByUniqueFields (~1015-1050) has no tenant filter, so another tenant's unique
+  value silently skips an orchestration create (small existence oracle).
