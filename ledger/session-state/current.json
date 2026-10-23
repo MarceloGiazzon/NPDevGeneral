@@ -1,20 +1,21 @@
 {
-  "closedAt": "2026-10-23T05:34:35.3850812Z",
+  "closedAt": "2026-10-23T06:30:55.8064568Z",
   "branch": "main",
-  "head": "b3dec421",
-  "headSubject": "chore(ledger): X0 register caught up -- X0-1/3/6/7 FIXED with proof tests; REG-282 files the X0-11 audit",
-  "summary": "Greened CI on main: AI Knowledge Gate fixed in c1e9b9c6 (3.4b overrideText sweep hit triaged, routine schema re-pinned from live ScrapForAI 1.1.0 with setOffline); all workflows green at c1e9b9c6, so AIP-3 closed DONE (2143f88d). Ran a full open-state audit (3 Explore agents) written to NPDev_General__OutsideRepo/OPEN_STATE_AUDIT_2026-10-23.md; X0 register caught up (X0-1/3/6/7 FIXED with proof tests) and X0-11 filed as REG-282 (b3dec421).",
-  "nextStep": "Start REG-282 (X0-11 audit of the runtime-support expression engine): for each entry point -- CelInvariantEngine invariant rules, access.read, access.write, defaultExpression, derivedExpression, CrudOrchestrationSupport.toRuntimeOrchestration (drops a whole rule silently if one action cannot be built) -- find what it returns for input it cannot handle; record each as FIXED/CLEAN (with must-error test + testMarker), ACCEPTED (reason) or a new REG item in scripts/quality/x0-evaluator-registry.json; widen its evaluatorShapedGlobs so CelInvariantEngine is covered; run check-x0-evaluator-coverage.py. After that: ENF-1 high-risk unwitnessed keywords (audit doc sections 2 and 9).",
-  "plan": "NPDev_General__OutsideRepo/OPEN_STATE_AUDIT_2026-10-23.md (section 9, proposed order of work)",
-  "blocked": "Probe 72-ai-profile-effort.json not run (T1/T2, not on this notebook). AIP-4 4.5 needs the owner to look at the real Manager window with a real key or local LLM. Owner decisions pending: order-totals load threshold 800->1500ms, prune 30 BENCH-1 prompts, sign off dom1-5 rules sheets (regenerate on Linux), REG-278 terminal-state semantics, OWN-2 outreach. GitHub refs/pull purge needs GitHub Support. OWNER RULE: no long gates on this notebook; python-is-python3 missing, pytest not installed.",
-  "verified": "CI on main at c1e9b9c6 all green (NPDev CI Validation, AI Knowledge Gate, Kernel quality gate, Engine support, F6 showcase, Identity journeys, Security scan). Local targeted only: security-pattern-sweep (0 needing triage), check-routine-corpus-conformance (46/46), check-x0-evaluator-coverage OK, check-done-item-guards 0 blocking, check-ledger-status-reverse-freshness OK, check-twin-pair-consistency OK (46). No local T1/T2 gate.",
+  "head": "8c83e569",
+  "headSubject": "chore(ledger): REG-283 -- six sample flows rely on the lookup-less unique check; (b) needs real flow lookups, not a loud failure",
+  "summary": "REG-282 X0 audit DONE (a1200bc9): runtime-support/kernel evaluators split into per-file X0 entries, globs widened, REG-283..286 filed. REG-285 DONE (74b6dbb6): unbound $user.* in access rules/guards refused at validation and denied at runtime. REG-284 PARTIAL (34805967): function-call defaults evaluate, unevaluable default/derived expressions throw, validator refuses unregistered functions. REG-283 note (8c83e569): 6 sample flows rely on the lookup-less EmailUnique check.",
+  "nextStep": "REG-283: owner decides the flow-lookup tenant source (recommended: tenant from the flow's request state, refuse when absent). Then give NpdevCapabilityBindingConfig's invariantEngine bean real unique/scope/conflict lookups (ConceptStore.existsUnique) and make CelInvariantEngine's no-lookup defaults report INVARIANT_UNCHECKABLE; independently override the 4-arg create(...) in the runtimeInvariantEngineFactory bean to pass the compound-unique lookup (restage libs with scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars, then run targeted RuntimeHost tests). First check CI on main is green at 8c83e569. If REG-283 waits: REG-286 (orchestration rule silently dropped), then REG-284 (d) probe (needs T1), then ENF-1.",
+  "plan": "NPDev_General__OutsideRepo/OPEN_STATE_AUDIT_2026-10-23.md (section 9); ledger/items/REG-283.yml",
+  "blocked": "REG-283 (b) needs the owner call on the tenant source for flow uniqueness lookups. REG-284 (d) behaviour probe and probe 72-ai-profile-effort need a booted app (T1/T2), not run on this notebook. Carried: AIP-4 4.5 owner check; owner decisions (order-totals threshold, BENCH-1 prune, dom1-5 sheets, REG-278 semantics, OWN-2); GitHub refs/pull purge needs Support.",
+  "verified": "Local targeted only, no T1/T2 gate: full :NPDevContract:dsl:test (green after fixing one suggestedFix-coverage failure), full :kernel:test, :adapters:runtime-support:test, generator AuthoringMergeGateTest+AuthoringDiffGateTest; new must-error tests proven red on old code; check-x0-evaluator-coverage (+calibrate), check-done-item-guards, check-ledger-status-reverse-freshness, check-twin-pair-consistency, check-markdown-links OK. CI on main after a1200bc9 NOT checked.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "b3dec421 chore(ledger): X0 register caught up -- X0-1/3/6/7 FIXED with proof tests; REG-282 files the X0-11 audit",
-    "2143f88d chore(ledger): AIP-3 DONE -- CI green on main at c1e9b9c6",
-    "c1e9b9c6 fix(gates): green the AI knowledge gate -- triage the 3.4b override hit, re-pin the routine schema with setOffline",
-    "ed58642d chore(session): handoff -- AIP-3 3.4b and 3.6 landed; check CI then close AIP-3"
+    "8c83e569 chore(ledger): REG-283 -- six sample flows rely on the lookup-less unique check; (b) needs real flow lookups, not a loud failure",
+    "34805967 fix(values): REG-284 (a-c) -- function-call defaults evaluate; an unevaluable default/derived expression is an error, not its own text or null",
+    "74b6dbb6 fix(access): close REG-285 -- an unbound $user name in an access rule or guard is refused, not evaluated as null",
+    "a1200bc9 chore(ledger): REG-282 DONE -- X0 audit of the expression engines; REG-283..286 filed",
+    "fd7f2075 chore(session): handoff -- CI green, AIP-3 DONE, open-state audit, REG-282 filed; REG-282 audit next"
   ]
 }
