@@ -75,3 +75,6 @@ note: >-
   NPDevSamples/dsl-conformance-max/behavior-probes/90-cross-tenant-crud.json still carries knownFailure: REG-295 --
   remove it once a Windows T1 run (run-behavior-probes.ps1 -StorageVariant h2local -Only 90-cross-tenant) proves the
   fix (it will report the probe as unexpectedly passing until then).
+  2026-10-23: knownFailure REG-295 removed from probe cross-tenant-create-with-existing-id-is-refused
+  (90-cross-tenant-crud.json) -- check-dsl-behavior-witness refuses a marker naming a DONE item. The probe now
+  expects 409 outright; the next Windows T1 run (-StorageVariant h2local -Only 90-cross-tenant) is the HTTP proof.

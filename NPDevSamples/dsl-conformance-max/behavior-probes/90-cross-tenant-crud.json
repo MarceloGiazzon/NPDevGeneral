@@ -30,7 +30,6 @@
       "id": "cross-tenant-create-with-existing-id-is-refused",
       "keywords": ["field.id"],
       "requires": ["jdbc"],
-      "knownFailure": "REG-295",
       "description": "REG-295: tenant A (${key_othertenant}) POSTs /api/shelf_layouts carrying the id of a row tenant B (ADMIN key, tenant dev) already owns. The create must be refused with 409 (a generic conflict that reveals nothing of B's row) and B's row must stay B's and unchanged. On the JDBC store the upsert is keyed on id only, so today the POST overwrites B's row and re-homes it into tenant A (B then reads 404). JDBC-only (requires jdbc): the InMemory store is tenant-keyed and just makes a second row, never reaching the defect. Cleanup deletes as A too, in case the defect moved the row.",
       "steps": [
         { "name": "tenant B creates its layout", "method": "POST", "path": "/api/shelf_layouts",
