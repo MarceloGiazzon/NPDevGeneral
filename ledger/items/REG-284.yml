@@ -3,9 +3,9 @@ title: >-
   A defaultExpression calling a function stores its own source text as the value, and an unregistered function in a default/derived expression passes validation and evaluates to text or null
 type: BUG
 severity: HIGH
-status: PARTIAL
+status: DONE
 opened: 2026-10-23
-closed: null
+closed: 2026-10-23
 source: >-
   REG-282 (X0-11 audit of the runtime-support expression engine), 2026-10-23. Reproduced against the built
   kernel/dsl jars (Build/runtimehost-libs, 2026-10-18; neither evaluator has changed since).
@@ -59,3 +59,16 @@ note: >-
   concat('Shelf ', name)) and nameKey (derivedExpression uppercase(name)): asserts the stored default is the evaluated
   string (never the source text), the derived value is computed, overrides a client value and is recomputed on update.
   Awaits a T1 run (run-behavior-probes.ps1) on the Windows machine; close (d) only once it is green there.
+  2026-10-23: (d) GREEN on a real boot (Linux notebook, run-behavior-probes.ps1 -Only 12-value-functions-events-audit):
+  cf-field-function-default-and-derived-evaluated passes -- the stored displayTitle is the evaluated concat, nameKey is the
+  computed uppercase(name), overrides a client value and is recomputed on update. All four parts of the done-when hold;
+  DONE. The same run exposed a wrong probe beside it, not a runtime defect: cf-concept-event-mode-create-published-by-crud
+  asserted payload.entity/id, but the event read API redacts every payload by design (DefaultEventRedactionPolicy); it now
+  witnesses publication by event identity (distinctFrom) and passes.
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/ValueExpressionEvaluatorTest.java#functionCallDefaultEvaluatesAndAnUnknownFunctionThrowsInsteadOfReturningItsText
+  asserts: >-
+    a defaultExpression calling a registered function (concat) stores the evaluated value, and an unknown function
+    throws instead of returning the expression's own text
+  provenRed: true

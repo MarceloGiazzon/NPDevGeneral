@@ -100,10 +100,10 @@
       "keywords": [
         "concept.events"
       ],
-      "description": "A concept-nested event with mode create (ShelfLayout.events ShelfLayoutRegistered) is published by the generated CRUD create itself, with no flow: the newest ShelfLayoutRegistered event names the row just created; an update does not publish it. Assumes no other client creates shelf layouts between the write and the event read (probes run sequentially).",
+      "description": "A concept-nested event with mode create (ShelfLayout.events ShelfLayoutRegistered) is published by the generated CRUD create itself, with no flow: each create adds a NEW newest ShelfLayoutRegistered event and an update does not. The event read API redacts every payload (DefaultEventRedactionPolicy: empty unless DEBUG/ADMIN, then an allowlist that has neither entity nor id), so the probe witnesses publication by event identity, not by payload. Assumes no other client creates shelf layouts between the write and the event read (probes run sequentially).",
       "steps": [
         {
-          "name": "create",
+          "name": "create a first row",
           "method": "POST",
           "path": "/api/shelf_layouts",
           "body": {
@@ -115,11 +115,48 @@
             "status": 201
           },
           "save": {
+            "lid0": "$.id"
+          }
+        },
+        {
+          "name": "its create published the event",
+          "method": "GET",
+          "path": "/api/events/by-name/ShelfLayoutRegistered?limit=1",
+          "retry": {
+            "attempts": 5,
+            "delaySeconds": 1
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$": {
+                "len": 1
+              },
+              "$[0].eventName": "ShelfLayoutRegistered"
+            }
+          },
+          "save": {
+            "ev0": "$[0].eventId"
+          }
+        },
+        {
+          "name": "create a second row",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "ev-${rand}-2",
+            "rows": 1,
+            "cols": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
             "lid": "$.id"
           }
         },
         {
-          "name": "newest ShelfLayoutRegistered names the row",
+          "name": "the second create published a new event",
           "method": "GET",
           "path": "/api/events/by-name/ShelfLayoutRegistered?limit=1",
           "retry": {
@@ -133,8 +170,9 @@
                 "len": 1
               },
               "$[0].eventName": "ShelfLayoutRegistered",
-              "$[0].payload.entity": "ShelfLayout",
-              "$[0].payload.id": "${lid}"
+              "$[0].eventId": {
+                "distinctFrom": "ev0"
+              }
             }
           },
           "save": {
