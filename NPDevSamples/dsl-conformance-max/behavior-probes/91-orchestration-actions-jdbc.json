@@ -1,0 +1,145 @@
+{
+  "probes": [
+    {
+      "id": "orchestration-create-and-schedule-actions-run",
+      "requires": [
+        "jdbc"
+      ],
+      "keywords": [
+        "orchestrationAction.concept",
+        "orchestrationAction.event",
+        "orchestrationAction.delayMs",
+        "orchestrationAction.delaySeconds",
+        "orchestrationAction.delayMinutes"
+      ],
+      "description": "Orchestration rule FollowUpNewShelf fires on ShelfLayoutRegistered (published by the ShelfLayout CRUD create). Its create action (concept WidgetSeedDemo) inserts a row whose label is the new shelf's id, and its three scheduleEvent actions (event ShelfCheckDueMs / ShelfCheckDueSeconds / ShelfCheckDueMinutes) each record a durable schedule carrying shelfId, due 120000 ms, 600 s and 60 min after the create -- a delay unit the runtime ignored would show as due now (or the record would be missing). create and scheduleEvent need a DataSource, so this runs on the JDBC variant only (-StorageVariant h2local); on InMemory the rule is refused at startup (SEVERE, REG-286). GET /api/runtime/schedules is admin-only (the run's ADMIN key).",
+      "steps": [
+        {
+          "name": "create a shelf",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "orch-${rand}",
+            "rows": 1,
+            "cols": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "lid": "$.id"
+          }
+        },
+        {
+          "name": "the create action inserted a WidgetSeedDemo labelled with the shelf id",
+          "method": "GET",
+          "path": "/api/widget_seed_demos?size=200",
+          "retry": {
+            "attempts": 5,
+            "delaySeconds": 1
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$[??label=${lid}]": {
+                "len": 1
+              }
+            }
+          }
+        },
+        {
+          "name": "each scheduleEvent action recorded its own due time",
+          "method": "GET",
+          "path": "/api/runtime/schedules?limit=50",
+          "retry": {
+            "attempts": 5,
+            "delaySeconds": 1
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$[?eventName=ShelfCheckDueMs].payload.shelfId": "${lid}",
+              "$[?eventName=ShelfCheckDueMs].dueAt": {
+                "secondsFromNow": [
+                  90,
+                  125
+                ]
+              },
+              "$[?eventName=ShelfCheckDueSeconds].payload.shelfId": "${lid}",
+              "$[?eventName=ShelfCheckDueSeconds].dueAt": {
+                "secondsFromNow": [
+                  570,
+                  605
+                ]
+              },
+              "$[?eventName=ShelfCheckDueMinutes].payload.shelfId": "${lid}",
+              "$[?eventName=ShelfCheckDueMinutes].dueAt": {
+                "secondsFromNow": [
+                  3570,
+                  3605
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "schedules-of-another-tenant-are-not-listed",
+      "requires": [
+        "jdbc"
+      ],
+      "keywords": [
+        "orchestrationAction.event"
+      ],
+      "description": "A durable schedule recorded under tenant dev (FollowUpNewShelf, fired by this probe's ShelfLayout create) carries the shelf id in its payload. Another tenant (${key_othertenant}, tenant rep1probe-other, role USER) asking GET /api/runtime/schedules must be refused or shown only its own tenant's records: the shelf id must never appear in its response.",
+      "steps": [
+        {
+          "name": "tenant dev creates a shelf",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "orch-x-${rand}",
+            "rows": 1,
+            "cols": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "lid": "$.id"
+          }
+        },
+        {
+          "name": "the schedule exists for tenant dev",
+          "method": "GET",
+          "path": "/api/runtime/schedules?limit=50",
+          "retry": {
+            "attempts": 5,
+            "delaySeconds": 1
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$[?eventName=ShelfCheckDueMs].payload.shelfId": "${lid}"
+            }
+          }
+        },
+        {
+          "name": "another tenant never sees it",
+          "method": "GET",
+          "path": "/api/runtime/schedules?limit=200",
+          "apiKey": "${key_othertenant}",
+          "expect": {
+            "status": [
+              200,
+              403,
+              404
+            ],
+            "notText": "${lid}"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -114,17 +114,6 @@
     },
     {
       "keywords": [
-        "orchestrationAction.concept",
-        "orchestrationAction.delayMinutes",
-        "orchestrationAction.delayMs",
-        "orchestrationAction.delaySeconds",
-        "orchestrationAction.event"
-      ],
-      "reason": "Need a DataSource: the create and scheduleEvent orchestration actions are built only when an entityManager / dataSource exists, and CrudOrchestrationSupport.toRuntimeOrchestration refuses the WHOLE rule when any action cannot be built (reported at SEVERE since REG-286, no longer silent). This InMemory fixture has neither, so the action cannot run and no evidence event exists. Needs the h2local variant (run-behavior-probes.ps1 -LiveFieldVariant) with a rule whose actions are create / scheduleEvent.",
-      "ledger": "ENF-1"
-    },
-    {
-      "keywords": [
         "query.permissionRequirements",
         "query.tracePolicy"
       ],
@@ -151,5 +140,5 @@
       "ledger": "ENF-1"
     }
   ],
-  "frozenCount": 54
+  "frozenCount": 49
 }

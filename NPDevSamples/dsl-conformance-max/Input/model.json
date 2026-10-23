@@ -991,6 +991,9 @@
     { "name": "WidgetReviewApproved", "payload": [ { "name": "approvedNote", "type": "string" } ] },
     { "name": "HeartbeatTick", "payload": [] },
     { "name": "HeartbeatTickOtherTenant", "payload": [] },
+    { "name": "ShelfCheckDueMs", "payload": [ { "name": "shelfId", "type": "uuid" } ] },
+    { "name": "ShelfCheckDueSeconds", "payload": [ { "name": "shelfId", "type": "uuid" } ] },
+    { "name": "ShelfCheckDueMinutes", "payload": [ { "name": "shelfId", "type": "uuid" } ] },
     {
       "name": "WidgetOrderPlaced",
       "payload": [
@@ -1973,6 +1976,16 @@
             "status": "$event.status"
           }
         }
+      ]
+    },
+    {
+      "name": "FollowUpNewShelf",
+      "trigger": { "type": "event", "event": "ShelfLayoutRegistered" },
+      "actions": [
+        { "type": "create", "concept": "WidgetSeedDemo", "map": { "label": "$event.id" } },
+        { "type": "scheduleEvent", "event": "ShelfCheckDueMs", "delayMs": 120000, "map": { "shelfId": "$event.id" } },
+        { "type": "scheduleEvent", "event": "ShelfCheckDueSeconds", "delaySeconds": 600, "map": { "shelfId": "$event.id" } },
+        { "type": "scheduleEvent", "event": "ShelfCheckDueMinutes", "delayMinutes": 60, "map": { "shelfId": "$event.id" } }
       ]
     }
   ],

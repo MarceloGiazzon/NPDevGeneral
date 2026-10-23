@@ -27,3 +27,9 @@ note: >-
   REG-273 (minLength/array constraints/nested object not enforced), REG-274 (domain-type normalization/minLength/regex ignored),
   REG-275 (lifecycle guard/requiredPayload/requires not enforced on REST), REG-276 (seed explicit id ignored), REG-277 (aggregateCollection.orderBy unread).
   Remaining 57 are identity/metadata/presentation keys plus items needing a DataSource or a fixture no model declares.
+  2026-10-23: allowlist 54 -> 49 (frozenCount 49). New fixture rule FollowUpNewShelf (dsl-conformance-max: create WidgetSeedDemo +
+  scheduleEvent with delayMs / delaySeconds / delayMinutes, events ShelfCheckDue*) and probe file 91-orchestration-actions-jdbc.json
+  (requires jdbc, run with -StorageVariant h2local) witness orchestrationAction.concept/event/delayMs/delaySeconds/delayMinutes:
+  the created row exists and each schedule's dueAt lands at its own offset. Its companion probe found REG-300 (cross-tenant
+  schedule listing), fixed the same day. Probes run on the Linux notebook now (PORT-1); the probe runner restages stale
+  RuntimeHost jars itself (LIBS-FRESH).
