@@ -1,20 +1,17 @@
 {
-  "closedAt": "2026-10-23T17:38:44.8788063Z",
+  "closedAt": "2026-10-23T19:05:31.6748524Z",
   "branch": "main",
-  "head": "b516ab77",
-  "headSubject": "test(probes): ENF-1 -- orchestration create/scheduleEvent actions witnessed on h2local (allowlist 54 -> 49)",
-  "summary": "LIBS-FRESH: generate-sample-app restages RuntimeHost libs when the manifest's sourceTrees fingerprint differs from the checkout (proven end to end). ENF-1 allowlist 54 -> 49: fixture rule FollowUpNewShelf + probe file 91 (h2local) witness orchestrationAction create/scheduleEvent/delay*. That probe found REG-300 (schedules listed cross-tenant, forced drain fired other tenants' events) -- fixed, test red on old code, probe green.",
-  "nextStep": "Owner decision first: /api/admin/* has no central ADMIN gate (REG-300 found RuntimeSchedulesController had none; StorageSummaryController has none either) -- audit every /api/admin and /api/runtime controller for role + tenant checks via behaviour probes using key_othertenant, file one REG per hole. Then ENF-1: 49 allowlisted keywords left (query.permissionRequirements/tracePolicy need a fixture query; aggregate.onValidate needs a failing procedure).",
+  "head": "ac1f9aab",
+  "headSubject": "chore(session): handoff -- LIBS-FRESH, REG-300, ENF-1 54->49; next: admin endpoint role/tenant audit",
+  "summary": "Built NPDev Manager 0.5.1 from source (Build/manager-target/quick/npdev-manager; starts only outside VS Code's snap terminal or with env -i) and walked the owner through the IMP-GAPS-1 and AIP-4 4.5 steps. A read-only scout audited /api/admin and /api/runtime auth: there is no central role gate; tenant ADMIN can rewrite the shared model (SemanticBehaviorWriteBackController.apply, RealPublicationExecutor and about six publication/rollback controllers), and /api/admin/storage/summary has no role check. Nothing fixed yet. Earlier in the session: LIBS-FRESH, REG-300 and ENF-1 54 -> 49 landed (see the previous handoff).",
+  "nextStep": "Waiting on the owner for two answers. (1) Should the scout's security fixes go ahead, and is SUPERUSER (not tenant ADMIN) the gate for changing the shared model? (2) Once answered, in order: (a) ENF-1: add orchestrationAction.map to probe 91's keywords, remove it from the allowlist in scripts/policy/dsl-behavior-witness.json and lower frozenCount 49 -> 48, then run check-dsl-behavior-witness.py. (b) Require SUPERUSER on POST /api/admin/model/semantic-behavior-writeback/apply (NPDevRuntimeHost/src/main/java/com/finalexec/api/SemanticBehaviorWriteBackController.java:73-80) and on the RealPublicationExecutor / PublicationExecutor / PublicationRollbackExecutor / RollbackExecution / SourceMutationApprovalGate / Semantic- and StructuralPublicationMapping POSTs, following MetadataHotSwapController /apply (~:423). Make their /history reads SUPERUSER-only or tenant-filtered. Add a role check to StorageSummaryController (runtimehost-core/.../api/StorageSummaryController.java:35). Write a unit test per controller, proven red on the old code. (c) X0: selectDueScheduledEvents catch (GeneratedCrudRuntimeSupport.java ~1685) and claimScheduledEvent must not read a failure as no_due_records or skipped. (d) Open a ledger item for query.permissionRequirements, query.tracePolicy, aggregateCollection.via and flowStep.data: compiled but never read at runtime. When the owner sends AIP-4 screenshots (evidence/aip-4-manager-real-2026-10-23/) or the WmsOffice files (OutsideRepo/wmsoffice-sources/), act on those first.",
   "plan": "",
-  "blocked": "IMP-GAPS-1 re-score needs WmsLabs_CreateTables.html from the owner. validate-corpus red locally only: AppGen/apps/_experiments/WmsOfficePackTest's pack cache (~/.npdev/packs) is empty on this machine (npdev pack add). Owner: AIP-4 4.5, OWN-2.",
-  "verified": "Probe 91 h2local 2/2, probe 12 3/3 (via auto-restage); :adapters:runtime-support:test 168 green, new REG-300 test 2/3 red on old code; validateModel 0 errors; witness, dsl-coverage, dialect, sweep, x0, portable tooling, twin-pair, done-item guards OK. No T1/T2 gate.",
+  "blocked": "AIP-4 4.5: the owner must run the Manager with a real key (free Gemini) or Ollama and take screenshots. IMP-GAPS-1: needs WmsLabs_CreateTables.html, the GeneXus tables export and WmsLabs_Mod_GX17.xml from the owner. OWN-2: owner outreach. The admin-endpoint fixes wait on the owner's answer about the SUPERUSER gate.",
+  "verified": "Manager quick build succeeded (11m53s, 1 warning). A 10s smoke launch with a clean env stayed up with no errors; launched from the VS Code snap env it crashed (GLib schema error, then a libpthread symbol error). No code changed after the previous handoff, so no tests were run; no T1/T2 gate ran.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "b516ab77 test(probes): ENF-1 -- orchestration create/scheduleEvent actions witnessed on h2local (allowlist 54 -> 49)",
-    "79307f80 fix(tenancy): REG-300 -- schedule listing and forced drains are limited to the caller's tenant",
-    "011347b0 fix(build): LIBS-FRESH -- a generated sample restages stale RuntimeHost libs instead of testing old code",
-    "d55b809b chore(session): handoff -- REG-284 DONE, REG-295 HTTP proof green, PORT-1 Linux fixes; next: stale-jar guard in the probe runner"
+    "ac1f9aab chore(session): handoff -- LIBS-FRESH, REG-300, ENF-1 54->49; next: admin endpoint role/tenant audit"
   ]
 }
