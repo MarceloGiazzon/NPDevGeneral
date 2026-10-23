@@ -1,21 +1,18 @@
 {
-  "closedAt": "2026-10-23T06:30:55.8064568Z",
+  "closedAt": "2026-10-23T07:35:12.0423174Z",
   "branch": "main",
-  "head": "8c83e569",
-  "headSubject": "chore(ledger): REG-283 -- six sample flows rely on the lookup-less unique check; (b) needs real flow lookups, not a loud failure",
-  "summary": "REG-282 X0 audit DONE (a1200bc9): runtime-support/kernel evaluators split into per-file X0 entries, globs widened, REG-283..286 filed. REG-285 DONE (74b6dbb6): unbound $user.* in access rules/guards refused at validation and denied at runtime. REG-284 PARTIAL (34805967): function-call defaults evaluate, unevaluable default/derived expressions throw, validator refuses unregistered functions. REG-283 note (8c83e569): 6 sample flows rely on the lookup-less EmailUnique check.",
-  "nextStep": "REG-283: owner decides the flow-lookup tenant source (recommended: tenant from the flow's request state, refuse when absent). Then give NpdevCapabilityBindingConfig's invariantEngine bean real unique/scope/conflict lookups (ConceptStore.existsUnique) and make CelInvariantEngine's no-lookup defaults report INVARIANT_UNCHECKABLE; independently override the 4-arg create(...) in the runtimeInvariantEngineFactory bean to pass the compound-unique lookup (restage libs with scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars, then run targeted RuntimeHost tests). First check CI on main is green at 8c83e569. If REG-283 waits: REG-286 (orchestration rule silently dropped), then REG-284 (d) probe (needs T1), then ENF-1.",
-  "plan": "NPDev_General__OutsideRepo/OPEN_STATE_AUDIT_2026-10-23.md (section 9); ledger/items/REG-283.yml",
-  "blocked": "REG-283 (b) needs the owner call on the tenant source for flow uniqueness lookups. REG-284 (d) behaviour probe and probe 72-ai-profile-effort need a booted app (T1/T2), not run on this notebook. Carried: AIP-4 4.5 owner check; owner decisions (order-totals threshold, BENCH-1 prune, dom1-5 sheets, REG-278 semantics, OWN-2); GitHub refs/pull purge needs Support.",
-  "verified": "Local targeted only, no T1/T2 gate: full :NPDevContract:dsl:test (green after fixing one suggestedFix-coverage failure), full :kernel:test, :adapters:runtime-support:test, generator AuthoringMergeGateTest+AuthoringDiffGateTest; new must-error tests proven red on old code; check-x0-evaluator-coverage (+calibrate), check-done-item-guards, check-ledger-status-reverse-freshness, check-twin-pair-consistency, check-markdown-links OK. CI on main after a1200bc9 NOT checked.",
+  "head": "bf3d3de5",
+  "headSubject": "fix(invariants): close REG-283 -- a missing lookup is INVARIANT_UNCHECKABLE, flows look up in their own tenant",
+  "summary": "REG-283 DONE (bf3d3de5): owner chose flow-state tenantId (refuse when absent); CelInvariantEngine no-lookup defaults now report INVARIANT_UNCHECKABLE, ReloadableInvariantEngine binds Lookups.fromConceptStore per request to state.tenantId (RuntimeHost invariantEngine bean + CLI runtime), RuntimeHost factory overrides 4-arg create so CRUD compound unique is checked, unknown-entity fix; X0-11/X0-13 FIXED. Filed REG-287 (CRUD scope/conflict lookups not tenant-scoped, swallow errors).",
+  "nextStep": "Check CI on main at bf3d3de5 (gh run list --branch main); if green, start REG-287: make CrudReferenceLookupSupport.scopeExists/resourceHasConflict tenant-scoped via ConceptStore.existsUnique/query with the generated service's tenant, raise CelInvariantEngine.LookupUnavailableException on unknown concept/field or query error, and add a test that a tenant-B row neither satisfies tenant-A scope.exists nor blocks tenant-A's slot. Then REG-286, then REG-284 (d) probe (needs T1), then ENF-1.",
+  "plan": "ledger/items/REG-287.yml; NPDev_General__OutsideRepo/OPEN_STATE_AUDIT_2026-10-23.md (section 9)",
+  "blocked": "REG-284 (d) behaviour probe and probe 72-ai-profile-effort need a booted app (T1/T2), not run on this notebook. Carried: AIP-4 4.5 owner check; owner decisions (order-totals threshold, BENCH-1 prune, dom1-5 sheets, REG-278 semantics, OWN-2); GitHub refs/pull purge needs Support.",
+  "verified": "Targeted only, no T1/T2 gate: full :adapters:runtime-support:test green; full NPDevGenerator :tools:npdev-cli:test green (3 failures fixed by wiring CLI lookups); RuntimeHost in assembled simple-contact-intake app: NpdevCapabilityBindingConfigInvariantLookupsTest (2) + JdbcBusinessConceptStoreExistsUniqueTest (8) green after restage; guard test proven red with old unique default; check-x0-evaluator-coverage, check-done-item-guards, check-ledger-status-reverse-freshness, check-twin-pair-consistency OK. CI on bf3d3de5 not yet checked. Note: NPDevRuntimeHost/build.gradle default libs dir (__OutsideRepo/runtimehost-libs) disagrees with sync script (Build/runtimehost-libs).",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "8c83e569 chore(ledger): REG-283 -- six sample flows rely on the lookup-less unique check; (b) needs real flow lookups, not a loud failure",
-    "34805967 fix(values): REG-284 (a-c) -- function-call defaults evaluate; an unevaluable default/derived expression is an error, not its own text or null",
-    "74b6dbb6 fix(access): close REG-285 -- an unbound $user name in an access rule or guard is refused, not evaluated as null",
-    "a1200bc9 chore(ledger): REG-282 DONE -- X0 audit of the expression engines; REG-283..286 filed",
-    "fd7f2075 chore(session): handoff -- CI green, AIP-3 DONE, open-state audit, REG-282 filed; REG-282 audit next"
+    "bf3d3de5 fix(invariants): close REG-283 -- a missing lookup is INVARIANT_UNCHECKABLE, flows look up in their own tenant",
+    "f4657d2b chore(session): handoff -- REG-282 audit DONE, REG-285 DONE, REG-284 PARTIAL; REG-283 needs owner tenant decision next"
   ]
 }
