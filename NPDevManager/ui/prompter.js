@@ -192,7 +192,7 @@ async function refreshPrompterProfiles() {
     try {
       const report = await pInvoke("migrate_prompter_profiles");
       if ((report.migrated || []).length) {
-        pStatus(`moved ${report.migrated.length} provider(s) to NPDev AI profiles; their keys are in the AI Keys tab now`);
+        pStatus(`moved ${report.migrated.length} provider(s) to NPDev AI profiles; their keys are in the AI Providers tab now`);
       }
     } catch (e) {
       // Not fatal: the profiles still work the legacy way.

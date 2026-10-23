@@ -1,0 +1,49 @@
+{
+  "ok": true,
+  "bindings": [
+    {
+      "feature": "bench",
+      "profiles": [
+        "deep",
+        "fast"
+      ],
+      "source": "shipped",
+      "overrides": {}
+    },
+    {
+      "feature": "prompter",
+      "profiles": [
+        "local-coder",
+        "deep"
+      ],
+      "source": "overridden",
+      "overrides": {
+        "profiles": {
+          "shipped": [
+            "deep"
+          ],
+          "mine": [
+            "local-coder",
+            "deep"
+          ]
+        }
+      }
+    },
+    {
+      "feature": "review",
+      "profiles": [
+        "deep"
+      ],
+      "source": "shipped",
+      "overrides": {}
+    },
+    {
+      "feature": "scrap-assistant",
+      "profiles": [
+        "fast"
+      ],
+      "source": "shipped",
+      "overrides": {}
+    }
+  ]
+}

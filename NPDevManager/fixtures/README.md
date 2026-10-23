@@ -100,6 +100,28 @@ which running `pack list` from the repo root against an app living elsewhere alw
 by `_resolve_pack_source_path` before any fixture here was captured; the deprecated-fixture
 capture above is what surfaced it live.
 
+## AI Providers tab (AIP-4), captured 2026-10-22
+
+Every `ai-*.json` is verbatim `python NPDevCli/npdev_cli.py ai <command> --json` run with
+`NPDEV_AI_CONFIG` and `NPDEV_AI_USAGE_LOG` pointing at a scratch overlay, never the real one. The overlay
+was built with real `npdev ai` writes: an `lmstudio` provider (local, keyless) with two models, one
+disabled; a `local-coder` profile falling back to `fast`; `bind prompter local-coder,deep`;
+`spend allow-paid review`; `spend cap 20`. Only the scratch paths were replaced with `/home/user/...`.
+
+| File | Captured from | Covers |
+|---|---|---|
+| `ai-providers.json` | `ai providers --json` | shipped + yours, kind, protocol, key source (never a key) |
+| `ai-models.json` | `ai models --all --json` | prices, effort levels, an enabled and a disabled model of yours |
+| `ai-profiles.json`, `ai-bindings.json` | `ai profiles --json`, `ai bindings --json` | fallback chains; a binding you changed (`overridden`) |
+| `ai-spend.json` | `ai spend --json` | one paid opt-in, a monthly cap |
+| `ai-usage.json` | `ai usage --json` | **over a seeded usage log**: no key or local LLM was available to make real calls, so the 13 log records were written with `npdev_ai_client.UsageLog.append`; the summary itself is the real CLI's |
+| `ai-detect.json` | `ai detect --json` | nothing answering -- the honest empty state |
+| `ai-test.json` | `ai test local-coder --json` | a real failure: nothing on :1234 and no keys for the fallbacks |
+| `ai-write-ok.json` | `ai providers set lmstudio --default-model ... --json` | the answer every change gets |
+| `ai-write-refused.json` | `ai profiles add bad --provider nope --json` | a refused change (not wired into fake mode; kept as the error shape) |
+
+Not covered: a successful `ai test` and a `detect` that finds a server (neither could be produced here).
+
 ## Re-capturing
 
 Fixtures go stale when a CLI contract changes; that is what they are for. Re-capture by running the

@@ -81,6 +81,19 @@ const FIXTURE_PROVIDERS_LIST: &str = include_str!("../fixtures/providers-list.js
 const FIXTURE_PROVIDERS_OK: &str = include_str!("../fixtures/providers-ok.json");
 const FIXTURE_PROVIDERS_TEST: &str = include_str!("../fixtures/providers-test.json");
 const FIXTURE_AI_VALIDATE: &str = include_str!("../fixtures/ai-validate.json");
+/// AIP-4: `npdev ai <list> --json` captured 2026-10-22 against a scratch overlay (`NPDEV_AI_CONFIG`) that
+/// adds an LM Studio provider, two models, a `local-coder` profile bound to the Prompter and a spend
+/// cap. `ai-usage.json` is the real `ai usage --json` over a seeded usage log (no key or local LLM was
+/// available to make real calls); `ai-test.json` is a real failure (nothing on :1234, no keys).
+const FIXTURE_AI_PROVIDERS: &str = include_str!("../fixtures/ai-providers.json");
+const FIXTURE_AI_MODELS: &str = include_str!("../fixtures/ai-models.json");
+const FIXTURE_AI_PROFILES: &str = include_str!("../fixtures/ai-profiles.json");
+const FIXTURE_AI_BINDINGS: &str = include_str!("../fixtures/ai-bindings.json");
+const FIXTURE_AI_USAGE: &str = include_str!("../fixtures/ai-usage.json");
+const FIXTURE_AI_SPEND: &str = include_str!("../fixtures/ai-spend.json");
+const FIXTURE_AI_DETECT: &str = include_str!("../fixtures/ai-detect.json");
+const FIXTURE_AI_TEST: &str = include_str!("../fixtures/ai-test.json");
+const FIXTURE_AI_WRITE_OK: &str = include_str!("../fixtures/ai-write-ok.json");
 /// Phase F. The one fixture here that is hand-authored rather than captured, and the file says why
 /// in its own `_captured` header: capturing it means paying a third-party provider with a real key.
 /// Same documented-exception shape as the two doctor fixtures above.
@@ -1217,13 +1230,28 @@ pub async fn run_ai(
     stdin: Option<String>,
 ) -> Result<Value, String> {
     if fake_mode() {
-        let text = match args.first().map(String::as_str) {
-            Some("complete") => FIXTURE_PROMPTER_GENERATE,
-            _ => FIXTURE_AI_VALIDATE,
-        };
-        return serde_json::from_str(text).map_err(|e| format!("fixture did not parse: {e}"));
+        return serde_json::from_str(fake_ai_fixture(args)).map_err(|e| format!("fixture did not parse: {e}"));
     }
     run_json_with_stdin(python_exe, npdev_cli, java_home, "ai", args, stdin).await
+}
+
+/// The fixture fake mode answers `npdev ai <args>` with: a listing for a bare section (its next
+/// argument, if any, is a flag), the captured "saved" answer for any change.
+fn fake_ai_fixture(args: &[String]) -> &'static str {
+    let action = args.get(1).filter(|a| !a.starts_with("--"));
+    match (args.first().map(String::as_str), action) {
+        (Some("complete"), _) => FIXTURE_PROMPTER_GENERATE,
+        (Some("providers"), None) => FIXTURE_AI_PROVIDERS,
+        (Some("models"), None) => FIXTURE_AI_MODELS,
+        (Some("profiles"), None) => FIXTURE_AI_PROFILES,
+        (Some("bindings"), _) => FIXTURE_AI_BINDINGS,
+        (Some("spend"), None) => FIXTURE_AI_SPEND,
+        (Some("usage"), _) => FIXTURE_AI_USAGE,
+        (Some("detect"), _) => FIXTURE_AI_DETECT,
+        (Some("test"), _) => FIXTURE_AI_TEST,
+        (Some("validate"), _) => FIXTURE_AI_VALIDATE,
+        _ => FIXTURE_AI_WRITE_OK,
+    }
 }
 
 /// `npdev <command> <args>` answering one JSON object, with `stdin` (a key, a prompt) piped in rather
@@ -2009,4 +2037,36 @@ pub async fn stop_running_process(mut proc: RunningProcess) -> Result<(), String
     }
     let _ = proc.child.kill().await;
     Ok(())
+}
+
+#[cfg(test)]
+mod fake_ai_tests {
+    use super::*;
+
+    fn args(list: &[&str]) -> Vec<String> {
+        list.iter().map(|a| a.to_string()).collect()
+    }
+
+    #[test]
+    fn every_ai_fixture_parses_and_answers_ok_where_captured_ok() {
+        for (name, text) in [("providers", FIXTURE_AI_PROVIDERS), ("models", FIXTURE_AI_MODELS),
+                             ("profiles", FIXTURE_AI_PROFILES), ("bindings", FIXTURE_AI_BINDINGS),
+                             ("usage", FIXTURE_AI_USAGE), ("spend", FIXTURE_AI_SPEND), ("detect", FIXTURE_AI_DETECT),
+                             ("write", FIXTURE_AI_WRITE_OK), ("validate", FIXTURE_AI_VALIDATE)] {
+            let value: Value = serde_json::from_str(text).unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(value["ok"], true, "{name}");
+        }
+        let test: Value = serde_json::from_str(FIXTURE_AI_TEST).unwrap();
+        assert_eq!(test["ok"], false, "the captured test is a real failure");
+    }
+
+    #[test]
+    fn a_bare_section_lists_and_an_action_saves() {
+        assert_eq!(fake_ai_fixture(&args(&["models", "--provider", "lmstudio", "--json"])), FIXTURE_AI_MODELS);
+        assert_eq!(fake_ai_fixture(&args(&["models", "disable", "lmstudio", "x", "--json"])), FIXTURE_AI_WRITE_OK);
+        assert_eq!(fake_ai_fixture(&args(&["spend", "--json"])), FIXTURE_AI_SPEND);
+        assert_eq!(fake_ai_fixture(&args(&["spend", "cap", "20", "--json"])), FIXTURE_AI_WRITE_OK);
+        assert_eq!(fake_ai_fixture(&args(&["bind", "prompter", "deep", "--json"])), FIXTURE_AI_WRITE_OK);
+        assert_eq!(fake_ai_fixture(&args(&["test", "deep", "--json"])), FIXTURE_AI_TEST);
+    }
 }

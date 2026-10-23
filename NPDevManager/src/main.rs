@@ -926,7 +926,7 @@ async fn host_keys(state: State<'_, AppState>, app_dir: String, new: Option<bool
     npdev::run_host_keys(&python, &cli, java_home.as_deref(), &app_dir, new).await
 }
 
-/// The AI Keys tab: every call is `npdev providers ... --json` (see npdev::run_providers). A provider
+/// The AI Providers tab: every call is `npdev providers ... --json` (see npdev::run_providers). A provider
 /// id is checked here so a value like `--json` can never reach argparse as a flag.
 async fn providers_call(state: &State<'_, AppState>, args: Vec<String>, stdin: Option<String>) -> Result<Value, String> {
     let java_home = resolve_java_home(state);
@@ -1608,7 +1608,7 @@ fn assistant_config(state: State<'_, AppState>) -> Value {
         || secrets::has_secret(LEGACY_ASSISTANT_PROFILE_ID);
     match &manager.assistant {
         None => serde_json::json!({"configured": false, "kind": "ai", "prompterProfiles": prompter_profiles,
-                                   "note": "uses the scrap-assistant binding of `npdev ai`; keys in the AI Keys tab"}),
+                                   "note": "uses the scrap-assistant binding of `npdev ai`; keys in the AI Providers tab"}),
         Some(config) => serde_json::json!({
             "configured": true,
             "kind": config.kind,
@@ -1686,7 +1686,7 @@ async fn assistant_compose(
 async fn assistant_generate(state: State<'_, AppState>, payload: Value) -> Result<Value, String> {
     let config = state.manager.lock().expect("lock poisoned").assistant.clone();
     // Nothing configured means the `ai` kind: the scrap-assistant binding of `npdev ai`, with the key
-    // from the AI Keys tab -- a working default that still sends nothing without a stored key.
+    // from the AI Providers tab -- a working default that still sends nothing without a stored key.
     let config = config.unwrap_or_else(|| state::AssistantConfig { kind: "ai".to_string(), ..Default::default() });
     let java_home = resolve_java_home(&state);
     let (python, cli) = if npdev::fake_mode() {

@@ -45,7 +45,7 @@
     <button class="tab" data-screen="provenance">Impact</button>
     <button class="tab" data-screen="dbio">DB Import/Export</button>
     <button class="tab" data-screen="gpuchecks">GPU Checks</button>
-    <button class="tab" data-screen="providers">AI Keys</button>
+    <button class="tab" data-screen="providers">AI Providers</button>
     <button class="tab" data-screen="secrets">Secrets</button>
     <button class="tab" data-screen="studio">Studio</button>
     <button class="tab" data-screen="evals">Evals</button>
@@ -725,23 +725,28 @@
     </section>
 
     <section id="screen-providers" class="screen" hidden>
-      <h1>&#129302; AI KEYS <span class="dim">// one key per AI provider, shared by NPDev everywhere</span></h1>
+      <h1>&#129302; AI PROVIDERS <span class="dim">// who NPDev may ask, with which model, and what it cost</span></h1>
       <p class="subtitle">
-        Kept by <code>npdev providers</code> in your OS store (Windows: DPAPI; Linux: the desktop
-        keyring). The same key serves the authoring benchmark, the CLI and any generated app you export
-        it to. This tab can store, test and remove a key -- it never shows one back.
+        One configuration, read by the CLI, the Prompter, the Scrap assistant, the benchmark and the
+        review: the providers NPDev ships plus yours (<code>npdev ai</code>, your changes in
+        <span id="ai-mine-path">ai.json</span>). Keys are kept by <code>npdev providers</code> in your OS
+        store (Windows: DPAPI; Linux: the desktop keyring) -- this tab can store, test and remove a key,
+        never show one back.
       </p>
       <div id="providers-store" class="providers-store"></div>
-
-      <div class="secrets-columns">
-        <div class="secrets-table">
-          <div class="packs-toolbar">
-            <button class="btn" id="providers-refresh">&#8635; REFRESH</button>
-            <span id="providers-status" class="status-line"></span>
-          </div>
-          <div id="providers-list"></div>
+      <div class="packs-toolbar">
+        <div class="tabbar" id="ai-views">
+          <button data-ai-view="providers" class="active">PROVIDERS</button>
+          <button data-ai-view="models">MODELS</button>
+          <button data-ai-view="profiles">PROFILES</button>
+          <button data-ai-view="uses">USES</button>
         </div>
+        <button class="btn" id="providers-refresh">&#8635; REFRESH</button>
+        <span id="providers-status" class="status-line"></span>
+      </div>
 
+      <div class="secrets-columns" data-ai-pane="providers">
+        <div class="secrets-table"><div id="providers-list"></div></div>
         <div class="secrets-panel">
           <h3>ADD OR REPLACE A KEY</h3>
           <label>Provider
@@ -753,6 +758,35 @@
           </label>
           <button class="btn" id="providers-form-save">SAVE</button>
 
+          <h3 class="providers-gap">FIND LOCAL LLMS</h3>
+          <p class="secrets-note">
+            Looks for Ollama, LM Studio, llama.cpp, vLLM and Jan on this machine. Adding records each
+            server as a keyless local provider with the models it serves.
+          </p>
+          <button class="btn" id="ai-detect-go">SEARCH THIS MACHINE</button>
+          <div id="ai-detect-result" class="ai-detect"></div>
+
+          <h3 class="providers-gap">ADD A PROVIDER</h3>
+          <p class="secrets-note">Any server speaking one of the three protocols. Add its models in MODELS afterwards.</p>
+          <label>Id <input type="text" id="ai-prov-id" placeholder="e.g. lmstudio-desk" autocomplete="off" /></label>
+          <label>Name <input type="text" id="ai-prov-name" autocomplete="off" /></label>
+          <label>Base URL <input type="text" id="ai-prov-url" placeholder="http://localhost:1234/v1" autocomplete="off" /></label>
+          <label>Protocol
+            <select id="ai-prov-protocol">
+              <option value="openai-chat">openai-chat (OpenAI-compatible)</option>
+              <option value="anthropic-messages">anthropic-messages</option>
+              <option value="gemini-native">gemini-native</option>
+            </select>
+          </label>
+          <label>Kind
+            <select id="ai-prov-kind">
+              <option value="local">local -- keyless, on your machine</option>
+              <option value="free">free -- a key, no charge</option>
+              <option value="paid">paid -- billed; each feature needs a paid opt-in</option>
+            </select>
+          </label>
+          <button class="btn" id="ai-prov-add">ADD PROVIDER</button>
+
           <h3 class="providers-gap">USE IN A GENERATED APP</h3>
           <p class="secrets-note">
             Writes the checked providers' keys into the app's <code>secrets/agent-proxy.env</code>
@@ -763,6 +797,61 @@
           </label>
           <div id="providers-export-choices"></div>
           <button class="btn" id="providers-export-go">EXPORT</button>
+        </div>
+      </div>
+
+      <div class="secrets-columns" data-ai-pane="models" hidden>
+        <div class="secrets-table">
+          <div class="packs-toolbar">
+            <label class="ai-inline">Provider <select id="ai-models-provider"></select></label>
+            <button class="btn ghost" id="ai-models-refresh">Refresh from server</button>
+          </div>
+          <div id="ai-models-list"></div>
+        </div>
+        <div class="secrets-panel">
+          <h3>ADD OR EDIT A MODEL</h3>
+          <p class="secrets-note">Prices are USD per million tokens; they feed the usage report and the spend cap.</p>
+          <label>Provider <select id="ai-model-provider"></select></label>
+          <label>Model id <input type="text" id="ai-model-id" autocomplete="off" /></label>
+          <label>Name <input type="text" id="ai-model-name" autocomplete="off" /></label>
+          <label>Price in <input type="text" id="ai-model-in" placeholder="0.30" autocomplete="off" /></label>
+          <label>Price out <input type="text" id="ai-model-out" placeholder="2.50" autocomplete="off" /></label>
+          <label>Effort levels <input type="text" id="ai-model-effort" placeholder="low,medium,high" autocomplete="off" /></label>
+          <button class="btn" id="ai-model-save">SAVE MODEL</button>
+        </div>
+      </div>
+
+      <div class="secrets-columns" data-ai-pane="profiles" hidden>
+        <div class="secrets-table"><div id="ai-profiles-list"></div></div>
+        <div class="secrets-panel">
+          <h3>ADD OR EDIT A PROFILE</h3>
+          <p class="secrets-note">A profile is a provider, a model and how hard it should think. Features use profiles, never a bare endpoint.</p>
+          <label>Name <input type="text" id="ai-profile-name" autocomplete="off" /></label>
+          <label>Description <input type="text" id="ai-profile-desc" autocomplete="off" /></label>
+          <label>Provider <select id="ai-profile-provider"></select></label>
+          <label>Model <select id="ai-profile-model"></select></label>
+          <label>Effort
+            <select id="ai-profile-effort">
+              <option value="">(model default)</option>
+              <option>none</option><option>low</option><option>medium</option>
+              <option>high</option><option>xhigh</option><option>max</option>
+            </select>
+          </label>
+          <label>Max tokens <input type="text" id="ai-profile-max" placeholder="16000" autocomplete="off" /></label>
+          <label>Fallbacks <input type="text" id="ai-profile-fallback" placeholder="fast,offline" autocomplete="off" /></label>
+          <button class="btn" id="ai-profile-save">SAVE PROFILE</button>
+        </div>
+      </div>
+
+      <div data-ai-pane="uses" hidden>
+        <h3 class="ai-h3">WHICH FEATURE USES WHAT</h3>
+        <div id="ai-uses-list"></div>
+        <h3 class="ai-h3">BY PROVIDER, SINCE <span id="ai-usage-since"></span></h3>
+        <div id="ai-by-provider"></div>
+        <div class="ai-spend">
+          <label class="ai-inline">Monthly cap (USD) <input type="text" id="ai-spend-cap" placeholder="none" autocomplete="off" /></label>
+          <button class="btn ghost" id="ai-spend-cap-save">Save cap</button>
+          <span class="dim" id="ai-usage-total"></span>
         </div>
       </div>
     </section>
@@ -903,7 +992,7 @@
           <input type="text" id="pf-label" placeholder="Anthropic (work account)" autocomplete="off" style="width:100%"></label>
         <label class="subtitle" style="display:block;margin-top:8px">Kind
           <select id="pf-kind">
-            <option value="ai">ai — an NPDev AI profile (keys live in the AI Keys tab)</option>
+            <option value="ai">ai — an NPDev AI profile (keys live in the AI Providers tab)</option>
             <option value="command">command — your own CLI</option>
             <option value="http">http — a raw endpoint (legacy; moved to an AI profile on first use)</option>
           </select></label>
@@ -1065,7 +1154,7 @@
     try { window.__npdevInitDbio(); } catch (e) { console.error("DB Import/Export init failed", e); }
     try { window.__npdevInitGpuChecks(); } catch (e) { console.error("GPU Checks init failed", e); }
     try { window.__npdevInitSecrets(); } catch (e) { console.error("Secrets init failed", e); }
-    try { window.__npdevInitProviders(); } catch (e) { console.error("AI Keys init failed", e); }
+    try { window.__npdevInitProviders(); } catch (e) { console.error("AI Providers init failed", e); }
     try { window.__npdevInitStudio(); } catch (e) { console.error("Studio init failed", e); }
     try { window.__npdevInitEvals(); } catch (e) { console.error("Evals init failed", e); }
   </script>

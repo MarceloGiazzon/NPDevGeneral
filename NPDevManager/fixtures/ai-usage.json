@@ -1,0 +1,53 @@
+{
+  "ok": true,
+  "since": "2026-10-01T00:00:00Z",
+  "log": "/home/user/.config/NPDev/ai-usage.jsonl",
+  "estUsd": 0.82,
+  "paidCallsWithoutPrice": 0,
+  "rows": [
+    {
+      "feature": "prompter",
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b",
+      "calls": 6,
+      "failed": 0,
+      "inTok": 25200,
+      "outTok": 10800,
+      "estUsd": 0.0,
+      "unpriced": 0
+    },
+    {
+      "feature": "prompter",
+      "provider": "lmstudio",
+      "model": "qwen2.5-coder-7b-instruct",
+      "calls": 1,
+      "failed": 0,
+      "inTok": 3900,
+      "outTok": 1500,
+      "estUsd": 0.0,
+      "unpriced": 0
+    },
+    {
+      "feature": "scrap-assistant",
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "calls": 4,
+      "failed": 1,
+      "inTok": 8400,
+      "outTok": 1800,
+      "estUsd": 0.0,
+      "unpriced": 0
+    },
+    {
+      "feature": "review",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "calls": 2,
+      "failed": 0,
+      "inTok": 104000,
+      "outTok": 12000,
+      "estUsd": 0.82,
+      "unpriced": 0
+    }
+  ]
+}

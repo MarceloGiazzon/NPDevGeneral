@@ -1,4 +1,5 @@
-/* AI Keys tab -- provider API keys via `npdev providers`. Reuses the Secrets tab's table/panel classes. */
+/* AI Providers tab -- `npdev ai` (configuration) + `npdev providers` (keys). Reuses the Secrets tab's
+   table/panel classes and the Monitor's .tabbar. */
 
 #screen-providers h1 {
   font-family: var(--font-mono);
@@ -37,3 +38,20 @@
 .providers-gap { margin-top: 18px !important; }
 .providers-check { display: block; font-size: 12px; color: var(--text); margin: 4px 0; }
 #providers-export-choices { margin-bottom: 10px; }
+
+#screen-providers .packs-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+#screen-providers .packs-toolbar .tabbar { margin-bottom: 0; }
+.ai-source {
+  font-family: var(--font-mono); font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-left: 6px;
+  color: var(--warn, #e8c35a); border: 1px solid #4a4128;
+}
+table.secrets-list tr.ai-off td { opacity: .5; }
+.ai-inline { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.ai-inline select, .ai-inline input, #screen-providers td select, #screen-providers td input.ai-then {
+  background: var(--bg2); color: var(--text); border: 1px solid #262c33; border-radius: 4px;
+  padding: 3px 6px; font-size: 12px;
+}
+#screen-providers td input.ai-then { width: 120px; margin-left: 4px; }
+.ai-h3 { margin: 14px 0 8px; font-size: 13px; color: var(--text); font-family: var(--font-mono); letter-spacing: 1px; }
+.ai-spend { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.ai-detect { font-size: 12px; color: var(--text); margin: 8px 0; display: grid; gap: 6px; }

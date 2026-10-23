@@ -449,10 +449,10 @@ async function openAssistant(runId) {
   // who HAS set providers up one tab over is both wrong and unactionable, so the count decides which
   // sentence they get.
   // Unconfigured means the `ai` kind (main.rs assistant_generate): the scrap-assistant binding of
-  // `npdev ai`, with the key from the AI Keys tab. A missing key is reported by the send itself.
+  // `npdev ai`, with the key from the AI Providers tab. A missing key is reported by the send itself.
   document.getElementById("assistant-state").textContent = config.configured
     ? `provider: ${config.kind}${config.profile ? " · " + config.profile : ""}${config.model ? " · " + config.model : ""}`
-    : "provider: NPDev AI (the scrap-assistant binding — keys in the AI Keys tab, profiles via `npdev ai bind " +
+    : "provider: NPDev AI (the scrap-assistant binding — keys in the AI Providers tab, profiles via `npdev ai bind " +
       "scrap-assistant <profile>`). You can also write the routine by hand in the JSON tab.";
   document.getElementById("assistant-send").hidden = false;
 }

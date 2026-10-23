@@ -1,0 +1,26 @@
+{
+  "ok": false,
+  "error": "every target failed: local-coder: URLError calling localhost:1234: <urlopen error [Errno 111] Connection refused> | fast: no key for gemini: run `npdev providers add gemini` (or set NPDEV_EXTERNALAI_GEMINI_API_KEY) | fast-alt: no key for groq: run `npdev providers add groq` (or set NPDEV_EXTERNALAI_GROQ_API_KEY)",
+  "feature": null,
+  "attempts": [
+    {
+      "profile": "local-coder",
+      "provider": "lmstudio",
+      "model": "qwen2.5-coder-7b-instruct",
+      "error": "URLError calling localhost:1234: <urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "profile": "fast",
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "error": "no key for gemini: run `npdev providers add gemini` (or set NPDEV_EXTERNALAI_GEMINI_API_KEY)"
+    },
+    {
+      "profile": "fast-alt",
+      "provider": "groq",
+      "model": "llama-3.3-70b-versatile",
+      "error": "no key for groq: run `npdev providers add groq` (or set NPDEV_EXTERNALAI_GROQ_API_KEY)"
+    }
+  ],
+  "warnings": []
+}

@@ -1,0 +1,7 @@
+{
+  "ok": true,
+  "allowPaid": {
+    "review": true
+  },
+  "monthlyCapUsd": 20.0
+}
