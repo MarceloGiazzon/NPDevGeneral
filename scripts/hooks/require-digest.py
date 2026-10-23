@@ -37,12 +37,112 @@ hook, so any unexpected error exits 0 and lets the command through.
 from __future__ import annotations
 
 import json
-import re
 import os
+import re
+import shlex
 import sys
 from pathlib import Path
 
 POLICY = Path(__file__).resolve().parents[1] / "policy" / "output-digest-policy.json"
+
+
+# AIP-5 (5.1): match the PROGRAM each simple command runs, never a word that merely appears in its
+# arguments. The earlier rule (strip quotes and heredocs, then substring-match what is left) still
+# blocked `grep Build-NpdevApp ...` and `ls digest-logs/...gradlew...log`: a command that names a gate
+# runs nothing. Launchers are looked through -- `env`, `sudo`, `VAR=x`, PowerShell's `&`, `pwsh -File`,
+# `python -m`, and the command string of `bash -c` / `pwsh -Command`, which is checked recursively.
+WRAPPERS = {"env", "sudo", "time", "nice", "nohup", "exec", "command", "xargs", "timeout", "&", ".", "call",
+            "start", "start-process", "invoke-expression", "iex"}
+INTERPRETERS = {"python", "python3", "py", "pwsh", "powershell", "bash", "sh", "zsh", "node", "cmd", "uv"}
+STRING_FLAGS = {"-c", "-command", "/c", "/k"}
+SCRIPT_FLAGS = {"-file", "-f", "-m"}
+FLAGS_WITH_VALUE = {"-executionpolicy", "-ep", "-workingdirectory", "-wd", "-x", "-w", "-inputformat",
+                    "-outputformat", "-filepath", "run"}
+ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def split_commands(text: str) -> list[str]:
+    """Simple commands, split on ; & | newlines and ( ) outside quotes."""
+    parts, current, quote = [], [], None
+    for ch in text:
+        if quote:
+            current.append(ch)
+            if ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+            current.append(ch)
+        elif ch in ";&|\n()":
+            parts.append("".join(current))
+            current = []
+            if ch == "&":
+                current.append(" & ")  # PowerShell's call operator also starts a command
+        else:
+            current.append(ch)
+    parts.append("".join(current))
+    return [p for p in (part.strip() for part in parts) if p and p != "&"]
+
+
+def tokens(segment: str) -> list[str]:
+    try:
+        return shlex.split(segment, posix=True)
+    except ValueError:
+        return segment.split()
+
+
+def name(token: str) -> str:
+    base = re.split(r"[\\/]", token)[-1].lower()
+    return base[:-4] if base.endswith(".exe") else base
+
+
+def programs(command: str, depth: int = 0) -> list[list[str]]:
+    """For each simple command: the words from the program actually run onwards (lowercased)."""
+    found = []
+    for segment in split_commands(command):
+        words = tokens(segment)
+        i = 0
+        while i < len(words):
+            word, low = words[i], name(words[i])
+            if ASSIGNMENT.match(word) or low in WRAPPERS:
+                i += 1
+                if low == "timeout" and i < len(words) and re.match(r"^[0-9.]+[smhd]?$", words[i]):
+                    i += 1
+                continue
+            if low in INTERPRETERS:
+                i += 1
+                nested = None
+                while i < len(words) and (words[i].startswith("-") or words[i].lower() in ("/c", "/k", "run")):
+                    flag = words[i].lower()
+                    if flag in STRING_FLAGS and i + 1 < len(words):
+                        nested = " ".join(words[i + 1:])
+                        break
+                    if flag in SCRIPT_FLAGS:
+                        i += 1
+                        break
+                    i += 2 if flag in FLAGS_WITH_VALUE else 1
+                if nested is not None:
+                    if depth < 3:
+                        found.extend(programs(nested, depth + 1))
+                    i = len(words)
+                    break
+                if i >= len(words):
+                    break  # a bare interpreter: nothing it names runs
+            break
+        if i < len(words):
+            found.append([w.lower() for w in words[i:]])
+    return found
+
+
+def first_expensive(command: str, patterns: list[str]) -> str | None:
+    """The first declared pattern a program in `command` runs. A one-word pattern matches the
+    program's own name or path; `npm test` matches the program and its next word."""
+    bare = re.sub(r"<<-?\s*'?([A-Za-z_][A-Za-z0-9_]*)'?\n.*?\n\1\b", " ", command, flags=re.S)  # heredoc bodies
+    for words in programs(bare):
+        for pattern in patterns:
+            want = pattern.lower().split()
+            if len(words) >= len(want) and want[0] in words[0] and words[1:len(want)] == want[1:]:
+                return pattern
+    return None
 
 
 def main() -> int:
@@ -69,24 +169,11 @@ def main() -> int:
     except Exception:
         return 0  # fail open
 
-    # Match only against text that could actually BE a command. Anything the shell
-    # treats as literal data -- quoted arguments, heredoc bodies -- is stripped
-    # first, because a command that merely MENTIONS an expensive tool runs nothing.
-    #
-    # Both cases were found the honest way, by this hook blocking real work: a
-    # Close-Session call whose -NextStep text said "gradlew", and a git commit
-    # whose heredoc message discussed run-ai-knowledge-gate. In a repo whose
-    # commit messages describe its own gates, that is not an edge case.
-    bare = re.sub(r"<<-?\s*'?([A-Za-z_][A-Za-z0-9_]*)'?\n.*?\n\1\b", " ", command,
-                  flags=re.S)          # heredoc bodies
-    bare = re.sub(r"'[^']*'|\"[^\"]*\"", " ", bare)   # quoted arguments
-    low = bare.lower()
-
     for ok in enforce.get("exemptSubstrings", []):
         if ok.lower() in command.lower():
             return 0
 
-    hit = next((p for p in enforce.get("expensiveCommands", []) if p.lower() in low), None)
+    hit = first_expensive(command, enforce.get("expensiveCommands", []))
     if not hit:
         return 0
 
