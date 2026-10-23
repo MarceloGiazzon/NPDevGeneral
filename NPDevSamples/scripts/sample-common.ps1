@@ -90,6 +90,27 @@ function Get-NPDevSampleBuildRoot([string]$WorkspaceRoot) {
     return Get-NPDevBuildRoot $WorkspaceRoot
 }
 
+# LIBS-FRESH: restage the RuntimeHost libs when they no longer match the platform sources, so a
+# generated sample never compiles against jars that predate the code under test. Skipped under
+# CI=true (every CI job stages fresh jars from its own checkout first, sometimes into a non-default
+# dir) and with NPDEV_RUNTIMEHOST_LIBS_CHECK=off (deliberately testing an older stage).
+function Sync-NPDevSampleRuntimeHostLibsIfStale([string]$WorkspaceRoot) {
+    if ($env:CI -eq "true" -or $env:NPDEV_RUNTIMEHOST_LIBS_CHECK -eq "off") {
+        return
+    }
+    . (Join-Path $WorkspaceRoot "scripts/npdev-common.ps1")
+    $libsDir = Get-NPDevRuntimeHostLibsDir $WorkspaceRoot
+    $reason = Get-NPDevRuntimeHostLibsStaleReason $WorkspaceRoot $libsDir
+    if ($null -eq $reason) {
+        return
+    }
+    Info ("RuntimeHost libs at " + $libsDir + " are stale (" + $reason + "); restaging with sync-runtimehost-libs.ps1 -BuildLocalJars")
+    & pwsh -NoProfile -File (Join-Path $WorkspaceRoot "scripts/runtimehost/sync-runtimehost-libs.ps1") -BuildLocalJars | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        Fail "Restaging the RuntimeHost libs failed; the sample would compile against stale jars."
+    }
+}
+
 function Get-NPDevGradleUserHome([string]$WorkspaceRoot) {
     $gradleUserHome = if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_GRADLE_USER_HOME)) {
         Normalize-AbsolutePath $env:NPDEV_GRADLE_USER_HOME

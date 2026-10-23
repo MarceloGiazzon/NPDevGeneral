@@ -23,6 +23,11 @@ if ([string]::IsNullOrWhiteSpace($NPDevRoot)) {
     $NPDevRoot = Get-NPDevWorkspaceRoot -SamplesRoot $samplesRoot
 }
 $NPDevRoot = Normalize-AbsolutePath $NPDevRoot
+# LIBS-FRESH: only an assembled FinalApp compiles against the staged RuntimeHost libs; a
+# -NoAssembleFinalApp run (static checks generating fixtures) never touches them.
+if (-not $NoAssembleFinalApp) {
+    Sync-NPDevSampleRuntimeHostLibsIfStale $NPDevRoot
+}
 if ([string]::IsNullOrWhiteSpace($RunId)) {
     $RunId = "sample-generation-" + (Get-Date).ToString("yyyyMMdd-HHmmssfff")
 }

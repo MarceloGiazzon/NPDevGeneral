@@ -202,6 +202,11 @@ function Sync-NPDevJars {
     }
 }
 
+# LIBS-FRESH: fingerprint the sources BEFORE building, so the manifest names what the jars were built
+# from (an edit made during the build is then seen as stale next time, never as current). Without
+# -BuildLocalJars the jars come from whatever the external build root holds: provenance unknown, null.
+$sourceTreesAtBuild = if ($BuildLocalJars) { Get-NPDevRuntimeHostLibsSourceTrees $WorkspaceRoot } else { $null }
+
 if ($BuildLocalJars) {
     # NPDevKernel/gradle.properties and NPDevGenerator/gradle.properties hardcode
     # org.gradle.projectcachedir to this machine's own D:/WorkSpace/NPDev/Build/... (dev-machine
@@ -340,6 +345,7 @@ $manifest = [pscustomobject]@{
     runtimeHostLibsLocation = "external-local-cache"
     requiredStagedJars = $requiredLocalJars
     sourceDiscoveredJars = $sourceDiscoveredJars
+    sourceTrees = $sourceTreesAtBuild
 }
 Write-NPDevJsonFile $manifestPath $manifest
 

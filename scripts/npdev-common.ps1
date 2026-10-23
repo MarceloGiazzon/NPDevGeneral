@@ -442,6 +442,69 @@ function Get-NPDevRuntimeHostLibsDir([string]$WorkspaceRoot) {
     return Normalize-NPDevPath (Join-Path (Get-NPDevBuildRoot $WorkspaceRoot) "runtimehost-libs")
 }
 
+# LIBS-FRESH: the staged RuntimeHost libs are built from these four trees (sync-runtimehost-libs.ps1
+# -BuildLocalJars). A generated app compiles against the STAGED jars, so a stage older than the
+# sources silently tests old code -- 2026-10-23 a cross-tenant probe "reproduced" a bug fixed seven
+# hours earlier, because the stage predated the fix.
+function Get-NPDevRuntimeHostLibsSourceDirs {
+    return @("NPDevContract", "NPDevGenerator", "NPDevKernel", "NPDevRuntimeHost/runtimehost-core")
+}
+
+# One fingerprint per source dir: its committed tree id, plus a hash of any uncommitted change
+# (tracked diff + untracked files), so a dirty tree is still compared exactly instead of always
+# counting as stale. $null when git cannot answer (no git, not a checkout): the caller must treat
+# that as "cannot prove current", never as current.
+function Get-NPDevRuntimeHostLibsSourceTrees([string]$WorkspaceRoot) {
+    $trees = [ordered]@{}
+    foreach ($dir in Get-NPDevRuntimeHostLibsSourceDirs) {
+        $tree = & git -C $WorkspaceRoot rev-parse "HEAD:$dir" 2>$null
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($tree)) { return $null }
+        $diff = & git -C $WorkspaceRoot diff HEAD --binary -- $dir 2>$null
+        if ($LASTEXITCODE -ne 0) { return $null }
+        $untracked = @(& git -C $WorkspaceRoot ls-files --others --exclude-standard -- $dir 2>$null)
+        if ($LASTEXITCODE -ne 0) { return $null }
+        if ([string]::IsNullOrEmpty(($diff -join "`n")) -and $untracked.Count -eq 0) {
+            $trees[$dir] = $tree.Trim()
+            continue
+        }
+        $material = New-Object System.Text.StringBuilder
+        [void]$material.Append(($diff -join "`n"))
+        foreach ($path in ($untracked | Sort-Object)) {
+            $full = Join-Path $WorkspaceRoot $path
+            $fileHash = if (Test-Path -LiteralPath $full -PathType Leaf) { (Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash } else { "" }
+            [void]$material.Append("`n" + $path + ":" + $fileHash)
+        }
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($material.ToString())
+        $dirtyHash = [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::HashData($bytes)).Replace("-", "").Substring(0, 16).ToLowerInvariant()
+        $trees[$dir] = $tree.Trim() + "+dirty-" + $dirtyHash
+    }
+    return $trees
+}
+
+# $null when the stage provably matches the current sources; otherwise the reason it does not.
+function Get-NPDevRuntimeHostLibsStaleReason([string]$WorkspaceRoot, [string]$LibsDir) {
+    $manifestPath = Join-Path $LibsDir "runtimehost-libs-manifest.json"
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        return "no runtimehost-libs-manifest.json in $LibsDir"
+    }
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $recorded = if ($manifest.PSObject.Properties.Name -contains "sourceTrees") { $manifest.sourceTrees } else { $null }
+    if ($null -eq $recorded) {
+        return "the manifest records no source trees (staged without -BuildLocalJars, or by an older sync)"
+    }
+    $current = Get-NPDevRuntimeHostLibsSourceTrees $WorkspaceRoot
+    if ($null -eq $current) {
+        return "git cannot fingerprint the source trees"
+    }
+    foreach ($dir in $current.Keys) {
+        $was = if ($recorded.PSObject.Properties.Name -contains $dir) { [string]$recorded.$dir } else { "" }
+        if ($was -ne $current[$dir]) {
+            return "$dir changed since the jars were staged"
+        }
+    }
+    return $null
+}
+
 # The Build root every generated artifact lives under. Kept beside the libs dir above so the two
 # cannot drift apart again: they are now one definition, not two conventions.
 #
