@@ -45,13 +45,13 @@ public class SemanticBehaviorWriteBackController {
 
     @GetMapping("/history")
     public Map<String, Object> getHistory(HttpServletRequest request) {
-        requireAdminContext(request);
+        requireSuperUser(request);
         return semanticBehaviorWriteBackService.history();
     }
 
     @GetMapping("/execution/history")
     public Map<String, Object> getExecutionHistory(HttpServletRequest request) {
-        requireAdminContext(request);
+        requireSuperUser(request);
         return semanticBehaviorWriteBackService.executionHistory();
     }
 
@@ -61,7 +61,7 @@ public class SemanticBehaviorWriteBackController {
             HttpServletRequest request,
             @RequestBody SemanticBehaviorWriteBackRequest body
     ) {
-        requireAdminContext(request);
+        requireSuperUser(request);
 
         try {
             return semanticBehaviorWriteBackService.submit(body);
@@ -76,7 +76,7 @@ public class SemanticBehaviorWriteBackController {
             HttpServletRequest request,
             @RequestBody SemanticBehaviorWriteBackRequest body
     ) {
-        requireAdminContext(request);
+        requireSuperUser(request);
 
         try {
             return semanticBehaviorWriteBackService.execute(body);
@@ -93,7 +93,7 @@ public class SemanticBehaviorWriteBackController {
 
     @GetMapping("/canonicalization/history")
     public Map<String, Object> getCanonicalizationHistory(HttpServletRequest request) {
-        requireAdminContext(request);
+        requireSuperUser(request);
         return semanticBehaviorWriteBackCanonicalizationService.history();
     }
 
@@ -103,7 +103,7 @@ public class SemanticBehaviorWriteBackController {
             HttpServletRequest request,
             @RequestBody SemanticBehaviorCanonicalizationRequest body
     ) {
-        requireAdminContext(request);
+        requireSuperUser(request);
 
         try {
             return semanticBehaviorWriteBackCanonicalizationService.canonicalize(body);
@@ -115,6 +115,16 @@ public class SemanticBehaviorWriteBackController {
     private void requireAdminContext(HttpServletRequest request) {
         ExecutionContext context = runtimeContextService.currentContext(request);
         if (!context.hasRole("ADMIN")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
+        }
+    }
+
+    // History and every POST: SUPERUSER, not ADMIN. These records live in one untenanted store and the
+    // POSTs drive the shared model/source pipeline, while in an auth.mode=none app every anonymous
+    // caller holds ADMIN -- same posture as MetadataHotSwapController /apply.
+    private void requireSuperUser(HttpServletRequest request) {
+        ExecutionContext context = runtimeContextService.currentContext(request);
+        if (!context.hasRole("SUPERUSER")) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
         }
     }

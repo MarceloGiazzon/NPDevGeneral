@@ -40,7 +40,7 @@ public class SemanticPublicationMappingController {
 
     @GetMapping("/history")
     public Map<String, Object> getHistory(HttpServletRequest request) {
-        requireAdminContext(request);
+        requireSuperUser(request);
         return semanticPublicationMappingService.history();
     }
 
@@ -50,7 +50,7 @@ public class SemanticPublicationMappingController {
             HttpServletRequest request,
             @RequestBody SemanticPublicationMappingRequest body
     ) {
-        requireAdminContext(request);
+        requireSuperUser(request);
 
         try {
             return semanticPublicationMappingService.mapRequest(body);
@@ -62,6 +62,16 @@ public class SemanticPublicationMappingController {
     private void requireAdminContext(HttpServletRequest request) {
         ExecutionContext context = runtimeContextService.currentContext(request);
         if (!context.hasRole("ADMIN")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
+        }
+    }
+
+    // History and every POST: SUPERUSER, not ADMIN. These records live in one untenanted store and the
+    // POSTs drive the shared model/source pipeline, while in an auth.mode=none app every anonymous
+    // caller holds ADMIN -- same posture as MetadataHotSwapController /apply.
+    private void requireSuperUser(HttpServletRequest request) {
+        ExecutionContext context = runtimeContextService.currentContext(request);
+        if (!context.hasRole("SUPERUSER")) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
         }
     }

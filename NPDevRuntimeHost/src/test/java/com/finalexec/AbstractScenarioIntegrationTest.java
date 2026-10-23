@@ -40,6 +40,7 @@ public abstract class AbstractScenarioIntegrationTest {
         registry.add(
                 "npdev.auth.api-keys",
                 () -> "dev-key=dev:developer:ADMIN|DEBUG|USER;"
+                        + "superuser-key=dev:developer:SUPERUSER|ADMIN|DEBUG|USER;"
                         + "tenant-a-key=tenant-a:actor-a:ADMIN|USER;"
                         + "tenant-b-key=tenant-b:actor-b:ADMIN|USER"
         );

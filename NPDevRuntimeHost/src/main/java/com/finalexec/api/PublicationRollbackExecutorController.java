@@ -40,7 +40,7 @@ public class PublicationRollbackExecutorController {
 
     @GetMapping("/history")
     public Map<String, Object> getHistory(HttpServletRequest request) {
-        requireAdminContext(request);
+        requireSuperUser(request);
         return publicationRollbackExecutorService.history();
     }
 
@@ -50,7 +50,7 @@ public class PublicationRollbackExecutorController {
             HttpServletRequest request,
             @RequestBody PublicationRollbackExecutionRequest body
     ) {
-        requireAdminContext(request);
+        requireSuperUser(request);
 
         try {
             return publicationRollbackExecutorService.execute(body);
@@ -62,6 +62,16 @@ public class PublicationRollbackExecutorController {
     private void requireAdminContext(HttpServletRequest request) {
         ExecutionContext context = runtimeContextService.currentContext(request);
         if (!context.hasRole("ADMIN")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
+        }
+    }
+
+    // History and every POST: SUPERUSER, not ADMIN. These records live in one untenanted store and the
+    // POSTs drive the shared model/source pipeline, while in an auth.mode=none app every anonymous
+    // caller holds ADMIN -- same posture as MetadataHotSwapController /apply.
+    private void requireSuperUser(HttpServletRequest request) {
+        ExecutionContext context = runtimeContextService.currentContext(request);
+        if (!context.hasRole("SUPERUSER")) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
         }
     }

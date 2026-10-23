@@ -70,7 +70,7 @@ class PublicationChainTenantReferenceValidationTest {
 
         RuntimeContextService runtimeContextService = Mockito.mock(RuntimeContextService.class);
         when(runtimeContextService.currentContext(any()))
-                .thenReturn(ExecutionContext.of("admin-tenant", "admin-user").withRoles(Set.of("ADMIN")));
+                .thenReturn(ExecutionContext.of("admin-tenant", "admin-user").withRoles(Set.of("ADMIN", "SUPERUSER")));
 
         mockMvc = MockMvcBuilders.standaloneSetup(
                 new SourceMutationApprovalGateController(approvalGateService, runtimeContextService),

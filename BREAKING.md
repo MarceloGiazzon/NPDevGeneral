@@ -5,6 +5,14 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-23 — publication, rollback and semantic write-back POSTs and their `/history` reads require SUPERUSER; `/api/admin/storage/summary` requires ADMIN
+
+**What changes.** `real-publication-executor`, `publication-executor`, `publication-rollback`, `rollback-execution`, `source-mutation-approval`, `semantic-publication-mapping`, `structural-publication-mapping` and `model/semantic-behavior-writeback` (under `/api/admin` and `/api/v1/admin`) answered any ADMIN on every POST and history read. They drive the shared model and source pipeline and keep one untenanted history, so a tenant ADMIN — and every anonymous caller of an `auth.mode=none` app — could rewrite the model all tenants run on. Those calls now return 403 without SUPERUSER, the `metadata-hotswap /apply` posture; each summary GET stays ADMIN. `/api/admin/storage/summary` had no role check at all; it now needs ADMIN (an auth-disabled app still answers, as its every caller is ADMIN).
+
+**Who is affected.** A script or console calling those endpoints with a tenant ADMIN key.
+
+**Codemod.** None possible — it is a permission, not a model change. Call with a SUPERUSER credential (`X-Super-User-Key`, or an api-key mapping that carries `SUPERUSER`).
+
 ## 2026-10-23 — the RuntimeHost jar directory defaults to `<BuildRoot>/runtimehost-libs` in both Gradle files, and never falls back into the repo (REG-292)
 
 **What changes.** With no `npdevRuntimeHostLibsDir` / `NPDEV_RUNTIMEHOST_LIBS_DIR` set, `NPDevRuntimeHost/build.gradle` used `<repo>__OutsideRepo/runtimehost-libs`, and both it and the generated app's `build.gradle` ended on a path inside the source tree. Both now honour `npdevBuildRoot` / `NPDEV_BUILD_ROOT`, else use `<parent of the NPDev checkout>/Build/runtimehost-libs` (the checkout found by its NPDevContract + NPDevGenerator + NPDevKernel contents), the same directory `sync-runtimehost-libs.ps1` writes; with neither, the build stops with a `GradleException` naming the property to set.

@@ -26,7 +26,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Tag("integration")
 class PublicationRollbackE2EIT extends AbstractScenarioIntegrationTest {
-    private static final String API_KEY = "dev-key";
+    // SUPERUSER: the publication and rollback POSTs drive the shared model (SharedModelMutationSuperUserGateTest).
+    private static final String API_KEY = "superuser-key";
 
     // See AbstractScenarioIntegrationTest's comment on why this is set per-subclass rather than as a
     // shared default. Stays consistent with every other subclass here rather than relying on the
