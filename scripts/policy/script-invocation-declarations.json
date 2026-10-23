@@ -342,6 +342,9 @@
     "scripts/quality/check-dialect-sites.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-no-hardcoded-ai-endpoints.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-doc-inventory.py": {
       "invocation": "ci-gate"
     },

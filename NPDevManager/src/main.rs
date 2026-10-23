@@ -1552,10 +1552,10 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.4.4: Each Monitor card shows a TRUTH badge -- the lowest concept truth level (T0-T6) the app's \
-     evidence supports, next to what the model declares, with stale/failed evidence counted -- plus a \
-     link to the rollup file and one to the running app's Box Inspector. Display only; it never \
-     blocks a start, stop or build."
+    "0.5.0: The AI Keys tab is now AI Providers -- providers, models, profiles and which feature uses \
+     which, with this month's calls and cost per feature and per provider, all over `npdev ai`. The \
+     Prompter and the Scrap assistant pick a profile and effort instead of an endpoint, and the \
+     Monitor's inspector shows whether an app will find a key for each AI vendor its model uses."
         .to_string()
 }
 
@@ -1563,7 +1563,7 @@ fn manager_version_description() -> String {
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "Truth Badge";
+const CURRENT_VERSION_TITLE: &str = "AI Providers";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {
@@ -3467,7 +3467,7 @@ mod prompter_migration_tests {
 
     #[test]
     fn url_host_is_scheme_free_and_path_free() {
-        assert_eq!(url_host("https://api.anthropic.com/v1/messages"), "api.anthropic.com");
+        assert_eq!(url_host("https://llm.example.com/v1/messages"), "llm.example.com");
         assert_eq!(url_host("http://127.0.0.1:1234/v1"), "127.0.0.1:1234");
         assert_eq!(url_host("api.example.com/x"), "api.example.com");
     }

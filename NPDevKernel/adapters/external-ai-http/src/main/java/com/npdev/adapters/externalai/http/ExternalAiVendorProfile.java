@@ -40,47 +40,6 @@ public record ExternalAiVendorProfile(
         }
     }
 
-    /**
-     * NVIDIA Build (build.nvidia.com / NIM) -- an OpenAI-compatible chat-completions endpoint
-     * hosting many catalog models. {@code model} must be a real NVIDIA Build catalog id (e.g.
-     * {@code "meta/llama-3.3-70b-instruct"}, confirmed working end-to-end 2026-07-27). NVIDIA
-     * Build's own {@code GET /v1/models} catalog listing is NOT authoritative for what a given
-     * account can actually invoke -- several listed models 404'd with "Function not found for
-     * account" when called for real. Confirm any different model against a real call, not just
-     * the catalog listing, before relying on it.
-     */
-    public static ExternalAiVendorProfile nvidiaBuild(String apiKeyEnvVar, String model) {
-        return new ExternalAiVendorProfile(
-                "nvidia", "https://integrate.api.nvidia.com/v1/chat/completions", model, apiKeyEnvVar,
-                ExternalAiRequestFormat.OPENAI_CHAT);
-    }
-
-    public static ExternalAiVendorProfile gemini(String apiKeyEnvVar, String model) {
-        return new ExternalAiVendorProfile(
-                "gemini", "https://generativelanguage.googleapis.com/v1beta", model, apiKeyEnvVar,
-                ExternalAiRequestFormat.GEMINI_GENERATE_CONTENT);
-    }
-
-    /**
-     * Anthropic's Messages API. {@code model} must be a current model id with no date suffix
-     * (e.g. {@code claude-opus-5}); the ids are complete as written and appending a date is a 404.
-     */
-    public static ExternalAiVendorProfile anthropic(String apiKeyEnvVar, String model) {
-        return new ExternalAiVendorProfile(
-                "anthropic", "https://api.anthropic.com/v1/messages", model, apiKeyEnvVar,
-                ExternalAiRequestFormat.ANTHROPIC_MESSAGES);
-    }
-
-    /**
-     * OpenAI's chat-completions API -- the same wire shape as {@link #nvidiaBuild}, pointed at
-     * OpenAI's own host.
-     */
-    public static ExternalAiVendorProfile openai(String apiKeyEnvVar, String model) {
-        return new ExternalAiVendorProfile(
-                "openai", "https://api.openai.com/v1/chat/completions", model, apiKeyEnvVar,
-                ExternalAiRequestFormat.OPENAI_CHAT);
-    }
-
     /** A vendor that needs no key (a local server); {@link HttpExternalAiCapabilityAdapter} sends no auth header. */
     public boolean keyless() {
         return apiKeyEnvVar == null;

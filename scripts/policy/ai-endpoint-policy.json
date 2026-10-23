@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "npdev-ai-endpoint-policy.v1",
+  "rule": "An AI vendor's host is written in ONE place: the shipped catalogue NPDevCli/ai-providers.json. Code reaches a vendor through the catalogue (npdev_ai_client, ExternalAiCatalogue), never through a URL of its own. Enforced by scripts/quality/check-no-hardcoded-ai-endpoints.py.",
+  "why": "AIP-5 (5.3). Before AIP-1 the same vendors were hard-coded in eight places (adapter factories, Manager profiles, the bench, the review pack, a launcher with a leaked key); each drifted on its own and none honoured the spend guard or the key store.",
+  "extraHosts": [
+    "api.together.xyz",
+    "api.fireworks.ai",
+    "api.x.ai",
+    "api.cohere.com",
+    "api.perplexity.ai",
+    "api.deepinfra.com",
+    "dashscope.aliyuncs.com",
+    "api.moonshot.ai",
+    "openai.azure.com",
+    "bedrock-runtime"
+  ],
+  "allowedPaths": [
+    { "pattern": "^NPDevCli/ai-providers\\.json$", "reason": "the catalogue itself" },
+    { "pattern": "^scripts/policy/ai-endpoint-policy\\.json$", "reason": "this policy's own host list" },
+    { "pattern": "(^|/)tests?/", "reason": "tests pin the wire shape against a known host" },
+    { "pattern": "/src/test/", "reason": "Java/Rust tests, same reason" },
+    { "pattern": "(^|/)test_[^/]+\\.py$", "reason": "Python tests outside a tests/ folder (scripts/ai/bench/test_bench.py)" },
+    { "pattern": "^NPDevManager/fixtures/", "reason": "verbatim captures of `npdev ai` output, which lists the catalogue" },
+    { "pattern": "^docs/", "reason": "prose that names a vendor is not a call" },
+    { "pattern": "^ledger/", "reason": "structured records of what happened, not code" },
+    { "pattern": "\\.md$", "reason": "prose anywhere else" }
+  ]
+}

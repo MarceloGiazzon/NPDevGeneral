@@ -198,7 +198,7 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   → `run-kernel-quality-gate.ps1` (`kernelQualityGate`: `:kernel:test` + all 36+ `:adapters:*:test`,
   then the kernel aggregate ratchet) → `run-ai-knowledge-gate.ps1` (mostly static,
   but some checks generate and boot probe apps and it runs the NPDevCli suite -- never run a build
-  alongside it; hosts 44 of the 56 `scripts/quality/check-*.py` across 51 numbered checks).
+  alongside it; hosts 48 of the 62 `scripts/quality/check-*.py` across 52 numbered checks).
   **Twelve checkers are not in it:** `check-dsl-reference-output-floor.py` runs in
   `run-generator-gate.ps1` (needs a build), `check-a11y-baseline.py` runs only in
   `run-shell-scenarios.ps1`, and ten run only in `run-weekly-paperwork-checks.ps1`

@@ -989,6 +989,19 @@ try {
         $failures += "NPDevManager changed without (or with an inconsistent) version bump: see scripts/quality/check-manager-version-bump.py output above -- bump Cargo.toml, tauri.conf.json, AND main.rs's manager_version_description/CURRENT_VERSION_TITLE together"
     }
 
+    # AIP-5 (5.3, 2026-10-22): an AI vendor's host lives in ONE place, NPDevCli/ai-providers.json.
+    # Before AIP-1 the same vendors were hard-coded in eight places that each drifted and none
+    # honoured the key store or spend guard; this keeps the count at zero. RED-verified by planting
+    # api.groq.com in a tracked script. Allowed places (tests, fixtures, prose) are
+    # scripts/policy/ai-endpoint-policy.json's allowedPaths.
+    Write-Host '[52/52] Checking no AI vendor host is hard-coded outside the catalogue...'
+    & $py "scripts/quality/check-no-hardcoded-ai-endpoints.py" --self-test
+    if ($LASTEXITCODE -ne 0) { $failures += "check-no-hardcoded-ai-endpoints.py --self-test failed: the checker no longer catches a planted host" }
+    & $py "scripts/quality/check-no-hardcoded-ai-endpoints.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "an AI vendor host is hard-coded outside NPDevCli/ai-providers.json: see scripts/quality/check-no-hardcoded-ai-endpoints.py output above -- reach the vendor through the catalogue (npdev_ai_client / ExternalAiCatalogue); a test, fixture or doc belongs under an allowedPaths entry of scripts/policy/ai-endpoint-policy.json"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red

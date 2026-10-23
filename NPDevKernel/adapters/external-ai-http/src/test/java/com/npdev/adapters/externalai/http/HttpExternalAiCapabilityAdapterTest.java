@@ -48,6 +48,28 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class HttpExternalAiCapabilityAdapterTest {
 
+    // Vendor profiles as the bundled catalogue builds them (ExternalAiCatalogue); spelled out here so a
+    // test pins the wire shape for each protocol without depending on the shipped catalogue's contents.
+    private static ExternalAiVendorProfile nvidiaBuild(String apiKeyEnvVar, String model) {
+        return new ExternalAiVendorProfile("nvidia", "https://integrate.api.nvidia.com/v1/chat/completions", model,
+                apiKeyEnvVar, ExternalAiRequestFormat.OPENAI_CHAT);
+    }
+
+    private static ExternalAiVendorProfile gemini(String apiKeyEnvVar, String model) {
+        return new ExternalAiVendorProfile("gemini", "https://generativelanguage.googleapis.com/v1beta", model,
+                apiKeyEnvVar, ExternalAiRequestFormat.GEMINI_GENERATE_CONTENT);
+    }
+
+    private static ExternalAiVendorProfile anthropic(String apiKeyEnvVar, String model) {
+        return new ExternalAiVendorProfile("anthropic", "https://api.anthropic.com/v1/messages", model,
+                apiKeyEnvVar, ExternalAiRequestFormat.ANTHROPIC_MESSAGES);
+    }
+
+    private static ExternalAiVendorProfile openai(String apiKeyEnvVar, String model) {
+        return new ExternalAiVendorProfile("openai", "https://api.openai.com/v1/chat/completions", model,
+                apiKeyEnvVar, ExternalAiRequestFormat.OPENAI_CHAT);
+    }
+
     private HttpServer server;
 
     @AfterEach
@@ -71,7 +93,7 @@ class HttpExternalAiCapabilityAdapterTest {
     @Test
     void submitPackDeniesWhenApiKeyEnvVarIsUnset() {
         HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(
-                List.of(ExternalAiVendorProfile.nvidiaBuild("NPDEV_TEST_MISSING_KEY", "meta/llama-3.1-405b-instruct")),
+                List.of(nvidiaBuild("NPDEV_TEST_MISSING_KEY", "meta/llama-3.1-405b-instruct")),
                 HttpClient.newHttpClient(),
                 env -> null);
         ExternalAiPackSubmission submission = new ExternalAiPackSubmission(
@@ -162,7 +184,7 @@ class HttpExternalAiCapabilityAdapterTest {
     @Test
     void generateTextDeniesWhenTheApiKeyEnvVarIsUnset() {
         HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(
-                List.of(ExternalAiVendorProfile.anthropic("NPDEV_TEST_MISSING_KEY", "claude-opus-5")),
+                List.of(anthropic("NPDEV_TEST_MISSING_KEY", "claude-opus-5")),
                 HttpClient.newHttpClient(),
                 env -> null);
 
@@ -241,8 +263,8 @@ class HttpExternalAiCapabilityAdapterTest {
     void configuredVendorsReportsKeyPresenceAndEffortSupportWithoutLeakingTheKey() {
         HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(
                 List.of(
-                        ExternalAiVendorProfile.anthropic("NPDEV_TEST_ANTHROPIC_KEY", "claude-opus-5"),
-                        ExternalAiVendorProfile.openai("NPDEV_TEST_OPENAI_KEY", "gpt-4o-mini")),
+                        anthropic("NPDEV_TEST_ANTHROPIC_KEY", "claude-opus-5"),
+                        openai("NPDEV_TEST_OPENAI_KEY", "gpt-4o-mini")),
                 HttpClient.newHttpClient(),
                 env -> "NPDEV_TEST_ANTHROPIC_KEY".equals(env) ? "sk-ant-secret-value" : "   ");
 
@@ -547,7 +569,7 @@ class HttpExternalAiCapabilityAdapterTest {
     @Test
     void generateStructuredDeniesWhenTheApiKeyEnvVarIsUnset() {
         HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(
-                List.of(ExternalAiVendorProfile.gemini("NPDEV_TEST_UNSET_KEY", "gemini-3.5-flash")),
+                List.of(gemini("NPDEV_TEST_UNSET_KEY", "gemini-3.5-flash")),
                 HttpClient.newHttpClient(), env -> null);
         ExternalAiEgressDeniedException denied = assertThrows(ExternalAiEgressDeniedException.class,
                 () -> adapter.generateStructured(new ExternalAiStructuredRequest(
