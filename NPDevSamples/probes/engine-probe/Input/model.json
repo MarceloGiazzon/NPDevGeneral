@@ -181,8 +181,7 @@
       "where": "active == true && quantity >= 1",
       "orderBy": [
         "quantity"
-      ],
-      "tracePolicy": "summary"
+      ]
     }
   ],
   "procedures": [
@@ -215,8 +214,7 @@
           "value": "$savedRecord",
           "trace": true
         }
-      ],
-      "tracePolicy": "detailed"
+      ]
     }
   ],
   "panels": [

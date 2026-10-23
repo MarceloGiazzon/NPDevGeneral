@@ -591,13 +591,46 @@ class QueryProcedureAuditPolicyMigrationTest(unittest.TestCase):
     def test_other_fields_on_the_same_entry_are_untouched(self):
         doc = self._doc(queries=[{
             "name": "OpenWorkItems", "concept": "WorkItem", "where": "status == 'open'",
-            "tracePolicy": "summary", "auditPolicy": "read",
+            "limit": 25, "auditPolicy": "read",
         }])
         migrate_document(doc)
         query = doc["queries"][0]
         self.assertEqual("status == 'open'", query["where"])
-        self.assertEqual("summary", query["tracePolicy"])
+        self.assertEqual(25, query["limit"])
         self.assertNotIn("auditPolicy", query)
+
+
+class TracePolicyRetirementTest(unittest.TestCase):
+    """REG-301: `queries[].tracePolicy` / `procedures[].tracePolicy` were read by nothing at runtime;
+    retired from the schema and stripped by this codemod. `actionDescriptor.tracePolicy` is live."""
+
+    def _doc(self, queries=None, procedures=None) -> dict:
+        return {
+            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [], "flows": [],
+            "queries": queries or [], "procedures": procedures or [],
+        }
+
+    def test_dropped_from_query_and_procedure_but_not_from_the_action_descriptor(self):
+        doc = self._doc(
+            queries=[{"name": "OpenWorkItems", "concept": "WorkItem", "tracePolicy": "summary", "limit": 5}],
+            procedures=[{"name": "SubmitWorkItem", "steps": [], "tracePolicy": "detailed",
+                         "actionDescriptor": {"actionName": "Submit", "tracePolicy": "record"}}],
+        )
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        self.assertNotIn("tracePolicy", doc["queries"][0])
+        self.assertEqual(5, doc["queries"][0]["limit"])
+        self.assertNotIn("tracePolicy", doc["procedures"][0])
+        self.assertEqual("record", doc["procedures"][0]["actionDescriptor"]["tracePolicy"])
+        self.assertEqual(2, sum("tracePolicy" in change for change in result.changes))
+
+    def test_idempotent_second_run_makes_no_further_changes(self):
+        doc = self._doc(queries=[{"name": "OpenWorkItems", "concept": "WorkItem", "tracePolicy": "none"}])
+        self.assertTrue(migrate_document(doc).changed)
+        before = copy.deepcopy(doc)
+        second = migrate_document(doc)
+        self.assertFalse(second.changed)
+        self.assertEqual(before, doc)
 
 
 class UntrustedExtensionEntrypointMigrationTest(unittest.TestCase):

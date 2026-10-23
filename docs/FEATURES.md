@@ -67,7 +67,6 @@ processes, screens, permissions, and how it all changes over time.
 | **`groupBy` + `aggregates` + `having`** | roll-ups (`sum`, `count`, `avg`) as declarations, including **joins across concepts** — dashboards without a reporting layer |
 | **`lookups` + `computed` on a grouped query** | bring a second concept's per-key total into each grouped row and do arithmetic over the columns — "cells needed minus caps I own" in one query, with `having`/`orderBy` on the result |
 | **`permissionRequirements` per query** | a query carries its own access rule, so it cannot be exposed by accident |
-| **`tracePolicy`** | declare what gets traced per query or procedure, instead of remembering to log |
 | **Audit trail** | every concept create/update/delete/restore is logged automatically with actor, timestamp and a field-level before/after diff — not opt-in, not a model setting |
 | **`selectors`** | reusable pickers/lookups shared across screens |
 

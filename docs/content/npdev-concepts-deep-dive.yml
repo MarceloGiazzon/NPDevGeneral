@@ -629,8 +629,7 @@ sections:
       "parameters": [ { "name": "id", "type": "uuid", "required": true } ],
       "locals": [ /* optional working variables, alias: "variables" */ ],
       "steps": [ /* REQUIRED, at least 1 */ ],
-      "returns": { /* optional shape of the result */ },
-      "tracePolicy": "detailed"     // none | summary | detailed
+      "returns": { /* optional shape of the result */ }
     }
     ```
 
@@ -640,8 +639,8 @@ sections:
     `conceptDelete`/`deleteConcept`, `procedureCall`/`callProcedure`, `capabilityCall`,
     `eventPublish`/`publishEvent`, `return`.
 
-    `tracePolicy` controls how much execution detail gets recorded (useful while you're building
-    and debugging). Audit logging is NOT a per-procedure setting — every concept create, update,
+    There is no per-procedure tracing or audit knob (`tracePolicy` and `auditPolicy` were both
+    retired because nothing read them). Audit logging is NOT a per-procedure setting — every concept create, update,
     delete and restore reached through the governed path (`saveConcept`/`deleteConcept` steps
     included) is logged automatically, with a before/after field diff, no matter what the
     procedure declares.
@@ -659,8 +658,7 @@ sections:
         { "name": "run-active-users", "type": "runQuery", "concept": "User", "query": "ActiveUsers",
           "target": "activeUsers", "trace": true },
         { "name": "return-active-users", "type": "return", "value": "$activeUsers", "trace": true }
-      ],
-      "tracePolicy": "detailed"
+      ]
     }
     ```
 
@@ -676,8 +674,7 @@ sections:
         { "name": "save-user-through-gateway", "type": "saveConcept", "concept": "User", "id": "$id",
           "data": { "input": "$input" }, "target": "savedUser", "trace": true, "audit": true },
         { "name": "return-saved-user", "type": "return", "value": "$savedUser", "trace": true }
-      ],
-      "tracePolicy": "detailed"
+      ]
     }
     ```
 
@@ -690,10 +687,8 @@ sections:
 
     - A procedure has no REST route of its own — if you need something callable directly by an
       external client, use a Flow instead.
-    - `trace` can be set per-step (as shown above) in addition to the procedure-level
-      `tracePolicy` — the per-step flag is for singling out the operations that matter most inside
-      an otherwise ordinary procedure. The per-step `audit` flag shown on `save-user-through-gateway`
-      above is a leftover marker with no effect — audit logging is unconditional, not opt-in.
+    - The per-step `trace` and `audit` flags shown above are accepted but have no runtime effect
+      today — nothing reads them. Audit logging is unconditional, not opt-in.
 
     ---
 - level: 2

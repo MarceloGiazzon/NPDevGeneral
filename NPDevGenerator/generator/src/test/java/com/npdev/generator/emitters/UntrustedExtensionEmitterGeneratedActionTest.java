@@ -277,7 +277,6 @@ final class UntrustedExtensionEmitterGeneratedActionTest {
                 List.of(),
                 null,
                 List.of("ADMIN"),
-                "detailed",
                 new CompiledGeneratedActionDescriptorSpec(
                         "CreateUser",
                         includeSideEffectConcept ? List.of("User") : List.of(),

@@ -139,7 +139,6 @@ final class UntrustedExtensionEmitterGeneratedActionJdbcEvidenceTest {
                 List.of(),
                 null,
                 List.of("ADMIN"),
-                "detailed",
                 new CompiledGeneratedActionDescriptorSpec(
                         "CreateUser",
                         List.of("User"),

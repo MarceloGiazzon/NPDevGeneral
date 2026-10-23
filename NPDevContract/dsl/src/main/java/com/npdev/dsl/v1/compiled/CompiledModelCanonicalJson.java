@@ -1363,7 +1363,6 @@ public final class CompiledModelCanonicalJson {
             putNullableInteger(node, "limit", query.limit());
             node.set("parameters", toProcedureParameters(query.parameters()));
             node.set("permissionRequirements", toStringArray(query.permissionRequirements()));
-            node.put("tracePolicy", safe(query.tracePolicy()));
             node.set("metadata", toObjectMap(query.metadata()));
             node.set("groupBy", toGroupByFields(query.groupBy()));
             node.set("aggregates", toAggregateFunctions(query.aggregates()));
@@ -1453,7 +1452,6 @@ public final class CompiledModelCanonicalJson {
             node.set("steps", toProcedureSteps(procedure.steps()));
             node.set("returns", toSchema(procedure.returns()));
             node.set("permissionRequirements", toStringArray(procedure.permissionRequirements()));
-            node.put("tracePolicy", safe(procedure.tracePolicy()));
             node.set("actionDescriptor", toGeneratedActionDescriptor(procedure.actionDescriptor()));
             node.set("metadata", toObjectMap(procedure.metadata()));
             node.put("uid", safe(procedure.uid()));

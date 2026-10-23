@@ -19,7 +19,7 @@ class NamedQueryPermissionsTest {
 
     private static CompiledQuery query(List<String> requirements) {
         return new CompiledQuery("FinanceTotals", "Invoice", null, List.of(), null, List.of(),
-                requirements, null, Map.of(), List.of(), List.of(), null);
+                requirements, Map.of(), List.of(), List.of(), null);
     }
 
     private static final StaticPermissionEvaluator EVALUATOR = new StaticPermissionEvaluator(List.of(

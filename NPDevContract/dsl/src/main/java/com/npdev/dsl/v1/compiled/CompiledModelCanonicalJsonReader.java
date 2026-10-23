@@ -1446,7 +1446,6 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalIntegerObject(node.get("limit")),
                 toProcedureParameters(node.get("parameters")),
                 toStringList(node.get("permissionRequirements")),
-                optionalText(node, "tracePolicy"),
                 toObjectMap(node.get("metadata")),
                 toGroupByFields(node),
                 toAggregateFunctions(node),
@@ -1517,7 +1516,6 @@ public final class CompiledModelCanonicalJsonReader {
                 toProcedureSteps(node.get("steps")),
                 toSchema(node.get("returns")),
                 toStringList(node.get("permissionRequirements")),
-                optionalText(node, "tracePolicy"),
                 toGeneratedActionDescriptor(node.get("actionDescriptor")),
                 toObjectMap(node.get("metadata")),
                 optionalText(node, "uid")

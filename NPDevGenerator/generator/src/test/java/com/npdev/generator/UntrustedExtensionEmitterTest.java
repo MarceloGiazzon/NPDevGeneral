@@ -237,7 +237,6 @@ class UntrustedExtensionEmitterTest {
                 List.of(),
                 null,
                 List.of("admin"),
-                "summary",
                 Map.of("untrustedExtensionEntrypoint", "procedure/CreateUsersProcedure.java")
         );
         CompiledPanel panel = new CompiledPanel(

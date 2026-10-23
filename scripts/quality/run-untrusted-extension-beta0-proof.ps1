@@ -615,8 +615,7 @@ function Write-GeneratedRuntimeModel {
                 )
                 returns = [ordered]@{ type = "object"; properties = [ordered]@{ createdCount = [ordered]@{ type = "integer" } } }
                 permissionRequirements = @("admin")
-                tracePolicy = "summary"
-                # R5.1: auditPolicy retired -- schema-declared but consumed by nothing at runtime.
+                # R5.1/REG-301: auditPolicy and tracePolicy retired -- both schema-declared but consumed by nothing at runtime.
                 metadata = [ordered]@{ beta0Surface = "trusted-source"; untrustedExtensionEntrypoint = "procedure/CreateUsersProcedure.java" }
             }
         )

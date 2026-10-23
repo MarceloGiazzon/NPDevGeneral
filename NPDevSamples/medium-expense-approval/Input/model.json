@@ -142,8 +142,7 @@
       "where": "status == 'SUBMITTED'",
       "orderBy": [
         "employeeEmail"
-      ],
-      "tracePolicy": "summary"
+      ]
     }
   ],
   "ruleProfiles": [
@@ -200,8 +199,7 @@
           "value": "$savedExpense",
           "trace": true
         }
-      ],
-      "tracePolicy": "detailed"
+      ]
     }
   ],
   "panels": [

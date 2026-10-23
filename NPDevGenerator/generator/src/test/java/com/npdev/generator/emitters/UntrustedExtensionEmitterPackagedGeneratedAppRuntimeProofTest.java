@@ -435,7 +435,6 @@ final class UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest {
                 List.of(),
                 null,
                 List.of("ADMIN"),
-                "record",
                 new CompiledGeneratedActionDescriptorSpec(
                         "CreateItem12User",
                         List.of("Item12User"),

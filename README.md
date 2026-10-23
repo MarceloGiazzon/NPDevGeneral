@@ -186,7 +186,7 @@ you write.**
 |---|---|
 | a named `query` | parameterised, permission-checked queries — no SQL built by hand in a controller |
 | `groupBy` + `aggregates` + `having` | roll-ups (`sum`, `count`, `avg`) **joined across concepts** — dashboards without a reporting layer |
-| `tracePolicy` | execution tracing declared per query/procedure instead of remembered — every create/update/delete/restore is audited automatically, with a field diff, whether or not you ask |
+| *(nothing)* | an audit trail: every create/update/delete/restore is logged automatically, with a field diff, whether or not you ask |
 
 ### Changing it later
 

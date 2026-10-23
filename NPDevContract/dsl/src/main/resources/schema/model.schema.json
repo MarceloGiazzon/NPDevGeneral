@@ -4437,14 +4437,6 @@
             "minLength": 1
           }
         },
-        "tracePolicy": {
-          "type": "string",
-          "enum": [
-            "none",
-            "summary",
-            "detailed"
-          ]
-        },
         "metadata": {
           "type": "object"
         },
@@ -4706,14 +4698,6 @@
             "type": "string",
             "minLength": 1
           }
-        },
-        "tracePolicy": {
-          "type": "string",
-          "enum": [
-            "none",
-            "summary",
-            "detailed"
-          ]
         },
         "actionDescriptor": {
           "$ref": "#/$defs/generatedActionDescriptor"

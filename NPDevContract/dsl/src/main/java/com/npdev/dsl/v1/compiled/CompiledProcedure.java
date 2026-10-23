@@ -11,7 +11,6 @@ public record CompiledProcedure(
         List<CompiledProcedureStep> steps,
         CompiledSchema returns,
         List<String> permissionRequirements,
-        String tracePolicy,
         CompiledGeneratedActionDescriptorSpec actionDescriptor,
         Map<String, Object> metadata,
         String uid
@@ -24,7 +23,6 @@ public record CompiledProcedure(
             List<CompiledProcedureStep> steps,
             CompiledSchema returns,
             List<String> permissionRequirements,
-            String tracePolicy,
             Map<String, Object> metadata
     ) {
         this(
@@ -35,7 +33,6 @@ public record CompiledProcedure(
                 steps,
                 returns,
                 permissionRequirements,
-                tracePolicy,
                 null,
                 metadata,
                 null
@@ -51,11 +48,10 @@ public record CompiledProcedure(
             List<CompiledProcedureStep> steps,
             CompiledSchema returns,
             List<String> permissionRequirements,
-            String tracePolicy,
             CompiledGeneratedActionDescriptorSpec actionDescriptor,
             Map<String, Object> metadata
     ) {
-        this(name, description, parameters, variables, steps, returns, permissionRequirements, tracePolicy,
+        this(name, description, parameters, variables, steps, returns, permissionRequirements,
                 actionDescriptor, metadata, null);
     }
 

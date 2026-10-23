@@ -50,8 +50,7 @@ class ContractSurfaceSupportTest {
                       "orderBy": ["title"],
                       "parameters": [
                         { "name": "tenantId", "type": "string", "required": true }
-                      ],
-                      "tracePolicy": "summary"
+                      ]
                     }
                   ],
                   "ruleProfiles": [
@@ -214,6 +213,26 @@ class ContractSurfaceSupportTest {
         assertTrue(exception.getMessage().contains("Model schema validation failed")
                         && exception.getMessage().toLowerCase().contains("enum"),
                 "Expected unsupported procedure step to fail fast: " + exception.getMessage());
+    }
+
+    @Test
+    void rejectsRetiredQueryAndProcedureTracePolicy() throws Exception {
+        // REG-301: read by nothing at runtime, so retired from the schema; `npdev migrate dsl-2` strips it.
+        for (String declaring : new String[] {
+                "\"queries\": [ { \"name\": \"AllItems\", \"concept\": \"WorkItem\", \"tracePolicy\": \"summary\" } ]",
+                "\"procedures\": [ { \"name\": \"Noop\", \"steps\": [ { \"name\": \"r\", \"type\": \"return\", \"value\": \"x\" } ], \"tracePolicy\": \"detailed\" } ]"}) {
+            Path modelPath = writeTempModel("""
+                    {
+                      "dslVersion": "1.0.0", "namespace": "close.contract", "version": "1.0.0",
+                      "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
+                      %s
+                    }
+                    """.formatted(declaring));
+            Exception exception = assertThrows(Exception.class, () -> new JsonModelParser().parse(modelPath));
+            assertTrue(exception.getMessage().contains("Model schema validation failed")
+                            && exception.getMessage().contains("tracePolicy"),
+                    "Expected the retired tracePolicy to be refused: " + exception.getMessage());
+        }
     }
 
     @Test

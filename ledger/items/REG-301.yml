@@ -40,3 +40,9 @@ note: >-
   PanelRuntimeQueryPermissionTest and AggregateRuntimeLookupQueryPermissionTest. Procedure runQuery steps are
   deliberately left under the procedure's own permissionRequirements. query.permissionRequirements is DONE; remaining
   keywords: query.tracePolicy, aggregateCollection.via, flowStep.data.
+  2026-10-23 (owner decision: refuse both): query.tracePolicy AND procedure.tracePolicy RETIRED -- removed from all 4
+  model.schema.json mirrors, the AST/compiled records and the canonical JSON; `npdev migrate dsl-2` strips them (run
+  on 5 in-repo models + 13 AppGen definitions); BREAKING.md entry; ContractSurfaceSupportTest
+  rejectsRetiredQueryAndProcedureTracePolicy. Witness allowlist 47 -> 46. actionDescriptor.tracePolicy is live and kept.
+  Found on the way, NOT changed: procedureStep.trace and procedureStep.audit are also parsed but read by nothing at
+  runtime (procedureStep is not a tracked witness family). Remaining keywords: aggregateCollection.via, flowStep.data.

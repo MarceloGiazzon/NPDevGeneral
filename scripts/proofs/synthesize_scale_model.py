@@ -80,7 +80,6 @@ def build_model(concept_count: int) -> dict:
                 "concept": anchor,
                 "where": "sequence >= 0",
                 "orderBy": ["sequence"],
-                "tracePolicy": "summary",
             }
         ],
         "procedures": [
@@ -103,7 +102,6 @@ def build_model(concept_count: int) -> dict:
                     },
                     {"name": "return-saved", "type": "return", "value": "$saved", "trace": True},
                 ],
-                "tracePolicy": "detailed",
             }
         ],
         "panels": [

@@ -107,8 +107,7 @@
       "where": "status == 'OPEN' && priority >= 2",
       "orderBy": [
         "priority"
-      ],
-      "tracePolicy": "summary"
+      ]
     }
   ],
   "procedures": [
@@ -141,8 +140,7 @@
           "value": "$savedTask",
           "trace": true
         }
-      ],
-      "tracePolicy": "detailed"
+      ]
     }
   ],
   "panels": [

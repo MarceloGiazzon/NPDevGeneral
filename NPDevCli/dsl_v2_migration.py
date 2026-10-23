@@ -541,6 +541,28 @@ def _migrate_query_or_procedure_audit_policy(entries, kind: str, result: Migrati
         )
 
 
+def _migrate_query_or_procedure_trace_policy(entries, kind: str, result: MigrationResult) -> None:
+    """REG-301 (2026-10-23, "retire the inert tracePolicy knob"): `queries[].tracePolicy` and
+    `procedures[].tracePolicy` were schema-declared (none|summary|detailed), parsed, compiled and
+    round-tripped through the canonical JSON, but nothing ever traced a query or procedure by them --
+    no runtime path read the accessor. Retired from schema (all 4 model.schema.json mirrors), the
+    same way R5.1 retired `auditPolicy`; this strips the dead key so the document keeps validating.
+    `actionDescriptor.tracePolicy` (record|disabled) is a different, live keyword and is untouched."""
+    if not isinstance(entries, list):
+        return
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            continue
+        if "tracePolicy" not in entry:
+            continue
+        value = entry.pop("tracePolicy")
+        result.changed = True
+        result.changes.append(
+            f"{kind}[{i}] ({entry.get('name', '?')}): dropped inert 'tracePolicy' ({value!r}) -- "
+            f"retired, consumed by nothing (REG-301)"
+        )
+
+
 # 2026-10-12: `panelLayout.type` narrowed to `table` and `grid`. `form`, `detail`, `dashboard` and
 # `stack` were accepted by the schema but no renderer ever read them -- each drew the default
 # table -- so rewriting them to `table` keeps every panel rendering exactly as before.
@@ -778,6 +800,8 @@ def migrate_document(doc: dict) -> MigrationResult:
 
     _migrate_query_or_procedure_audit_policy(doc.get("queries", None) or [], "queries", result)
     _migrate_query_or_procedure_audit_policy(doc.get("procedures", None) or [], "procedures", result)
+    _migrate_query_or_procedure_trace_policy(doc.get("queries", None) or [], "queries", result)
+    _migrate_query_or_procedure_trace_policy(doc.get("procedures", None) or [], "procedures", result)
 
     _migrate_untrusted_extension_entrypoint(doc.get("panels", None) or [], "panels", result)
     _migrate_untrusted_extension_entrypoint(doc.get("procedures", None) or [], "procedures", result)

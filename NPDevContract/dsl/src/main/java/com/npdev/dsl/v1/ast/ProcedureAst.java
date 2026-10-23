@@ -11,7 +11,6 @@ public record ProcedureAst(
         List<ProcedureStepAst> steps,
         SchemaAst returns,
         List<String> permissionRequirements,
-        String tracePolicy,
         GeneratedActionDescriptorAst actionDescriptor,
         Map<String, Object> metadata,
         String uid
@@ -33,11 +32,10 @@ public record ProcedureAst(
             List<ProcedureStepAst> steps,
             SchemaAst returns,
             List<String> permissionRequirements,
-            String tracePolicy,
             GeneratedActionDescriptorAst actionDescriptor,
             Map<String, Object> metadata
     ) {
-        this(name, description, parameters, variables, steps, returns, permissionRequirements, tracePolicy,
+        this(name, description, parameters, variables, steps, returns, permissionRequirements,
                 actionDescriptor, metadata, null);
     }
 }

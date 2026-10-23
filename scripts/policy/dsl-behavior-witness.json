@@ -114,13 +114,6 @@
     },
     {
       "keywords": [
-        "query.tracePolicy"
-      ],
-      "reason": "Declared by no query in the corpus and read by nothing at runtime (REG-301); add a fixture query that sets it, then a probe asserting the trace policy changes what is recorded. (permissionRequirements was witnessed by probe 30's query-permission-requirements-refuse-a-caller-lacking-them.)",
-      "ledger": "ENF-1"
-    },
-    {
-      "keywords": [
         "orchestrationAction.action"
       ],
       "reason": "actionMetadata, presentation only.",
@@ -138,5 +131,5 @@
       "ledger": "ENF-1"
     }
   ],
-  "frozenCount": 47
+  "frozenCount": 46
 }

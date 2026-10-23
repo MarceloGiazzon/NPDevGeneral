@@ -139,7 +139,6 @@ final class UntrustedExtensionEmitterUiExecutionMetadataVisibilityTest {
                 List.of(),
                 null,
                 List.of("ADMIN"),
-                "record",
                 new CompiledGeneratedActionDescriptorSpec(
                         "CreateItem13User",
                         List.of("Item13User"),

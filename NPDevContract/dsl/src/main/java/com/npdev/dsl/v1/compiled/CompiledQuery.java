@@ -11,7 +11,6 @@ public record CompiledQuery(
         Integer limit,
         List<CompiledProcedureParameter> parameters,
         List<String> permissionRequirements,
-        String tracePolicy,
         Map<String, Object> metadata,
         List<CompiledGroupByField> groupBy,
         List<CompiledAggregateFunction> aggregates,
@@ -41,7 +40,6 @@ public record CompiledQuery(
             Integer limit,
             List<CompiledProcedureParameter> parameters,
             List<String> permissionRequirements,
-            String tracePolicy,
             Map<String, Object> metadata,
             List<CompiledGroupByField> groupBy,
             List<CompiledAggregateFunction> aggregates,
@@ -49,7 +47,7 @@ public record CompiledQuery(
             CompiledOrigin origin,
             String uid
     ) {
-        this(name, concept, where, orderBy, limit, parameters, permissionRequirements, tracePolicy,
+        this(name, concept, where, orderBy, limit, parameters, permissionRequirements,
                 metadata, groupBy, aggregates, having, origin, uid, List.of(), List.of());
     }
 
@@ -62,13 +60,12 @@ public record CompiledQuery(
             Integer limit,
             List<CompiledProcedureParameter> parameters,
             List<String> permissionRequirements,
-            String tracePolicy,
             Map<String, Object> metadata,
             List<CompiledGroupByField> groupBy,
             List<CompiledAggregateFunction> aggregates,
             String having
     ) {
-        this(name, concept, where, orderBy, limit, parameters, permissionRequirements, tracePolicy,
+        this(name, concept, where, orderBy, limit, parameters, permissionRequirements,
                 metadata, groupBy, aggregates, having, null, null, List.of(), List.of());
     }
 
@@ -81,14 +78,13 @@ public record CompiledQuery(
             Integer limit,
             List<CompiledProcedureParameter> parameters,
             List<String> permissionRequirements,
-            String tracePolicy,
             Map<String, Object> metadata,
             List<CompiledGroupByField> groupBy,
             List<CompiledAggregateFunction> aggregates,
             String having,
             CompiledOrigin origin
     ) {
-        this(name, concept, where, orderBy, limit, parameters, permissionRequirements, tracePolicy,
+        this(name, concept, where, orderBy, limit, parameters, permissionRequirements,
                 metadata, groupBy, aggregates, having, origin, null, List.of(), List.of());
     }
 

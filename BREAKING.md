@@ -5,6 +5,14 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-23 — `queries[].tracePolicy` / `procedures[].tracePolicy` removed from the schema (REG-301)
+
+**What changes.** `tracePolicy` (`none`/`summary`/`detailed`) on a `query` or `procedure` is no longer accepted. Both shapes have `additionalProperties: false`, so a model that still declares it fails schema validation. It was parsed, compiled and round-tripped through the canonical JSON, but nothing traced a query or procedure by it. It was retired rather than enforced, the same way `auditPolicy` was in R5.1. The field is also gone from `QueryAst`, `CompiledQuery`, `ProcedureAst` and `CompiledProcedure` and their positional constructors. `actionDescriptor.tracePolicy` (`record`/`disabled`) is a different, live keyword and is unchanged.
+
+**Who is affected.** Every model that declared it, including the canary, medium-expense-approval and most AppGen apps, and Java code that constructs one of those four records.
+
+**Codemod.** `python NPDevCli/npdev_cli.py migrate dsl-2 --write --input <model.json or directory>` strips the key from every `queries[]`/`procedures[]` entry and leaves `actionDescriptor` alone. Already run on the 5 in-repo models and the 13 AppGen app definitions that declared it. Java callers drop the argument after `permissionRequirements`.
+
 ## 2026-10-23 — a query's `permissionRequirements[]` are enforced on `GET /api/queries/{name}` and on a list document that names it (REG-301)
 
 **What changes.** `queries[].permissionRequirements` validated and compiled but was never checked, so any caller with read access to the concept got the rows. Every listed permission must now be held, or the call returns 403. The same check applies to a panel `dataSource` that names the query and to an aggregate `lookupFields[]` entry that runs it. A requirement may name a declared permission, which the generated manifest grants to the super-user only, or a manifest one such as `update:order`, held by every role that may update orders. `GeneratedQueryController` and `DocumentRenderController` each take a `PermissionEvaluator` as a new last constructor argument, and so do the `@Autowired` constructors of `PanelRuntime` and `AggregateRuntime` (as an `ObjectProvider`).

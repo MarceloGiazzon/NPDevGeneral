@@ -356,8 +356,7 @@ function New-OfficialModel {
             steps = $procedureSteps
             returns = [ordered]@{ type = "string" }
             permissionRequirements = @([string]$procedure.requiredRole)
-            tracePolicy = "summary"
-            # R5.1: auditPolicy retired -- it was schema-declared but consumed by nothing at
+            # R5.1/REG-301: auditPolicy and tracePolicy retired -- both were schema-declared but consumed by nothing at
             # runtime. The write/read distinction this used to carry survives in metadata.sideEffectType
             # below, which is what actually mapped to it (see scripts/policy/ai-model-to-dsl-mapping-policy.json).
             metadata = [ordered]@{

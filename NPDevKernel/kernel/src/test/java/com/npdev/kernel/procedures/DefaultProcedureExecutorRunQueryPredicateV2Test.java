@@ -74,7 +74,7 @@ class DefaultProcedureExecutorRunQueryPredicateV2Test {
     private static ProcedureExecutionResult runNamedQuery(
             DefaultConceptGateway gateway, String where, List<Object> ignored) {
         Map<String, CompiledQuery> queries = Map.of(
-                "Q", new CompiledQuery("Q", "Order", where, List.of("codigo asc"), null, List.of(), List.of(), null,
+                "Q", new CompiledQuery("Q", "Order", where, List.of("codigo asc"), null, List.of(), List.of(),
                         Map.of(), List.of(), List.of(), null)
         );
         DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
@@ -174,7 +174,7 @@ class DefaultProcedureExecutorRunQueryPredicateV2Test {
         // -- the SAME predicate JdbcBusinessConceptStorePredicateV2Test proves against real H2.
         String where = "customerId.country == 'US' && placedOn < '2026-02-01' || placedOn >= '2026-06-10'";
         Map<String, CompiledQuery> queries = Map.of(
-                "SalesV2", new CompiledQuery("SalesV2", "Order", where, List.of(), null, List.of(), List.of(), null,
+                "SalesV2", new CompiledQuery("SalesV2", "Order", where, List.of(), null, List.of(), List.of(),
                         Map.of(), List.of(), List.of(), null)
         );
         DefaultProcedureExecutor executor = new DefaultProcedureExecutor(

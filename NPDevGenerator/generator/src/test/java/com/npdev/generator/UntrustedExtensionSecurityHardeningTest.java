@@ -359,7 +359,6 @@ class UntrustedExtensionSecurityHardeningTest {
                 List.of(),
                 null,
                 List.of("admin"),
-                "summary",
                 Map.of("untrustedExtensionEntrypoint", "procedure/EscapeProcedure.java")
         );
         return new CompiledModel(
@@ -389,7 +388,6 @@ class UntrustedExtensionSecurityHardeningTest {
                 List.of(),
                 null,
                 List.of("admin"),
-                "summary",
                 Map.of("untrustedExtensionEntrypoint", "procedure/CreateUsersProcedure.java")
         );
         return new CompiledModel(

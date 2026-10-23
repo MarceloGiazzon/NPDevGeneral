@@ -527,7 +527,6 @@ public final class ModelCompiler {
                     queryAst.limit(),
                     compileProcedureParameters(queryAst.parameters()),
                     sortedStrings(queryAst.permissionRequirements()),
-                    queryAst.tracePolicy(),
                     sortObjectMap(queryAst.metadata()),
                     toCompiledGroupByFields(queryAst.groupBy()),
                     toCompiledAggregateFunctions(queryAst.aggregates()),
@@ -569,7 +568,6 @@ public final class ModelCompiler {
                     compileProcedureSteps(procedureAst.steps()),
                     toCompiledSchema(procedureAst.returns()),
                     sortedStrings(procedureAst.permissionRequirements()),
-                    procedureAst.tracePolicy(),
                     compileGeneratedActionDescriptor(procedureAst),
                     sortObjectMap(procedureAst.metadata()),
                     procedureAst.uid()
