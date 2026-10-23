@@ -257,6 +257,44 @@
             },
             "action": {
               "type": "string",
+              "const": "setOffline"
+            },
+            "offline": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action",
+            "offline"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
               "const": "waitForLoadState"
             },
             "state": {
@@ -349,7 +387,7 @@
             "timeoutMs": {
               "type": "integer",
               "exclusiveMinimum": 0,
-              "maximum": 30000
+              "maximum": 10000
             }
           },
           "required": [
@@ -1732,7 +1770,7 @@
     "__schema24": {
       "type": "integer",
       "exclusiveMinimum": 0,
-      "maximum": 30000
+      "maximum": 10000
     },
     "__schema25": {
       "type": "string",

@@ -1,12 +1,12 @@
 {
   "schemaVersion": "npdev-pinned-schema-meta.v1",
   "pins": "scrapforai-routine.schema.json",
-  "pinnedAt": "2026-08-10T23:29:47Z",
-  "source": "live-engine GET http://127.0.0.1:3000/v1/schema/routine.request.json",
+  "pinnedAt": "2026-10-23T04:57:00Z",
+  "source": "live-engine GET http://127.0.0.1:3010/v1/schema/routine.request.json",
   "engine": {
     "name": "scrapforai",
-    "version": "1.0.0",
-    "commit": "991e394"
+    "version": "1.1.0",
+    "commit": "93b8562"
   },
   "authority": "THE ENGINE, not this repo. The routine vocabulary is defined by src/schemas/explorationRequest.schema.ts (Zod) and enforced by the engine at runtime; scrapforai-routine.schema.json is a PIN of what that endpoint served, nothing more.",
   "whyPinnedAndNotWritten": [
