@@ -1,0 +1,47 @@
+id: REG-288
+title: >-
+  The generated-CRUD reference-existence check (existsByAnchor) queries across tenants, and it and its in-memory twins turn any error into "not found / empty"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-10-23
+closed: 2026-10-23
+source: >-
+  Follow-up named in REG-287's own note, 2026-10-23.
+surface: NPDevKernel/adapters/runtime-support CrudReferenceLookupSupport (existsByAnchor, existsByAnchorViaConceptGateway, readFieldViaConceptGateway, existsById)
+detail: |
+  CrudSchemaValidationSupport.validateReferenceField (via GeneratedCrudRuntimeSupport.validateEntityDetailed, run by
+  every generated create/update) asks CrudReferenceLookupSupport.existsByAnchor whether a reference value points at
+  an existing row. With an EntityManager it ran "SELECT 1 FROM <table> WHERE CAST(col AS VARCHAR) = :value" with NO
+  tenant_id predicate, so another tenant's row satisfied this tenant's reference. In the generated service
+  enforceBondTargetTenant runs first and rejects a cross-tenant scalar bond target, so the gap was defence-in-depth,
+  not a live leak -- but that check returns early when there is no DataSource, and the field check's own answer was
+  wrong. Every query error was caught and answered false, which reported a broken lookup as a bad payload
+  ("points to non-existent", 422). The in-memory twins swallowed too: existsByAnchorViaConceptGateway answered
+  "not found" on any gateway failure (including the one enforceBondTargetTenant uses in in-memory mode), and
+  readFieldViaConceptGateway answered "empty", which made CrudLifecycleSupport.fetchCurrentStatus return null and the
+  lifecycle transition check (REG-275) silently skip itself. existsById was private and had no caller.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/CrudReferenceLookupSupportReferenceTenantScopeTest.java#anotherTenantsRowDoesNotSatisfyAReference
+  asserts: >-
+    Against real H2 tables with the caller in tenant-a, a tenant-b row satisfies neither an id nor a non-id anchor
+    reference, while the same row in tenant-a does; a genuinely missing row is still false (aMissingRowIsStillNotFound);
+    a dropped table throws IllegalStateException naming the table (aFailingReferenceQueryIsNotAnsweredNotFound); a
+    failing or access-denying ConceptGateway makes existsByAnchor and readFieldViaConceptGateway throw instead of
+    answering false / empty (aFailingGatewayReadIsNotAnsweredNotFoundOrEmpty, aGatewayAccessDenialIsARefusalNotNotFoundOrEmpty).
+  provenRed: true
+resolution: >-
+  Done when existsByAnchor searches only the caller's tenant (tenant_id = :tenantId, the tenant the generated service
+  writes), a query or gateway failure throws instead of being answered "not found / empty", a missing row is still
+  "not found", and a test proves a tenant-B row does not satisfy tenant A's reference check.
+note: >-
+  2026-10-23: DONE. existsByAnchor adds "AND tenant_id = :tenantId" (callerTenant(), as REG-287's scopeExists) and
+  wraps a query failure in IllegalStateException naming the concept and table (a 500, refusing the write, instead of
+  a misleading 422). existsByAnchorViaConceptGateway and readFieldViaConceptGateway rethrow a
+  ConceptGatewayAccessDeniedException unchanged and wrap every other failure in IllegalStateException; the gateway
+  read is already tenant-keyed, so no predicate was needed there. The dead existsById was removed (existsByIdSql stays,
+  GeneratedCrudRuntimeNamingTest pins it). Four of the five tests proven red against the old class (the missing-row
+  control passes both ways). Not changed: CrudLifecycleSupport.fetchCurrentStatus's own SQL path (no tenant predicate,
+  swallows errors) -- it reads the row the service is updating by its UUID, already loaded tenant-scoped, and lives
+  outside this class; worth its own item if the swallow matters.

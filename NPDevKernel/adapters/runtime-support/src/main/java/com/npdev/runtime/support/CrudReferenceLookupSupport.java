@@ -4,6 +4,7 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGateway;
+import com.npdev.kernel.concepts.ConceptGatewayAccessDeniedException;
 import com.npdev.kernel.concepts.ConceptListRequest;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
@@ -16,7 +17,6 @@ import java.util.Optional;
 import java.util.UUID;
 import static com.npdev.runtime.support.crud.bonds.BondNamingSupport.normalizeTenantForBondCheck;
 import static com.npdev.runtime.support.crud.sqlnaming.SqlNamingSupport.columnName;
-import static com.npdev.runtime.support.crud.sqlnaming.SqlNamingSupport.existsByIdSql;
 import static com.npdev.runtime.support.crud.sqlnaming.SqlNamingSupport.tableName;
 import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.referenceValuesEqual;
 import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toInteger;
@@ -65,30 +65,12 @@ final class CrudReferenceLookupSupport {
         return owner.resolveCurrentCrudContext();
     }
 
-    private boolean existsById(CompiledConcept entity, UUID id) {
-        if (entityManager == null || entity == null || id == null) {
-            return false;
-        }
-        String table = tableName(entity);
-        if (table.isBlank()) {
-            return false;
-        }
-        Optional<CompiledField> idField = idField(entity);
-        if (idField.isEmpty()) {
-            return false;
-        }
-
-        try {
-            Query query = entityManager.createNativeQuery(existsByIdSql(entity, idField.get()));
-            query.setParameter("id", id.toString());
-            query.setMaxResults(1);
-            List<?> rows = query.getResultList();
-            return rows != null && !rows.isEmpty();
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
+    /**
+     * REG-288: backs the field-level "reference points to an existing row" check. Searches only the
+     * caller's tenant -- another tenant's row must not satisfy this tenant's reference -- and a failing
+     * query throws instead of being answered "not found" (which reported a broken lookup as a bad
+     * payload). A row that is genuinely absent is still false.
+     */
     boolean existsByAnchor(CompiledConcept entity, CompiledField anchor, Object value) {
         if (entity == null || anchor == null || value == null) {
             return false;
@@ -104,14 +86,16 @@ final class CrudReferenceLookupSupport {
 
         try {
             Query query = entityManager.createNativeQuery(
-                    "SELECT 1 FROM " + table + " WHERE CAST(" + column + " AS VARCHAR) = :value"
+                    "SELECT 1 FROM " + table + " WHERE CAST(" + column + " AS VARCHAR) = :value AND tenant_id = :tenantId"
             );
             query.setParameter("value", String.valueOf(value));
+            query.setParameter("tenantId", callerTenant());
             query.setMaxResults(1);
             List<?> rows = query.getResultList();
             return rows != null && !rows.isEmpty();
-        } catch (Exception ignored) {
-            return false;
+        } catch (RuntimeException failure) {
+            throw new IllegalStateException(
+                    "Checking reference target " + entity.getName() + " in table " + table + " failed", failure);
         }
     }
 
@@ -123,6 +107,8 @@ final class CrudReferenceLookupSupport {
 
     // explicitContext: the caller's context when it has one (enforceBondTargetTenant), so the
     // tenant-keyed store read is scoped to THAT tenant; null falls back to the current CRUD context.
+    // REG-288: a failed gateway read throws instead of being answered "not found"; an access denial
+    // on the target concept propagates unchanged (it names the concept, never a row).
     boolean existsByAnchorViaConceptGateway(
             CompiledConcept entity,
             CompiledField anchor,
@@ -144,8 +130,11 @@ final class CrudReferenceLookupSupport {
             return conceptGateway.list(new ConceptListRequest(entity.getName(), context.tenantId()), context)
                     .stream()
                     .anyMatch(record -> referenceValuesEqual(record.data().get(anchorName), value));
-        } catch (Exception ignored) {
-            return false;
+        } catch (ConceptGatewayAccessDeniedException denied) {
+            throw denied;
+        } catch (RuntimeException failure) {
+            throw new IllegalStateException(
+                    "Checking reference target " + entity.getName() + " through the ConceptGateway failed", failure);
         }
     }
 
@@ -153,7 +142,9 @@ final class CrudReferenceLookupSupport {
      * One field of the stored row {@code id}, read through the ConceptGateway: the in-memory storage
      * mode has no EntityManager, so the row lives only in the ConceptStore (REG-275: the lifecycle
      * transition check needs the row's CURRENT status and silently skipped itself without one).
-     * Empty when there is no gateway, no such row, or the read fails.
+     * Empty when there is no gateway or no such row. REG-288: a failed read throws instead of being
+     * answered "empty", which made the lifecycle transition check silently skip itself; an access
+     * denial propagates unchanged.
      */
     Optional<Object> readFieldViaConceptGateway(CompiledConcept entity, UUID id, String fieldName) {
         if (conceptGateway == null || entity == null || id == null || fieldName == null) {
@@ -163,8 +154,11 @@ final class CrudReferenceLookupSupport {
             ExecutionContext context = resolveCurrentCrudContext();
             return conceptGateway.read(new ConceptReadRequest(entity.getName(), id.toString(), context.tenantId()), context)
                     .map(record -> record.data().get(fieldName));
-        } catch (Exception ignored) {
-            return Optional.empty();
+        } catch (ConceptGatewayAccessDeniedException denied) {
+            throw denied;
+        } catch (RuntimeException failure) {
+            throw new IllegalStateException(
+                    "Reading " + entity.getName() + "." + fieldName + " through the ConceptGateway failed", failure);
         }
     }
 
