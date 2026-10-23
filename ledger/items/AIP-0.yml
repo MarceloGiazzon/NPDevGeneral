@@ -2,9 +2,9 @@ id: AIP-0
 title: Contain the leaked DeepSeek key and remove stale AI configs (AI providers plan, Phase 0)
 type: PROCESS
 severity: HIGH
-status: PARTIAL
+status: DONE
 opened: 2026-10-22
-closed: null
+closed: 2026-10-23
 source: >-
   AI providers unification plan, revision 2 (2026-10-22), NPDev_General__OutsideRepo/AI_PROVIDERS_UNIFICATION_PLAN_2026-10-22.md (outside the repo), built on the AI contact-point inventory AI_CONTACT_POINTS_2026-10-22.md in the same folder. Findings F1 (key literal) and F8 (stale configs).
 surface: process/ai-providers
@@ -21,6 +21,13 @@ resolution: >-
 files:
   - scripts/quality/security-pattern-sweep.py
 verification: UNIT_TESTED
+guard:
+  kind: script
+  ref: python scripts/quality/security-pattern-sweep.py --self-test
+  asserts: >-
+    Pattern 7 hardcoded-secret flags the real historical shape of the leaked line (a $env:*_API_KEY set to
+    an sk- literal) and not its fix, so a key literal cannot be committed again unseen
+  provenRed: true
 note: >-
   2026-10-22: 0.2 done by deleting launch-claude.ps1 and claude-deepseek-settings.json (nothing referenced
   them); 0.5 .continue/ deleted; 0.3 Pattern 7 hardcoded-secret added (repo-wide over git ls-files incl.
@@ -29,3 +36,10 @@ note: >-
   the old line, 0 hits on the tree; 0.6 these items. Open: 0.1 revocation (owner), 0.4/D1.
   2026-10-22: D1 answered -- scrub the history too (AIP-6). 0.4 is now: git filter-repo removing
   launch-claude.ps1 and claude-deepseek-settings.json from every commit, then force-push main.
+  2026-10-23: 0.1 done -- owner reports the key revoked. 0.4 done -- history scrubbed (git filter-repo
+  removed launch-claude.ps1 and claude-deepseek-settings.json from every commit; key literal also
+  replaced in blobs/messages; tip tree byte-identical), cited SHAs remapped in 99a39dd8, force-pushed
+  main + the 20 rewritten tags (force-push enabled on main's protection for the push only, then
+  restored). Residual: GitHub's read-only refs/pull/N/head refs of ~200 old PRs still reach the old
+  commits; only GitHub Support can purge them (moot with the key revoked). Pre-scrub bundle kept outside
+  the repo in NPDev_General__OutsideRepo/branch-archive/ (it contains the dead key).
