@@ -6,7 +6,18 @@
 
   "externalAi": {
     "egress": "apiEnabled",
-    "vendors": ["gemini", "groq"],
+    "vendors": ["gemini", "groq", "acme-gw"],
+    "providers": [
+      {
+        "id": "acme-gw",
+        "name": "ACME AI gateway (an app's own endpoint, AIP-3 3.6)",
+        "protocol": "openai-chat",
+        "baseUrl": "https://ai-gateway.acme.example/v1",
+        "needsKey": true,
+        "defaultModel": "acme-large",
+        "price": { "in": 0.5, "out": 1.5 }
+      }
+    ],
     "prompts": [
       {
         "name": "SuggestCatalogBlurb",

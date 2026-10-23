@@ -58,11 +58,50 @@ public final class ExternalAiCatalogue {
     private final List<String> protocols;
     private final List<Vendor> appVendors;
     private final Map<String, Price> prices;
+    /** AIP-3 (3.6): an app's own provider is priced per provider, for whatever model it calls. */
+    private final Map<String, Price> vendorPrices;
 
     private ExternalAiCatalogue(List<String> protocols, List<Vendor> appVendors, Map<String, Price> prices) {
+        this(protocols, appVendors, prices, Map.of());
+    }
+
+    private ExternalAiCatalogue(List<String> protocols, List<Vendor> appVendors, Map<String, Price> prices,
+                                Map<String, Price> vendorPrices) {
         this.protocols = List.copyOf(protocols);
         this.appVendors = List.copyOf(appVendors);
         this.prices = Map.copyOf(prices);
+        this.vendorPrices = Map.copyOf(vendorPrices);
+    }
+
+    /**
+     * AIP-3 (3.6, D4): this catalogue plus the app's own providers ({@code externalAi.providers} of its
+     * compiled model), served exactly like shipped app vendors. {@code ownPrices} is per provider id. The
+     * validator already refused a shadowing id or an unknown protocol; both are refused again here, so a
+     * hand-edited compiled model cannot take over a shipped vendor (and its key).
+     */
+    public ExternalAiCatalogue withOwnProviders(List<Vendor> own, Map<String, Price> ownPrices) {
+        if (own == null || own.isEmpty()) {
+            return this;
+        }
+        List<Vendor> vendors = new ArrayList<>(appVendors);
+        for (Vendor vendor : own) {
+            if (vendors.stream().anyMatch(v -> v.id().equals(vendor.id()))) {
+                throw new IllegalStateException("externalAi.providers '" + vendor.id()
+                        + "' has the id of a vendor this app already has -- refusing to replace it");
+            }
+            if (!PROTOCOLS.containsKey(vendor.protocol())) {
+                throw new IllegalStateException("externalAi.providers '" + vendor.id() + "' uses protocol '"
+                        + vendor.protocol() + "', which external-ai-http does not implement (supported: "
+                        + PROTOCOLS.keySet() + ")");
+            }
+            vendors.add(new Vendor(vendor.id(), vendor.kind(), vendor.protocol(),
+                    vendor.baseUrl().replaceAll("/+$", ""), vendor.keyEnvVar(), vendor.defaultModel()));
+        }
+        Map<String, Price> merged = new LinkedHashMap<>(vendorPrices);
+        if (ownPrices != null) {
+            merged.putAll(ownPrices);
+        }
+        return new ExternalAiCatalogue(protocols, vendors, prices, merged);
     }
 
     /** The copy bundled into this jar. Missing means a broken build, so it fails loudly. */
@@ -149,9 +188,10 @@ public final class ExternalAiCatalogue {
         return appVendors.stream().filter(v -> v.id().equals(id)).findFirst();
     }
 
-    /** The catalogue price of one model, when both halves are known. */
+    /** The catalogue price of one model, when both halves are known; an app's own provider's flat price else. */
     public Optional<Price> price(String vendorId, String model) {
-        return Optional.ofNullable(prices.get(vendorId + "/" + model));
+        Price listed = prices.get(vendorId + "/" + model);
+        return Optional.ofNullable(listed != null ? listed : vendorPrices.get(vendorId));
     }
 
     /**

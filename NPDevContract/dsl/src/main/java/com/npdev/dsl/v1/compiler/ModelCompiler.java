@@ -149,6 +149,7 @@ import com.npdev.dsl.v1.compiled.CompiledDocumentColumn;
 import com.npdev.dsl.v1.compiled.CompiledDocumentLogo;
 import com.npdev.dsl.v1.compiled.CompiledExternalAi;
 import com.npdev.dsl.v1.compiled.CompiledExternalAiPrompt;
+import com.npdev.dsl.v1.compiled.CompiledExternalAiProvider;
 import com.npdev.dsl.v1.compiled.CompiledSettings;
 import com.npdev.dsl.v1.compiled.CompiledTransactionHooks;
 import com.npdev.dsl.v1.compiled.CompiledDerivedField;
@@ -792,7 +793,14 @@ public final class ModelCompiler {
                         .map(ModelCompiler::toCompiledPrompt)
                         .toList(),
                 externalAiAst.getCallsPerUserPerDayProperty(),
-                externalAiAst.getMonthlyCostCapUsdProperty());
+                externalAiAst.getMonthlyCostCapUsdProperty(),
+                externalAiAst.getProviders().stream()
+                        .map(provider -> new CompiledExternalAiProvider(
+                                provider.id(), provider.name() == null ? provider.id() : provider.name(),
+                                provider.protocol(), provider.baseUrl() == null ? null : provider.baseUrl().replaceAll("/+$", ""),
+                                provider.needsKey() == null || provider.needsKey(), provider.defaultModel(),
+                                provider.inputUsdPerMTok(), provider.outputUsdPerMTok()))
+                        .toList());
     }
 
     /**

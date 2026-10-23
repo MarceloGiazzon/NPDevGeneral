@@ -473,6 +473,27 @@ public final class CompiledModelCanonicalJson {
             }
             node.set("limits", limits);
         }
+        // AIP-3 (3.6): only when declared, so every other model keeps its canonical JSON (and hash) as-is.
+        if (!externalAi.getProviders().isEmpty()) {
+            ArrayNode providers = JsonNodeFactory.instance.arrayNode();
+            for (CompiledExternalAiProvider provider : externalAi.getProviders()) {
+                ObjectNode providerNode = JsonNodeFactory.instance.objectNode();
+                providerNode.put("id", safe(provider.id()));
+                providerNode.put("name", safe(provider.name()));
+                providerNode.put("protocol", safe(provider.protocol()));
+                providerNode.put("baseUrl", safe(provider.baseUrl()));
+                providerNode.put("needsKey", provider.needsKey());
+                providerNode.put("defaultModel", safe(provider.defaultModel()));
+                if (provider.inputUsdPerMTok() != null && provider.outputUsdPerMTok() != null) {
+                    ObjectNode price = JsonNodeFactory.instance.objectNode();
+                    price.put("in", provider.inputUsdPerMTok());
+                    price.put("out", provider.outputUsdPerMTok());
+                    providerNode.set("price", price);
+                }
+                providers.add(providerNode);
+            }
+            node.set("providers", providers);
+        }
         return node;
     }
 

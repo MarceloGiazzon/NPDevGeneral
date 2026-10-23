@@ -1021,10 +1021,30 @@ public final class JsonModelParser {
                 ));
             }
         }
+        List<ExternalAiProviderAst> providers = new ArrayList<>();
+        JsonNode providersNode = node.get("providers");
+        if (providersNode != null && !providersNode.isNull()) {
+            if (!providersNode.isArray()) {
+                throw new IOException("externalAi.providers must be an array");
+            }
+            for (JsonNode provider : providersNode) {
+                JsonNode needsKey = provider.get("needsKey");
+                JsonNode price = provider.get("price");
+                providers.add(new ExternalAiProviderAst(
+                        readText(provider, "id"),
+                        readText(provider, "name"),
+                        readText(provider, "protocol"),
+                        readText(provider, "baseUrl"),
+                        needsKey == null || !needsKey.isBoolean() ? null : needsKey.asBoolean(),
+                        readText(provider, "defaultModel"),
+                        price != null && price.path("in").isNumber() ? price.path("in").decimalValue() : null,
+                        price != null && price.path("out").isNumber() ? price.path("out").decimalValue() : null));
+            }
+        }
         JsonNode limits = node.get("limits");
         String callsPerUserPerDay = limits == null ? null : readText(limits, "callsPerUserPerDay");
         String monthlyCostCapUsd = limits == null ? null : readText(limits, "monthlyCostCapUsd");
-        return new ExternalAiAst(egress, vendors, prompts, callsPerUserPerDay, monthlyCostCapUsd);
+        return new ExternalAiAst(egress, vendors, prompts, callsPerUserPerDay, monthlyCostCapUsd, providers);
     }
 
     /** Move 6 Move A: parses the optional app-level settings block; null if the model declares none. */

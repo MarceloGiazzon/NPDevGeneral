@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.compiled.CompiledExternalAi;
 import com.npdev.dsl.v1.compiled.CompiledExternalAiPrompt;
+import com.npdev.dsl.v1.compiled.CompiledExternalAiProvider;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledModelCanonicalJson;
 import com.npdev.dsl.v1.compiled.CompiledModelCanonicalJsonReader;
@@ -261,5 +262,71 @@ class ExternalAiPromptValidationTest {
                 """.formatted(badEffort), "PaintMosaic"));
         assertTrue(schema.getMessage().contains("effort") && schema.getMessage().contains("medium"), schema.getMessage());
         assertTrue(all.contains("vendor or profile is required"), all);
+    }
+
+    private static final String OWN_PROVIDER = """
+            { "id": "acme-gw", "protocol": "openai-chat", "baseUrl": "https://ai.acme.example/v1/",
+              "defaultModel": "acme-large", "price": { "in": 0.5, "out": 1.25 } }
+            """;
+
+    /** AIP-3 (3.6, D4): the app's own endpoint is a vendor once declared and listed, and round-trips. */
+    @Test
+    void anAppsOwnProviderIsAnAppVendorAndSurvivesTheRoundTrip() throws Exception {
+        String prompt = GOOD_PROMPT.replace("\"vendor\": \"gemini\"", "\"vendor\": \"acme-gw\"");
+        ModelAst ast = parse("""
+                { "egress": "apiEnabled", "vendors": ["acme-gw"], "providers": [ %s ], "prompts": [ %s ] }
+                """.formatted(OWN_PROVIDER, prompt), "PaintMosaic");
+        assertEquals(List.of(), new SemanticValidator().validate(ast).stream()
+                .filter(error -> error.contains("externalAi")).toList());
+
+        CompiledModel reread = CompiledModelCanonicalJsonReader.fromJson(
+                CompiledModelCanonicalJson.toJson(new ModelCompiler().compile(ast)));
+        CompiledExternalAiProvider provider = reread.getExternalAi().getProviders().get(0);
+        assertEquals("acme-gw", provider.id());
+        assertEquals("acme-gw", provider.name());
+        assertEquals("https://ai.acme.example/v1", provider.baseUrl(), "trailing slash dropped");
+        assertTrue(provider.needsKey());
+        assertEquals("NPDEV_EXTERNALAI_ACME_GW_API_KEY", provider.keyEnvVar());
+        assertEquals("acme-large", provider.defaultModel());
+        assertEquals(0, new java.math.BigDecimal("1.25").compareTo(provider.outputUsdPerMTok()));
+    }
+
+    @Test
+    void anOwnProviderMustNotShadowTheCatalogueAndMustBeSafeToSendAKeyTo() throws Exception {
+        List<String> errors = aiErrors("""
+                { "egress": "apiEnabled", "vendors": ["gemini"], "providers": [
+                  { "id": "gemini", "protocol": "openai-chat", "baseUrl": "https://evil.example", "defaultModel": "m" },
+                  { "id": "deepseek", "protocol": "openai-chat", "baseUrl": "https://evil.example", "defaultModel": "m" },
+                  { "id": "plain", "protocol": "openai-chat", "baseUrl": "http://ai.example.com/v1", "defaultModel": "m" },
+                  { "id": "query", "protocol": "openai-chat", "baseUrl": "https://ai.example.com/v1?k=1", "defaultModel": "m" },
+                  { "id": "local", "protocol": "openai-chat", "baseUrl": "http://localhost:8080/v1", "defaultModel": "m" },
+                  { "id": "local", "protocol": "openai-chat", "baseUrl": "http://127.0.0.1/v1", "defaultModel": "m" } ] }
+                """, "PaintMosaic");
+        String all = String.join("\n", errors);
+        assertTrue(all.contains("'gemini': the id is a provider the NPDev AI catalogue ships"), all);
+        assertTrue(all.contains("'deepseek': the id is a provider"), "a non-app-vendor id is still shipped: " + all);
+        assertTrue(all.contains("'plain': baseUrl 'http://ai.example.com/v1' must use https"), all);
+        assertTrue(all.contains("'query': baseUrl") && all.contains("query"), all);
+        assertTrue(all.contains("'local': duplicate provider id"), all);
+        assertEquals(5, errors.stream().filter(e -> e.startsWith("externalAi.providers")).count(),
+                "http to loopback is allowed: " + all);
+    }
+
+    @Test
+    void anUndeclaredVendorStillFailsAndALoopbackOwnProviderWarns() throws Exception {
+        assertTrue(aiErrors("""
+                { "egress": "apiEnabled", "vendors": ["acme-gw"] }
+                """, "PaintMosaic").stream().anyMatch(e -> e.contains("nor one of this model's externalAi.providers")));
+
+        String prompt = GOOD_PROMPT.replace("\"vendor\": \"gemini\"", "\"vendor\": \"box\"");
+        ModelAst ast = parse("""
+                { "egress": "apiEnabled", "vendors": ["box"], "providers": [ { "id": "box", "protocol": "openai-chat",
+                  "baseUrl": "http://localhost:8000/v1", "needsKey": false, "defaultModel": "m" } ], "prompts": [ %s ] }
+                """.formatted(prompt), "PaintMosaic");
+        List<String> warnings = new SemanticValidator().validateWithWarnings(ast).getWarnings();
+        assertTrue(warnings.stream().anyMatch(w -> w.contains("'box', a local LLM server at http://localhost:8000/v1")),
+                warnings.toString());
+        CompiledExternalAiProvider box = new ModelCompiler().compile(ast).getExternalAi().getProviders().get(0);
+        assertEquals(null, box.keyEnvVar());
     }
 }

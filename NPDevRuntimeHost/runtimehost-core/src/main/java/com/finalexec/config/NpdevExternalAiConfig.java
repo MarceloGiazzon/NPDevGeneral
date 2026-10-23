@@ -5,6 +5,19 @@ import com.npdev.adapters.externalai.http.ExternalAiCatalogue;
 import com.npdev.adapters.externalai.http.ExternalAiVendorProfile;
 import com.npdev.adapters.externalai.http.HttpExternalAiCapabilityAdapter;
 import com.npdev.adapters.externalai.inproc.InProcExternalAiCapabilityAdapter;
+import com.npdev.dsl.v1.compiled.CompiledExternalAi;
+import com.npdev.dsl.v1.compiled.CompiledExternalAiProvider;
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.kernel.ports.ExternalAiGenerationRequest;
+import com.npdev.kernel.ports.ExternalAiGenerationResult;
+import com.npdev.kernel.ports.ExternalAiPackSubmission;
+import com.npdev.kernel.ports.ExternalAiRunResult;
+import com.npdev.kernel.ports.ExternalAiStructuredRequest;
+import com.npdev.kernel.ports.ExternalAiStructuredResult;
+import com.npdev.kernel.ports.ExternalAiToolChatRequest;
+import com.npdev.kernel.ports.ExternalAiToolChatResult;
+import com.npdev.kernel.ports.ExternalAiVendorSummary;
+import com.npdev.kernel.ports.ExternalAiVerdictRecord;
 import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.ExternalAiCapabilityContract;
 import com.npdev.kernel.ports.FileStoreContract;
@@ -25,7 +38,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * ADR-0009: wires the {@link ExternalAiCapabilityContract} adapter by config --
@@ -45,6 +60,9 @@ import java.util.function.Function;
 @Configuration
 public class NpdevExternalAiConfig {
 
+    /** Parsed once: the shipped catalogue never changes while the app runs. */
+    private static final Supplier<ExternalAiCatalogue> BUNDLED = memoize(ExternalAiCatalogue::bundled);
+
     @Bean
     @ConditionalOnProperty(name = "npdev.externalai.provider", havingValue = "inproc", matchIfMissing = true)
     public ExternalAiCapabilityContract inprocExternalAiCapabilityContract(
@@ -57,6 +75,7 @@ public class NpdevExternalAiConfig {
     @ConditionalOnProperty(name = "npdev.externalai.provider", havingValue = "http")
     public ExternalAiCapabilityContract httpExternalAiCapabilityContract(
             Environment environment,
+            ModelHolder modelHolder,
             // R8d (RUN-4): adapter-owned deadline, independent of CapabilityExecutionPolicy (see
             // HttpExternalAiCapabilityAdapter's javadoc). connectTimeoutMs bounds the TCP handshake;
             // requestTimeoutMs bounds a single attempt end-to-end; maxRetries is retries AFTER the
@@ -72,18 +91,92 @@ public class NpdevExternalAiConfig {
         // override. All of them are CONFIGURED; only the ones whose key env var is set (or that need
         // none) are reachable -- the adapter denies the rest with EGRESS_DENIED_NO_API_KEY rather than
         // sending. So listing a vendor costs nothing and grants nothing; the key is the switch.
-        List<ExternalAiVendorProfile> vendors = ExternalAiCatalogue.bundled().appVendorProfiles(environment::getProperty);
+        // AIP-3 (3.6, D4): plus the model's own externalAi.providers. Rebuilt on a model reload (REG-208),
+        // so a provider added by a hot swap is served without a restart.
         HttpClient httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(connectTimeoutMs))
                 .build();
-        return new HttpExternalAiCapabilityAdapter(
-                vendors,
+        Function<CompiledModel, ExternalAiCapabilityContract> build = model -> new HttpExternalAiCapabilityAdapter(
+                catalogueFor(model).appVendorProfiles(environment::getProperty),
                 httpClient,
                 System::getenv,
                 Duration.ofMillis(requestTimeoutMs),
                 maxRetries,
                 Duration.ofMillis(retryBackoffMs)
         );
+        AtomicReference<ExternalAiCapabilityContract> current = new AtomicReference<>(build.apply(modelHolder.get()));
+        modelHolder.addReloadListener((previous, next) -> current.set(build.apply(next)));
+        return new Delegating(current::get);
+    }
+
+    /** The shipped catalogue plus the model's own {@code externalAi.providers}; the shipped one alone without. */
+    static ExternalAiCatalogue catalogueFor(CompiledModel model) {
+        CompiledExternalAi externalAi = model == null ? null : model.getExternalAi();
+        if (externalAi == null || externalAi.getProviders().isEmpty()) {
+            return BUNDLED.get();
+        }
+        List<ExternalAiCatalogue.Vendor> own = new java.util.ArrayList<>();
+        Map<String, ExternalAiCatalogue.Price> prices = new HashMap<>();
+        for (CompiledExternalAiProvider provider : externalAi.getProviders()) {
+            own.add(new ExternalAiCatalogue.Vendor(provider.id(), "own", provider.protocol(), provider.baseUrl(),
+                    provider.keyEnvVar(), provider.defaultModel()));
+            if (provider.inputUsdPerMTok() != null && provider.outputUsdPerMTok() != null) {
+                prices.put(provider.id(), new ExternalAiCatalogue.Price(provider.inputUsdPerMTok(),
+                        provider.outputUsdPerMTok()));
+            }
+        }
+        return BUNDLED.get().withOwnProviders(own, prices);
+    }
+
+    /** Forwards every call to the adapter built for the current model. */
+    static final class Delegating implements ExternalAiCapabilityContract {
+        private final Supplier<ExternalAiCapabilityContract> target;
+
+        Delegating(Supplier<ExternalAiCapabilityContract> target) {
+            this.target = target;
+        }
+
+        @Override
+        public ExternalAiRunResult submitPack(ExternalAiPackSubmission submission) {
+            return target.get().submitPack(submission);
+        }
+
+        @Override
+        public ExternalAiVerdictRecord ingestVerdict(String missionId, String vendorId, String verdictJson) {
+            return target.get().ingestVerdict(missionId, vendorId, verdictJson);
+        }
+
+        @Override
+        public ExternalAiGenerationResult generateText(ExternalAiGenerationRequest request) {
+            return target.get().generateText(request);
+        }
+
+        @Override
+        public ExternalAiStructuredResult generateStructured(ExternalAiStructuredRequest request) {
+            return target.get().generateStructured(request);
+        }
+
+        @Override
+        public ExternalAiToolChatResult chatWithTools(ExternalAiToolChatRequest request) {
+            return target.get().chatWithTools(request);
+        }
+
+        @Override
+        public List<ExternalAiVendorSummary> configuredVendors() {
+            return target.get().configuredVendors();
+        }
+    }
+
+    private static <T> Supplier<T> memoize(Supplier<T> source) {
+        AtomicReference<T> value = new AtomicReference<>();
+        return () -> {
+            T existing = value.get();
+            if (existing == null) {
+                value.compareAndSet(null, source.get());
+                existing = value.get();
+            }
+            return existing;
+        };
     }
 
     /**
@@ -113,7 +206,9 @@ public class NpdevExternalAiConfig {
                 propertyResolver::getIfAvailable,
                 auditLogStore.getIfAvailable(),
                 fileStore::getIfAvailable,
-                cataloguePricing(ExternalAiCatalogue.bundled(), environment::getProperty),
+                // Per call, for the model as it is now: an own provider added by a reload is priced too.
+                (vendor, model) -> cataloguePricing(catalogueFor(modelHolder.get()), environment::getProperty)
+                        .priceOf(vendor, model),
                 Clock.systemUTC());
     }
 

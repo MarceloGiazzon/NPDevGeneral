@@ -329,6 +329,10 @@ class CanonicalJsonRoundTripCompletenessTest {
                 doubleCounter += 1.5d;
                 return doubleCounter;
             }
+            if (c == java.math.BigDecimal.class) {
+                doubleCounter += 1.5d;
+                return java.math.BigDecimal.valueOf(doubleCounter);
+            }
             if (c.isEnum()) {
                 Object[] constants = c.getEnumConstants();
                 if (constants == null || constants.length == 0) {
@@ -486,7 +490,8 @@ class CanonicalJsonRoundTripCompletenessTest {
                 || c == Boolean.class || c == boolean.class
                 || c == Integer.class || c == int.class
                 || c == Long.class || c == long.class
-                || c == Double.class || c == double.class;
+                || c == Double.class || c == double.class
+                || c == java.math.BigDecimal.class;
     }
 
     private static boolean isDomainType(Class<?> c) {

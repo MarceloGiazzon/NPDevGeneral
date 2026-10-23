@@ -442,6 +442,7 @@ def app_ai_status(app_dir: Path, model_path: Path, vault: Vault, environ=None) -
     sources = {row["id"]: row["keySource"] for row in list_providers(vault, environ)["providers"]}
     in_env = app_env_vars(app_dir)
     catalogue = {entry["id"]: entry for entry in load_catalogue()}
+    catalogue.update({entry["id"]: entry for entry in own_providers(external)})  # 3.6: the model's own
     vendors = []
     for vendor in external.get("vendors") or []:
         vendor_id = str(vendor).strip().lower()
@@ -492,15 +493,40 @@ def list_providers(vault: Vault, environ=None) -> dict:
 APP_COMPILED_MODEL = Path("npdev-generated") / "src" / "main" / "resources" / "npdev" / "compiled-model.json"
 
 
-def app_vendors(app_dir: Path) -> list[str]:
-    """The vendors a generated app's model opted into, read from the compiled model the app ships
-    (<app>/npdev-generated/.../compiled-model.json). An app with egress denied, or none declared, needs none."""
+def own_providers(external: dict) -> list[dict]:
+    """AIP-3 (3.6, D4): a model's own `externalAi.providers`, shaped like catalogue provider entries. The key
+    variable is always derived from the id (the generated app reads exactly that one), never taken from the
+    model. An id the shipped catalogue already has is skipped: the validator refuses it, and it must never
+    replace the shipped entry here either."""
+    import npdev_ai_config
+
+    shipped = {entry["id"] for entry in load_catalogue()}
+    out = []
+    for provider in external.get("providers") or []:
+        pid = str(provider.get("id") or "").strip().lower()
+        if not pid or pid in shipped:
+            continue
+        needs_key = provider.get("needsKey", True) is not False
+        out.append({"id": pid, "name": provider.get("name") or pid, "kind": "own", "appVendor": True,
+                    "protocol": provider.get("protocol"), "baseUrl": provider.get("baseUrl"),
+                    "needsKey": needs_key, "keyEnvVar": npdev_ai_config.key_env_var(pid) if needs_key else None,
+                    "defaultModel": provider.get("defaultModel")})
+    return out
+
+
+def _app_external(app_dir: Path) -> dict:
     path = Path(app_dir) / APP_COMPILED_MODEL
     try:
-        external = json.loads(path.read_text(encoding="utf-8")).get("externalAi") or {}
+        return json.loads(path.read_text(encoding="utf-8")).get("externalAi") or {}
     except (OSError, json.JSONDecodeError) as exc:
         raise ProviderError(f"cannot read the app's compiled model {path} ({type(exc).__name__}); "
                             "name the vendors with --provider") from None
+
+
+def app_vendors(app_dir: Path) -> list[str]:
+    """The vendors a generated app's model opted into, read from the compiled model the app ships
+    (<app>/npdev-generated/.../compiled-model.json). An app with egress denied, or none declared, needs none."""
+    external = _app_external(app_dir)
     if external.get("egress", "denied") == "denied":
         return []
     return [str(v).strip().lower() for v in external.get("vendors") or []]
@@ -514,16 +540,24 @@ def app_key_env(app_dir: Path, provider_ids: list[str] | None = None, vault: Vau
     with no key anywhere is reported as missing, not an error -- the app's agent proxy fails closed for it,
     and its secrets/agent-proxy.env, which the launcher loads after this, still wins."""
     ids = provider_ids if provider_ids else app_vendors(app_dir)
+    # 3.6: the app's own providers are app vendors of this app; their key is NPDEV_EXTERNALAI_<ID>_API_KEY,
+    # found in the environment or in your store under the same id (e.g. a provider of your ai.json).
+    try:
+        own = own_providers(_app_external(app_dir))
+    except ProviderError:
+        own = []  # no compiled model: --provider named shipped vendors only
+    catalogue = load_catalogue()
+    catalogue = [e for e in catalogue if e["id"] not in {o["id"] for o in own}] + own
     env, keys, missing = {}, [], []
     for provider_id in ids:
-        entry = get_provider(provider_id)
+        entry = get_provider(provider_id, catalogue)
         if not entry.get("appVendor"):
             raise ProviderError(f"{provider_id}: generated apps cannot use this provider "
-                                f"(supported: {', '.join(e['id'] for e in load_catalogue() if e.get('appVendor'))})")
+                                f"(supported: {', '.join(e['id'] for e in catalogue if e.get('appVendor'))})")
         if not entry.get("keyEnvVar"):
             continue  # keyless (local)
         try:
-            key = resolve_key(provider_id, vault, environ)
+            key = resolve_key(provider_id, vault, environ, catalogue)
         except ProviderError as exc:
             missing.append({"provider": provider_id, "reason": str(exc)})
             continue

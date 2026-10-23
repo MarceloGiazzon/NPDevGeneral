@@ -70,3 +70,12 @@ note: >-
   vendor check runs after, so an override cannot widen egress; unknown profile / profile+model / bad
   effort / resolver failure deny EXTERNAL_AI_OVERRIDE_INVALID. Audit row: effective vendor/model/effort
   + `overridden`. Tests: runtimehost-core com.finalexec.ai (15, 3 new; scratch fresh jars). Open: 3.6.
+  2026-10-23: 3.6 done (owner chose option A: the model declares it) -- externalAi.providers[] (id,
+  name, protocol, baseUrl, needsKey, defaultModel, price) through schema x4, parser, compiler, canonical
+  JSON (only when set), validator: id not any shipped catalogue id, https or loopback http, no query/
+  fragment/userinfo, known protocol; vendors[] accepts own ids. Key variable derived from the id, never
+  authored (no key exfiltration). Runtime: ExternalAiCatalogue.withOwnProviders (refuses shadowing again),
+  NpdevExternalAiConfig builds the http adapter from catalogueFor(model) and rebuilds it on a model
+  reload; pricing per call. CLI: own_providers() feeds app_key_env / app_ai_status. dsl-conformance-max
+  acme-gw. Tests: dsl full suite, external-ai-http (26), runtimehost-core ai/agent/config (69, scratch
+  fresh jars), NPDevCli test_providers + test_ai_*. Every step landed; DONE waits on CI T2 and probe 72.

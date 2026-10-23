@@ -71,7 +71,8 @@ command prints a key back. Listings say only where a key would come from: `env`,
 ## Generated apps
 
 - A model opts in with `externalAi`: `egress` plus `vendors`. Every vendor must be a catalogue provider
-  marked `appVendor`. An unknown id is a validation error that names the known ones. A prompt on a
+  marked `appVendor`, or one of the model's own `externalAi.providers` (below). An unknown id is a
+  validation error that names the known ones. A prompt on a
   local LLM server (`ollama`) validates with a warning, because a deployed app reaches it only if the
   server runs on the app's own host.
 - A prompt (`externalAi.prompts[]`) names either a `vendor` (optionally with a `model`) or a catalogue
@@ -82,7 +83,25 @@ command prints a key back. Listings say only where a key would come from: `env`,
   row of each call records the profile and the effort.
 - The `external-ai-http` jar bundles the shipped catalogue as `npdev/ai-providers.json`. The app builds
   one vendor profile per app vendor from it and calls the catalogue's default model unless a prompt
-  names one. Your overlay is **not** bundled: a generated app sees only shipped providers.
+  names one. Your overlay is **not** bundled: a generated app sees only shipped providers, plus the
+  ones its own model declares.
+- **An app's own endpoint** (owner decision D4: the operator vouches for it), such as a company gateway
+  or a self-hosted OpenAI-compatible server, is declared in the model, so the app stays reproducible from
+  its model alone:
+
+  ```json
+  "externalAi": { "egress": "apiEnabled", "vendors": ["acme-gw"], "providers": [
+    { "id": "acme-gw", "protocol": "openai-chat", "baseUrl": "https://ai.acme.example/v1",
+      "defaultModel": "acme-large", "price": { "in": 0.5, "out": 1.5 } } ] }
+  ```
+
+  `protocol` is `openai-chat`, `anthropic-messages` or `gemini-native`. `baseUrl` must be https, or
+  plain http only to a loopback host, and must not carry a query, a fragment or credentials. The id may
+  not be any shipped catalogue id. The key is always `NPDEV_EXTERNALAI_<ID>_API_KEY` (here
+  `NPDEV_EXTERNALAI_ACME_GW_API_KEY`), and `needsKey: false` makes the provider keyless. There is no
+  field to name a key variable, so a model cannot aim its endpoint at another provider's key or at any
+  other secret. `price` is USD per million tokens for every model of the provider. A provider declared
+  in your own `ai.json` with the same id lends its stored key to `run-env` and the Manager's Start.
 - **Keys.** The app reads the same `NPDEV_EXTERNALAI_<ID>_API_KEY` variables, with
   `NPDEV_EXTERNALAI_PROVIDER=http` selecting the real adapter. Without it the app answers from an
   offline stand-in. Two ways to get them in:

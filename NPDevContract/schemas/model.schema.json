@@ -988,7 +988,34 @@
             "type": "string",
             "minLength": 1
           },
-          "description": "Vendor ids this app has opted into -- each must be an appVendor provider id of the NPDev AI catalogue (NPDevCli/ai-providers.json; `npdev ai providers` lists them), or SemanticValidator rejects it. Required non-empty when egress is not \"denied\" -- SemanticValidator rejects egress-enabled with no vendor configured."
+          "description": "Vendor ids this app has opted into -- each must be an appVendor provider id of the NPDev AI catalogue (NPDevCli/ai-providers.json; `npdev ai providers` lists them) or the id of one of this model's own externalAi.providers, or SemanticValidator rejects it. Required non-empty when egress is not \"denied\" -- SemanticValidator rejects egress-enabled with no vendor configured."
+        },
+        "providers": {
+          "type": "array",
+          "description": "AIP-3 (3.6, D4): this app's own AI endpoints, beyond the providers the NPDev AI catalogue ships -- e.g. a company gateway or a self-hosted OpenAI-compatible server. Each one is an app vendor of this app only, and must still be listed in vendors to be called. The id must not be a shipped catalogue id. Its key is always read from NPDEV_EXTERNALAI_<ID>_API_KEY (the id upper-cased, '-' as '_'), so a model can never point an endpoint at another provider's key.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "protocol", "baseUrl", "defaultModel"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,39}$", "description": "The vendor id vendors[] and prompts[].vendor use." },
+              "name": { "type": "string", "minLength": 1, "description": "A display name; defaults to the id." },
+              "protocol": { "type": "string", "enum": ["openai-chat", "anthropic-messages", "gemini-native"], "description": "The wire format the endpoint speaks." },
+              "baseUrl": { "type": "string", "minLength": 1, "description": "The endpoint root, e.g. https://ai.example.com/v1 (openai-chat appends /chat/completions, anthropic-messages /messages). https, or http only to a loopback host; no query or fragment." },
+              "needsKey": { "type": "boolean", "default": true, "description": "false for a keyless endpoint (a local server). true: the app reads NPDEV_EXTERNALAI_<ID>_API_KEY." },
+              "defaultModel": { "type": "string", "minLength": 1, "description": "The model a prompt naming none calls." },
+              "price": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["in", "out"],
+                "description": "USD per million tokens, for every model of this provider; feeds externalAi.limits.monthlyCostCapUsd. Absent: unpriced (0) unless npdev.externalai.price.<id>.* is set.",
+                "properties": {
+                  "in": { "type": "number", "minimum": 0 },
+                  "out": { "type": "number", "minimum": 0 }
+                }
+              }
+            }
+          }
         },
         "prompts": {
           "type": "array",

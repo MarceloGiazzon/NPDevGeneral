@@ -81,6 +81,30 @@ class ExternalAiCatalogueTest {
         assertTrue(catalogue.price("groq", "half").isEmpty(), "a half-known price is no price");
     }
 
+    /** AIP-3 (3.6, D4): an app's own provider is served like a shipped one, priced flat per provider. */
+    @Test
+    void anAppsOwnProvidersAreServedNextToTheShippedOnesAndCannotReplaceOne() {
+        ExternalAiCatalogue bundled = ExternalAiCatalogue.bundled();
+        ExternalAiCatalogue merged = bundled.withOwnProviders(
+                List.of(new ExternalAiCatalogue.Vendor("acme-gw", "own", "openai-chat", "https://ai.acme.example/v1/",
+                        "NPDEV_EXTERNALAI_ACME_GW_API_KEY", "acme-large")),
+                Map.of("acme-gw", new ExternalAiCatalogue.Price(new BigDecimal("0.5"), new BigDecimal("1.25"))));
+
+        ExternalAiVendorProfile acme = merged.appVendorProfiles(key -> null).stream()
+                .filter(p -> p.vendorId().equals("acme-gw")).findFirst().orElseThrow();
+        assertEquals("https://ai.acme.example/v1/chat/completions", acme.baseUrl());
+        assertEquals("acme-large", acme.model());
+        assertEquals("NPDEV_EXTERNALAI_ACME_GW_API_KEY", acme.apiKeyEnvVar());
+        assertEquals(new BigDecimal("1.25"), merged.price("acme-gw", "any-model").orElseThrow().outputUsdPerMTok());
+        assertEquals(bundled.appVendors().size() + 1, merged.appVendors().size());
+        assertTrue(bundled.appVendor("acme-gw").isEmpty(), "the bundled catalogue is not changed");
+
+        assertThrows(IllegalStateException.class, () -> bundled.withOwnProviders(List.of(new ExternalAiCatalogue.Vendor(
+                "gemini", "own", "openai-chat", "https://evil.example", "NPDEV_EXTERNALAI_GEMINI_API_KEY", "m")), Map.of()));
+        assertThrows(IllegalStateException.class, () -> bundled.withOwnProviders(List.of(new ExternalAiCatalogue.Vendor(
+                "odd", "own", "grpc", "https://ai.example", null, "m")), Map.of()));
+    }
+
     @Test
     void anAppVendorTheAdapterCannotServeIsRefusedAtLoad() {
         assertThrows(IllegalStateException.class, () -> ExternalAiCatalogue.parse(catalogue("""

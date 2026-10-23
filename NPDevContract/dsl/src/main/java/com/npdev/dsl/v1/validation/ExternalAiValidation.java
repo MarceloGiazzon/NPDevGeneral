@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.ast.ExternalAiAst;
 import com.npdev.dsl.v1.ast.ExternalAiPromptAst;
+import com.npdev.dsl.v1.ast.ExternalAiProviderAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.ast.ProcedureAst;
@@ -52,13 +53,18 @@ final class ExternalAiValidation {
         static final String RESOURCE = "npdev/dsl/ai-providers.json";
         static final Map<String, String> BASE_URLS = load();
         static final Set<String> IDS = BASE_URLS.keySet();
+        /** AIP-3 (3.6): every shipped provider id, app vendor or not -- an app's own provider may reuse none. */
+        static final Set<String> ALL_IDS = loadAllIds();
 
         private AppVendorCatalogue() {
         }
 
         /** AIP-3 (3.4c): a vendor served from the machine the app runs on (a local LLM server). */
         static boolean isLoopback(String vendorId) {
-            String baseUrl = BASE_URLS.get(vendorId);
+            return isLoopbackUrl(BASE_URLS.get(vendorId));
+        }
+
+        static boolean isLoopbackUrl(String baseUrl) {
             if (baseUrl == null) {
                 return false;
             }
@@ -68,6 +74,20 @@ final class ExternalAiValidation {
                         || host.equals("[::1]") || host.equals("::1") || host.equals("0.0.0.0"));
             } catch (IllegalArgumentException e) {
                 return false;
+            }
+        }
+
+        private static Set<String> loadAllIds() {
+            try (InputStream in = ExternalAiValidation.class.getClassLoader().getResourceAsStream(RESOURCE)) {
+                if (in == null) {
+                    throw new IllegalStateException(RESOURCE + " is not on the classpath -- rebuild the dsl jar");
+                }
+                Set<String> ids = new java.util.LinkedHashSet<>();
+                MAPPER.readTree(in).path("providers")
+                        .forEach(provider -> ids.add(provider.path("id").asText().toLowerCase(Locale.ROOT)));
+                return Collections.unmodifiableSet(ids);
+            } catch (IOException e) {
+                throw new UncheckedIOException("could not read " + RESOURCE, e);
             }
         }
 
@@ -108,11 +128,12 @@ final class ExternalAiValidation {
      * machine the APP runs on -- fine on a developer laptop, unreachable from a server deployment unless
      * the same server also runs the LLM. A warning, never an error.
      */
-    private static void warnIfLocal(ExternalAiPromptAst prompt, List<String> warnings) {
+    private static void warnIfLocal(ExternalAiPromptAst prompt, Map<String, String> ownBaseUrls, List<String> warnings) {
         String vendor = resolvedVendor(prompt);
-        if (AppVendorCatalogue.isLoopback(vendor)) {
+        String baseUrl = ownBaseUrls.containsKey(vendor) ? ownBaseUrls.get(vendor) : AppVendorCatalogue.BASE_URLS.get(vendor);
+        if (AppVendorCatalogue.isLoopbackUrl(baseUrl)) {
             warnings.add("externalAi.prompts['" + prompt.name() + "'] uses vendor '" + vendor
-                    + "', a local LLM server at " + AppVendorCatalogue.BASE_URLS.get(vendor) + " -- a deployed app "
+                    + "', a local LLM server at " + baseUrl + " -- a deployed app "
                     + "reaches it only if that server runs on the same host as the app; pick a cloud vendor for a "
                     + "server deployment.");
         }
@@ -134,16 +155,20 @@ final class ExternalAiValidation {
             Set<String> vendors = externalAi.getVendors().stream()
                     .map(vendor -> vendor.trim().toLowerCase(Locale.ROOT))
                     .collect(Collectors.toSet());
+            Map<String, String> ownBaseUrls = validateProviders(externalAi.getProviders(), errors);
             for (String vendor : externalAi.getVendors()) {
-                if (!AppVendorCatalogue.IDS.contains(vendor.trim().toLowerCase(Locale.ROOT))) {
+                String id = vendor.trim().toLowerCase(Locale.ROOT);
+                if (!AppVendorCatalogue.IDS.contains(id) && !ownBaseUrls.containsKey(id)) {
                     errors.add("externalAi.vendors: '" + vendor + "' is not an app vendor in the NPDev AI catalogue "
-                            + "-- known: " + AppVendorCatalogue.IDS + " -- suggestedFix: use one of the known ids "
-                            + "(`npdev ai providers` lists them); a generated app can only call those.");
+                            + "nor one of this model's externalAi.providers -- known: " + AppVendorCatalogue.IDS
+                            + (ownBaseUrls.isEmpty() ? "" : " + " + ownBaseUrls.keySet())
+                            + " -- suggestedFix: use one of the known ids (`npdev ai providers` lists them), or declare "
+                            + "your own endpoint in externalAi.providers.");
                 }
             }
             for (ExternalAiPromptAst prompt : prompts) {
                 validatePrompt(prompt, vendors, promptNames, errors);
-                warnIfLocal(prompt, warnings);
+                warnIfLocal(prompt, ownBaseUrls, warnings);
                 if (prompt.reviewRequired() && prompt.name() != null) {
                     reviewRequired.add(prompt.name().trim());
                 }
@@ -163,6 +188,76 @@ final class ExternalAiValidation {
         for (ProcedureAst procedure : modelAst.getProcedures()) {
             validateProcedureGenerateCalls(procedure.name(), procedure.steps(), promptNames, reviewRequired, errors);
         }
+    }
+
+    /**
+     * AIP-3 (3.6, D4): the app's own endpoints. Returns id to baseUrl of every entry whose id is usable, so a
+     * vendors[] reference to it is not reported twice. The key variable is derived from the id, so there is
+     * no authored key name to check; the id may not shadow a shipped provider, whose key it would then get.
+     */
+    private static Map<String, String> validateProviders(List<ExternalAiProviderAst> providers, List<String> errors) {
+        Map<String, String> ids = new LinkedHashMap<>();
+        Set<String> protocols = Set.of("openai-chat", "anthropic-messages", "gemini-native");
+        for (ExternalAiProviderAst provider : providers) {
+            String id = provider.id() == null ? "" : provider.id().trim();
+            String prefix = "externalAi.providers '" + id + "': ";
+            if (!id.matches("[a-z][a-z0-9-]{0,39}")) {
+                errors.add("externalAi.providers: id '" + id + "' must be lower-case letters, digits and '-', "
+                        + "starting with a letter (at most 40)");
+                continue;
+            }
+            if (AppVendorCatalogue.ALL_IDS.contains(id)) {
+                errors.add(prefix + "the id is a provider the NPDev AI catalogue ships -- suggestedFix: list '" + id
+                        + "' in vendors without redeclaring it, or give your endpoint its own id (e.g. 'my-" + id + "')");
+                continue;
+            }
+            if (ids.containsKey(id)) {
+                errors.add(prefix + "duplicate provider id");
+                continue;
+            }
+            if (provider.protocol() == null || !protocols.contains(provider.protocol())) {
+                errors.add(prefix + "protocol '" + provider.protocol() + "' must be one of " + new java.util.TreeSet<>(protocols));
+            }
+            if (provider.defaultModel() == null || provider.defaultModel().isBlank()) {
+                errors.add(prefix + "defaultModel is required (the model a prompt naming none calls)");
+            }
+            String baseUrl = provider.baseUrl() == null ? "" : provider.baseUrl().trim();
+            String problem = baseUrlProblem(baseUrl);
+            if (problem != null) {
+                errors.add(prefix + "baseUrl '" + baseUrl + "' " + problem
+                        + " -- suggestedFix: point baseUrl at the endpoint root over https, e.g. https://ai.example.com/v1");
+            }
+            if ((provider.inputUsdPerMTok() != null && provider.inputUsdPerMTok().signum() < 0)
+                    || (provider.outputUsdPerMTok() != null && provider.outputUsdPerMTok().signum() < 0)) {
+                errors.add(prefix + "price.in and price.out must be >= 0");
+            }
+            ids.put(id, baseUrl);
+        }
+        return ids;
+    }
+
+    /** Null when usable: an absolute https URL, or http to a loopback host (a key never crosses a network in clear). */
+    private static String baseUrlProblem(String baseUrl) {
+        URI uri;
+        try {
+            uri = URI.create(baseUrl);
+        } catch (IllegalArgumentException e) {
+            return "is not a URL";
+        }
+        if (uri.getHost() == null || uri.getScheme() == null) {
+            return "must be an absolute URL with a host, e.g. https://ai.example.com/v1";
+        }
+        if (uri.getRawQuery() != null || uri.getRawFragment() != null || uri.getRawUserInfo() != null) {
+            return "must not carry a query, a fragment or credentials -- the key travels in the auth header";
+        }
+        String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
+        if (scheme.equals("https")) {
+            return null;
+        }
+        if (scheme.equals("http") && AppVendorCatalogue.isLoopbackUrl(baseUrl)) {
+            return null;
+        }
+        return "must use https (http is allowed only to localhost / 127.x / [::1])";
     }
 
     private static void validatePrompt(

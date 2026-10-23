@@ -348,13 +348,30 @@ public final class CompiledModelCanonicalJsonReader {
                 ));
             }
         }
+        List<CompiledExternalAiProvider> providers = new ArrayList<>();
+        JsonNode providersNode = node.get("providers");
+        if (providersNode != null && providersNode.isArray()) {
+            for (JsonNode provider : providersNode) {
+                JsonNode price = provider.path("price");
+                providers.add(new CompiledExternalAiProvider(
+                        optionalText(provider, "id"),
+                        optionalText(provider, "name"),
+                        optionalText(provider, "protocol"),
+                        optionalText(provider, "baseUrl"),
+                        provider.path("needsKey").asBoolean(true),
+                        optionalText(provider, "defaultModel"),
+                        price.path("in").isNumber() ? price.path("in").decimalValue() : null,
+                        price.path("out").isNumber() ? price.path("out").decimalValue() : null));
+            }
+        }
         JsonNode limits = node.get("limits");
         return new CompiledExternalAi(
                 optionalText(node, "egress"),
                 toStringList(node.get("vendors")),
                 prompts,
                 limits == null ? null : optionalText(limits, "callsPerUserPerDay"),
-                limits == null ? null : optionalText(limits, "monthlyCostCapUsd"));
+                limits == null ? null : optionalText(limits, "monthlyCostCapUsd"),
+                providers);
     }
 
     /** Move 6 Move A: reads the app-level settings block; platform defaults if absent (the writer

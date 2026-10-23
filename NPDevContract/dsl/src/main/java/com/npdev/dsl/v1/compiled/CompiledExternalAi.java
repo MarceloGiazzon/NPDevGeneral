@@ -12,6 +12,7 @@ public final class CompiledExternalAi {
     private final List<CompiledExternalAiPrompt> prompts;
     private final String callsPerUserPerDayProperty;
     private final String monthlyCostCapUsdProperty;
+    private final List<CompiledExternalAiProvider> providers;
 
     public CompiledExternalAi(String egress, List<String> vendors) {
         this(egress, vendors, List.of(), null, null);
@@ -19,11 +20,18 @@ public final class CompiledExternalAi {
 
     public CompiledExternalAi(String egress, List<String> vendors, List<CompiledExternalAiPrompt> prompts,
                               String callsPerUserPerDayProperty, String monthlyCostCapUsdProperty) {
+        this(egress, vendors, prompts, callsPerUserPerDayProperty, monthlyCostCapUsdProperty, List.of());
+    }
+
+    public CompiledExternalAi(String egress, List<String> vendors, List<CompiledExternalAiPrompt> prompts,
+                              String callsPerUserPerDayProperty, String monthlyCostCapUsdProperty,
+                              List<CompiledExternalAiProvider> providers) {
         this.egress = egress == null || egress.isBlank() ? "denied" : egress;
         this.vendors = vendors == null ? List.of() : new ArrayList<>(vendors);
         this.prompts = prompts == null ? List.of() : new ArrayList<>(prompts);
         this.callsPerUserPerDayProperty = callsPerUserPerDayProperty;
         this.monthlyCostCapUsdProperty = monthlyCostCapUsdProperty;
+        this.providers = providers == null ? List.of() : new ArrayList<>(providers);
     }
 
     public String getEgress() { return egress; }
@@ -31,6 +39,8 @@ public final class CompiledExternalAi {
     public List<CompiledExternalAiPrompt> getPrompts() { return Collections.unmodifiableList(prompts); }
     public String getCallsPerUserPerDayProperty() { return callsPerUserPerDayProperty; }
     public String getMonthlyCostCapUsdProperty() { return monthlyCostCapUsdProperty; }
+    /** AIP-3 (3.6, D4): the app's own endpoints, served by external-ai-http next to the shipped catalogue. */
+    public List<CompiledExternalAiProvider> getProviders() { return Collections.unmodifiableList(providers); }
 
     public Optional<CompiledExternalAiPrompt> findPrompt(String name) {
         return prompts.stream().filter(prompt -> prompt.name().equals(name)).findFirst();

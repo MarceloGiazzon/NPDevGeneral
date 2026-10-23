@@ -20,6 +20,7 @@ public final class ExternalAiAst {
     private final List<ExternalAiPromptAst> prompts;
     private final String callsPerUserPerDayProperty;
     private final String monthlyCostCapUsdProperty;
+    private final List<ExternalAiProviderAst> providers;
 
     public ExternalAiAst(String egress, List<String> vendors) {
         this(egress, vendors, List.of(), null, null);
@@ -27,11 +28,18 @@ public final class ExternalAiAst {
 
     public ExternalAiAst(String egress, List<String> vendors, List<ExternalAiPromptAst> prompts,
                          String callsPerUserPerDayProperty, String monthlyCostCapUsdProperty) {
+        this(egress, vendors, prompts, callsPerUserPerDayProperty, monthlyCostCapUsdProperty, List.of());
+    }
+
+    public ExternalAiAst(String egress, List<String> vendors, List<ExternalAiPromptAst> prompts,
+                         String callsPerUserPerDayProperty, String monthlyCostCapUsdProperty,
+                         List<ExternalAiProviderAst> providers) {
         this.egress = egress == null || egress.isBlank() ? "denied" : egress;
         this.vendors = vendors == null ? List.of() : new ArrayList<>(vendors);
         this.prompts = prompts == null ? List.of() : new ArrayList<>(prompts);
         this.callsPerUserPerDayProperty = callsPerUserPerDayProperty;
         this.monthlyCostCapUsdProperty = monthlyCostCapUsdProperty;
+        this.providers = providers == null ? List.of() : new ArrayList<>(providers);
     }
 
     public String getEgress() { return egress; }
@@ -40,4 +48,6 @@ public final class ExternalAiAst {
     public List<ExternalAiPromptAst> getPrompts() { return Collections.unmodifiableList(prompts); }
     public String getCallsPerUserPerDayProperty() { return callsPerUserPerDayProperty; }
     public String getMonthlyCostCapUsdProperty() { return monthlyCostCapUsdProperty; }
+    /** AIP-3 (3.6, D4): this app's own endpoints; each is a vendor id only once listed in vendors. */
+    public List<ExternalAiProviderAst> getProviders() { return Collections.unmodifiableList(providers); }
 }
