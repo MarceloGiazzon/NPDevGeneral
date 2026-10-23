@@ -132,4 +132,26 @@ class ConceptAccessValidationTest {
         assertTrue(errors.stream().noneMatch(e -> e.contains("access.")),
                 "unexpected access rule error for a concept with no access block, got: " + errors);
     }
+
+    /** REG-285: an unbound $user name used to validate clean and evaluate as null at runtime, so
+     *  `ownerId == $user.idd` granted every unowned row. */
+    @Test
+    void unboundUserReferenceInAccessRuleIsRefused() throws Exception {
+        List<String> errors = validate(modelWithAccess(
+                "{\"read\": \"ownerId == $user.idd\", \"write\": \"siteId == $user.region\"}"));
+        assertTrue(errors.stream().anyMatch(e -> e.contains("access.read") && e.contains("'$user.idd'")
+                        && e.contains("$user.tenantId")),
+                "expected $user.idd to be refused naming the allowed set, got: " + errors);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("access.write") && e.contains("'$user.region'")),
+                "expected $user.region to be refused, got: " + errors);
+    }
+
+    @Test
+    void everyBoundUserReferencePasses() throws Exception {
+        List<String> errors = validate(modelWithAccess(
+                "{\"read\": \"$user.isSystem || $user.roles.contains('Auditor') || ownerId == $user.actorId"
+                        + " || siteId == $user.tenantId || ownerId == $user.id\"}"));
+        assertTrue(errors.stream().noneMatch(e -> e.contains("access.")),
+                "unexpected access rule error, got: " + errors);
+    }
 }

@@ -3,9 +3,9 @@ title: >-
   access.read/access.write and $user lifecycle guards accept any $user.<name>; an unbound one evaluates to null at runtime, so a typo can GRANT
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-10-23
-closed: null
+closed: 2026-10-23
 source: >-
   REG-282 (X0-11 audit), 2026-10-23. Reproduced against the built kernel jar (UserScopedExpressions unchanged since).
 surface: NPDevContract/dsl validation/ConceptValidation.validateAccessExpression (concept + field access) and LifecycleValidation.isSupportedLifecycleGuard; NPDevKernel/kernel concepts/UserScopedExpressions
@@ -25,6 +25,15 @@ detail: |
   (AggregateQueryValidationTest and DefaultConceptGatewayAggregateJoinAccessReadTest: `region == $user.region`;
   AuthoringMergeGateTest: `$user.role == 'finance'`). $user.<tagName> IS a real thing elsewhere
   (propertyScopes[].from, PropertyValidation), which makes the assumption natural for an AI author.
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/UserScopedExpressionsUnboundTest.java#unboundUserReferenceIsDeniedNotEvaluatedAsNull
+  asserts: >-
+    UserScopedExpressions denies `ownerId == $user.idd` over an unowned row, `$user.region == null` and
+    `!$user.isSytem` instead of evaluating them against null (bound names still evaluate). Validation side:
+    ConceptAccessValidationTest.unboundUserReferenceInAccessRuleIsRefused (concept access, naming the allowed set)
+    and StateMachineSupportTest.semanticValidationRejectsAGuardNamingAnUnboundUserValue ($user lifecycle guard).
+  provenRed: true
 resolution: >-
   Done when concept access, field access and $user lifecycle guards refuse a $user.<name> outside the set
   UserScopedExpressions binds (one constant both sides read, or a test pinning them equal), with a suggestedFix
@@ -34,3 +43,11 @@ resolution: >-
 note: >-
   2026-10-23: filed by the REG-282 audit. Validation tightening: a model naming an unbound $user value stops
   validating (it was being evaluated against null). BREAKING.md entry; no codemod can know the intended claim.
+  2026-10-23: DONE. com.npdev.dsl.v1.expr.UserReferences.BOUND ($user.id/actorId/tenantId/roles/isSystem) is the one
+  set: ConceptValidation (concept + field access) and LifecycleValidation ($user guards) refuse any other $-name with a
+  suggestedFix, and UserScopedExpressions denies a rule naming one. Tests that authored $user.region / $user.role /
+  $row.ownerId as if they worked now use bound names. BREAKING.md entry, no codemod (the intended value is unknowable).
+  No tracked model or pack trips the new rule (scanned every tracked JSON); AppGen app definitions are outside the repo
+  and were not scanned from this machine. Verified: full :NPDevContract:dsl:test (1275, one suggestedFix-coverage
+  failure fixed and re-run), full :kernel:test, generator AuthoringMergeGateTest + AuthoringDiffGateTest; the kernel
+  test fails with the runtime check disabled.

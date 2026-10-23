@@ -1,6 +1,7 @@
 package com.npdev.kernel.concepts;
 
 import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.dsl.v1.expr.UserReferences;
 import com.npdev.kernel.ExecutionContext;
 
 import java.util.Collection;
@@ -69,6 +70,12 @@ public final class UserScopedExpressions {
         // #37: lets a rule admit the cron scheduler (and seeding) without naming its actor id.
         scope.put("$user.isSystem", ExecutionContext.isSystem(effectiveContext));
         try {
+            // REG-285: a $-name this scope does not bind would evaluate as null and the rule would
+            // still answer (`ownerId == $user.idd` grants every unowned row). Validation refuses it;
+            // a model that bypassed validation is denied here rather than answered.
+            if (UserReferences.firstUnbound(expression) != null) {
+                return false;
+            }
             return ComputedExpression.evaluateBoolean(expression, scope, FUNCTIONS);
         } catch (ComputedExpression.ExpressionException malformed) {
             // Fail closed: SemanticValidator already rejects a malformed rule at model-compile time,

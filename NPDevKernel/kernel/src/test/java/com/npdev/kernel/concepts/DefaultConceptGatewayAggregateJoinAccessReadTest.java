@@ -221,7 +221,7 @@ class DefaultConceptGatewayAggregateJoinAccessReadTest {
                         "region", new FieldDefinition("region", true, List.of(), null, null, null)
                 ),
                 List.of(), null, java.util.Set.of(),
-                new AccessRules("region == $user.region", null)
+                new AccessRules("$user.isSystem || region == $user.id", null)
         );
         ConceptDefinition shipmentEvent = ConceptDefinition.of(
                 "ShipmentEvent",
@@ -251,7 +251,7 @@ class DefaultConceptGatewayAggregateJoinAccessReadTest {
                         "name", new FieldDefinition("name", true, List.of(), null, null, null)
                 ),
                 List.of(), null, java.util.Set.of(),
-                new AccessRules("name == $user.region", null)
+                new AccessRules("$user.isSystem || name == $user.id", null)
         );
         ConceptDefinition warehouse = ConceptDefinition.of(
                 "Warehouse",

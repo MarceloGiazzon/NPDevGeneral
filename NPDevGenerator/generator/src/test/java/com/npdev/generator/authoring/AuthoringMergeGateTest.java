@@ -190,7 +190,7 @@ class AuthoringMergeGateTest {
         { "name": "Invoice",
           "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true },
                       { "name": "ownerId", "type": "string" } ],
-          "access": { "write": "$user.id == $row.ownerId" } }
+          "access": { "write": "$user.id == ownerId" } }
         """;
 
     @Test
@@ -212,7 +212,7 @@ class AuthoringMergeGateTest {
                 { "name": "Invoice",
                   "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true },
                               { "name": "ownerId", "type": "string" } ],
-                  "access": { "write": "$user.id == $row.ownerId || $user.role == 'finance'" } } ] }
+                  "access": { "write": "$user.id == ownerId || $user.roles.contains('finance')" } } ] }
             """);
         JsonNode manifest = json(EMPTY_MANIFEST);
 
@@ -240,7 +240,7 @@ class AuthoringMergeGateTest {
                 { "name": "Invoice",
                   "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true },
                               { "name": "ownerId", "type": "string" } ],
-                  "access": { "write": "$user.id == $row.ownerId || $user.role == 'finance'" } } ] }
+                  "access": { "write": "$user.id == ownerId || $user.roles.contains('finance')" } } ] }
             """);
         JsonNode oursManifest = json(EMPTY_MANIFEST);
         JsonNode theirsManifest = json("""

@@ -31,6 +31,7 @@ import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.dsl.v1.expr.UserReferences;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
 import com.npdev.dsl.v1.compiled.FieldWidgetDefaults;
 import com.npdev.dsl.v1.compiled.GuidePageDefaults;
@@ -1122,6 +1123,14 @@ final class ConceptValidation {
                 continue;
             }
             if (referenced.startsWith("$")) {
+                // REG-285: an unbound $-name evaluates to null at runtime, so the rule would still
+                // answer -- and `field == $user.idd` grants every row whose field is null.
+                if (!UserReferences.BOUND.contains(referenced)) {
+                    errors.add("Entity " + entityName + " access." + label
+                            + ": '" + referenced + "' is not a value the acting user has (allowed: "
+                            + UserReferences.BOUND_SORTED + ") -- suggestedFix: use one of those, or a field"
+                            + " of this concept");
+                }
                 continue;
             }
             String rootSegment = referenced.contains(".") ? referenced.substring(0, referenced.indexOf('.')) : referenced;

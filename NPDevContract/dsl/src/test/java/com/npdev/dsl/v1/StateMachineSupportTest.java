@@ -196,6 +196,14 @@ class StateMachineSupportTest {
                 .anyMatch(error -> error.contains("guard uses an unsupported expression format")));
     }
 
+    /** REG-285: an unbound $user name in a guard evaluates as null at runtime -- refused at validation. */
+    @Test
+    void semanticValidationRejectsAGuardNamingAnUnboundUserValue() throws Exception {
+        assertTrue(guardErrors("!$user.isSytem").stream()
+                .anyMatch(error -> error.contains("guard references '$user.isSytem'")));
+        assertTrue(guardErrors("$user.isSystem || $user.roles.contains('Curator')").isEmpty());
+    }
+
     private static List<String> guardErrors(String guard) throws Exception {
         Path modelPath = Files.createTempFile("npdev-state-machine-guard-", ".json");
         Files.writeString(modelPath, """

@@ -54,7 +54,7 @@ class AggregateQueryValidationTest {
     @Test
     void groupByOnAConceptDeclaringAnUntranslatableAccessReadIsRefused() throws Exception {
         List<String> errors = validate(modelWithConceptAndQuery(
-                "{\"read\": \"warehouseId == $user.region\"}", """
+                "{\"read\": \"$user.isSystem || warehouseId == $user.id\"}", """
             { "name": "UnitsByWarehouse", "concept": "ShipmentEvent",
               "groupBy": [ "warehouseId" ],
               "aggregates": [ { "name": "total", "fn": "sum", "field": "unitsShipped" } ] }
@@ -272,7 +272,7 @@ class AggregateQueryValidationTest {
     @Test
     void twoHopGroupByJoinCrossingIntoAConceptDeclaringAccessReadAtTheFarHopIsRefused() throws Exception {
         List<String> errors = validate(modelWithTwoHopJoinAndQuery(
-                "{\"read\": \"name == $user.region\"}", """
+                "{\"read\": \"$user.isSystem || name == $user.id\"}", """
             { "name": "UnitsByCountry", "concept": "ShipmentEvent",
               "groupBy": [ "warehouse.country.name" ],
               "aggregates": [ { "name": "total", "fn": "sum", "field": "unitsShipped" } ] }
@@ -317,7 +317,7 @@ class AggregateQueryValidationTest {
     @Test
     void groupByJoinCrossingIntoAConceptDeclaringAccessReadIsRefused() throws Exception {
         List<String> errors = validate(modelWithJoinAndQuery(
-                "{\"read\": \"region == $user.region\"}", """
+                "{\"read\": \"$user.isSystem || region == $user.id\"}", """
             { "name": "UnitsByRegion", "concept": "ShipmentEvent",
               "groupBy": [ "warehouse.region" ],
               "aggregates": [ { "name": "total", "fn": "sum", "field": "unitsShipped" } ] }

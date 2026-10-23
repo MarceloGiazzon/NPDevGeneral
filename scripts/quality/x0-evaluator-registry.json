@@ -131,9 +131,11 @@
     {
       "id": "X0-16",
       "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/UserScopedExpressions.java",
-      "verdict": "OPEN",
+      "verdict": "FIXED",
       "fixedBy": "REG-285",
-      "note": "REG-282 audit (2026-10-23): access.read/access.write and $user lifecycle guards. A MALFORMED rule fails closed (false = deny), correctly. But an unbound $user.<name> resolves to null and validation lets any $-name through, so the rule answers against null: evaluate(\"ownerId == $user.idd\", {ownerId:null}, anonymous) is true -- a typo can grant. See REG-285."
+      "note": "REG-282 audit (2026-10-23) found: a MALFORMED access rule / $user guard fails closed, but an unbound $user.<name> resolved to null and validation let any $-name through, so `ownerId == $user.idd` granted every unowned row. REG-285 (2026-10-23): com.npdev.dsl.v1.expr.UserReferences.BOUND is the one set of names the evaluator binds; ConceptValidation (concept + field access) and LifecycleValidation ($user guards) refuse anything else, and UserScopedExpressions denies a rule naming an unbound $-value instead of evaluating it. Validation side pinned by ConceptAccessValidationTest.unboundUserReferenceInAccessRuleIsRefused and StateMachineSupportTest.semanticValidationRejectsAGuardNamingAnUnboundUserValue.",
+      "test": "NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/UserScopedExpressionsUnboundTest.java",
+      "testMarker": "unboundUserReferenceIsDeniedNotEvaluatedAsNull"
     },
     {
       "id": "X0-17",

@@ -29,6 +29,7 @@ import com.npdev.dsl.v1.ast.WorkbenchActionAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.dsl.v1.expr.UserReferences;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
 import com.npdev.dsl.v1.compiled.FieldWidgetDefaults;
 import com.npdev.dsl.v1.compiled.GuidePageDefaults;
@@ -243,6 +244,15 @@ final class LifecycleValidation {
                 } else if (!isSupportedLifecycleGuard(transition.getGuard())) {
                     errors.add("Entity " + conceptName + " lifecycle transition " + from + " -> " + to
                             + ": guard uses an unsupported expression format");
+                } else if (transition.getGuard().contains("$user")) {
+                    // REG-285: same evaluator as access rules, same unbound-name hole.
+                    String unbound = UserReferences.firstUnbound(transition.getGuard());
+                    if (unbound != null) {
+                        errors.add("Entity " + conceptName + " lifecycle transition " + from + " -> " + to
+                                + ": guard references '" + unbound + "', which is not a value the acting user has"
+                                + " (allowed: " + UserReferences.BOUND_SORTED + ") -- suggestedFix: use one of"
+                                + " those, or a role check $user.roles.contains('Role')");
+                    }
                 }
             }
             if (transition.getActionLabel() != null && transition.getActionLabel().isBlank()) {
