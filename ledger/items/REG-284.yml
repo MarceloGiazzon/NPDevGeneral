@@ -1,0 +1,46 @@
+id: REG-284
+title: >-
+  A defaultExpression calling a function stores its own source text as the value, and an unregistered function in a default/derived expression passes validation and evaluates to text or null
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-10-23
+closed: null
+source: >-
+  REG-282 (X0-11 audit of the runtime-support expression engine), 2026-10-23. Reproduced against the built
+  kernel/dsl jars (Build/runtimehost-libs, 2026-10-18; neither evaluator has changed since).
+surface: NPDevKernel/kernel concepts/ValueExpressionEvaluator; NPDevKernel/adapters/runtime-support crud/schemaexpr/SchemaExpressionSupport + GeneratedCrudRuntimeSupport.applySchemaValueBehaviors; NPDevContract/dsl validation/FieldValueValidation.analyzeValueBehaviorExpression
+detail: |
+  Three stacked silent defaults on the field-value path:
+  1. ValueExpressionEvaluator.evaluate(expression, data) -- what ConfiguredConceptGatewaySemanticPolicy.evaluateFieldDefault
+     (the governed policy GeneratedCrudRuntimeSupport and DefaultConceptGateway both use) calls -- tries
+     ComputedExpression.evaluate(text, data) with an EMPTY function registry and, on ExpressionException, returns the
+     raw expression TEXT. So every function call is "unparseable" there:
+       ValueExpressionEvaluator.evaluate("concat(first, ' ', last)", {first:Ada, last:Lovelace}) -> "concat(first, ' ', last)"
+       ValueExpressionEvaluator.evaluate("uppercse(first)", ...)                                   -> "uppercse(first)"
+     Because that answer is non-null, GeneratedCrudRuntimeSupport's fallback to SchemaExpressionSupport (which DOES
+     register concat/coalesce/trim/uppercase/lowercase) never runs. The documented concat/coalesce/trim/uppercase/
+     lowercase defaults therefore write their source text into the row. Only nextNumber('x') (matched before this
+     call) and $user.* (ValueExpressionEvaluator's $user overload, which registers ValueExpressionFunctions.base()) escape.
+  2. SchemaExpressionSupport.evaluateSchemaExpression -- the derivedExpression path -- returns null for anything it
+     cannot evaluate ("a malformed expression still yields null at record-save time instead of throwing"), and the
+     caller REMOVES the field when the derived value is null. A typo'd function in a derivedExpression silently
+     erases the field on every save.
+  3. FieldValueValidation.analyzeValueBehaviorExpression accepts any call syntax: its javadoc says a call to a function
+     the runtime does not register "evaluates to null at runtime (the existing lenient fallback)". So 1 and 2 are
+     reachable from a model that validated clean.
+  No corpus model has a function-call defaultExpression (dsl-conformance-max: nextNumber, $user.id, and a
+  `quantity * unitPrice` derived), and no behaviour probe witnesses one.
+resolution: >-
+  Done when (a) the non-strict ValueExpressionEvaluator.evaluate resolves the same functions the runtime documents
+  (ValueExpressionFunctions.base()) and never returns the expression's own text as a value -- an unevaluable
+  expression is an error at write time; (b) evaluateSchemaExpression throws instead of returning null for an
+  expression it cannot evaluate (a genuine null result -- coalesce of nulls -- stays null); (c) model validation
+  refuses a defaultExpression/derivedExpression calling a function that is not registered for that kind
+  (nextNumber only in defaultExpression), with the registered set pinned to the kernel's by a test or twin-pair
+  rule; (d) a behaviour probe in dsl-conformance-max witnesses a concat(...) default and a derived function; and
+  X0-14 / X0-15 in scripts/quality/x0-evaluator-registry.json move to FIXED with must-error testMarkers.
+note: >-
+  2026-10-23: filed by the REG-282 audit. (c) is a validation tightening: models that call an unregistered function
+  stop validating -- they were storing text or null, so no codemod can recover an intended value; BREAKING.md entry
+  without codemod, same shape as earlier validation tightenings.

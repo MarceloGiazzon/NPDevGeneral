@@ -1,0 +1,30 @@
+id: REG-286
+title: >-
+  An orchestration rule whose any one action cannot be built is dropped whole, with no log, error or startup signal
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-23
+closed: null
+source: >-
+  REG-282 (X0-11 audit), 2026-10-23. Already visible in ENF-1's witness allowlist
+  (scripts/policy/dsl-behavior-witness.json, orchestrationAction.concept/delay*/event entry).
+surface: NPDevKernel/adapters/runtime-support CrudOrchestrationSupport (toRuntimeOrchestration, toRuntimeOrchestrationAction, evaluateOrchestrationCondition)
+detail: |
+  registerOrchestrationSubscribers skips any rule toRuntimeOrchestration returns null for, and it returns null --
+  silently -- when: the trigger is not "event"; the event is blank; there are no actions; or ANY action cannot be
+  built: an unknown action type, a create with no entityManager or an unknown target concept or no table, a
+  callCapability with no dispatcher or a blank capability/operation, a scheduleEvent with no dataSource or a blank
+  event. One unbuildable action discards the rule's other, buildable actions too. Nothing is logged (only a
+  subscribe() exception is, at WARNING), and the returned subscriber list is not checked against the model, so a
+  declared rule that will never fire is indistinguishable from one waiting for its event.
+  Smaller, same family: evaluateOrchestrationCondition falls back to a legacy ==/!= substring matcher when the
+  condition does not parse as a ComputedExpression, so a malformed condition gets a guessed answer instead of an error.
+resolution: >-
+  Done when a rule that cannot be fully built is reported, not skipped: model validation refuses what is a model
+  error (unknown action type / concept, blank fields), and what depends on the environment (no dataSource /
+  entityManager / dispatcher) fails startup or is reported once, loudly, naming the rule and the missing piece;
+  a malformed condition is an error rather than a legacy-matcher guess; a must-error test pins it; and X0-17 in
+  scripts/quality/x0-evaluator-registry.json moves to FIXED.
+note: >-
+  2026-10-23: filed by the REG-282 audit.

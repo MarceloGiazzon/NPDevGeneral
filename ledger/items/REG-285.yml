@@ -1,0 +1,36 @@
+id: REG-285
+title: >-
+  access.read/access.write and $user lifecycle guards accept any $user.<name>; an unbound one evaluates to null at runtime, so a typo can GRANT
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-10-23
+closed: null
+source: >-
+  REG-282 (X0-11 audit), 2026-10-23. Reproduced against the built kernel jar (UserScopedExpressions unchanged since).
+surface: NPDevContract/dsl validation/ConceptValidation.validateAccessExpression (concept + field access) and LifecycleValidation.isSupportedLifecycleGuard; NPDevKernel/kernel concepts/UserScopedExpressions
+detail: |
+  UserScopedExpressions -- the ONE evaluator for row/field access rules and $user lifecycle guards -- binds exactly
+  $user.id, $user.actorId, $user.tenantId, $user.roles, $user.isSystem. It fails closed on a MALFORMED expression
+  (ExpressionException -> false), which is correct. But ComputedExpression resolves an unbound name to null, not an
+  error, and validation never checks the $user name:
+    - ConceptValidation.validateAccessExpression: `if (referenced.startsWith("$")) continue;` -- every $-name passes
+      (only $prop.* is refused).
+    - LifecycleValidation.isSupportedLifecycleGuard: a guard containing "$user" only has to parse.
+  So a typo or an assumed claim becomes null and the rule answers anyway:
+    UserScopedExpressions.evaluate("ownerId == $user.idd", {ownerId: null}, anonymous) -> true
+    UserScopedExpressions.evaluate("$user.region == null", {}, anonymous)              -> true
+  i.e. `access.read: "ownerId == $user.idd"` shows every row with no owner to everyone, and any `!=` / `== null`
+  shape over an unbound name grants. DSL tests already author such rules as if they worked
+  (AggregateQueryValidationTest and DefaultConceptGatewayAggregateJoinAccessReadTest: `region == $user.region`;
+  AuthoringMergeGateTest: `$user.role == 'finance'`). $user.<tagName> IS a real thing elsewhere
+  (propertyScopes[].from, PropertyValidation), which makes the assumption natural for an AI author.
+resolution: >-
+  Done when concept access, field access and $user lifecycle guards refuse a $user.<name> outside the set
+  UserScopedExpressions binds (one constant both sides read, or a test pinning them equal), with a suggestedFix
+  naming the allowed set; UserScopedExpressions treats a $user.<name> it does not bind as an error (deny) rather
+  than null; the tests above that rely on $user.region / $user.role are moved to a bound name; and X0-16 in
+  scripts/quality/x0-evaluator-registry.json moves to FIXED with a must-error testMarker.
+note: >-
+  2026-10-23: filed by the REG-282 audit. Validation tightening: a model naming an unbound $user value stops
+  validating (it was being evaluated against null). BREAKING.md entry; no codemod can know the intended claim.

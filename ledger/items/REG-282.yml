@@ -3,9 +3,9 @@ title: >-
   The runtime-support expression evaluator (invariants, access.read/access.write, defaultExpression, derivedExpression) has never had the X0 audit: nobody has checked what it answers for input it cannot handle
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-23
-closed: null
+closed: 2026-10-23
 source: >-
   Open-state audit 2026-10-23 (NPDev_General__OutsideRepo/OPEN_STATE_AUDIT_2026-10-23.md, outside the repo). scripts/quality/x0-evaluator-registry.json entry X0-11 has carried verdict NOT_AUDITED since 2026-07-31 with no ledger item, while the register's other OPEN entries (X0-1, X0-3, X0-6, X0-7) had in fact been fixed by LC-P0, REG-96 and REG-100 and were corrected to FIXED the same day.
 surface: NPDevKernel/adapters/runtime-support (CelInvariantEngine, SchemaExpressionSupport, CrudSchemaValidationSupport, CrudLifecycleSupport, CrudOrchestrationSupport, GeneratedCrudRuntimeSupport)
@@ -21,6 +21,15 @@ detail: |
   check-x0-evaluator-coverage.py has never asked the question of CelInvariantEngine either.
   Related, already visible: ENF-1's witness allowlist notes that CrudOrchestrationSupport.toRuntimeOrchestration
   drops a WHOLE orchestration rule, silently, when any one action cannot be built -- the same shape.
+guard:
+  kind: script
+  ref: scripts/quality/check-x0-evaluator-coverage.py
+  asserts: >-
+    Every runtime-support / kernel expression evaluator the audit covered (CelInvariantEngine,
+    ReloadableInvariantEngine, SchemaExpressionSupport, ValueExpressionEvaluator, UserScopedExpressions,
+    CrudOrchestrationSupport) has its own registry entry, and evaluatorShapedGlobs matches each of them, so
+    removing an entry -- or adding a new *Engine.java / schemaexpr class there -- fails the check.
+  provenRed: true
 resolution: >-
   Done when each evaluation entry point in runtime-support (invariant rules, access.read, access.write,
   defaultExpression, derivedExpression, orchestration rule building) is classified in
@@ -30,3 +39,13 @@ resolution: >-
 note: >-
   2026-10-23: filed. Register corrected in the same commit: X0-1 (LC-P0), X0-3 (REG-96), X0-6 and X0-7
   (REG-100) are FIXED with their proof tests; X0-11 points here.
+  2026-10-23: DONE -- audit complete. Every entry point is classified in x0-evaluator-registry.json, one entry per
+  file instead of one directory-wide NOT_AUDITED claim: X0-11 CelInvariantEngine and X0-13 ReloadableInvariantEngine
+  (invariants; syntax fails closed, lookup side answers by default -> REG-283), X0-14 SchemaExpressionSupport and
+  X0-15 ValueExpressionEvaluator (defaultExpression/derivedExpression; function-call defaults store their own text,
+  derived typos erase the field -> REG-284), X0-16 UserScopedExpressions (access.read/access.write and $user guards;
+  malformed fails closed, unbound $user.<name> is null and can grant -> REG-285 -- the evaluator lives in the kernel,
+  not runtime-support), X0-17 CrudOrchestrationSupport (whole rule dropped silently -> REG-286). Every finding is
+  OPEN with its own REG item rather than FIXED: each fix changes accepted behaviour and is tracked there.
+  evaluatorShapedGlobs now matches runtime-support *Engine.java, crud/schemaexpr/*.java, CrudOrchestrationSupport and
+  the two kernel evaluators; removing any of the six entries makes check-x0-evaluator-coverage.py fail.

@@ -8,7 +8,12 @@
     "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/*FilterSupport.java",
     "NPDevKernel/kernel/src/main/java/com/npdev/kernel/auth/RolePermissions.java",
     "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java",
-    "NPDevKernel/adapters/runtime-support/src/main/java/**/*Evaluator.java"
+    "NPDevKernel/adapters/runtime-support/src/main/java/**/*Evaluator.java",
+    "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/*Engine.java",
+    "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/schemaexpr/*.java",
+    "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/CrudOrchestrationSupport.java",
+    "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/UserScopedExpressions.java",
+    "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ValueExpressionEvaluator.java"
   ],
   "entries": [
     {
@@ -97,9 +102,45 @@
     },
     {
       "id": "X0-11",
-      "class": "NPDevKernel/adapters/runtime-support/src/main/java",
-      "verdict": "NOT_AUDITED",
-      "note": "runtime-support (invariants, access.read/access.write, defaultExpression, derivedExpression) -- the largest evaluator in the platform, and the only one that is a real expression engine rather than a narrow subset. Not yet audited. Highest-value single item left in X0: access.* is an authorization answer, so a silent-true default would be an information disclosure and a silent-false default would be a support ticket. Not required by this gate until audited; recorded so it cannot be silently dropped from view. (Generated CRUD runtime support / GeneratedCrudRuntimeSupport.java, 158 KB, and the frontend evaluateWhen family beyond visibleWhen/enabledWhen were also out of scope for the original audit.) Tracked as REG-282 (filed 2026-10-23). The evaluatorShapedGlobs entry for runtime-support only matches *Evaluator.java, which no class there is named, so CelInvariantEngine escapes the shape check entirely."
+      "class": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/CelInvariantEngine.java",
+      "verdict": "OPEN",
+      "fixedBy": "REG-283",
+      "note": "REG-282 audit (2026-10-23) of the runtime-support expression engine; this entry used to claim the whole runtime-support directory with verdict NOT_AUDITED, which also satisfied the glob check for every file in it. Syntax side fails closed and is not the defect: an expression neither ComputedExpression nor the legacy matcher understands is a violation ('unsupported expression format'), never a pass; an unknown invariant ref is INVARIANT_UNKNOWN_REF. The defect is the lookup side: NO_UNIQUE_CHECKER / NO_COMPOUND_UNIQUE_CHECKER / NO_CONFLICT_CHECKER / NO_SCOPE_CHECKER all return false, so an engine built without a lookup answers 'no duplicate' / 'no conflict' / 'not found' instead of saying it cannot check -- live in the flow engine's invariantEngine bean (no lookups) and for compound unique in CRUD (the RuntimeHost factory drops the lookup). Also evaluate(entityName, payload) returns no violations for an unknown entity. See REG-283."
+    },
+    {
+      "id": "X0-13",
+      "class": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/ReloadableInvariantEngine.java",
+      "verdict": "OPEN",
+      "fixedBy": "REG-283",
+      "note": "REG-282 audit (2026-10-23): builds its delegate with CelInvariantEngine.fromCompiledModel(model) -- no unique, conflict or scope lookup -- and is the invariantEngine bean KernelRunner/InvariantCheckStep use, so flow checkInvariants get X0-11's default answers. See REG-283."
+    },
+    {
+      "id": "X0-14",
+      "class": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/schemaexpr/SchemaExpressionSupport.java",
+      "verdict": "OPEN",
+      "fixedBy": "REG-284",
+      "note": "REG-282 audit (2026-10-23): evaluateSchemaExpression returns null for anything it cannot evaluate, by design ('a malformed expression still yields null at record-save time instead of throwing'); for a derivedExpression the caller then removes the field. Model validation accepts any call syntax, so a typo'd function in a derivedExpression validates clean and erases the field on every save. See REG-284."
+    },
+    {
+      "id": "X0-15",
+      "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ValueExpressionEvaluator.java",
+      "verdict": "OPEN",
+      "fixedBy": "REG-284",
+      "note": "REG-282 audit (2026-10-23): the non-strict evaluate(expression, data) -- the defaultExpression path of the governed semantic policy -- evaluates with an EMPTY function registry and returns the expression's own TEXT on ExpressionException. Reproduced: evaluate(\"concat(first, ' ', last)\", ...) returns \"concat(first, ' ', last)\". The $user overload and evaluateStrict are not affected (the first registers ValueExpressionFunctions.base() and rethrows for a real actor; the second throws). See REG-284."
+    },
+    {
+      "id": "X0-16",
+      "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/UserScopedExpressions.java",
+      "verdict": "OPEN",
+      "fixedBy": "REG-285",
+      "note": "REG-282 audit (2026-10-23): access.read/access.write and $user lifecycle guards. A MALFORMED rule fails closed (false = deny), correctly. But an unbound $user.<name> resolves to null and validation lets any $-name through, so the rule answers against null: evaluate(\"ownerId == $user.idd\", {ownerId:null}, anonymous) is true -- a typo can grant. See REG-285."
+    },
+    {
+      "id": "X0-17",
+      "class": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/CrudOrchestrationSupport.java",
+      "verdict": "OPEN",
+      "fixedBy": "REG-286",
+      "note": "REG-282 audit (2026-10-23): toRuntimeOrchestration returns null -- and registerOrchestrationSubscribers skips the rule with no log -- when any one action cannot be built (unknown type/concept, missing entityManager/dataSource/dispatcher, blank fields), discarding the rule's buildable actions too. evaluateOrchestrationCondition falls back to a legacy ==/!= substring matcher on a condition that does not parse. See REG-286."
     },
     {
       "id": "X0-12",

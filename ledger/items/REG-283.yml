@@ -1,0 +1,45 @@
+id: REG-283
+title: >-
+  Invariant uniqueness/conflict/scope checks answer "no duplicate, no conflict, not found" when no lookup is wired -- the flow engine's invariant engine wires none, and the CRUD factory drops the compound-unique lookup
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-10-23
+closed: null
+source: >-
+  REG-282 (X0-11 audit of the runtime-support expression engine), 2026-10-23.
+surface: NPDevKernel/adapters/runtime-support (CelInvariantEngine, ReloadableInvariantEngine); NPDevRuntimeHost NpdevCapabilityBindingConfig (invariantEngine + runtimeInvariantEngineFactory beans); NPDevKernel/kernel ports/RuntimeInvariantEngineFactory
+detail: |
+  CelInvariantEngine's NO_UNIQUE_CHECKER / NO_COMPOUND_UNIQUE_CHECKER / NO_CONFLICT_CHECKER / NO_SCOPE_CHECKER
+  all return false. Each is a default ANSWER, not an error:
+    - unique / compound unique  -> "no duplicate"        -> the invariant passes
+    - !conflicts(...)           -> "no conflict"         -> passes
+    - scope.exists(...)         -> "not found"           -> fails, with a message blaming the data
+    - !scope.exists(...)        -> "not found"           -> passes
+  Where the defaults are live in a generated app:
+    1. The `invariantEngine` bean (ReloadableInvariantEngine) is built with CelInvariantEngine.fromCompiledModel(model)
+       -- no checkers at all. KernelRunner / InvariantCheckStep (flow checkInvariants) use this bean, so a flow step
+       that names a unique, conflict or scope invariant gets one of the answers above without anything being looked up.
+    2. The `runtimeInvariantEngineFactory` bean overrides only the 2- and 3-argument create(...). The 4-argument
+       create(..., CompoundUniqueValueLookup) that GeneratedCrudRuntimeSupport.validateEntityDetailed calls falls to the
+       port's default, which DISCARDS the compound lookup ("Defaults to no compound checking (always 'not a duplicate')").
+       So the generated service's existsUniqueCompoundInConceptStore is built and never called. A composite UNIQUE
+       index still backs most engines (SchemaRealizationEmitter, LIFT-UNIQUE-P2), so the usual outcome is a raw
+       constraint error instead of the 409 unique_integrity_failed a single-field unique gets -- but for a softDelete
+       concept on H2/MySQL the emitter deliberately creates NO unique index and documents existsUnique as the SOLE
+       enforcement (StorageCapability.PARTIAL_UNIQUE_INDEX), so there a compound unique invariant is not enforced at all.
+  No corpus model declares a compound unique invariant (dsl-conformance-max has only single-field ones), which is why
+  no probe has seen it.
+  Also in the same class: evaluate(String entityName, Object payload) returns no violations for an unknown entity,
+  while the request-shaped overload returns INVARIANT_REF_UNKNOWN for the same input.
+resolution: >-
+  Done when (a) the RuntimeHost factory overrides the 4-argument create and passes the compound lookup through
+  (a test proves a duplicate compound pair is refused by validateEntityDetailed through the real bean), (b) a
+  CelInvariantEngine built without a lookup reports a unique/conflict/scope rule it is asked to evaluate as an
+  uncheckable violation (a distinct code, naming the missing lookup) instead of answering, with a must-error test,
+  and either the flow engine's invariantEngine bean is given real lookups or that violation is what a flow sees,
+  (c) evaluate(entityName, payload) agrees with the request overload on an unknown entity, and X0-11 / X0-13 in
+  scripts/quality/x0-evaluator-registry.json move to FIXED with their testMarkers.
+note: >-
+  2026-10-23: filed by the REG-282 audit. Not fixed in the same commit: (b) changes what a flow that names a
+  unique invariant does today (passes silently -> fails loudly), which needs a look at which shipped flows do that.
