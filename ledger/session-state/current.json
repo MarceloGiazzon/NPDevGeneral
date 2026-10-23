@@ -1,23 +1,19 @@
 {
-  "closedAt": "2026-10-23T04:12:32.6285372Z",
+  "closedAt": "2026-10-23T04:43:39.1354061Z",
   "branch": "main",
-  "head": "55fb4e07",
-  "headSubject": "feat(dsl): agentAccess.assistant takes a catalogue profile and an effort (AIP-3: 3.4a)",
-  "summary": "Owner decisions D1-D4 recorded (AIP-6 DONE); D2 $10 default monthly cap (fdcea6d5); D1 history scrub: filter-repo removed the leaked key from all history, SHAs remapped in 167 files (99a39dd8), force-pushed main + 20 tags via a temporary protection toggle, restored; AIP-0 DONE (key revoked by owner). 3.4 npdev providers run-env + Manager Start passes store keys with no file, Manager 0.5.1, fixed red check-no-hardcoded-ai-endpoints (58f65bf9). 3.4a: prompts take profile/effort (d75faa1e), agentAccess.assistant too (55fb4e07).",
-  "nextStep": "AIP-3 3.4b: operator override without regenerating -- properties npdev.externalai.prompt.<name>.profile|model|effort read through the scoped-property cascade per call in ExternalAiPromptRunner; audit row records the model actually used. Then 3.6 (D4: custom ai.json endpoint as an app vendor) needs a design choice first: validator + bundled catalogue only know shipped providers.",
+  "head": "11c3f66d",
+  "headSubject": "feat(dsl): externalAi.providers -- an app's own AI endpoint is an app vendor (AIP-3: 3.6, D4)",
+  "summary": "AIP-3 3.4b: ExternalAiPromptRunner applies operator overrides npdev.externalai.prompt.<name>.profile|model|effort per call via the property cascade, denying invalid ones (001490eb). AIP-3 3.6 (owner chose option A): externalAi.providers[] lets a model declare its own AI endpoint as an app vendor, key var derived from id, through schema x4/parser/compiler/canonical JSON/validator, http adapter (reload-aware), pricing and CLI run-env (11c3f66d).",
+  "nextStep": "Check the CI run on main for 11c3f66d (gh run list --branch main --limit 5): if the four T2 gates are green, mark ledger/items/AIP-3.yml DONE (closed 2026-10-23, note that probe 72-ai-profile-effort.json still needs a T1/T2 run off this notebook) and commit; if a gate is red, fix it first. Then pick up AIP-4 from ledger/session-state/open-state.md.",
   "plan": "",
-  "blocked": "Probe 72-ai-profile-effort.json not run (boots dsl-conformance-max; T1/T2, not on this notebook) -- its 200 status and /api/audit access are unverified. GitHub refs/pull/N/head of ~200 old PRs still reach pre-scrub commits; only GitHub Support can purge (key is revoked). Windows checkout must re-clone or reset --hard origin/main (never pull). Pre-scrub bundle with the dead key in NPDev_General__OutsideRepo/branch-archive/. OWNER RULE: no long gates on this notebook. Shell PATH lacks ~/.local/bin, JAVA_HOME (use ~/.local/opt/jdk17).",
-  "verified": "Targeted only: dsl full suite; kernel + external-ai-http/inproc tests; runtimehost-core com.finalexec.ai/agent against scratch fresh jars; generator compileTestJava; NPDevCli test_providers/ai_config/ai_client; cargo test NPDevManager 52; checkers schema-mirror, twin-pair, dsl-coverage, dsl-behavior-witness, done-item-guards, manager-version-bump, no-hardcoded-ai-endpoints (+self-test), security sweep, markdown-links, record-surfaces.",
+  "blocked": "Probe 72-ai-profile-effort.json not run (boots dsl-conformance-max; T1/T2, not on this notebook). No generated app has yet called a custom externalAi.providers endpoint or a real vendor. GitHub refs/pull/N/head of ~200 old PRs still reach pre-scrub commits; only GitHub Support can purge (key revoked). Windows checkout must re-clone or reset --hard origin/main. OWNER RULE: no long gates on this notebook. pytest not installed here: use python3 -m unittest for NPDevCli tests.",
+  "verified": "Targeted only, no T1/T2 gate: dsl full suite (:NPDevContract:dsl:test green); external-ai-http test (26 green); runtimehost-core com.finalexec.ai/agent/config (69 green, against fresh dsl+external-ai-http jars in scratch rh-libs); NPDevCli test_providers (27) + test_ai_* (75) via unittest; validateModel dsl-conformance-max passed; checkers schema-mirror, twin-pair, dsl-coverage, dsl-behavior-witness, no-hardcoded-ai-endpoints, markdown-links, done-item-guards, record-surfaces, model-provider-injection all exit 0.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "55fb4e07 feat(dsl): agentAccess.assistant takes a catalogue profile and an effort (AIP-3: 3.4a)",
-    "d75faa1e feat(dsl): externalAi prompts take a catalogue profile instead of vendor+model, and an effort (AIP-3: 3.4a)",
-    "58f65bf9 feat(ai): npdev providers run-env + Manager Start pass store keys to an app with no key file (AIP-3: 3.4, D3)",
-    "a4d18548 chore(ledger): AIP-0 DONE -- key revoked (owner), history scrubbed and force-pushed; refs/pull residual noted",
-    "99a39dd8 chore(history): remap commit SHAs cited in tracked files after the leaked-key history scrub (AIP-0 0.4, D1)",
-    "eb94a587 feat(ai): owner decisions D1-D4 recorded; D2 paid calls capped at $10/month by default (AIP-6)",
-    "c431eaa9 chore(session): handoff -- AI providers plan phases 3-5 landed; owner decisions next"
+    "11c3f66d feat(dsl): externalAi.providers -- an app's own AI endpoint is an app vendor (AIP-3: 3.6, D4)",
+    "001490eb feat(ai): operator overrides a prompt's profile, model or effort per call, no regeneration (AIP-3: 3.4b)",
+    "dba5b278 chore(session): handoff -- D1-D4 done, key scrubbed, 3.4 and 3.4a landed; 3.4b next"
   ]
 }
