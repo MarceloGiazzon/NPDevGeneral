@@ -201,6 +201,39 @@ class CheckProviderTests(unittest.TestCase):
         self.assertNotIn("sekret", json.dumps(result))
 
 
+class AppAiStatusTests(unittest.TestCase):
+    """AIP-4 (4.4): what an app's model opted into, and whether the app will find each key."""
+
+    def test_reports_per_vendor_readiness_without_any_key_value(self):
+        root = Path(tempfile.mkdtemp())
+        (root / "secrets").mkdir()
+        (root / "secrets" / "agent-proxy.env").write_text(
+            "# NPDEV_EXTERNALAI_GROQ_API_KEY=commented\nNPDEV_EXTERNALAI_PROVIDER=http\n"
+            "NPDEV_EXTERNALAI_GEMINI_API_KEY=secret-value\nNPDEV_EXTERNALAI_MISTRAL_API_KEY=\n", encoding="utf-8")
+        model = root / "model.json"
+        model.write_text(json.dumps({"externalAi": {"egress": "apiEnabled",
+                                                    "vendors": ["gemini", "Groq", "mistral", "ollama", "acme"]}}),
+                         encoding="utf-8")
+        status = providers.app_ai_status(root, model, providers.Vault(root / "v.json", ReversibleProtector()),
+                                         {"NPDEV_EXTERNALAI_GROQ_API_KEY": "in-your-env"})
+
+        rows = {v["id"]: v for v in status["vendors"]}
+        self.assertTrue(rows["gemini"]["ready"])
+        self.assertEqual((rows["groq"]["keyInApp"], rows["groq"]["keyInStore"], rows["groq"]["ready"]),
+                         (False, "env", False), "a commented line is not a key; your env is not the app's")
+        self.assertFalse(rows["mistral"]["ready"], "an empty value is not a key")
+        self.assertEqual((rows["ollama"]["keyInApp"], rows["ollama"]["ready"]), (None, True), "keyless")
+        self.assertEqual((rows["acme"]["appVendor"], rows["acme"]["ready"]), (False, False))
+        self.assertEqual(status["egress"], "apiEnabled")
+        self.assertTrue(status["providerSwitch"])
+        self.assertNotIn("secret-value", json.dumps(status))
+
+    def test_an_unreadable_model_is_a_provider_error(self):
+        root = Path(tempfile.mkdtemp())
+        with self.assertRaises(providers.ProviderError):
+            providers.app_ai_status(root, root / "missing.json", providers.Vault(root / "v.json", ReversibleProtector()), {})
+
+
 class ExportEnvTests(unittest.TestCase):
     def app(self):
         root = Path(tempfile.mkdtemp())

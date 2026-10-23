@@ -117,6 +117,7 @@ disabled; a `local-coder` profile falling back to `fast`; `bind prompter local-c
 | `ai-usage.json` | `ai usage --json` | **over a seeded usage log**: no key or local LLM was available to make real calls, so the 13 log records were written with `npdev_ai_client.UsageLog.append`; the summary itself is the real CLI's |
 | `ai-detect.json` | `ai detect --json` | nothing answering -- the honest empty state |
 | `ai-test.json` | `ai test local-coder --json` | a real failure: nothing on :1234 and no keys for the fallbacks |
+| `ai-app.json` | `ai app --app-dir <scratch App> --model NPDevSamples/dsl-conformance-max/Input/model.json --json` | a model opting into gemini (key set in the app's `agent-proxy.env`) and groq (no key anywhere): one ready, one not |
 | `ai-write-ok.json` | `ai providers set lmstudio --default-model ... --json` | the answer every change gets |
 | `ai-write-refused.json` | `ai profiles add bad --provider nope --json` | a refused change (not wired into fake mode; kept as the error shape) |
 

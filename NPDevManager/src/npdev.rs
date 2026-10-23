@@ -94,6 +94,8 @@ const FIXTURE_AI_SPEND: &str = include_str!("../fixtures/ai-spend.json");
 const FIXTURE_AI_DETECT: &str = include_str!("../fixtures/ai-detect.json");
 const FIXTURE_AI_TEST: &str = include_str!("../fixtures/ai-test.json");
 const FIXTURE_AI_WRITE_OK: &str = include_str!("../fixtures/ai-write-ok.json");
+/// `ai app --json` on dsl-conformance-max's model and a scratch app whose agent-proxy.env sets only gemini.
+const FIXTURE_AI_APP: &str = include_str!("../fixtures/ai-app.json");
 /// Phase F. The one fixture here that is hand-authored rather than captured, and the file says why
 /// in its own `_captured` header: capturing it means paying a third-party provider with a real key.
 /// Same documented-exception shape as the two doctor fixtures above.
@@ -1250,6 +1252,7 @@ fn fake_ai_fixture(args: &[String]) -> &'static str {
         (Some("detect"), _) => FIXTURE_AI_DETECT,
         (Some("test"), _) => FIXTURE_AI_TEST,
         (Some("validate"), _) => FIXTURE_AI_VALIDATE,
+        (Some("app"), _) => FIXTURE_AI_APP,
         _ => FIXTURE_AI_WRITE_OK,
     }
 }
@@ -2052,7 +2055,7 @@ mod fake_ai_tests {
         for (name, text) in [("providers", FIXTURE_AI_PROVIDERS), ("models", FIXTURE_AI_MODELS),
                              ("profiles", FIXTURE_AI_PROFILES), ("bindings", FIXTURE_AI_BINDINGS),
                              ("usage", FIXTURE_AI_USAGE), ("spend", FIXTURE_AI_SPEND), ("detect", FIXTURE_AI_DETECT),
-                             ("write", FIXTURE_AI_WRITE_OK), ("validate", FIXTURE_AI_VALIDATE)] {
+                             ("write", FIXTURE_AI_WRITE_OK), ("validate", FIXTURE_AI_VALIDATE), ("app", FIXTURE_AI_APP)] {
             let value: Value = serde_json::from_str(text).unwrap_or_else(|e| panic!("{name}: {e}"));
             assert_eq!(value["ok"], true, "{name}");
         }

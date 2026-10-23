@@ -412,6 +412,50 @@ def export_env(app_dir: Path, provider_ids: list[str], vault: Vault | None = Non
     return {"file": str(target), "providers": provider_ids, "shadowedByLinesOutsideBlock": shadowed}
 
 
+def app_env_vars(app_dir: Path) -> set[str]:
+    """The variable NAMES <app>/secrets/agent-proxy.env sets (inside or outside the managed block),
+    never a value."""
+    target = Path(app_dir) / "secrets" / "agent-proxy.env"
+    if not target.is_file():
+        return set()
+    names = set()
+    for line in target.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped and stripped.split("=", 1)[1].strip():
+            names.add(stripped.split("=", 1)[0].strip())
+    return names
+
+
+def app_ai_status(app_dir: Path, model_path: Path, vault: Vault, environ=None) -> dict:
+    """AIP-4 (4.4): the AI vendors a generated app's model opted into (externalAi.vendors) and, for each,
+    whether the app will find a key -- set in its secrets/agent-proxy.env, or not needed -- and whether
+    your key store could supply one (`export-env`). Names and sources only, never a key."""
+    model_path = Path(model_path)
+    try:
+        model = json.loads(model_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ProviderError(f"cannot read the app's model {model_path} ({type(exc).__name__})") from None
+    external = model.get("externalAi") or {}
+    sources = {row["id"]: row["keySource"] for row in list_providers(vault, environ)["providers"]}
+    in_env = app_env_vars(app_dir)
+    catalogue = {entry["id"]: entry for entry in load_catalogue()}
+    vendors = []
+    for vendor in external.get("vendors") or []:
+        vendor_id = str(vendor).strip().lower()
+        entry = catalogue.get(vendor_id)
+        var = entry.get("keyEnvVar") if entry else None
+        known = bool(entry and entry.get("appVendor"))
+        app_has_key = None if (known and not var) else (var in in_env if var else False)
+        vendors.append({"id": vendor_id, "name": entry["name"] if entry else vendor_id, "appVendor": known,
+                        "kind": entry.get("kind") if entry else None, "keyEnvVar": var,
+                        "keyInApp": app_has_key, "keyInStore": sources.get(vendor_id, "missing"),
+                        "ready": known and (app_has_key is None or app_has_key)})
+    env_file = Path(app_dir) / "secrets" / "agent-proxy.env"
+    return {"app": str(app_dir), "model": str(model_path), "egress": external.get("egress", "denied"),
+            "providerSwitch": "NPDEV_EXTERNALAI_PROVIDER" in in_env, "envFile": str(env_file),
+            "envFileExists": env_file.is_file(), "vendors": vendors}
+
+
 def list_providers(vault: Vault, environ=None) -> dict:
     """The catalogue with, per provider, where its key would come from -- never the key itself."""
     environ = os.environ if environ is None else environ

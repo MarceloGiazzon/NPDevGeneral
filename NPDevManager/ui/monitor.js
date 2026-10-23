@@ -608,6 +608,7 @@ function renderInspector(probe) {
   ].filter(([, v]) => v !== null && v !== undefined && v !== "");
   sections.push(accordion("This machine (probed)",
     probed.map(([k, v]) => probedRow(k, v)).join(""), probed.length, true));
+  sections.push(`<div id="insp-ai"></div>`);
 
   // The runbook, runnable from here (B5).
   const scripts = [
@@ -635,6 +636,60 @@ function renderInspector(probe) {
 
   body.innerHTML = sections.join("");
   wireInspector();
+  loadAppAi(probe);
+}
+
+// AIP-4 (4.4): the vendors this app's model opted into and whether the app will find a key for each --
+// visible here before a flow fails at runtime. Filled after the rest so a slow CLI never holds the panel.
+async function loadAppAi(probe) {
+  const appDir = probe.finalAppRoot || probe.appDir;
+  if (!probe.modelPath || !appDir) return;
+  let status;
+  try {
+    status = await mInvoke("ai_command", { args: ["app", "--app-dir", appDir, "--model", probe.modelPath] });
+  } catch (err) {
+    status = { ok: false, error: String(err) };
+  }
+  const slot = document.getElementById("insp-ai");
+  if (!slot) return;
+  if (!status.ok) {
+    slot.innerHTML = accordion("AI providers", `<p class="insp-empty">${esc(status.error)}</p>`, "?", false);
+  } else if (!status.vendors.length) {
+    slot.innerHTML = accordion("AI providers", `<p class="insp-empty">This model calls no AI vendor (egress ${esc(status.egress)}).</p>`, 0, false);
+  } else {
+    const KEY_IN_STORE = { vault: "in your store", env: "in your environment", "none-needed": "not needed", missing: "not in your store" };
+    const rows = status.vendors.map((v) => `
+      <div class="irow">
+        <span class="k">${esc(v.name)}</span>
+        <span class="v">${!v.appVendor ? "<b>not an app vendor</b> -- the app cannot call it"
+          : v.keyInApp === null ? "ready -- no key needed"
+          : v.keyInApp ? "ready -- key set in secrets/agent-proxy.env"
+          : `<b>NO KEY for the app</b> (${esc(v.keyEnvVar)}) -- ${esc(KEY_IN_STORE[v.keyInStore] || v.keyInStore)}`}</span>
+      </div>`).join("");
+    const exportable = status.vendors.filter((v) => v.appVendor && (v.keyInStore === "vault" || v.keyInStore === "env"));
+    const missing = status.vendors.filter((v) => !v.ready);
+    const action = exportable.length && missing.some((v) => exportable.includes(v))
+      ? `<div class="irow"><span class="k"></span><span class="v">
+           <button class="run" id="insp-ai-export">Write ${exportable.map((v) => esc(v.id)).join(", ")} key(s) from your store into the app</button>
+         </span></div>`
+      : "";
+    const switchRow = status.providerSwitch ? "" : `<div class="irow"><span class="k"></span><span class="v">
+      NPDEV_EXTERNALAI_PROVIDER is not set: the app answers from its offline stand-in, not a real vendor.</span></div>`;
+    slot.innerHTML = accordion(`AI providers -- ${missing.length ? `${missing.length} not ready` : "ready"}`,
+      rows + switchRow + action, status.vendors.length, missing.length > 0);
+    slot.querySelector(".acc > button.hd").addEventListener("click", (e) => e.currentTarget.parentElement.classList.toggle("open"));
+    const button = document.getElementById("insp-ai-export");
+    if (button) button.addEventListener("click", async () => {
+      try {
+        const result = await mInvoke("providers_export", { appDir, providers: exportable.map((v) => v.id) });
+        if (result && result.ok === false) throw new Error(result.error);
+        toast(`wrote ${result.file} -- restart the app to use the key(s)`, false);
+        loadAppAi(probe);
+      } catch (err) {
+        toast(`could not write the keys: ${err.message || err}`, true);
+      }
+    });
+  }
 }
 
 function infoRow(record, probe) {

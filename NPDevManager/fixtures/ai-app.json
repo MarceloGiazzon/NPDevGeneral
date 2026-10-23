@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "app": "/home/user/NPDev/Build/apps/dsl-conformance-max/App",
+  "model": "NPDevSamples/dsl-conformance-max/Input/model.json",
+  "egress": "apiEnabled",
+  "providerSwitch": true,
+  "envFile": "/home/user/NPDev/Build/apps/dsl-conformance-max/App/secrets/agent-proxy.env",
+  "envFileExists": true,
+  "vendors": [
+    {
+      "id": "gemini",
+      "name": "Google Gemini (AI Studio free tier)",
+      "appVendor": true,
+      "kind": "free",
+      "keyEnvVar": "NPDEV_EXTERNALAI_GEMINI_API_KEY",
+      "keyInApp": true,
+      "keyInStore": "missing",
+      "ready": true
+    },
+    {
+      "id": "groq",
+      "name": "Groq (free tier)",
+      "appVendor": true,
+      "kind": "free",
+      "keyEnvVar": "NPDEV_EXTERNALAI_GROQ_API_KEY",
+      "keyInApp": false,
+      "keyInStore": "missing",
+      "ready": false
+    }
+  ]
+}

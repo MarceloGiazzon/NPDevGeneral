@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 
 import npdev_ai_config as aicfg
 from npdev_ai_config import AiConfigError
@@ -272,6 +273,12 @@ def add_arguments(ai_sub) -> None:
     detect.add_argument("--timeout", type=float, default=1.0)
     json_flag(detect)
 
+    app = ai_sub.add_parser("app", help="A generated app's AI vendors (externalAi.vendors) and whether it "
+                                        "will find a key for each. Never shows a key.")
+    app.add_argument("--app-dir", required=True, help="The generated app (the folder holding secrets/).")
+    app.add_argument("--model", required=True, help="The app's model.json.")
+    json_flag(app)
+
     bindings = ai_sub.add_parser("bindings", help="Which profiles each feature uses.")
     json_flag(bindings)
     bind_p = ai_sub.add_parser("bind", help="Set the profiles a feature uses, in failover order.")
@@ -337,7 +344,7 @@ def argparse_bool():
 
 
 COMMANDS = ("providers", "models", "profiles", "bindings", "bind", "reset", "validate", "complete", "test",
-            "usage", "spend", "detect")
+            "usage", "spend", "detect", "app")
 
 
 def run(args) -> int:
@@ -381,6 +388,16 @@ def run(args) -> int:
             cap_text = "none" if spend["monthlyCapUsd"] is None else f"${spend['monthlyCapUsd']:.2f}"
             return _answer(args, {"ok": True, **spend}, f"paid calls allowed for: {allowed}; monthly cap: {cap_text}")
 
+        if command == "app":
+            import npdev_providers
+
+            try:
+                status = npdev_providers.app_ai_status(Path(args.app_dir), Path(args.model), npdev_providers.Vault())
+            except npdev_providers.ProviderError as exc:
+                raise AiConfigError(str(exc)) from None
+            text = "\n".join(f"{v['id']}: {'ready' if v['ready'] else 'NOT READY'} (in app env: {v['keyInApp']}, "
+                             f"your store: {v['keyInStore']})" for v in status["vendors"]) or "no externalAi vendors"
+            return _answer(args, {"ok": True, **status}, f"egress {status['egress']}\n{text}")
         if command == "detect":
             import npdev_ai_discovery
 

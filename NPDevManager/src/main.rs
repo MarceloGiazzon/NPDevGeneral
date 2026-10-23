@@ -2298,8 +2298,8 @@ async fn migrate_prompter_profiles(state: State<'_, AppState>) -> Result<Value, 
 /// from here -- sending a prompt is the Prompter's job, with its own compose-then-send rule.
 #[tauri::command]
 async fn ai_command(state: State<'_, AppState>, args: Vec<String>) -> Result<Value, String> {
-    const ALLOWED: [&str; 11] = ["providers", "models", "profiles", "bindings", "bind", "reset", "validate", "test",
-                                 "usage", "spend", "detect"];
+    const ALLOWED: [&str; 12] = ["providers", "models", "profiles", "bindings", "bind", "reset", "validate", "test",
+                                 "usage", "spend", "detect", "app"];
     match args.first().map(String::as_str) {
         Some(first) if ALLOWED.contains(&first) => {}
         other => return Err(format!("not an `npdev ai` command this window may run: {other:?}")),
