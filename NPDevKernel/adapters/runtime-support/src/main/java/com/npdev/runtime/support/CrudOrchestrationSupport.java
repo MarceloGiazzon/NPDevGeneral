@@ -39,10 +39,8 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.asBoolean;
 import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.readPathValue;
 import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.resolveConditionValue;
-import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.valuesEqual;
 import static com.npdev.runtime.support.crud.orchestration.OrchestrationSupport.coerceMappedValue;
 import static com.npdev.runtime.support.crud.orchestration.OrchestrationSupport.extractResultAdapterId;
 import static com.npdev.runtime.support.crud.orchestration.OrchestrationSupport.resolveOrchestrationSubjectId;
@@ -166,8 +164,17 @@ final class CrudOrchestrationSupport {
             }
             List<String> subscribers = new ArrayList<>();
             for (CompiledOrchestration orchestration : model.getOrchestrationRules()) {
-                RuntimeOrchestration runtimeOrchestration = toRuntimeOrchestration(orchestration);
-                if (runtimeOrchestration == null) {
+                if (orchestration == null) {
+                    continue;
+                }
+                RuntimeOrchestration runtimeOrchestration;
+                try {
+                    runtimeOrchestration = toRuntimeOrchestration(orchestration);
+                } catch (UnbuildableOrchestrationException unbuildable) {
+                    // REG-286: was a silent skip -- a declared rule that will never fire looked exactly like
+                    // one waiting for its event. Reported once per (re)registration, naming the missing piece.
+                    LOG.log(Level.SEVERE, "Orchestration rule '" + orchestration.getName()
+                            + "' is NOT registered and will never fire: " + unbuildable.getMessage());
                     continue;
                 }
                 try {
@@ -197,45 +204,51 @@ final class CrudOrchestrationSupport {
         orchestrationSubscriptions.clear();
     }
 
+    /**
+     * REG-286: a rule that cannot be fully built is refused whole with {@link
+     * UnbuildableOrchestrationException} naming why -- never a silent null. One unbuildable action
+     * still refuses the whole rule (running only some of a rule's actions would be a different rule),
+     * but the refusal is now reported. Model errors are also refused by OrchestrationValidation; what
+     * only the runtime can know is a missing EntityManager / CapabilityDispatcher / DataSource.
+     */
     private RuntimeOrchestration toRuntimeOrchestration(CompiledOrchestration orchestration) {
-        if (orchestration == null) {
-            return null;
-        }
         CompiledOrchestrationTrigger trigger = orchestration.getTrigger();
         if (trigger == null) {
-            return null;
+            throw new UnbuildableOrchestrationException("it has no trigger");
         }
         if (!"event".equals(normalize(trigger.getType()))) {
-            return null;
+            throw new UnbuildableOrchestrationException("trigger type '" + trigger.getType() + "' is not 'event'");
         }
         String eventName = trigger.getEvent() == null ? "" : trigger.getEvent().trim();
         if (eventName.isBlank()) {
-            return null;
+            throw new UnbuildableOrchestrationException("its trigger names no event");
+        }
+        String condition = orchestration.getCondition();
+        if (condition != null && !condition.isBlank()) {
+            try {
+                ComputedExpression.parse(condition.trim());
+            } catch (ComputedExpression.ExpressionException syntaxError) {
+                throw new UnbuildableOrchestrationException(
+                        "condition '" + condition + "' does not parse: " + syntaxError.getMessage());
+            }
         }
 
         List<CompiledOrchestrationAction> sourceActions = orchestration.getActions().isEmpty()
                 ? (orchestration.getAction() == null ? List.of() : List.of(orchestration.getAction()))
                 : orchestration.getActions();
         if (sourceActions.isEmpty()) {
-            return null;
+            throw new UnbuildableOrchestrationException("it has no actions");
         }
         List<RuntimeOrchestrationAction> runtimeActions = new ArrayList<>();
         int index = 0;
         for (CompiledOrchestrationAction sourceAction : sourceActions) {
-            RuntimeOrchestrationAction runtimeAction = toRuntimeOrchestrationAction(sourceAction, index);
-            if (runtimeAction == null) {
-                return null;
-            }
-            runtimeActions.add(runtimeAction);
+            runtimeActions.add(toRuntimeOrchestrationAction(sourceAction, index));
             index++;
-        }
-        if (runtimeActions.isEmpty()) {
-            return null;
         }
         return new RuntimeOrchestration(
                 orchestration.getName(),
                 eventName,
-                orchestration.getCondition(),
+                condition,
                 List.copyOf(runtimeActions)
         );
     }
@@ -245,42 +258,28 @@ final class CrudOrchestrationSupport {
             int index
     ) {
         if (action == null) {
-            return null;
+            throw new UnbuildableOrchestrationException("actions[" + index + "] is null");
         }
         String actionType = normalize(action.getType());
         if ("create".equals(actionType)) {
-            EventCreateOrchestration createAction = toRuntimeCreateOrchestration(action);
-            if (createAction == null) {
-                return null;
-            }
-            return new RuntimeOrchestrationAction(index, "create", createAction, null, null);
+            return new RuntimeOrchestrationAction(index, "create", toRuntimeCreateOrchestration(action, index), null, null);
         }
         if ("callcapability".equals(actionType)) {
-            EventCapabilityOrchestration capabilityAction = toRuntimeCapabilityOrchestration(action);
-            if (capabilityAction == null) {
-                return null;
-            }
-            return new RuntimeOrchestrationAction(index, "callCapability", null, capabilityAction, null);
+            return new RuntimeOrchestrationAction(index, "callCapability", null, toRuntimeCapabilityOrchestration(action, index), null);
         }
         if ("scheduleevent".equals(actionType)) {
-            EventScheduleOrchestration scheduleAction = toRuntimeScheduleOrchestration(action);
-            if (scheduleAction == null) {
-                return null;
-            }
-            return new RuntimeOrchestrationAction(index, "scheduleEvent", null, null, scheduleAction);
+            return new RuntimeOrchestrationAction(index, "scheduleEvent", null, null, toRuntimeScheduleOrchestration(action, index));
         }
-        return null;
+        throw new UnbuildableOrchestrationException("actions[" + index + "] has unsupported type '" + action.getType() + "'");
     }
 
-    private EventCreateOrchestration toRuntimeCreateOrchestration(CompiledOrchestrationAction action) {
-        if (action == null || entityManager == null) {
-            return null;
+    private EventCreateOrchestration toRuntimeCreateOrchestration(CompiledOrchestrationAction action, int index) {
+        if (entityManager == null) {
+            throw new UnbuildableOrchestrationException("actions[" + index + "] (create " + action.getConcept()
+                    + ") needs an EntityManager and this runtime has none (npdev.storage.mode=in-memory?)");
         }
-        Optional<CompiledConcept> targetEntityOpt = findEntity(action.getConcept());
-        if (targetEntityOpt.isEmpty()) {
-            return null;
-        }
-        CompiledConcept targetEntity = targetEntityOpt.get();
+        CompiledConcept targetEntity = findEntity(action.getConcept()).orElseThrow(() -> new UnbuildableOrchestrationException(
+                "actions[" + index + "] creates unknown concept '" + action.getConcept() + "'"));
         Map<String, CompiledField> fieldsByName = new LinkedHashMap<>();
         List<String> uniqueFields = new ArrayList<>();
         for (CompiledField field : targetEntity.getFields()) {
@@ -295,7 +294,8 @@ final class CrudOrchestrationSupport {
         uniqueFields.sort(String.CASE_INSENSITIVE_ORDER);
         String table = tableName(targetEntity);
         if (table == null || table.isBlank()) {
-            return null;
+            throw new UnbuildableOrchestrationException(
+                    "actions[" + index + "] creates " + targetEntity.getName() + ", which has no table");
         }
         Map<String, String> fieldMap = action.getMap() == null ? Map.of() : action.getMap();
         return new EventCreateOrchestration(
@@ -307,14 +307,16 @@ final class CrudOrchestrationSupport {
         );
     }
 
-    private EventCapabilityOrchestration toRuntimeCapabilityOrchestration(CompiledOrchestrationAction action) {
-        if (action == null || capabilityDispatcher == null) {
-            return null;
-        }
+    private EventCapabilityOrchestration toRuntimeCapabilityOrchestration(CompiledOrchestrationAction action, int index) {
         String capabilityName = action.getCapability() == null ? "" : action.getCapability().trim();
         String operation = action.getOperation() == null ? "" : action.getOperation().trim();
         if (capabilityName.isBlank() || operation.isBlank()) {
-            return null;
+            throw new UnbuildableOrchestrationException(
+                    "actions[" + index + "] (callCapability) names no capability or no operation");
+        }
+        if (capabilityDispatcher == null) {
+            throw new UnbuildableOrchestrationException("actions[" + index + "] (callCapability " + capabilityName
+                    + "." + operation + ") needs a CapabilityDispatcher and this runtime has none");
         }
         String capabilityType = resolveCapabilityType(capabilityName);
         String adapterId = resolveCapabilityAdapterId(capabilityName);
@@ -328,13 +330,14 @@ final class CrudOrchestrationSupport {
         );
     }
 
-    private EventScheduleOrchestration toRuntimeScheduleOrchestration(CompiledOrchestrationAction action) {
-        if (action == null || dataSource == null) {
-            return null;
-        }
+    private EventScheduleOrchestration toRuntimeScheduleOrchestration(CompiledOrchestrationAction action, int index) {
         String eventName = action.getEvent() == null ? "" : action.getEvent().trim();
         if (eventName.isBlank()) {
-            return null;
+            throw new UnbuildableOrchestrationException("actions[" + index + "] (scheduleEvent) names no event");
+        }
+        if (dataSource == null) {
+            throw new UnbuildableOrchestrationException("actions[" + index + "] (scheduleEvent " + eventName
+                    + ") needs a DataSource for the durable schedule table and this runtime has none");
         }
         long delaySeconds = action.getDelaySeconds() == null
                 ? DEFAULT_SCHEDULE_DELAY_SECONDS
@@ -345,6 +348,13 @@ final class CrudOrchestrationSupport {
                 delaySeconds,
                 Map.copyOf(fieldMap)
         );
+    }
+
+    /** REG-286: why an orchestration rule cannot be registered; reported by registerOrchestrationSubscribers. */
+    private static final class UnbuildableOrchestrationException extends RuntimeException {
+        UnbuildableOrchestrationException(String reason) {
+            super(reason);
+        }
     }
 
     private void handleEventOrchestration(RuntimeOrchestration orchestration, EventEnvelope envelope) {
@@ -827,9 +837,20 @@ final class CrudOrchestrationSupport {
         if (condition == null || condition.isBlank()) {
             return true;
         }
-        boolean matches = evaluateOrchestrationCondition(condition, eventPayload);
-        if (matches) {
-            return true;
+        String reason = "condition_false";
+        String status = "skipped";
+        String error = null;
+        try {
+            if (evaluateOrchestrationCondition(condition, eventPayload)) {
+                return true;
+            }
+        } catch (ComputedExpression.ExpressionException undecidable) {
+            // REG-286: was a legacy ==/!= substring guess. The rule does not run, and says why.
+            reason = "condition_unevaluable";
+            status = "failed";
+            error = undecidable.getMessage();
+            LOG.log(Level.SEVERE, "Orchestration rule '" + orchestrationName + "' skipped: its condition could not be decided -- "
+                    + error);
         }
 
         Map<String, Object> evidencePayload = new LinkedHashMap<>();
@@ -837,14 +858,17 @@ final class CrudOrchestrationSupport {
         evidencePayload.put("sourceEvent", envelope.eventName());
         evidencePayload.put("sourceEventId", envelope.eventId());
         evidencePayload.put("correlationId", envelope.correlationId());
-        evidencePayload.put("reason", "condition_false");
+        evidencePayload.put("reason", reason);
+        if (error != null) {
+            evidencePayload.put("error", error);
+        }
 
         publishRuntimeEvent(
                 "OrchestrationConditionSkipped",
                 evidencePayload,
                 Map.of(
                         "orchestrationAction", "condition",
-                        "status", "skipped"
+                        "status", status
                 )
         );
         return false;
@@ -853,12 +877,12 @@ final class CrudOrchestrationSupport {
     /**
      * R4.2 (roadmap): the orchestration twin of {@code KernelRunner.evaluateCondition} -- used to be
      * a hand-rolled {@code ==}/{@code !=}-only matcher, same shape and same limitation. Now tries the
-     * full {@link ComputedExpression} grammar ({@code &&}, {@code ||}, {@code >}, arithmetic) FIRST,
-     * falling through to the legacy matcher below on {@link ComputedExpression.ExpressionException}
-     * -- the same first-then-fallback ordering {@code CelInvariantEngine.evaluateExpression} already
-     * established for invariant expressions. The bridging scope simply reuses {@link
-     * ConditionValueSupport#resolveConditionValue}, so a token that parses under both engines
-     * resolves against the SAME {@code $event.}/quoted-literal/bare-payload-field rules either way.
+     * full {@link ComputedExpression} grammar ({@code &&}, {@code ||}, {@code >}, arithmetic). REG-286:
+     * the legacy matcher it used to fall back to on {@link ComputedExpression.ExpressionException} is
+     * gone -- a condition that does not parse is refused when the rule is registered, and one that
+     * does not decide to a boolean throws, which shouldExecuteOrchestration reports instead of guessing.
+     * The bridging scope reuses {@link ConditionValueSupport#resolveConditionValue} for the
+     * {@code $event.}/quoted-literal/bare-payload-field rules.
      */
     boolean evaluateOrchestrationCondition(String rawCondition, Map<String, Object> eventPayload) {
         if (rawCondition == null || rawCondition.isBlank()) {
@@ -872,27 +896,7 @@ final class CrudOrchestrationSupport {
             return false;
         }
 
-        try {
-            return ComputedExpression.evaluateBoolean(condition, new OrchestrationConditionScope(eventPayload));
-        } catch (ComputedExpression.ExpressionException notComputedExpression) {
-            // fall through to the legacy matcher below.
-        }
-
-        int equalsIndex = condition.indexOf("==");
-        if (equalsIndex >= 0) {
-            Object left = resolveConditionValue(condition.substring(0, equalsIndex), eventPayload);
-            Object right = resolveConditionValue(condition.substring(equalsIndex + 2), eventPayload);
-            return valuesEqual(left, right);
-        }
-
-        int notEqualsIndex = condition.indexOf("!=");
-        if (notEqualsIndex >= 0) {
-            Object left = resolveConditionValue(condition.substring(0, notEqualsIndex), eventPayload);
-            Object right = resolveConditionValue(condition.substring(notEqualsIndex + 2), eventPayload);
-            return !valuesEqual(left, right);
-        }
-
-        return asBoolean(resolveConditionValue(condition, eventPayload));
+        return ComputedExpression.evaluateBoolean(condition, new OrchestrationConditionScope(eventPayload));
     }
 
     /** R4.2: bridges a {@link ComputedExpression} variable lookup to {@link

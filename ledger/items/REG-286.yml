@@ -3,9 +3,9 @@ title: >-
   An orchestration rule whose any one action cannot be built is dropped whole, with no log, error or startup signal
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-23
-closed: null
+closed: 2026-10-23
 source: >-
   REG-282 (X0-11 audit), 2026-10-23. Already visible in ENF-1's witness allowlist
   (scripts/policy/dsl-behavior-witness.json, orchestrationAction.concept/delay*/event entry).
@@ -20,6 +20,14 @@ detail: |
   declared rule that will never fire is indistinguishable from one waiting for its event.
   Smaller, same family: evaluateOrchestrationCondition falls back to a legacy ==/!= substring matcher when the
   condition does not parse as a ComputedExpression, so a malformed condition gets a guessed answer instead of an error.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportOrchestrationReloadTest.java#aRuleWithAnUnbuildableActionIsReportedNotSilentlyDropped
+  asserts: >-
+    A rule with a callCapability and a create action, built with no EntityManager, is reported once at SEVERE naming
+    the rule and EntityManager and runs none of its actions; anUndecidableConditionIsReportedNotGuessed: a condition
+    that evaluates to the string "true" no longer fires through the legacy matcher and is reported.
+  provenRed: true
 resolution: >-
   Done when a rule that cannot be fully built is reported, not skipped: model validation refuses what is a model
   error (unknown action type / concept, blank fields), and what depends on the environment (no dataSource /
@@ -28,3 +36,14 @@ resolution: >-
   scripts/quality/x0-evaluator-registry.json moves to FIXED.
 note: >-
   2026-10-23: filed by the REG-282 audit.
+  2026-10-23: DONE. Model errors were already refused by OrchestrationValidation (trigger type, unknown event /
+  concept / capability / operation, unsupported action type, blank fields, a condition that does not parse), so the
+  runtime half was what remained. CrudOrchestrationSupport's builders now throw UnbuildableOrchestrationException
+  with the reason instead of returning null, and registerOrchestrationSubscribers logs it at SEVERE naming the rule
+  -- once per (re)registration. The rule is still not registered (running only its buildable actions would be a
+  different rule); startup is NOT failed, because an in-memory app with a create/scheduleEvent rule boots today
+  and has no EntityManager/DataSource by design -- it now says so instead of being silent. A condition is parsed
+  at registration (unparseable -> unbuildable), the legacy ==/!= matcher is removed, and a condition that does not
+  decide to a boolean at event time publishes OrchestrationConditionSkipped with status=failed, reason
+  condition_unevaluable and the error, plus a SEVERE log. All four corpus orchestration conditions are plain
+  ComputedExpression comparisons and unaffected. X0-17 FIXED.

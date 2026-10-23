@@ -24,8 +24,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * REG-241 (B28 residual): {@code GeneratedCrudRuntimeSupport.initializeOrchestrationSubscribers()}
@@ -124,6 +129,80 @@ class GeneratedCrudRuntimeSupportOrchestrationReloadTest {
 
         kernelRunner.publishEvent(EVENT_NAME, Map.of("amount", 500));
         assertEquals(1, dispatcher.invocationCount());
+    }
+
+    /**
+     * REG-286: a rule with one action this runtime cannot build (a create with no EntityManager) used
+     * to be dropped whole with no log, error or signal -- indistinguishable from a rule waiting for
+     * its event. It is still not registered (running only its buildable actions would be a different
+     * rule), but the refusal is reported at SEVERE naming the rule and the missing piece.
+     */
+    @Test
+    void aRuleWithAnUnbuildableActionIsReportedNotSilentlyDropped() {
+        RecordingCapabilityDispatcher dispatcher = new RecordingCapabilityDispatcher();
+        KernelRunner kernelRunner = kernelRunner(new CountingEventBus());
+        CompiledModel model = modelWithOrchestration(new CompiledOrchestration(
+                "NotifyAndRecord",
+                null,
+                new CompiledOrchestrationTrigger("event", EVENT_NAME),
+                List.of(
+                        new CompiledOrchestrationAction("callCapability", null, "notifyOps", "send", Map.of()),
+                        new CompiledOrchestrationAction("create", "AuditEntry", Map.of("note", "$event.amount")))));
+
+        List<LogRecord> severe = captureSevere(() -> support(() -> model, kernelRunner, dispatcher));
+
+        assertEquals(1, severe.size(), "the unbuildable rule must be reported exactly once");
+        String message = severe.get(0).getMessage();
+        assertTrue(message.contains("NotifyAndRecord") && message.contains("EntityManager"), message);
+        kernelRunner.publishEvent(EVENT_NAME, Map.of("amount", 500));
+        assertEquals(0, dispatcher.invocationCount(), "a refused rule runs none of its actions");
+    }
+
+    /**
+     * REG-286: a condition that does not decide to a boolean used to fall back to a legacy ==/!=
+     * substring matcher whose guess ("true" text is truthy) fired the rule. It is now reported and the
+     * rule does not run.
+     */
+    @Test
+    void anUndecidableConditionIsReportedNotGuessed() {
+        RecordingCapabilityDispatcher dispatcher = new RecordingCapabilityDispatcher();
+        KernelRunner kernelRunner = kernelRunner(new CountingEventBus());
+        CompiledModel model = modelWithOrchestration(orchestration("Notify", "$event.approved", EVENT_NAME));
+        support(() -> model, kernelRunner, dispatcher);
+
+        List<LogRecord> severe = captureSevere(() -> kernelRunner.publishEvent(EVENT_NAME, Map.of("approved", "true")));
+
+        assertEquals(0, dispatcher.invocationCount(), "a string \"true\" is not a boolean; the rule must not be guessed into running");
+        assertEquals(1, severe.size());
+        assertTrue(severe.get(0).getMessage().contains("Notify"), severe.get(0).getMessage());
+    }
+
+    private static List<LogRecord> captureSevere(Runnable action) {
+        Logger logger = Logger.getLogger(GeneratedCrudRuntimeSupport.class.getName());
+        List<LogRecord> records = new ArrayList<>();
+        Handler handler = new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                if (record.getLevel() == Level.SEVERE) {
+                    records.add(record);
+                }
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        logger.addHandler(handler);
+        try {
+            action.run();
+        } finally {
+            logger.removeHandler(handler);
+        }
+        return records;
     }
 
     private static GeneratedCrudRuntimeSupport support(
