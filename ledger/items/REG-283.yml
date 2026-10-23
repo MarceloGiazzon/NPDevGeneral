@@ -43,3 +43,13 @@ resolution: >-
 note: >-
   2026-10-23: filed by the REG-282 audit. Not fixed in the same commit: (b) changes what a flow that names a
   unique invariant does today (passes silently -> fails loudly), which needs a look at which shipped flows do that.
+  2026-10-23: (b) is NOT a "fail loudly" change after all. Six tracked models have a flow whose invariant check names
+  the unique invariant EmailUnique (NPDevSamples/simple-user-registry, NPDevSamples/user-minimal,
+  NPDevGenerator/test-models/user-minimal, NPDevContract/tests/golden/phase0 and the two official-samples copies of
+  simple-user-registry). Through the lookup-less invariantEngine bean that check passes without looking anything up today;
+  making it an uncheckable violation would fail every one of those flows. The fix is real lookups for the flow
+  engine's bean (ConceptStore.existsUnique / the scope and conflict lookups the CRUD path already has), which needs
+  a tenant for the lookup: InvariantEvaluationRequest carries state but UniqueValueChecker does not receive it, so
+  the tenant must come from the request state or an ambient execution context -- decide that before coding, a
+  wrong-tenant uniqueness lookup is a cross-tenant existence oracle.
+
