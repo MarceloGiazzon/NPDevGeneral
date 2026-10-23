@@ -6,6 +6,7 @@ import com.npdev.adapters.circuit.inproc.InProcCircuitBreakerStateStore;
 import com.npdev.adapters.events.inproc.InProcEventBus;
 import com.npdev.adapters.events.inproc.InProcEventStore;
 import com.npdev.runtime.support.CelInvariantEngine;
+import com.npdev.runtime.support.ReloadableInvariantEngine;
 import com.npdev.adapters.flowcompiled.CompiledModelFlowDefinitionProvider;
 import com.npdev.adapters.flowcompiled.ModelBackedKernelRuntimeFactory;
 import com.npdev.adapters.flowcompiled.CompiledModelEventSchemaProvider;
@@ -86,9 +87,12 @@ public final class CliRuntimeFactory {
             );
         }
 
+        // REG-283: the same store the flows write through backs their unique/scope invariant checks.
+        InMemoryConceptStore conceptStore = new InMemoryConceptStore();
         KernelRunner kernelRunner = new KernelRunner(
                 eventBus,
-                CelInvariantEngine.fromCompiledModel(compiledModel),
+                new ReloadableInvariantEngine(compiledModel,
+                        (tenantId, conceptName) -> CelInvariantEngine.Lookups.fromConceptStore(conceptStore, tenantId)),
                 new CompiledModelFlowDefinitionProvider(compiledModel),
                 capabilityDispatcher,
                 traceStore,
@@ -105,7 +109,7 @@ public final class CliRuntimeFactory {
         kernelRunner.withEventSchemaProvider(new CompiledModelEventSchemaProvider(compiledModel));
         kernelRunner.withPermissionEvaluator(permissionEvaluator);
         eventStore.registerAppendListener(kernelRunner::onEventPersisted);
-        ConceptGateway conceptGateway = new DefaultConceptGateway(new InMemoryConceptStore());
+        ConceptGateway conceptGateway = new DefaultConceptGateway(conceptStore);
 
         return new CliRuntime(
                 compiledModel,

@@ -109,8 +109,11 @@ public class NpdevCapabilityBindingConfig {
      * app-declared-role cache (REG-239, open).
      */
     @Bean
-    public InvariantEngine invariantEngine(ModelHolder modelHolder) {
-        ReloadableInvariantEngine engine = new ReloadableInvariantEngine(modelHolder.get());
+    public InvariantEngine invariantEngine(ModelHolder modelHolder, ConceptStore conceptStore) {
+        // REG-283: flow checks look up in the flow's own tenant; before, a unique/scope rule passed unlooked.
+        ReloadableInvariantEngine engine = new ReloadableInvariantEngine(
+                modelHolder.get(),
+                (tenantId, conceptName) -> CelInvariantEngine.Lookups.fromConceptStore(conceptStore, tenantId));
         modelHolder.addReloadListener((before, after) -> engine.setModel(after));
         return engine;
     }
@@ -219,7 +222,19 @@ public class NpdevCapabilityBindingConfig {
                     ConflictLookup conflictLookup,
                     InvariantScopeProvider invariantScopeProvider
             ) {
-                        return CelInvariantEngine.fromCompiledModel(
+                return create(uniqueValueLookup, conflictLookup, invariantScopeProvider, null);
+            }
+
+            // REG-283 (a): without this override the port's default dropped the compound lookup, so
+            // GeneratedCrudRuntimeSupport.validateEntityDetailed never ran existsUniqueCompoundInConceptStore.
+            @Override
+            public InvariantEngine create(
+                    UniqueValueLookup uniqueValueLookup,
+                    ConflictLookup conflictLookup,
+                    InvariantScopeProvider invariantScopeProvider,
+                    CompoundUniqueValueLookup compoundUniqueValueLookup
+            ) {
+                return CelInvariantEngine.fromCompiledModel(
                         modelHolder.get(),
                         (requestedEntity, fieldName, value, rawPayload) -> uniqueValueLookup != null
                                 && uniqueValueLookup.exists(requestedEntity, fieldName, value, rawPayload),
@@ -248,7 +263,9 @@ public class NpdevCapabilityBindingConfig {
                             }
                         },
                         (conceptName, fieldPath, expectedValue, state, payload) -> invariantScopeProvider != null
-                                && invariantScopeProvider.exists(conceptName, fieldPath, expectedValue, state, payload)
+                                && invariantScopeProvider.exists(conceptName, fieldPath, expectedValue, state, payload),
+                        (requestedEntity, fieldNames, values, rawPayload) -> compoundUniqueValueLookup != null
+                                && compoundUniqueValueLookup.exists(requestedEntity, fieldNames, values, rawPayload)
                 );
             }
         };

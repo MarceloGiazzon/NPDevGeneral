@@ -3,9 +3,9 @@ title: >-
   Invariant uniqueness/conflict/scope checks answer "no duplicate, no conflict, not found" when no lookup is wired -- the flow engine's invariant engine wires none, and the CRUD factory drops the compound-unique lookup
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-10-23
-closed: null
+closed: 2026-10-23
 source: >-
   REG-282 (X0-11 audit of the runtime-support expression engine), 2026-10-23.
 surface: NPDevKernel/adapters/runtime-support (CelInvariantEngine, ReloadableInvariantEngine); NPDevRuntimeHost NpdevCapabilityBindingConfig (invariantEngine + runtimeInvariantEngineFactory beans); NPDevKernel/kernel ports/RuntimeInvariantEngineFactory
@@ -32,6 +32,15 @@ detail: |
   no probe has seen it.
   Also in the same class: evaluate(String entityName, Object payload) returns no violations for an unknown entity,
   while the request-shaped overload returns INVARIANT_REF_UNKNOWN for the same input.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/CelInvariantEngineUncheckableLookupTest.java#uniqueRuleWithNoLookupIsUncheckableNotAPass
+  asserts: >-
+    A CelInvariantEngine with no unique lookup reports unique(email) as INVARIANT_UNCHECKABLE (missingLookup=unique)
+    instead of passing it; the same for conflict and scope in the sibling tests. Flow side:
+    ReloadableInvariantEngineTenantLookupTest (tenant from state, refused without one); CRUD compound side:
+    NpdevCapabilityBindingConfigInvariantLookupsTest.crudFactoryBeanRefusesADuplicateCompoundPair.
+  provenRed: true
 resolution: >-
   Done when (a) the RuntimeHost factory overrides the 4-argument create and passes the compound lookup through
   (a test proves a duplicate compound pair is refused by validateEntityDetailed through the real bean), (b) a
@@ -52,4 +61,15 @@ note: >-
   a tenant for the lookup: InvariantEvaluationRequest carries state but UniqueValueChecker does not receive it, so
   the tenant must come from the request state or an ambient execution context -- decide that before coding, a
   wrong-tenant uniqueness lookup is a cross-tenant existence oracle.
-
+  2026-10-23: DONE. Owner decision: the tenant for a flow lookup is the flow state's tenantId (seeded by KernelRunner
+  from the caller's ExecutionContext), refused when absent -- never an ambient context. (a) the RuntimeHost
+  runtimeInvariantEngineFactory bean overrides the 4-argument create and passes the compound lookup
+  (NpdevCapabilityBindingConfigInvariantLookupsTest.crudFactoryBeanRefusesADuplicateCompoundPair, through
+  GeneratedCrudRuntimeSupport.validateEntityDetailed). (b) CelInvariantEngine's no-lookup defaults throw
+  LookupUnavailableException, reported as INVARIANT_UNCHECKABLE with missingLookup (CelInvariantEngineUncheckableLookupTest);
+  ReloadableInvariantEngine binds Lookups.fromConceptStore per request to state.tenantId
+  (ReloadableInvariantEngineTenantLookupTest), wired in the RuntimeHost invariantEngine bean and in the CLI's
+  CliRuntimeFactory (its EmailUnique flows went INVARIANT_UNCHECKABLE until it was). Flows have no conflict lookup:
+  a conflicts()/overlapsProvider() rule in a flow check is INVARIANT_UNCHECKABLE (no tracked flow names one).
+  (c) evaluate(entityName, payload) reports an unknown entity. X0-11 / X0-13 FIXED. The CRUD path's own scope and
+  conflict lookups are not tenant-scoped -- filed as REG-287.

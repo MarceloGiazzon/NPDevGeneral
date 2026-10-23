@@ -7,6 +7,7 @@ import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.kernel.ports.ConceptStore;
 import com.npdev.kernel.ports.InvariantEngine;
 
 import java.lang.reflect.Field;
@@ -96,13 +97,86 @@ public final class CelInvariantEngine implements InvariantEngine {
         );
     }
 
-    private static final UniqueValueChecker NO_UNIQUE_CHECKER = (entity, field, value, payload) -> false;
-    private static final CompoundUniqueValueChecker NO_COMPOUND_UNIQUE_CHECKER =
-            (entity, fields, values, payload) -> false;
-    private static final ConflictChecker NO_CONFLICT_CHECKER =
-            (resourceField, resourceId, startsAtField, startsAt, durationField, durationMinutes, excludeId, payload) -> false;
-    private static final ScopeChecker NO_SCOPE_CHECKER =
-            (conceptName, fieldPath, expectedValue, state, payload) -> false;
+    /**
+     * REG-283: thrown by a lookup that cannot answer -- none is wired, or the one that is has no
+     * tenant to search. The engine reports the rule as {@code INVARIANT_UNCHECKABLE} naming the
+     * lookup instead of guessing "no duplicate / no conflict / not found".
+     */
+    public static final class LookupUnavailableException extends RuntimeException {
+        private final String lookup;
+
+        public LookupUnavailableException(String lookup, String reason) {
+            super(reason);
+            this.lookup = lookup;
+        }
+
+        public String lookup() {
+            return lookup;
+        }
+    }
+
+    /** REG-283: the four lookups as one value, so a caller can re-bind them per request (see {@link #withLookups}). */
+    public record Lookups(
+            UniqueValueChecker unique,
+            CompoundUniqueValueChecker compoundUnique,
+            ConflictChecker conflict,
+            ScopeChecker scope
+    ) {
+        /**
+         * The lookups a flow's invariant check gets (RuntimeHost's invariantEngine bean, the CLI
+         * runtime): unique, compound unique and scope.exists all ask {@link ConceptStore#existsUnique}
+         * scoped to {@code tenantId} -- the flow's own {@code state.tenantId}, never an ambient context a
+         * resumed or background step may not have. scope.exists is that probe with no excluded row, so
+         * it matches text case-insensitively like unique does. There is no conflict lookup for flows
+         * yet, so a conflicts()/overlapsProvider() rule in a flow check is INVARIANT_UNCHECKABLE.
+         */
+        public static Lookups fromConceptStore(ConceptStore conceptStore, String tenantId) {
+            Objects.requireNonNull(conceptStore, "conceptStore");
+            return new Lookups(
+                    (entity, field, value, payload) -> conceptStore.existsUnique(
+                            tenantId, entity, List.of(field), List.of(value), payloadId(payload)),
+                    (entity, fields, values, payload) -> conceptStore.existsUnique(
+                            tenantId, entity, fields, values, payloadId(payload)),
+                    (resourceField, resourceId, startsAtField, startsAt, durationField, durationMinutes, excludeId, payload) -> {
+                        throw new LookupUnavailableException("conflict", "flow invariant checks have no conflict lookup");
+                    },
+                    (conceptName, fieldPath, expectedValue, state, payload) -> expectedValue != null
+                            && conceptStore.existsUnique(tenantId, conceptName, List.of(fieldPath), List.of(expectedValue), null)
+            );
+        }
+
+        /** The row being checked, so an update does not collide with itself; null for a create. */
+        private static String payloadId(Object payload) {
+            Object id = payload instanceof Map<?, ?> map ? map.get("id") : null;
+            return id == null || String.valueOf(id).isBlank() ? null : String.valueOf(id);
+        }
+
+        /** Every lookup refuses with {@code reason}. */
+        public static Lookups unavailable(String reason) {
+            return new Lookups(
+                    (entity, field, value, payload) -> {
+                        throw new LookupUnavailableException("unique", reason);
+                    },
+                    (entity, fields, values, payload) -> {
+                        throw new LookupUnavailableException("compoundUnique", reason);
+                    },
+                    (resourceField, resourceId, startsAtField, startsAt, durationField, durationMinutes, excludeId, payload) -> {
+                        throw new LookupUnavailableException("conflict", reason);
+                    },
+                    (conceptName, fieldPath, expectedValue, state, payload) -> {
+                        throw new LookupUnavailableException("scope", reason);
+                    }
+            );
+        }
+    }
+
+    // REG-283: was four "return false" defaults -- an answer ("no duplicate", "no conflict", "not
+    // found") given without looking anything up. A missing lookup is now a refusal.
+    private static final Lookups NOT_WIRED = Lookups.unavailable("no lookup of this kind is wired into this invariant engine");
+    private static final UniqueValueChecker NO_UNIQUE_CHECKER = NOT_WIRED.unique();
+    private static final CompoundUniqueValueChecker NO_COMPOUND_UNIQUE_CHECKER = NOT_WIRED.compoundUnique();
+    private static final ConflictChecker NO_CONFLICT_CHECKER = NOT_WIRED.conflict();
+    private static final ScopeChecker NO_SCOPE_CHECKER = NOT_WIRED.scope();
 
     private final Map<String, EntityRules> rulesByEntity;
     private final UniqueValueChecker uniqueValueChecker;
@@ -204,6 +278,17 @@ public final class CelInvariantEngine implements InvariantEngine {
         return new CelInvariantEngine(rules, uniqueValueChecker, conflictChecker, scopeChecker, compoundUniqueValueChecker);
     }
 
+    /**
+     * REG-283: the same rules bound to other lookups -- no rule rebuild, so a caller that only learns
+     * the tenant at evaluation time (the flow engine) can bind per request. A null component means
+     * "not wired", which the engine reports as uncheckable.
+     */
+    public CelInvariantEngine withLookups(Lookups lookups) {
+        Objects.requireNonNull(lookups, "lookups");
+        return new CelInvariantEngine(
+                rulesByEntity, lookups.unique(), lookups.conflict(), lookups.scope(), lookups.compoundUnique());
+    }
+
     @Override
     public List<String> evaluate(String entityName, Object payload) {
         if (entityName == null || entityName.isBlank()) {
@@ -212,7 +297,8 @@ public final class CelInvariantEngine implements InvariantEngine {
 
         EntityRules rules = rulesByEntity.get(normalize(entityName));
         if (rules == null) {
-            return Collections.emptyList();
+            // REG-283 (c): same answer the request overload gives, not "no violations".
+            return List.of("Unknown concept for invariant evaluation: " + entityName);
         }
 
         if (payload == null) {
@@ -324,7 +410,23 @@ public final class CelInvariantEngine implements InvariantEngine {
         Map<String, Object> tree = draftTree == null ? Map.of() : draftTree;
         List<InvariantEngine.Violation> violations = new ArrayList<>();
         for (InvariantEngine.AggregateInvariantSpec invariant : invariants) {
-            ExpressionResult result = evaluateExpression(tree, invariant.expression(), Map.of());
+            ExpressionResult result;
+            try {
+                result = evaluateExpression(tree, invariant.expression(), Map.of());
+            } catch (LookupUnavailableException unavailable) {
+                violations.add(new InvariantEngine.Violation(
+                        "INVARIANT_UNCHECKABLE",
+                        "Aggregate " + aggregateName + " invariant '" + invariant.name() + "' cannot be checked -- its "
+                                + unavailable.lookup() + " lookup is unavailable: " + unavailable.getMessage(),
+                        invariant.name(),
+                        rootConcept,
+                        null,
+                        null,
+                        null,
+                        Map.of("missingLookup", unavailable.lookup())
+                ));
+                continue;
+            }
             if (result.ok()) {
                 continue;
             }
@@ -358,11 +460,27 @@ public final class CelInvariantEngine implements InvariantEngine {
                 // this branch is a defensive no-op for a hand-built CompiledAggregate that skipped it.
                 continue;
             }
-            ExpressionResult result = evaluateExpression(tree, invariant.expression(), Map.of());
+            String ruleName = invariant.name() == null ? "<unnamed>" : invariant.name();
+            ExpressionResult result;
+            try {
+                result = evaluateExpression(tree, invariant.expression(), Map.of());
+            } catch (LookupUnavailableException unavailable) {
+                violations.add(new InvariantEngine.Violation(
+                        "INVARIANT_UNCHECKABLE",
+                        "Aggregate " + aggregate.name() + " invariant '" + ruleName + "' cannot be checked -- its "
+                                + unavailable.lookup() + " lookup is unavailable: " + unavailable.getMessage(),
+                        ruleName,
+                        aggregate.root(),
+                        null,
+                        null,
+                        null,
+                        Map.of("missingLookup", unavailable.lookup())
+                ));
+                continue;
+            }
             if (result.ok()) {
                 continue;
             }
-            String ruleName = invariant.name() == null ? "<unnamed>" : invariant.name();
             String detail = result.details();
             String message = invariant.message() != null
                     ? invariant.message()
@@ -586,19 +704,32 @@ public final class CelInvariantEngine implements InvariantEngine {
             );
         }
 
-        return switch (rule.type()) {
-            case "required" -> evaluateRequiredRule(entityName, payload, invariantRef, rule.field());
-            case "unique" -> rule.fields().size() > 1
-                    ? evaluateCompoundUniqueRule(entityName, payload, invariantRef, rule.fields())
-                    : evaluateUniqueRule(entityName, payload, invariantRef, rule.field());
-            case "expression" -> evaluateExpressionRule(entityName, payload, invariantRef, rule.expression(), state);
-            default -> RuleEvaluationResult.fail(
-                    "INVARIANT_UNKNOWN_REF",
-                    "Entity " + entityName + ": unsupported invariant type '" + rule.type()
-                            + "' for ref '" + invariantRef + "'",
-                    Map.of()
+        try {
+            return switch (rule.type()) {
+                case "required" -> evaluateRequiredRule(entityName, payload, invariantRef, rule.field());
+                case "unique" -> rule.fields().size() > 1
+                        ? evaluateCompoundUniqueRule(entityName, payload, invariantRef, rule.fields())
+                        : evaluateUniqueRule(entityName, payload, invariantRef, rule.field());
+                case "expression" -> evaluateExpressionRule(entityName, payload, invariantRef, rule.expression(), state);
+                default -> RuleEvaluationResult.fail(
+                        "INVARIANT_UNKNOWN_REF",
+                        "Entity " + entityName + ": unsupported invariant type '" + rule.type()
+                                + "' for ref '" + invariantRef + "'",
+                        Map.of()
+                );
+            };
+        } catch (LookupUnavailableException unavailable) {
+            return RuleEvaluationResult.fail(
+                    "INVARIANT_UNCHECKABLE",
+                    "Entity " + entityName + ": invariant '" + invariantRef + "' cannot be checked -- its "
+                            + unavailable.lookup() + " lookup is unavailable: " + unavailable.getMessage(),
+                    Map.of(
+                            "invariantRef", invariantRef,
+                            "missingLookup", unavailable.lookup(),
+                            "violationKind", "uncheckable"
+                    )
             );
-        };
+        }
     }
 
     private RuleEvaluationResult evaluateRequiredRule(

@@ -1,0 +1,28 @@
+id: REG-287
+title: >-
+  The generated-CRUD scope.exists and conflicts() lookups query the whole table across tenants and turn any error into "not found / no conflict"
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-10-23
+closed: null
+source: >-
+  Found while fixing REG-283, 2026-10-23.
+surface: NPDevKernel/adapters/runtime-support CrudReferenceLookupSupport (scopeExists, resourceHasConflict, resourceHasConflictViaConceptGateway)
+detail: |
+  GeneratedCrudRuntimeSupport.validateEntityDetailed backs a REST write's scope.exists(...) and conflicts(...) /
+  overlapsProvider(...) invariants with CrudReferenceLookupSupport. With an EntityManager, both run a native query
+  ("SELECT 1 FROM <table> WHERE CAST(col AS VARCHAR) = ?" / the resource's bookings) with NO tenant_id predicate, so
+  scope.exists finds another tenant's row (a cross-tenant existence oracle, and a pass the caller's tenant should
+  not get) and a booking in another tenant blocks this tenant's slot. Every exception is caught and answered
+  false ("not found" / "no conflict"), as are an unknown concept, a dotted field path and a missing table -- the
+  same answer-instead-of-refuse shape REG-283 removed from the engine. Only the in-memory conflict fallback
+  (resourceHasConflictViaConceptGateway) is tenant-scoped, and it also swallows errors.
+  The flow path (REG-283) uses ConceptStore.existsUnique with an explicit tenant and is not affected.
+resolution: >-
+  Done when the CRUD scope and conflict lookups search only the caller's tenant (ConceptStore.existsUnique /
+  ConceptStore.query with the tenant the generated service already resolves), an unknown concept/field or a query
+  error raises CelInvariantEngine.LookupUnavailableException (INVARIANT_UNCHECKABLE) instead of answering, and a
+  test proves a row in tenant B neither satisfies tenant A's scope.exists nor blocks tenant A's slot.
+note: >-
+  2026-10-23: filed while closing REG-283.

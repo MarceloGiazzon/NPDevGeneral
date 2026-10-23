@@ -103,16 +103,20 @@
     {
       "id": "X0-11",
       "class": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/CelInvariantEngine.java",
-      "verdict": "OPEN",
+      "verdict": "FIXED",
       "fixedBy": "REG-283",
-      "note": "REG-282 audit (2026-10-23) of the runtime-support expression engine; this entry used to claim the whole runtime-support directory with verdict NOT_AUDITED, which also satisfied the glob check for every file in it. Syntax side fails closed and is not the defect: an expression neither ComputedExpression nor the legacy matcher understands is a violation ('unsupported expression format'), never a pass; an unknown invariant ref is INVARIANT_UNKNOWN_REF. The defect is the lookup side: NO_UNIQUE_CHECKER / NO_COMPOUND_UNIQUE_CHECKER / NO_CONFLICT_CHECKER / NO_SCOPE_CHECKER all return false, so an engine built without a lookup answers 'no duplicate' / 'no conflict' / 'not found' instead of saying it cannot check -- live in the flow engine's invariantEngine bean (no lookups) and for compound unique in CRUD (the RuntimeHost factory drops the lookup). Also evaluate(entityName, payload) returns no violations for an unknown entity. See REG-283."
+      "note": "REG-282 audit (2026-10-23) of the runtime-support expression engine; this entry used to claim the whole runtime-support directory with verdict NOT_AUDITED, which also satisfied the glob check for every file in it. Syntax side fails closed and is not the defect: an expression neither ComputedExpression nor the legacy matcher understands is a violation ('unsupported expression format'), never a pass; an unknown invariant ref is INVARIANT_UNKNOWN_REF. The defect is the lookup side: NO_UNIQUE_CHECKER / NO_COMPOUND_UNIQUE_CHECKER / NO_CONFLICT_CHECKER / NO_SCOPE_CHECKER all return false, so an engine built without a lookup answers 'no duplicate' / 'no conflict' / 'not found' instead of saying it cannot check -- live in the flow engine's invariantEngine bean (no lookups) and for compound unique in CRUD (the RuntimeHost factory drops the lookup). Also evaluate(entityName, payload) returns no violations for an unknown entity. See REG-283. REG-283 (2026-10-23): the four no-lookup defaults throw LookupUnavailableException, which evaluateRule and both aggregate loops report as INVARIANT_UNCHECKABLE naming the missing lookup; evaluate(entityName, payload) reports an unknown entity like the request overload.",
+      "test": "NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/CelInvariantEngineUncheckableLookupTest.java",
+      "testMarker": "uniqueRuleWithNoLookupIsUncheckableNotAPass"
     },
     {
       "id": "X0-13",
       "class": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/ReloadableInvariantEngine.java",
-      "verdict": "OPEN",
+      "verdict": "FIXED",
       "fixedBy": "REG-283",
-      "note": "REG-282 audit (2026-10-23): builds its delegate with CelInvariantEngine.fromCompiledModel(model) -- no unique, conflict or scope lookup -- and is the invariantEngine bean KernelRunner/InvariantCheckStep use, so flow checkInvariants get X0-11's default answers. See REG-283."
+      "note": "REG-282 audit (2026-10-23): builds its delegate with CelInvariantEngine.fromCompiledModel(model) -- no unique, conflict or scope lookup -- and is the invariantEngine bean KernelRunner/InvariantCheckStep use, so flow checkInvariants get X0-11's default answers. See REG-283. REG-283 (2026-10-23): takes TenantLookups and binds per request to the flow state's tenantId (refusing with INVARIANT_UNCHECKABLE when absent); RuntimeHost and the CLI wire Lookups.fromConceptStore.",
+      "test": "NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/ReloadableInvariantEngineTenantLookupTest.java",
+      "testMarker": "flowStateWithoutATenantIsUncheckableNotAPass"
     },
     {
       "id": "X0-14",
