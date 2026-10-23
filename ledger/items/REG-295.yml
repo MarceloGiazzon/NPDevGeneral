@@ -1,0 +1,31 @@
+id: REG-295
+title: >-
+  A create (POST) carrying a caller-supplied id that belongs to another tenant overwrites that tenant's row and moves it into the caller's tenant
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-10-23
+closed: null
+source: >-
+  Read-only audit of generated-CRUD tenant isolation (2026-10-23). Every read/update/delete/restore/bond path is
+  tenant-filtered; this create path is the one exception. Upsert keying confirmed by reading
+  JdbcBusinessConceptStore.save/executeUpsert; not yet reproduced by a test.
+surface: NPDevRuntimeHost/runtimehost-core JdbcBusinessConceptStore (save, executeUpsert, saveVersioned); NPDevKernel storage/sql dialect upserts; NPDevGenerator DtoEmitter (caller-supplied create id)
+detail: |
+  DtoEmitter.java:50 allows a caller-supplied id on create and GeneratedCrudRuntimeSupport.ensureGeneratedId (~616)
+  keeps it. DefaultConceptGateway's findByIdForUpdate(tenantA, id) finds nothing, so the write is treated as a create;
+  JdbcBusinessConceptStore.save -> executeUpsert (~1035) runs the dialect upsert keyed on the id column only
+  (Postgres ON CONFLICT (id) DO UPDATE, H2 MERGE ... KEY(id)); the business table PK is (id) alone
+  (SchemaRealizationEmitter ~561) and tenant_id is an ordinary updated column, so tenant B's row is overwritten and
+  re-homed into tenant A. MySQL (STOR-11: UPDATE first, INSERT only if nothing matched) and the row_version path
+  (saveVersioned) are unconfirmed. Reachable by any tenant-A caller with create permission who knows a tenant-B UUID
+  (v4, not enumerable, but leaks via links/exports/logs). No test, probe or ledger item covers a cross-tenant create id;
+  there is also no HTTP-level cross-tenant test of GET/PUT/DELETE /api/<concept>/{id}.
+resolution: >-
+  Done when a create whose id already exists in another tenant is refused (a generic conflict that reveals nothing
+  beyond the UUID the caller supplied) and never rewrites that row, on every engine path (native upsert, MySQL
+  two-step, row_version), with a must-error test proven red at the store level, plus a gateway/HTTP-level test.
+note: >-
+  2026-10-23: filed. Candidate fixes: refuse in the store's create path when the id exists under another tenant
+  (dialect-free, one choke point); or tenant-guard the upsert's UPDATE branch per dialect; or a (tenant_id, id) PK
+  (a schema break needing a migration).
