@@ -1,0 +1,224 @@
+{
+  "probes": [
+    {
+      "id": "cf-field-function-default-and-derived-evaluated",
+      "keywords": [
+        "field.defaultExpression",
+        "field.derivedExpression"
+      ],
+      "description": "REG-284 (d): ShelfLayout.displayTitle (defaultExpression concat('Shelf ', name)) stores the EVALUATED string, never the expression's own source text, and ShelfLayout.nameKey (derivedExpression uppercase(name)) is computed by the server on create, overrides a client-supplied value, and is recomputed on update; an explicit displayTitle wins over the default, and an update that does not name displayTitle leaves the create-time default untouched.",
+      "steps": [
+        {
+          "name": "create without displayTitle",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "vb-${rand}",
+            "rows": 1,
+            "cols": 1
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.displayTitle": {
+                "matches": "^Shelf vb-[0-9a-f]{8}$"
+              },
+              "$.nameKey": {
+                "matches": "^VB-[0-9A-F]{8}$"
+              }
+            },
+            "notText": [
+              "concat(",
+              "uppercase("
+            ]
+          },
+          "save": {
+            "lid": "$.id",
+            "lname": "$.name"
+          }
+        },
+        {
+          "name": "stored default is the evaluated string",
+          "method": "GET",
+          "path": "/api/shelf_layouts/${lid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.displayTitle": "Shelf ${lname}",
+              "$.nameKey": {
+                "matches": "^VB-[0-9A-F]{8}$"
+              }
+            },
+            "notText": [
+              "concat(",
+              "uppercase("
+            ]
+          }
+        },
+        {
+          "name": "update name recomputes the derived value, keeps the default",
+          "method": "PUT",
+          "path": "/api/shelf_layouts/${lid}",
+          "body": {
+            "name": "zz-${rand}"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.nameKey": {
+                "matches": "^ZZ-[0-9A-F]{8}$"
+              },
+              "$.displayTitle": "Shelf ${lname}"
+            }
+          }
+        },
+        {
+          "name": "explicit displayTitle wins, lying nameKey is overridden",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "ex-${rand}",
+            "rows": 1,
+            "cols": 1,
+            "displayTitle": "Custom title",
+            "nameKey": "LIE"
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.displayTitle": "Custom title",
+              "$.nameKey": {
+                "matches": "^EX-[0-9A-F]{8}$"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-concept-event-mode-create-published-by-crud",
+      "keywords": [
+        "concept.events"
+      ],
+      "description": "A concept-nested event with mode create (ShelfLayout.events ShelfLayoutRegistered) is published by the generated CRUD create itself, with no flow: the newest ShelfLayoutRegistered event names the row just created; an update does not publish it. Assumes no other client creates shelf layouts between the write and the event read (probes run sequentially).",
+      "steps": [
+        {
+          "name": "create",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "ev-${rand}",
+            "rows": 1,
+            "cols": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "lid": "$.id"
+          }
+        },
+        {
+          "name": "newest ShelfLayoutRegistered names the row",
+          "method": "GET",
+          "path": "/api/events/by-name/ShelfLayoutRegistered?limit=1",
+          "retry": {
+            "attempts": 5,
+            "delaySeconds": 1
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$": {
+                "len": 1
+              },
+              "$[0].eventName": "ShelfLayoutRegistered",
+              "$[0].payload.entity": "ShelfLayout",
+              "$[0].payload.id": "${lid}"
+            }
+          },
+          "save": {
+            "ev1": "$[0].eventId"
+          }
+        },
+        {
+          "name": "update",
+          "method": "PUT",
+          "path": "/api/shelf_layouts/${lid}",
+          "body": {
+            "rows": 2
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "name": "update published no create event",
+          "method": "GET",
+          "path": "/api/events/by-name/ShelfLayoutRegistered?limit=1",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$[0].eventId": "${ev1}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-field-sensitive-redacted-in-audit-trail",
+      "keywords": [
+        "field.sensitive"
+      ],
+      "description": "A sensitive field (ShelfLayout.keeperEmail) is stored and read back in clear, but its value never reaches the audit trail: the CRUD_CREATE audit row's fieldDiff shows keeperEmail as *** -> *** while an ordinary field (name) of the same row is recorded in clear, and the raw secret appears nowhere in the audit response. GET /api/audit needs READ_AUDIT (the run's ADMIN key).",
+      "steps": [
+        {
+          "name": "create with a sensitive value",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "sv-${rand}",
+            "rows": 1,
+            "cols": 1,
+            "keeperEmail": "secret-keeper@example.test"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "lid": "$.id"
+          }
+        },
+        {
+          "name": "record keeps the value in clear",
+          "method": "GET",
+          "path": "/api/shelf_layouts/${lid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.keeperEmail": "secret-keeper@example.test"
+            }
+          }
+        },
+        {
+          "name": "audit row redacts it",
+          "method": "GET",
+          "path": "/api/audit?resourceType=SHELFLAYOUT&resourceId=${lid}&action=CRUD_CREATE&limit=5",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$": {
+                "len": 1
+              },
+              "$[0].action": "CRUD_CREATE",
+              "$[0].meta.fieldDiff": {
+                "matches": "(?=.*keeperEmail: \\*\\*\\* -> \\*\\*\\*)(?=.*name: null -> sv-[0-9a-f]{8})"
+              }
+            },
+            "notText": "secret-keeper@example.test"
+          }
+        }
+      ]
+    }
+  ]
+}

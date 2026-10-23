@@ -54,3 +54,8 @@ note: >-
   no codemod. No tracked model uses a refused form. Verified: full :NPDevContract:dsl:test, :kernel:test and
   :adapters:runtime-support:test. STILL OPEN (d): a dsl-conformance-max behaviour probe witnessing a concat(...) default
   and a function derived value -- it boots the app (T1/T2), which this Linux notebook does not run.
+  2026-10-23: (d) AUTHORED, NOT YET RUN. NPDevSamples/dsl-conformance-max/behavior-probes/12-value-functions-events-audit.json
+  probe cf-field-function-default-and-derived-evaluated, against new ShelfLayout fields displayTitle (defaultExpression
+  concat('Shelf ', name)) and nameKey (derivedExpression uppercase(name)): asserts the stored default is the evaluated
+  string (never the source text), the derived value is computed, overrides a client value and is recomputed on update.
+  Awaits a T1 run (run-behavior-probes.ps1) on the Windows machine; close (d) only once it is green there.

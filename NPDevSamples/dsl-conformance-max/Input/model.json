@@ -213,7 +213,13 @@
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "name", "type": "string", "required": true, "ui": { "label": "Name" } },
         { "name": "rows", "type": "integer", "required": true, "min": 1, "ui": { "label": "Rows" } },
-        { "name": "cols", "type": "integer", "required": true, "min": 1, "ui": { "label": "Columns" } }
+        { "name": "cols", "type": "integer", "required": true, "min": 1, "ui": { "label": "Columns" } },
+        { "name": "displayTitle", "type": "string", "required": false, "defaultExpression": "concat('Shelf ', name)", "ui": { "label": "Display title" } },
+        { "name": "nameKey", "type": "string", "derivedExpression": "uppercase(name)", "ui": { "label": "Name key" } },
+        { "name": "keeperEmail", "type": "string", "required": false, "sensitive": true, "ui": { "label": "Keeper email" } }
+      ],
+      "events": [
+        { "name": "ShelfLayoutRegistered", "mode": "create", "payload": [ { "name": "id", "type": "uuid" } ] }
       ],
       "access": { "public": { "fields": ["name", "rows", "cols"] } }
     },
