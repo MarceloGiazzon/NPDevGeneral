@@ -122,10 +122,9 @@
     },
     {
       "keywords": [
-        "orchestrationAction.action",
-        "orchestrationAction.map"
+        "orchestrationAction.action"
       ],
-      "reason": "map: the mapped arguments are not echoed by any evidence event (OrchestrationCapabilityFailed carries orchestration, capability, operation and the source event only) and the webhook target is not served in the probe environment, so the delivered request cannot be inspected; needs a local HTTP listener started by the probe runner. action: actionMetadata, presentation only.",
+      "reason": "actionMetadata, presentation only.",
       "ledger": "ENF-1"
     },
     {
@@ -140,5 +139,5 @@
       "ledger": "ENF-1"
     }
   ],
-  "frozenCount": 49
+  "frozenCount": 48
 }
