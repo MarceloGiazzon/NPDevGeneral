@@ -29,3 +29,11 @@ note: >-
   2026-10-23: filed. Candidate fixes: refuse in the store's create path when the id exists under another tenant
   (dialect-free, one choke point); or tenant-guard the upsert's UPDATE branch per dialect; or a (tenant_id, id) PK
   (a schema break needing a migration).
+  2026-10-23: confirmed by reading on all four engines -- every business table has row_version
+  (SchemaRealizationEmitter ~553/~323), so save() always reaches saveVersioned; for a create (rowVersion null)
+  currentRowVersion checks id AND tenant_id (~1112), finds nothing and calls executeUpsert keyed on id only (~1523).
+  H2 MERGE KEY(id), Postgres ON CONFLICT (id) DO UPDATE SET tenant_id=EXCLUDED.tenant_id, MySQL UPDATE ... WHERE id=?
+  (matches, INSERT never runs), SQL Server MERGE ON id WHEN MATCHED UPDATE SET tenant_id -- all overwrite and
+  re-home silently. No JPA on the path; both service writes (gateway save, then saveToConceptStore) go through it.
+  Chosen fix: in JdbcBusinessConceptStore.save, before either branch, SELECT 1 WHERE id=? AND tenant_id<>? (no
+  deleted_at filter) -> ConceptStoreUniqueViolationException (409 unique_integrity_failed), message naming no tenant.
