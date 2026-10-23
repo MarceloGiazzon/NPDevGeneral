@@ -51,7 +51,6 @@
         "concept.fields",
         "concept.lifecycle",
         "concept.name",
-        "field.id",
         "field.name",
         "flow.name",
         "flow.steps",
@@ -152,5 +151,5 @@
       "ledger": "ENF-1"
     }
   ],
-  "frozenCount": 55
+  "frozenCount": 54
 }

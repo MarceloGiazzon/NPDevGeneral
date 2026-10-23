@@ -1,0 +1,53 @@
+{
+  "probes": [
+    {
+      "id": "cross-tenant-get-put-delete-answers-not-found",
+      "keywords": ["field.id"],
+      "description": "REG-295 (general isolation gap): tenant B (the run's ADMIN key, tenant dev) creates a ShelfLayout; tenant A (${key_othertenant}, tenant rep1probe-other, role USER -- ShelfLayout is named by no role, so the generic user role holds full CRUD on it) addresses that row by its id. GET, PUT and DELETE /api/shelf_layouts/{id} must answer not-found (404; 403 tolerated, never 2xx) and never echo B's data, A's list never shows the row, and afterwards B reads its row back unchanged. Runs on every engine: InMemory (default run) and JDBC (-StorageVariant h2local).",
+      "steps": [
+        { "name": "tenant B creates its layout", "method": "POST", "path": "/api/shelf_layouts",
+          "body": { "name": "xt-b-${rand}", "rows": 2, "cols": 3 },
+          "expect": { "status": 201, "json": { "$.id": { "exists": true } } },
+          "save": { "bId": "$.id", "bName": "$.name" } },
+        { "name": "control: tenant B reads it", "method": "GET", "path": "/api/shelf_layouts/${bId}",
+          "expect": { "status": 200, "json": { "$.name": "${bName}" } } },
+        { "name": "tenant A GET of B's id is not-found", "apiKey": "${key_othertenant}", "method": "GET", "path": "/api/shelf_layouts/${bId}",
+          "expect": { "status": [403, 404], "notText": ["${bName}"] } },
+        { "name": "tenant A PUT of B's id is not-found", "apiKey": "${key_othertenant}", "method": "PUT", "path": "/api/shelf_layouts/${bId}",
+          "body": { "name": "xt-hijack-${rand}", "rows": 9 },
+          "expect": { "status": [403, 404], "notText": ["${bName}"] } },
+        { "name": "tenant A DELETE of B's id is not-found", "apiKey": "${key_othertenant}", "method": "DELETE", "path": "/api/shelf_layouts/${bId}",
+          "expect": { "status": [403, 404], "notText": ["${bName}"] } },
+        { "name": "tenant A's list does not show B's row", "apiKey": "${key_othertenant}", "method": "GET", "path": "/api/shelf_layouts",
+          "expect": { "status": 200, "notText": ["${bName}", "${bId}"] } },
+        { "name": "tenant B's row is unchanged", "always": true, "method": "GET", "path": "/api/shelf_layouts/${bId}",
+          "expect": { "status": 200, "json": { "$.name": "${bName}", "$.rows": { "in": [2, "2"] }, "$.cols": { "in": [3, "3"] } },
+                      "notText": ["xt-hijack-"] } },
+        { "name": "cleanup", "always": true, "method": "DELETE", "path": "/api/shelf_layouts/${bId}" }
+      ]
+    },
+    {
+      "id": "cross-tenant-create-with-existing-id-is-refused",
+      "keywords": ["field.id"],
+      "requires": ["jdbc"],
+      "knownFailure": "REG-295",
+      "description": "REG-295: tenant A (${key_othertenant}) POSTs /api/shelf_layouts carrying the id of a row tenant B (ADMIN key, tenant dev) already owns. The create must be refused with 409 (a generic conflict that reveals nothing of B's row) and B's row must stay B's and unchanged. On the JDBC store the upsert is keyed on id only, so today the POST overwrites B's row and re-homes it into tenant A (B then reads 404). JDBC-only (requires jdbc): the InMemory store is tenant-keyed and just makes a second row, never reaching the defect. Cleanup deletes as A too, in case the defect moved the row.",
+      "steps": [
+        { "name": "tenant B creates its layout", "method": "POST", "path": "/api/shelf_layouts",
+          "body": { "name": "xt-b-${rand}", "rows": 2, "cols": 3 },
+          "expect": { "status": 201, "json": { "$.id": { "exists": true } } },
+          "save": { "bId": "$.id", "bName": "$.name" } },
+        { "name": "tenant A creates with B's id: refused 409", "apiKey": "${key_othertenant}", "method": "POST", "path": "/api/shelf_layouts",
+          "body": { "id": "${bId}", "name": "xt-steal-${rand}", "rows": 1, "cols": 1 },
+          "expect": { "status": 409, "notText": ["${bName}"] } },
+        { "name": "tenant B's row is still B's and unchanged", "always": true, "method": "GET", "path": "/api/shelf_layouts/${bId}",
+          "expect": { "status": 200, "json": { "$.name": "${bName}", "$.rows": { "in": [2, "2"] }, "$.cols": { "in": [3, "3"] } },
+                      "notText": ["xt-steal-"] } },
+        { "name": "tenant A still cannot read B's id", "always": true, "apiKey": "${key_othertenant}", "method": "GET", "path": "/api/shelf_layouts/${bId}",
+          "expect": { "status": [403, 404] } },
+        { "name": "cleanup as A (only matters if the defect re-homed the row)", "always": true, "apiKey": "${key_othertenant}", "method": "DELETE", "path": "/api/shelf_layouts/${bId}" },
+        { "name": "cleanup as B", "always": true, "method": "DELETE", "path": "/api/shelf_layouts/${bId}" }
+      ]
+    }
+  ]
+}

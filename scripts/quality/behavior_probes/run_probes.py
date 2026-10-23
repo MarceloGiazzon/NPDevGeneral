@@ -21,7 +21,10 @@ Expectations:
 A probe that exposes a REAL defect carries "knownFailure": "<ledger id>": it counts as green only while
 it still fails (status "known-failure"); once the defect is fixed it turns red ("now passes -- remove
 knownFailure") so the marker can never outlive the bug. Never weaken an assertion to make a probe pass.
-A probe with "requires": ["superUser"] is skipped (status "skipped", not a failure) when no SUPERUSER key is supplied.
+A probe with "requires": ["superUser"] is skipped (status "skipped", not a failure) when no SUPERUSER key is supplied;
+one with "requires": ["jdbc"] is skipped unless the run declares a physical-database store (--storage jdbc, or env
+NPDEV_PROBE_STORAGE=jdbc; run-behavior-probes.ps1 -StorageVariant h2local sets it) -- REG-295: the default
+dsl-conformance-max app runs on the tenant-keyed InMemory store, where a JDBC-only defect cannot be reached.
 A step marked "always": true (or, equivalently, "stopOnFail": false) is cleanup: it runs even after an earlier step failed (and its own status is not
 checked unless it carries an `expect`). `text`/`notText` accept a string or a list and substitute placeholders.
 `expect` may be omitted on a setup step (any status is accepted). A probe step may set
@@ -118,12 +121,15 @@ def materialize_revision(sample_dir: Path | None, revision_file: str, revision: 
 
 class Probe:
     def __init__(self, base_url: str, api_key: str, spec: dict, source: str,
-                 super_key: str = "", sample_dir: Path | None = None) -> None:
+                 super_key: str = "", sample_dir: Path | None = None, storage: str = "") -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         # LIVE-1: the SUPERUSER key (X-Super-User-Key) and the sample directory a model-revision step reads.
         self.super_key = super_key
         self.sample_dir = sample_dir
+        # REG-295: which concept store the booted app runs on ("jdbc" or "inmemory"; "" = undeclared), so a
+        # probe with "requires": ["jdbc"] can be skipped on the InMemory default run instead of failing falsely.
+        self.storage = (storage or "").strip().lower()
         self.spec = spec
         self.source = source
         # REP-1: restricted identities provisioned by run-behavior-probes.ps1 (Add-ProbeIdentities) arrive as
@@ -297,16 +303,27 @@ class Probe:
                 failures += [f"{label}: {p}" for p in self.check_json(doc, expect["json"])]
         return failures
 
+    def skipped(self, reason: str) -> dict:
+        return {"id": self.spec["id"], "source": self.source, "keywords": self.spec.get("keywords", []),
+                "description": self.spec.get("description", ""), "knownFailure": None, "status": "skipped",
+                "failures": [reason], "steps": []}
+
     def run(self) -> dict:
         failures: list[str] = []
+        requires = self.spec.get("requires") or []
         # LIVE-1: "requires": ["superUser"] -- a probe that can only run where a SUPERUSER key exists (a
         # physical-database app; the default InMemory dsl-conformance-max issues none) is SKIPPED, loudly and
         # in the report, when the run has no key -- never silently green and never a false failure.
-        if "superUser" in (self.spec.get("requires") or []) and not self.super_key:
-            return {"id": self.spec["id"], "source": self.source, "keywords": self.spec.get("keywords", []),
-                    "description": self.spec.get("description", ""), "knownFailure": None, "status": "skipped",
-                    "failures": ["needs NPDEV_PROBE_SUPER_USER_KEY (run scripts/quality/run-behavior-probes.ps1 -LiveFieldVariant)"],
-                    "steps": []}
+        if "superUser" in requires and not self.super_key:
+            return self.skipped("needs NPDEV_PROBE_SUPER_USER_KEY (run scripts/quality/run-behavior-probes.ps1 -LiveFieldVariant)")
+        # REG-295: "requires": ["jdbc"] -- the probe exercises the physical-database store path; skipped (loudly,
+        # never silently green) unless the run says it booted on one.
+        if "jdbc" in requires and self.storage != "jdbc":
+            return self.skipped(f"needs a JDBC-backed app (storage is {self.storage or 'undeclared'}; run "
+                                "scripts/quality/run-behavior-probes.ps1 -StorageVariant h2local)")
+        unknown = [r for r in requires if r not in ("superUser", "jdbc")]
+        if unknown:
+            return {**self.skipped(""), "status": "failed", "failures": [f"unknown requires {unknown} (known: superUser, jdbc)"]}
         for index, step in enumerate(self.spec["steps"], 1):
             if failures and not (step.get("always") or step.get("stopOnFail") is False):
                 continue  # an earlier step failed: only cleanup steps ("always": true) still run
@@ -370,6 +387,9 @@ def main() -> int:
                         help="LIVE-1: the sample directory a reloadRevision step reads (default: the probes dir's parent)")
     parser.add_argument("--sample-id", default="",
                         help="recorded in the report so `npdev truth` can attribute it to the right app")
+    parser.add_argument("--storage", default=os.environ.get("NPDEV_PROBE_STORAGE", ""),
+                        help="REG-295: the concept store the app booted on (jdbc | inmemory); probes with "
+                             "\"requires\": [\"jdbc\"] are skipped unless this is jdbc (default: env NPDEV_PROBE_STORAGE)")
     args = parser.parse_args()
     api_key = os.environ.get("NPDEV_PROBE_API_KEY", "")
     if not api_key:
@@ -380,7 +400,8 @@ def main() -> int:
     sample_dir = Path(args.sample_dir) if args.sample_dir else Path(args.probes_dir).resolve().parent
     results = []
     for spec, source in load_probes(Path(args.probes_dir), args.only):
-        result = Probe(args.base_url, api_key, spec, source, super_key=super_key, sample_dir=sample_dir).run()
+        result = Probe(args.base_url, api_key, spec, source, super_key=super_key, sample_dir=sample_dir,
+                       storage=args.storage).run()
         results.append(result)
         label = {"passed": "PASS", "known-failure": "KNOWN", "skipped": "SKIP"}.get(result["status"], "FAIL")
         print(f"{label}  {result['id']}" + (f"  (known failure {result['knownFailure']})" if result["knownFailure"] else ""))

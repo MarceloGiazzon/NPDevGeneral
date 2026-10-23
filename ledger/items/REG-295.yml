@@ -46,3 +46,11 @@ note: >-
   planned save() SELECT are check-then-act without a row lock (do the check inside the same transaction / lock the
   row); CrudOrchestrationSupport.existsByUniqueFields (~1015-1050) has no tenant filter, so another tenant's unique
   value silently skips an orchestration create (small existence oracle).
+  2026-10-23: HTTP-level witness authored (not yet run):
+  NPDevSamples/dsl-conformance-max/behavior-probes/90-cross-tenant-crud.json. Probe
+  cross-tenant-create-with-existing-id-is-refused (requires jdbc, knownFailure REG-295) POSTs tenant B's ShelfLayout
+  id as tenant A and wants 409 with B's row unchanged; companion cross-tenant-get-put-delete-answers-not-found (no
+  marker, both engines) covers the GET/PUT/DELETE gap. New run_probes.py "requires": ["jdbc"] (--storage /
+  NPDEV_PROBE_STORAGE) and run-behavior-probes.ps1 -StorageVariant h2local. Awaits a Windows T1 run:
+  run-behavior-probes.ps1 -StorageVariant h2local -Only 90-cross-tenant (expect KNOWN until the store fix lands,
+  then drop knownFailure), plus a default run (expect PASS + SKIP).

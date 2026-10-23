@@ -35,6 +35,15 @@
     NPDevSamples/dsl-conformance-max/variants/h2local/db.definition.json (H2Local: a physical database), boots
     it with npdev.runtime.hotswap.new-concept-provisioning-enabled=true, hands the app's SUPER_USER_KEY.txt to
     the runner as NPDEV_PROBE_SUPER_USER_KEY and runs only the live-add-field probe. Does not record cadence.
+
+.PARAMETER StorageVariant
+    REG-295: run the NORMAL probe set (or -Only) against the same model generated with
+    NPDevSamples/<SampleId>/variants/<StorageVariant>/db.definition.json (today: h2local, a physical H2 database)
+    instead of the InMemory default, WITHOUT the LIVE-1 hotswap flag and without a SUPERUSER key (so the
+    live-add-field probe still skips). The runner is told --storage jdbc, so probes marked
+    `"requires": ["jdbc"]` (e.g. 90-cross-tenant-crud.json's create-with-another-tenant's-id probe) run instead of
+    skipping. -ReuseBuild reuses whatever variant was last generated -- do not mix it with a variant switch.
+    Does not record cadence (enf-behavior-probes stays the InMemory default run).
 #>
 param(
     [string]$SampleId = "dsl-conformance-max",
@@ -45,10 +54,16 @@ param(
     [string]$StopFile = "",
     [string]$Only = "",
     [switch]$LiveFieldVariant,
+    [ValidateSet("", "h2local")]
+    [string]$StorageVariant = "",
     [string]$ReportPath = "scripts/reports/out/behavior-probes-report.json"
 )
 
 $ErrorActionPreference = "Stop"
+
+# LIVE-1 boots the h2local variant too; either switch means the app runs on a JDBC concept store.
+if ($LiveFieldVariant -and [string]::IsNullOrWhiteSpace($StorageVariant)) { $StorageVariant = "h2local" }
+$probeStorage = if ([string]::IsNullOrWhiteSpace($StorageVariant)) { "inmemory" } else { "jdbc" }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Push-Location $repoRoot
@@ -111,7 +126,7 @@ function Add-ProbeIdentities {
     $identities = [ordered]@{
         ALICE       = "dev:rep1probe-alice:USER"
         BOB         = "dev:rep1probe-bob:USER"
-        OTHERTENANT = "rep1probe-other:rep1probe-carol:USER"
+        OTHERTENANT = "rep1probe-other:rep1probe-carol:USER"   # also tenant A of 90-cross-tenant-crud.json (REG-295)
         WAREHOUSEMANAGER = "dev:rep1probe-wm:WarehouseManager"
         SUPPLIERVIEWER   = "dev:rep1probe-sv:SupplierViewer"
     }
@@ -139,8 +154,8 @@ if (-not (Test-PortFree -PortNumber $Port)) {
 if (-not $ReuseBuild) {
     Write-Section "Generating $SampleId"
     $generateArgs = @("-SampleId", $SampleId)
-    if ($LiveFieldVariant) {
-        $generateArgs += @("-DbDefinitionPath", (Join-Path $repoRoot "NPDevSamples\$SampleId\variants\h2local\db.definition.json"))
+    if (-not [string]::IsNullOrWhiteSpace($StorageVariant)) {
+        $generateArgs += @("-DbDefinitionPath", (Join-Path $repoRoot "NPDevSamples\$SampleId\variants\$StorageVariant\db.definition.json"))
     }
     & pwsh -NoProfile -File (Join-Path $repoRoot "NPDevSamples\scripts\generate-sample-app.ps1") @generateArgs | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "Generation failed for $SampleId." }
@@ -218,7 +233,7 @@ try {
     if ($LiveFieldVariant -and [string]::IsNullOrWhiteSpace($Only)) { $Only = "live-add-field" }
     $probesDir = Join-Path $sample.SampleRoot "behavior-probes"
     $probeReport = Join-Path $evidenceDir "probe-report.json"
-    $probeArgs = @((Join-Path $repoRoot "scripts\quality\behavior_probes\run_probes.py"), "--base-url", $baseUrl, "--probes-dir", $probesDir, "--report", $probeReport)
+    $probeArgs = @((Join-Path $repoRoot "scripts\quality\behavior_probes\run_probes.py"), "--base-url", $baseUrl, "--probes-dir", $probesDir, "--report", $probeReport, "--storage", $probeStorage)
     if (-not [string]::IsNullOrWhiteSpace($Only)) { $probeArgs += @("--only", $Only) }
     $env:NPDEV_PROBE_API_KEY = $apiKey
     if ($LiveFieldVariant) {
@@ -242,7 +257,7 @@ try {
     # serves behind GET /api/admin/box/truth). Best-effort and display-only: it can never fail the probe run.
     try { & $py (Join-Path $repoRoot "NPDevCli\npdev_cli.py") truth --app $appRoot --write 2>&1 | Out-Null } catch { }
 
-    if ([string]::IsNullOrWhiteSpace($Only)) {
+    if ([string]::IsNullOrWhiteSpace($Only) -and [string]::IsNullOrWhiteSpace($StorageVariant)) {
         & $py (Join-Path $repoRoot "scripts\quality\cadence_state.py") record --id "enf-behavior-probes" --tier T1 --result ($(if ($allGreen) { "passed" } else { "failed" })) 2>&1 | Out-Null
     }
     if (-not $allGreen) { throw "One or more behaviour probes failed -- see $ReportPath and $probeReport." }

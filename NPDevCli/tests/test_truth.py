@@ -346,6 +346,22 @@ class ProbeRunnerTests(unittest.TestCase):
             {"name": "create", "method": "POST", "path": "/api/betas", "status": 200},
             {"name": "get", "method": "GET", "path": "/api/betas/${i}", "status": 200}])
 
+    def test_requires_jdbc_skips_unless_the_run_declares_jdbc_storage(self):
+        # REG-295: a JDBC-only probe skips on the InMemory default run (and when storage is undeclared), runs on jdbc.
+        spec = {"id": "j", "requires": ["jdbc"], "steps": [{"name": "get", "path": "/api/betas"}]}
+        for storage in ("", "inmemory"):
+            result = self.Fake("http://x", "k", spec, "f.json", storage=storage).run()
+            self.assertEqual(result["status"], "skipped")
+            self.assertEqual(result["steps"], [])
+            self.assertIn("-StorageVariant h2local", result["failures"][0])
+        self.assertEqual(self.Fake("http://x", "k", spec, "f.json", storage="JDBC").run()["status"], "passed")
+
+    def test_unknown_requires_fails_instead_of_running(self):
+        spec = {"id": "u", "requires": ["postgres"], "steps": [{"name": "get", "path": "/api/betas"}]}
+        result = self.Fake("http://x", "k", spec, "f.json", storage="jdbc").run()
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("unknown requires", result["failures"][0])
+
     def test_jsonpath_filter_selects_an_array_element_by_field(self):
         doc = {"concepts": [{"conceptName": "A", "x": 1}, {"conceptName": "approvals::B", "x": 2}]}
         self.assertEqual(run_probes.resolve_path(doc, "$.concepts[?conceptName=approvals::B].x"), (True, 2))
