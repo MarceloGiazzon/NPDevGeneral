@@ -1,0 +1,36 @@
+id: REG-293
+title: >-
+  Five RuntimeHost auth/audit/session paths answer instead of refusing when the database fails (X0 rule, RuntimeHost side)
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-10-23
+closed: null
+source: >-
+  Read-only X0 audit of NPDevRuntimeHost/runtimehost-core (2026-10-23), the RuntimeHost counterpart of REG-282's
+  kernel audit. Not yet reproduced by a test -- every line below is from reading the code.
+surface: NPDevRuntimeHost/runtimehost-core com.finalexec (db/TenantControlledConceptStoreDecorator, auth/LoginController, auth/OAuthGoogleAuthService, auth/LogoutController, auth/UserSessionStore)
+detail: |
+  1. db/TenantControlledConceptStoreDecorator.java:118-134 isAuditedForTenant: no DataSource bean, or an SQLException
+     reading npdev_tenant, answers "not audited", so writes skip AuditingConceptStoreDecorator -- an audited tenant's
+     writes leave no audit trail during a DB hiccup.
+  2. auth/LoginController.java:247-249 (+ the catch (Exception) after it): a non-schema SQLException or RuntimeException
+     becomes 401 invalid_credentials AND throttle.recordFailure (:411-415) -- an outage locks real users out (REG-20 throttle).
+  3. auth/OAuthGoogleAuthService.java findLinkOwner :392-394, findUserByEmailOrUsername :422-424 (non-schema branch),
+     findLinkedUser :378: a DB error is "no link / no user", so the SEC-11 explicit-link rule is skipped and the flow
+     proceeds to signUp (:191) or insertLink; only the 23505 unique-constraint path (:331) backstops it.
+  4. auth/OAuthGoogleAuthService.java:453-458 insertLink: any SQLException is false, reported by the caller (:250) as
+     LINK_ALREADY_USED -- the user is told their Google identity belongs to someone else.
+  5. auth/LogoutController.java:59-74 with auth/UserSessionStore.java:208-210 revokeBySessionId: a failed revocation is
+     a WARNING and logout still returns 204 -- the device is believed signed out while the token stays valid until expiry.
+     UserSessionStore.java:200 also falls back to tenant "default" for a blank tenant, revoking nothing and looking successful.
+  None is in scripts/quality/security-pattern-sweep-allowlist.json as fail-open (the hits there on these files are SQL
+  identifier splicing, plus UserSessionStore.open :92 swallowed-security-exception).
+resolution: >-
+  Done when each of the five refuses instead of answering -- (1) a write refuses when the tenant's persistence mode
+  cannot be resolved; (2) login answers 503 login_unavailable without recording a throttle failure; (3) every
+  SQLException in the OAuth lookups is an error outcome (identity_store_unavailable), never "no link"; (4) insertLink is
+  false only for SQLState 23505; (5) logout answers 503 session_revoke_failed (cookie still cleared) when revocation
+  fails, and a blank tenant is refused, not defaulted -- each with a must-error unit test proven red on the old code.
+note: >-
+  2026-10-23: filed from the read-only audit; fixes need the RuntimeHost unit-test path (assembled app), not run yet.
