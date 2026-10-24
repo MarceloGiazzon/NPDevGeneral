@@ -99,8 +99,16 @@ class ProtocolTests(Base):
         self.assertEqual(opener.header("Authorization"), "Bearer " + SECRET)
         body = opener.body()
         self.assertEqual(body["messages"][0], {"role": "system", "content": "be brief"})
-        self.assertEqual(body["model"], "llama-3.3-70b-versatile")
+        self.assertEqual(body["model"], "openai/gpt-oss-120b")
         self.assert_no_secret(result, self.usage.records())
+
+    def test_every_request_names_npdev_not_python_urllib(self):
+        # Groq's Cloudflare edge answers urllib's default "Python-urllib/3.x" agent with HTTP 403 / 1010.
+        opener = FakeOpener({"data": [{"id": "m1"}]}, OPENAI_OK)
+        client.list_models(npdev_providers.get_provider("groq"), SECRET, 5, opener)
+        self.run_complete(config(), opener, provider="groq")
+        for index in (0, 1):
+            self.assertEqual(opener.header("User-Agent", index), client.USER_AGENT)
 
     def test_anthropic_messages_request_reply_effort_and_no_temperature(self):
         cfg = config(profiles=[{"name": "claude", "temperature": 0.3}], spend={"allowPaid": {"review": True}},

@@ -347,7 +347,7 @@ def check_provider(provider_id: str, key: str | None, model: str | None = None, 
         if entry["kind"] == "paid" and not allow_paid:
             result.update(ok=False, chatOk=False, error=f"{provider_id} is PAID: a test chat needs --allow-paid")
             return result
-        target = npdev_ai_client.Target(entry, chosen, None, max_tokens=16)
+        target = npdev_ai_client.Target(entry, chosen, None, max_tokens=npdev_ai_client.TEST_MAX_TOKENS)
         try:
             npdev_ai_client.call(target, key, "Reply with the single word OK", timeout=timeout, backoff=(),
                                  opener=opener)

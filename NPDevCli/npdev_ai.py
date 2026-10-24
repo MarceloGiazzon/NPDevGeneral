@@ -526,7 +526,7 @@ def _run_call(args, config) -> int:
     try:
         if args.ai_command == "test":
             result = npdev_ai_client.complete(config, "Reply with the single word OK", profile=args.profile,
-                                              max_tokens=64, allow_paid=args.allow_paid, timeout=args.timeout,
+                                              max_tokens=npdev_ai_client.TEST_MAX_TOKENS, allow_paid=args.allow_paid, timeout=args.timeout,
                                               backoff=())
         else:
             schema_text = _read_text(args.json_schema)

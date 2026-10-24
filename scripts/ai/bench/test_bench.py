@@ -166,7 +166,7 @@ class ProviderBackendTests(unittest.TestCase):
     def test_single_provider_is_a_plain_backend_with_catalogue_model(self):
         backend = self.build("groq")
         self.assertIsInstance(backend, backends.ClientBackend)
-        self.assertEqual((backend.info.id, backend.info.model), ("groq", "llama-3.3-70b-versatile"))
+        self.assertEqual((backend.info.id, backend.info.model), ("groq", "openai/gpt-oss-120b"))
 
     def test_paid_provider_refused_without_allow_paid(self):
         with self.assertRaises(backends.BackendRefused):

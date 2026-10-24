@@ -32,7 +32,8 @@ LOOPBACK = ("127.0.0.1", "localhost")
 
 
 def _get_json(url: str, timeout: float, opener: Callable):
-    request = urllib.request.Request(url, headers={"Accept": "application/json"}, method="GET")
+    request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "npdev-cli"},
+                                     method="GET")
     with opener(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 

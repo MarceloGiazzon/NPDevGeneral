@@ -45,7 +45,7 @@
       "needsKey": true,
       "keyEnvVar": "NPDEV_EXTERNALAI_GROQ_API_KEY",
       "signupUrl": "https://console.groq.com/keys",
-      "defaultModel": "llama-3.3-70b-versatile",
+      "defaultModel": "openai/gpt-oss-120b",
       "appVendor": true,
       "notes": "Very fast; tight per-minute token limits."
     },
@@ -73,7 +73,7 @@
       "needsKey": true,
       "keyEnvVar": "NPDEV_EXTERNALAI_OPENROUTER_API_KEY",
       "signupUrl": "https://openrouter.ai/keys",
-      "defaultModel": "deepseek/deepseek-chat-v3-0324:free",
+      "defaultModel": "nvidia/nemotron-3.5-lightning:free",
       "freeModelSuffix": ":free",
       "appVendor": true,
       "notes": "ONLY model ids ending ':free' are free; any other model id on this endpoint is billed and is refused without a paid opt-in."
@@ -154,9 +154,9 @@
   "models": [
     { "provider": "gemini", "id": "gemini-3.6-flash", "effortLevels": [], "price": { "in": 0, "out": 0 }, "enabled": true, "status": "available" },
     { "provider": "nvidia", "id": "nvidia/nemotron-3-ultra-550b-a55b", "effortLevels": [], "price": { "in": 0, "out": 0 }, "enabled": true, "status": "available" },
-    { "provider": "groq", "id": "llama-3.3-70b-versatile", "effortLevels": [], "price": { "in": 0, "out": 0 }, "enabled": true, "status": "available" },
+    { "provider": "groq", "id": "openai/gpt-oss-120b", "effortLevels": [], "price": { "in": 0, "out": 0 }, "enabled": true, "status": "available" },
     { "provider": "cerebras", "id": "llama-3.3-70b", "effortLevels": [], "price": { "in": 0, "out": 0 }, "enabled": true, "status": "available" },
-    { "provider": "openrouter", "id": "deepseek/deepseek-chat-v3-0324:free", "effortLevels": [], "price": { "in": 0, "out": 0 }, "enabled": true, "status": "available" },
+    { "provider": "openrouter", "id": "nvidia/nemotron-3.5-lightning:free", "effortLevels": [], "price": { "in": 0, "out": 0 }, "enabled": true, "status": "available" },
     { "provider": "mistral", "id": "mistral-small-latest", "effortLevels": [], "price": { "in": 0, "out": 0 }, "enabled": true, "status": "available" },
     { "provider": "ollama", "id": "qwen2.5-coder:3b", "effortLevels": [], "price": { "in": 0, "out": 0 }, "enabled": true, "status": "available" },
     {
@@ -179,7 +179,7 @@
   ],
   "profiles": [
     { "name": "fast", "description": "Quick, free answers.", "provider": "gemini", "model": "gemini-3.6-flash", "maxTokens": 4096, "fallback": ["fast-alt"] },
-    { "name": "fast-alt", "description": "Second free provider for fast work.", "provider": "groq", "model": "llama-3.3-70b-versatile", "maxTokens": 4096 },
+    { "name": "fast-alt", "description": "Second free provider for fast work.", "provider": "groq", "model": "openai/gpt-oss-120b", "maxTokens": 4096 },
     { "name": "deep", "description": "The strongest free model, for harder work.", "provider": "nvidia", "model": "nvidia/nemotron-3-ultra-550b-a55b", "maxTokens": 16000, "fallback": ["fast"] },
     { "name": "offline", "description": "Local Ollama, no network, no key.", "provider": "ollama", "model": "qwen2.5-coder:3b", "maxTokens": 4096 },
     { "name": "claude", "description": "Anthropic, paid: needs a paid opt-in for the feature that uses it.", "provider": "anthropic", "model": "claude-opus-5-5", "effort": "high", "maxTokens": 16000 }

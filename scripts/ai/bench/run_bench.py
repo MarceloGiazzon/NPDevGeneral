@@ -13,7 +13,7 @@ npdev_ai_client.py): every catalogue protocol, retry, spend guard, and the usage
 Default: the `bench` binding (`npdev ai bindings`); or name it --
   python scripts/ai/bench/run_bench.py run --profile deep                # a profile and its fallbacks
   python scripts/ai/bench/run_bench.py run --provider nvidia,gemini     # failover in that order
-  python scripts/ai/bench/run_bench.py run --provider groq=llama-3.3-70b-versatile
+  python scripts/ai/bench/run_bench.py run --provider groq=openai/gpt-oss-120b
 (keys: `npdev providers add <id>`; catalogue: `npdev ai providers`). Or, env only (legacy, any
 OpenAI-compatible URL):
   NPDEV_BENCH_BASE_URL   e.g. http://localhost:11434/v1   (local Ollama)

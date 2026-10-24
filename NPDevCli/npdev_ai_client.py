@@ -30,6 +30,11 @@ RETRYABLE_HTTP = {429, 500, 502, 503, 504}
 DEFAULT_BACKOFF = (20, 40, 80, 160, 300, 300)   # ~15 min of patience on the last target
 FAILOVER_BACKOFF = (15, 30)                     # every target but the last gives up quickly
 DEFAULT_MAX_TOKENS = 4096
+# A "reply OK" smoke call still needs room: thinking models (Gemini 2.5+/3.x) spend a small budget on
+# reasoning and come back with finish_reason=length and no text at all.
+TEST_MAX_TOKENS = 1024
+# Some provider edges (Groq's Cloudflare: HTTP 403, error 1010) refuse urllib's default Python-urllib agent.
+USER_AGENT = "npdev-cli"
 USAGE_SCHEMA = "npdev-ai-usage.v1"
 
 
@@ -230,7 +235,8 @@ def parse_reply(protocol: str, payload: dict) -> tuple[str, int | None, int | No
 
 def _send(url: str, headers: dict, body: dict | None, timeout: float, opener: Callable) -> dict:
     data = json.dumps(body).encode("utf-8") if body is not None else None
-    request = urllib.request.Request(url, data=data, headers=headers, method="POST" if body is not None else "GET")
+    request = urllib.request.Request(url, data=data, headers={"User-Agent": USER_AGENT, **headers},
+                                     method="POST" if body is not None else "GET")
     with opener(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 

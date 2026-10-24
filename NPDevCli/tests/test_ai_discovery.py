@@ -107,9 +107,9 @@ class RefreshTests(unittest.TestCase):
     def test_new_models_are_recorded_disabled_and_vanished_ones_retired(self):
         config = aicfg.merge(shipped(), mine())
         document = mine()
-        report = discovery.refresh(document, config, "groq", ["openai/gpt-oss-120b", "qwen3-32b"])
-        self.assertEqual(report["new"], ["openai/gpt-oss-120b", "qwen3-32b"])
-        self.assertEqual(report["retired"], ["llama-3.3-70b-versatile"])
+        report = discovery.refresh(document, config, "groq", ["openai/gpt-oss-20b", "qwen3-32b"])
+        self.assertEqual(report["new"], ["openai/gpt-oss-20b", "qwen3-32b"])
+        self.assertEqual(report["retired"], ["openai/gpt-oss-120b"])
         merged = aicfg.merge(shipped(), document)
         self.assertEqual(aicfg.semantic_errors(merged), [])
         self.assertFalse(aicfg.model_active(merged.model("groq", "qwen3-32b")))
@@ -119,8 +119,8 @@ class RefreshTests(unittest.TestCase):
     def test_a_model_that_comes_back_is_available_again(self):
         document = mine()
         discovery.refresh(document, aicfg.merge(shipped(), mine()), "groq", ["other"])
-        report = discovery.refresh(document, aicfg.merge(shipped(), document), "groq", ["other", "llama-3.3-70b-versatile"])
-        self.assertEqual(report["back"], ["llama-3.3-70b-versatile"])
+        report = discovery.refresh(document, aicfg.merge(shipped(), document), "groq", ["other", "openai/gpt-oss-120b"])
+        self.assertEqual(report["back"], ["openai/gpt-oss-120b"])
         self.assertIsNone(aicfg.merge(shipped(), document).profile_problem("fast-alt"))
 
     def test_an_empty_list_retires_nothing(self):
@@ -129,7 +129,7 @@ class RefreshTests(unittest.TestCase):
 
     def test_only_filters_new_models(self):
         report = discovery.refresh(mine(), aicfg.merge(shipped(), mine()), "openrouter",
-                                   ["deepseek/deepseek-chat-v3-0324:free", "x/a:free", "x/b"], only=":free")
+                                   ["nvidia/nemotron-3.5-lightning:free", "x/a:free", "x/b"], only=":free")
         self.assertEqual(report["new"], ["x/a:free"])
 
 

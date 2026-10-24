@@ -14,6 +14,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import npdev_ai_client  # noqa: E402
 import npdev_providers as providers  # noqa: E402
 
 
@@ -186,6 +187,19 @@ class CheckProviderTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["models"], 2)
         self.assertNotIn("sekret", json.dumps(result))
+
+    def test_chat_check_leaves_a_thinking_model_room_to_answer(self):
+        # A 16-token budget made every Gemini 2.5+/3.x model reply finish_reason=length with no text.
+        bodies = []
+
+        def opener(request, timeout):
+            if request.data is None:
+                return _Response({"data": [{"id": "m1"}]})
+            bodies.append(json.loads(request.data.decode("utf-8")))
+            return _Response({"choices": [{"message": {"content": "OK"}}]})
+        result = providers.check_provider("gemini", "sekret", chat=True, opener=opener)
+        self.assertTrue(result["chatOk"], result)
+        self.assertEqual(bodies[0]["max_tokens"], npdev_ai_client.TEST_MAX_TOKENS)
 
     def test_missing_key_explains_both_ways_to_supply_it(self):
         result = providers.check_provider("groq", None)
