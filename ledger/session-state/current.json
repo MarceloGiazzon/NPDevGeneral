@@ -1,17 +1,21 @@
 {
-  "closedAt": "2026-10-24T12:50:10.6979598Z",
+  "closedAt": "2026-10-24T22:06:02.9977062Z",
   "branch": "main",
-  "head": "7fd9e443",
-  "headSubject": "feat(dsl)!: ENF-1 21->14, close REG-301/302/303 and IMP-GAPS-1",
-  "summary": "Committed and pushed 7fd9e443 on main: closed REG-301 (flowStep.data live), IMP-GAPS-1 (importer rename policy, WmsOffice exact field recall 0.06->0.346), REG-302 (picker on non-reference refused + codemod), REG-303 (in-memory store now pre-checks every unique field; connectable anchors per-tenant with composite bond FKs). ENF-1 allowlist 44->14: flow/query/aggregate uid retired (breaking, dsl-2 codemod, BREAKING.md), lifecycleState.allowedActions enforced server-side on aggregate invoke (422), new queries + domainTypes admin catalogs, probes 87/88. Filed REG-304. Populated the local pack cache for AppGen WmsOfficePackTest (lock digests unchanged).",
-  "nextStep": "ENF-1 batch C: build the two-boot restart-revision probe runner so field.uid and field.renamedFrom get a real witness (renameField op in scripts/quality/behavior_probes/run_probes.py materialize_revision; -RestartRevisionVariant in scripts/quality/run-behavior-probes.ps1 on h2local: wipe only before phase 1, regenerate from the revision into the same Output so App/data survives, boot without wipe, phase-2 steps read the row under the new name); design in D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\enf1-plan.md batch C. Alternative if preferred: REG-304 first (quote rollup column identifiers through the dialect -- SELECT MAX(npdev_base.row) breaks on H2 -- and fix JAVA_OBJECT->JSON binding), then run the full probe suite with -StorageVariant h2local.",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\enf1-plan.md",
-  "blocked": "AIP-4 4.5: needs a Manager 0.5.1 build run in the real Tauri window -- no Rust/MSVC toolchain on this machine (prebuilt exe is 0.4.0); owner run or toolchain install. OWN-2: owner outreach.",
-  "verified": "run-all-gates -IncludePaperwork (second run): generator, kernel, weeklyPaperwork passed; runtimeHost failed only on the unclassified AggregateActionNotAllowedException, fixed, then run-runtimehost-gate passed; aiKnowledge's only red was the Group E staleness diff vs committed docs, confirmed clean after the commit (generate_group_e_docs + git diff --exit-code). Behaviour probes in-memory 129/129 (4 skipped by design); h2local probe files 87 (7/7) and 88 (2/2); full h2local suite red on pre-existing REG-304. :NPDevContract:dsl:test, :generator:test, runtimehost-core test, NPDevCli 1206, kernelQualityGate all green. Pushed 7fd9e443, origin/main in sync.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
-  "unpushed": 0,
+  "head": "bfd7390b",
+  "headSubject": "feat(dsl)!: ENF-1 batches A-D closed -- aggregate.metadata served, onValidate veto, enum alias warning; ENF-2 generation witnesses",
+  "summary": "Committed 1dca0b63 (REG-304 + REG-306 fixed: JDBC read path now selects the legacy version column so a stale PUT is refused; flow unique violation 409; lifecycle code parity; PropertyResolver tolerates absent workspace::PropertyValue; crash-recovery test tie-break) and bfd7390b (ENF-1 A-D closed, allowlist 10->0; ENF-2 DONE via generationWitnesses; REG-307; uid emitter test keeps generator floor 86.2596). h2local probes 137/137 (was 128/7). Generator coverage drop was real and reproducible (3 uid lines in SchemaRealizationEmitter, not fixture-driven; cause of the lost incidental coverage never traced) and is covered by SchemaRealizationEmitterUidManifestTest. Filed REG-308 (concurrent PUT check-then-act, row_version CAS unused on REST). Ran clean-workspace-state.ps1 to satisfy the commit slimness hook (gitignored Output/.gradle only). Set .claude/settings.json model=opusplan and added .claude/agents sweeper (haiku) + deep (opus), per-machine and gitignored.",
+  "nextStep": "Start REG-308: make a REST update carrying a version a real compare-and-swap (forward the loaded row_version through saveToConceptStore so JdbcBusinessConceptStore.saveVersioned's WHERE row_version guard applies, or lock the read) and add a two-thread probe or test that exactly one of two same-version PUTs succeeds, 409 on the other, on h2local and in memory. Remaining open: OWN-2 (owner outreach), AIP-4 4.5 (needs Tauri/Rust toolchain). Two old stashes remain (QUAL-55 A/B, beta0 branch) -- check for unique work then drop.",
+  "plan": "",
+  "blocked": "",
+  "verified": "run-all-gates -IncludePaperwork: generator, runtimeHost, kernel, paperwork green; aiKnowledge green on rerun after fixing CRLF in check-dsl-behavior-witness.py; h2local probes 137/137; new unit tests for REG-306 B/C/D pass.",
+  "dirtyCount": 2,
+  "dirtyFiles": [
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl"
+  ],
+  "unpushed": 2,
   "landedCommits": [
-    "7fd9e443 feat(dsl)!: ENF-1 21->14, close REG-301/302/303 and IMP-GAPS-1"
+    "bfd7390b feat(dsl)!: ENF-1 batches A-D closed -- aggregate.metadata served, onValidate veto, enum alias warning; ENF-2 generation witnesses",
+    "1dca0b63 fix(jdbc): REG-304 + REG-306 -- aggregate SQL identifiers, JSON binding, and the seven JDBC-only probe failures"
   ]
 }
