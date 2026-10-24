@@ -1,38 +1,17 @@
 {
-  "closedAt": "2026-10-24T06:19:18.2061402Z",
+  "closedAt": "2026-10-24T12:50:10.6979598Z",
   "branch": "main",
-  "head": "533f62a3",
-  "headSubject": "feat(dsl)!: REG-301 -- retire inert aggregateCollection.via; witness live flowStep.data (ENF-1 44)",
-  "summary": "Closed REG-301 (flowStep.data live; probe fixed to read emittedEvents), IMP-GAPS-1 (rename policy strips whole table name: WmsOffice exact field recall 0.06->0.346), REG-302 (picker on non-reference now refused + dsl-2 codemod), REG-303 (in-memory store never enforced bare unique:true; connectable anchors were globally unique -> now per-tenant with composite (tenant_id,col) bond FKs). ENF-1 allowlist 44->14: retired flow/query/aggregate uid (schema x4, records, codemod, BREAKING), server-side lifecycleState.allowedActions on aggregate invoke (422), new queries + domainTypes catalogs, concepts catalog states[], probes 87/88. Filed REG-304 (pre-existing h2local full-suite failures). All UNCOMMITTED.",
-  "nextStep": "1) Read D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\all-gates-20261024.txt (run-all-gates -IncludePaperwork was still running at close; EXIT= line at the end) and fix any red. 2) Commit the whole uncommitted batch on main (REG-301/302/303, IMP-GAPS-1, ENF-1 retirements+enforcement, BREAKING.md entries, coverage-baseline ratchet) and git push origin main -- only after the owner confirms. 3) Then ENF-1 batch C: two-boot restart-revision probe runner for field.uid/field.renamedFrom (plan in NPDev_General__OutsideRepo\\enf1-plan.md), or REG-304 (quote rollup column identifiers through the dialect; JSON column binding on H2).",
+  "head": "7fd9e443",
+  "headSubject": "feat(dsl)!: ENF-1 21->14, close REG-301/302/303 and IMP-GAPS-1",
+  "summary": "Committed and pushed 7fd9e443 on main: closed REG-301 (flowStep.data live), IMP-GAPS-1 (importer rename policy, WmsOffice exact field recall 0.06->0.346), REG-302 (picker on non-reference refused + codemod), REG-303 (in-memory store now pre-checks every unique field; connectable anchors per-tenant with composite bond FKs). ENF-1 allowlist 44->14: flow/query/aggregate uid retired (breaking, dsl-2 codemod, BREAKING.md), lifecycleState.allowedActions enforced server-side on aggregate invoke (422), new queries + domainTypes admin catalogs, probes 87/88. Filed REG-304. Populated the local pack cache for AppGen WmsOfficePackTest (lock digests unchanged).",
+  "nextStep": "ENF-1 batch C: build the two-boot restart-revision probe runner so field.uid and field.renamedFrom get a real witness (renameField op in scripts/quality/behavior_probes/run_probes.py materialize_revision; -RestartRevisionVariant in scripts/quality/run-behavior-probes.ps1 on h2local: wipe only before phase 1, regenerate from the revision into the same Output so App/data survives, boot without wipe, phase-2 steps read the row under the new name); design in D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\enf1-plan.md batch C. Alternative if preferred: REG-304 first (quote rollup column identifiers through the dialect -- SELECT MAX(npdev_base.row) breaks on H2 -- and fix JAVA_OBJECT->JSON binding), then run the full probe suite with -StorageVariant h2local.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\enf1-plan.md",
-  "blocked": "AIP-4 4.5: needs a Manager 0.5.1 build in the real Tauri window -- no Rust/MSVC toolchain on this machine (prebuilt exe is 0.4.0); owner run or toolchain install. OWN-2: owner outreach.",
-  "verified": "Behaviour probes: full suite in-memory 129/129 (4 skipped by design); h2local files 87 (7/7) and 88 (2/2) green, full h2local suite fails on pre-existing REG-304. :NPDevContract:dsl:test green (1281), :generator:test green (718), runtimehost-core test green, NPDevCli 1206 OK, kernel compileTestJava green, run-runtimehost-gate green (earlier in session, before the later anchor/unique/allowedActions changes). check-dsl-behavior-witness 0 blocking (14 allowlisted), check-dsl-coverage, schema-mirror, twin-pair OK. run-all-gates -IncludePaperwork STARTED but result not seen at close.",
-  "dirtyCount": 64,
-  "dirtyFiles": [
-    " M BREAKING.md",
-    " M NPDevCli/dsl_v2_migration.py",
-    " M NPDevCli/npdev_cli.py",
-    " M NPDevCli/tests/test_dsl_v2_migration.py",
-    " M NPDevContract/dsl/resources/Schemas/model.schema.json",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/AggregateAst.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/FlowAst.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/QueryAst.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledAggregate.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledFlow.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledMetadataCanonicalJson.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledQuery.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ReferenceValidation.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/UxMetadataValidation.java",
-    " M NPDevContract/dsl/src/main/resources/schema/model.schema.json"
-  ],
+  "blocked": "AIP-4 4.5: needs a Manager 0.5.1 build run in the real Tauri window -- no Rust/MSVC toolchain on this machine (prebuilt exe is 0.4.0); owner run or toolchain install. OWN-2: owner outreach.",
+  "verified": "run-all-gates -IncludePaperwork (second run): generator, kernel, weeklyPaperwork passed; runtimeHost failed only on the unclassified AggregateActionNotAllowedException, fixed, then run-runtimehost-gate passed; aiKnowledge's only red was the Group E staleness diff vs committed docs, confirmed clean after the commit (generate_group_e_docs + git diff --exit-code). Behaviour probes in-memory 129/129 (4 skipped by design); h2local probe files 87 (7/7) and 88 (2/2); full h2local suite red on pre-existing REG-304. :NPDevContract:dsl:test, :generator:test, runtimehost-core test, NPDevCli 1206, kernelQualityGate all green. Pushed 7fd9e443, origin/main in sync.",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "533f62a3 feat(dsl)!: REG-301 -- retire inert aggregateCollection.via; witness live flowStep.data (ENF-1 44)"
+    "7fd9e443 feat(dsl)!: ENF-1 21->14, close REG-301/302/303 and IMP-GAPS-1"
   ]
 }
