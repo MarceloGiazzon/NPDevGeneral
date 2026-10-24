@@ -187,6 +187,13 @@ public final class PostgresPersistenceCapabilityAdapter
             return immutableRecord(runtimeRecord);
 
         } catch (SQLException e) {
+            if (dialect.isUniqueViolation(e)) {
+                // REG-306: a duplicate answers 409 through the generated service's requireFlowSucceeded,
+                // which matches the failure text on "unique constraint"; H2's own wording matched nothing,
+                // so a flow write's duplicate answered 500. Name it here, whatever the engine says.
+                throw new IllegalArgumentException(
+                        "Unique constraint violated persisting table " + table + ": " + e.getMessage(), e);
+            }
             if (isIntegrityConstraintViolation(e)) {
                 // SQLState class 23 = integrity constraint violation (foreign key / unique / not null
                 // / check). Surface it as IllegalArgumentException so the kernel classifies the
@@ -1214,8 +1221,19 @@ public final class PostgresPersistenceCapabilityAdapter
         // actual JSON type, which the generated (non-Flow) CRUD repository path avoids by
         // always writing JSON text. Mirror that here so Flow-driven persistence of nested
         // object/array fields round-trips the same way.
+        // REG-304: JSON goes to the driver as UTF-8 BYTES, as JdbcBusinessConceptStore#coerceValue does:
+        // H2 stores a bound String in a JSON column as a JSON string VALUE (quoted), not the object it
+        // spells, and the dialect's bindableValue turns bytes into whatever its engine wants (Postgres:
+        // typed text).
         if (value instanceof Map<?, ?> || value instanceof List<?>) {
-            return toJsonText(value);
+            return toJsonText(value).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        }
+        // A flow payload can also carry a Jackson JsonNode (e.g. a NullNode for an unset file field).
+        // Raw, the driver Java-serializes it ("JAVA_OBJECT to JSON" on H2). Its toString() IS its JSON
+        // text; a JSON null is no value at all. Matched by name: this adapter has no Jackson dependency.
+        if (value != null && isJacksonJsonNode(value.getClass())) {
+            String json = value.toString();
+            return "null".equals(json) ? null : json.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         }
         if (isUuidColumn(column)) {
             return coerceUuid(value);
@@ -1227,6 +1245,15 @@ public final class PostgresPersistenceCapabilityAdapter
             return coerceTimestamp(value);
         }
         return value;
+    }
+
+    private static boolean isJacksonJsonNode(Class<?> type) {
+        for (Class<?> c = type; c != null; c = c.getSuperclass()) {
+            if ("com.fasterxml.jackson.databind.JsonNode".equals(c.getName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String toJsonText(Object value) {

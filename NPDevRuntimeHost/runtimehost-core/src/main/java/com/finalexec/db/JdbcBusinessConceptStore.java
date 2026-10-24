@@ -584,10 +584,10 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             GroupByJoinGrammar.Target target = parsedGroupBy.get(i);
             if (target instanceof GroupByJoinGrammar.Target.Join join) {
                 JoinPlan plan = joinsByChainKey.get(chainKey(join.referenceFields()));
-                columnRef = plan.alias() + "." + requireColumn(plan.targetShape(), join.targetField());
+                columnRef = plan.alias() + "." + sqlId(requireColumn(plan.targetShape(), join.targetField()));
             } else {
                 String field = ((GroupByJoinGrammar.Target.Direct) target).field();
-                columnRef = baseAlias + "." + requireColumn(shape, field);
+                columnRef = baseAlias + "." + sqlId(requireColumn(shape, field));
             }
             String alias = "npdev_g" + groupByAliases.size();
             if (groupByField.bucket() != null && !groupByField.bucket().isBlank()) {
@@ -605,10 +605,10 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             String fn = aggregate.fn() == null ? "" : aggregate.fn().trim().toLowerCase(Locale.ROOT);
             String expr = switch (fn) {
                 case "count" -> "COUNT(*)";
-                case "sum" -> "SUM(" + baseAlias + "." + requireColumn(shape, aggregate.field()) + ")";
-                case "avg" -> "AVG(" + baseAlias + "." + requireColumn(shape, aggregate.field()) + ")";
-                case "min" -> "MIN(" + baseAlias + "." + requireColumn(shape, aggregate.field()) + ")";
-                case "max" -> "MAX(" + baseAlias + "." + requireColumn(shape, aggregate.field()) + ")";
+                case "sum" -> "SUM(" + baseAlias + "." + sqlId(requireColumn(shape, aggregate.field())) + ")";
+                case "avg" -> "AVG(" + baseAlias + "." + sqlId(requireColumn(shape, aggregate.field())) + ")";
+                case "min" -> "MIN(" + baseAlias + "." + sqlId(requireColumn(shape, aggregate.field())) + ")";
+                case "max" -> "MAX(" + baseAlias + "." + sqlId(requireColumn(shape, aggregate.field())) + ")";
                 default -> throw new IllegalArgumentException("Unsupported aggregate fn: " + aggregate.fn());
             };
             aggregateExprs.add(expr);
@@ -739,8 +739,9 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             ConceptShape targetShape = shape(targetConceptName);
             String fkColumn = requireColumn(currentShape, referenceField);
             String alias = "npdev_join" + joinsByChainKey.size();
-            joinClauses.add(" JOIN " + targetShape.tableName() + " AS " + alias
-                    + " ON " + currentAlias + "." + fkColumn + " = " + alias + "." + targetShape.idColumn()
+            // REG-304: every identifier through the dialect -- a reserved word (H2: row, value, key) breaks raw
+            joinClauses.add(" JOIN " + sqlId(targetShape.tableName()) + " AS " + alias
+                    + " ON " + currentAlias + "." + sqlId(fkColumn) + " = " + alias + "." + sqlId(targetShape.idColumn())
                     + " AND " + alias + ".tenant_id = ?");
             joinParams.add(tenantId);
             plan = new JoinPlan(alias, targetShape);
@@ -1301,6 +1302,10 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         LinkedHashSet<String> candidates = new LinkedHashSet<>(shape.columnByField().values());
         candidates.add("tenant_id");
         candidates.add("row_version");
+        // REG-306: the legacy entity `version` column (not a DSL field) backs checkOptimisticVersion. toRecord
+        // reads it through its generic fallback, but only if it is SELECTed: without it every findById/findAll
+        // load reports the entity default 0, so a stale PUT passes (a lost update) and a GET shows version 0.
+        candidates.add("version");
         if (shape.softDelete()) {
             candidates.add("deleted_at");
         }

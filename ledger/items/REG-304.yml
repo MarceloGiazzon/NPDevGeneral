@@ -4,9 +4,9 @@ title: >-
   `row` unquoted, and a JSON column write fails with "JAVA_OBJECT to JSON"
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-10-24
-closed: null
+closed: 2026-10-24
 source: >-
   2026-10-24, first full run of run-behavior-probes.ps1 -StorageVariant h2local (until now only the jdbc-only file 91
   was run on h2local). Pre-existing: none of the involved files (JdbcBusinessConceptStore, RollupConceptStoreDecorator,
@@ -21,8 +21,22 @@ detail: |
      column instead of its serialized text).
   The h2local run stopped after 63 of 133 probes (54 pass, 9 fail).
 resolution: >-
-  Done when the rollup aggregation quotes column identifiers through the dialect, JSON columns bind serialized text,
-  and the full suite is green with -StorageVariant h2local.
+  Done when the rollup aggregation quotes column identifiers through the dialect and JSON columns bind serialized
+  JSON, so the full h2local suite runs to the end (it stopped after 63 of 133 probes). Narrowed 2026-10-24 when the
+  complete run exposed seven further, unrelated JDBC-only divergences -- filed as REG-306, not hidden here.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/ConceptAggregateReservedWordColumnTest.java
+  asserts: >-
+    max/min/sum, a direct groupBy and a groupBy join over H2 reserved-word columns (row, value, key) run on H2. The
+    second defect's guard is its sibling test PostgresPersistenceCapabilityAdapterJsonNodeBindTest (persistence-postgres):
+    a flow payload's Jackson NullNode binds as SQL NULL and an ObjectNode is stored as a JSON object, not a quoted string
+  provenRed: true
 note: >-
-  2026-10-24: filed, not fixed. Evidence: NPDevSamples/dsl-conformance-max/Output/App/behavior-probes-boot.stdout.log of
-  that run, digest log 20261024T060104Z.
+  2026-10-24: FIXED. (1) JdbcBusinessConceptStore.aggregate spliced column names raw: aggregated columns, direct and
+  joined groupBy columns, and the join's table / foreign-key / id columns now go through sqlId (dialect.identifier).
+  Red: `MAX(npdev_base.row)` -> H2 syntax error. (2) The JAVA_OBJECT writes were the ConfirmWidgetOrder flow saving
+  widget_orders through PostgresPersistenceCapabilityAdapter with a Jackson NullNode in a file field, bound raw
+  (Java-serialized). JsonNode values now bind as JSON (null -> SQL NULL), and Map/List JSON now binds as UTF-8 bytes
+  like JdbcBusinessConceptStore -- a bound String was stored by H2 as a JSON string value. Red: both new tests failed
+  with the production error. Full h2local suite: 137 probes run to the end, 0 JAVA_OBJECT / 0 syntax errors.

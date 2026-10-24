@@ -80,6 +80,10 @@ class CrudLifecycleSupportTenantScopeTest {
         // Control: tenant-a's own row is read, so Completed -> Scheduled is refused as undeclared.
         assertTrue(transitionViolations(own, "Scheduled").stream()
                 .anyMatch(v -> "status_transition_not_allowed".equals(v.invariant())));
+        // REG-306: the JDBC path answers the same code and wording as the in-memory ConceptGateway.
+        assertTrue(transitionViolations(own, "Scheduled").stream()
+                .anyMatch(v -> "CONCEPT_LIFECYCLE_TRANSITION_INVALID".equals(v.code())
+                        && "Concept lifecycle transition is not allowed: Completed -> Scheduled".equals(v.message())));
         // tenant-b's row is invisible to tenant-a's status read.
         assertTrue(transitionViolations(foreign, "Scheduled").isEmpty());
     }

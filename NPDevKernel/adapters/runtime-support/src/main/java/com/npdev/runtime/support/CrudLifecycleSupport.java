@@ -90,12 +90,14 @@ final class CrudLifecycleSupport {
                 // adds the requiredPayload / guard checks the gateway never ran).
                 return;
             }
+            // REG-306: the same code and wording the in-memory ConceptGateway answers, so a JDBC store
+            // refuses an undeclared edge with the contract the clients (and the probes) already read.
             violations.add(new InvariantViolationDetail(
-                    "invariant_failed",
+                    "CONCEPT_LIFECYCLE_TRANSITION_INVALID",
                     entityName,
                     "status_transition_not_allowed",
                     statusField,
-                    "Status transition from '" + previousStatus + "' to '" + nextStatus + "' is not allowed",
+                    "Concept lifecycle transition is not allowed: " + previousStatus + " -> " + nextStatus,
                     false
             ));
             return;

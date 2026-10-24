@@ -240,7 +240,7 @@ class SchemaLifecycleExecutorDestructiveCrashRecoveryTest {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(
                      "SELECT classification, items_json, outcome FROM npdev_schema_history "
-                             + "WHERE classification = ? ORDER BY applied_at_utc DESC")) {
+                             + "WHERE classification = ? ORDER BY applied_at_utc DESC, COALESCE(seq, 0) DESC")) {
             statement.setString(1, classification);
             try (ResultSet resultSet = statement.executeQuery()) {
                 assertTrue(resultSet.next(), "expected a " + classification + " history row");

@@ -1,0 +1,52 @@
+id: REG-306
+title: >-
+  Seven behaviour probes that pass on the in-memory store fail on the JDBC (h2local) store: compound-unique 500,
+  lifecycle error code, aggregate lifecycle version, AI review/profile flows 422, stale optimistic update accepted
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-10-24
+closed: 2026-10-24
+source: >-
+  2026-10-24, the first COMPLETE run of run-behavior-probes.ps1 -StorageVariant h2local (REG-304 had stopped it at
+  probe 63): 137 probes, 128 pass, 2 skip, 7 fail. The same probes are green on the default in-memory run (131/131).
+surface: NPDevRuntimeHost runtimehost-core JDBC store / generated CRUD services / flow + AI runtime on a physical DB
+detail: |
+  1. 10-concept-field cf-index-unique-compound-rejects-duplicate-pair: a duplicate (order, sku) pair on
+     widget_order_lines answers 500, not 409/422 -- the JDBC unique violation is not mapped.
+  2. 30 qil-lifecycle-illegal-transition-refused: an illegal Committed->Draft answers code invariant_failed, not
+     CONCEPT_LIFECYCLE_TRANSITION_INVALID.
+  3. 30 qil-aggregate-commit-refuses-illegal-lifecycle-transition: after the refused commit the row's version is 0,
+     expected 1 (the refusal path or the version column differs on JDBC).
+  4-6. 70 ai71-review-required-approve / -reject and 72 ai34a-profile-prompt: the reviewed / profile flows answer
+     422 instead of 202 / 200.
+  7. 80 mob2-stale-queued-update-is-rejected-two-devices: a replay from a stale version is ACCEPTED (200), not
+     refused 409 -- optimistic concurrency is not enforced on this path on JDBC: a lost update.
+  Evidence: NPDev_General__OutsideRepo/enf1-batchc/h2local-report.json and h2local-boot.stdout.log.
+resolution: >-
+  Done when each of the seven is fixed (or proven a probe assumption that does not hold on a physical store and the
+  probe corrected without weakening what it proves) and the full suite is green with -StorageVariant h2local.
+guard:
+  kind: script
+  ref: scripts/quality/run-behavior-probes.ps1 -StorageVariant h2local
+  asserts: >-
+    all behaviour probes pass against the physical h2local store, in particular a stale-version PUT is refused 409
+    version_conflict (a lost update is no longer accepted), a compound-unique clash in a flow answers 409, an illegal
+    lifecycle edge answers CONCEPT_LIFECYCLE_TRANSITION_INVALID, and the ai71/ai34a flows resolve their declared
+    property default
+  provenRed: true
+note: >-
+  2026-10-24: FIXED, none of the seven was a probe assumption. Four root causes. (A, probes 7/3, step 4 of 2) the
+  STOR-24 A3 explicit select list in JdbcBusinessConceptStore.selectListSql never selected the legacy `version`
+  column, so every findById/findAll read the entity default 0 and checkOptimisticVersion passed any stale PUT: a
+  lost update on JDBC. (B, probe 1) a flow write's H2 unique violation was worded in a way requireFlowSucceeded did
+  not map, so it answered 500; PostgresPersistenceCapabilityAdapter.save now classifies by SQLSTATE through
+  dialect.isUniqueViolation. (C, probe 2) CrudLifecycleSupport answered invariant_failed on a store without a gateway
+  path; it now answers CONCEPT_LIFECYCLE_TRANSITION_INVALID like the in-memory gateway. (D, probes 4-6)
+  DefaultPropertyResolver.findRow threw on JDBC when workspace::PropertyValue was not composed (internal.tables off);
+  a model that does not declare the concept now falls through to the declared default, a model that does keeps the
+  failure. Unit tests: PostgresPersistenceCapabilityAdapterUniqueViolationTest, CrudLifecycleSupportTenantScopeTest,
+  PropertyResolverUnknownConceptTest. Result: h2local 137/137 (was 128 pass, 7 fail). Residue, not fixed here: a REST
+  PUT still sends rowVersion = null to saveToConceptStore (service-base.mustache), so two truly CONCURRENT PUTs can
+  still both pass the check-then-act; and workspace::PropertyValue is not composed when properties[] is non-empty
+  without internal.tables, so set() on such an app still fails (now with the store's own message).

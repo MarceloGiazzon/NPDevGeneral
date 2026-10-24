@@ -121,7 +121,7 @@ public final class DefaultPropertyResolver implements PropertyResolver {
                 // read-time one.
                 continue;
             }
-            Optional<ConceptRecord> row = findRow(scopes.get(i).name(), scopeId, propertyKey, context);
+            Optional<ConceptRecord> row = findRow(model, scopes.get(i).name(), scopeId, propertyKey, context);
             if (row.isPresent()) {
                 winningIndex = i;
                 winningRawValue = row.get().data().get("propValue");
@@ -143,7 +143,7 @@ public final class DefaultPropertyResolver implements PropertyResolver {
             if (scopeId == null) {
                 continue;
             }
-            Optional<ConceptRecord> row = findRow(scopes.get(i).name(), scopeId, propertyKey, context);
+            Optional<ConceptRecord> row = findRow(model, scopes.get(i).name(), scopeId, propertyKey, context);
             if (row.isPresent()) {
                 Object raw = row.get().data().get("propValue");
                 overrode.add(new PropertyExplanation.OverriddenScope(
@@ -169,7 +169,7 @@ public final class DefaultPropertyResolver implements PropertyResolver {
             throw new PropertyNotSettableAtScopeException(propertyKey, scopeType, property.settableAt());
         }
 
-        Optional<ConceptRecord> existing = findRow(scopeType, scopeId, propertyKey, context);
+        Optional<ConceptRecord> existing = findRow(model, scopeType, scopeId, propertyKey, context);
         Object oldRawValue = existing.map(record -> record.data().get("propValue")).orElse(null);
         String id = existing.map(ConceptRecord::id).orElseGet(() -> UUID.randomUUID().toString());
 
@@ -215,13 +215,27 @@ public final class DefaultPropertyResolver implements PropertyResolver {
         throw new PropertyNotDeclaredException(propertyKey);
     }
 
-    private Optional<ConceptRecord> findRow(String scopeType, String scopeId, String propertyKey, ExecutionContext context) {
+    private Optional<ConceptRecord> findRow(CompiledModel model, String scopeType, String scopeId, String propertyKey,
+                                            ExecutionContext context) {
         ConceptQuery query = new ConceptQuery(List.of(
                 ConceptQuery.Filter.eq("scopeType", scopeType),
                 ConceptQuery.Filter.eq("scopeId", scopeId),
                 ConceptQuery.Filter.eq("propKey", propertyKey)
         ), List.of(), 0, 1);
-        ConceptPage page = conceptGateway.query(new ConceptQueryRequest(CONCEPT_NAME, context.tenantId(), query), context);
+        ConceptPage page;
+        try {
+            page = conceptGateway.query(new ConceptQueryRequest(CONCEPT_NAME, context.tenantId(), query), context);
+        } catch (IllegalArgumentException unknownConcept) {
+            // REG-306: an app that did not compose workspace::PropertyValue (internal.tables off) has no such
+            // table: a JDBC store refuses the unknown concept where the in-memory one answers an empty page.
+            // Nothing can be stored, so nothing is set -- the declared default wins. A model that DOES declare
+            // the concept keeps the failure, it is a real fault there.
+            boolean declared = model.getConcepts().stream().anyMatch(c -> CONCEPT_NAME.equals(c.getName()));
+            if (declared) {
+                throw unknownConcept;
+            }
+            return Optional.empty();
+        }
         return page.items().stream().findFirst();
     }
 

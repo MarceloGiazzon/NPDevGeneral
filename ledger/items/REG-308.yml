@@ -1,0 +1,27 @@
+id: REG-308
+title: >-
+  Two truly concurrent REST PUTs with the same version can both pass the optimistic check: the check is
+  check-then-act and the row_version compare-and-swap is never used on the REST path
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-24
+closed: null
+source: >-
+  2026-10-24, root-causing REG-306 probe 7 (stale update accepted on JDBC). The sequential stale PUT is fixed there;
+  the concurrent window the same analysis found is not.
+surface: service-base.mustache updateFromSource / saveToConceptStore; JdbcBusinessConceptStore.saveVersioned
+detail: |
+  updateFromSource reads the row, calls runtimeSupport.checkOptimisticVersion(existing, source) in Java, then saves.
+  saveToConceptStore passes rowVersion = null, so JdbcBusinessConceptStore.saveVersioned never adds its
+  `WHERE row_version = ?` guard (REG-210 added that guard for delete and for callers that supply a row version). Two
+  requests carrying the same version that interleave between the read and the save both pass the Java check and
+  the second silently overwrites the first. B18 closed the same shape for row-level authorization by locking under a
+  real transaction manager or compare-and-swap; the version check was not given the same treatment.
+resolution: >-
+  Done when a REST update carrying a version is a real compare-and-swap (either saveToConceptStore forwards the
+  loaded row_version so saveVersioned's guard applies, or the read takes a row lock) and a two-thread probe or test
+  shows exactly one of two same-version PUTs succeeds and the other answers 409 version_conflict, on h2local and in
+  memory.
+note: >-
+  2026-10-24: filed, not fixed. Found by the REG-306 root-cause analysis; the sequential case is closed by REG-306.
