@@ -2,7 +2,8 @@ package com.finalexec.npdev.service;
 
 /**
  * REG-265: an aggregate commit refused because the DRAFT breaks a rule the aggregate declares -- a
- * violated {@code invariants[]} entry or an out-of-balance {@code balances[]} group. That is a
+ * violated {@code invariants[]} entry, an out-of-balance {@code balances[]} group, or (ENF-1) a declared
+ * {@code onValidate} procedure that did not return ok for the draft. That is a
  * client error (the caller sent a draft the model forbids), unlike the plain
  * {@link IllegalStateException}s this class extends, which stay "the runtime cannot serve this
  * right now" (no gateway, failing onCommit procedure, ...). Subclassing keeps every existing

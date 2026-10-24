@@ -799,7 +799,6 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalText(collectionNode, "ownership"),
                     optionalText(collectionNode, "orderBy"),
                     toAggregateCollections(collectionNode.get("collections")),
-                    toObjectMap(collectionNode.get("metadata")),
                     toAggregateCollectionLookupFields(collectionNode.get("lookupFields"))
             ));
         }

@@ -4,9 +4,9 @@ title: >-
   proved otherwise
 type: GAP
 severity: HIGH
-status: PARTIAL
+status: DONE
 opened: 2026-10-20
-closed: null
+closed: 2026-10-24
 source: >-
   PLAN_PRODUCT_GAPS_2026-10-19 (W0). check-dsl-coverage.py proves each DSL feature appears in some model;
   it never proved the runtime obeys it. Nested onFailure, two-clause query filters and a 5-field cron were
@@ -22,6 +22,14 @@ detail: |
 resolution: >-
   Open until the allowlist is empty for the high-risk families (flow, query, invariant, lifecycle, role,
   field). Each session shrinks the allowlist and lowers frozenCount in the same commit.
+guard:
+  kind: script
+  ref: scripts/quality/check-dsl-behavior-witness.py
+  asserts: >-
+    every tracked keyword of the high-risk schema families is witnessed by a behaviour probe or, for the
+    generation-time-only concept.specializesFloat, by a named generationWitnesses test (ENF-2); the allowlist is
+    empty (frozenCount 0, ratchet: may only shrink)
+  provenRed: true
 note: >-
   2026-10-21: allowlist 130 -> 57 (frozenCount 57); probes 82 -> 111 (110 green, 1 expected live1 skip, 7 knownFailure). New defects filed:
   REG-273 (minLength/array constraints/nested object not enforced), REG-274 (domain-type normalization/minLength/regex ignored),
@@ -66,3 +74,17 @@ note: >-
   Found REG-305: concept.uid renames nothing (DESTRUCTIVE_DROP_TABLE, boot refused); concept.uid stays allowlisted on it.
   2026-10-24 (later): REG-305 FIXED (TableIdentityStore: a concept renamed by its uid alone renames its table in place,
   its recorded column uids follow); 95-rename-identity-restart.json now also witnesses concept.uid. Allowlist 11 -> 10.
+  2026-10-24 (batches A+B, owner D1-D6): allowlist 10 -> 4. enumOption.displayLabel/help were aliases already
+  served (the fixture's Draft hid them; it now uses one key per pair) and the parser now WARNS when an option sets
+  both keys of a pair (D5). orchestrationAction.action served in the actions catalog (FollowUpNewShelf#1).
+  aggregate.onValidate: a failing guard now answers 422 (AggregateCommitVetoException, D1) and is witnessed by
+  89-aggregate-onvalidate-veto.json (veto on demand, no root/line written). aggregate.metadata served on the
+  aggregate's three invocations-catalog entries (D2); aggregateCollection.metadata RETIRED (breaking, dsl-2 codemod,
+  BREAKING.md). Remaining: concept.module, concept.specializes (batch C), concept.satelliteOf (batch D),
+  concept.specializesFloat (stays allowlisted, D4).
+  2026-10-24 (batches C+D, CLOSED DONE per owner D6): allowlist 4 -> 1. concept.specializes witnessed by CuratedLabel
+  (specializes labeling::Label: inherited required text and maxLength 80 hold, own field added); concept.module by the
+  module:Labeling ui.frame.mode override reaching the served UI manifest (92-specialization-module.json);
+  concept.satelliteOf by the LIVE-1 reload refusal on satellite LabelStats (60-live-add-field.json, D3; wording fixed,
+  REG-307). Residue: concept.specializesFloat (generation-time only, D4). Probes: InMemory 134/134, live 2/2, restart
+  1/1; h2local 128 pass + the 7 JDBC-only divergences filed as REG-306.

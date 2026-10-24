@@ -18,11 +18,11 @@ class CompiledAggregateCanonicalJsonTest {
                         List.of(
                                 new CompiledAggregateCollection(
                                         "origens", "MovtoOrigem", "itemSeq", "owned", null,
-                                        List.of(), Map.of()),
+                                        List.of()),
                                 new CompiledAggregateCollection(
                                         "destinos", "MovtoDestino", "itemSeq", "owned", null,
-                                        List.of(), Map.of())),
-                        Map.of())),
+                                        List.of()))
+                        )),
                 null,
                 Map.of(),
                 "ValidateExpedicaoProcedure");

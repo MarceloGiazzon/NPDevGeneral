@@ -29,6 +29,14 @@ codemod that rewrites existing models automatically.
 
 **Codemod.** `python NPDevCli/npdev_cli.py migrate dsl-2 --write --input <model.json or directory>` strips the key from every `flows[]`, `queries[]` and `aggregates[]` entry and leaves concept and field uids alone. Java callers drop the uid argument (the overload that took it is gone).
 
+## 2026-10-24 — `aggregates[].collections[].metadata` removed from the schema (ENF-1)
+
+**What changes.** `metadata` on an aggregate collection, at any nesting depth, is no longer accepted (`additionalProperties: false`). It was parsed, compiled and round-tripped through the canonical JSON, but no runtime surface read or served it. It is also gone from `AggregateCollectionAst` and `CompiledAggregateCollection` and their positional constructors. An aggregate's OWN `metadata` is unchanged and is now served on its read/commit/invoke entries of the invocations catalog.
+
+**Who is affected.** No model in the repo, the built-in packs or the AppGen app definitions declared it. Java code that constructs one of those two records is affected.
+
+**Codemod.** `python NPDevCli/npdev_cli.py migrate dsl-2 --write --input <model.json or directory>` strips the key from every aggregate collection, nested ones included, and leaves the aggregate's own `metadata` alone. Java callers drop the argument after `collections`.
+
 ## 2026-10-23 — `aggregates[].collections[].via` removed from the schema (REG-301)
 
 **What changes.** `via` on an aggregate collection, at any nesting depth, is no longer accepted. The shape has `additionalProperties: false`, so a model that still declares it fails schema validation. It was parsed, compiled and round-tripped through the canonical JSON, but no runtime class ever read it; `childField` is what links a child row to its parent. The field is also gone from `AggregateCollectionAst` and `CompiledAggregateCollection` and their positional constructors. A rollup's `via` and a reference's `via` are different, live keywords and are unchanged.

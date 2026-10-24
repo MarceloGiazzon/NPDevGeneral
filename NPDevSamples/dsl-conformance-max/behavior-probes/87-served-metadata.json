@@ -206,6 +206,57 @@
           }
         }
       ]
+    },
+    {
+      "id": "meta-orchestration-action-metadata-served",
+      "keywords": [
+        "orchestrationAction.action"
+      ],
+      "description": "ENF-1: an orchestration rule action's action metadata reaches the actions catalog a client builds its buttons and confirmations from. FollowUpNewShelf's first action (create WidgetSeedDemo) is served as kind orchestrationAction, name FollowUpNewShelf#1, with its label, confirmation text and danger level.",
+      "steps": [
+        {
+          "name": "actions catalog",
+          "method": "GET",
+          "path": "/api/admin/runtime/metadata/catalogs/actions",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?kind=orchestrationAction&name=FollowUpNewShelf#1].actionType": "create",
+              "$.items[?kind=orchestrationAction&name=FollowUpNewShelf#1].label": "Create shelf follow-up",
+              "$.items[?kind=orchestrationAction&name=FollowUpNewShelf#1].confirmationText": "Create a seed row for the new shelf?",
+              "$.items[?kind=orchestrationAction&name=FollowUpNewShelf#1].dangerLevel": "low"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "meta-aggregate-metadata-served-in-invocations",
+      "keywords": [
+        "aggregate.metadata"
+      ],
+      "description": "ENF-1: an aggregate's free-form metadata reaches the invocations catalog on each of its three entries (read, commit, invoke): WidgetOrderAggregate's purpose is served exactly as declared.",
+      "steps": [
+        {
+          "name": "invocations catalog",
+          "method": "GET",
+          "path": "/api/admin/runtime/metadata/catalogs/invocations",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?id=aggregateCommit:WidgetOrderAggregate].metadata.purpose": {
+                "matches": "^Second independent aggregate in the corpus"
+              },
+              "$.items[?id=aggregateRead:WidgetOrderAggregate].metadata.purpose": {
+                "matches": "^Second independent aggregate in the corpus"
+              },
+              "$.items[?id=aggregateInvoke:WidgetOrderAggregate].metadata.purpose": {
+                "matches": "^Second independent aggregate in the corpus"
+              }
+            }
+          }
+        }
+      ]
     }
   ]
 }

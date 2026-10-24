@@ -964,7 +964,6 @@ public final class CompiledModelCanonicalJson {
             node.put("ownership", safe(collection.ownership()));
             node.put("orderBy", safe(collection.orderBy()));
             node.set("collections", toAggregateCollections(collection.collections()));
-            node.set("metadata", toObjectMap(collection.metadata()));
             node.set("lookupFields", toAggregateCollectionLookupFields(collection.lookupFields()));
             array.add(node);
         }

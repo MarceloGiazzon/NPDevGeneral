@@ -462,6 +462,8 @@ public final class CompiledMetadataCanonicalJson {
         node.put("id", "aggregateRead:" + safe(aggregate.name()));
         node.put("kind", "aggregateRead");
         node.put("aggregate", safe(aggregate.name()));
+        // ENF-1: the aggregate's free-form authoring metadata (e.g. purpose), served like query.metadata
+        node.set("metadata", MAPPER.valueToTree(sortedTree(aggregate.metadata())));
         node.put("method", "GET");
         node.put("path", path);
         node.set("pathAliases", toStringArray(List.of(path.replaceFirst("^/api/v1", "/api"))));
@@ -478,6 +480,8 @@ public final class CompiledMetadataCanonicalJson {
         node.put("id", "aggregateCommit:" + safe(aggregate.name()));
         node.put("kind", "aggregateCommit");
         node.put("aggregate", safe(aggregate.name()));
+        // ENF-1: the aggregate's free-form authoring metadata (e.g. purpose), served like query.metadata
+        node.set("metadata", MAPPER.valueToTree(sortedTree(aggregate.metadata())));
         node.put("method", "POST");
         node.put("path", path);
         node.set("pathAliases", toStringArray(List.of(path.replaceFirst("^/api/v1", "/api"))));
@@ -503,6 +507,8 @@ public final class CompiledMetadataCanonicalJson {
         node.put("id", "aggregateInvoke:" + safe(aggregate.name()));
         node.put("kind", "aggregateInvoke");
         node.put("aggregate", safe(aggregate.name()));
+        // ENF-1: the aggregate's free-form authoring metadata (e.g. purpose), served like query.metadata
+        node.set("metadata", MAPPER.valueToTree(sortedTree(aggregate.metadata())));
         node.put("method", "POST");
         node.put("path", path);
         node.set("pathAliases", toStringArray(List.of(path.replaceFirst("^/api/v1", "/api"))));

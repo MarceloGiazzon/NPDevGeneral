@@ -13,6 +13,10 @@ probes in NPDevSamples/dsl-conformance-max/behavior-probes/*.json do prove it, a
   * a probe keyword that is not a keyword of the tracked families is stale and fails;
   * a probe's `knownFailure` must name an existing ledger item that is not DONE (a marker may never
     outlive the bug it points at -- the runner already turns it red once the probe passes);
+  * a keyword that acts only at generation time (no booted-app effect, so no REST probe can see it) is
+    witnessed by a `generationWitnesses` entry: a named JUnit `testClass` plus the `methods` that pin it.
+    The check is static (the file exists, each method is a declared @Test method) and never runs Java;
+    the test itself runs in the module's own gradle test task (ENF-2);
   * the allowlist is a RATCHET: `frozenCount` pins how many keywords it holds. Growing fails; shrinking
     without lowering `frozenCount` in the same commit also fails, so the ceiling only ratchets down.
 
@@ -23,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -77,6 +82,47 @@ def ledger_status(item_id: str) -> str | None:
     return "?"
 
 
+def declared_test_methods(path: Path) -> set[str]:
+    """Names of methods declared in a .java file with an @Test-family annotation within the 3 preceding lines."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    found: set[str] = set()
+    for idx, line in enumerate(lines):
+        match = re.search(r"\bvoid\s+(\w+)\s*\(", line)
+        if match and any(re.search(r"@(Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate)\b", prev)
+                         for prev in lines[max(0, idx - 3):idx]):
+            found.add(match.group(1))
+    return found
+
+
+def generation_witnessed(entries: list[dict], keywords: set[str], problems: list[str]) -> dict[str, dict]:
+    witnessed: dict[str, dict] = {}
+    for entry in entries:
+        label = f"generationWitnesses {entry.get('keywords', [])[:2]}"
+        if not str(entry.get("reason", "")).strip():
+            problems.append(f"{label}: missing reason")
+        if entry.get("category") != "generationTest":
+            problems.append(f"{label}: category must be 'generationTest'")
+        if not entry.get("keywords"):
+            problems.append(f"{label}: names no keyword")
+        for kw in entry.get("keywords", []):
+            if kw not in keywords:
+                problems.append(f"{label}: keyword {kw!r} is not a keyword of the tracked schema families (stale or mistyped)")
+            if kw in witnessed:
+                problems.append(f"{kw}: listed in generationWitnesses twice")
+            witnessed[kw] = entry
+        test_class = REPO_ROOT / str(entry.get("testClass", ""))
+        if not entry.get("testClass") or not test_class.is_file() or test_class.suffix != ".java":
+            problems.append(f"{label}: testClass {entry.get('testClass')!r} is not an existing repo-relative .java file")
+            continue
+        if not entry.get("methods"):
+            problems.append(f"{label}: names no test method")
+        declared = declared_test_methods(test_class)
+        for method in entry.get("methods", []):
+            if method not in declared:
+                problems.append(f"{label}: {entry['testClass']} declares no @Test method {method!r}")
+    return witnessed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--emit-uncovered", action="store_true")
@@ -118,7 +164,13 @@ def main() -> int:
     for kw in sorted(set(witnessed) & set(allow)):
         problems.append(f"{kw}: both witnessed and allowlisted -- remove it from the allowlist and lower frozenCount")
 
-    uncovered = sorted(keywords - set(witnessed) - set(allow))
+    gen = generation_witnessed(registry.get("generationWitnesses", []), keywords, problems)
+    for kw in sorted(set(gen) & set(allow)):
+        problems.append(f"{kw}: both generation-witnessed and allowlisted -- remove it from the allowlist and lower frozenCount")
+    for kw in sorted(set(gen) & set(witnessed)):
+        problems.append(f"{kw}: both generation-witnessed and probe-witnessed -- keep only one witness")
+
+    uncovered = sorted(keywords - set(witnessed) - set(allow) - set(gen))
     if args.emit_uncovered:
         print(chr(10).join(uncovered))
         return 0
@@ -135,7 +187,8 @@ def main() -> int:
 
     known_count = sum(1 for probe in probes if probe.get("knownFailure"))
     print(f"{len(keywords)} tracked keywords: {len(set(witnessed))} witnessed by {len(probes)} probe(s) "
-          f"({known_count} known failure(s)), {len(allow)} allowlisted (frozenCount {frozen})")
+          f"({known_count} known failure(s)), {len(gen)} generation-witnessed {sorted(gen)}, "
+          f"{len(allow)} allowlisted (frozenCount {frozen})")
     for problem in problems:
         print(f"FAIL  {problem}")
     if problems:

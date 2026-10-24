@@ -1,0 +1,25 @@
+{
+  "probes": [
+    {
+      "id": "aggregate-onvalidate-veto-refuses-commit-with-no-writes",
+      "keywords": ["aggregate.onValidate"],
+      "description": "ENF-1: a declared aggregate onValidate procedure runs BEFORE any write and a non-ok result refuses the commit. ValidateWidgetOrderProcedure vetoes on demand when the draft's status is 'onvalidate-veto' (it reads a WidgetCatalogEntry by the order's own id, which never exists -> CONCEPT_NOT_FOUND). The commit is answered 422 (a client error: the draft was refused, like an invariant veto), and neither the root nor its line was written. (Uses throwaway StockTransfer ids as uuid sources.)",
+      "steps": [
+        { "name": "uuid source 1", "method": "POST", "path": "/api/stock_transfers",
+          "body": { "reference": "uuid-${rand}", "status": "Draft" },
+          "expect": { "status": 201 }, "save": { "oid": "$.id" } },
+        { "name": "uuid source 2", "method": "POST", "path": "/api/stock_transfers",
+          "body": { "reference": "uuid-${rand}", "status": "Draft" },
+          "expect": { "status": 201 }, "save": { "lid": "$.id" } },
+        { "name": "commit vetoed by onValidate", "method": "POST", "path": "/api/runtime/aggregate/WidgetOrderAggregate",
+          "body": { "id": "${oid}", "customerEmail": "developer", "status": "onvalidate-veto", "lineCount": 1,
+                    "lines": [ { "id": "${lid}", "sku": "ov-a", "quantity": 1, "unitPrice": 2 } ] },
+          "expect": { "status": 422, "json": { "$.message": { "matches": "onValidate procedure ValidateWidgetOrderProcedure failed: CONCEPT_NOT_FOUND" } } } },
+        { "name": "no root written", "method": "GET", "path": "/api/widget_orders/${oid}", "expect": { "status": 404 } },
+        { "name": "no line written", "method": "GET", "path": "/api/widget_order_lines/${lid}", "expect": { "status": 404 } },
+        { "name": "cleanup uuid source 1", "always": true, "method": "DELETE", "path": "/api/stock_transfers/${oid}" },
+        { "name": "cleanup uuid source 2", "always": true, "method": "DELETE", "path": "/api/stock_transfers/${lid}" }
+      ]
+    }
+  ]
+}

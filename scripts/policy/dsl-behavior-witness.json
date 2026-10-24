@@ -5,6 +5,7 @@
     "A keyword is WITNESSED by a probe naming it in its own `keywords` array (NPDevSamples/dsl-conformance-max/behavior-probes/*.json);",
     "this file never repeats that. A keyword with no probe must sit in an `allowlist` group with a reason and an open ledger id.",
     "frozenCount pins the number of allowlisted keywords: it may only shrink, and lowering it is part of the same commit as the probe that removes an entry.",
+    "ENF-2: a keyword that acts only at generation time (no booted-app effect) is witnessed by a `generationWitnesses` entry instead: a named JUnit testClass (repo-relative .java) plus the test `methods` that pin it; the checker verifies statically that the file and each @Test method exist and never runs Java.",
     "Checked by scripts/quality/check-dsl-behavior-witness.py (aiKnowledge gate); the probes run in scripts/quality/run-behavior-probes.ps1."
   ],
   "families": [
@@ -41,47 +42,20 @@
     "role",
     "seed"
   ],
-  "allowlist": [
+  "allowlist": [],
+  "frozenCount": 0,
+  "generationWitnesses": [
     {
       "keywords": [
-        "aggregate.metadata",
-        "aggregateCollection.metadata"
-      ],
-      "reason": "Free-form authoring notes (every fixture declaration is a `purpose` string) that no runtime surface serves -- aggregates appear in no metadata catalog. query.metadata, lifecycle state/transition metadata ARE served (87-served-metadata.json).",
-      "ledger": "ENF-1"
-    },
-    {
-      "keywords": [
-        "concept.module",
-        "concept.satelliteOf",
-        "concept.specializes",
         "concept.specializesFloat"
       ],
-      "reason": "Pack/extension structure (module grouping, PK-6 satellite of a pack-owned base, specialization of a pack concept and its version pin): the fixture declares none of them, and their effect is on composition and generation against a pack, not on the booted app's REST behaviour.",
-      "ledger": "ENF-1"
-    },
-    {
-      "keywords": [
-        "enumOption.displayLabel",
-        "enumOption.help"
+      "category": "generationTest",
+      "testClass": "NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/SpecializationParentVersionDriftTest.java",
+      "methods": [
+        "pinnedByDefaultRefusesOnceThePacksBaseConceptHasMovedSinceLastGenerate",
+        "explicitFloatOptInAdoptsTheNewParentShapeInsteadOfRefusing"
       ],
-      "reason": "Declared on WidgetEnforcementDemo.state (Draft option) and accepted, but no runtime surface serves them: the enums metadata catalog carries label, order, group, default, deprecated, iconHint, badgeHint and description only. They reach the generated UI shell alone, so they need a browser scenario (or a catalog column), not a REST probe.",
-      "ledger": "ENF-1"
-    },
-    {
-      "keywords": [
-        "orchestrationAction.action"
-      ],
-      "reason": "actionMetadata, presentation only. The actions catalog serves orchestrationAction entries, but no fixture orchestration action declares action metadata yet.",
-      "ledger": "ENF-1"
-    },
-    {
-      "keywords": [
-        "aggregate.onValidate"
-      ],
-      "reason": "The fixture's ValidateWidgetOrderProcedure is a pass-through and no procedure step available to the fixture fails on demand, so the pre-write veto cannot be provoked.",
-      "ledger": "ENF-1"
+      "reason": "Generation-time only: it opts a specialization out of the npdev.lock version pin of its pack base (PackDependencyGraphWalker version-drift check). It has no effect on a booted app, so no REST probe can witness it; these tests run the real pack-merge pipeline and assert the default refuses on drift while the opt-in adopts the new parent shape."
     }
-  ],
-  "frozenCount": 10
+  ]
 }

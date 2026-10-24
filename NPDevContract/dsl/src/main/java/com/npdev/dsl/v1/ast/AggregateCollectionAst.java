@@ -1,7 +1,6 @@
 package com.npdev.dsl.v1.ast;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * An owned (or referenced) child collection within an {@link AggregateAst}.
@@ -12,7 +11,8 @@ import java.util.Map;
  * {origens, destinos}) of arbitrary depth.
  *
  * <p>REG-301 (2026-10-23): {@code via} was retired -- it was accepted and compiled but read by nothing;
- * {@code childField} is the child's link to its parent.
+ * {@code childField} is the child's link to its parent. ENF-1 (2026-10-24): {@code metadata} was retired the
+ * same way -- no runtime surface ever read or served it, and no model declared it.
  */
 public record AggregateCollectionAst(
         String name,
@@ -21,7 +21,6 @@ public record AggregateCollectionAst(
         String ownership,
         String orderBy,
         List<AggregateCollectionAst> collections,
-        Map<String, Object> metadata,
         // Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): see AggregateCollectionLookupFieldAst's
         // javadoc -- read-only, query-sourced fields attached to every row of this collection at
         // load time.
@@ -29,7 +28,6 @@ public record AggregateCollectionAst(
 ) {
     public AggregateCollectionAst {
         collections = collections == null ? List.of() : List.copyOf(collections);
-        metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
         lookupFields = lookupFields == null ? List.of() : List.copyOf(lookupFields);
     }
 
@@ -41,9 +39,8 @@ public record AggregateCollectionAst(
             String childField,
             String ownership,
             String orderBy,
-            List<AggregateCollectionAst> collections,
-            Map<String, Object> metadata
+            List<AggregateCollectionAst> collections
     ) {
-        this(name, concept, childField, ownership, orderBy, collections, metadata, List.of());
+        this(name, concept, childField, ownership, orderBy, collections, List.of());
     }
 }

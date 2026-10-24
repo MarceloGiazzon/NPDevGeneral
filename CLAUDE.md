@@ -250,8 +250,8 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   the table-driven probes in `NPDevSamples/dsl-conformance-max/behavior-probes/*.json`. T1/T2
   (`enf-behavior-probes`). A probe carrying `knownFailure: REG-nn` is green only while it still fails.
   Its static half, `check-dsl-behavior-witness.py` (aiKnowledge gate), needs every keyword of the tracked
-  schema families witnessed by a probe's `keywords` or allowlisted in `scripts/policy/dsl-behavior-witness.json`
-  (ratchet: `frozenCount` only shrinks). `-Explore` holds the booted app up for authoring probes.
+  schema families witnessed by a probe's `keywords`, by a `generationWitnesses` test (generation-time-only keywords) or allowlisted in
+  `scripts/policy/dsl-behavior-witness.json` (ratchet: `frozenCount` only shrinks). `-Explore` holds the booted app up for authoring probes.
 - **F6 frontend showcase (layoutSlot, operator console, dashboard, third nesting level, client-side
   expressions):** `pwsh -NoProfile -File scripts/quality/run-f6-showcase.ps1` generates
   `NPDevSamples/f6-showcase` into `<BuildRoot>/samples/f6-showcase` (never into the repo), boots it on 8110

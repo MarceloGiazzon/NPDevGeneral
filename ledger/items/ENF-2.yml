@@ -1,0 +1,34 @@
+id: ENF-2
+title: >-
+  concept.specializesFloat has no runtime witness: it acts only at generation time (the npdev.lock version pin of a
+  specialization's pack base), so no behaviour probe can observe it
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-10-24
+closed: 2026-10-24
+source: >-
+  2026-10-24, closing ENF-1 (owner D4/D6): the last keyword left in scripts/policy/dsl-behavior-witness.json. Its only
+  reader is PackDependencyGraphWalker's version-drift check, covered by SpecializationParentVersionDriftTest; a booted
+  app is unaffected by it.
+surface: scripts/policy/dsl-behavior-witness.json allowlist; scripts/quality/check-dsl-behavior-witness.py
+detail: |
+  The witness checker only knows behaviour probes. A generation-time keyword can be witnessed by a named test class or
+  a generation run that fails on drift, but there is no such category in the policy yet.
+resolution: >-
+  The witness policy now accepts a generation-time witness: a `generationWitnesses` entry (keywords, category
+  generationTest, a repo-relative JUnit testClass, the test methods that pin it, a reason). The checker verifies
+  statically that the keyword is a tracked one, the test file exists and each named method is a declared @Test method,
+  and counts the keyword as covered; it still never runs Java. concept.specializesFloat moved from the allowlist to
+  such an entry (SpecializationParentVersionDriftTest: pinned-by-default refuses on drift, the explicit float opt-in
+  adopts the new parent shape). Allowlist frozenCount 1 -> 0.
+guard:
+  kind: script
+  ref: scripts/quality/check-dsl-behavior-witness.py
+  asserts: >-
+    every tracked keyword is witnessed by a behaviour probe or a generationWitnesses test (file and @Test methods
+    verified statically); concept.specializesFloat is generation-witnessed; the allowlist is empty (frozenCount 0)
+  provenRed: true
+note: >-
+  2026-10-24: filed when ENF-1 closed DONE; held the single allowlist residue. Closed the same day: negative test
+  (a generationWitnesses method name pointed at a nonexistent method) makes the checker fail, restored green.

@@ -112,9 +112,11 @@
         "enumOption.icon",
         "enumOption.iconHint",
         "enumOption.badge",
-        "enumOption.badgeHint"
+        "enumOption.badgeHint",
+        "enumOption.displayLabel",
+        "enumOption.help"
       ],
-      "description": "Each enumOption property reaches the runtime metadata the browser shell is built from: GET /api/admin/runtime/metadata/enums lists every option of WidgetEnforcementDemo.state with its label, order, group, default and deprecated flags and description; icon and badge (Draft, Live) and iconHint and badgeHint (Retired) surface as the catalog's iconHint/badgeHint. Presentation-only, so the check is that the declared value is served exactly, per option.",
+      "description": "Each enumOption property reaches the runtime metadata the browser shell is built from: GET /api/admin/runtime/metadata/enums lists every option of WidgetEnforcementDemo.state with its label, order, group, default and deprecated flags and description; icon and badge (Draft, Live) and iconHint and badgeHint (Retired) surface as the catalog's iconHint/badgeHint. Presentation-only, so the check is that the declared value is served exactly, per option. Retired declares its label as displayLabel ('Withdrawn') and its description as help ('No longer used'): the two aliases are served as label and description.",
       "steps": [
         {
           "name": "enum catalog Draft",
@@ -165,7 +167,8 @@
               "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Retired].deprecated": true,
               "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Retired].description": "No longer used",
               "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Retired].iconHint": "archive",
-              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Retired].badgeHint": "muted"
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Retired].badgeHint": "muted",
+              "$.items[?concept=WidgetEnforcementDemo&fieldPath=state&value=Retired].label": "Withdrawn"
             }
           }
         }

@@ -668,6 +668,38 @@ class AggregateCollectionViaRetirementTest(unittest.TestCase):
         self.assertEqual(before, doc)
 
 
+class AggregateCollectionMetadataRetirementTest(unittest.TestCase):
+    """ENF-1 (2026-10-24): `aggregates[].collections[].metadata` was read by nothing; stripped at every depth.
+    The aggregate's own `metadata` is served (invocations catalog) and kept."""
+
+    def _doc(self) -> dict:
+        return {
+            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "flows": [],
+            "concepts": [{"name": "Order", "fields": []}],
+            "aggregates": [{"name": "OrderAggregate", "root": "Order", "metadata": {"purpose": "kept"}, "collections": [
+                {"name": "lines", "concept": "Line", "childField": "orderId", "metadata": {"note": "x"},
+                 "collections": [{"name": "parts", "concept": "Part", "childField": "lineId", "metadata": {}}]},
+            ]}],
+        }
+
+    def test_dropped_at_every_depth_and_aggregate_metadata_kept(self):
+        doc = self._doc()
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        lines = doc["aggregates"][0]["collections"][0]
+        self.assertNotIn("metadata", lines)
+        self.assertNotIn("metadata", lines["collections"][0])
+        self.assertEqual({"purpose": "kept"}, doc["aggregates"][0]["metadata"])
+        self.assertEqual(2, sum("'metadata'" in change for change in result.changes))
+
+    def test_idempotent_second_run_makes_no_further_changes(self):
+        doc = self._doc()
+        self.assertTrue(migrate_document(doc).changed)
+        before = copy.deepcopy(doc)
+        self.assertFalse(migrate_document(doc).changed)
+        self.assertEqual(before, doc)
+
+
 class NamedItemUidRetirementTest(unittest.TestCase):
     """ENF-1 (2026-10-24): `flows[].uid`, `queries[].uid` and `aggregates[].uid` were compiled and round-tripped
     but read by nothing (flow state is keyed by name, queries and aggregates keep no state of their own);

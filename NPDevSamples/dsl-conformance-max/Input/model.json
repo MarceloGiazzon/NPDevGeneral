@@ -782,18 +782,18 @@
           "type": "enum",
           "enumValues": [
             {
-              "value": "Draft", "label": "Draft", "displayLabel": "In draft", "order": 10, "group": "Open",
-              "default": true, "icon": "edit", "iconHint": "pencil", "badge": "info", "badgeHint": "not yet live",
-              "description": "Not yet published", "help": "Drafts can still change"
+              "value": "Draft", "label": "Draft", "order": 10, "group": "Open",
+              "default": true, "icon": "edit", "badge": "info",
+              "description": "Not yet published"
             },
             {
               "value": "Live", "label": "Live", "order": 20, "group": "Open", "icon": "check", "badge": "success",
               "description": "Published"
             },
             {
-              "value": "Retired", "label": "Retired", "order": 30, "group": "Closed", "deprecated": true,
+              "value": "Retired", "displayLabel": "Withdrawn", "order": 30, "group": "Closed", "deprecated": true,
               "iconHint": "archive", "badgeHint": "muted",
-              "description": "No longer used"
+              "help": "No longer used"
             }
           ],
           "required": true,
@@ -896,6 +896,29 @@
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "title", "type": "string", "required": true, "ui": { "label": "Title" } },
         { "name": "code", "type": "string", "required": false, "uid": "wtu0f00000000001", "ui": { "label": "Code" } }
+      ]
+    },
+    {
+      "name": "CuratedLabel",
+      "specializes": "labeling::Label",
+      "module": "Labeling",
+      "truthLevel": "T2",
+      "ui": { "label": "Curated label", "description": "ENF-1: specializes the labeling pack's Label (inherits its required text, maxLength 80, and color) and adds priority; module Labeling picks up config.json's module:Labeling setting overrides (92-specialization-module.json)." },
+      "fields": [
+        { "name": "priority", "type": "integer", "required": false, "ui": { "label": "Priority" } }
+      ],
+      "access": { "read": "true", "write": "true" }
+    },
+    {
+      "name": "LabelStats",
+      "satelliteOf": "labeling::Label",
+      "truthLevel": "T2",
+      "ui": { "label": "Label stats", "description": "ENF-1: a satellite of the labeling pack's Label -- its own FK-linked table, one row per label. A live model reload refuses field changes on it (60-live-add-field.json)." },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "labelId", "type": "reference", "required": true, "unique": true,
+          "reference": { "target": "labeling::Label", "onDelete": "cascade" }, "ui": { "label": "Label" } },
+        { "name": "useCount", "type": "integer", "required": false, "ui": { "label": "Use count" } }
       ]
     },
     {
@@ -1918,6 +1941,10 @@
       "name": "ValidateWidgetOrderProcedure",
       "description": "Coverage for aggregate.onValidate (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 3B / Gap 8): a pre-commit guard run BEFORE the root upsert (a sibling of onCommit, not a flag on it -- different timing, different contract: a non-ok result aborts with NO writes at all). This one is a trivial pass-through, standing in for a real guard like WmsOffice's ValidateMovimentoProcedure, which rejects a commit outright via readConcept's own CONCEPT_NOT_FOUND when a foreign reference is dangling.",
       "steps": [
+        { "name": "veto-on-demand", "type": "if", "condition": "$input.status == 'onvalidate-veto'",
+          "then": [
+            { "name": "read-missing-entry", "type": "readConcept", "concept": "WidgetCatalogEntry", "id": "$input.id", "target": "neverThere" }
+          ] },
         { "name": "echo-linecount", "type": "mapValue", "value": "$lineCount", "target": "validated" },
         { "name": "return-validated", "type": "return", "value": "$validated" }
       ]
@@ -2065,7 +2092,8 @@
       "name": "FollowUpNewShelf",
       "trigger": { "type": "event", "event": "ShelfLayoutRegistered" },
       "actions": [
-        { "type": "create", "concept": "WidgetSeedDemo", "map": { "label": "$event.id" } },
+        { "type": "create", "concept": "WidgetSeedDemo", "map": { "label": "$event.id" },
+          "action": { "label": "Create shelf follow-up", "confirmationText": "Create a seed row for the new shelf?", "dangerLevel": "low" } },
         { "type": "scheduleEvent", "event": "ShelfCheckDueMs", "delayMs": 120000, "map": { "shelfId": "$event.id" } },
         { "type": "scheduleEvent", "event": "ShelfCheckDueSeconds", "delaySeconds": 600, "map": { "shelfId": "$event.id" } },
         { "type": "scheduleEvent", "event": "ShelfCheckDueMinutes", "delayMinutes": 60, "map": { "shelfId": "$event.id" } }

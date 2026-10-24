@@ -1401,7 +1401,6 @@ public final class ModelCompiler {
                     collection.ownership(),
                     collection.orderBy(),
                     compileAggregateCollections(collection.collections()),
-                    sortObjectMap(collection.metadata()),
                     compileAggregateCollectionLookupFields(collection.lookupFields())
             ));
         }

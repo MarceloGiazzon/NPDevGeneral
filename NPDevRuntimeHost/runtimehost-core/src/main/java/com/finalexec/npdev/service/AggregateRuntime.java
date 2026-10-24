@@ -246,7 +246,8 @@ public class AggregateRuntime {
         if (aggregate.onValidate() != null && procedureRunner != null) {
             ProcedureExecutionResult onValidateResult = procedureRunner.execute(aggregate.onValidate(), rootDraft, ctx);
             if (!onValidateResult.ok()) {
-                throw new IllegalStateException(
+                // ENF-1: the guard rejected the proposed draft -- a client error (422), not "cannot serve" (503)
+                throw new AggregateCommitVetoException(
                         "Aggregate " + aggregate.name() + " onValidate procedure " + aggregate.onValidate()
                                 + " failed: " + onValidateResult.failureCode() + " " + onValidateResult.failureMessage());
             }

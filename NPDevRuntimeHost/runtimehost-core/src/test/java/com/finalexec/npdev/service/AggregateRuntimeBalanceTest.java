@@ -39,7 +39,7 @@ class AggregateRuntimeBalanceTest {
                 "StockTransfer", "StockTransfer",
                 List.of(new CompiledAggregateCollection(
                         "positions", "StockTransferPosition", "stockTransferId", "owned",
-                        null, List.of(), Map.of(), List.of())),
+                        null, List.of(), List.of())),
                 null, Map.of(), null, List.of(), List.of(balance()));
         return new CompiledModel(
                 "test.balance", "1.0.0", "1.0", Map.of(),

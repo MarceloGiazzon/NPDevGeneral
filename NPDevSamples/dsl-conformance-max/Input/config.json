@@ -17,6 +17,9 @@
   "defaults": {
     "checks.gpuArtifacts": true
   },
+  "overrides": {
+    "module:Labeling": { "ui.frame.mode": "minimal" }
+  },
   "bootstrap": {
     "root": "..\\..\\NPDevRuntimeHost",
     "mergeStrategy": "clean-copy"

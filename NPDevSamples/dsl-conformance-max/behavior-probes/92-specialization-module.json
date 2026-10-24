@@ -1,0 +1,102 @@
+{
+  "probes": [
+    {
+      "id": "specialization-inherits-the-pack-base-and-adds-fields",
+      "keywords": [
+        "concept.specializes"
+      ],
+      "description": "ENF-1: CuratedLabel specializes the labeling pack's Label. It accepts the base's fields plus its own (priority), refuses a row missing the base's required text, and refuses a text over the base's maxLength 80 -- the base's rules hold on the specialization without being redeclared.",
+      "steps": [
+        {
+          "name": "base + own field accepted",
+          "method": "POST",
+          "path": "/api/concepts/curated_labels",
+          "body": {
+            "text": "cl-${rand}",
+            "color": "teal",
+            "priority": 2
+          },
+          "expect": {
+            "status": [
+              200,
+              201
+            ],
+            "json": {
+              "$.text": {
+                "matches": "^cl-"
+              },
+              "$.color": "teal",
+              "$.priority": 2
+            }
+          },
+          "save": {
+            "curatedId": "$.id"
+          }
+        },
+        {
+          "name": "inherited required text",
+          "method": "POST",
+          "path": "/api/concepts/curated_labels",
+          "body": {
+            "priority": 2
+          },
+          "expect": {
+            "status": [
+              400,
+              422
+            ],
+            "text": [
+              "text"
+            ]
+          }
+        },
+        {
+          "name": "inherited maxLength 80",
+          "method": "POST",
+          "path": "/api/concepts/curated_labels",
+          "body": {
+            "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "priority": 2
+          },
+          "expect": {
+            "status": [
+              400,
+              422
+            ],
+            "text": [
+              "text"
+            ]
+          }
+        },
+        {
+          "name": "cleanup",
+          "always": true,
+          "method": "DELETE",
+          "path": "/api/concepts/curated_labels/${curatedId}"
+        }
+      ]
+    },
+    {
+      "id": "concept-module-selects-module-scoped-settings",
+      "keywords": [
+        "concept.module"
+      ],
+      "description": "ENF-1: a concept's module places it under module-scoped settings. config.json overrides ui.frame.mode for module:Labeling only; the served UI manifest gives CuratedLabel (module Labeling) frameMode minimal while a concept with no module keeps the default full.",
+      "steps": [
+        {
+          "name": "UI manifest frame modes",
+          "method": "GET",
+          "auth": "none",
+          "path": "/npdev-business-ui/generated-ui-manifest.json",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.concepts[?conceptName=CuratedLabel].frameMode": "minimal",
+              "$.concepts[?conceptName=WidgetSupplier].frameMode": "full"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

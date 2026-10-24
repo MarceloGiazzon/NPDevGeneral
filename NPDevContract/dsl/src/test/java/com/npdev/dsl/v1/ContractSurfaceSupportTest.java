@@ -254,6 +254,23 @@ class ContractSurfaceSupportTest {
     }
 
     @Test
+    void rejectsRetiredAggregateCollectionMetadata() throws Exception {
+        // ENF-1 (2026-10-24): read and served by nothing, declared by no model; `npdev migrate dsl-2` strips it.
+        Path modelPath = writeTempModel("""
+                {
+                  "dslVersion": "1.0.0", "namespace": "close.contract", "version": "1.0.0",
+                  "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
+                  "aggregates": [ { "name": "WorkAggregate", "root": "WorkItem", "metadata": { "purpose": "still fine" }, "collections": [
+                    { "name": "children", "concept": "WorkItem", "childField": "id", "metadata": { "note": "retired" } } ] } ]
+                }
+                """);
+        Exception exception = assertThrows(Exception.class, () -> new JsonModelParser().parse(modelPath));
+        assertTrue(exception.getMessage().contains("Model schema validation failed")
+                        && exception.getMessage().contains("metadata"),
+                "Expected the retired aggregate collection metadata to be refused: " + exception.getMessage());
+    }
+
+    @Test
     void rejectsRetiredFlowQueryAndAggregateUid() throws Exception {
         // ENF-1 (2026-10-24): flow/query/aggregate uid were read by nothing (flow state is keyed by name; queries
         // and aggregates keep no state of their own), so retired; `npdev migrate dsl-2` strips them. Concept and

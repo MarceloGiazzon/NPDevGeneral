@@ -23,7 +23,7 @@ import java.util.Set;
  * column type) changed, and a new field that is required, unique, an id, a reference/bond, a JSON-typed
  * (object/array/file) field, or a column name that collides with an existing one. Those stay on the
  * rebuild path, where the schema lifecycle's acknowledgment tokens own them. A concept that is a
- * satellite (stored on another concept's table) or temporal (has a history table) is refused for any
+ * satellite (its own table, FK-linked to the pack base it extends) or temporal (has a history table) is refused for any
  * new field for the same reason {@link NewConceptSchemaProvisioner} refuses it as a new concept.
  *
  * <p>Pure projection of two {@link CompiledModel}s -- no database access -- so
@@ -121,7 +121,7 @@ public final class LiveFieldDiff {
     private static String ineligibleReason(CompiledConcept concept, CompiledField field, boolean structural) {
         if (structural) {
             return concept.getSatelliteOf() != null
-                    ? "on a satellite concept (stored on another concept's table)"
+                    ? "on a satellite concept (its own table, FK-linked to the pack base it extends)"
                     : "on a temporal concept (it has a history table too)";
         }
         if (field.isId()) {

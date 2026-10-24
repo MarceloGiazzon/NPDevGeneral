@@ -1270,9 +1270,6 @@
             "$ref": "#/$defs/aggregateCollection"
           }
         },
-        "metadata": {
-          "type": "object"
-        },
         "lookupFields": {
           "type": "array",
           "items": {

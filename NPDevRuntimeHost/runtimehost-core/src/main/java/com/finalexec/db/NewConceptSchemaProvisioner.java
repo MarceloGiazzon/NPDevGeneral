@@ -106,7 +106,7 @@ public final class NewConceptSchemaProvisioner {
      */
     static String outOfScopeReason(CompiledConcept concept, CompiledModel existingModel) {
         if (concept.getSatelliteOf() != null) {
-            return "satellite concept: stored on another concept's table, has no table of its own";
+            return "satellite concept: its own table is FK-linked to the pack base it extends, which live provisioning does not create";
         }
         if (concept.isTemporal()) {
             return "temporal concepts are not yet supported by live schema provisioning";

@@ -620,6 +620,13 @@ def _migrate_aggregate_collection_via(collections, path: str, result: MigrationR
             value = collection.pop("via")
             result.changed = True
             result.changes.append(f"{here}: dropped inert 'via' ({value!r}) -- retired, consumed by nothing (REG-301)")
+        if "metadata" in collection:
+            # ENF-1 (2026-10-24): collection metadata was compiled and round-tripped but no runtime surface read
+            # or served it, and no model in the repo, the packs or AppGen declared it. An AGGREGATE's own
+            # metadata is live (served in the invocations catalog) and untouched.
+            collection.pop("metadata")
+            result.changed = True
+            result.changes.append(f"{here}: dropped inert 'metadata' -- retired, consumed by nothing (ENF-1)")
         _migrate_aggregate_collection_via(collection.get("collections"), f"{here}.collections", result)
 
 

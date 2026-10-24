@@ -1,0 +1,25 @@
+id: REG-307
+title: >-
+  The LIVE-1 reload refusal described a satellite concept as "stored on another concept's table"; a satellite has
+  its own FK-linked table
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-10-24
+closed: 2026-10-24
+source: >-
+  2026-10-24, ENF-1 planning for concept.satelliteOf: LiveFieldDiff's refusal text contradicted PackExtensionComposer
+  (a satellite lives "in its own table") and the p6-satellite-extension probe (its own FK-linked table).
+surface: NPDevRuntimeHost runtimehost-core db/LiveFieldDiff (refusal message + javadoc) and NewConceptSchemaProvisioner.outOfScopeReason
+detail: |
+  An operator told the field was refused because the concept is "stored on another concept's table" would look for
+  the change on the wrong table. NewConceptSchemaProvisioner said the same, adding "has no table of its own".
+resolution: >-
+  Done when the refusal names the real storage: its own table, FK-linked to the pack base it extends.
+guard:
+  kind: script
+  ref: scripts/quality/run-behavior-probes.ps1 -LiveFieldVariant (60-live-add-field.json, live1-reload-refuses-a-field-on-a-satellite)
+  asserts: a reload adding an optional field to the satellite LabelStats is refused 422 naming LabelStats.liveExtra and "satellite"
+  provenRed: false
+note: >-
+  2026-10-24: FIXED in the same commit that gave concept.satelliteOf its witness.

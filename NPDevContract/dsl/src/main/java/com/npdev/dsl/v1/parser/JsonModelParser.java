@@ -194,6 +194,7 @@ public final class JsonModelParser {
         List<com.npdev.dsl.v1.ast.ContextAst> contexts = new ArrayList<>();
         List<com.npdev.dsl.v1.ast.WebhookAst> webhooks = new ArrayList<>();
         List<String> parserWarnings = new ArrayList<>(sourceWarnings == null ? List.of() : sourceWarnings);
+        collectEnumOptionAliasWarnings(root, "$", parserWarnings);
         Map<String, ConceptAst> conceptsByLowerName = new LinkedHashMap<>();
 
         JsonNode conceptsNode = root.get("concepts");
@@ -1710,7 +1711,6 @@ public final class JsonModelParser {
                     readText(collectionNode, "orderBy"),
                     parseAggregateCollections(collectionNode.get("collections"),
                             path + "[" + name + "].collections"),
-                    parseObjectMap(collectionNode.get("metadata")),
                     parseAggregateCollectionLookupFields(collectionNode.get("lookupFields"),
                             path + "[" + name + "].lookupFields")
             ));
@@ -2554,6 +2554,50 @@ public final class JsonModelParser {
             out.add(it.next().asText());
         }
         return out;
+    }
+
+    /** Enum option keys parseEnumOptions folds together; the first of each pair wins. */
+    private static final String[][] ENUM_OPTION_ALIAS_PAIRS = {
+            {"label", "displayLabel"}, {"description", "help"}, {"icon", "iconHint"}, {"badge", "badgeHint"}};
+
+    /**
+     * ENF-1 (D5): an enum option that sets BOTH keys of an alias pair keeps the first and silently drops
+     * the second (dsl-conformance-max's Draft option did, for all four pairs). Warned, never refused:
+     * the model is valid, but the author wrote a value that will never be served.
+     */
+    private static void collectEnumOptionAliasWarnings(JsonNode node, String path, List<String> warnings) {
+        if (node == null) {
+            return;
+        }
+        if (node.isArray()) {
+            for (int i = 0; i < node.size(); i++) {
+                collectEnumOptionAliasWarnings(node.get(i), path + "[" + i + "]", warnings);
+            }
+            return;
+        }
+        if (!node.isObject()) {
+            return;
+        }
+        JsonNode options = node.get("enumValues");
+        if (options != null && options.isArray()) {
+            for (int i = 0; i < options.size(); i++) {
+                JsonNode option = options.get(i);
+                if (option == null || !option.isObject()) {
+                    continue;
+                }
+                for (String[] pair : ENUM_OPTION_ALIAS_PAIRS) {
+                    if (option.hasNonNull(pair[0]) && option.hasNonNull(pair[1])) {
+                        warnings.add(path + ".enumValues[" + i + "] (" + option.path("value").asText("?") + ") sets both '"
+                                + pair[0] + "' and its alias '" + pair[1] + "'; '" + pair[1] + "' is ignored -- keep one.");
+                    }
+                }
+            }
+        }
+        Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+        while (fields.hasNext()) {
+            Map.Entry<String, JsonNode> entry = fields.next();
+            collectEnumOptionAliasWarnings(entry.getValue(), path + "." + entry.getKey(), warnings);
+        }
     }
 
     private static List<EnumOptionAst> parseEnumOptions(JsonNode node, String fieldPath) throws IOException {
