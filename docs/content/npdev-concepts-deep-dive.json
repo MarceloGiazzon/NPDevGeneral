@@ -170,7 +170,7 @@
     {
       "level": 3,
       "title": "Gotchas",
-      "body": "\n- The target concept's anchor field must be `unique: true` (plus `connectable: anchor` if\n  it's not the plain `id`) — a reference can't point at a field that might repeat.\n- `nullify` is rejected if the referencing field is itself `required` — you can't promise\n  \"always points at something\" and \"gets cleared on delete\" at the same time.\n- References are same-model only in the current version — you can't point at a concept\n  defined in a different app.\n\n---\n"
+      "body": "\n- The target concept's anchor field must be `unique: true` (plus `connectable: anchor` if\n  it's not the plain `id`) — a reference can't point at a field that might repeat.\n- A natural-key anchor is unique **per tenant**, like every other unique field: two tenants may\n  each have a product with SKU `ABC`. The database enforces it with a `(tenant_id, sku)` unique\n  constraint, and the referencing row's foreign key is `(tenant_id, productSku)`, so a row can\n  never point at another tenant's product.\n- A `multiple` (many-to-many) reference must go via the target's `id`, not a natural-key anchor:\n  the junction table that holds the pairs has no tenant column to complete the key.\n- `nullify` is rejected if the referencing field is itself `required` — you can't promise\n  \"always points at something\" and \"gets cleared on delete\" at the same time.\n- References are same-model only in the current version — you can't point at a concept\n  defined in a different app.\n\n---\n"
     },
     {
       "level": 2,

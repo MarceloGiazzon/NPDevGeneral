@@ -62,6 +62,27 @@ class ImportRenamePolicyTest {
     }
 
     @Test
+    void theWholeTableNameOrItsSingularIsStrippedAtAnyLength() {
+        var twoWords = ImportRenamePolicy.plan(table("PerfilAlocacao", List.of("PerfilAlocacaoId"), List.of(),
+                "PerfilAlocacaoId", "PerfilAlocacaoNome", "PerfilAlocacaoFinalidade", "PerfilAlocacaoDescricao"),
+                CONCEPTS, DEFAULT);
+        assertEquals(Map.of("PerfilAlocacaoId", "id", "PerfilAlocacaoNome", "nome",
+                "PerfilAlocacaoFinalidade", "finalidade", "PerfilAlocacaoDescricao", "descricao"), applied(twoWords),
+                "the first word alone (Perfil) would leave alocacaoNome");
+        var longSingular = ImportRenamePolicy.plan(table("Recebimentos", List.of("RecebimentoId"), List.of(),
+                "RecebimentoId", "RecebimentoSituacao", "RecebimentoEstagio", "RecebimentoMotorista"), CONCEPTS, DEFAULT);
+        assertEquals("situacao", longSingular.get("RecebimentoSituacao").field(), "11 letters, beyond maxLength 6");
+        assertEquals("prefix", longSingular.get("RecebimentoSituacao").rule());
+        var mixed = ImportRenamePolicy.plan(table("ExpedicaoItens", List.of("ExpedicaoItemSeq", "ExpedicaoID"), List.of(),
+                "ExpedicaoID", "ExpedicaoItemSeq", "ExpedicaoItensQuantidade", "ExpedicaoItemAutoEnd", "ExpedicaoItemObs"),
+                CONCEPTS, DEFAULT);
+        assertEquals("quantidade", mixed.get("ExpedicaoItensQuantidade").field(), "the plural spelling is stripped too");
+        assertEquals("autoEnd", mixed.get("ExpedicaoItemAutoEnd").field(), "4 of 5 columns use one of the two spellings");
+        assertEquals(-1, ImportRenamePolicy.prefixEnd("PerfilAlocacao", "perfilalocacao"), "nothing left after it");
+        assertEquals(-1, ImportRenamePolicy.prefixEnd("PerfilAlocacaoNome", "perfilaloc"), "not at a word boundary");
+    }
+
+    @Test
     void aPrefixSharedByTooFewColumnsIsNotStripped() {
         var plan = ImportRenamePolicy.plan(table("Armazens", List.of("ArmCod"), List.of(),
                 "ArmCod", "ArmNome", "Ativo", "Latitude"), CONCEPTS, DEFAULT);

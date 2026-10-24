@@ -476,8 +476,7 @@ public final class ModelCompiler {
                     toCompiledActionMetadata(flowAst.getAction()),
                     flowAst.isStartEndpoint(),
                     toCompiledFlowSchedule(flowAst.getSchedule()),
-                    toCompiledOrigin(flowAst.getOrigin()),
-                    flowAst.getUid()
+                    toCompiledOrigin(flowAst.getOrigin())
             ));
         }
 
@@ -532,7 +531,6 @@ public final class ModelCompiler {
                     toCompiledAggregateFunctions(queryAst.aggregates()),
                     queryAst.having(),
                     toCompiledOrigin(queryAst.origin()),
-                    queryAst.uid(),
                     queryAst.lookups().stream()
                             .map(lookup -> new com.npdev.dsl.v1.compiled.CompiledQueryLookup(
                                     lookup.name(), lookup.concept(), lookup.fn(), lookup.field(),
@@ -1334,7 +1332,6 @@ public final class ModelCompiler {
                 onValidate,
                 // npdev-aggregate-invariant-four-place (R4.4): parser -> HERE -> canonical writer+reader.
                 compileAggregateInvariants(aggregateAst.invariants()),
-                aggregateAst.uid(),
                 // npdev-aggregate-balance-four-place (Session 1): parser -> HERE -> canonical writer+reader.
                 compileAggregateBalances(aggregateAst.balances())
         );

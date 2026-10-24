@@ -500,7 +500,6 @@ public final class JsonModelParser {
                 ActionMetadataAst action = parseActionMetadata(flowNode.get("action"), "flows[" + flowName + "].action");
                 Boolean startEndpoint = readOptionalBoolean(flowNode, "startEndpoint");
                 FlowScheduleAst schedule = parseFlowSchedule(flowNode.get("schedule"), flowName);
-                String flowUid = readText(flowNode, "uid");
                 flows.add(new FlowAst(
                         flowName,
                         concept,
@@ -513,8 +512,7 @@ public final class JsonModelParser {
                         action,
                         Boolean.TRUE.equals(startEndpoint),
                         schedule,
-                        originFor(originByQualifiedMemberName, "flows", flowName),
-                        flowUid
+                        originFor(originByQualifiedMemberName, "flows", flowName)
                 ));
             }
         }
@@ -1241,7 +1239,6 @@ public final class JsonModelParser {
                     parseAggregateFunctions(queryNode.get("aggregates")),
                     readText(queryNode, "having"),
                     toOriginAst(originByName.get(name)),
-                    readText(queryNode, "uid"),
                     parseQueryLookups(queryNode.get("lookups")),
                     parseQueryComputedColumns(queryNode.get("computed"))
             ));
@@ -1638,7 +1635,6 @@ public final class JsonModelParser {
                     // writer+reader, mirroring ast-compiled-four-place's chain for a per-member field.
                     parseAggregateInvariants(aggregateNode.get("invariants"),
                             "aggregates[" + name + "].invariants"),
-                    readText(aggregateNode, "uid"),
                     // npdev-aggregate-balance-four-place (Session 1, 2026-09-14): parser -> compiler
                     // -> canonical writer+reader, same shape as npdev-aggregate-invariant-four-place.
                     parseAggregateBalances(aggregateNode.get("balances"),

@@ -7,7 +7,10 @@ import com.npdev.dsl.v1.compiled.CompiledAggregateBalance;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollectionLookupField;
 import com.npdev.dsl.v1.compiled.CompiledAggregateInvariant;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledPanel;
+import com.npdev.dsl.v1.compiled.CompiledStateMachineState;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGateway;
@@ -318,7 +321,7 @@ public class AggregateRuntime {
      */
     public Map<String, Object> invoke(
             String aggregateName, String procedureName, Map<String, Object> draft, ExecutionContext context) {
-        findAggregate(aggregateName); // validate the aggregate exists before touching the procedure
+        CompiledAggregate aggregate = findAggregate(aggregateName); // validate before touching the procedure
         ExecutionContext ctx = context == null ? ExecutionContext.anonymous() : context;
         if (procedureRunner == null) {
             throw new IllegalStateException("No ProcedureRunner is available to invoke procedures over aggregates.");
@@ -326,6 +329,7 @@ public class AggregateRuntime {
         if (!procedureRunner.hasProcedure(procedureName)) {
             throw new IllegalArgumentException("Procedure not found: " + procedureName);
         }
+        requireActionAllowedInCurrentState(aggregate, procedureName, draft, ctx);
         ProcedureExecutionResult result =
                 procedureRunner.execute(procedureName, draft == null ? Map.of() : draft, ctx);
         if (!result.ok()) {
@@ -746,6 +750,94 @@ public class AggregateRuntime {
         }
         throw new AggregateCommitVetoException(
                 "Aggregate " + aggregate.name() + " invariant(s) violated: " + names + " -- " + details);
+    }
+
+    /**
+     * ENF-1 (2026-10-24): {@code lifecycleState.allowedActions} enforced on the server, with exactly the rule the
+     * workbench uses to show its action rail (workbench-page.html.mustache): a procedure that is a workbench ACTION
+     * of this aggregate (a checkBalances action has no procedure and is never gated) may run only if the root's
+     * current state declares no allowedActions or lists it. Procedures the workbench invokes for other reasons
+     * (recompute, onLoad, beforeAction, ...) are not actions and are not gated. The current state is the PERSISTED
+     * root's status when the root exists -- never the client's draft, which the caller controls -- else the
+     * lifecycle's initial state (a new, unsaved root).
+     */
+    private void requireActionAllowedInCurrentState(
+            CompiledAggregate aggregate, String procedureName, Map<String, Object> draft, ExecutionContext ctx) {
+        CompiledModel model = modelHolder.get();
+        if (model == null || procedureName == null) {
+            return;
+        }
+        Map<?, ?> lifecycle = null;
+        boolean railAction = false;
+        for (CompiledPanel panel : model.getPanels()) {
+            if (panel == null || panel.metadata() == null
+                    || !(panel.metadata().get("workbench") instanceof Map<?, ?> workbench)
+                    || !aggregate.name().equalsIgnoreCase(String.valueOf(workbench.get("aggregate")))) {
+                continue;
+            }
+            if (workbench.get("actions") instanceof List<?> actions) {
+                for (Object action : actions) {
+                    if (action instanceof Map<?, ?> entry && entry.get("procedure") != null
+                            && procedureName.equalsIgnoreCase(String.valueOf(entry.get("procedure")))) {
+                        railAction = true;
+                    }
+                }
+            }
+            if (lifecycle == null && workbench.get("lifecycle") instanceof Map<?, ?> found) {
+                lifecycle = found;
+            }
+        }
+        if (!railAction || lifecycle == null || !(lifecycle.get("states") instanceof List<?> states)) {
+            return;
+        }
+        Object statusField = lifecycle.get("statusField");
+        String currentState = persistedRootStatus(aggregate, statusField == null ? "" : String.valueOf(statusField), draft, ctx);
+        if (currentState == null) {
+            currentState = initialState(aggregate.root());
+        }
+        for (Object stateObject : states) {
+            if (!(stateObject instanceof Map<?, ?> state) || currentState == null
+                    || !currentState.equals(String.valueOf(state.get("value")))) {
+                continue;
+            }
+            if (state.get("allowedActions") instanceof List<?> allowed && !allowed.isEmpty()
+                    && allowed.stream().noneMatch(name -> procedureName.equalsIgnoreCase(String.valueOf(name)))) {
+                throw new AggregateActionNotAllowedException(
+                        "Action " + procedureName + " is not allowed on aggregate " + aggregate.name()
+                                + " while " + aggregate.root() + " is in state " + currentState
+                                + " (allowed: " + allowed + ")");
+            }
+            return;
+        }
+    }
+
+    private String persistedRootStatus(
+            CompiledAggregate aggregate, String statusField, Map<String, Object> draft, ExecutionContext ctx) {
+        Object id = draft == null ? null : draft.get("id");
+        if (id == null || String.valueOf(id).isBlank() || statusField.isBlank() || conceptGateway == null) {
+            return null;
+        }
+        return conceptGateway.read(new ConceptReadRequest(aggregate.root(), String.valueOf(id), null), ctx)
+                .map(record -> record.data().get(statusField))
+                .map(String::valueOf)
+                .orElse(null);
+    }
+
+    private String initialState(String conceptName) {
+        CompiledModel model = modelHolder.get();
+        if (model == null) {
+            return null;
+        }
+        CompiledConcept concept = model.findConcept(conceptName).orElse(null);
+        if (concept == null || concept.getLifecycle() == null) {
+            return null;
+        }
+        for (CompiledStateMachineState state : concept.getLifecycle().getStates()) {
+            if (state != null && state.isInitial()) {
+                return state.getValue();
+            }
+        }
+        return null;
     }
 
     private CompiledAggregate findAggregate(String aggregateName) {

@@ -107,8 +107,13 @@ public final class BondModelSupport {
             return BondModelSupport.onDeleteSql(onDelete);
         }
 
+        /** A non-id ("connectable" natural-key) anchor: unique per tenant, so its FK is composite with tenant_id. */
+        public boolean naturalKeyAnchor() {
+            return anchorField != null && !anchorField.isId();
+        }
+
         public String onUpdateSqlClause() {
-            return anchorField != null && !anchorField.isId() ? " ON UPDATE CASCADE" : "";
+            return naturalKeyAnchor() ? " ON UPDATE CASCADE" : "";
         }
 
         /**
@@ -185,6 +190,14 @@ public final class BondModelSupport {
                     + "A via anchor must be the id field or a unique field marked connectable:\"anchor\".");
         }
         boolean multiple = semantics != null && semantics.isMultiple();
+        if (multiple && !anchor.isId()) {
+            // ENF-1 (2026-10-24): a natural-key anchor is unique per TENANT, and a junction table carries no
+            // tenant column, so a many-to-many bond through one has no key to reference. ReferenceValidation
+            // refuses the same model first; this is the generation-time backstop.
+            throw new IllegalStateException("Bond resolution error: " + sourceConcept.getName() + "."
+                    + sourceField.getName() + " is a multiple (N:M) bond via natural-key anchor " + target.getName()
+                    + "." + anchor.getName() + "; a many-to-many bond must target the id field.");
+        }
         Cardinality cardinality = multiple
                 ? Cardinality.MANY_TO_MANY
                 : (sourceField.isUnique() ? Cardinality.ONE_TO_ONE : Cardinality.MANY_TO_ONE);

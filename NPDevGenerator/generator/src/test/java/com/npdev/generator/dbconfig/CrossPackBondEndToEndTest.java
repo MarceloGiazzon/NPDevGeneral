@@ -62,8 +62,8 @@ final class CrossPackBondEndToEndTest {
         assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS catalog_products"),
                 "catalog::Product must produce SQL table catalog_products. SQL:\n" + sql);
         assertFalse(sql.contains("::"), "No '::' characters should appear in generated SQL. SQL:\n" + sql);
-        assertTrue(sql.contains("REFERENCES catalog_products (sku_id)"),
-                "FK must reference catalog_products(sku_id). SQL:\n" + sql);
+        assertTrue(sql.contains("REFERENCES catalog_products (tenant_id, sku_id)"),
+                "FK must reference catalog_products(tenant_id, sku_id). SQL:\n" + sql);
         assertTrue(sql.contains("ON DELETE RESTRICT"), "onDelete=restrict must be honored. SQL:\n" + sql);
     }
 

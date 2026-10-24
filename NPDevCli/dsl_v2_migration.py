@@ -563,6 +563,47 @@ def _migrate_query_or_procedure_trace_policy(entries, kind: str, result: Migrati
         )
 
 
+def _is_reference_field(field: dict) -> bool:
+    """The same test the validator and BusinessUiEmitter use: type reference, a `ref`/`reference` target, or a
+    referenceSemantics.target."""
+    semantics = field.get("referenceSemantics")
+    return (field.get("type") == "reference" or bool(field.get("ref")) or bool(field.get("reference"))
+            or (isinstance(semantics, dict) and bool(semantics.get("target"))))
+
+
+def _migrate_misplaced_picker(concepts, result: MigrationResult) -> None:
+    """REG-302 (2026-10-24): `field.picker` is read only from a reference field's reference entry, so on any
+    other field it was silently ignored; it is now refused, and this drops it. A reference field's picker is
+    untouched."""
+    if not isinstance(concepts, list):
+        return
+    for concept in concepts:
+        if not isinstance(concept, dict):
+            continue
+        for field in concept.get("fields", None) or []:
+            if isinstance(field, dict) and "picker" in field and not _is_reference_field(field):
+                value = field.pop("picker")
+                result.changed = True
+                result.changes.append(f"concepts ({concept.get('name', '?')}).fields ({field.get('name', '?')}): dropped "
+                                      f"'picker' ({value!r}) on a non-reference field -- read by nothing, now refused (REG-302)")
+
+
+def _migrate_retired_named_uid(items, kind: str, result: MigrationResult) -> None:
+    """ENF-1 (2026-10-24): `flows[].uid`, `queries[].uid` and `aggregates[].uid` were compiled and round-tripped
+    through the canonical JSON but read by nothing -- flow state (parked instances, cron claims, shape
+    fingerprint) is keyed by the flow's NAME, and queries and aggregates keep no state of their own to carry
+    across a rename. Retired from the schema; this strips the dead key. Concept and field uid are live (rename
+    identity at boot) and untouched."""
+    if not isinstance(items, list):
+        return
+    for i, item in enumerate(items):
+        if isinstance(item, dict) and "uid" in item:
+            value = item.pop("uid")
+            result.changed = True
+            result.changes.append(f"{kind}[{i}] ({item.get('name', '?')}): dropped inert 'uid' ({value!r}) -- retired, "
+                                  "consumed by nothing (ENF-1)")
+
+
 def _migrate_aggregate_collection_via(collections, path: str, result: MigrationResult) -> None:
     """REG-301 (2026-10-23): `aggregates[].collections[].via` (recursive) was schema-declared, parsed,
     compiled and round-tripped through the canonical JSON, but no runtime class ever called via() --
@@ -825,6 +866,9 @@ def migrate_document(doc: dict) -> MigrationResult:
         if isinstance(aggregate, dict):
             _migrate_aggregate_collection_via(aggregate.get("collections"),
                                               f"aggregates[{a}] ({aggregate.get('name', '?')}).collections", result)
+    for kind in ("flows", "queries", "aggregates"):
+        _migrate_retired_named_uid(doc.get(kind, None) or [], kind, result)
+    _migrate_misplaced_picker(doc.get("concepts", None) or [], result)
 
     _migrate_untrusted_extension_entrypoint(doc.get("panels", None) or [], "panels", result)
     _migrate_untrusted_extension_entrypoint(doc.get("procedures", None) or [], "procedures", result)

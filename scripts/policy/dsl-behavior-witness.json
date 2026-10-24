@@ -44,57 +44,30 @@
   "allowlist": [
     {
       "keywords": [
-        "aggregate.name",
-        "aggregateCollection.collections",
-        "aggregateCollection.name",
-        "concept.access",
-        "concept.fields",
-        "concept.lifecycle",
-        "concept.name",
-        "field.name",
-        "flow.name",
-        "flow.steps",
-        "flowStep.name",
-        "flowStep.steps",
-        "query.name",
-        "queryLookup.name"
+        "concept.renamedFrom",
+        "concept.uid",
+        "field.renamedFrom",
+        "field.uid"
       ],
-      "reason": "Structural container or identity key: a concept, flow, query or field cannot exist without it, so a runtime that ignored it would fail every probe at once; there is no separate behaviour to witness.",
+      "reason": "Rename identity (uid, renamedFrom): its behaviour is a column/table rename at boot that keeps the data, observable only across two model revisions on a physical database. A witness needs a two-boot restart probe on h2local (LIVE-1 model reload refuses renames by design). flow/query/aggregate uid were retired 2026-10-24 (read by nothing).",
       "ledger": "ENF-1"
     },
     {
       "keywords": [
         "aggregate.metadata",
-        "aggregate.uid",
-        "aggregateCollection.metadata",
-        "concept.module",
-        "concept.renamedFrom",
-        "concept.satelliteOf",
-        "concept.specializes",
-        "concept.specializesFloat",
-        "concept.uid",
-        "field.renamedFrom",
-        "field.uid",
-        "flow.uid",
-        "lifecycleState.metadata",
-        "lifecycleTransition.metadata",
-        "query.metadata",
-        "query.uid"
+        "aggregateCollection.metadata"
       ],
-      "reason": "Identity, authoring or migration metadata (uid, metadata, renamedFrom, module, satelliteOf, specializes): consumed by tooling and the migrator, with no behaviour observable through the running app's REST API.",
+      "reason": "Free-form authoring notes (every fixture declaration is a `purpose` string) that no runtime surface serves -- aggregates appear in no metadata catalog. query.metadata, lifecycle state/transition metadata ARE served (87-served-metadata.json).",
       "ledger": "ENF-1"
     },
     {
       "keywords": [
-        "domainType.ui",
-        "field.connectable",
-        "field.description",
-        "field.picker",
-        "lifecycleState.label",
-        "lifecycleTransition.action",
-        "lifecycleTransition.actionLabel"
+        "concept.module",
+        "concept.satelliteOf",
+        "concept.specializes",
+        "concept.specializesFloat"
       ],
-      "reason": "Presentation only (labels, help text, pickers, icons): rendered by the browser shell and covered by the browser scenarios, not by REST behaviour.",
+      "reason": "Pack/extension structure (module grouping, PK-6 satellite of a pack-owned base, specialization of a pack concept and its version pin): the fixture declares none of them, and their effect is on composition and generation against a pack, not on the booted app's REST behaviour.",
       "ledger": "ENF-1"
     },
     {
@@ -107,27 +80,18 @@
     },
     {
       "keywords": [
-        "lifecycleState.allowedActions"
-      ],
-      "reason": "Validated against the concept's autoPanel workbench actions (LifecycleValidation) and applied by the browser workbench to show or hide action buttons; it has no REST-observable effect, and no fixture panel declares a workbench action for it to gate.",
-      "ledger": "ENF-1"
-    },
-    {
-      "keywords": [
         "orchestrationAction.action"
       ],
-      "reason": "actionMetadata, presentation only.",
+      "reason": "actionMetadata, presentation only. The actions catalog serves orchestrationAction entries, but no fixture orchestration action declares action metadata yet.",
       "ledger": "ENF-1"
     },
     {
       "keywords": [
-        "aggregate.onValidate",
-        "flow.action",
-        "flowStep.action"
+        "aggregate.onValidate"
       ],
-      "reason": "aggregate.onValidate: the fixture's ValidateWidgetOrderProcedure is a pass-through and no procedure step available to the fixture fails on demand, so the pre-write veto cannot be provoked. flow.action / flowStep.action: actionMetadata (UI).",
+      "reason": "The fixture's ValidateWidgetOrderProcedure is a pass-through and no procedure step available to the fixture fails on demand, so the pre-write veto cannot be provoked.",
       "ledger": "ENF-1"
     }
   ],
-  "frozenCount": 44
+  "frozenCount": 14
 }

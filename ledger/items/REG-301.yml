@@ -4,9 +4,9 @@ title: >-
   query.permissionRequirements, query.tracePolicy, aggregateCollection.via, flowStep.data
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-23
-closed: null
+closed: 2026-10-24
 source: >-
   ENF-1 witness work (scripts/policy/dsl-behavior-witness.json allowlist) and a read-only scout on 2026-10-23, spot-checked
   by grep the same day.
@@ -26,6 +26,14 @@ resolution: >-
   Done when each keyword is either enforced at runtime with a behaviour probe witnessing it (and removed from the
   dsl-behavior-witness allowlist, frozenCount lowered) or refused by validation with a migrate codemod and BREAKING.md
   entry. query.permissionRequirements first: a caller lacking the requirement must be refused.
+guard:
+  kind: script
+  ref: scripts/quality/run-behavior-probes.ps1 -Only 20-flow
+  asserts: >-
+    fl-emit-event-data-mapping-shapes-the-payload: the emitted WidgetOrderLineShaped payload carries exactly the
+    flowStep.data-mapped keys (widgetOrderId, sku) and none of the input's own keys; the retired keywords are refused by
+    ContractSurfaceSupportTest (rejectsRetiredQueryAndProcedureTracePolicy, rejectsRetiredAggregateCollectionVia)
+  provenRed: false
 note: >-
   2026-10-23: opened. Not yet fixed; no fixture query declares permissionRequirements or tracePolicy and no collection
   declares via, so the dsl-conformance-max corpus must gain a declaring example before a probe can witness it.
@@ -56,3 +64,10 @@ note: >-
   46 -> 44. :NPDevContract:dsl:test green. NOT YET RUN: the new probe against a booted app (run-behavior-probes.ps1
   -Only 20-flow -- -Only matches FILE names, not probe ids) and the RuntimeHost aggregate tests after restaging jars.
   Close this item when both are green.
+  2026-10-24: both green, item DONE. RuntimeHost libs restaged; runtimehost-core test (AggregateRuntimeBalanceTest,
+  AggregateRuntimeReplaceChildrenTest) and run-runtimehost-gate.ps1 (assembled-app suite incl. AggregateRuntimeTest)
+  pass. The first probe run FAILED, and not because flowStep.data is dead: the probe read the payload back from
+  GET /api/events/by-name, which redacts every payload by design (DefaultEventRedactionPolicy: empty for a caller
+  without DEBUG/ADMIN, allowlisted debug keys only otherwise). The execute response's emittedEvents carries the real
+  payload -- exactly widgetOrderId + sku + _meta. Probe rewritten to assert there (fixed input values) and to check
+  only persistence by GET /api/events/{id}; 20-flow 28/28 green.

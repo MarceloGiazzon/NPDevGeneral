@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -32,7 +33,9 @@ import java.util.TreeMap;
  *   <li><b>prefix</b> -- the first word (camel or underscore boundary) shared by at least {@code minShare} of the
  *       table's non-foreign-key columns, and by at least {@code minColumns} of them, {@code minLength..maxLength}
  *       letters long and (with {@code mustAbbreviateTable}) an in-order abbreviation of the table name starting
- *       at its first letter, is stripped ({@code ArmNome -> nome});</li>
+ *       at its first letter, is stripped ({@code ArmNome -> nome}); with {@code tableName}, the whole table name or
+ *       its singular, ending at a word boundary, counts as the prefix at any length and in preference to the first
+ *       word ({@code PerfilAlocacaoNome -> nome} in {@code PerfilAlocacao}, {@code EntidadeNome -> nome});</li>
  *   <li>a proposal is DECLINED, and the legacy camelCase name kept, when the result is empty ({@code empty}),
  *       starts with a digit ({@code digit}), is a reserved word ({@code reserved}) or collides, ignoring case,
  *       with another field of the same table ({@code collision}).</li>
@@ -54,7 +57,7 @@ public final class ImportRenamePolicy {
     /** The policy, loaded from JSON. {@link #DISABLED} keeps every legacy name. */
     public record Policy(String source,
                          boolean prefixEnabled, double minShare, int minColumns, int minLength, int maxLength,
-                         boolean mustAbbreviateTable,
+                         boolean mustAbbreviateTable, boolean prefixTableName,
                          boolean foreignKeyEnabled, String foreignKeyPattern, List<SingularRule> singular,
                          boolean primaryKeyEnabled, String primaryKeyName,
                          Set<String> reservedWords) {
@@ -70,7 +73,7 @@ public final class ImportRenamePolicy {
         }
     }
 
-    public static final Policy DISABLED = new Policy("disabled", false, 1, Integer.MAX_VALUE, 0, 0, false,
+    public static final Policy DISABLED = new Policy("disabled", false, 1, Integer.MAX_VALUE, 0, 0, false, false,
             false, "{target}Id", List.of(), false, "id", Set.of());
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -119,7 +122,7 @@ public final class ImportRenamePolicy {
         return new Policy(source,
                 prefix.path("enabled").asBoolean(false), prefix.path("minShare").asDouble(0.6),
                 prefix.path("minColumns").asInt(3), prefix.path("minLength").asInt(2), prefix.path("maxLength").asInt(6),
-                prefix.path("mustAbbreviateTable").asBoolean(true),
+                prefix.path("mustAbbreviateTable").asBoolean(true), prefix.path("tableName").asBoolean(false),
                 fk.path("enabled").asBoolean(false), pattern, List.copyOf(singular),
                 pk.path("enabled").asBoolean(false), pk.path("name").asText("id"),
                 Set.copyOf(reserved));
@@ -147,7 +150,7 @@ public final class ImportRenamePolicy {
                 fksPerTarget.merge(fk.pkTable(), 1, Integer::sum);
             }
         }
-        String prefix = policy.prefixEnabled() ? sharedPrefix(table, targetByFkColumn.keySet(), policy) : null;
+        List<String> prefixes = policy.prefixEnabled() ? sharedPrefix(table, targetByFkColumn.keySet(), policy) : List.of();
 
         Map<String, String> legacy = new LinkedHashMap<>();
         Map<String, String> proposed = new LinkedHashMap<>();
@@ -166,10 +169,16 @@ public final class ImportRenamePolicy {
                     && !target.equals(table.name())) {
                 candidate = policy.foreignKeyPattern().replace("{target}", lowerFirst(singular(conceptByTable.get(target), policy)));
                 rule.put(name, "foreignKey");
-            } else if (prefix != null) {
-                List<int[]> tokens = tokens(name);
-                if (tokens.size() >= 2 && word(name, tokens.get(0)).equalsIgnoreCase(prefix)) {
-                    String rest = name.substring(tokens.get(1)[0]);
+            } else if (!prefixes.isEmpty()) {
+                int end = -1;
+                for (String prefix : prefixes) {
+                    end = prefixEnd(name, prefix);
+                    if (end > 0) {
+                        break;
+                    }
+                }
+                if (end > 0) {
+                    String rest = name.substring(end);
                     rule.put(name, "prefix");
                     if (Character.isDigit(rest.charAt(0))) {
                         rule.put(name, "digit");
@@ -236,8 +245,17 @@ public final class ImportRenamePolicy {
         return p != null ? p : legacy.get(column);
     }
 
-    /** The shared leading word of the non-FK columns, or null when the guards say there is none. */
-    static String sharedPrefix(DbIntrospector.Table table, Set<String> fkColumns, Policy policy) {
+    /**
+     * The shared prefix of the non-FK columns (lower case, letters and digits only; the table name and its singular
+     * are two spellings of one prefix, longest first), or empty when the guards say there is none.
+     */
+    static List<String> sharedPrefix(DbIntrospector.Table table, Set<String> fkColumns, Policy policy) {
+        if (policy.prefixTableName()) {
+            List<String> whole = tableNamePrefix(table, fkColumns, policy);
+            if (!whole.isEmpty()) {
+                return whole;
+            }
+        }
         int nonFk = 0;
         Map<String, Integer> counts = new TreeMap<>();
         for (DbIntrospector.Column column : table.columns()) {
@@ -261,12 +279,58 @@ public final class ImportRenamePolicy {
         if (best == null || nonFk == 0 || bestCount < policy.minColumns() || (double) bestCount / nonFk < policy.minShare()
                 || best.length() < policy.minLength() || best.length() > policy.maxLength()
                 || !best.chars().allMatch(Character::isLetter)) {
-            return null;
+            return List.of();
         }
         if (policy.mustAbbreviateTable() && !abbreviates(best, table.name())) {
-            return null;
+            return List.of();
         }
-        return best;
+        return List.of(best);
+    }
+
+    /**
+     * The table name and its singular, when enough non-FK columns start with either at a word boundary (a legacy
+     * schema mixes {@code ExpedicaoItensQuantidade} with {@code ExpedicaoItemSeq}); else empty.
+     */
+    private static List<String> tableNamePrefix(DbIntrospector.Table table, Set<String> fkColumns, Policy policy) {
+        String compact = table.name().replaceAll("[^A-Za-z0-9]", "").toLowerCase(Locale.ROOT);
+        List<String> spellings = new ArrayList<>(new LinkedHashSet<>(List.of(compact, singular(compact, policy))));
+        spellings.removeIf(String::isEmpty);
+        spellings.sort((a, b) -> b.length() - a.length());
+        int nonFk = 0;
+        int count = 0;
+        for (DbIntrospector.Column column : table.columns()) {
+            if (fkColumns.contains(column.name())) {
+                continue;
+            }
+            nonFk++;
+            if (spellings.stream().anyMatch(s -> prefixEnd(column.name(), s) > 0)) {
+                count++;
+            }
+        }
+        if (spellings.isEmpty() || count < policy.minColumns() || (double) count / nonFk < policy.minShare()) {
+            return List.of();
+        }
+        return List.copyOf(spellings);
+    }
+
+    /**
+     * Where the rest of {@code name} starts once {@code prefix} (compared ignoring case and non-alphanumerics) is
+     * removed, or -1 when the prefix does not end at a word boundary that leaves at least one more word.
+     */
+    static int prefixEnd(String name, String prefix) {
+        String want = prefix.toLowerCase(Locale.ROOT);
+        List<int[]> tokens = tokens(name);
+        StringBuilder seen = new StringBuilder();
+        for (int i = 0; i + 1 < tokens.size(); i++) {
+            seen.append(word(name, tokens.get(i)).toLowerCase(Locale.ROOT));
+            if (seen.length() == want.length()) {
+                return seen.toString().equals(want) ? tokens.get(i + 1)[0] : -1;
+            }
+            if (seen.length() > want.length()) {
+                return -1;
+            }
+        }
+        return -1;
     }
 
     /** {@code arm} abbreviates {@code ARMAZENS}: same first letter, then every letter in order. */

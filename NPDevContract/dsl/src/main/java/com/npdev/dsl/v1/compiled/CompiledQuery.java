@@ -16,7 +16,6 @@ public record CompiledQuery(
         List<CompiledAggregateFunction> aggregates,
         String having,
         CompiledOrigin origin,
-        String uid,
         List<CompiledQueryLookup> lookups,
         List<CompiledQueryComputedColumn> computed
 ) {
@@ -29,26 +28,6 @@ public record CompiledQuery(
         aggregates = aggregates == null ? List.of() : List.copyOf(aggregates);
         lookups = lookups == null ? List.of() : List.copyOf(lookups);
         computed = computed == null ? List.of() : List.copyOf(computed);
-    }
-
-    /** Pre-friction-#5 convenience constructor -- no lookups[] / computed[] columns. */
-    public CompiledQuery(
-            String name,
-            String concept,
-            String where,
-            List<String> orderBy,
-            Integer limit,
-            List<CompiledProcedureParameter> parameters,
-            List<String> permissionRequirements,
-            Map<String, Object> metadata,
-            List<CompiledGroupByField> groupBy,
-            List<CompiledAggregateFunction> aggregates,
-            String having,
-            CompiledOrigin origin,
-            String uid
-    ) {
-        this(name, concept, where, orderBy, limit, parameters, permissionRequirements,
-                metadata, groupBy, aggregates, having, origin, uid, List.of(), List.of());
     }
 
     /** Pre-PACK-2 convenience constructor -- origin defaults to null (not pack-contributed). */
@@ -66,10 +45,10 @@ public record CompiledQuery(
             String having
     ) {
         this(name, concept, where, orderBy, limit, parameters, permissionRequirements,
-                metadata, groupBy, aggregates, having, null, null, List.of(), List.of());
+                metadata, groupBy, aggregates, having, null, List.of(), List.of());
     }
 
-    /** Pre-P2.1 convenience constructor -- uid defaults to null (no stable identity declared). */
+    /** Convenience constructor -- no lookups[] / computed[] columns. */
     public CompiledQuery(
             String name,
             String concept,
@@ -85,7 +64,7 @@ public record CompiledQuery(
             CompiledOrigin origin
     ) {
         this(name, concept, where, orderBy, limit, parameters, permissionRequirements,
-                metadata, groupBy, aggregates, having, origin, null, List.of(), List.of());
+                metadata, groupBy, aggregates, having, origin, List.of(), List.of());
     }
 
     /** Move 10 B1: a query with any groupBy/aggregates returns rows of aggregate output, not

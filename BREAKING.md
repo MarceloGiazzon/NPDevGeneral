@@ -5,6 +5,30 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-24 — a `connectable: "anchor"` field is unique per tenant; its bonds use a composite key (ENF-1)
+
+**What changes.** A natural-key anchor (`unique: true` + `connectable: "anchor"`, not the id) was globally unique: one database-wide `uq_<table>_<col>` constraint, so a second tenant could not reuse a value and learned from the refusal that another tenant had it. It is now unique per tenant, like every other unique field: `uqt_<table>_<col>` on `(tenant_id, col)`. A scalar reference `via` such an anchor gets the foreign key `fkt_<table>_<col>` on `(tenant_id, col) -> (tenant_id, anchor)`, still `ON UPDATE CASCADE`, so a row can no longer point at another tenant's anchor. A bond to an `id` is unchanged. A `multiple` (N:M) reference `via` a natural-key anchor is now refused by validation (and by the generator): its junction table has no tenant column to complete the key, so it must go via the target's `id`.
+
+**Who is affected.** Models with a natural-key anchor (only `invoice-bonds-demo` in the corpus). A database generated before this change still holds the old global `uq_` constraint and single-column `fk_`; the new constraints are added beside them under the new names, and the old ones stay (and keep enforcing) until dropped by hand or the database is recreated.
+
+**Codemod.** None needed for a scalar bond: the model is unchanged, only the generated DDL differs. An N:M reference via a natural-key anchor (none exist in the corpus) has to be pointed at the target's `id` by hand -- the anchor value it stored cannot be turned into an id mechanically.
+
+## 2026-10-24 — `picker` on a field that is not a reference is refused (REG-302)
+
+**What changes.** `field.picker` (filter, selectorRef, multiSelect) is only read from a reference field: it shapes the browse/pick dialog of the field's reference. On a plain `uuid`/`string`/other field it was accepted and silently ignored; `npdev validate model` now reports it as an error (`picker_not_supported`, naming the field). A field counts as a reference when it has `type: "reference"`, a `ref`/`reference` target, or a `referenceSemantics.target`.
+
+**Who is affected.** Only the dsl-conformance-max fixture declared one (three fields, already fixed: two became real references, one lost its picker). No AppGen app declared one.
+
+**Codemod.** `python NPDevCli/npdev_cli.py migrate dsl-2 --write --input <model.json or directory>` drops `picker` from every non-reference field and leaves reference fields alone. If you meant the picker, make the field a reference instead.
+
+## 2026-10-24 — `flows[].uid`, `queries[].uid` and `aggregates[].uid` removed from the schema (ENF-1)
+
+**What changes.** `uid` on a flow, query or aggregate is no longer accepted; a model that still declares it fails schema validation. Each was parsed, compiled and round-tripped through the canonical JSON, but nothing read it. A flow's state (parked instances, cron claims, shape fingerprint) is keyed by the flow's name, so the uid never carried anything across a rename; queries and aggregates keep no state of their own to carry. The field is also gone from `FlowAst`, `CompiledFlow`, `QueryAst`, `CompiledQuery`, `AggregateAst` and `CompiledAggregate` and their constructors, and `npdev migrate assign-uids` no longer stamps it. Concept and field `uid` are live (a rename keeps the table/column and its data) and unchanged.
+
+**Who is affected.** No model in the repo or in the AppGen app definitions declared one. Java code that passed a uid to one of those six types is affected.
+
+**Codemod.** `python NPDevCli/npdev_cli.py migrate dsl-2 --write --input <model.json or directory>` strips the key from every `flows[]`, `queries[]` and `aggregates[]` entry and leaves concept and field uids alone. Java callers drop the uid argument (the overload that took it is gone).
+
 ## 2026-10-23 — `aggregates[].collections[].via` removed from the schema (REG-301)
 
 **What changes.** `via` on an aggregate collection, at any nesting depth, is no longer accepted. The shape has `additionalProperties: false`, so a model that still declares it fails schema validation. It was parsed, compiled and round-tripped through the canonical JSON, but no runtime class ever read it; `childField` is what links a child row to its parent. The field is also gone from `AggregateCollectionAst` and `CompiledAggregateCollection` and their positional constructors. A rollup's `via` and a reference's `via` are different, live keywords and are unchanged.

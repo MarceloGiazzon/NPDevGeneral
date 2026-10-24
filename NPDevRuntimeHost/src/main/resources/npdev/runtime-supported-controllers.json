@@ -52,6 +52,7 @@
   ],
   "testOnlyControllers": [],
   "supportedCoreServiceComponents": [
+    "AggregateActionNotAllowedException",
     "AggregateCommitVetoException",
     "AggregateRuntime",
     "BalanceEvaluator",

@@ -17,7 +17,6 @@ public final class FlowAst {
     private final boolean startEndpoint;
     private final FlowScheduleAst schedule;
     private final OriginAst origin;
-    private final String uid;
 
     public FlowAst(String name, String concept, List<StepAst> steps) {
         this(name, concept, null, null, List.of(), steps, null, null, null);
@@ -96,8 +95,7 @@ public final class FlowAst {
         this(name, concept, mode, specializesName, hooks, steps, inputSchema, outputSchema, action, startEndpoint, schedule, null);
     }
 
-    /** PACK-2: attaches pack-attribution provenance (see getOrigin) -- null for an app's own root-
-     *  or context-declared flow, non-null for a pack-contributed one. */
+    /** PACK-2: origin is null for an app- or context-declared flow, non-null for a pack-contributed one. */
     public FlowAst(
             String name,
             String concept,
@@ -112,26 +110,6 @@ public final class FlowAst {
             FlowScheduleAst schedule,
             OriginAst origin
     ) {
-        this(name, concept, mode, specializesName, hooks, steps, inputSchema, outputSchema, action,
-                startEndpoint, schedule, origin, null);
-    }
-
-    /** P2.1: a stable identity for this flow, generated once and never reused -- see getUid. */
-    public FlowAst(
-            String name,
-            String concept,
-            String mode,
-            String specializesName,
-            List<FlowHookAst> hooks,
-            List<StepAst> steps,
-            SchemaAst inputSchema,
-            SchemaAst outputSchema,
-            ActionMetadataAst action,
-            boolean startEndpoint,
-            FlowScheduleAst schedule,
-            OriginAst origin,
-            String uid
-    ) {
         this.name = name;
         this.concept = concept;
         this.mode = mode;
@@ -144,7 +122,6 @@ public final class FlowAst {
         this.startEndpoint = startEndpoint;
         this.schedule = schedule;
         this.origin = origin;
-        this.uid = uid;
     }
 
     public String getName() { return name; }
@@ -190,9 +167,4 @@ public final class FlowAst {
         return origin;
     }
 
-    /** P2.1: a stable identity for this flow, generated once and never reused
-     *  (npdev migrate assign-uids stamps one); null if the flow declares none. */
-    public String getUid() {
-        return uid;
-    }
 }

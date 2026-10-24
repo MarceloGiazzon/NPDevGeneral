@@ -1,0 +1,228 @@
+{
+  "probes": [
+    {
+      "id": "lc-allowed-actions-enforced-on-aggregate-invoke",
+      "keywords": [
+        "lifecycleState.allowedActions"
+      ],
+      "description": "StockTransfer's Draft state allows only the StockTransferStampNoteProcedure workbench action. The server enforces it, not just the hidden button: invoking StockTransferClearNoteProcedure over a new (Draft) transfer is refused 422 action_not_allowed_in_state, and for a persisted Draft transfer a draft that CLAIMS status Committed is still refused -- the persisted status decides. Once the transfer really is Committed (a state that declares no allowedActions) the same action runs.",
+      "steps": [
+        {
+          "name": "allowed action on a new Draft transfer",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/StockTransferAggregate/invoke/StockTransferStampNoteProcedure",
+          "body": {
+            "reference": "aa-${rand}",
+            "status": "Draft"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.note": "stamped"
+            }
+          }
+        },
+        {
+          "name": "disallowed action on a new Draft transfer is refused",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/StockTransferAggregate/invoke/StockTransferClearNoteProcedure",
+          "body": {
+            "reference": "aa-${rand}",
+            "status": "Draft"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.code": "action_not_allowed_in_state"
+            },
+            "text": "StockTransferClearNoteProcedure"
+          }
+        },
+        {
+          "name": "persist a Draft transfer",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "body": {
+            "reference": "aa-${rand}",
+            "status": "Draft",
+            "items": []
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "Draft"
+            }
+          },
+          "save": {
+            "tid": "$.id",
+            "ref": "$.reference"
+          }
+        },
+        {
+          "name": "a draft claiming Committed does not unlock it -- the persisted Draft decides",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/StockTransferAggregate/invoke/StockTransferClearNoteProcedure",
+          "body": {
+            "id": "${tid}",
+            "reference": "${ref}",
+            "status": "Committed"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.code": "action_not_allowed_in_state"
+            }
+          }
+        },
+        {
+          "name": "commit the transfer to Committed",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "body": {
+            "id": "${tid}",
+            "reference": "${ref}",
+            "status": "Committed",
+            "items": []
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "Committed"
+            }
+          }
+        },
+        {
+          "name": "Committed declares no allowedActions, so the action runs",
+          "method": "POST",
+          "path": "/api/runtime/aggregate/StockTransferAggregate/invoke/StockTransferClearNoteProcedure",
+          "body": {
+            "id": "${tid}",
+            "reference": "${ref}",
+            "status": "Committed"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.note": ""
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "bond-anchor-unique-per-tenant-and-via-target-enforced",
+      "keywords": [
+        "field.connectable"
+      ],
+      "description": "WidgetBondAnchorDemo.code is a connectable natural-key anchor: unique per tenant (a duplicate in the same tenant is refused 409, another tenant may reuse the code) and the via target of WidgetBondChildDemo.anchorCode -- a child naming an existing code in its own tenant is stored, one naming a missing code is refused, and one naming a code that exists only in ANOTHER tenant is refused too.",
+      "steps": [
+        {
+          "name": "anchor in tenant dev",
+          "method": "POST",
+          "path": "/api/widget_bond_anchor_demos",
+          "body": {
+            "code": "BA-${rand}"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "code": "$.code"
+          }
+        },
+        {
+          "name": "the same code again in tenant dev is refused",
+          "method": "POST",
+          "path": "/api/widget_bond_anchor_demos",
+          "body": {
+            "code": "${code}"
+          },
+          "expect": {
+            "status": 409,
+            "json": {
+              "$.code": "unique_integrity_failed",
+              "$.path": "code"
+            }
+          }
+        },
+        {
+          "name": "another tenant may reuse the code (unique per tenant)",
+          "apiKey": "${key_othertenant}",
+          "method": "POST",
+          "path": "/api/widget_bond_anchor_demos",
+          "body": {
+            "code": "${code}"
+          },
+          "expect": {
+            "status": 201
+          }
+        },
+        {
+          "name": "a child via an existing code is stored",
+          "method": "POST",
+          "path": "/api/widget_bond_child_demos",
+          "body": {
+            "anchorCode": "${code}"
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.anchorCode": "${code}"
+            }
+          }
+        },
+        {
+          "name": "a child via a missing code is refused",
+          "method": "POST",
+          "path": "/api/widget_bond_child_demos",
+          "body": {
+            "anchorCode": "NOPE-${rand}"
+          },
+          "expect": {
+            "status": [
+              400,
+              409,
+              422
+            ],
+            "json": {
+              "$.code": "bond_target_not_found"
+            }
+          }
+        },
+        {
+          "name": "a second anchor that only tenant dev has",
+          "method": "POST",
+          "path": "/api/widget_bond_anchor_demos",
+          "body": {
+            "code": "BB-${rand}"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "devOnlyCode": "$.code"
+          }
+        },
+        {
+          "name": "another tenant cannot point a child at tenant dev's anchor",
+          "apiKey": "${key_othertenant}",
+          "method": "POST",
+          "path": "/api/widget_bond_child_demos",
+          "body": {
+            "anchorCode": "${devOnlyCode}"
+          },
+          "expect": {
+            "status": [
+              400,
+              409,
+              422
+            ],
+            "json": {
+              "$.code": "bond_target_not_found"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

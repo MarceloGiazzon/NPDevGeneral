@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import sys
 import unittest
+import unittest.mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -658,6 +659,93 @@ class AggregateCollectionViaRetirementTest(unittest.TestCase):
         self.assertNotIn("via", lines["collections"][0])
         self.assertEqual("orderId", doc["concepts"][0]["rollups"][0]["via"])
         self.assertEqual(2, sum("'via'" in change for change in result.changes))
+
+    def test_idempotent_second_run_makes_no_further_changes(self):
+        doc = self._doc()
+        self.assertTrue(migrate_document(doc).changed)
+        before = copy.deepcopy(doc)
+        self.assertFalse(migrate_document(doc).changed)
+        self.assertEqual(before, doc)
+
+
+class NamedItemUidRetirementTest(unittest.TestCase):
+    """ENF-1 (2026-10-24): `flows[].uid`, `queries[].uid` and `aggregates[].uid` were compiled and round-tripped
+    but read by nothing (flow state is keyed by name, queries and aggregates keep no state of their own);
+    retired and stripped here. Concept and field uids are live (rename identity) and untouched."""
+
+    def _doc(self) -> dict:
+        return {
+            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0",
+            "concepts": [{"name": "Order", "uid": "c1", "fields": [{"name": "id", "type": "uuid", "uid": "f1"}]}],
+            "flows": [{"name": "Place", "uid": "fl1", "steps": []}],
+            "queries": [{"name": "Open", "uid": "q1", "concept": "Order"}],
+            "aggregates": [{"name": "OrderAggregate", "uid": "a1", "root": "Order"}],
+        }
+
+    def test_flow_query_aggregate_uid_dropped_concept_and_field_uid_kept(self):
+        doc = self._doc()
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        self.assertNotIn("uid", doc["flows"][0])
+        self.assertNotIn("uid", doc["queries"][0])
+        self.assertNotIn("uid", doc["aggregates"][0])
+        self.assertEqual("c1", doc["concepts"][0]["uid"])
+        self.assertEqual("f1", doc["concepts"][0]["fields"][0]["uid"])
+        self.assertEqual(3, sum("'uid'" in change for change in result.changes))
+
+    def test_idempotent_second_run_makes_no_further_changes(self):
+        doc = self._doc()
+        self.assertTrue(migrate_document(doc).changed)
+        before = copy.deepcopy(doc)
+        self.assertFalse(migrate_document(doc).changed)
+        self.assertEqual(before, doc)
+
+    def test_assign_uids_no_longer_stamps_flow_query_or_aggregate(self):
+        import argparse
+        import json
+        import tempfile
+        import npdev_cli
+        doc = self._doc()
+        for kind in ("flows", "queries", "aggregates"):
+            doc[kind][0].pop("uid")
+        doc["concepts"][0].pop("uid")
+        doc["concepts"][0]["fields"][0].pop("uid")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "model.json"
+            path.write_text(json.dumps(doc), encoding="utf-8")
+            with unittest.mock.patch("sys.stdout"):
+                npdev_cli.run_migrate_assign_uids(argparse.Namespace(model=str(path), write=True))
+            stamped = json.loads(path.read_text(encoding="utf-8"))
+        self.assertIn("uid", stamped["concepts"][0])
+        self.assertIn("uid", stamped["concepts"][0]["fields"][0])
+        for kind in ("flows", "queries", "aggregates"):
+            self.assertNotIn("uid", stamped[kind][0], kind)
+
+
+class MisplacedPickerMigrationTest(unittest.TestCase):
+    """REG-302 (2026-10-24): `field.picker` is read only on a reference field, so on any other field it is now
+    refused; this codemod drops such a picker and leaves every reference field's picker alone."""
+
+    def _doc(self) -> dict:
+        return {
+            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "flows": [],
+            "concepts": [{"name": "Line", "fields": [
+                {"name": "orderId", "type": "uuid", "picker": {"filter": "status == 'Open'"}},
+                {"name": "catalogId", "type": "reference", "ref": "Catalog", "picker": {"selectorRef": "S"}},
+                {"name": "supplierId", "type": "uuid", "referenceSemantics": {"target": "Supplier"},
+                 "picker": {"multiSelect": False}},
+            ]}],
+        }
+
+    def test_picker_dropped_only_from_non_reference_fields(self):
+        doc = self._doc()
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        fields = {f["name"]: f for f in doc["concepts"][0]["fields"]}
+        self.assertNotIn("picker", fields["orderId"])
+        self.assertEqual({"selectorRef": "S"}, fields["catalogId"]["picker"])
+        self.assertEqual({"multiSelect": False}, fields["supplierId"]["picker"])
+        self.assertEqual(1, sum("'picker'" in change for change in result.changes))
 
     def test_idempotent_second_run_makes_no_further_changes(self):
         doc = self._doc()

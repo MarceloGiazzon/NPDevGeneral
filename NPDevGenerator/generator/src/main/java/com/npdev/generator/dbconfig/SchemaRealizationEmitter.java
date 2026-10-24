@@ -382,12 +382,12 @@ public final class SchemaRealizationEmitter {
                 // ALREADY-EXISTING table needs its own FK constraint, or it is just a plain column
                 // with no referential integrity.
                 Bond resolvedBond = bond.get();
-                String constraint = truncate("fk_" + table + "_" + column);
+                String constraint = truncate(bondConstraintPrefix(resolvedBond) + table + "_" + column);
                 String constraintSql = "ALTER TABLE " + sqlId(engine, table)
                         + " ADD CONSTRAINT " + constraint
-                        + " FOREIGN KEY (" + sqlId(engine, column) + ")"
+                        + " FOREIGN KEY (" + String.join(", ", sqlIds(engine, bondSourceColumns(resolvedBond, column))) + ")"
                         + " REFERENCES " + sqlId(engine, resolvedBond.targetTable())
-                        + " (" + sqlId(engine, resolvedBond.anchorColumn()) + ")"
+                        + " (" + String.join(", ", sqlIds(engine, bondTargetColumns(resolvedBond))) + ")"
                         + resolvedBond.onUpdateSqlClause()
                         + " ON DELETE " + resolvedBond.onDeleteSql();
                 sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
@@ -579,14 +579,16 @@ public final class SchemaRealizationEmitter {
             }
             String column = SqlIdentifierSupport.columnName(field);
             if (isConnectableAnchor(field) && !field.isId()) {
-                // A connectable natural-key anchor must stay GLOBALLY unique: it is a foreign-key
-                // target for scalar bonds, and a single-column FK cannot reference a column that is
-                // only unique as part of a composite (tenant_id, col) key. So anchors are the one
-                // unique kind that is deliberately not tenant-scoped.
-                String constraint = truncate("uq_" + table + "_" + column);
+                // ENF-1 (2026-10-24): a connectable natural-key anchor is unique PER TENANT, like every
+                // other unique field -- a global constraint forbade two tenants the same code and leaked
+                // the other tenant's value through the collision. It stays a real UNIQUE constraint (never
+                // a filtered index) because it is a foreign-key target: bonds reference it with the
+                // composite (tenant_id, col) key -- see bondSourceColumns. Named uqt_ so a database still
+                // holding the old global uq_ constraint gets the new one added beside it.
+                String constraint = truncate("uqt_" + table + "_" + column);
                 String constraintSql = "ALTER TABLE " + sqlId(engine, table)
                         + " ADD CONSTRAINT " + constraint
-                        + " UNIQUE (" + sqlId(engine, column) + ")";
+                        + " UNIQUE (tenant_id, " + sqlId(engine, column) + ")";
                 sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
             } else if (concept.isSoftDelete() && !supportsFilteredUniqueIndex(engine)) {
                 // R5.4: this engine cannot filter a unique index (see PARTIAL_UNIQUE_INDEX's javadoc
@@ -1145,9 +1147,8 @@ public final class SchemaRealizationEmitter {
     /**
      * LNCH-1 P5 (5.1): a single declared unique constraint (single-field, compound-invariant, or
      * explicit-index), independent of whether it targets an existing or brand-new table.
-     * {@code tenantScoped} mirrors {@link #appendBusinessTable}'s rule: a connectable natural-key
-     * anchor is globally unique (it is an FK target); every other unique kind is scoped to
-     * {@code (tenant_id, ...)}.
+     * {@code tenantScoped}: every unique kind is scoped to {@code (tenant_id, ...)}, a connectable
+     * natural-key anchor included (ENF-1, 2026-10-24 -- its bonds reference it with a composite key).
      */
     public record UniqueConstraintDecl(String name, List<String> columns, boolean tenantScoped) {
     }
@@ -1185,7 +1186,7 @@ public final class SchemaRealizationEmitter {
             }
             String column = SqlIdentifierSupport.columnName(field);
             if (isConnectableAnchor(field) && !field.isId()) {
-                specs.add(new UniqueConstraintDecl(truncate("uq_" + table + "_" + column), List.of(column), false));
+                specs.add(new UniqueConstraintDecl(truncate("uqt_" + table + "_" + column), List.of(column), true));
             } else {
                 specs.add(new UniqueConstraintDecl(truncate("ux_" + table + "_" + column), List.of(column), true));
             }
@@ -1303,6 +1304,24 @@ public final class SchemaRealizationEmitter {
         return Map.entry(currentTable, oldTable);
     }
 
+    /**
+     * ENF-1 (2026-10-24): a natural-key anchor is unique per tenant, so a scalar bond to one references the
+     * composite (tenant_id, anchor) key -- which also keeps a row from pointing at another tenant's anchor. A
+     * bond to an id anchor stays single-column (ids are globally unique).
+     */
+    private static List<String> bondSourceColumns(Bond bond, String sourceColumn) {
+        return bond.naturalKeyAnchor() ? List.of("tenant_id", sourceColumn) : List.of(sourceColumn);
+    }
+
+    private static List<String> bondTargetColumns(Bond bond) {
+        return bond.naturalKeyAnchor() ? List.of("tenant_id", bond.anchorColumn()) : List.of(bond.anchorColumn());
+    }
+
+    /** fkt_ for the composite natural-key FK, so a database still holding the old single-column fk_ gets it added. */
+    private static String bondConstraintPrefix(Bond bond) {
+        return bond.naturalKeyAnchor() ? "fkt_" : "fk_";
+    }
+
     private static boolean isConnectableAnchor(CompiledField field) {
         return field != null && "anchor".equalsIgnoreCase(field.getConnectable());
     }
@@ -1403,12 +1422,13 @@ public final class SchemaRealizationEmitter {
             if (bond.cardinality() == Cardinality.MANY_TO_MANY) {
                 continue;
             }
-            String constraint = SqlIdentifierSupport.safeSqlIdentifier("fk_" + bond.sourceTable() + "_" + bond.sourceColumn());
+            String constraint = SqlIdentifierSupport.safeSqlIdentifier(
+                    bondConstraintPrefix(bond) + bond.sourceTable() + "_" + bond.sourceColumn());
             String constraintSql = "ALTER TABLE " + sqlId(engine, bond.sourceTable())
                     + " ADD CONSTRAINT " + constraint
-                    + " FOREIGN KEY (" + sqlId(engine, bond.sourceColumn()) + ")"
+                    + " FOREIGN KEY (" + String.join(", ", sqlIds(engine, bondSourceColumns(bond, bond.sourceColumn()))) + ")"
                     + " REFERENCES " + sqlId(engine, bond.targetTable())
-                    + " (" + sqlId(engine, bond.anchorColumn()) + ")"
+                    + " (" + String.join(", ", sqlIds(engine, bondTargetColumns(bond))) + ")"
                     + bond.onUpdateSqlClause()
                     + " ON DELETE " + bond.onDeleteSql();
             sql.append(addConstraintIfMissing(engine, bond.sourceTable(), constraint, constraintSql));
@@ -1598,9 +1618,9 @@ public final class SchemaRealizationEmitter {
             }
             Bond resolved = bond.get();
             foreignKeys.add(new ForeignKeyDecl(
-                    List.of(SqlIdentifierSupport.columnName(field)),
+                    bondSourceColumns(resolved, SqlIdentifierSupport.columnName(field)),
                     resolved.targetTable(),
-                    List.of(resolved.anchorColumn())));
+                    bondTargetColumns(resolved)));
         }
         return List.copyOf(foreignKeys);
     }

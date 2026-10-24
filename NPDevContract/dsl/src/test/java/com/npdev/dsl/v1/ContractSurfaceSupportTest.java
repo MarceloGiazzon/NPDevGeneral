@@ -254,6 +254,37 @@ class ContractSurfaceSupportTest {
     }
 
     @Test
+    void rejectsRetiredFlowQueryAndAggregateUid() throws Exception {
+        // ENF-1 (2026-10-24): flow/query/aggregate uid were read by nothing (flow state is keyed by name; queries
+        // and aggregates keep no state of their own), so retired; `npdev migrate dsl-2` strips them. Concept and
+        // field uid stay (rename identity).
+        String[] models = {
+                """
+                { "dslVersion": "1.0.0", "namespace": "close.contract", "version": "1.0.0",
+                  "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
+                  "flows": [ { "name": "DoWork", "uid": "flow0000000001", "concept": "WorkItem", "steps": [ { "name": "r", "type": "return", "value": "$input" } ] } ] }
+                """,
+                """
+                { "dslVersion": "1.0.0", "namespace": "close.contract", "version": "1.0.0",
+                  "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
+                  "queries": [ { "name": "AllWork", "uid": "query000000001", "concept": "WorkItem" } ] }
+                """,
+                """
+                { "dslVersion": "1.0.0", "namespace": "close.contract", "version": "1.0.0",
+                  "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
+                  "aggregates": [ { "name": "WorkAggregate", "uid": "aggr0000000001", "root": "WorkItem" } ] }
+                """
+        };
+        for (String model : models) {
+            Path modelPath = writeTempModel(model);
+            Exception exception = assertThrows(Exception.class, () -> new JsonModelParser().parse(modelPath));
+            assertTrue(exception.getMessage().contains("Model schema validation failed")
+                            && exception.getMessage().contains("uid"),
+                    "Expected the retired uid to be refused: " + exception.getMessage());
+        }
+    }
+
+    @Test
     void rejectsLegacyEntitiesContractAlias() throws Exception {
         Path modelPath = writeTempModel("""
                 {

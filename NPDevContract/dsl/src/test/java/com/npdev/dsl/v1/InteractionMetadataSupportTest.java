@@ -170,5 +170,58 @@ class InteractionMetadataSupportTest {
         assertTrue(uxWarnings.stream().anyMatch(diagnostic -> "unknown_interaction_field_ref".equals(diagnostic.getCode())));
         assertTrue(uxWarnings.stream().anyMatch(diagnostic -> "unknown_interaction_search_field".equals(diagnostic.getCode())));
     }
+
+    @Test
+    void pickerOnANonReferenceFieldIsRefusedAndOnAReferenceFieldIsNot() throws Exception {
+        Path modelPath = Files.createTempFile("npdev-field-picker-placement-", ".json");
+        Files.writeString(modelPath, """
+                {
+                  "namespace": "acme.picker",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    {
+                      "name": "Provider",
+                      "ui": { "label": "Provider" },
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "fullName", "type": "string", "ui": { "label": "Full name" } }
+                      ]
+                    },
+                    {
+                      "name": "Appointment",
+                      "ui": { "label": "Appointment" },
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        {
+                          "name": "providerUuid",
+                          "type": "uuid",
+                          "ui": { "label": "Provider uuid" },
+                          "picker": { "filter": "fullName != 'Retired'" }
+                        },
+                        {
+                          "name": "providerId",
+                          "type": "reference",
+                          "ref": "Provider",
+                          "ui": { "label": "Provider" },
+                          "picker": { "filter": "fullName != 'Retired'" }
+                        }
+                      ]
+                    }
+                  ]
+                }
+                """);
+
+        ModelAst ast = new JsonModelParser().parse(modelPath);
+        ValidationResult validation = new SemanticValidator().validateWithWarnings(ast);
+        List<ValidationDiagnostic> pickerWarnings = validation.getDiagnostics().stream()
+                .filter(diagnostic -> "picker_not_supported".equals(diagnostic.getCode()))
+                .toList();
+        assertEquals(1, pickerWarnings.size(), "Expected exactly one picker_not_supported, got: " + pickerWarnings);
+        assertEquals("providerUuid", pickerWarnings.get(0).getField());
+        assertEquals(ValidationSeverity.ERROR, pickerWarnings.get(0).getSeverity());
+        assertEquals(1, validation.getErrors().size(), "Only the misplaced picker is an error: " + validation.getErrors());
+        assertTrue(validation.getErrors().get(0).contains("providerUuid"), validation.getErrors().toString());
+    }
 }
 

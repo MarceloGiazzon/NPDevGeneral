@@ -1,0 +1,47 @@
+id: REG-302
+title: >-
+  field.picker on a field that is not a reference is accepted and validates clean, but nothing reads it: the picker
+  filter/selectorRef/multiSelect only ever reaches a REFERENCE field's UI manifest entry
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-10-24
+closed: 2026-10-24
+source: >-
+  ENF-1 witness work, 2026-10-24: dsl-conformance-max declared picker on three plain uuid fields
+  (WidgetOrderLine.widgetOrderId filter "$row.status == 'Open'", WidgetOrderLine.catalogEntryId selectorRef
+  WidgetCatalogPicker, WidgetPriceListEntry.catalogEntryId selectorRef + filter "displayName != 'Retired'"). None of the
+  served surfaces (metadata catalogs, generated-ui-manifest.json, workbench pages) carries any of them; the filter text
+  appears only in the static model-surface.html documentation dump.
+surface: NPDevContract/dsl validation (field.picker); NPDevGenerator BusinessUiEmitter (reference entry -- the only consumer)
+detail: |
+  BusinessUiEmitter emits picker data (defaultFilterExpression clauses parsed from picker.filter, orderBy from a resolved
+  selectorRef, multiple from multiSelect) inside a field's `reference` entry, and only reference fields get one. A picker
+  declared on a uuid/string field is therefore inert, yet `npdev validate model` reports nothing (the dsl-conformance-max
+  fixture validates with 0 issues). The picker itself works on a real reference field: witnessed by probe
+  meta-field-picker-filter-served-to-the-picker on WidgetEnforcementDemo.catalogRef (87-served-metadata.json).
+resolution: >-
+  Done when a picker on a non-reference field is refused (or at least warned) by validation with a message naming the
+  field, with a test, and the three inert fixture declarations are either moved onto reference fields or removed.
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/InteractionMetadataSupportTest.java#pickerOnANonReferenceFieldIsRefusedAndOnAReferenceFieldIsNot
+  asserts: >-
+    a picker on a uuid field yields exactly one picker_not_supported ERROR naming that field, and the same picker on a
+    reference field yields none
+  provenRed: true
+note: >-
+  2026-10-24: filed, not fixed. Left the three fixture declarations in place as the repro.
+  2026-10-24 (later): FIXED. UxMetadataValidation.validateFieldPickerPlacement warns picker_not_supported (WARNING, the
+  same severity as the ui.pickerType sibling interaction_metadata_not_supported -- a warning is not a DSL break, so no
+  codemod) when field.picker sits on a field that is neither type reference nor has a reference target / referenceSemantics
+  target, the same test BusinessUiEmitter uses. Guard test red with the call removed, green with it. Corpus scan: only the
+  three fixture fields were affected (WmsOffice's two pickers are on reference fields). Fixture: widgetOrderId's picker
+  removed (it must stay a plain uuid -- probes create lines with random order ids); both catalogEntryId fields became
+  reference -> WidgetCatalogEntry, which makes the WidgetCatalogPicker selector's documented purpose true: both now serve
+  the selector's filter (discontinued == false), orderBy sku and searchFields, and WidgetPriceListEntry AND-composes its
+  own displayName != 'Retired'. Probe meta-field-picker-filter-served-to-the-picker extended to assert that. Fixture
+  validates with 0 diagnostics; full probe run 125/125; :NPDevContract:dsl:test, :generator:test, NPDevCli 1206 OK.
+  2026-10-24 (owner: no legacy users, refuse rather than warn): picker_not_supported is now an ERROR; `npdev migrate dsl-2`
+  drops picker from a non-reference field (MisplacedPickerMigrationTest); BREAKING.md entry. One DSL test fixture
+  (PanelValidationSelectorReferencesTest) declared the inert shape and was moved onto a real reference.

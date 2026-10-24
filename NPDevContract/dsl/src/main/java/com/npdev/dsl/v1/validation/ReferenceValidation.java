@@ -230,6 +230,13 @@ final class ReferenceValidation {
                         + " -- suggestedFix: set unique:true and connectable:\"anchor\" on field '"
                         + referenceSemantics.getVia() + "' of the target concept, or point via at that "
                         + "concept's id field instead");
+            } else if (referenceSemantics.isMultiple() && !anchor.isId()) {
+                // ENF-1 (2026-10-24): a natural-key anchor is unique per tenant and a junction table has no
+                // tenant column, so an N:M bond through one has no key to reference.
+                errors.add("Entity " + entityName + " field " + field.getName()
+                        + ": a multiple (N:M) reference cannot go via the natural-key anchor "
+                        + referenceSemantics.getVia() + " (anchors are unique per tenant; a junction row has no"
+                        + " tenant) -- suggestedFix: point via at the target concept's id field");
             }
         }
 

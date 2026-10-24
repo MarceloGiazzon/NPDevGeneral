@@ -78,7 +78,7 @@ class OfficialSamplesGenerationSmokeTest {
                     "Expected action catalog to include main flow for " + expectation.id());
 
             JsonNode metadataIndex = MAPPER.readTree(Files.readString(metadataIndexPath));
-            assertEquals(11, metadataIndex.path("catalogs").size(),
+            assertEquals(13, metadataIndex.path("catalogs").size(),
                     "Metadata manifest catalog count drift for " + expectation.id());
 
             String compiledModelJson = Files.readString(compiledModelPath);

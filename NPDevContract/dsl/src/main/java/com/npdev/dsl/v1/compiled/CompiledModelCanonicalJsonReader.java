@@ -744,7 +744,6 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "onValidate"),
                 // npdev-aggregate-invariant-four-place (R4.4): parser -> compiler -> writer -> HERE.
                 toAggregateInvariants(node.get("invariants")),
-                optionalText(node, "uid"),
                 // npdev-aggregate-balance-four-place (Session 1): parser -> compiler -> writer -> HERE.
                 toAggregateBalances(node.get("balances"))
         );
@@ -1220,8 +1219,7 @@ public final class CompiledModelCanonicalJsonReader {
                 toActionMetadata(node.get("action")),
                 booleanValue(node, "startEndpoint"),
                 toFlowSchedule(node.get("schedule")),
-                toOrigin(node.get("origin")),
-                optionalText(node, "uid")
+                toOrigin(node.get("origin"))
         );
     }
 
@@ -1450,7 +1448,6 @@ public final class CompiledModelCanonicalJsonReader {
                 toAggregateFunctions(node),
                 optionalText(node, "having"),
                 toOrigin(node.get("origin")),
-                optionalText(node, "uid"),
                 toQueryLookups(node),
                 toQueryComputedColumns(node)
         );

@@ -4,6 +4,7 @@
       "id": "qil-lifecycle-illegal-transition-refused",
       "description": "StockTransfer lifecycle declares only Draft->Committed: that transition succeeds, but Committed->Draft is refused with 422 CONCEPT_LIFECYCLE_TRANSITION_INVALID and the stored row keeps status Committed (a schema-accepted lifecycle that is not enforced would let the write through).",
       "keywords": [
+        "concept.lifecycle",
         "lifecycle.transitions",
         "lifecycleTransition.from",
         "lifecycleTransition.to",
@@ -506,6 +507,7 @@
       "id": "qil-query-where-excludes-non-matching-rows",
       "description": "ActiveCatalogEntries (where discontinued == false) returns the active row and never a discontinued one: the discontinued fixture sorts FIRST by sku, so an ignored/unapplied where would surface it at rows[0] and as a '\"discontinued\":true' fragment.",
       "keywords": [
+        "query.name",
         "query.where",
         "query.concept"
       ],
@@ -1127,6 +1129,7 @@
       "id": "qil-query-lookup-and-computed-column-exact",
       "description": "WarehouseMonthShareOfAllTime on warehouse QIL-SHR (Mar +40/-10, Apr +60, May -25): the lookup allTimeUnits sums only unitsShipped > 0 per warehouse (= 100, would be 65 if its where were ignored) and the computed column sharePercent = monthUnits*100/allTimeUnits is exactly 30 for March and 60 for April.",
       "keywords": [
+        "queryLookup.name",
         "query.lookups",
         "queryLookup.on",
         "queryLookup.fn",
@@ -1713,6 +1716,9 @@
       "id": "qil-aggregate-commit-persists-tree-and-attaches-lookup-field",
       "description": "A balanced, within-stock draft commits (200): the root and both positions are persisted with generated ids and the childField links (items.stockTransferId, positions.stockTransferItemId), and each position carries the query-sourced lookup field maxQuantity = 10 (from StockLocation.disponivel via AvailableQuantityQuery joined on localId). The root is then readable through the plain concept endpoint.",
       "keywords": [
+        "aggregate.name",
+        "aggregateCollection.name",
+        "aggregateCollection.collections",
         "aggregate.collections",
         "aggregateCollection.childField",
         "aggregateCollection.lookupFields",

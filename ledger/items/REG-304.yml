@@ -1,0 +1,28 @@
+id: REG-304
+title: >-
+  The full behaviour-probe suite fails on the h2local (JDBC) variant: a rollup query uses the reserved column name
+  `row` unquoted, and a JSON column write fails with "JAVA_OBJECT to JSON"
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-10-24
+closed: null
+source: >-
+  2026-10-24, first full run of run-behavior-probes.ps1 -StorageVariant h2local (until now only the jdbc-only file 91
+  was run on h2local). Pre-existing: none of the involved files (JdbcBusinessConceptStore, RollupConceptStoreDecorator,
+  the storage/sql dialect package) changed that day. The default in-memory run is 129/129 green.
+surface: NPDevRuntimeHost/runtimehost-core db (JdbcBusinessConceptStore rollup aggregation), JSON column binding on H2
+detail: |
+  1. Every write to WidgetCatalogEntry answers 500: its rollup highestSlotRow = max(ShelfSlot.row) is computed as
+     `SELECT MAX(npdev_base.row) ... FROM shelf_slots` and H2 refuses the reserved word unquoted
+     ("Syntax error in SQL statement ... expected identifier"). 8 occurrences in one run; it takes down every probe that
+     creates a catalog entry (field.required, field.access, conceptAccess.public, rollups, precision/scale ...).
+  2. Two writes fail with org.h2 "Data conversion error converting JAVA_OBJECT to JSON" (a Java object bound to a JSON
+     column instead of its serialized text).
+  The h2local run stopped after 63 of 133 probes (54 pass, 9 fail).
+resolution: >-
+  Done when the rollup aggregation quotes column identifiers through the dialect, JSON columns bind serialized text,
+  and the full suite is green with -StorageVariant h2local.
+note: >-
+  2026-10-24: filed, not fixed. Evidence: NPDevSamples/dsl-conformance-max/Output/App/behavior-probes-boot.stdout.log of
+  that run, digest log 20261024T060104Z.

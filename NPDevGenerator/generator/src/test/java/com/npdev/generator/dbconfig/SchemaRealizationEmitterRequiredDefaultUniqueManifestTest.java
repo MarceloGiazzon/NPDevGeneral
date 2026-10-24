@@ -124,8 +124,8 @@ final class SchemaRealizationEmitterRequiredDefaultUniqueManifestTest {
         // email: single-field unique, tenant-scoped.
         assertTrue(declarations.toString().contains("\"columns\":[\"email\"]") || anyMatches(declarations, "email", true),
                 declarations.toString());
-        // sku: connectable anchor, globally unique (not tenant-scoped).
-        assertTrue(anyMatches(declarations, "sku", false), declarations.toString());
+        // sku: connectable anchor -- unique per tenant like every other unique (ENF-1, 2026-10-24).
+        assertTrue(anyMatches(declarations, "sku", true), declarations.toString());
         // (orgId, email): compound unique invariant, tenant-scoped.
         assertTrue(anyMatchesColumns(declarations, List.of("org_id", "email"), true), declarations.toString());
     }

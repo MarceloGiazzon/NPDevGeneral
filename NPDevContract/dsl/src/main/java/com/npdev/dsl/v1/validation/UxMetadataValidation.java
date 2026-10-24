@@ -195,6 +195,7 @@ final class UxMetadataValidation {
                 );
 
                 validateInteractionPickerMetadata(diagnostics, entity, field, fieldUi, entitiesByLower);
+                validateFieldPickerPlacement(diagnostics, entity, field);
                 validateFieldLayoutMetadata(
                         diagnostics,
                         entity,
@@ -510,6 +511,44 @@ final class UxMetadataValidation {
             normalized = normalize(trimmed.substring(0, trimmed.length() - 5));
         }
         return normalized;
+    }
+
+    /**
+     * REG-302: {@code field.picker} (filter / selectorRef / multiSelect) is read only from a reference field's
+     * reference entry (BusinessUiEmitter), so on any other field it would be silently ignored -- refused
+     * ("accepted implies enforced"); {@code npdev migrate dsl-2} strips such a picker.
+     */
+    private static void validateFieldPickerPlacement(
+            List<ValidationDiagnostic> diagnostics,
+            ConceptAst entity,
+            FieldAst field
+    ) {
+        if (field.getPicker() == null) {
+            return;
+        }
+        boolean referenceField = "reference".equals(normalize(field.getType()))
+                || hasText(field.getReferenceTarget())
+                || (field.getReferenceSemantics() != null && hasText(field.getReferenceSemantics().getTarget()));
+        if (referenceField) {
+            return;
+        }
+        diagnostics.add(new ValidationDiagnostic(
+                ValidationLayer.UX_METADATA,
+                ValidationSeverity.ERROR,
+                "picker_not_supported",
+                "Entity " + entity.getName() + " field " + field.getName()
+                        + ": picker is only read on reference fields; on a " + field.getType()
+                        + " field it would be ignored",
+                "dsl:ux-metadata-validator",
+                "concepts[" + entity.getName() + "].fields[" + field.getName() + "].picker",
+                entity.getName(),
+                field.getName(),
+                "fields",
+                null,
+                "Declare the field as a reference (type: reference, ref: <Concept>) or remove picker"
+                        + " (npdev migrate dsl-2 removes it).",
+                "validation.ux-metadata.picker_not_supported"
+        ));
     }
 
     private static void validateInteractionPickerMetadata(

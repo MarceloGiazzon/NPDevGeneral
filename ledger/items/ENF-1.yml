@@ -33,3 +33,26 @@ note: >-
   the created row exists and each schedule's dueAt lands at its own offset. Its companion probe found REG-300 (cross-tenant
   schedule listing), fixed the same day. Probes run on the Linux notebook now (PORT-1); the probe runner restages stale
   RuntimeHost jars itself (LIBS-FRESH).
+  2026-10-24: allowlist 44 -> 21 (frozenCount 21); 257 tracked keywords, 236 witnessed by 129 probes. The 14 structural
+  keys (concept/field/flow/flowStep/query/queryLookup/aggregate/aggregateCollection name, steps, fields, access, lifecycle,
+  collections) are now named by existing probes whose assertions depend on them (e.g. the forEach refusal message names the
+  step, the lookup probe asserts the allTimeUnits column, the aggregate tree probe posts and reads items[].positions[]).
+  New 87-served-metadata.json (5 probes) witnesses lifecycleState.label/metadata, lifecycleTransition.action/metadata/
+  actionLabel, field.description, flow.action, flowStep.action and field.picker against their served values; the concepts
+  catalog now serves states[] (value, label, labelLocales, initial, terminal, metadata -- CompiledMetadataCanonicalJson)
+  so state labels/metadata have a runtime surface. Found: field.picker on a non-reference field is inert and validates
+  clean (REG-302). Remaining high-risk 7: field.uid, field.renamedFrom, flow.uid, query.uid (need a LIVE-1 rename
+  revision op on h2local), query.metadata (queries are in no served catalog), lifecycleState.allowedActions (not compiled
+  into the runtime model), field.connectable (needs a via-anchored bond in the fixture). Allowlist reasons corrected:
+  field.connectable is a bond anchor, not presentation.
+  2026-10-24 (later, owner: follow the recommendations; no legacy users): allowlist 21 -> 14. flow.uid, query.uid and
+  aggregate.uid RETIRED (read by nothing: schema x4, AST/compiled/canonical, assign-uids no longer stamps them,
+  `npdev migrate dsl-2` strips them, BREAKING.md). lifecycleState.allowedActions ENFORCED on the server
+  (AggregateRuntime.invoke refuses a workbench action the persisted root's state does not allow -> 422
+  action_not_allowed_in_state; AggregateRuntimeAllowedActionsTest red without the guard) and witnessed by
+  88-allowed-actions-and-anchors.json. field.connectable: anchors made unique PER TENANT with composite bond FKs, and
+  the in-memory store now pre-checks every unique field (REG-303); witnessed in 88. query.metadata and domainType.ui
+  served through two new admin catalogs (queries, domainTypes) and witnessed in 87. REG-302's picker check is now an
+  error. Remaining high-risk: field.uid and field.renamedFrom only -- their behaviour (a rename that keeps the column
+  and data) happens at boot on a physical database, and LIVE-1 model reload refuses renames by design, so the witness
+  needs a two-boot restart-revision probe runner (plan: NPDev_General__OutsideRepo/enf1-plan.md, batch C).

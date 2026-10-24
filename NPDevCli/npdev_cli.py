@@ -1808,8 +1808,8 @@ def _stamp_named_items_uid(items, label_singular: str, stamped: list, write: boo
 def run_migrate_assign_uids(args: argparse.Namespace) -> int:
     """REG-209 (B1 lift, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P7): stamps a random uid on
     every concept and field in --model lacking one. P2.1 (Path A Phase 2) extended this to the seven
-    other identity-bearing element types: capability, event (top-level and concept-nested), flow,
-    procedure, panel, query, aggregate. Idempotent by construction -- only stamps where absent, so
+    other identity-bearing element types: capability, event (top-level and concept-nested),
+    procedure, panel (flow/query/aggregate uid were retired 2026-10-24, ENF-1: read by nothing). Idempotent by construction -- only stamps where absent, so
     running this twice on the same file produces byte-identical output the second time. Dry-run by
     default (reports what would be stamped); pass --write to apply.
     """
@@ -1878,11 +1878,8 @@ def run_migrate_assign_uids(args: argparse.Namespace) -> int:
     already_present += _stamp_named_items_uid(doc.get("capabilities"), "capability", stamped, args.write)
     already_present += _stamp_named_items_uid(doc.get("customCapabilities"), "capability", stamped, args.write)
     already_present += _stamp_named_items_uid(doc.get("events"), "event", stamped, args.write)
-    already_present += _stamp_named_items_uid(doc.get("flows"), "flow", stamped, args.write)
     already_present += _stamp_named_items_uid(doc.get("procedures"), "procedure", stamped, args.write)
     already_present += _stamp_named_items_uid(doc.get("panels"), "panel", stamped, args.write)
-    already_present += _stamp_named_items_uid(doc.get("queries"), "query", stamped, args.write)
-    already_present += _stamp_named_items_uid(doc.get("aggregates"), "aggregate", stamped, args.write)
 
     verb = "STAMPED" if args.write else "WOULD STAMP"
     for line in stamped:
@@ -16519,8 +16516,8 @@ def build_parser() -> argparse.ArgumentParser:
     migrate_hook_verify.add_argument("--report", help="write a JSON report of every file's outcome to this path")
 
     migrate_assign_uids = migrate_sub.add_parser(
-        "assign-uids", help="Stamp a stable uid on every concept/field/capability/event/flow/"
-                            "procedure/panel/query/aggregate lacking one (B1, P2.1).",
+        "assign-uids", help="Stamp a stable uid on every concept/field/capability/event/"
+                            "procedure/panel lacking one (B1, P2.1).",
     )
     migrate_assign_uids.add_argument("--model", required=True, help="path to the model.json to stamp")
     migrate_assign_uids.add_argument(

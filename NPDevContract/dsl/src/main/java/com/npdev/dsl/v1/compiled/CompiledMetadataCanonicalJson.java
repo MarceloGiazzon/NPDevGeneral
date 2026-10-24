@@ -73,6 +73,7 @@ public final class CompiledMetadataCanonicalJson {
         ObjectNode catalogs = JsonNodeFactory.instance.objectNode();
         catalogs.set("concepts", toConceptCatalog(model));
         catalogs.set("procedures", toProcedureCatalog(model));
+        catalogs.set("queries", toQueryCatalog(model));
         catalogs.set("panels", toPanelCatalog(model));
         catalogs.set("domainTypes", toDomainTypeCatalog(model));
         catalogs.set("fields", toFieldCatalog(rawModelRoot, model));
@@ -586,6 +587,7 @@ public final class CompiledMetadataCanonicalJson {
             node.set("terminalStates", entity.getLifecycle() == null
                     ? JsonNodeFactory.instance.arrayNode()
                     : toStringArray(terminalStates(entity.getLifecycle())));
+            node.set("states", lifecycleStates(entity.getLifecycle()));
             node.put("stateCount", entity.getLifecycle() == null ? 0 : entity.getLifecycle().getStates().size());
             node.put("transitionCount", entity.getLifecycle() == null ? 0 : entity.getLifecycle().getTransitions().size());
             node.set("fieldPaths", toStringArray(sortedFieldPaths(entity)));
@@ -626,6 +628,62 @@ public final class CompiledMetadataCanonicalJson {
         }
         entries.sort(Comparator.comparing(node -> text(node, "name")));
         return toArray(entries);
+    }
+
+    /**
+     * ENF-1 (2026-10-24): one entry per declared query -- name, concept, filter/sort/limit, parameters, the
+     * permissions it requires, whether it aggregates, and its free-form {@code metadata} (a query has no
+     * description; metadata is its only annotation). Served admin-only like every other catalog.
+     */
+    private static ArrayNode toQueryCatalog(CompiledModel model) {
+        List<ObjectNode> entries = new ArrayList<>();
+        for (CompiledQuery query : model.getQueries()) {
+            if (query == null) {
+                continue;
+            }
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("kind", "query");
+            node.put("ownerName", safe(query.name()));
+            node.put("name", safe(query.name()));
+            node.put("concept", safe(query.concept()));
+            node.put("where", safe(query.where()));
+            node.set("orderBy", toStringArray(query.orderBy()));
+            if (query.limit() == null) {
+                node.putNull("limit");
+            } else {
+                node.put("limit", query.limit());
+            }
+            ArrayNode parameters = JsonNodeFactory.instance.arrayNode();
+            for (CompiledProcedureParameter parameter : query.parameters()) {
+                ObjectNode parameterNode = JsonNodeFactory.instance.objectNode();
+                parameterNode.put("name", safe(parameter.name()));
+                parameterNode.put("type", safe(parameter.type()));
+                parameterNode.put("required", parameter.required());
+                parameters.add(parameterNode);
+            }
+            node.set("parameters", parameters);
+            node.set("permissionRequirements", toStringArray(query.permissionRequirements()));
+            node.put("aggregate", query.isAggregate());
+            node.set("metadata", MAPPER.valueToTree(sortedTree(query.metadata())));
+            entries.add(node);
+        }
+        entries.sort(Comparator.comparing(node -> text(node, "name")));
+        return toArray(entries);
+    }
+
+    /** Free-form metadata maps are unordered (Map.copyOf); sort keys at every depth so the output is deterministic. */
+    private static Object sortedTree(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> sorted = new TreeMap<>();
+            map.forEach((key, child) -> sorted.put(String.valueOf(key), sortedTree(child)));
+            return sorted;
+        }
+        if (value instanceof List<?> list) {
+            List<Object> out = new ArrayList<>();
+            list.forEach(child -> out.add(sortedTree(child)));
+            return out;
+        }
+        return value;
     }
 
     private static ArrayNode toPanelCatalog(CompiledModel model) {
@@ -2328,6 +2386,28 @@ public final class CompiledMetadataCanonicalJson {
             }
         }
         return "";
+    }
+
+    /** ENF-1: each declared state with its label and metadata, in declaration order (empty without a lifecycle). */
+    private static ArrayNode lifecycleStates(CompiledLifecycle lifecycle) {
+        ArrayNode states = JsonNodeFactory.instance.arrayNode();
+        if (lifecycle == null) {
+            return states;
+        }
+        for (CompiledStateMachineState state : lifecycle.getStates()) {
+            if (state == null) {
+                continue;
+            }
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("value", safe(state.getValue()));
+            node.put("label", safe(state.getLabel()));
+            node.set("labelLocales", toStringMap(state.getLabelLocales()));
+            node.put("initial", state.isInitial());
+            node.put("terminal", state.isTerminal());
+            node.set("metadata", toStringMap(state.getMetadata()));
+            states.add(node);
+        }
+        return states;
     }
 
     private static List<String> terminalStates(CompiledLifecycle lifecycle) {

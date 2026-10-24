@@ -234,6 +234,35 @@ class CompiledMetadataCanonicalJsonTest {
         assertEquals(json, second, "labelLocales emission must not break determinism.");
     }
 
+    /**
+     * ENF-1 (2026-10-24): every declared query is served in a `queries` catalog with its free-form metadata,
+     * its required permissions and its parameters; a query declaring no metadata gets an empty object.
+     */
+    @Test
+    void queriesCatalogServesEachQueryWithItsMetadataAndPermissions() throws Exception {
+        Path modelPath = resolvePath(List.of(
+                Path.of("..", "..", "NPDevSamples", "dsl-conformance-max", "Input", "model.json"),
+                Path.of("..", "..", "..", "NPDevSamples", "dsl-conformance-max", "Input", "model.json")
+        ));
+        CompiledModel compiledModel = new ModelCompiler().compile(new JsonModelParser().parse(modelPath));
+        String json = CompiledMetadataCanonicalJson.toJson(modelPath, compiledModel);
+        JsonNode queries = MAPPER.readTree(json).path("catalogs").path("queries");
+
+        assertEquals(compiledModel.getQueries().size(), queries.size(), "One entry per declared query.");
+        JsonNode audited = findBy(queries, "name", "AuditedCatalogEntries");
+        assertTrue(audited != null, "Expected AuditedCatalogEntries in the queries catalog.");
+        assertTrue(audited.path("metadata").path("purpose").asText().startsWith("REG-301"),
+                "The declared metadata.purpose must be served: " + audited.path("metadata"));
+        assertEquals("report.catalog.audit", audited.path("permissionRequirements").path(0).asText());
+        assertEquals("WidgetCatalogEntry", audited.path("concept").asText());
+        JsonNode ownedBy = findBy(queries, "name", "CatalogEntriesOwnedBy");
+        assertTrue(ownedBy != null && ownedBy.path("parameters").size() == 1,
+                "Declared query parameters must be served: " + ownedBy);
+
+        assertEquals(json, CompiledMetadataCanonicalJson.toJson(modelPath, compiledModel),
+                "The queries catalog must be deterministic (metadata maps are unordered).");
+    }
+
     private static JsonNode findBy(JsonNode arrayNode, String fieldName, String value) {
         if (arrayNode == null || !arrayNode.isArray()) {
             return null;

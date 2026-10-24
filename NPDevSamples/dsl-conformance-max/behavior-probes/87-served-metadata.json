@@ -1,0 +1,211 @@
+{
+  "probes": [
+    {
+      "id": "meta-lifecycle-state-label-and-metadata-served",
+      "keywords": [
+        "lifecycleState.label",
+        "lifecycleState.metadata"
+      ],
+      "description": "A lifecycle state's label and metadata reach the concepts metadata catalog the shell builds its status chips from: WidgetReviewDemo's Submitted state is served with label 'Awaiting review' and metadata queue=review-desk, while a state that declares neither (Draft) is served with an empty label and empty metadata, so the values come from the declaration, not a default.",
+      "steps": [
+        {
+          "name": "concepts catalog",
+          "method": "GET",
+          "path": "/api/admin/runtime/metadata/catalogs/concepts",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?name=WidgetReviewDemo].states": {
+                "len": 4
+              },
+              "$.items[?name=WidgetReviewDemo].states[?value=Submitted].label": "Awaiting review",
+              "$.items[?name=WidgetReviewDemo].states[?value=Submitted].metadata.queue": "review-desk",
+              "$.items[?name=WidgetReviewDemo].states[?value=Draft].label": "",
+              "$.items[?name=WidgetReviewDemo].states[?value=Draft].metadata.queue": {
+                "exists": false
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "meta-lifecycle-transition-action-metadata-and-action-label-served",
+      "keywords": [
+        "lifecycleTransition.action",
+        "lifecycleTransition.metadata",
+        "lifecycleTransition.actionLabel"
+      ],
+      "description": "A transition's action metadata, free-form metadata and actionLabel reach the transitions metadata catalog: WidgetReviewDemo Submitted->Rejected is served with the declared action label, confirmation text and danger level and metadata auditCategory=review-rejection; the approvals pack's PENDING->APPROVED transition is served with its actionLabel 'Approve'. Presentation-only, so the check is that each declared value is served exactly.",
+      "steps": [
+        {
+          "name": "transitions catalog",
+          "method": "GET",
+          "path": "/api/admin/runtime/metadata/catalogs/transitions",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?concept=WidgetReviewDemo&from=Submitted&to=Rejected].label": "Reject review",
+              "$.items[?concept=WidgetReviewDemo&from=Submitted&to=Rejected].confirmationText": "Reject this review?",
+              "$.items[?concept=WidgetReviewDemo&from=Submitted&to=Rejected].dangerLevel": "high",
+              "$.items[?concept=WidgetReviewDemo&from=Submitted&to=Rejected].metadata.auditCategory": "review-rejection",
+              "$.items[?concept=WidgetReviewDemo&from=Submitted&to=Approved].metadata.auditCategory": {
+                "exists": false
+              },
+              "$.items[?concept=approvals::ApprovalRequest&from=PENDING&to=APPROVED].actionLabel": "Approve"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "meta-query-metadata-served",
+      "keywords": [
+        "query.metadata"
+      ],
+      "description": "Every declared query is listed in the queries metadata catalog with its free-form metadata (a query has no description; metadata is its only annotation), its required permissions and its parameters: AuditedCatalogEntries is served with its metadata.purpose and its report.catalog.audit requirement, and ActiveCatalogEntries, which declares no metadata, is served with an empty metadata object.",
+      "steps": [
+        {
+          "name": "queries catalog",
+          "method": "GET",
+          "path": "/api/admin/runtime/metadata/catalogs/queries",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?name=AuditedCatalogEntries].metadata.purpose": {
+                "matches": "^REG-301: the same rows as ActiveCatalogEntries"
+              },
+              "$.items[?name=AuditedCatalogEntries].permissionRequirements[0]": "report.catalog.audit",
+              "$.items[?name=AuditedCatalogEntries].concept": "WidgetCatalogEntry",
+              "$.items[?name=CatalogEntriesOwnedBy].parameters": {
+                "len": 1
+              },
+              "$.items[?name=ActiveCatalogEntries].metadata.purpose": {
+                "exists": false
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "meta-domain-type-ui-served",
+      "keywords": [
+        "domainType.ui"
+      ],
+      "description": "A domain type's ui hints reach the domainTypes metadata catalog: Sku is served with its ui label SKU and placeholder WID-0000, ShortCode with its label and no placeholder.",
+      "steps": [
+        {
+          "name": "domainTypes catalog",
+          "method": "GET",
+          "path": "/api/admin/runtime/metadata/catalogs/domainTypes",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?name=Sku].label": "SKU",
+              "$.items[?name=Sku].placeholder": "WID-0000",
+              "$.items[?name=ShortCode].label": "Short code",
+              "$.items[?name=ShortCode].placeholder": ""
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "meta-field-description-served",
+      "keywords": [
+        "field.description"
+      ],
+      "description": "A field's own description (WidgetReviewDemo.reviewer, no domain type) is served as the field's description in the fields metadata catalog, and a sibling field that declares none (reviewMode) is served with an empty one.",
+      "steps": [
+        {
+          "name": "fields catalog",
+          "method": "GET",
+          "path": "/api/admin/runtime/metadata/catalogs/fields",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?concept=WidgetReviewDemo&fieldPath=reviewer].description": "ENF-1: who reviews the widget; required to submit",
+              "$.items[?concept=WidgetReviewDemo&fieldPath=reviewMode].description": ""
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "meta-flow-and-step-action-metadata-served",
+      "keywords": [
+        "flow.action",
+        "flowStep.action"
+      ],
+      "description": "A flow's action metadata and a step's action metadata reach the runtime catalogs a client builds its buttons and confirmations from: ShapeWidgetOrderLineEvent is served in the actions catalog (kind flow) and the invocations catalog with label 'Shape order-line event' and its confirmation text, and its emit-shaped step (kind flowStep) with label, success message and danger level; the return-shaped step, which declares no action, is served with an empty label.",
+      "steps": [
+        {
+          "name": "actions catalog",
+          "method": "GET",
+          "path": "/api/admin/runtime/metadata/catalogs/actions",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?kind=flow&name=ShapeWidgetOrderLineEvent].label": "Shape order-line event",
+              "$.items[?kind=flow&name=ShapeWidgetOrderLineEvent].confirmationText": "Emit the shaped event?",
+              "$.items[?kind=flowStep&ownerName=ShapeWidgetOrderLineEvent&name=emit-shaped].label": "Emit shaped event",
+              "$.items[?kind=flowStep&ownerName=ShapeWidgetOrderLineEvent&name=emit-shaped].successMessage": "Shaped event emitted",
+              "$.items[?kind=flowStep&ownerName=ShapeWidgetOrderLineEvent&name=emit-shaped].dangerLevel": "low",
+              "$.items[?kind=flowStep&ownerName=ShapeWidgetOrderLineEvent&name=return-shaped].label": ""
+            }
+          }
+        },
+        {
+          "name": "invocations catalog",
+          "method": "GET",
+          "path": "/api/admin/runtime/metadata/catalogs/invocations",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?id=flow:ShapeWidgetOrderLineEvent].label": "Shape order-line event"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "meta-field-picker-filter-served-to-the-picker",
+      "keywords": [
+        "field.picker"
+      ],
+      "description": "A reference field's picker reaches the generated UI manifest the browse/pick dialog reads: WidgetEnforcementDemo.catalogRef declares picker.filter displayName != 'Retired', served as one parsed clause on its reference to WidgetCatalogEntry, single-select. A picker.selectorRef adopts the named selector (WidgetCatalogPicker: filter discontinued == false, orderBy sku, searchFields sku+displayName) for WidgetOrderLine.catalogEntryId, and WidgetPriceListEntry.catalogEntryId AND-composes its own filter after the selector's (REG-302: both fields were plain uuids before, where the picker was read by nothing). The dialog applies it in the browser; the check here is that the declared picker is served exactly.",
+      "steps": [
+        {
+          "name": "generated UI manifest",
+          "method": "GET",
+          "path": "/npdev-business-ui/generated-ui-manifest.json",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.concepts[?conceptName=WidgetEnforcementDemo].fields[?name=catalogRef].reference.targetConcept": "WidgetCatalogEntry",
+              "$.concepts[?conceptName=WidgetEnforcementDemo].fields[?name=catalogRef].reference.defaultFilterExpression": {
+                "len": 1
+              },
+              "$.concepts[?conceptName=WidgetEnforcementDemo].fields[?name=catalogRef].reference.defaultFilterExpression[0].field": "displayName",
+              "$.concepts[?conceptName=WidgetEnforcementDemo].fields[?name=catalogRef].reference.defaultFilterExpression[0].operator": "ne",
+              "$.concepts[?conceptName=WidgetEnforcementDemo].fields[?name=catalogRef].reference.defaultFilterExpression[0].value": "Retired",
+              "$.concepts[?conceptName=WidgetEnforcementDemo].fields[?name=catalogRef].reference.multiple": false,
+              "$.concepts[?conceptName=WidgetOrderLine].fields[?name=catalogEntryId].reference.defaultFilterExpression": {
+                "len": 1
+              },
+              "$.concepts[?conceptName=WidgetOrderLine].fields[?name=catalogEntryId].reference.defaultFilterExpression[0].field": "discontinued",
+              "$.concepts[?conceptName=WidgetOrderLine].fields[?name=catalogEntryId].reference.orderBy[0]": "sku",
+              "$.concepts[?conceptName=WidgetPriceListEntry].fields[?name=catalogEntryId].reference.defaultFilterExpression": {
+                "len": 2
+              },
+              "$.concepts[?conceptName=WidgetPriceListEntry].fields[?name=catalogEntryId].reference.defaultFilterExpression[0].field": "discontinued",
+              "$.concepts[?conceptName=WidgetPriceListEntry].fields[?name=catalogEntryId].reference.defaultFilterExpression[1].field": "displayName",
+              "$.concepts[?conceptName=WidgetPriceListEntry].fields[?name=catalogEntryId].reference.defaultFilterExpression[1].value": "Retired"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

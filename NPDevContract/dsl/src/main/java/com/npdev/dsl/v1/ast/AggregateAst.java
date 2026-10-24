@@ -20,7 +20,6 @@ public record AggregateAst(
         // R4.4 (Roadmap Wave 1 2026-08-19): declarative cross-collection invariants, evaluated
         // against the whole aggregate draft tree pre-commit -- see AggregateInvariantAst's javadoc.
         List<AggregateInvariantAst> invariants,
-        String uid,
         // Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): see AggregateBalanceAst's javadoc.
         List<AggregateBalanceAst> balances
 ) {
@@ -43,10 +42,10 @@ public record AggregateAst(
             Map<String, Object> metadata,
             String onValidate
     ) {
-        this(name, root, collections, onCommit, metadata, onValidate, List.of(), null, List.of());
+        this(name, root, collections, onCommit, metadata, onValidate, List.of(), List.of());
     }
 
-    /** Pre-P2.1 7-arg shape -- uid defaults to null (no stable identity declared). */
+    /** 7-arg shape -- no balances. */
     public AggregateAst(
             String name,
             String root,
@@ -56,21 +55,6 @@ public record AggregateAst(
             String onValidate,
             List<AggregateInvariantAst> invariants
     ) {
-        this(name, root, collections, onCommit, metadata, onValidate, invariants, null, List.of());
-    }
-
-    /** Pre-Session-1 8-arg shape, kept so existing call sites keep compiling unchanged with an
-     *  empty balances list. */
-    public AggregateAst(
-            String name,
-            String root,
-            List<AggregateCollectionAst> collections,
-            String onCommit,
-            Map<String, Object> metadata,
-            String onValidate,
-            List<AggregateInvariantAst> invariants,
-            String uid
-    ) {
-        this(name, root, collections, onCommit, metadata, onValidate, invariants, uid, List.of());
+        this(name, root, collections, onCommit, metadata, onValidate, invariants, List.of());
     }
 }

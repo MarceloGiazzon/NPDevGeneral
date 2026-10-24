@@ -137,7 +137,7 @@ class BondJavaEmitterTest {
         );
         CompiledReferenceSemantics viaSku = new CompiledReferenceSemantics(
                 "Product", multiple, null, List.of(), List.of(), null, null, List.of(), null, null,
-                "skuId", "restrict");
+                multiple ? "id" : "skuId", "restrict"); // ENF-1: an N:M bond must target the id
         CompiledConcept invoice = new CompiledConcept(
                 "Invoice", "Invoice", "invoices",
                 List.of(

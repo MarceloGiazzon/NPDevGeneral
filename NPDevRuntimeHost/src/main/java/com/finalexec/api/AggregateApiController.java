@@ -1,5 +1,6 @@
 package com.finalexec.api;
 
+import com.finalexec.npdev.service.AggregateActionNotAllowedException;
 import com.finalexec.npdev.service.AggregateCommitVetoException;
 import com.finalexec.npdev.service.AggregateRuntime;
 import com.npdev.generated.runtime.service.RuntimeContextService;
@@ -107,6 +108,11 @@ public class AggregateApiController {
             return ResponseEntity.ok(requireAggregateRuntime().invoke(aggregateName, procedureName, draft, currentContext(request)));
         } catch (IllegalArgumentException ex) {
             return errorBody(HttpStatus.BAD_REQUEST, ex.getMessage());
+        } catch (AggregateActionNotAllowedException ex) {
+            // ENF-1: the root's current lifecycle state does not allow this workbench action -- a client error.
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                    "code", "action_not_allowed_in_state",
+                    "message", ex.getMessage() == null ? "" : ex.getMessage()));
         } catch (IllegalStateException ex) {
             return errorBody(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
         }

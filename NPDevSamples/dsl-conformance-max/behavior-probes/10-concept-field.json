@@ -555,6 +555,7 @@
     {
       "id": "cf-concept-access-read-hides-rows-outside-scope",
       "keywords": [
+        "concept.access",
         "conceptAccess.read",
         "conceptAccess.write"
       ],
@@ -1580,6 +1581,9 @@
     {
       "id": "cf-field-default-value-fills-omitted-field",
       "keywords": [
+        "field.name",
+        "concept.name",
+        "concept.fields",
         "field.default"
       ],
       "description": "REAL DEFECT: ApprovalRequest.status declares default 'PENDING' (pack approvals) but the runtime ignores field.default: creating a request without status is refused as if the field had no default. Evidence: POST /api/concepts/approvals_approval_requests {\"title\":\"t\"} -> 400 {\"code\":\"invalid_request\",\"message\":\"Required field is missing for approvals::ApprovalRequest: status\"}; expected 200/201 with status PENDING.",

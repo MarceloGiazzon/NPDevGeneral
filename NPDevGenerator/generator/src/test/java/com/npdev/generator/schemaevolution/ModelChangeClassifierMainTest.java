@@ -60,7 +60,7 @@ class ModelChangeClassifierMainTest {
 
         JsonNode index = mapper.readTree(indexPath.toFile());
         assertTrue(index.path("catalogs").isArray(), "metadata/index.json missing catalogs array");
-        assertEquals(11, index.path("catalogs").size(), "expected all 11 catalogs listed in metadata/index.json");
+        assertEquals(13, index.path("catalogs").size(), "expected all 13 catalogs listed in metadata/index.json");
     }
 
     /**

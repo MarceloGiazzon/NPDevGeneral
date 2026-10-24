@@ -916,7 +916,6 @@ public final class CompiledModelCanonicalJson {
             node.put("onValidate", safe(aggregate.onValidate()));
             // npdev-aggregate-invariant-four-place (R4.4): parser -> compiler -> HERE -> reader.
             node.set("invariants", toAggregateInvariants(aggregate.invariants()));
-            node.put("uid", safe(aggregate.uid()));
             // npdev-aggregate-balance-four-place (Session 1): parser -> compiler -> HERE -> reader.
             node.set("balances", toAggregateBalances(aggregate.balances()));
             aggregates.add(node);
@@ -1333,7 +1332,6 @@ public final class CompiledModelCanonicalJson {
             node.set("steps", toFlowSteps(flow.getSteps()));
             node.set("schedule", toFlowSchedule(flow.getSchedule()));
             node.set("origin", toOrigin(flow.getOrigin()));
-            node.put("uid", safe(flow.getUid()));
             flows.add(node);
         }
         return flows;
@@ -1367,7 +1365,6 @@ public final class CompiledModelCanonicalJson {
             node.set("aggregates", toAggregateFunctions(query.aggregates()));
             node.put("having", safe(query.having()));
             node.set("origin", toOrigin(query.origin()));
-            node.put("uid", safe(query.uid()));
             // Friction #5: written only when declared, so a query without them keeps its
             // canonical bytes (and every golden compiled-metadata fixture) unchanged.
             if (!query.lookups().isEmpty()) {

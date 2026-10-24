@@ -67,7 +67,7 @@ class CanonicalDemoGenerationSmokeTest {
         assertEquals(9, metadataRoot.path("catalogs").path("actions").size());
 
         JsonNode metadataIndex = MAPPER.readTree(Files.readString(metadataIndexPath));
-        assertEquals(11, metadataIndex.path("catalogs").size());
+        assertEquals(13, metadataIndex.path("catalogs").size());
         assertTrue(metadataRoot.path("catalogs").path("procedures").isArray(),
                 "Expected procedure catalog in generated metadata.");
         assertTrue(metadataRoot.path("catalogs").path("panels").isArray(),

@@ -264,6 +264,7 @@
     {
       "id": "fl-foreach-iterates-and-enforces-max-loop-iterations",
       "keywords": [
+        "flowStep.name",
         "flowStep.type",
         "flowStep.collection",
         "flowStep.itemKey",
@@ -4074,6 +4075,7 @@
     {
       "id": "fl-await-event-inside-foreach-waits-per-iteration",
       "keywords": [
+        "flowStep.steps",
         "flowStep.type",
         "flowStep.collection",
         "flowStep.itemKey",
@@ -4723,6 +4725,8 @@
     {
       "id": "fl-create-concept-persists-the-row",
       "keywords": [
+        "flow.name",
+        "flow.steps",
         "flowStep.type",
         "flowStep.scope",
         "flowStep.input",
@@ -5002,50 +5006,56 @@
     {
       "id": "fl-emit-event-data-mapping-shapes-the-payload",
       "keywords": [
+        "flowStep.name",
         "flowStep.data"
       ],
-      "description": "REG-301: an emitEvent step's data mapping builds the event payload key by key (KernelRunner.buildEventPayload) instead of forwarding a whole reference. ShapeWidgetOrderLineEvent maps $input.orderRef -> widgetOrderId and $input.code -> sku, so the stored WidgetOrderLineShaped event carries exactly those renamed keys and not the input's own keys (orderRef, code, noise).",
+      "description": "REG-301: an emitEvent step's data mapping builds the event payload key by key (KernelRunner.buildEventPayload) instead of forwarding a whole reference. ShapeWidgetOrderLineEvent maps $input.orderRef -> widgetOrderId and $input.code -> sku, so the emitted WidgetOrderLineShaped event carries exactly those renamed keys (plus the kernel's _meta) and not the input's own keys (orderRef, code, noise). The payload is read from the execute response's emittedEvents: the events read API redacts payloads by design (DefaultEventRedactionPolicy -- empty for a caller without DEBUG/ADMIN, allowlisted keys only otherwise), so step 2 checks only that the same event was persisted.",
       "steps": [
         {
-          "name": "run the shaping flow",
+          "name": "run the shaping flow; the emitted payload carries the mapped keys only",
           "method": "POST",
           "path": "/api/flows/ShapeWidgetOrderLineEvent/execute",
           "body": {
-            "orderRef": "${uuid}",
-            "code": "SHAPE-${rand}",
+            "orderRef": "0b6c2f6e-6d1a-4c55-9a3e-5a0f1d2c3b4a",
+            "code": "SHAPE-FIXED-1",
             "noise": "must-not-leak"
           },
           "expect": {
             "status": 200,
             "json": {
               "$.status": "OK",
-              "$.output.noise": "must-not-leak"
+              "$.output.noise": "must-not-leak",
+              "$.emittedEvents": {
+                "len": 1
+              },
+              "$.emittedEvents[0].eventName": "WidgetOrderLineShaped",
+              "$.emittedEvents[0].payload.widgetOrderId": "0b6c2f6e-6d1a-4c55-9a3e-5a0f1d2c3b4a",
+              "$.emittedEvents[0].payload.sku": "SHAPE-FIXED-1",
+              "$.emittedEvents[0].payload._meta.step": "emit-shaped",
+              "$.emittedEvents[0].payload.orderRef": {
+                "exists": false
+              },
+              "$.emittedEvents[0].payload.code": {
+                "exists": false
+              },
+              "$.emittedEvents[0].payload.noise": {
+                "exists": false
+              }
             }
           },
           "save": {
-            "orderRef": "$.output.orderRef",
-            "code": "$.output.code"
+            "eventId": "$.emittedEvents[0].eventId"
           }
         },
         {
-          "name": "payload carries the mapped keys only",
+          "name": "the same event was persisted",
           "method": "GET",
-          "path": "/api/events/by-name/WidgetOrderLineShaped?limit=1",
+          "path": "/api/events/${eventId}",
           "expect": {
             "status": 200,
             "json": {
-              "$[0].flowName": "ShapeWidgetOrderLineEvent",
-              "$[0].payload.widgetOrderId": "${orderRef}",
-              "$[0].payload.sku": "${code}",
-              "$[0].payload.orderRef": {
-                "exists": false
-              },
-              "$[0].payload.code": {
-                "exists": false
-              },
-              "$[0].payload.noise": {
-                "exists": false
-              }
+              "$.eventName": "WidgetOrderLineShaped",
+              "$.flowName": "ShapeWidgetOrderLineEvent"
             }
           }
         }

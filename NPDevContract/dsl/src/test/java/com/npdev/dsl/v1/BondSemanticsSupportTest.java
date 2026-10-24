@@ -73,7 +73,7 @@ class BondSemanticsSupportTest {
     }
 
     @Test
-    void validatorAcceptsMultipleReferenceBondForJunctionSynthesis() throws Exception {
+    void validatorAcceptsMultipleReferenceBondViaIdAndRefusesItViaANaturalKeyAnchor() throws Exception {
         Path modelPath = Files.createTempFile("npdev-bond-many-", ".json");
         Files.writeString(modelPath, """
                 {
@@ -98,7 +98,7 @@ class BondSemanticsSupportTest {
                           "reference": {
                             "target": "Product",
                             "multiple": true,
-                            "via": "skuId",
+                            "via": "%s",
                             "onDelete": "cascade"
                           }
                         }
@@ -106,16 +106,23 @@ class BondSemanticsSupportTest {
                     }
                   ]
                 }
-                """);
+                """.formatted("id"));
 
         ModelAst ast = new JsonModelParser().parse(modelPath);
         FieldAst productSet = ast.getConcepts().get(1).getFields().get(1);
 
         assertNotNull(productSet.getReferenceSemantics());
         assertTrue(productSet.getReferenceSemantics().isMultiple());
-        assertEquals("skuId", productSet.getReferenceSemantics().getVia());
+        assertEquals("id", productSet.getReferenceSemantics().getVia());
         List<String> errors = new SemanticValidator().validate(ast);
         assertTrue(errors.isEmpty(), "Expected multiple bond to validate for junction synthesis, got: " + errors);
+
+        // ENF-1 (2026-10-24): a natural-key anchor is unique per tenant and a junction row has no tenant, so the
+        // same N:M bond via skuId is refused.
+        Files.writeString(modelPath, Files.readString(modelPath).replace("\"via\": \"id\"", "\"via\": \"skuId\""));
+        List<String> viaAnchorErrors = new SemanticValidator().validate(new JsonModelParser().parse(modelPath));
+        assertTrue(viaAnchorErrors.stream().anyMatch(error -> error.contains("multiple (N:M) reference cannot go via")),
+                "Expected the N:M bond via a natural-key anchor to be refused, got: " + viaAnchorErrors);
     }
 
     @Test

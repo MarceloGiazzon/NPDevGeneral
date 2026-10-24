@@ -1519,8 +1519,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * LNCH-1 P5 (5.1): a single declared unique constraint on a business table -- mirrors
      * {@code SchemaRealizationEmitter}'s generation-time record of the same name/shape.
      * {@code tenantScoped} decides whether the runtime-applied constraint (and its dirty-data
-     * pre-check) is scoped to {@code (tenant_id, ...columns)} or just {@code (...columns)}
-     * (the connectable-anchor case, which must stay globally unique -- it is an FK target).
+     * pre-check) is scoped to {@code (tenant_id, ...columns)} or just {@code (...columns)}. Every
+     * generated unique is tenant-scoped today, connectable natural-key anchors included (ENF-1).
      */
     record UniqueConstraintDecl(String name, List<String> columns, boolean tenantScoped) {
     }

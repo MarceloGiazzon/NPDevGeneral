@@ -953,8 +953,7 @@ public final class ModelResolver {
                 cloneActionMetadata(flow.getAction()),
                 flow.isStartEndpoint(),
                 flow.getSchedule(),
-                flow.getOrigin(),
-                flow.getUid()
+                flow.getOrigin()
         );
     }
 
@@ -1012,8 +1011,7 @@ public final class ModelResolver {
                 firstNonNullAction(specialization.getAction(), base.getAction()),
                 specialization.isStartEndpoint() || base.isStartEndpoint(),
                 mergedSchedule,
-                mergedOrigin,
-                specialization.getUid()
+                mergedOrigin
         );
     }
 

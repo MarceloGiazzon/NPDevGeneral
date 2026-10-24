@@ -1,0 +1,39 @@
+id: REG-303
+title: >-
+  A bare `unique: true` field was not enforced on the in-memory store (only a soft-delete concept's was), and a
+  connectable natural-key anchor was unique across ALL tenants
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-10-24
+closed: 2026-10-24
+source: >-
+  ENF-1 witness work for field.connectable, 2026-10-24: on the default in-memory fixture app a second
+  WidgetBondAnchorDemo with the same `code` (unique: true, connectable: anchor) in the same tenant saved with 201.
+surface: NPDevGenerator service-base.mustache (unique pre-check), SchemaRealizationEmitter (anchor unique + bond FK), BondModelSupport, ReferenceValidation
+detail: |
+  service-base.mustache pre-checked unique fields in the JVM only for softDelete concepts; its own comment said a bare
+  unique: true was otherwise "enforced solely by the DATABASE's own unique constraint". The in-memory store has none, so
+  on it a duplicate value saved with 201 -- for every unique field of every non-soft-delete concept, the default dev
+  and probe storage. The only probe witnessing field.unique used a soft-delete concept (WidgetSupplier), which is why
+  it stayed green. Separately, a connectable natural-key anchor got a GLOBAL `uq_` constraint (an FK target had to be
+  single-column unique), so a second tenant could not reuse a code and learned from the refusal that another tenant
+  had it.
+resolution: >-
+  Done when every concept's unique fields are pre-checked per tenant on every storage, an anchor is unique per tenant
+  in the DDL with composite (tenant_id, col) bond FKs, and a probe witnesses duplicate-refused / other-tenant-reuse /
+  cross-tenant via refused.
+guard:
+  kind: script
+  ref: scripts/quality/run-behavior-probes.ps1 -Only 88-allowed-actions-and-anchors
+  asserts: >-
+    a duplicate anchor code in the same tenant is refused 409 unique_integrity_failed, another tenant may reuse it, a
+    child via a missing code or via a code only another tenant has is refused bond_target_not_found
+  provenRed: true
+note: >-
+  2026-10-24: FIXED. The unique pre-check (enforceUniqueFields) now runs for every concept. Anchors: `uqt_<table>_<col>`
+  UNIQUE (tenant_id, col); scalar bonds via a natural-key anchor get `fkt_<table>_<col>` FOREIGN KEY (tenant_id, col) ->
+  (tenant_id, anchor) ON UPDATE CASCADE (manifest ForeignKeyDecl composite too); bonds to an id are unchanged. An N:M
+  bond via a natural-key anchor is refused (validation + generator) -- a junction row has no tenant. Red evidence: the
+  hand-run against the in-memory app before the template fix returned 201 for the duplicate. BREAKING.md entry; docs
+  NPDEV_CONCEPTS_DEEP_DIVE gotchas updated.

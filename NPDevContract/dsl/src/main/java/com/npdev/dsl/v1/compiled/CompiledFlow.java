@@ -15,7 +15,6 @@ public final class CompiledFlow {
     private final boolean startEndpoint;
     private final CompiledFlowSchedule schedule;
     private final CompiledOrigin origin;
-    private final String uid;
 
     public CompiledFlow(String name, String concept, List<CompiledFlowStep> steps) {
         this(name, concept, null, steps, null, null, null);
@@ -75,8 +74,7 @@ public final class CompiledFlow {
         this(name, concept, mode, steps, inputSchema, outputSchema, action, startEndpoint, schedule, null);
     }
 
-    /** PACK-2: attaches pack-attribution provenance (see getOrigin) -- null for an app's own root-
-     *  or context-declared flow, non-null for a pack-contributed one. */
+    /** PACK-2: origin is null for an app- or context-declared flow, non-null for a pack-contributed one. */
     public CompiledFlow(
             String name,
             String concept,
@@ -89,23 +87,6 @@ public final class CompiledFlow {
             CompiledFlowSchedule schedule,
             CompiledOrigin origin
     ) {
-        this(name, concept, mode, steps, inputSchema, outputSchema, action, startEndpoint, schedule, origin, null);
-    }
-
-    /** P2.1: a stable identity for this flow, generated once and never reused -- see getUid. */
-    public CompiledFlow(
-            String name,
-            String concept,
-            String mode,
-            List<CompiledFlowStep> steps,
-            CompiledSchema inputSchema,
-            CompiledSchema outputSchema,
-            CompiledActionMetadata action,
-            boolean startEndpoint,
-            CompiledFlowSchedule schedule,
-            CompiledOrigin origin,
-            String uid
-    ) {
         this.name = name;
         this.concept = concept;
         this.mode = mode;
@@ -116,7 +97,6 @@ public final class CompiledFlow {
         this.startEndpoint = startEndpoint;
         this.schedule = schedule;
         this.origin = origin;
-        this.uid = uid;
     }
 
     public String getName() { return name; }
@@ -154,9 +134,4 @@ public final class CompiledFlow {
         return origin;
     }
 
-    /** P2.1: a stable identity for this flow, generated once and never reused
-     *  (npdev migrate assign-uids stamps one); null if the flow declares none. */
-    public String getUid() {
-        return uid;
-    }
 }

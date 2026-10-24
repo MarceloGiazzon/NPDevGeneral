@@ -238,9 +238,7 @@ public class {{entityName}}ServiceBase {
         runtimeSupport.enforceBondTargetTenant("{{conceptName}}", createPayload, crudCtx);
         UUID generatedId = runtimeSupport.ensureGeneratedId("{{conceptName}}", createPayload);
         enforceWithKernel("{{conceptName}}", createPayload);
-{{#softDelete}}
-        enforceSoftDeleteUniqueFields(createPayload, null);
-{{/softDelete}}
+        enforceUniqueFields(createPayload, null);
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.beforeCreate("{{conceptName}}", createPayload, crudCtx));
 {{/codaAllowed}}
@@ -350,9 +348,7 @@ public class {{entityName}}ServiceBase {
         Map<String, Object> updatePayload = runtimeSupport.buildUpdateInvariantPayload("{{conceptName}}", id, existing, source);
         runtimeSupport.enforceBondTargetTenant("{{conceptName}}", updatePayload, crudCtx);
         enforceWithKernel("{{conceptName}}", updatePayload);
-{{#softDelete}}
-        enforceSoftDeleteUniqueFields(updatePayload, id);
-{{/softDelete}}
+        enforceUniqueFields(updatePayload, id);
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.beforeUpdate("{{conceptName}}", id, updatePayload, crudCtx));
 {{/codaAllowed}}
@@ -735,12 +731,13 @@ public class {{entityName}}ServiceBase {
         }
     }
 
-{{#softDelete}}
     /**
-     * R5.4: {@link #enforceWithKernel} above ONLY calls {@link #existsUniqueInConceptStore} when an
-     * author-declared invariant expression actually invokes {@code unique(field)} -- a bare {@code
-     * unique: true} field with no such invariant is (today, for every OTHER concept) enforced solely
-     * by the DATABASE's own unique constraint, never by a JVM precheck. For a {@code softDelete}
+     * ENF-1 (2026-10-24): every concept's {@code unique: true} fields are pre-checked here, per tenant and
+     * live rows only, before the write. {@link #enforceWithKernel} only calls
+     * {@link #existsUniqueInConceptStore} when an invariant expression invokes {@code unique(field)}, so a bare
+     * {@code unique: true} was enforced solely by the DATABASE's unique constraint -- which the in-memory store
+     * does not have, so on it a duplicate saved with 201. The original R5.4 soft-delete reasoning follows: a
+     * soft-delete concept's DB index is deliberately not a plain unique index on some engines. For a {@code softDelete}
      * concept that constraint is deliberately NOT a plain unfiltered unique index on an engine with no
      * {@code PARTIAL_UNIQUE_INDEX} capability (see {@code StorageCapability}'s javadoc) -- exactly so
      * a soft-deleted row's value can be reused -- which means NOTHING enforces uniqueness among live
@@ -751,14 +748,14 @@ public class {{entityName}}ServiceBase {
      * unique invariant (harmless if it does -- existsUnique is read-only) and independent of engine
      * (a cheap, uniform safety net even where the DB-level filtered index also enforces it).
      */
-    private void enforceSoftDeleteUniqueFields(Map<String, Object> payload, UUID excludeId) {
+    private void enforceUniqueFields(Map<String, Object> payload, UUID excludeId) {
         List<GeneratedCrudRuntimeSupport.InvariantViolationDetail> violations = new ArrayList<>();
 {{#uniqueFields}}
         {
             Object value = payload.get("{{name}}");
             if (value != null && existsUniqueInConceptStore("{{name}}", value, excludeId)) {
                 violations.add(new GeneratedCrudRuntimeSupport.InvariantViolationDetail(
-                        "unique_integrity_failed", "{{conceptName}}", "soft_delete_unique_field",
+                        "unique_integrity_failed", "{{conceptName}}", "unique_field",
                         "{{name}}", "A unique value already exists for {{conceptName}}.{{name}}", true));
             }
         }
@@ -768,7 +765,6 @@ public class {{entityName}}ServiceBase {
         }
     }
 
-{{/softDelete}}
     private {{entityTypeName}} saveWithIntegrityMapping({{entityTypeName}} entity) {
         try {
             return persistence.save(entity);
@@ -948,12 +944,10 @@ public class {{entityName}}ServiceBase {
     /**
      * Tenant isolation: every {@code conceptStore} call is scoped to the caller's own tenant from
      * the verified auth context, falling back to {@code DEFAULT_TENANT_ID} only when no tenant
-     * claim is present at all (e.g. an unauthenticated trial boot). The DB-level unique index on a
-     * {@code unique:true} field stays GLOBAL (not tenant-scoped) — tenant-scoping it would break FK
-     * resolution for natural-key bond anchors — so {@link #existsUniqueInConceptStore} pre-checking
-     * only the caller's tenant is an intentional, narrower pre-check: a genuine cross-tenant
-     * collision on a unique field still gets caught, just later, as a 409 data-integrity violation
-     * from the database instead of the friendlier validation error.
+     * claim is present at all (e.g. an unauthenticated trial boot). Every unique constraint is per
+     * tenant -- the DB-level one on {@code (tenant_id, field)}, natural-key bond anchors included
+     * (ENF-1, 2026-10-24: their bonds use a composite key) -- so {@link #existsUniqueInConceptStore}
+     * pre-checking the caller's tenant matches what the database enforces.
      */
     private String currentTenantId() {
         String tenantId = generatedCrudExecutionContext().tenantId();

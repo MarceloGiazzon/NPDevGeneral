@@ -19,7 +19,6 @@ public record CompiledAggregate(
         // (root fields + every named collection) in the same pre-commit slot aggregate.onValidate
         // already runs in (AggregateRuntime.commitInternal, before the root upsert).
         List<CompiledAggregateInvariant> invariants,
-        String uid,
         // Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): grouped, role-partitioned balance rules --
         // see CompiledAggregateBalance's javadoc. Evaluated both as a commit-time gate
         // (AggregateRuntime.commit, alongside assertAggregateInvariants) and on demand, without
@@ -46,10 +45,10 @@ public record CompiledAggregate(
             Map<String, Object> metadata,
             String onValidate
     ) {
-        this(name, root, collections, onCommit, metadata, onValidate, List.of(), null, List.of());
+        this(name, root, collections, onCommit, metadata, onValidate, List.of(), List.of());
     }
 
-    /** Pre-P2.1 7-arg shape -- uid defaults to null (no stable identity declared). */
+    /** 7-arg shape -- no balances. */
     public CompiledAggregate(
             String name,
             String root,
@@ -59,21 +58,6 @@ public record CompiledAggregate(
             String onValidate,
             List<CompiledAggregateInvariant> invariants
     ) {
-        this(name, root, collections, onCommit, metadata, onValidate, invariants, null, List.of());
-    }
-
-    /** Pre-Session-1 8-arg shape, kept so existing call sites keep compiling unchanged with an
-     *  empty balances list. */
-    public CompiledAggregate(
-            String name,
-            String root,
-            List<CompiledAggregateCollection> collections,
-            String onCommit,
-            Map<String, Object> metadata,
-            String onValidate,
-            List<CompiledAggregateInvariant> invariants,
-            String uid
-    ) {
-        this(name, root, collections, onCommit, metadata, onValidate, invariants, uid, List.of());
+        this(name, root, collections, onCommit, metadata, onValidate, invariants, List.of());
     }
 }

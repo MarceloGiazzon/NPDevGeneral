@@ -338,11 +338,7 @@
           "name": "widgetOrderId",
           "type": "uuid",
           "required": true,
-          "ui": { "label": "Order" },
-          "picker": {
-            "filter": "$row.status == 'Open'",
-            "multiSelect": false
-          }
+          "ui": { "label": "Order" }
         },
         {
           "name": "sku",
@@ -353,7 +349,8 @@
         },
         {
           "name": "catalogEntryId",
-          "type": "uuid",
+          "type": "reference",
+          "ref": "WidgetCatalogEntry",
           "ui": { "label": "Catalog entry" },
           "picker": {
             "selectorRef": "WidgetCatalogPicker"
@@ -688,7 +685,8 @@
         { "name": "productCode", "type": "string", "required": true, "ui": { "label": "Product code" } },
         {
           "name": "catalogEntryId",
-          "type": "uuid",
+          "type": "reference",
+          "ref": "WidgetCatalogEntry",
           "ui": { "label": "Catalog entry" },
           "picker": {
             "selectorRef": "WidgetCatalogPicker",
@@ -731,7 +729,7 @@
       "lifecycle": {
         "statusField": "status",
         "states": [
-          { "value": "Draft", "label": "Draft", "initial": true },
+          { "value": "Draft", "label": "Draft", "initial": true, "allowedActions": ["StockTransferStampNoteProcedure"] },
           { "value": "Committed", "label": "Committed", "terminal": true }
         ],
         "transitions": [
@@ -839,12 +837,34 @@
           },
           "ui": { "label": "Profile" }
         },
-        { "name": "catalogRef", "type": "reference", "ref": "WidgetCatalogEntry", "required": false, "ui": { "label": "Catalog entry" } }
+        { "name": "catalogRef", "type": "reference", "ref": "WidgetCatalogEntry", "required": false, "ui": { "label": "Catalog entry" },
+          "picker": { "filter": "displayName != 'Retired'" } }
       ],
       "invariants": [
         { "name": "BadgeCodeUnique", "type": "unique", "fields": ["badgeCode"] },
         { "name": "CodeNotReserved", "rule": "code != 'RESERVED'" },
         { "name": "CapacityWithinCap", "type": "expression", "expression": "capacity == null || capacity <= 100" }
+      ]
+    },
+    {
+      "name": "WidgetBondAnchorDemo",
+      "truthLevel": "T2",
+      "ui": { "label": "Widget bond anchor demo", "description": "ENF-1: a connectable natural-key anchor (code). Unique per tenant -- a second tenant may reuse a code -- and the target of WidgetBondChildDemo.anchorCode via code." },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "code", "type": "string", "required": true, "unique": true, "connectable": "anchor", "maxLength": 64, "ui": { "label": "Code" } },
+        { "name": "label", "type": "string", "required": false, "ui": { "label": "Label" } }
+      ]
+    },
+    {
+      "name": "WidgetBondChildDemo",
+      "truthLevel": "T2",
+      "ui": { "label": "Widget bond child demo" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "anchorCode", "type": "reference", "required": true, "ui": { "label": "Anchor code" },
+          "reference": { "target": "WidgetBondAnchorDemo", "via": "code", "onDelete": "restrict" } },
+        { "name": "note", "type": "string", "required": false, "ui": { "label": "Note" } }
       ]
     },
     {
@@ -854,7 +874,7 @@
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "title", "type": "string", "required": true, "ui": { "label": "Title" } },
-        { "name": "reviewer", "type": "string", "required": false, "ui": { "label": "Reviewer" } },
+        { "name": "reviewer", "type": "string", "required": false, "description": "ENF-1: who reviews the widget; required to submit", "ui": { "label": "Reviewer" } },
         { "name": "reviewMode", "type": "string", "required": false, "ui": { "label": "Review mode" } },
         { "name": "approvedNote", "type": "string", "required": false, "ui": { "label": "Approved note" } },
         {
@@ -869,14 +889,19 @@
         "statusField": "status",
         "states": [
           { "value": "Draft", "initial": true },
-          { "value": "Submitted" },
+          { "value": "Submitted", "label": "Awaiting review", "metadata": { "queue": "review-desk" } },
           { "value": "Approved", "terminal": true },
           { "value": "Rejected", "terminal": true }
         ],
         "transitions": [
           { "from": "Draft", "to": "Submitted", "event": "WidgetReviewSubmitted", "requiredPayload": ["reviewer"] },
           { "from": "Submitted", "to": "Approved", "event": "WidgetReviewApproved", "requires": ["approvedNote"], "guard": "reviewMode == 'manual'" },
-          { "from": "Submitted", "to": "Rejected" }
+          {
+            "from": "Submitted",
+            "to": "Rejected",
+            "metadata": { "auditCategory": "review-rejection" },
+            "action": { "label": "Reject review", "confirmationText": "Reject this review?", "dangerLevel": "high" }
+          }
         ]
       }
     },
@@ -1525,7 +1550,9 @@
           {
             "label": "Recalcular Saldos",
             "checkBalances": ["OrigemDestinoBalance"]
-          }
+          },
+          { "label": "Stamp note", "procedure": "StockTransferStampNoteProcedure" },
+          { "label": "Clear note", "procedure": "StockTransferClearNoteProcedure" }
         ]
       }
     }
@@ -1798,6 +1825,16 @@
   ],
 
   "procedures": [
+    {
+      "name": "StockTransferStampNoteProcedure",
+      "metadata": { "purpose": "ENF-1: a StockTransferWorkbench action that StockTransfer's Draft state allows (lifecycleState.allowedActions)." },
+      "steps": [ { "name": "stamp", "type": "return", "value": { "note": "stamped" } } ]
+    },
+    {
+      "name": "StockTransferClearNoteProcedure",
+      "metadata": { "purpose": "ENF-1: a StockTransferWorkbench action that Draft does NOT allow -- the server refuses it there (422 action_not_allowed_in_state)." },
+      "steps": [ { "name": "clear", "type": "return", "value": { "note": "" } } ]
+    },
     {
       "name": "RecountOrderLines",
       "description": "Procedure-over-aggregate shape: recompute the order's line count.",
@@ -2562,9 +2599,11 @@
     {
       "name": "ShapeWidgetOrderLineEvent",
       "concept": "WidgetOrderLine",
+      "action": { "label": "Shape order-line event", "confirmationText": "Emit the shaped event?" },
       "steps": [
         { "name": "emit-shaped", "type": "emitEvent", "event": "WidgetOrderLineShaped",
-          "data": { "widgetOrderId": "$input.orderRef", "sku": "$input.code" } },
+          "data": { "widgetOrderId": "$input.orderRef", "sku": "$input.code" },
+          "action": { "label": "Emit shaped event", "successMessage": "Shaped event emitted", "dangerLevel": "low" } },
         { "name": "return-shaped", "type": "return", "value": "$input" }
       ]
     },

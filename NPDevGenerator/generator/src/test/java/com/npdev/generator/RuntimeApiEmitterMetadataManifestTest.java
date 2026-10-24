@@ -67,7 +67,7 @@ class RuntimeApiEmitterMetadataManifestTest {
         JsonNode indexRoot = MAPPER.readTree(Files.readString(indexOne));
         assertEquals("1.0.0", indexRoot.path("metadataManifestVersion").asText());
         assertEquals("1.0.0", indexRoot.path("metadataVersion").asText());
-        assertEquals(11, indexRoot.path("catalogs").size(), "Expected eleven metadata manifest catalogs (F2.2 added transitions + invocations).");
+        assertEquals(13, indexRoot.path("catalogs").size(), "Expected thirteen metadata manifest catalogs (F2.2 added transitions + invocations; ENF-1 queries + domainTypes).");
 
         JsonNode invocationsRoot = MAPPER.readTree(Files.readString(invocationsOne));
         assertEquals("invocations", invocationsRoot.path("catalog").asText());
