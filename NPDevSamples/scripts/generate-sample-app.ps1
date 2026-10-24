@@ -10,7 +10,10 @@ param(
     [string]$DestructiveAcknowledgment = "",
     # LIVE-1: generate against a DIFFERENT db.definition.json than the sample's own (e.g. an H2Local
     # variant of an InMemory fixture, so /model-reload has a DataSource and a SUPERUSER key to work with).
-    [string]$DbDefinitionPath = ""
+    [string]$DbDefinitionPath = "",
+    # ENF-1 batch C: generate from a DIFFERENT Input/ directory (a materialised model revision, outside the
+    # repo) into the sample's usual Output, so a restart probe's second boot finds the first boot's App/data.
+    [string]$InputRoot = ""
 )
 
 Set-StrictMode -Version Latest
@@ -35,6 +38,13 @@ if ([string]::IsNullOrWhiteSpace($RunId)) {
 $sampleOutputRoot = Join-Path (Join-Path $samplesRoot $SampleId) "Output"
 New-Item -ItemType Directory -Force -Path $sampleOutputRoot | Out-Null
 $sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId $SampleId
+if (-not [string]::IsNullOrWhiteSpace($InputRoot)) {
+    $InputRoot = Normalize-AbsolutePath $InputRoot
+    Ensure-Directory -PathValue $InputRoot -Label "Revision Input folder"
+    $sample.InputRoot = $InputRoot
+    $sample.ModelPath = Join-Path $InputRoot "model.json"
+    $sample.ConfigPath = Join-Path $InputRoot "config.json"
+}
 Ensure-File -PathValue $sample.ModelPath -Label "Sample model.json"
 Ensure-File -PathValue $sample.ConfigPath -Label "Sample config.json"
 

@@ -36,7 +36,12 @@ sample's Input/ with that revision's addField/removeField ops applied>}, see mod
 {"contains": x} checks list/string/dict membership. A step may carry "retry": {"attempts": N, "delaySeconds": S}: it is re-sent until its expectations hold (for asynchronous effects such as a
 scheduler tick); the last attempt's result is the one reported. Json rule ops also include {"secondsFromNow": [lo, hi]} (an ISO timestamp lo..hi seconds ahead) and a `[??k=v]` path selector
 that returns every matching array element (count them with {"len": n}). A step may send "multipart": {"fields": {...}, "file": {"field",
-"filename", "contentType", "content" | "repeatBytes"}} instead of a JSON body. Exit code is 0 only when every probe is green.
+"filename", "contentType", "content" | "repeatBytes"}} instead of a JSON body. ENF-1 batch C: a probe with
+"requires": ["restart"] and "restartRevision": {"file", "revision"} spans TWO boots (run-behavior-probes.ps1
+-RestartRevisionVariant): --phase beforeRestart runs its steps not marked "phase": "afterRestart" and writes saved
+values/failures to --state-file; the app is regenerated from that revision (--materialize-revision) into the same
+Output, so App/data survives, and rebooted without a wipe; --phase afterRestart runs the rest and gives the verdict.
+Any other run skips it. Exit code is 0 only when every probe is green.
 """
 from __future__ import annotations
 
@@ -90,20 +95,32 @@ def resolve_path(doc, path: str):
     return True, cur
 
 
-def materialize_revision(sample_dir: Path | None, revision_file: str, revision: str) -> str:
+def _string_occurs(node, value: str) -> bool:
+    if isinstance(node, str):
+        return node == value
+    if isinstance(node, list):
+        return any(_string_occurs(v, value) for v in node)
+    if isinstance(node, dict):
+        return any(_string_occurs(v, value) for v in node.values())
+    return False
+
+
+def materialize_revision(sample_dir: Path | None, revision_file: str, revision: str, out_dir: Path | None = None) -> str:
     """LIVE-1: build a second revision of the sample's model WITHOUT touching the checked-in one. The
     sample's Input/ directory (model + the fragments/packs/contexts it composes from, all relative to
-    model.json) is copied to a scratch directory and model.json there gets the revision's ops applied
-    (`addField` / `removeField` on a named concept). Returns the scratch model.json path -- what
-    /model-reload reads. The revision file lives in <sample>/model-revisions/ and is a delta, so it can
-    never go stale against a model.json other work keeps editing."""
+    model.json) is copied to a scratch directory (or `out_dir`) and model.json there gets the revision's
+    ops applied (`addField` / `removeField` on a named concept; ENF-1 batch C: `renameField` {field, to,
+    renamedFrom?, dropUid?} and `renameConcept` {to, renamedFrom?, dropUid?}, which keep the uid unless
+    told to drop it). Returns the scratch model.json path -- what /model-reload reads, and whose parent
+    a restart revision regenerates from. The revision file lives in <sample>/model-revisions/ and is a
+    delta, so it can never go stale against a model.json other work keeps editing."""
     import shutil
     import tempfile
     if sample_dir is None:
         raise RuntimeError("a reloadRevision step needs --sample-dir (or a probes dir inside a sample)")
     spec = json.loads((sample_dir / "model-revisions" / revision_file).read_text(encoding="utf-8"))
     ops = spec["revisions"][revision]
-    scratch = Path(tempfile.mkdtemp(prefix=f"npdev-live1-{revision}-"))
+    scratch = out_dir if out_dir is not None else Path(tempfile.mkdtemp(prefix=f"npdev-live1-{revision}-"))
     shutil.copytree(sample_dir / "Input", scratch, dirs_exist_ok=True)
     model_path = scratch / "model.json"
     model = json.loads(model_path.read_text(encoding="utf-8"))
@@ -113,6 +130,19 @@ def materialize_revision(sample_dir: Path | None, revision_file: str, revision: 
             concept["fields"].append(op["field"])
         elif op["op"] == "removeField":
             concept["fields"] = [f for f in concept["fields"] if f["name"] != op["field"]]
+        elif op["op"] in ("renameField", "renameConcept"):
+            target = concept if op["op"] == "renameConcept" else next(f for f in concept["fields"] if f["name"] == op["field"])
+            old = target["name"]
+            target["name"] = op["to"]
+            target.pop("renamedFrom", None)
+            if op.get("renamedFrom"):
+                target["renamedFrom"] = old
+            if op.get("dropUid"):
+                target.pop("uid", None)
+            # a renamed concept that something else still names would compose into a broken model
+            others = [c for c in model["concepts"] if c is not concept] + [v for k, v in model.items() if k != "concepts"]
+            if op["op"] == "renameConcept" and _string_occurs(others, old):
+                raise RuntimeError(f"renameConcept {old!r}: the model still references it elsewhere")
         else:
             raise RuntimeError(f"unknown revision op {op['op']!r}")
     model_path.write_text(json.dumps(model, indent=2), encoding="utf-8")
@@ -121,8 +151,14 @@ def materialize_revision(sample_dir: Path | None, revision_file: str, revision: 
 
 class Probe:
     def __init__(self, base_url: str, api_key: str, spec: dict, source: str,
-                 super_key: str = "", sample_dir: Path | None = None, storage: str = "") -> None:
+                 super_key: str = "", sample_dir: Path | None = None, storage: str = "",
+                 phase: str = "", prior: dict | None = None) -> None:
         self.base_url = base_url.rstrip("/")
+        # ENF-1 batch C: "beforeRestart" / "afterRestart" when run-behavior-probes.ps1 -RestartRevisionVariant
+        # drives a restart probe across two boots ("" = an ordinary one-boot run); `prior` is what the
+        # beforeRestart phase left in the state file for this probe (saved values, failures, steps).
+        self.phase = phase
+        self.prior = prior or {}
         self.api_key = api_key
         # LIVE-1: the SUPERUSER key (X-Super-User-Key) and the sample directory a model-revision step reads.
         self.super_key = super_key
@@ -139,11 +175,13 @@ class Probe:
             "key_" + name[len("NPDEV_PROBE_KEY_"):].lower(): value
             for name, value in os.environ.items() if name.startswith("NPDEV_PROBE_KEY_") and value
         }
+        # the restart phase's own values win over the env keys only for names the env did not provide
+        self.saved = {**(self.prior.get("saved") or {}), **self.saved}
         self.last_headers: dict[str, str] = {}
         # TRUTH-1: every request the probe made, as the AUTHORED route (placeholders unresolved, so the
         # record is stable run to run) plus the status that came back. `npdev truth` maps these routes
         # onto concepts to decide which concepts a passing probe actually exercised.
-        self.steps: list[dict] = []
+        self.steps: list[dict] = list(self.prior.get("steps") or [])
 
     def subst(self, value):
         if isinstance(value, str):
@@ -316,15 +354,27 @@ class Probe:
         # in the report, when the run has no key -- never silently green and never a false failure.
         if "superUser" in requires and not self.super_key:
             return self.skipped("needs NPDEV_PROBE_SUPER_USER_KEY (run scripts/quality/run-behavior-probes.ps1 -LiveFieldVariant)")
+        # ENF-1 batch C: "requires": ["restart"] -- the probe spans two boots around a regeneration from its
+        # "restartRevision"; only run-behavior-probes.ps1 -RestartRevisionVariant (--phase) can drive that.
+        if "restart" in requires and not self.phase:
+            return self.skipped("needs two boots around a model revision (run scripts/quality/run-behavior-probes.ps1 "
+                                "-RestartRevisionVariant)")
         # REG-295: "requires": ["jdbc"] -- the probe exercises the physical-database store path; skipped (loudly,
         # never silently green) unless the run says it booted on one.
         if "jdbc" in requires and self.storage != "jdbc":
             return self.skipped(f"needs a JDBC-backed app (storage is {self.storage or 'undeclared'}; run "
                                 "scripts/quality/run-behavior-probes.ps1 -StorageVariant h2local)")
-        unknown = [r for r in requires if r not in ("superUser", "jdbc")]
+        unknown = [r for r in requires if r not in ("superUser", "jdbc", "restart")]
         if unknown:
-            return {**self.skipped(""), "status": "failed", "failures": [f"unknown requires {unknown} (known: superUser, jdbc)"]}
+            return {**self.skipped(""), "status": "failed", "failures": [f"unknown requires {unknown} (known: superUser, jdbc, restart)"]}
+        if ("restart" in requires) != bool(self.spec.get("restartRevision")):
+            return {**self.skipped(""), "status": "failed",
+                    "failures": ["a probe declares \"restartRevision\" exactly when it \"requires\" \"restart\""]}
+        failures += list(self.prior.get("failures") or [])
         for index, step in enumerate(self.spec["steps"], 1):
+            # a restart probe's steps run before the restart unless marked "phase": "afterRestart"
+            if self.phase and step.get("phase", "beforeRestart") != self.phase:
+                continue
             if failures and not (step.get("always") or step.get("stopOnFail") is False):
                 continue  # an earlier step failed: only cleanup steps ("always": true) still run
             label = f"step {index} ({step.get('name', step.get('path'))})"
@@ -354,6 +404,11 @@ class Probe:
                     self.saved[name] = value
                 else:
                     failures.append(f"{label}: cannot save {name}: {path} not in response; body {body[:200]!r}")
+        if self.phase == "beforeRestart":
+            # the verdict waits for the afterRestart phase; hand it everything this boot learned
+            return {"id": self.spec["id"], "source": self.source, "status": "pending-restart", "failures": failures,
+                    "steps": self.steps, "knownFailure": self.spec.get("knownFailure"),
+                    "saved": {k: v for k, v in self.saved.items() if not k.startswith("key_")}}
         known = self.spec.get("knownFailure")
         if known and failures:
             status = "known-failure"
@@ -390,23 +445,76 @@ def main() -> int:
     parser.add_argument("--storage", default=os.environ.get("NPDEV_PROBE_STORAGE", ""),
                         help="REG-295: the concept store the app booted on (jdbc | inmemory); probes with "
                              "\"requires\": [\"jdbc\"] are skipped unless this is jdbc (default: env NPDEV_PROBE_STORAGE)")
+    parser.add_argument("--phase", choices=["beforeRestart", "afterRestart"], default="",
+                        help="ENF-1 batch C: run only the restart probes (\"requires\": [\"restart\"]), and only "
+                             "their steps for this side of the restart; needs --state-file")
+    parser.add_argument("--state-file", default="",
+                        help="what the beforeRestart phase writes and the afterRestart phase reads back")
+    parser.add_argument("--materialize-revision", nargs="?", const="", default=None, metavar="FILE:REVISION",
+                        help="write that model revision's Input/ copy into --out-dir, print the directory and exit; "
+                             "bare: the one restartRevision the selected restart probes share")
+    parser.add_argument("--out-dir", default="", help="target directory of --materialize-revision")
     args = parser.parse_args()
+    sample_dir = Path(args.sample_dir) if args.sample_dir else Path(args.probes_dir).resolve().parent
+    if args.materialize_revision is not None:
+        if args.materialize_revision:
+            revision_file, _, revision = args.materialize_revision.partition(":")
+        else:
+            wanted = {(spec["restartRevision"]["file"], spec["restartRevision"]["revision"])
+                      for spec, _ in load_probes(Path(args.probes_dir), args.only) if spec.get("restartRevision")}
+            if len(wanted) != 1:
+                print(f"the selected restart probes name {len(wanted)} distinct restartRevisions, need exactly 1: "
+                      f"{sorted(wanted)}", file=sys.stderr)
+                return 2
+            revision_file, revision = wanted.pop()
+        if not args.out_dir:
+            print("--materialize-revision needs --out-dir", file=sys.stderr)
+            return 2
+        print(Path(materialize_revision(sample_dir, revision_file, revision, Path(args.out_dir))).parent)
+        return 0
+    if args.phase and not args.state_file:
+        print("--phase needs --state-file", file=sys.stderr)
+        return 2
     api_key = os.environ.get("NPDEV_PROBE_API_KEY", "")
     if not api_key:
         print("NPDEV_PROBE_API_KEY is not set", file=sys.stderr)
         return 2
     # LIVE-1: optional -- only probes with an auth=superUser / reloadRevision step need these.
     super_key = os.environ.get("NPDEV_PROBE_SUPER_USER_KEY", "")
-    sample_dir = Path(args.sample_dir) if args.sample_dir else Path(args.probes_dir).resolve().parent
+    selected = load_probes(Path(args.probes_dir), args.only)
+    state: dict = {}
+    if args.phase:
+        selected = [(spec, source) for spec, source in selected if "restart" in (spec.get("requires") or [])]
+        if not selected:
+            print("--phase: no restart probe (\"requires\": [\"restart\"]) is selected", file=sys.stderr)
+            return 2
+        if args.phase == "afterRestart":
+            state = json.loads(Path(args.state_file).read_text(encoding="utf-8"))
     results = []
-    for spec, source in load_probes(Path(args.probes_dir), args.only):
+    for spec, source in selected:
+        if args.phase == "afterRestart" and spec["id"] not in state:
+            results.append({**Probe(args.base_url, api_key, spec, source).skipped(""), "status": "failed",
+                            "failures": ["the beforeRestart phase left no state for this probe"]})
+            continue
         result = Probe(args.base_url, api_key, spec, source, super_key=super_key, sample_dir=sample_dir,
-                       storage=args.storage).run()
+                       storage=args.storage, phase=args.phase, prior=state.get(spec["id"])).run()
+        if result["status"] == "pending-restart":
+            state[spec["id"]] = result
+            print(f"{'PHASE1' if not result['failures'] else 'PHASE1-FAIL'}  {result['id']}")
+            for failure in result["failures"]:
+                print(f"        {failure}")
+            continue
         results.append(result)
         label = {"passed": "PASS", "known-failure": "KNOWN", "skipped": "SKIP"}.get(result["status"], "FAIL")
         print(f"{label}  {result['id']}" + (f"  (known failure {result['knownFailure']})" if result["knownFailure"] else ""))
         for failure in result["failures"]:
             print(f"        {failure}")
+    if args.phase == "beforeRestart":
+        # a phase-1 failure is carried into the afterRestart verdict (so knownFailure still applies), not judged here
+        Path(args.state_file).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.state_file).write_text(json.dumps(state, indent=2), encoding="utf-8")
+        print(f"{len(state)} restart probe(s) ran their beforeRestart steps; state in {args.state_file}")
+        return 0
     failed = [r for r in results if r["status"] not in ("passed", "known-failure", "skipped")]
     known = [r for r in results if r["status"] == "known-failure"]
     report = {"schemaVersion": "npdev-behavior-probes-run.v1", "total": len(results), "failed": len(failed),

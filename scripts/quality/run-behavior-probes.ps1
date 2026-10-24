@@ -44,6 +44,15 @@
     `"requires": ["jdbc"]` (e.g. 90-cross-tenant-crud.json's create-with-another-tenant's-id probe) run instead of
     skipping. -ReuseBuild reuses whatever variant was last generated -- do not mix it with a variant switch.
     Does not record cadence (enf-behavior-probes stays the InMemory default run).
+
+.PARAMETER RestartRevisionVariant
+    ENF-1 batch C: run the RESTART probes (`"requires": ["restart"]`, e.g. 95-rename-identity-restart.json)
+    across two boots on the h2local variant. Boot 1 starts on a wiped database and runs their steps up to the
+    restart (run_probes.py --phase beforeRestart, state in the evidence folder); the app is stopped, the probes'
+    shared restartRevision is materialised OUTSIDE the repo (run_probes.py --materialize-revision) and the app is
+    regenerated from it into the SAME Output -- regeneration spares App/data -- rebuilt, and booted WITHOUT a wipe;
+    boot 2 runs the steps marked "phase": "afterRestart" and gives the verdict. Implies -StorageVariant h2local;
+    cannot be combined with -LiveFieldVariant or -ReuseBuild. Does not record cadence.
 #>
 param(
     [string]$SampleId = "dsl-conformance-max",
@@ -56,11 +65,16 @@ param(
     [switch]$LiveFieldVariant,
     [ValidateSet("", "h2local")]
     [string]$StorageVariant = "",
+    [switch]$RestartRevisionVariant,
     [string]$ReportPath = "scripts/reports/out/behavior-probes-report.json"
 )
 
 $ErrorActionPreference = "Stop"
 
+if ($RestartRevisionVariant -and ($LiveFieldVariant -or $ReuseBuild)) {
+    throw "-RestartRevisionVariant regenerates and boots twice by itself; do not combine it with -LiveFieldVariant or -ReuseBuild."
+}
+if ($RestartRevisionVariant -and [string]::IsNullOrWhiteSpace($StorageVariant)) { $StorageVariant = "h2local" }
 # LIVE-1 boots the h2local variant too; either switch means the app runs on a JDBC concept store.
 if ($LiveFieldVariant -and [string]::IsNullOrWhiteSpace($StorageVariant)) { $StorageVariant = "h2local" }
 $probeStorage = if ([string]::IsNullOrWhiteSpace($StorageVariant)) { "inmemory" } else { "jdbc" }
@@ -151,27 +165,64 @@ if (-not (Test-PortFree -PortNumber $Port)) {
     throw "Port $Port is already in use; refusing to start (this runner never kills a process it did not start)."
 }
 
-if (-not $ReuseBuild) {
-    Write-Section "Generating $SampleId"
+# Generate + build the sample (from its own Input/, or from a materialised revision's -InputRoot) into its Output.
+function Invoke-SampleGenerateAndBuild {
+    param([string]$InputRoot = "", [string]$StageSuffix = "")
+    Write-Section ("Generating $SampleId" + $(if ($InputRoot) { " from $InputRoot" } else { "" }))
     $generateArgs = @("-SampleId", $SampleId)
     if (-not [string]::IsNullOrWhiteSpace($StorageVariant)) {
         $generateArgs += @("-DbDefinitionPath", (Join-Path $repoRoot "NPDevSamples\$SampleId\variants\$StorageVariant\db.definition.json"))
     }
+    if (-not [string]::IsNullOrWhiteSpace($InputRoot)) { $generateArgs += @("-InputRoot", $InputRoot) }
     & pwsh -NoProfile -File (Join-Path $repoRoot "NPDevSamples\scripts\generate-sample-app.ps1") @generateArgs | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "Generation failed for $SampleId." }
-    $report.stages.generate = "passed"
+    $report.stages["generate$StageSuffix"] = "passed"
 
     Ensure-NpdevSampleApiKey -AppRoot $appRoot
-    $gradlew = Get-NPDevGradleWrapperExecutable $appRoot
-    Ensure-File -PathValue $gradlew -Label "Generated app Gradle wrapper"
+    $script:gradlew = Get-NPDevGradleWrapperExecutable $appRoot
+    Ensure-File -PathValue $script:gradlew -Label "Generated app Gradle wrapper"
 
     Write-Section "Building $SampleId"
-    $buildOut = Join-Path $appRoot "behavior-probes-build.stdout.log"
-    $buildErr = Join-Path $appRoot "behavior-probes-build.stderr.log"
-    $build = Start-Process -FilePath $gradlew -ArgumentList @("--no-daemon", "build", "-x", "test", "--console=plain") -WorkingDirectory $appRoot -NoNewWindow -Wait -PassThru -RedirectStandardOutput $buildOut -RedirectStandardError $buildErr
-    $report.stages.build = if ($build.ExitCode -eq 0) { "passed" } else { "failed (exit $($build.ExitCode); see $buildOut)" }
+    $buildOut = Join-Path $appRoot "behavior-probes-build$StageSuffix.stdout.log"
+    $buildErr = Join-Path $appRoot "behavior-probes-build$StageSuffix.stderr.log"
+    $build = Start-Process -FilePath $script:gradlew -ArgumentList @("--no-daemon", "build", "-x", "test", "--console=plain") -WorkingDirectory $appRoot -NoNewWindow -Wait -PassThru -RedirectStandardOutput $buildOut -RedirectStandardError $buildErr
+    $report.stages["build$StageSuffix"] = if ($build.ExitCode -eq 0) { "passed" } else { "failed (exit $($build.ExitCode); see $buildOut)" }
     Write-JsonReport
     if ($build.ExitCode -ne 0) { throw "Build failed for $SampleId -- see $buildOut." }
+}
+
+# Boot the generated app and wait for health; the process lands in $script:app so the outer finally can stop it.
+function Start-ProbeApp {
+    param([string]$StageSuffix = "")
+    Add-ProbeIdentities -AppRoot $appRoot
+    Write-Section "Booting $SampleId on port $Port"
+    $bootOut = Join-Path $appRoot "behavior-probes-boot$StageSuffix.stdout.log"
+    $bootErr = Join-Path $appRoot "behavior-probes-boot$StageSuffix.stderr.log"
+    $bootArgsLine = "--server.port=$Port"
+    if ($LiveFieldVariant) { $bootArgsLine += " --npdev.runtime.hotswap.new-concept-provisioning-enabled=true" }
+    $script:app = Start-Process -FilePath $gradlew -ArgumentList @("--no-daemon", "bootRun", ('--args="' + $bootArgsLine + '"')) -WorkingDirectory $appRoot -NoNewWindow -PassThru -RedirectStandardOutput $bootOut -RedirectStandardError $bootErr
+
+    $deadline = (Get-Date).AddSeconds($BootTimeoutSeconds)
+    $healthy = $false
+    $lastError = ""
+    while ((Get-Date) -lt $deadline) {
+        if ($script:app.HasExited) { $lastError = "Process exited before health check passed with code $($script:app.ExitCode)."; break }
+        try {
+            $health = Invoke-WebRequest -Uri "$baseUrl/actuator/health" -TimeoutSec 5 -SkipHttpErrorCheck
+            $healthBody = if ($health.Content -is [byte[]]) { [System.Text.Encoding]::UTF8.GetString($health.Content) } else { [string]$health.Content }
+            if ([int]$health.StatusCode -eq 200 -and $healthBody -match '"status"\s*:\s*"UP"') { $healthy = $true; break }
+            $lastError = "Health returned $($health.StatusCode)"
+        } catch { $lastError = $_.Exception.Message }
+        Start-Sleep -Seconds 3
+    }
+    $report.stages["boot$StageSuffix"] = if ($healthy) { "passed" } else { "failed ($lastError; see $bootOut)" }
+    Write-JsonReport
+    if (-not $healthy) { throw "Generated app did not become healthy: $lastError" }
+}
+
+$baseUrl = "http://127.0.0.1:$Port"
+if (-not $ReuseBuild) {
+    Invoke-SampleGenerateAndBuild
 }
 else {
     $gradlew = Get-NPDevGradleWrapperExecutable $appRoot
@@ -191,31 +242,7 @@ try {
         Remove-Item -LiteralPath $dataDir -Recurse -Force
     }
 
-    Add-ProbeIdentities -AppRoot $appRoot
-    Write-Section "Booting $SampleId on port $Port"
-    $bootOut = Join-Path $appRoot "behavior-probes-boot.stdout.log"
-    $bootErr = Join-Path $appRoot "behavior-probes-boot.stderr.log"
-    $bootArgsLine = "--server.port=$Port"
-    if ($LiveFieldVariant) { $bootArgsLine += " --npdev.runtime.hotswap.new-concept-provisioning-enabled=true" }
-    $app = Start-Process -FilePath $gradlew -ArgumentList @("--no-daemon", "bootRun", ('--args="' + $bootArgsLine + '"')) -WorkingDirectory $appRoot -NoNewWindow -PassThru -RedirectStandardOutput $bootOut -RedirectStandardError $bootErr
-
-    $baseUrl = "http://127.0.0.1:$Port"
-    $deadline = (Get-Date).AddSeconds($BootTimeoutSeconds)
-    $healthy = $false
-    $lastError = ""
-    while ((Get-Date) -lt $deadline) {
-        if ($app.HasExited) { $lastError = "Process exited before health check passed with code $($app.ExitCode)."; break }
-        try {
-            $health = Invoke-WebRequest -Uri "$baseUrl/actuator/health" -TimeoutSec 5 -SkipHttpErrorCheck
-            $healthBody = if ($health.Content -is [byte[]]) { [System.Text.Encoding]::UTF8.GetString($health.Content) } else { [string]$health.Content }
-            if ([int]$health.StatusCode -eq 200 -and $healthBody -match '"status"\s*:\s*"UP"') { $healthy = $true; break }
-            $lastError = "Health returned $($health.StatusCode)"
-        } catch { $lastError = $_.Exception.Message }
-        Start-Sleep -Seconds 3
-    }
-    $report.stages.boot = if ($healthy) { "passed" } else { "failed ($lastError; see $bootOut)" }
-    Write-JsonReport
-    if (-not $healthy) { throw "Generated app did not become healthy: $lastError" }
+    Start-ProbeApp
 
     $apiKey = Get-NpdevLiveApiKey -AppRoot $appRoot
 
@@ -241,6 +268,32 @@ try {
         $superKeyFile = Join-Path $appRoot "SUPER_USER_KEY.txt"
         if (-not (Test-Path -LiteralPath $superKeyFile)) { throw "LiveFieldVariant: no $superKeyFile -- the app has no physical database / SUPERUSER key." }
         $env:NPDEV_PROBE_SUPER_USER_KEY = (Get-Content -Raw -LiteralPath $superKeyFile).Trim()
+    }
+    if ($RestartRevisionVariant) {
+        $stateFile = Join-Path $evidenceDir "restart-state.json"
+        Remove-Item -LiteralPath $stateFile -Force -ErrorAction SilentlyContinue
+        Write-Section "Restart probes: boot 1 (beforeRestart)"
+        try { & $py @probeArgs "--phase" "beforeRestart" "--state-file" $stateFile | Out-Host } finally { Remove-Item Env:\NPDEV_PROBE_API_KEY -ErrorAction SilentlyContinue }
+        if ($LASTEXITCODE -ne 0) { throw "Restart probes: the beforeRestart phase did not run (exit $LASTEXITCODE)." }
+        $report.stages.beforeRestart = "passed"
+
+        Stop-ProcessTree -RootProcessId $app.Id
+        $portDeadline = (Get-Date).AddSeconds(60)
+        while (-not (Test-PortFree -PortNumber $Port) -and (Get-Date) -lt $portDeadline) { Start-Sleep -Seconds 1 }
+        if (-not (Test-PortFree -PortNumber $Port)) { throw "Restart probes: port $Port still taken 60 s after stopping boot 1." }
+
+        # The revision's Input/ copy lives outside the repo; it is regenerated INTO the sample's Output, so App/data
+        # (the H2 database boot 1 wrote) is spared -- and never wiped before boot 2.
+        $revisionInput = Join-Path ([System.IO.Path]::GetTempPath()) ("npdev-restart-revision-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+        $materializeArgs = @((Join-Path $repoRoot "scripts\quality\behavior_probes\run_probes.py"), "--base-url", $baseUrl, "--probes-dir", $probesDir, "--materialize-revision", "--out-dir", $revisionInput)
+        if (-not [string]::IsNullOrWhiteSpace($Only)) { $materializeArgs += @("--only", $Only) }
+        & $py @materializeArgs | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "Restart probes: could not materialise the restart revision." }
+        Invoke-SampleGenerateAndBuild -InputRoot $revisionInput -StageSuffix "-afterRestart"
+        Start-ProbeApp -StageSuffix "-afterRestart"
+        $env:NPDEV_PROBE_API_KEY = Get-NpdevLiveApiKey -AppRoot $appRoot
+        Write-Section "Restart probes: boot 2 (afterRestart)"
+        $probeArgs += @("--phase", "afterRestart", "--state-file", $stateFile)
     }
     try { & $py @probeArgs | Out-Host } finally {
         Remove-Item Env:\NPDEV_PROBE_API_KEY -ErrorAction SilentlyContinue

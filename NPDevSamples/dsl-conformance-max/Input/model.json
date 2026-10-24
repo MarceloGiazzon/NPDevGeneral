@@ -868,6 +868,36 @@
       ]
     },
     {
+      "name": "WidgetRenameDemo",
+      "truthLevel": "T2",
+      "ui": { "label": "Widget rename demo", "description": "ENF-1: model-revisions/rename-identity.json renames contactPhone by its uid alone and region by renamedFrom; 95-rename-identity-restart.json proves both columns keep their rows across the restart." },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "title", "type": "string", "required": true, "ui": { "label": "Title" } },
+        { "name": "contactPhone", "type": "string", "required": false, "uid": "wrd0f00000000001", "ui": { "label": "Contact phone" } },
+        { "name": "region", "type": "string", "required": false, "ui": { "label": "Region" } }
+      ]
+    },
+    {
+      "name": "WidgetTableRenameDemo",
+      "truthLevel": "T2",
+      "ui": { "label": "Widget table rename demo", "description": "ENF-1: renamed to WidgetTableRenamedDemo (renamedFrom) by model-revisions/rename-identity.json." },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "title", "type": "string", "required": true, "ui": { "label": "Title" } }
+      ]
+    },
+    {
+      "name": "WidgetTableUidDemo",
+      "truthLevel": "T2",
+      "uid": "wtu00000000000001",
+      "ui": { "label": "Widget table uid demo", "description": "ENF-1: renamed to WidgetTableUidRenamedDemo by its uid alone (no renamedFrom) by model-revisions/rename-identity.json." },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "title", "type": "string", "required": true, "ui": { "label": "Title" } }
+      ]
+    },
+    {
       "name": "WidgetReviewDemo",
       "truthLevel": "T2",
       "ui": { "label": "Widget review demo" },

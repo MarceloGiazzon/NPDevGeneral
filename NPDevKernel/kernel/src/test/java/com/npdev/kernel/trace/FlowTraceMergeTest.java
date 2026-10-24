@@ -102,6 +102,20 @@ class FlowTraceMergeTest {
     }
 
     @Test
+    void aRetryInTheSameMillisecondAsTheFailedAttemptIsStillARetry() {
+        // a fast retry can carry the failed step's exact timestamps; only the outcome tells it from a duplicate save
+        FlowTrace failed = trace(1000, 1000, StepOutcome.FAILED, fresh(),
+                step(0, "charge", 1000, 1000, StepOutcome.OK, Map.of()),
+                step(1, "ship", 1000, 1000, StepOutcome.FAILED, Map.of()));
+        FlowTrace retried = trace(1000, 1000, StepOutcome.OK, resumedAt(1),
+                step(1, "ship", 1000, 1000, StepOutcome.OK, Map.of()));
+        FlowTrace merged = FlowTraceMerge.merge(failed, retried);
+        assertEquals(StepOutcome.OK, merged.outcome());
+        assertEquals(StepOutcome.OK, merged.steps().get(1).outcome());
+        assertEquals(2L, ((Number) merged.steps().get(1).info().get("stepAttempts")).longValue());
+    }
+
+    @Test
     void savingTheSameSegmentTwiceIsIdempotent() {
         FlowTrace parked = trace(1000, 1300, StepOutcome.FAILED, fresh(),
                 step(0, "await-approval", 1200, 1300, StepOutcome.FAILED, Map.of("awaitedEventStatus", "WAITING")));

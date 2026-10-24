@@ -108,7 +108,8 @@ public final class FlowTraceMerge {
     /**
      * Saving the same finished segment twice (a tracer chain that reaches one store on two paths)
      * must not look like a retry of its own steps: the segment's first step is already stored with
-     * the very same timestamps.
+     * the very same timestamps and outcome. Timestamps alone are not enough: an operator retry fast
+     * enough to land in the failed attempt's own millisecond carries identical ones.
      */
     private static boolean alreadyMerged(FlowTrace prior, FlowTrace next) {
         if (next.steps().isEmpty()) {
@@ -119,7 +120,8 @@ public final class FlowTraceMerge {
             if (step.stepIndex() == first.stepIndex()
                     && step.stepName().equals(first.stepName())
                     && step.startedAtEpochMs() == first.startedAtEpochMs()
-                    && step.endedAtEpochMs() == first.endedAtEpochMs()) {
+                    && step.endedAtEpochMs() == first.endedAtEpochMs()
+                    && step.outcome() == first.outcome()) {
                 return true;
             }
         }

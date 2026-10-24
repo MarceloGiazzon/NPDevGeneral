@@ -1,0 +1,35 @@
+id: REG-305
+title: >-
+  concept.uid does not resolve a table rename at boot: a concept renamed by its uid alone is classified
+  DESTRUCTIVE_DROP_TABLE + create and the boot refuses, although the schema promises rename-by-identity
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-24
+closed: null
+source: >-
+  2026-10-24, ENF-1 batch C: the first two-boot restart-revision run (run-behavior-probes.ps1 -RestartRevisionVariant)
+  renamed WidgetTableUidDemo -> WidgetTableUidRenamedDemo keeping only its uid. The same run proved field.uid,
+  field.renamedFrom and concept.renamedFrom all rename in place and keep their rows.
+surface: >-
+  NPDevRuntimeHost/runtimehost-core db (ColumnIdentityStore has no table-level counterpart; TableRenamePass only sees
+  declared renamedFrom), generator schema manifest (emits businessTableColumnUids, no table uids), model.schema.json
+  concept.uid description
+detail: |
+  model.schema.json says of concept.uid: "When a live table's persisted uid matches a model concept's uid but the name
+  differs, the rename is resolved by identity -- declared by construction, no renamedFrom needed." Nothing implements it:
+  concept.uid is read only by AuthoringDiffGate (the authoring uid-unchanged check). Boot 2 of the restart run printed
+    !!  DESTRUCTIVE_DROP_TABLE  widget_table_uid_demos   (1 row)
+        SAFE_TABLE_CREATE       widget_table_uid_renamed_demos
+  and refused with the LNCH-1 itemized-acknowledgment error ([DROP_TABLE:widget_table_uid_demos]). Field uids work
+  because ColumnIdentityStore records table->column->uid every boot and feeds matches into the rename pass.
+  Reproduce: NPDevSamples/dsl-conformance-max/model-revisions/rename-identity.json revision renameConceptByUid.
+resolution: >-
+  Done when a table identity store (or ColumnIdentityStore extended to tables) records table->uid every boot and an
+  identity-matched table rename feeds TableRenamePass like a declared renamedFrom; the renameConceptByUid ops join the
+  renameKeepingIdentity revision with a concept.uid step in 95-rename-identity-restart.json, green on
+  -RestartRevisionVariant; concept.uid leaves the dsl-behavior-witness allowlist.
+note: >-
+  2026-10-24: filed, not fixed. Reproduce: point 95-rename-identity-restart.json's restartRevision at
+  renameConceptByUid (or add its op to renameKeepingIdentity) and run run-behavior-probes.ps1 -RestartRevisionVariant;
+  boot 2 prints the DESTRUCTIVE_DROP_TABLE impact report and refuses.

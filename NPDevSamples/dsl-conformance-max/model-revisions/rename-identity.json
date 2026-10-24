@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "npdev-model-revisions.v1",
+  "description": "ENF-1 batch C: deltas against Input/model.json used by the restart probe 95-rename-identity-restart.json (run-behavior-probes.ps1 -RestartRevisionVariant: boot 1 writes rows, the app is regenerated from this revision into the same Output so App/data survives, boot 2 reads the rows under the new names). renameField / renameConcept keep whatever uid the field/concept carries; \"renamedFrom\": true also declares the old name, \"dropUid\": true removes the uid. renameWithoutIdentity is the manual red proof: the same field renames with neither a uid nor a renamedFrom must NOT keep the data (python scripts/quality/behavior_probes/run_probes.py --probes-dir NPDevSamples/dsl-conformance-max/behavior-probes --materialize-revision rename-identity.json:renameWithoutIdentity --out-dir <scratch>). renameConceptByUid reproduces REG-305: a concept renamed by its uid alone is classified DESTRUCTIVE_DROP_TABLE + create and the boot refuses (no table-identity store exists), so it cannot share a revision with 95 until REG-305 is fixed.",
+  "revisions": {
+    "renameKeepingIdentity": [
+      {
+        "op": "renameField",
+        "concept": "WidgetRenameDemo",
+        "field": "contactPhone",
+        "to": "phoneNumber"
+      },
+      {
+        "op": "renameField",
+        "concept": "WidgetRenameDemo",
+        "field": "region",
+        "to": "salesRegion",
+        "renamedFrom": true
+      },
+      {
+        "op": "renameConcept",
+        "concept": "WidgetTableRenameDemo",
+        "to": "WidgetTableRenamedDemo",
+        "renamedFrom": true
+      }
+    ],
+    "renameWithoutIdentity": [
+      {
+        "op": "renameField",
+        "concept": "WidgetRenameDemo",
+        "field": "contactPhone",
+        "to": "phoneNumber",
+        "dropUid": true
+      },
+      {
+        "op": "renameField",
+        "concept": "WidgetRenameDemo",
+        "field": "region",
+        "to": "salesRegion"
+      }
+    ],
+    "renameConceptByUid": [
+      {
+        "op": "renameConcept",
+        "concept": "WidgetTableUidDemo",
+        "to": "WidgetTableUidRenamedDemo"
+      }
+    ]
+  }
+}

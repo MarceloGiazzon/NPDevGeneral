@@ -56,3 +56,11 @@ note: >-
   error. Remaining high-risk: field.uid and field.renamedFrom only -- their behaviour (a rename that keeps the column
   and data) happens at boot on a physical database, and LIVE-1 model reload refuses renames by design, so the witness
   needs a two-boot restart-revision probe runner (plan: NPDev_General__OutsideRepo/enf1-plan.md, batch C).
+  2026-10-24 (batch C): allowlist 14 -> 11; the high-risk families are now EMPTY (resolution met -- DONE vs PARTIAL is
+  owner decision D6). New two-boot restart runner: run-behavior-probes.ps1 -RestartRevisionVariant (h2local; boot 1 on a
+  wiped DB runs run_probes.py --phase beforeRestart, the probes' restartRevision is materialised outside the repo and
+  regenerated into the same Output via generate-sample-app.ps1 -InputRoot, boot 2 without a wipe runs --phase
+  afterRestart). Revision ops renameField / renameConcept. 95-rename-identity-restart.json witnesses field.uid (rename by
+  uid alone), field.renamedFrom and concept.renamedFrom: rows survive under the new names, old name refused, where filter
+  on the renamed column. Red proof: the renameWithoutIdentity revision makes boot 2 refuse with DESTRUCTIVE_DROP_COLUMN.
+  Found REG-305: concept.uid renames nothing (DESTRUCTIVE_DROP_TABLE, boot refused); concept.uid stays allowlisted on it.
