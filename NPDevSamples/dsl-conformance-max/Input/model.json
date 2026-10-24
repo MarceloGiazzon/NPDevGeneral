@@ -1015,6 +1015,13 @@
       ]
     },
     {
+      "name": "WidgetOrderLineShaped",
+      "payload": [
+        { "name": "widgetOrderId", "type": "uuid" },
+        { "name": "sku", "type": "string" }
+      ]
+    },
+    {
       "name": "WidgetOrderLineApproved",
       "payload": [
         { "name": "sku", "type": "string" }
@@ -2550,6 +2557,15 @@
       "steps": [
         { "name": "remind-minutes", "type": "scheduleEvent", "event": "WidgetOrderReviewDue", "from": "$input", "delayMinutes": 30 },
         { "name": "return-delayed-minutes", "type": "return", "value": "$input" }
+      ]
+    },
+    {
+      "name": "ShapeWidgetOrderLineEvent",
+      "concept": "WidgetOrderLine",
+      "steps": [
+        { "name": "emit-shaped", "type": "emitEvent", "event": "WidgetOrderLineShaped",
+          "data": { "widgetOrderId": "$input.orderRef", "sku": "$input.code" } },
+        { "name": "return-shaped", "type": "return", "value": "$input" }
       ]
     },
     {

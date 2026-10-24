@@ -26,7 +26,7 @@ class AggregateRuntimeReplaceChildrenTest {
 
     private static CompiledModel model() {
         CompiledAggregate mosaic = new CompiledAggregate("MosaicAggregate", "Mosaic",
-                List.of(new CompiledAggregateCollection("cells", "MosaicCell", null, "mosaicId", "owned", null,
+                List.of(new CompiledAggregateCollection("cells", "MosaicCell", "mosaicId", "owned", null,
                         List.of(), Map.of())),
                 null, Map.of(), null);
         return new CompiledModel("demo.mosaic", "1.0.0", "1.0", Map.of(),

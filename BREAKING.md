@@ -5,6 +5,14 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-23 — `aggregates[].collections[].via` removed from the schema (REG-301)
+
+**What changes.** `via` on an aggregate collection, at any nesting depth, is no longer accepted. The shape has `additionalProperties: false`, so a model that still declares it fails schema validation. It was parsed, compiled and round-tripped through the canonical JSON, but no runtime class ever read it; `childField` is what links a child row to its parent. The field is also gone from `AggregateCollectionAst` and `CompiledAggregateCollection` and their positional constructors. A rollup's `via` and a reference's `via` are different, live keywords and are unchanged.
+
+**Who is affected.** No model in the repo or in the AppGen app definitions declared it. Java code that constructs one of those two records is affected.
+
+**Codemod.** `python NPDevCli/npdev_cli.py migrate dsl-2 --write --input <model.json or directory>` strips the key from every aggregate collection, nested ones included, and leaves rollups and references alone. Java callers drop the argument after `concept`.
+
 ## 2026-10-23 — `queries[].tracePolicy` / `procedures[].tracePolicy` removed from the schema (REG-301)
 
 **What changes.** `tracePolicy` (`none`/`summary`/`detailed`) on a `query` or `procedure` is no longer accepted. Both shapes have `additionalProperties: false`, so a model that still declares it fails schema validation. It was parsed, compiled and round-tripped through the canonical JSON, but nothing traced a query or procedure by it. It was retired rather than enforced, the same way `auditPolicy` was in R5.1. The field is also gone from `QueryAst`, `CompiledQuery`, `ProcedureAst` and `CompiledProcedure` and their positional constructors. `actionDescriptor.tracePolicy` (`record`/`disabled`) is a different, live keyword and is unchanged.

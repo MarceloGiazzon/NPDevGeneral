@@ -633,6 +633,40 @@ class TracePolicyRetirementTest(unittest.TestCase):
         self.assertEqual(before, doc)
 
 
+class AggregateCollectionViaRetirementTest(unittest.TestCase):
+    """REG-301: `aggregates[].collections[].via` was read by nothing at runtime; retired from the schema
+    and stripped by this codemod at every nesting depth. A rollup's `via` is live and untouched."""
+
+    def _doc(self) -> dict:
+        return {
+            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "flows": [],
+            "concepts": [{"name": "Order", "fields": [],
+                          "rollups": [{"field": "lineCount", "from": "Line", "via": "orderId", "fn": "count"}]}],
+            "aggregates": [{"name": "OrderAggregate", "root": "Order", "collections": [
+                {"name": "lines", "concept": "Line", "via": "bondLine", "childField": "orderId",
+                 "collections": [{"name": "parts", "concept": "Part", "via": "bondPart", "childField": "lineId"}]},
+            ]}],
+        }
+
+    def test_dropped_at_every_depth_and_rollup_via_kept(self):
+        doc = self._doc()
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        lines = doc["aggregates"][0]["collections"][0]
+        self.assertNotIn("via", lines)
+        self.assertEqual("orderId", lines["childField"])
+        self.assertNotIn("via", lines["collections"][0])
+        self.assertEqual("orderId", doc["concepts"][0]["rollups"][0]["via"])
+        self.assertEqual(2, sum("'via'" in change for change in result.changes))
+
+    def test_idempotent_second_run_makes_no_further_changes(self):
+        doc = self._doc()
+        self.assertTrue(migrate_document(doc).changed)
+        before = copy.deepcopy(doc)
+        self.assertFalse(migrate_document(doc).changed)
+        self.assertEqual(before, doc)
+
+
 class UntrustedExtensionEntrypointMigrationTest(unittest.TestCase):
     """Path A P0.4: `metadata.trustedSourceEntrypoint` on a panel/procedure renamed to
     `metadata.untrustedExtensionEntrypoint`, no alias window -- ships breaking with this codemod

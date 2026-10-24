@@ -139,11 +139,11 @@ for the bespoke 20%:
 "aggregates": [{
   "name": "Expedicao", "root": "Expedicao",
   "collections": [
-    { "name": "itens", "concept": "ExpedicaoItem", "via": "bondExpedicaoItem",
+    { "name": "itens", "concept": "ExpedicaoItem",
       "childField": "expedicaoId", "ownership": "owned", "orderBy": "produtoId",
       "collections": [                                   // 2nd level — lifts the L587 limit
-        { "name": "origens",  "concept": "MovtoOrigem",  "via": "bondItemOrigem",  "childField": "itemSeq", "ownership": "owned" },
-        { "name": "destinos", "concept": "MovtoDestino", "via": "bondItemDestino", "childField": "itemSeq", "ownership": "owned" }
+        { "name": "origens",  "concept": "MovtoOrigem",  "childField": "itemSeq", "ownership": "owned" },
+        { "name": "destinos", "concept": "MovtoDestino", "childField": "itemSeq", "ownership": "owned" }
       ] }
   ]
 }],

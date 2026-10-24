@@ -961,7 +961,6 @@ public final class CompiledModelCanonicalJson {
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("name", safe(collection.name()));
             node.put("concept", safe(collection.concept()));
-            node.put("via", safe(collection.via()));
             node.put("childField", safe(collection.childField()));
             node.put("ownership", safe(collection.ownership()));
             node.put("orderBy", safe(collection.orderBy()));

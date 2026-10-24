@@ -122,14 +122,12 @@
     {
       "keywords": [
         "aggregate.onValidate",
-        "aggregateCollection.via",
         "flow.action",
-        "flowStep.action",
-        "flowStep.data"
+        "flowStep.action"
       ],
-      "reason": "aggregate.onValidate: the fixture's ValidateWidgetOrderProcedure is a pass-through and no procedure step available to the fixture fails on demand, so the pre-write veto cannot be provoked. aggregateCollection.via: no collection declares it (referenced ownership is unexercised). flow.action / flowStep.action: actionMetadata (UI). flowStep.data: no flow step declares it.",
+      "reason": "aggregate.onValidate: the fixture's ValidateWidgetOrderProcedure is a pass-through and no procedure step available to the fixture fails on demand, so the pre-write veto cannot be provoked. flow.action / flowStep.action: actionMetadata (UI).",
       "ledger": "ENF-1"
     }
   ],
-  "frozenCount": 46
+  "frozenCount": 44
 }

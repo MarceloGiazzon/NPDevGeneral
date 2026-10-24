@@ -1400,7 +1400,6 @@ public final class ModelCompiler {
             out.add(new CompiledAggregateCollection(
                     collection.name(),
                     collection.concept(),
-                    collection.via(),
                     collection.childField(),
                     collection.ownership(),
                     collection.orderBy(),

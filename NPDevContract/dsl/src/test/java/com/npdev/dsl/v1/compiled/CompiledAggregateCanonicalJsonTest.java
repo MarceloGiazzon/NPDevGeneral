@@ -14,13 +14,13 @@ class CompiledAggregateCanonicalJsonTest {
         CompiledAggregate expedicao = new CompiledAggregate(
                 "Expedicao", "Expedicao",
                 List.of(new CompiledAggregateCollection(
-                        "itens", "ExpedicaoItem", "bondExpedicaoItem", "expedicaoId", "owned", "produtoId",
+                        "itens", "ExpedicaoItem", "expedicaoId", "owned", "produtoId",
                         List.of(
                                 new CompiledAggregateCollection(
-                                        "origens", "MovtoOrigem", null, "itemSeq", "owned", null,
+                                        "origens", "MovtoOrigem", "itemSeq", "owned", null,
                                         List.of(), Map.of()),
                                 new CompiledAggregateCollection(
-                                        "destinos", "MovtoDestino", null, "itemSeq", "owned", null,
+                                        "destinos", "MovtoDestino", "itemSeq", "owned", null,
                                         List.of(), Map.of())),
                         Map.of())),
                 null,

@@ -4998,6 +4998,58 @@
           }
         }
       ]
+    },
+    {
+      "id": "fl-emit-event-data-mapping-shapes-the-payload",
+      "keywords": [
+        "flowStep.data"
+      ],
+      "description": "REG-301: an emitEvent step's data mapping builds the event payload key by key (KernelRunner.buildEventPayload) instead of forwarding a whole reference. ShapeWidgetOrderLineEvent maps $input.orderRef -> widgetOrderId and $input.code -> sku, so the stored WidgetOrderLineShaped event carries exactly those renamed keys and not the input's own keys (orderRef, code, noise).",
+      "steps": [
+        {
+          "name": "run the shaping flow",
+          "method": "POST",
+          "path": "/api/flows/ShapeWidgetOrderLineEvent/execute",
+          "body": {
+            "orderRef": "${uuid}",
+            "code": "SHAPE-${rand}",
+            "noise": "must-not-leak"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.noise": "must-not-leak"
+            }
+          },
+          "save": {
+            "orderRef": "$.output.orderRef",
+            "code": "$.output.code"
+          }
+        },
+        {
+          "name": "payload carries the mapped keys only",
+          "method": "GET",
+          "path": "/api/events/by-name/WidgetOrderLineShaped?limit=1",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$[0].flowName": "ShapeWidgetOrderLineEvent",
+              "$[0].payload.widgetOrderId": "${orderRef}",
+              "$[0].payload.sku": "${code}",
+              "$[0].payload.orderRef": {
+                "exists": false
+              },
+              "$[0].payload.code": {
+                "exists": false
+              },
+              "$[0].payload.noise": {
+                "exists": false
+              }
+            }
+          }
+        }
+      ]
     }
   ]
 }

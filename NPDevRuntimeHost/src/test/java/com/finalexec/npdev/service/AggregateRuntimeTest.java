@@ -25,10 +25,10 @@ class AggregateRuntimeTest {
         CompiledAggregate expedicao = new CompiledAggregate(
                 "Expedicao", "Expedicao",
                 List.of(new CompiledAggregateCollection(
-                        "itens", "ExpedicaoItem", null, "expedicaoId", "owned", null,
+                        "itens", "ExpedicaoItem", "expedicaoId", "owned", null,
                         List.of(
-                                new CompiledAggregateCollection("origens", "MovtoOrigem", null, "itemSeq", "owned", null, List.of(), Map.of()),
-                                new CompiledAggregateCollection("destinos", "MovtoDestino", null, "itemSeq", "owned", null, List.of(), Map.of())),
+                                new CompiledAggregateCollection("origens", "MovtoOrigem", "itemSeq", "owned", null, List.of(), Map.of()),
+                                new CompiledAggregateCollection("destinos", "MovtoDestino", "itemSeq", "owned", null, List.of(), Map.of())),
                         Map.of())),
                 null,
                 Map.of(),

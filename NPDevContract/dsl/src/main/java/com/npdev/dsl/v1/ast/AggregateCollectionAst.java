@@ -10,11 +10,13 @@ import java.util.Map;
  * {@code collections}, which is what lets an aggregate describe a
  * master-detail-detail composition tree (e.g. Expedicao &#8835; itens &#8835;
  * {origens, destinos}) of arbitrary depth.
+ *
+ * <p>REG-301 (2026-10-23): {@code via} was retired -- it was accepted and compiled but read by nothing;
+ * {@code childField} is the child's link to its parent.
  */
 public record AggregateCollectionAst(
         String name,
         String concept,
-        String via,
         String childField,
         String ownership,
         String orderBy,
@@ -31,18 +33,17 @@ public record AggregateCollectionAst(
         lookupFields = lookupFields == null ? List.of() : List.copyOf(lookupFields);
     }
 
-    /** Pre-Session-1 8-arg shape, kept so existing call sites keep compiling unchanged with an
+    /** Shape without lookupFields, kept so existing call sites keep compiling unchanged with an
      *  empty lookupFields list. */
     public AggregateCollectionAst(
             String name,
             String concept,
-            String via,
             String childField,
             String ownership,
             String orderBy,
             List<AggregateCollectionAst> collections,
             Map<String, Object> metadata
     ) {
-        this(name, concept, via, childField, ownership, orderBy, collections, metadata, List.of());
+        this(name, concept, childField, ownership, orderBy, collections, metadata, List.of());
     }
 }

@@ -1709,7 +1709,6 @@ public final class JsonModelParser {
             out.add(new AggregateCollectionAst(
                     name,
                     requiredText(collectionNode, "concept"),
-                    readText(collectionNode, "via"),
                     requiredText(collectionNode, "childField"),
                     readText(collectionNode, "ownership"),
                     readText(collectionNode, "orderBy"),

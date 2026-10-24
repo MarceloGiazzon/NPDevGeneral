@@ -10,7 +10,6 @@ import java.util.Map;
 public record CompiledAggregateCollection(
         String name,
         String concept,
-        String via,
         String childField,
         String ownership,
         String orderBy,
@@ -25,18 +24,17 @@ public record CompiledAggregateCollection(
         lookupFields = lookupFields == null ? List.of() : List.copyOf(lookupFields);
     }
 
-    /** Pre-Session-1 8-arg shape, kept so existing call sites keep compiling unchanged with an
+    /** Shape without lookupFields, kept so existing call sites keep compiling unchanged with an
      *  empty lookupFields list. */
     public CompiledAggregateCollection(
             String name,
             String concept,
-            String via,
             String childField,
             String ownership,
             String orderBy,
             List<CompiledAggregateCollection> collections,
             Map<String, Object> metadata
     ) {
-        this(name, concept, via, childField, ownership, orderBy, collections, metadata, List.of());
+        this(name, concept, childField, ownership, orderBy, collections, metadata, List.of());
     }
 }

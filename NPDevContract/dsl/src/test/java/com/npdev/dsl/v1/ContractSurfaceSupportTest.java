@@ -236,6 +236,24 @@ class ContractSurfaceSupportTest {
     }
 
     @Test
+    void rejectsRetiredAggregateCollectionVia() throws Exception {
+        // REG-301: no runtime class called via() (childField is the link), so retired from the schema;
+        // `npdev migrate dsl-2` strips it.
+        Path modelPath = writeTempModel("""
+                {
+                  "dslVersion": "1.0.0", "namespace": "close.contract", "version": "1.0.0",
+                  "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
+                  "aggregates": [ { "name": "WorkAggregate", "root": "WorkItem", "collections": [
+                    { "name": "children", "concept": "WorkItem", "childField": "id", "via": "bondChildren" } ] } ]
+                }
+                """);
+        Exception exception = assertThrows(Exception.class, () -> new JsonModelParser().parse(modelPath));
+        assertTrue(exception.getMessage().contains("Model schema validation failed")
+                        && exception.getMessage().contains("via"),
+                "Expected the retired aggregate collection via to be refused: " + exception.getMessage());
+    }
+
+    @Test
     void rejectsLegacyEntitiesContractAlias() throws Exception {
         Path modelPath = writeTempModel("""
                 {

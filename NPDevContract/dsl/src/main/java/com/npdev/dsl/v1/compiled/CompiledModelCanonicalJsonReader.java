@@ -796,7 +796,6 @@ public final class CompiledModelCanonicalJsonReader {
             out.add(new CompiledAggregateCollection(
                     text(collectionNode, "name"),
                     text(collectionNode, "concept"),
-                    optionalText(collectionNode, "via"),
                     text(collectionNode, "childField"),
                     optionalText(collectionNode, "ownership"),
                     optionalText(collectionNode, "orderBy"),

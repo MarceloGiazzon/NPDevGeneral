@@ -563,6 +563,25 @@ def _migrate_query_or_procedure_trace_policy(entries, kind: str, result: Migrati
         )
 
 
+def _migrate_aggregate_collection_via(collections, path: str, result: MigrationResult) -> None:
+    """REG-301 (2026-10-23): `aggregates[].collections[].via` (recursive) was schema-declared, parsed,
+    compiled and round-tripped through the canonical JSON, but no runtime class ever called via() --
+    `childField` is the child's link to its parent. Owner chose to retire it; this strips the dead key so
+    the document keeps validating. A rollup's `via` and a reference's `via` are different, live
+    keywords and are untouched (they are not under aggregates[].collections[])."""
+    if not isinstance(collections, list):
+        return
+    for i, collection in enumerate(collections):
+        if not isinstance(collection, dict):
+            continue
+        here = f"{path}[{i}] ({collection.get('name', '?')})"
+        if "via" in collection:
+            value = collection.pop("via")
+            result.changed = True
+            result.changes.append(f"{here}: dropped inert 'via' ({value!r}) -- retired, consumed by nothing (REG-301)")
+        _migrate_aggregate_collection_via(collection.get("collections"), f"{here}.collections", result)
+
+
 # 2026-10-12: `panelLayout.type` narrowed to `table` and `grid`. `form`, `detail`, `dashboard` and
 # `stack` were accepted by the schema but no renderer ever read them -- each drew the default
 # table -- so rewriting them to `table` keeps every panel rendering exactly as before.
@@ -802,6 +821,10 @@ def migrate_document(doc: dict) -> MigrationResult:
     _migrate_query_or_procedure_audit_policy(doc.get("procedures", None) or [], "procedures", result)
     _migrate_query_or_procedure_trace_policy(doc.get("queries", None) or [], "queries", result)
     _migrate_query_or_procedure_trace_policy(doc.get("procedures", None) or [], "procedures", result)
+    for a, aggregate in enumerate(doc.get("aggregates", None) or []):
+        if isinstance(aggregate, dict):
+            _migrate_aggregate_collection_via(aggregate.get("collections"),
+                                              f"aggregates[{a}] ({aggregate.get('name', '?')}).collections", result)
 
     _migrate_untrusted_extension_entrypoint(doc.get("panels", None) or [], "panels", result)
     _migrate_untrusted_extension_entrypoint(doc.get("procedures", None) or [], "procedures", result)

@@ -46,3 +46,13 @@ note: >-
   rejectsRetiredQueryAndProcedureTracePolicy. Witness allowlist 47 -> 46. actionDescriptor.tracePolicy is live and kept.
   Found on the way, NOT changed: procedureStep.trace and procedureStep.audit are also parsed but read by nothing at
   runtime (procedureStep is not a tracked witness family). Remaining keywords: aggregateCollection.via, flowStep.data.
+  2026-10-23 (Windows session): flowStep.data was mis-filed -- it IS read: JsonModelParser parses it into the step's
+  eventDataRefs and KernelRunner.buildEventPayload builds an emitEvent/scheduleEvent payload key by key from it.
+  Witness added: fixture flow ShapeWidgetOrderLineEvent + event WidgetOrderLineShaped, probe
+  fl-emit-event-data-mapping-shapes-the-payload in 20-flow.json (mapped keys present, input keys absent).
+  aggregateCollection.via (owner decision: retire): removed from the 4 schema mirrors, AggregateCollectionAst,
+  CompiledAggregateCollection and the canonical JSON; `npdev migrate dsl-2` strips it at any depth (no model in repo
+  or AppGen declared it); BREAKING.md; ContractSurfaceSupportTest.rejectsRetiredAggregateCollectionVia. Allowlist
+  46 -> 44. :NPDevContract:dsl:test green. NOT YET RUN: the new probe against a booted app (run-behavior-probes.ps1
+  -Only 20-flow -- -Only matches FILE names, not probe ids) and the RuntimeHost aggregate tests after restaging jars.
+  Close this item when both are green.

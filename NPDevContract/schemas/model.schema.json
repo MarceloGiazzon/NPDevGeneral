@@ -1254,10 +1254,6 @@
           "type": "string",
           "minLength": 1
         },
-        "via": {
-          "type": "string",
-          "minLength": 1
-        },
         "childField": {
           "type": "string",
           "minLength": 1
