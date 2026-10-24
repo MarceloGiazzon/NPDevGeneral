@@ -2,37 +2,188 @@
   "probes": [
     {
       "id": "rename-by-uid-and-renamedFrom-keeps-rows-across-restart",
-      "keywords": ["field.uid", "field.renamedFrom", "concept.renamedFrom"],
-      "requires": ["jdbc", "restart"],
-      "restartRevision": { "file": "rename-identity.json", "revision": "renameKeepingIdentity" },
-      "description": "ENF-1 batch C: rows written on boot 1 survive a regeneration that renames their columns and table, read back on boot 2 (same H2 database, no wipe). WidgetRenameDemo.contactPhone -> phoneNumber is matched by its uid ALONE (no renamedFrom: ColumnIdentityStore recorded table->column->uid on boot 1); region -> salesRegion by renamedFrom; WidgetTableRenameDemo -> WidgetTableRenamedDemo by concept renamedFrom. Red proof (manual): the renameWithoutIdentity revision -- the same field renames with neither uid nor renamedFrom -- does not keep the data.",
+      "keywords": [
+        "field.uid",
+        "field.renamedFrom",
+        "concept.renamedFrom",
+        "concept.uid"
+      ],
+      "requires": [
+        "jdbc",
+        "restart"
+      ],
+      "restartRevision": {
+        "file": "rename-identity.json",
+        "revision": "renameKeepingIdentity"
+      },
+      "description": "ENF-1 batch C: rows written on boot 1 survive a regeneration that renames their columns and table, read back on boot 2 (same H2 database, no wipe). WidgetRenameDemo.contactPhone -> phoneNumber is matched by its uid ALONE (no renamedFrom: ColumnIdentityStore recorded table->column->uid on boot 1); region -> salesRegion by renamedFrom; WidgetTableRenameDemo -> WidgetTableRenamedDemo by concept renamedFrom; WidgetTableUidDemo -> WidgetTableUidRenamedDemo by its concept uid ALONE (REG-305: TableIdentityStore), with its code -> codeName field renamed by field uid in the same boot. Red proof (manual): the renameWithoutIdentity revision -- the same field renames with neither uid nor renamedFrom -- does not keep the data.",
       "steps": [
-        { "name": "boot 1: write a row with both fields", "method": "POST", "path": "/api/concepts/widget_rename_demos",
-          "body": { "title": "RENAME-${rand}", "contactPhone": "P-${rand}", "region": "R-${rand}" },
-          "expect": { "status": [200, 201] },
-          "save": { "renameId": "$.id", "phone": "$.contactPhone", "region": "$.region" } },
-        { "name": "boot 1: write a row in the table to be renamed", "method": "POST", "path": "/api/concepts/widget_table_rename_demos",
-          "body": { "title": "TABLE-${rand}" },
-          "expect": { "status": [200, 201] },
-          "save": { "tableRowId": "$.id", "tableTitle": "$.title" } },
-
-        { "phase": "afterRestart", "name": "boot 2: the uid-matched column kept its value under the new name", "method": "GET",
+        {
+          "name": "boot 1: write a row with both fields",
+          "method": "POST",
+          "path": "/api/concepts/widget_rename_demos",
+          "body": {
+            "title": "RENAME-${rand}",
+            "contactPhone": "P-${rand}",
+            "region": "R-${rand}"
+          },
+          "expect": {
+            "status": [
+              200,
+              201
+            ]
+          },
+          "save": {
+            "renameId": "$.id",
+            "phone": "$.contactPhone",
+            "region": "$.region"
+          }
+        },
+        {
+          "name": "boot 1: write a row in the table to be renamed",
+          "method": "POST",
+          "path": "/api/concepts/widget_table_rename_demos",
+          "body": {
+            "title": "TABLE-${rand}"
+          },
+          "expect": {
+            "status": [
+              200,
+              201
+            ]
+          },
+          "save": {
+            "tableRowId": "$.id",
+            "tableTitle": "$.title"
+          }
+        },
+        {
+          "name": "boot 1: write a row in the concept renamed by uid alone",
+          "method": "POST",
+          "path": "/api/concepts/widget_table_uid_demos",
+          "body": {
+            "title": "UID-${rand}",
+            "code": "C-${rand}"
+          },
+          "expect": {
+            "status": [
+              200,
+              201
+            ]
+          },
+          "save": {
+            "uidRowId": "$.id",
+            "uidTitle": "$.title",
+            "uidCode": "$.code"
+          }
+        },
+        {
+          "phase": "afterRestart",
+          "name": "boot 2: the uid-matched column kept its value under the new name",
+          "method": "GET",
           "path": "/api/concepts/widget_rename_demos/${renameId}",
-          "expect": { "status": 200, "json": { "$.phoneNumber": "${phone}", "$.contactPhone": { "exists": false } } } },
-        { "phase": "afterRestart", "name": "boot 2: the renamedFrom column kept its value under the new name", "method": "GET",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.phoneNumber": "${phone}",
+              "$.contactPhone": {
+                "exists": false
+              }
+            }
+          }
+        },
+        {
+          "phase": "afterRestart",
+          "name": "boot 2: the renamedFrom column kept its value under the new name",
+          "method": "GET",
           "path": "/api/concepts/widget_rename_demos/${renameId}",
-          "expect": { "status": 200, "json": { "$.salesRegion": "${region}", "$.region": { "exists": false } } } },
-        { "phase": "afterRestart", "name": "boot 2: the old field name is gone from the API", "method": "POST", "path": "/api/concepts/widget_rename_demos",
-          "body": { "title": "RENAME-${rand}", "contactPhone": "x" },
-          "expect": { "status": 400, "text": ["contactPhone"] } },
-        { "phase": "afterRestart", "name": "boot 2: a where filter on the renamed column finds the row", "method": "GET",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.salesRegion": "${region}",
+              "$.region": {
+                "exists": false
+              }
+            }
+          }
+        },
+        {
+          "phase": "afterRestart",
+          "name": "boot 2: the old field name is gone from the API",
+          "method": "POST",
+          "path": "/api/concepts/widget_rename_demos",
+          "body": {
+            "title": "RENAME-${rand}",
+            "contactPhone": "x"
+          },
+          "expect": {
+            "status": 400,
+            "text": [
+              "contactPhone"
+            ]
+          }
+        },
+        {
+          "phase": "afterRestart",
+          "name": "boot 2: a where filter on the renamed column finds the row",
+          "method": "GET",
           "path": "/api/concepts/widget_rename_demos?where=phoneNumber:eq:${phone}&size=5",
-          "expect": { "status": 200, "text": ["${renameId}"] } },
-        { "phase": "afterRestart", "name": "boot 2: the renamed table kept its row", "method": "GET",
+          "expect": {
+            "status": 200,
+            "text": [
+              "${renameId}"
+            ]
+          }
+        },
+        {
+          "phase": "afterRestart",
+          "name": "boot 2: the renamed table kept its row",
+          "method": "GET",
           "path": "/api/concepts/widget_table_renamed_demos/${tableRowId}",
-          "expect": { "status": 200, "json": { "$.title": "${tableTitle}" } } },
-        { "phase": "afterRestart", "name": "cleanup row", "always": true, "method": "DELETE", "path": "/api/concepts/widget_rename_demos/${renameId}" },
-        { "phase": "afterRestart", "name": "cleanup table row", "always": true, "method": "DELETE", "path": "/api/concepts/widget_table_renamed_demos/${tableRowId}" }
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.title": "${tableTitle}"
+            }
+          }
+        },
+        {
+          "phase": "afterRestart",
+          "name": "boot 2: the table renamed by concept uid kept its row, and its uid-renamed column its value",
+          "method": "GET",
+          "path": "/api/concepts/widget_table_uid_renamed_demos/${uidRowId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.title": "${uidTitle}",
+              "$.codeName": "${uidCode}",
+              "$.code": {
+                "exists": false
+              }
+            }
+          }
+        },
+        {
+          "phase": "afterRestart",
+          "name": "cleanup row",
+          "always": true,
+          "method": "DELETE",
+          "path": "/api/concepts/widget_rename_demos/${renameId}"
+        },
+        {
+          "phase": "afterRestart",
+          "name": "cleanup table row",
+          "always": true,
+          "method": "DELETE",
+          "path": "/api/concepts/widget_table_renamed_demos/${tableRowId}"
+        },
+        {
+          "phase": "afterRestart",
+          "name": "cleanup uid table row",
+          "always": true,
+          "method": "DELETE",
+          "path": "/api/concepts/widget_table_uid_renamed_demos/${uidRowId}"
+        }
       ]
     }
   ]

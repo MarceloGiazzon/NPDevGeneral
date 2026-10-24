@@ -182,6 +182,78 @@ class SchemaLifecycleExecutorTableRenameTest {
         return false;
     }
 
+    /** REG-305: a concept renamed by its uid alone (no renamedFrom) renames its table in place. */
+    @Test
+    void tableRenamedByConceptUidAloneIsAppliedAndItsColumnUidsFollow() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, name VARCHAR(50), version BIGINT)");
+            statement.execute("INSERT INTO gadgets (id, name, version) VALUES (1, 'alpha', 1)");
+            statement.execute("CREATE TABLE npdev_table_identity (table_name VARCHAR(255) NOT NULL, "
+                    + "uid VARCHAR(255) NOT NULL, recorded_at_utc BIGINT NOT NULL)");
+            statement.execute("INSERT INTO npdev_table_identity VALUES ('gadgets', 'tbluid0001', 1)");
+            statement.execute("CREATE TABLE npdev_column_identity (table_name VARCHAR(255) NOT NULL, "
+                    + "column_name VARCHAR(255) NOT NULL, uid VARCHAR(255) NOT NULL, recorded_at_utc BIGINT NOT NULL)");
+            statement.execute("INSERT INTO npdev_column_identity VALUES ('gadgets', 'name', 'coluid0001', 1)");
+        }
+        SchemaLifecycleExecutor.SchemaManifest declared = manifest(
+                Map.of("widgets", List.of("id", "name", "version")), Map.of(), Map.of());
+        SchemaLifecycleExecutor.SchemaManifest manifest = withTableUids(declared, Map.of("widgets", "tbluid0001"));
+
+        executor.attemptInPlaceTableRenames(dataSource, manifest);
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasTable(metadata, "widgets"), "the uid-matched table must be renamed to the model's name");
+            assertFalse(hasTable(metadata, "gadgets"), "the old table name must no longer exist");
+            assertRowName(connection, 1L, "alpha");
+            try (PreparedStatement select = connection.prepareStatement(
+                    "SELECT table_name FROM npdev_column_identity WHERE uid = 'coluid0001'");
+                    ResultSet resultSet = select.executeQuery()) {
+                assertTrue(resultSet.next());
+                assertEquals("widgets", resultSet.getString(1), "recorded column uids move with the renamed table");
+            }
+        }
+        assertEquals(SchemaLifecycleExecutor.SchemaChangeClassification.SAFE_ADDITIVE,
+                executor.classify(dataSource, manifest));
+
+        TableIdentityStore.record(dataSource, manifest);
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement select = connection.prepareStatement("SELECT table_name FROM npdev_table_identity");
+                ResultSet resultSet = select.executeQuery()) {
+            assertTrue(resultSet.next());
+            assertEquals("widgets", resultSet.getString(1), "one row per uid, now under the new name");
+            assertFalse(resultSet.next());
+        }
+    }
+
+    /** REG-305: without a recorded identity a uid alone renames nothing (the destructive path decides). */
+    @Test
+    void conceptUidWithNoRecordedIdentityRenamesNothing() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, name VARCHAR(50), version BIGINT)");
+        }
+        executor.attemptInPlaceTableRenames(dataSource, withTableUids(
+                manifest(Map.of("widgets", List.of("id", "name", "version")), Map.of(), Map.of()),
+                Map.of("widgets", "tbluid0001")));
+        try (Connection connection = dataSource.getConnection()) {
+            assertTrue(hasTable(connection.getMetaData(), "gadgets"));
+            assertFalse(hasTable(connection.getMetaData(), "widgets"));
+        }
+    }
+
+    private static SchemaLifecycleExecutor.SchemaManifest withTableUids(
+            SchemaLifecycleExecutor.SchemaManifest m, Map<String, String> tableUids) {
+        return new SchemaLifecycleExecutor.SchemaManifest(m.engine(), m.storageMode(), m.physicalDatabase(),
+                m.schemaFingerprint(), m.internalTables(), m.businessTables(), m.businessTableColumns(),
+                m.businessTableAdditiveColumns(), m.businessTableColumnTypes(), m.businessTableRenamedColumns(),
+                m.businessTableRenames(), m.allowDestructiveRecreate(), m.strategy(), m.scope(),
+                m.destructiveRecreateConfirmation(), m.destructiveAcknowledgment(), m.businessTableRequiredColumns(),
+                m.businessTableColumnDefaultLiterals(), m.businessTableExpressionDefaultColumns(),
+                m.businessTableUniqueConstraints(), m.planItemStableStrings(), m.ownership(),
+                m.businessTableForeignKeys(), m.businessTableIndexes(), m.businessTableColumnDefaultExpressions(),
+                m.businessTableColumnUids(), tableUids);
+    }
+
     private static SchemaLifecycleExecutor.SchemaManifest manifest(
             Map<String, List<String>> businessTableColumns,
             Map<String, Map<String, String>> businessTableRenamedColumns,

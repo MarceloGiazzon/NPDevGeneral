@@ -88,6 +88,17 @@ final class ColumnIdentityStore {
      */
     static Map<String, Map<String, String>> resolveRenamesByIdentity(
             DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest) {
+        return resolveRenamesByIdentity(dataSource, manifest, Map.of());
+    }
+
+    /**
+     * REG-305: as above, for a caller that runs BEFORE this boot's table renames moved the recorded rows
+     * ({@link #retargetTable}) -- {@code pendingTableRenames} ({@code newTable -> oldTable}) says under which
+     * old name a renamed table's column uids are still recorded. The shadow parity probe needs this.
+     */
+    static Map<String, Map<String, String>> resolveRenamesByIdentity(
+            DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest,
+            Map<String, String> pendingTableRenames) {
         Map<String, Map<String, String>> declaredUids = manifest.businessTableColumnUids();
         if (declaredUids.isEmpty()) {
             return manifest.businessTableRenamedColumns();
@@ -103,6 +114,10 @@ final class ColumnIdentityStore {
         for (Map.Entry<String, Map<String, String>> tableEntry : declaredUids.entrySet()) {
             String table = tableEntry.getKey();
             Map<String, String> persistedForTable = persisted.getOrDefault(table, Map.of());
+            String pendingOldName = pendingTableRenames.get(table);
+            if (persistedForTable.isEmpty() && pendingOldName != null) {
+                persistedForTable = persisted.getOrDefault(pendingOldName.toLowerCase(Locale.ROOT), Map.of());
+            }
             if (persistedForTable.isEmpty()) {
                 continue;
             }
@@ -126,6 +141,22 @@ final class ColumnIdentityStore {
             }
         }
         return Map.copyOf(merged);
+    }
+
+    /**
+     * REG-305: a table was just renamed in place ({@code oldTable -> newTable}); its recorded column
+     * uids move with it, on the rename's own connection. A database that never recorded any is a no-op.
+     */
+    static void retargetTable(Connection connection, String oldTable, String newTable) throws SQLException {
+        if (!tableExists(connection)) {
+            return;
+        }
+        try (PreparedStatement update = connection.prepareStatement(
+                "UPDATE " + TABLE + " SET table_name = ? WHERE LOWER(table_name) = ?")) {
+            update.setString(1, newTable);
+            update.setString(2, oldTable.toLowerCase(Locale.ROOT));
+            update.executeUpdate();
+        }
     }
 
     /** {@code table_name -> column_name -> uid}, every row this database has ever recorded. */

@@ -474,6 +474,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         ensureBootId();
         com.finalexec.db.schemastate.CurrentSchema shadowPre = ShadowParityProbe.snapshot(dataSource);
         boolean shadowFingerprintChanged = shadowFingerprintChanged(dataSource, manifest);
+        // REG-305: the shadow judges the renames the live passes will resolve by identity (concept and
+        // field uids) as declared ones, read now -- before those passes move the recorded rows.
+        SchemaManifest shadowManifest = identityResolvedForShadow(dataSource, manifest);
         conversionHooksAppliedLastDecision = false;
         DestructiveRecreation result = null;
         try {
@@ -484,8 +487,20 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // snapshot taken BEFORE it ran cannot predict -- exactly the same category of "override
             // the shadow has no signal for" as (c)/(d)/(e) already documented in compareAndLog, so it
             // is threaded through as its own exemption rather than tripping SHADOW_DIVERGENCE.
-            ShadowParityProbe.compareAndLog(shadowPre, manifest, result, shadowFingerprintChanged,
+            ShadowParityProbe.compareAndLog(shadowPre, shadowManifest, result, shadowFingerprintChanged,
                     conversionHooksAppliedLastDecision);
+        }
+    }
+
+    /** Log-only input for {@link ShadowParityProbe}; any failure falls back to the declared manifest. */
+    private static SchemaManifest identityResolvedForShadow(DataSource dataSource, SchemaManifest manifest) {
+        try {
+            Map<String, String> tableRenames = TableIdentityStore.resolveRenamesByIdentity(dataSource, manifest);
+            SchemaManifest withTables = manifest.withTableRenames(tableRenames);
+            return withTables.withRenamedColumns(
+                    ColumnIdentityStore.resolveRenamesByIdentity(dataSource, withTables, tableRenames));
+        } catch (RuntimeException failure) {
+            return manifest;
         }
     }
 
@@ -549,7 +564,11 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * <p>Package-private (not private) so it is directly unit-testable against a real H2
      * {@link DataSource}, following {@link #attemptInPlaceRenames}'s precedent.
      */
-    void attemptInPlaceTableRenames(DataSource dataSource, SchemaManifest manifest) {
+    void attemptInPlaceTableRenames(DataSource dataSource, SchemaManifest declaredManifest) {
+        // REG-305: a live table whose recorded concept uid matches a model concept's uid under another
+        // name IS a declared rename (identity says so) -- merged ahead of the diff, declared renamedFrom wins.
+        SchemaManifest manifest = declaredManifest.withTableRenames(
+                TableIdentityStore.resolveRenamesByIdentity(dataSource, declaredManifest));
         Map<String, String> declaredTableRenames = manifest.businessTableRenames();
         if (declaredTableRenames.isEmpty()) {
             return;
@@ -568,6 +587,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             SchemaHistoryStore.recordStepPass(dataSource, manifest, "TABLE_RENAME", itemDetails, () -> {
                 for (Map.Entry<String, String> pair : work) {
                     TableRenamePass.executeRenameTable(connection, pair.getValue(), pair.getKey());
+                    // the renamed table's recorded column uids move with it, so a field renamed by uid on
+                    // that table in this or a later boot still resolves
+                    ColumnIdentityStore.retargetTable(connection, pair.getValue(), pair.getKey());
                     renamed.add(pair.getValue() + " -> " + pair.getKey());
                 }
             });
@@ -1592,8 +1614,52 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // above it -- absent from a manifest emitted before this field existed simply means
             // "no uids declared", and attemptInPlaceRenames falls back to the pre-existing
             // businessTableRenamedColumns path exactly as it did before uids existed.
-            Map<String, Map<String, String>> businessTableColumnUids
+            Map<String, Map<String, String>> businessTableColumnUids,
+            // REG-305: the MODEL's declared concept uid per table (table -> uid), the table-level twin of
+            // businessTableColumnUids. Added LAST; absent from an older manifest simply means "none", and
+            // attemptInPlaceTableRenames then sees the declared businessTableRenames alone.
+            Map<String, String> businessTableUids
     ) {
+        /** REG-305 backward-compatible convenience constructor matching the PRE-table-uid 26-arg shape --
+         * defaults the table uid map to empty. */
+        public SchemaManifest(
+                String engine,
+                String storageMode,
+                boolean physicalDatabase,
+                String schemaFingerprint,
+                List<String> internalTables,
+                List<String> businessTables,
+                Map<String, List<String>> businessTableColumns,
+                Map<String, List<String>> businessTableAdditiveColumns,
+                Map<String, Map<String, String>> businessTableColumnTypes,
+                Map<String, Map<String, String>> businessTableRenamedColumns,
+                Map<String, String> businessTableRenames,
+                boolean allowDestructiveRecreate,
+                String strategy,
+                String scope,
+                String destructiveRecreateConfirmation,
+                String destructiveAcknowledgment,
+                Map<String, List<String>> businessTableRequiredColumns,
+                Map<String, Map<String, String>> businessTableColumnDefaultLiterals,
+                Map<String, List<String>> businessTableExpressionDefaultColumns,
+                Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints,
+                List<String> planItemStableStrings,
+                String ownership,
+                Map<String, List<ForeignKeyDecl>> businessTableForeignKeys,
+                Map<String, List<IndexDecl>> businessTableIndexes,
+                Map<String, Map<String, String>> businessTableColumnDefaultExpressions,
+                Map<String, Map<String, String>> businessTableColumnUids
+        ) {
+            this(engine, storageMode, physicalDatabase, schemaFingerprint, internalTables, businessTables,
+                    businessTableColumns, businessTableAdditiveColumns, businessTableColumnTypes,
+                    businessTableRenamedColumns, businessTableRenames, allowDestructiveRecreate, strategy,
+                    scope, destructiveRecreateConfirmation, destructiveAcknowledgment,
+                    businessTableRequiredColumns, businessTableColumnDefaultLiterals,
+                    businessTableExpressionDefaultColumns, businessTableUniqueConstraints,
+                    planItemStableStrings, ownership, businessTableForeignKeys, businessTableIndexes,
+                    businessTableColumnDefaultExpressions, businessTableColumnUids, Map.of());
+        }
+
         /** REG-209 backward-compatible convenience constructor matching the PRE-uid 25-arg shape --
          * defaults the new uid map to empty. Keeps every existing hand-built manifest (tests, and any
          * caller that predates uids) compiling and behaving identically -- a model with no uids at
@@ -1823,7 +1889,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     destructiveAcknowledgment, businessTableRequiredColumns, businessTableColumnDefaultLiterals,
                     businessTableExpressionDefaultColumns, businessTableUniqueConstraints, planItemStableStrings,
                     ownership, businessTableForeignKeys, businessTableIndexes, businessTableColumnDefaultExpressions,
-                    businessTableColumnUids);
+                    businessTableColumnUids, businessTableUids);
         }
 
         /**
@@ -1843,7 +1909,23 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     destructiveAcknowledgment, businessTableRequiredColumns, businessTableColumnDefaultLiterals,
                     businessTableExpressionDefaultColumns, businessTableUniqueConstraints, planItemStableStrings,
                     ownership, businessTableForeignKeys, businessTableIndexes, businessTableColumnDefaultExpressions,
-                    businessTableColumnUids);
+                    businessTableColumnUids, businessTableUids);
+        }
+
+        /**
+         * REG-305: a copy with {@code businessTableRenames} replaced -- {@link TableIdentityStore#resolveRenamesByIdentity}
+         * feeds an identity-augmented table-rename map through it into the SAME diff a declared concept
+         * {@code renamedFrom} already flows through. Every other field is unchanged.
+         */
+        SchemaManifest withTableRenames(Map<String, String> replacementTableRenames) {
+            return new SchemaManifest(engine, storageMode, physicalDatabase, schemaFingerprint,
+                    internalTables, businessTables, businessTableColumns, businessTableAdditiveColumns,
+                    businessTableColumnTypes, businessTableRenamedColumns, replacementTableRenames,
+                    allowDestructiveRecreate, strategy, scope, destructiveRecreateConfirmation,
+                    destructiveAcknowledgment, businessTableRequiredColumns, businessTableColumnDefaultLiterals,
+                    businessTableExpressionDefaultColumns, businessTableUniqueConstraints, planItemStableStrings,
+                    ownership, businessTableForeignKeys, businessTableIndexes, businessTableColumnDefaultExpressions,
+                    businessTableColumnUids, businessTableUids);
         }
 
         boolean destructiveAllowed() {

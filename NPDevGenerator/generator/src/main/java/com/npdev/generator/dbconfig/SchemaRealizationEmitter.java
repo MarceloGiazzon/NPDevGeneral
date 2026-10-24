@@ -1482,6 +1482,7 @@ public final class SchemaRealizationEmitter {
         Map<String, Map<String, String>> businessTableColumnTypes = new LinkedHashMap<>();
         Map<String, Map<String, String>> businessTableRenamedColumns = new LinkedHashMap<>();
         Map<String, Map<String, String>> businessTableColumnUids = new LinkedHashMap<>();
+        Map<String, String> businessTableUids = new LinkedHashMap<>();
         Map<String, String> businessTableRenames = new LinkedHashMap<>();
         Map<String, List<String>> businessTableRequiredColumns = new LinkedHashMap<>();
         Map<String, Map<String, String>> businessTableColumnDefaultLiterals = new LinkedHashMap<>();
@@ -1508,6 +1509,9 @@ public final class SchemaRealizationEmitter {
             Map<String, String> uids = columnUids(concept, conceptsByName);
             if (!uids.isEmpty()) {
                 businessTableColumnUids.put(table, uids);
+            }
+            if (concept.getUid() != null && !concept.getUid().isBlank()) {
+                businessTableUids.put(table, concept.getUid());
             }
             Map.Entry<String, String> tableRename = conceptTableRename(concept, model.getContexts());
             if (tableRename != null) {
@@ -1564,7 +1568,8 @@ public final class SchemaRealizationEmitter {
                 businessTableForeignKeys,
                 businessTableIndexes,
                 businessTableColumnDefaultExpressions,
-                businessTableColumnUids
+                businessTableColumnUids,
+                businessTableUids
         );
     }
 
@@ -1598,11 +1603,14 @@ public final class SchemaRealizationEmitter {
             Map<String, Map<String, String>> businessTableColumnDefaultExpressions,
             // REG-209 (B1 lift, package P7): added LAST, same convention as the expression-defaults
             // map above -- absent from an older generated manifest simply means "no uids declared."
-            Map<String, Map<String, String>> businessTableColumnUids
+            Map<String, Map<String, String>> businessTableColumnUids,
+            // REG-305: the model's declared concept uid per table (table -> uid), so a concept renamed by
+            // its uid alone is recognised as a table rename at boot. Added LAST; absent means "none".
+            Map<String, String> businessTableUids
     ) {
         static BusinessTableMetadata empty() {
             return new BusinessTableMetadata(List.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
-                    Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+                    Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
         }
     }
 
@@ -1786,6 +1794,7 @@ public final class SchemaRealizationEmitter {
         manifest.put("businessTableColumnTypes", businessTableColumnTypes);
         manifest.put("businessTableRenamedColumns", businessTableRenamedColumns);
         manifest.put("businessTableColumnUids", businessMetadata.businessTableColumnUids());
+        manifest.put("businessTableUids", businessMetadata.businessTableUids());
         manifest.put("businessTableRenames", businessTableRenames);
         // LNCH-1 Phase 5.
         manifest.put("businessTableRequiredColumns", businessTableRequiredColumns);

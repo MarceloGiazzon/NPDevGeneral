@@ -4,9 +4,9 @@ title: >-
   DESTRUCTIVE_DROP_TABLE + create and the boot refuses, although the schema promises rename-by-identity
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-24
-closed: null
+closed: 2026-10-24
 source: >-
   2026-10-24, ENF-1 batch C: the first two-boot restart-revision run (run-behavior-probes.ps1 -RestartRevisionVariant)
   renamed WidgetTableUidDemo -> WidgetTableUidRenamedDemo keeping only its uid. The same run proved field.uid,
@@ -29,7 +29,20 @@ resolution: >-
   identity-matched table rename feeds TableRenamePass like a declared renamedFrom; the renameConceptByUid ops join the
   renameKeepingIdentity revision with a concept.uid step in 95-rename-identity-restart.json, green on
   -RestartRevisionVariant; concept.uid leaves the dsl-behavior-witness allowlist.
+guard:
+  kind: script
+  ref: scripts/quality/run-behavior-probes.ps1 -RestartRevisionVariant
+  asserts: >-
+    after a regeneration that renames WidgetTableUidDemo -> WidgetTableUidRenamedDemo by its concept uid alone (and its
+    code -> codeName field by field uid in the same boot), boot 2 starts, and the row written on boot 1 reads back under
+    the new table and column names (95-rename-identity-restart.json)
+  provenRed: true
 note: >-
-  2026-10-24: filed, not fixed. Reproduce: point 95-rename-identity-restart.json's restartRevision at
-  renameConceptByUid (or add its op to renameKeepingIdentity) and run run-behavior-probes.ps1 -RestartRevisionVariant;
-  boot 2 prints the DESTRUCTIVE_DROP_TABLE impact report and refuses.
+  2026-10-24: FIXED. New TableIdentityStore (npdev_table_identity: table_name, uid) recorded by AfterMigratePass every
+  boot; attemptInPlaceTableRenames merges its uid matches into businessTableRenames ahead of the diff (declared
+  renamedFrom wins), and a renamed table's npdev_column_identity rows are retargeted so a field uid on it still resolves.
+  Generator emits businessTableUids in the schema manifest (SchemaManifest gains it LAST, with a 26-arg convenience
+  constructor). The shadow parity probe now judges identity-resolved renames as declared ones (no false
+  SHADOW_DIVERGENCE). Red evidence: the first restart run with this revision refused boot 2 with
+  DESTRUCTIVE_DROP_TABLE widget_table_uid_demos. Unit coverage: SchemaLifecycleExecutorTableRenameTest
+  (tableRenamedByConceptUidAloneIsAppliedAndItsColumnUidsFollow, conceptUidWithNoRecordedIdentityRenamesNothing).

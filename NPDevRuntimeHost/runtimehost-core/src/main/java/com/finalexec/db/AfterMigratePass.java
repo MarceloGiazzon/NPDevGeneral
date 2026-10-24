@@ -86,6 +86,8 @@ final class AfterMigratePass {
         // resolved against. A model with no uids declared is a no-op (ColumnIdentityStore.record
         // checks this itself before touching the database at all).
         ColumnIdentityStore.record(dataSource, manifest);
+        // REG-305: the same baseline for concept uids, so a concept renamed by its uid alone resolves later.
+        TableIdentityStore.record(dataSource, manifest);
         BootResidueJournal.committed(dataSource, host.bootId,
                 BootResidueJournal.LifecycleStep.OWNERSHIP_RECORDING);
         // LNCH-1 remediation R2 (F1): required-field backfill/refusal enforcement lives HERE, at the

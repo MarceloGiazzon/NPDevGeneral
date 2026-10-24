@@ -891,10 +891,11 @@
       "name": "WidgetTableUidDemo",
       "truthLevel": "T2",
       "uid": "wtu00000000000001",
-      "ui": { "label": "Widget table uid demo", "description": "ENF-1: renamed to WidgetTableUidRenamedDemo by its uid alone (no renamedFrom) by model-revisions/rename-identity.json." },
+      "ui": { "label": "Widget table uid demo", "description": "ENF-1: renamed to WidgetTableUidRenamedDemo by its uid alone (no renamedFrom), and code to codeName by its field uid alone, by model-revisions/rename-identity.json." },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "title", "type": "string", "required": true, "ui": { "label": "Title" } }
+        { "name": "title", "type": "string", "required": true, "ui": { "label": "Title" } },
+        { "name": "code", "type": "string", "required": false, "uid": "wtu0f00000000001", "ui": { "label": "Code" } }
       ]
     },
     {

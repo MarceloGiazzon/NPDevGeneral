@@ -92,7 +92,10 @@ final class SchemaManifestLoader {
                     // column that has one. Absent from every manifest emitted before uids existed --
                     // stringMapMap defaults to an empty map, so a pre-uid app behaves exactly as it
                     // did (attemptInPlaceRenames falls back to businessTableRenamedColumns alone).
-                    stringMapMap(root.path("businessTableColumnUids"))
+                    stringMapMap(root.path("businessTableColumnUids")),
+                    // REG-305: the model's declared concept uid per table; absent from an older manifest
+                    // -> empty, and table renames come from businessTableRenames alone.
+                    stringMap(root.path("businessTableUids"))
             );
         } catch (Exception exception) {
             throw new IllegalStateException("Failed loading schema realization manifest", exception);

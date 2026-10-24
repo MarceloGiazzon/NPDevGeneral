@@ -44,13 +44,6 @@
   "allowlist": [
     {
       "keywords": [
-        "concept.uid"
-      ],
-      "reason": "The schema promises a table rename resolved by concept uid alone, but nothing implements it (read only by AuthoringDiffGate): the restart-revision run refuses the boot with DESTRUCTIVE_DROP_TABLE. field.uid, field.renamedFrom and concept.renamedFrom are witnessed by 95-rename-identity-restart.json (-RestartRevisionVariant). flow/query/aggregate uid were retired 2026-10-24 (read by nothing).",
-      "ledger": "REG-305"
-    },
-    {
-      "keywords": [
         "aggregate.metadata",
         "aggregateCollection.metadata"
       ],
@@ -90,5 +83,5 @@
       "ledger": "ENF-1"
     }
   ],
-  "frozenCount": 11
+  "frozenCount": 10
 }

@@ -64,3 +64,5 @@ note: >-
   uid alone), field.renamedFrom and concept.renamedFrom: rows survive under the new names, old name refused, where filter
   on the renamed column. Red proof: the renameWithoutIdentity revision makes boot 2 refuse with DESTRUCTIVE_DROP_COLUMN.
   Found REG-305: concept.uid renames nothing (DESTRUCTIVE_DROP_TABLE, boot refused); concept.uid stays allowlisted on it.
+  2026-10-24 (later): REG-305 FIXED (TableIdentityStore: a concept renamed by its uid alone renames its table in place,
+  its recorded column uids follow); 95-rename-identity-restart.json now also witnesses concept.uid. Allowlist 11 -> 10.
