@@ -4,9 +4,9 @@ title: >-
   check-then-act and the row_version compare-and-swap is never used on the REST path
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-24
-closed: null
+closed: 2026-10-24
 source: >-
   2026-10-24, root-causing REG-306 probe 7 (stale update accepted on JDBC). The sequential stale PUT is fixed there;
   the concurrent window the same analysis found is not.
@@ -23,5 +23,22 @@ resolution: >-
   loaded row_version so saveVersioned's guard applies, or the read takes a row lock) and a two-thread probe or test
   shows exactly one of two same-version PUTs succeeds and the other answers 409 version_conflict, on h2local and in
   memory.
+guard:
+  kind: script
+  ref: scripts/quality/run-behavior-probes.ps1 -StorageVariant h2local
+  asserts: >-
+    probe reg308-concurrent-same-version-puts-exactly-one-wins (80-enforcement-demo.json): eight same-version PUTs
+    released at once give exactly one 200 and seven 409 version_conflict, on h2local and on the InMemory default run
+  provenRed: true
 note: >-
-  2026-10-24: filed, not fixed. Found by the REG-306 root-cause analysis; the sequential case is closed by REG-306.
+  2026-10-24: fixed. updateFromSource now reads the ConceptRecord and, when the request carries a version, forwards
+  the loaded row_version as the gateway write's expectedRowVersion (a CAS under findByIdForUpdate's row lock) and then
+  as the final save's guard (saveToConceptStore(entity, rowVersion)); a lost race is a ConceptGatewayOptimisticLock/
+  ConceptStoreOptimisticLock mapped to the same 409 version_conflict as the sequential check
+  (GeneratedCrudRuntimeSupport.versionConflict). A request with no version stays an unconditional write, and a
+  concept with an update flow drops the final compare (the flow may write the row and move row_version; the gateway
+  CAS already closed the race). New run_probes.py step type "concurrent" (N parallel copies behind a barrier, exact
+  status counts) and probe reg308-concurrent-same-version-puts-exactly-one-wins in 80-enforcement-demo.json: 8
+  same-version PUTs give exactly one 200 and seven 409 on InMemory and h2local; against the pre-fix template the same
+  probe fails (got 200x3, 409x1, 500x4). Probes: InMemory 135/135, h2local 138/138. Not covered: a concept that is
+  not kernelControlled AND has an update flow keeps the check-then-act window (no gateway write, no final compare).

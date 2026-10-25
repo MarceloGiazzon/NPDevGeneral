@@ -41,7 +41,10 @@ that returns every matching array element (count them with {"len": n}). A step m
 -RestartRevisionVariant): --phase beforeRestart runs its steps not marked "phase": "afterRestart" and writes saved
 values/failures to --state-file; the app is regenerated from that revision (--materialize-revision) into the same
 Output, so App/data survives, and rebooted without a wipe; --phase afterRestart runs the rest and gives the verdict.
-Any other run skips it. Exit code is 0 only when every probe is green.
+Any other run skips it. REG-308: a step may carry "concurrent": {"copies": N, "statuses": {"200": 1, "409": N-1}}: the
+step's request is sent N times at once from N threads released together, and the multiset of answers must match
+"statuses" exactly (status -> how many copies got it) -- the way to prove a check-then-act window is closed, which no
+sequential step can. Exit code is 0 only when every probe is green.
 """
 from __future__ import annotations
 
@@ -50,6 +53,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -341,6 +345,41 @@ class Probe:
                 failures += [f"{label}: {p}" for p in self.check_json(doc, expect["json"])]
         return failures
 
+    def call_concurrent(self, step: dict, label: str) -> list[str]:
+        """REG-308: send `step` `copies` times at once and check how many copies got each status."""
+        spec = step["concurrent"]
+        copies = int(spec["copies"])
+        expected = {int(code): int(count) for code, count in spec["statuses"].items()}
+        if sum(expected.values()) != copies:
+            return [f"{label}: concurrent statuses {spec['statuses']} do not add up to {copies} copies"]
+        gate = threading.Barrier(copies)
+        outcomes: list[object] = [None] * copies
+
+        def send(slot: int) -> None:
+            try:
+                gate.wait(timeout=30)
+                outcomes[slot] = self.call(step)[0]
+            except Exception as exc:  # noqa: BLE001 - reported below, never raised across the thread boundary
+                outcomes[slot] = exc
+
+        threads = [threading.Thread(target=send, args=(slot,)) for slot in range(copies)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        errors = [str(o) for o in outcomes if isinstance(o, Exception)]
+        if errors:
+            return [f"{label}: concurrent copy failed: {errors[0]}"]
+        actual: dict[int, int] = {}
+        for status in outcomes:
+            actual[status] = actual.get(status, 0) + 1
+        self.steps.append({"name": step.get("name"), "method": step.get("method", "GET").upper(),
+                           "path": step["path"], "status": sorted(actual)[0], "concurrent": copies})
+        if actual != expected:
+            return [f"{label}: expected {dict(sorted(expected.items()))} statuses across {copies} concurrent copies, "
+                    f"got {dict(sorted(actual.items()))}"]
+        return []
+
     def skipped(self, reason: str) -> dict:
         return {"id": self.spec["id"], "source": self.source, "keywords": self.spec.get("keywords", []),
                 "description": self.spec.get("description", ""), "knownFailure": None, "status": "skipped",
@@ -378,6 +417,9 @@ class Probe:
             if failures and not (step.get("always") or step.get("stopOnFail") is False):
                 continue  # an earlier step failed: only cleanup steps ("always": true) still run
             label = f"step {index} ({step.get('name', step.get('path'))})"
+            if "concurrent" in step:
+                failures += self.call_concurrent(step, label)
+                continue
             retry = step.get("retry") or {}
             attempts = max(1, int(retry.get("attempts", 1)))
             try:

@@ -852,6 +852,70 @@
           "always": true
         }
       ]
+    },
+    {
+      "id": "reg308-concurrent-same-version-puts-exactly-one-wins",
+      "keywords": [
+        "concept.ui"
+      ],
+      "description": "REG-308: eight PUTs that all carry the same version are released at once. The optimistic check is a read-compare in Java followed by a save, so before the fix several could pass the check in the window between them and the later saves silently overwrote the earlier ones; now the save is a compare-and-swap on the loaded row_version, so exactly one request wins (200) and the other seven answer 409 version_conflict, on the InMemory store and on JDBC alike. The row then holds the winner's single increment.",
+      "steps": [
+        {
+          "name": "create the row every request starts from",
+          "method": "POST",
+          "path": "/api/widget_enforcement_demos",
+          "body": {
+            "code": "ed-${rand}",
+            "state": "Live",
+            "shortName": "abc"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "edId": "$.id",
+            "edVersion": "$.version"
+          }
+        },
+        {
+          "name": "eight same-version PUTs at once: exactly one succeeds, the rest are version conflicts",
+          "method": "PUT",
+          "path": "/api/widget_enforcement_demos/${edId}",
+          "body": {
+            "shortName": "race",
+            "version": "${edVersion}"
+          },
+          "concurrent": {
+            "copies": 8,
+            "statuses": {
+              "200": 1,
+              "409": 7
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "the row holds the winner's write",
+          "method": "GET",
+          "path": "/api/widget_enforcement_demos/${edId}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.shortName": "race",
+              "$.version": {
+                "gt": 0
+              }
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_enforcement_demos/${edId}",
+          "always": true
+        }
+      ]
     }
   ]
 }

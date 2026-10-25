@@ -18,6 +18,9 @@ import com.npdev.kernel.FlowStepDefinition;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.KernelRunner;
 import com.npdev.kernel.concepts.ConceptGateway;
+import com.npdev.kernel.concepts.ConceptGatewayOptimisticLockException;
+import com.npdev.kernel.concepts.ConceptRecord;
+import com.npdev.kernel.concepts.ConceptStoreOptimisticLockException;
 import com.npdev.kernel.concepts.UserScopedExpressions;
 import com.npdev.kernel.events.EventEnvelope;
 import com.npdev.kernel.audit.AuditRecord;
@@ -693,15 +696,57 @@ public final class GeneratedCrudRuntimeSupport {
         }
         Long actual = extractVersion(existing);
         if (actual == null || !actual.equals(expected)) {
-            throw new InvariantViolationException(List.of(new InvariantViolationDetail(
-                    "version_conflict",
-                    conceptName,
-                    "optimisticConcurrency",
-                    "version",
-                    "Record was modified by another request. expected=" + expected + " actual=" + actual,
-                    true
-            )));
+            throw versionConflict(conceptName, expected, actual);
         }
+    }
+
+    /**
+     * REG-308: the row_version a generated update compares-and-swaps against, or null when the request
+     * carries no version. A null means the caller is unaware of versioning, so the update stays an
+     * unconditional write; a non-null one is what makes it a real compare-and-swap on {@code row_version}.
+     */
+    public Long expectedRowVersion(Object source, ConceptRecord loaded) {
+        return extractVersion(source) == null ? null : loaded.rowVersion();
+    }
+
+    /**
+     * REG-308: runs a compare-and-swap write and turns a lost race (the gateway's or the store's optimistic
+     * lock) into the same 409 {@code version_conflict} as the sequential check, so a client cannot tell which
+     * of the two caught its stale write. {@code source} is the request, for the version it expected.
+     */
+    public static <T> T guardVersionConflict(String conceptName, Object source, Supplier<T> write) {
+        try {
+            return write.get();
+        } catch (ConceptGatewayOptimisticLockException lost) {
+            throw versionConflict(conceptName, extractVersion(source), storedVersion(lost.currentRecord()));
+        } catch (ConceptStoreOptimisticLockException lost) {
+            throw versionConflict(conceptName, extractVersion(source), storedVersion(lost.currentRecord()));
+        }
+    }
+
+    /**
+     * REG-308: {@link #guardVersionConflict} for a gateway write; returns the row_version the write left
+     * behind (null when none was asked for or the row carries none) so a later save can compare against it.
+     */
+    public static Long writeWithRowVersion(String conceptName, Object source, Long expectedRowVersion, Supplier<ConceptRecord> write) {
+        ConceptRecord saved = guardVersionConflict(conceptName, source, write);
+        return expectedRowVersion == null || saved == null ? null : saved.rowVersion();
+    }
+
+    private static Long storedVersion(Optional<ConceptRecord> current) {
+        return current.map(record -> record.data().get("version"))
+                .filter(Number.class::isInstance).map(version -> ((Number) version).longValue()).orElse(null);
+    }
+
+    public static InvariantViolationException versionConflict(String conceptName, Long expected, Long actual) {
+        return new InvariantViolationException(List.of(new InvariantViolationDetail(
+                "version_conflict",
+                conceptName,
+                "optimisticConcurrency",
+                "version",
+                "Record was modified by another request. expected=" + expected + " actual=" + actual,
+                true
+        )));
     }
 
     public List<Object> listBondMembers(String sourceConceptName, Object sourceId, String fieldName) {

@@ -100,7 +100,7 @@ public class {{entityName}}ServiceBase {
         this.persistence = GeneratedCrudRuntimeSupport.persistenceCapability(
                 this::findByIdFromConceptStore,
                 this::findAllFromConceptStore,
-                this::saveToConceptStore,
+                entity -> saveToConceptStore(entity, null),
                 id -> findByIdFromConceptStore(id).isPresent(),
                 this::deleteFromConceptStore,
                 this::existsUniqueInConceptStore,
@@ -259,7 +259,7 @@ public class {{entityName}}ServiceBase {
         // update" error) before this fix.
 {{#kernelControlled}}
 {{^hasCreateFlow}}
-        enforceWithConceptGateway("{{conceptName}}", generatedId, createPayload);
+        enforceWithConceptGateway("{{conceptName}}", generatedId, createPayload, null, null);
 {{/hasCreateFlow}}
 {{#hasCreateFlow}}
         authorizeCreateFlowWithConceptGateway("{{conceptName}}", generatedId, createPayload);
@@ -278,7 +278,7 @@ public class {{entityName}}ServiceBase {
         // tenantId field (DtoEmitter only emits DSL-declared fields).
         e.setTenantId(currentTenantId());
 
-        {{entityTypeName}} created = saveWithIntegrityMapping(e);
+        {{entityTypeName}} created = saveWithIntegrityMapping(e, null, null);
 {{/hasCreateFlow}}
 {{#hasCreateFlow}}
         // REG-120: enforceWithCreateFlow's own createConcept step already persisted this row through
@@ -335,10 +335,14 @@ public class {{entityName}}ServiceBase {
 {{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "UPDATE", crudCtx);
 {{/kernelControlled}}
-        Optional<{{entityTypeName}}> opt = persistence.findById(id);
-        if (opt.isEmpty()) return Optional.empty();
+        // REG-308: read the ConceptRecord (not just the entity) so the loaded row_version survives to
+        // the writes below, where it becomes the store's compare-and-swap guard. A request that carries
+        // no version stays an unconditional write (expectedRowVersion stays null).
+        Optional<ConceptRecord> loaded = readRecordFromConceptStore(id);
+        if (loaded.isEmpty()) return Optional.empty();
+        Long expectedRowVersion = runtimeSupport.expectedRowVersion(source, loaded.get());
 
-        {{entityTypeName}} existing = opt.get();
+        {{entityTypeName}} existing = entityFromRecord(loaded.get());
         // R5.1: snapshot the pre-update field data BEFORE applyUpdateFields mutates `existing` in
         // place below (the same "capture before the in-place mutation" need HARDEN-GC-P2 already
         // documents for file fields specifically) -- this is the audit trail's "before" half.
@@ -356,10 +360,13 @@ public class {{entityName}}ServiceBase {
         // not only in its absence, so a declared access.write row-level rule is checked against the
         // record's PREVIOUS state before the flow's own side effects run.
 {{#kernelControlled}}
-        enforceWithConceptGateway("{{conceptName}}", id, updatePayload);
+        expectedRowVersion = enforceWithConceptGateway("{{conceptName}}", id, updatePayload, expectedRowVersion, source);
 {{/kernelControlled}}
 {{#hasUpdateFlow}}
         enforceWithUpdateFlow(crudCtx, id, updatePayload);
+        // The flow may write this row itself and so move its row_version; the gateway write above already
+        // closed the race, so the final save below must not compare against a version the flow outdated.
+        expectedRowVersion = null;
 {{/hasUpdateFlow}}
 {{#hasFileFields}}
         // HARDEN-GC-P2: snapshot the pre-update value(s) BEFORE applyUpdateFields mutates
@@ -371,7 +378,9 @@ public class {{entityName}}ServiceBase {
         runtimeSupport.applyUpdateFields("{{conceptName}}", source, existing);
         existing.setVersion((existing.getVersion() == null ? 0L : existing.getVersion()) + 1);
 
-        {{entityTypeName}} updated = saveWithIntegrityMapping(existing);
+        // REG-308: with a row_version in hand this save is the store's compare-and-swap, closing the window
+        // between the Java check above and here; without one it stays an unconditional write.
+        {{entityTypeName}} updated = saveWithIntegrityMapping(existing, expectedRowVersion, source);
 {{#hasFileFields}}
         // HARDEN-GC-P2: only after a successful save -- a failed save must never orphan the
         // still-referenced old file. Store-delete failures are logged and tolerated (see
@@ -765,9 +774,11 @@ public class {{entityName}}ServiceBase {
         }
     }
 
-    private {{entityTypeName}} saveWithIntegrityMapping({{entityTypeName}} entity) {
+    /** REG-308: a non-null {@code expectedRowVersion} makes the save the store's compare-and-swap; a lost race is a version_conflict. */
+    private {{entityTypeName}} saveWithIntegrityMapping(
+            {{entityTypeName}} entity, Long expectedRowVersion, Object source) {
         try {
-            return persistence.save(entity);
+            return expectedRowVersion == null ? persistence.save(entity) : GeneratedCrudRuntimeSupport.guardVersionConflict("{{conceptName}}", source, () -> saveToConceptStore(entity, expectedRowVersion));
         } catch (RuntimeException exception) {
             throw GeneratedCrudRuntimeSupport.mapDataIntegrityViolation("{{conceptName}}", null, exception)
                     .orElseThrow(() -> exception);
@@ -783,15 +794,21 @@ public class {{entityName}}ServiceBase {
         }
     }
 
-    private void enforceWithConceptGateway(String conceptName, UUID id, Map<String, Object> payload) {
+    /**
+     * REG-308: {@code expectedRowVersion} non-null makes this write a compare-and-swap (under the row lock a
+     * real transaction manager takes); returns the row_version the write left behind, or null when the row
+     * carries none, so the caller's own later save can compare against it.
+     */
+    private Long enforceWithConceptGateway(
+            String conceptName, UUID id, Map<String, Object> payload, Long expectedRowVersion, Object source) {
         if (conceptGateway == null) {
             throw new IllegalStateException("ConceptGateway is required for generated CRUD mutations.");
         }
         try {
-            conceptGateway.save(
-                    new ConceptWriteRequest(conceptName, String.valueOf(id), null, payload),
+            return GeneratedCrudRuntimeSupport.writeWithRowVersion(conceptName, source, expectedRowVersion, () -> conceptGateway.save(
+                    new ConceptWriteRequest(conceptName, String.valueOf(id), null, payload, expectedRowVersion, false),
                     generatedCrudExecutionContext()
-            );
+            ));
         } catch (ConceptGatewaySemanticException exception) {
             throw new GeneratedCrudRuntimeSupport.InvariantViolationException(List.of(
                     new GeneratedCrudRuntimeSupport.InvariantViolationDetail(
@@ -959,13 +976,17 @@ public class {{entityName}}ServiceBase {
     // it already was on writes (see enforceWithConceptGateway/enforceDeleteWithConceptGateway) --
     // conceptStore itself has no notion of row-level scoping, only the gateway/semantic-policy layer does.
     private Optional<{{entityTypeName}}> findByIdFromConceptStore(UUID id) {
+        return readRecordFromConceptStore(id).map(this::entityFromRecord);
+    }
+
+    private Optional<ConceptRecord> readRecordFromConceptStore(UUID id) {
         if (id == null) {
             return Optional.empty();
         }
         return conceptGateway.read(
                 new ConceptReadRequest(CONCEPT_NAME, String.valueOf(id), currentTenantId()),
                 generatedCrudExecutionContext()
-        ).map(this::entityFromRecord);
+        );
     }
 
     private List<{{entityTypeName}}> findAllFromConceptStore() {
@@ -994,12 +1015,13 @@ public class {{entityName}}ServiceBase {
         return new com.npdev.kernel.concepts.ConceptListSlice<>(entities, slice.truncated());
     }
 
-    private {{entityTypeName}} saveToConceptStore({{entityTypeName}} entity) {
+    /** {@code rowVersion == null} is an unconditional write; non-null is the store's compare-and-swap (REG-308). */
+    private {{entityTypeName}} saveToConceptStore({{entityTypeName}} entity, Long rowVersion) {
         UUID id = entity.getId();
         if (id == null) {
             throw new IllegalArgumentException("Generated CRUD cannot save {{conceptName}} without an id.");
         }
-        conceptStore.save(new ConceptRecord(CONCEPT_NAME, String.valueOf(id), currentTenantId(), mapFromEntity(entity)));
+        conceptStore.save(new ConceptRecord(CONCEPT_NAME, String.valueOf(id), currentTenantId(), mapFromEntity(entity), rowVersion));
         return entity;
     }
 
