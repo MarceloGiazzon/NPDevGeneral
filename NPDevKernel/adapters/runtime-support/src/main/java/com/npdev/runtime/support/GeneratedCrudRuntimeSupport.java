@@ -733,6 +733,18 @@ public final class GeneratedCrudRuntimeSupport {
         return expectedRowVersion == null || saved == null ? null : saved.rowVersion();
     }
 
+    /**
+     * REG-308: for an update that runs a flow without the concept gateway in front of it. The flow can move
+     * the row's row_version itself, so the request's version cannot be held until the final save; instead
+     * {@code claim} (a rewrite of the row as loaded) is the compare-and-swap that settles the race before
+     * the flow runs. Skipped when the request carried no version, which stays an unconditional write.
+     */
+    public static void claimRowForUpdate(String conceptName, Object source, Long expectedRowVersion, Supplier<ConceptRecord> claim) {
+        if (expectedRowVersion != null) {
+            guardVersionConflict(conceptName, source, claim);
+        }
+    }
+
     private static Long storedVersion(Optional<ConceptRecord> current) {
         return current.map(record -> record.data().get("version"))
                 .filter(Number.class::isInstance).map(version -> ((Number) version).longValue()).orElse(null);

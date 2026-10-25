@@ -54,6 +54,29 @@ class GeneratedCrudRuntimeSupportVersionConflictTest {
     }
 
     @Test
+    void anUpdateFlowClaimIsACompareAndSwapOnlyWhenTheRequestCarriedAVersion() {
+        int[] claims = {0};
+        GeneratedCrudRuntimeSupport.claimRowForUpdate("Widget", REQUEST, 7L, () -> {
+            claims[0]++;
+            return STORED;
+        });
+        GeneratedCrudRuntimeSupport.claimRowForUpdate("Widget", Map.of(), null, () -> {
+            claims[0]++;
+            return STORED;
+        });
+        assertEquals(1, claims[0]);
+    }
+
+    @Test
+    void aLostUpdateFlowClaimIsAVersionConflict() {
+        var thrown = assertThrows(GeneratedCrudRuntimeSupport.InvariantViolationException.class,
+                () -> GeneratedCrudRuntimeSupport.claimRowForUpdate("Widget", REQUEST, 7L, () -> {
+                    throw new ConceptStoreOptimisticLockException("Widget", "w1", "t1", Optional.of(STORED));
+                }));
+        assertEquals("version_conflict", thrown.violations().get(0).code());
+    }
+
+    @Test
     void anyOtherFailureIsNotSwallowed() {
         IllegalStateException other = new IllegalStateException("boom");
         assertSame(other, assertThrows(IllegalStateException.class,

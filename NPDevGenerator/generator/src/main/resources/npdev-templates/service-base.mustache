@@ -363,9 +363,13 @@ public class {{entityName}}ServiceBase {
         expectedRowVersion = enforceWithConceptGateway("{{conceptName}}", id, updatePayload, expectedRowVersion, source);
 {{/kernelControlled}}
 {{#hasUpdateFlow}}
+{{^kernelControlled}}
+        GeneratedCrudRuntimeSupport.claimRowForUpdate("{{conceptName}}", source, expectedRowVersion, () -> conceptStore.save(loaded.get()));
+{{/kernelControlled}}
         enforceWithUpdateFlow(crudCtx, id, updatePayload);
         // The flow may write this row itself and so move its row_version; the gateway write above already
-        // closed the race, so the final save below must not compare against a version the flow outdated.
+        // (or the row claim above) closed the race, so the final save below must not compare against a version
+        // the flow outdated.
         expectedRowVersion = null;
 {{/hasUpdateFlow}}
 {{#hasFileFields}}

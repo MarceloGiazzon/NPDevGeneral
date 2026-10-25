@@ -40,5 +40,9 @@ note: >-
   CAS already closed the race). New run_probes.py step type "concurrent" (N parallel copies behind a barrier, exact
   status counts) and probe reg308-concurrent-same-version-puts-exactly-one-wins in 80-enforcement-demo.json: 8
   same-version PUTs give exactly one 200 and seven 409 on InMemory and h2local; against the pre-fix template the same
-  probe fails (got 200x3, 409x1, 500x4). Probes: InMemory 135/135, h2local 138/138. Not covered: a concept that is
-  not kernelControlled AND has an update flow keeps the check-then-act window (no gateway write, no final compare).
+  probe fails (got 200x3, 409x1, 500x4). Probes: InMemory 135/135, h2local 138/138. 2026-10-25: the one shape left open (crud.kernelControlled false AND an update flow: no gateway write, no final
+  compare) is closed too. service-base.mustache claims the row before the flow with
+  GeneratedCrudRuntimeSupport.claimRowForUpdate (a CAS rewrite of the loaded row, skipped when the request carries no
+  version). Guarded by a generator test, ServiceBaseUpdateFlowRowClaimTest (claim emitted before the flow only in that
+  shape), and unit tests in GeneratedCrudRuntimeSupportVersionConflictTest -- not by a booted probe, because
+  crud.kernelControlled is app-wide and no corpus sample runs with it off.
