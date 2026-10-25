@@ -1,18 +1,18 @@
 {
-  "closedAt": "2026-10-25T00:22:09.2931658Z",
+  "closedAt": "2026-10-25T05:29:41.6911068Z",
   "branch": "main",
-  "head": "c30e5eb2",
-  "headSubject": "fix(crud): REG-308 -- a REST update carrying a version is a real compare-and-swap",
-  "summary": "REG-308 fixed and pushed (c30e5eb2): a REST update carrying a version reads the ConceptRecord and forwards the loaded row_version as the gateway write's expectedRowVersion (CAS under the row lock) and as the final save's guard; a lost race is the same 409 version_conflict (GeneratedCrudRuntimeSupport.guardVersionConflict/writeWithRowVersion). New run_probes.py step type 'concurrent' + probe reg308-concurrent-same-version-puts-exactly-one-wins (80-enforcement-demo.json): 8 same-version PUTs -> 1x200 + 7x409; InMemory 135/135, h2local 138/138; red against the pre-fix template (200x3, 409x1, 500x4). Lesson: RuntimeHost's coverage ratchet counts executable lines the generated service gains (ContactMessageServiceBase is 252/287 missed; the suite barely touches CRUD), so template growth must land in runtime-support, not in service-base.mustache. Both old stashes dropped (patches archived in OutsideRepo/branch-archive). All 5 gates green incl. paperwork.",
-  "nextStep": "Only OWN-2 (owner outreach) and AIP-4 4.5 (needs Tauri/Rust toolchain) remain open; neither is startable without the owner. Optional hardening: a concept that is not kernelControlled AND has an update flow still has the REG-308 window; and fl-monitor-reports-compensated-execution (20-flow.json) flaked once on InMemory (history items[0] was a newer COMPLETED execution) -- passed 28/28 alone, file a ledger item if it recurs.",
+  "head": "5bcfd8d2",
+  "headSubject": "fix(crud): REG-308 residue -- claim the row before an update flow when kernel control is off",
+  "summary": "REG-308 residue closed and pushed (5bcfd8d2): a concept with an update flow and crud.kernelControlled off now claims the row (GeneratedCrudRuntimeSupport.claimRowForUpdate, a CAS rewrite of the loaded row, skipped when the request has no version) before the flow runs. Guarded by ServiceBaseUpdateFlowRowClaimTest (generated output) plus runtime-support unit tests, not a booted probe: crud.kernelControlled is read app-wide (GeneratorFacade, SettingTarget.app()), so a probe on a per-concept override passed even with the fix removed and was reverted.",
+  "nextStep": "Only OWN-2 (owner outreach) and AIP-4 4.5 (needs Tauri/Rust toolchain) remain open and neither is startable without the owner. Optional: verify and file a ledger item that a per-concept 'concept:X': {crud.kernelControlled:false} override in config.json is ignored by generation (generate dsl-conformance-max with it on a concept and grep that concept's ServiceBase for checkCrudPermission; UnenforceableAccessRuleCheck checks it per concept while GeneratorFacade passes one app-level boolean to ServiceEmitter). Also watch fl-monitor-reports-compensated-execution (20-flow.json) for a recurrence of its single InMemory flake.",
   "plan": "",
   "blocked": "",
-  "verified": "run-all-gates -IncludePaperwork: 5/5 green; InMemory probes 135/135, h2local 138/138; RuntimeHost coverage 31.3222 held; runtime-support unit tests pass",
+  "verified": "run-all-gates -IncludePaperwork: 5/5 green (generator, runtimeHost, kernel, aiKnowledge, weeklyPaperwork); InMemory behaviour probes 136/136 with the claim in place; new generator test 3/3 and VersionConflictTest 7/7. Not verified: the new generator test was not run red against a template with the claim removed (the h2local and InMemory probe red-checks were inconclusive, see summary).",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "c30e5eb2 fix(crud): REG-308 -- a REST update carrying a version is a real compare-and-swap",
-    "5161c62f chore(session): handoff -- REG-304/306 + ENF-1/ENF-2 closed; next REG-308"
+    "5bcfd8d2 fix(crud): REG-308 residue -- claim the row before an update flow when kernel control is off",
+    "210bf4db chore(session): handoff -- REG-308 closed; only OWN-2 and AIP-4 4.5 remain"
   ]
 }
