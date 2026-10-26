@@ -1,18 +1,19 @@
 {
-  "closedAt": "2026-10-25T05:29:41.6911068Z",
+  "closedAt": "2026-10-26T22:50:49.8716190Z",
   "branch": "main",
-  "head": "5bcfd8d2",
-  "headSubject": "fix(crud): REG-308 residue -- claim the row before an update flow when kernel control is off",
-  "summary": "REG-308 residue closed and pushed (5bcfd8d2): a concept with an update flow and crud.kernelControlled off now claims the row (GeneratedCrudRuntimeSupport.claimRowForUpdate, a CAS rewrite of the loaded row, skipped when the request has no version) before the flow runs. Guarded by ServiceBaseUpdateFlowRowClaimTest (generated output) plus runtime-support unit tests, not a booted probe: crud.kernelControlled is read app-wide (GeneratorFacade, SettingTarget.app()), so a probe on a per-concept override passed even with the fix removed and was reverted.",
-  "nextStep": "Only OWN-2 (owner outreach) and AIP-4 4.5 (needs Tauri/Rust toolchain) remain open and neither is startable without the owner. Optional: verify and file a ledger item that a per-concept 'concept:X': {crud.kernelControlled:false} override in config.json is ignored by generation (generate dsl-conformance-max with it on a concept and grep that concept's ServiceBase for checkCrudPermission; UnenforceableAccessRuleCheck checks it per concept while GeneratorFacade passes one app-level boolean to ServiceEmitter). Also watch fl-monitor-reports-compensated-execution (20-flow.json) for a recurrence of its single InMemory flake.",
+  "head": "cca48555",
+  "headSubject": "fix(xref): REG-311 -- index the fields inside a v2 where/having (OR, in, contains, is null, reference paths)",
+  "summary": "Fixed REG-309 (per-concept crud.kernelControlled was ignored by generation: a concept-level true under an app-level false generated no authz and passed REG-44), REG-310 (probe fl-monitor-reports-compensated-execution raced on items[0]; now selects by executionId) and REG-311 (ReferenceIndex now indexes fields inside v2 where/having: OR, in, contains, is null, reference paths, under query.where.v2/query.having.v2). All pushed to main (88cd72ff, cca48555). Candidate #3 (properties[] with internal.tables off) was investigated and NOT done: a generation-time error would break WmsOffice, dsl-conformance-max and pigmentampas.",
+  "nextStep": "Pick one: (a) safe version of properties[] without internal.tables: in NPDevKernel/kernel/.../properties/DefaultPropertyResolver.set() throw a dedicated, clearly worded exception when workspace::PropertyValue is not in the live model (needs an HTTP mapping like PropertyNotSettableAtScopeException), with a unit test beside PropertyResolverUnknownConceptTest; or (b) in-process acceptance runner support for when.flow (NPDevRuntimeHost/runtimehost-core/.../acceptance/InProcessAcceptanceRunner.java:51,76,111, not in the ledger yet). Optional follow-up from REG-311: make npdev_rename_cascade.py rewrite query.where.v2 per hop instead of whole-string, with a cascade test. OWN-2 and AIP-4 4.5 still need the owner (AIP-4: the Manager exe at Build/manager-target/release is stale, built 2026-09-09; Rust + MSVC not installed).",
   "plan": "",
   "blocked": "",
-  "verified": "run-all-gates -IncludePaperwork: 5/5 green (generator, runtimeHost, kernel, aiKnowledge, weeklyPaperwork); InMemory behaviour probes 136/136 with the claim in place; new generator test 3/3 and VersionConflictTest 7/7. Not verified: the new generator test was not run red against a template with the claim removed (the h2local and InMemory probe red-checks were inconclusive, see summary).",
+  "verified": "REG-309/310: new ServiceBasePerConceptKernelControlTest 3/3 (2 of 3 red without the fix), neighbouring generator tests green, run-generator-gate.ps1 green, InMemory behaviour probes 135/135 (6 skipped, need h2local/restart variants). REG-311: dsl module 1290 tests, 0 failures; ReferenceIndexTest and ReferenceIntegrityValidationTest red-checked both ways; run-ai-knowledge-gate.ps1 green (52 checks). NOT run: run-runtimehost-gate, run-kernel-quality-gate, weeklyPaperwork, h2local probe variant; a bare run-all-gates was not run after the final commit.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "5bcfd8d2 fix(crud): REG-308 residue -- claim the row before an update flow when kernel control is off",
-    "210bf4db chore(session): handoff -- REG-308 closed; only OWN-2 and AIP-4 4.5 remain"
+    "cca48555 fix(xref): REG-311 -- index the fields inside a v2 where/having (OR, in, contains, is null, reference paths)",
+    "88cd72ff fix(generator): REG-309 -- crud.kernelControlled is resolved per concept, not once for the app",
+    "10805bd3 chore(session): handoff -- REG-308 residue closed; only OWN-2 and AIP-4 4.5 remain"
   ]
 }
