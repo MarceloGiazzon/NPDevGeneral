@@ -1,18 +1,18 @@
 {
-  "closedAt": "2026-10-26T22:58:54.0340775Z",
+  "closedAt": "2026-10-26T23:13:17.8122621Z",
   "branch": "main",
-  "head": "35f1e4db",
-  "headSubject": "fix(properties): PropertyResolver.set() says the store is not composed instead of leaking 'Unknown concept'",
-  "summary": "properties[] without internal.tables: DefaultPropertyResolver.set() now throws PropertyStoreNotComposedException (PROPERTY_STORE_NOT_COMPOSED) instead of leaking IllegalArgumentException 'Unknown concept'; PropertyResolverController maps it to 409. A model that declares workspace::PropertyValue keeps the raw failure. Pushed as 35f1e4db.",
-  "nextStep": "Optional (b): in-process acceptance runner support for when.flow (NPDevRuntimeHost/runtimehost-core/.../acceptance/InProcessAcceptanceRunner.java:51,76,111, not in the ledger yet); or make npdev_rename_cascade.py rewrite query.where.v2 per hop with a cascade test. First restage jars (sync-runtimehost-libs.ps1 -BuildLocalJars) before compiling RuntimeHost against the new exception. OWN-2 and AIP-4 4.5 still need the owner.",
+  "head": "d63524c8",
+  "headSubject": "feat(acceptance): in-process runner executes when.flow scenarios through the kernel flow wiring",
+  "summary": "In-process acceptance runner now executes when.flow scenarios (d63524c8): KernelRunner via ModelBackedKernelRuntimeFactory, invariant lookups on the seeded store, capabilities from scenario stubs; observed ok/status/failureCode/failureMessage/result/concepts. Earlier this session: PropertyStoreNotComposedException (35f1e4db).",
+  "nextStep": "Optional: make npdev_rename_cascade.py rewrite query.where.v2 per hop instead of whole-string, with a cascade test. Also unrun: run-runtimehost-gate and run-kernel-quality-gate (a bare run-all-gates has not been run since REG-309..311), and the RuntimeHost PropertyResolverController 409 mapping has not been compiled (needs sync-runtimehost-libs.ps1 -BuildLocalJars). OWN-2 and AIP-4 4.5 still need the owner.",
   "plan": "",
   "blocked": "",
-  "verified": "PropertyResolverUnknownConceptTest 3/3 and all com.npdev.kernel.properties.* green via :kernel:test. NOT run: RuntimeHost compile of the controller change (needs restaged kernel jar), run-kernel-quality-gate, run-all-gates. Gotcha: gradle run created NPDevKernel/.gradle which blocks the commit hook (slimness) -- delete it before committing.",
+  "verified": "InProcessAcceptanceRunnerTest 6/6 green (2 new flow tests) via runtimehost-core gradle test; NPDevCli tests.test_acceptance_runner 39/39 (unittest). Gotcha: delete NPDevKernel/.gradle and NPDevRuntimeHost/**/.gradle before committing (slimness hook).",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "35f1e4db fix(properties): PropertyResolver.set() says the store is not composed instead of leaking 'Unknown concept'",
-    "029418e7 chore(session): handoff -- REG-309/310/311 closed; next is properties[] set() message or when.flow in the acceptance runner"
+    "d63524c8 feat(acceptance): in-process runner executes when.flow scenarios through the kernel flow wiring",
+    "6f478825 chore(session): handoff -- properties set() message landed; next is when.flow in the acceptance runner"
   ]
 }
