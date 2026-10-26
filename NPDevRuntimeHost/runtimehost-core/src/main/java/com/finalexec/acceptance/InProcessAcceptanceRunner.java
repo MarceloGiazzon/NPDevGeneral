@@ -3,6 +3,8 @@ package com.finalexec.acceptance;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.finalexec.npdev.service.ProcedureRunner;
+import com.npdev.adapters.events.inproc.InProcEventBus;
+import com.npdev.adapters.flowcompiled.ModelBackedKernelRuntimeFactory;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiler.ModelCompiler;
 import com.npdev.dsl.v1.parser.JsonModelParser;
@@ -11,12 +13,18 @@ import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityErrorKind;
 import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.ExecutionResult;
+import com.npdev.kernel.ExecutionStatus;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptListRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.DefaultConceptGateway;
 import com.npdev.kernel.inproc.InMemoryConceptStore;
+import com.npdev.kernel.KernelRunner;
 import com.npdev.kernel.ports.CapabilityDispatcher;
+import com.npdev.kernel.ports.ExecutionTracer;
+import com.npdev.runtime.support.CelInvariantEngine;
+import com.npdev.runtime.support.ReloadableInvariantEngine;
 import com.npdev.kernel.procedures.ProcedureExecutionResult;
 
 import java.io.IOException;
@@ -34,7 +42,7 @@ import java.util.UUID;
 import java.util.stream.Stream;
 
 /**
- * Runs the PROCEDURE form of {@code *.scenario.json} in-process: the compiled model, an
+ * Runs the PROCEDURE and FLOW forms of {@code *.scenario.json} in-process: the compiled model, an
  * {@link InMemoryConceptStore} behind the governed concept gateway, and the SAME
  * {@link ProcedureRunner} a generated app uses (so {@code runQuery} honours the query's
  * where/orderBy and {@code callCapability} resolves adapters exactly as in the app). No generate,
@@ -48,8 +56,13 @@ import java.util.stream.Stream;
  * permissions and lifecycle -- like a database fixture. The procedure under test then runs through
  * the governed gateway, so its own writes ARE validated. Capabilities answer only from the
  * scenario's {@code stubs}; an unstubbed capability fails with {@code CAPABILITY_NOT_STUBBED}
- * rather than ever reaching a real vendor. Flow scenarios ({@code when.flow}) are not supported yet
- * and report an error, never a silent pass.
+ * rather than ever reaching a real vendor.
+ *
+ * <p>A flow scenario ({@code when.flow}) runs the named flow through the SAME {@link KernelRunner}
+ * wiring the CLI uses (compiled flow definitions, invariant engine whose unique/scope lookups read the
+ * seeded store). Kernel flows act through capabilities, not the concept gateway, so the observed
+ * {@code concepts} are the seeded rows unchanged; {@code ok} is {@code status == OK}, and
+ * {@code failureCode}/{@code status} carry the kernel's own verdict ({@code WAITING_EVENT} is not ok).
  *
  * <p>Do NOT reuse NPDevGenerator/tools/npdev-cli's procedure converter: it is a divergent twin (no
  * queriesByName, so runQuery ignores {@code where}; no adapter resolution).
@@ -72,9 +85,7 @@ public final class InProcessAcceptanceRunner {
                 Map<String, Object> scenario = MAPPER.readValue(file.toFile(), Map.class);
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("file", file.getFileName().toString());
-                if (scenarioHasFlow(scenario)) {
-                    row.put("error", "flow scenarios not supported in-process yet (when.flow)");
-                } else if (!isInProcess(scenario)) {
+                if (!isInProcess(scenario)) {
                     row.put("skipped", "HTTP scenario (when.path) -- run without --in-process");
                 } else {
                     try {
@@ -104,7 +115,8 @@ public final class InProcessAcceptanceRunner {
     }
 
     static boolean isInProcess(Map<String, Object> scenario) {
-        return scenario.get("when") instanceof Map<?, ?> when && when.containsKey("procedure");
+        return scenario.get("when") instanceof Map<?, ?> when
+                && (when.containsKey("procedure") || when.containsKey("flow"));
     }
 
     static boolean scenarioHasFlow(Map<String, Object> scenario) {
@@ -140,17 +152,29 @@ public final class InProcessAcceptanceRunner {
                             CapabilityErrorKind.PERMANENT, Map.of());
         };
 
-        ProcedureRunner runner = new ProcedureRunner(model, gateway, dispatcher, null);
-        String procedure = String.valueOf(when.get("procedure"));
         Map<String, Object> input = (Map<String, Object>) when.getOrDefault("input", Map.of());
-        ProcedureExecutionResult result = runner.execute(procedure, new HashMap<>(input), ctx);
-
         Map<String, Object> observed = new LinkedHashMap<>();
-        observed.put("ok", result.ok());
-        observed.put("failureCode", result.failureCode());
-        observed.put("failureMessage", result.failureMessage());
-        // Same rule AggregateRuntime.invoke applies: a `return` step's value IS the result.
-        observed.put("result", result.state().containsKey("return") ? result.state().get("return") : result.state());
+        if (when.containsKey("flow")) {
+            ReloadableInvariantEngine invariants = new ReloadableInvariantEngine(model,
+                    (tenantId, conceptName) -> CelInvariantEngine.Lookups.fromConceptStore(store, tenantId));
+            KernelRunner kernel = ModelBackedKernelRuntimeFactory.createKernelRunner(
+                    model, new InProcEventBus(), invariants, dispatcher, ExecutionTracer.NOOP);
+            ExecutionResult result = kernel.execute(String.valueOf(when.get("flow")), new HashMap<>(input), ctx);
+            observed.put("ok", result.getStatus() == ExecutionStatus.OK);
+            observed.put("status", result.getStatus().name());
+            observed.put("failureCode", result.getErrorCode());
+            observed.put("failureMessage", result.getError());
+            observed.put("result", result.getOutput());
+        } else {
+            ProcedureRunner runner = new ProcedureRunner(model, gateway, dispatcher, null);
+            String procedure = String.valueOf(when.get("procedure"));
+            ProcedureExecutionResult result = runner.execute(procedure, new HashMap<>(input), ctx);
+            observed.put("ok", result.ok());
+            observed.put("failureCode", result.failureCode());
+            observed.put("failureMessage", result.failureMessage());
+            // Same rule AggregateRuntime.invoke applies: a `return` step's value IS the result.
+            observed.put("result", result.state().containsKey("return") ? result.state().get("return") : result.state());
+        }
 
         // Snapshot every declared concept that has rows now (seeded or written by the procedure).
         Map<String, Object> concepts = new TreeMap<>();

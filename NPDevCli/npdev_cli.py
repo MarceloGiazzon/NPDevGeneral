@@ -7713,12 +7713,12 @@ def _acceptance_verdict(results: list[dict], boot_ok: bool) -> dict:
 
 
 def _run_acceptance_in_process(args: argparse.Namespace) -> dict:
-    """AI-8: `acceptance run --in-process`. Procedure-form scenarios (when.procedure) run against the
+    """AI-8: `acceptance run --in-process`. Procedure- and flow-form scenarios (when.procedure / when.flow) run against the
     compiled model through runtimehost-core's InProcessAcceptanceRunner (the SAME ProcedureRunner a
-    generated app uses, an in-memory store, capability answers stubbed from the scenario) -- seconds,
+    generated app uses; flows run through the CLI's KernelRunner wiring; an in-memory store, capability answers stubbed from the scenario) -- seconds,
     no generate/build/boot. The JVM only OBSERVES ({ok, result, concepts, ...}); the `then` assertions
     are evaluated here by _eval_assertion, so there is one assertion grammar for both modes. HTTP
-    scenarios (when.path) are SKIPPED; flow scenarios report ERROR (not supported in-process yet)."""
+    scenarios (when.path) are SKIPPED."""
     if not args.model:
         raise CliError("acceptance run --in-process: --model is required.")
     model = Path(args.model).expanduser().resolve()

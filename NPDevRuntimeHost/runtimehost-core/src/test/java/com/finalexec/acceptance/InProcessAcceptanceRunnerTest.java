@@ -34,6 +34,11 @@ class InProcessAcceptanceRunnerTest {
           "bindings": [ { "adapter": "externalAi", "capability": "vendor" } ],
           "capabilities": [ { "name": "vendor", "operations": ["ask"], "type": "ExternalAiCapability" } ],
           "queries": [ { "name": "OpenTasks", "concept": "Task", "where": "status == 'OPEN'" } ],
+          "flows": [
+            { "name": "AskFlow", "concept": "Task", "steps": [
+              { "name": "ask", "type": "capabilityCall", "capability": "vendor", "operation": "ask",
+                "args": ["$input"], "output": "$answer" } ] }
+          ],
           "procedures": [
             { "name": "CloseAll", "steps": [
               { "name": "open", "type": "runQuery", "query": "OpenTasks", "concept": "Task", "target": "open" },
@@ -103,9 +108,31 @@ class InProcessAcceptanceRunnerTest {
     }
 
     @Test
+    void flowScenarioRunsTheKernelFlowWithTheStubbedCapability() throws Exception {
+        Map<String, Object> observed = InProcessAcceptanceRunner.observe(model(), scenario("""
+            { "stubs": { "vendor.ask": { "answer": "42" } },
+              "when": { "flow": "AskFlow", "input": { "q": "hi" } } }
+            """));
+
+        assertEquals(true, observed.get("ok"), () -> String.valueOf(observed));
+        assertEquals("OK", observed.get("status"));
+    }
+
+    @Test
+    void flowScenarioWithAnUnstubbedCapabilityFailsInsteadOfReachingAVendor() throws Exception {
+        Map<String, Object> observed = InProcessAcceptanceRunner.observe(model(),
+                scenario("{ \"when\": { \"flow\": \"AskFlow\", \"input\": { \"q\": \"hi\" } } }"));
+
+        assertEquals(false, observed.get("ok"), () -> String.valueOf(observed));
+        assertEquals("CAPABILITY_FAILED", observed.get("status"));
+        assertTrue(String.valueOf(observed.get("failureMessage")).contains("no stubs[\"vendor.ask\"]"), () -> String.valueOf(observed));
+    }
+
+    @Test
     void scenarioKindDetection() throws Exception {
         assertTrue(InProcessAcceptanceRunner.isInProcess(scenario("{ \"when\": { \"procedure\": \"P\" } }")));
         assertFalse(InProcessAcceptanceRunner.isInProcess(scenario("{ \"when\": { \"method\": \"GET\", \"path\": \"/x\" } }")));
+        assertTrue(InProcessAcceptanceRunner.isInProcess(scenario("{ \"when\": { \"flow\": \"F\" } }")));
         assertTrue(InProcessAcceptanceRunner.scenarioHasFlow(scenario("{ \"when\": { \"flow\": \"F\" } }")));
     }
 }
