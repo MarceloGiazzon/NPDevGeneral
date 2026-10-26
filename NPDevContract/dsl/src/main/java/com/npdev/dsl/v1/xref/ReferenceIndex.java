@@ -135,6 +135,9 @@ public final class ReferenceIndex {
     public static final String SITE_QUERY_AGGREGATE_FIELD = "query.aggregates.field";
     public static final String SITE_QUERY_WHERE = "query.where";
     public static final String SITE_QUERY_HAVING = "query.having";
+    /** A where/having only the v2 grammar accepts (OR groups, in, contains, is null, reference paths). */
+    public static final String SITE_QUERY_WHERE_V2 = "query.where.v2";
+    public static final String SITE_QUERY_HAVING_V2 = "query.having.v2";
 
     public static final String SITE_PROCEDURE_STEP_CONCEPT = "procedure.steps.concept";
     public static final String SITE_PROCEDURE_STEP_QUERY = "procedure.steps.query";
@@ -837,8 +840,14 @@ public final class ReferenceIndex {
                         Resolution.UNDECIDABLE);
                 return;
             }
+            targetEdges(owner, path, concept, target, SITE_QUERY_GROUP_BY_JOIN, SITE_QUERY_GROUP_BY);
+        }
+
+        /** One edge per hop of a parsed join path, then one for the final field. */
+        private void targetEdges(String owner, String path, String concept, GroupByJoinGrammar.Target target,
+                                 String hopSite, String fieldSite) {
             if (target instanceof GroupByJoinGrammar.Target.Direct direct) {
-                fieldOf(KIND_QUERY, owner, SITE_QUERY_GROUP_BY, path, concept, direct.field());
+                fieldOf(KIND_QUERY, owner, fieldSite, path, concept, direct.field());
                 return;
             }
             GroupByJoinGrammar.Target.Join join = (GroupByJoinGrammar.Target.Join) target;
@@ -846,9 +855,10 @@ public final class ReferenceIndex {
             int hop = 0;
             for (String referenceFieldName : join.referenceFields()) {
                 // A hop is a SEGMENT of the same dotted string the entry holds, so it shares the
-                // entry's path -- there is no separate JSON node to point at. The site
-                // (query.groupBy.join) is what distinguishes these edges from the final field's.
-                fieldOf(KIND_QUERY, owner, SITE_QUERY_GROUP_BY_JOIN, path, currentConcept, referenceFieldName);
+                // entry's path -- there is no separate JSON node to point at. The hop site
+                // (query.groupBy.join for a groupBy) is what distinguishes these edges from the
+                // final field's.
+                fieldOf(KIND_QUERY, owner, hopSite, path, currentConcept, referenceFieldName);
                 String next = referenceTargetOf(currentConcept, referenceFieldName);
                 if (next == null) {
                     // The hop itself is already reported by the edge above (or the field is not a
@@ -859,7 +869,7 @@ public final class ReferenceIndex {
                 currentConcept = next;
                 hop++;
             }
-            fieldOf(KIND_QUERY, owner, SITE_QUERY_GROUP_BY, path, currentConcept, join.targetField());
+            fieldOf(KIND_QUERY, owner, fieldSite, path, currentConcept, join.targetField());
         }
 
         /** The concept a reference field points at, or null when the field is absent or not a
@@ -902,11 +912,7 @@ public final class ReferenceIndex {
             try {
                 clauses = QueryPredicateGrammar.parse(expression);
             } catch (QueryPredicateGrammar.UnsupportedPredicateException ex) {
-                // Outside the compilable grammar. Not an orphan claim -- the query itself will be
-                // refused downstream by the code that must actually compile it, and duplicating
-                // that refusal here would report the same defect twice under a worse name.
-                add(KIND_QUERY, owner, site, path, KIND_EXPRESSION, expression, null,
-                        Resolution.UNDECIDABLE);
+                queryPredicateV2(owner, site, path, concept, expression, aliases);
                 return;
             }
             int position = 0;
@@ -917,6 +923,45 @@ public final class ReferenceIndex {
                     fieldOf(KIND_QUERY, owner, site, path + "#" + position, concept, clause.field());
                 }
                 position++;
+            }
+        }
+
+        /**
+         * A predicate the v1 grammar refuses but {@link QueryPredicateGrammar#parseGroups} accepts (OR
+         * groups, {@code in}, {@code contains}, {@code is null}, a reference-path left side). Its
+         * fields were invisible to the index, so usage, impact and rename analysis missed them.
+         *
+         * <p>Indexed under the {@code .v2} twin of the site, which {@code ReferenceIntegrityValidation}
+         * does not report orphans for: {@code PackValidation.validateWhereCompiles} already checks a
+         * join path, and deliberately does not check a plain field's existence, so widening the index
+         * must not make validation stricter than the v1 contract. Clause numbers run across all groups
+         * in textual order. A predicate even v2 refuses stays UNDECIDABLE, as before.
+         */
+        private void queryPredicateV2(String owner, String site, String path, String concept,
+                                      String expression, Set<String> aliases) {
+            List<List<QueryPredicateGrammar.PredicateClause>> groups;
+            try {
+                groups = QueryPredicateGrammar.parseGroups(expression);
+            } catch (QueryPredicateGrammar.UnsupportedPredicateException ex) {
+                // Outside the compilable grammar. Not an orphan claim -- the query itself will be
+                // refused downstream by the code that must actually compile it, and duplicating
+                // that refusal here would report the same defect twice under a worse name.
+                add(KIND_QUERY, owner, site, path, KIND_EXPRESSION, expression, null,
+                        Resolution.UNDECIDABLE);
+                return;
+            }
+            String v2Site = SITE_QUERY_WHERE.equals(site) ? SITE_QUERY_WHERE_V2 : SITE_QUERY_HAVING_V2;
+            int position = 0;
+            for (List<QueryPredicateGrammar.PredicateClause> group : groups) {
+                for (QueryPredicateGrammar.PredicateClause clause : group) {
+                    GroupByJoinGrammar.Target left = clause.path();
+                    boolean alias = left instanceof GroupByJoinGrammar.Target.Direct direct
+                            && aliases.contains(lower(direct.field()));
+                    if (!alias) {
+                        targetEdges(owner, path + "#" + position, concept, left, v2Site, v2Site);
+                    }
+                    position++;
+                }
             }
         }
 

@@ -631,6 +631,88 @@ class ReferenceIndexTest {
                         .anyMatch(edge -> edge.site().equals(ReferenceIndex.SITE_QUERY_GROUP_BY)));
     }
 
+    private static final String QUERY_WHERE_MODEL = """
+            {
+              "namespace": "xref.querywherev2",
+              "dslVersion": "1.0.0",
+              "version": "1.0",
+              "concepts": [
+                { "name": "Invoice", "ui": { "label": "Invoice" }, "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "status", "type": "string", "ui": { "label": "Status" } }
+                ] },
+                { "name": "Shipment", "ui": { "label": "Shipment" }, "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "invoice", "type": "reference",
+                    "reference": { "target": "Invoice", "via": "id" } }
+                ] },
+                { "name": "DeliveryAttempt", "ui": { "label": "Delivery attempt" }, "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "shipment", "type": "reference",
+                    "reference": { "target": "Shipment", "via": "id" } }
+                ] }
+              ],
+              "queries": [
+                { "name": "LegacyShape", "concept": "Invoice", "where": "status == 'paid'" },
+                { "name": "EitherStatus", "concept": "Invoice",
+                  "where": "status == 'paid' || status == 'overdue'" },
+                { "name": "ViaInvoice", "concept": "DeliveryAttempt",
+                  "where": "shipment.invoice.status == 'paid'" }
+              ]
+            }
+            """;
+
+    private static List<ReferenceEdge> edgesOf(ReferenceIndex index, String query) {
+        return index.edges().stream()
+                .filter(edge -> edge.fromKind().equals(ReferenceIndex.KIND_QUERY) && edge.fromName().equals(query))
+                .filter(edge -> edge.site().startsWith("query.where"))
+                .collect(Collectors.toList());
+    }
+
+    @Test
+    void aWhereTheLegacyGrammarParsesKeepsItsSiteAndItsPath() throws Exception {
+        // No behaviour change for the shape that was already indexed.
+        List<ReferenceEdge> edges = edgesOf(ReferenceIndex.build(parse(QUERY_WHERE_MODEL)), "LegacyShape");
+
+        assertEquals(1, edges.size(), describe(edges));
+        assertEquals(ReferenceIndex.SITE_QUERY_WHERE, edges.get(0).site());
+        assertTrue(edges.get(0).path().endsWith(".where#0"), edges.get(0).path());
+        assertEquals("status", edges.get(0).toName().replaceAll(".*\\.", ""));
+    }
+
+    @Test
+    void anOrGroupedWhereIsIndexedNotLeftInvisible() throws Exception {
+        List<ReferenceEdge> edges = edgesOf(ReferenceIndex.build(parse(QUERY_WHERE_MODEL)), "EitherStatus");
+
+        assertEquals(2, edges.size(), "one edge per clause, across both OR groups: " + describe(edges));
+        assertTrue(edges.stream().allMatch(edge -> edge.site().equals(ReferenceIndex.SITE_QUERY_WHERE_V2)));
+        assertEquals(List.of("#0", "#1"), edges.stream()
+                .map(edge -> edge.path().substring(edge.path().lastIndexOf('#'))).sorted().toList());
+        assertTrue(edges.stream().allMatch(edge -> edge.resolution() == Resolution.RESOLVED), describe(edges));
+    }
+
+    @Test
+    void aReferencePathInAWhereIsWalkedHopByHop() throws Exception {
+        ReferenceIndex index = ReferenceIndex.build(parse(QUERY_WHERE_MODEL));
+
+        assertTrue(index.usagesOf("Shipment.invoice").stream().anyMatch(edge ->
+                        edge.site().equals(ReferenceIndex.SITE_QUERY_WHERE_V2) && edge.fromName().equals("ViaInvoice")),
+                "the intermediate hop must be indexed, so a rename of it can be found");
+        assertTrue(index.usagesOf("Invoice.status").stream().anyMatch(edge ->
+                        edge.site().equals(ReferenceIndex.SITE_QUERY_WHERE_V2) && edge.fromName().equals("ViaInvoice")));
+        assertEquals(List.of(), unresolvedOf(index), describe(unresolvedOf(index)));
+    }
+
+    @Test
+    void anOutOfGrammarWhereStaysUndecidableNotAnOrphanClaim() throws Exception {
+        ReferenceIndex index = ReferenceIndex.build(parse(QUERY_WHERE_MODEL.replace(
+                "status == 'paid' || status == 'overdue'", "status ~~ 'paid'")));
+
+        List<ReferenceEdge> edges = edgesOf(index, "EitherStatus");
+        assertEquals(1, edges.size(), describe(edges));
+        assertEquals(Resolution.UNDECIDABLE, edges.get(0).resolution());
+    }
+
     @Test
     void anActionInputNamingAProcedureVarIsResolvedNotOrphaned() throws Exception {
         // RenameOrderStatusProcedure declares NO parameters and reads $newStatus. The workbench

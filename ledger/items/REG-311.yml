@@ -1,0 +1,47 @@
+id: REG-311
+title: >-
+  The reference index parsed query where/having with the pre-R4.3 predicate grammar, so every field inside an OR,
+  in, contains, is-null or reference-path predicate was invisible to usage, impact and rename analysis
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-10-26
+closed: 2026-10-26
+source: >-
+  2026-10-26 exploratory sweep. R4.3 (QUAL-28) moved PackValidation to QueryPredicateGrammar.parseGroups in lockstep
+  with the runtime but did not move ReferenceIndex, the one other consumer.
+surface: ReferenceIndex.queryPredicate, ReferenceIntegrityValidation.REPORTED_ELSEWHERE
+detail: |
+  ReferenceIndex.queryPredicate called QueryPredicateGrammar.parse, which refuses ||, in, contains, is null and a
+  dotted left side, and recorded the whole where as one UNDECIDABLE expression edge. A field named only inside such
+  a predicate therefore had no usage edge: npdev inspect usage and impact analysis did not list the query, orphan
+  detection could not see a dangling name, and a rename cascade left the stale where behind with no warning.
+resolution: >-
+  Done when a where/having only the v2 grammar accepts has its fields indexed, without making validation stricter
+  than the contract PackValidation already enforces.
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/ReferenceIndexTest.java
+  asserts: >-
+    an OR-grouped where gets one RESOLVED edge per clause on query.where.v2; a reference path is walked hop by hop;
+    a where the legacy grammar parses keeps its query.where site and #n path; one even v2 refuses stays UNDECIDABLE.
+    ReferenceIntegrityValidationTest pins that an unknown plain field in an OR-grouped where is still not an error
+  provenRed: true
+note: >-
+  2026-10-26: when parse refuses, queryPredicateV2 retries with parseGroups and indexes each clause under the new
+  sites query.where.v2 / query.having.v2 (clause numbers run across all groups in textual order; a join path goes
+  through the targetEdges helper extracted from groupByEdges). Both sites are in REPORTED_ELSEWHERE because
+  PackValidation.validateWhereCompiles already checks join paths and deliberately does not check a plain field's
+  existence, so no model that validated before fails now. Red-checked both ways: with the v2 fallback disabled the OR
+  and join tests fail; with the two REPORTED_ELSEWHERE entries removed the validation test fails. dsl suite 1290
+  tests green, aiKnowledge gate green. The rename cascade (npdev_rename_cascade.py) now SEES these edges: any path
+  carrying a #n token gets _rename_identifier (checked by calling _rewriter_for on query.where.v2), so renaming a
+  field used in an OR/in/contains where now rewrites it instead of silently leaving it stale. That rewrite is
+  whole-string, exactly as for the legacy where, so in a join path it would also rename a same-named field that
+  belongs to ANOTHER concept in the same where string (and a hop name equal to the final field's). Not guarded by a
+  cascade test yet; per-hop-aware rewriting is a separate piece of work, not filed here.
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/xref/ReferenceIndex.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ReferenceIntegrityValidation.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/ReferenceIndexTest.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/ReferenceIntegrityValidationTest.java

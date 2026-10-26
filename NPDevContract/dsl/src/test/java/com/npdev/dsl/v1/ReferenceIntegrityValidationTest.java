@@ -71,6 +71,18 @@ class ReferenceIntegrityValidationTest {
     }
 
     @Test
+    void anOrGroupedWhereNamingAnUnknownPlainFieldIsNotNewlyAnError() throws Exception {
+        // The v2 where is indexed so usage/rename analysis can see it, but PackValidation deliberately
+        // does not check a plain field's existence (the runtime filters on it and never matches), so
+        // indexing it must not make validation stricter than that contract already was.
+        String json = modelWith("", """
+                , { "name": "EitherOr", "concept": "WidgetOrder",
+                    "where": "status == 'a' || totallyMadeUpField == 'b'" }""");
+
+        assertEquals(List.of(), validate(json).getErrors());
+    }
+
+    @Test
     void panelLayoutFieldsGhostIsAnError() throws Exception {
         String json = modelWith("", "").replace(
                 "\"fields\": [\"customerEmail\"]",

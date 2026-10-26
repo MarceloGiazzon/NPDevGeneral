@@ -70,6 +70,10 @@ final class ReferenceIntegrityValidation {
             ReferenceIndex.SITE_QUERY_GROUP_BY,
             ReferenceIndex.SITE_QUERY_GROUP_BY_JOIN,
             ReferenceIndex.SITE_QUERY_AGGREGATE_FIELD,
+            // PackValidation.validateWhereCompiles -> a v2 where/having's join paths (field, reference,
+            // access.read); a plain field's existence is deliberately unchecked there, and stays so.
+            ReferenceIndex.SITE_QUERY_WHERE_V2,
+            ReferenceIndex.SITE_QUERY_HAVING_V2,
             // FlowValidation.validateFlows -> step capability/event/invariant existence.
             ReferenceIndex.SITE_FLOW_CONCEPT,
             ReferenceIndex.SITE_FLOW_STEP_CAPABILITY,
