@@ -61,7 +61,8 @@ final class UnenforceableAccessRuleCheck {
                 continue;
             }
             boolean kernelControlled = settingResolver.value(
-                    NpdevSettings.CRUD_KERNEL_CONTROLLED, SettingTarget.concept(concept.getName()));
+                    NpdevSettings.CRUD_KERNEL_CONTROLLED,
+                    SettingTarget.forConcept(concept.getModule(), concept.getName()));
             if (!kernelControlled) {
                 offenders.add("  - concept '" + concept.getName() + "' declares " + String.join(" and ", declared));
             }

@@ -176,7 +176,13 @@ public final class ServiceEmitter extends AbstractEmitter {
             ctx.put("eventBusAdapter", eventBusAdapter);
             ctx.put("persistenceRepository", "repository".equalsIgnoreCase(persistenceAdapter));
             ctx.put("eventBusInproc", "inproc".equalsIgnoreCase(eventBusAdapter));
-            ctx.put("kernelControlled", kernelControlled);
+            // Resolved per concept, like UnenforceableAccessRuleCheck: crud.kernelControlled is
+            // overridable at concept scope, so the app-level boolean is only the fallback for a
+            // caller with no resolver.
+            ctx.put("kernelControlled", settingResolver == null
+                    ? kernelControlled
+                    : settingResolver.value(NpdevSettings.CRUD_KERNEL_CONTROLLED,
+                            SettingTarget.forConcept(entity.getModule(), entity.getName())));
             // R5.4: gates the generated restore() method -- delete() itself needs NO gating here,
             // since JdbcBusinessConceptStore#deleteById already branches on the concept's OWN
             // softDelete flag (schema-aware, via the CompiledModel it was built with); only restore

@@ -3633,10 +3633,10 @@
           "expect": {
             "status": 200,
             "json": {
-              "$.items[0].executionId": "${execId}",
-              "$.items[0].status": "FAILED_PERMANENT",
-              "$.items[0].compensationStatus": "COMPENSATED",
-              "$.items[0].compensatedSteps": {
+              "$.items[?executionId=${execId}].executionId": "${execId}",
+              "$.items[?executionId=${execId}].status": "FAILED_PERMANENT",
+              "$.items[?executionId=${execId}].compensationStatus": "COMPENSATED",
+              "$.items[?executionId=${execId}].compensatedSteps": {
                 "gt": 0
               }
             }

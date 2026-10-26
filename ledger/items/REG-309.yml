@@ -1,0 +1,42 @@
+id: REG-309
+title: >-
+  A per-concept crud.kernelControlled override was ignored by generation: the service emitter applied the app-level
+  value to every concept, so a concept-level true under an app-level false generated no authorization calls and
+  passed the REG-44 check
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-10-26
+closed: 2026-10-26
+source: >-
+  2026-10-25 handoff lead, confirmed 2026-10-26 with a generated-output test: UnenforceableAccessRuleCheck resolved
+  the setting per concept while GeneratorFacade resolved it once at SettingTarget.app() and ServiceEmitter put that
+  one boolean in every concept's template context.
+surface: ServiceEmitter, UnenforceableAccessRuleCheck, service-base.mustache
+detail: |
+  crud.kernelControlled is overridable at concept scope (config.json overrides {"concept:X": ...}). Two directions
+  were wrong. App true and concept false: the concept's ServiceBase still carried checkCrudPermission, so the
+  opt-out was ignored. App false and concept true: REG-44's check saw the concept as enforced and passed, but the
+  emitter generated that concept's service with no authorization calls at all, so its access.read/access.write
+  rules were silently unenforced and nothing diagnosed it. service-base.mustache is the only template that reads
+  kernelControlled; the controller template mentions checkCrudPermission only in comments.
+resolution: >-
+  Done when each concept's generated service follows its own resolved crud.kernelControlled and the REG-44 check and
+  the emitter resolve it with the same target, with a generated-output test for both directions.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/ServiceBasePerConceptKernelControlTest.java
+  asserts: >-
+    concept:Note=false under an app-level true drops checkCrudPermission from Note only; concept:Ticket=true under
+    an app-level false keeps it on Ticket only; with no override every concept follows the app value
+  provenRed: true
+note: >-
+  2026-10-26: ServiceEmitter resolves the setting per concept with SettingTarget.forConcept(module, name), keeping the
+  boolean parameter only as the fallback for a caller with no resolver; UnenforceableAccessRuleCheck uses the same
+  forConcept target (it used SettingTarget.concept, which skipped module scope). Reverting the two production edits
+  fails 2 of the 3 tests; with them all 3 pass. run-generator-gate.ps1 green; InMemory behaviour probes 135/135
+  (6 skipped for needing an h2local or restart variant).
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/ServiceEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/api/UnenforceableAccessRuleCheck.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/ServiceBasePerConceptKernelControlTest.java

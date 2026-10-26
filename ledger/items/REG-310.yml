@@ -1,0 +1,35 @@
+id: REG-310
+title: >-
+  Probe fl-monitor-reports-compensated-execution asserted on items[0] of the tenant-wide execution history, so any
+  other execution updated between its POST and its GET made it flake on InMemory
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-10-26
+closed: 2026-10-26
+source: >-
+  One recorded InMemory failure in the 2026-10-24 gate run (digest log 20261024T232903Z): items[0] was a different,
+  COMPLETED execution (compensationStatus NONE, compensatedSteps 0), not the failed one the probe had just created.
+surface: NPDevSamples/dsl-conformance-max/behavior-probes/20-flow.json
+detail: |
+  ExecutionMonitorService.history() sorts every execution of the tenant by updatedAtEpochMs descending, whatever the
+  flow, and InProcFlowInstanceStore.findRecent breaks a same-millisecond tie by random executionId. The probe took
+  items[0] as "the execution I just failed", so an unrelated asynchronous write (scheduler or resume sweep, a
+  delaySeconds:0 scheduleEvent from an earlier successful PlaceWidgetOrder, an event-triggered run) could take the first
+  slot. The compensation counter and the REG-260 fix were not at fault; the probe picked the wrong row. Which
+  background activity wrote the interfering row was not identified.
+resolution: >-
+  Done when the probe selects its row by executionId rather than by position.
+guard:
+  kind: script
+  ref: scripts/quality/run-behavior-probes.ps1
+  asserts: >-
+    fl-monitor-reports-compensated-execution reads status, compensationStatus and compensatedSteps from the history
+    item whose executionId equals the one the POST returned, whatever its position
+  provenRed: false
+note: >-
+  2026-10-26: the four assertions now use $.items[?executionId=${execId}].<field>. Not proven red: the failure was a
+  rare ordering race, so there is no deterministic way to reproduce it; the probe passes in the 135/135 InMemory run.
+  The history ordering itself (whole-tenant, millisecond resolution, random tie-break) is unchanged and is by design.
+files:
+  - NPDevSamples/dsl-conformance-max/behavior-probes/20-flow.json
