@@ -1,19 +1,18 @@
 {
-  "closedAt": "2026-10-26T22:50:49.8716190Z",
+  "closedAt": "2026-10-26T22:58:54.0340775Z",
   "branch": "main",
-  "head": "cca48555",
-  "headSubject": "fix(xref): REG-311 -- index the fields inside a v2 where/having (OR, in, contains, is null, reference paths)",
-  "summary": "Fixed REG-309 (per-concept crud.kernelControlled was ignored by generation: a concept-level true under an app-level false generated no authz and passed REG-44), REG-310 (probe fl-monitor-reports-compensated-execution raced on items[0]; now selects by executionId) and REG-311 (ReferenceIndex now indexes fields inside v2 where/having: OR, in, contains, is null, reference paths, under query.where.v2/query.having.v2). All pushed to main (88cd72ff, cca48555). Candidate #3 (properties[] with internal.tables off) was investigated and NOT done: a generation-time error would break WmsOffice, dsl-conformance-max and pigmentampas.",
-  "nextStep": "Pick one: (a) safe version of properties[] without internal.tables: in NPDevKernel/kernel/.../properties/DefaultPropertyResolver.set() throw a dedicated, clearly worded exception when workspace::PropertyValue is not in the live model (needs an HTTP mapping like PropertyNotSettableAtScopeException), with a unit test beside PropertyResolverUnknownConceptTest; or (b) in-process acceptance runner support for when.flow (NPDevRuntimeHost/runtimehost-core/.../acceptance/InProcessAcceptanceRunner.java:51,76,111, not in the ledger yet). Optional follow-up from REG-311: make npdev_rename_cascade.py rewrite query.where.v2 per hop instead of whole-string, with a cascade test. OWN-2 and AIP-4 4.5 still need the owner (AIP-4: the Manager exe at Build/manager-target/release is stale, built 2026-09-09; Rust + MSVC not installed).",
+  "head": "35f1e4db",
+  "headSubject": "fix(properties): PropertyResolver.set() says the store is not composed instead of leaking 'Unknown concept'",
+  "summary": "properties[] without internal.tables: DefaultPropertyResolver.set() now throws PropertyStoreNotComposedException (PROPERTY_STORE_NOT_COMPOSED) instead of leaking IllegalArgumentException 'Unknown concept'; PropertyResolverController maps it to 409. A model that declares workspace::PropertyValue keeps the raw failure. Pushed as 35f1e4db.",
+  "nextStep": "Optional (b): in-process acceptance runner support for when.flow (NPDevRuntimeHost/runtimehost-core/.../acceptance/InProcessAcceptanceRunner.java:51,76,111, not in the ledger yet); or make npdev_rename_cascade.py rewrite query.where.v2 per hop with a cascade test. First restage jars (sync-runtimehost-libs.ps1 -BuildLocalJars) before compiling RuntimeHost against the new exception. OWN-2 and AIP-4 4.5 still need the owner.",
   "plan": "",
   "blocked": "",
-  "verified": "REG-309/310: new ServiceBasePerConceptKernelControlTest 3/3 (2 of 3 red without the fix), neighbouring generator tests green, run-generator-gate.ps1 green, InMemory behaviour probes 135/135 (6 skipped, need h2local/restart variants). REG-311: dsl module 1290 tests, 0 failures; ReferenceIndexTest and ReferenceIntegrityValidationTest red-checked both ways; run-ai-knowledge-gate.ps1 green (52 checks). NOT run: run-runtimehost-gate, run-kernel-quality-gate, weeklyPaperwork, h2local probe variant; a bare run-all-gates was not run after the final commit.",
+  "verified": "PropertyResolverUnknownConceptTest 3/3 and all com.npdev.kernel.properties.* green via :kernel:test. NOT run: RuntimeHost compile of the controller change (needs restaged kernel jar), run-kernel-quality-gate, run-all-gates. Gotcha: gradle run created NPDevKernel/.gradle which blocks the commit hook (slimness) -- delete it before committing.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "cca48555 fix(xref): REG-311 -- index the fields inside a v2 where/having (OR, in, contains, is null, reference paths)",
-    "88cd72ff fix(generator): REG-309 -- crud.kernelControlled is resolved per concept, not once for the app",
-    "10805bd3 chore(session): handoff -- REG-308 residue closed; only OWN-2 and AIP-4 4.5 remain"
+    "35f1e4db fix(properties): PropertyResolver.set() says the store is not composed instead of leaking 'Unknown concept'",
+    "029418e7 chore(session): handoff -- REG-309/310/311 closed; next is properties[] set() message or when.flow in the acceptance runner"
   ]
 }
