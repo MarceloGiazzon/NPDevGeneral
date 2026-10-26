@@ -9,6 +9,7 @@ import com.npdev.kernel.properties.PropertyExplanation;
 import com.npdev.kernel.properties.PropertyNotDeclaredException;
 import com.npdev.kernel.properties.PropertyNotSettableAtScopeException;
 import com.npdev.kernel.properties.PropertyResolver;
+import com.npdev.kernel.properties.PropertyStoreNotComposedException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -103,6 +104,8 @@ public class PropertyResolverController {
             propertyResolver.set(body.scopeType(), scopeId, key, body.value(), context);
         } catch (PropertyNotSettableAtScopeException notSettable) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, notSettable.getMessage());
+        } catch (PropertyStoreNotComposedException notComposed) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, notComposed.getMessage());
         }
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("key", key);

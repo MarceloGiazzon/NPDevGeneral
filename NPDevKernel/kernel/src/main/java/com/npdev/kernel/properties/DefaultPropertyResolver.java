@@ -180,7 +180,16 @@ public final class DefaultPropertyResolver implements PropertyResolver {
         data.put("propKey", propertyKey);
         data.put("propValue", propertyValue == null ? null : String.valueOf(propertyValue));
 
-        conceptGateway.save(new ConceptWriteRequest(CONCEPT_NAME, id, context.tenantId(), data), context);
+        try {
+            conceptGateway.save(new ConceptWriteRequest(CONCEPT_NAME, id, context.tenantId(), data), context);
+        } catch (IllegalArgumentException unknownConcept) {
+            // A JDBC store refuses the concept an app never composed (see findRow); say what is missing
+            // instead of leaking "Unknown concept". A model that DOES declare it keeps the real failure.
+            if (isConceptDeclared(model)) {
+                throw unknownConcept;
+            }
+            throw new PropertyStoreNotComposedException(propertyKey, CONCEPT_NAME);
+        }
         // Bump BEFORE clearing: any explain() racing this set() either snapshots the OLD version (its
         // eventual cache.put is keyed by a version nobody will look up again once the bump below is
         // visible) or the NEW one (a genuine post-write read) -- never a version that could serve a
@@ -230,13 +239,16 @@ public final class DefaultPropertyResolver implements PropertyResolver {
             // table: a JDBC store refuses the unknown concept where the in-memory one answers an empty page.
             // Nothing can be stored, so nothing is set -- the declared default wins. A model that DOES declare
             // the concept keeps the failure, it is a real fault there.
-            boolean declared = model.getConcepts().stream().anyMatch(c -> CONCEPT_NAME.equals(c.getName()));
-            if (declared) {
+            if (isConceptDeclared(model)) {
                 throw unknownConcept;
             }
             return Optional.empty();
         }
         return page.items().stream().findFirst();
+    }
+
+    private static boolean isConceptDeclared(CompiledModel model) {
+        return model.getConcepts().stream().anyMatch(c -> CONCEPT_NAME.equals(c.getName()));
     }
 
     /**

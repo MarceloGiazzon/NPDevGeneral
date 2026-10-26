@@ -1,5 +1,6 @@
 package com.npdev.kernel.properties;
 
+import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledProperty;
 import com.npdev.dsl.v1.compiled.CompiledPropertyScope;
@@ -20,6 +21,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * REG-306: an app that did not compose {@code workspace::PropertyValue} (internal.tables off) is
@@ -62,8 +64,30 @@ class PropertyResolverUnknownConceptTest {
     }
 
     @Test
-    void writeStillFailsForAnUndeclaredConcept() {
+    void writeFailsWithAClearlyWordedExceptionForAnUndeclaredConcept() {
         PropertyResolver resolver = resolver();
+
+        PropertyStoreNotComposedException thrown = assertThrows(PropertyStoreNotComposedException.class,
+                () -> resolver.set("tenant", "t1", "pageRows", "50", CTX));
+
+        assertEquals("PROPERTY_STORE_NOT_COMPOSED", thrown.code());
+        assertTrue(thrown.getMessage().contains("pageRows"));
+        assertTrue(thrown.getMessage().contains("workspace::PropertyValue"));
+    }
+
+    @Test
+    void writeKeepsTheRawFailureWhenTheModelDoesDeclareTheConcept() {
+        CompiledModel declaring = new CompiledModel(
+                "wms.props", "1.0.0", "1.0",
+                Map.of("workspace::PropertyValue",
+                        new CompiledConcept("workspace::PropertyValue", "PropertyValue", "property_value", List.of())),
+                List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                null, null, List.of(),
+                List.of(TENANT_SCOPE),
+                List.of(PAGE_ROWS));
+        PropertyResolver resolver = new DefaultPropertyResolver(new UnknownConceptGateway(), AuditLogStore.noop(), () -> declaring);
 
         assertThrows(IllegalArgumentException.class,
                 () -> resolver.set("tenant", "t1", "pageRows", "50", CTX));

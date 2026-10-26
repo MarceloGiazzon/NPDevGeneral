@@ -38,7 +38,8 @@ public interface PropertyResolver {
      * cascade state -- "explicitly set to null" -- not a delete). Enforced at WRITE time only:
      * {@code settableAt} does not constrain read-time resolution, only which scopes may hold a row.
      * Throws {@link PropertyNotSettableAtScopeException} when {@code scopeType} is not one of the
-     * property's declared {@code settableAt} values. Every set is audited, including a set to null.
+     * property's declared {@code settableAt} values, and {@link PropertyStoreNotComposedException} when the
+     * app never composed {@code workspace::PropertyValue}. Every set is audited, including a set to null.
      */
     void set(String scopeType, String scopeId, String propertyKey, Object propertyValue, ExecutionContext context);
 }
