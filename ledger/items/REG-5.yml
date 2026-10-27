@@ -5,7 +5,7 @@ severity: LOW
 status: DONE
 opened: 2026-07-21
 closed: 2026-07-21
-verification: NOT_VERIFIED
+verification: VERIFIED_LIVE
 source: LNCH-1 programme inheritance, re-verified 2026-07-21
 surface: quality-gates/runtimehost-gate
 detail: |
@@ -18,3 +18,5 @@ detail: |
   package-convention checks were a redundant proxy that would only duplicate the allowlist if
   rewritten. Retired to informational-only (reversible) with a dated rationale in
   run-observability-hardening.ps1, run-runtimehost-gate.ps1, and OPEN_GAPS_AND_ROADMAP.md.
+note: >-
+  2026-10-27 verification: the blocking exact-list enforcement this retirement relies on holds -- runtime-surface-allowlist-report.json is 'passed' inside a runtimeHost gate run that exited 0 (443s) and runtime-security-consistency is 6/6. VERIFIED_LIVE.

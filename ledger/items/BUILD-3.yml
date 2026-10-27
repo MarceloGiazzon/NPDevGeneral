@@ -7,7 +7,7 @@ severity: LOW
 status: DONE
 opened: 2026-08-23
 closed: 2026-08-25
-verification: NOT_VERIFIED
+verification: VERIFIED_LIVE
 source: 2026-08-23 platform audit, found while trying to locate a failing DSL test's XML report.
 surface: ci/windows, build-tooling/root-resolution
 files:
@@ -58,3 +58,5 @@ guard:
     established by direct inspection of the two env blocks and Get-NPDevBuildRoot's fallback logic,
     matching this item's own `source` line (a real debugging cycle on 2026-08-23), not a synthetic
     reproduction.
+note: >-
+  2026-10-27 verification: GitHub Actions run 40587080585 (NPDev CI Validation, push to main, success) completed its Windows job 'NPDev segmented CI validation' (ci-validation, env block pins NPDEV_BUILD_ROOT at workflow line 512) with no build-root mismatch. VERIFIED_LIVE.
