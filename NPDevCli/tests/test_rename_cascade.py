@@ -238,6 +238,70 @@ class ApplyCascadeTest(unittest.TestCase):
         self.assertIn("changed nothing", str(caught.exception))
 
 
+class QueryPredicateClauseTest(unittest.TestCase):
+    """`#N` on a query where/having is a CLAUSE number (REG-311), so each clause is rewritten on its own."""
+
+    @staticmethod
+    def _model(where: str) -> dict:
+        return {"queries": [{"name": "Q", "concept": "Order", "where": where}]}
+
+    @staticmethod
+    def _q_edge(clause: int, to_name: str, site: str = "query.where.v2") -> dict:
+        return _edge(f"queries[Q].where#{clause}", site, to_name, owner="Order",
+                     from_kind="query", from_name="Q")
+
+    def test_a_field_mentioned_in_two_clauses_is_renamed_in_both_not_refused(self) -> None:
+        model = self._model("status == 'A' || status == 'B'")
+
+        cascade.apply_cascade(model, [self._q_edge(i, "Order.status") for i in range(2)], "status", "state")
+
+        self.assertEqual("state == 'A' || state == 'B'", model["queries"][0]["where"])
+
+    def test_only_the_reference_path_target_is_renamed_not_the_owners_same_named_field(self) -> None:
+        model = self._model("name == 'x' && customer.name == 'y'")
+
+        cascade.apply_cascade(model, [self._q_edge(1, "Customer.name")], "name", "title")
+
+        self.assertEqual("name == 'x' && customer.title == 'y'", model["queries"][0]["where"])
+
+    def test_literals_placeholders_user_refs_and_operator_words_are_never_clause_paths(self) -> None:
+        model = self._model(
+            "name in ('name','b') && owner == :name && x is not null && customer.name contains $user.id")
+
+        cascade.apply_cascade(model, [self._q_edge(0, "Order.name")], "name", "title")
+
+        self.assertEqual(
+            "title in ('name','b') && owner == :name && x is not null && customer.name contains $user.id",
+            model["queries"][0]["where"])
+
+    def test_an_ambiguous_path_is_refused_not_guessed(self) -> None:
+        model = self._model("name.name == 'x'")
+
+        with self.assertRaises(cascade.CascadeRefusal):
+            cascade.apply_cascade(model, [self._q_edge(0, "Order.name")], "name", "title")
+
+    def test_a_having_clause_uses_the_same_numbering(self) -> None:
+        model = {"queries": [{"name": "Q", "concept": "Order", "having": "total > 1 && total < 9"}]}
+        edges = [_edge(f"queries[Q].having#{i}", "query.having.v2", "Order.total", owner="Order",
+                       from_kind="query", from_name="Q") for i in range(2)]
+
+        cascade.apply_cascade(model, edges, "total", "sum")
+
+        self.assertEqual("sum > 1 && sum < 9", model["queries"][0]["having"])
+
+
+class FreeTextExpressionTest(unittest.TestCase):
+    def test_an_expression_mentioning_the_field_twice_is_rewritten_once_not_refused(self) -> None:
+        model = {"panels": [{"name": "P", "fieldBindings": [{"visibleWhen": "status == 'A' || status == 'B'"}]}]}
+        edges = [_edge(f"panels[P].fieldBindings[0].visibleWhen#{i}", "panel.fieldBindings.predicate",
+                       "Patient.status") for i in (0, 2)]
+
+        edits = cascade.apply_cascade(model, edges, "status", "state")
+
+        self.assertEqual(1, len(edits), edits)
+        self.assertEqual("state == 'A' || state == 'B'", model["panels"][0]["fieldBindings"][0]["visibleWhen"])
+
+
 class RemainingReferencesTest(unittest.TestCase):
     def test_it_reports_edges_still_pointing_at_the_old_name(self) -> None:
         edges = [_edge("queries[Q].orderBy[0]", "query.orderBy", "Patient.birthDay",

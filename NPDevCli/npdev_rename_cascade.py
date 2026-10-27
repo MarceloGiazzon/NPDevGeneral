@@ -164,6 +164,56 @@ def _rename_sorted(text: str, old: str, new: str) -> str:
     return _rename_dotted_segment(text, old, new)
 
 
+# Words that sit in a predicate's operator position or are literals, never a field path.
+_PREDICATE_WORDS = frozenset({"in", "contains", "startsWith", "is", "not", "null", "true", "false"})
+_PATH_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*")
+
+# Sites whose `#N` is a CLAUSE number (ReferenceIndex numbers clauses in textual order across the
+# || groups), as opposed to the "Nth identifier" of a free-text expression.
+_CLAUSE_SITES = frozenset({"query.where", "query.where.v2", "query.having", "query.having.v2"})
+
+
+def _predicate_path_tokens(text: str) -> list[re.Match]:
+    """The left-hand field path of each clause, in textual order -- the same order `#N` counts.
+
+    Quoted literals are skipped, and so is anything introduced by `:` (a bind placeholder) or `$`
+    (`$user.id`), and the operator words, which leaves exactly one path token per clause.
+    """
+    spans = [m.span() for m in re.finditer(r"'[^']*'", text)]
+    tokens = []
+    for match in _PATH_TOKEN_RE.finditer(text):
+        start = match.start()
+        if any(a <= start < b for a, b in spans):
+            continue
+        if start > 0 and text[start - 1] in ":$.":
+            continue
+        if match.group(0) in _PREDICATE_WORDS:
+            continue
+        tokens.append(match)
+    return tokens
+
+
+def _rename_predicate_clause(text: str, clause: int, old: str, new: str) -> str:
+    """Rename `old` inside clause number `clause` only, leaving every other clause alone.
+
+    A whole-string rename is wrong twice over: a `where` mentioning the field in two clauses was
+    rewritten by the first edge and then refused by the second ("changed nothing"), and
+    `name == 'x' && customer.name == 'y'` had the OWNER's own `name` rewritten when only the
+    reference path's target was being renamed. Within the clause the path is segment-wise, and the
+    segment is renamed only when exactly one equals `old` -- `a.a` cannot say which hop is meant, so
+    that is left unchanged and the caller refuses.
+    """
+    tokens = _predicate_path_tokens(text)
+    if clause >= len(tokens):
+        return text
+    token = tokens[clause]
+    segments = token.group(0).split(".")
+    if segments.count(old) != 1:
+        return text
+    renamed = ".".join(new if segment == old else segment for segment in segments)
+    return text[:token.start()] + renamed + text[token.end():]
+
+
 def _rewriter_for(site: str, token_index: str | None) -> Callable[[str, str, str], str]:
     """Pick how the string at a site should be transformed.
 
@@ -270,13 +320,20 @@ def apply_cascade(model: dict, edges: list[dict], old_field: str, new_field: str
     seen_paths: set[str] = set()
     for edge in edges:
         path = str(edge.get("path", ""))
+        site = str(edge.get("site", ""))
         # Several edges can legitimately describe ONE string: the two halves of a dotted
         # `fieldBindings[].source`, or a groupBy join's hops and its final field. Rewriting such a
         # string once is correct; rewriting it twice would then find nothing to change and (rightly)
         # refuse, so the de-duplication has to happen here rather than being treated as a conflict.
-        if path in seen_paths:
+        #
+        # The same holds for a free-text expression (`visibleWhen#0`, `visibleWhen#2`): the whole-
+        # identifier rewrite already renamed every mention, so the key is the string's own path. A
+        # query predicate is the exception -- its `#N` is a clause number and each clause is rewritten
+        # on its own, so the clause stays part of the key.
+        key = path if site in _CLAUSE_SITES else path.partition("#")[0]
+        if key in seen_paths:
             continue
-        seen_paths.add(path)
+        seen_paths.add(key)
         steps, token_index = _split_path(path)
         container, key = _resolve(model, steps)
         before = container[key]
@@ -287,7 +344,10 @@ def apply_cascade(model: dict, edges: list[dict], old_field: str, new_field: str
             before = before["field"]
         if not isinstance(before, str):
             raise CascadeRefusal(f"expected a string at {path}, found {type(before).__name__}")
-        after = _rewriter_for(str(edge.get("site", "")), token_index)(before, old_field, new_field)
+        if site in _CLAUSE_SITES and token_index is not None and token_index.isdigit():
+            after = _rename_predicate_clause(before, int(token_index), old_field, new_field)
+        else:
+            after = _rewriter_for(site, token_index)(before, old_field, new_field)
         if after == before:
             raise CascadeRefusal(
                 f"the value at {path} is {before!r} and rewriting it for '{old_field}' changed "
