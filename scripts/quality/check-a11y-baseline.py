@@ -143,7 +143,10 @@ def main(argv: list[str]) -> int:
         elif improved:
             lines.append(f"  ok (ratchet)  {name:<18} improved {floor} -> {fresh}")
         else:
+            # Unchanged: leave the entry (and its measuredOn) alone. Rewriting the timestamp on every
+            # run dirtied a tracked file with no information in it.
             lines.append(f"  ok            {name:<18} unchanged at {fresh}")
+            continue
 
         baseline_routines[name] = {**fresh, "ruleCount": rule_count, "measuredOn": report.get("generatedAt")}
         changed = True

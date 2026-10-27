@@ -24,6 +24,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -160,8 +161,15 @@ def main() -> int:
     if not cmd:
         ap.error("no command given; use: run_digest.py -- <command ...>")
 
+    # Resolve the executable up front (PATHEXT-aware on Windows, so npm.cmd works) and say so plainly
+    # when it is missing, instead of a CreateProcess traceback that names no command.
+    resolved = shutil.which(cmd[0])
+    if resolved is None:
+        print(f"run_digest: command not found on PATH: {cmd[0]}", file=sys.stderr)
+        return 127
     policy = load_policy()
-    joined = " ".join(cmd)
+    joined = " ".join(cmd)  # as typed: family matching and the echo must not see the resolved path
+    argv = [resolved] + cmd[1:]
     fam = pick_family(policy, joined, args.family)
     defaults = policy["defaults"]
 
@@ -173,7 +181,7 @@ def main() -> int:
     lines: list[str] = []
     with open(logpath, "w", encoding="utf-8", errors="replace") as log:
         log.write(f"# {joined}\n# started {stamp}\n\n")
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, errors="replace", bufsize=1)
         assert proc.stdout is not None
         for raw in proc.stdout:
