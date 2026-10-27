@@ -90,8 +90,16 @@ def _head() -> str:
         return "(unknown)"
 
 
+# The same closed dispositions generate_open_items.py uses: a WONTFIX is a decision, not open work.
+CLOSED_STATUSES = {"DONE", "WONTFIX", "OBSOLETE"}
+
+
+def _is_closed(item: dict) -> bool:
+    return str(item.get("status", "")).upper() in CLOSED_STATUSES
+
+
 def render(items: list[dict], boundaries: list[dict]) -> str:
-    open_items = [i for i in items if str(i.get("status", "")).upper() != "DONE"]
+    open_items = [i for i in items if not _is_closed(i)]
     open_items.sort(key=lambda i: (SEVERITY_ORDER.get(i.get("severity"), 4), str(i.get("id"))))
 
     lines: list[str] = []
@@ -103,7 +111,7 @@ def render(items: list[dict], boundaries: list[dict]) -> str:
     add("**Do not hand-edit** -- the truth is `ledger/items/*.yml` and `ledger/boundaries/*.yml`.")
     add("")
 
-    add(f"## Open items -- {len(open_items)} of {len(items)} not DONE")
+    add(f"## Open items -- {len(open_items)} of {len(items)} not closed")
     add("")
     if not open_items:
         add("Nothing open.")
@@ -170,7 +178,7 @@ def main() -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_bytes(render(items, boundaries).encode("utf-8"))
 
-    open_count = sum(1 for i in items if str(i.get("status", "")).upper() != "DONE")
+    open_count = sum(1 for i in items if not _is_closed(i))
     print(f"open-state: {open_count} open item(s), {len(boundaries)} boundaries -> {out_path}")
     return 0
 

@@ -108,7 +108,7 @@ try {
             $t = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
             $t -match '(?m)^status:\s*(OPEN|PARTIAL|IN_PROGRESS)\b'
         })
-        Write-Host ("ledger   {0} items, {1} not DONE" -f $items.Count, $open.Count)
+        Write-Host ("ledger   {0} items, {1} open (OPEN/PARTIAL/IN_PROGRESS)" -f $items.Count, $open.Count)
         $open | Select-Object -First 10 | ForEach-Object { Write-Host ("           " + $_.BaseName) }
         if ($open.Count -gt 10) { Write-Host ("           ... {0} more" -f ($open.Count - 10)) }
     }
