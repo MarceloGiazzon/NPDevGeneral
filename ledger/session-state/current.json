@@ -1,27 +1,35 @@
 {
-  "closedAt": "2026-10-27T03:39:35.6333425Z",
+  "closedAt": "2026-10-27T21:28:12.1820563Z",
   "branch": "main",
-  "head": "64d48041",
-  "headSubject": "chore(ledger): RUN-37 -- Manager cannot discover a database the user already runs in Docker",
-  "summary": "Autonomous stretch while owner away. Landed: rename cascade rewrites query where/having clause by clause (d02a28f8); PropertyResolverControllerTest + coverage floors up (ee7a866f); RUN-37 filed for Docker DB discovery (64d48041). All four T2 gates green, each run alone: generator, runtimeHost, kernel (first kernel failure was a memory-pressure kill, errno 1455 paging file, not a test), aiKnowledge 52/52. Manager: installed Rust 1.99.1 + MSVC Build Tools, rebuilt npdev-manager 0.5.2 (setup-status path fix, quieter setup log, clearer no-version message) -- UNCOMMITTED on purpose, owner has not yet confirmed it in the window.",
-  "nextStep": "1) Owner: launch D:\\WorkSpace\\NPDev\\Build\\manager-target\\release\\npdev-manager.exe, Install tab: turn on Use local repo, pick the checkout, confirm Step 4 reads ready with 53 jars in Build\\runtimehost-libs, then Doctor and Engines. 2) If good, commit the six uncommitted NPDevManager files (Cargo.lock, Cargo.toml, tauri.conf.json, src/main.rs, src/state.rs, ui/app.js) as Manager 0.5.2 -- run scripts/hygiene/clean-workspace-state.ps1 first or the slimness hook blocks the commit. 3) AIP-4 4.5: walk AI Providers / Profiles / Test with the working env keys (gemini, groq, nvidia answer OK) and file screenshots in NPDev_General__OutsideRepo/evidence/aip-4-manager-2026-10-27/. 4) Optional: RUN-37 npdev db detect.",
+  "head": "3d298478",
+  "headSubject": "fix(gate): runtimeHost gate fails when its security-consistency report fails, and produces the evidence that report needs",
+  "summary": "Owner-away stretch. Landed: npdev db detect (RUN-37 CLI half, 18 tests, listener path verified on a real socket); open-state/prep agree on what is closed (WONTFIX); REG-26 flipped to WONTFIX (guard exemption 168->167); mob2 golden routine fixed (waited on a nav the page disables) -> golden browser 6/6; run-f6-showcase now records its cadence pass; run_digest names a missing command; a11y baseline stops rewriting unchanged entries; runtimeHost gate now produces the security-maturity evidence and FAILS when its security-consistency report fails (it used to pass while that report said failed). T1 tier: no blocking overdue. All four T2 gates green this session (generator 134s, runtimeHost 443s, kernel 31s cached, aiKnowledge 1006s). New repo https://github.com/MarceloGiazzon/ProcessTrackerForAI (public, placeholder README); idea doc in OutsideRepo/process-tracker-for-ai-idea-2026-10-27.md. Manager 0.5.2 + Find databases button rebuilt but UNCOMMITTED.",
+  "nextStep": "1) Owner: close the running Manager, launch D:\\WorkSpace\\NPDev\\Build\\manager-target\\release\\npdev-manager.exe (now includes Find databases; old copy is npdev-manager.old-running.exe, delete it), Install tab: Use local repo, Step 4 ready with 53 jars, then Doctor/Engines, then New app > Find databases (needs a running DB container or a default-port listener to see Use this). 2) If good, run scripts/hygiene/clean-workspace-state.ps1 and commit NPDevManager/* plus ledger/items/RUN-37.yml as Manager 0.5.2 + RUN-37 Manager half. 3) AIP-4 4.5 real-window walk, screenshots to OutsideRepo/evidence/aip-4-manager-2026-10-27/. 4) betaRelease needs a full beta evidence run (31 of 35 reports missing here; Docker parity disabled by local profile) -- an owner decision.",
   "plan": "",
   "blocked": "",
-  "verified": "Gates (run individually 2026-10-27): generator pass; runtimeHost pass (PropertyResolverController 0 missed lines; RuntimeHost 31.59%); kernel pass; aiKnowledge pass 52/52. Cascade: 6 new tests red on old module, 24/24 green. Manager: cargo test state:: 3/3, cargo build --release ok, check-manager-version-bump ok. NOT verified: the Manager changes in a real window (only owner can); setup-log and error-text edits are untested beyond compiling.",
-  "dirtyCount": 6,
+  "verified": "T2 gates green individually (see summary); T1 cadence clean; cargo test 54/54; golden browser 6/6; db detect tests 18/18 plus mutation-checked. NOT verified: Manager in a real window; db detect against a real Docker container (daemon off); the new runtimeHost enforcement red path (a genuinely failing security check).",
+  "dirtyCount": 11,
   "dirtyFiles": [
     " M NPDevManager/Cargo.lock",
     " M NPDevManager/Cargo.toml",
+    " M NPDevManager/fixtures/README.md",
     " M NPDevManager/src/main.rs",
+    " M NPDevManager/src/npdev.rs",
     " M NPDevManager/src/state.rs",
     " M NPDevManager/tauri.conf.json",
-    " M NPDevManager/ui/app.js"
+    " M NPDevManager/ui/app.js",
+    " M NPDevManager/ui/index.html",
+    " M ledger/items/RUN-37.yml",
+    "?? NPDevManager/fixtures/db-detect.json"
   ],
   "unpushed": 0,
   "landedCommits": [
-    "64d48041 chore(ledger): RUN-37 -- Manager cannot discover a database the user already runs in Docker",
-    "ee7a866f test(properties): cover PropertyResolverController's 400 and 409 mappings; ratchet coverage floors up",
-    "d02a28f8 fix(rename): cascade rewrites a query predicate clause by clause",
-    "7b0c826a chore(session): handoff -- when.flow acceptance support landed"
+    "3d298478 fix(gate): runtimeHost gate fails when its security-consistency report fails, and produces the evidence that report needs",
+    "22b090e9 fix(tooling): run_digest names a missing command (exit 127) instead of a traceback; a11y baseline no longer rewrites unchanged entries; CLAUDE.md open-state wording",
+    "c709e38a fix(verify): mob2 routine proves sign-in on the SPA, not on a nav the page may disable; f6 showcase records its cadence pass",
+    "281068de chore(ledger): REG-26 is WONTFIX, not DONE -- decision recorded, guard exemption ratcheted 168->167",
+    "a2022936 fix(ai): open-state counts WONTFIX/OBSOLETE as closed, like generate_open_items and prep",
+    "9376f2fc feat(db): npdev db detect finds a database the user already runs (RUN-37 CLI half)",
+    "e5186225 chore(session): handoff -- gates green, Manager 0.5.2 built and awaiting owner confirmation"
   ]
 }
