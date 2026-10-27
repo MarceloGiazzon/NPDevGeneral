@@ -4516,6 +4516,19 @@ def run_engines(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_db_detect(args: argparse.Namespace) -> int:
+    """RUN-37. Read-only discovery; see npdev_db_discovery for what it will and will not touch."""
+    import npdev_db_discovery
+
+    result = npdev_db_discovery.detect(args.timeout)
+    if getattr(args, "json", False):
+        print(json.dumps({"schemaVersion": "npdev-cli-result.v1", "command": "db detect",
+                          "ok": True, "exitCode": 0, **result}, indent=2))
+    else:
+        print(npdev_db_discovery.render(result))
+    return 0
+
+
 def run_db_test_connection(args: argparse.Namespace) -> int:
     """Answer "can NPDev actually use this database?" for a connection that is being TYPED, not one
     that has already been written to a file.
@@ -15775,6 +15788,18 @@ def build_parser() -> argparse.ArgumentParser:
              "renderer for that reason.",
     )
 
+    # RUN-37: find a database server the user already runs (Docker container or default-port
+    # listener) instead of making them type host/port into `npdev init --externally-provisioned`.
+    db_detect = db_sub.add_parser(
+        "detect",
+        help="List database servers already running here -- Docker containers and default-port "
+             "listeners -- with the `npdev init ... --externally-provisioned` arguments to adopt one. "
+             "Read-only: never reads a password, never starts or stops anything.",
+    )
+    db_detect.add_argument("--timeout", type=float, default=0.5,
+                           help="Seconds to wait on each default-port connect (default: 0.5).")
+    db_detect.add_argument("--json", action="store_true", help="Emit an npdev-cli-result.v1 object.")
+
     # Item 1, SUPPORT_FEATURES_PLAN_2026-08-26: "does my database match my model?" with NO app boot
     # required -- the recovery hole B6 (mark-done trusts the operator) and B7 (a refusal is not
     # side-effect-free) leave open, and the one diagnostic that DOES answer this today
@@ -18365,6 +18390,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_tester(args)
         if args.command == "db" and args.db_command == "test-connection":
             return run_db_test_connection(args)
+        if args.command == "db" and args.db_command == "detect":
+            return run_db_detect(args)
         if args.command == "db" and args.db_command == "verify":
             return run_db_verify(args)
         if args.command == "db" and args.db_command == "schema-ahead":

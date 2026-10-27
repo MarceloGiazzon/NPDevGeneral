@@ -2,7 +2,7 @@ id: RUN-37
 title: The Manager cannot find a database the user already runs in Docker -- adopting one means hand-typing --externally-provisioned, host, port and password
 type: FEATURE
 severity: LOW
-status: OPEN
+status: PARTIAL
 opened: 2026-10-27
 closed: null
 source: >-
@@ -36,3 +36,12 @@ files:
 verification: NOT_VERIFIED
 note: >-
   2026-10-27: filed, not started. Independent of AIP-4; do not fold it into that item's done-when.
+  2026-10-27 (later): CLI half landed -- `npdev db detect [--json]` (NPDevCli/npdev_db_discovery.py, wired in
+  npdev_cli.py `run_db_detect`) lists database containers from `docker ps -a` by image or default published port, plus
+  default-port listeners, with the `npdev init --engine .. --db-host .. --db-port .. --externally-provisioned` arguments to
+  adopt a running one. Running is decided from Docker's State field only; an exited container carries no adopt args;
+  "docker is not on PATH"/"did not answer" is reported as such, never as none found; docker inspect is never called, so
+  no password is read. tests/test_db_discovery.py (18) pins it, 4 go red if "running" ignores State. Verified live only
+  on a machine with the Docker daemon stopped (honest "docker did not answer" path) -- NOT yet against a running
+  container. REMAINING: the Manager "Find databases" button on app creation (NPDevManager/ui/app.js + src/npdev.rs),
+  left alone because those files carry uncommitted Manager 0.5.2 work.
