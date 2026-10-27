@@ -10018,7 +10018,7 @@ def run_author_diff_gate(args: argparse.Namespace) -> int:
 
 
 def run_author_submit(args: argparse.Namespace) -> int:
-    """E4: `npdev author submit --previous <m> --submitted <m> --manifest <j> [--archiveDir <d>]`
+    """E4: `npdev author submit --previous <m> --submitted <m> --manifest <j> [--archive-dir <d>]`
     -- wraps E2 so an Author literally cannot submit without a manifest (--manifest is required,
     unlike the bare diff-gate check), and archives the previous model on acceptance (E5). Does
     NOT itself write the submitted model into place or contact a live app -- that is the caller's
@@ -13712,7 +13712,7 @@ _RELOAD_PREFLIGHT_REFUSALS = frozenset(
 
 def _model_reload_apply(base_url: str, super_user_key: str, model_path: str, timeout: float) -> dict:
     """Wave 6 (the Manager's Studio tab, NPDEV_FEATURE_PLAN_2026-09-24.md 6.1): the HTTP core behind
-    `npdev studio apply-live`'s live-swap step -- one POST to
+    `npdev monitor studio-apply`'s live-swap step -- one POST to
     `MetadataHotSwapController#modelReload` (B28), swapping the running app's ENTIRE `CompiledModel`
     atomically with no restart. Same shape as `_metadata_hotswap_apply` above (structured `{"ok":
     False, "code": ..., "message": ...}` on any failure, never raises for an ordinary refusal), and

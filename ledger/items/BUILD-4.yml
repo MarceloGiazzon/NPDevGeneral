@@ -1,0 +1,42 @@
+id: BUILD-4
+title: Every generated app pins Spring Boot 3.5.16, whose open-source support ended 2026-06-30 -- no free security fixes arrive for the line the platform ships
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-27
+closed: null
+source: >-
+  Dependency-support survey (read-only agent + primary-source check, 2026-10-27). endoflife.date/api/spring-boot.json
+  (fetched by the session lead): cycle 3.5 released 2025-05-31, latest 3.5.16 on 2026-06-25, OSS support end 2026-06-30,
+  extended (commercial) support to 2032-06-30. Cycle 4.0: latest 4.0.9, OSS end 2026-12-31. Cycle 4.1: released
+  2026-06-30, latest 4.1.2 (2026-10-22), OSS end 2027-07-31.
+surface: build-tooling/dependencies, runtimehost
+detail: |
+  NPDevRuntimeHost/build.gradle.template:17 (copied into every generated FinalApp) and NPDevRuntimeHost/build.gradle:15
+  pin `org.springframework.boot` 3.5.16 with `io.spring.dependency-management` 1.1.6. 3.5.16 was the LAST open-source
+  release of the 3.5 line, so any later Spring Boot / Spring Framework / Spring Security fix for 3.5 reaches only
+  commercial-support customers. The survey agent reports (secondary sources, NOT yet verified here) a 2026-08-20 batch of
+  Spring advisories, including Spring Security CVE-2026-41706 / -40988 / -41003 affecting 6.5.0-6.5.10 with the fix in
+  6.5.11; which Spring Security version Boot 3.5.16 actually resolves was not checked.
+  Related, lower urgency, from the same survey (versions only; support status mostly unconfirmed): Java toolchain 17
+  (Temurin 17 patched to 2027-10), Gradle wrapper 9.5.1 vs 9.8.2 current, H2 2.4.240 in tests vs 2.5.252 (release notes
+  list two security items; no CVE ids found), Jackson 2.22.2 (dsl) vs 2.17.2 (generator) mismatch, PostgreSQL JDBC 42.7.4
+  (runtime) vs 42.7.13 (tests), Python minimum 3.9 in the CLI vs 3.11 in CI, Tauri locked at 2.11.5 (already past the
+  CVE-2026-42184 fix in 2.11.1; 2.12.3 is current).
+  Not a defect in NPDev's own code, and NPDev is pre-1.0 and deliberately unstable (BREAKING.md) -- but the platform's
+  product is generated apps, and a generated app is what carries this exposure to a user.
+resolution: >-
+  Done when either (a) the runtime template moves to a supported Boot line (4.1.x; 4.0 reaches OSS end on 2026-12-31)
+  with the platform's gates green on it and a BREAKING.md entry + `npdev migrate` codemod if the generated layout or DSL
+  changes (stability policy), or (b) the owner records an explicit decision to stay on 3.5.16 for now, with the exposure
+  stated, as a WONTFIX/decision on this item. Verify the Spring Security version the generated app really resolves
+  before choosing the urgency.
+files:
+  - NPDevRuntimeHost/build.gradle.template
+  - NPDevRuntimeHost/build.gradle
+  - NPDevRuntimeHost/runtimehost-core
+verification: NOT_VERIFIED
+note: >-
+  2026-10-27: filed from the survey. The Boot-line facts were checked against endoflife.date directly; the CVE details and
+  the minor-dependency comparisons are the survey agent's secondary-source findings and are marked unverified above. A
+  Boot 3 -> 4 move is a Spring Framework 6 -> 7 / Jakarta-level jump: expect real work, not a version-number edit.

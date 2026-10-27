@@ -253,7 +253,7 @@ def semantic_errors(config: AiConfig) -> list[str]:
             errors.append(f"profile {name}: unknown provider {pid!r}")
         elif (pid, mid) not in config.models:
             errors.append(f"profile {name}: unknown model {pid}/{mid} (add it under models, or run "
-                          f"`npdev ai models {pid} --refresh`)")
+                          f"`npdev ai models refresh {pid}`)")
         for fallback in profile.get("fallback") or []:
             if fallback == name:
                 errors.append(f"profile {name}: falls back to itself")

@@ -1,0 +1,44 @@
+id: QUAL-61
+title: Five recently closed DONE items carry a test guard that witnesses less than the item's done-when (AIP-1, AIP-2, AIP-3, REG-279, REG-300)
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-10-27
+closed: null
+source: >-
+  Ledger-honesty sample (read-only agent, 2026-10-27): the 30 most recently closed DONE items whose guard.kind is `test`
+  (of 228 such items); the cited test body was opened for each. 25 judged sound, 5 flagged. check-done-item-guards.py only
+  proves the cited ref resolves, not that the test asserts what the item closed on, so this class is invisible to the gates.
+surface: ledger/guards
+detail: |
+  Flagged (the agent's reading; each should be re-read before acting -- some judgements were made on the named method
+  only, with sibling tests in the same class unread):
+  - AIP-3 -- guard ExternalAiCatalogueTest#bundledCatalogueCarriesTheFreeAndLocalVendors checks the bundled catalogue's
+    contents only; the done-when also names the validator rejecting a non-catalogue vendor and the call path. WEAK.
+  - REG-279 -- guard ConfiguredConceptGatewaySemanticPolicyTest#defaultExpressionIsKeptOnUpdateNotRecomputed saves a plain
+    in-memory concept with a `$user.id` default; the item is about a root's `nextNumber()` defaultExpression on an
+    aggregate re-commit, and asks for a probe that commits twice. WEAK.
+  - AIP-2 -- guard test_ai_client.py#test_paid_is_refused_without_an_opt_in_and_nothing_is_sent is sound for its own
+    `asserts:` but the item closed on `api_key` leaving AssistantConfig and every developer feature resolving keys via
+    npdev_providers.resolve_key. MISMATCHED.
+  - AIP-1 -- guard test_ai_config.py#test_mine_overrides_only_the_fields_it_sets_and_says_so; the done-when is
+    VENDOR_PROFILES gone from build-review-pack.py, the schema validating both files, and the twin-pair check failing when
+    the Java/catalogue pair breaks. MISMATCHED.
+  - REG-300 -- the named test covers one third of the three-part `asserts:`; the other two live in sibling tests
+    (aSuperUserListsEveryTenantsSchedules, aForcedDrainFiresOnlyTheCallersTenant) that exist but were not read. PARTIAL.
+  Also noted: provenRed is true but the item text gives no red-run evidence for REG-283, REG-286, REG-299 (asserts only
+  rc != 0) and REG-304 (done-when "full h2local suite runs to the end" is unguarded).
+resolution: >-
+  Done when, for each of the five, either the guard is replaced or supplemented by a test that witnesses the done-when
+  (and proven red against the pre-fix state), or the item's `asserts:` is narrowed to what the guard really proves with the
+  uncovered part stated as such. Consider a checker that compares guard.asserts keywords with the test body -- but a human
+  re-read is the cheaper first step.
+files:
+  - ledger/items/AIP-1.yml
+  - ledger/items/AIP-2.yml
+  - ledger/items/AIP-3.yml
+  - ledger/items/REG-279.yml
+  - ledger/items/REG-300.yml
+verification: NOT_VERIFIED
+note: >-
+  2026-10-27: filed from the agent's sample. Not independently re-read by the session lead.

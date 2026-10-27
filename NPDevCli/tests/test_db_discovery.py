@@ -45,6 +45,22 @@ class ImageMatching(unittest.TestCase):
         self.assertIsNone(dd.engine_for_image("nginx:latest"))
         self.assertIsNone(dd.engine_for_image("redis:7"))
 
+    def test_lookalike_images_are_not_databases(self):
+        for image in ["prom/mysqld-exporter:v0.15", "postgrest/postgrest", "quay.io/prometheuscommunity/postgres-exporter",
+                      "percona/percona-server-mongodb:7", "mcr.microsoft.com/mssql-tools", "confluentinc/cp-kafka:7.6",
+                      "registry.example.com/postgres-mirror/nginx:1"]:
+            self.assertIsNone(dd.engine_for_image(image), image)
+
+    def test_digest_and_registry_port_forms(self):
+        self.assertEqual("postgres", dd.engine_for_image("postgres@sha256:" + "a" * 64))
+        self.assertEqual("sqlserver", dd.engine_for_image("docker.io/mssql/server:2022-latest"))
+        self.assertEqual("mysql", dd.engine_for_image("mysql/mysql-server:8.0"))
+
+    def test_h2server_is_not_a_container_default_port(self):
+        # 9092 is Kafka's default port; h2server is a server engine but never containerized.
+        self.assertNotIn(9092, dd.default_ports())
+        self.assertEqual({5432, 3306, 1433}, set(dd.default_ports()))
+
 
 class PortParsing(unittest.TestCase):
     def test_ipv4_ipv6_pair_is_one_mapping(self):
@@ -100,6 +116,20 @@ class Detect(unittest.TestCase):
     def test_custom_image_matched_by_default_port(self):
         (db,) = _detect([_row("mine", "acme/db:1", "running", "0.0.0.0:1434->1433/tcp")])["databases"]
         self.assertEqual(("sqlserver", "port", 1434), (db["engine"], db["matchedBy"], db["port"]))
+
+    def test_kafka_on_9092_is_not_offered_as_a_database(self):
+        result = _detect([_row("k", "confluentinc/cp-kafka:7.6", "running", "0.0.0.0:9092->9092/tcp")])
+        self.assertEqual([], result["databases"])
+
+    def test_podman_style_list_fields_do_not_crash(self):
+        row = json.dumps({"Names": ["pg"], "Image": "postgres:16", "State": "running",
+                          "Ports": ["0.0.0.0:5433->5432/tcp"]})
+        (db,) = _detect([row])["databases"]
+        self.assertEqual(("pg", 5433, True), (db["name"], db["port"], db["running"]))
+
+    def test_malformed_row_fields_are_skipped_not_fatal(self):
+        row = json.dumps({"Names": None, "Image": 7, "State": None, "Ports": {"x": 1}})
+        self.assertEqual([], _detect([row])["databases"])
 
     def test_non_database_container_ignored(self):
         self.assertEqual([], _detect([_row("web", "nginx:latest", "running", "0.0.0.0:80->80/tcp")])["databases"])

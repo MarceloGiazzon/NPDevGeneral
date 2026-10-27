@@ -27,36 +27,39 @@ from typing import Callable
 
 import npdev_engines
 
-# Image repository fragments -> engine key. Matched against the repository path, not the tag, so
-# `bitnami/postgresql:16` and `postgis/postgis:16-3.4` both land on postgres.
-IMAGE_ENGINES = (
-    ("mssql", "sqlserver"),
-    ("postgis", "postgres"),
-    ("postgres", "postgres"),
-    ("timescale", "postgres"),
-    ("mariadb", "mysql"),
-    ("mysql", "mysql"),
-    ("percona", "mysql"),
-)
+# The LAST path segment of the image repository (tag and digest removed) -> engine key, matched
+# EXACTLY. A substring match called `prom/mysqld-exporter`, `postgrest/postgrest`,
+# `postgres-exporter` and `percona-server-mongodb` databases; a missed exotic image is still found
+# by its published default port, a wrong guess is a "Use this" button on something that is not one.
+IMAGE_ENGINES = {
+    "postgres": "postgres", "postgresql": "postgres", "postgis": "postgres",
+    "timescaledb": "postgres", "pgvector": "postgres",
+    "mysql": "mysql", "mysql-server": "mysql", "mariadb": "mysql", "percona-server": "mysql",
+    "azure-sql-edge": "sqlserver",
+}
+# `mcr.microsoft.com/mssql/server`: the final segment alone ("server") says nothing.
+IMAGE_PATH_SUFFIXES = (("mssql/server", "sqlserver"),)
 
 _PORT_MAPPING = re.compile(r"(?:(?P<bind>\[[^\]]+\]|[^\s,:]+):)?(?<![\d-])(?P<host>\d+)->(?P<container>\d+)/tcp")
 _WILDCARD_BINDS = {"", "0.0.0.0", "::", "[::]"}
 
 
 def engine_for_image(image: str) -> str | None:
-    repository = (image or "").lower()
+    repository = (image or "").lower().split("@", 1)[0]
     if ":" in repository.rsplit("/", 1)[-1]:
         repository = repository.rsplit(":", 1)[0]
-    for fragment, engine in IMAGE_ENGINES:
-        if fragment in repository:
+    for suffix, engine in IMAGE_PATH_SUFFIXES:
+        if repository == suffix or repository.endswith("/" + suffix):
             return engine
-    return None
+    return IMAGE_ENGINES.get(repository.rsplit("/", 1)[-1])
 
 
 def default_ports() -> dict[int, str]:
-    """Server engines' default ports, read from the registry so this cannot drift from `npdev engines`."""
+    """Default ports of the engines that run in a container, read from the registry so this cannot
+    drift from `npdev engines`. `h2server` is a server but not containerized, and its 9092 is Kafka's
+    default port -- offering every Kafka container as an H2 server is exactly the wrong guess."""
     return {npdev_engines.resolve(key)["port"]: key for key in npdev_engines.engine_keys()
-            if npdev_engines.resolve(key).get("server")}
+            if npdev_engines.resolve(key).get("server") and npdev_engines.resolve(key).get("containerized")}
 
 
 def parse_published_ports(ports: str) -> list[dict]:
@@ -81,7 +84,8 @@ def _run_docker_ps() -> tuple[str, str]:
         return "", "docker is not on PATH"
     try:
         completed = subprocess.run(["docker", "ps", "-a", "--no-trunc", "--format", "{{json .}}"],
-                                   capture_output=True, text=True, timeout=10)
+                                   capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                   timeout=10)
     except Exception as exc:  # timeout, permission, broken install
         return "", f"docker did not answer: {exc}"
     if completed.returncode != 0:
@@ -94,9 +98,16 @@ def _init_args(engine: str, host: str, port: int) -> list[str]:
 
 
 def _from_container(row: dict, ports_by_default: dict[int, str]) -> dict | None:
-    image = row.get("Image") or ""
+    # Docker emits strings; Podman's json can emit lists. Coerce rather than crash the whole command.
+    image = row.get("Image") if isinstance(row.get("Image"), str) else ""
+    names = row.get("Names")
+    name = (names[0] if isinstance(names, list) and names else names) if names else ""
+    name = name.split(",")[0] if isinstance(name, str) else ""
+    ports = row.get("Ports")
+    if isinstance(ports, list):
+        ports = ", ".join(p for p in ports if isinstance(p, str))
     by_image = engine_for_image(image)
-    published = parse_published_ports(row.get("Ports") or "")
+    published = parse_published_ports(ports if isinstance(ports, str) else "")
     by_port = next(((p, ports_by_default[p["containerPort"]]) for p in published
                     if p["containerPort"] in ports_by_default), None)
     engine = by_image or (by_port[1] if by_port else None)
@@ -108,7 +119,7 @@ def _from_container(row: dict, ports_by_default: dict[int, str]) -> dict | None:
     record = {
         "source": "docker",
         "engine": engine,
-        "name": (row.get("Names") or "").split(",")[0],
+        "name": name,
         "image": image,
         "matchedBy": "image" if by_image else "port",
         "state": state,
