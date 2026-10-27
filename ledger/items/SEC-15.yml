@@ -2,13 +2,13 @@ id: SEC-15
 title: Two identity lookups fail open on a database error -- a restricted user gets the full role ceiling, and a revoked version-0 token is accepted while the database errors
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: PARTIAL
 opened: 2026-10-27
 closed: null
 source: >-
   Security triage of the sweep allowlist (read-only agent, 2026-10-27), sampled 58 of 663 entries and read the code behind
-  about 45. Reported by the agent from reading the source; NOT yet independently verified by the session lead, and no
-  test written.
+  about 45. Reported by the agent from reading the source; the session lead then read both lookups (2026-10-27) and
+  wrote the tests named in the guard.
 surface: kernel/authz, runtime-support/identity
 detail: |
   1. NPDevKernel/adapters/authz-default/.../IdentityPermissionOverrideLookup.java:99-108 (allowlist entry bf4d6c979293,
@@ -26,12 +26,27 @@ detail: |
   whitelisted identifiers); /process-due on RuntimeSchedulesController has no role check, so a tenant user can fire its
   own tenant's not-yet-due scheduled events early (minor).
 resolution: >-
-  Done when each of the two lookups is read and either fails closed on a non-schema SQLException (with a test that makes
+  PARTIAL (2026-10-27): both lookups were read and the agent's report is CONFIRMED in substance, but fail-open is their
+  DOCUMENTED contract ("Never throws" on the hot per-request path; a missing table must not block), so the session
+  changed observability only: a non-schema SQLException now logs a WARNING saying revocation/overrides were NOT enforced
+  for that tenant/actor on that request (the schema-mismatch SEVERE path is unchanged). Return values are unchanged. Two
+  new tests per module (transient fault logs the warning and keeps the return value; schema mismatch keeps its SEVERE log
+  and gets no second warning) are red against the old code and green now.
+  STILL OPEN, an owner decision: whether a transient fault should FAIL CLOSED instead (tokenVersion -1 so a tv-bearing
+  token is refused for that request; overrides -> deny) at the cost of a spurious 401/403 during a database hiccup.
+  Original done-when: each of the two lookups is read and either fails closed on a non-schema SQLException (with a test that makes
   the query throw and asserts the restricted user is NOT widened / the revoked token is refused) or the owner records why
   fail-open is intended. Authorization behaviour changes: read the callers first.
 files:
-  - NPDevKernel/adapters/authz-default/src/main/java/com/npdev/adapters/authz/IdentityPermissionOverrideLookup.java
+  - NPDevKernel/adapters/authz-default/src/main/java/com/npdev/adapters/authz/defaultpolicy/IdentityPermissionOverrideLookup.java
   - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java
-verification: NOT_VERIFIED
+verification: UNIT_TESTED
 note: >-
-  2026-10-27: filed. File paths above are as reported (package directories abbreviated by the agent); locate them by class name.
+  2026-10-27: filed from the triage, then partly fixed the same day (logging only; see resolution).
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/authz-default/src/test/java/com/npdev/adapters/authz/defaultpolicy/IdentityPermissionOverrideLookupTransientFaultTest.java#aTransientSqlFaultStillReturnsNoOverridesButIsLoggedAsNotEnforced
+  asserts: >-
+    a non-schema SQLException (SQLState 40001) makes overridesFor still return no overrides (never throws) AND log a
+    WARNING saying overrides were not enforced; the sibling test in runtime-support does the same for tokenVersion
+  provenRed: true

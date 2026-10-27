@@ -103,6 +103,13 @@ final class IdentityPermissionOverrideLookup {
                         + "concept?) -- falling back to 'no override configured' (full role ceiling "
                         + "applies) for tenant='" + tenantId + "', actor='" + actorId + "': "
                         + exception.getMessage());
+            } else {
+                // SEC-15: a transient fault (lock/statement timeout, pool exhaustion) also falls back to
+                // "no override" -- the documented never-throws contract -- but it must not be silent: an
+                // admin's narrowing of this actor's permissions is NOT applied on this request.
+                LOG.warning("Permission-override lookup failed (SQLState " + exception.getSQLState()
+                        + ") -- full role ceiling applies, overrides NOT enforced for tenant='" + tenantId
+                        + "', actor='" + actorId + "' on this request: " + exception.getMessage());
             }
             return Map.of();
         }

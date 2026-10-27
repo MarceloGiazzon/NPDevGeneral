@@ -90,6 +90,13 @@ public final class IdentityRoleLookup {
                 LOG.severe("token_version lookup failed: identity pack schema mismatch (see "
                         + "docs/CONFIGURATION.md#identity-pack-freshness-checked-at-boot) -- "
                         + exception.getMessage());
+            } else {
+                // SEC-15: a transient fault (lock/statement timeout, pool exhaustion) also returns 0 --
+                // "never throws" stays -- but it must not be silent: for this request a token minted at
+                // version 0 cannot be told apart from a revoked one.
+                LOG.warning("token_version lookup failed (SQLState " + exception.getSQLState()
+                        + ") -- returning 0, so revocation is NOT enforced for tenant='" + tenantId
+                        + "', actor='" + actorId + "' on this request: " + exception.getMessage());
             }
             return 0;
         }
