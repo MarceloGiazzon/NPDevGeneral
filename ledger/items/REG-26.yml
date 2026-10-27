@@ -2,10 +2,11 @@ id: REG-26
 title: "Granular JWT error codes disclose why a token failed validation (informational, WONTFIX)"
 type: GAP
 severity: LOW
-status: DONE
+status: WONTFIX
 opened: 2026-07-21
 closed: 2026-07-21
 verification: NOT_VERIFIED
+decision: Granular JWT error codes stay -- they name the validation reason (expired / bad issuer / bad signature), never a secret or account state, and aid integrators; collapsing them would trade diagnosability for negligible disclosure reduction.
 source: "REG-16 Tier-A adversarial review (docs/archive/programme-history/REG16_TENANT_AUTH_ADVERSARIAL_REVIEW.md), severity INFO in the original register (this schema has no INFO level; mapped to LOW)"
 surface: runtimehost/auth
 detail: |
