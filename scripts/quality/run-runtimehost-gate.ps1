@@ -202,6 +202,12 @@ try {
         -ReportPath $sampleDiagnosticsReportPath `
         -MatrixPendingOk `
         -PassThru
+    # -PassThru makes the audit return its report BEFORE it reaches its own throw, so a "failed"
+    # verdict here used to be copied into this gate's report and never counted. "warning" is
+    # accepted by the audit itself, so only "failed" fails the gate.
+    if ([string]$sampleDiagnosticsEnrichment.overallStatus -eq "failed") {
+        throw ("Sample diagnostics enrichment report failed -- see " + $sampleDiagnosticsReportPath)
+    }
 }
 catch {
     $status = "failed"
