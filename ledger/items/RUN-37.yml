@@ -1,0 +1,38 @@
+id: RUN-37
+title: The Manager cannot find a database the user already runs in Docker -- adopting one means hand-typing --externally-provisioned, host, port and password
+type: FEATURE
+severity: LOW
+status: OPEN
+opened: 2026-10-27
+closed: null
+source: >-
+  Owner question during the AIP-4 4.5 session (2026-10-27): "what if I have Docker with the DB inside? How can we
+  detect and manage this case?" Answered from the code: NPDev manages a container it created (the Monitor reads
+  `docker ps -a` for the plan's containerName), and `npdev init --externally-provisioned` marks a database NPDev must
+  never create or Reset -- but nothing discovers an existing container and offers it.
+surface: manager/databases
+detail: |
+  What exists: npdev_monitor._docker_state(container) reports running / exited / unknown for the one container name an
+  app's plan carries; doctor's `docker-present` is not required for an externallyProvisioned app (STOR-14);
+  database-reachable / -credentials / -privileges / -charset (W5.2) probe host:port and work whether the server is in
+  Docker or not; `npdev init --externally-provisioned` (STOR-15) is the only writer of the flag.
+  The gap: a user who already runs Postgres / MySQL / SQL Server in a container has to know the flag exists and type
+  host, port and credentials by hand, and the Monitor is blind to that container because no plan names it.
+  Proposal, shaped like "Find local LLMs" (`npdev ai detect`): a `npdev db detect` that lists database containers from
+  `docker ps` (known engine images and published ports) plus listeners on the engines' default ports, and a Manager
+  "Find databases" button that, on pick, fills host/port and sets externallyProvisioned: true. It must never read or
+  write a password into a plan, never start, stop or remove a container it did not create, and say "docker is not on
+  PATH" rather than "none found" when Docker is unavailable.
+resolution: >-
+  Done when `npdev db detect --json` lists a running database container and its published port, the Manager offers it
+  when creating an app, and picking it yields a db.definition.json with externallyProvisioned: true and no secret in
+  the file; a unit test pins that the detector never reports an exited container as running (the selftest.rs lesson).
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/npdev_monitor.py
+  - NPDevCli/npdev_engines.py
+  - NPDevManager/ui/app.js
+  - NPDevManager/src/npdev.rs
+verification: NOT_VERIFIED
+note: >-
+  2026-10-27: filed, not started. Independent of AIP-4; do not fold it into that item's done-when.
