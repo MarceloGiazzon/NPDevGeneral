@@ -1,0 +1,44 @@
+id: SEC-14
+title: A tenant could read or delete another tenant's uploaded file by sending a key like "acme/../globex/<id>" -- the ownership check looked only at the first path segment
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-10-27
+closed: 2026-10-27
+source: >-
+  Security triage of the sweep allowlist (read-only agent, 2026-10-27): the file endpoints were not covered by any sweep
+  rule, so the gap was found by a direct read of the runtime code. Confirmed live by this item's own test, which failed
+  3 of 4 against the unfixed controller.
+surface: runtimehost/files, tenant-isolation
+detail: |
+  FileUploadController.requireOwnedByCaller (GET and DELETE /api/files) compared only the substring before the first '/'
+  of the caller-supplied `key` with the caller's tenant segment. FileSystemFileStoreAdapter.resolve() then normalised the
+  path and accepted anything still under the store root. A tenant-acme caller sending key=acme/../globex/<uuid> passed
+  the check (first segment "acme") and the store served -- or deleted -- globex's file. The attacker needs the victim's
+  file UUID, which limits but does not remove the exposure. The S3 adapter issues the same key shape.
+resolution: >-
+  Every key a file store issues is exactly "<tenantSegment>/<uuid>" (FileSystemFileStoreAdapter.put and the object-store
+  adapter). requireOwnedByCaller now accepts only a key of exactly two non-empty segments, neither "." nor "..", with no
+  backslash or NUL, and the first segment must equal the caller's tenant; anything else answers 404 like a missing file.
+  Measured: against the unfixed controller the new test class failed dotDotCannotReachAnotherTenantsFile,
+  dotDotCannotDeleteAnotherTenantsFile and keysThatAreNotExactlyTenantSlashIdAreNotFound (aTenantStillReadsItsOwnFile
+  passed); against the fixed controller all four and the sibling download-security test pass. Run in the generated
+  dsl-conformance-max app, because the bare NPDevRuntimeHost folder is not a standalone build.
+  NOT done: defence in depth in the store itself (resolve() could assert the path stays under the caller's tenant
+  directory) -- the stores do not know the caller; left as a separate decision.
+files:
+  - NPDevRuntimeHost/src/main/java/com/finalexec/api/FileUploadController.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/FileUploadControllerTenantTraversalStandaloneTest.java
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/FileUploadControllerTenantTraversalStandaloneTest.java#dotDotCannotReachAnotherTenantsFile
+  asserts: >-
+    a tenant-acme caller sending key "acme/../globex/<uuid>" to GET /api/files gets 404 (not globex's file); the sibling
+    tests do the same for DELETE (and globex's file survives) and for malformed keys, and a tenant still reads its own
+    file
+  provenRed: true
+note: >-
+  2026-10-27: also reported by the same triage, NOT yet verified or fixed: IdentityPermissionOverrideLookup returns no
+  overrides (full role ceiling) on a non-schema SQLException, and IdentityRoleLookup.tokenVersion returns 0 on any
+  SQLException (a revoked version-0 token is accepted while the database errors). Both fail open; see follow-up.

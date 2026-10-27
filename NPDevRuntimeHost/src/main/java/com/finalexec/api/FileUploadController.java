@@ -166,12 +166,24 @@ public class FileUploadController {
     private void requireOwnedByCaller(HttpServletRequest request, String key) {
         ExecutionContext context = runtimeContextService.currentContext(request);
         String callerTenant = normalizeTenantSegment(context.tenantId());
-        String keyTenant = key.contains("/") ? key.substring(0, key.indexOf('/')) : "";
-        if (!callerTenant.equalsIgnoreCase(keyTenant)) {
+        // Every key a file store issues is exactly "<tenantSegment>/<uuid>". Checking only the first
+        // segment let "acme/../globex/<uuid>" through as acme's -- the store then normalised the path
+        // to globex's file and served or deleted it. Anything that is not exactly two plain segments
+        // is not a key this platform issued, so it is not found.
+        String[] segments = key == null ? new String[0] : key.split("/", -1);
+        boolean wellFormed = segments.length == 2
+                && java.util.Arrays.stream(segments).noneMatch(FileUploadController::isUnsafeKeySegment);
+        String keyTenant = wellFormed ? segments[0] : "";
+        if (!wellFormed || !callerTenant.equalsIgnoreCase(keyTenant)) {
             // Worded like a not-found, not a forbidden, so it never confirms a key exists in
             // another tenant -- same defensive wording used elsewhere for cross-tenant checks.
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No file for key: " + key);
         }
+    }
+
+    private static boolean isUnsafeKeySegment(String segment) {
+        return segment.isEmpty() || segment.equals(".") || segment.equals("..")
+                || segment.indexOf('\\') >= 0 || segment.indexOf('\0') >= 0;
     }
 
     private static String normalizeTenantSegment(String tenantId) {

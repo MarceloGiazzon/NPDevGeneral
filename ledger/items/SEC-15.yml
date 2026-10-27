@@ -1,0 +1,37 @@
+id: SEC-15
+title: Two identity lookups fail open on a database error -- a restricted user gets the full role ceiling, and a revoked version-0 token is accepted while the database errors
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-27
+closed: null
+source: >-
+  Security triage of the sweep allowlist (read-only agent, 2026-10-27), sampled 58 of 663 entries and read the code behind
+  about 45. Reported by the agent from reading the source; NOT yet independently verified by the session lead, and no
+  test written.
+surface: kernel/authz, runtime-support/identity
+detail: |
+  1. NPDevKernel/adapters/authz-default/.../IdentityPermissionOverrideLookup.java:99-108 (allowlist entry bf4d6c979293,
+     justified only by "it logs"): if the override query throws any SQLException that is not SQLState 42 (table absent) --
+     a lock timeout, statement timeout, pool hiccup -- overridesFor() returns Map.of() and the user gets the FULL role
+     ceiling for that request, with nothing logged. An admin who narrowed a user's permissions below the role ceiling
+     sees that restriction lifted whenever the lookup errors. Suggested: fail open only for SQLState 42; otherwise rethrow or
+     deny, as TenantRegistryService.isActive already does.
+  2. NPDevKernel/adapters/runtime-support/.../IdentityRoleLookup.java:94 (tokenVersion; allowlist entry 7e700fa66e6c covers
+     the tv parse, not this): on any SQLException tokenVersion() returns 0, so isTokenRevoked compares the token's claimed
+     version with 0 and a revoked token minted at version 0 -- or any tv=0 token of a deleted user -- is accepted while the
+     database errors. The agent rates exploitability low (rolesFor then returns no roles and the data layer is failing too).
+     Suggested: a sentinel such as -1 or a throw for non-schema errors so isTokenRevoked answers true.
+  Not doubtful, noted: MySqlDialect.escapeLiteral doubles quotes but not backslashes (unreachable today, callers pass
+  whitelisted identifiers); /process-due on RuntimeSchedulesController has no role check, so a tenant user can fire its
+  own tenant's not-yet-due scheduled events early (minor).
+resolution: >-
+  Done when each of the two lookups is read and either fails closed on a non-schema SQLException (with a test that makes
+  the query throw and asserts the restricted user is NOT widened / the revoked token is refused) or the owner records why
+  fail-open is intended. Authorization behaviour changes: read the callers first.
+files:
+  - NPDevKernel/adapters/authz-default/src/main/java/com/npdev/adapters/authz/IdentityPermissionOverrideLookup.java
+  - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java
+verification: NOT_VERIFIED
+note: >-
+  2026-10-27: filed. File paths above are as reported (package directories abbreviated by the agent); locate them by class name.
