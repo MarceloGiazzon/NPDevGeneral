@@ -32,6 +32,7 @@ $cleanSampleOutputScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\sa
 $runtimeSurfaceEvidenceScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\quality\run-runtime-surface-evidence.ps1"
 $observabilityHardeningScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\quality\run-observability-hardening.ps1"
 $runtimeSecurityConsistencyScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\quality\run-runtime-security-consistency.ps1"
+$securityMaturityEvidenceScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\evidence\write-security-hardening-maturity-report.ps1"
 $sampleDiagnosticsAuditScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\quality\run-sample-diagnostics-audit.ps1"
 $assembledAppRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot ("NPDevSamples\" + $SampleId + "\Output\App")
 $generationMarkerPath = Resolve-NPDevWorkspacePath $WorkspaceRoot ("NPDevSamples\" + $SampleId + "\Output\Reports\generation-run.json")
@@ -47,6 +48,7 @@ Ensure-NPDevFile $cleanSampleOutputScript "Sample cleanup script"
 Ensure-NPDevFile $runtimeSurfaceEvidenceScript "Runtime surface evidence script"
 Ensure-NPDevFile $observabilityHardeningScript "Observability hardening report script"
 Ensure-NPDevFile $runtimeSecurityConsistencyScript "Runtime security consistency report script"
+Ensure-NPDevFile $securityMaturityEvidenceScript "Security hardening maturity evidence script"
 Ensure-NPDevFile $sampleDiagnosticsAuditScript "Sample diagnostics enrichment audit script"
 
 $status = "passed"
@@ -176,12 +178,22 @@ try {
         -RuntimeHostGatePendingOk `
         -PassThru
 
+    # The consistency report reads security-hardening-maturity-report.json, which nothing in this gate
+    # produced -- on a machine that had never run the evidence script the report said "failed" while
+    # this gate still said "passed", because only an exception failed it. Produce the prerequisite,
+    # then let the report's own verdict count.
+    Write-NPDevInfo "Generating security hardening maturity evidence"
+    & $securityMaturityEvidenceScript -WorkspaceRoot $WorkspaceRoot
+
     Write-NPDevInfo "Generating RuntimeHost security consistency report"
     $runtimeSecurityConsistency = & $runtimeSecurityConsistencyScript `
         -WorkspaceRoot $WorkspaceRoot `
         -RunId ($RunId + "-security") `
         -ReportPath $runtimeSecurityConsistencyReportPath `
         -PassThru
+    if ([string]$runtimeSecurityConsistency.overallStatus -ne "passed") {
+        throw ("RuntimeHost security consistency report is '" + [string]$runtimeSecurityConsistency.overallStatus + "' -- see " + $runtimeSecurityConsistencyReportPath)
+    }
 
     Write-NPDevInfo "Generating sample diagnostics enrichment report"
     $sampleDiagnosticsEnrichment = & $sampleDiagnosticsAuditScript `
