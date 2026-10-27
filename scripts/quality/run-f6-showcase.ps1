@@ -165,6 +165,10 @@ finally {
     $reportDirectory = Split-Path -Parent $ReportPath
     if (-not [string]::IsNullOrWhiteSpace($reportDirectory)) { New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null }
     $report | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $ReportPath -Encoding UTF8
+    # Record the run in the verification cadence like run-journeys / run-shell-scenarios do; without
+    # this `f6-showcase-browser` stayed "never-run" however often the showcase passed.
+    $py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } elseif (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "py" }
+    & $py (Join-Path $repoRoot "scripts\quality\cadence_state.py") record --id "f6-showcase-browser" --tier T1 --result ($(if ($report.overallStatus -eq "passed") { "passed" } else { "failed" })) 2>&1 | Out-Null
     if ($scrapCtx) { Stop-ScrapForAI -Context $scrapCtx }
     if ($process -and -not $KeepRunning) { Stop-ProcessTree $process.Id }
 }

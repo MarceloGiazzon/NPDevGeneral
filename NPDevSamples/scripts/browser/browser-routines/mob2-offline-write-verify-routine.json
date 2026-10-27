@@ -30,9 +30,9 @@
     },
     {
       "action": "waitForSelector",
-      "selector": "#sideNav",
+      "selector": "#concept-WidgetOrder",
       "state": "visible",
-      "label": "Signed in, shell nav rendered"
+      "label": "Confirm auth landed"
     },
     {
       "action": "goto",
