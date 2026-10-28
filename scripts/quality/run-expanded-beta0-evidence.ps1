@@ -146,6 +146,11 @@ $ErrorActionPreference = "Stop"
 if ($commandAlignmentExit -ne 0) {
     $commandPassed = $false
 }
+# Used to be computed and then never read, so a failing command-policy scenario or a failing command-surface
+# alignment could not change this producer's verdict.
+if (-not $commandPassed) {
+    Add-Failure $negativeFailures "Command-policy scenarios or the structured command surface alignment did not pass"
+}
 
 New-Report "schema-validation-report.json" "npdev-expanded-schema-validation-report.v1" ($scenarioFailures.Count -eq 0 -and $negativeFailures.Count -eq 0) ([pscustomobject]@{
     aiSchemaValidationReport = "scripts/reports/out/ai-schema-validation-report.json"
@@ -196,7 +201,34 @@ $workspaceSlimnessScript = Join-Path $workspaceRoot "scripts/hygiene/Test-Worksp
     -WorkspaceRoot $workspaceRoot `
     -ReportPath "scripts/reports/out/workspace-cleanliness-report.json" `
     -RunId $RunId | Out-Null
-New-Report "stale-report-check-report.json" "npdev-stale-report-check-report.v1" $true ([pscustomobject]@{ blockingReportsFresh = $true; blockingReportsMatchExpandedContract = $true; staleNarrowReportsRejected = $true }) @() | Out-Null
+# stale-report-check is COMPUTED from the reports on disk. It used to be a hard-coded $true carrying three claims
+# nothing measured, and the release gate lists it as a required report. Missing reports are not judged here (the
+# release gate reports those itself); the rejection of stale narrow reports is not something this script can show,
+# so it is no longer claimed.
+$betaGatePolicy = Get-Content -LiteralPath "scripts/policy/beta-release-gate-policy.json" -Raw | ConvertFrom-Json
+$maxReportAgeHours = [double]$betaGatePolicy.maxReportAgeHours
+$staleReportFailures = New-Object System.Collections.Generic.List[string]
+$checkedReportCount = 0
+foreach ($requiredReport in @($betaGatePolicy.requiredReports)) {
+    $requiredReportPath = [string]$requiredReport.path
+    if ($requiredReportPath -like "*stale-report-check-report.json" -or $requiredReportPath -like "*provenance-report.json") { continue }
+    if (-not (Test-Path -LiteralPath $requiredReportPath)) { continue }
+    $checkedReportCount++
+    $ageHours = ((Get-Date) - (Get-Item -LiteralPath $requiredReportPath).LastWriteTime).TotalHours
+    if ($ageHours -gt $maxReportAgeHours) {
+        Add-Failure $staleReportFailures ("Report is older than " + $maxReportAgeHours + "h (" + [math]::Round($ageHours, 1) + "h): " + $requiredReportPath)
+    }
+    try {
+        $reportJson = Get-Content -LiteralPath $requiredReportPath -Raw | ConvertFrom-Json
+        $declaredContract = $reportJson.PSObject.Properties["expandedBeta0ContractVersion"]
+        if ($null -ne $declaredContract -and [string]$declaredContract.Value -ne [string]$scope.expandedBeta0ContractVersion) {
+            Add-Failure $staleReportFailures ("Report declares contract " + [string]$declaredContract.Value + ", expected " + [string]$scope.expandedBeta0ContractVersion + ": " + $requiredReportPath)
+        }
+    } catch {
+        Add-Failure $staleReportFailures ("Report is not parseable JSON: " + $requiredReportPath)
+    }
+}
+New-Report "stale-report-check-report.json" "npdev-stale-report-check-report.v1" ($staleReportFailures.Count -eq 0) ([pscustomobject]@{ checkedReports = $checkedReportCount; maxReportAgeHours = $maxReportAgeHours; blockingReportsFresh = ($staleReportFailures.Count -eq 0); expandedBeta0ContractVersion = $scope.expandedBeta0ContractVersion }) @($staleReportFailures) | Out-Null
 New-Report "provenance-report.json" "npdev-provenance-report.v1" $true ([pscustomobject]@{ commit = $commit; officialEvidencePlatform = $scope.officialEvidencePlatform; expandedBeta0ContractVersion = $scope.expandedBeta0ContractVersion }) @() | Out-Null
 
 $overallFailures = @($scopeFailures + $scenarioFailures + $negativeFailures + $panelFailures + $procedureFailures + $workflowFailures + $securityFailures)

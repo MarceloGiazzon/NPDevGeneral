@@ -1,0 +1,31 @@
+id: QUAL-62
+title: The verification-cadence state lives in scripts/reports/out, the folder the workspace size limit pushes people to prune -- a routine cleanup silently resets every gate to "never-run"
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-10-27
+closed: null
+source: >-
+  2026-10-27: after an aborted evidence run left 25 files in scripts/reports/out, the commit hook refused (scripts held 516
+  files, limit 500). Removing "files newer than 19:30" cleared the litter AND deleted verification-cadence-state.json, which
+  every gate had been updating all day. The next fast-gate run then reported every check as never-run, including the four
+  T2 gates. The runs had happened; the record of them was gone. The state was rebuilt by re-recording the passes backed by
+  digest logs from the same session (their lastRun is the re-recording time).
+surface: quality/cadence
+detail: |
+  scripts/quality/cadence_state.py:38 puts STATE_PATH under REPO_ROOT/scripts/reports/out. That folder is gitignored scratch
+  output, counted by Test-WorkspaceSlimness (maxScriptsFileCount 500, maxReportsOutSizeMB 15) and cleaned by hand when the
+  limit trips -- so a durable, gate-driving record shares a directory with disposable evidence. Nothing marks it as
+  precious, and a missing file reads as "never-run" rather than as an error, which is indistinguishable from a machine that
+  has genuinely never run the gates.
+resolution: >-
+  Done when the state file is outside the pruned tree (for example under the Build root via Get-NPDevBuildRoot, per the
+  build-output policy) or is exempted and marked, and a missing state file is reported as "state file absent" instead of
+  every check as never-run. Moving it needs the same path in cadence_state.py and every reader.
+files:
+  - scripts/quality/cadence_state.py
+  - scripts/hygiene/Test-WorkspaceSlimness.ps1
+verification: NOT_VERIFIED
+note: >-
+  2026-10-27: filed. The deletion was the session lead's own cleanup, not a defect in a gate; the weakness is that one
+  command could do it without any warning.

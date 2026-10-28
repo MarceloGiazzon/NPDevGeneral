@@ -278,7 +278,7 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $reportOut) | Out-
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
     tier = $Tier
     elapsedSeconds = [math]::Round($sw.Elapsed.TotalSeconds, 1)
-    status = if ($overallFailed) { "failed" } else { "passed" }
+    status = if ($overallFailed) { "failed" } elseif ($SkipCanary) { "partial-canary-skipped" } else { "passed" }
     stages = $stages
 } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $reportOut -Encoding UTF8
 
@@ -291,5 +291,11 @@ if ($overallFailed) {
     exit 1
 }
 Write-Host ""
+if ($SkipCanary) {
+    # The parameter's own help says a run that skipped the canary should not report "T1 passed". Exit stays 0
+    # so iterating on this script is not blocked, but the words (and the report status) say what happened.
+    Write-Host "$Tier FAST GATE PARTIAL: the canary was skipped (-SkipCanary), so this is NOT a $Tier pass." -ForegroundColor Yellow
+    exit 0
+}
 Write-Host "$Tier FAST GATE PASSED." -ForegroundColor Green
 exit 0

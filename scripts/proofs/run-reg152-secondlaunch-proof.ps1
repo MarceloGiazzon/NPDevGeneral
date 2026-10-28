@@ -131,6 +131,15 @@ $testExit = $LASTEXITCODE
 
 & (Join-Path $opsDir 'Stop-App.ps1') 2>&1 | ForEach-Object { Log $_ }
 
+# $testExit was read into a variable and never looked at, so this proof printed PASS even when the standalone
+# Test-App.ps1 it exists to exercise had failed. The app is already stopped above, so fail here.
+if ($testExit -ne 0) {
+    Log ''
+    Log "===== RESULT: FAIL -- Test-App.ps1 exited $testExit ====="
+    Log "Evidence: $log"
+    exit 1
+}
+
 Log ''
 Log '===== RESULT: PASS -- REG-152 second-launch-pipeline fix verified RED-then-GREEN ====='
 Log "Evidence: $log"
