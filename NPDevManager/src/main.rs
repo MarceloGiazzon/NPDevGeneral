@@ -440,6 +440,13 @@ async fn list_engines(state: State<'_, AppState>) -> Result<Value, String> {
     npdev::run_engines(&python, &cli, java_home.as_deref()).await
 }
 
+/// BUILD-5: each new app gets a folder of its own, `<parent>/<name>/<name>`. Generation writes the
+/// app to `<model dir>-app` and its ArtifactNP to `<model dir>/../ArtifactNP`, so two apps whose model
+/// folders sat side by side in one parent shared -- and overwrote -- a single ArtifactNP.
+fn app_target_dir(parent_dir: &str, name: &str) -> PathBuf {
+    PathBuf::from(parent_dir).join(name).join(name)
+}
+
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn create_app(
@@ -458,7 +465,7 @@ async fn create_app(
     let java_home = resolve_java_home(&state);
     let python = resolve_python_exe(&state).await?;
     let cli = resolve_npdev_cli(&state)?;
-    let target_dir = PathBuf::from(&parent_dir).join(&name);
+    let target_dir = app_target_dir(&parent_dir, &name);
     let result = npdev::run_init(
         &python,
         &cli,
@@ -1599,10 +1606,8 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.5.2: Install > Setup reads the staged jars and the knowledge index from the folder the CLI \
-     really writes them to. With a local repo folder selected that is the checkout's own Build \
-     folder, so a finished setup no longer reports \"not run yet\". The setup log drops the repeated \
-     JSON summary, and Doctor/Engines say how to get a version when none is installed."
+    "0.5.3: New app creates each app in a folder of its own (<folder>\\<name>\\<name>), so two apps \
+     made in the same folder no longer overwrite each other's generated artifacts (ArtifactNP)."
         .to_string()
 }
 
@@ -1610,7 +1615,7 @@ fn manager_version_description() -> String {
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "Setup Status";
+const CURRENT_VERSION_TITLE: &str = "App Folders";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {
@@ -3519,5 +3524,23 @@ mod prompter_migration_tests {
         assert_eq!(url_host("https://llm.example.com/v1/messages"), "llm.example.com");
         assert_eq!(url_host("http://127.0.0.1:1234/v1"), "127.0.0.1:1234");
         assert_eq!(url_host("api.example.com/x"), "api.example.com");
+    }
+}
+
+#[cfg(test)]
+mod app_target_dir_tests {
+    use super::{app_target_dir, model_dir_of_app};
+    use std::path::Path;
+
+    /// BUILD-5: two apps created in one parent folder must not share `<model dir>/../ArtifactNP`.
+    #[test]
+    fn each_new_app_gets_its_own_artifact_parent() {
+        let a = app_target_dir("C:/apps", "alpha");
+        let b = app_target_dir("C:/apps", "beta");
+        assert_eq!(a, Path::new("C:/apps").join("alpha").join("alpha"));
+        assert_ne!(a.parent(), b.parent(), "ArtifactNP lands in the model dir's parent");
+        // The `<model>-app` sibling convention every lookup relies on is unchanged.
+        let built = format!("{}-app", a.to_string_lossy());
+        assert_eq!(model_dir_of_app(&built).as_deref(), Some(a.to_string_lossy().as_ref()));
     }
 }

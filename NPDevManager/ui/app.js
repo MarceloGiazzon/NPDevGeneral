@@ -1029,7 +1029,7 @@ document.getElementById("new-app-form").addEventListener("submit", async (event)
       externallyProvisioned:
         document.getElementById("new-app-externally-provisioned").checked === true,
     });
-    const createdDir = (result && result.created && result.created.directory) || `${parentDir}\\${name}`;
+    const createdDir = (result && result.created && result.created.directory) || `${parentDir}\\${name}\\${name}`;
     statusEl.textContent = `created ${name} in ${createdDir}. It is in the app list above and on the Run tab.`;
     // Cleared so pressing Create again cannot target the folder that now exists.
     document.getElementById("new-app-name").value = "";

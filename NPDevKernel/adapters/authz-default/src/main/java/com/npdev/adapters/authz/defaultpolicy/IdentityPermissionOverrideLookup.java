@@ -58,7 +58,10 @@ final class IdentityPermissionOverrideLookup {
      * bound for that role assignment. Empty map -- never null -- when the actor is unknown, inactive,
      * the tenant doesn't match, or the identity/override tables are absent (an app that never adopted
      * this feature, or is mid-migration, behaves exactly as it did before C2 existed: no restriction).
-     * Never throws.
+     *
+     * @throws OverrideLookupUnavailable on a transient (non-schema) database fault -- SEC-15, owner
+     *         decision 2026-10-28: the overrides are then UNKNOWN, and the caller denies rather than
+     *         grant the full role ceiling an admin may have narrowed. Nothing else throws.
      */
     static Map<String, Set<String>> overridesFor(
             DataSource dataSource, IdentityPackTableNames tables, String tenantId, String actorId) {
@@ -103,15 +106,22 @@ final class IdentityPermissionOverrideLookup {
                         + "concept?) -- falling back to 'no override configured' (full role ceiling "
                         + "applies) for tenant='" + tenantId + "', actor='" + actorId + "': "
                         + exception.getMessage());
-            } else {
-                // SEC-15: a transient fault (lock/statement timeout, pool exhaustion) also falls back to
-                // "no override" -- the documented never-throws contract -- but it must not be silent: an
-                // admin's narrowing of this actor's permissions is NOT applied on this request.
-                LOG.warning("Permission-override lookup failed (SQLState " + exception.getSQLState()
-                        + ") -- full role ceiling applies, overrides NOT enforced for tenant='" + tenantId
-                        + "', actor='" + actorId + "' on this request: " + exception.getMessage());
+                return Map.of();
             }
-            return Map.of();
+            // SEC-15: a transient fault (lock/statement timeout, pool exhaustion) used to fall back to
+            // "no override" too, silently lifting an admin's narrowing for that request. It now fails
+            // closed: the caller denies the permission check for this request.
+            LOG.warning("Permission-override lookup failed (SQLState " + exception.getSQLState()
+                    + ") -- overrides unknown, permission DENIED for tenant='" + tenantId
+                    + "', actor='" + actorId + "' on this request: " + exception.getMessage());
+            throw new OverrideLookupUnavailable(exception);
+        }
+    }
+
+    /** A transient database fault left this actor's overrides unknown; the permission check denies. */
+    static final class OverrideLookupUnavailable extends RuntimeException {
+        OverrideLookupUnavailable(SQLException cause) {
+            super(cause.getMessage(), cause);
         }
     }
 

@@ -1,0 +1,35 @@
+id: QUAL-63
+title: run_digest.py crashes with UnicodeEncodeError on a cp1252 Windows console when the digested output contains non-cp1252 characters
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-10-28
+closed: 2026-10-28
+source: >-
+  2026-10-27 session: a digested gate run died in the verdict printer on the Windows console; setting
+  PYTHONIOENCODING=utf-8 before the call worked around it.
+surface: quality/digest
+detail: |
+  scripts/ai/run_digest.py writes the log file as utf-8 with errors="replace" (:182), but the verdict, the matched lines
+  and the raw tail are printed to sys.stdout (:201-214), whose encoding on a default Windows console is cp1252. A gate
+  line holding a character cp1252 cannot encode (a check mark, a box-drawing glyph or an arrow) raises
+  UnicodeEncodeError after the command has finished, so the verdict the digest exists to deliver is lost. The
+  PreToolUse hook forces every expensive command through this runner, so the crash can hit any gate.
+resolution: >-
+  Done when run_digest.py reconfigures stdout/stderr at startup (sys.stdout.reconfigure(encoding="utf-8",
+  errors="replace") or the same with the console's own encoding), and a test feeds it output containing non-cp1252
+  characters under a cp1252 stdout and asserts that the verdict is printed and the exit code is passed through.
+files:
+  - scripts/ai/run_digest.py
+verification: UNIT_TESTED
+note: >-
+  2026-10-28: filed from the 2026-10-27 handoff, fixed the same day: main() first reconfigures stdout and stderr with
+  errors="replace" (tolerate_console_encoding), so an unencodable character prints as "?" instead of crashing. The
+  console's encoding is kept, not forced to utf-8, so the shell that reads the output still decodes it.
+guard:
+  kind: test
+  ref: scripts/ai/test_run_digest.py#test_success_verdict_survives_unencodable_characters
+  asserts: >-
+    under PYTHONIOENCODING=cp1252, a digested command printing check marks, box-drawing glyphs and arrows still gets
+    its "ok exit=0" / "FAILED exit=3" verdict printed and its exit code passed through, with no UnicodeEncodeError
+  provenRed: true

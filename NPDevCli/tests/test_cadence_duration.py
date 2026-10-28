@@ -13,9 +13,11 @@ Strictly a unit test -- nothing here is a check-*.py script and nothing mutates 
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import sys
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -52,12 +54,38 @@ class CadenceRecordDurationTest(unittest.TestCase):
         # Point the module at the temp files, never the repo's real ledger.
         self._orig_cadence = cadence_state.CADENCE_PATH
         self._orig_state = cadence_state.STATE_PATH
+        self._orig_legacy = cadence_state.LEGACY_STATE_PATH
+        self.legacy_file = Path(self._tmp.name) / "legacy" / "state.json"
         cadence_state.CADENCE_PATH = self.cadence_file
         cadence_state.STATE_PATH = self.state_file
+        cadence_state.LEGACY_STATE_PATH = self.legacy_file
 
     def tearDown(self) -> None:
         cadence_state.CADENCE_PATH = self._orig_cadence
         cadence_state.STATE_PATH = self._orig_state
+        cadence_state.LEGACY_STATE_PATH = self._orig_legacy
+
+    def test_legacy_state_is_read_then_moved_by_the_next_record(self):
+        """QUAL-62: a checkout whose runs still sit in scripts/reports/out keeps them, and the
+        next record moves them to the Build-root file."""
+        self.legacy_file.parent.mkdir(parents=True)
+        self.legacy_file.write_text(json.dumps({
+            "schemaVersion": "npdev-verification-cadence-state.v1", "generatedAt": "x",
+            "runs": [{"id": "other", "tier": "T2", "lastRun": "2026-10-27T00:00:00+00:00",
+                      "result": "passed", "commit": "old"}],
+        }), encoding="utf-8")
+        self.assertIn("other", cadence_state.load_state())
+        self.assertEqual(cadence_state.cmd_record(_namespaced()), 0)
+        self.assertEqual({"mycheck", "other"}, {r["id"] for r in self._read_state()["runs"]})
+        self.assertFalse(self.legacy_file.exists())
+
+    def test_absent_state_file_is_named_not_just_reported_as_never_run(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = cadence_state.cmd_report(argparse.Namespace(tier="T0", json=False, report_out=""))
+        self.assertEqual(code, 1)
+        self.assertIn("STATE FILE ABSENT", out.getvalue())
+        self.assertIn("mycheck (T0): never-run", out.getvalue())
 
     def _read_state(self) -> dict:
         return json.loads(self.state_file.read_text(encoding="utf-8"))

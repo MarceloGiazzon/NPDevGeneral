@@ -1,0 +1,40 @@
+id: RUN-38
+title: An app started by the CLI cannot be stopped by its own _ops/Stop-App.ps1 -- the CLI and the toolbox keep app.pid in different folders
+type: GAP
+severity: MEDIUM
+status: PARTIAL
+opened: 2026-10-28
+closed: null
+source: >-
+  2026-10-28: stopping testH2S_2 (started on 2026-10-27 by 'npdev run app' from the Manager), _ops/Stop-Environment.ps1
+  stopped H2Server, but _ops/Stop-App.ps1 printed "No app.pid; nothing to stop." while the app jar was still listening on
+  8081. It had to be stopped by PID.
+surface: cli/run
+detail: |
+  The generated _ops/Stop-App.ps1 reads $PSScriptRoot/app.pid, which Start-App.ps1 writes. NPDevCli/dev_loop.py writes its
+  app.pid to options.state_dir (dev_loop.py:259), and state_dir is model.parent / STATE_DIR_NAME (:67): a folder next to
+  the model, not the app's _ops. Whichever launcher started the app, only that launcher can find its pid. The Manager's
+  Run tab Stop goes through the CLI, so it works; anyone (or any script) who uses the documented _ops toolbox gets a false
+  "nothing to stop" with the app still holding the port. Whether 'npdev run app' writes a pid at all, or only 'npdev dev'
+  does, has not been traced.
+resolution: >-
+  Done when one pid location is shared (the CLI writes _ops/app.pid too, or Stop-App.ps1 also checks the CLI state dir),
+  Stop-App.ps1 falls back to the process listening on the app's configured port when no pid file exists, and a test starts
+  an app through the CLI and stops it with _ops/Stop-App.ps1.
+files:
+  - NPDevCli/dev_loop.py
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java
+verification: UNIT_TESTED
+note: >-
+  2026-10-28: filed. The mismatch was seen live on testH2S_2 and the two paths were confirmed by reading the code.
+  Tracing showed 'npdev run app' wrote no pid anywhere (the 8081 jar had no dev-loop hotswap flag) and 'npdev dev'
+  wrote one only to its own state dir. Fixed the same day: npdev_cli.record_app_pid writes _ops/app.pid, called by both
+  launchers right after Popen; npdev dev's teardown removes it only while it still holds that loop's pid. Still open:
+  the Stop-App.ps1 port fallback, and a live start-with-the-CLI, stop-with-_ops run.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_dev_loop.py#test_boot_records_the_pid_for_the_toolbox
+  asserts: >-
+    dev_loop.boot hands the launched pid to record_app_pid for the app's own folder; record_app_pid writes the exact
+    file Stop-App.ps1 reads (and nothing when _ops is absent); teardown removes the pid only when it is this loop's
+  provenRed: false

@@ -27,11 +27,13 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 POLICY = Path(__file__).resolve().parents[1] / "policy" / "output-digest-policy.json"
+OUTPUT_DRAIN_GRACE_SECONDS = 5
 
 
 def repo_root() -> Path:
@@ -145,7 +147,18 @@ def digest(lines: list[str], fam: dict, defaults: dict, failed: bool) -> list[st
     return out
 
 
+def tolerate_console_encoding() -> None:
+    # A cp1252 Windows console cannot encode a check mark or a box-drawing glyph; printing one used to
+    # raise UnicodeEncodeError after the command had finished, losing the verdict (QUAL-63).
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main() -> int:
+    tolerate_console_encoding()
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("--family", help="force a policy family instead of auto-detecting")
     ap.add_argument("--label", help="name for the log file (default: derived from the command)")
@@ -184,12 +197,27 @@ def main() -> int:
         proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, errors="replace", bufsize=1)
         assert proc.stdout is not None
-        for raw in proc.stdout:
-            log.write(raw)
-            log.flush()
-            os.fsync(log.fileno())
-            lines.append(raw.rstrip("\n"))
+
+        drained = threading.Event()
+
+        def pump() -> None:
+            for raw in proc.stdout:
+                if drained.is_set():
+                    return  # the log is closed; whatever the daemon still prints is not this run's
+                log.write(raw)
+                log.flush()
+                os.fsync(log.fileno())
+                lines.append(raw.rstrip("\n"))
+
+        # Read on a thread and stop at the COMMAND's exit, not at EOF: a Gradle daemon the command
+        # forked inherits the pipe and outlives it, so EOF never came and the runner hung forever
+        # after a finished run-all-gates (found live 2026-10-28). The grace lets the tail drain.
+        reader = threading.Thread(target=pump, daemon=True)
+        reader.start()
         code = proc.wait()
+        reader.join(timeout=OUTPUT_DRAIN_GRACE_SECONDS)
+        drained.set()
+        lines = list(lines)
     elapsed = time.time() - started
 
     failed = code != 0

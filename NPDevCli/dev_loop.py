@@ -213,6 +213,19 @@ def _reclaim_orphan(options: DevOptions, out: "Output") -> None:
     pidfile.unlink(missing_ok=True)
 
 
+def _forget_ops_pid(options: DevOptions) -> None:
+    """Drop `_ops/app.pid` when it still names the app this loop started (RUN-38), so Stop-App.ps1
+    never acts on a pid the OS may since have handed to another process. A pid Start-App.ps1 wrote
+    for a different launch is not ours and stays."""
+    ops_pid = options.output / "_ops" / "app.pid"
+    try:
+        if ops_pid.read_text(encoding="utf-8").strip() == \
+                (options.state_dir / "app.pid").read_text(encoding="utf-8").strip():
+            ops_pid.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def boot(options: DevOptions, jar: Path, cli) -> AppProcess | None:
     options.state_dir.mkdir(parents=True, exist_ok=True)
     # W1.3: `cli.java_launcher()`, never a bare `["java", ...]`. The generate and build phases above
@@ -257,6 +270,7 @@ def boot(options: DevOptions, jar: Path, cli) -> AppProcess | None:
     )
     app = AppProcess(proc, jar, log)
     (options.state_dir / "app.pid").write_text(str(proc.pid), encoding="utf-8")
+    cli.record_app_pid(options.output, proc.pid)  # so the app's own _ops/Stop-App.ps1 can stop it
     deadline = time.monotonic() + BOOT_READY_TIMEOUT
     while time.monotonic() < deadline:
         if not app.alive():
@@ -727,6 +741,7 @@ def dev(args: argparse.Namespace, cli) -> int:
         if app is not None:
             out.note("stopping the app")
             app.stop()
+        _forget_ops_pid(options)
         (options.state_dir / "app.pid").unlink(missing_ok=True)
         options.lockfile.unlink(missing_ok=True)
 

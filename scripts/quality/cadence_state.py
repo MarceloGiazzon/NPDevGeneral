@@ -3,7 +3,7 @@
 
 verification-cadence.json (same directory) declares every check, its tier, and its
 maxStaleness. This script records real runs against that declaration
-(scripts/reports/out/verification-cadence-state.json) and reports, for a requested tier,
+(<Build>/verification-cadence/verification-cadence-state.json) and reports, for a requested tier,
 which declared checks are RAN (this tier's own), WITHIN WINDOW, or OVERDUE -- generalizing
 the same staleness concept run-beta-release-gate.ps1 already uses for evidence freshness,
 rather than building a second mechanism.
@@ -35,7 +35,13 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CADENCE_PATH = REPO_ROOT / "scripts" / "quality" / "verification-cadence.json"
-STATE_PATH = REPO_ROOT / "scripts" / "reports" / "out" / "verification-cadence-state.json"
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "ai"))
+from npdev_ai_common import build_root  # noqa: E402
+
+# QUAL-62: under the Build root, not scripts/reports/out -- that folder is disposable evidence the
+# workspace size limit pushes people to prune, and one routine cleanup reset every gate to never-run.
+STATE_PATH = build_root() / "verification-cadence" / "verification-cadence-state.json"
+LEGACY_STATE_PATH = REPO_ROOT / "scripts" / "reports" / "out" / "verification-cadence-state.json"
 
 TIER_ORDER = ["T0", "T1", "T2", "T3"]
 
@@ -63,10 +69,20 @@ def load_cadence():
     return checks
 
 
+def state_source():
+    """The file runs are read from: the Build-root one, else a pre-QUAL-62 checkout's legacy file
+    (the next record moves it), else None -- no run record exists on this machine at all."""
+    for path in (STATE_PATH, LEGACY_STATE_PATH):
+        if path.exists():
+            return path
+    return None
+
+
 def load_state():
-    if not STATE_PATH.exists():
+    source = state_source()
+    if source is None:
         return {}
-    with STATE_PATH.open("r", encoding="utf-8") as f:
+    with source.open("r", encoding="utf-8") as f:
         doc = json.load(f)
     return {r["id"]: r for r in doc.get("runs", [])}
 
@@ -81,6 +97,9 @@ def write_state(state_by_id):
     with STATE_PATH.open("w", encoding="utf-8") as f:
         json.dump(doc, f, indent=2)
         f.write("\n")
+    # The legacy file's runs were read in through load_state and now live in STATE_PATH; leaving it
+    # would let a later deletion of STATE_PATH silently fall back to a stale record.
+    LEGACY_STATE_PATH.unlink(missing_ok=True)
 
 
 def current_commit():
@@ -199,11 +218,13 @@ def cmd_report(args):
     ran_this_tier = [c for c in blocking_within + blocking_overdue if c["tier"] == requested]
     passed = len(blocking_overdue) == 0
 
+    state_absent = state_source() is None
     report = {
         "schemaVersion": "npdev-verification-cadence-report.v1",
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "tier": requested,
         "status": "passed" if passed else "overdue",
+        "stateFileAbsent": state_absent,
         "ranThisTier": [c["id"] for c in ran_this_tier],
         "withinWindow": [c["id"] for c in blocking_within if c["tier"] != requested],
         "overdue": [{"id": c["id"], "tier": c["tier"], "status": c["status"]} for c in blocking_overdue],
@@ -216,6 +237,11 @@ def cmd_report(args):
         print(json.dumps(report, indent=2))
     else:
         print(f"== Tier {requested} cadence report ==")
+        if state_absent:
+            # Without this line a deleted state file reads exactly like a machine that never ran a
+            # gate (QUAL-62): every check "never-run", with no hint that the record itself is gone.
+            print(f"STATE FILE ABSENT: {STATE_PATH} -- no run is recorded on this machine, so every "
+                  f"check below reads never-run whether or not it ran.")
         print(f"RAN (this tier): {', '.join(report['ranThisTier']) or '(none recorded yet)'}")
         print(f"WITHIN WINDOW:   {', '.join(report['withinWindow']) or '(none)'}")
         if report["overdue"]:

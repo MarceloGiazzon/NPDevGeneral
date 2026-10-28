@@ -26,6 +26,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import dev_loop
+import npdev_cli
 
 
 class FakeAppProcess:
@@ -272,6 +273,46 @@ class BootStartsTheEnvironmentFirst(unittest.TestCase):
                 self.assertIsNone(dev_loop.boot(options, Path("app.jar"), cli))
             popen.assert_not_called()
             self.assertIn("boom", options.app_log.read_text(encoding="utf-8"))
+
+
+class OpsToolboxCanStopTheApp(unittest.TestCase):
+    """RUN-38: _ops/Stop-App.ps1 reads _ops/app.pid; an app the CLI booted must leave it there."""
+
+    def test_boot_records_the_pid_for_the_toolbox(self):
+        with TemporaryDirectory() as tmp:
+            options = make_options(Path(tmp))
+            cli = make_cli(java_launcher=mock.MagicMock(return_value="java"))
+            fake_proc = mock.MagicMock()
+            fake_proc.pid = 4242
+            fake_proc.poll.return_value = None
+            with mock.patch.object(dev_loop.subprocess, "Popen", return_value=fake_proc), \
+                    mock.patch.object(dev_loop, "_health_ok", return_value=True):
+                app = dev_loop.boot(options, Path("app.jar"), cli)
+            app._log.close()
+            cli.record_app_pid.assert_called_once_with(options.output, 4242)
+
+    def test_record_app_pid_writes_the_file_stop_app_reads(self):
+        with TemporaryDirectory() as tmp:
+            app_root = Path(tmp)
+            npdev_cli.record_app_pid(app_root, 77)
+            self.assertFalse((app_root / "_ops" / "app.pid").exists(), "no _ops: nothing to write into")
+            (app_root / "_ops").mkdir()
+            npdev_cli.record_app_pid(app_root, 77)
+            self.assertEqual("77", (app_root / "_ops" / "app.pid").read_text(encoding="utf-8"))
+
+    def test_teardown_forgets_only_its_own_pid(self):
+        with TemporaryDirectory() as tmp:
+            options = make_options(Path(tmp))
+            ops = options.output / "_ops"
+            ops.mkdir(parents=True, exist_ok=True)
+            options.state_dir.mkdir(parents=True, exist_ok=True)
+            (options.state_dir / "app.pid").write_text("4242", encoding="utf-8")
+            (ops / "app.pid").write_text("9999", encoding="utf-8")
+            dev_loop._forget_ops_pid(options)
+            self.assertTrue((ops / "app.pid").exists(), "a pid Start-App.ps1 wrote is not ours")
+            (ops / "app.pid").write_text("4242", encoding="utf-8")
+            dev_loop._forget_ops_pid(options)
+            self.assertFalse((ops / "app.pid").exists())
 
 
 class SuperUserKeyDiscovery(unittest.TestCase):

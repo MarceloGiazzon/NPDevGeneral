@@ -1,0 +1,36 @@
+id: QUAL-64
+title: run_digest.py hung forever after a finished run-all-gates -- a Gradle daemon the gates forked held its output pipe open
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-10-28
+closed: 2026-10-28
+source: >-
+  2026-10-28 session: run-all-gates.ps1 printed its summary ("NOT ALL GATES GREEN: 1 failed") and exited, but the
+  run_digest.py wrapping it never returned; its process had no children left. Two Gradle 9.5.1 daemons started during
+  the run were still alive. The 30-minute watch expired before anyone noticed, the same failure shape as the 6h22m wait
+  in CLAUDE.md's 2026-09-26 alert.
+surface: quality/digest
+detail: |
+  scripts/ai/run_digest.py read the child's merged stdout with `for raw in proc.stdout` and only then called
+  proc.wait(). A Gradle daemon forked by any gate inherits that pipe and outlives the gate, so EOF never arrives and the
+  loop never ends, however long ago the command itself exited. The PreToolUse hook forces every expensive command
+  through this runner, so any gate that starts a daemon could hang it.
+resolution: >-
+  Done: the pipe is read on a daemon thread; the runner waits for the command's exit, gives the reader
+  OUTPUT_DRAIN_GRACE_SECONDS (5) to drain the tail, then stops reading, so a line printed later by a lingering
+  grandchild is dropped instead of written to a closed log. The digest and exit code are those of the command itself.
+files:
+  - scripts/ai/run_digest.py
+  - scripts/ai/test_run_digest.py
+verification: UNIT_TESTED
+note: >-
+  2026-10-28: filed and fixed the same day. The new test hung until its 40s timeout against the previous run_digest.py
+  and passes in about 5s against the fix.
+guard:
+  kind: test
+  ref: scripts/ai/test_run_digest.py#test_runner_returns_when_the_command_exits_not_when_the_pipe_closes
+  asserts: >-
+    a command that forks a 45s grandchild inheriting stdout and then exits makes run_digest.py return in under 25s with
+    "ok exit=0" and the command's own output in the digest
+  provenRed: true

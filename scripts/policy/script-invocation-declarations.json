@@ -100,6 +100,10 @@
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"
     },
+    "scripts/ai/test_run_digest.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/ai/session_meter.py": {
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"

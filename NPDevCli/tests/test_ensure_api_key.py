@@ -122,6 +122,9 @@ class DevLoopBootProvisionsKeyTest(unittest.TestCase):
             self.ensure_api_key_calls.append(app_root)
             return "spy-key"
 
+        def ensure_environment(self, app_root: Path) -> None:
+            return None
+
     def test_boot_calls_ensure_api_key_before_spawning_java(self):
         with tempfile.TemporaryDirectory(prefix="npdev-devloop-") as temp:
             root = Path(temp)

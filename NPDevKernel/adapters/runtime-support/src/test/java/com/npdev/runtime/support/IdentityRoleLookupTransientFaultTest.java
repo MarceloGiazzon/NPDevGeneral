@@ -21,10 +21,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * SEC-15: {@link IdentityRoleLookup#tokenVersion} keeps its documented "never throws, returns 0" contract on a
- * TRANSIENT database fault (lock/statement timeout, pool exhaustion -- not a schema mismatch), but that fail-open
- * must not be silent: for that request a revoked version-0 token cannot be told from a live one, and the operator
- * has to be able to see it. The schema-mismatch path (SQLState 42xxx) keeps its SEVERE log and is not asserted here.
+ * SEC-15: on a TRANSIENT database fault (lock/statement timeout, pool exhaustion -- not a schema mismatch) the
+ * revocation check fails CLOSED (owner decision 2026-10-28): the stored version is unknown, so a tv-bearing token is
+ * refused for that request, and a warning says so. {@link IdentityRoleLookup#tokenVersion} itself keeps returning 0
+ * for its minting callers. The schema-mismatch path (SQLState 42xxx) stays fail-open with its SEVERE log.
  */
 class IdentityRoleLookupTransientFaultTest {
 
@@ -52,15 +52,25 @@ class IdentityRoleLookupTransientFaultTest {
     }
 
     @Test
-    void aTransientSqlFaultStillReturnsZeroButIsLoggedAsRevocationNotEnforced() {
+    void aTransientSqlFaultRefusesAVersionZeroTokenAndSaysSo() {
         DataSource failing = new FailingDataSource("40001");
 
-        int version = IdentityRoleLookup.tokenVersion(failing, TABLES, "tenantx", "alice");
-
-        assertEquals(0, version, "the never-throws contract is unchanged");
+        assertTrue(IdentityRoleLookup.isTokenRevoked(0, failing, TABLES, "tenantx", "alice"),
+                "SEC-15 fail closed: an unknown stored version must not accept a (possibly revoked) tv=0 token");
         assertTrue(records.stream().anyMatch(r -> r.getLevel() == Level.WARNING && r.getMessage() != null
-                        && r.getMessage().contains("revocation is NOT enforced") && r.getMessage().contains("40001")),
+                        && r.getMessage().contains("REFUSED") && r.getMessage().contains("40001")),
                 "a non-schema fault must be visible to the operator: " + records);
+    }
+
+    @Test
+    void aTransientSqlFaultStillReturnsZeroToTheMintingCallers() {
+        assertEquals(0, IdentityRoleLookup.tokenVersion(new FailingDataSource("40001"), TABLES, "tenantx", "alice"),
+                "tokenVersion() keeps its never-throws contract for AgentLink minting");
+    }
+
+    @Test
+    void aSchemaMismatchStaysFailOpenSoAMissingColumnLocksNobodyOut() {
+        assertFalse(IdentityRoleLookup.isTokenRevoked(0, new FailingDataSource("42S22"), TABLES, "tenantx", "alice"));
     }
 
     @Test

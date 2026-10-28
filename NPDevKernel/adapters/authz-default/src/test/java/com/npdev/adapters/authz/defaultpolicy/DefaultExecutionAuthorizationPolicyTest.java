@@ -299,6 +299,50 @@ class DefaultExecutionAuthorizationPolicyTest {
         assertTrue(policyWithOverride.canListExecutions(warehouseManager, "tenantx"));
     }
 
+    /** SEC-15 (owner decision 2026-10-28): a transient fault leaves the overrides unknown, and the
+     *  check fails CLOSED -- an admin's narrowing is never lifted by a lock timeout. A missing
+     *  override table (schema mismatch) still means "no override", the full ceiling. */
+    @Test
+    void aTransientOverrideLookupFaultDeniesButASchemaMismatchKeepsTheCeiling() {
+        // The identity concepts must be composed, or the policy never consults the lookup at all.
+        Map<String, com.npdev.dsl.v1.compiled.CompiledConcept> identity = new java.util.LinkedHashMap<>();
+        for (String[] concept : new String[][]{
+                {"identity::User", "IdentityUser", "identity_users"},
+                {"identity::Role", "IdentityRole", "identity_roles"},
+                {"identity::UserRole", "IdentityUserRole", "identity_user_roles"},
+                {"identity::UserRolePermission", "IdentityUserRolePermission", "identity_user_role_permissions"}}) {
+            identity.put(concept[0], new com.npdev.dsl.v1.compiled.CompiledConcept(concept[0], concept[1], concept[2],
+                    List.of(new com.npdev.dsl.v1.compiled.CompiledField("id", "uuid", "java.util.UUID", true, true, false))));
+        }
+        CompiledModel compiledModel = new CompiledModel(
+                "ns", "2.0", "1.0.0", identity,
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(),
+                null, null,
+                List.of(new CompiledRole("WarehouseManager", List.of("EXECUTE_FLOW"))));
+        ExecutionContext warehouseManager = ExecutionContext.of("tenantx", "charlie")
+                .withRoles(Set.of("WarehouseManager"));
+
+        DefaultExecutionAuthorizationPolicy transientFault = new DefaultExecutionAuthorizationPolicy(
+                new DefaultTenantIsolationPolicy(), compiledModel, () -> failingDataSource("40001"));
+        assertFalse(transientFault.canExecuteFlow(warehouseManager, "PickOrder"));
+
+        DefaultExecutionAuthorizationPolicy schemaMismatch = new DefaultExecutionAuthorizationPolicy(
+                new DefaultTenantIsolationPolicy(), compiledModel, () -> failingDataSource("42S02"));
+        assertTrue(schemaMismatch.canExecuteFlow(warehouseManager, "PickOrder"));
+    }
+
+    private static DataSource failingDataSource(String sqlState) {
+        return (DataSource) java.lang.reflect.Proxy.newProxyInstance(
+                DataSource.class.getClassLoader(), new Class<?>[]{DataSource.class},
+                (proxy, method, args) -> {
+                    if (method.getName().equals("getConnection")) {
+                        throw new SQLException("simulated fault", sqlState);
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                });
+    }
+
     /** {@code Supplier::get} returning null (no DataSource bean available -- InMemory mode) must
      *  behave exactly like the pre-C2 constructors, never throw. */
     @Test

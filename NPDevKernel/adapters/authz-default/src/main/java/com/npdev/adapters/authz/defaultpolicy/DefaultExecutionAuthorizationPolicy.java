@@ -304,11 +304,16 @@ public final class DefaultExecutionAuthorizationPolicy implements ExecutionAutho
         // REG-239: read the volatile ONCE -- a reload landing mid-check must not let this call see
         // one model's identity tables and another model's roles.
         ModelDerivedState state = this.modelState;
-        Map<String, Set<String>> overrides = requester == null || state.identityTables().isEmpty()
-                ? Map.of()
-                : IdentityPermissionOverrideLookup.overridesFor(
-                        dataSourceSupplier.get(), state.identityTables().get(),
-                        requester.tenantId(), requester.actorId());
+        Map<String, Set<String>> overrides;
+        try {
+            overrides = requester == null || state.identityTables().isEmpty()
+                    ? Map.of()
+                    : IdentityPermissionOverrideLookup.overridesFor(
+                            dataSourceSupplier.get(), state.identityTables().get(),
+                            requester.tenantId(), requester.actorId());
+        } catch (IdentityPermissionOverrideLookup.OverrideLookupUnavailable unknown) {
+            return false; // SEC-15: unknown overrides fail closed; the lookup already logged why
+        }
         return RolePermissions.hasPermission(requester, permission, state.appDeclaredRoles(), overrides);
     }
 }

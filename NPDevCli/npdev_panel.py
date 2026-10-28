@@ -11,8 +11,9 @@ one renderer consumes it.
 DATA SOURCES (Phase 1 -- read these three files, never duplicate their contents into a registry):
   scripts/quality/verification-cadence.json           declares every gate: id, description, tier,
                                                       invokedBy, maxStaleness
-  scripts/reports/out/verification-cadence-state.json records the last real run per gate: lastRun,
-                                                      result, commit
+  <Build>/verification-cadence/verification-cadence-state.json  records the last real run per gate:
+                                                      lastRun, result, commit (QUAL-62 moved it out of
+                                                      scripts/reports/out)
   scripts/policy/script-invocation-declarations.json  declares every script's invocation mode, which
                                                       lets us add check-script items the cadence does
                                                       not track at all
@@ -50,7 +51,10 @@ _RESULTS = {"passed", "failed", "skipped", "not-applicable", "cancelled", "runni
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CADENCE_PATH = REPO_ROOT / "scripts" / "quality" / "verification-cadence.json"
-STATE_PATH = REPO_ROOT / "scripts" / "reports" / "out" / "verification-cadence-state.json"
+# The same two paths cadence_state.py records to (QUAL-62): the Build-root file, else a not yet
+# migrated checkout's legacy one. Imported, not repeated, so the producer and the panel cannot drift.
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "quality"))
+from cadence_state import LEGACY_STATE_PATH, STATE_PATH  # noqa: E402
 
 
 def _utc_now() -> str:
@@ -94,7 +98,7 @@ def _load_cadence() -> dict[str, dict]:
 
 
 def _load_state() -> dict[str, dict]:
-    doc = _read_json(STATE_PATH)
+    doc = _read_json(STATE_PATH if STATE_PATH.exists() else LEGACY_STATE_PATH)
     if not isinstance(doc, dict):
         return {}
     return {r.get("id"): r for r in doc.get("runs", []) if isinstance(r, dict) and r.get("id")}

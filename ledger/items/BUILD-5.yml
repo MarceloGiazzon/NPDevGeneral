@@ -1,0 +1,43 @@
+id: BUILD-5
+title: npdev generate writes ArtifactNP as a sibling of the app output folder -- two apps generated into the same parent overwrite each other's ArtifactNP
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-10-28
+closed: 2026-10-28
+source: >-
+  2026-10-27 Manager owner testing: testH2S_1 and testH2S_2 were created side by side in one parent folder; generating one
+  replaced the other's ArtifactNP tree.
+surface: cli/generate
+detail: |
+  NPDevCli/npdev_cli.py:2594 and :3117 compute artifact_out = final_app_out.parent / "ArtifactNP", and :12904 looks there
+  again when resolving an app's artifacts. The path depends only on the parent folder, not on the app, so every app whose
+  output folder shares a parent also shares one ArtifactNP directory. The last generate wins, silently. An app whose
+  artifacts were replaced still boots from its own App/ tree, so nothing fails until something reads ArtifactNP
+  (regeneration diffs, monitor/explore lookups) and gets the other app's model.
+resolution: >-
+  Done (owner decision 2026-10-28: per-app parent folder, not a re-keyed layout) when the Manager creates every new app in
+  a folder of its own so no two Manager-created apps share an ArtifactNP, and a CLI generate that is about to replace a
+  different app's ArtifactNP says so. Originally proposed instead: key ArtifactNP by app, which would touch ~107 files
+  (generator, determinism check, gates) for a layout break.
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevManager/src/main.rs
+  - NPDevManager/ui/app.js
+verification: UNIT_TESTED
+note: >-
+  2026-10-28: filed from the 2026-10-27 handoff. The call sites were confirmed by grep; the overwrite itself was seen in
+  owner testing and has no reproduction test yet.
+  2026-10-28: owner chose a per-app parent folder over re-keying the layout. The Manager's New app now creates
+  <parent>/<name>/<name> (main.rs app_target_dir), so the app lands in <parent>/<name>/<name>-app and its ArtifactNP in
+  <parent>/<name>/ArtifactNP; the <model>-app sibling convention every lookup uses is unchanged. For a CLI user who picks
+  a shared parent, npdev generate / run app write an .npdev-app-owner marker into ArtifactNP after generating and warn on
+  stderr when the next generate is for a different app. Apps already created side by side (MonitorGenApps/testH2S_1 and
+  _2) keep sharing until moved into folders of their own.
+guard:
+  kind: test
+  ref: NPDevManager/src/main.rs#each_new_app_gets_its_own_artifact_parent
+  asserts: >-
+    two apps created in one parent get different model-dir parents (so different ArtifactNP folders) and the
+    <model>-app convention still maps back; NPDevCli/tests/test_artifact_owner.py asserts the second app is warned
+  provenRed: false

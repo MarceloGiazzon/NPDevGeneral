@@ -18,7 +18,7 @@
     not METADATA_ONLY -- the one case this script can mechanically confirm is out of T1's depth,
     rather than silently claiming coverage a metadata-only-sized gate cannot actually provide.
 
-    Every check's pass/fail is recorded into scripts/reports/out/verification-cadence-state.json
+    Every check's pass/fail is recorded into <Build>/verification-cadence/verification-cadence-state.json
     (scripts/quality/cadence_state.py) against verification-cadence.json's declared tier/maxStaleness
     -- Sec.7's ledger, built in the SAME change as this gate per the plan's own instruction ("a T1
     gate without the ledger is exactly the 'hides what it skipped' pipeline this plan exists to

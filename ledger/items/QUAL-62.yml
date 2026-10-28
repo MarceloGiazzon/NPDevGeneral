@@ -2,9 +2,9 @@ id: QUAL-62
 title: The verification-cadence state lives in scripts/reports/out, the folder the workspace size limit pushes people to prune -- a routine cleanup silently resets every gate to "never-run"
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-10-27
-closed: null
+closed: 2026-10-28
 source: >-
   2026-10-27: after an aborted evidence run left 25 files in scripts/reports/out, the commit hook refused (scripts held 516
   files, limit 500). Removing "files newer than 19:30" cleared the litter AND deleted verification-cadence-state.json, which
@@ -25,7 +25,20 @@ resolution: >-
 files:
   - scripts/quality/cadence_state.py
   - scripts/hygiene/Test-WorkspaceSlimness.ps1
-verification: NOT_VERIFIED
+verification: UNIT_TESTED
 note: >-
   2026-10-27: filed. The deletion was the session lead's own cleanup, not a defect in a gate; the weakness is that one
   command could do it without any warning.
+  2026-10-28: fixed. cadence_state.STATE_PATH is now <Build>/verification-cadence/verification-cadence-state.json
+  (via npdev_ai_common.build_root, the existing contents-based resolver, not a new copy). A checkout whose runs are still
+  in the legacy scripts/reports/out file keeps them: load_state reads it when the new file is absent, and the next record
+  writes the new file and deletes the legacy one. A report with no state file at all now prints STATE FILE ABSENT naming
+  the path, and the JSON report carries stateFileAbsent. npdev_panel imports both paths from cadence_state instead of
+  repeating them.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_cadence_duration.py#test_absent_state_file_is_named_not_just_reported_as_never_run
+  asserts: >-
+    with no state file, the T0 report names STATE FILE ABSENT alongside the never-run check; the sibling test reads a
+    legacy-location file, records one run, and finds both runs in the Build-root file and the legacy file gone
+  provenRed: true

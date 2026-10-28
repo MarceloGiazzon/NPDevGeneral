@@ -60,10 +60,20 @@ public final class IdentityRoleLookup {
      * absent, or the column itself is NULL (pre-migration rows) -- a caller with a token minted before
      * this feature existed (no {@code tv} claim) is never affected; a caller with a {@code tv} claim
      * only fails the comparison once the stored version has genuinely been bumped past it.</p>
+     *
+     * <p>A transient database fault also returns {@code 0} here, for the minting callers; the revocation
+     * decision does not use this method and fails closed on that fault instead (SEC-15, see
+     * {@link #isTokenRevoked}).</p>
      */
     public static int tokenVersion(DataSource dataSource, IdentityPackTableNames tables, String tenantId, String actorId) {
+        return lookupTokenVersion(dataSource, tables, tenantId, actorId).orElse(0);
+    }
+
+    /** The stored version, or empty when a transient (non-schema) database fault means it is unknown. */
+    private static java.util.OptionalInt lookupTokenVersion(
+            DataSource dataSource, IdentityPackTableNames tables, String tenantId, String actorId) {
         if (dataSource == null || tables == null || actorId == null || actorId.isBlank()) {
-            return 0;
+            return java.util.OptionalInt.of(0);
         }
         String tenant = tenantId == null || tenantId.isBlank() ? "default" : tenantId;
         String query = TOKEN_VERSION_QUERY_TEMPLATE.formatted(tables.usersTable());
@@ -73,10 +83,10 @@ public final class IdentityRoleLookup {
             statement.setString(2, tenant);
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
-                    return 0;
+                    return java.util.OptionalInt.of(0);
                 }
                 int version = resultSet.getInt(1);
-                return resultSet.wasNull() ? 0 : version;
+                return java.util.OptionalInt.of(resultSet.wasNull() ? 0 : version);
             }
         } catch (SQLException exception) {
             // REG-39: this method's "never throws" contract stays (it's on the hot per-request
@@ -90,15 +100,16 @@ public final class IdentityRoleLookup {
                 LOG.severe("token_version lookup failed: identity pack schema mismatch (see "
                         + "docs/CONFIGURATION.md#identity-pack-freshness-checked-at-boot) -- "
                         + exception.getMessage());
-            } else {
-                // SEC-15: a transient fault (lock/statement timeout, pool exhaustion) also returns 0 --
-                // "never throws" stays -- but it must not be silent: for this request a token minted at
-                // version 0 cannot be told apart from a revoked one.
-                LOG.warning("token_version lookup failed (SQLState " + exception.getSQLState()
-                        + ") -- returning 0, so revocation is NOT enforced for tenant='" + tenantId
-                        + "', actor='" + actorId + "' on this request: " + exception.getMessage());
+                return java.util.OptionalInt.of(0);
             }
-            return 0;
+            // SEC-15 (owner decision 2026-10-28: fail closed): a transient fault (lock/statement
+            // timeout, pool exhaustion) makes the version UNKNOWN, not 0 -- answering 0 accepted a
+            // revoked version-0 token for as long as the database errored. The schema-mismatch path
+            // above stays fail-open: a missing column must not lock every user out.
+            LOG.warning("token_version lookup failed (SQLState " + exception.getSQLState()
+                    + ") -- version unknown, so a token carrying a tv claim is REFUSED for tenant='" + tenantId
+                    + "', actor='" + actorId + "' on this request: " + exception.getMessage());
+            return java.util.OptionalInt.empty();
         }
     }
 
@@ -140,7 +151,9 @@ public final class IdentityRoleLookup {
             return true;
         }
         int claimedVersion = Integer.parseInt(claimedText);
-        return claimedVersion != tokenVersion(dataSource, tables, tenantId, actorId);
+        java.util.OptionalInt stored = lookupTokenVersion(dataSource, tables, tenantId, actorId);
+        // SEC-15: an unknown stored version (transient database fault) is revoked -- fail closed.
+        return stored.isEmpty() || claimedVersion != stored.getAsInt();
     }
 
     // ---------------------------------------------------------------------------------------------

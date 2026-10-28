@@ -56,7 +56,7 @@
     bare invocation's own printed DEFERRED line makes the narrower scope visible every run instead
     of an unstated assumption nobody re-checks.
 
-    Also records every gate's pass/fail into scripts/reports/out/verification-cadence-state.json
+    Also records every gate's pass/fail into <Build>/verification-cadence/verification-cadence-state.json
     (via scripts/quality/cadence_state.py) against the tier/maxStaleness verification-cadence.json
     declares for it -- the mechanism that makes "deferred" a checkable claim instead of an assertion
     nobody can verify.

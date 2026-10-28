@@ -19,13 +19,14 @@ import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * SEC-15: {@link IdentityPermissionOverrideLookup#overridesFor} keeps its documented "never throws, no override"
- * contract on a TRANSIENT database fault (lock/statement timeout, pool exhaustion -- not a schema mismatch), but
- * that must not be silent: an admin's narrowing of this actor's permissions is not applied on that request and the
- * operator has to be able to see it. The schema-mismatch path (SQLState 42xxx) keeps its SEVERE log.
+ * SEC-15: on a TRANSIENT database fault (lock/statement timeout, pool exhaustion -- not a schema mismatch)
+ * {@link IdentityPermissionOverrideLookup#overridesFor} fails CLOSED (owner decision 2026-10-28): it throws
+ * OverrideLookupUnavailable, which the policy turns into a denial, and warns. The schema-mismatch path (SQLState
+ * 42xxx) stays fail-open ("no override") with its SEVERE log.
  */
 class IdentityPermissionOverrideLookupTransientFaultTest {
 
@@ -53,13 +54,12 @@ class IdentityPermissionOverrideLookupTransientFaultTest {
     }
 
     @Test
-    void aTransientSqlFaultStillReturnsNoOverridesButIsLoggedAsNotEnforced() {
-        Map<String, java.util.Set<String>> overrides =
-                IdentityPermissionOverrideLookup.overridesFor(new FailingDataSource("40001"), TABLES, "tenantx", "alice");
-
-        assertEquals(Map.of(), overrides, "the never-throws contract is unchanged");
+    void aTransientSqlFaultFailsClosedAndIsLoggedAsDenied() {
+        assertThrows(IdentityPermissionOverrideLookup.OverrideLookupUnavailable.class,
+                () -> IdentityPermissionOverrideLookup.overridesFor(new FailingDataSource("40001"), TABLES, "tenantx", "alice"),
+                "SEC-15 fail closed: unknown overrides must not read as 'no restriction'");
         assertTrue(records.stream().anyMatch(r -> r.getLevel() == Level.WARNING && r.getMessage() != null
-                        && r.getMessage().contains("overrides NOT enforced") && r.getMessage().contains("40001")),
+                        && r.getMessage().contains("permission DENIED") && r.getMessage().contains("40001")),
                 "a non-schema fault must be visible to the operator: " + records);
     }
 

@@ -2582,6 +2582,30 @@ def stage_seeds_into_final_app(definition_dir: Path, final_app_out: Path) -> int
     return len(manifest)
 
 
+ARTIFACT_OWNER_MARKER = ".npdev-app-owner"
+
+
+def artifact_owner_warning(artifact_out: Path, final_app_out: Path) -> str | None:
+    """BUILD-5: ArtifactNP is `<output>/../ArtifactNP`, so every app whose output folder shares a
+    parent shares it too, and each generate replaced the previous app's. The marker written by
+    claim_artifact_dir names the app that generated it last; a different name is said out loud,
+    because the generation about to run will overwrite that app's artifacts."""
+    try:
+        owner = (artifact_out / ARTIFACT_OWNER_MARKER).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not owner or Path(owner) == final_app_out:
+        return None
+    return (f"npdev: {artifact_out} also holds the generated artifacts of {owner}; generating "
+            f"{final_app_out} replaces them, because both apps' output folders share the parent "
+            f"{final_app_out.parent}. Give each app a folder of its own (the Manager's New app does).")
+
+
+def claim_artifact_dir(artifact_out: Path, final_app_out: Path) -> None:
+    if artifact_out.is_dir():
+        (artifact_out / ARTIFACT_OWNER_MARKER).write_text(f"{final_app_out}\n", encoding="utf-8")
+
+
 def run_generate(args: argparse.Namespace) -> None:
     root = repo_root()
     generator_root = root / "NPDevGenerator"
@@ -2640,6 +2664,9 @@ def run_generate(args: argparse.Namespace) -> None:
                    "--no-daemon", "--console=plain", f"--args={args_str}"]
         if os.name == "nt" and wrapper.suffix.lower() == ".bat":
             command = ["cmd.exe", "/c"] + command
+        collision = artifact_owner_warning(artifact_out, final_app_out)
+        if collision:
+            print(collision, file=sys.stderr)
         print("[1/4] compiling + resolving the generator (first run downloads Gradle "
               "dependencies -- can take several minutes) ...", file=sys.stderr)
         _run_with_phase_narration(command, generator_root, [
@@ -2647,6 +2674,7 @@ def run_generate(args: argparse.Namespace) -> None:
             ("Generation OK.", "[3/4] emitting the application ..."),
             ("Final app assembly OK.", "[4/4] assembling the final app ..."),
         ])
+        claim_artifact_dir(artifact_out, final_app_out)
 
     # WMS-12 follow-up 3: definition/seeds/* -> final app npdev-seed/data-seeds (Build-NpdevApp
     # .ps1 step 4d parity) so a CLI-generated app's /api/admin/seeds works without a manual copy.
@@ -3023,6 +3051,7 @@ def run_app(args: argparse.Namespace) -> dict:
                 cwd=str(final_app_out), stdout=log_file, stderr=subprocess.STDOUT,
             )
         _RUN_APP_CHILD_PROCESS = boot_proc
+        record_app_pid(final_app_out, boot_proc.pid)
 
         healthy = False
         while time.monotonic() < deadline:
@@ -3146,6 +3175,9 @@ def _generate_phase_captured(
                    "--no-daemon", "--console=plain", f"--args={args_str}"]
         if os.name == "nt" and wrapper.suffix.lower() == ".bat":
             command = ["cmd.exe", "/c"] + command
+        collision = artifact_owner_warning(artifact_out, final_app_out)
+        if collision:
+            print(collision, file=sys.stderr)
         try:
             completed = _run_bounded(command, generator_root, deadline)
         except _DeadlineExceeded:
@@ -3153,6 +3185,7 @@ def _generate_phase_captured(
         output = (completed.stdout or "") + (completed.stderr or "")
         if completed.returncode != 0:
             return False, output
+        claim_artifact_dir(artifact_out, final_app_out)
         try:
             _emit_static_pages(root, final_app_out, config)
         except CliError as exc:
@@ -3731,6 +3764,18 @@ def ensure_environment(app_root: Path) -> str | None:
         return None
     output = log_path.read_text(encoding="utf-8", errors="replace").strip()
     return f"{command[-1]} exited {completed.returncode}: {output[-1500:] or '(no output)'}"
+
+
+def record_app_pid(app_root: Path, pid: int) -> None:
+    """Write `<app_root>/_ops/app.pid` for an app this CLI booted with a raw `java -jar` (RUN-38).
+
+    `_ops/Stop-App.ps1` reads exactly that file, and only `Start-App.ps1` used to write it -- an app
+    started by `npdev run app` or `npdev dev` got "No app.pid; nothing to stop." from its own
+    toolbox while it still held the port. A missing `_ops` (a pre-toolbox app) is left alone.
+    """
+    ops_root = app_root / "_ops"
+    if ops_root.is_dir():
+        (ops_root / "app.pid").write_text(str(pid), encoding="utf-8")
 
 
 def ensure_api_key(app_root: Path) -> str:

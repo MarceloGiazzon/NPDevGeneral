@@ -2,9 +2,9 @@ id: SEC-15
 title: Two identity lookups fail open on a database error -- a restricted user gets the full role ceiling, and a revoked version-0 token is accepted while the database errors
 type: BUG
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-10-27
-closed: null
+closed: 2026-10-28
 source: >-
   Security triage of the sweep allowlist (read-only agent, 2026-10-27), sampled 58 of 663 entries and read the code behind
   about 45. Reported by the agent from reading the source; the session lead then read both lookups (2026-10-27) and
@@ -43,10 +43,19 @@ files:
 verification: UNIT_TESTED
 note: >-
   2026-10-27: filed from the triage, then partly fixed the same day (logging only; see resolution).
+  2026-10-28: owner decision FAIL CLOSED, implemented. IdentityRoleLookup.isTokenRevoked now reads a private
+  lookupTokenVersion that answers "unknown" on a transient (non-42) SQLException, and an unknown version is revoked; the
+  public tokenVersion() keeps returning 0 for its AgentLink minting callers. IdentityPermissionOverrideLookup.overridesFor
+  throws the package-private OverrideLookupUnavailable on a transient fault and DefaultExecutionAuthorizationPolicy
+  .hasPermission turns it into a denial. Both warnings now say REFUSED / DENIED. A schema mismatch (SQLState 42xxx) stays
+  fail-open in both, so a missing column or table never locks every user out. Found on the way: the existing
+  runtimeOverrideNarrowsButNeverExceeds... policy test builds a model without the identity concepts, so the policy never
+  consults the JDBC lookup in it; the new policy test composes them.
 guard:
   kind: test
-  ref: NPDevKernel/adapters/authz-default/src/test/java/com/npdev/adapters/authz/defaultpolicy/IdentityPermissionOverrideLookupTransientFaultTest.java#aTransientSqlFaultStillReturnsNoOverridesButIsLoggedAsNotEnforced
+  ref: NPDevKernel/adapters/authz-default/src/test/java/com/npdev/adapters/authz/defaultpolicy/DefaultExecutionAuthorizationPolicyTest.java#aTransientOverrideLookupFaultDeniesButASchemaMismatchKeepsTheCeiling
   asserts: >-
-    a non-schema SQLException (SQLState 40001) makes overridesFor still return no overrides (never throws) AND log a
-    WARNING saying overrides were not enforced; the sibling test in runtime-support does the same for tokenVersion
-  provenRed: true
+    with the identity concepts composed, a 40001 fault from the override lookup makes canExecuteFlow false while a 42S02
+    fault keeps the role ceiling; IdentityRoleLookupTransientFaultTest asserts a tv=0 token is revoked on 40001, accepted
+    on 42S22, and tokenVersion() still returns 0
+  provenRed: false
