@@ -1,0 +1,30 @@
+id: AIP-7
+title: The Manager's legacy "http" assistant kind still holds a provider key (AssistantConfig.api_key survives as a read-only shim), so AIP-2's "api_key is gone / no Manager feature holds a key" is not literally true
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-10-28
+closed: null
+source: >-
+  2026-10-28 QUAL-61 re-read of AIP-2's done-when against the code (AIP-2's note has the detail).
+surface: manager/ai-keys
+detail: |
+  NPDevManager/src/state.rs:247 still has `AssistantConfig.api_key`, kept as a read-only legacy field: main.rs
+  migrate_legacy_assistant_key moves a plaintext key from an old manager.json into the OS credential store and blanks it,
+  and assistant_generate falls back to the field for the legacy "http" kind when no credential-store entry exists. The
+  "ai" kind passes no key (the CLI resolves it through npdev_providers.resolve_key). The "http" kind still hands a
+  user-typed key, read from the OS credential store, to `npdev ai generate-routine` as NPDEV_AI_API_KEY, and that
+  command reads the variable itself instead of going through resolve_key. All of it is deliberate and commented, but
+  AIP-2 closed on "api_key is gone from AssistantConfig, no Manager feature holds a provider key".
+resolution: >-
+  Owner decides, then either (a) removes the legacy "http" assistant kind, the api_key field and the migration (after a
+  release long enough for old manager.json files to have migrated), with a BREAKING.md line, or (b) keeps the kind and
+  records here that AIP-2's done-when is intentionally narrowed to "the ai kind". Either way AIP-2's wording is then made
+  true or amended.
+files:
+  - NPDevManager/src/state.rs
+  - NPDevManager/src/main.rs
+  - NPDevCli/npdev_cli.py
+verification: NOT_VERIFIED
+note: >-
+  2026-10-28: filed, not started. Needs an owner decision; not folded into AIP-4 (the Manager AI panel).

@@ -2,9 +2,9 @@ id: QUAL-61
 title: Five recently closed DONE items carry a test guard that witnesses less than the item's done-when (AIP-1, AIP-2, AIP-3, REG-279, REG-300)
 type: GAP
 severity: LOW
-status: PARTIAL
+status: DONE
 opened: 2026-10-27
-closed: null
+closed: 2026-10-28
 source: >-
   Ledger-honesty sample (read-only agent, 2026-10-27): the 30 most recently closed DONE items whose guard.kind is `test`
   (of 228 such items); the cited test body was opened for each. 25 judged sound, 5 flagged. check-done-item-guards.py only
@@ -44,10 +44,19 @@ note: >-
   2026-10-27: filed from the agent's sample. Not independently re-read by the session lead.
   2026-10-28: the five flagged items re-read against the code and fixed. AIP-1 (new test, red on the pre-fix file),
   AIP-3 (guard re-pointed to the validator-rejection test), REG-279 (guard re-pointed to the double-commit behaviour
-  probe), REG-300 (asserts narrowed, new aFailedListingIsAnErrorNotAnEmptyList proven red by mutation) each carry the
-  detail in their own note. AIP-2 turned out to be a real mismatch, not a labelling gap: its done-when says api_key is
-  gone from AssistantConfig and the Rust field is still there as a deliberate legacy shim; recorded in AIP-2's note, the
-  decision to delete the legacy "http" assistant kind left to the owner. REMAINING (why this is PARTIAL): the sample's
-  "also noted" list was not touched -- REG-283, REG-286, REG-299 (provenRed true with an asserts of only rc != 0 and no
-  red-run evidence in the item) and REG-304 (done-when "full h2local suite runs to the end" has no guard) -- and the
-  suggested keyword checker comparing guard.asserts with the test body was not built.
+  probe, passed in a fresh h2local run), REG-300 (asserts narrowed, new aFailedListingIsAnErrorNotAnEmptyList proven red
+  by mutation) each carry the detail in their own note. AIP-2 was a real mismatch, not a labelling gap: the Rust
+  AssistantConfig.api_key survives as a legacy shim; filed as AIP-7 for the owner's decision. The four extras from the
+  sample are done too: REG-283 and REG-286 (their cited guards go red under a targeted mutation), REG-299 (all three
+  checkers red against their pre-fix versions; the asserts named three, the ref one, the other two tests exist), REG-304
+  (its last clause is a live run, now recorded: h2local suite 138/138 passed, 3 skipped, and noted as not a gate).
+  NOT built: the suggested checker comparing guard.asserts keywords with the test body -- the item said a human re-read
+  was the cheaper first step, and it was; a checker would only be worth building if this class shows up again.
+guard:
+  kind: manual
+  ref: ledger/items/AIP-1.yml
+  asserts: >-
+    each of AIP-1, AIP-2, AIP-3, REG-279, REG-300 now has a guard whose asserts match what its cited test or probe proves,
+    with the rest of its done-when stated as uncovered in its own note (the 2026-10-28 paragraph); a human re-read, not an
+    automated check
+  provenRed: false

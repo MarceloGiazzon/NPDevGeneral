@@ -73,3 +73,10 @@ note: >-
   a conflicts()/overlapsProvider() rule in a flow check is INVARIANT_UNCHECKABLE (no tracked flow names one).
   (c) evaluate(entityName, payload) reports an unknown entity. X0-11 / X0-13 FIXED. The CRUD path's own scope and
   conflict lookups are not tenant-scoped -- filed as REG-287.
+  2026-10-28 (QUAL-61): red-run evidence for the cited guard. With CelInvariantEngine.Lookups.unavailable()'s unique
+  lookup changed to answer "no duplicate" instead of throwing LookupUnavailableException,
+  CelInvariantEngineUncheckableLookupTest#uniqueRuleWithNoLookupIsUncheckableNotAPass FAILED (the only other failure in
+  that run was REG-286's, below); restored, green. Only the unique branch was mutated: the conflict and scope siblings,
+  ReloadableInvariantEngineTenantLookupTest and NpdevCapabilityBindingConfigInvariantLookupsTest are named in the
+  guard's asserts but were not mutation-checked, and no test was found for clause (c), evaluate(entityName, payload)
+  agreeing with the request overload on an unknown entity.

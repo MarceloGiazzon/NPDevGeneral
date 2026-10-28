@@ -51,3 +51,10 @@ note: >-
   ok. NOT verified in a real window -- owner to click Find databases on the Create tab; needs a running container to see
   a "Use this" row.
 
+  2026-10-28: correction -- the Manager half is COMMITTED, not uncommitted: run_db_detect, detect_databases, the Find
+  databases button and fixtures/db-detect.json landed in c0a3ac6e (Manager 0.5.3). New live evidence: with a throwaway
+  socket listening on 127.0.0.1:5432 (Docker daemon down on this machine), `npdev db detect --json` reported a listener
+  entry (running true, engine postgres, port 5432, initArgs --engine postgres --db-host localhost --db-port 5432
+  --externally-provisioned, a note that NPDev has not confirmed the engine, no password anywhere); the listener was
+  closed afterwards; test_db_discovery 30/30. STILL NOT VERIFIED: a real running container (needs the Docker daemon,
+  which local-test-profile.json keeps off here) and the "Use this" row in the actual Manager window -- both owner-side.

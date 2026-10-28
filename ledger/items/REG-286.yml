@@ -47,3 +47,7 @@ note: >-
   decide to a boolean at event time publishes OrchestrationConditionSkipped with status=failed, reason
   condition_unevaluable and the error, plus a SEVERE log. All four corpus orchestration conditions are plain
   ComputedExpression comparisons and unaffected. X0-17 FIXED.
+  2026-10-28 (QUAL-61): red-run evidence for the cited guard. With the SEVERE log in registerOrchestrationSubscribers
+  removed (the old silent skip), GeneratedCrudRuntimeSupportOrchestrationReloadTest#aRuleWithAnUnbuildableActionIsReportedNotSilentlyDropped
+  FAILED; restored, green. The second test in the guard's asserts, anUndecidableConditionIsReportedNotGuessed, was not
+  mutation-checked.

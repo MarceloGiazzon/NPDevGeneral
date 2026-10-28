@@ -20,6 +20,10 @@ note: >-
   for a probe that commits twice. That probe exists and is now the guard. It passed in a local behaviour-probe run on
   2026-10-27 (scripts/reports/out, gitignored); not re-run this session. Not proven red against the pre-fix code, so
   provenRed stays false. The unit test remains a valid but narrower check of the same rule.
+  2026-10-28 (QUAL-61), supersedes "not re-run this session" above: the guard probe field-default-expression-kept-on-recommit
+  PASSED in a fresh full run of `run-behavior-probes.ps1 -StorageVariant h2local` (138/138 passed, 3 skipped, 0 known
+  failures; the skips are the two live1-* probes and the restart probe, which need other variants). That run is on the
+  JDBC variant; the 2026-10-27 pass above was the InMemory default.
 guard:
   kind: live
   ref: NPDevSamples/dsl-conformance-max/behavior-probes/85-lifecycle-flows-roles.json

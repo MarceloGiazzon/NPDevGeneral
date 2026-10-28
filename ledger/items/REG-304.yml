@@ -40,3 +40,10 @@ note: >-
   (Java-serialized). JsonNode values now bind as JSON (null -> SQL NULL), and Map/List JSON now binds as UTF-8 bytes
   like JdbcBusinessConceptStore -- a bound String was stored by H2 as a JSON string value. Red: both new tests failed
   with the production error. Full h2local suite: 137 probes run to the end, 0 JAVA_OBJECT / 0 syntax errors.
+  2026-10-28 (QUAL-61): the guard's two unit tests witness the two defects, not the done-when's last clause ("the full
+  h2local suite runs to the end"). That clause is a live-run claim and is recorded as one: a fresh
+  `pwsh -NoProfile -File scripts/quality/run-behavior-probes.ps1 -StorageVariant h2local` ran all probes to the end --
+  138/138 passed, 3 skipped (live1-add-optional-field-to-running-app, live1-reload-refuses-a-field-on-a-satellite,
+  rename-by-uid-and-renamedFrom-keeps-rows-across-restart: other variants), 0 known failures, 464s. NOT a gate: the
+  cadence entry enf-behavior-probes records the InMemory default run only, so nothing re-runs the h2local suite
+  automatically, and a regression of this clause would not be caught until someone runs it by hand.

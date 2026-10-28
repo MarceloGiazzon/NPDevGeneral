@@ -26,3 +26,8 @@ note: >-
   2026-10-23: DONE. Parse/read errors (OSError, ValueError incl. UnicodeDecodeError) are collected and fail the
   run; coordinates-pinned now reads utf-8-sig like the other two. All three still exit 0 on the real repo. Red
   against HEAD.
+  2026-10-28 (QUAL-61): the guard's asserts name all three checkers but its ref is the coordinates-pinned test. The other
+  two have their own tests in the same class, PackCheckersRefuseUnparseableJsonTest:
+  test_shared_not_forked_fails_on_truncated_pack_json and test_pack_coverage_fails_on_truncated_model_json. Red-run
+  evidence for all three: with the three checkers swapped for their versions at fba1bc81^ (before this fix) each test
+  FAILED (the checker exited 0 on a truncated file); restored, 11/11 green.

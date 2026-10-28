@@ -44,3 +44,6 @@ note: >-
   aFailedListingIsAnErrorNotAnEmptyList (a listing that cannot read the table throws IllegalStateException; red when
   the catch is changed to return an empty list, green on the real code). The HTTP probe the done-when asks for is
   behavior-probes/91-orchestration-actions-jdbc.json#schedules-of-another-tenant-are-not-listed (not run this session).
+  2026-10-28 (QUAL-61), supersedes "not run this session" above: the HTTP probe schedules-of-another-tenant-are-not-listed
+  PASSED in a fresh full `run-behavior-probes.ps1 -StorageVariant h2local` run (138/138 passed, 3 skipped, 0 known
+  failures). It requires the JDBC variant, so the InMemory default run skips it.

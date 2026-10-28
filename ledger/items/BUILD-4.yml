@@ -40,3 +40,18 @@ note: >-
   2026-10-27: filed from the survey. The Boot-line facts were checked against endoflife.date directly; the CVE details and
   the minor-dependency comparisons are the survey agent's secondary-source findings and are marked unverified above. A
   Boot 3 -> 4 move is a Spring Framework 6 -> 7 / Jakarta-level jump: expect real work, not a version-number edit.
+  2026-10-28 (the item's own "verify before choosing urgency" step, done). VERIFIED: (1) a generated app does not use Spring
+  Security at all -- no spring-boot-starter-security or spring-security in NPDevRuntimeHost/build.gradle.template or any
+  other build file under NPDevRuntimeHost, NPDevKernel, NPDevGenerator or NPDevContract, no org.springframework.security
+  import in any java file there (0 files), and the generator emits none -- so the Spring Security advisories named in
+  this item do not reach a generated app; the platform's auth is its own (JWT / API keys). (2) What the 3.5.16 BOM
+  (read from the local Gradle cache) pins: Spring Framework 6.2.19, Tomcat 10.1.55, Hibernate 6.6.53, Jackson 2.21.4,
+  Thymeleaf 3.1.5.RELEASE, Spring Security 6.5.11 (the version the item's survey names as the fix, unused here). The
+  exposure that remains is therefore Framework 6.2 / Tomcat 10.1 / Hibernate 6 / Thymeleaf fixes that reach only
+  commercial 3.5 customers -- real, but not the Security CVEs. The item's urgency can be MEDIUM-as-filed or lower; that
+  is the owner's call. SIZING (import counts, not a build): NPDevRuntimeHost has 474 main java files, 312 importing
+  org.springframework.*, 211 importing com.fasterxml.jackson, 1 each importing org.hibernate / jakarta.persistence; the
+  DSL has 144 files and the kernel+adapters 38 importing com.fasterxml.jackson; the generator has 56 files that mention
+  it (emitted into generated code). UNVERIFIED, from general knowledge of the Boot 4 line: its default JSON stack moved to
+  Jackson 3 (a package rename) with a deprecated Jackson 2 fallback module, and Framework 7 / Hibernate 7 changes -- the
+  Jackson count is why this is a platform-wide change and not a template edit. Nothing was built or changed.
