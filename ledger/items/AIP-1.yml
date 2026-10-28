@@ -33,12 +33,19 @@ files:
 verification: UNIT_TESTED
 guard:
   kind: test
-  ref: NPDevCli/tests/test_ai_config.py#test_mine_overrides_only_the_fields_it_sets_and_says_so
+  ref: NPDevCli/tests/test_ai_config.py#test_the_review_pack_keeps_no_private_vendor_table
   asserts: >-
-    the user's ai.json overlay changes only the fields it sets on a shipped entry and the listing
-    reports the entry as overridden -- the "mine wins, field by field" layering the whole catalogue rests on
-  provenRed: false
+    scripts/external-review/build-review-pack.py no longer defines VENDOR_PROFILES and reads its vendors through
+    npdev_ai_config
+  provenRed: true
 note: >-
   2026-10-22: all steps landed -- 1.1/1.2/1.3/1.3a/1.3d/1.3f in c205b1d0 (schema, catalogue v1, overlay,
   effort table, npdev ai CLI), 1.3e in 4571e89a, 1.3b/1.3c in f3bc9d66 (detect, models refresh), 1.4 in
   d07d3210 (VENDOR_PROFILES deleted), 1.5 in aedd13da (twin-pair rule ai-protocols-three-place).
+  2026-10-28 (QUAL-61): the guard used to cite the overlay-layering test, which is not what this item closed on. The
+  first clause of the done-when now has its own test, red against build-review-pack.py as it was before d07d3210
+  (VENDOR_PROFILES present, no npdev_ai_config import) and green now. The other two clauses are witnessed elsewhere
+  and are NOT what this guard asserts: the schema validating the shipped catalogue and itself is
+  test_ai_config.py#test_shipped_catalogue_validates_against_the_schema_and_itself, and the overlay is checked by
+  test_write_refuses_an_inconsistent_overlay_and_leaves_the_file; the Java/catalogue pair is twin-pair rule
+  ai-protocols-three-place, enforced by check-twin-pair-consistency.py in the aiKnowledge gate (not re-proven here).

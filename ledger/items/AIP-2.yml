@@ -33,8 +33,9 @@ guard:
   kind: test
   ref: NPDevCli/tests/test_ai_client.py#test_paid_is_refused_without_an_opt_in_and_nothing_is_sent
   asserts: >-
-    a call to a paid provider/model with no per-feature opt-in and no --allow-paid is refused by the
-    one client before any request leaves the machine
+    a call to a paid provider/model with no per-feature opt-in and no --allow-paid is refused by the one client before
+    any request leaves the machine. This is the spend guard (2.3) only; it does NOT witness the three clauses of the
+    done-when, see the 2026-10-28 note
   provenRed: false
 note: >-
   2026-10-22: 2.1-2.3 in 4571e89a (npdev ai complete, usage log, spend guard), 2.7 in d07d3210, 2.4/2.5/
@@ -43,3 +44,13 @@ note: >-
   2026-10-22: owner decision D2 (AIP-6) -- opt-in per feature stays; the monthly cap now defaults to $10
   (DEFAULT_MONTHLY_CAP_USD; `npdev ai spend cap off` writes null = no cap), test_ai_config
   test_monthly_cap_defaults_to_ten_dollars_and_null_turns_it_off.
+  2026-10-28 (QUAL-61): re-read against the code. The guard proves the spend guard and nothing of the done-when.
+  What the code shows today, none of it test-witnessed: (1) "api_key is gone from AssistantConfig" is not literally
+  true -- NPDevManager/src/state.rs still has `AssistantConfig.api_key`, kept deliberately as a read-only legacy
+  field that migrate_legacy_assistant_key moves into the OS credential store and blanks, and as the fallback for the
+  legacy "http" kind in assistant_generate (main.rs). (2) "no Manager feature holds a provider key": the "ai" kind
+  passes no key (the CLI resolves it); the legacy "http" kind still hands a user-typed key from the OS credential
+  store to the CLI as NPDEV_AI_API_KEY. (3) Direct key reads outside resolve_key remain on purpose:
+  `npdev ai generate-routine --provider http` reads NPDEV_AI_API_KEY for a raw endpoint of the user's own, and
+  tester_agent.py reads NPDEV_TESTER_ANTHROPIC_API_KEY, the hand-off that npdev_cli sets after resolve_key.
+  Whether the legacy "http" kind and its api_key field should now be deleted is an owner decision, left open here.

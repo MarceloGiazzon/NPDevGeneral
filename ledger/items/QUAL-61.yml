@@ -2,7 +2,7 @@ id: QUAL-61
 title: Five recently closed DONE items carry a test guard that witnesses less than the item's done-when (AIP-1, AIP-2, AIP-3, REG-279, REG-300)
 type: GAP
 severity: LOW
-status: OPEN
+status: PARTIAL
 opened: 2026-10-27
 closed: null
 source: >-
@@ -39,6 +39,15 @@ files:
   - ledger/items/AIP-3.yml
   - ledger/items/REG-279.yml
   - ledger/items/REG-300.yml
-verification: NOT_VERIFIED
+verification: UNIT_TESTED
 note: >-
   2026-10-27: filed from the agent's sample. Not independently re-read by the session lead.
+  2026-10-28: the five flagged items re-read against the code and fixed. AIP-1 (new test, red on the pre-fix file),
+  AIP-3 (guard re-pointed to the validator-rejection test), REG-279 (guard re-pointed to the double-commit behaviour
+  probe), REG-300 (asserts narrowed, new aFailedListingIsAnErrorNotAnEmptyList proven red by mutation) each carry the
+  detail in their own note. AIP-2 turned out to be a real mismatch, not a labelling gap: its done-when says api_key is
+  gone from AssistantConfig and the Rust field is still there as a deliberate legacy shim; recorded in AIP-2's note, the
+  decision to delete the legacy "http" assistant kind left to the owner. REMAINING (why this is PARTIAL): the sample's
+  "also noted" list was not touched -- REG-283, REG-286, REG-299 (provenRed true with an asserts of only rc != 0 and no
+  red-run evidence in the item) and REG-304 (done-when "full h2local suite runs to the end" has no guard) -- and the
+  suggested keyword checker comparing guard.asserts with the test body was not built.

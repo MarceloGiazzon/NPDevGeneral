@@ -27,8 +27,8 @@ guard:
   kind: test
   ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportScheduleTenantScopeTest.java#aTenantListsOnlyItsOwnSchedules
   asserts: >-
-    with schedule rows for tenant-a and tenant-b, a tenant-a USER lists only tenant-a's (a SUPERUSER lists both), and a
-    tenant-a forced drain leaves tenant-b's not-yet-due row PENDING
+    with schedule rows for tenant-a and tenant-b, a tenant-a USER lists only tenant-a's rows. This one test is the
+    listing clause only; its siblings are named in the 2026-10-28 note
   provenRed: true
 note: >-
   2026-10-23: FIXED the same day. scheduleTenantFilter(): null (all tenants) only for SUPERUSER, else the caller's tenant
@@ -38,3 +38,9 @@ note: >-
   []. GeneratedCrudRuntimeSupportScheduleTenantScopeTest: 2 of 3 RED on the old code (the SUPERUSER control green), 3/3
   after; :adapters:runtime-support:test 168 green. Not addressed (wider than this item): /api/admin/* has no central
   ADMIN gate; each admin controller enforces (or not) its own policy.
+  2026-10-28 (QUAL-61): the guard's asserts named three things and the cited method proves one. Narrowed to that one;
+  the rest are witnessed by sibling tests in the same class, all read: aSuperUserListsEveryTenantsSchedules (SUPERUSER
+  lists both tenants), aForcedDrainFiresOnlyTheCallersTenant (tenant-b's not-yet-due row stays PENDING), and the new
+  aFailedListingIsAnErrorNotAnEmptyList (a listing that cannot read the table throws IllegalStateException; red when
+  the catch is changed to return an empty list, green on the real code). The HTTP probe the done-when asks for is
+  behavior-probes/91-orchestration-actions-jdbc.json#schedules-of-another-tenant-are-not-listed (not run this session).

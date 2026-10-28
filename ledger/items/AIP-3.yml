@@ -28,10 +28,10 @@ files:
 verification: UNIT_TESTED
 guard:
   kind: test
-  ref: NPDevKernel/adapters/external-ai-http/src/test/java/com/npdev/adapters/externalai/http/ExternalAiCatalogueTest.java#bundledCatalogueCarriesTheFreeAndLocalVendors
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ExternalAiPromptValidationTest.java#aVendorTheCatalogueDoesNotKnowIsRejectedNamingTheKnownOnes
   asserts: >-
-    the catalogue bundled into the adapter jar yields app vendors groq, cerebras, openrouter, mistral,
-    ollama (keyless) and anthropic
+    a model whose externalAi.vendors names a vendor that is not an app vendor in the bundled AI catalogue fails
+    validation, and the error names the known app vendors
   provenRed: false
 note: >-
   2026-10-22: done -- 3.1 (09752b1e), 3.2 (aedd13da: unknown vendor is a validation error), 3.3 + 3.4c +
@@ -84,3 +84,10 @@ note: >-
   overrideText sweep hit triaged, routine schema re-pinned with setOffline). Still not run: probe
   72-ai-profile-effort.json (boots dsl-conformance-max; T1/T2, off this notebook). No generated app has
   yet called a real vendor or a custom externalAi.providers endpoint.
+  2026-10-28 (QUAL-61): the guard used to cite ExternalAiCatalogueTest#bundledCatalogueCarriesTheFreeAndLocalVendors,
+  which checks the catalogue's contents only. It now cites the validator-rejection clause, the one the done-when names
+  that nothing else in the old guard touched. The other clauses have their own tests, not asserted by this guard: an
+  app declaring catalogue vendors by id -- ExternalAiPromptValidationTest#freeAndLocalCatalogueVendorsAreAccepted and
+  ExternalAiCatalogueTest#bundledCatalogueCarriesTheFreeAndLocalVendors; the corpus example -- dsl-conformance-max
+  declares externalAi.vendors gemini, groq, acme-gw, held by check-dsl-coverage.py. Not proven red against the
+  pre-AIP-3 validator (provenRed stays false).

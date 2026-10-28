@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * REG-300: the durable schedule table is shared by every tenant and its payloads carry business ids.
@@ -84,6 +85,14 @@ class GeneratedCrudRuntimeSupportScheduleTenantScopeTest {
     void aSuperUserListsEveryTenantsSchedules() {
         callAs("tenant-a", List.of("SUPERUSER"));
         assertEquals(Set.of("tenant-a", "tenant-b"), tenantsListed());
+    }
+
+    /** X0: a listing that cannot read the table is an error (the controller answers 503), never "no schedules". */
+    @Test
+    void aFailedListingIsAnErrorNotAnEmptyList() throws SQLException {
+        callAs("tenant-a", List.of("USER"));
+        execute("DROP TABLE npdev_scheduled_event");
+        assertThrows(IllegalStateException.class, () -> support.listScheduledEvents(100, 0));
     }
 
     @Test

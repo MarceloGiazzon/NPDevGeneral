@@ -15,8 +15,15 @@ resolution: >-
   Apply the root's defaultExpression fields only when the root id is new (the persisted row does not exist yet); keep the stored value on a re-commit. Add a probe that commits twice and asserts orderNumber is unchanged.
 note: >-
   Fixed in ConfiguredConceptGatewaySemanticPolicy.applyDefaultsAndDerivedValues: a blank field with a defaultExpression keeps the stored value on update and the expression is not evaluated. Unit test defaultExpressionIsKeptOnUpdateNotRecomputed; probe field-default-expression-kept-on-recommit (85-lifecycle probes 19/19).
+  2026-10-28 (QUAL-61): the guard used to cite defaultExpressionIsKeptOnUpdateNotRecomputed, a kernel unit test on a plain
+  concept with a `$user.id` default -- not the aggregate-root nextNumber() path the item is about, and the item asked
+  for a probe that commits twice. That probe exists and is now the guard. It passed in a local behaviour-probe run on
+  2026-10-27 (scripts/reports/out, gitignored); not re-run this session. Not proven red against the pre-fix code, so
+  provenRed stays false. The unit test remains a valid but narrower check of the same rule.
 guard:
-  kind: test
-  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/ConfiguredConceptGatewaySemanticPolicyTest.java#defaultExpressionIsKeptOnUpdateNotRecomputed
-  asserts: a blank field with a defaultExpression keeps its stored value on update; the expression is not re-evaluated
+  kind: live
+  ref: NPDevSamples/dsl-conformance-max/behavior-probes/85-lifecycle-flows-roles.json
+  asserts: >-
+    behaviour probe field-default-expression-kept-on-recommit: committing the same WidgetOrderAggregate twice returns
+    the orderNumber the first commit allocated (nextNumber() on the root is not re-run on the second commit)
   provenRed: false

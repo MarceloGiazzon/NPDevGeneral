@@ -32,6 +32,13 @@ class ShippedCatalogueTests(unittest.TestCase):
         config = aicfg.load(use_mine=False)
         self.assertEqual(aicfg.semantic_errors(config), [])
 
+    def test_the_review_pack_keeps_no_private_vendor_table(self):
+        """AIP-1 1.4: the external review reads vendors from the one catalogue, not a table of its own."""
+        source = (Path(__file__).resolve().parents[2] / "scripts" / "external-review" / "build-review-pack.py")
+        text = source.read_text(encoding="utf-8")
+        self.assertNotIn("VENDOR_PROFILES", text)
+        self.assertIn("import npdev_ai_config", text)
+
     def test_every_binding_resolves_to_a_free_or_local_profile(self):
         # owner decision 2026-10-19: no paid spend by default -- a shipped binding never lands on a paid model
         config = aicfg.load(use_mine=False)
