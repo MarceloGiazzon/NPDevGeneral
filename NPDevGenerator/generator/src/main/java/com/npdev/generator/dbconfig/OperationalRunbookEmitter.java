@@ -2453,26 +2453,57 @@ exit 0
 """;
     }
 
-    /** T3: the POSIX twin of {@link #stopAppScript}. */
+    /**
+     * T3: the POSIX twin of {@link #stopAppScript}, with the same RUN-38 fallback: no live
+     * {@code app.pid} means the java processes whose command line names this app's root are stopped,
+     * and a process on the plan's port that is not one of them is reported and left running.
+     */
     private static String stopAppScriptPosix() {
         return """
 #!/bin/sh
 # NPDev generated FinalApp guarded background stopper -- POSIX twin of Stop-App.ps1.
 set -e
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+APP_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 PID_FILE="$SCRIPT_DIR/app.pid"
-if [ ! -f "$PID_FILE" ]; then
-  echo 'No app.pid; nothing to stop.'
-  exit 0
-fi
-APP_PID=$(cat "$PID_FILE" 2>/dev/null || true)
-if [ -n "$APP_PID" ] && kill -0 "$APP_PID" 2>/dev/null; then
-  kill "$APP_PID"
-  echo "Stopped PID $APP_PID."
+""" + PLAN_JSON_HELPER_SH + """
+STOPPED=0
+if [ -f "$PID_FILE" ]; then
+  APP_PID=$(cat "$PID_FILE" 2>/dev/null || true)
+  if [ -n "$APP_PID" ] && kill -0 "$APP_PID" 2>/dev/null; then
+    kill "$APP_PID"
+    echo "Stopped PID $APP_PID."
+    STOPPED=1
+  else
+    echo "Process $APP_PID was not running."
+  fi
+  rm -f "$PID_FILE"
 else
-  echo "Process $APP_PID was not running."
+  echo 'No app.pid.'
 fi
-rm -f "$PID_FILE"
+# RUN-38 fallback: an app started by another launcher (or an older CLI) leaves no app.pid here, and
+# may not be on the plan's port either (npdev run app --port overrides it). It is found by its
+# command line instead, which names a jar inside this app's root. The H2 TCP server can run a jar from
+# under the root too; it belongs to stop-environment.sh, so it is skipped here.
+if [ "$STOPPED" = 0 ]; then
+  APP_JVMS=$(ps -eo pid=,args= 2>/dev/null | awk -v root="$APP_ROOT/" '
+    { n = split($2, exe, "/"); if ((exe[n] == "java" || exe[n] == "javaw") && index($0, root) > 0 && index($0, "org.h2.tools.Server") == 0) print $1 }' || true)
+  for APP_JVM in $APP_JVMS; do
+    kill "$APP_JVM" 2>/dev/null || continue
+    echo "Stopped PID $APP_JVM (a java process running this app)."
+    STOPPED=1
+  done
+fi
+if [ "$STOPPED" = 0 ]; then
+  PLAN_PATH="$SCRIPT_DIR/resolved-db-plan.json"
+  if [ -f "$PLAN_PATH" ] && command -v python3 >/dev/null 2>&1 && command -v nc >/dev/null 2>&1; then
+    PORT=$(npdev_plan_get "$PLAN_PATH" serverPort 8080)
+    if nc -z 127.0.0.1 "$PORT" 2>/dev/null; then
+      echo "Port $PORT is held by a process that is not this app; left running." >&2
+    fi
+  fi
+  echo 'Nothing to stop.'
+fi
 exit 0
 """;
     }

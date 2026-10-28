@@ -39,6 +39,11 @@ note: >-
   booted by 'npdev run app --keep-running': app.pid deleted, _ops/Stop-App.ps1 stopped the JVM and freed 8080;
   a python listener on 8083 was reported and left running. Pinned by StopAppScriptTest. The POSIX twin
   stop-app.sh still has only the pid path (no reported failure there).
+  2026-10-28 (follow-up): stop-app.sh has the same fallback -- java processes from 'ps -eo pid=,args=' whose
+  command line names "$APP_ROOT/", minus the H2 TCP server (stop-app.sh, unlike Stop-App.ps1, does not stop the
+  environment afterwards, so it must not take the database down with it); a stranger on the plan port is reported
+  when nc and python3 are present. Checked with sh -n and the awk matcher against sample ps lines; not run live on
+  Linux. Pinned by StopAppScriptTest.thePosixTwinHasTheSameFallback.
 guard:
   kind: test
   ref: NPDevCli/tests/test_dev_loop.py#test_boot_records_the_pid_for_the_toolbox

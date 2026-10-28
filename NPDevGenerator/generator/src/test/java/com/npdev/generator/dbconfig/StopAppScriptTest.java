@@ -18,6 +18,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class StopAppScriptTest {
 
     private static String emitStopApp(Path tempDir) throws Exception {
+        return Files.readString(emitOps(tempDir).resolve("Stop-App.ps1"));
+    }
+
+    private static Path emitOps(Path tempDir) throws Exception {
         Path appDir = Files.createDirectories(tempDir.resolve("src").resolve("run38-app"));
         Files.writeString(appDir.resolve("manifest.json"), "{\"id\": \"run38-app\", \"title\": \"run38-app\"}\n");
         Path definitionPath = appDir.resolve("db.definition.json");
@@ -31,8 +35,7 @@ class StopAppScriptTest {
                 """);
         GeneratedDatabasePlan plan = new UserDatabaseDefinitionLoader().load(definitionPath, null);
         Path appRoot = Files.createDirectories(tempDir.resolve("FinalApp"));
-        Path opsRoot = new OperationalRunbookEmitter().emit(null, null, appRoot, plan);
-        return Files.readString(opsRoot.resolve("Stop-App.ps1"));
+        return new OperationalRunbookEmitter().emit(null, null, appRoot, plan);
     }
 
     @Test
@@ -56,5 +59,20 @@ class StopAppScriptTest {
         assertTrue(stop.contains("Get-NetTCPConnection -LocalPort ([int]$plan.serverPort) -State Listen"), stop);
         assertTrue(stop.contains("which is not this app; left running."),
                 "a stranger on the port must be reported, never stopped: " + stop);
+    }
+
+    @Test
+    void thePosixTwinHasTheSameFallback(@TempDir Path tempDir) throws Exception {
+        String stop = Files.readString(emitOps(tempDir).resolve("stop-app.sh"));
+
+        assertFalse(stop.contains("nothing to stop.'\n  exit 0"),
+                "a missing app.pid must no longer end stop-app.sh before the fallback runs: " + stop);
+        assertTrue(stop.contains("ps -eo pid=,args=") && stop.contains("index($0, root) > 0")
+                        && stop.contains("index($0, \"org.h2.tools.Server\") == 0")
+                        && stop.contains("APP_ROOT=$(cd \"$SCRIPT_DIR/..\" && pwd)"),
+                "must stop java processes whose command line names this app's root: " + stop);
+        assertTrue(stop.contains("npdev_plan_get() {")
+                        && stop.contains("is held by a process that is not this app; left running."),
+                "a stranger on the plan port must be reported, never stopped: " + stop);
     }
 }
