@@ -163,6 +163,41 @@ class Detect(unittest.TestCase):
                          listening=lambda host, port, timeout: port == 5432)
         self.assertEqual(["docker", "listener"], [d["source"] for d in result["databases"]])
 
+    def test_every_engine_gets_a_local_verdict(self):
+        result = _detect([], docker_error="docker is not on PATH")
+        self.assertEqual(dd.npdev_engines.engine_keys(), [e["engine"] for e in result["engines"]])
+
+    def test_embedded_and_h2server_are_ready_without_docker(self):
+        # "supported" next to "no database found" read as a contradiction; these need nothing.
+        verdicts = {e["engine"]: e["status"] for e in _detect([], docker_error="docker is not on PATH")["engines"]}
+        for key in ("h2local", "h2server", "inmemory"):
+            self.assertEqual("ready", verdicts[key], key)
+
+    def test_installed_but_stopped_docker_is_not_reported_as_missing(self):
+        result = _detect([], docker_error="docker did not answer: pipe not found")
+        self.assertTrue(result["docker"]["installed"])
+        pg = next(e for e in result["engines"] if e["engine"] == "postgres")
+        self.assertEqual("needs-docker", pg["status"])
+        self.assertIn("not running", pg["detail"])
+
+    def test_docker_not_on_path_says_install(self):
+        result = _detect([], docker_error="docker is not on PATH")
+        self.assertFalse(result["docker"]["installed"])
+        pg = next(e for e in result["engines"] if e["engine"] == "postgres")
+        self.assertIn("not installed", pg["detail"])
+
+    def test_running_container_makes_its_engine_running_others_ready(self):
+        result = _detect([_row("pg", "postgres:16", "running", "0.0.0.0:5433->5432/tcp")])
+        verdicts = {e["engine"]: e for e in result["engines"]}
+        self.assertEqual("running", verdicts["postgres"]["status"])
+        self.assertIn("localhost:5433", verdicts["postgres"]["detail"])
+        self.assertEqual("ready", verdicts["mysql"]["status"])
+
+    def test_exited_container_does_not_make_its_engine_running(self):
+        result = _detect([_row("pg", "postgres:16", "exited", "0.0.0.0:5432->5432/tcp")])
+        pg = next(e for e in result["engines"] if e["engine"] == "postgres")
+        self.assertEqual("ready", pg["status"])
+
     def test_no_secret_anywhere_in_the_output(self):
         row = json.dumps({"Names": "pg", "Image": "postgres:16", "State": "running",
                           "Ports": "0.0.0.0:5432->5432/tcp",

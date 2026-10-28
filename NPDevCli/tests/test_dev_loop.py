@@ -68,6 +68,7 @@ def make_cli(**overrides) -> mock.MagicMock:
     cli = mock.MagicMock()
     cli.repo_root.return_value = Path("/repo")
     cli.run_validate_semantic.return_value = 0
+    cli.ensure_environment.return_value = None
     for key, value in overrides.items():
         setattr(cli, key, value)
     return cli
@@ -240,6 +241,37 @@ class BootOptsIntoLiveConceptProvisioning(unittest.TestCase):
             argv = popen.call_args.args[0]
             app._log.close()
             self.assertIn("--npdev.runtime.hotswap.new-concept-provisioning-enabled=true", argv)
+
+
+class BootStartsTheEnvironmentFirst(unittest.TestCase):
+    def test_environment_started_before_the_jar(self):
+        """An H2Server app died on "Connection refused: localhost:9092" because `dev` never ran the
+        Start-Environment that Start-App.ps1 always runs."""
+        with TemporaryDirectory() as tmp:
+            options = make_options(Path(tmp))
+            order = []
+            cli = make_cli(java_launcher=mock.MagicMock(return_value="java"),
+                           ensure_environment=mock.MagicMock(side_effect=lambda root: order.append("env")))
+            fake_proc = mock.MagicMock()
+            fake_proc.pid = 4242
+            fake_proc.poll.return_value = None
+            with mock.patch.object(dev_loop.subprocess, "Popen",
+                                   side_effect=lambda *a, **k: order.append("java") or fake_proc), \
+                    mock.patch.object(dev_loop, "_health_ok", return_value=True):
+                app = dev_loop.boot(options, Path("app.jar"), cli)
+            app._log.close()
+            self.assertEqual(["env", "java"], order)
+            cli.ensure_environment.assert_called_once_with(options.output)
+
+    def test_environment_failure_is_logged_and_the_jar_never_starts(self):
+        with TemporaryDirectory() as tmp:
+            options = make_options(Path(tmp))
+            cli = make_cli(java_launcher=mock.MagicMock(return_value="java"),
+                           ensure_environment=mock.MagicMock(return_value="Start-Environment.ps1 exited 1: boom"))
+            with mock.patch.object(dev_loop.subprocess, "Popen") as popen:
+                self.assertIsNone(dev_loop.boot(options, Path("app.jar"), cli))
+            popen.assert_not_called()
+            self.assertIn("boom", options.app_log.read_text(encoding="utf-8"))
 
 
 class SuperUserKeyDiscovery(unittest.TestCase):

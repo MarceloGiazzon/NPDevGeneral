@@ -44,6 +44,10 @@ const FIXTURE_DOCTOR_NO_JARS: &str = include_str!("../fixtures/doctor-no-jars.js
 // reason stub mode exists is to build the UI against what the CLI ACTUALLY returns.
 const FIXTURE_DB_TEST_CONNECTION_OK: &str = include_str!("../fixtures/db-test-connection-ok.json");
 const FIXTURE_DB_TEST_CONNECTION_REFUSED: &str = include_str!("../fixtures/db-test-connection-refused.json");
+// RUN-37. Not a live capture of a running container (the machine that wrote it had no Docker daemon):
+// produced by the CLI's own `npdev_db_discovery.detect` with injected `docker ps` rows, so the SHAPE is
+// the CLI's, only the two containers are made up.
+const FIXTURE_DB_DETECT: &str = include_str!("../fixtures/db-detect.json");
 const FIXTURE_INIT_RESULT: &str = include_str!("../fixtures/init-result.json");
 const FIXTURE_SETUP_EVENTS: &str = include_str!("../fixtures/setup-events.jsonl");
 const FIXTURE_DEV_EVENTS: &str = include_str!("../fixtures/dev-events.jsonl");
@@ -381,6 +385,26 @@ pub async fn run_db_test_connection(
     parse_single_json(&output.stdout, &output.stderr, "db test-connection")
 }
 
+/// RUN-37: database servers the user already runs (Docker containers and default-port listeners).
+///
+/// Read-only and password-free by construction in the CLI (`npdev db detect` never calls `docker
+/// inspect`); this only relays its answer. Exit code is 0 even when Docker is unavailable -- that is
+/// reported inside the result, so an empty list and "docker is not on PATH" stay distinguishable.
+pub async fn run_db_detect(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_DB_DETECT).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let output = build_command(python_exe, npdev_cli, &["db", "detect", "--json"], java_home, None)
+        .output()
+        .await
+        .map_err(|e| format!("could not look for databases: {e}"))?;
+    parse_single_json(&output.stdout, &output.stderr, "db detect")
+}
+
 // ---------------------------------------------------------------------------------------------
 // init
 // ---------------------------------------------------------------------------------------------
@@ -610,9 +634,18 @@ pub async fn run_setup_streaming(app: AppHandle, python_exe: PathBuf, npdev_cli:
         let last_line = FIXTURE_SETUP_EVENTS.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("{}");
         return serde_json::from_str(last_line).map_err(|e| e.to_string());
     }
-    run_setup_streaming_with(python_exe, npdev_cli, java_home, move |value| {
-        let _ = app.emit("setup-event", value.clone());
-    })
+    let narration_app = app.clone();
+    run_setup_streaming_with(
+        python_exe,
+        npdev_cli,
+        java_home,
+        move |value| {
+            let _ = app.emit("setup-event", value.clone());
+        },
+        move |line| {
+            let _ = narration_app.emit("setup-narration", line.to_string());
+        },
+    )
     .await
 }
 
@@ -625,6 +658,7 @@ pub async fn run_setup_streaming_with(
     npdev_cli: PathBuf,
     java_home: Option<String>,
     mut on_event: impl FnMut(&Value) + Send + 'static,
+    mut on_narration: impl FnMut(&str) + Send + 'static,
 ) -> Result<Value, String> {
     let mut cmd = build_command(&python_exe, &npdev_cli, &["setup", "--json"], java_home.as_deref(), None);
     let mut child = cmd.spawn().map_err(|e| format!("could not start setup: {e}"))?;
@@ -633,13 +667,19 @@ pub async fn run_setup_streaming_with(
     let mut reader = BufReader::new(stdout).lines();
 
     // Narration (the human-readable "npdev setup: [1/3] ..." lines, and Gradle's own re-narrated
-    // output) goes to the child's stderr in --json mode. Nothing here reads it -- and on Windows,
-    // an anonymous pipe has a small OS buffer; if the child fills it while nobody drains the other
-    // end, the WRITE blocks the whole (single-threaded) child process, which then never reaches
-    // its next stdout write either. Drain it concurrently, even though this Rust side has nowhere
-    // to show it yet, purely so the child can never stall on it.
+    // output) goes to the child's stderr in --json mode. It is the ONLY sign of life during the
+    // ~10-minute local jar build -- stdout says "jars started" and then nothing until "done" -- so
+    // it is forwarded, not just drained. Drained concurrently either way: on Windows an anonymous
+    // pipe has a small OS buffer, and a child that fills it while nobody reads blocks on the WRITE
+    // and never reaches its next stdout line either.
     let mut stderr_reader = BufReader::new(stderr).lines();
-    tokio::spawn(async move { while let Ok(Some(_)) = stderr_reader.next_line().await {} });
+    tokio::spawn(async move {
+        while let Ok(Some(line)) = stderr_reader.next_line().await {
+            if !line.trim().is_empty() {
+                on_narration(&line);
+            }
+        }
+    });
 
     let mut last: Option<Value> = None;
     while let Some(line) = reader.next_line().await.map_err(|e| e.to_string())? {

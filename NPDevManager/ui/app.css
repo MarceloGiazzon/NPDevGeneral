@@ -131,6 +131,36 @@ h2 { font-size: 15px; margin: 20px 0 8px; }
 .engine-row .engine-shape { color: var(--muted); font-size: 12px; }
 .engine-row .engine-line { line-height: 1.4; }
 .engine-row .engine-caveat { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.engine-row .engine-local { font-size: 12px; line-height: 1.4; }
+.engine-row .engine-local.ready, .engine-row .engine-local.running { color: var(--pass); }
+.engine-row .engine-local.needs-docker { color: var(--warn); }
+/* Share's check rows: the detail IS the plain-language consequence, so it wraps instead of
+   hiding behind an ellipsis and a hover tooltip. */
+#hosting-checks .check-row .detail, #hosting-deploy .check-row .detail { white-space: normal; overflow: visible; }
+
+/* The "?" help buttons (help.js) and their popup. */
+.help-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0; margin-left: 6px; vertical-align: middle;
+  border-radius: 50%; border: 1px solid var(--accent); background: transparent; color: var(--accent);
+  font-size: 11px; font-weight: 700; line-height: 1; cursor: pointer;
+}
+.help-btn:hover { background: var(--accent); color: var(--bg); }
+.help-dialog {
+  max-width: 560px; width: calc(100% - 32px); padding: 0; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--bg); color: var(--fg);
+}
+.help-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+.help-body { padding: 18px 20px; line-height: 1.5; font-size: 14px; }
+.help-body h2 { margin: 0 0 10px; font-size: 16px; }
+.help-body ol, .help-body ul { padding-left: 20px; }
+.help-body li { margin: 4px 0; }
+.help-more { margin-bottom: 4px; color: var(--muted); font-size: 12px; }
+.help-links { margin-top: 0; }
+.help-links a { color: var(--accent); }
+.help-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
+
+.field-hint { color: var(--muted); font-size: 12px; line-height: 1.4; white-space: pre-line; }
 
 /* M14: the database toolbox. Reset is set apart visually because it is the one button here that
    destroys something -- the other four are reversible. */

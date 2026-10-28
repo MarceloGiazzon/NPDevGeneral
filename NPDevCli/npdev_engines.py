@@ -41,8 +41,8 @@ ENGINES: dict[str, dict] = {
         "containerized": False,
         "status": "supported",
         "summary": "File-backed H2 in the app's own process. No server to install. The default. "
-                   "Commits DDL implicitly (E5): a failed schema change is not fully rolled back -- "
-                   "see `npdev capabilities`.",
+                   "Commits schema changes implicitly: a failed schema change is not fully rolled "
+                   "back -- see `npdev capabilities`.",
     },
     "h2server": {
         "externalName": "H2Server",
@@ -51,8 +51,10 @@ ENGINES: dict[str, dict] = {
         "server": True,
         "containerized": False,
         "status": "supported",
-        "summary": "H2 in TCP server mode, so more than one process can share the database. Also "
-                   "commits DDL implicitly (E5) -- see `npdev capabilities`.",
+        "summary": "H2 in TCP server mode, so more than one process can share the database. Nothing "
+                   "to install: the H2 jar ships with every generated app and its "
+                   "_ops/Start-Environment starts the server. Also commits schema changes implicitly "
+                   "-- see `npdev capabilities`.",
     },
     "inmemory": {
         "externalName": "InMemory",
@@ -70,7 +72,9 @@ ENGINES: dict[str, dict] = {
         "server": True,
         "containerized": True,
         "status": "supported",
-        "summary": "PostgreSQL. The engine NPDev's schema engine was built against.",
+        "summary": "PostgreSQL 16. The engine NPDev's schema engine was built against. The app's "
+                   "_ops/Start-Environment runs it in Docker for you, or point the app at a server "
+                   "you already run.",
     },
     "mysql": {
         "externalName": "MySQL",
@@ -80,8 +84,10 @@ ENGINES: dict[str, dict] = {
         "containerized": True,
         "status": "supported",
         "supportedSince": "2026-08-09, CI run 31296993259 -- app proof 4/4 and Tier C 4/4",
-        "summary": "MySQL 8.4+. Requires utf8mb4 -- the legacy three-byte 'utf8' silently mangles "
-                   "anything outside the BMP.",
+        "summary": "MySQL 8.4+. The app's _ops/Start-Environment runs it in Docker for you (already "
+                   "utf8mb4), or point the app at a server you already run -- which must use utf8mb4: "
+                   "the legacy three-byte 'utf8' cannot store emoji or other characters outside the "
+                   "BMP (`npdev doctor` checks this).",
         "caveat": "MySQL COMMITS IMPLICITLY ON DDL, so a migration that fails partway CANNOT be "
                   "rolled back: earlier steps are already permanent. NPDev reports this truthfully "
                   "(PartialApplicationTruth) rather than claiming a rollback, but it is a real "
@@ -95,10 +101,10 @@ ENGINES: dict[str, dict] = {
         "containerized": True,
         "status": "supported",
         "supportedSince": "2026-08-09, CI run 31296993259 -- app proof 4/4 and Tier C 4/4",
-        "summary": "Microsoft SQL Server 2022+.",
-        "caveat": "SQL Server has no suffix row cap (TOP is a prefix), so a few internal existence "
-                  "probes take a different path. Text columns are mapped to NVARCHAR so unicode "
-                  "survives -- plain VARCHAR is non-Unicode there and loses characters silently.",
+        "summary": "Microsoft SQL Server 2022+. The app's _ops/Start-Environment runs it in Docker for "
+                   "you, or point the app at a server you already run.",
+        "caveat": "Text columns are mapped to NVARCHAR so unicode survives -- plain VARCHAR is "
+                  "non-Unicode there and loses characters silently.",
     },
 }
 

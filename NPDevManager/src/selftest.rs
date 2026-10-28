@@ -596,6 +596,7 @@ async fn run_setup_step(python_path: &std::path::Path, cli_path: &std::path::Pat
         cli_path.to_path_buf(),
         java_home.map(str::to_string),
         |_value| {},
+        |_line| {},
     )
     .await
     .map_err(|e| ("5/10 npdev setup", e))?;

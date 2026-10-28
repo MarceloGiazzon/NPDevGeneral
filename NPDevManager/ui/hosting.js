@@ -211,8 +211,8 @@ function renderLive() {
       <button type="button" id="hosting-stop-btn" class="destructive">Stop sharing</button>
     </div>
     ${keyLine}
-    <div class="hop-strip">${hops}</div>
-    <h2>Routed apps</h2>
+    <div class="hop-strip">${hops} ${helpButton("share-path")}</div>
+    <h2>Routed apps ${helpButton("share-routed")}</h2>
     <div class="routed-list">${routedRows}</div>
   `;
   document.getElementById("hosting-copy-btn").addEventListener("click", () => copyShareUrl(url));
@@ -273,7 +273,7 @@ function renderKeys() {
       `).join("")
     : `<p class="status-line">No keys yet.</p>`;
   el.innerHTML = `
-    <h2>Keys</h2>
+    <h2>Keys ${helpButton("share-keys")}</h2>
     ${mintedBanner}
     <div class="check-list">${rows}</div>
     <button type="button" id="hosting-new-key-btn">New key</button>
@@ -342,7 +342,7 @@ function renderLadder() {
   const privatePicked = hostingState.pickedRung === 0;
   const groups = [`
     <div class="rung-group">
-      <h3>0 &middot; ${escapeHtml(RUNG_LABELS[0])}</h3>
+      <h3>0 &middot; ${escapeHtml(RUNG_LABELS[0])} ${helpButton("rung-0")}</h3>
       <button type="button" class="rung${privatePicked ? " picked" : ""}" data-rung="0" data-target="" data-provider="">
         <span class="rung-label">Nobody but you can reach it</span>
         <p class="rung-reason muted">The safest state -- nothing is exposed.</p>
@@ -353,7 +353,7 @@ function renderLadder() {
     if (!byRung[rung]) continue;
     groups.push(`
       <div class="rung-group">
-        <h3>${rung} &middot; ${escapeHtml(RUNG_LABELS[rung])}</h3>
+        <h3>${rung} &middot; ${escapeHtml(RUNG_LABELS[rung])} ${helpButton(`rung-${rung}`)}</h3>
         ${byRung[rung].map(renderTargetCard).join("")}
       </div>
     `);
@@ -419,7 +419,7 @@ function renderChecks() {
       </div>
     `;
   });
-  el.innerHTML = `<div class="check-list">${rows.join("")}</div>`;
+  el.innerHTML = `<h3>Before sharing: what a visitor would hit ${helpButton("share-checks")}</h3><div class="check-list">${rows.join("")}</div>`;
   const jump = el.querySelector(".keys-jump-btn");
   if (jump) jump.addEventListener("click", scrollToKeys);
 }
@@ -659,7 +659,7 @@ function renderRemoteCheckRows() {
       </div>
     `;
   });
-  return `<h3>Remote check</h3><div class="check-list">${rows.join("")}</div>`;
+  return `<h3>Remote check ${helpButton("share-remote-check")}</h3><div class="check-list">${rows.join("")}</div>`;
 }
 
 function renderDeploy() {
@@ -692,7 +692,7 @@ function renderDeploy() {
   el.innerHTML = `
     <h2>Deploying to ${escapeHtml(result.target)}</h2>
     <div class="hop-strip">${writtenChips}</div>
-    <h3>You must supply ${youVars.length}</h3>
+    <h3>You must supply ${youVars.length} ${helpButton("share-deploy-vars")}</h3>
     <div class="check-list">${youRows || `<p class="status-line">Nothing -- NPDev resolved everything this target needs.</p>`}</div>
     ${npdevVars.length ? `<p class="status-line">NPDev already filled in the other ${npdevVars.length}.</p>` : ""}
     <div class="picker-row">

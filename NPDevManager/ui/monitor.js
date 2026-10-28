@@ -106,6 +106,7 @@ async function refreshMonitor() {
     const result = await mInvoke("monitor_scan", { includeInfo: false });
     monitorState.apps = result.apps || [];
     monitorState.searched = result.searched || [];
+    monitorState.notGenerated = await findNotGenerated(monitorState.apps);
     renderMonitor();
   } catch (err) {
     // A version mismatch is not a scan failure, and it has a different fix. The CLI wrapper turns
@@ -145,18 +146,73 @@ function renderMonitor() {
     return true;
   });
 
-  if (!visible.length) {
+  const pendingShown = monitorState.filter === "all" && (monitorState.notGenerated || []).length > 0;
+  if (!visible.length && !pendingShown) {
     grid.innerHTML = emptyStateHtml();
     return;
   }
-  grid.innerHTML = visible.map(cardHtml).join("");
+  grid.innerHTML = visible.map(cardHtml).join("") + (monitorState.filter === "all" ? notGeneratedHtml() : "");
   wireCards();
+  wireNotGenerated(grid);
+}
+
+// Apps the Manager created (`npdev init`) that have never been generated: no `_ops` yet, so the scan
+// -- which recognises an app by its contents -- cannot list them. Without this they vanished, and
+// "No generated apps found" right after creating one read as "the Monitor is broken".
+async function findNotGenerated(scanned) {
+  let created = [];
+  try {
+    created = await mInvoke("list_apps");
+  } catch {
+    return [];
+  }
+  const norm = (dir) => String(dir || "").replace(/[\\/]+$/, "").toLowerCase();
+  const found = new Set(scanned.map((app) => norm(app.appDir)));
+  // `npdev init <d>` generates into `<d>-app`, so either directory counts as generated.
+  return created.filter((app) => !found.has(norm(app.directory)) && !found.has(norm(app.directory) + "-app"));
+}
+
+// One card per not-yet-generated app, in the same wall as the others: a note under the grid read as
+// "the Monitor only knows one app". Its single action is the step that makes it a real app.
+function notGeneratedHtml() {
+  return (monitorState.notGenerated || [])
+    .map((app) => {
+      const dir = esc(app.directory);
+      return `
+  <article class="crt" data-status="unknown" data-dir="${dir}">
+    <div class="screen">
+      <div class="nosignal"><b>NOT GENERATED YET</b><span>created as a model only -- run it once to generate, build and start it</span></div>
+      <div class="phos">
+        <div class="scr-head">
+          <span class="app">${esc((app.name || "").toUpperCase())}</span>
+          <span class="st">NEW</span>
+        </div>
+        <hr class="scr-rule">
+        <dl class="kv"><dt>MODEL</dt><dd><span title="${dir}">${esc(shortPath(app.directory))}</span></dd></dl>
+        <p class="scr-msg"><button class="btn" data-run-new="${dir}">&#9654; GENERATE &amp; RUN</button></p>
+      </div>
+    </div>
+  </article>`;
+    })
+    .join("");
+}
+
+function wireNotGenerated(grid) {
+  grid.querySelectorAll("[data-run-new]").forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      // The Run tab's folder field accepts the model directory `npdev init` created.
+      document.getElementById("run-app-dir").value = btn.dataset.runNew;
+      window.__npdevShowScreen("run");
+    });
+  });
 }
 
 function emptyStateHtml() {
   if (monitorState.apps.length) {
     return `<p class="subtitle">No app matches this filter.</p>`;
   }
+
   // Never a blank panel. On a fresh machine with nothing configured, the honest answer is "we did
   // not look anywhere yet", and it says how to change that.
   return `

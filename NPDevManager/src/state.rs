@@ -49,16 +49,56 @@ pub fn logs_dir() -> PathBuf {
 
 /// Where `npdev setup` stages the runtime jars, for THIS Manager: the CLI resolves it as
 /// `NPDEV_BUILD_ROOT/runtimehost-libs` (`npdev_cli.py::_default_runtimehost_libs_dir`) and
-/// `npdev::build_command` pins `NPDEV_BUILD_ROOT` to `manager_home()`. Deliberately never created
+/// `npdev::build_command` pins `NPDEV_BUILD_ROOT` to `manager_home()` (or, in local-repo mode, leaves it to the checkout's
+/// own `Build` -- see [`build_root`]). Deliberately never created
 /// here -- see `ensure_dirs`.
 pub fn runtimehost_libs_dir() -> PathBuf {
-    manager_home().join("runtimehost-libs")
+    build_root().join("runtimehost-libs")
+}
+
+/// The directory the CLI will use as its build root for a command this Manager spawns.
+///
+/// Mirrors `npdev::build_command` and `npdev_cli.py::_ai_build_root`, which are the two halves of one
+/// decision: a downloaded version is pinned to `manager_home()`, but in local-repo dev mode (RUN-33)
+/// `NPDEV_BUILD_ROOT` is left unset so the CLI lands on the checkout's own shared `Build` folder -- the
+/// one a terminal restage writes. Anything that asks "did setup stage its jars?" must look in the SAME
+/// place; before this it always looked under `manager_home()`, so Step 4 said "not run yet" forever after
+/// a setup that had just succeeded.
+pub fn build_root() -> PathBuf {
+    let state = ManagerState::load();
+    build_root_for(
+        state.use_local_repo,
+        state.local_repo_path.as_deref(),
+        std::env::var("NPDEV_BUILD_ROOT").ok().as_deref(),
+    )
+}
+
+/// Pure form of [`build_root`] so the rule is testable without touching the environment.
+pub fn build_root_for(use_local_repo: bool, local_repo_path: Option<&str>, env_override: Option<&str>) -> PathBuf {
+    let local = local_repo_path.map(str::trim).filter(|p| use_local_repo && !p.is_empty());
+    let Some(local) = local else {
+        return manager_home();
+    };
+    // The CLI honours an inherited NPDEV_BUILD_ROOT before anything else; in local mode we do not set one.
+    if let Some(env) = env_override.map(str::trim).filter(|e| !e.is_empty()) {
+        return PathBuf::from(env);
+    }
+    // npdev-build-root-resolution: the repo root is identified by what it CONTAINS, never by its name.
+    let checkout = PathBuf::from(local);
+    let mut cursor = Some(checkout.as_path());
+    while let Some(dir) = cursor {
+        if ["NPDevContract", "NPDevGenerator", "NPDevKernel"].iter().all(|m| dir.join(m).is_dir()) {
+            return dir.parent().map(|p| p.join("Build")).unwrap_or_else(|| dir.join("Build"));
+        }
+        cursor = dir.parent();
+    }
+    checkout.parent().map(|p| p.join("Build")).unwrap_or_else(|| checkout.join("Build"))
 }
 
 /// The file doctor's `ai-knowledge-index` check tests, resolved the same way the CLI resolves it
-/// (`_ai_build_root() / "npdev-ai" / "rag-index.json"`, with `NPDEV_BUILD_ROOT` = `manager_home()`).
+/// (`_ai_build_root() / "npdev-ai" / "rag-index.json"`; the build root is [`build_root`]).
 pub fn ai_knowledge_index_path() -> PathBuf {
-    manager_home().join("npdev-ai").join("rag-index.json")
+    build_root().join("npdev-ai").join("rag-index.json")
 }
 
 /// How many `*.jar` files sit DIRECTLY in `dir` (never recursive, never creates anything). Returns
@@ -337,6 +377,29 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn build_root_follows_the_checkout_in_local_repo_mode_and_manager_home_otherwise() {
+        let parent = unique_temp_dir("build-root");
+        let checkout = parent.join("NPDevGeneral"); // a clone name that is NOT NPDev_General
+        for m in ["NPDevContract", "NPDevGenerator", "NPDevKernel"] {
+            std::fs::create_dir_all(checkout.join(m)).unwrap();
+        }
+        let checkout_str = checkout.to_string_lossy().to_string();
+
+        // Local-repo mode: the checkout's sibling Build, where the CLI stages -- not manager_home().
+        assert_eq!(parent.join("Build"), build_root_for(true, Some(&checkout_str), None));
+        // A path INSIDE the checkout still finds the root by content.
+        let inside = checkout.join("NPDevCli").to_string_lossy().to_string();
+        std::fs::create_dir_all(checkout.join("NPDevCli")).unwrap();
+        assert_eq!(parent.join("Build"), build_root_for(true, Some(&inside), None));
+        // An inherited NPDEV_BUILD_ROOT wins in local mode, exactly as the CLI reads it.
+        assert_eq!(PathBuf::from("X:/custom"), build_root_for(true, Some(&checkout_str), Some("X:/custom")));
+        // Downloaded-version mode (or local mode with no folder yet) stays on manager_home().
+        assert_eq!(manager_home(), build_root_for(false, Some(&checkout_str), None));
+        assert_eq!(manager_home(), build_root_for(true, None, None));
+        assert_eq!(manager_home(), build_root_for(true, Some("  "), None));
     }
 
     #[test]

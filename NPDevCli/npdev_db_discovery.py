@@ -42,6 +42,7 @@ IMAGE_PATH_SUFFIXES = (("mssql/server", "sqlserver"),)
 
 _PORT_MAPPING = re.compile(r"(?:(?P<bind>\[[^\]]+\]|[^\s,:]+):)?(?<![\d-])(?P<host>\d+)->(?P<container>\d+)/tcp")
 _WILDCARD_BINDS = {"", "0.0.0.0", "::", "[::]"}
+DOCKER_NOT_ON_PATH = "docker is not on PATH"
 
 
 def engine_for_image(image: str) -> str | None:
@@ -81,7 +82,7 @@ def parse_published_ports(ports: str) -> list[dict]:
 def _run_docker_ps() -> tuple[str, str]:
     """(stdout, error). `error` is non-empty when docker is missing or did not answer."""
     if not shutil.which("docker"):
-        return "", "docker is not on PATH"
+        return "", DOCKER_NOT_ON_PATH
     try:
         completed = subprocess.run(["docker", "ps", "-a", "--no-trunc", "--format", "{{json .}}"],
                                    capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -175,10 +176,48 @@ def detect(timeout: float = 0.5, *, docker_ps: Callable[[], tuple[str, str]] = _
             "note": f"something answers on {port}; NPDev has not confirmed it is {engine} -- "
                     "`npdev db test-connection` does",
         })
-    return {
-        "docker": {"status": "ok" if not docker_error else "unavailable", "detail": docker_error or None},
-        "databases": databases,
-    }
+    docker = {"status": "ok" if not docker_error else "unavailable",
+              # "not installed" and "installed but the daemon is down" need different actions
+              # (install Docker vs start it), so the difference is a field, not a parse of `detail`.
+              "installed": docker_error != DOCKER_NOT_ON_PATH,
+              "detail": docker_error or None}
+    return {"docker": docker, "databases": databases, "engines": local_availability(docker, databases)}
+
+
+def local_availability(docker: dict, databases: list[dict]) -> list[dict]:
+    """Per engine: can an app use it on THIS machine right now, and if not, what is missing.
+
+    `npdev engines` answers "does NPDev support it"; this answers "is it usable here" -- two
+    different questions that read as a contradiction when only the first is shown ("supported"
+    next to "no database found"). Derived from the registry's own server/containerized flags, so a
+    new engine gets a verdict without this function learning its name.
+
+    status: `ready` (nothing to install), `running` (a server is already up here), `needs-docker`
+    (the app's environment runs it in Docker, and Docker cannot be used yet).
+    """
+    out = []
+    for key in npdev_engines.engine_keys():
+        engine = npdev_engines.resolve(key)
+        running = [d for d in databases if d["engine"] == key and d["initArgs"]]
+        if not engine["server"]:
+            status, detail = "ready", "runs inside the app's own process -- nothing to install"
+        elif not engine["containerized"]:
+            status, detail = "ready", (f"the H2 jar ships with the app; its _ops/Start-Environment starts "
+                                       f"the server on port {engine['port']} -- nothing to install")
+        elif running:
+            where = ", ".join(f"{d['host']}:{d['port']}" for d in running)
+            status, detail = "running", f"already running here ({where}) -- Find databases offers it"
+        elif docker["status"] == "ok":
+            status, detail = "ready", ("Docker is running: the app's _ops/Start-Environment creates the "
+                                       "container on first start")
+        elif docker["installed"]:
+            status, detail = "needs-docker", ("Docker is installed but not running -- start Docker "
+                                              "Desktop, or point the app at a server you already run")
+        else:
+            status, detail = "needs-docker", ("Docker is not installed -- install Docker Desktop, or "
+                                              "install the server yourself and point the app at it")
+        out.append({"engine": key, "status": status, "detail": detail})
+    return out
 
 
 def render(result: dict) -> str:
@@ -195,4 +234,8 @@ def render(result: dict) -> str:
             lines.append("           adopt: npdev init <name> " + " ".join(d["initArgs"]))
     if not result["databases"]:
         lines.append("no database container or default-port listener found")
+    lines.append("")
+    lines.append("on this machine:")
+    for e in result["engines"]:
+        lines.append(f"  {e['engine']:<10} {e['status']:<13} {e['detail']}")
     return "\n".join(lines)

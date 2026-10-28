@@ -45,3 +45,9 @@ note: >-
   on a machine with the Docker daemon stopped (honest "docker did not answer" path) -- NOT yet against a running
   container. REMAINING: the Manager "Find databases" button on app creation (NPDevManager/ui/app.js + src/npdev.rs),
   left alone because those files carry uncommitted Manager 0.5.2 work.
+  2026-10-27 (Manager half, UNCOMMITTED with Manager 0.5.2): `run_db_detect` (npdev.rs), `detect_databases` command
+  (main.rs), a "Find databases" button + "Use this" in the New-app connection form (index.html, app.js; fills engine,
+  host, port and ticks externallyProvisioned, never a password), fixtures/db-detect.json. cargo test 54/54, node --check
+  ok. NOT verified in a real window -- owner to click Find databases on the Create tab; needs a running container to see
+  a "Use this" row.
+

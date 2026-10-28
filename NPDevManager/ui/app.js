@@ -240,10 +240,85 @@ async function refreshEngineMatrix() {
           <span class="engine-shape">${escapeHtml(engine.status)}${since} &middot; ${escapeHtml(engineShape(engine))}</span>
           <span class="engine-line">${escapeHtml(engine.summary || "")}</span>
           ${caveat}
+          <span class="engine-local" data-engine="${escapeHtml(engine.key)}">on this machine: checking&hellip;</span>
         </span>
       </div>`;
     })
     .join("");
+  const notice = document.createElement("div");
+  notice.id = "engine-docker-notice";
+  container.prepend(notice);
+  await refreshLocalAvailability();
+}
+
+// "supported" (npdev engines) and "usable here" (npdev db detect) are different questions. Showing
+// only the first, next to a Find databases that found nothing, read as a contradiction -- so every
+// engine row also carries the CLI's own per-machine verdict.
+async function refreshLocalAvailability() {
+  let result;
+  try {
+    result = await invoke("detect_databases");
+  } catch (err) {
+    for (const el of document.querySelectorAll(".engine-local")) {
+      el.textContent = `on this machine: could not check (${err})`;
+    }
+    return;
+  }
+  const verdicts = new Map((result.engines || []).map((e) => [e.engine, e]));
+  for (const el of document.querySelectorAll(".engine-local")) {
+    const verdict = verdicts.get(el.dataset.engine);
+    el.className = `engine-local ${verdict ? verdict.status : ""}`;
+    el.textContent = verdict
+      ? `on this machine: ${verdict.status === "needs-docker" ? "not yet" : verdict.status} -- ${verdict.detail}`
+      : "on this machine: this NPDev version does not report it";
+  }
+  const notice = document.getElementById("engine-docker-notice");
+  if (notice) renderDockerNotice(notice, result.docker, refreshLocalAvailability);
+}
+
+// Shared by the engine panel and Find databases: what is wrong with Docker, in words, plus the one
+// action that fixes it from here. Installing Docker is a copied command, never a button -- it needs
+// admin rights and often a reboot.
+function renderDockerNotice(target, docker, recheck) {
+  target.innerHTML = "";
+  if (!docker || docker.status === "ok") return;
+  const p = document.createElement("p");
+  p.className = "status-line";
+  if (docker.installed === false) {
+    p.textContent =
+      "Docker is not installed, so Postgres, MySQL and SQL Server cannot be started for an app here. " +
+      "Install Docker Desktop (winget install -e --id Docker.DockerDesktop), or install the database " +
+      "server yourself and use Find databases. H2 needs neither.";
+    target.appendChild(p);
+  } else {
+    p.textContent =
+      "Docker is installed but not running, so containers were not checked and Postgres, MySQL and " +
+      "SQL Server cannot be started for an app yet. H2 needs neither. ";
+    const start = document.createElement("button");
+    start.type = "button";
+    start.textContent = "Start Docker Desktop";
+    start.addEventListener("click", async () => {
+      start.disabled = true;
+      try {
+        await invoke("start_docker_desktop");
+        start.textContent = "starting -- re-checking in 30s";
+        // The daemon answers some seconds after the window appears; one bounded re-check, not a poll.
+        setTimeout(recheck, 30000);
+      } catch (err) {
+        start.textContent = "Start Docker Desktop";
+        start.disabled = false;
+        p.appendChild(document.createTextNode(` (${err})`));
+      }
+    });
+    p.appendChild(start);
+    target.appendChild(p);
+  }
+  if (docker.detail) {
+    const hint = document.createElement("div");
+    hint.className = "field-hint";
+    hint.textContent = `docker said: ${docker.detail}`;
+    target.appendChild(hint);
+  }
 }
 
 document.getElementById("doctor-refresh").addEventListener("click", async () => {
@@ -545,6 +620,22 @@ document.getElementById("setup-run-btn").addEventListener("click", async () => {
   logEl.hidden = false;
   logEl.textContent = "";
   statusEl.textContent = "running…";
+  // A local jar build is ~10 silent minutes on stdout. Elapsed time, the usual range and the latest
+  // narration line are what tell a user "working" apart from "hung".
+  const progressEl = document.getElementById("setup-progress");
+  const started = Date.now();
+  const tick = () => {
+    const s = Math.floor((Date.now() - started) / 1000);
+    progressEl.textContent =
+      `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} elapsed. Usually under a minute when ` +
+      `prebuilt jars can be downloaded; a local build takes about 5-15 minutes the first time ` +
+      `(faster once Gradle's caches are warm). Other tabs stay usable.` +
+      (lastSetupNarration ? `\nLatest: ${lastSetupNarration}` : "");
+  };
+  lastSetupNarration = "";
+  progressEl.hidden = false;
+  tick();
+  const timer = setInterval(tick, 1000);
   try {
     const result = await invoke("run_setup");
     const source = result.jarsSource === "download" ? "downloaded (fast)" : "built locally (slow)";
@@ -558,13 +649,31 @@ document.getElementById("setup-run-btn").addEventListener("click", async () => {
     // is the entire point of this section. Neither is allowed to overwrite the other silently.
     logEl.textContent += `failed: ${err}\n`;
   } finally {
+    clearInterval(timer);
+    progressEl.hidden = true;
     btn.disabled = false;
     await refreshSetupStatus();
   }
 });
 
+let lastSetupNarration = "";
+
+// stderr narration ("npdev setup: [1/3] building Kernel/Contract runtime jars", Gradle's output):
+// the only sign of life between "jars started" and "jars done".
+listen("setup-narration", (event) => {
+  const line = String(event.payload);
+  lastSetupNarration = line.length > 160 ? `${line.slice(0, 157)}...` : line;
+  const logEl = document.getElementById("setup-log");
+  logEl.hidden = false;
+  logEl.textContent += line + "\n";
+  logEl.scrollTop = logEl.scrollHeight;
+});
+
 listen("setup-event", (event) => {
   const payload = event.payload;
+  // The closing {"command":"setup",...} envelope repeats every phase line above it as one unreadable
+  // JSON blob; the click handler already writes the one-line verdict, so the envelope is not logged.
+  if (payload.schemaVersion === "npdev-cli-result.v1") return;
   const logEl = document.getElementById("setup-log");
   logEl.hidden = false;
   const line = payload.phase ? `[${payload.phase}] ${payload.status}${payload.seconds ? ` (${payload.seconds}s)` : ""}` : JSON.stringify(payload);
@@ -803,6 +912,92 @@ document.getElementById("test-connection-btn").addEventListener("click", async (
   }
 });
 
+// ---------------------------------------------------------------------------------------------
+// RUN-37: Find databases.
+//
+// Offers only what is RUNNING and reachable from here (the CLI withholds initArgs from anything
+// else). Picking fills engine/host/port and ticks "This server is mine"; the password stays for the
+// user to type, because detection never reads one.
+// ---------------------------------------------------------------------------------------------
+
+document.getElementById("find-databases-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("find-databases-btn");
+  const out = document.getElementById("find-databases-result");
+  btn.disabled = true;
+  out.innerHTML = `<p class="status-line">looking&hellip;</p>`;
+  try {
+    const result = await invoke("detect_databases");
+    out.innerHTML = "";
+    // Not "none found": Docker was not asked, and that is a different fact.
+    const notice = document.createElement("div");
+    renderDockerNotice(notice, result.docker, () => document.getElementById("find-databases-btn").click());
+    out.appendChild(notice);
+    const found = result.databases || [];
+    for (const db of found) {
+      const row = document.createElement("div");
+      row.className = "status-line";
+      const label = db.name ? `${db.name} (${db.engine})` : `${db.engine} listener`;
+      const where = db.port ? ` ${db.host}:${db.port}` : "";
+      row.appendChild(document.createTextNode(`${label}${where} [${db.state}]`));
+      if (db.initArgs) {
+        const use = document.createElement("button");
+        use.type = "button";
+        use.textContent = "Use this";
+        use.addEventListener("click", () => useDetectedDatabase(db));
+        row.appendChild(document.createTextNode(" "));
+        row.appendChild(use);
+      }
+      if (db.note) {
+        const note = document.createElement("div");
+        note.className = "field-hint";
+        note.textContent = db.note;
+        row.appendChild(note);
+      }
+      out.appendChild(row);
+    }
+    if (!found.length) {
+      // "Nothing found" alone reads as "nothing works here". It only means nothing is RUNNING to
+      // adopt -- the engines that need nothing, or that the app starts itself, are still options.
+      const ready = (result.engines || []).filter((e) => e.status === "ready").map((e) => e.engine);
+      const p = document.createElement("p");
+      p.className = "status-line";
+      p.textContent =
+        "No running database server to adopt here." +
+        (ready.length ? ` Usable without one: ${ready.join(", ")} (see Ready > Database engines).` : "");
+      out.appendChild(p);
+    }
+  } catch (err) {
+    out.innerHTML = `<p class="status-line">could not look: ${escapeHtml(err)}</p>`;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById("new-app-parent-browse").addEventListener("click", async () => {
+  let picked;
+  try {
+    picked = await invoke("pick_db_transfer_folder", { title: "Choose the folder to create the app in" });
+  } catch (err) {
+    document.getElementById("new-app-status").textContent = `could not open the folder picker: ${err}`;
+    return;
+  }
+  // null is the user cancelling: keep whatever was typed.
+  if (picked) document.getElementById("new-app-parent").value = picked;
+});
+
+function useDetectedDatabase(db) {
+  const select = document.getElementById("new-app-engine");
+  select.value = db.engine;
+  // The change handler re-applies the engine's defaults and clears any stale test verdict.
+  select.dispatchEvent(new Event("change"));
+  document.getElementById("new-app-db-host").value = db.host || "";
+  document.getElementById("new-app-db-port").value = db.port ? String(db.port) : "";
+  document.getElementById("new-app-externally-provisioned").checked = true;
+  document.getElementById("find-databases-result").innerHTML =
+    `<p class="status-line">Filled in ${escapeHtml(db.engine)} at ${escapeHtml(db.host)}:${escapeHtml(db.port)}. ` +
+    `Type the user and password, then Test connection.</p>`;
+}
+
 document.getElementById("new-app-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const name = document.getElementById("new-app-name").value.trim();
@@ -810,9 +1005,14 @@ document.getElementById("new-app-form").addEventListener("submit", async (event)
   const engine = document.getElementById("new-app-engine").value || null;
   const statusEl = document.getElementById("new-app-status");
   const portRaw = document.getElementById("new-app-db-port").value.trim();
+  const createBtn = document.getElementById("new-app-create-btn");
+  // `init` takes seconds; without this a second click (or Enter) ran it again on the folder the
+  // first one had just filled, and its refusal overwrote "created." -- a success reported as a failure.
+  if (createBtn.disabled) return;
+  createBtn.disabled = true;
   statusEl.textContent = "creating…";
   try {
-    await invoke("create_app", {
+    const result = await invoke("create_app", {
       name,
       parentDir,
       engine,
@@ -829,7 +1029,10 @@ document.getElementById("new-app-form").addEventListener("submit", async (event)
       externallyProvisioned:
         document.getElementById("new-app-externally-provisioned").checked === true,
     });
-    statusEl.textContent = "created.";
+    const createdDir = (result && result.created && result.created.directory) || `${parentDir}\\${name}`;
+    statusEl.textContent = `created ${name} in ${createdDir}. It is in the app list above and on the Run tab.`;
+    // Cleared so pressing Create again cannot target the folder that now exists.
+    document.getElementById("new-app-name").value = "";
     await refreshAppList();
     // M15: the new app becomes selectable on Ready immediately -- the moment its database checks
     // are most worth looking at is right after it is created.
@@ -838,7 +1041,13 @@ document.getElementById("new-app-form").addEventListener("submit", async (event)
     document.getElementById("run-app-dir").value = "";
     await prefillRunAppDir();
   } catch (err) {
-    statusEl.textContent = `failed: ${err}`;
+    const text = String(err);
+    statusEl.textContent = text.includes("non-empty directory")
+      ? `not created: ${parentDir}\\${name} already exists and is not empty. Pick another name or ` +
+        `folder -- if you created it here earlier, it is already in the app list above.`
+      : `failed: ${text}`;
+  } finally {
+    createBtn.disabled = false;
   }
 });
 
@@ -1117,18 +1326,36 @@ listen("dev-event", (event) => {
 // ---------------------------------------------------------------------------------------------
 
 async function refreshVersionsScreen() {
-  const [installed, current] = await Promise.all([invoke("list_installed_versions"), invoke("current_version")]);
+  const [installed, current, localRepo] = await Promise.all([
+    invoke("list_installed_versions"),
+    invoke("current_version"),
+    invoke("local_repo_config").catch(() => ({ active: false })),
+  ]);
+  // What is ACTUALLY used. With "Use local repo" on, the checkout wins and the "current" download
+  // below is ignored -- the screen used to say "current" about a version nothing was running.
+  const usingLocal = Boolean(localRepo && localRepo.active && localRepo.path);
+  const inUse = document.getElementById("versions-in-use");
+  inUse.textContent = usingLocal
+    ? `In use right now: your local checkout at ${localRepo.path} ("Use local repo" is on in Install step 3). ` +
+      `The downloaded versions below are not used until you turn that off.`
+    : current
+      ? `In use right now: ${current}. Every app you generate or run is built with it.`
+      : "No version in use yet -- download one on the Install tab (step 3).";
   const container = document.getElementById("version-list");
   if (installed.length === 0) {
-    container.innerHTML = `<p class="status-line">no versions installed yet -- see the Install tab.</p>`;
+    container.innerHTML = `<p class="status-line">no versions downloaded to this computer yet${
+      usingLocal ? " (none needed while you use your local checkout)" : " -- see the Install tab"}.</p>`;
     return;
   }
   container.innerHTML = installed
     .map((v) => {
       const isCurrent = v.tag === current;
+      const badge = !isCurrent ? "" : usingLocal
+        ? '<span class="badge">selected, not in use</span>'
+        : '<span class="badge">in use</span>';
       return `
-      <div class="version-item ${isCurrent ? "current" : ""}">
-        <span>${escapeHtml(v.tag)}${isCurrent ? '<span class="badge">current</span>' : ""}</span>
+      <div class="version-item ${isCurrent && !usingLocal ? "current" : ""}">
+        <span>${escapeHtml(v.tag)}${badge}</span>
         <span>
           ${isCurrent ? "" : `<button data-use="${escapeHtml(v.tag)}">Use this version</button>`}
           <button data-remove="${escapeHtml(v.tag)}" ${isCurrent ? "disabled" : ""}>Remove</button>

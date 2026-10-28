@@ -17,6 +17,7 @@ honestly, it is listed under "not covered" rather than fabricated.
 | `doctor-wrong-java.json`, `doctor-acceptable-newer-java.json` | hand-authored (deps-and-java W1.7), because no Java 11/22 was installed to capture from. They are not the only hand-written fixtures here (see above). |
 | `db-test-connection-ok.json` | `npdev db test-connection --json` against a real Postgres container |
 | `db-test-connection-refused.json` | the same command pointed at port 59999 with nothing listening |
+| `db-detect.json` | `npdev db detect --json`, produced by the CLI's own `detect()` with injected `docker ps` rows (no Docker daemon on the authoring machine) -- shape is the CLI's, the two containers are made up |
 | `init-result.json` | `npdev init --json` |
 | `engines.json` | `python NPDevCli/npdev_cli.py engines --json` on 2026-08-12 — six engines, all `supported`, two carrying real caveats (MySQL's implicit DDL commit, SQL Server's row-cap/NVARCHAR differences). Feeds the Ready screen's engine panel and the New-app dropdown in stub mode. |
 | `setup-events.jsonl`, `dev-events.jsonl` | the JSON Lines streams of `npdev setup --json` / `npdev dev --json` |

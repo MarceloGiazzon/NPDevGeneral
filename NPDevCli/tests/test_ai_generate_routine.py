@@ -23,7 +23,7 @@ class GenerateRoutineThroughTheClientTest(unittest.TestCase):
         self.payload.write_text(json.dumps({"prompt": "repair this routine"}), encoding="utf-8")
 
     def args(self, **extra):
-        base = dict(payload_file=str(self.payload), provider="ai", profile=None, command=[], endpoint=None,
+        base = dict(payload_file=str(self.payload), provider="ai", profile=None, assistant_command=[], endpoint=None,
                     api_key=None, model=None, timeout=30.0, json=True)
         base.update(extra)
         return Namespace(**base)
@@ -57,6 +57,33 @@ class GenerateRoutineThroughTheClientTest(unittest.TestCase):
         with self.assertRaises(npdev_cli.CliError) as ctx:
             self.run_cli({"ok": False, "error": "every target failed: fast: no key for gemini"})
         self.assertIn("no key for gemini", str(ctx.exception))
+
+
+class ParserDispatch(unittest.TestCase):
+    """The tests above build a Namespace by hand, so they could not see that `--command` shared the
+    top-level subcommand's dest and overwrote args.command with [] -- the real call printed the
+    top-level help and never ran."""
+
+    def test_generate_routine_parses_as_the_ai_command(self):
+        args = npdev_cli.build_parser().parse_args(
+            ["ai", "generate-routine", "--json", "--payload-file", "p.json", "--provider", "command",
+             "--command", "my-assistant", "--command", "{payload_file}"])
+        self.assertEqual("ai", args.command)
+        self.assertEqual("generate-routine", args.ai_command)
+        self.assertEqual(["my-assistant", "{payload_file}"], args.assistant_command)
+
+    def test_no_subcommand_option_reuses_the_top_level_dest(self):
+        import argparse
+
+        def walk(parser, path):
+            for action in parser._actions:
+                if isinstance(action, argparse._SubParsersAction):
+                    for name, sub in action.choices.items():
+                        yield from walk(sub, path + [name])
+                elif path and action.dest == "command":
+                    yield " ".join(path) + " " + "/".join(action.option_strings)
+
+        self.assertEqual([], list(walk(npdev_cli.build_parser(), [])))
 
 
 if __name__ == "__main__":

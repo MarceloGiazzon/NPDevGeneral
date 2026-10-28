@@ -123,6 +123,23 @@ chosen a name.
 This is what the Manager's **Test connection** button runs, beside the connection fields on its
 create-app form.
 
+#### Finding a database you already run: `npdev db detect`
+
+If PostgreSQL, MySQL or SQL Server is already running — in Docker or installed on this machine —
+you do not have to remember its port:
+
+```sh
+npdev db detect          # or --json
+```
+
+It lists database containers from `docker ps -a` (matched by image, or by a published default port)
+and anything listening on a default engine port, and prints the `npdev init ... --externally-provisioned`
+arguments that would point a new app at each running one. Only a **running** container is offered; an
+exited one is listed with a note and no arguments. If Docker is not installed or not answering it says
+so — that is not the same as "no databases". It never reads a password (you supply the user and
+password yourself, then run `test-connection`) and never starts, stops or removes anything. The
+Manager's **Find databases** button on the create-app form runs this and fills in engine, host and port.
+
 ### 3.2 Running the database itself: `npdev db`
 
 Once an app is generated, five operations drive its own generated `_ops` scripts:

@@ -236,6 +236,14 @@ def boot(options: DevOptions, jar: Path, cli) -> AppProcess | None:
     # supplied externally. Same injected-`cli` reasoning as `java_launcher()` two lines above: one
     # implementation in npdev_cli.py, called from both of this platform's raw-`java -jar` boot sites.
     cli.ensure_api_key(options.output)
+    # The database first, as Start-App.ps1 does: an H2Server or Docker app otherwise dies on
+    # "Connection refused" after a full build. Failure goes into the log "boot failed" points at.
+    environment_error = cli.ensure_environment(options.output)
+    if environment_error:
+        with open(options.app_log, "w", encoding="utf-8") as failed_log:
+            failed_log.write(f"npdev dev: the app's database environment did not start, so the app was "
+                             f"not booted.\n{environment_error}\n")
+        return None
     log = open(options.app_log, "w", encoding="utf-8")  # noqa: SIM115  (owned by AppProcess)
     proc = subprocess.Popen(
         [java, "-jar", str(jar),

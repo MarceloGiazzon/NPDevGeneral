@@ -3007,6 +3007,15 @@ def run_app(args: argparse.Namespace) -> dict:
             ))
             return result
         ensure_api_key(final_app_out)
+        environment_error = ensure_environment(final_app_out)
+        if environment_error:
+            result["diagnostics"].append(_diag(
+                "BOOT", "ENVIRONMENT_START_FAILED",
+                f"The app's database environment did not start: {environment_error}",
+                suggested_fix="Check the database with `npdev db status --app <dir>`; for a Docker "
+                              "engine, Docker must be running.",
+            ))
+            return result
         with open(log_path, "w", encoding="utf-8") as log_file:
             boot_proc = subprocess.Popen(
                 [java, "-jar", str(jar_path), f"--server.port={args.port}",
@@ -3688,6 +3697,42 @@ def java_launcher() -> str | None:
     return shutil.which("java")
 
 
+def ensure_environment(app_root: Path) -> str | None:
+    """Start the app's database environment before a raw `java -jar` boot; None when it is ready,
+    otherwise the toolbox's own account of why not.
+
+    `Start-App.ps1` has always run `_ops/Start-Environment.ps1` first. `npdev dev` and `npdev run
+    app` launch the jar directly, so for an engine with a server NPDev owns (H2Server's TCP server,
+    a Docker database) nothing started it and the first boot died on "Connection refused:
+    localhost:9092" after a full build. The script is idempotent ("already running" exits 0) and a
+    no-op for embedded engines, so it runs before every boot rather than branching on the engine
+    here -- the toolbox already owns that decision, and a second copy of it would drift.
+    """
+    ops_root = app_root / "_ops"
+    script, posix_script = ops_root / "Start-Environment.ps1", ops_root / "start-environment.sh"
+    shell = _find_powershell()
+    if shell is not None and script.is_file():
+        command = [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)]
+    elif posix_script.is_file():
+        command = [str(posix_script)]
+    else:
+        return None  # a toolbox from before Start-Environment existed -- same guard as Start-App.ps1
+    # Output goes to a FILE, never a pipe: the server this script launches in the background
+    # inherits the handles, and a captured pipe then never reaches EOF -- `run app` hung at BOOT
+    # forever with H2 already listening (found live).
+    log_path = ops_root / "start-environment.last.log"
+    try:
+        with open(log_path, "w", encoding="utf-8", errors="replace") as log:
+            completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=False,
+                                       timeout=300, stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return f"{command[-1]} did not finish within 300s (see {log_path})"
+    if completed.returncode == 0:
+        return None
+    output = log_path.read_text(encoding="utf-8", errors="replace").strip()
+    return f"{command[-1]} exited {completed.returncode}: {output[-1500:] or '(no output)'}"
+
+
 def ensure_api_key(app_root: Path) -> str:
     """Provision (or reuse) `<app_root>/secrets/api-key.env` and export it into this process's
     environment, before the BOOT phase below (and `dev_loop.boot`, injected with this module the
@@ -4038,11 +4083,13 @@ def _database_checks(app_path: str | None) -> list[dict]:
         source=str(definition_path),
         fix_host_port=f"Start {engine['externalName']}, or correct host/port in {definition_path}.",
         fix_credentials=f"Correct database.username / database.password in {definition_path}.",
+        npdev_owned=not database.get("externallyProvisioned", False),
     )
 
 
 def _database_checks_for(engine: dict, database: dict, *, source: str,
-                         fix_host_port: str, fix_credentials: str) -> list[dict]:
+                         fix_host_port: str, fix_credentials: str,
+                         npdev_owned: bool = False) -> list[dict]:
     """The database checks themselves, for an ALREADY-RESOLVED engine + connection.
 
     Split out of `_database_checks` so the same five checks can answer the question BEFORE an app
@@ -4087,7 +4134,20 @@ def _database_checks_for(engine: dict, database: dict, *, source: str,
 
     exc = _probe_tcp(host, port)
     reachable = exc is None
-    if exc is not None:
+    if exc is not None and npdev_owned:
+        # A server NPDev starts itself (H2Server's TCP server, a Docker database) is DOWN whenever
+        # the app is -- that is its normal resting state, not a fault. A red "Cannot reach" next to
+        # an app nobody has started yet sent a user hunting for a misconfiguration that did not exist.
+        checks.append(_check(
+            "database-reachable", "Database reachable", "warn", found=f"{host}:{port}",
+            expected="accepting connections",
+            detail=f"{engine['externalName']} is not running at {host}:{port} yet. NPDev owns this "
+                   f"server: the app's _ops/Start-Environment starts it, and running the app (Run, "
+                   f"`npdev run app`, `npdev dev`) does that first. To start only the database: "
+                   f"`npdev db start --app <dir>`.",
+            fix="Run the app, or start its database with `npdev db start`.",
+        ))
+    elif exc is not None:
         checks.append(_check(
             "database-reachable", "Database reachable", "fail", found=f"{host}:{port}",
             expected="accepting connections",
@@ -15572,12 +15632,12 @@ def run_ai_generate_routine(args: argparse.Namespace) -> int:
     payload = read_json(payload_path)
 
     if args.provider == "command":
-        if not args.command:
+        if not args.assistant_command:
             raise CliError(
                 "provider=command needs --command <argv part> (repeatable). Nothing is assumed: "
                 "NPDev does not know which assistant you use and will not guess."
             )
-        argv = [part.replace("{payload_file}", str(payload_path)) for part in args.command]
+        argv = [part.replace("{payload_file}", str(payload_path)) for part in args.assistant_command]
         completed = subprocess.run(argv, capture_output=True, text=True, timeout=args.timeout)
         if completed.returncode != 0:
             raise CliError(f"the assistant command exited {completed.returncode}: "
@@ -18198,7 +18258,10 @@ def build_parser() -> argparse.ArgumentParser:
                              help="provider=ai: the profile to use (default: the scrap-assistant binding).")
     ai_generate.add_argument("--effort", default=None, choices=["none", "low", "medium", "high", "xhigh", "max"],
                              help="provider=ai: this run's effort, instead of the profile's.")
-    ai_generate.add_argument("--command", action="append", default=[],
+    # dest is NOT "command": that is the top-level subcommand's dest, and an option sharing it
+    # overwrote args.command ("ai") with [] -- every `ai generate-routine` call then fell through
+    # dispatch and printed the top-level help instead of running (found from the Manager's Scrap tab).
+    ai_generate.add_argument("--command", dest="assistant_command", action="append", default=[],
                              help="provider=command: the argv, repeatable. `{payload_file}` is "
                                   "substituted with the payload's path.")
     ai_generate.add_argument("--endpoint", default=None, help="provider=http: the URL to POST to.")

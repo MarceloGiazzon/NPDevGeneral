@@ -1325,7 +1325,34 @@ if ($plan.profile.kind -eq 'embedded-server') {
   $searchRoots = @((Get-NpdevRuntimeHostLibs -Plan $plan), (Join-Path (Get-NpdevAppRoot -Plan $plan) 'build'), $dataRoot) |
     Where-Object { $_ -and (Test-Path -LiteralPath $_) }
   $jar = $null
+  # H2 is a Maven dependency: after a build it exists only INSIDE the boot jar (BOOT-INF/lib), never
+  # as a loose file under build/ or the runtimehost libs, so the search below alone never found one
+  # and no H2Server app could start its server. Taken from the boot jar first because that is the
+  # exact version the app's own client speaks; a different 2.x (say, from the Gradle cache) can
+  # refuse the app's database file. Re-extracted every start so a rebuild with a newer H2 wins.
+  $bootJar = Get-ChildItem -Path (Join-Path (Get-NpdevAppRoot -Plan $plan) 'build/libs') -Filter '*.jar' -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -notlike '*-plain.jar' } |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+  if ($null -ne $bootJar) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($bootJar.FullName)
+    try {
+      $entry = $zip.Entries | Where-Object { $_.FullName -like 'BOOT-INF/lib/h2-*.jar' } | Select-Object -First 1
+      if ($null -ne $entry) {
+        $h2Dir = Join-Path (Get-NpdevAppRoot -Plan $plan) 'build/npdev-h2'
+        New-Item -ItemType Directory -Force -Path $h2Dir | Out-Null
+        Get-ChildItem -Path $h2Dir -Filter 'h2-*.jar' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+        $h2Target = Join-Path $h2Dir $entry.Name
+        [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $h2Target, $true)
+        $jar = Get-Item -LiteralPath $h2Target
+      }
+    } finally {
+      $zip.Dispose()
+    }
+  }
   foreach ($root in $searchRoots) {
+    if ($null -ne $jar) { break }
     $jar = Get-ChildItem -Path $root -Recurse -Filter 'h2-*.jar' -ErrorAction SilentlyContinue |
       Sort-Object LastWriteTime -Descending |
       Select-Object -First 1
@@ -1565,7 +1592,18 @@ if [ "$PROFILE_KIND" = "embedded-server" ]; then
     fi
   fi
   JAR=""
+  # Twin of the PowerShell block: H2 lives only inside the boot jar after a build, at the exact
+  # version the app's client speaks, so it is extracted from there first, fresh every start.
+  BOOT_JAR=$(ls -t "$APP_ROOT"/build/libs/*.jar 2>/dev/null | grep -v -- '-plain.jar$' | head -n 1)
+  if [ -n "$BOOT_JAR" ] && command -v unzip >/dev/null 2>&1; then
+    H2_DIR="$APP_ROOT/build/npdev-h2"
+    mkdir -p "$H2_DIR"
+    rm -f "$H2_DIR"/h2-*.jar
+    unzip -o -j -q "$BOOT_JAR" 'BOOT-INF/lib/h2-*.jar' -d "$H2_DIR" 2>/dev/null || true
+    for candidate in "$H2_DIR"/h2-*.jar; do [ -f "$candidate" ] && JAR="$candidate"; done
+  fi
   for root in "$RUNTIMEHOST_LIBS" "$APP_ROOT/build" "$DATA_ROOT"; do
+    [ -n "$JAR" ] && break
     [ -n "$root" ] && [ -d "$root" ] || continue
     newest_mtime=-1
     for candidate in $(find "$root" -name 'h2-*.jar' -type f 2>/dev/null); do

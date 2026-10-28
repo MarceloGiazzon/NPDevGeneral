@@ -13,7 +13,7 @@
       "needsServer": false,
       "containerized": false,
       "status": "supported",
-      "summary": "File-backed H2 in the app's own process. No server to install. The default.",
+      "summary": "File-backed H2 in the app's own process. No server to install. The default. Commits schema changes implicitly: a failed schema change is not fully rolled back -- see `npdev capabilities`.",
       "caveat": null,
       "honestyNotice": null
     },
@@ -25,7 +25,7 @@
       "needsServer": true,
       "containerized": false,
       "status": "supported",
-      "summary": "H2 in TCP server mode, so more than one process can share the database.",
+      "summary": "H2 in TCP server mode, so more than one process can share the database. Nothing to install: the H2 jar ships with every generated app and its _ops/Start-Environment starts the server. Also commits schema changes implicitly -- see `npdev capabilities`.",
       "caveat": null,
       "honestyNotice": null
     },
@@ -37,7 +37,7 @@
       "needsServer": true,
       "containerized": true,
       "status": "supported",
-      "summary": "PostgreSQL. The engine NPDev's schema engine was built against.",
+      "summary": "PostgreSQL 16. The engine NPDev's schema engine was built against. The app's _ops/Start-Environment runs it in Docker for you, or point the app at a server you already run.",
       "caveat": null,
       "honestyNotice": null
     },
@@ -49,7 +49,7 @@
       "needsServer": true,
       "containerized": true,
       "status": "supported",
-      "summary": "MySQL 8.4+. Requires utf8mb4 -- the legacy three-byte 'utf8' silently mangles anything outside the BMP.",
+      "summary": "MySQL 8.4+. The app's _ops/Start-Environment runs it in Docker for you (already utf8mb4), or point the app at a server you already run -- which must use utf8mb4: the legacy three-byte 'utf8' cannot store emoji or other characters outside the BMP (`npdev doctor` checks this).",
       "caveat": "MySQL COMMITS IMPLICITLY ON DDL, so a migration that fails partway CANNOT be rolled back: earlier steps are already permanent. NPDev reports this truthfully (PartialApplicationTruth) rather than claiming a rollback, but it is a real operational difference from Postgres.",
       "honestyNotice": null
     },
@@ -61,8 +61,8 @@
       "needsServer": true,
       "containerized": true,
       "status": "supported",
-      "summary": "Microsoft SQL Server 2022+.",
-      "caveat": "SQL Server has no suffix row cap (TOP is a prefix), so a few internal existence probes take a different path. Text columns are mapped to NVARCHAR so unicode survives -- plain VARCHAR is non-Unicode there and loses characters silently.",
+      "summary": "Microsoft SQL Server 2022+. The app's _ops/Start-Environment runs it in Docker for you, or point the app at a server you already run.",
+      "caveat": "Text columns are mapped to NVARCHAR so unicode survives -- plain VARCHAR is non-Unicode there and loses characters silently.",
       "honestyNotice": null
     },
     {

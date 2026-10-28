@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "db detect",
+  "ok": true,
+  "exitCode": 0,
+  "docker": {
+    "status": "ok",
+    "detail": null,
+    "installed": true
+  },
+  "databases": [
+    {
+      "source": "docker",
+      "engine": "postgres",
+      "name": "npdev-local-pg",
+      "image": "postgres:16",
+      "matchedBy": "image",
+      "state": "running",
+      "running": true,
+      "host": "localhost",
+      "port": 15432,
+      "initArgs": [
+        "--engine",
+        "postgres",
+        "--db-host",
+        "localhost",
+        "--db-port",
+        "15432",
+        "--externally-provisioned"
+      ],
+      "note": null
+    },
+    {
+      "source": "docker",
+      "engine": "mysql",
+      "name": "old-mysql",
+      "image": "mysql:8.4",
+      "matchedBy": "image",
+      "state": "exited",
+      "running": false,
+      "host": null,
+      "port": null,
+      "initArgs": null,
+      "note": "no published port for 3306/tcp -- not reachable from this machine unless the app joins the container's Docker network"
+    }
+  ],
+  "engines": [
+    {
+      "engine": "h2local",
+      "status": "ready",
+      "detail": "runs inside the app's own process -- nothing to install"
+    },
+    {
+      "engine": "h2server",
+      "status": "ready",
+      "detail": "the H2 jar ships with the app; its _ops/Start-Environment starts the server on port 9092 -- nothing to install"
+    },
+    {
+      "engine": "postgres",
+      "status": "running",
+      "detail": "already running here (localhost:15432) -- Find databases offers it"
+    },
+    {
+      "engine": "mysql",
+      "status": "ready",
+      "detail": "Docker is running: the app's _ops/Start-Environment creates the container on first start"
+    },
+    {
+      "engine": "sqlserver",
+      "status": "ready",
+      "detail": "Docker is running: the app's _ops/Start-Environment creates the container on first start"
+    },
+    {
+      "engine": "inmemory",
+      "status": "ready",
+      "detail": "runs inside the app's own process -- nothing to install"
+    }
+  ]
+}

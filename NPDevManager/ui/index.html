@@ -81,7 +81,11 @@
         copy here would be free to drift the day an engine's status changes.
       -->
       <h2>Database engines</h2>
-      <p class="subtitle">Everything this NPDev version supports &mdash; from <code>npdev engines</code>, never hardcoded.</p>
+      <p class="subtitle">
+        Everything this NPDev version supports (<code>npdev engines</code>), and whether each one can be
+        used on <em>this machine</em> right now (<code>npdev db detect</code>) &mdash; two different
+        questions, so each row answers both.
+      </p>
       <div id="engine-matrix" class="check-list"><p class="status-line">reading the engine list&hellip;</p></div>
     </section>
 
@@ -143,6 +147,8 @@
              whether it was true. `setup_status` answers that now; this placeholder matches steps 1
              and 2 and is replaced on every entry to the screen. -->
         <div id="setup-status" class="status-line">checking&hellip;</div>
+        <!-- Shown only while setup runs: elapsed time, how long it usually takes, the latest line. -->
+        <div id="setup-progress" class="field-hint" hidden></div>
         <div id="setup-log" class="log-view" hidden></div>
         <button id="setup-run-btn">Run setup</button>
       </div>
@@ -177,6 +183,7 @@
       <form id="new-app-form">
         <label>Name <input id="new-app-name" required placeholder="my-app" /></label>
         <label>Folder <input id="new-app-parent" required placeholder="D:\Apps" /></label>
+        <button type="button" id="new-app-parent-browse">&#128193; Browse&hellip;</button>
         <!--
           W5.3: the options are filled from `npdev engines --json` at load time, never written here.
           A hardcoded copy would be free to drift the day an engine's support status changes, and the
@@ -190,6 +197,15 @@
           in a changelog is not the user being told.
         -->
         <p id="new-app-engine-warning" class="engine-warning" hidden></p>
+        <!--
+          RUN-37. Finds a database server already running here (Docker container or default
+          port) so the user picks it instead of typing host and port. Lives OUTSIDE the connection
+          block on purpose: that block is hidden until a server engine is chosen, and this is the
+          control that helps choose one. Picking fills engine, host and port and ticks "This server
+          is mine" -- it never reads a password.
+        -->
+        <button type="button" id="find-databases-btn">Find databases</button>
+        <div id="find-databases-result" class="check-list"></div>
         <!-- Revealed only for engines that actually connect somewhere. -->
         <div id="new-app-connection" hidden>
           <label>Host <input id="new-app-db-host" placeholder="localhost" /></label>
@@ -224,7 +240,7 @@
             as its own &mdash; <strong>Reset deletes the data root</strong>.
           </p>
         </div>
-        <button type="submit">Create</button>
+        <button type="submit" id="new-app-create-btn">Create</button>
       </form>
       <p id="new-app-status" class="status-line"></p>
     </section>
@@ -284,8 +300,13 @@
 
     <!-- Share -->
     <section id="screen-hosting" class="screen" hidden>
-      <h1>Share</h1>
-      <p class="subtitle">Give this app an address other people can open.</p>
+      <h1>Share <button type="button" class="help-btn" data-help="share-overview" aria-label="What is this?" title="What is this?">?</button></h1>
+      <p class="subtitle">
+        Your app runs on this computer, so only you can open it. Here you can give it an address other
+        people can open, from a temporary link for a quick demo up to a real server. Choose a level
+        below (each has a <strong>?</strong> explaining it); NPDev checks the app before exposing
+        anything.
+      </p>
 
       <div class="picker-row">
         <span>App</span>
@@ -308,9 +329,14 @@
 
     <!-- Versions -->
     <section id="screen-versions" class="screen" hidden>
-      <h1>Versions</h1>
+      <h1>Versions <button type="button" class="help-btn" data-help="versions-overview" aria-label="What is this?" title="What is this?">?</button></h1>
+      <p class="subtitle">
+        The versions of <strong>NPDev itself</strong> (the generator and tools your apps are built
+        with) downloaded to this computer. Keep more than one to try a newer release and switch back
+        if it misbehaves. Removing a version deletes only its folder; your apps are never touched.
+      </p>
+      <p id="versions-in-use" class="status-line"></p>
       <div id="version-list" class="version-list"></div>
-      <p class="subtitle">Each version is one folder under the Manager's own home. Removing it deletes exactly that folder.</p>
     </section>
     <!-- The Monitor (MONITOR_PLAN Phase B) -- third in the tab strip -->
     <section id="screen-monitor" class="screen" hidden>
@@ -1146,6 +1172,7 @@
   <div class="toast" id="monitor-toast"></div>
 
   <script src="app.js"></script>
+  <script src="help.js"></script>
   <script src="monitor.js"></script>
   <script src="hosting.js"></script>
   <script src="scrap.js"></script>

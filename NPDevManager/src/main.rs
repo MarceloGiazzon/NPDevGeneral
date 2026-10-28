@@ -63,7 +63,7 @@ fn resolve_npdev_cli(app_state: &AppState) -> Result<PathBuf, String> {
         if use_local_repo {
             "no local NPDev repo folder set -- pick one in the Install tab first".to_string()
         } else {
-            "no NPDev version installed -- install one first".to_string()
+            "no NPDev version installed -- on the Install tab, download one (step 3) or switch on \"Use local repo\" and pick your checkout".to_string()
         }
     })?;
     let cli = npdev::npdev_cli_path(&dir);
@@ -189,6 +189,53 @@ async fn test_connection(
         db_password.as_deref(),
     )
     .await
+}
+
+/// RUN-37: the "Find databases" button -- what already runs here that an app could point at.
+#[tauri::command]
+async fn detect_databases(state: State<'_, AppState>) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_db_detect(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"), java_home.as_deref())
+            .await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_db_detect(&python, &cli, java_home.as_deref()).await
+}
+
+/// The action behind `npdev db detect`'s "Docker is installed but not running": launch Docker
+/// Desktop, nothing more. Its daemon takes a while to answer after launch, so the UI re-runs
+/// detection rather than this command claiming Docker is up. Installing Docker is NOT done from
+/// here -- it needs admin rights and often a reboot, which a button should not spring on anyone.
+#[tauri::command]
+fn start_docker_desktop() -> Result<String, String> {
+    let exe = docker_desktop_exe().ok_or(
+        "Docker Desktop was not found (looked next to docker.exe on PATH and under Program Files)",
+    )?;
+    std::process::Command::new(&exe)
+        .spawn()
+        .map_err(|e| format!("could not start {}: {e}", exe.display()))?;
+    Ok(exe.display().to_string())
+}
+
+#[cfg(windows)]
+fn docker_desktop_exe() -> Option<PathBuf> {
+    // docker.exe lives at <install>/resources/bin/docker.exe; the app is <install>/Docker Desktop.exe.
+    let from_path = std::env::var_os("PATH").and_then(|path| {
+        std::env::split_paths(&path)
+            .map(|dir| dir.join("docker.exe"))
+            .find(|candidate| candidate.is_file())
+            .and_then(|docker| docker.parent()?.parent()?.parent().map(|d| d.join("Docker Desktop.exe")))
+    });
+    let program_files = std::env::var_os("ProgramFiles")
+        .map(|pf| PathBuf::from(pf).join("Docker").join("Docker").join("Docker Desktop.exe"));
+    [from_path, program_files].into_iter().flatten().find(|p| p.is_file())
+}
+
+#[cfg(not(windows))]
+fn docker_desktop_exe() -> Option<PathBuf> {
+    None
 }
 
 // -------------------------------------------------------------------------------------------
@@ -1552,9 +1599,10 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.5.1: Start passes each AI vendor's key from your key store straight into the app's process, \
-     so an app started here needs no secrets/agent-proxy.env. The Monitor inspector says where each \
-     key will come from, and offers the key file only for starts outside this window."
+    "0.5.2: Install > Setup reads the staged jars and the knowledge index from the folder the CLI \
+     really writes them to. With a local repo folder selected that is the checkout's own Build \
+     folder, so a finished setup no longer reports \"not run yet\". The setup log drops the repeated \
+     JSON summary, and Doctor/Engines say how to get a version when none is installed."
         .to_string()
 }
 
@@ -1562,7 +1610,7 @@ fn manager_version_description() -> String {
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "Keys at Start";
+const CURRENT_VERSION_TITLE: &str = "Setup Status";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {
@@ -3319,6 +3367,8 @@ the blast radius needs a baseline to diff against"
             set_fake_doctor_scenario,
             check_doctor,
             test_connection,
+            detect_databases,
+            start_docker_desktop,
             jdk_status,
             install_jdk,
             python_status,
