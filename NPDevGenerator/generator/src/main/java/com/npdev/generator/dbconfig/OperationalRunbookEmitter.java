@@ -2439,7 +2439,7 @@ if (-not $stopped -and (Test-Path -LiteralPath $planFile)) {
   }
   if (-not $stopped) {
     $listeners = @(Get-NetTCPConnection -LocalPort ([int]$plan.serverPort) -State Listen -ErrorAction SilentlyContinue |
-      Select-Object -ExpandProperty OwningProcess | Sort-Object -Unique)
+      ForEach-Object { $_.OwningProcess } | Sort-Object -Unique)
     foreach ($ownerPid in $listeners) {
       $ownerName = (Get-Process -Id $ownerPid -ErrorAction SilentlyContinue).ProcessName
       Write-Host "Port $($plan.serverPort) is held by PID $ownerPid ($ownerName), which is not this app; left running." -ForegroundColor Yellow
