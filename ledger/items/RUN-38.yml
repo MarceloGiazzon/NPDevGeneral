@@ -2,9 +2,9 @@ id: RUN-38
 title: An app started by the CLI cannot be stopped by its own _ops/Stop-App.ps1 -- the CLI and the toolbox keep app.pid in different folders
 type: GAP
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-10-28
-closed: null
+closed: 2026-10-28
 source: >-
   2026-10-28: stopping testH2S_2 (started on 2026-10-27 by 'npdev run app' from the Manager), _ops/Stop-Environment.ps1
   stopped H2Server, but _ops/Stop-App.ps1 printed "No app.pid; nothing to stop." while the app jar was still listening on
@@ -24,13 +24,21 @@ resolution: >-
 files:
   - NPDevCli/dev_loop.py
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java
-verification: UNIT_TESTED
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/StopAppScriptTest.java
+verification: VERIFIED_LIVE
 note: >-
   2026-10-28: filed. The mismatch was seen live on testH2S_2 and the two paths were confirmed by reading the code.
   Tracing showed 'npdev run app' wrote no pid anywhere (the 8081 jar had no dev-loop hotswap flag) and 'npdev dev'
   wrote one only to its own state dir. Fixed the same day: npdev_cli.record_app_pid writes _ops/app.pid, called by both
   launchers right after Popen; npdev dev's teardown removes it only while it still holds that loop's pid. Still open:
   the Stop-App.ps1 port fallback, and a live start-with-the-CLI, stop-with-_ops run.
+  2026-10-28 (closed): Stop-App.ps1 no longer exits on a missing app.pid. It falls back to every java process
+  whose command line names this app's root -- NOT the plan's port, because a live check found 'npdev run app
+  --port 8080' running an app whose plan said 8083, so a port-only fallback still missed it. A process on the
+  plan's port that is not this app is reported and left running. Live, on simple-contact-intake generated and
+  booted by 'npdev run app --keep-running': app.pid deleted, _ops/Stop-App.ps1 stopped the JVM and freed 8080;
+  a python listener on 8083 was reported and left running. Pinned by StopAppScriptTest. The POSIX twin
+  stop-app.sh still has only the pid path (no reported failure there).
 guard:
   kind: test
   ref: NPDevCli/tests/test_dev_loop.py#test_boot_records_the_pid_for_the_toolbox

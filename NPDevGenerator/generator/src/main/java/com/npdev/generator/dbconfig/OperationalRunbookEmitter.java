@@ -2400,18 +2400,53 @@ exit 0
     /**
      * R9.4: promoted from the AppGen PowerShell layer, same story as {@link #startAppScript}. Stops
      * the tracked process (if any) and the database environment.
+     *
+     * <p>RUN-38: when app.pid is missing or stale, falls back to every java process whose command
+     * line names this app's own root (every launcher runs a jar from inside it). Not the plan's
+     * port: {@code npdev run app --port} overrides it, so a live check found the app on 8080 with the
+     * plan saying 8083. A process on the plan's port that is NOT this app is reported and left
+     * alone: a toolbox must never kill a stranger's service because it borrowed the port.
      */
     private static String stopAppScript() {
         return """
 $ErrorActionPreference = 'Stop'
 $pidFile = Join-Path $PSScriptRoot 'app.pid'
-if (-not (Test-Path -LiteralPath $pidFile)) { Write-Host 'No app.pid; nothing to stop.'; exit 0 }
-$appPidValue = 0
-[void][int]::TryParse((Get-Content -Raw -LiteralPath $pidFile).Trim(), [ref]$appPidValue)
-$appProcess = if ($appPidValue -gt 0) { Get-Process -Id $appPidValue -ErrorAction SilentlyContinue } else { $null }
-if ($null -ne $appProcess) { Stop-Process -Id $appPidValue -Force; Write-Host "Stopped PID $appPidValue." }
-else { Write-Host "Process $appPidValue was not running." }
-Remove-Item -LiteralPath $pidFile -Force
+$stopped = $false
+if (Test-Path -LiteralPath $pidFile) {
+  $appPidValue = 0
+  [void][int]::TryParse((Get-Content -Raw -LiteralPath $pidFile).Trim(), [ref]$appPidValue)
+  $appProcess = if ($appPidValue -gt 0) { Get-Process -Id $appPidValue -ErrorAction SilentlyContinue } else { $null }
+  if ($null -ne $appProcess) { Stop-Process -Id $appPidValue -Force; Write-Host "Stopped PID $appPidValue."; $stopped = $true }
+  else { Write-Host "Process $appPidValue was not running." }
+  Remove-Item -LiteralPath $pidFile -Force
+} else {
+  Write-Host 'No app.pid.'
+}
+# RUN-38 fallback: an app started by another launcher (or an older CLI) leaves no app.pid here, and
+# may not be on the plan's port either (npdev run app --port overrides it). It is found by its
+# command line instead, which names a jar inside this app's root.
+$planFile = Join-Path $PSScriptRoot 'resolved-db-plan.json'
+if (-not $stopped -and (Test-Path -LiteralPath $planFile)) {
+  $plan = Get-Content -Raw -LiteralPath $planFile | ConvertFrom-Json
+""" + DATA_ROOT_HELPER + """
+  $appRootMarker = (Get-NpdevAppRoot -Plan $plan).TrimEnd('\\', '/') + '\\'
+  $runningThisApp = @(Get-CimInstance Win32_Process -Filter "Name = 'java.exe' OR Name = 'javaw.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -and $_.CommandLine.Replace('/', '\\').IndexOf($appRootMarker, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 })
+  foreach ($appJvm in $runningThisApp) {
+    Stop-Process -Id $appJvm.ProcessId -Force
+    Write-Host "Stopped PID $($appJvm.ProcessId) (a java process running this app)."
+    $stopped = $true
+  }
+  if (-not $stopped) {
+    $listeners = @(Get-NetTCPConnection -LocalPort ([int]$plan.serverPort) -State Listen -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty OwningProcess | Sort-Object -Unique)
+    foreach ($ownerPid in $listeners) {
+      $ownerName = (Get-Process -Id $ownerPid -ErrorAction SilentlyContinue).ProcessName
+      Write-Host "Port $($plan.serverPort) is held by PID $ownerPid ($ownerName), which is not this app; left running." -ForegroundColor Yellow
+    }
+  }
+}
+if (-not $stopped) { Write-Host 'Nothing to stop.' }
 $stopEnvScript = Join-Path $PSScriptRoot 'Stop-Environment.ps1'
 if (Test-Path -LiteralPath $stopEnvScript) { & $stopEnvScript }
 exit 0
