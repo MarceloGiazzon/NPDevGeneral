@@ -1,0 +1,33 @@
+id: REG-319
+title: >-
+  StartupValidator accepts any npdev.auth.api-keys value containing an '=' -- a mapping the filter cannot parse
+  (e.g. key=ADMIN) boots clean and then 401s every request
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-29
+closed: null
+source: >-
+  Found while fixing REG-314 (2026-10-29): reading the generated RuntimeApiKeyAuthFilter's parseMappings against
+  StartupValidator.validateAuth.
+surface: runtimehost/auth
+detail: >-
+  StartupValidator.validateAuth (NPDevKernel/adapters/runtime-validation) only requires the value to be non-blank and
+  contain '='. The parser (PrincipalClaims.parse in npdev-runtime-api-key-auth-filter.mustache) drops every entry that
+  lacks a tenant AND an actor part, and the filter then answers every X-Api-Key request invalid_api_key (fail closed,
+  by design since R7 Stage A). So an operator who writes the shape CONFIGURATION.md used to document (key=tenantOrRole)
+  gets a green startup and a locked-out app with no log line naming the cause. Safe, but undiagnosable.
+  Care needed: the grammar must not be re-implemented a second time in the validator -- that is a twin-pair hazard (add
+  a rule to scripts/quality/twin-pair-registry.json) -- so share one parse or have the filter log the number of entries
+  it dropped at startup.
+resolution: >-
+  Done when an api-keys value with no parseable mapping fails startup with an #authentication-linked message naming
+  the expected apiKey=tenant:actor[:ROLE] shape (or the filter logs, at WARN and at startup, how many entries it
+  dropped), pinned by a test that is red on the old behaviour.
+files:
+  - NPDevKernel/adapters/runtime-validation/src/main/java/com/npdev/adapters/runtime/validation/StartupValidator.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-api-key-auth-filter.mustache
+verification: NOT_VERIFIED
+note: >-
+  Filed from reading the code, not reproduced by booting an app. Reproduce first: boot with
+  NPDEV_AUTH_APIKEYS=k=ADMIN and call any /api route with X-Api-Key: k.

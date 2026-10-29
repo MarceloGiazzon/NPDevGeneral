@@ -4,9 +4,9 @@ title: >-
   (sets $user.id), found only in a sample probe
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-10-29
-closed: null
+closed: 2026-10-29
 source: >-
   OWN-2 section 5.2 domain-fit simulation, 2026-10-28/29: a fresh agent given only the public docs and a
   clinical-trial site-visit scheduler (a domain never modelled here), not told what to build. Evidence:
@@ -20,6 +20,26 @@ detail: >-
 resolution: >-
   Done when CONFIGURATION.md documents the real grammar (all accepted forms, separator, what each sets) with
   an example, checked against NpdevAuthConfig / the api-key resolver.
-verification: NOT_VERIFIED
+files:
+  - docs/CONFIGURATION.md
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/ApiKeyMappingGrammarContractTest.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-api-key-auth-filter.mustache
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/ApiKeyMappingGrammarContractTest.java#parserGrammarMatchesWhatConfigurationMdDocuments
+  asserts: >-
+    the generated RuntimeApiKeyAuthFilter still splits entries on ';', the key at the first '=', the mapping on ':'
+    and roles on '|', upper-cases roles, defaults an omitted role to USER, drops an entry lacking tenant or actor, and
+    carries the actor part as actor_id -- the exact grammar docs/CONFIGURATION.md now documents. Textual pins on the
+    template, not a booted app. Proven red 2026-10-29 by changing the entry separator to ',' in the template (the
+    assertion named that pin); restored, green.
+  provenRed: true
 note: >-
-  Lead verification 2026-10-29: doc line confirmed; the three-part format confirmed by the beta note.
+  2026-10-29: lead verification confirmed the doc line and the three-part format via the beta note. Fixed by reading
+  the real parser (the generated RuntimeApiKeyAuthFilter, template npdev-runtime-api-key-auth-filter.mustache --
+  NpdevAuthConfig only passes the string through) and rewriting the CONFIGURATION.md entry with the grammar table, a
+  working example and the identity-pack role override. Found while reading: an entry with fewer than two ':'-parts
+  (the shape the page used to describe) parses to nothing and is dropped silently while StartupValidator only checks
+  for an '=', so the app boots and 401s every request -- filed as REG-319 (validator is not changed here).
+  Not booted: the claim that tenant/actor/role are carried is read from the parser and the dom-leave probe's use of it.

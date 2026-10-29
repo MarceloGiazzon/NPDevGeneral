@@ -82,9 +82,33 @@ Only checked when `npdev.auth.enabled` (default `true`).
 
 ### `apikey` mode
 
-- **`npdev.auth.api-keys`** — required, must contain at least one `key=tenantOrRole` mapping. The
-  canonical environment variable is `NPDEV_AUTH_APIKEYS` (see the gotcha above — `NPDEV_AUTH_API_KEYS`
-  also works for this specific property, but prefer the canonical form).
+- **`npdev.auth.api-keys`** — required, must contain at least one mapping. The canonical environment
+  variable is `NPDEV_AUTH_APIKEYS` (see the gotcha above — `NPDEV_AUTH_API_KEYS` also works for this
+  specific property, but prefer the canonical form).
+
+  **Grammar:** entries are separated by `;`, each is `apiKey=tenant:actor[:ROLE[|ROLE…]]`.
+
+  | Part | Required | What it sets |
+  |---|---|---|
+  | `apiKey` | yes | The value the caller sends in the `X-Api-Key` header — everything before the first `=`. |
+  | `tenant` | yes | The tenant the request runs in. |
+  | `actor` | yes | The caller's id: it becomes `$user.id` in row-level rules (`access.read` / `access.write`, see [ROW_LEVEL_AUTHORIZATION.md](reference/ROW_LEVEL_AUTHORIZATION.md)) and the actor on audit and trace rows. Give each person their own key and actor. |
+  | `ROLE`s | no | `\|`-separated, matched case-insensitively against the model's roles. Omitted = the single role `USER`. |
+
+  ```text
+  NPDEV_AUTH_APIKEYS=admin-key=dev:admin:ADMIN;emp-key=dev:emp:EMPLOYEE;appr-key=dev:appr:LEAVE_APPROVER|EMPLOYEE;plain-key=dev:plain
+  ```
+
+  **An entry with fewer than two `:`-parts is silently dropped, not rejected.** `key=ADMIN` or
+  `key=tenant` (the shape this page used to describe) parses to nothing, and `StartupValidator` only
+  checks that the value contains an `=`, so the app boots and then answers every request with
+  `401 invalid_api_key`. If every key is rejected, check the mapping shape first.
+
+  Credentials of tenants onboarded at runtime are looked up only after these static mappings miss, so
+  they need no entry here. When the built-in identity pack holds an active user for
+  the (tenant, actor) with role assignments, those stored roles replace the roles written in the
+  mapping; with no such user the mapping's roles stand (which is how the very first `ADMIN`
+  bootstraps).
 
 ### `jwt` mode
 
