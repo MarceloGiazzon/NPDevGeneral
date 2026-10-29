@@ -4769,6 +4769,11 @@
         "description": {
           "type": "string",
           "minLength": 1
+        },
+        "defaultExpression": {
+          "type": "string",
+          "minLength": 1,
+          "description": "REG-313 (b): QUERY parameters only. An expression -- literals and the registered value functions (addDays, daysBetween, today, concat, coalesce, trim, uppercase, lowercase), no field references -- the runtime evaluates when the caller does not supply this parameter, e.g. addDays(today(), -7). Refused on a procedure parameter."
         }
       },
       "additionalProperties": false

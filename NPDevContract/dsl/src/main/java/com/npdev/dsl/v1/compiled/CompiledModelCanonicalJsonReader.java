@@ -1545,7 +1545,8 @@ public final class CompiledModelCanonicalJsonReader {
                     text(parameterNode, "type"),
                     booleanValue(parameterNode, "required"),
                     toSchema(parameterNode.get("schema")),
-                    optionalText(parameterNode, "description")
+                    optionalText(parameterNode, "description"),
+                    optionalText(parameterNode, "defaultExpression")
             ));
         }
         return out;

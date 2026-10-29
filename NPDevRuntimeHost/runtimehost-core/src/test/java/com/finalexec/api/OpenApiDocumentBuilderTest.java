@@ -190,6 +190,46 @@ class OpenApiDocumentBuilderTest {
         assertEquals("#/components/schemas/OrderLine", lines.get("items").get("allOf").get(0).get("$ref").asText());
     }
 
+    /** REG-313 (b): a query parameter with a defaultExpression is optional -- the document must not say otherwise. */
+    @Test
+    void aDefaultedQueryParameterIsAdvertisedAsOptionalAndNamesItsDefault() throws Exception {
+        String json = """
+                {
+                  "dslVersion": "1.0.0", "namespace": "trial", "version": "1.0",
+                  "concepts": [
+                    { "name": "Visit", "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "dueDate", "type": "date" },
+                        { "name": "total", "type": "decimal" } ] }
+                  ],
+                  "queries": [
+                    { "name": "Overdue", "concept": "Visit", "where": "dueDate < :asOf and total >= :minTotal",
+                      "parameters": [
+                        { "name": "asOf", "type": "date", "defaultExpression": "addDays(today(), -7)",
+                          "description": "Visits due before this date" },
+                        { "name": "minTotal", "type": "decimal", "required": true } ] }
+                  ]
+                }
+                """;
+        CompiledModel compiled = new ModelCompiler().compile(new JsonModelParser().parse(MAPPER.readTree(json)));
+        JsonNode parameters = MAPPER.valueToTree(OpenApiDocumentBuilder.build(compiled, "Trial"))
+                .get("paths").get("/api/queries/Overdue").get("get").get("parameters");
+        JsonNode asOf = null;
+        JsonNode minTotal = null;
+        for (JsonNode parameter : parameters) {
+            if ("asOf".equals(parameter.get("name").asText())) {
+                asOf = parameter;
+            } else if ("minTotal".equals(parameter.get("name").asText())) {
+                minTotal = parameter;
+            }
+        }
+        assertFalse(asOf.get("required").asBoolean(), "a defaulted parameter may be omitted");
+        assertTrue(asOf.get("description").asText().contains("Visits due before this date"));
+        assertTrue(asOf.get("description").asText().contains("addDays(today(), -7)"),
+                "the document names the default so a caller knows what omitting it means");
+        assertTrue(minTotal.get("required").asBoolean(), "a parameter without a default is still required");
+    }
+
     @Test
     void queryHasItsRowsEnvelope() throws Exception {
         JsonNode result = doc().get("components").get("schemas").get("OpenOrdersQueryResult").get("properties");

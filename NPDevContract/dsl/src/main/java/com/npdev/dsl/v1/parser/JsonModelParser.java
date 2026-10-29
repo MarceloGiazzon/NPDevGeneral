@@ -1413,7 +1413,8 @@ public final class JsonModelParser {
                     requiredText(parameterNode, "type"),
                     required != null && required,
                     parseSchema(parameterNode.get("schema"), fieldPath + "[" + name + "].schema"),
-                    readText(parameterNode, "description")
+                    readText(parameterNode, "description"),
+                    readText(parameterNode, "defaultExpression")
             ));
         }
         return out;

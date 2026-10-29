@@ -216,7 +216,15 @@
         { "name": "cols", "type": "integer", "required": true, "min": 1, "ui": { "label": "Columns" } },
         { "name": "displayTitle", "type": "string", "required": false, "defaultExpression": "concat('Shelf ', name)", "ui": { "label": "Display title" } },
         { "name": "nameKey", "type": "string", "derivedExpression": "uppercase(name)", "ui": { "label": "Name key" } },
-        { "name": "keeperEmail", "type": "string", "required": false, "sensitive": true, "ui": { "label": "Keeper email" } }
+        { "name": "keeperEmail", "type": "string", "required": false, "sensitive": true, "ui": { "label": "Keeper email" } },
+        { "name": "windowStart", "type": "date", "required": false, "ui": { "label": "Window start" } },
+        { "name": "windowEnd", "type": "date", "required": false, "ui": { "label": "Window end" } },
+        { "name": "windowLength", "type": "integer", "derivedExpression": "daysBetween(windowStart, windowEnd)", "ui": { "label": "Window length (days)" } },
+        { "name": "windowClosesOn", "type": "date", "derivedExpression": "addDays(windowEnd, 14)", "ui": { "label": "Window closes on" } },
+        { "name": "reviewBy", "type": "date", "required": false, "defaultExpression": "addDays(today(), 7)", "ui": { "label": "Review by" } }
+      ],
+      "invariants": [
+        { "name": "WindowNotBackwards", "expr": "windowStart == null || windowEnd == null || daysBetween(windowStart, windowEnd) >= 0" }
       ],
       "events": [
         { "name": "ShelfLayoutRegistered", "mode": "create", "payload": [ { "name": "id", "type": "uuid" } ] }
@@ -1246,6 +1254,16 @@
       "metadata": { "purpose": "REP-1/ENF-1: a plain query with a declared parameter -- bound from the request by GET /api/queries/CatalogEntriesOwnedBy?owner=... and by the WidgetCatalogPriceReport document alike (one binding rule); an unbound parameter is refused with 400, never served unfiltered." }
     },
     {
+      "name": "ShelfLayoutsReviewDue",
+      "concept": "ShelfLayout",
+      "where": "reviewBy <= :asOf",
+      "orderBy": [ "name" ],
+      "parameters": [
+        { "name": "asOf", "type": "date", "defaultExpression": "addDays(today(), 30)", "description": "Layouts whose review date is on or before this date; omit it for 'due within the next 30 days'." }
+      ],
+      "metadata": { "purpose": "REG-313 (b): a query parameter with a defaultExpression. Omitting ?asOf= binds addDays(today(), 30) instead of the 400 a parameter without a default gets; supplying it wins. The behaviour probe cf-query-parameter-default-expression-binds-when-omitted builds rows on both sides of both dates." }
+    },
+    {
       "name": "CheapActiveCatalogEntries",
       "concept": "WidgetCatalogEntry",
       "where": "discontinued == false && unitPrice < 10",
@@ -2054,6 +2072,21 @@
         { "name": "score-by-line-count", "type": "mapValue", "value": "$lineCount", "target": "riskScore" },
         { "name": "return-score", "type": "return", "value": "$riskScore" }
       ]
+    },
+    {
+      "name": "PlanShelfReviewProcedure",
+      "description": "Coverage for REG-313 (b): computeValue's date operations. Places a review window relative to a start date -- addDays(start, offset) is the target, +/-7 days around it the window -- measures it with daysBetween, stamps today, and records it as a ShelfLayout (patchConcept with createIfMissing). Plain add/subtract stay numeric (a date there is refused at validation).",
+      "steps": [
+        { "name": "plan-target", "type": "computeValue", "operation": "addDays", "left": "$input.startDate", "right": "$input.offsetDays", "target": "targetDate" },
+        { "name": "plan-window-start", "type": "computeValue", "operation": "addDays", "left": "$targetDate", "right": -7, "target": "windowStart" },
+        { "name": "plan-window-end", "type": "computeValue", "operation": "addDays", "left": "$targetDate", "right": 7, "target": "windowEnd" },
+        { "name": "plan-span", "type": "computeValue", "operation": "daysBetween", "left": "$windowStart", "right": "$windowEnd", "target": "span" },
+        { "name": "plan-today", "type": "computeValue", "operation": "today", "target": "todayDate" },
+        { "name": "create-layout", "type": "patchConcept", "concept": "ShelfLayout", "id": "$input.id", "createIfMissing": true,
+          "set": { "name": "$input.name", "rows": "$span", "cols": 1, "windowStart": "$windowStart", "windowEnd": "$windowEnd", "reviewBy": "$todayDate" },
+          "target": "layout" },
+        { "name": "return-layout", "type": "return", "value": "$layout" }
+      ]
     }
   ],
 
@@ -2682,6 +2715,14 @@
       "steps": [
         { "name": "tick-other", "type": "emitEvent", "event": "HeartbeatTickOtherTenant", "payload": "$input" },
         { "name": "return-tick-other", "type": "return", "value": "$input" }
+      ]
+    },
+    {
+      "name": "PlanShelfReviewFlow",
+      "input": { "concept": "ShelfLayout", "mode": "query" },
+      "steps": [
+        { "name": "call-plan", "type": "callProcedure", "procedure": "PlanShelfReviewProcedure", "input": "$input", "output": "$planned" },
+        { "name": "return-planned", "type": "return", "value": "$planned" }
       ]
     }
   ]

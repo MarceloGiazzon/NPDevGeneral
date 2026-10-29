@@ -4,9 +4,9 @@ title: >-
   runtime (COMPUTE_VALUE_INVALID_OPERAND); no today()/addDays/daysBetween
 type: GAP
 severity: HIGH
-status: PARTIAL
+status: DONE
 opened: 2026-10-29
-closed: null
+closed: 2026-10-29
 source: >-
   OWN-2 section 5.2 domain-fit simulation, 2026-10-28/29: a fresh agent given only the public docs and a
   clinical-trial site-visit scheduler (a domain never modelled here), not told what to build. Evidence:
@@ -32,11 +32,18 @@ files:
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/ProcedureStep.java
   - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/CelInvariantEngine.java
   - docs/EXPRESSIONS.md
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ExpressionValidation.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ProcedureParameterAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledProcedureParameter.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/api/NamedQueryBinding.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/api/OpenApiDocumentBuilder.java
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+  - NPDevSamples/dsl-conformance-max/behavior-probes/13-date-functions.json
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ComputeValueOperandValidation.java
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ValidationDiagnosticNormalizer.java
   - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ComputeValueOperandValidationTest.java
-verification: UNIT_TESTED
+verification: VERIFIED_LIVE
 guard:
   kind: test
   ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ComputeValueOperandValidationTest.java#addingADayOffsetToADateFieldIsRejected
@@ -71,10 +78,19 @@ note: >-
   CelInvariantEngine registry (rules). (3) DONE procedures: computeValue operations addDays/daysBetween/today
   (ProcedureStep.computeValue no longer NPEs on an absent operand -- ProcedureRunner and the CLI both build steps
   through it), PackValidation operator set + 'today takes no operands', and ComputeValueOperandValidation is
-  operator-aware (date vs number vs whole-number slots). (4) TODO query parameters: a defaultExpression on a
-  parameter (so `addDays(today(), -7)` works and a caller can still override) -- touches model.schema.json (4
-  mirrors + pack schema), ProcedureParameterAst, parser, compiled, canonical JSON writer+reader, ModelResolver
-  (REG-104/108 twin-pair chain) and the runtime query binder. (5) TODO a dsl-conformance-max example, a behaviour
-  probe (live: addDays(today(),0)==today(), daysBetween(today(),addDays(today(),5))==5), emit-capability docs.
-  Known gaps to decide, not hide: no arity check at validation (addDays(x) validates then yields null, same as
+  operator-aware (date vs number vs whole-number slots). (4) DONE query parameters: a defaultExpression on a
+  query parameter (`addDays(today(), -7)`; a caller can still override). model.schema.json x4 (pack schema needs
+  nothing: the def is nested), ProcedureParameterAst, parser, compiler, CompiledProcedureParameter, canonical
+  JSON writer+reader (key emitted only when declared, so no existing model's canonical JSON changes), validator
+  (query-only: a procedure parameter default is refused because nothing would evaluate it; no field refs; only
+  value functions; not combinable with required:true), NamedQueryBinding (single binding rule for the REST
+  endpoint and documents), and OpenApiDocumentBuilder (advertised optional, default named). (5) DONE
+  dsl-conformance-max: ShelfLayout date fields + derived windowLength/windowClosesOn + defaulted reviewBy + the
+  WindowNotBackwards invariant, query ShelfLayoutsReviewDue, PlanShelfReviewProcedure/Flow; four behaviour probes
+  in 13-date-functions.json, ALL PASS LIVE (139/139 probes, 0 known failures). Lesson recorded: a flow declaring
+  `input: {concept, mode: update}` IS that concept's update handler -- my first PlanShelfReviewFlow did that and
+  turned every ShelfLayout PUT into a 500 (two old probes went red); an execute-only flow uses mode query or no
+  input. And a procedure's conceptCreate takes a dataRef, not an inline data map; patchConcept createIfMissing
+  has the literal-or-$ref set convention.
+  Known gaps, deliberately not hidden: no arity check at validation (addDays(x) validates then yields null, same as
   concat today); no per-app time zone (today() is UTC); addDays/daysBetween only, no addMonths/startOfMonth.

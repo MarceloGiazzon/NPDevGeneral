@@ -46,7 +46,8 @@ set — pure value functions, no boolean logic needed:
 ### Date functions (REG-313)
 
 One implementation, `com.npdev.dsl.v1.expr.DateFunctions`, available **everywhere an expression runs**: a
-field `defaultExpression` / `derivedExpression`, an invariant, and a procedure `computeValue` step.
+field `defaultExpression` / `derivedExpression`, an invariant, a procedure `computeValue` step, and a query
+parameter's `defaultExpression`.
 
 | Form | Meaning |
 |---|---|
@@ -66,7 +67,9 @@ daysBetween(enrolmentDate, today()) <= 84                                       
   `today()` flips at 00:00 UTC, not local midnight.
 - **Total, never throwing.** An operand that is not a date, a `n` that is not a whole number (`1.5`, `"3"`),
   a wrong argument count, or a result outside the representable range gives `null` — the rule `concat`
-  already follows. In an invariant, `null` cannot be ordered, so a comparison around it is false.
+  already follows. In an invariant, `null` cannot be ordered, so a comparison around it is false — which
+  means **write the rule as the positive condition** (`daysBetween(a, b) >= 0`), not as a negated one
+  (`!(daysBetween(a, b) < 0)`, which is true when `a` or `b` is not a date).
 - **`today()` is deterministic where it has to be:** the boot-time expression-default backfill evaluates it
   to the epoch date `1970-01-01`, exactly as it does `now()`, so its two shadow passes always agree.
 - **In a procedure** the same three are `computeValue` operations, not expressions:
@@ -74,6 +77,13 @@ daysBetween(enrolmentDate, today()) <= 84                                       
   `"operation":"daysBetween"` (`left`/`right` are the two dates) and `"operation":"today"` (no operands).
   `add`/`subtract` stay numeric: handing them a date is refused at validation
   (`compute_value_invalid_operand`) and at runtime (`COMPUTE_VALUE_INVALID_OPERAND`).
+- **In a query**, a parameter may declare a `defaultExpression` that is evaluated when the caller omits it:
+  `{"name":"asOf","type":"date","defaultExpression":"addDays(today(), -7)"}` with `where: "dueDate < :asOf"`
+  serves "overdue by a week" with no parameter, and `?asOf=2026-01-01` still wins. Only literals and the
+  value functions are allowed (no record is in scope, so a field reference is refused), a defaulted
+  parameter cannot also be `required: true`, and the OpenAPI document advertises it as optional and names
+  the default. A parameter **without** a default is still refused with 400 when omitted. The default is
+  query-only: on a procedure parameter it is refused at validation, because nothing would evaluate it.
 
 Both function sets are `ComputedExpression.FunctionRegistry` instances, built by their respective
 callers (`CelInvariantEngine.buildFunctionRegistry`, `SchemaExpressionSupport`'s

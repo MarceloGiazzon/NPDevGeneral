@@ -2105,7 +2105,8 @@ public final class ModelCompiler {
                     parameter.type(),
                     parameter.required(),
                     toCompiledSchema(parameter.schema()),
-                    parameter.description()
+                    parameter.description(),
+                    parameter.defaultExpression()
             ));
         }
         out.sort(Comparator.comparing(parameter -> normalize(parameter.name())));

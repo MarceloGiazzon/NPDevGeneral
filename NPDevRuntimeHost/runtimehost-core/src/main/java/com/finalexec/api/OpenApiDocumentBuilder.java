@@ -334,10 +334,15 @@ public final class OpenApiDocumentBuilder {
 
         List<Object> parameters = new ArrayList<>();
         for (CompiledProcedureParameter parameter : query.parameters()) {
+            // REG-313 (b): NamedQueryBinding takes a declared defaultExpression for an absent parameter.
+            boolean defaulted = parameter.defaultExpression() != null && !parameter.defaultExpression().isBlank();
+            String description = !defaulted ? parameter.description()
+                    : (parameter.description() == null || parameter.description().isBlank() ? "" : parameter.description() + " ")
+                            + "Optional: when omitted it defaults to " + parameter.defaultExpression() + ".";
             Map<String, Object> param = queryParam(parameter.name(),
                     parameter.schema() != null ? toJsonSchema(parameter.schema()) : stringSchema(),
-                    parameter.description());
-            param.put("required", true);
+                    description);
+            param.put("required", !defaulted);
             parameters.add(param);
         }
         if (!query.isAggregate()) {

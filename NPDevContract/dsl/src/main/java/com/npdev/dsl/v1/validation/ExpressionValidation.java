@@ -28,6 +28,7 @@ import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.dsl.v1.expr.ValueBehaviorFunctions;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
 import com.npdev.dsl.v1.compiled.FieldWidgetDefaults;
 import com.npdev.dsl.v1.compiled.GuidePageDefaults;
@@ -101,6 +102,52 @@ final class ExpressionValidation {
             }
             if (!hasText(parameter.type()) && parameter.schema() == null) {
                 errors.add(owner + " parameter " + parameter.name() + ": type or schema is required");
+            }
+        }
+    }
+
+    /**
+     * REG-313 (b): a QUERY parameter's {@code defaultExpression} is evaluated by the runtime when the caller
+     * does not supply the parameter, with no record in scope -- so it may use literals and the registered
+     * value functions ({@code addDays(today(), -7)}) and nothing else. A PROCEDURE parameter's is refused:
+     * procedure inputs are not bound by that rule, so a default there would validate and then be ignored.
+     */
+    static void validateParameterDefaults(
+            String owner, boolean queryParameters, List<ProcedureParameterAst> parameters, List<String> errors) {
+        for (ProcedureParameterAst parameter : parameters) {
+            String expression = parameter.defaultExpression();
+            if (expression == null) {
+                continue;
+            }
+            String here = owner + " parameter " + parameter.name() + ": defaultExpression";
+            if (!queryParameters) {
+                errors.add(here + " is only supported on query parameters (a procedure's inputs are not bound by it,"
+                        + " so it would be ignored) -- suggestedFix: remove defaultExpression, or apply the default"
+                        + " in the procedure's steps");
+                continue;
+            }
+            if (parameter.required()) {
+                errors.add(here + " cannot be combined with required: true -- a defaulted parameter is optional"
+                        + " (the caller may omit it) -- suggestedFix: drop required, or drop defaultExpression");
+                continue;
+            }
+            try {
+                java.util.Set<String> fields = ComputedExpression.referencedFields(expression);
+                if (!fields.isEmpty()) {
+                    errors.add(here + " references " + fields + ", but no record is in scope when a query parameter"
+                            + " default is evaluated -- suggestedFix: use literals and functions such as"
+                            + " addDays(today(), -7)");
+                    continue;
+                }
+                String unavailable = ValueBehaviorFunctions.firstUnavailable(expression, false);
+                if (unavailable != null) {
+                    errors.add(here + " calls " + unavailable + "(), which the runtime does not provide here"
+                            + " (available: " + ValueBehaviorFunctions.NAMES_SORTED + ") -- suggestedFix: use one of"
+                            + " the available functions, or a literal");
+                }
+            } catch (ComputedExpression.ExpressionException unparseable) {
+                errors.add(here + " does not parse: " + unparseable.getMessage()
+                        + " -- suggestedFix: correct the expression's syntax, e.g. addDays(today(), -7)");
             }
         }
     }

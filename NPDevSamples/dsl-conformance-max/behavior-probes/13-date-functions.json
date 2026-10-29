@@ -1,0 +1,173 @@
+{
+  "probes": [
+    {
+      "id": "cf-field-date-functions-default-and-derived-evaluated",
+      "keywords": ["field.defaultExpression", "field.derivedExpression"],
+      "description": "REG-313 (b): ShelfLayout.windowLength (derivedExpression daysBetween(windowStart, windowEnd)) and ShelfLayout.windowClosesOn (derivedExpression addDays(windowEnd, 14)) are computed by the server from the two date fields a client supplies, override a client-supplied value, and are recomputed on update; ShelfLayout.reviewBy (defaultExpression addDays(today(), 7)) stores an evaluated ISO date, never the expression's own text, and an explicit reviewBy wins over it. Asserts only values that do not depend on the day the probe runs (the default is checked by shape; the query probe checks it relative to today).",
+      "steps": [
+        {
+          "name": "create with a window: derived values are computed, reviewBy is defaulted",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": { "name": "dt-${rand}", "rows": 1, "cols": 1, "windowStart": "2026-10-01", "windowEnd": "2026-10-15" },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.windowLength": 14,
+              "$.windowClosesOn": "2026-10-29",
+              "$.reviewBy": { "matches": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+            },
+            "notText": ["addDays(", "daysBetween(", "today("]
+          },
+          "save": { "lid": "$.id" }
+        },
+        {
+          "name": "stored values are the evaluated ones",
+          "method": "GET",
+          "path": "/api/shelf_layouts/${lid}",
+          "expect": {
+            "status": 200,
+            "json": { "$.windowLength": 14, "$.windowClosesOn": "2026-10-29", "$.reviewBy": { "matches": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" } },
+            "notText": ["addDays(", "daysBetween(", "today("]
+          }
+        },
+        {
+          "name": "moving windowEnd recomputes both derived values",
+          "method": "PUT",
+          "path": "/api/shelf_layouts/${lid}",
+          "body": { "windowEnd": "2026-11-01" },
+          "expect": { "status": 200, "json": { "$.windowLength": 31, "$.windowClosesOn": "2026-11-15" } }
+        },
+        {
+          "name": "an explicit reviewBy wins over the default and a lying windowLength is overridden",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": { "name": "dx-${rand}", "rows": 1, "cols": 1, "windowStart": "2026-10-01", "windowEnd": "2026-10-15", "reviewBy": "2999-01-01", "windowLength": 999 },
+          "expect": { "status": 201, "json": { "$.reviewBy": "2999-01-01", "$.windowLength": 14 } }
+        },
+        {
+          "name": "a leap day is a day: 2028-02-28 + 1 window day",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": { "name": "dl-${rand}", "rows": 1, "cols": 1, "windowStart": "2028-02-28", "windowEnd": "2028-03-01" },
+          "expect": { "status": 201, "json": { "$.windowLength": 2, "$.windowClosesOn": "2028-03-15" } }
+        }
+      ]
+    },
+    {
+      "id": "cf-invariant-date-functions-reject-a-backwards-window",
+      "keywords": ["concept.invariants", "invariant.name", "invariant.expr"],
+      "description": "REG-313 (b): the ShelfLayout invariant WindowNotBackwards (windowStart == null || windowEnd == null || daysBetween(windowStart, windowEnd) >= 0) rejects a window that ends before it starts with 422 invariant_failed on create and on update, and accepts a one-day-long, a zero-length and an absent window. A rule is written against dates with the same functions a default is.",
+      "steps": [
+        {
+          "name": "a window that ends the day before it starts is rejected",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": { "name": "bw-${rand}", "rows": 1, "cols": 1, "windowStart": "2026-10-10", "windowEnd": "2026-10-09" },
+          "expect": { "status": 422, "json": { "$.code": "invariant_failed", "$.invariant": "WindowNotBackwards" } }
+        },
+        {
+          "name": "a zero-length window is fine",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": { "name": "bz-${rand}", "rows": 1, "cols": 1, "windowStart": "2026-10-10", "windowEnd": "2026-10-10" },
+          "expect": { "status": 201, "json": { "$.windowLength": 0 } },
+          "save": { "lid": "$.id" }
+        },
+        {
+          "name": "moving the end before the start on update is rejected too",
+          "method": "PUT",
+          "path": "/api/shelf_layouts/${lid}",
+          "body": { "windowEnd": "2026-10-01" },
+          "expect": { "status": 422, "json": { "$.code": "invariant_failed", "$.invariant": "WindowNotBackwards" } }
+        },
+        {
+          "name": "no window at all satisfies the rule",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": { "name": "bn-${rand}", "rows": 1, "cols": 1 },
+          "expect": { "status": 201 }
+        }
+      ]
+    },
+    {
+      "id": "cf-query-parameter-default-expression-binds-when-omitted",
+      "keywords": ["query.parameters"],
+      "description": "REG-313 (b): ShelfLayoutsReviewDue (where reviewBy <= :asOf) declares asOf with defaultExpression addDays(today(), 30). Omitting ?asOf= binds that default instead of the 400 a parameter without one gets, so a row whose reviewBy was defaulted (today + 7) and a row long overdue are returned while a row due in year 2999 is not; supplying ?asOf= wins over the default in both directions. Built relative to today, so it holds on any day.",
+      "steps": [
+        {
+          "name": "a row with the defaulted reviewBy (today + 7)",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": { "name": "qd-in-${rand}", "rows": 1, "cols": 1 },
+          "expect": { "status": 201 },
+          "save": { "inName": "$.name" }
+        },
+        {
+          "name": "a row long overdue",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": { "name": "qd-old-${rand}", "rows": 1, "cols": 1, "reviewBy": "2000-01-01" },
+          "expect": { "status": 201 },
+          "save": { "oldName": "$.name" }
+        },
+        {
+          "name": "a row due in the far future",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": { "name": "qd-far-${rand}", "rows": 1, "cols": 1, "reviewBy": "2999-01-01" },
+          "expect": { "status": 201 },
+          "save": { "farName": "$.name" }
+        },
+        {
+          "name": "no asOf: the default (today + 30) takes the near and the overdue row, not the far one",
+          "method": "GET",
+          "path": "/api/queries/ShelfLayoutsReviewDue?limit=500",
+          "expect": { "status": 200, "text": ["${inName}", "${oldName}"], "notText": ["${farName}"] }
+        },
+        {
+          "name": "an explicit asOf in the past wins: only the overdue row",
+          "method": "GET",
+          "path": "/api/queries/ShelfLayoutsReviewDue?asOf=2001-01-01&limit=500",
+          "expect": { "status": 200, "text": ["${oldName}"], "notText": ["${inName}", "${farName}"] }
+        },
+        {
+          "name": "an explicit asOf in the far future wins: all three",
+          "method": "GET",
+          "path": "/api/queries/ShelfLayoutsReviewDue?asOf=3000-01-01&limit=500",
+          "expect": { "status": 200, "text": ["${inName}", "${oldName}", "${farName}"] }
+        }
+      ]
+    },
+    {
+      "id": "cf-procedure-date-operations-place-a-review-window",
+      "keywords": ["flowStep.procedure"],
+      "description": "REG-313 (b): PlanShelfReviewProcedure uses computeValue's date operations. From startDate 2026-10-01 and offsetDays 84 it computes target 2026-12-24 (addDays), a window of 2026-12-17 .. 2026-12-31 (addDays -7 / +7), its length 14 (daysBetween, stored as rows) and today (stamped as reviewBy), then creates the ShelfLayout; PlanShelfReviewFlow returns that record (its fields under output.data). A non-date start fails the flow with COMPUTE_VALUE_INVALID_OPERAND rather than a number-shaped nonsense value.",
+      "steps": [
+        {
+          "name": "the window is placed relative to the start date",
+          "method": "POST",
+          "path": "/api/flows/PlanShelfReviewFlow/execute",
+          "body": { "id": "${uuid}", "name": "pl-${rand}", "startDate": "2026-10-01", "offsetDays": 84 },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.data.windowStart": "2026-12-17",
+              "$.output.data.windowEnd": "2026-12-31",
+              "$.output.data.rows": 14,
+              "$.output.data.reviewBy": { "matches": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+            }
+          }
+        },
+        {
+          "name": "a start that is not a date fails the flow with the operand code",
+          "method": "POST",
+          "path": "/api/flows/PlanShelfReviewFlow/execute",
+          "body": { "id": "${uuid}", "name": "pn-${rand}", "startDate": "next tuesday", "offsetDays": 84 },
+          "expect": { "status": 422, "json": { "$.status": "FAILED", "$.error": { "matches": "COMPUTE_VALUE_INVALID_OPERAND" } } }
+        }
+      ]
+    }
+  ]
+}

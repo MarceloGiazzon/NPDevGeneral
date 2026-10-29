@@ -1486,6 +1486,10 @@ public final class CompiledModelCanonicalJson {
             node.put("required", parameter.required());
             node.set("schema", toSchema(parameter.schema()));
             node.put("description", safe(parameter.description()));
+            // REG-313 (b): only when declared, so every model without one keeps the canonical JSON it always had.
+            if (parameter.defaultExpression() != null && !parameter.defaultExpression().isBlank()) {
+                node.put("defaultExpression", parameter.defaultExpression());
+            }
             out.add(node);
         }
         return out;

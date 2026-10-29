@@ -1,6 +1,8 @@
 package com.finalexec.api;
 
 import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
+import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.kernel.concepts.ValueExpressionEvaluator;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,6 +20,7 @@ import java.util.function.Function;
  *
  * <p>Per X0 an unbound declared parameter is REFUSED rather than defaulted to null or dropped from
  * the filter -- an unfiltered result is never served for a query that declares a bound placeholder.
+ * The one way a parameter may be absent is an AUTHORED {@code defaultExpression} (REG-313 b).
  * Values are coerced by shape (boolean / integer / decimal / string) so the compiled filter literal
  * matches the stored column type.</p>
  */
@@ -35,13 +38,35 @@ public final class NamedQueryBinding {
         Map<String, Object> bound = new LinkedHashMap<>();
         for (CompiledProcedureParameter parameter : parameters) {
             String raw = lookup.apply(parameter.name());
-            if (raw == null) {
-                throw new IllegalArgumentException("Query parameter '" + parameter.name()
-                        + "' is required (declared in this query's parameters[] but not supplied).");
-            }
-            bound.put(parameter.name(), coerceLiteral(raw));
+            bound.put(parameter.name(), raw == null ? defaultValue(parameter) : coerceLiteral(raw));
         }
         return bound;
+    }
+
+    /**
+     * REG-313 (b): the value an unsupplied parameter takes -- its {@code defaultExpression} evaluated with
+     * no record in scope (model validation allows only literals and the registered value functions, e.g.
+     * {@code addDays(today(), -7)}). With no default, X0 still applies: refused, never silently unfiltered.
+     */
+    private static Object defaultValue(CompiledProcedureParameter parameter) {
+        String expression = parameter.defaultExpression();
+        if (expression == null || expression.isBlank()) {
+            throw new IllegalArgumentException("Query parameter '" + parameter.name()
+                    + "' is required (declared in this query's parameters[] but not supplied).");
+        }
+        Object value;
+        try {
+            value = ValueExpressionEvaluator.evaluate(expression, Map.of());
+        } catch (ComputedExpression.ExpressionException unevaluable) {
+            // validation refuses this model, so reaching here is a server fault, not a bad request
+            throw new IllegalStateException("Query parameter '" + parameter.name() + "' defaultExpression ("
+                    + expression + ") cannot be evaluated: " + unevaluable.getMessage(), unevaluable);
+        }
+        if (value == null) {
+            throw new IllegalArgumentException("Query parameter '" + parameter.name()
+                    + "' was not supplied and its defaultExpression (" + expression + ") evaluated to no value.");
+        }
+        return value;
     }
 
     public static Object coerceLiteral(String raw) {

@@ -141,6 +141,7 @@ final class PackValidation {
                 errors.add("Query " + query.name() + ": concept not found: " + query.concept());
             }
             validateParameterNames("Query " + query.name(), query.parameters(), errors);
+            ExpressionValidation.validateParameterDefaults("Query " + query.name(), true, query.parameters(), errors);
             validateQueryWhereCompiles(query, concept, entitiesByLower, errors);
             if (query.isAggregate() && concept != null) {
                 validateAggregateQuery(query, concept, entitiesByLower, errors);
@@ -738,6 +739,7 @@ final class PackValidation {
                 errors.add("Procedure " + procedureName + ": duplicate procedure name");
             }
             validateParameterNames("Procedure " + procedureName, procedure.parameters(), errors);
+            ExpressionValidation.validateParameterDefaults("Procedure " + procedureName, false, procedure.parameters(), errors);
             if (procedure.steps().isEmpty()) {
                 errors.add("Procedure " + procedureName + ": steps must not be empty");
             }
