@@ -1,6 +1,6 @@
 dependencies {
     implementation project(':kernel')
 
-    compileOnly 'io.micrometer:micrometer-core:1.17.1'
-    testImplementation 'io.micrometer:micrometer-core:1.17.1'
+    compileOnly 'io.micrometer:micrometer-core:1.17.2'
+    testImplementation 'io.micrometer:micrometer-core:1.17.2'
 }
