@@ -61,7 +61,7 @@ contract, both adapter CAS implementations, `ConceptGateway` wiring, the conflic
 the current record attached — proven with interleaved-update tests on both adapter families
 (mirroring `RowLevelAuthorizationAttackTest`'s style: the loser gets rejected with the winner's
 state). **Not** included in this slice: wiring a `rowVersion` field through the generic
-`/api/concepts/{conceptName}` REST controller or generated business-UI forms (the "reloaded —
+`/api/concepts/{route}` REST controller or generated business-UI forms (the "reloaded —
 reapply your change" UX the doc's DoD describes). Nothing in the platform's HTTP surface asks for a
 CAS yet, so nothing regresses; a caller that wants one today (a flow's `updateConcept` action, a
 `PanelRuntime` write, `AggregateRuntime`, `SeedDataService`, ...) calls `ConceptGateway.save`

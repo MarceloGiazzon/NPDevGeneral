@@ -21,14 +21,20 @@ Send `X-Api-Key: <key>` (issue one under `/api/admin/credentials`, see
 
 | Route | Notes |
 |---|---|
-| `GET /api/concepts/{Concept}` | List. Returns `{content, page, size, totalElements, sort, direction, filter, where, asOf}`. |
-| `POST /api/concepts/{Concept}` | Create; body is the concept's fields. |
-| `GET/PUT/DELETE /api/concepts/{Concept}/{id}` | Read, update, delete one record (id is a uuid). Delete answers 204. |
-| `POST /api/concepts/{Concept}/batch` | `{"operation":"delete"\|"setField","ids":[...],"field":"...","value":...}` (at most 500 ids); per-id outcomes in `results`. |
+| `GET /api/concepts/{route}` | List. Returns `{content, page, size, totalElements, sort, direction, filter, where, asOf}`. |
+| `POST /api/concepts/{route}` | Create; body is the concept's fields. |
+| `GET/PUT/DELETE /api/concepts/{route}/{id}` | Read, update, delete one record (id is a uuid). Delete answers 204. |
+| `POST /api/concepts/{route}/batch` | `{"operation":"delete"\|"setField","ids":[...],"field":"...","value":...}` (at most 500 ids); per-id outcomes in `results`. |
 | `GET /api/queries/{Query}` | Declared query. Declared parameters are required query-string values. Returns `{query, aggregate, rows, total, offset, limit}` (aggregate queries return `rows`, `concept`, `groupBy`). |
 | `POST /api/v1/flows/{Flow}/execute` | Run a flow with the input schema shown in the spec. 200 done, 202 waiting for an event, 422 failed. |
 | `GET /api/v1/runtime/aggregate/{Aggregate}/{rootId}`, `POST .../{Aggregate}` | Load / commit an aggregate tree. |
-| `GET /api/public/concepts/{Concept}` and `/{id}` | Anonymous read of concepts that declare `access.public`; only the allow-listed fields. |
+| `GET /api/public/concepts/{Concept}` and `/{id}` | Anonymous read of concepts that declare `access.public`; only the allow-listed fields. Takes the concept's model name. |
+
+**`{route}` is the concept's REST collection name, not its model name:** the snake_case plural, for
+example `Order` is `orders`, `TicketCategory` is `ticket_categories` and `Box` is `boxes`. The model
+name (`/api/concepts/Order`) answers `400 unknown_concept`. `/v3/api-docs` lists the exact path of
+every concept, so copy it from there rather than deriving it. The anonymous `/api/public/concepts/`
+surface is the one exception: it takes the model name.
 
 ### List parameters
 

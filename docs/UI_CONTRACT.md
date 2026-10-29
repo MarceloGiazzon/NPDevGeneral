@@ -79,7 +79,7 @@ endpoint exposes eight of them as scoped arrays, plus the single matching `conce
 ## How to perform an action — read this before writing any code
 
 **There is more than one way to write a record, and they are not equivalent.** A generated app
-exposes direct CRUD (`POST /api/concepts/{tableName}`, keyed by TABLE name, not concept name) *and*
+exposes direct CRUD (`POST /api/concepts/{route}`, keyed by the concept's REST route, its snake_case plural, not its model name) *and*
 flow execution (`POST /api/v1/flows/{flowName}/execute`). Using direct CRUD on a concept whose
 mutations are flow-backed **silently bypasses that flow's invariants, orchestration and
 compensation.**
@@ -116,7 +116,7 @@ assuming.
 
 ### List reads are capped, and say so
 
-`GET /api/{route}` (direct CRUD's plain list endpoint) and `GET /api/concepts/{conceptName}`'s
+`GET /api/{route}` (direct CRUD's plain list endpoint) and `GET /api/concepts/{route}`'s
 free-text-search fallback both cap at `ConceptQuery.MAX_LIMIT` (1000 rows) instead of returning an
 entire tenant table (RUN-1/R8a). Every response from either carries:
 
@@ -125,7 +125,7 @@ entire tenant table (RUN-1/R8a). Every response from either carries:
 | `X-List-Truncated` | `"true"` if more rows existed than this response carries; `"false"` if this response is the complete list. |
 | `X-List-Limit` | The cap that was applied (currently always `1000`). |
 
-A caller that sees `X-List-Truncated: true` should switch to `GET /api/concepts/{conceptName}?page=&size=`
+A caller that sees `X-List-Truncated: true` should switch to `GET /api/concepts/{route}?page=&size=`
 (pushed-down SQL `LIMIT`/`OFFSET`, no cap on total rows reachable via paging) rather than assume the
 list endpoint ever grows past the cap.
 

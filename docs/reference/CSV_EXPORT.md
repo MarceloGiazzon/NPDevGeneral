@@ -6,7 +6,7 @@ Every generated grid has **Export CSV**, **Export Excel** and **Import CSV** (wh
 ## What the buttons export
 
 Both export buttons are built in the browser (`exportPanelCsv` / `exportPanelXlsx` in the business
-UI). They walk the grid's own list endpoint (`GET /api/concepts/{Concept}`) page by page, 100 rows
+UI). They walk the grid's own list endpoint (`GET /api/concepts/{route}`) page by page, 100 rows
 per page up to 50,000 rows, with the same free-text search, column filters (`where`) and sort the
 grid just used. So the file is exactly the filtered, sorted view on screen; while a filter is active
 the grid says so ("Export CSV exports exactly these rows, sorted as shown"). The columns are the
@@ -40,7 +40,7 @@ ordinary CSV pipeline. The first row must be the header row (the same labels Exp
 
 ## The server endpoint
 
-`GET /api/concepts/{conceptName}/export.csv` (also under `/api/v1/concepts/...`) still exists
+`GET /api/concepts/{route}/export.csv` (also under `/api/v1/concepts/...`) still exists
 (`ConceptQueryController.exportCsv`) and streams a concept's tenant-scoped rows as CSV, but the grid
 no longer calls it. It understands `sort`/`direction` and bare `field=value` equality filters only;
 `filter` and `where` are reserved and ignored there. Use the grid's buttons, or the list endpoint,

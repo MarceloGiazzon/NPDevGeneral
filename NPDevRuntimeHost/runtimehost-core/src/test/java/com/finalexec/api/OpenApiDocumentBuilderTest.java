@@ -2,15 +2,18 @@ package com.finalexec.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.db.LiveConceptCrudSupport;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiler.ModelCompiler;
 import com.npdev.dsl.v1.parser.JsonModelParser;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -72,18 +75,18 @@ class OpenApiDocumentBuilderTest {
     void listsEveryBusinessRouteFamily() throws Exception {
         JsonNode paths = doc().get("paths");
         for (String path : List.of(
-                "/api/concepts/Order", "/api/concepts/Order/{id}", "/api/concepts/Order/batch",
-                "/api/concepts/OrderLine", "/api/queries/OpenOrders",
+                "/api/concepts/orders", "/api/concepts/orders/{id}", "/api/concepts/orders/batch",
+                "/api/concepts/order_lines", "/api/queries/OpenOrders",
                 "/api/v1/flows/PlaceOrder/execute", "/api/v1/flows/Internal/execute",
                 "/api/v1/runtime/aggregate/OrderTree", "/api/v1/runtime/aggregate/OrderTree/{rootId}",
                 "/api/public/concepts", "/api/public/concepts/Gallery", "/api/public/concepts/Gallery/{id}")) {
             assertTrue(paths.has(path), "missing path " + path + " in " + names(paths));
         }
         assertFalse(paths.has("/api/public/concepts/Order"), "private concepts have no public route");
-        assertTrue(paths.get("/api/concepts/Order").has("get"));
-        assertTrue(paths.get("/api/concepts/Order").has("post"));
-        assertTrue(paths.get("/api/concepts/Order/{id}").has("put"));
-        assertTrue(paths.get("/api/concepts/Order/{id}").has("delete"));
+        assertTrue(paths.get("/api/concepts/orders").has("get"));
+        assertTrue(paths.get("/api/concepts/orders").has("post"));
+        assertTrue(paths.get("/api/concepts/orders/{id}").has("put"));
+        assertTrue(paths.get("/api/concepts/orders/{id}").has("delete"));
         assertTrue(paths.get("/api/v1/flows/PlaceOrder/execute").get("post").get("x-npdev-start-endpoint").asBoolean());
         assertFalse(paths.get("/api/v1/flows/Internal/execute").get("post").has("x-npdev-start-endpoint"));
     }
@@ -103,13 +106,63 @@ class OpenApiDocumentBuilderTest {
 
     @Test
     void listParametersAndEnvelopeMatchTheCrudController() throws Exception {
-        JsonNode get = doc().get("paths").get("/api/concepts/Order").get("get");
+        JsonNode get = doc().get("paths").get("/api/concepts/orders").get("get");
         List<String> params = new ArrayList<>();
         get.get("parameters").forEach(p -> params.add(p.get("name").asText()));
         assertEquals(List.of("page", "size", "sort", "direction", "filter", "where", "asOf"), params);
         JsonNode page = doc().get("components").get("schemas").get("OrderPage").get("properties");
         assertTrue(page.has("content") && page.has("totalElements") && page.has("page") && page.has("size"));
         assertEquals("#/components/schemas/Order", page.get("content").get("items").get("$ref").asText());
+    }
+
+    /**
+     * REG-312: the document advertised {@code /api/concepts/Order} while the controller answers only a
+     * concept's REST collection name, so a client following the app's own spec got
+     * {@code 400 unknown_concept} on its first call. Every concept collection path in the document must
+     * be a route the controller can resolve, checked against the matcher it falls back to for a live
+     * concept (it derives the route exactly as the baked binding map does); the model name must not be.
+     */
+    @Test
+    void everyAdvertisedConceptPathIsARouteTheControllerResolves() throws Exception {
+        CompiledModel model = model();
+        JsonNode paths = MAPPER.valueToTree(OpenApiDocumentBuilder.build(model, "Shop")).get("paths");
+        String prefix = "/api/concepts/";
+        Set<String> routes = new HashSet<>();
+        paths.fieldNames().forEachRemaining(path -> {
+            if (path.startsWith(prefix) && path.indexOf('/', prefix.length()) < 0) {
+                routes.add(path.substring(prefix.length()));
+            }
+        });
+        assertEquals(Set.of("orders", "order_lines", "galleries"), routes);
+        for (String route : routes) {
+            assertTrue(LiveConceptCrudSupport.resolve(model, route, null, null).isPresent(),
+                    "the controller cannot resolve the advertised route " + prefix + route);
+        }
+        for (String modelName : List.of("Order", "OrderLine", "Gallery")) {
+            assertTrue(LiveConceptCrudSupport.resolve(model, modelName, null, null).isEmpty(),
+                    "the model name " + modelName + " is not a route; the document must not advertise it");
+        }
+    }
+
+    @Test
+    void irregularPluralsAreAdvertisedUnderTheirRestCollectionName() throws Exception {
+        String json = """
+                {
+                  "dslVersion": "1.0.0", "namespace": "desk", "version": "1.0",
+                  "concepts": [
+                    { "name": "TicketCategory", "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                    { "name": "Box", "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true } ] }
+                  ]
+                }
+                """;
+        CompiledModel desk = new ModelCompiler().compile(new JsonModelParser().parse(MAPPER.readTree(json)));
+        JsonNode paths = MAPPER.valueToTree(OpenApiDocumentBuilder.build(desk, "Desk")).get("paths");
+        assertTrue(paths.has("/api/concepts/ticket_categories"), names(paths).toString());
+        assertTrue(paths.has("/api/concepts/boxes"), names(paths).toString());
+        assertFalse(paths.has("/api/concepts/TicketCategory"));
+        assertFalse(paths.has("/api/concepts/Box"));
     }
 
     @Test

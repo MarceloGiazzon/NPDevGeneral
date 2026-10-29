@@ -3,6 +3,7 @@ package com.finalexec.api;
 import com.npdev.dsl.v1.compiled.CompiledAggregate;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledContext;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -10,6 +11,7 @@ import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
 import com.npdev.dsl.v1.compiled.CompiledPublicRead;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -30,8 +32,12 @@ import java.util.Set;
  *
  * <p>Route families (each mirrors a real controller; the code wins over any doc):
  * <ul>
- *   <li>{@code /api/concepts/{Concept}} list/create, {@code /{id}} get/update/delete,
- *       {@code /batch} (generated {@code ConceptCrudController}). The list envelope is
+ *   <li>{@code /api/concepts/{route}} list/create, {@code /{id}} get/update/delete,
+ *       {@code /batch} (generated {@code ConceptCrudController}). {@code {route}} is the concept's
+ *       REST collection name ({@link SqlIdentifierSupport#restCollectionName}, e.g. {@code Order} is
+ *       {@code orders}, {@code TicketCategory} is {@code ticket_categories}), NOT its model name: the
+ *       controller answers {@code 400 unknown_concept} to the model name. Summaries, tags and schema
+ *       names still use the model name. The list envelope is
  *       {@code {content,page,size,totalElements,sort,direction,filter,where,asOf}}.</li>
  *   <li>{@code /api/queries/{Query}} (rows envelope, declared parameters become query params).</li>
  *   <li>{@code /api/v1/flows/{Flow}/execute} for every flow; start endpoints are tagged
@@ -71,7 +77,7 @@ public final class OpenApiDocumentBuilder {
         List<CompiledConcept> concepts = new ArrayList<>(model.getConcepts());
         concepts.sort(Comparator.comparing(CompiledConcept::getName, String.CASE_INSENSITIVE_ORDER));
         for (CompiledConcept concept : concepts) {
-            addConcept(concept, schemas, paths);
+            addConcept(concept, model.getContexts(), schemas, paths);
         }
         for (CompiledQuery query : sorted(model.getQueries(), Comparator.comparing(CompiledQuery::name))) {
             addQuery(query, model, schemas, paths);
@@ -105,13 +111,16 @@ public final class OpenApiDocumentBuilder {
 
     // ------------------------------------------------------------------ concepts
 
-    private static void addConcept(CompiledConcept concept, Map<String, Object> schemas, Map<String, Object> paths) {
+    private static void addConcept(CompiledConcept concept, List<CompiledContext> contexts,
+                                   Map<String, Object> schemas, Map<String, Object> paths) {
         String name = concept.getName();
         String component = componentName(name);
         schemas.put(component, conceptSchema(concept, null));
         schemas.put(component + "Page", pageSchema(component));
 
-        String base = "/api/concepts/" + name;
+        // REG-312: the controller serves a concept under its REST collection name, never its model
+        // name (rest-collection-name-one-derivation); a path built from the model name 400s.
+        String base = "/api/concepts/" + SqlIdentifierSupport.restCollectionName(concept, contexts);
         Map<String, Object> collection = new LinkedHashMap<>();
         collection.put("get", operation(name, "List " + name, "list" + component,
                 listParameters(), jsonResponse("200", "A page of " + name, ref(component + "Page")),

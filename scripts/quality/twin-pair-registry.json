@@ -735,7 +735,7 @@
   {
     "id": "rest-collection-name-one-derivation",
     "citedBy": "REG-270 (a concept ending in y was served at /ticket_categorys)",
-    "description": "A concept's REST collection name (the path segment after /api/ and /api/concepts/) has ONE derivation, SqlIdentifierSupport.restCollectionName, whose plural comes from EnglishPlurals. Every place that publishes or resolves a route must call it: the per-entity controller, the generic CRUD binding map, the UI manifest route, the live-concept CRUD matcher, the agent tool catalog and photo intake, the info page, and the invocation catalog. A site that goes back to aliasPreservingTableName/toSnakePlural/getTableName for a ROUTE serves the old wrong plural again (the physical table name keeps its own, deliberately unchanged, derivation).",
+    "description": "A concept's REST collection name (the path segment after /api/ and /api/concepts/) has ONE derivation, SqlIdentifierSupport.restCollectionName, whose plural comes from EnglishPlurals. Every place that publishes or resolves a route must call it: the per-entity controller, the generic CRUD binding map, the UI manifest route, the live-concept CRUD matcher, the agent tool catalog and photo intake, the info page, the invocation catalog and the OpenAPI document (REG-312: it once advertised /api/concepts/<ModelName>, which 400s). A site that goes back to aliasPreservingTableName/toSnakePlural/getTableName for a ROUTE serves the old wrong plural again (the physical table name keeps its own, deliberately unchanged, derivation).",
     "kind": "field-in-all-files",
     "trackedFields": [
       "restCollectionName"
@@ -750,7 +750,8 @@
       "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptUiManifestSupport.java",
       "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptCrudSupport.java",
       "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/agent/AgentToolCatalog.java",
-      "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/agent/AgentPhotoIntake.java"
+      "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/agent/AgentPhotoIntake.java",
+      "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/api/OpenApiDocumentBuilder.java"
     ]
   },
   {

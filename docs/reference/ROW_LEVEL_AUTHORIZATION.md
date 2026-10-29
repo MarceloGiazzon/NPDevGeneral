@@ -68,7 +68,7 @@ needed**; the row-scope rule lives in the compiled model and is interpreted at r
 
 **Every generated REST surface for a concept goes through this gateway for reads as well as
 writes** — the per-concept `{Concept}ServiceBase` (`getById`/`list`/`page`, backing the default
-`/api/{concept_plural}` controller) and the generic `/api/concepts/{conceptName}` controller both
+`/api/{concept_plural}` controller) and the generic `/api/concepts/{route}` controller both
 route through `ConceptGateway.read`/`list`/`query`, not `ConceptStore` directly. This was not true
 initially: a first implementation left `{Concept}ServiceBase`'s `findByIdFromConceptStore`/
 `findAllFromConceptStore` reading straight from `ConceptStore`, which is a plain per-tenant KV/SQL

@@ -4,9 +4,9 @@ title: >-
   resource name (sponsors, visit_types) -- the documented form 400s unknown_concept
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-10-29
-closed: null
+closed: 2026-10-29
 source: >-
   OWN-2 section 5.2 domain-fit simulation, 2026-10-28/29: a fresh agent given only the public docs and a
   clinical-trial site-visit scheduler (a domain never modelled here), not told what to build. Evidence:
@@ -20,7 +20,36 @@ detail: >-
 resolution: >-
   Done when the documented route works as written OR the doc and the OpenAPI document the real resource name,
   with a REST test pinning that the documented form answers 2xx.
-verification: NOT_VERIFIED
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/api/OpenApiDocumentBuilder.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/api/OpenApiDocumentBuilderTest.java
+  - docs/reference/REST_API.md
+  - docs/reference/CSV_EXPORT.md
+  - docs/UI_CONTRACT.md
+  - scripts/quality/twin-pair-registry.json
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/api/OpenApiDocumentBuilderTest.java#everyAdvertisedConceptPathIsARouteTheControllerResolves
+  asserts: >-
+    every /api/concepts/<x> collection path OpenApiDocumentBuilder emits is accepted by LiveConceptCrudSupport.resolve
+    (the route matcher the CRUD controller falls back to, deriving routes exactly as its baked map does) and the model
+    names Order / OrderLine / Gallery are not; a sibling test pins ticket_categories and boxes. Proven red 2026-10-29 by
+    restoring the old "/api/concepts/" + name: 4 of 13 OpenApiDocumentBuilderTest tests failed, this one among them.
+  provenRed: true
 note: >-
-  Lead verification 2026-10-29: the doc text is confirmed (no resource-form rule anywhere in REST_API.md); the
-  400 on the singular form is the agent's repro, NOT yet reproduced by the lead.
+  2026-10-29: reproduced live first on Build/samples/dsl-conformance-max: GET /api/concepts/ConversionDemoCustomer ->
+  400 unknown_concept, conversion_demo_customers -> 200, and ALL 38 concept paths the app's own /v3/api-docs advertised
+  -> 400. Root cause: the controller registers only SqlIdentifierSupport.restCollectionName (REG-270 made that the one
+  route derivation) but OpenApiDocumentBuilder (INT-7) built /api/concepts/ + the model name. Direction chosen: fix the
+  document and the docs, not add a second accepted name -- UI_CONTRACT, HAND_MADE_PAGES and AGENT_ACCESS already taught
+  the route form, and the platform's own docs said "table name", which REG-270 made stale (the route is no longer the
+  physical table). After the fix, rebuilt and re-ran the same check: 38/38 advertised paths -> 200; the model-name form
+  still 400s, now documented in REST_API.md. Context-qualified concepts included (approvals::ApprovalDecision is served
+  at approvals_approval_decisions). OpenApiDocumentBuilder added to twin-pair rule rest-collection-name-one-derivation,
+  whose file list had never included it. Evidence: NPDev_General__OutsideRepo/evidence/2026-10-29-reg312-concept-routes/.
+  Not changed: /api/public/concepts/{Concept} takes the model name (PublicReadController) -- a second convention on
+  the same prefix, now stated in REST_API.md; unifying it is a design decision, not part of this item. The 400 message
+  could name the route when the caller sent a model name; left alone (it is generated-controller template output).
+  Lesson for restage-and-look: this sample compiles against its OWN libs/npdev-runtime, so
+  sync-runtimehost-libs.ps1 alone does not reach an already-generated app -- check the fat jar's embedded class.
