@@ -1,0 +1,24 @@
+id: SEC-16
+title: >-
+  Row-level write rule is evaluated against the PREVIOUS row only -- a coordinator can reassign a row out of
+  their own scope, or create a child row under another coordinator's parent
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-29
+closed: null
+source: >-
+  OWN-2 section 5.2 domain-fit simulation, 2026-10-28/29: a fresh agent given only the public docs and a
+  clinical-trial site-visit scheduler (a domain never modelled here), not told what to build. Evidence:
+  NPDev_General__OutsideRepo/evidence/2026-10-28-own2-sim/
+surface: authz/row-level
+detail: >-
+  Simulation: with access.write = coordinatorUsername == $user.id, alice could update her visit to bob's
+  coordinatorUsername (handing it away) and create a Visit attached to bob's Participant. The write check
+  reads the stored row, not the row being written, and does not consult the referenced parent.
+resolution: >-
+  Done when the write rule is also evaluated against the NEW row on create/update (and a declared parent-scope
+  rule is possible), with behaviour probes for both cases -- or an owner decision that records the posture.
+verification: NOT_VERIFIED
+note: >-
+  Not reproduced by the lead; agent's report. Security-relevant: row-level scoping is a documented feature.

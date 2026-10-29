@@ -1,0 +1,28 @@
+id: REG-318
+title: >-
+  First-user papercuts from the domain-fit simulation: init scaffold, stray ArtifactNP, undocumented
+  expression functions, contradicting docs, enum shape, grouped UUIDs
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-10-29
+closed: null
+source: >-
+  OWN-2 section 5.2 domain-fit simulation, 2026-10-28/29: a fresh agent given only the public docs and a
+  clinical-trial site-visit scheduler (a domain never modelled here), not told what to build. Evidence:
+  NPDev_General__OutsideRepo/evidence/2026-10-28-own2-sim/
+surface: docs/cli
+detail: >-
+  (1) npdev init scaffold: dslVersion 1.0.0 (DSL is 2.0), a config $schema path broken outside the clone, port
+  8081 in config vs 8080 in its README. (2) generate app writes a stray ArtifactNP/ next to the output. (3)
+  now() is used by samples but missing from EXPRESSIONS.md; conflicts() argument types undocumented;
+  date-vs-datetime comparison needs a string hack. (4) The leave pack's reviewNotes say there is no per-row
+  visibility (there is); the groupBy doc says access.read refuses the whole query (the agent's aggregate query
+  worked, row-scoped). (5) Multi-value enum shape found only by trial. (6) Grouped queries return a
+  reference's raw UUID, not a display value.
+resolution: >-
+  Done when each sub-point is fixed or individually refuted.
+verification: NOT_VERIFIED
+note: >-
+  Dropped from the agent's list: 'YOUR_FIRST_APP says cd ../NPDevGeneral' -- correct, GitHub checks the repo
+  out under that name.

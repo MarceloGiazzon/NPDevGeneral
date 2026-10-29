@@ -1,0 +1,24 @@
+id: REG-317
+title: >-
+  Domain fit: no cross-concept rules or access and no rows-from-template -- study membership, staff-role
+  requirements and per-visit-type schedules need hand-copied fields
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-29
+closed: null
+source: >-
+  OWN-2 section 5.2 domain-fit simulation, 2026-10-28/29: a fresh agent given only the public docs and a
+  clinical-trial site-visit scheduler (a domain never modelled here), not told what to build. Evidence:
+  NPDev_General__OutsideRepo/evidence/2026-10-28-own2-sim/
+surface: dsl/domain-fit
+detail: >-
+  Rules cannot read another concept, so 'investigators see their studies' needed the investigator copied onto
+  every Participant and Visit, with nothing keeping copies in sync; 'this visit type needs a pharmacist' and
+  'the assigned person has the right staff role' cannot be enforced; conflicts() covers one resource per rule,
+  so staff double-booking across slots cannot be checked; nothing creates one Visit per VisitType on
+  enrolment.
+resolution: >-
+  Done when each gap is either delivered (with a corpus example) or recorded as an owner decision / accepted
+  boundary.
+verification: NOT_VERIFIED

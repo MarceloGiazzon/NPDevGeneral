@@ -1,0 +1,25 @@
+id: REG-314
+title: >-
+  CONFIGURATION.md documents API-key mappings as key=tenantOrRole; the working format is key=tenant:actor:ROLE
+  (sets $user.id), found only in a sample probe
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-10-29
+closed: null
+source: >-
+  OWN-2 section 5.2 domain-fit simulation, 2026-10-28/29: a fresh agent given only the public docs and a
+  clinical-trial site-visit scheduler (a domain never modelled here), not told what to build. Evidence:
+  NPDev_General__OutsideRepo/evidence/2026-10-28-own2-sim/
+surface: docs/auth
+detail: >-
+  docs/CONFIGURATION.md:85 says npdev.auth.api-keys 'must contain at least one key=tenantOrRole mapping'.
+  Row-level rules need $user.id, which only the three-part form key=tenant:actorId:ROLE (entries separated by
+  ;) sets. The agent found that form only in NPDevSamples/dom-leave's probe; the historical
+  docs/beta/beta1-vision-spine-status-and-handoff.md:108 records the same format.
+resolution: >-
+  Done when CONFIGURATION.md documents the real grammar (all accepted forms, separator, what each sets) with
+  an example, checked against NpdevAuthConfig / the api-key resolver.
+verification: NOT_VERIFIED
+note: >-
+  Lead verification 2026-10-29: doc line confirmed; the three-part format confirmed by the beta note.

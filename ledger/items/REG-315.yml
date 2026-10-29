@@ -1,0 +1,21 @@
+id: REG-315
+title: >-
+  Query where grammar has no || or parentheses, and its parse error blames a groupBy the query does not have
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-10-29
+closed: null
+source: >-
+  OWN-2 section 5.2 domain-fit simulation, 2026-10-28/29: a fresh agent given only the public docs and a
+  clinical-trial site-visit scheduler (a domain never modelled here), not told what to build. Evidence:
+  NPDev_General__OutsideRepo/evidence/2026-10-28-own2-sim/
+surface: dsl/queries
+detail: >-
+  A query where of `(a || b) && c` fails with 'cannot parse groupBy field "(status" ... suggestedFix: Add
+  field here' on a query with no groupBy. The query grammar differs from the rule-expression grammar,
+  undocumented.
+resolution: >-
+  Done when the error names the where clause and the unsupported syntax, and the docs state the query grammar
+  (or the grammar accepts || and parentheses).
+verification: NOT_VERIFIED

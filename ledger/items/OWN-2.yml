@@ -21,3 +21,13 @@ resolution: >-
   GeneXus/legacy-4GL shop -- "Would this have helped on your last migration, and if not, what would
   it have needed?" Then section 5.2's untried simulation: an agent given an unfamiliar domain and
   no NPDev-specific instructions.
+note: >-
+  2026-10-29: owner decision -- split. Section 5.2 is DONE (run by a fresh agent, not the owner): domain
+  a clinical-trial site-visit scheduler, public docs only, not told what to build. It built a working app
+  in ~40 min (7 concepts, 4 roles, row-level visibility, lifecycles, room-conflict refusal, all proven
+  over HTTP) and hit one wall: no date arithmetic, so a visit schedule relative to enrolment cannot be
+  computed. Domain-fit signal, simulated: 'would not adopt today' for exactly that reason. Findings filed
+  as REG-312..REG-318 and SEC-16 (three HIGH: REST route doc, date arithmetic, API-key doc). Report:
+  NPDev_General__OutsideRepo/evidence/2026-10-28-own2-sim/report.md. What stays open here is ONLY the
+  owner's section 5.1 conversations -- the real abandonment, domain-fit and worth signals that no agent
+  can produce.

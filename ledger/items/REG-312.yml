@@ -1,0 +1,26 @@
+id: REG-312
+title: >-
+  REST_API.md documents /api/concepts/{Concept} but a generated app answers only the plural snake_case
+  resource name (sponsors, visit_types) -- the documented form 400s unknown_concept
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-10-29
+closed: null
+source: >-
+  OWN-2 section 5.2 domain-fit simulation, 2026-10-28/29: a fresh agent given only the public docs and a
+  clinical-trial site-visit scheduler (a domain never modelled here), not told what to build. Evidence:
+  NPDev_General__OutsideRepo/evidence/2026-10-28-own2-sim/
+surface: rest/docs
+detail: >-
+  docs/reference/REST_API.md:24-27 documents `/api/concepts/{Concept}` and never names the resource form. The
+  simulation agent reports `GET /api/concepts/Sponsor` (also the form in the app's /v3/api-docs) -> 400
+  unknown_concept, while `/api/concepts/sponsors` -> 200 (probe-log.json shows the plural form working). Its
+  first-probe step was a strong abandon point.
+resolution: >-
+  Done when the documented route works as written OR the doc and the OpenAPI document the real resource name,
+  with a REST test pinning that the documented form answers 2xx.
+verification: NOT_VERIFIED
+note: >-
+  Lead verification 2026-10-29: the doc text is confirmed (no resource-form rule anywhere in REST_API.md); the
+  400 on the singular form is the agent's repro, NOT yet reproduced by the lead.

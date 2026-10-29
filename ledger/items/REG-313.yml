@@ -1,0 +1,29 @@
+id: REG-313
+title: >-
+  No date arithmetic in the expression language -- computeValue add(date, int) passes validation and fails at
+  runtime (COMPUTE_VALUE_INVALID_OPERAND); no today()/addDays/daysBetween
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-10-29
+closed: null
+source: >-
+  OWN-2 section 5.2 domain-fit simulation, 2026-10-28/29: a fresh agent given only the public docs and a
+  clinical-trial site-visit scheduler (a domain never modelled here), not told what to build. Evidence:
+  NPDev_General__OutsideRepo/evidence/2026-10-28-own2-sim/
+surface: dsl/expressions
+detail: >-
+  A visit schedule relative to an enrolment date (day 84 +/- 7) cannot be computed: `computeValue add` of a
+  date and a number validates cleanly, then fails at runtime with 'COMPUTE_VALUE_INVALID_OPERAND: Procedure
+  computeValue requires numeric operands; got left=2026-10-01, right=84'. No today(), so an overdue query
+  needs the date passed as a parameter. Validation accepting what the runtime refuses breaks 'accepted implies
+  enforced' (ENF-1).
+resolution: >-
+  Done when (a) the validator refuses non-numeric computeValue operands with a coded diagnostic, and (b) date
+  functions (addDays, today, daysBetween) exist in rules, defaults, procedures and query parameters with a
+  dsl-conformance-max example and a behaviour probe -- or (b) is an explicit owner decision to defer, with (a)
+  still done.
+verification: NOT_VERIFIED
+note: >-
+  The largest domain-fit gap the simulation found: 'enrol on day 0, get your dated windows' is the core of the
+  domain. Not reproduced by the lead; agent's repro.
