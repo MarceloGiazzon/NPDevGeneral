@@ -43,6 +43,38 @@ set — pure value functions, no boolean logic needed:
 | `coalesce(a, b, ...)` | first non-missing arg |
 | `trim(x)` / `uppercase(x)` / `lowercase(x)` | string transforms |
 
+### Date functions (REG-313)
+
+One implementation, `com.npdev.dsl.v1.expr.DateFunctions`, available **everywhere an expression runs**: a
+field `defaultExpression` / `derivedExpression`, an invariant, and a procedure `computeValue` step.
+
+| Form | Meaning |
+|---|---|
+| `today()` | the current **UTC** calendar date, `"2026-10-29"` |
+| `addDays(date, n)` | `date` plus `n` whole days (negative goes back). A date stays a date (`"2026-12-24"`); a date-time keeps its time of day and offset (`"2026-10-02T10:15:30Z"`) |
+| `daysBetween(from, to)` | whole days from `from` to `to` (`to` minus `from`; negative if `to` is earlier), as a number |
+
+```
+visitDate >= addDays(enrolmentDate, 77) && visitDate <= addDays(enrolmentDate, 91)   // invariant: day 84 ± 7
+addDays(enrolmentDate, 84)                                                           // derivedExpression
+addDays(today(), 7)                                                                  // defaultExpression
+daysBetween(enrolmentDate, today()) <= 84                                            // invariant
+```
+
+- **A date is a UTC calendar day**, the same reading the `<`/`>=` comparison already gives dates (a date is
+  00:00 UTC; a date-time counts as the UTC date it falls on). There is no per-app time zone setting, so
+  `today()` flips at 00:00 UTC, not local midnight.
+- **Total, never throwing.** An operand that is not a date, a `n` that is not a whole number (`1.5`, `"3"`),
+  a wrong argument count, or a result outside the representable range gives `null` — the rule `concat`
+  already follows. In an invariant, `null` cannot be ordered, so a comparison around it is false.
+- **`today()` is deterministic where it has to be:** the boot-time expression-default backfill evaluates it
+  to the epoch date `1970-01-01`, exactly as it does `now()`, so its two shadow passes always agree.
+- **In a procedure** the same three are `computeValue` operations, not expressions:
+  `{"type":"computeValue","operation":"addDays","left":"$p.enrolmentDate","right":"$vt.dayOffset","target":"targetDate"}`,
+  `"operation":"daysBetween"` (`left`/`right` are the two dates) and `"operation":"today"` (no operands).
+  `add`/`subtract` stay numeric: handing them a date is refused at validation
+  (`compute_value_invalid_operand`) and at runtime (`COMPUTE_VALUE_INVALID_OPERAND`).
+
 Both function sets are `ComputedExpression.FunctionRegistry` instances, built by their respective
 callers (`CelInvariantEngine.buildFunctionRegistry`, `SchemaExpressionSupport`'s
 `SCHEMA_EXPRESSION_FUNCTIONS`, which is `ValueExpressionFunctions.base()`) — a function registry is just a `Map<String, ExprFunction>`, so a

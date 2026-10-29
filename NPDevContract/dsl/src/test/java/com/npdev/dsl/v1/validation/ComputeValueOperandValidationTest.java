@@ -176,6 +176,104 @@ class ComputeValueOperandValidationTest {
         assertNoOperandError(errors);
     }
 
+    // ---- REG-313 (b): addDays / daysBetween / today are computeValue operations too ----
+
+    @Test
+    void addDaysOfADateFieldAndADayCountIsTheRepro_SpelledRight() throws Exception {
+        List<String> errors = validate(modelJson(READ_PARTICIPANT + READ_VISIT_TYPE + """
+            { "name": "target", "type": "computeValue", "operation": "addDays",
+              "left": "$p.enrolmentDate", "right": "$vt.dayOffset", "target": "targetDate" },
+            { "name": "ws", "type": "computeValue", "operation": "addDays",
+              "left": "$targetDate", "right": -7, "target": "windowStart" },
+            { "name": "gap", "type": "computeValue", "operation": "daysBetween",
+              "left": "$p.enrolmentDate", "right": "2026-12-24", "target": "gap" },
+            { "name": "when", "type": "computeValue", "operation": "today", "target": "now" }
+            """));
+        assertEquals(List.of(), errors);
+    }
+
+    @Test
+    void addDaysWantsADateOnTheLeft() throws Exception {
+        List<String> errors = validate(modelJson(READ_VISIT_TYPE + """
+            { "name": "x", "type": "computeValue", "operation": "addDays",
+              "left": "$vt.dayOffset", "right": 5, "target": "y" }
+            """));
+        assertRejected(errors, "left", "VisitType.dayOffset", "int", "date");
+    }
+
+    @Test
+    void addDaysWantsANumberOfDaysNotADateOnTheRight() throws Exception {
+        List<String> errors = validate(modelJson(READ_PARTICIPANT + """
+            { "name": "x", "type": "computeValue", "operation": "addDays",
+              "left": "$p.enrolmentDate", "right": "$p.enrolledAt", "target": "y" }
+            """));
+        assertRejected(errors, "right", "Participant.enrolledAt", "datetime");
+    }
+
+    @Test
+    void addDaysLiteralsMustBeADateAndAWholeNumber() throws Exception {
+        assertRejected(validate(modelJson("""
+            { "name": "x", "type": "computeValue", "operation": "addDays",
+              "left": "soon", "right": 1, "target": "y" }
+            """)), "left", "soon");
+        assertRejected(validate(modelJson("""
+            { "name": "x", "type": "computeValue", "operation": "addDays",
+              "left": "2026-10-01", "right": 1.5, "target": "y" }
+            """)), "right", "1.5", "whole");
+        assertRejected(validate(modelJson("""
+            { "name": "x", "type": "computeValue", "operation": "addDays",
+              "left": "2026-10-01", "right": "3", "target": "y" }
+            """)), "right", "3", "whole");
+        assertNoOperandError(validate(modelJson("""
+            { "name": "x", "type": "computeValue", "operation": "addDays",
+              "left": "2026-10-01T10:15:30Z", "right": 3, "target": "y" }
+            """)));
+    }
+
+    @Test
+    void daysBetweenWantsTwoDates() throws Exception {
+        assertRejected(validate(modelJson(READ_PARTICIPANT + READ_VISIT_TYPE + """
+            { "name": "x", "type": "computeValue", "operation": "daysBetween",
+              "left": "$p.enrolmentDate", "right": "$vt.dayOffset", "target": "y" }
+            """)), "right", "VisitType.dayOffset", "int");
+        assertRejected(validate(modelJson("""
+            { "name": "x", "type": "computeValue", "operation": "daysBetween",
+              "left": "2026-10-01", "right": 84, "target": "y" }
+            """)), "right", "84");
+    }
+
+    @Test
+    void plainAddOfADateNowPointsAtAddDays() throws Exception {
+        List<String> errors = validate(modelJson(READ_PARTICIPANT + """
+            { "name": "x", "type": "computeValue", "operation": "add",
+              "left": "$p.enrolmentDate", "right": 84, "target": "y" }
+            """));
+        assertRejected(errors, "left", "Participant.enrolmentDate", "addDays");
+    }
+
+    @Test
+    void todayTakesNoOperandsAndStillNeedsATarget() throws Exception {
+        assertTrue(validate(modelJson("""
+            { "name": "x", "type": "computeValue", "operation": "today", "left": "2026-10-01", "target": "y" }
+            """)).stream().anyMatch(e -> e.contains("today takes no operands")));
+        assertTrue(validate(modelJson("""
+            { "name": "x", "type": "computeValue", "operation": "today" }
+            """)).stream().anyMatch(e -> e.contains("target is required for computeValue")));
+    }
+
+    @Test
+    void anOperatorIsStillCaseInsensitiveAndAnUnknownOneStillRefused() throws Exception {
+        assertNoOperandError(validate(modelJson("""
+            { "name": "x", "type": "computeValue", "operation": " AddDays ",
+              "left": "2026-10-01", "right": 1, "target": "y" }
+            """)));
+        assertTrue(validate(modelJson("""
+            { "name": "x", "type": "computeValue", "operation": "addMonths",
+              "left": "2026-10-01", "right": 1, "target": "y" }
+            """)).stream().anyMatch(e -> e.contains("computeValue requires operation to be one of")
+                && e.contains("addDays") && e.contains("daysBetween") && e.contains("today")));
+    }
+
     @Test
     void aTargetBoundTwiceToDifferentConceptsIsAmbiguousSoSkipped() throws Exception {
         List<String> errors = validate(modelJson(READ_PARTICIPANT + """

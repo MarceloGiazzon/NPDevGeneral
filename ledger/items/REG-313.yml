@@ -24,6 +24,14 @@ resolution: >-
   dsl-conformance-max example and a behaviour probe -- or (b) is an explicit owner decision to defer, with (a)
   still done.
 files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/DateFunctions.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/ValueBehaviorFunctions.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ValueExpressionFunctions.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ValueExpressionEvaluator.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/ProcedureStep.java
+  - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/CelInvariantEngine.java
+  - docs/EXPRESSIONS.md
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ComputeValueOperandValidation.java
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ValidationDiagnosticNormalizer.java
@@ -55,5 +63,18 @@ note: >-
   red separately. No false positives: the full dsl suite is green, and the 3 corpus models that use computeValue
   (dsl-conformance-max, AppGen WmsOffice, WmsOfficePackTest) validate with 0 COMPUTE_VALUE_INVALID_OPERAND.
   Not covered: operands from conceptCreate/query-row/loop-item variables (only readConcept targets are typed), and
-  nested paths ($p.a.b). Part (b), date functions in rules/defaults/procedures/query parameters, is a DSL
-  design decision and is waiting for the owner.
+  nested paths ($p.a.b).
+  2026-10-29 part (b): owner chose to BUILD it (not defer). Slices, each tested + pushed on its own:
+  (1) DONE DateFunctions (DSL, one pure implementation: today/addDays/daysBetween, UTC calendar dates, total -- bad
+  operand => null) registered for field defaultExpression/derivedExpression + the gateway invariants via
+  ValueBehaviorFunctions.NAMES; evaluateStrict (backfill) pins today() to 1970-01-01 like now(). (2) DONE the
+  CelInvariantEngine registry (rules). (3) DONE procedures: computeValue operations addDays/daysBetween/today
+  (ProcedureStep.computeValue no longer NPEs on an absent operand -- ProcedureRunner and the CLI both build steps
+  through it), PackValidation operator set + 'today takes no operands', and ComputeValueOperandValidation is
+  operator-aware (date vs number vs whole-number slots). (4) TODO query parameters: a defaultExpression on a
+  parameter (so `addDays(today(), -7)` works and a caller can still override) -- touches model.schema.json (4
+  mirrors + pack schema), ProcedureParameterAst, parser, compiled, canonical JSON writer+reader, ModelResolver
+  (REG-104/108 twin-pair chain) and the runtime query binder. (5) TODO a dsl-conformance-max example, a behaviour
+  probe (live: addDays(today(),0)==today(), daysBetween(today(),addDays(today(),5))==5), emit-capability docs.
+  Known gaps to decide, not hide: no arity check at validation (addDays(x) validates then yields null, same as
+  concat today); no per-app time zone (today() is UTC); addDays/daysBetween only, no addMonths/startOfMonth.

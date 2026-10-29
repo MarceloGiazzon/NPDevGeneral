@@ -109,8 +109,10 @@ final class PackValidation {
             Set.of("maplist", "map_list", "listtransform");
     private static final Set<String> PROCEDURE_COMPUTE_VALUE_STEP_TYPES =
             Set.of("computevalue", "compute_value", "compute", "arithmetic");
+    /** Lower-cased, as compared; the executor lower-cases the operator too. REG-313 (b) added the date operations. */
     private static final Set<String> PROCEDURE_COMPUTE_VALUE_OPERATORS =
-            Set.of("add", "subtract");
+            Set.of("add", "subtract", "adddays", "daysbetween", "today");
+    private static final String PROCEDURE_COMPUTE_VALUE_OPERATOR_NAMES = "[add, subtract, addDays, daysBetween, today]";
     private static final Set<String> PROCEDURE_CONCEPT_STEP_TYPES =
             Set.of("conceptquery", "readconcept", "read_concept", "listconcepts", "list_concepts",
                     "runquery", "run_query", "conceptcreate", "conceptupdate", "saveconcept", "save_concept",
@@ -954,14 +956,21 @@ final class PackValidation {
         String operator = step.operation() == null ? "" : step.operation().trim().toLowerCase(java.util.Locale.ROOT);
         if (!PROCEDURE_COMPUTE_VALUE_OPERATORS.contains(operator)) {
             errors.add("Procedure " + procedureName + " step " + stepPath
-                    + ": computeValue requires operation to be one of " + PROCEDURE_COMPUTE_VALUE_OPERATORS
+                    + ": computeValue requires operation to be one of " + PROCEDURE_COMPUTE_VALUE_OPERATOR_NAMES
                     + ", got: " + step.operation());
         }
-        if (step.left() == null) {
-            errors.add("Procedure " + procedureName + " step " + stepPath + ": left is required for computeValue");
-        }
-        if (step.right() == null) {
-            errors.add("Procedure " + procedureName + " step " + stepPath + ": right is required for computeValue");
+        if ("today".equals(operator)) {
+            if (step.left() != null || step.right() != null) {
+                errors.add("Procedure " + procedureName + " step " + stepPath
+                        + ": computeValue today takes no operands -- suggestedFix: remove left and right from this step");
+            }
+        } else {
+            if (step.left() == null) {
+                errors.add("Procedure " + procedureName + " step " + stepPath + ": left is required for computeValue");
+            }
+            if (step.right() == null) {
+                errors.add("Procedure " + procedureName + " step " + stepPath + ": right is required for computeValue");
+            }
         }
         if (!hasText(step.target())) {
             errors.add("Procedure " + procedureName + " step " + stepPath + ": target is required for computeValue (names where the result is written)");

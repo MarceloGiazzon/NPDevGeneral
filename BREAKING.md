@@ -11,7 +11,7 @@ codemod that rewrites existing models automatically.
 
 **Who is affected.** Only models that could never have run that step. No corpus model is affected (`dsl-conformance-max`, `WmsOffice` and `WmsOfficePackTest` validate unchanged).
 
-**Codemod.** None possible: the arithmetic the author wanted (date plus days) has no `computeValue` spelling today, so there is nothing to rewrite it to. Compute from a numeric field instead; date functions are tracked separately under REG-313 (b).
+**Codemod.** None: the right spelling depends on the operand types and on the operator (`add(date, n)` is `addDays(date, n)`, but `subtract(date, n)` is `addDays(date, -n)` and `subtract(date, date)` is `daysBetween(from, to)`), which a rewrite cannot always decide without the model's field types and cannot do at all when `n` is a reference that would have to be negated. `addDays`, `daysBetween` and `today` now exist as `computeValue` operations (REG-313 b, see `docs/EXPRESSIONS.md`): change the operation by hand.
 
 ## 2026-10-24 — a `connectable: "anchor"` field is unique per tenant; its bonds use a composite key (ENF-1)
 

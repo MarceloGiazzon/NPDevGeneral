@@ -127,6 +127,7 @@ public final class ValueExpressionEvaluator {
      * {@link #evaluate(String, Map)}: the backfill shadow proof ({@code ExpressionBackfillShadowProof})
      * evaluates twice and refuses a backfill whose two passes disagree, so a backfilled
      * {@code now()} column gets the documented epoch sentinel rather than silently random values.
+     * REG-313: {@code today()} likewise resolves to the epoch date ({@code 1970-01-01}) here.
      */
     public static Object evaluateStrict(String expression, Map<String, Object> data, ComputedExpression.FunctionRegistry functions) {
         String text = expression == null ? "" : expression.trim();
@@ -154,7 +155,9 @@ public final class ValueExpressionEvaluator {
             }
             return Long.parseLong(text);
         } catch (NumberFormatException ignored) {
-            return ComputedExpression.evaluate(text, data, functions);
+            // REG-313: today() is as volatile as now(), so the same rule -- the epoch date, never the wall clock.
+            return com.npdev.dsl.v1.expr.DateFunctions.withToday(java.time.LocalDate.EPOCH,
+                    () -> ComputedExpression.evaluate(text, data, functions));
         }
     }
 

@@ -231,9 +231,15 @@ public record ProcedureStep(
      * literal-vs-{@code $ref} convention every other {@code setValues}-bearing step already uses.
      */
     public static ProcedureStep computeValue(String name, String operator, Object left, Object right, String outputKey) {
+        // REG-313 (b): `today` takes no operands, and Map.copyOf (the constructor) rejects null values --
+        // an absent operand is simply absent, which the executor already reads as null.
         Map<String, Object> operands = new java.util.LinkedHashMap<>();
-        operands.put("left", left);
-        operands.put("right", right);
+        if (left != null) {
+            operands.put("left", left);
+        }
+        if (right != null) {
+            operands.put("right", right);
+        }
         return new ProcedureStep(name, ProcedureStepType.COMPUTE_VALUE, null, null, null,
                 null, null, null, operator, List.of(), outputKey, null, null,
                 null, null, null, null, null, null, List.of(), List.of(), List.of(), operands, false);

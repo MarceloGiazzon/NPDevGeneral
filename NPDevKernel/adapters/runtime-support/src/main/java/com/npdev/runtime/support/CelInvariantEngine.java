@@ -1188,6 +1188,13 @@ public final class CelInvariantEngine implements InvariantEngine {
             return exists;
         });
 
+        // REG-313 (b): today()/addDays/daysBetween -- the one shared implementation, no FailureHint (a
+        // comparison around them carries its own generic message).
+        for (String name : com.npdev.dsl.v1.expr.DateFunctions.NAMES) {
+            functions.put(name, (args, vars) -> com.npdev.dsl.v1.expr.DateFunctions.apply(
+                    name, args.stream().map(arg -> arg.eval(vars)).toList()));
+        }
+
         return ComputedExpression.FunctionRegistry.of(functions);
     }
 

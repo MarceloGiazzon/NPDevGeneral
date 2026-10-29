@@ -1,6 +1,7 @@
 package com.npdev.kernel.procedures;
 
 import com.npdev.dsl.v1.compiled.CompiledQuery;
+import com.npdev.dsl.v1.expr.DateFunctions;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ExecutionContext;
@@ -656,6 +657,10 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
     private ProcedureStepResult computeValue(ProcedureStep step, Map<String, Object> state) {
         Object leftRaw = resolveSetValue(state, step.setValues().get("left"), step.name(), "left");
         Object rightRaw = resolveSetValue(state, step.setValues().get("right"), step.name(), "right");
+        String requested = step.operation() == null ? "" : step.operation().trim().toLowerCase(Locale.ROOT);
+        if (COMPUTE_VALUE_DATE_OPERATORS.contains(requested)) {
+            return computeDateValue(step, state, requested, leftRaw, rightRaw);
+        }
         BigDecimal left;
         BigDecimal right;
         try {
@@ -678,10 +683,32 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             return ProcedureStepResult.failure(
                     step,
                     "COMPUTE_VALUE_UNKNOWN_OPERATOR",
-                    "Procedure computeValue has an unknown operator (expected add/subtract): " + step.operation()
+                    "Procedure computeValue has an unknown operator (expected add/subtract/addDays/daysBetween/today): "
+                            + step.operation()
             );
         }
         putOutput(state, step.outputKey(), normalizeComputedNumber(result));
+        return ProcedureStepResult.success(step);
+    }
+
+    /** REG-313 (b): {@code today}/{@code addDays}/{@code daysBetween} -- the expression language's {@link DateFunctions}, lower-cased like the other operators. */
+    private static final java.util.Set<String> COMPUTE_VALUE_DATE_OPERATORS = DateFunctions.NAMES.stream()
+            .map(name -> name.toLowerCase(Locale.ROOT)).collect(java.util.stream.Collectors.toUnmodifiableSet());
+
+    private ProcedureStepResult computeDateValue(
+            ProcedureStep step, Map<String, Object> state, String operator, Object leftRaw, Object rightRaw) {
+        Object result = DateFunctions.apply(operator,
+                "today".equals(operator) ? List.of() : java.util.Arrays.asList(leftRaw, rightRaw));
+        if (result == null) {
+            String needs = "adddays".equals(operator) ? "a date and a whole number of days" : "two dates";
+            return ProcedureStepResult.failure(
+                    step,
+                    "COMPUTE_VALUE_INVALID_OPERAND",
+                    "Procedure computeValue " + step.operation().trim() + " requires " + needs
+                            + "; got left=" + leftRaw + ", right=" + rightRaw
+            );
+        }
+        putOutput(state, step.outputKey(), result);
         return ProcedureStepResult.success(step);
     }
 

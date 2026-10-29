@@ -1,6 +1,7 @@
 package com.npdev.kernel.concepts;
 
 import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.dsl.v1.expr.DateFunctions;
 import com.npdev.dsl.v1.expr.ValueBehaviorFunctions;
 
 import java.util.LinkedHashMap;
@@ -104,6 +105,7 @@ public final class ValueExpressionFunctions {
             case "lowercase" -> args.size() == 1 && args.get(0) != null
                     ? String.valueOf(args.get(0)).toLowerCase(Locale.ROOT)
                     : null;
+            case "today", "adddays", "daysbetween" -> DateFunctions.apply(normalized, args);
             default -> null;
         };
     }
