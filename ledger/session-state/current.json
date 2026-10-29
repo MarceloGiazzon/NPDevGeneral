@@ -1,25 +1,17 @@
 {
-  "closedAt": "2026-10-29T03:04:15.4978275Z",
+  "closedAt": "2026-10-29T03:06:38.7549066Z",
   "branch": "main",
-  "head": "dc8b3396",
-  "headSubject": "chore(ledger): OWN-2 section 5.2 domain-fit simulation run; file its findings REG-312..318, SEC-16",
-  "summary": "Owner decisions: BUILD-4 WONTFIX (stay on Boot 3.5.16, exposure recorded), AIP-7 WONTFIX (legacy http kind stays; AIP-2 narrowed). Closed RUN-37 and AIP-4 live in the real Manager window (driven over WebView2 CDP): Docker Postgres found and adopted via Find databases > Use this; real prompts via AI Providers (gemini, groq). Found and fixed MON-33 (every Manager tab unreadable: unscoped .screen CSS + dark tabs missing palette tokens + tab bar overflow), Manager 0.5.4, guard tests proven red. Ran OWN-2 section 5.2 domain-fit simulation via a fresh agent (clinical-trial scheduler): working app, wall = no date arithmetic; filed REG-312..318 and SEC-16. Pushed fb972de3, dc8b3396.",
-  "nextStep": "Fix the simulation's HIGH findings, cheapest first: (1) REG-314 -- read NpdevAuthConfig/the api-key resolver for the real npdev.auth.api-keys grammar and rewrite docs/CONFIGURATION.md:85 with an example; (2) REG-312 -- reproduce GET /api/concepts/<SingularConcept> on a booted sample first, then fix the route or the doc + OpenAPI with a REST test; (3) REG-313 part (a) -- make the validator refuse non-numeric computeValue operands with a coded diagnostic (date functions are part (b), owner may defer). Then SEC-16 (write rule must also check the new row). OWN-2 stays open for the owner's 5.1 conversations only.",
+  "head": "0cc97a98",
+  "headSubject": "chore(session): handoff for the 2026-10-28/29 session; restore the 252865a5 history entry",
+  "summary": "Owner decisions recorded: BUILD-4 WONTFIX (stay on Spring Boot 3.5.16, exposure written down), AIP-7 WONTFIX (legacy http assistant kind stays; AIP-2 done-when narrowed). Closed RUN-37 and AIP-4 live in the real Manager window driven over WebView2 CDP; found+fixed MON-33 (unreadable Manager tabs, Manager 0.5.4); ran the OWN-2 section 5.2 domain-fit simulation via a fresh agent and filed REG-312..318 + SEC-16. Pushed fb972de3, dc8b3396, 0cc97a98.",
+  "nextStep": "Fix the simulation's HIGH findings, cheapest first: (1) REG-314 -- read NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevAuthConfig.java and the api-key resolver for the real npdev.auth.api-keys grammar (known: key=tenant:actor:ROLE, entries separated by ;) and rewrite docs/CONFIGURATION.md:85 with an example; (2) REG-312 -- boot a sample and reproduce GET /api/concepts/<SingularConceptName> -> 400 before changing anything, then fix the route or docs/reference/REST_API.md + OpenAPI with a REST test; (3) REG-313 part (a) -- validator refuses non-numeric computeValue operands with a coded diagnostic; ask the owner before building date functions (part b). Then SEC-16. OWN-2 stays open for the owner's 5.1 conversations only.",
   "plan": "",
   "blocked": "",
-  "verified": "aiKnowledge gate green 52/52 (before dc8b3396, which is ledger-only; ledger checks re-run green after it). Manager cargo test 57/57; test_db_discovery 30/30; check-done-item-guards 0 blocking. Real-window evidence: NPDev_General__OutsideRepo/evidence/2026-10-28-run37-aip4-manager-window/. No full T2 run this session.",
+  "verified": "aiKnowledge gate green 52/52 (before dc8b3396, which is ledger-only; ledger checkers re-run green after it). Manager cargo test 57/57 (two new guard tests proven red); test_db_discovery 30/30 (guard proven red); check-done-item-guards 0 blocking. Real-window evidence in NPDev_General__OutsideRepo/evidence/2026-10-28-run37-aip4-manager-window/. No full T2 this session.",
   "dirtyCount": 0,
   "dirtyFiles": [],
-  "unpushed": 1,
+  "unpushed": 0,
   "landedCommits": [
-    "dc8b3396 chore(ledger): OWN-2 section 5.2 domain-fit simulation run; file its findings REG-312..318, SEC-16",
-    "fb972de3 fix(manager): every tab readable again (MON-33); close RUN-37 and AIP-4 live; owner decisions on BUILD-4 and AIP-7",
-    "af4cb9f1 fix(deps): generated apps ship PostgreSQL JDBC 42.7.13, not 42.7.4 (BUILD-4, partial)",
-    "87114943 chore(ledger): close QUAL-61, file AIP-7; red-run and live evidence for REG-279/283/286/299/300/304; RUN-37 and BUILD-4 notes",
-    "e9d843f4 test(ledger): five DONE guards re-read against their done-when (QUAL-61, partial)",
-    "a3d5126a fix(ops): Stop-App.ps1 port fallback no longer trips the security-pattern sweep",
-    "dcf6cdc9 fix(ops): stop-app.sh finds an app started without app.pid by its command line (RUN-38 follow-up)",
-    "252865a5 fix(ops): Stop-App.ps1 finds an app started without app.pid by its command line (RUN-38, done)",
-    "0d933718 fix: identity lookups fail closed (SEC-15); app ownership marker (BUILD-5); CLI pid file (RUN-38, partial); cadence state out of the repo (QUAL-62); run_digest encoding (QUAL-63)"
+    "0cc97a98 chore(session): handoff for the 2026-10-28/29 session; restore the 252865a5 history entry"
   ]
 }
