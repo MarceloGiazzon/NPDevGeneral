@@ -2,9 +2,13 @@ id: AIP-7
 title: The Manager's legacy "http" assistant kind still holds a provider key (AssistantConfig.api_key survives as a read-only shim), so AIP-2's "api_key is gone / no Manager feature holds a key" is not literally true
 type: GAP
 severity: LOW
-status: OPEN
+status: WONTFIX
 opened: 2026-10-28
-closed: null
+closed: 2026-10-28
+decision: >-
+  Owner decision 2026-10-28, option (b): the legacy "http" assistant kind, AssistantConfig.api_key and
+  migrate_legacy_assistant_key stay as they are -- removing the legacy path is not a priority now. AIP-2's done-when is
+  intentionally narrowed to the "ai" kind (recorded in AIP-2's note). Reopen if the legacy kind is ever removed.
 source: >-
   2026-10-28 QUAL-61 re-read of AIP-2's done-when against the code (AIP-2's note has the detail).
 surface: manager/ai-keys

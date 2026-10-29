@@ -56,6 +56,9 @@ body {
 
 .tabs {
   display: flex;
+  /* 18 tabs are ~1630px; the window opens at 1080. Without wrapping the whole page scrolls sideways
+     and picking a right-hand tab shifts every screen off to the left. */
+  flex-wrap: wrap;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }

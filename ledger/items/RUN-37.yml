@@ -2,9 +2,9 @@ id: RUN-37
 title: The Manager cannot find a database the user already runs in Docker -- adopting one means hand-typing --externally-provisioned, host, port and password
 type: FEATURE
 severity: LOW
-status: PARTIAL
+status: DONE
 opened: 2026-10-27
-closed: null
+closed: 2026-10-28
 source: >-
   Owner question during the AIP-4 4.5 session (2026-10-27): "what if I have Docker with the DB inside? How can we
   detect and manage this case?" Answered from the code: NPDev manages a container it created (the Monitor reads
@@ -33,7 +33,15 @@ files:
   - NPDevCli/npdev_engines.py
   - NPDevManager/ui/app.js
   - NPDevManager/src/npdev.rs
-verification: NOT_VERIFIED
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_db_discovery.py#test_exited_container_is_never_running_and_never_adoptable
+  asserts: >-
+    a container Docker reports as exited is never reported running and carries no initArgs, so neither the CLI nor
+    the Manager's Find databases offers it for adoption (the selftest.rs lesson the done-when names). Proven red
+    2026-10-28 by making the detector count exited as running: this and 3 sibling tests failed; restored, 30/30.
+  provenRed: true
 note: >-
   2026-10-27: filed, not started. Independent of AIP-4; do not fold it into that item's done-when.
   2026-10-27 (later): CLI half landed -- `npdev db detect [--json]` (NPDevCli/npdev_db_discovery.py, wired in
@@ -58,3 +66,19 @@ note: >-
   --externally-provisioned, a note that NPDev has not confirmed the engine, no password anywhere); the listener was
   closed afterwards; test_db_discovery 30/30. STILL NOT VERIFIED: a real running container (needs the Docker daemon,
   which local-test-profile.json keeps off here) and the "Use this" row in the actual Manager window -- both owner-side.
+  2026-10-28 (owner asked: start Docker and check it). VERIFIED LIVE against a real container: Docker Desktop 29.9.2
+  started, `docker run -d --name npdev-run37-pg -p 5432:5432 postgres:16-alpine`; `npdev db detect --json` reported it
+  as source docker, matchedBy image, state running, running true, localhost:5432, initArgs --engine postgres --db-host
+  localhost --db-port 5432 --externally-provisioned, and the postgres engine row as "already running here"; no password
+  in the output. After `docker stop` the same container was reported state exited, running false, and the postgres
+  engine row fell back to "Start-Environment creates the container". `npdev init <scratch-dir>` with exactly those initArgs
+  wrote db.definition.json with externallyProvisioned true, host localhost, port 5432, password "" -- the container's
+  password appears in no file of the app dir. Unit pins for the exited case exist
+  (test_exited_container_is_never_running_and_never_adoptable, ..._with_published_port_still_not_adoptable). STILL NOT
+  VERIFIED: only the "Use this" row in the real Manager window (app.js:945) -- container npdev-run37-pg was left
+  running for that check.
+  2026-10-28 (later) -- CLOSED. VERIFIED LIVE in the real Manager window (release 0.5.4, Tauri/WebView2 driven over
+  CDP, nothing injected): Apps > Find databases listed "npdev-run37-pg (postgres) localhost:5432 [running] Use this";
+  clicking Use this set engine postgres, host localhost, port 5432, "This server is mine" ticked, password empty.
+  Screenshots: NPDev_General__OutsideRepo/evidence/2026-10-28-run37-aip4-manager-window/final-run37-*.png. The same
+  drive found the unreadable-tabs bug filed and fixed as MON-33. Test container removed afterwards.

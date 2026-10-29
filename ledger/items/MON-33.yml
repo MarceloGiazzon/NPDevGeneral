@@ -1,0 +1,43 @@
+id: MON-33
+title: Manager tabs unreadable -- an unscoped `.screen` rule in monitor.css painted every tab as a CRT (dark text on black, scanlines over the inputs), and the 18-tab bar scrolled the whole window sideways
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-10-28
+closed: 2026-10-28
+source: >-
+  2026-10-28: found driving the REAL Manager window (Tauri/WebView2 over CDP, not headless renders of the UI files)
+  for RUN-37 and AIP-4 step 4.5. Apps tab: panel background rgb(5,8,7), label text rgb(26,26,26).
+surface: manager/ui
+detail: |
+  Every Manager tab is a `<section class="screen">`; the Monitor's CRT cards also name their inner div `.screen`.
+  monitor.css's header promises "EVERYTHING IS SCOPED under #screen-monitor / #screen-scrap", but four base rules
+  (`.screen`, `.screen::before`, `.screen::after`, `.screen .phos`) were bare, so EVERY tab got the CRT surface:
+  near-black background, monospace, overflow hidden, a pointer cursor, and a z-index:3 scanline overlay drawn over the
+  inputs. The form tabs (Apps, Ready, Install, Run, ...) kept their light-theme dark text -> unreadable. The later
+  dark-designed tabs (dbio, evals, gpuchecks, packs, provenance, providers, secrets, studio, verification) style
+  themselves with tokens (--ok, --text, --muted, ...) that only the #screen-monitor/#screen-scrap block defined, so
+  their headings, active sub-tab buttons and names were dark-on-black too. Separately, `.tabs` did not wrap: 18 tabs are
+  ~1630px in a 1080px window, so the page scrolled sideways and picking a right-hand tab shifted every screen left.
+resolution: >-
+  The four CRT rules are scoped to `.crt .screen` (Monitor cards render identically: same height, background, content,
+  compared before/after in the live window). The palette block now also covers the nine dark-designed tabs. `.tabs`
+  wraps (page width 1080 = window, scrollX 0). Manager 0.5.4.
+files:
+  - NPDevManager/ui/monitor.css
+  - NPDevManager/ui/app.css
+  - NPDevManager/src/main.rs
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: NPDevManager/src/main.rs#monitor_css_scope_tests
+  asserts: >-
+    monitor_css_never_styles_a_bare_screen fails on any top-level `.screen` rule in monitor.css;
+    every_dark_tab_gets_the_palette fails when a ui/*.css styling a #screen-<id> with var(--ok) is missing from the
+    palette block. Both proven red on the pre-fix monitor.css (the second named the 8 tabs using var(--ok)).
+  provenRed: true
+note: >-
+  2026-10-28: 57/57 Manager tests. Live, in the rebuilt release 0.5.4 window with nothing injected: all 18 tabs measured
+  (light tabs dark-on-light, dark tabs light-on-dark), page width never above the 1080px window. Evidence: NPDev_General__OutsideRepo/evidence/2026-10-28-run37-aip4-manager-window/.
+  scripts/quality/check-manager-ui-render.mjs NOT run: the Playwright it resolves wants chromium build 1223 and only
+  1169 is installed on this machine (manual check, in no gate).

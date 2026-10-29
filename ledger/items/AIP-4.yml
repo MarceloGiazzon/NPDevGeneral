@@ -2,9 +2,9 @@ id: AIP-4
 title: The Manager as the single AI control point -- AI Providers tab, profiles, per-app AI panel (AI providers plan, Phase 4)
 type: FEATURE
 severity: LOW
-status: PARTIAL
+status: DONE
 opened: 2026-10-22
-closed: null
+closed: 2026-10-28
 source: >-
   AI providers unification plan, revision 2 (2026-10-22), NPDev_General__OutsideRepo/AI_PROVIDERS_UNIFICATION_PLAN_2026-10-22.md (outside the repo), built on the AI contact-point inventory AI_CONTACT_POINTS_2026-10-22.md in the same folder.
 surface: manager/ai-keys
@@ -23,7 +23,7 @@ files:
   - NPDevManager/ui/monitor.js
   - NPDevManager/src/npdev.rs
   - NPDevCli/npdev_ai.py
-verification: UNIT_TESTED
+verification: VERIFIED_LIVE
 guard:
   kind: test
   ref: NPDevCli/tests/test_providers.py#test_reports_per_vendor_readiness_without_any_key_value
@@ -41,3 +41,11 @@ note: >-
   empty lines counted as keys), test_reports_per_vendor_readiness_without_any_key_value fails ("an empty value is not a
   key"); restored, providers suite green (27, 2 skipped). Remaining: 4.5 only, the owner's real-key or local-LLM run in
   the Tauri window (the evidence so far is headless renders over fixtures).
+  2026-10-28 -- 4.5 DONE, item CLOSED. VERIFIED LIVE in the real Manager window (release build, Tauri/WebView2 driven
+  over CDP, keys from env vars, no fixtures): AI Providers > PROVIDERS Test: gemini OK (60 models), groq OK (11),
+  nvidia OK (84), openrouter OK (421); ollama FAILED honestly (no local server: connection refused). PROFILES Test sent
+  real prompts: fast = gemini/gemini-3.6-flash OK (7+1 tok), fast-alt = groq/openai/gpt-oss-120b OK (77+50 tok), on
+  0.5.3 and again on the rebuilt 0.5.4. No known provider needs endpoint typing: the only URL field on the tab is
+  ADD A PROVIDER (for a server NPDev does not ship). "Fix what the screenshots show": they showed every tab unreadable
+  and the tab bar scrolling the window sideways -- filed and fixed as MON-33 (Manager 0.5.4). Screenshots:
+  NPDev_General__OutsideRepo/evidence/2026-10-28-run37-aip4-manager-window/ (aip4-*, final-*).

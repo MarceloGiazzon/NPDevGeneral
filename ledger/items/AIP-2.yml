@@ -54,3 +54,5 @@ note: >-
   `npdev ai generate-routine --provider http` reads NPDEV_AI_API_KEY for a raw endpoint of the user's own, and
   tester_agent.py reads NPDEV_TESTER_ANTHROPIC_API_KEY, the hand-off that npdev_cli sets after resolve_key.
   Whether the legacy "http" kind and its api_key field should now be deleted is an owner decision, left open here.
+  2026-10-28 (AIP-7, owner decision (b)): the legacy kind stays. This item's done-when is narrowed to the "ai" kind --
+  clauses (1) and (2) are intentionally not true for the legacy "http" kind.

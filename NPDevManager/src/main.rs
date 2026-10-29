@@ -1606,8 +1606,9 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.5.3: New app creates each app in a folder of its own (<folder>\\<name>\\<name>), so two apps \
-     made in the same folder no longer overwrite each other's generated artifacts (ArtifactNP)."
+    "0.5.4: Every tab is readable again -- the form tabs (Apps, Ready, Install...) are light, the \
+     dark tabs (AI Providers, Secrets, Packs...) get their light-on-dark colours, and the tab bar \
+     wraps instead of scrolling the whole window sideways."
         .to_string()
 }
 
@@ -1615,7 +1616,7 @@ fn manager_version_description() -> String {
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "App Folders";
+const CURRENT_VERSION_TITLE: &str = "Readable Tabs";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {
@@ -3542,5 +3543,59 @@ mod app_target_dir_tests {
         // The `<model>-app` sibling convention every lookup relies on is unchanged.
         let built = format!("{}-app", a.to_string_lossy());
         assert_eq!(model_dir_of_app(&built).as_deref(), Some(a.to_string_lossy().as_ref()));
+    }
+}
+
+#[cfg(test)]
+mod monitor_css_scope_tests {
+    /// Every Manager tab is a `<section class="screen">`, and the Monitor's CRT cards also call their
+    /// inner div `.screen`. A bare `.screen` rule in monitor.css therefore paints EVERY tab as a
+    /// CRT: near-black background, dark labels on it, and a scanline overlay drawn over the inputs
+    /// (found 2026-10-28 driving the real window for RUN-37). The CRT rules must stay under `.crt`.
+    #[test]
+    fn monitor_css_never_styles_a_bare_screen() {
+        let css = include_str!("../ui/monitor.css");
+        let bare: Vec<&str> = css
+            .lines()
+            .map(str::trim_start)
+            .filter(|l| l.starts_with(".screen") && (l.contains('{') || l.ends_with(',')))
+            .collect();
+        assert!(bare.is_empty(), "unscoped .screen rules in monitor.css: {bare:?}");
+    }
+
+    /// The dark tabs style themselves with tokens (`--ok`, `--text`, ...) that only monitor.css's
+    /// palette block defines. A tab missing from that block gets undefined tokens: dark text on its
+    /// dark panel. Every `#screen-<id>` a ui/*.css styles with `var(--ok)` must be in the block.
+    #[test]
+    fn every_dark_tab_gets_the_palette() {
+        let ui = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui");
+        let monitor = std::fs::read_to_string(ui.join("monitor.css")).unwrap();
+        let block_start = monitor.find("#screen-monitor, #screen-scrap").unwrap();
+        let selector = &monitor[block_start..block_start + monitor[block_start..].find('{').unwrap()];
+        let mut missing = Vec::new();
+        for entry in std::fs::read_dir(&ui).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|e| e.to_str()) != Some("css") {
+                continue;
+            }
+            let css = std::fs::read_to_string(&path).unwrap();
+            if !css.contains("var(--ok)") {
+                continue;
+            }
+            for id in css.split("#screen-").skip(1) {
+                let id: String = id.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+                // app.css styles light tabs too (#screen-run); only its dark-token rules matter, and
+                // those target the Monitor, so the check is per stylesheet that owns one dark tab.
+                if path.ends_with("app.css") || path.ends_with("hosting.css") {
+                    continue;
+                }
+                if !selector.contains(&format!("#screen-{id}")) {
+                    missing.push(format!("{}: #screen-{id}", path.file_name().unwrap().to_string_lossy()));
+                }
+            }
+        }
+        missing.sort();
+        missing.dedup();
+        assert!(missing.is_empty(), "dark tabs without the palette: {missing:?}");
     }
 }
