@@ -749,6 +749,7 @@ final class PackValidation {
                     capabilitiesByLower,
                     errors
             );
+            ComputeValueOperandValidation.validate(procedureName, procedure.steps(), entitiesByLower, errors);
         }
     }
 

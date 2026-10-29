@@ -29,6 +29,9 @@ final class ValidationDiagnosticNormalizer {
             Pattern.compile("^Event\\s+([^\\s:]+)\\s*:\\s*(.+)$");
     private static final Pattern DUPLICATE_CONCEPT_PATTERN =
             Pattern.compile("^Duplicate concept name:\\s*(.+)$");
+    /** REG-313: {@link ComputeValueOperandValidation} writes the kernel's own code into the message; this lifts it into the code field. */
+    private static final Pattern COMPUTE_VALUE_OPERAND_PATTERN =
+            Pattern.compile("^Procedure (\\S+) step (\\S+): " + ComputeValueOperandValidation.CODE + ": ");
     private static final Pattern DUPLICATE_CAPABILITY_PATTERN =
             Pattern.compile("^Duplicate capability name:\\s*(.+)$");
     private static final Pattern DUPLICATE_EVENT_PATTERN =
@@ -377,6 +380,26 @@ final class ValidationDiagnosticNormalizer {
                     capability,
                     "Keep only one binding per capability in the model.",
                     "validation.semantic.duplicate_binding_capability",
+                    boundaryId
+            );
+        }
+
+        Matcher computeOperandMatcher = COMPUTE_VALUE_OPERAND_PATTERN.matcher(safeMessage);
+        if (computeOperandMatcher.find()) {
+            String procedure = computeOperandMatcher.group(1);
+            return new ValidationDiagnostic(
+                    ValidationLayer.SEMANTIC,
+                    severity,
+                    "compute_value_invalid_operand",
+                    safeMessage,
+                    SEMANTIC_SOURCE_MODULE,
+                    computeOperandMatcher.group(2),
+                    null,
+                    null,
+                    "procedures",
+                    procedure,
+                    suggestedFixFor(safeMessage, "compute_value_invalid_operand", null, null, procedure),
+                    helpKeyFor(safeMessage, "validation.semantic.compute_value_invalid_operand"),
                     boundaryId
             );
         }

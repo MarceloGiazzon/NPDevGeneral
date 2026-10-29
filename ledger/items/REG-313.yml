@@ -4,7 +4,7 @@ title: >-
   runtime (COMPUTE_VALUE_INVALID_OPERAND); no today()/addDays/daysBetween
 type: GAP
 severity: HIGH
-status: OPEN
+status: PARTIAL
 opened: 2026-10-29
 closed: null
 source: >-
@@ -23,7 +23,37 @@ resolution: >-
   functions (addDays, today, daysBetween) exist in rules, defaults, procedures and query parameters with a
   dsl-conformance-max example and a behaviour probe -- or (b) is an explicit owner decision to defer, with (a)
   still done.
-verification: NOT_VERIFIED
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ComputeValueOperandValidation.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ValidationDiagnosticNormalizer.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ComputeValueOperandValidationTest.java
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ComputeValueOperandValidationTest.java#addingADayOffsetToADateFieldIsRejected
+  asserts: >-
+    a computeValue whose operand is $p.enrolmentDate, p being a readConcept of a concept that declares enrolmentDate
+    as a date, is refused with COMPUTE_VALUE_INVALID_OPERAND naming left, Participant.enrolmentDate and date; sibling
+    tests cover datetime/boolean fields, non-numeric literals ("2026-10-01", true, the "$$5" escape), nested
+    branches, and the no-false-positive cases ($input.*, string fields, undeclared fields, a target bound twice).
+  provenRed: true
 note: >-
   The largest domain-fit gap the simulation found: 'enrol on day 0, get your dated windows' is the core of the
   domain. Not reproduced by the lead; agent's repro.
+  2026-10-29 part (a) DONE, part (b) OPEN pending an owner decision. Reproduced the agent's repro first: its model
+  (evidence/2026-10-28-own2-sim/model.json, PlanVisitProc step 2, add($p.enrolmentDate, $vt.dayOffset)) validated
+  with 0 errors. After the fix the same model reports exactly 1 error at steps[2] (the later steps read
+  $targetDate, a computeValue output, which is numeric). New ComputeValueOperandValidation walks one procedure,
+  maps readConcept targets to concepts and refuses an operand that is provably non-numeric: a non-numeric literal,
+  or $step.field where the field is date/datetime/boolean/uuid/object/array/file. Conservative on purpose --
+  $input.*, string fields (may hold digits), undeclared fields and a target bound to two concepts are left to the
+  runtime. The message carries the kernel's own COMPUTE_VALUE_INVALID_OPERAND code, and ValidationDiagnosticNormalizer
+  lifts it into the structured code field (compute_value_invalid_operand, was the generic semantic_validation_error
+  for every procedure-step error). Proven red: the 6 rejection tests failed with [] (validator accepted) before the
+  class existed. The structured-code test was written against the generic code the repro report showed and not run
+  red separately. No false positives: the full dsl suite is green, and the 3 corpus models that use computeValue
+  (dsl-conformance-max, AppGen WmsOffice, WmsOfficePackTest) validate with 0 COMPUTE_VALUE_INVALID_OPERAND.
+  Not covered: operands from conceptCreate/query-row/loop-item variables (only readConcept targets are typed), and
+  nested paths ($p.a.b). Part (b), date functions in rules/defaults/procedures/query parameters, is a DSL
+  design decision and is waiting for the owner.

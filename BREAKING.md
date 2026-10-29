@@ -5,6 +5,14 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-29 — a `computeValue` step with a provably non-numeric operand is refused (REG-313)
+
+**What changes.** `computeValue` (`add`/`subtract`) only does numbers: at runtime a step whose `left`/`right` is not numeric fails with `COMPUTE_VALUE_INVALID_OPERAND`. Validation accepted such a step (the reproduction was `add($p.enrolmentDate, $vt.dayOffset)`, a date plus a day count), so the model built and the procedure failed on first use. `npdev validate model` now reports it as an error (`compute_value_invalid_operand`, naming the step, the side and the field) when the operand is a literal that is not a number (a boolean, a map/list, a string that does not parse, including the `"$$x"` escape), or `$step.field` where `step` is a `readConcept` target and `field` is declared `date`, `datetime`, `boolean`, `uuid`, `object`, `array` or `file`. Operands it cannot type (`$input.*`, string fields, undeclared fields, a target bound to two concepts) are still left to the runtime.
+
+**Who is affected.** Only models that could never have run that step. No corpus model is affected (`dsl-conformance-max`, `WmsOffice` and `WmsOfficePackTest` validate unchanged).
+
+**Codemod.** None possible: the arithmetic the author wanted (date plus days) has no `computeValue` spelling today, so there is nothing to rewrite it to. Compute from a numeric field instead; date functions are tracked separately under REG-313 (b).
+
 ## 2026-10-24 — a `connectable: "anchor"` field is unique per tenant; its bonds use a composite key (ENF-1)
 
 **What changes.** A natural-key anchor (`unique: true` + `connectable: "anchor"`, not the id) was globally unique: one database-wide `uq_<table>_<col>` constraint, so a second tenant could not reuse a value and learned from the refusal that another tenant had it. It is now unique per tenant, like every other unique field: `uqt_<table>_<col>` on `(tenant_id, col)`. A scalar reference `via` such an anchor gets the foreign key `fkt_<table>_<col>` on `(tenant_id, col) -> (tenant_id, anchor)`, still `ON UPDATE CASCADE`, so a row can no longer point at another tenant's anchor. A bond to an `id` is unchanged. A `multiple` (N:M) reference `via` a natural-key anchor is now refused by validation (and by the generator): its junction table has no tenant column to complete the key, so it must go via the target's `id`.
