@@ -37,8 +37,16 @@ the row's own field values plus a set of `$`-prefixed pseudo-variables describin
 (see `ComputedExpression`'s tokenizer) — it's not a general-purpose prefix operator.
 
 - **`read`** is evaluated against the record being read.
-- **`write`** is evaluated against the record's *previous* state on update/delete (the row as it
-  exists before the mutation), or the incoming payload on create (there is no previous state yet).
+- **`write`** is evaluated against the incoming payload on create (there is no previous state yet),
+  against the row as it exists before the mutation on delete, and against **both** the stored row
+  and the row as it will be written (the stored row overlaid with the payload) on update. So a
+  caller cannot touch a row outside their scope, create one claiming a scope that is not theirs, or
+  hand a row they own to someone else. A rule over a field the write itself changes, such as
+  `status == 'DRAFT'`, therefore has to hold for the new value too, so it cannot be used to guard
+  "closing" a row; use a lifecycle guard for that.
+- The rule reads **one row**. It cannot name the row's parent: a child created under another
+  coordinator's parent passes if the child's own fields pass (tracked as REG-317, cross-concept
+  rules).
 
 ## Semantics: fail closed, worded like "not found"
 

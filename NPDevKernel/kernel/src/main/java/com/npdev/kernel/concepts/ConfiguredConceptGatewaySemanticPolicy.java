@@ -527,13 +527,22 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         if (concept == null || concept.access() == null || !hasText(concept.access().write())) {
             return true;
         }
-        // The previous record (update/delete) if present, else the incoming data (create) --
-        // see the interface javadoc for why: a caller must not be able to modify/delete a row
-        // outside their own scope, NOR create one claiming ownership outside their own scope.
-        Map<String, Object> subject = request.previousRecord()
-                .map(ConceptRecord::data)
-                .orElse(request.data());
-        return evaluateAccessRule(concept.access().write(), subject, request.executionContext());
+        // Create: the incoming data. Update/delete: the stored row AND the row as it will be written
+        // (stored row overlaid with the incoming data) -- see the interface javadoc for why: a
+        // caller must not modify/delete a row outside their own scope, NOR create one claiming
+        // ownership outside it, NOR rewrite a row they own so it falls outside it (SEC-16).
+        Optional<ConceptRecord> previous = request.previousRecord();
+        if (previous.isEmpty()) {
+            return evaluateAccessRule(concept.access().write(), request.data(), request.executionContext());
+        }
+        Map<String, Object> stored = previous.get().data();
+        if (!evaluateAccessRule(concept.access().write(), stored, request.executionContext())) {
+            return false;
+        }
+        Map<String, Object> written = new LinkedHashMap<>(stored);
+        written.putAll(request.data());
+        return written.equals(stored)
+                || evaluateAccessRule(concept.access().write(), written, request.executionContext());
     }
 
     /**

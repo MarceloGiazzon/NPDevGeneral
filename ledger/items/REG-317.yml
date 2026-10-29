@@ -17,7 +17,11 @@ detail: >-
   every Participant and Visit, with nothing keeping copies in sync; 'this visit type needs a pharmacist' and
   'the assigned person has the right staff role' cannot be enforced; conflicts() covers one resource per rule,
   so staff double-booking across slots cannot be checked; nothing creates one Visit per VisitType on
-  enrolment.
+  enrolment. Also (from SEC-16, the half left open): an access.write rule reads one row, so a child created
+  under another coordinator's parent passes when the child's own fields pass (alice attaches a Visit, with
+  coordinatorUsername alice, to bob's Participant). Closing it needs a rule that can name the parent, or the
+  reference check running under the caller's own read scope (a behaviour change for system and flow callers);
+  either is a design decision, not a patch.
 resolution: >-
   Done when each gap is either delivered (with a corpus example) or recorded as an owner decision / accepted
   boundary.

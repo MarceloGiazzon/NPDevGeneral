@@ -45,9 +45,11 @@ public interface ConceptGatewaySemanticPolicy {
     /**
      * LNCH-13: row-level (data-scoped) write authorization -- does the caller's declared
      * {@code access.write} rule (if any) allow this save/delete to proceed? Evaluated against
-     * the record being affected -- the previous record for an update/delete (so a caller can't
-     * modify/delete a row outside their own scope), or the incoming data for a create (so a
-     * caller can't create a row claiming ownership outside their own scope).
+     * the record being affected -- for an update/delete the previous record (so a caller can't
+     * modify/delete a row outside their own scope) and, for an update, also the row as it will be
+     * written (the previous record overlaid with the incoming data), so a caller can't hand a row
+     * to someone else either (SEC-16); for a create the incoming data (so a caller can't create a
+     * row claiming ownership outside their own scope).
      */
     default boolean isRowWritable(ConceptGatewayRequestContext request) {
         return true;

@@ -76,7 +76,7 @@ class DefaultConceptGatewayRowAuthzRaceTest {
                         new CompiledField("status", "string", "String", false, true, false)
                 ),
                 List.of(), List.of(), null, null, null, null, List.of(),
-                new CompiledConceptAccess(null, "ownerId == $user.id")
+                new CompiledConceptAccess(null, "ownerId == $user.id || $user.roles.contains('ADMIN')")
         );
         return new CompiledModel("test", "1.0.0", "1.0.0", Map.of(ticket.getName(), ticket));
     }
@@ -153,13 +153,15 @@ class DefaultConceptGatewayRowAuthzRaceTest {
 
             assertTrue(lockAcquired.await(10, TimeUnit.SECONDS), "Thread A must acquire the row lock");
 
-            // Thread B: (still acting as alice, still the CURRENTLY COMMITTED owner) reassigns
-            // ownership to bob. Its own findByIdForUpdate must block on the same row -- proven by a
-            // bounded get() timing out -- rather than read a stale snapshot and race ahead.
+            // Thread B: an admin reassigns ownership to bob (SEC-16: the owner can no longer hand
+            // the row away herself -- the written row must satisfy the rule too -- so the contending
+            // reassignment comes from someone the rule admits). Its own findByIdForUpdate must block
+            // on the same row -- proven by a bounded get() timing out -- rather than read a stale
+            // snapshot and race ahead.
             Future<ConceptRecord> threadB = pool.submit(() -> gatewayB.save(
                     new ConceptWriteRequest("Ticket", "T1", "tenant-a",
                             Map.of("id", "T1", "ownerId", "bob", "status", "Open"), null, false),
-                    ExecutionContext.of("tenant-a", "alice")));
+                    new ExecutionContext("tenant-a", "admin-1", Map.of(), java.util.Set.of("ADMIN"))));
 
             assertThrows(TimeoutException.class, () -> threadB.get(500, TimeUnit.MILLISECONDS),
                     "B18 fix: a concurrent writer's own findByIdForUpdate against the same row must "

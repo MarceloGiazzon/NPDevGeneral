@@ -4,7 +4,7 @@ title: >-
   their own scope, or create a child row under another coordinator's parent
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: PARTIAL
 opened: 2026-10-29
 closed: null
 source: >-
@@ -19,6 +19,39 @@ detail: >-
 resolution: >-
   Done when the write rule is also evaluated against the NEW row on create/update (and a declared parent-scope
   rule is possible), with behaviour probes for both cases -- or an owner decision that records the posture.
-verification: NOT_VERIFIED
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConfiguredConceptGatewaySemanticPolicy.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptGatewaySemanticPolicy.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/ConfiguredConceptGatewaySemanticPolicyTest.java
+  - NPDevSamples/dsl-conformance-max/behavior-probes/10-concept-field.json
+  - docs/reference/ROW_LEVEL_AUTHORIZATION.md
+  - BREAKING.md
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/ConfiguredConceptGatewaySemanticPolicyTest.java#ownerCannotReassignARowOutOfTheirOwnWriteScope
+  asserts: >-
+    with access.write = "text == $user.id", alice saves a row owned by alice, then saves the same id with text
+    "bob": the save is refused with ROW_SCOPE_DENIED and the stored row still says alice. Siblings: an edit that
+    keeps the row in scope still succeeds, and a partial update that omits the owner field is judged on the row
+    it produces (stored owner kept; an explicit foreign owner denied).
+  provenRed: true
 note: >-
-  Not reproduced by the lead; agent's report. Security-relevant: row-level scoping is a documented feature.
+  2026-10-29 reassign half DONE; parent-scope half OPEN. Not reproduced by the lead at filing (agent's report);
+  reproduced here as a unit test first: isRowWritable used previousRecord().orElse(request.data()), so on an
+  update the incoming data was never looked at, and the two new tests failed on exactly that (assertThrows at the
+  reassign, assertFalse at the foreign-owner partial update). Fix: on update the rule must hold for the stored row
+  AND for the stored row overlaid with the payload (the REST layer already passes the merged row, other callers a
+  patch); create (payload) and delete (stored row) unchanged. Kernel suite green (28 policy tests, no failures in
+  96 suites). Live: run-behavior-probes -Only 10-concept-field 27/27, including the new
+  cf-concept-access-write-denies-reassigning-a-row-out-of-scope (403 ROW_SCOPE_DENIED, row unchanged, in-scope
+  edit 200). The old probe cf-concept-access-read-hides-rows-outside-scope showed read-hiding by handing an order
+  over with a PUT -- asserting the hole -- so it now uses a second identity (key_alice) instead. A scan of every
+  corpus and AppGen model found no concept-level access.write rule that tests a field an update itself changes
+  (all are role- or ownership-based), so nothing else needed changing. BREAKING.md entry and the
+  ROW_LEVEL_AUTHORIZATION.md write bullet carry the new meaning. REMAINING: a child created under another
+  coordinator's parent (Visit under bob's Participant, with the child's own coordinator field set to alice)
+  still passes, because the rule reads one row. That needs a rule that can name the parent -- the cross-concept
+  rules gap REG-317 already tracks -- or an owner decision that records the posture; close this item when either
+  lands. Not run after the change: run-all-gates, RuntimeHost RowLevelAuthorizationAttackTest (needs the full
+  RuntimeHost gate).

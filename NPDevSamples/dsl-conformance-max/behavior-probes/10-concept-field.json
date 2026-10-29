@@ -559,7 +559,95 @@
         "conceptAccess.read",
         "conceptAccess.write"
       ],
-      "description": "concept.access.read (customerEmail == $user.id) hides a row from the caller once it no longer satisfies the rule: an order handed over to another customer disappears from get-by-id (404) and from the list. NOTE the hand-over PUT itself is accepted (200): the write rule is checked against the stored row, not the new payload - arguably intended pre-image semantics, asserted as-is. WidgetOrder creation used to answer 500 (REG-259, fixed) and now answers 200; the order is still located by a unique status tag.",
+      "description": "concept.access.read (customerEmail == $user.id) hides a row from every caller it does not belong to: an order placed by another customer (${key_alice}, actor rep1probe-alice) is visible to her but is a 404 on get-by-id and absent from the list for the default developer actor. (A row used to be shown leaving a caller's scope by handing it over with a PUT; since SEC-16 that hand-over is refused, see cf-concept-access-write-denies-reassigning-a-row-out-of-scope.) The order is located by a unique status tag.",
+      "steps": [
+        {
+          "name": "tag",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "tag-${rand}",
+            "rows": 1,
+            "cols": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "tag": "$.name"
+          }
+        },
+        {
+          "name": "another customer places her own order",
+          "apiKey": "${key_alice}",
+          "method": "POST",
+          "path": "/api/concepts/widget_orders",
+          "body": {
+            "customerEmail": "rep1probe-alice",
+            "status": "R-${tag}",
+            "lineCount": 1
+          },
+          "expect": {
+            "status": [
+              201,
+              200
+            ]
+          }
+        },
+        {
+          "name": "order visible to its owner",
+          "apiKey": "${key_alice}",
+          "method": "GET",
+          "path": "/api/concepts/widget_orders?where=status:eq:R-${tag}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 1
+              },
+              "$.content[0].customerEmail": "rep1probe-alice"
+            }
+          },
+          "save": {
+            "oid": "$.content[0].id"
+          }
+        },
+        {
+          "name": "get by id is 404 for anyone else",
+          "method": "GET",
+          "path": "/api/widget_orders/${oid}",
+          "expect": {
+            "status": 404
+          }
+        },
+        {
+          "name": "list does not return it to anyone else",
+          "method": "GET",
+          "path": "/api/concepts/widget_orders?where=status:eq:R-${tag}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 0
+              }
+            }
+          }
+        },
+        {
+          "name": "cleanup",
+          "apiKey": "${key_alice}",
+          "method": "DELETE",
+          "path": "/api/widget_orders/${oid}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "cf-concept-access-write-denies-reassigning-a-row-out-of-scope",
+      "keywords": [
+        "conceptAccess.write"
+      ],
+      "description": "SEC-16: concept.access.write (customerEmail == $user.id) must hold for the row as it will be written as well as for the stored row. The owner of an order cannot hand it to another customer: the PUT is refused with 403 ROW_SCOPE_DENIED and the stored customerEmail is unchanged, while an edit that keeps the order in the caller's scope is still accepted (200).",
       "steps": [
         {
           "name": "tag",
@@ -583,7 +671,7 @@
           "path": "/api/concepts/widget_orders",
           "body": {
             "customerEmail": "developer",
-            "status": "R-${tag}",
+            "status": "W-${tag}",
             "lineCount": 1
           },
           "expect": {
@@ -594,9 +682,9 @@
           }
         },
         {
-          "name": "order visible to its owner",
+          "name": "locate it",
           "method": "GET",
-          "path": "/api/concepts/widget_orders?where=status:eq:R-${tag}",
+          "path": "/api/concepts/widget_orders?where=status:eq:W-${tag}",
           "expect": {
             "status": 200,
             "json": {
@@ -611,41 +699,50 @@
           }
         },
         {
-          "name": "hand over to another customer",
+          "name": "hand it to another customer: refused",
           "method": "PUT",
           "path": "/api/widget_orders/${oid}",
           "body": {
             "customerEmail": "${tag}@other.test"
           },
           "expect": {
-            "status": 200,
+            "status": 403,
             "json": {
-              "$.customerEmail": {
-                "matches": "@other.test$"
-              }
+              "$.code": "ROW_SCOPE_DENIED"
             }
           }
         },
         {
-          "name": "get by id now 404",
+          "name": "still owned by the caller",
           "method": "GET",
           "path": "/api/widget_orders/${oid}",
           "expect": {
-            "status": 404
+            "status": 200,
+            "json": {
+              "$.customerEmail": "developer"
+            }
           }
         },
         {
-          "name": "list no longer returns it",
-          "method": "GET",
-          "path": "/api/concepts/widget_orders?where=status:eq:R-${tag}",
+          "name": "an edit that stays in scope is accepted",
+          "method": "PUT",
+          "path": "/api/widget_orders/${oid}",
+          "body": {
+            "lineCount": 2
+          },
           "expect": {
             "status": 200,
             "json": {
-              "$.content": {
-                "len": 0
-              }
+              "$.lineCount": 2,
+              "$.customerEmail": "developer"
             }
           }
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/widget_orders/${oid}",
+          "stopOnFail": false
         }
       ]
     },

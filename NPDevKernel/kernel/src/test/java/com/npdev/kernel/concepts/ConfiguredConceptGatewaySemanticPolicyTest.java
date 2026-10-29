@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -481,6 +482,51 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
                         nonCurator
                 )
         );
+    }
+
+    /**
+     * SEC-16 (OWN-2 5.2 simulation): with {@code access.write = "text == $user.id"} (text standing in
+     * for an owner field) the rule was evaluated against the STORED row on an update, so its owner
+     * could rewrite the owner field to anyone else and hand the row away. The row AS WRITTEN must
+     * satisfy the rule too, and a refused reassignment must leave the stored row untouched.
+     */
+    @Test
+    void ownerCannotReassignARowOutOfTheirOwnWriteScope() {
+        ConceptGateway gateway = ConceptGateways.inMemory(labelPolicy(null, "text == $user.id"));
+        ExecutionContext alice = new ExecutionContext("tenant-a", "alice", Map.of(), java.util.Set.of("USER"));
+        gateway.save(new ConceptWriteRequest("Label", "label-o1", null, Map.of("text", "alice")), alice);
+
+        ConceptGatewayAccessDeniedException denied = assertThrows(ConceptGatewayAccessDeniedException.class,
+                () -> gateway.save(new ConceptWriteRequest("Label", "label-o1", null, Map.of("text", "bob")), alice));
+        assertEquals("ROW_SCOPE_DENIED", denied.code());
+        assertEquals("alice", gateway.read(new ConceptReadRequest("Label", "label-o1", "tenant-a"), alice).orElseThrow().data().get("text"),
+                "a refused reassignment must not change the stored row");
+    }
+
+    /** SEC-16: the second check only adds the NEW row -- an edit that stays inside the caller's scope still succeeds. */
+    @Test
+    void ownerCanStillEditARowAndKeepItInScope() {
+        ConceptGateway gateway = ConceptGateways.inMemory(labelPolicy(null, "text == $user.id"));
+        ExecutionContext alice = new ExecutionContext("tenant-a", "alice", Map.of(), java.util.Set.of("USER"));
+        gateway.save(new ConceptWriteRequest("Label", "label-o2", null, Map.of("text", "alice", "note", "a")), alice);
+
+        ConceptRecord saved = gateway.save(
+                new ConceptWriteRequest("Label", "label-o2", null, Map.of("text", "alice", "note", "b")), alice);
+
+        assertEquals("b", saved.data().get("note"));
+    }
+
+    /** SEC-16: a partial update that omits the owner field keeps the stored owner, so it is judged on that. */
+    @Test
+    void partialUpdateIsJudgedOnTheRowItProduces() {
+        ConceptGatewaySemanticPolicy policy = labelPolicy(null, "text == $user.id");
+        ExecutionContext alice = new ExecutionContext("tenant-a", "alice", Map.of(), java.util.Set.of("USER"));
+        ConceptRecord stored = new ConceptRecord("Label", "label-o3", "tenant-a", Map.of("text", "alice", "note", "a"));
+        ConceptGatewayRequestContext request = new ConceptGatewayRequestContext(
+                ConceptGatewayOperation.SAVE, "Label", "label-o3", "tenant-a", Map.of("note", "b"), alice, Optional.of(stored));
+
+        assertTrue(policy.isRowWritable(request));
+        assertFalse(policy.isRowWritable(request.withData(Map.of("text", "bob"))));
     }
 
     private static ConfiguredConceptGatewaySemanticPolicy curatedLabelPolicy() {

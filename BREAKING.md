@@ -5,6 +5,14 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-29 — `access.write` must also hold for the row as written, so a row cannot be handed out of scope (SEC-16)
+
+**What changes.** A concept's `access.write` rule was evaluated, on an update, against the stored row only. An owner (`coordinator == $user.id`) could therefore PUT a different owner and hand the row away, and then lose sight of it. The rule is now also evaluated against the row the update produces (the stored row overlaid with the payload); either failing is `403 ROW_SCOPE_DENIED` and nothing is stored. Create (payload) and delete (stored row) are unchanged.
+
+**Who is affected.** Models whose `access.write` names a field that an update itself changes: an ownership rule that someone relied on to reassign rows, or a state rule such as `status == 'DRAFT'` whose own write moves the row out of that state (it now needs `|| status == 'SUBMITTED'`-style widening, or a lifecycle guard instead). No corpus model is affected: `dsl-conformance-max` (WidgetOrder) had one probe that handed an order over and it now asserts the refusal.
+
+**Codemod.** None: the model's shape is unchanged; only a rule's meaning on update tightened.
+
 ## 2026-10-29 — a `computeValue` step with a provably non-numeric operand is refused (REG-313)
 
 **What changes.** `computeValue` (`add`/`subtract`) only does numbers: at runtime a step whose `left`/`right` is not numeric fails with `COMPUTE_VALUE_INVALID_OPERAND`. Validation accepted such a step (the reproduction was `add($p.enrolmentDate, $vt.dayOffset)`, a date plus a day count), so the model built and the procedure failed on first use. `npdev validate model` now reports it as an error (`compute_value_invalid_operand`, naming the step, the side and the field) when the operand is a literal that is not a number (a boolean, a map/list, a string that does not parse, including the `"$$x"` escape), or `$step.field` where `step` is a `readConcept` target and `field` is declared `date`, `datetime`, `boolean`, `uuid`, `object`, `array` or `file`. Operands it cannot type (`$input.*`, string fields, undeclared fields, a target bound to two concepts) are still left to the runtime.
