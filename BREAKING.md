@@ -5,6 +5,14 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-30 — an `npdev.auth.api-keys` value with no parseable mapping fails startup instead of booting a locked-out app (REG-319)
+
+**What changes.** In `apikey` mode `StartupValidator` only required the value to contain an `=`. An entry needs `apiKey=tenant:actor[:ROLE[|ROLE...]]`; the generated filter drops one that lacks a tenant and an actor, and answers its caller `401 invalid_api_key`. `NPDEV_AUTH_APIKEYS=k=ADMIN` therefore booted clean and then refused every request, with nothing in the log. Startup now fails with a message naming the expected shape (and never the key) when not one entry parses, and the filter logs at WARN, at startup, how many entries it dropped when only some do. Validator and filter now call one parser, `com.npdev.kernel.ports.ApiKeyMappings`.
+
+**Who is affected.** Only a deployment whose every entry was already being dropped, which could not authenticate anyone through `X-Api-Key`. A value with at least one good entry boots as before.
+
+**Codemod.** None: it is deployment configuration, not model shape. Write the entry as `apiKey=tenant:actor[:ROLE]` (see `docs/CONFIGURATION.md`, "apikey mode").
+
 ## 2026-10-29 — `access.write` must also hold for the row as written, so a row cannot be handed out of scope (SEC-16)
 
 **What changes.** A concept's `access.write` rule was evaluated, on an update, against the stored row only. An owner (`coordinator == $user.id`) could therefore PUT a different owner and hand the row away, and then lose sight of it. The rule is now also evaluated against the row the update produces (the stored row overlaid with the payload); either failing is `403 ROW_SCOPE_DENIED` and nothing is stored. Create (payload) and delete (stored row) are unchanged.

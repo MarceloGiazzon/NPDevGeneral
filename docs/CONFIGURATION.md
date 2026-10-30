@@ -99,10 +99,12 @@ Only checked when `npdev.auth.enabled` (default `true`).
   NPDEV_AUTH_APIKEYS=admin-key=dev:admin:ADMIN;emp-key=dev:emp:EMPLOYEE;appr-key=dev:appr:LEAVE_APPROVER|EMPLOYEE;plain-key=dev:plain
   ```
 
-  **An entry with fewer than two `:`-parts is silently dropped, not rejected.** `key=ADMIN` or
-  `key=tenant` (the shape this page used to describe) parses to nothing, and `StartupValidator` only
-  checks that the value contains an `=`, so the app boots and then answers every request with
-  `401 invalid_api_key`. If every key is rejected, check the mapping shape first.
+  **An entry with fewer than two `:`-parts is dropped, not rejected.** `key=ADMIN` or `key=tenant`
+  (the shape this page used to describe) parses to nothing, and a caller presenting that key gets
+  `401 invalid_api_key`. If not one entry parses, startup fails with a message naming the expected
+  shape (it never prints the key). If only some do, the app boots and logs at WARN, once at startup,
+  how many entries were ignored. `StartupValidator` and the request filter share one parser,
+  `com.npdev.kernel.ports.ApiKeyMappings`.
 
   Credentials of tenants onboarded at runtime are looked up only after these static mappings miss, so
   they need no entry here. When the built-in identity pack holds an active user for

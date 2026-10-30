@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -100,6 +101,51 @@ class StartupValidatorTest {
         );
 
         assertThrows(IllegalStateException.class, validator::validate);
+    }
+
+    /**
+     * REG-319: {@code key=ADMIN} (the shape docs/CONFIGURATION.md used to describe) contains an '=' but
+     * names no tenant and actor, so the filter drops it and every request 401s. The old check only
+     * looked for the '='. The refusal must name the expected shape and must not echo the value: the
+     * part before the '=' is the secret.
+     */
+    @Test
+    void shouldFailWhenAuthEnabledAndNoMappingIsParseable() {
+        for (String unparseable : new String[] {"s3cret-key=ADMIN", "s3cret-key=tenant", "s3cret-key=:actor", "s3cret-key=", "=t:a", " ; ;"}) {
+            IllegalStateException failure = assertThrows(IllegalStateException.class,
+                    authEnabledValidator(unparseable)::validate, unparseable);
+
+            assertTrue(failure.getMessage().contains("apiKey=tenant:actor[:ROLE[|ROLE...]]"), failure.getMessage());
+            assertTrue(failure.getMessage().contains("#authentication"), failure.getMessage());
+            assertFalse(failure.getMessage().contains("s3cret-key"), "the error must not leak the key: " + failure.getMessage());
+        }
+    }
+
+    @Test
+    void shouldAcceptWhenAtLeastOneMappingIsParseable() {
+        // a partly-broken value still boots (the filter logs how many entries it dropped); only a value
+        // that locks every caller out is refused
+        assertDoesNotThrow(authEnabledValidator("good=t:a:ADMIN;bad=ADMIN")::validate);
+        assertDoesNotThrow(authEnabledValidator("plain=dev:plain")::validate);
+        assertDoesNotThrow(authEnabledValidator("k=dev:developer:admin;")::validate);
+    }
+
+    private StartupValidator authEnabledValidator(String apiKeyMappings) {
+        RuntimeSettings settings = new RuntimeSettings(
+                "inproc", false, 100, 2000, true, 1024, 64, null, null, null, 5, 30, 10, 4096, null, true);
+        return new StartupValidator(
+                settings,
+                null,
+                eventStore(),
+                flowInstanceStore(),
+                new MockEnvironment(),
+                "apikey",
+                apiKeyMappings,
+                null,
+                null,
+                null,
+                null
+        );
     }
 
     @Test

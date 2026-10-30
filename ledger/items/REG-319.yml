@@ -4,9 +4,9 @@ title: >-
   (e.g. key=ADMIN) boots clean and then 401s every request
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-29
-closed: null
+closed: 2026-10-30
 source: >-
   Found while fixing REG-314 (2026-10-29): reading the generated RuntimeApiKeyAuthFilter's parseMappings against
   StartupValidator.validateAuth.
@@ -25,9 +25,44 @@ resolution: >-
   the expected apiKey=tenant:actor[:ROLE] shape (or the filter logs, at WARN and at startup, how many entries it
   dropped), pinned by a test that is red on the old behaviour.
 files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/ApiKeyMappings.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/ports/ApiKeyMappingsTest.java
   - NPDevKernel/adapters/runtime-validation/src/main/java/com/npdev/adapters/runtime/validation/StartupValidator.java
+  - NPDevKernel/adapters/runtime-validation/src/test/java/com/npdev/adapters/runtime/validation/StartupValidatorTest.java
   - NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-api-key-auth-filter.mustache
-verification: NOT_VERIFIED
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/ApiKeyMappingGrammarContractTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/config/RuntimeApiKeyAuthFilterTest.java
+  - docs/CONFIGURATION.md
+  - BREAKING.md
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/runtime-validation/src/test/java/com/npdev/adapters/runtime/validation/StartupValidatorTest.java#shouldFailWhenAuthEnabledAndNoMappingIsParseable
+  asserts: >-
+    with auth enabled in apikey mode, a npdev.auth.api-keys value in which not one entry parses (s3cret-key=ADMIN,
+    s3cret-key=tenant, s3cret-key=:actor, s3cret-key=, =t:a, only separators) fails StartupValidator with a message
+    naming apiKey=tenant:actor[:ROLE[|ROLE...]] and the #authentication anchor and never the key; the sibling test
+    shouldAcceptWhenAtLeastOneMappingIsParseable pins that a partly-broken value still boots. Proven red 2026-10-30
+    against the old '=' check (the first assertion failed on the missing shape).
+  provenRed: true
 note: >-
-  Filed from reading the code, not reproduced by booting an app. Reproduce first: boot with
-  NPDEV_AUTH_APIKEYS=k=ADMIN and call any /api route with X-Api-Key: k.
+  2026-10-30: fixed with ONE parser, not a second copy of the grammar. com.npdev.kernel.ports.ApiKeyMappings holds
+  the grammar; StartupValidator calls it to refuse a value that parses to nothing, and the generated
+  RuntimeApiKeyAuthFilter builds its lookup from it and logs at WARN, once at startup, how many entries it dropped
+  (a count, never the entry: the key is a secret). Both halves of the done-when are therefore met, the validator
+  half as the hard failure and the filter log for the partly-broken case. No twin-pair rule is needed because there is
+  no twin any more; ApiKeyMappingGrammarContractTest now pins that the template carries no grammar of its own, and
+  REG-314's guard moved to the behavioural ApiKeyMappingsTest. Moving the parser out of the generated filter dropped
+  RuntimeHost line coverage 31.6268 -> 31.6224 (covered lines now live in the kernel), so a real filter test,
+  RuntimeApiKeyAuthFilterTest, was added instead of lowering the floor: 32.0172, filter 8 -> 50 of 52 lines covered.
+  Partial values (some good entries, some dropped) deliberately still boot: refusing them would take down apps that
+  work today for the callers whose keys parse.
+  Live 2026-10-30 on the assembled simple-contact-intake app (auth enabled, port 8199, regenerated with the new
+  filter): NPDEV_AUTH_APIKEYS=<key>=ADMIN refused to start at the startupValidator bean with "npdev.auth.api-keys must
+  define at least one mapping of the form apiKey=tenant:actor[:ROLE[|ROLE...]] ... (1 non-blank entry was ignored ...)
+  (See docs/CONFIGURATION.md#authentication)" and the key appears nowhere in the log. With <bad>=ADMIN;good=dev:alice:ADMIN
+  the app booted, logged one WARN "1 entry did not match ... and was ignored", answered the good key past the filter
+  (404 on a nonexistent route), the dropped key 401 invalid_api_key and no key 401 missing_api_key. Not reproduced on the
+  OLD code by booting (the old behaviour is read from the code and pinned red by the unit test). Side finding, not fixed:
+  a gate run left npdev/support/migration-risk-report.json inside the sample's signed npdev-generated tree, so the next
+  boot of that sample failed the strict-execution signature check until the file was removed.

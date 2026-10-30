@@ -1,6 +1,7 @@
 package {{configPackage}};
 
 import com.npdev.kernel.ports.ApiKeyCredentialResolver;
+import com.npdev.kernel.ports.ApiKeyMappings;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -8,12 +9,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
     public static final String CLAIMS_ATTRIBUTE = "npdev.auth.claims";
@@ -29,7 +27,24 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
     // and always win; credentialResolver is consulted only as a fallback for a key it doesn't
     // recognize, so a tenant onboarded at runtime (no regenerate/restart) can still authenticate.
     public RuntimeApiKeyAuthFilter(String encodedMappings, ApiKeyCredentialResolver credentialResolver) {
-        this.byApiKey = parseMappings(encodedMappings);
+        // R7 Stage A (fail closed): no static-mapping default of any kind. A blank, missing, or
+        // malformed value parses (ApiKeyMappings, the one shared grammar) to an EMPTY map -- every API
+        // key request then falls through to unauthorized("invalid_api_key") -- rather than the previous
+        // behavior of silently granting ADMIN via the hardcoded "api-dev"/"dev-key" pair whenever
+        // configuration was absent or broken. A misconfigured deployment refuses every request instead
+        // of quietly authenticating as an administrator.
+        ApiKeyMappings.Parsed parsed = ApiKeyMappings.parse(encodedMappings);
+        Map<String, PrincipalClaims> claimsByKey = new LinkedHashMap<>();
+        parsed.byApiKey().forEach((key, principal) -> claimsByKey.put(key, PrincipalClaims.fromCredential(principal)));
+        this.byApiKey = Map.copyOf(claimsByKey);
+        // REG-319: an entry that does not fit the grammar is dropped, so its caller is answered
+        // invalid_api_key. Say so once at startup (the count only: the entry's text holds a secret),
+        // or an operator who wrote key=ADMIN sees a clean boot and a locked-out app with no clue why.
+        if (parsed.dropped() > 0) {
+            logger.warn("npdev.auth.api-keys: " + parsed.dropped() + " entr" + (parsed.dropped() == 1 ? "y" : "ies")
+                    + " did not match " + ApiKeyMappings.SHAPE + " and " + (parsed.dropped() == 1 ? "was" : "were")
+                    + " ignored; those keys are answered invalid_api_key (see docs/CONFIGURATION.md#authentication)");
+        }
         this.credentialResolver = credentialResolver == null ? ApiKeyCredentialResolver.NONE : credentialResolver;
     }
 
@@ -107,41 +122,6 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    // R7 Stage A (fail closed): no static-mapping default of any kind. A blank, missing, or
-    // malformed encodedMappings value now correctly parses to an EMPTY map -- every API key request
-    // then falls through to unauthorized("invalid_api_key") -- rather than the previous behavior of
-    // silently granting ADMIN via the hardcoded "api-dev"/"dev-key" pair whenever configuration was
-    // absent or broken. A misconfigured deployment refuses every request instead of quietly
-    // authenticating as an administrator.
-    private static Map<String, PrincipalClaims> parseMappings(String encodedMappings) {
-        String raw = normalize(encodedMappings);
-        if (raw == null) {
-            raw = "";
-        }
-        Map<String, PrincipalClaims> parsed = new LinkedHashMap<>();
-        String[] entries = raw.split(";");
-        for (String entry : entries) {
-            if (entry == null) {
-                continue;
-            }
-            String normalized = entry.trim();
-            if (normalized.isBlank()) {
-                continue;
-            }
-            int equalsIndex = normalized.indexOf('=');
-            if (equalsIndex <= 0 || equalsIndex >= normalized.length() - 1) {
-                continue;
-            }
-            String apiKey = normalize(normalized.substring(0, equalsIndex));
-            String mapping = normalized.substring(equalsIndex + 1);
-            PrincipalClaims claims = PrincipalClaims.parse(mapping);
-            if (apiKey != null && claims != null) {
-                parsed.put(apiKey, claims);
-            }
-        }
-        return Map.copyOf(parsed);
-    }
-
     private static void unauthorized(HttpServletResponse response, String code) throws IOException {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json");
@@ -157,27 +137,6 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
     }
 
     private record PrincipalClaims(String tenantId, String actorId, Set<String> roles) {
-        static PrincipalClaims parse(String encoded) {
-            String normalized = normalize(encoded);
-            if (normalized == null) {
-                return null;
-            }
-            String[] parts = normalized.split(":");
-            String tenantId = parts.length > 0 ? normalize(parts[0]) : null;
-            String actorId = parts.length > 1 ? normalize(parts[1]) : null;
-            Set<String> roles = parts.length > 2
-                    ? Arrays.stream(parts[2].split("\\|"))
-                    .map(RuntimeApiKeyAuthFilter::normalize)
-                    .filter(value -> value != null && !value.isBlank())
-                    .map(String::toUpperCase)
-                    .collect(Collectors.toCollection(LinkedHashSet::new))
-                    : Set.of("USER");
-            if (tenantId == null || actorId == null || roles.isEmpty()) {
-                return null;
-            }
-            return new PrincipalClaims(tenantId, actorId, Set.copyOf(roles));
-        }
-
         static PrincipalClaims fromCredential(ApiKeyCredentialResolver.Principal principal) {
             return new PrincipalClaims(principal.tenantId(), principal.actorId(), principal.roles());
         }

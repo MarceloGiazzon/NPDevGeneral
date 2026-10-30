@@ -6,6 +6,7 @@ import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.CapabilityRegistry;
+import com.npdev.kernel.ports.ApiKeyMappings;
 import com.npdev.kernel.ports.EventStore;
 import com.npdev.kernel.ports.FlowInstanceStore;
 import com.npdev.kernel.storage.sql.SqlDialects;
@@ -320,9 +321,16 @@ public final class StartupValidator implements InitializingBean {
             validateJwtSettings();
             return;
         }
-        String mappings = normalize(apiKeyMappings);
-        if (mappings == null || !mappings.contains("=")) {
-            throw configError("npdev.auth.api-keys must define at least one mapping when auth is enabled", AUTH_ANCHOR);
+        // The same parser the filter uses (REG-319): a value with an '=' but no tenant:actor part, such as
+        // key=ADMIN, parses to nothing and would boot clean and then answer every request invalid_api_key.
+        // The message carries counts and the expected shape only -- the text before the '=' is a secret.
+        ApiKeyMappings.Parsed mappings = ApiKeyMappings.parse(apiKeyMappings);
+        if (mappings.byApiKey().isEmpty()) {
+            String unparseable = mappings.dropped() == 0 ? ""
+                    : " (" + mappings.dropped() + " non-blank entr" + (mappings.dropped() == 1 ? "y was" : "ies were")
+                    + " ignored because it lacks a tenant and an actor)";
+            throw configError("npdev.auth.api-keys must define at least one mapping of the form "
+                    + ApiKeyMappings.SHAPE + " when auth is enabled" + unparseable, AUTH_ANCHOR);
         }
     }
 

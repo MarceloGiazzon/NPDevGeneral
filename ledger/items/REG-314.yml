@@ -27,13 +27,15 @@ files:
 verification: UNIT_TESTED
 guard:
   kind: test
-  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/ApiKeyMappingGrammarContractTest.java#parserGrammarMatchesWhatConfigurationMdDocuments
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/ports/ApiKeyMappingsTest.java#parsesTheDocumentedExample
   asserts: >-
-    the generated RuntimeApiKeyAuthFilter still splits entries on ';', the key at the first '=', the mapping on ':'
+    the one parser of npdev.auth.api-keys (ApiKeyMappings, shared by StartupValidator and the generated
+    RuntimeApiKeyAuthFilter since REG-319) splits entries on ';', takes the key at the first '=', the mapping on ':'
     and roles on '|', upper-cases roles, defaults an omitted role to USER, drops an entry lacking tenant or actor, and
-    carries the actor part as actor_id -- the exact grammar docs/CONFIGURATION.md now documents. Textual pins on the
-    template, not a booted app. Proven red 2026-10-29 by changing the entry separator to ',' in the template (the
-    assertion named that pin); restored, green.
+    carries the actor part as actorId -- the exact grammar docs/CONFIGURATION.md documents. Behavioural, replacing
+    the textual template pins this guard carried until 2026-10-30 (ApiKeyMappingGrammarContractTest now only pins
+    that the filter has no grammar of its own). Proven red 2026-10-30 by changing the entry separator to ',' in
+    ApiKeyMappings (the assertion named that entry); restored, green.
   provenRed: true
 note: >-
   2026-10-29: lead verification confirmed the doc line and the three-part format via the beta note. Fixed by reading

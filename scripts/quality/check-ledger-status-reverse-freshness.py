@@ -221,6 +221,16 @@ ACCEPTED_R2: dict[str, str] = {
         "as PACK-9/REG-170/REG-176/REG-180 above: a legitimate 'reconcile this row' firing whose "
         "reconciliation is already done and the conclusion is 'still open, real work remains.'"
     ),
+    "REG-317": (
+        "The commit R2 names (abb42b0e6a, the SEC-16 reassign fix) genuinely MODIFIED REG-317.yml -- but "
+        "the edit only RECORDED the half of SEC-16 that commit left open (a child created under another "
+        "coordinator's parent still passes, because an access.write rule reads one row) as a further case "
+        "for REG-317's cross-concept rules/access gap. Its production-source changes were "
+        "ConfiguredConceptGatewaySemanticPolicy for SEC-16's reassign half, unrelated to REG-317's own "
+        "missing rows-from-template and cross-concept rule surface. Same shape as PACK-9/REG-170/REG-176/"
+        "REG-180/SEC-3 above: a legitimate 'reconcile this row' firing whose reconciliation is already "
+        "done and the conclusion is 'still open, design decision pending.'"
+    ),
 }
 
 # R2: same "checkers describe gaps for a living" exemption R1's PRODUCTION_ROOTS encodes, spelled as
