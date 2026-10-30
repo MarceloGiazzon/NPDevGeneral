@@ -4,7 +4,7 @@ title: >-
   expression functions, contradicting docs, enum shape, grouped UUIDs
 type: BUG
 severity: LOW
-status: OPEN
+status: PARTIAL
 opened: 2026-10-29
 closed: null
 source: >-
@@ -22,7 +22,42 @@ detail: >-
   reference's raw UUID, not a display value.
 resolution: >-
   Done when each sub-point is fixed or individually refuted.
-verification: NOT_VERIFIED
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_init_scaffold_config.py
+  - docs/EXPRESSIONS.md
+  - docs/NPDEV_USER_MANUAL.md
+  - docs/content/npdev-user-manual.yml
+  - docs/reference/ROW_LEVEL_AUTHORIZATION.md
+  - NPDevContract/packs/leave/pack.json
+  - NPDevContract/packs/helpdesk/pack.json
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_init_scaffold_config.py#test_schema_points_at_the_real_schema_and_the_port_is_8080
+  asserts: >-
+    a freshly scaffolded config.json carries a $schema that is an absolute path to a file that exists (so it
+    resolves from wherever the app lives), runtime.serverPort 8080 and trialDefaults.runtimeUrl
+    http://localhost:8080/ with no 8081 anywhere, and the README still says 8080; a sibling test pins that the
+    rewritten config still validates against config.schema.json. Proven red 2026-10-30 against the old CLI (the
+    first test failed); green now. This guards sub-point (1) only.
+  provenRed: true
 note: >-
   Dropped from the agent's list: 'YOUR_FIRST_APP says cd ../NPDevGeneral' -- correct, GitHub checks the repo
   out under that name.
+  2026-10-30, per sub-point. (1) FIXED except the version: `npdev init` now rewrites the seed's relative $schema
+  to the clone's real config.schema.json and the seed demo's 8081 to 8080 (_align_config_scaffold). REFUTED:
+  dslVersion "1.0.0" -- model.schema.json declares it const "1.0.0" and every corpus model carries it; the "2.0"
+  is the flow-step dialect, not this field (the manual says "always 1.0.0"). (2) REFUTED as a defect: ArtifactNP/
+  next to the output is the generator's staging folder by design, with BUILD-5's owner marker and shared-parent
+  warning; not changed. (3) FIXED the documentation: docs/EXPRESSIONS.md now has now()/uuid()/nextNumber() (whole-
+  expression defaults only) and says what each conflicts() argument is. NOT DONE: comparing a date with a
+  date-time needing a string hack -- not reproduced or changed. (4) FIXED: the leave and helpdesk packs'
+  reviewNotes claimed the platform has no per-row visibility; it does (access.read). The true cause is that the
+  packs hold the requester only as free text, so no rule can compare it with $user.id; the notes now say that
+  (all four copies, pack and sample). docs/reference/ROW_LEVEL_AUTHORIZATION.md now states how access.read scopes
+  grouped queries (pushed into the aggregate's WHERE when translatable, refused at validation otherwise); the
+  contradicting wording in ACCEPTED_BOUNDARIES B27 is history and was left as the record it is. (5) FIXED: the
+  array-of-enum shape is in docs/NPDEV_USER_MANUAL.md, checked against model.schema.json. (6) NOT DONE: grouped
+  queries still return a reference's raw UUID, not a display value; it needs a change in the aggregate path of
+  both stores. Remaining: (3) date-vs-datetime comparison, and (6).

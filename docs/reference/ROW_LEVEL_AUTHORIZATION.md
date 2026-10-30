@@ -101,6 +101,16 @@ recompute `total`/`hasMore` against the row-scoped result set. Every other conce
 unaffected. See `docs/archive/programme-history/REG16_LNCH13_ROWLEVEL_AUTHZ_ADVERSARIAL_REVIEW.md` (LNCH13-F3) and the register's
 REG-42 row.
 
+## Grouped queries and aggregates under `access.read`
+
+A named query with `groupBy` / `aggregates` over a concept that declares `access.read` is **not** refused as a
+whole. When the rule is inside the SQL-translatable subset (`||` / `&&` of field comparisons, `field == $user.id`,
+or `$user.roles.contains('Role')`, no parentheses) it is pushed into the aggregate's own `WHERE` for each caller, so
+every total, count and group covers only the rows that caller may read, and two callers can see different totals
+from the same query. Only a rule **outside** that subset is refused, at model validation, with a message naming the
+query and the concept: a pushed-down `GROUP BY` there would compute totals over rows the scope exists to hide.
+The same holds for every concept a `groupBy` join path crosses.
+
 ## Check-then-act against a concurrent ownership change (LNCH13-F4, boundary B18, now LIFTED)
 
 `DefaultConceptGateway.save()`/`delete()` snapshot the previous row through `findByIdForUpdate`

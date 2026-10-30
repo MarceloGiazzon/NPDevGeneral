@@ -505,11 +505,21 @@ public final class QueryPredicateGrammar {
      *  hop-bounded (max {@link GroupByJoinGrammar#MAX_JOIN_HOPS}) resolution {@code groupBy} join
      *  paths already use, reused rather than re-derived (this method's whole reason to exist). */
     private static GroupByJoinGrammar.Target pathTarget(String where, String clauseText, String pathText) {
+        // REG-315: `(a || b) && c` splits into clauses whose "path" starts with '('. Say what is wrong
+        // (parentheses are not part of this grammar) and how to rewrite it, instead of the groupBy
+        // grammar's own "cannot parse groupBy field" on a query that has no groupBy.
+        if (pathText.indexOf('(') >= 0 || pathText.indexOf(')') >= 0) {
+            throw new UnsupportedPredicateException(where, clauseText,
+                    "parentheses are not supported in a query where (found in " + quoteForMessage(pathText)
+                            + "). '&&' binds tighter than '||', so write (a || b) && c as a && c || b && c");
+        }
         try {
             return GroupByJoinGrammar.parse(pathText);
         } catch (GroupByJoinGrammar.UnsupportedGroupByPathException hopFailure) {
             throw new UnsupportedPredicateException(where, clauseText,
-                    "predicate path " + quoteForMessage(pathText) + " -- " + hopFailure.getMessage());
+                    "predicate path " + quoteForMessage(pathText) + " -- " + hopFailure.reason()
+                            + " (a path is a field name, or referenceField.targetField up to "
+                            + GroupByJoinGrammar.MAX_JOIN_HOPS + " hops)");
         }
     }
 

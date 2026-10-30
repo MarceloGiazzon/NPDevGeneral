@@ -31,7 +31,7 @@ There is one parser, one syntax error vocabulary, and one set of compile-time ch
 | `collection.uniqueBy(keyField)` | no two items share the same `keyField` value; `keyField` is a bare per-item field name, not a value lookup |
 | `collection.all(x => predicate)` | every item satisfies `predicate` (vacuously true for an empty/missing collection) |
 | `collection.exists(x => predicate)` | at least one item satisfies `predicate` (requires a non-empty collection) |
-| `conflicts(resourceField, startsAtField, durationField[, excludeIdField])` (alias: `overlapsProvider`) | true if a scheduling conflict exists — almost always used negated: `!conflicts(...)` |
+| `conflicts(resourceField, startsAtField, durationField[, excludeIdField])` (alias: `overlapsProvider`) | true if a scheduling conflict exists — almost always used negated: `!conflicts(...)`. Arguments are **field names of the row being saved**, not values: `resourceField` is the field naming the thing being booked (a provider, a room), `startsAtField` its start (an ISO date-time), `durationField` its length in **whole minutes** (a number), and the optional `excludeIdField` the row's own id so an update does not conflict with itself. |
 | `scope.exists("ConceptName", "fieldPath", valueOrPath)` | true if a matching record exists elsewhere in the tenant's data |
 
 **Schema default/derived expressions** (`SchemaExpressionSupport`, in `NPDevKernel/adapters/runtime-support/.../crud/schemaexpr/`) get a different, smaller
@@ -42,6 +42,21 @@ set — pure value functions, no boolean logic needed:
 | `concat(a, b, ...)` | string-concatenates args; `null` if any arg is missing |
 | `coalesce(a, b, ...)` | first non-missing arg |
 | `trim(x)` / `uppercase(x)` / `lowercase(x)` | string transforms |
+
+### Whole-expression defaults: `now()`, `uuid()`, `nextNumber('name')`
+
+These three are **not functions you can combine** with the ones above: a field's `defaultExpression` may be *exactly*
+one of them, and nothing else is accepted around it (`concat(now(), 'x')` is refused when the model is validated).
+
+| `defaultExpression` | Value written when the row is created |
+|---|---|
+| `now()` | the current instant as UTC ISO text, `"2026-10-30T21:36:16.678Z"` — use it on a `datetime` field |
+| `uuid()` | a fresh random UUID |
+| `nextNumber('name')` | the next value of the named counter, allocated when the row is saved |
+
+On a live write each is real. During the boot-time backfill and its shadow proof they are deterministic (`now()`
+is the epoch instant, `uuid()` one constant), so two passes always agree. For a calendar date use
+`today()` below, which *is* an ordinary function and composes (`addDays(today(), 7)`).
 
 ### Date functions (REG-313)
 

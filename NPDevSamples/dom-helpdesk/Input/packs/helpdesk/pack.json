@@ -11,7 +11,7 @@
     "summary": "Handles support requests. Someone raises a ticket describing a problem; an agent takes it, may ask the requester for more information, resolves it, and a resolved ticket is later closed or reopened. Every ticket carries a priority and a category, and a ticket that is being worked always has an agent. How many tickets are in each state and how many each agent holds is always calculated, never typed in.",
     "reviewNotes": [
       "There are no response or resolution deadlines (SLAs) and no breach warnings. Say what time targets each priority has.",
-      "A requester can raise tickets but cannot see them again, because the platform has no per-row visibility: the role either reads every ticket or none. Say whether requesters must see their own tickets; that needs a rule the platform does not yet offer.",
+      "A requester can raise tickets but cannot see them again: the pack gates reads by role, and a ticket records its requester only as free text (requesterName, requesterEmail), so there is no field a per-row rule such as requesterId == $user.id could compare. The platform supports that rule (access.read); it needs the model to carry the requester's login on the ticket. Say whether requesters must see their own tickets.",
       "Internal notes are a flag on a comment and are hidden only by role (requesters cannot read comments at all). They are not hidden from any agent.",
       "Priority is chosen by whoever raises the ticket and is not recomputed. Say whether agents may change it and whether priority drives assignment.",
       "Assignment is manual: nothing picks an agent, balances load or skips inactive agents. Say how tickets should be routed.",

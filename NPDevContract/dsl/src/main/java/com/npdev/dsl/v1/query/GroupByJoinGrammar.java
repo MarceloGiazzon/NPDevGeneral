@@ -79,6 +79,7 @@ public final class GroupByJoinGrammar {
      *  design -- see the class javadoc's X0 note. */
     public static final class UnsupportedGroupByPathException extends RuntimeException {
         private final String field;
+        private final String reason;
 
         public UnsupportedGroupByPathException(String field, String reason) {
             super("cannot parse groupBy field " + quote(field) + " -- " + reason
@@ -86,10 +87,17 @@ public final class GroupByJoinGrammar {
                     + " hops ('referenceField.../targetField'), or a context-qualified join "
                     + "('context::referenceField.../targetField').");
             this.field = field;
+            this.reason = reason;
         }
 
         public String field() {
             return field;
+        }
+
+        /** Why the path was refused, without the "cannot parse groupBy field" framing -- for callers
+         *  (a query {@code where}) that reuse this grammar but are not parsing a {@code groupBy}. */
+        public String reason() {
+            return reason;
         }
 
         private static String quote(String value) {

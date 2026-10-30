@@ -101,4 +101,19 @@ class GroupByJoinGrammarTest {
         assertThrows(GroupByJoinGrammar.UnsupportedGroupByPathException.class,
                 () -> GroupByJoinGrammar.parse("123bad::lote.produtoId"));
     }
+
+    /**
+     * REG-315: a caller that is not parsing a groupBy (a query {@code where} reusing this grammar)
+     * needs the bare reason, without the "cannot parse groupBy field" framing, and the offending text.
+     */
+    @Test
+    void exceptionExposesTheOffendingFieldAndTheBareReason() {
+        var ex = assertThrows(GroupByJoinGrammar.UnsupportedGroupByPathException.class,
+                () -> GroupByJoinGrammar.parse("123bad::lote.produtoId"));
+
+        assertEquals("123bad::lote.produtoId", ex.field());
+        assertTrue(ex.reason().contains("is not a plain context name"), ex.reason());
+        assertTrue(ex.getMessage().startsWith("cannot parse groupBy field"), ex.getMessage());
+        assertTrue(!ex.reason().contains("groupBy"), ex.reason());
+    }
 }

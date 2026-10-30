@@ -17,7 +17,7 @@
       "A request that nobody decides stays PENDING; there is no reminder and no expiry. The flow waits 14 days and then stops waiting, leaving the request PENDING.",
       "Cancelling a request that is waiting on a task leaves the task open; a later decision on it is ignored.",
       "Part-days are allowed down to half a day; hours are not modelled.",
-      "Employees can read every leave request, not only their own, because the platform has no per-row visibility. Say whether that is acceptable.",
+      "Employees can read every leave request, not only their own: the pack gates reads by role, and a request records who asked only as free text (employeeName), so there is no field a per-row rule such as employee == $user.id could compare. The platform supports that rule (access.read); it needs the model to carry the requester's login on the request. Say whether employees may see each other's requests.",
       "Creating a request directly (not through the RequestLeave flow) leaves it PENDING with no task for any approver; only the flow puts it in front of someone.",
       "Nobody is notified when a request is decided."
     ]

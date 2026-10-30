@@ -4,9 +4,9 @@ title: >-
   /npdev-business-ui/
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-29
-closed: null
+closed: 2026-10-30
 source: >-
   OWN-2 section 5.2 domain-fit simulation, 2026-10-28/29: a fresh agent given only the public docs and a
   clinical-trial site-visit scheduler (a domain never modelled here), not told what to build. Evidence:
@@ -18,4 +18,24 @@ detail: >-
 resolution: >-
   Done when / lands on the business UI for a business user (or the docs say where it is), with a test pinning
   the redirect.
-verification: NOT_VERIFIED
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-ui-index.mustache
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/GeneratorTestModelLoaderTest.java
+  - docs/YOUR_FIRST_APP.md
+  - docs/content/your-first-app.yml
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/GeneratorTestModelLoaderTest.java#loadsTestModelAndGeneratesFiles
+  asserts: >-
+    the emitted operator index (static/npdev-ui/index.html, the page "/" redirects to) carries a link to
+    /npdev-business-ui/, beside the existing assertion that the root redirect itself is /npdev-ui/index.html. Red on
+    the old output by construction: the committed template contained no mention of npdev-business-ui.
+  provenRed: true
+note: >-
+  2026-10-30: took the "docs say where it is" branch of the done-when, plus a link on the page "/" lands on, rather
+  than redirecting "/" to the business UI. Which page a fresh app greets a person with is a product decision (the
+  operator console is what a developer wants first; the business UI is what an end user wants), so "/" is
+  unchanged. A new "Open business screens" button sits first in the operator index's actions, its hint names
+  /npdev-business-ui/, and docs/YOUR_FIRST_APP.md says that the first page is the operator console and where the
+  screens are. Not re-checked in a browser; the pin is on the emitted HTML.

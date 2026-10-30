@@ -2232,6 +2232,7 @@ def run_init(args: argparse.Namespace) -> int:
                            port=getattr(args, "db_port", None),
                            username=getattr(args, "db_user", None),
                            password=getattr(args, "db_password", None))
+    _align_config_scaffold(target / "config.json")
 
     readme_text = (
         f"# {target.name}\n\n"
@@ -2482,6 +2483,36 @@ def _align_config_database(config_path: Path, engine: dict, database_name: str, 
     if isinstance(trial, dict):
         trial["databaseMode"] = engine["provider"]
 
+    config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+
+
+def _align_config_scaffold(config_path: Path) -> None:
+    """REG-318 (1): two things the seed's config.json says that are wrong for an app scaffolded
+    OUTSIDE the clone, which is the only place `npdev init` will write one.
+
+    * `$schema` is a relative path up to the clone's NPDevContract folder, valid only from inside
+      `NPDevSamples/<seed>/`. Pointed at the clone's real schema it validates in an editor wherever
+      the app lives.
+    * `runtime.serverPort` 8081 / `trialDefaults.runtimeUrl` belong to the seed's own demo (its notes
+      say the dedicated port keeps that demo stable beside other samples). A scaffolded app's server
+      listens on application.yml's 8080 and its README, and this command's own output, say 8080.
+    """
+    if not config_path.exists():
+        return
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    schema = repo_root() / "NPDevContract" / "schemas" / "config.schema.json"
+    if schema.exists():
+        config["$schema"] = schema.as_posix()
+    runtime = config.get("runtime")
+    if isinstance(runtime, dict) and runtime.get("serverPort") == 8081:
+        runtime["serverPort"] = 8080
+    trial = config.get("trialDefaults")
+    if isinstance(trial, dict):
+        if trial.get("runtimeUrl") == "http://localhost:8081/":
+            trial["runtimeUrl"] = "http://localhost:8080/"
+        notes = trial.get("notes")
+        if isinstance(notes, list):
+            trial["notes"] = [n for n in notes if "dedicated port" not in str(n)]
     config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
 

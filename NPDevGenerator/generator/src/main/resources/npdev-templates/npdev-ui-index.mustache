@@ -16,9 +16,12 @@
       <h1>NPDev Operator UI</h1>
       <p class="subtitle">Operator UI: {{canonicalUiRoute}}</p>
       <div class="actions">
+        <button type="button" class="primary" id="openBusinessUi" onclick="window.location.href='/npdev-business-ui/'">Open business screens</button>
         <button type="button" onclick="window.location.href='/model-authoring.html'">Open model authoring</button>
       </div>
       <p class="hint" style="margin-top:12px;">
+        This page is the operator console for flows and traces. Your app's own screens (the list, create and edit
+        pages for your concepts) are at <code>/npdev-business-ui/</code>.
         This runtime-served UI is <code>/npdev-ui/</code>. Canonical selection is controlled by <code>canonical-ui-selection.json</code>.
       </p>
     </div>

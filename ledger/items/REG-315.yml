@@ -3,9 +3,9 @@ title: >-
   Query where grammar has no || or parentheses, and its parse error blames a groupBy the query does not have
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-29
-closed: null
+closed: 2026-10-30
 source: >-
   OWN-2 section 5.2 domain-fit simulation, 2026-10-28/29: a fresh agent given only the public docs and a
   clinical-trial site-visit scheduler (a domain never modelled here), not told what to build. Evidence:
@@ -18,4 +18,30 @@ detail: >-
 resolution: >-
   Done when the error names the where clause and the unsupported syntax, and the docs state the query grammar
   (or the grammar accepts || and parentheses).
-verification: NOT_VERIFIED
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/query/QueryPredicateGrammar.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/query/GroupByJoinGrammar.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/query/QueryPredicateGrammarTest.java
+  - docs/NPDEV_USER_MANUAL.md
+  - docs/content/npdev-user-manual.yml
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/query/QueryPredicateGrammarTest.java#parenthesesAreRefusedAsAWhereProblemNotAGroupByOne
+  asserts: >-
+    (status == 'A' || status == 'B') && region == 'EU', and the two other placements of a parenthesis, are refused
+    with "cannot compile query predicate ... parentheses are not supported in a query where" plus the rewrite
+    "a && c || b && c", and the message never contains "groupBy"; a sibling test pins that a bad reference path is
+    reported as a "predicate path", not "cannot parse groupBy field"; a third pins that an in (...) list and a
+    quoted literal containing parentheses still parse. Proven red 2026-10-30 against the old code (2 of the 3 new
+    tests failed with the groupBy wording); restored, the class and the full dsl suite green.
+  provenRed: true
+note: >-
+  2026-10-30: the where grammar DID already accept || (parseGroups, OR-of-AND groups); what it lacks is
+  parentheses. (a || b) && c split on || into the clause "(status == 'A'", whose path "(status" fell through to
+  GroupByJoinGrammar.parse and surfaced as that grammar's "cannot parse groupBy field" on a query with no groupBy.
+  Fixed on the error side, not by adding parentheses: QueryPredicateGrammar.pathTarget now refuses a '(' or ')' in a
+  clause path with a where-specific message and the DNF rewrite, and reports any other bad path from the grammar's
+  reason() without the groupBy framing. The grammar is now stated in docs/NPDEV_USER_MANUAL.md (Level 3), which had
+  no statement of it; both halves of the done-when are met. Accepting parentheses is a larger change (a real
+  precedence parser plus the SQL translation) and was not needed to close this.

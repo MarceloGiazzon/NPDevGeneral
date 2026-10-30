@@ -362,6 +362,15 @@ sections:
     `orchestrationRules`, `capabilities`, `customCapabilities` — is optional and is exactly what
     the four levels below add, one at a time.
 
+    **Choosing one value, or several.** A field that holds one of a fixed set is
+    `{ "name": "status", "type": "enum", "enumValues": ["DRAFT", "ISSUED", "PAID"] }`. A field that holds
+    *several* of them is an `array` whose `items` is the enum:
+
+    ```json
+    { "name": "procedures", "type": "array",
+      "items": { "type": "enum", "enumValues": ["BLOOD_DRAW", "ECG", "VITALS"] } }
+    ```
+
     ---
 - level: 2
   title: 6. Four levels of app complexity
@@ -641,6 +650,22 @@ sections:
     `Smoke-Test.ps1` is a quick "does it still work" check: it reads the storage summary and, if the model has a `User` concept,
     creates and lists a user through `/api/users`. (The `definition\smoke-plan.json` / `definition\input\` files in the layout are
     optional sample material; the generated script does not read them.)
+
+    **The `where` of a query is its own small grammar** (it is *not* the rule-expression grammar of
+    `docs/EXPRESSIONS.md`). A `where` is clauses joined by `&&` and `||`; `&&` binds tighter than `||`, and
+    **there are no parentheses**, so write `(a || b) && c` as `a && c || b && c`. Each clause is one of:
+
+    | Clause | Example |
+    |---|---|
+    | `field == != > >= < <= literal` | `status == 'DRAFT'`, `total >= 100` |
+    | `field contains / startsWith 'text'` | `name startsWith 'Ac'` |
+    | `field in ('a', 'b')` | `status in ('DRAFT', 'SENT')` |
+    | `field is null` / `is not null` (or `== null`) | `paidAt is null` |
+
+    A *field* may be a reference path (`customerId.name`, up to 3 hops) and a *literal* is `'text'`, a number,
+    `true`, `false`, or a `:name` bind placeholder. Anything else is refused when the model is validated,
+    with a message that names the `where` and the clause it could not read — a filter that cannot be
+    enforced is never applied halfway.
 
     ---
 - level: 3

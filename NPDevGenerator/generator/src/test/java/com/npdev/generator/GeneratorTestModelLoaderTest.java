@@ -369,6 +369,9 @@ public class GeneratorTestModelLoaderTest {
         assertTrue(uiRedirectControllerContent.contains("redirect:/npdev-ui/index.html"),
                 "Expected generated UI redirect controller root redirect to follow canonical UI selection");
         String uiIndexContent = Files.readString(uiIndex);
+        // REG-316: "/" lands on this operator console, so the way to the app's own screens must be on it.
+        assertTrue(uiIndexContent.contains("window.location.href='/npdev-business-ui/'"),
+                "Expected the operator index (the page \"/\" redirects to) to link to the business UI at /npdev-business-ui/");
         assertTrue(uiIndexContent.contains("/npdev-ui/app.js"),
                 "Expected generated UI index to reference generated script");
         assertTrue(uiIndexContent.contains("Operator UI: /npdev-ui/"),

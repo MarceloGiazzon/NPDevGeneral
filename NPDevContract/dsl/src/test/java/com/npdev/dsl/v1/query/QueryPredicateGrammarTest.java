@@ -10,6 +10,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -83,6 +84,41 @@ class QueryPredicateGrammarTest {
         var ex = assertThrows(UnsupportedPredicateException.class,
                 () -> QueryPredicateGrammar.parseGroups("status in 'ACTIVE'"));
         assertTrue(ex.getMessage().contains("parenthesized"), ex.getMessage());
+    }
+
+    /**
+     * REG-315: {@code (a || b) && c} used to fail with the groupBy grammar's "cannot parse groupBy field
+     * \"(status\"" on a query that has no groupBy. The refusal must name the where clause and the
+     * unsupported syntax, and say how to rewrite it.
+     */
+    @Test
+    void parenthesesAreRefusedAsAWhereProblemNotAGroupByOne() {
+        for (String where : new String[] {
+                "(status == 'A' || status == 'B') && region == 'EU'",
+                "status == 'A' && (region == 'EU' || region == 'US')",
+                "status == 'A' || (region == 'EU')"}) {
+            var ex = assertThrows(UnsupportedPredicateException.class, () -> QueryPredicateGrammar.parseGroups(where), where);
+
+            String message = ex.getMessage();
+            assertTrue(message.contains("cannot compile query predicate"), message);
+            assertTrue(message.contains("parentheses are not supported in a query where"), message);
+            assertTrue(message.contains("a && c || b && c"), message);
+            assertFalse(message.contains("groupBy"), "a query where must not blame a groupBy: " + message);
+        }
+    }
+
+    @Test
+    void aBadReferencePathIsReportedAsAPredicatePathNotAGroupByField() {
+        var ex = assertThrows(UnsupportedPredicateException.class,
+                () -> QueryPredicateGrammar.parseGroups("a.b.c.d.e == 'x'"));
+
+        assertTrue(ex.getMessage().contains("predicate path \"a.b.c.d.e\""), ex.getMessage());
+        assertFalse(ex.getMessage().contains("cannot parse groupBy field"), ex.getMessage());
+    }
+
+    @Test
+    void parenthesesInsideAnInListAndQuotedLiteralsStillParse() {
+        assertEquals(1, QueryPredicateGrammar.parseGroups("status in ('A', 'B') && note == 'x (y)'").size());
     }
 
     @Test
