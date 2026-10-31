@@ -1,7 +1,7 @@
 """NEW: NPDevMcp/tests/test_ai_contract_schemas.py
 
 Pins the AI-facing custom-panel / custom-procedure schemas (served to AI authors by
-npdev_get_schema, build_core_context.SCHEMAS and derive_constrained_schemas.DEFAULT_SCHEMAS) to
+npdev_get_schema and derive_constrained_schemas.DEFAULT_SCHEMAS) to
 (a) the shipped scenario assets and (b) the DSL they must lower into. jsonschema is already a hard
 requirement of scripts/quality/check-config-schema.py (installed: 4.26.0).
 """

@@ -142,10 +142,24 @@ def run_prompt(prompt: dict, backend, knowledge: str | None, run_dir: Path, args
         try:
             completion = backend.complete(messages)
         except backends.BackendError as exc:
+            infra_kind = backends.classify_backend_error(str(exc))
             stage_log.append(stages.StageResult("author", False, 0.0, str(exc)).to_json())
             attempts.append({"attempt": n, "stages": stage_log, "failingStage": "author",
-                             "feedback": str(exc), "backendError": True})
+                             "feedback": str(exc), "backendError": True, "infraKind": infra_kind})
             break   # the model is unreachable: repairing cannot help
+        expected = backends._estimate_tokens(messages)
+        if backend.info.kind != "fake" and completion.prompt_tokens and completion.prompt_tokens < 0.6 * expected:
+            # chars/4 UNDER-counts real tokens, so a reported prompt this much smaller means the server
+            # dropped part of it: Ollama's default num_ctx (2048/4096) silently keeps only the tail of a
+            # 16k-token prompt, and the model then answers a request it never fully saw.
+            detail = (f"context truncated: the backend reports {completion.prompt_tokens} prompt tokens for a "
+                      f"prompt of ~{expected}+ (raise the server's context window, e.g. OLLAMA_CONTEXT_LENGTH)")
+            stage_log.append(stages.StageResult("author", False, completion.seconds, detail).to_json())
+            attempts.append({"attempt": n, "stages": stage_log, "failingStage": "author", "feedback": detail,
+                             "backendError": True, "infraKind": "context-truncated"})
+            tokens_in += completion.prompt_tokens
+            tokens_out += completion.completion_tokens
+            break
         tokens_in += completion.prompt_tokens
         tokens_out += completion.completion_tokens
         author_seconds += completion.seconds
@@ -168,11 +182,17 @@ def run_prompt(prompt: dict, backend, knowledge: str | None, run_dir: Path, args
             break
         messages = author.repair_messages(messages, completion.text, attempt["failingStage"], attempt["feedback"])
     wall = time.monotonic() - started
+    infra_kind = None if passed else attempts[-1].get("infraKind")
     first = attempts[0]
     first_valid = first["failingStage"] not in ("author", "validate")
     result = {
         "promptId": prompt["id"], "tier": prompt.get("tier"), "title": prompt.get("title"),
         "passed": passed,
+        # pass | fail | infra. infra = the run could not finish this prompt for a reason that is not
+        # the model's authoring (quota, overload, unreachable, truncated context), even after real
+        # attempts -- it is excluded from pass rates and re-run by --skip-done.
+        "outcome": "pass" if passed else ("infra" if infra_kind else "fail"),
+        "infraKind": infra_kind,
         "loopsUsed": len(attempts) - 1,
         "firstAttemptValid": bool(first_valid and not first.get("backendError")),
         "firstAttemptPassed": first["failingStage"] is None,
@@ -202,18 +222,30 @@ def scorecard(results: list[dict]) -> dict:
         return round(count / n, 4)
 
     passed = [r for r in results if r["passed"]]
+    completed = [r for r in results if outcome_of(r) != "infra"]
+    infra_hist: dict[str, int] = {}
+    for r in results:
+        if outcome_of(r) == "infra":
+            infra_hist[infra_kind_of(r)] = infra_hist.get(infra_kind_of(r), 0) + 1
+    passed_tokens = sorted(r["tokens"]["total"] for r in passed)
     final_hist, first_hist, tier = {}, {}, {}
     for r in results:
         if not r["passed"]:
             final_hist[r["failingStage"] or "unknown"] = final_hist.get(r["failingStage"] or "unknown", 0) + 1
         if r.get("firstAttemptFailingStage"):
             first_hist[r["firstAttemptFailingStage"]] = first_hist.get(r["firstAttemptFailingStage"], 0) + 1
-        t = tier.setdefault(r.get("tier") or "?", {"prompts": 0, "passed": 0})
+        t = tier.setdefault(r.get("tier") or "?", {"prompts": 0, "passed": 0, "completed": 0})
         t["prompts"] += 1
         t["passed"] += 1 if r["passed"] else 0
+        t["completed"] += 0 if outcome_of(r) == "infra" else 1
     total_cost = round(sum(r.get("costUsd", 0) for r in results), 6)
     return {
         "prompts": n,
+        # the headline: of the prompts the run could actually finish, how many reached a passing app
+        "completedPrompts": len(completed),
+        "passRateCompleted": round(len(passed) / len(completed), 4) if completed else None,
+        "infraHistogram": infra_hist,
+        "medianTokensPerPassedApp": passed_tokens[len(passed_tokens) // 2] if passed_tokens else None,
         "firstAttemptValidRate": rate(sum(1 for r in results if r["firstAttemptValid"])),
         "firstAttemptPassRate": rate(sum(1 for r in results if r.get("firstAttemptPassed"))),
         "passWithin5LoopsRate": rate(sum(1 for r in passed if r["loopsUsed"] <= MAX_LOOPS_CAP)),
@@ -228,6 +260,25 @@ def scorecard(results: list[dict]) -> dict:
         "firstAttemptFailingStageHistogram": first_hist,
         "byTier": tier,
     }
+
+
+def infra_kind_of(r: dict) -> str | None:
+    """infraKind, also for result.json files written before it existed (classified from the error text)."""
+    if r.get("infraKind") or r.get("outcome"):
+        return r.get("infraKind")
+    if r.get("passed") or not r.get("attempts"):
+        return None
+    last = r["attempts"][-1]
+    if last.get("failingStage") != "author":
+        return None
+    kind = backends.classify_backend_error(last.get("feedbackExcerpt") or "")
+    return kind if kind != "other" else None
+
+
+def outcome_of(r: dict) -> str:
+    if r.get("outcome"):
+        return r["outcome"]
+    return "pass" if r.get("passed") else ("infra" if infra_kind_of(r) else "fail")
 
 
 def load_results(run_dir: Path) -> list[dict]:
@@ -261,6 +312,8 @@ def build_backend(args):
     if args.dry_run:
         canary = REPO_ROOT / "NPDevSamples" / "npdev-canary" / "Input" / "model.json"
         return backends.FakeBackend(canary)
+    if args.claude_cli:
+        return backends.ClaudeCliBackend(args.claude_cli, timeout=args.model_timeout)
     if args.provider:
         return backends.build_provider_backends(args.provider, args.allow_paid, args.model_timeout)
     if args.profile or not os.environ.get("NPDEV_BENCH_BASE_URL", "").strip():
@@ -304,26 +357,43 @@ def cmd_run(args) -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
     knowledge = None
     if args.ablation == "none":
-        knowledge = author.load_core_context(stages.build_root())
+        knowledge = (author.load_knowledge_file(Path(args.knowledge_file)) if args.knowledge_file
+                     else author.load_core_context(stages.build_root()))
+    knowledge_info = author.describe_knowledge(knowledge, args.knowledge_file)
     print(f"run: {run_dir}  prompts={len(prompts)} ablation={args.ablation} maxLoops={args.max_loops}")
     started_at = datetime.datetime.now().isoformat(timespec="seconds")
     t0 = time.monotonic()
     results = []
+    not_run: list[str] = []
+    stop_reason = None
     for prompt in prompts:
+        if stop_reason:
+            not_run.append(prompt["id"])
+            continue
         done = run_dir / prompt["id"] / "result.json"
         if args.skip_done and done.exists():
-            results.append(json.loads(done.read_text(encoding="utf-8")))
-            print(f"{prompt['id']}: skipped (already done)")
-            continue
+            previous = json.loads(done.read_text(encoding="utf-8"))
+            if outcome_of(previous) != "infra":      # an infra outcome is unfinished business: re-run it
+                results.append(previous)
+                print(f"{prompt['id']}: skipped (already done)")
+                continue
         r = run_prompt(prompt, backend, knowledge, run_dir, args)
         results.append(r)
-        print(f"{prompt['id']}: {'PASS' if r['passed'] else 'FAIL@' + str(r['failingStage'])} "
-              f"loops={r['loopsUsed']} tokens={r['tokens']['total']} cost=${r['costUsd']} wall={r['wallSeconds']}s",
-              flush=True)
+        label = "PASS" if r["passed"] else (f"INFRA:{infra_kind_of(r)}" if outcome_of(r) == "infra"
+                                            else "FAIL@" + str(r["failingStage"]))
+        print(f"{prompt['id']}: {label} loops={r['loopsUsed']} tokens={r['tokens']['total']} "
+              f"cost=${r['costUsd']} wall={r['wallSeconds']}s", flush=True)
+        if infra_kind_of(r) == "quota":
+            # every later prompt would fail in under a second and be scored as a failure (full-gemini-1:
+            # 20 of 30). Stop, and say how to resume once the quota resets.
+            stop_reason = "quota exhausted"
+            print(f"STOP: quota exhausted. Resume later with: --run-id {run_id} --skip-done", flush=True)
     summary = {"runId": run_id, "startedAt": started_at, "dryRun": args.dry_run, "ablation": args.ablation,
-               "backend": info.describe(), "maxLoops": args.max_loops, "wallSeconds": round(time.monotonic() - t0, 1),
+               "backend": info.describe(), "knowledge": knowledge_info, "maxLoops": args.max_loops,
+               "wallSeconds": round(time.monotonic() - t0, 1), "stopReason": stop_reason, "notRun": not_run,
                "scorecard": scorecard(results), "results": [
-                   {k: r[k] for k in ("promptId", "passed", "loopsUsed", "failingStage", "wallSeconds", "costUsd")}
+                   {**{k: r.get(k) for k in ("promptId", "passed", "loopsUsed", "failingStage", "wallSeconds", "costUsd")},
+                    "outcome": outcome_of(r), "infraKind": infra_kind_of(r), "tokens": r["tokens"]["total"]}
                    for r in results]}
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary["scorecard"], indent=2))
@@ -344,6 +414,13 @@ def make_parser() -> argparse.ArgumentParser:
     r.add_argument("--profile", help="an `npdev ai` profile (its fallbacks fail over in order). With no --profile, "
                                      "--provider or NPDEV_BENCH_BASE_URL, the `bench` binding decides "
                                      "(`npdev ai bindings`).")
+    r.add_argument("--claude-cli", metavar="MODEL",
+                   help="simulated external AI: the Claude Code CLI one-shot (-p), isolated (empty dir, no tools, "
+                        "no settings, no MCP), e.g. haiku or claude-haiku-4-5. Uses the owner's subscription, "
+                        "not an API key")
+    r.add_argument("--knowledge-file", metavar="PATH",
+                   help="system-prompt knowledge from this file instead of the core-context bundle: a bundle.json "
+                        "(its 'markdown' key) or any text file -- for A/B runs of knowledge variants")
     r.add_argument("--allow-paid", action="store_true",
                    help="permit a PAID provider or a base URL that is not a free/local provider in NPDevCli/ai-providers.json (paid spend: owner approval required)")
     r.add_argument("--ablation", choices=["none", "no-knowledge"], default="none",

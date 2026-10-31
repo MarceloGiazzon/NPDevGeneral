@@ -5,7 +5,7 @@ Concatenates, in a STABLE order (so it forms a cacheable prompt prefix):
   1. the authoring contract (docs/content/authoring-for-ai.json, rendered back to its original text --
      never read from docs/ai/AUTHORING_FOR_AI.md, which is GENERATED from docs/content/authoring-for-ai.yml
      by scripts/docs/generate_group_e_docs.py -- md-zero-2026-08-11 PLAN.md Phase 4),
-  2. the authoring object schemas (schemas/ai/<curated>.schema.json),
+  2. a value reference derived from the canonical model.schema.json (every enumeration, one line each),
   3. golden, verified example models (a few official samples).
 
 The volatile per-app request is meant to go AFTER this bundle at prompt-assembly time, behind the
@@ -32,8 +32,14 @@ from pathlib import Path
 
 from npdev_ai_common import ai_out_dir, repo_root
 
-# Curated, deterministic order. Authoring object schemas the AI actually emits.
-SCHEMAS = ["ai-model", "custom-panel", "custom-procedure"]
+# No whole schema is inlined. The three schemas/ai/ schemas that used to sit here (ai-model,
+# custom-panel, custom-procedure) describe the older ai-model.v1 dialect (`app`/`entities`/flow
+# `operation: list|read`), not the canonical model.json the validator checks and the golden
+# examples below use -- 62 % of the bundle taught a second, contradictory language, and AI
+# authors mixed the two (BENCH full-gemini-1 / nemotron: `input.mode: list|read` was the most
+# frequent validation error). Their place is taken by value_reference(): every enumeration of
+# the canonical schema, derived at build time so it can never drift from the validator.
+CANONICAL_SCHEMA = Path("NPDevContract") / "schemas" / "model.schema.json"
 
 # Verified sample models used as golden examples (official samples; known to build + run).
 GOLDEN_SAMPLES = [
@@ -66,6 +72,40 @@ def render_authoring_contract(content_path: Path) -> str:
     return "\n".join(parts)
 
 
+def value_reference(schema: dict) -> str:
+    """One line per enumerated JSON path of the canonical model schema: `$.flows[].input.mode:
+    create|update|delete|query`. Walks properties/items and every $ref/allOf/anyOf/oneOf/if-then-else
+    branch, first path wins, each $def visited once per branch (the schema is recursive)."""
+    defs = schema.get("$defs") or {}
+    found: dict[str, list] = {}
+
+    def walk(node, path: str, depth: int, seen: frozenset) -> None:
+        if depth > 9 or not isinstance(node, dict):
+            return
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/$defs/"):
+            name = ref.split("/")[-1]
+            if name not in seen:
+                walk(defs.get(name, {}), path, depth + 1, seen | {name})
+        if isinstance(node.get("enum"), list) and len(node["enum"]) > 1:
+            found.setdefault(path, node["enum"])
+        for key, child in (node.get("properties") or {}).items():
+            walk(child, f"{path}.{key}", depth + 1, seen)
+        if isinstance(node.get("items"), dict):
+            walk(node["items"], path + "[]", depth + 1, seen)
+        for key in ("allOf", "anyOf", "oneOf"):
+            for child in node.get(key) or []:
+                walk(child, path, depth + 1, seen)
+        for key in ("then", "else", "additionalProperties"):
+            if isinstance(node.get(key), dict):
+                walk(node[key], path, depth + 1, seen)
+
+    walk(schema, "$", 0, frozenset())
+    lines = [f"{path}: {'|'.join(str(v) for v in values)}" for path, values in found.items()]
+    return ("Every enumerated value the validator accepts, by JSON path (`[]` = any array item). "
+            "A value not listed for its path is rejected.\n\n" + "\n".join(lines))
+
+
 def build_bundle() -> tuple[str, dict]:
     root = repo_root()
     sections: list[str] = []
@@ -88,10 +128,9 @@ def build_bundle() -> tuple[str, dict]:
     authoring_content = root / "docs" / "content" / "authoring-for-ai.json"
     add("Authoring contract", authoring_content, render_authoring_contract(authoring_content))
 
-    for name in SCHEMAS:
-        schema_path = root / "schemas" / "ai" / f"{name}.schema.json"
-        if schema_path.exists():
-            add(f"Schema: {name}", schema_path, read_text(schema_path), fence="json")
+    schema_path = root / CANONICAL_SCHEMA
+    add("Value reference (canonical model.schema.json)", schema_path,
+        value_reference(json.loads(read_text(schema_path))), fence="text")
 
     for sample in GOLDEN_SAMPLES:
         model_path = root / "NPDevSamples" / sample / "Input" / "model.json"

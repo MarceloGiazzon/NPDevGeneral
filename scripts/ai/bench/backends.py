@@ -34,6 +34,22 @@ class BackendError(Exception):
     """The model call itself failed (network, HTTP status, malformed reply)."""
 
 
+def classify_backend_error(text: str) -> str:
+    """Why a model call failed, for the scorecard: an infrastructure outcome is never an authoring
+    failure. quota (429: the free tier is used up) | overload (5xx) | unreachable (timeout, network,
+    404 = no such model) | other. full-gemini-1 scored 16.7 % because 25 of these were counted as
+    `author` failures: 20 prompts never reached the model at all."""
+    head = (text or "")[:200]
+    if "HTTP 429" in head or "rate_limit" in head or "usage limit" in head.lower():
+        return "quota"
+    if any(f"HTTP {code}" in head for code in (500, 502, 503, 504, 529)) or "overloaded" in head.lower():
+        return "overload"
+    if "HTTP 404" in head or "timed out" in head or "TimeoutError" in head or "URLError" in head \
+            or "calling " in head or "model call failed" in head:
+        return "unreachable"
+    return "other"
+
+
 @dataclass
 class Completion:
     text: str
@@ -168,7 +184,7 @@ class OpenAICompatBackend:
                     continue
                 # never echo request headers (they carry the key); cap the response body
                 raise BackendError(f"HTTP {exc.code} from {self.info.base_url}: "
-                                   f"{exc.read().decode('utf-8', 'replace')[:300]}") from None
+                                   f"{exc.read().decode('utf-8', 'replace')[:1500]}") from None
             except (urllib.error.URLError, OSError, ValueError) as exc:
                 raise BackendError(f"model call failed: {type(exc).__name__}: {str(exc)[:200]}") from None
         try:
@@ -336,6 +352,84 @@ def build_provider_backends(spec: str, allow_paid: bool, timeout: float, resolve
                                    backoff=None if last else (15, 30),
                                    key_resolver=lambda pid, account=None, _key=key: _key, opener=opener))
     return built[0] if len(built) == 1 else FailoverBackend(built)
+
+
+def find_claude_cli() -> str | None:
+    """NPDEV_CLAUDE_CLI, else `claude` on PATH, else the newest binary bundled with the VS Code extension."""
+    explicit = os.environ.get("NPDEV_CLAUDE_CLI", "").strip()
+    if explicit:
+        return explicit
+    import shutil
+    on_path = shutil.which("claude")
+    if on_path:
+        return on_path
+    extensions = Path.home() / ".vscode" / "extensions"
+    exe = "claude.exe" if os.name == "nt" else "claude"
+    found = sorted(extensions.glob(f"anthropic.claude-code-*/resources/native-binary/{exe}"))
+    return str(found[-1]) if found else None
+
+
+def flatten_conversation(messages: list[dict]) -> tuple[str, str]:
+    """(system, prompt) for a one-shot CLI: the system message stays the system prompt; the rest of
+    the chat (request, earlier replies, error feedback) becomes one transcript, oldest first."""
+    system = "\n\n".join(str(m["content"]) for m in messages if m.get("role") == "system")
+    turns = [m for m in messages if m.get("role") != "system"]
+    if len(turns) == 1:
+        return system, str(turns[0]["content"])
+    parts = []
+    for m in turns:
+        label = "YOUR EARLIER REPLY" if m.get("role") == "assistant" else "USER"
+        parts.append(f"=== {label} ===\n{m['content']}")
+    return system, "\n\n".join(parts)
+
+
+class ClaudeCliBackend:
+    """A simulated EXTERNAL AI: the Claude Code CLI in one-shot mode (`-p`), billed to the owner's
+    subscription, not to an API key. Isolated so it sees only what an API caller would send: run in a
+    fresh empty directory, no tools, no settings/CLAUDE.md (`--setting-sources ""`), no MCP servers,
+    our system prompt instead of Claude Code's. The CLI still adds ~0.9k tokens of its own context per
+    call; they are counted (input + cache reads + cache writes), so the figures slightly overstate an
+    API call's input."""
+
+    def __init__(self, model: str, timeout: float = 900.0, exe: str | None = None, runner=None):
+        self.exe = exe or find_claude_cli()
+        if not self.exe:
+            raise BackendRefused("Claude CLI not found: set NPDEV_CLAUDE_CLI to claude(.exe)")
+        self.info = BackendInfo("claude-cli", "subscription", "claude-cli://" + model, model)
+        self.timeout = timeout
+        self._run = runner or self._subprocess
+
+    def _subprocess(self, argv: list[str], stdin: str, cwd: str) -> str:
+        import subprocess
+        try:
+            proc = subprocess.run(argv, input=stdin, capture_output=True, text=True, encoding="utf-8",
+                                  timeout=self.timeout, cwd=cwd)
+        except subprocess.TimeoutExpired:
+            raise BackendError(f"model call failed: TimeoutError: claude-cli timed out after {self.timeout}s") from None
+        return proc.stdout or proc.stderr or ""
+
+    def complete(self, messages: list[dict]) -> Completion:
+        import tempfile
+        system, prompt = flatten_conversation(messages)
+        started = time.monotonic()
+        with tempfile.TemporaryDirectory(prefix="npdev-sim-") as cwd:
+            sys_file = Path(cwd) / ".system-prompt.txt"
+            sys_file.write_text(system, encoding="utf-8")
+            raw = self._run([self.exe, "-p", "--model", self.info.model, "--tools", "",
+                             "--system-prompt-file", str(sys_file), "--setting-sources", "",
+                             "--strict-mcp-config", "--output-format", "json"], prompt, cwd)
+        try:
+            payload = json.loads(raw)
+        except ValueError:
+            raise BackendError(f"model call failed: claude-cli printed no JSON: {raw[:300]}") from None
+        if payload.get("is_error"):
+            status = payload.get("api_error_status")
+            raise BackendError((f"HTTP {status} " if status else "") + f"from claude-cli: {str(payload.get('result'))[:1500]}")
+        usage = payload.get("usage") or {}
+        prompt_tokens = sum(int(usage.get(k) or 0) for k in
+                            ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+        return Completion(str(payload.get("result") or ""), prompt_tokens, int(usage.get("output_tokens") or 0),
+                          time.monotonic() - started)
 
 
 class FakeBackend:

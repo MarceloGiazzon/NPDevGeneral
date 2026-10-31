@@ -245,7 +245,9 @@ def _describe(exc: Exception, url: str) -> str:
     host = urllib.parse.urlsplit(url).netloc
     if isinstance(exc, urllib.error.HTTPError):
         try:
-            detail = exc.read().decode("utf-8", "replace")[:300]
+            # 1500, not 300: a free tier names WHICH quota ran out (per-minute tokens vs requests per day)
+            # only after the first few hundred characters of its 429 body
+            detail = exc.read().decode("utf-8", "replace")[:1500]
         except Exception:  # noqa: BLE001 -- a broken error body must not hide the status code
             detail = ""
         return f"HTTP {exc.code} from {host}" + (f": {detail}" if detail else "")

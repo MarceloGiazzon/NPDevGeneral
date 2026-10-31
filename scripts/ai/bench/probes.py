@@ -35,6 +35,21 @@ def name_matches(real: str, logical: str, aliases: list[str] | None = None) -> b
     return norm(real) in want
 
 
+def words(name: str) -> list[str]:
+    """camelCase / snake_case / spaced name -> lower-case words, one trailing plural 's' dropped each."""
+    parts = re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+", str(name or ""))
+    return [w[:-1] if len(w) > 3 and w.endswith("s") else w for w in (p.lower() for p in parts)]
+
+
+def words_contain(real: str, logical: str, aliases: list[str] | None = None) -> bool:
+    have = words(real)
+    for want in [logical, *(aliases or [])]:
+        ww = words(want)
+        if ww and all(w in have for w in ww):
+            return True
+    return False
+
+
 # ---------------------------------------------------------------------------------------------
 # catalog (what the app really exposes)
 # ---------------------------------------------------------------------------------------------
@@ -71,7 +86,11 @@ class Catalog:
         for f in concept.fields:
             if name_matches(f.name, logical, aliases):
                 return f
-        return None
+        # No exact/alias match: accept the ONE field whose camelCase words contain a wanted name's words
+        # ("minutes it takes to make" -> minutesToMake). The prompt never dictates field names, so a
+        # descriptive name is not an authoring failure; an ambiguous containment still is.
+        loose = [f for f in concept.fields if f.name.lower() != "id" and words_contain(f.name, logical, aliases)]
+        return loose[0] if len(loose) == 1 else None
 
     def total_fields(self) -> int:
         return sum(len([f for f in c.fields if f.name.lower() != "id"]) for c in self.concepts)

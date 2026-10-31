@@ -316,6 +316,16 @@ class ProbeUnitTests(unittest.TestCase):
         self.assertTrue(probes.name_matches("OwnerName", "name", ["owner name"]))
         self.assertFalse(probes.name_matches("title", "name"))
 
+    def test_a_descriptive_field_name_matches_when_it_is_the_only_candidate(self):
+        concept = probes.CatalogConcept("Recipe", "recipes", [probes.CatalogField("id"), probes.CatalogField("title"),
+                                                             probes.CatalogField("minutesToMake")])
+        cat = probes.Catalog([concept])
+        self.assertEqual(cat.find_field(concept, "minutes").name, "minutesToMake")
+        self.assertEqual(cat.find_field(concept, "title").name, "title")
+        two = probes.CatalogConcept("Order", "orders", [probes.CatalogField("customerName"),
+                                                        probes.CatalogField("productName")])
+        self.assertIsNone(probes.Catalog([two]).find_field(two, "name"))     # ambiguous: still a miss
+
     def test_subset(self):
         self.assertTrue(probes.subset({"a": 3, "b": "x"}, {"a": 3.0}))
         self.assertTrue(probes.subset({"a": "3"}, {"a": 3}))
@@ -501,6 +511,81 @@ class ScorecardAndLoopTests(unittest.TestCase):
             res = run_bench.run_prompt({"id": "bench-903", "prompt": "x", "acceptance": {}}, fb, None, Path(td), args)
         self.assertEqual(res["failingStage"], "author")
         self.assertFalse(res["firstAttemptValid"])
+        self.assertEqual(res["outcome"], "fail")
+
+    def test_backend_errors_are_classified_as_infra_not_authoring(self):
+        self.assertEqual(backends.classify_backend_error("HTTP 429 from x: quota"), "quota")
+        self.assertEqual(backends.classify_backend_error("HTTP 503 from x: high demand"), "overload")
+        self.assertEqual(backends.classify_backend_error("HTTP 404 from x: no model"), "unreachable")
+        self.assertEqual(backends.classify_backend_error("model call failed: TimeoutError: timed out"), "unreachable")
+        self.assertEqual(backends.classify_backend_error("the JSON in the reply does not parse"), "other")
+
+    def test_quota_after_a_real_attempt_is_infra_and_excluded_from_the_pass_rate(self):
+        class QuotaAfterOne(backends.FakeBackend):
+            def complete(self, messages):
+                if self.calls:
+                    raise backends.BackendError("HTTP 429 from host: You exceeded your current quota")
+                return super().complete(messages)
+        fb = QuotaAfterOne(CANARY_MODEL)
+        args = mock.Mock(max_loops=5, ablation="none", keep_apps=False)
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(
+                run_bench, "run_attempt", return_value={"stages": [], "failingStage": "acceptance", "feedback": "x"}):
+            res = run_bench.run_prompt({"id": "bench-904", "prompt": "x", "acceptance": {}}, fb, None, Path(td), args)
+        self.assertEqual((res["outcome"], res["infraKind"]), ("infra", "quota"))
+        sc = run_bench.scorecard([res, self._res("a", True, 0)])
+        self.assertEqual((sc["completedPrompts"], sc["passRateCompleted"]), (1, 1.0))
+        self.assertEqual(sc["infraHistogram"], {"quota": 1})
+
+    def test_old_result_files_are_reclassified_from_their_error_text(self):
+        old = {"passed": False, "attempts": [{"failingStage": "author", "feedbackExcerpt": "HTTP 503 from h: busy"}]}
+        self.assertEqual(run_bench.outcome_of(old), "infra")
+        self.assertEqual(run_bench.outcome_of({"passed": False, "attempts": [
+            {"failingStage": "validate", "feedbackExcerpt": "- json_schema_enum"}]}), "fail")
+
+    def test_a_truncated_context_is_infra_not_a_model_failure(self):
+        class Truncating(backends.FakeBackend):
+            def __init__(self, path):
+                super().__init__(path)
+                self.info = backends.BackendInfo("ollama", "local", "http://localhost:11434/v1", "qwen")
+
+            def complete(self, messages):
+                return backends.Completion("```json\n{}\n```", 2048, 10, 1.0)
+        args = mock.Mock(max_loops=5, ablation="none", keep_apps=False)
+        with tempfile.TemporaryDirectory() as td:
+            res = run_bench.run_prompt({"id": "bench-905", "prompt": "x", "acceptance": {}}, Truncating(CANARY_MODEL),
+                                       "k" * 64000, Path(td), args)
+        self.assertEqual((res["outcome"], res["infraKind"], res["loopsUsed"]), ("infra", "context-truncated", 0))
+
+
+class ClaudeCliBackendTests(unittest.TestCase):
+    def test_isolated_one_shot_call_reads_usage_and_flattens_the_repair_turns(self):
+        seen = {}
+
+        def runner(argv, stdin, cwd):
+            seen.update(argv=argv, stdin=stdin, cwd=cwd, files=sorted(p.name for p in Path(cwd).iterdir()),
+                        system=(Path(cwd) / ".system-prompt.txt").read_text(encoding="utf-8"))
+            return json.dumps({"is_error": False, "result": "```json\n{}\n```",
+                               "usage": {"input_tokens": 5, "cache_read_input_tokens": 900,
+                                         "cache_creation_input_tokens": 100, "output_tokens": 42}})
+        be = backends.ClaudeCliBackend("haiku", exe="claude", runner=runner)
+        msgs = author.repair_messages(author.initial_messages("make an app", "KNOWLEDGE"), "my reply", "validate", "BAD")
+        c = be.complete(msgs)
+        self.assertEqual((c.prompt_tokens, c.completion_tokens), (1005, 42))
+        for flag in ("-p", "--strict-mcp-config"):
+            self.assertIn(flag, seen["argv"])
+        self.assertEqual(seen["argv"][seen["argv"].index("--tools") + 1], "")
+        self.assertEqual(seen["argv"][seen["argv"].index("--setting-sources") + 1], "")
+        self.assertEqual(seen["files"], [".system-prompt.txt"])         # nothing else to read
+        self.assertIn("KNOWLEDGE", seen["system"])
+        self.assertIn("=== YOUR EARLIER REPLY ===\nmy reply", seen["stdin"])
+        self.assertTrue(seen["stdin"].rstrip().endswith("BAD"))
+
+    def test_cli_error_becomes_a_classified_backend_error(self):
+        be = backends.ClaudeCliBackend("haiku", exe="claude", runner=lambda *a: json.dumps(
+            {"is_error": True, "api_error_status": 429, "result": "usage limit reached"}))
+        with self.assertRaises(backends.BackendError) as ctx:
+            be.complete([{"role": "user", "content": "x"}])
+        self.assertEqual(backends.classify_backend_error(str(ctx.exception)), "quota")
 
 
 class CliTests(unittest.TestCase):

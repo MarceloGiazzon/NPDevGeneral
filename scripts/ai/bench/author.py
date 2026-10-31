@@ -39,6 +39,22 @@ def load_core_context(build_root: Path) -> str:
     return json.loads(bundle.read_text(encoding="utf-8"))["markdown"]
 
 
+def load_knowledge_file(path: Path) -> str:
+    """--knowledge-file: a bundle.json-shaped file (its "markdown" key) or plain text, used verbatim."""
+    text = path.read_text(encoding="utf-8")
+    if path.suffix.lower() == ".json":
+        return json.loads(text)["markdown"]
+    return text
+
+
+def describe_knowledge(knowledge: str | None, source: str | None) -> dict:
+    """What the run taught, for summary.json: an A/B between knowledge variants must say which is which."""
+    import hashlib
+    body = (knowledge or "").encode("utf-8")
+    return {"source": source or ("core-context bundle" if knowledge else "none"), "bytes": len(body),
+            "sha256": hashlib.sha256(body).hexdigest()[:16] if knowledge else None}
+
+
 def system_prompt(knowledge: str | None) -> str:
     if not knowledge:
         return FORMAT_CONTRACT
