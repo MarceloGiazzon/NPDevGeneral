@@ -1,0 +1,10 @@
+id: B35
+title: "conflicts() checks one resource per rule -- no double-booking check across several resources (REG-317)"
+codeLinked: false
+codeLinkedNote: >-
+  2026-10-30 (REG-317, owner decision: build parent-scope only, record the rest). POSTURAL -- a real
+  limit with nothing to hit: no input reaches a diagnostic, the capability is simply absent.
+
+  conflicts(resourceField, startsAtField, durationField[, excludeIdField]) is one scheduling constraint on one resource field. Staff double-booking across slots (a visit needs a nurse AND a room AND a pharmacist) is several resources with different roles; folding them into one operator would need a set-valued resource argument the constraint index does not model.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B35 -- ledger/items/REG-317.yml"
+classification: POSTURAL

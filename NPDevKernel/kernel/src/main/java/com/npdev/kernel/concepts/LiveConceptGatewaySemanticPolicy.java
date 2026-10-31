@@ -96,6 +96,11 @@ public final class LiveConceptGatewaySemanticPolicy implements ConceptGatewaySem
     }
 
     @Override
+    public boolean isRowWritable(ConceptGatewayRequestContext request, ParentRecordLookup parents) {
+        return current().isRowWritable(request, parents);
+    }
+
+    @Override
     public boolean hasRowReadScope(String conceptName) {
         return current().hasRowReadScope(conceptName);
     }

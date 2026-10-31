@@ -1,0 +1,10 @@
+id: B33
+title: "Rules cannot read another concept's data beyond one parent field in access.write (REG-317)"
+codeLinked: false
+codeLinkedNote: >-
+  2026-10-30 (REG-317, owner decision: build parent-scope only, record the rest). POSTURAL -- a real
+  limit with nothing to hit: no input reaches a diagnostic, the capability is simply absent.
+
+  Delivered: parentField('ref','field') in access.write (SEC-16). Not delivered: any cross-concept read in an invariant, a default, or access.read -- so 'the assigned person has the right staff role' and 'this visit type needs a pharmacist' cannot be enforced declaratively. A rule that reads another concept would have to be pushed into every per-caller SQL scope (read) or cost a lookup per row (invariants), and would make a row's validity depend on rows that can change without it being re-checked.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B33 -- ledger/items/REG-317.yml"
+classification: POSTURAL

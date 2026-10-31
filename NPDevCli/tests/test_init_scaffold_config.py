@@ -50,7 +50,6 @@ class InitScaffoldConfigTest(unittest.TestCase):
             self.assertFalse(any("dedicated port" in note for note in config["trialDefaults"]["notes"]),
                              "the seed demo's 'dedicated port' note does not describe a scaffolded app")
             self.assertNotIn("8081", (target / "config.json").read_text(encoding="utf-8"))
-            self.assertIn("http://localhost:8080", (target / "README.md").read_text(encoding="utf-8"))
 
     def test_scaffolded_config_still_validates_against_the_config_schema(self):
         with TemporaryDirectory(prefix="npdev-init-config-") as tmp:

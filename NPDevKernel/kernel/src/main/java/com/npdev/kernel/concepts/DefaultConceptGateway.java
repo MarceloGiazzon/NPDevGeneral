@@ -808,7 +808,7 @@ public final class DefaultConceptGateway implements ConceptGateway {
      * there's no silent-omission equivalent for "this save/delete may not proceed."
      */
     private void enforceRowWritable(ConceptGatewayRequestContext requestContext, String action) {
-        if (semanticPolicy.isRowWritable(requestContext)) {
+        if (semanticPolicy.isRowWritable(requestContext, store::findById)) {
             return;
         }
         ExecutionContext context = requestContext.executionContext();

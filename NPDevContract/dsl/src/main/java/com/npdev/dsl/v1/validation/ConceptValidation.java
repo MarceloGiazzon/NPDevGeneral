@@ -348,6 +348,15 @@ final class ConceptValidation {
             }
 
             validateAccessRules(e.getName(), e.getAccess(), fieldNames, errors);
+            // SEC-16: parentField('ref', 'field') in access.write -- the reference and the target field must exist.
+            ParentFieldValidation.validate(
+                    e.getName(), e.getAccess(), effective.fields(),
+                    targetKey -> {
+                        ConceptAst targetConcept = entitiesByLower.get(targetKey);
+                        return targetConcept == null ? null : resolveEffective(
+                                targetConcept, entitiesByLower, effectiveCache, new HashSet<>(), errors).fields();
+                    },
+                    errors);
             validatePublicRead(e, effective.fields(), effectiveModel.getAggregates(), errors);
             validateRollups(e, effective.fields(), entitiesByLower, effectiveCache, errors);
             if (e.getCollaboration() != null && e.getCollaboration().attachments() && !e.getCollaboration().comments()) {
@@ -1081,6 +1090,7 @@ final class ConceptValidation {
         String fieldEntityLabel = entityName + " field '" + field.getName() + "'";
         validateAccessExpression(fieldEntityLabel, "read", access.getRead(), fieldNames, errors);
         validateAccessExpression(fieldEntityLabel, "write", access.getWrite(), fieldNames, errors);
+        ParentFieldValidation.refuseInFieldRule(fieldEntityLabel, access.getRead(), access.getWrite(), errors);
     }
 
     private static void validateAccessExpression(

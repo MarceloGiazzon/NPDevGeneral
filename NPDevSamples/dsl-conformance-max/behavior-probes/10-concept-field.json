@@ -2191,6 +2191,122 @@
           }
         }
       ]
+    },
+    {
+      "id": "cf-concept-access-write-parent-scope-denies-child-under-another-owners-parent",
+      "keywords": [
+        "conceptAccess.write"
+      ],
+      "description": "SEC-16 parent-scope: ShelfLayoutNote.access.write is parentField('shelfLayoutId', 'keeperEmail') == $user.id, so a note can be written only by the shelf's keeper. The shelf is readable by everyone, so the reference check passes and the write rule is what decides: a second user (key_alice) cannot attach a note to the developer's shelf -- the POST is refused with 403 ROW_SCOPE_DENIED and nothing is stored -- while the keeper can, and a note that names no existing shelf is refused too (fail closed).",
+      "steps": [
+        {
+          "name": "developer creates a shelf it keeps",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "keep-${rand}",
+            "rows": 1,
+            "cols": 1,
+            "keeperEmail": "developer"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "oid": "$.id",
+            "tag": "$.name"
+          }
+        },
+        {
+          "name": "another user attaches a note to it: refused",
+          "apiKey": "${key_alice}",
+          "method": "POST",
+          "path": "/api/concepts/shelf_layout_notes",
+          "body": {
+            "shelfLayoutId": "${oid}",
+            "text": "alice-${tag}"
+          },
+          "expect": {
+            "status": 403,
+            "json": {
+              "$.code": "ROW_SCOPE_DENIED"
+            }
+          }
+        },
+        {
+          "name": "nothing was stored",
+          "method": "GET",
+          "path": "/api/concepts/shelf_layout_notes?where=text:eq:alice-${tag}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 0
+              }
+            }
+          }
+        },
+        {
+          "name": "a note naming no existing shelf: refused",
+          "method": "POST",
+          "path": "/api/concepts/shelf_layout_notes",
+          "body": {
+            "shelfLayoutId": "00000000-0000-0000-0000-00000000dead",
+            "text": "orphan-${tag}"
+          },
+          "expect": {
+            "status": [
+              403,
+              400,
+              404,
+              422
+            ]
+          }
+        },
+        {
+          "name": "the shelf's keeper attaches a note: accepted",
+          "method": "POST",
+          "path": "/api/concepts/shelf_layout_notes",
+          "body": {
+            "shelfLayoutId": "${oid}",
+            "text": "owner-${tag}"
+          },
+          "expect": {
+            "status": [
+              201,
+              200
+            ]
+          }
+        },
+        {
+          "name": "locate the keeper's note",
+          "method": "GET",
+          "path": "/api/concepts/shelf_layout_notes?where=text:eq:owner-${tag}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 1
+              }
+            }
+          },
+          "save": {
+            "nid": "$.content[0].id"
+          }
+        },
+        {
+          "name": "cleanup note",
+          "method": "DELETE",
+          "path": "/api/shelf_layout_notes/${nid}",
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup shelf",
+          "method": "DELETE",
+          "path": "/api/shelf_layouts/${oid}",
+          "stopOnFail": false
+        }
+      ]
     }
   ]
 }

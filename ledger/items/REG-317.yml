@@ -4,9 +4,9 @@ title: >-
   requirements and per-visit-type schedules need hand-copied fields
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-10-29
-closed: null
+closed: 2026-10-30
 source: >-
   OWN-2 section 5.2 domain-fit simulation, 2026-10-28/29: a fresh agent given only the public docs and a
   clinical-trial site-visit scheduler (a domain never modelled here), not told what to build. Evidence:
@@ -25,4 +25,19 @@ detail: >-
 resolution: >-
   Done when each gap is either delivered (with a corpus example) or recorded as an owner decision / accepted
   boundary.
-verification: NOT_VERIFIED
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/ConfiguredConceptGatewaySemanticPolicyTest.java#childCannotBeCreatedUnderAnotherCoordinatorsParent
+  asserts: >-
+    with access.write = "parentField('participantId', 'coordinator') == $user.id", alice creating a child whose parent
+    row names bob as coordinator is refused with ROW_SCOPE_DENIED; siblings cover the caller's own parent
+    (create and edit succeed), moving a child under another coordinator's parent, an unset or missing parent
+    (denied) and a parent in another tenant (does not count). The live probe
+    cf-concept-access-write-parent-scope-denies-child-under-another-owners-parent proves it end to end.
+  provenRed: true
+note: >-
+  2026-10-30 closed by owner decision "build parent-scope only": the access.write parent-scope gap (from SEC-16)
+  is delivered as parentField('ref','field') with corpus example ShelfLayoutNote and a live probe (SEC-16). The
+  other gaps are recorded as accepted POSTURAL boundaries: B33 (no cross-concept rule reads), B34 (no parent in
+  access.read), B35 (conflicts() covers one resource per rule), B36 (no rows-from-template).

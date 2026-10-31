@@ -335,6 +335,43 @@
       }
     },
     {
+      "name": "ShelfLayoutNote",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Shelf layout note"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "shelfLayoutId",
+          "type": "reference",
+          "required": true,
+          "ui": {
+            "label": "Shelf layout"
+          },
+          "reference": {
+            "target": "ShelfLayout"
+          }
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Note"
+          }
+        }
+      ],
+      "access": {
+        "write": "parentField('shelfLayoutId', 'keeperEmail') == $user.id"
+      }
+    },
+    {
       "name": "WidgetOrderLine",
       "truthLevel": "T2",
       "ui": {

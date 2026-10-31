@@ -529,6 +529,101 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
         assertFalse(policy.isRowWritable(request.withData(Map.of("text", "bob"))));
     }
 
+    // ---- SEC-16 parent-scope half: parentField('<referenceField>', '<targetField>') in access.write ----------
+
+    private static final String PARENT_RULE = "parentField('participantId', 'coordinator') == $user.id";
+
+    private static ConfiguredConceptGatewaySemanticPolicy participantVisitPolicy(String visitWriteRule) {
+        return new ConfiguredConceptGatewaySemanticPolicy(List.of(
+                new ConfiguredConceptGatewaySemanticPolicy.ConceptDefinition(
+                        "Participant",
+                        Map.of("coordinator", plainField("coordinator", null)),
+                        List.of(), null, java.util.Set.of(), null),
+                new ConfiguredConceptGatewaySemanticPolicy.ConceptDefinition(
+                        "Visit",
+                        Map.of("participantId", plainField("participantId", "Participant"),
+                                "coordinator", plainField("coordinator", null),
+                                "note", plainField("note", null)),
+                        List.of(), null, java.util.Set.of(),
+                        new ConfiguredConceptGatewaySemanticPolicy.AccessRules(null, visitWriteRule))));
+    }
+
+    private static ConfiguredConceptGatewaySemanticPolicy.FieldDefinition plainField(String name, String referenceTarget) {
+        return new ConfiguredConceptGatewaySemanticPolicy.FieldDefinition(
+                name, false, List.of(), null, null, null, false, referenceTarget, null);
+    }
+
+    private static ConceptGateway participantGateway() {
+        ConceptGateway gateway = ConceptGateways.inMemory(participantVisitPolicy(PARENT_RULE));
+        ExecutionContext admin = new ExecutionContext("tenant-a", "admin", Map.of(), java.util.Set.of("ADMIN"));
+        gateway.save(new ConceptWriteRequest("Participant", "p-alice", null, Map.of("coordinator", "alice")), admin);
+        gateway.save(new ConceptWriteRequest("Participant", "p-bob", null, Map.of("coordinator", "bob")), admin);
+        return gateway;
+    }
+
+    /** The hole SEC-16 left: alice's own coordinator field says alice, but the parent is bob's. */
+    @Test
+    void childCannotBeCreatedUnderAnotherCoordinatorsParent() {
+        ConceptGateway gateway = participantGateway();
+        ExecutionContext alice = new ExecutionContext("tenant-a", "alice", Map.of(), java.util.Set.of("USER"));
+
+        ConceptGatewayAccessDeniedException denied = assertThrows(ConceptGatewayAccessDeniedException.class,
+                () -> gateway.save(new ConceptWriteRequest("Visit", "v1", null,
+                        Map.of("participantId", "p-bob", "coordinator", "alice")), alice));
+        assertEquals("ROW_SCOPE_DENIED", denied.code());
+        assertTrue(gateway.read(new ConceptReadRequest("Visit", "v1", "tenant-a"), alice).isEmpty(),
+                "a refused create must not store anything");
+    }
+
+    @Test
+    void childCanBeCreatedAndEditedUnderTheCallersOwnParent() {
+        ConceptGateway gateway = participantGateway();
+        ExecutionContext alice = new ExecutionContext("tenant-a", "alice", Map.of(), java.util.Set.of("USER"));
+
+        gateway.save(new ConceptWriteRequest("Visit", "v2", null, Map.of("participantId", "p-alice", "note", "a")), alice);
+        ConceptRecord edited = gateway.save(
+                new ConceptWriteRequest("Visit", "v2", null, Map.of("participantId", "p-alice", "note", "b")), alice);
+
+        assertEquals("b", edited.data().get("note"));
+    }
+
+    /** Re-parenting is judged on the NEW parent too, exactly as SEC-16's reassign half judges the new owner. */
+    @Test
+    void childCannotBeMovedUnderAnotherCoordinatorsParent() {
+        ConceptGateway gateway = participantGateway();
+        ExecutionContext alice = new ExecutionContext("tenant-a", "alice", Map.of(), java.util.Set.of("USER"));
+        gateway.save(new ConceptWriteRequest("Visit", "v3", null, Map.of("participantId", "p-alice")), alice);
+
+        assertThrows(ConceptGatewayAccessDeniedException.class,
+                () -> gateway.save(new ConceptWriteRequest("Visit", "v3", null, Map.of("participantId", "p-bob")), alice));
+        assertEquals("p-alice", gateway.read(new ConceptReadRequest("Visit", "v3", "tenant-a"), alice)
+                .orElseThrow().data().get("participantId"), "a refused move must leave the stored row alone");
+    }
+
+    /** Fail closed: no parent to consult means no write, whoever the caller is. */
+    @Test
+    void missingOrUnsetParentDeniesTheWrite() {
+        ConceptGateway gateway = participantGateway();
+        ExecutionContext alice = new ExecutionContext("tenant-a", "alice", Map.of(), java.util.Set.of("USER"));
+
+        assertThrows(ConceptGatewayAccessDeniedException.class,
+                () -> gateway.save(new ConceptWriteRequest("Visit", "v4", null, Map.of("participantId", "p-nobody")), alice));
+        assertThrows(ConceptGatewayAccessDeniedException.class,
+                () -> gateway.save(new ConceptWriteRequest("Visit", "v5", null, Map.of("note", "no parent at all")), alice));
+    }
+
+    /** A parent in another tenant is not a parent: the lookup is tenant-scoped. */
+    @Test
+    void parentInAnotherTenantDoesNotCount() {
+        ConceptGateway gateway = participantGateway();
+        ExecutionContext otherTenantAdmin = new ExecutionContext("tenant-b", "admin", Map.of(), java.util.Set.of("ADMIN"));
+        gateway.save(new ConceptWriteRequest("Participant", "p-other", null, Map.of("coordinator", "alice")), otherTenantAdmin);
+        ExecutionContext alice = new ExecutionContext("tenant-a", "alice", Map.of(), java.util.Set.of("USER"));
+
+        assertThrows(ConceptGatewayAccessDeniedException.class,
+                () -> gateway.save(new ConceptWriteRequest("Visit", "v6", null, Map.of("participantId", "p-other")), alice));
+    }
+
     private static ConfiguredConceptGatewaySemanticPolicy curatedLabelPolicy() {
         return curatedLabelPolicy("$user.roles.contains('CURATOR')");
     }

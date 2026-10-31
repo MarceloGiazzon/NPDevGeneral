@@ -4,9 +4,9 @@ title: >-
   their own scope, or create a child row under another coordinator's parent
 type: GAP
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-10-29
-closed: null
+closed: 2026-10-30
 source: >-
   OWN-2 section 5.2 domain-fit simulation, 2026-10-28/29: a fresh agent given only the public docs and a
   clinical-trial site-visit scheduler (a domain never modelled here), not told what to build. Evidence:
@@ -55,3 +55,14 @@ note: >-
   rules gap REG-317 already tracks -- or an owner decision that records the posture; close this item when either
   lands. Not run after the change: run-all-gates, RuntimeHost RowLevelAuthorizationAttackTest (needs the full
   RuntimeHost gate).
+  2026-10-30 parent-scope half DONE -> item closed. parentField('ref','field') is now available in access.write
+  (ConfiguredConceptGatewaySemanticPolicy.parentFieldsOf + UserScopedExpressions.ParentFields; model-time checks in
+  ParentFieldValidation: quoted names, first a reference field of the concept, second a field of its target;
+  refused in access.read and field-level rules). Fail closed on an unset/unknown parent. Tests:
+  ConfiguredConceptGatewaySemanticPolicyTest (5 new, 2 proven red on old code), ParentFieldValidationTest (8 new, 6
+  proven red without the wiring). Live: run-behavior-probes -Only 10-concept-field 28/28 including
+  cf-concept-access-write-parent-scope-denies-child-under-another-owners-parent (403 ROW_SCOPE_DENIED for a
+  second user on ShelfLayoutNote under the developer's shelf, nothing stored, keeper accepted, orphan refused). First
+  probe design was wrong: the parent had access.read, so the reference check (run under the caller's read scope)
+  gave 422 bond_target_not_found before the write rule; the example now hangs off ShelfLayout, readable by all.
+  Docs: ROW_LEVEL_AUTHORIZATION.md, EXPRESSIONS.md, BREAKING.md.

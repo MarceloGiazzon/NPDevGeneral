@@ -187,6 +187,42 @@ A hand-made page (`web/*.html`) that should work for logged-out visitors declare
 `<meta name="npdev-public-page" content="true">`. The shell then skips the login redirect.
 `NPDevShell.api.fileUrl()` accepts the public `{url}` shape. Example: Pigmentampas `web/gallery.html`.
 
+## A write rule judges the row as it will be written (SEC-16)
+
+`access.write` is evaluated against the row **as the write would leave it**, not only the row as it
+was. A create is judged on the payload; an update must hold for the stored row **and** for the stored row
+overlaid with the payload; a delete is judged on the stored row. So an owner cannot hand a row to someone
+else (`text == $user.id`, then a PUT setting `text` to another user is refused `403 ROW_SCOPE_DENIED` and the
+row is unchanged), and cannot create a row claiming ownership outside their scope.
+
+### Parent scope: `parentField('<referenceField>', '<targetField>')`
+
+A child row is often owned through its parent. In an **`access.write`** rule,
+`parentField('shelfLayoutId', 'keeperEmail')` is the value of `keeperEmail` on the row that the reference
+field `shelfLayoutId` points at:
+
+```json
+{ "name": "ShelfLayoutNote",
+  "fields": [ { "name": "shelfLayoutId", "type": "reference", "reference": { "target": "ShelfLayout" } }, ... ],
+  "access": { "write": "parentField('shelfLayoutId', 'keeperEmail') == $user.id" } }
+```
+
+A note can then be written only by the keeper of its shelf; anyone else gets `403 ROW_SCOPE_DENIED` and nothing
+is stored.
+
+- **Fails closed.** A parent that cannot be found -- the reference is unset, or names a row that does not exist
+  in this tenant -- denies the write. The reference check runs under the caller's own read scope, so a
+  caller who cannot *read* the parent gets `422 bond_target_not_found` before the write rule is reached; give
+  the parent a read scope the writers satisfy.
+- **Validated at model time.** Both arguments must be quoted names; the first must be a reference field of
+  this concept and the second a field of the concept it targets. A malformed call, an unknown field or a
+  non-reference first argument is a validation error, not a runtime lockout.
+- **Write rules only.** In `access.read` it is refused: a read rule has to stay inside the SQL-translatable
+  subset so it can scope every query and aggregate per caller. Keep the parent's owner on the child if the
+  child must be *read*-scoped by it. One level only; it does not chain through grandparents.
+- Corpus example and live probe: `NPDevSamples/dsl-conformance-max` (`ShelfLayoutNote`,
+  `cf-concept-access-write-parent-scope-denies-child-under-another-owners-parent`).
+
 ## What's deliberately out of scope
 
 - **Uniqueness pre-checks** (`existsUniqueInConceptStore` and friends) intentionally scan the

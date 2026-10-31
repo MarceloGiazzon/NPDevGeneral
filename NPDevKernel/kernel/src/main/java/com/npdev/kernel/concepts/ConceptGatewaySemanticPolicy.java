@@ -56,6 +56,28 @@ public interface ConceptGatewaySemanticPolicy {
     }
 
     /**
+     * SEC-16 (parent-scope half): the same decision as {@link #isRowWritable(ConceptGatewayRequestContext)},
+     * for a caller that can also read other concepts' rows, so an {@code access.write} rule may consult
+     * the PARENT of the row being written with {@code parentField('<referenceField>', '<targetField>')}.
+     * The default ignores the lookup, which is right for any policy whose rules never name a parent.
+     */
+    default boolean isRowWritable(ConceptGatewayRequestContext request, ParentRecordLookup parents) {
+        return isRowWritable(request);
+    }
+
+    /**
+     * Reads one row of another concept for a write rule's {@code parentField(...)}: tenant-scoped,
+     * no row scope of its own (the rule only learns whether it holds, never the parent's data).
+     */
+    @FunctionalInterface
+    interface ParentRecordLookup {
+        /** A lookup that finds nothing, so every {@code parentField(...)} fails closed. */
+        ParentRecordLookup NONE = (tenantId, conceptName, id) -> Optional.empty();
+
+        Optional<ConceptRecord> find(String tenantId, String conceptName, String id);
+    }
+
+    /**
      * REG-42 (LNCH13-F3, REG-16-resid Round 2 follow-up): does this concept declare an
      * {@code access.read} row-level rule at all? {@link DefaultConceptGateway#query} uses this to
      * decide whether {@code total}/{@code hasMore} need recomputing against the row-scoped result

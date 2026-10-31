@@ -1,0 +1,10 @@
+id: B36
+title: "No declarative rows-from-template -- nothing creates one child row per template row on enrolment (REG-317)"
+codeLinked: false
+codeLinkedNote: >-
+  2026-10-30 (REG-317, owner decision: build parent-scope only, record the rest). POSTURAL -- a real
+  limit with nothing to hit: no input reaches a diagnostic, the capability is simply absent.
+
+  Creating one Visit per VisitType when a participant enrols is a fan-out the DSL has no verb for; it is a flow, not a rule, because it creates rows with their own validation, ids and events.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B36 -- ledger/items/REG-317.yml"
+classification: POSTURAL

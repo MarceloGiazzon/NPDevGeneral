@@ -1,0 +1,10 @@
+id: B34
+title: "access.read cannot name a parent -- a child is read-scoped only by its own fields (REG-317)"
+codeLinked: false
+codeLinkedNote: >-
+  2026-10-30 (REG-317, owner decision: build parent-scope only, record the rest). POSTURAL -- a real
+  limit with nothing to hit: no input reaches a diagnostic, the capability is simply absent.
+
+  parentField is a write-rule function only. A read rule has to stay in the SQL-translatable subset so it scopes every query, count and aggregate per caller (and the row-scoped pagination metadata); a parent lookup there is a join the scope builder does not have. ParentFieldValidation refuses it at model time rather than letting it silently match nothing.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B34 -- ledger/items/REG-317.yml"
+classification: POSTURAL

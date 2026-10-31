@@ -5,6 +5,14 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-30 — `parentField('refField', 'targetField')` in `access.write` lets a child be written only by its parent's owner (SEC-16)
+
+**What changes.** New, additive: a write rule can read one field of the row a reference field points at, so a child cannot be attached under another owner's parent. A parent that cannot be found denies the write (fail closed); `parentField` in `access.read` or a field-level rule, or with a first argument that is not a reference field of the concept, is a validation error. The only behaviour that tightens is for a model that already used the name `parentField` in a rule, which was not a function before and could not have validated.
+
+**Who is affected.** No corpus model. `dsl-conformance-max` gains `ShelfLayoutNote` as the example.
+
+**Codemod.** None: nothing existing changes shape.
+
 ## 2026-10-30 — an `npdev.auth.api-keys` value with no parseable mapping fails startup instead of booting a locked-out app (REG-319)
 
 **What changes.** In `apikey` mode `StartupValidator` only required the value to contain an `=`. An entry needs `apiKey=tenant:actor[:ROLE[|ROLE...]]`; the generated filter drops one that lacks a tenant and an actor, and answers its caller `401 invalid_api_key`. `NPDEV_AUTH_APIKEYS=k=ADMIN` therefore booted clean and then refused every request, with nothing in the log. Startup now fails with a message naming the expected shape (and never the key) when not one entry parses, and the filter logs at WARN, at startup, how many entries it dropped when only some do. Validator and filter now call one parser, `com.npdev.kernel.ports.ApiKeyMappings`.

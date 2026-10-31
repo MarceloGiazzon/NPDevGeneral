@@ -51,12 +51,46 @@ public final class UserScopedExpressions {
                     }
             ));
 
+    private static ComputedExpression.FunctionRegistry registryFor(ParentFields parents) {
+        if (parents == null) {
+            return FUNCTIONS;
+        }
+        ComputedExpression.ExprFunction parentField = (args, vars) -> {
+            if (args.size() != 2) {
+                throw new ComputedExpression.ExpressionException("parentField takes (referenceField, targetField)");
+            }
+            Object referenceField = args.get(0).eval(vars);
+            Object targetField = args.get(1).eval(vars);
+            if (!(referenceField instanceof String reference) || !(targetField instanceof String target)) {
+                throw new ComputedExpression.ExpressionException("parentField arguments must be field-name strings");
+            }
+            return parents.read(vars, reference, target);
+        };
+        return name -> "parentField".equals(name) ? parentField : FUNCTIONS.lookup(name);
+    }
+
     /** True when {@code expression} names the acting user, i.e. needs this evaluator's scope. */
     public static boolean referencesUser(String expression) {
         return expression != null && expression.contains("$user");
     }
 
+    /**
+     * SEC-16: backs {@code parentField('<referenceField>', '<targetField>')} in an {@code access.write} rule --
+     * the value of {@code targetField} on the row that {@code referenceField} of the row under evaluation
+     * points at. Throws {@link ComputedExpression.ExpressionException} when there is no such parent, which
+     * {@link #evaluate} turns into a denial (fail closed).
+     */
+    @FunctionalInterface
+    public interface ParentFields {
+        Object read(Map<String, Object> row, String referenceField, String targetField);
+    }
+
     public static boolean evaluate(String expression, Map<String, Object> recordData, ExecutionContext context) {
+        return evaluate(expression, recordData, context, null);
+    }
+
+    public static boolean evaluate(
+            String expression, Map<String, Object> recordData, ExecutionContext context, ParentFields parents) {
         Map<String, Object> scope = new LinkedHashMap<>(recordData == null ? Map.of() : recordData);
         ExecutionContext effectiveContext = context == null ? ExecutionContext.anonymous() : context;
         scope.put("$user.id", effectiveContext.actorId());
@@ -76,7 +110,7 @@ public final class UserScopedExpressions {
             if (UserReferences.firstUnbound(expression) != null) {
                 return false;
             }
-            return ComputedExpression.evaluateBoolean(expression, scope, FUNCTIONS);
+            return ComputedExpression.evaluateBoolean(expression, scope, registryFor(parents));
         } catch (ComputedExpression.ExpressionException malformed) {
             // Fail closed: SemanticValidator already rejects a malformed rule at model-compile time,
             // so reaching this at runtime means something bypassed validation (e.g. a hand-edited

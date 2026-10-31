@@ -58,6 +58,13 @@ On a live write each is real. During the boot-time backfill and its shadow proof
 is the epoch instant, `uuid()` one constant), so two passes always agree. For a calendar date use
 `today()` below, which *is* an ordinary function and composes (`addDays(today(), 7)`).
 
+### Parent lookup: `parentField('refField', 'targetField')` (SEC-16)
+
+Available **only in a concept's `access.write` rule**: the value of `targetField` on the row that the
+reference field `refField` of this row points at, e.g. `parentField('shelfLayoutId', 'keeperEmail') == $user.id`.
+No such parent (unset reference, or no such row in the tenant) denies the write. Refused in `access.read` and in
+field-level rules; see [Row-level authorization](reference/ROW_LEVEL_AUTHORIZATION.md).
+
 ### Date functions (REG-313)
 
 One implementation, `com.npdev.dsl.v1.expr.DateFunctions`, available **everywhere an expression runs**: a

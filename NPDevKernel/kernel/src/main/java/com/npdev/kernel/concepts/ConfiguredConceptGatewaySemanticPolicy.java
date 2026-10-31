@@ -520,6 +520,11 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
 
     @Override
     public boolean isRowWritable(ConceptGatewayRequestContext request) {
+        return isRowWritable(request, ParentRecordLookup.NONE);
+    }
+
+    @Override
+    public boolean isRowWritable(ConceptGatewayRequestContext request, ParentRecordLookup lookup) {
         ConceptDefinition concept = concept(request);
         if (ExecutionContext.isSeeding(request.executionContext())) {
             return true;
@@ -531,18 +536,42 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         // (stored row overlaid with the incoming data) -- see the interface javadoc for why: a
         // caller must not modify/delete a row outside their own scope, NOR create one claiming
         // ownership outside it, NOR rewrite a row they own so it falls outside it (SEC-16).
+        UserScopedExpressions.ParentFields parents = parentFieldsOf(concept, request.tenantId(), lookup);
         Optional<ConceptRecord> previous = request.previousRecord();
         if (previous.isEmpty()) {
-            return evaluateAccessRule(concept.access().write(), request.data(), request.executionContext());
+            return UserScopedExpressions.evaluate(
+                    concept.access().write(), request.data(), request.executionContext(), parents);
         }
         Map<String, Object> stored = previous.get().data();
-        if (!evaluateAccessRule(concept.access().write(), stored, request.executionContext())) {
+        if (!UserScopedExpressions.evaluate(concept.access().write(), stored, request.executionContext(), parents)) {
             return false;
         }
         Map<String, Object> written = new LinkedHashMap<>(stored);
         written.putAll(request.data());
         return written.equals(stored)
-                || evaluateAccessRule(concept.access().write(), written, request.executionContext());
+                || UserScopedExpressions.evaluate(concept.access().write(), written, request.executionContext(), parents);
+    }
+
+    /**
+     * SEC-16: {@code parentField(referenceField, targetField)} -- the field of the row {@code referenceField}
+     * points at. Every way of not finding that row (the field is not a reference, is unset on this row, or
+     * names a row that does not exist in this tenant) throws, which the evaluator turns into a denial.
+     */
+    private UserScopedExpressions.ParentFields parentFieldsOf(
+            ConceptDefinition concept, String tenantId, ConceptGatewaySemanticPolicy.ParentRecordLookup lookup) {
+        return (row, referenceField, targetField) -> {
+            String target = resolveReferenceTarget(concept.name(), referenceField)
+                    .orElseThrow(() -> new ComputedExpression.ExpressionException(
+                            referenceField + " is not a reference field of " + concept.name()));
+            Object id = row.get(referenceField);
+            if (id == null || String.valueOf(id).isBlank()) {
+                throw new ComputedExpression.ExpressionException(referenceField + " is not set");
+            }
+            ConceptRecord parent = lookup.find(tenantId, target, String.valueOf(id))
+                    .orElseThrow(() -> new ComputedExpression.ExpressionException(
+                            "no " + target + " " + id + " in this tenant"));
+            return parent.data().get(targetField);
+        };
     }
 
     /**
