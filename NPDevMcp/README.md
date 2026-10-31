@@ -12,10 +12,10 @@ Model Context Protocol server (JSON-RPC 2.0 over stdio) that wraps the portable 
 | `npdev_validate_structural` | The fast half of the above: JSON-Schema shape only, **no Gradle** — for the tight edit loop. Cannot see cross-reference errors, so finish with `npdev_validate`. |
 | `npdev_inspect_app` | Read-only summary of an existing model (concepts/fields/flows/events/panels/…). Use to avoid duplicating concepts. |
 | `npdev_inspect_bonds` | Bond/anchor/onDelete analysis + migration risks. |
-| `npdev_list_schemas` / `npdev_get_schema` | Discover and fetch the exact authoring grammar for an object type (or `model` for the full canonical schema). |
-| `npdev_get_constrained_schema` | The same grammar reduced to the subset a structured-output API accepts (`scripts/ai/derive_constrained_schemas.py`, derived on demand into `<Build>/npdev-ai/constrained/`). |
-| `npdev_core_context` | The stable, prompt-cacheable authoring prefix — contract + curated schemas + golden models (`scripts/ai/build_core_context.py`). `manifest_only` returns just the content hash. |
-| `npdev_app_context` | The volatile per-app half: this model's contents + the constrained schema its output must satisfy. Goes **after** the core-context prefix. |
+| `npdev_list_schemas` / `npdev_get_schema` | Discover and fetch an exact grammar by name. `model` is the canonical `model.json` schema — the only dialect to author. `ai-model` (the older ai-model.v1 `app`/`entities`/`operation` dialect) is deprecated: still served by explicit name, with a deprecation `$comment`. |
+| `npdev_get_constrained_schema` | A `schemas/ai` grammar (e.g. `custom-panel`) reduced to the subset a structured-output API accepts (`scripts/ai/derive_constrained_schemas.py`, derived on demand into `<Build>/npdev-ai/constrained/`). `model` has no constrained form (recursive, ~160 KB). |
+| `npdev_core_context` | The stable, prompt-cacheable authoring prefix — contract + canonical value reference + golden models (`scripts/ai/build_core_context.py`). `manifest_only` returns just the content hash. |
+| `npdev_app_context` | The volatile per-app half: this model's contents, plus a constrained schema only when `schema_name` is passed (no default — it used to default to the deprecated `ai-model`). Goes **after** the core-context prefix. |
 | `npdev_search_examples` | Retrieve real, working example snippets (RAG; reads `npdev-ai/rag-index.json` under the build root — `NPDEV_BUILD_ROOT`, else `<repo-parent>/Build` — see `scripts/ai/build_rag_index.py`). |
 | `npdev_graph_explain` | "Why does this element exist?" — purely from a generated app's `npdev/semantic-graph.json`: which elements reference it and what it references. |
 | `npdev_graph_reuse` | "What would I reuse for this intent?" — keyword-ranks existing elements in that same graph against a free-text intent, with each candidate's own wiring. |

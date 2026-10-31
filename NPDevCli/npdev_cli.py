@@ -37,6 +37,7 @@ import npdev_engines
 import npdev_monitor
 # `inspect bonds --diagram` renders the SAME bonds/concepts inspect_bonds() already computed as a
 # self-contained SVG/HTML page. Stdlib-only inside, same rule as the two imports above.
+import npdev_desire_paths
 import npdev_diagram
 import npdev_rename_cascade
 # TRUTH-1: `npdev truth` -- per-concept truth level + the evidence behind it. Stdlib-only, like the rest.
@@ -448,6 +449,11 @@ MODEL_ARRAY_KEYS = {
     # `validate model --structural-only` path, and a key missing here is silently invisible to it --
     # exactly the drift the block above was written to stop repeating.
     "seeds",
+    # webhooks/sequences joined the Java composer in R6.2/R5.3 but never this copy, so the
+    # build-free path refused models that validate everywhere else. Now pinned by
+    # test_root_keys_match_schema.py against model.schema.json itself, not a hand-kept list.
+    "webhooks",
+    "sequences",
 }
 ROOT_SCALAR_KEYS = {
     "$schema", "schemaVersion", "dslVersion", "namespace", "model", "version",
@@ -457,7 +463,7 @@ ROOT_SCALAR_KEYS = {
     # `{"$ref", "as"}` entries) -- REG-186 added the separate composition of pack-CONTRIBUTED
     # members into the model's own arrays below, which is a different thing from passing the
     # declaration through.
-    "packs", "provides", "externalAi", "settings",
+    "packs", "provides", "externalAi", "settings", "appShell", "agentAccess",
 }
 FRAGMENT_KEYS = MODEL_ARRAY_KEYS | {"metadata", "fragments"}
 
@@ -16642,6 +16648,14 @@ def build_parser() -> argparse.ArgumentParser:
     normalize_ai = normalize_sub.add_parser("ai-model")
     normalize_ai.add_argument("path")
     normalize_ai.add_argument("--output")
+    normalize_dp = normalize_sub.add_parser(
+        "desire-paths",
+        help="Rewrite shapes AI authors commonly guess (mode list/read, roleId/permissions, "
+             "lifecycle initial/final...) into canonical model.json; every change is reported.",
+    )
+    normalize_dp.add_argument("path")
+    normalize_dp.add_argument("--output", help="write the fixed model here (default: stdout)")
+    normalize_dp.add_argument("--report", help="write the list of fixes here as JSON")
 
     migrate = subparsers.add_parser(
         "migrate", help="Rewrite existing models after a breaking DSL change (npdev migrate dsl-2)."
@@ -18402,6 +18416,15 @@ def main(argv: list[str] | None = None) -> int:
             return run_validate_semantic(Path(args.path).expanduser(), report_out)
         if args.command == "normalize" and args.normalize_command == "ai-model":
             write_or_print_json(normalize_ai_model(Path(args.path).expanduser()), args.output)
+            return 0
+        if args.command == "normalize" and args.normalize_command == "desire-paths":
+            fixed, fixes = npdev_desire_paths.fix_model(read_json(Path(args.path).expanduser()))
+            if args.report:
+                write_or_print_json({"fixes": fixes}, args.report)
+            print(f"{len(fixes)} desire-path fix(es)", file=sys.stderr)
+            for line in npdev_desire_paths.summary_lines(fixes):
+                print(line, file=sys.stderr)
+            write_or_print_json(fixed, args.output)
             return 0
         if args.command == "migrate" and args.migrate_command == "legacy-model":
             migrate_legacy_model(args)

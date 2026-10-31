@@ -165,8 +165,8 @@ public final class StartupValidator implements InitializingBean {
         }
         throw configError(
                 "Model flow '" + offendingFlow + "' persists via capability 'persistence' but no "
-                        + "persistence capability binding is registered. Declare a binding "
-                        + "(persistence-inproc for dev / persistence-postgres for prod).",
+                        + "persistence capability binding is registered. Add to the model's bindings: "
+                        + "{ \"capability\": \"persistence\", \"adapter\": \"repository\" }.",
                 CAPABILITY_BINDING_ANCHOR
         );
     }

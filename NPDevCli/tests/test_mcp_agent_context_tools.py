@@ -113,7 +113,7 @@ class ConstrainedSchemaTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.build_root = Path(self._tmp.name)
-        self.derived = self.build_root / "npdev-ai" / "constrained" / "ai-model.constrained.schema.json"
+        self.derived = self.build_root / "npdev-ai" / "constrained" / "custom-panel.constrained.schema.json"
         self.addCleanup(self._tmp.cleanup)
         env = patch.dict(os.environ, {"NPDEV_BUILD_ROOT": str(self.build_root)})
         env.start()
@@ -122,34 +122,35 @@ class ConstrainedSchemaTest(unittest.TestCase):
     def _deriver(self, calls: list[list[str]], payload: dict | None = None):
         def fake(script, args, timeout=300):
             calls.append([script, *args])
-            self.derived.parent.mkdir(parents=True, exist_ok=True)
-            self.derived.write_text(json.dumps(payload or {"type": "object"}), encoding="utf-8")
+            target = self.derived.with_name(f"{args[0]}.constrained.schema.json")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps(payload or {"type": "object"}), encoding="utf-8")
             return {"ok": True, "exitCode": 0, "stdout": "{}", "stderr": ""}
         return fake
 
     def test_derives_on_first_request_then_serves_the_cached_copy(self):
         calls: list[list[str]] = []
         with patch.object(server, "run_ai_script", self._deriver(calls, {"type": "object", "x": 1})):
-            first = server.tool_get_constrained_schema({"schema_name": "ai-model"})
-            second = server.tool_get_constrained_schema({"schema_name": "ai-model"})
+            first = server.tool_get_constrained_schema({"schema_name": "custom-panel"})
+            second = server.tool_get_constrained_schema({"schema_name": "custom-panel"})
         self.assertFalse(first["isError"])
         self.assertEqual(json.loads(_text_of(second)), {"type": "object", "x": 1})
-        self.assertEqual(calls, [["derive_constrained_schemas.py", "ai-model"]])
+        self.assertEqual(calls, [["derive_constrained_schemas.py", "custom-panel"]])
 
     def test_a_newer_source_schema_forces_re_derivation(self):
         calls: list[list[str]] = []
         with patch.object(server, "run_ai_script", self._deriver(calls)):
-            server.tool_get_constrained_schema({"schema_name": "ai-model"})
+            server.tool_get_constrained_schema({"schema_name": "custom-panel"})
             # Age the derived copy so the real (untouched) source schema is newer.
             os.utime(self.derived, (1_000_000, 1_000_000))
-            server.tool_get_constrained_schema({"schema_name": "ai-model"})
+            server.tool_get_constrained_schema({"schema_name": "custom-panel"})
         self.assertEqual(len(calls), 2)
 
     def test_refresh_forces_re_derivation_of_a_current_copy(self):
         calls: list[list[str]] = []
         with patch.object(server, "run_ai_script", self._deriver(calls)):
-            server.tool_get_constrained_schema({"schema_name": "ai-model"})
-            server.tool_get_constrained_schema({"schema_name": "ai-model", "refresh": True})
+            server.tool_get_constrained_schema({"schema_name": "custom-panel"})
+            server.tool_get_constrained_schema({"schema_name": "custom-panel", "refresh": True})
         self.assertEqual(len(calls), 2)
 
     def test_unknown_schema_fails_before_running_the_deriver(self):
@@ -163,6 +164,18 @@ class ConstrainedSchemaTest(unittest.TestCase):
         result = server.tool_get_constrained_schema({"schema_name": "model"})
         self.assertTrue(result["isError"])
         self.assertIn("npdev_get_schema", _text_of(result))
+        # The pointer must not steer an AI to the deprecated second dialect.
+        self.assertNotIn("ai-model", _text_of(result))
+
+    def test_the_deprecated_ai_model_is_served_with_a_deprecation_comment(self):
+        calls: list[list[str]] = []
+        with patch.object(server, "run_ai_script",
+                          self._deriver(calls, {"$comment": "derived", "type": "object"})):
+            schema = json.loads(_text_of(server.tool_get_constrained_schema({"schema_name": "ai-model"})))
+        self.assertTrue(schema["$comment"].startswith("DEPRECATED ai-model.v1"))
+        self.assertIn("derived", schema["$comment"])
+        # Never the `deprecated` keyword: structured-output APIs reject it.
+        self.assertNotIn("deprecated", schema)
 
     def test_alias_normalization_matches_npdev_get_schema(self):
         # 'config' is a documented alias; the two schema tools must agree on it.
@@ -173,7 +186,7 @@ class ConstrainedSchemaTest(unittest.TestCase):
         def failing(script, args, timeout=300):
             return {"ok": False, "exitCode": 1, "stdout": "", "stderr": "boom"}
         with patch.object(server, "run_ai_script", failing):
-            result = server.tool_get_constrained_schema({"schema_name": "ai-model"})
+            result = server.tool_get_constrained_schema({"schema_name": "custom-panel"})
         self.assertTrue(result["isError"])
         self.assertIn("boom", _text_of(result))
 
@@ -267,21 +280,41 @@ class AppContextTest(unittest.TestCase):
                     "stderr": "" if ok else "npdev: model not found"}
         return fake
 
-    def test_composes_inspect_app_with_the_constrained_schema(self):
+    def test_default_is_the_app_summary_plus_the_canonical_hint_and_no_schema(self):
+        """The old default embedded the ai-model.v1 constrained schema -- a second dialect AIs
+        then mixed into model.json. The default now teaches the canonical dialect only."""
         with patch.object(server, "run_cli", self._fake_inspect()), \
              patch.object(server, "tool_get_constrained_schema",
-                          lambda a: server._text(json.dumps({"type": "object"}))):
+                          lambda a: self.fail("no schema is derived by default")):
             result = server.tool_app_context({"model_path": "m.json"})
         payload = json.loads(_text_of(result))
         self.assertEqual(payload["app"]["namespace"], "demo")
+        self.assertNotIn("constrainedSchema", payload)
+        self.assertIn("input.mode", payload["note"])
+        self.assertIn("npdev_get_schema 'model'", payload["note"])
+        self.assertNotIn("ai-model", payload["note"])
+
+    def test_an_explicit_schema_name_embeds_that_constrained_schema(self):
+        asked: list[str] = []
+
+        def fake(arguments):
+            asked.append(arguments["schema_name"])
+            return server._text(json.dumps({"type": "object"}))
+
+        with patch.object(server, "run_cli", self._fake_inspect()), \
+             patch.object(server, "tool_get_constrained_schema", fake):
+            result = server.tool_app_context({"model_path": "m.json", "schema_name": "custom-panel"})
+        payload = json.loads(_text_of(result))
+        self.assertEqual(asked, ["custom-panel"])
         self.assertEqual(payload["constrainedSchema"], {"type": "object"})
-        self.assertEqual(payload["constrainedSchemaName"], "ai-model")
+        self.assertEqual(payload["constrainedSchemaName"], "custom-panel")
 
     def test_include_schema_false_returns_the_app_summary_alone(self):
         with patch.object(server, "run_cli", self._fake_inspect()), \
              patch.object(server, "tool_get_constrained_schema",
                           lambda a: self.fail("should not derive a schema")):
-            result = server.tool_app_context({"model_path": "m.json", "include_schema": False})
+            result = server.tool_app_context({"model_path": "m.json", "schema_name": "custom-panel",
+                                               "include_schema": False})
         self.assertNotIn("constrainedSchema", json.loads(_text_of(result)))
 
     def test_a_schema_failure_is_reported_not_swallowed(self):
@@ -289,7 +322,7 @@ class AppContextTest(unittest.TestCase):
         with patch.object(server, "run_cli", self._fake_inspect()), \
              patch.object(server, "tool_get_constrained_schema",
                           lambda a: server._text_error("deriver unavailable")):
-            result = server.tool_app_context({"model_path": "m.json"})
+            result = server.tool_app_context({"model_path": "m.json", "schema_name": "custom-panel"})
         payload = json.loads(_text_of(result))
         self.assertIsNone(payload["constrainedSchema"])
         self.assertIn("deriver unavailable", payload["constrainedSchemaError"])

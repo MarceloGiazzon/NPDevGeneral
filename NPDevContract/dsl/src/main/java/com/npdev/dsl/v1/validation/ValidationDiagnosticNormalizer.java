@@ -2,6 +2,7 @@ package com.npdev.dsl.v1.validation;
 
 import com.networknt.schema.ValidationMessage;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -714,10 +715,25 @@ final class ValidationDiagnosticNormalizer {
                     + "so the name resolves to a single declaration instead of two.";
         }
 
-        // 4. something the model requires is absent
+        // 4. something the model requires is absent. Two grammars, and they name the missing thing
+        // on opposite sides of the verb: "<x> is required" names it BEFORE the phrase, while
+        // "<owner> requires <x>" / "<owner> must define <x>" name the OWNER before it and the
+        // missing thing AFTER. Quoting the word before "requires" produced "Add 'scope' here" for
+        // `scope "row" requires dataSource` and "Add 'updateconcept step' here" for
+        // `updateConcept step must define input` -- both told the author to add what was already there.
+        int objectPhrase = earliestPhrase(lower, OBJECT_PHRASES.toArray(String[]::new));
+        int subjectPhrase = earliestPhrase(lower, "is required", "are required", "is missing", "is null");
+        if (objectPhrase >= 0 && (subjectPhrase < 0 || objectPhrase < subjectPhrase)) {
+            String object = objectAfter(message, objectPhrase);
+            if (object == null) {
+                return "Add the declaration this message says is required -- it is not optional, and "
+                        + "the model stays rejected until it is present.";
+            }
+            return "Add '" + object + "' to the declaration this message names"
+                    + " -- it is required, not optional, and the model stays rejected until it is present.";
+        }
         String missing = subjectBefore(message, lower, "is required", "are required", "is missing",
-                "is null", "must declare", "must define", "must have", "must contain", "requires",
-                "has no");
+                "is null");
         if (missing != null) {
             return "Add " + quotedOr(missing, "the required declaration")
                     + " here -- it is required, not optional, and the model stays rejected until it "
@@ -917,6 +933,63 @@ final class ValidationDiagnosticNormalizer {
         }
         String noun = nounBefore(message, best);
         return "declaration".equals(noun) ? "" : noun;
+    }
+
+    /** Index of whichever phrase occurs first in {@code lower}, or -1. */
+    private static int earliestPhrase(String lower, String... phrases) {
+        int best = -1;
+        for (String phrase : phrases) {
+            int at = lower.indexOf(phrase);
+            if (at >= 0 && (best < 0 || at < best)) {
+                best = at;
+            }
+        }
+        return best;
+    }
+
+    private static final List<String> OBJECT_PHRASES =
+            List.of("must declare", "must define", "must have", "must contain", "requires", "has no");
+
+    /** Leading words that mean the object is a clause, not a nameable declaration. */
+    private static final Set<String> OBJECT_REJECT_WORDS = Set.of(
+            "that", "at", "least", "exactly", "either", "both", "only", "some", "any", "every", "all");
+
+    /**
+     * The noun phrase named right after the verb phrase starting at {@code phraseIndex}
+     * ("requires dataSource" -> dataSource, "has no id field" -> id field), cut at the first
+     * punctuation or {@code --}. Null when it does not start with an identifier-shaped word or runs
+     * past four words (a clause, not a name) -- a sentence fragment quoted back as "the thing to
+     * add" is worse than the generic sentence.
+     */
+    private static String objectAfter(String message, int phraseIndex) {
+        String lower = message.toLowerCase(Locale.ROOT);
+        int end = -1;
+        for (String phrase : OBJECT_PHRASES) {
+            if (lower.startsWith(phrase, phraseIndex)) {
+                end = phraseIndex + phrase.length();
+                break;
+            }
+        }
+        if (end < 0) {
+            return null;
+        }
+        String tail = message.substring(end);
+        int dash = tail.indexOf(" --");
+        if (dash >= 0) {
+            tail = tail.substring(0, dash);
+        }
+        tail = tail.split("[.,;:(]", 2)[0].trim();
+        if (tail.isEmpty()) {
+            return null;
+        }
+        String[] words = tail.split("\\s+");
+        String first = words[0].replaceAll("^['\"]+|['\"]+$", "");
+        String firstLower = first.toLowerCase(Locale.ROOT);
+        if (words.length > 4 || !first.matches("[A-Za-z][A-Za-z0-9_.\\[\\]]*")
+                || NOUN_STOPWORDS.contains(firstLower) || OBJECT_REJECT_WORDS.contains(firstLower)) {
+            return null;
+        }
+        return tail.replaceAll("['\"]", "");
     }
 
     /** Text after a marker such as {@code "found: "}, up to the end of the message. */

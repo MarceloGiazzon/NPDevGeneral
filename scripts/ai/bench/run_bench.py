@@ -49,6 +49,8 @@ import probes  # noqa: E402
 import stages  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO_ROOT / "NPDevCli"))
+import npdev_desire_paths  # noqa: E402
 DEFAULT_PROMPTS = REPO_ROOT / "NPDevSamples" / "ai-bench" / "prompts"
 DRY_RUN_PROMPTS = Path(__file__).resolve().parent / "fixtures"
 MAX_LOOPS_CAP = 5
@@ -78,19 +80,33 @@ def run_attempt(n: int, model_text: str, prompt: dict, prompt_dir: Path, args, s
     {"stages": [...], "failingStage": str|None, "feedback": str}."""
     attempt_dir = prompt_dir / f"attempt-{n}"
     port = stages.free_port()
-    paths = stages.write_workspace(attempt_dir, prompt["id"], port, model_text)
     try:
         model_obj = json.loads(model_text)
     except ValueError:
         model_obj = None
+    fixes: list[dict] = []
+    if getattr(args, "autofix", True) and model_obj is not None:
+        # desire paths: the canonical rewrite of shapes AIs keep guessing, saved next to the model
+        # so every change stays inspectable; the next repair turn is told about them.
+        model_obj, fixes = npdev_desire_paths.fix_model(model_obj)
+        if fixes:
+            attempt_dir.mkdir(parents=True, exist_ok=True)
+            (attempt_dir / "author-model.json").write_text(model_text, encoding="utf-8")
+            (attempt_dir / "fixes-applied.json").write_text(json.dumps(fixes, indent=2), encoding="utf-8")
+            model_text = json.dumps(model_obj, indent=2)
+    paths = stages.write_workspace(attempt_dir, prompt["id"], port, model_text)
     roles = [str(r.get("name")) for r in (model_obj or {}).get("roles", []) if isinstance(r, dict) and r.get("name")]
     running = None
-    out = {"stages": stage_log, "failingStage": None, "feedback": ""}
+    out = {"stages": stage_log, "failingStage": None, "feedback": "", "fixesApplied": len(fixes)}
 
     def fail(res: stages.StageResult, feedback: str | None = None) -> dict:
         out["stages"].append(res.to_json())
         out["failingStage"] = res.stage
         out["feedback"] = feedback if feedback is not None else res.detail
+        if fixes:
+            out["feedback"] = ("NPDev rewrote these shapes of your model to the canonical form before "
+                               "checking it -- use the canonical form from now on:\n"
+                               + "\n".join(npdev_desire_paths.summary_lines(fixes)) + "\n\n" + out["feedback"])
         return out
 
     try:
@@ -485,6 +501,7 @@ def cmd_run(args) -> int:
             print(f"STOP: quota exhausted. Resume later with: --run-id {run_id} --skip-done", flush=True)
     summary = {"runId": run_id, "startedAt": started_at, "dryRun": args.dry_run, "ablation": args.ablation,
                "backend": info.describe(), "knowledge": knowledge_info, "maxLoops": args.max_loops,
+               "autofix": args.autofix,
                "wallSeconds": round(time.monotonic() - t0, 1), "stopReason": stop_reason, "notRun": not_run,
                "scorecard": scorecard(results), "results": [
                    {**{k: r.get(k) for k in ("promptId", "passed", "loopsUsed", "failingStage", "wallSeconds", "costUsd")},
@@ -518,6 +535,8 @@ def make_parser() -> argparse.ArgumentParser:
                         "(its 'markdown' key) or any text file -- for A/B runs of knowledge variants")
     r.add_argument("--allow-paid", action="store_true",
                    help="permit a PAID provider or a base URL that is not a free/local provider in NPDevCli/ai-providers.json (paid spend: owner approval required)")
+    r.add_argument("--no-autofix", dest="autofix", action="store_false",
+                   help="validate the model exactly as authored (skip the desire-path rewrite) -- the A/B arm")
     r.add_argument("--ablation", choices=["none", "no-knowledge"], default="none",
                    help="no-knowledge omits the knowledge-card context from the system prompt")
     r.add_argument("--prompts-dir", help="directory of bench-NNN-*.json (default NPDevSamples/ai-bench/prompts)")

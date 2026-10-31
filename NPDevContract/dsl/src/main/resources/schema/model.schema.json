@@ -505,7 +505,7 @@
             "type": "string",
             "minLength": 1
           },
-          "description": "Platform permission names (e.g. EXECUTE_FLOW, READ_EXECUTIONS) this role MAY hold -- a declared ceiling, not an assignment. Validated against the real Permission enum at runtime boot, not by this schema (the schema layer has no dependency on the kernel module)."
+          "description": "Platform permission names (e.g. EXECUTE_FLOW, READ_EXECUTIONS) this role MAY hold -- a declared ceiling, not an assignment. Checked by npdev validate (RoleAst.PLATFORM_PERMISSIONS, pinned to the kernel Permission enum by a test) and again at boot. Per-concept operations such as workorder:create are not grants: they go in concepts."
         }
       },
       "additionalProperties": false

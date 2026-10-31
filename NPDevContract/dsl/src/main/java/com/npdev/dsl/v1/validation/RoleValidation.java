@@ -6,17 +6,20 @@ import com.npdev.dsl.v1.ast.RoleAst;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import static com.npdev.dsl.v1.validation.SemanticValidator.hasText;
 import static com.npdev.dsl.v1.validation.SemanticValidator.normalize;
 
 /**
  * Wave 3 (RC-B1): structural checks for the optional top-level {@code roles} declaration -- name
- * uniqueness/non-blank and grants non-empty/unique. Grant names are NOT checked against the real
- * {@code Permission} enum here (see {@link RoleAst}'s javadoc: the dsl module has no dependency on
- * the kernel module); that check happens at runtime boot instead.
+ * uniqueness/non-blank and grants non-empty/unique. Each grant must also name a platform permission
+ * from {@link RoleAst#PLATFORM_PERMISSIONS} (the dsl's pinned mirror of the kernel's
+ * {@code Permission} enum), so a bad grant fails validation instead of {@code Permission.valueOf}
+ * at app boot. A {@code concept:verb} grant gets pointed at {@code roles[].concepts}.
  *
  * <p>Roles and users: a role may instead (or also) carry {@code concepts} -- concept name ->
  * operations from {@link RoleAst#CONCEPT_OPERATIONS}. Each concept must exist and each operation
@@ -53,9 +56,38 @@ final class RoleValidation {
                 }
                 if (!grantNames.add(normalize(grant))) {
                     errors.add(here + ": duplicate grant " + grant);
+                    continue;
                 }
+                validateGrantName(grant, here, entitiesByLower, errors);
             }
         }
+    }
+
+    private static void validateGrantName(String grant, String here, Map<String, ConceptAst> entitiesByLower,
+                                          List<String> errors) {
+        String upper = grant.trim().toUpperCase(Locale.ROOT);
+        if (RoleAst.PLATFORM_PERMISSIONS.contains(upper)) {
+            return;
+        }
+        String head = here + ": grants entry \"" + grant + "\" is not a platform permission (accepted: "
+                + String.join(", ", RoleAst.PLATFORM_PERMISSIONS) + ")";
+        int colon = grant.indexOf(':');
+        if (colon > 0 && colon < grant.length() - 1) {
+            String conceptPart = grant.substring(0, colon).trim();
+            String verb = grant.substring(colon + 1).trim().toLowerCase(Locale.ROOT);
+            ConceptAst declared = entitiesByLower.get(normalize(conceptPart));
+            String concept = declared != null && hasText(declared.getName())
+                    ? declared.getName()
+                    : Character.toUpperCase(conceptPart.charAt(0)) + conceptPart.substring(1);
+            String operations = RoleAst.CONCEPT_OPERATIONS.contains(verb) && !"read".equals(verb)
+                    ? "[\"read\",\"" + verb + "\"]"
+                    : "[\"read\",\"create\"]";
+            errors.add(head + " -- suggestedFix: per-concept operations go in roles[].concepts, e.g. "
+                    + "\"concepts\": {\"" + concept + "\": " + operations + "}");
+            return;
+        }
+        errors.add(head + " -- suggestedFix: replace \"" + grant + "\" with one of the accepted platform "
+                + "permissions, or move per-concept access to roles[].concepts");
     }
 
     private static void validateConcepts(RoleAst role, String here, Map<String, ConceptAst> entitiesByLower,
@@ -64,6 +96,7 @@ final class RoleValidation {
             String concept = entry.getKey();
             if (!entitiesByLower.containsKey(normalize(concept))) {
                 errors.add(here + ": concepts names unknown concept " + concept
+                        + " (declared concepts: " + declaredConceptNames(entitiesByLower) + ")"
                         + " -- suggestedFix: use the name of a concept declared in this model, or remove the entry");
             }
             if (entry.getValue().isEmpty()) {
@@ -81,5 +114,15 @@ final class RoleValidation {
                 }
             }
         }
+    }
+
+    private static String declaredConceptNames(Map<String, ConceptAst> entitiesByLower) {
+        Set<String> names = new TreeSet<>();
+        for (ConceptAst concept : entitiesByLower.values()) {
+            if (concept != null && hasText(concept.getName())) {
+                names.add(concept.getName());
+            }
+        }
+        return names.isEmpty() ? "none" : String.join(", ", names);
     }
 }

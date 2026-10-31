@@ -43,10 +43,26 @@ CANONICAL_SCHEMA = Path("NPDevContract") / "schemas" / "model.schema.json"
 
 # Verified sample models used as golden examples (official samples; known to build + run).
 GOLDEN_SAMPLES = [
-    "simple-user-registry",
     "simple-contact-intake",
     "medium-expense-approval",
+    "simple-workorder-workflow",
 ]
+
+# Optional 2-4 line lead-in printed above a golden example: what it teaches that the others do not.
+# BENCH: workflow-roles prompts scored 0 % while no example showed roles or a lifecycle, and authors
+# invented `permissions: ["x:create"]`, lifecycle-level `initial`/`final`, `from: [..]` arrays and
+# flow steps that "set" a status.
+GOLDEN_NOTES = {
+    "simple-workorder-workflow": (
+        "Teaches roles and a status lifecycle. `roles[].concepts` maps a concept to the operations "
+        "the role may perform (read|create|update|delete); `grants` is only for platform permissions "
+        "such as EXECUTE_FLOW. A create starts in the `initial` state. A status changes by updating "
+        "the record's status field through the generated REST API (PUT /api/concepts/work_orders/{id}, "
+        "so only roles with `update` can move it); the server refuses a move not declared in "
+        "`transitions` (one `from`, one `to` each) or missing its `requiredPayload`, and publishes the "
+        "transition's `event`. No flow, capability or binding is needed for this."
+    ),
+}
 
 
 def read_text(path: Path) -> str:
@@ -111,10 +127,11 @@ def build_bundle() -> tuple[str, dict]:
     sections: list[str] = []
     manifest_sources: list[dict] = []
 
-    def add(title: str, source: Path, body: str, fence: str = "") -> None:
+    def add(title: str, source: Path, body: str, fence: str = "", note: str = "") -> None:
         rel = str(source.relative_to(root)) if source.is_relative_to(root) else str(source)
+        lead = f"{note}\n\n" if note else ""
         if fence:
-            sections.append(f"## {title}\n\nSource: `{rel}`\n\n```{fence}\n{body.rstrip()}\n```\n")
+            sections.append(f"## {title}\n\nSource: `{rel}`\n\n{lead}```{fence}\n{body.rstrip()}\n```\n")
         else:
             sections.append(f"## {title}\n\nSource: `{rel}`\n\n{body.rstrip()}\n")
         manifest_sources.append({"title": title, "source": rel, "bytes": len(body.encode("utf-8"))})
@@ -135,7 +152,8 @@ def build_bundle() -> tuple[str, dict]:
     for sample in GOLDEN_SAMPLES:
         model_path = root / "NPDevSamples" / sample / "Input" / "model.json"
         if model_path.exists():
-            add(f"Golden example: {sample}", model_path, read_text(model_path), fence="json")
+            add(f"Golden example: {sample}", model_path, read_text(model_path), fence="json",
+                note=GOLDEN_NOTES.get(sample, ""))
 
     bundle = "\n".join(sections)
     digest = hashlib.sha256(bundle.encode("utf-8")).hexdigest()

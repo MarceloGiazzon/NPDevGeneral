@@ -492,6 +492,27 @@ class ScorecardAndLoopTests(unittest.TestCase):
         self.assertIn("MISSING namespace", second_call[-1]["content"])
         self.assertEqual(second_call[-2]["role"], "assistant")
 
+    def test_desire_path_fixes_are_applied_saved_and_reported_back(self):
+        model = json.dumps({"namespace": "t", "concepts": [{"name": "Item"}],
+                            "flows": [{"name": "L", "input": {"concept": "Item", "mode": "list"}}]})
+        prompt = {"id": "bench-903", "acceptance": {}}
+        seen = {}
+
+        def fake_validate(path, log_dir):
+            seen["model"] = json.loads(Path(path).read_text(encoding="utf-8"))
+            return stages.StageResult("validate", False, 0.1, "some other error")
+
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(stages, "stage_validate", side_effect=fake_validate):
+            for autofix in (True, False):
+                args = mock.Mock(autofix=autofix, keep_apps=False)
+                out = run_bench.run_attempt(0, model, prompt, Path(td) / str(autofix), args, [])
+                written = (Path(td) / str(autofix) / "attempt-0" / "fixes-applied.json").exists()
+                self.assertEqual(written, autofix)
+                self.assertEqual(seen["model"]["flows"][0]["input"]["mode"], "query" if autofix else "list")
+                self.assertEqual(out["fixesApplied"], 1 if autofix else 0)
+                self.assertEqual("$.flows[0].input.mode: list -> query" in out["feedback"], autofix)
+                self.assertIn("some other error", out["feedback"])
+
     def test_loop_cap(self):
         fb = backends.FakeBackend(CANARY_MODEL)
         args = mock.Mock(max_loops=2, ablation="none", keep_apps=False)

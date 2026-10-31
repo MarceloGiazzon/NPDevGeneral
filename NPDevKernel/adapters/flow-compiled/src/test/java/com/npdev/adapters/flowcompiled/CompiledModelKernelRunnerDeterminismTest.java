@@ -107,9 +107,11 @@ class CompiledModelKernelRunnerDeterminismTest {
         );
     }
 
+    /** The runtime guard behind the validator: SemanticValidator refuses an unbound capability and
+     *  ModelCompiler derives persistence's binding, so only an unvalidated model reaches this path. */
     @Test
     void missingCapabilityBindingReturnsTypedFailure() throws Exception {
-        CompiledModel compiledModel = compileModel("""
+        CompiledModel compiledModel = compileUnvalidated("""
                 {
                   "namespace":"demo",
                   "dslVersion":"1.0.0",
@@ -123,14 +125,14 @@ class CompiledModelKernelRunnerDeterminismTest {
                     }
                   ],
                   "capabilities":[
-                    {"name":"persistence","type":"PersistenceCapability","operations":["save"]}
+                    {"name":"notification","type":"NotificationCapability","operations":["send"]}
                   ],
                   "flows":[
                     {
                       "name":"CreateUser",
                       "concept":"User",
                       "steps":[
-                        {"name":"save","type":"capabilityCall","capability":"persistence","operation":"save","args":["$input"],"output":"$saved"}
+                        {"name":"notify","type":"capabilityCall","capability":"notification","operation":"send","args":["$input"],"output":"$sent"}
                       ]
                     }
                   ]
@@ -210,5 +212,11 @@ class CompiledModelKernelRunnerDeterminismTest {
             throw new IllegalStateException("Model validation failed: " + String.join(" | ", errors));
         }
         return new ModelCompiler().compile(modelAst);
+    }
+
+    private static CompiledModel compileUnvalidated(String json) throws Exception {
+        Path modelPath = Files.createTempFile("npdev-compiled-model-kernel-runner-", ".json");
+        Files.writeString(modelPath, json, StandardCharsets.UTF_8);
+        return new ModelCompiler().compile(new JsonModelParser().parse(modelPath));
     }
 }

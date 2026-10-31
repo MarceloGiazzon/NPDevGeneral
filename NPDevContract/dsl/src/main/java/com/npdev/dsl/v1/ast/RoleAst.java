@@ -12,16 +12,34 @@ import java.util.Map;
  * without a rebuild).
  *
  * <p>{@code grants} is a list of {@code com.npdev.kernel.auth.Permission} enum-constant names as
- * plain strings, deliberately NOT validated against that enum here -- the DSL module has no
- * dependency on the kernel module (kernel depends on dsl, never the reverse), so a role's grants
- * are checked structurally here (present, non-blank, unique) and resolved against the real
- * {@code Permission} enum at runtime boot, where an unrecognized name fails loudly rather than
- * silently (the same "an input the evaluator cannot handle is an error" rule X0 established for
- * every other evaluator in the platform).
+ * plain strings. The DSL module has no dependency on the kernel module (kernel depends on dsl,
+ * never the reverse), so {@link #PLATFORM_PERMISSIONS} is a hand-kept copy of that enum's
+ * constants, pinned to it by {@code PlatformPermissionMirrorTest} (which reads the kernel source
+ * and fails on any drift). Validation rejects any other name, so a typo or a
+ * {@code "workorder:create"}-style grant fails {@code npdev validate model} instead of crashing
+ * {@code Permission.valueOf} at app boot. Matching is case-insensitive, as it is in the kernel.
  */
 public record RoleAst(String name, List<String> grants, Map<String, List<String>> concepts, OriginAst origin) {
     /** Operations a role may be granted per concept under {@code concepts}; {@code read} also covers list. */
     public static final List<String> CONCEPT_OPERATIONS = List.of("read", "create", "update", "delete");
+
+    /**
+     * Mirror of {@code com.npdev.kernel.auth.Permission}, in declaration order -- the only names a
+     * {@code grants} entry may hold. Keep in lockstep with the kernel enum ({@code
+     * PlatformPermissionMirrorTest} fails otherwise).
+     */
+    public static final List<String> PLATFORM_PERMISSIONS = List.of(
+            "EXECUTE_FLOW",
+            "READ_FLOW_DEFINITIONS",
+            "READ_EXECUTIONS",
+            "RESUME_EXECUTIONS",
+            "PUBLISH_EVENTS",
+            "READ_TRACES",
+            "READ_AUDIT",
+            "READ_ADMIN_HEALTH",
+            "READ_FAILURES",
+            "READ_STUCK",
+            "READ_EVENTS");
 
     public RoleAst {
         grants = grants == null ? List.of() : List.copyOf(grants);

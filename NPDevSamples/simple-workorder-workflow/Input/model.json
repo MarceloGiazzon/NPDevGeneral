@@ -1,0 +1,40 @@
+{
+  "namespace": "trial.workorders",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "roles": [
+    { "name": "Requester", "concepts": { "WorkOrder": ["read", "create"] } },
+    { "name": "Supervisor", "concepts": { "WorkOrder": ["read", "create", "update", "delete"] } }
+  ],
+  "concepts": [
+    {
+      "name": "WorkOrder",
+      "ui": { "label": "Work order" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "title", "type": "string", "required": true, "ui": { "label": "Title" } },
+        { "name": "assignee", "type": "string", "ui": { "label": "Assignee" } },
+        { "name": "status", "type": "enum", "enumValues": ["Open", "InProgress", "Done", "Cancelled"], "ui": { "label": "Status" } }
+      ],
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          { "value": "Open", "initial": true },
+          { "value": "InProgress" },
+          { "value": "Done", "terminal": true },
+          { "value": "Cancelled", "terminal": true }
+        ],
+        "transitions": [
+          { "from": "Open", "to": "InProgress", "event": "WorkOrderStarted", "requiredPayload": ["assignee"] },
+          { "from": "InProgress", "to": "Done", "event": "WorkOrderCompleted" },
+          { "from": "Open", "to": "Cancelled" },
+          { "from": "InProgress", "to": "Cancelled" }
+        ]
+      }
+    }
+  ],
+  "events": [
+    { "name": "WorkOrderStarted", "payload": [ { "name": "id", "type": "uuid" }, { "name": "assignee", "type": "string" } ] },
+    { "name": "WorkOrderCompleted", "payload": [ { "name": "id", "type": "uuid" } ] }
+  ]
+}
