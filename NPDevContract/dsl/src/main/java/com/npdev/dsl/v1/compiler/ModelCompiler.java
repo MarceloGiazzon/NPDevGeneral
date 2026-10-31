@@ -677,6 +677,8 @@ public final class ModelCompiler {
 
         List<CompiledConversion> conversions = compileConversions(modelAst.getConversions(), conceptsByNormalizedName);
 
+        addImplicitPersistence(flows, capabilities, bindings);
+
         return new CompiledModel(
                 modelAst.getNamespace(),
                 modelAst.getDslVersion(),
@@ -1613,6 +1615,58 @@ public final class ModelCompiler {
 
     private static String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    /** A flow that creates, updates or saves a concept compiles to a `persistence` capabilityCall. A
+     *  model that declared no persistence capability and/or binding used to validate, generate and
+     *  build, then refuse to boot ("no persistence capability binding is registered", or with a binding
+     *  only, "Binding references unknown capability: persistence") -- AI authors leave this ceremony
+     *  out and burn every repair loop on it (BENCH haiku55-core bench-007, bench-009). Every corpus
+     *  model that declares it binds `repository`, so it is derived: the missing half is added with the
+     *  operations the flows actually call. An explicit capability or binding still wins. */
+    static void addImplicitPersistence(List<CompiledFlow> flows, List<CompiledCapability> capabilities,
+                                       List<CompiledCapabilityBinding> bindings) {
+        boolean hasCapability = capabilities.stream().anyMatch(c -> "persistence".equalsIgnoreCase(c.getName()));
+        boolean hasBinding = bindings.stream().anyMatch(b -> "persistence".equalsIgnoreCase(b.getCapability()));
+        if (hasCapability && hasBinding) {
+            return;
+        }
+        java.util.TreeSet<String> operations = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        for (CompiledFlow flow : flows) {
+            collectPersistenceOperations(flow.getSteps(), operations);
+        }
+        if (operations.isEmpty()) {
+            return;
+        }
+        if (!hasCapability) {
+            List<CompiledCapabilityOperation> compiledOperations = new ArrayList<>();
+            for (String operation : operations) {
+                compiledOperations.add(new CompiledCapabilityOperation(operation, List.of(), List.of()));
+            }
+            capabilities.add(new CompiledCapability("persistence", "PersistenceCapability", compiledOperations));
+            capabilities.sort(Comparator.comparing(capability -> normalize(capability.getName())));
+        }
+        if (!hasBinding) {
+            bindings.add(new CompiledCapabilityBinding("persistence", "repository"));
+            bindings.sort(Comparator.comparing((CompiledCapabilityBinding binding) -> normalize(binding.getCapability()))
+                    .thenComparing(binding -> normalize(binding.getAdapter())));
+        }
+    }
+
+    private static void collectPersistenceOperations(List<CompiledFlowStep> steps, java.util.Set<String> out) {
+        if (steps == null) {
+            return;
+        }
+        for (CompiledFlowStep step : steps) {
+            CompiledCapabilityCall call = step.getCapabilityCall();
+            if (call != null && "persistence".equalsIgnoreCase(call.getCapabilityName()) && call.getOperation() != null) {
+                out.add(call.getOperation());
+            }
+            collectPersistenceOperations(step.getThenSteps(), out);
+            collectPersistenceOperations(step.getElseSteps(), out);
+            collectPersistenceOperations(step.getLoopSteps(), out);
+            collectPersistenceOperations(step.getOnFailureSteps(), out);
+        }
     }
 
     /** ADR-0011 D4 (B20, v1; S8 Wave 4, v2): a context-qualified concept's physical table name

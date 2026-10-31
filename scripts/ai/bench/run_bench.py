@@ -7,6 +7,7 @@ text is fed back to the model). Stdlib only.
   python scripts/ai/bench/run_bench.py run --prompt bench-001              # real model (env below)
   python scripts/ai/bench/run_bench.py run --ablation no-knowledge ...     # knowledge cards off
   python scripts/ai/bench/run_bench.py report <run-dir> [<run-dir> ...]    # scorecard JSON
+  python scripts/ai/bench/run_bench.py mine <run-dir> [<run-dir> ...]      # rank what AI authors get wrong
 
 NO PAID API SPEND (owner decision 2026-10-19). Calls go through `npdev ai`'s one client (NPDevCli/
 npdev_ai_client.py): every catalogue protocol, retry, spend guard, and the usage log (`npdev ai usage`).
@@ -34,6 +35,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -281,6 +283,99 @@ def outcome_of(r: dict) -> str:
     return "pass" if r.get("passed") else ("infra" if infra_kind_of(r) else "fail")
 
 
+_DIAG = re.compile(r"^- (\w+) \| (\S+) \| (.*)$")
+_BOOT_CAUSE = re.compile(r"Caused by: ([\w.$]+(?:Exception|Error)): (.*)")
+
+
+def _generic(text: str) -> str:
+    """'Model flow 'CreateRoom' persists via ...' -> "Model flow '<x>' persists via ..." so the same
+    failure in different apps groups together."""
+    return re.sub(r"'[^']*'", "'<x>'", re.sub(r'"[^"]*"', '"<x>"', text))[:160]
+
+
+def _value_at(model: dict | None, path: str):
+    """The value the model wrote at a validator JSON path ($.flows[2].input.mode)."""
+    node = model
+    for key, index in re.findall(r"\.([A-Za-z_$][\w$]*)|\[(\d+)\]", path.removeprefix("$")):
+        try:
+            node = node[int(index)] if index else node[key]
+        except (KeyError, IndexError, TypeError, ValueError):
+            return None
+    return node
+
+
+def mine_failures(run_dirs: list[Path]) -> list[dict]:
+    """Every failed attempt of every prompt, grouped by (stage, kind, generic location) and ranked by
+    how many distinct prompts hit it: the "desire paths" an AI author walks that the DSL or its
+    messages do not accept. For validator errors the value the model actually wrote is read back from
+    that attempt's model.json (the validator's message does not say it)."""
+    groups: dict[tuple, dict] = {}
+
+    def add(stage, kind, where, prompt, run, example=None, wrote=None):
+        g = groups.setdefault((stage, kind, where), {"stage": stage, "kind": kind, "where": where, "hits": 0,
+                                                     "prompts": set(), "runs": set(), "wrote": {},
+                                                     "example": example})
+        g["hits"] += 1
+        g["prompts"].add(prompt)
+        g["runs"].add(run)
+        if wrote is not None:
+            key = json.dumps(wrote, sort_keys=True)[:80]
+            g["wrote"][key] = g["wrote"].get(key, 0) + 1
+
+    for run_dir in run_dirs:
+        for result_path in sorted(run_dir.glob("bench-*/result.json")):
+            r = json.loads(result_path.read_text(encoding="utf-8"))
+            for a in r.get("attempts", []):
+                stage = a.get("failingStage")
+                if not stage or a.get("infraKind") or (stage == "author" and backends.classify_backend_error(
+                        a.get("feedbackExcerpt") or "") != "other"):
+                    continue
+                adir = result_path.parent / f"attempt-{a['attempt']}"
+                if stage == "validate":
+                    model = None
+                    if (adir / "model.json").exists():
+                        try:
+                            model = json.loads((adir / "model.json").read_text(encoding="utf-8"))
+                        except ValueError:
+                            pass
+                    detail = next((s.get("detail") for s in a.get("stages", []) if s.get("stage") == "validate"), "")
+                    for line in (detail or a.get("feedbackExcerpt") or "").splitlines():
+                        m = _DIAG.match(line.strip())
+                        if m:
+                            code, path, message = m.groups()
+                            where = re.sub(r"\[\d+\]", "[]", path) if path.startswith("$") else _generic(message)
+                            add(stage, code, where, r["promptId"], run_dir.name, _generic(message),
+                                _value_at(model, path) if path.startswith("$") else None)
+                elif stage in ("boot", "generate", "build"):
+                    log = adir / f"{stage}.log"
+                    causes = _BOOT_CAUSE.findall(log.read_text(encoding="utf-8", errors="replace")) if log.exists() else []
+                    if causes:
+                        exc, message = causes[-1]
+                        add(stage, exc.rsplit(".", 1)[-1], _generic(message), r["promptId"], run_dir.name)
+                    else:
+                        add(stage, "no-cause-line", "", r["promptId"], run_dir.name)
+                else:
+                    detail = next((s.get("detail") for s in a.get("stages", []) if s.get("stage") == stage), "")
+                    for line in (detail or a.get("feedbackExcerpt") or "").splitlines():
+                        line = line.strip().lstrip("- ")
+                        if line and " unresolved" not in line:   # unresolved = a consequence of another line
+                            add(stage, line.split(" ", 1)[0], _generic(re.sub(r"\d+", "N", line)), r["promptId"], run_dir.name)
+    ranked = sorted(groups.values(), key=lambda g: (-len(g["prompts"]), -g["hits"]))
+    return [{**g, "prompts": sorted(g["prompts"]), "runs": sorted(g["runs"]),
+             "wrote": dict(sorted(g["wrote"].items(), key=lambda kv: -kv[1])[:6])} for g in ranked]
+
+
+def cmd_mine(args) -> int:
+    rows = mine_failures([Path(d) for d in args.run_dirs])
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return 0
+    for g in rows[: args.top]:
+        wrote = ("  wrote: " + ", ".join(f"{k} x{v}" for k, v in g["wrote"].items())) if g["wrote"] else ""
+        print(f"{len(g['prompts']):3d} prompts {g['hits']:4d} hits  {g['stage']:<10} {g['kind']:<34} {g['where']}{wrote}")
+    return 0
+
+
 def load_results(run_dir: Path) -> list[dict]:
     return [json.loads(p.read_text(encoding="utf-8")) for p in sorted(run_dir.glob("bench-*/result.json"))]
 
@@ -437,6 +532,10 @@ def make_parser() -> argparse.ArgumentParser:
     r.add_argument("--generate-timeout", type=float, default=900.0)
     r.add_argument("--build-timeout", type=float, default=1500.0)
     r.add_argument("--boot-timeout", type=float, default=300.0)
+    mine = sub.add_parser("mine", help="rank the failures of one or more run dirs (what AI authors get wrong)")
+    mine.add_argument("run_dirs", nargs="+")
+    mine.add_argument("--top", type=int, default=40)
+    mine.add_argument("--json", action="store_true", help="every group as JSON")
     rep = sub.add_parser("report", help="render scorecard JSON for one or two run dirs")
     rep.add_argument("run_dirs", nargs="+")
     return p
@@ -449,6 +548,8 @@ def main(argv: list[str] | None = None) -> int:
     args = make_parser().parse_args(argv)
     if args.command == "report":
         return cmd_report(args)
+    if args.command == "mine":
+        return cmd_mine(args)
     if args.command == "run":
         return cmd_run(args)
     make_parser().print_help()
