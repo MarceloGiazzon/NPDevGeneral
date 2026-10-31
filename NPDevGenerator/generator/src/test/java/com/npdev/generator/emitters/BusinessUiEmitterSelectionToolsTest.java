@@ -21,8 +21,9 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code ui.selectionTools}: a concept that declares it is flagged in the UI manifest (and only that one),
- * and the EMITTED bulk-actions.js / csv-io.js offer open / copy / download of the ticked rows only for it.
+ * {@code ui.selectionTools}: the open / copy / download tools are ON by default, so only a concept that opts out
+ * ({@code false}) is flagged in the UI manifest, and the EMITTED bulk-actions.js / csv-io.js offer the tools to every
+ * other concept.
  */
 class BusinessUiEmitterSelectionToolsTest {
 
@@ -32,7 +33,7 @@ class BusinessUiEmitterSelectionToolsTest {
                 {
                   "namespace": "selectiontools.demo", "dslVersion": "1.0.0", "version": "1.0",
                   "concepts": [
-                    { "name": "Visit", "ui": { "selectionTools": true }, "fields": [
+                    { "name": "Visit", "ui": { "selectionTools": false }, "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },
                       { "name": "note", "type": "string" } ] },
                     { "name": "Archive", "fields": [
@@ -55,7 +56,7 @@ class BusinessUiEmitterSelectionToolsTest {
     }
 
     @Test
-    void onlyTheDeclaringConceptIsFlaggedInTheManifest() throws Exception {
+    void onlyTheConceptThatOptsOutIsFlaggedInTheManifest() throws Exception {
         JsonNode manifest = new ObjectMapper().readTree(find(emit(), "generated-ui-manifest.json").toFile());
         JsonNode visit = null;
         JsonNode archive = null;
@@ -67,8 +68,9 @@ class BusinessUiEmitterSelectionToolsTest {
                 archive = concept;
             }
         }
-        assertTrue(visit.path("selectionTools").asBoolean(false), "the declaring concept carries selectionTools: true");
-        assertFalse(archive.has("selectionTools"), "a concept that never declared it gets no key at all");
+        assertTrue(visit.has("selectionTools") && !visit.get("selectionTools").asBoolean(true),
+                "the concept that opted out carries selectionTools: false");
+        assertFalse(archive.has("selectionTools"), "a concept that never declared it gets no key at all (tools stay on)");
     }
 
     /** Runs the shipped modules against a fake DOM: the bar, the copied text and the merged file. */
@@ -103,8 +105,8 @@ class BusinessUiEmitterSelectionToolsTest {
                 function labels(bar) { return bar.children.filter(function (c) { return c.label; }).map(function (c) { return c.label; }); }
                 function click(bar, label) { return bar.children.filter(function (c) { return c.label === label; })[0].fn(); }
                 var fields = [{ name: "id", label: "Id" }, { name: "note", label: "Note" }];
-                var on = { idField: "id", conceptName: "Visit", displayName: "Visit", fields: fields, selectionTools: true };
-                var off = { idField: "id", conceptName: "Archive", displayName: "Archive", fields: fields };
+                var on = { idField: "id", conceptName: "Archive", displayName: "Archive", fields: fields };
+                var off = { idField: "id", conceptName: "Visit", displayName: "Visit", fields: fields, selectionTools: false };
                 var records = [{ id: "1", note: "a,b" }, { id: "2", note: "=cmd" }, { id: "3", note: "line\\nbreak\\ttab" }];
                 (async function () {
                   var out = {};
@@ -140,9 +142,9 @@ class BusinessUiEmitterSelectionToolsTest {
         JsonNode result = new ObjectMapper().readTree(output.substring(output.lastIndexOf((char) 10) + 1));
         String onLabels = result.get("onLabels").toString();
         for (String tool : new String[] { "Open selected", "Copy selected", "Download selected" }) {
-            assertTrue(onLabels.contains(tool), tool + " is offered where selectionTools is declared: " + onLabels);
+            assertTrue(onLabels.contains(tool), tool + " is offered by default (no declaration): " + onLabels);
             assertFalse(result.get("offLabels").toString().contains(tool),
-                    tool + " is NOT offered on a concept that did not declare it");
+                    tool + " is NOT offered on a concept that opted out");
         }
         assertTrue(result.get("offLabels").toString().contains("Delete selected"),
                 "the existing bulk actions are unaffected by the flag");
@@ -150,7 +152,7 @@ class BusinessUiEmitterSelectionToolsTest {
 
         assertEquals("Id\tNote\r\n1\ta,b\r\n3\t\"line\nbreak\ttab\"", result.get("copied").asText(),
                 "copy is tab-separated with a header row, ticked rows only, in on-screen order");
-        assertEquals("Visit-selected.csv", result.get("downloaded").get("name").asText());
+        assertEquals("Archive-selected.csv", result.get("downloaded").get("name").asText());
         assertEquals("Id,Note\r\n1,\"a,b\"\r\n3,\"line\nbreak\ttab\"\r\n", result.get("downloaded").get("text").asText(),
                 "download merges every ticked row into one CSV");
         assertEquals("[\"1\",\"3\"]", result.get("opened").toString(), "open selected gets exactly the ticked rows");

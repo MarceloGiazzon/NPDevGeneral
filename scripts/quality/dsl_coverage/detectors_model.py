@@ -100,11 +100,11 @@ def _has_renamed_field(model: dict) -> bool:
 
 
 def _has_concept_selection_tools(model: dict) -> bool:
-    """A concept whose ui.selectionTools gives its generated list grid open / copy / download of the
-    ticked rows (off unless declared)."""
+    """A concept that declares ui.selectionTools (the open / copy / download tools of its generated list grid are
+    on unless it says false, so a declaration is how a model opts a grid out)."""
     for concept in (model.get("concepts", None) or []):
         ui = concept.get("ui") if isinstance(concept, dict) else None
-        if isinstance(ui, dict) and ui.get("selectionTools"):
+        if isinstance(ui, dict) and ui.get("selectionTools") is not None:
             return True
     return False
 

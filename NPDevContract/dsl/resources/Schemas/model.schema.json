@@ -2786,7 +2786,7 @@
         },
         "selectionTools": {
           "type": "boolean",
-          "description": "Concept-level only. The generated list grid (table or grid of records) offers three tools on the rows the user has ticked: open them together in one dialog, copy them to the clipboard as spreadsheet cells, and download them as one merged CSV file. The per-row checkbox, select-all / deselect-all and the existing bulk delete and set-field actions are unaffected. Off unless declared; ignored on a field."
+          "description": "Concept-level only. The generated list grid (table or grid of records) offers three tools on the rows the user has ticked: open them together in one dialog, copy them to the clipboard as spreadsheet cells, and download them as one merged CSV file. The per-row checkbox, select-all / deselect-all and the existing bulk delete and set-field actions are unaffected. On unless declared false: set false on a concept to hide the three tools on its grid; the manifest carries the key only then. Ignored on a field."
         }
       },
       "additionalProperties": false

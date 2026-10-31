@@ -484,10 +484,11 @@ concept node of `generated-ui-manifest.json`.
 
 The generic record grid (the table of a concept's rows) always has a checkbox per row, a select-all
 checkbox in the header, and a bar above the grid once a row is ticked with **Select all**, **Deselect
-all**, **Set field…** and **Delete selected**. A concept can add three more tools to that bar:
+all**, **Set field…** and **Delete selected**. Three more tools sit in that bar **by default**; a concept
+turns them off with `selectionTools: false`:
 
 ```json
-{ "name": "Invoice", "ui": { "selectionTools": true } }
+{ "name": "Invoice", "ui": { "selectionTools": false } }
 ```
 
 | Button | What it does |
@@ -496,12 +497,12 @@ all**, **Set field…** and **Delete selected**. A concept can add three more to
 | **Copy selected** | Puts the ticked rows on the clipboard as tab-separated cells with a header row, so a paste lands in Excel or Sheets as a grid. |
 | **Download selected** | Merges the ticked rows into one `<Concept>-selected.csv`. |
 
-Rules: concept-level only (declaring it on a field is a validation error); off unless declared, and a
-concept that does not declare it renders the bar it always did; selection is per page of the grid, so
+Rules: concept-level only (declaring it on a field is a validation error); on unless the concept declares
+it `false`; selection is per page of the grid, so
 the tools act on the rows ticked on the page in view; columns are the ones the grid shows; a value that
 starts with `=`, `+`, `-` or `@` is prefixed with `'` on copy and download so a spreadsheet cannot run it
-as a formula, the same rule Export CSV already applies. The manifest carries `selectionTools: true` on
-the concept only when declared.
+as a formula, the same rule Export CSV already applies. The manifest carries `selectionTools: false` on
+the concept only when it opts out, so a manifest that predates the option is unchanged.
 
 ## Mobile layout (768 px breakpoint)
 

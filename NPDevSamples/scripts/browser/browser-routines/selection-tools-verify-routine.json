@@ -42,7 +42,7 @@
     {
       "action": "goto",
       "url": "http://127.0.0.1:8099/npdev-business-ui/#concept-ShelfLayout",
-      "label": "Open the ShelfLayout list (it declares ui.selectionTools)"
+      "label": "Open the ShelfLayout list (it declares nothing: the tools are on by default)"
     },
     {
       "action": "waitForSelector",
@@ -152,7 +152,7 @@
       "selector": "#concept-ShelfLayout .bulk-actions-bar button:text-is(\"Open selected\"), #concept-ShelfLayout .bulk-actions-bar button:text-is(\"Copy selected\"), #concept-ShelfLayout .bulk-actions-bar button:text-is(\"Download selected\")",
       "operator": "=",
       "count": 3,
-      "label": "All three selection tools are offered on a concept that declares the flag"
+      "label": "All three selection tools are offered by default, with no declaration on the concept"
     },
     {
       "action": "click",

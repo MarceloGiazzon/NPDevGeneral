@@ -1,38 +1,33 @@
 {
-  "closedAt": "2026-10-31T03:18:23.8058609Z",
+  "closedAt": "2026-10-31T04:24:10.0287883Z",
   "branch": "main",
-  "head": "56af2cb1",
-  "headSubject": "test(authz): malformed parentField calls deny the write; the live wrapper passes the parent lookup through (SEC-16)",
-  "summary": "Built ui.selectionTools (concept-level, opt-in, off unless declared): open / copy / download of the ticked rows on a list grid, threaded through DSL (parser, AST, compiled, canonical JSON, resolver, validator), 4 schema copies, generator + live manifests, bulk-actions.js, conformance example on ShelfLayout, dsl_coverage detector, twin-pair rule, UI_CONTRACT + BREAKING. Proven in a real browser (new selection-tools-verify-routine, 7th in run-shell-scenarios, 49 steps green, a11y 0/0/0/0). Also fixed the SEC-16 kernel coverage dip with 3 tests (kernel now 71.5024% measured over 45 fresh reports). The request was originally meant for another project (processTrackerForIA), not NPDev.",
-  "nextStep": "Nothing pending on selectionTools. Optional: rerun scripts/quality/run-all-gates.ps1 -IncludePaperwork once to see all four gates plus paperwork green together (the last full run failed only on the kernel coverage floor, since fixed and re-measured alone). Open question for the owner: default off (opt-in) vs on for selectionTools; port the grid tools to processTrackerForIA if wanted.",
+  "head": "572badc2",
+  "headSubject": "feat(ui): ui.selectionTools -- open, copy and download the ticked rows of a concept's list grid (opt-in)",
+  "summary": "ui.selectionTools now ON by default (owner decision): the open / copy / download tools appear on every concept's list grid; a concept opts out with selectionTools: false, and the manifest carries the key only then (live + generator manifests). dsl-conformance-max opts StockLocation out and leaves ShelfLayout on the default. Schema (4 copies), docs, BREAKING (now says every regenerated app shows the buttons), emitter + Node tests and the browser routine updated. processTrackerForIA: owner says it is already supported there; nothing done in this repo for it.",
+  "nextStep": "Nothing pending. Optional: run scripts/quality/run-all-gates.ps1 -IncludePaperwork once to see all gates green together -- the last full run failed only on the kernel coverage floor (fixed by 3 tests, kernel re-measured 71.5024) and aiKnowledge was not rerun after that fix. Open: the first workbench-verify-routine run of this session failed once (page rendered 'undefined') and passed on rerun -- intermittent, root cause not found; the GitHub push note said the required check 'AI knowledge substrate gate' was expected, verify branch protection; commit bd92458b appeared without being made by this session.",
   "plan": "",
   "blocked": "",
-  "verified": "Full gates run at tree before the kernel tests: generator, runtimeHost, weeklyPaperwork passed; kernel and aiKnowledge failed only on the kernel coverage floor (71.4893 vs 71.4936), fixed by 3 tests; kernel then measured 71.5024 over 45 fresh reports via cleanTest + kernelQualityGate + ratchet alone. aiKnowledge and the other gates not rerun after the fix. Browser routine green. Twin-pair, schema-mirror, dsl-coverage checkers pass.",
-  "dirtyCount": 33,
+  "verified": "Default-on: check-dsl-coverage, twin-pair, schema-mirror OK; dsl flag tests and 2 emitter tests (Node-driven, not skipped) green; all 7 golden browser routines green (6 in the full run, workbench on rerun after one intermittent failure), selection-tools 49 steps with no declaration on ShelfLayout, a11y 0/0/0/0. Full gates not rerun after the default-on change.",
+  "dirtyCount": 15,
   "dirtyFiles": [
     " M BREAKING.md",
     " M NPDevContract/dsl/resources/Schemas/model.schema.json",
     " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/PresentationMetadataAst.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java",
     " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledPresentationMetadata.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ConceptValidation.java",
     " M NPDevContract/dsl/src/main/resources/schema/model.schema.json",
     " M NPDevContract/schemas/authoring/model.schema.json",
     " M NPDevContract/schemas/model.schema.json",
     " M NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java",
-    " M NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache",
-    " M NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-style.mustache",
     " M NPDevGenerator/generator/src/main/resources/npdev-templates/static-assets/business-ui/views/bulk-actions.js",
-    " M NPDevGenerator/generator/src/main/resources/npdev-templates/static-assets/business-ui/views/csv-io.js",
-    " M NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterBulkActionsTest.java",
-    " M NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptUiManifestSupport.java"
+    " M NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterSelectionToolsTest.java",
+    " M NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptUiManifestSupport.java",
+    " M NPDevSamples/dsl-conformance-max/Input/model.json",
+    " M NPDevSamples/scripts/browser/browser-routines/selection-tools-verify-routine.json",
+    " M docs/UI_CONTRACT.md",
+    " M scripts/quality/dsl_coverage/detectors_model.py"
   ],
-  "unpushed": 1,
+  "unpushed": 0,
   "landedCommits": [
-    "56af2cb1 test(authz): malformed parentField calls deny the write; the live wrapper passes the parent lookup through (SEC-16)"
+    "572badc2 feat(ui): ui.selectionTools -- open, copy and download the ticked rows of a concept's list grid (opt-in)"
   ]
 }

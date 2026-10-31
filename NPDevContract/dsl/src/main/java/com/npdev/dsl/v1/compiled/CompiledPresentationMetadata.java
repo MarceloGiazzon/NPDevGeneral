@@ -136,7 +136,7 @@ public final class CompiledPresentationMetadata {
         return offlineWrite;
     }
 
-    /** Concept-level; the generated list grid offers open / copy / download of the selected rows. Off unless declared. */
+    /** Concept-level; the generated list grid offers open / copy / download of the selected rows. On unless declared false. */
     public Boolean getSelectionTools() {
         return selectionTools;
     }

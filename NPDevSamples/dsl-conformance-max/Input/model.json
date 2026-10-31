@@ -207,7 +207,7 @@
     {
       "name": "ShelfLayout",
       "truthLevel": "T2",
-      "ui": { "label": "Shelf layout", "selectionTools": true },
+      "ui": { "label": "Shelf layout" },
       "collaboration": { "comments": true, "attachments": false },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -746,7 +746,7 @@
     {
       "name": "StockLocation",
       "truthLevel": "T2",
-      "ui": { "label": "Stock location" },
+      "ui": { "label": "Stock location", "selectionTools": false },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "localId", "type": "string", "required": true, "ui": { "label": "Location" } },

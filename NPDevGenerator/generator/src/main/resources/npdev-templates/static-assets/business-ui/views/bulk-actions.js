@@ -353,8 +353,8 @@
         bar.appendChild(button("Select all", "", function () { selectAllOnPage(concept, panel); }));
       }
       bar.appendChild(button("Deselect all", "", function () { clearSelection(panel); render(); }));
-      // ui.selectionTools: opt-in per concept; an app that never declares it renders exactly the bar it did before.
-      if (concept.selectionTools) {
+      // ui.selectionTools: on unless the concept declares it false (the manifest carries the key only then).
+      if (concept.selectionTools !== false) {
         bar.appendChild(button("Open selected", "", function () { openSelected(concept, panel); }));
         bar.appendChild(button("Copy selected", "", function () { copySelected(concept, panel); }));
         bar.appendChild(button("Download selected", "", function () { downloadSelected(concept, panel); }));

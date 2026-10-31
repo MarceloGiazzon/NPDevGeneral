@@ -5,11 +5,11 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
-## 2026-10-31 — `ui.selectionTools` adds open / copy / download of the ticked rows to a concept's list grid
+## 2026-10-31 — `ui.selectionTools` adds open / copy / download of the ticked rows to every concept's list grid
 
-**What changes.** New, additive, opt-in: a concept that declares `"ui": { "selectionTools": true }` gets three buttons in the grid's selection bar (Open selected, Copy selected, Download selected). Declaring it on a field is a validation error. The bar's existing **Clear selection** button is now labelled **Deselect all**, and a **Select all** button joins it; both appear for every concept, and any browser routine or test that clicks the old label must use the new one.
+**What changes.** New and **on by default**: the grid's selection bar of every generated app gets three buttons (Open selected, Copy selected, Download selected) once a row is ticked. A concept opts out with `"ui": { "selectionTools": false }`; declaring the key on a field is a validation error. No model has to change and the generated manifests are byte-identical (the key appears only on an opt-out), but the generated `bulk-actions.js` is not: every regenerated app shows the new buttons. The bar's existing **Clear selection** button is now labelled **Deselect all**, and a **Select all** button joins it; both appear for every concept, and any browser routine or test that clicks the old label must use the new one.
 
-**Who is affected.** No corpus model changes behaviour; `dsl-conformance-max` declares it on `ShelfLayout` as the example. Only a script that clicks "Clear selection" by its text is affected.
+**Who is affected.** Every app regenerated from this commit on. `dsl-conformance-max` opts `StockLocation` out as the example and leaves `ShelfLayout` on the default. A script that clicks "Clear selection" by its text is affected.
 
 **Codemod.** None: nothing existing changes shape.
 
