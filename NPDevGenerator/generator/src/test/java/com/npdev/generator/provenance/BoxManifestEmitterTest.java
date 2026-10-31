@@ -204,6 +204,26 @@ final class BoxManifestEmitterTest {
         assertEquals("notification-inproc", capabilities.get(0).path("implementation").path("adapter").asText());
     }
 
+    /** A declared capability with no binding is still a box; its implementation is null, not invented.
+     *  (Persistence is no longer the example: ModelCompiler now derives its repository binding.) */
+    @Test
+    void capabilityWithoutBindingHasNullImplementation() throws Exception {
+        CompiledModel model = new CompiledModel(
+                "acme", "1.0.0", "v1", new LinkedHashMap<>(),
+                List.of(new CompiledCapability("SendReceipt", "notification", List.of())),
+                List.of(), List.of(), List.of()
+        );
+
+        GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir, new RegenerationPolicy());
+        new BoxManifestEmitter().emit(model, writer);
+
+        JsonNode capability = new ObjectMapper().readTree(
+                tempDir.resolve(BoxManifestEmitter.RELATIVE_PATH).toFile()).path("capabilities").get(0);
+        assertEquals("SendReceipt", capability.path("name").asText());
+        assertTrue(capability.has("implementation"));
+        assertTrue(capability.path("implementation").isNull());
+    }
+
     private static JsonNode findByName(JsonNode arrayNode, String name) {
         for (JsonNode node : arrayNode) {
             if (name.equals(node.path("name").asText())) {
