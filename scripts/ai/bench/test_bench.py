@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import copy
 import json
 import os
 import sys
@@ -428,6 +429,12 @@ class AcceptanceAgainstStubTests(unittest.TestCase):
         finally:
             srv.shutdown()
             srv.server_close()
+
+    def test_an_assert_post_id_is_captured_for_later_probes(self):
+        acc = copy.deepcopy(self.ACC)
+        acc["probes"][0]["purpose"] = "assert"     # bench-012: p4..p6 read the id of assert probe p3
+        r = self._run(acc)
+        self.assertTrue(r["ok"], probes.feedback_text(r))
 
     def test_pass(self):
         r = self._run(self.ACC)

@@ -409,7 +409,9 @@ def run_probe(probe: dict, res: Resolver, base_url: str, keys: dict, admin_key: 
     detail = "" if ok else f"expected status {probe['expectStatus']}, got {status}: {json.dumps(resp)[:300]}"
     if ok and expect is not None and not any(subset(row, expect) for row in candidate_rows(resp)):
         ok, detail = False, f"response does not contain {json.dumps(expect)[:200]}; got {json.dumps(resp)[:300]}"
-    if (probe.get("capture") or (probe["method"] == "POST" and probe.get("purpose") == "setup")) and 200 <= status < 300:
+    # any successful POST: later probes reference {id:pN} of assert probes too (bench-012's p4..p6 read
+    # p3's id; capturing only setup probes failed a correct model for 5 loops, ~80k tokens)
+    if (probe.get("capture") or probe["method"] == "POST") and 200 <= status < 300:
         got = extract_id(resp)
         if got:
             res.captured[probe["id"]] = got
