@@ -41,10 +41,15 @@ from npdev_ai_common import ai_out_dir, repo_root
 # the canonical schema, derived at build time so it can never drift from the validator.
 CANONICAL_SCHEMA = Path("NPDevContract") / "schemas" / "model.schema.json"
 
-# Verified sample models used as golden examples (official samples; known to build + run).
+# Golden examples, in MINIMAL form (F3 2026-10-31): no CRUD flows, no persistence/eventBus
+# capability or binding, no invariant restating required/unique, no default ui.label. The
+# golden-* models are slim twins of simple-contact-intake / medium-expense-approval, which stay
+# as they are because generator/kernel tests depend on their content. Authors copy what the
+# examples show (BENCH haiku55-core cloned contact-intake's ceremony flow), so they show only
+# what is needed.
 GOLDEN_SAMPLES = [
-    "simple-contact-intake",
-    "medium-expense-approval",
+    "golden-contact-intake",
+    "golden-expense-approval",
     "simple-workorder-workflow",
 ]
 

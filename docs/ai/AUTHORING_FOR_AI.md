@@ -1,73 +1,71 @@
 # NPDev authoring contract (for an AI author)
 
-Terse, unambiguous rules for generating a valid NPDev `model.json`. This is the stable core an
-external AI should keep in context. After drafting, ALWAYS run `npdev validate model <path>
---semantic` (or the `npdev_validate` MCP tool) and fix every `error` diagnostic before generating.
+Terse rules for a valid NPDev `model.json`. After drafting, run `npdev validate model <path>` (or
+the `npdev_validate` MCP tool) and fix every `error`; each diagnostic has `path` and `suggestedFix`.
 `npdev normalize desire-paths <path> --output <path>` rewrites commonly guessed non-canonical
-shapes into canonical form first and reports each fix -- read the report; it is a list of mistakes.
+shapes first and reports each fix -- read the report; it is a list of mistakes.
 
 ## Ask before you write
 
-The user has an intent, not a schema. **Do not draft a model until you can answer these eight.**
-Each maps to a structural decision that is expensive to change once data exists.
+The user has an intent, not a schema. In their vocabulary, settle these eight first:
+1. What things are tracked? → concepts  2. What is known about each? → fields
+3. How do they connect (one or many)? → references  4. Who uses it, who sees what? → roles
+5. What happens automatically (notify, approve, call out)? → flows, events
+6. Stages (draft → done)? → lifecycle  7. What must never happen? → invariants
+8. Hundreds or millions of records? → H2 vs Postgres
 
-1. **What are the main things this system keeps track of?** → concepts
-2. **For each — what do you need to know about it?** → fields
-3. **How do they connect? Does an X belong to one Y, or to many?** → bonds and cardinality
-4. **Who uses it, and can they all see everything?** → roles and permissions
-5. **Does anything need to happen automatically — reminders, approvals, notifications?** → flows and events
-6. **Does anything move through stages (draft → confirmed → done)?** → state and transitions
-7. **What must never be allowed? Two bookings in the same slot?** → invariants
-8. **Roughly how many records — hundreds, or millions?** → H2 vs Postgres
+**Start smallest:** the smallest model that runs; add only on request. Every speculative
+concept is one the user must understand to reject.
 
-Ask in the user's own vocabulary — translating their answer into concepts, bonds, flows and
-invariants **is the job**.
+## The minimal model (CRUD is automatic)
 
-**Start smallest.** Build the smallest model that runs, then add on request — never on your own
-initiative. "Track appointments" tempts twelve concepts with audit trails; don't. The user reviews
-a running app, not JSON, and every speculative concept is one they must now understand to reject.
+A model of only `concepts` + `fields` is a complete app: every concept gets REST
+(`/api/concepts/<table>`: list/get/create/update/delete), UI list/detail/forms, and server-side
+checks of `required`, `unique`, `min`/`max`/`maxLength`, enum, reference, `lifecycle` and
+`invariants`. **Do not write:**
+- create/update/delete flows or `invariantCheck` steps that only save a record;
+- a `persistence` capability, or `persistence`/`eventBus` bindings (derived; `repository` and
+  `inproc` are the only values anyway);
+- an invariant restating a field flag (`x != null && x != ''` → `required`; one-field unique →
+  `unique: true`; `x >= 0` → `"min": 0`). Invariants are for cross-field rules;
+- `ui.label` equal to the humanized name (`dueDate` → "Due Date"). `missing_*_label` warnings
+  are cosmetic.
+
+Write a flow only for work beyond saving: notify, call out, branch, wait for an event. Declare a
+capability + binding only for what a flow calls (e.g. `notification`→`notification-inproc`,
+`webhook`→`webhook-inproc`). To publish an event on save without a flow:
+`concepts[].events: [{"name":"XCreated","mode":"create"}]`.
 
 ## Non-negotiables
 
-1. **Every schema object is closed (`additionalProperties: false`)**, with the exception of the free-form `metadata` maps on panels and procedures. A typo'd or invented key fails
-   generation — it is not ignored. Only emit keys defined in the schema for that object.
-2. **Exactly one field per concept has `"id": true`** (or use the conventional `{"name":"id",
-   "type":"uuid","id":true,"required":true}`).
-3. **References stay inside the composed model.** A `reference.target` must name a concept defined in this
-   model, including concepts composed in from a pack or fragment.
-4. **Root uses `concepts`, not `entities`.** `entities` is a rejected legacy shape.
-5. Required root fields: `dslVersion` (`"1.0.0"`), `version`, `namespace` (or alias `model`),
-   and a non-empty `concepts` array.
+1. **Every object is closed (`additionalProperties: false`)** except the free-form `metadata` maps on
+   panels and procedures. An invented key fails generation; it is not ignored.
+2. **Exactly one field per concept has `"id": true`**; conventionally
+   `{"name":"id","type":"uuid","id":true,"required":true}`.
+3. **`reference.target` names a concept in the composed model** (own or from a pack/fragment).
+4. **Root uses `concepts`, not `entities`** (rejected legacy shape).
+5. Required root fields: `dslVersion` (`"1.0.0"`), `version`, `namespace` (or `model`), non-empty `concepts`.
 
 ## Renaming: `renamedFrom` is mandatory
 
-**NPDev cannot infer a rename.** Change a field or concept name and NPDev sees a *dropped* column
-plus a *new* one — a destructive change — and correctly refuses. That refusal is safe but a dead
-end: the user is left holding an error they cannot interpret, at the moment they are most invested.
+NPDev cannot infer a rename: a new name on an app that has already run is a dropped column plus a
+new one, which NPDev refuses as destructive. **User says "rename X to Y" → always declare it:**
+`{ "name": "mobile", "renamedFrom": "phone", "type": "string" }` (fields and concepts; not needed
+for a never-run model). Removing a field or concept is also destructive; never remove one because
+it "looks unused" -- ask.
 
-**Whenever you rename anything on a model that has already been generated and run, declare it:**
-
-    { "name": "mobile", "renamedFrom": "phone", "type": "string" }
-
-This tells NPDev the column is the same column; existing data moves with it. Applies to a field or
-concept rename on an app already generated/run; not to a brand-new field/concept or a never-run
-model. **User says "rename X to Y" → always `renamedFrom`, never a silent name change.**
-
-Removing a field or concept is also destructive and needs an explicit acknowledgment. Never remove
-one because it "looks unused" — ask.
-
-## The 8 building blocks (what each is)
+## Building blocks
 
 | Block | Root key | One-line |
 | --- | --- | --- |
-| Concept | `concepts[]` | A stored record type (table/class): `name`, `fields[]`, optional `invariants`, `lifecycle`, `events`, `ui`. |
-| Field | `concepts[].fields[]` | One column: `name`, `type`, `required`, `unique`, `id`, `enumValues`, `reference`. |
-| Flow | `flows[]` | A public action (`POST /api/flows/<Name>/execute`), made of `steps[]`. |
-| Capability | `capabilities[]` / `customCapabilities[]` + `bindings[]` | An abstract verb a flow calls; bound to an adapter. |
-| Panel | `panels[]` | A hand-designed screen; `route`, `dataSources`, `layout`, `actions`. |
-| Event | `events[]` (or nested in a concept) | A broadcast fact; emitted by a flow step, reacted to by orchestrations. |
-| Orchestration | `orchestrations[]` | "when event X → do Y" automation; `trigger` + `action`. |
-| Procedure | `procedures[]` | Server-side logic for a Panel button; not its own REST endpoint. |
+| Concept | `concepts[]` | A stored record type: `name`, `fields[]`, optional `invariants`, `lifecycle`, `events`, `ui`. |
+| Field | `concepts[].fields[]` | One column: `name`, `type`, `required`, `unique`, `id`, `min`/`max`/`maxLength`, `enumValues`, `reference`. |
+| Role | `roles[]` | `concepts: {"X": ["read","create","update","delete"]}`; `grants` only for platform permissions. |
+| Flow | `flows[]` | A non-CRUD action (`POST /api/flows/<Name>/execute`) made of `steps[]`. |
+| Capability | `capabilities[]` + `bindings[]` | A verb a flow calls (notification, webhook, http...), bound to an adapter. |
+| Event | `events[]` (or nested in a concept) | A broadcast fact; emitted by a flow step or a lifecycle transition. |
+| Orchestration | `orchestrations[]` | "when event X → do Y"; `trigger` + `action`. |
+| Query / Panel / Procedure | `queries[]` / `panels[]` / `procedures[]` | A named filtered list; a hand-designed screen; server logic for a panel button. Only when the generic UI is not enough. |
 
 ## Field types
 
@@ -75,29 +73,19 @@ one because it "looks unused" — ask.
 `enumValues`), `reference` (needs `reference.target`), `object` (needs `properties`), `array`
 (needs `items`), `decimal`, `file`.
 
-## Common gotchas (these are the ones that bite)
+## Gotchas
 
-- **Invariant expression key:** prefer `"expression"`. `"expr"` is accepted as an alias, but be
-  consistent. A `unique` invariant uses `{"type":"unique","fields":[...]}` instead.
-- **`reference.onDelete`:** `restrict` (default, blocks delete while referenced), `cascade`
-  (deletes the pointing record too), `nullify` (clears the pointing field). `nullify` is REJECTED
-  if the pointing field is `required`.
-- **Natural-key references:** to point at a non-`id` field, the target field must be
-  `unique:true` + `connectable:"anchor"`, and the pointing field sets `reference.via:"<field>"`.
-- **Flow response is wrapped:** a `return` step's value comes back under `.output`.
-- **A flow needs a concept:** via `flow.concept` or `flow.input.concept`.
-- **UI label warning:** fields without `ui.label` produce a `missing_field_label` warning (not an
-  error) — add `ui.label` for a clean report.
+- **Invariant key:** `"expression"` (`"expr"` is an alias). A multi-field unique invariant is
+  `{"type":"unique","fields":[...]}`.
+- **`reference.onDelete`:** `restrict` (default), `cascade`, `nullify`; `nullify` is REJECTED on a
+  `required` field.
+- **Natural-key reference:** the target field is `unique:true` + `connectable:"anchor"`; the
+  pointing field sets `reference.via:"<field>"`.
+- **A flow needs a concept** (`flow.concept` or `flow.input.concept`); its `return` value comes
+  back under `.output`.
 
-## The loop (how to author reliably)
+## The loop
 
-```
-1. npdev_inspect_app   → does the concept already exist? extend, don't duplicate.
-2. npdev_get_schema    → exact keys for the object you're adding.
-3. draft model.json    → (optionally constrained by the derived output_config schema).
-4. npdev_validate      → typed diagnostics. Fix every `error`. Re-validate.
-5. npdev_generate      → real app. Only after validate passes.
-```
-
-Treat `npdev_validate` `status:"failed"` as your to-do list: each diagnostic has `path`,
-`concept`, `field`, and `suggestedFix`. Apply the fix, re-validate, repeat to zero errors.
+Existing app? `npdev_inspect_app` first: extend, don't duplicate. Unsure of a key?
+`npdev_get_schema`. Draft → `npdev_validate` → fix every `error` → re-validate → `npdev_generate`
+only after validate passes.

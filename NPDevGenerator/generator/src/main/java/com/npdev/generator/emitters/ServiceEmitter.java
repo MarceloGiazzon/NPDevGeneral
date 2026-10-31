@@ -16,13 +16,11 @@ import com.npdev.generator.templates.TemplateEngine;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 public final class ServiceEmitter extends AbstractEmitter {
 
@@ -62,7 +60,7 @@ public final class ServiceEmitter extends AbstractEmitter {
             List<Map<String, Object>> referenceFinders = new ArrayList<>();
             List<Map<String, Object>> manyToManyBonds = new ArrayList<>();
             List<Map<String, Object>> expressionInvariants = new ArrayList<>();
-            List<Map<String, Object>> allowedMutationTopics = allowedMutationTopics(model, entity);
+            List<Map<String, Object>> allowedMutationTopics = allowedMutationTopics(entity);
             String persistenceAdapter = resolveBindingAdapter(model, "persistence", "repository");
             String eventBusAdapter = resolveBindingAdapter(model, "eventBus", "inproc");
             CompiledField idField = idField(entity);
@@ -320,38 +318,26 @@ public final class ServiceEmitter extends AbstractEmitter {
         };
     }
 
-    private static List<Map<String, Object>> allowedMutationTopics(CompiledModel model, CompiledConcept entity) {
+    /**
+     * The three built-in CRUD topics ({@code <Concept>.created/updated/deleted}) are ALWAYS emitted.
+     * Declared {@code events[]} add to them and never subtract: before 2026-10-31 any non-empty root
+     * {@code events[]} turned this list into an allow-list (only defaults whose name a declared event
+     * mapped onto survived), so declaring one unrelated lifecycle event silently removed every CRUD
+     * event of every concept, with no message. A declared event named like a default (for example
+     * {@code UserCreated} or {@code User.created}) is the same event, never a second one.
+     */
+    private static List<Map<String, Object>> allowedMutationTopics(CompiledConcept entity) {
         String entityName = entity.getClassName();
-        List<String> defaultTopics = List.of(
-                entityName + ".created",
-                entityName + ".updated",
-                entityName + ".deleted"
-        );
-
-        List<String> effectiveTopics = defaultTopics;
-        List<CompiledEvent> declaredEvents = model.getEvents();
-        if (!declaredEvents.isEmpty()) {
-            Set<String> declaredTopics = new HashSet<>();
-            for (CompiledEvent event : declaredEvents) {
-                String topic = mapEventNameToTopic(event.getName());
-                if (topic != null && !topic.isBlank()) {
-                    declaredTopics.add(topic);
-                }
-            }
-
-            effectiveTopics = defaultTopics.stream()
-                    .filter(declaredTopics::contains)
-                    .toList();
-        }
-
         List<Map<String, Object>> out = new ArrayList<>();
-        for (String topic : effectiveTopics) {
+        for (String action : CRUD_ACTIONS) {
             Map<String, Object> m = new HashMap<>();
-            m.put("value", topic);
+            m.put("value", entityName + "." + action);
             out.add(m);
         }
         return out;
     }
+
+    private static final List<String> CRUD_ACTIONS = List.of("created", "updated", "deleted");
 
     /** Concept-nested events declaring {@code mode} matching the given CRUD mode, for direct publish. */
     private static List<String> customTriggeredEventNames(CompiledModel model, CompiledConcept entity, String mode) {
@@ -366,7 +352,14 @@ public final class ServiceEmitter extends AbstractEmitter {
             if (!mode.equalsIgnoreCase(event.getTriggerMode())) {
                 continue;
             }
-            names.add(event.getName().trim());
+            String name = event.getName().trim();
+            // A concept-nested event literally named like the built-in topic for this mode
+            // (e.g. "WorkOrder.created" with mode:create) IS that topic, already published by
+            // publishMutationEvent -- publishing it again would deliver every write twice.
+            if (name.equals(entity.getClassName() + "." + crudAction(mode))) {
+                continue;
+            }
+            names.add(name);
         }
         return names;
     }
@@ -391,19 +384,13 @@ public final class ServiceEmitter extends AbstractEmitter {
         return false;
     }
 
-    private static String mapEventNameToTopic(String eventName) {
-        if (eventName == null || eventName.isBlank()) return null;
-        String trimmed = eventName.trim();
-        if (trimmed.contains(".")) return trimmed;
-
-        String[] suffixes = {"Created", "Updated", "Deleted"};
-        for (String suffix : suffixes) {
-            if (trimmed.endsWith(suffix) && trimmed.length() > suffix.length()) {
-                String entityPart = trimmed.substring(0, trimmed.length() - suffix.length());
-                return entityPart + "." + suffix.toLowerCase(Locale.ROOT);
-            }
-        }
-        return null;
+    private static String crudAction(String mode) {
+        return switch (mode.toLowerCase(Locale.ROOT)) {
+            case "create" -> "created";
+            case "update" -> "updated";
+            case "delete" -> "deleted";
+            default -> mode;
+        };
     }
 
     private static String resolveBindingAdapter(CompiledModel model, String capability, String defaultAdapter) {

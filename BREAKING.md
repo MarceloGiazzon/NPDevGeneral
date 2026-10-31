@@ -5,6 +5,14 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-31 — declaring `events[]` no longer switches off the default `<Concept>.created/updated/deleted` events
+
+**What changes.** The generated CRUD service always publishes its three built-in topics. Before, any non-empty root `events[]` became an allow-list: only a default whose name a declared event mapped onto (`UserCreated` → `User.created`) survived, so declaring one lifecycle event (e.g. `WorkOrderStarted`) silently removed every CRUD event of every concept. Declared events now only add; one named like a default is that same event, and a concept-nested `mode` event literally named `<Concept>.created` (etc.) is no longer published a second time.
+
+**Who is affected.** Every regenerated app whose model declares `events[]`: it now publishes (and stores) the CRUD events it previously dropped — e.g. `simple-workorder-workflow`, `dsl-conformance-max`, the `dom-*` packs, `WmsOffice`. No corpus model relied on the old suppression. Models with no `events[]` are unchanged.
+
+**Codemod.** None: no model has to change shape, and there is no opt-out to preserve.
+
 ## 2026-10-31 — `ui.selectionTools` adds open / copy / download of the ticked rows to every concept's list grid
 
 **What changes.** New and **on by default**: the grid's selection bar of every generated app gets three buttons (Open selected, Copy selected, Download selected) once a row is ticked. A concept opts out with `"ui": { "selectionTools": false }`; declaring the key on a field is a validation error. No model has to change and the generated manifests are byte-identical (the key appears only on an opt-out), but the generated `bulk-actions.js` is not: every regenerated app shows the new buttons. The bar's existing **Clear selection** button is now labelled **Deselect all**, and a **Select all** button joins it; both appear for every concept, and any browser routine or test that clicks the old label must use the new one.

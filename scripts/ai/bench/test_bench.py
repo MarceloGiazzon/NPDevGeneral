@@ -560,6 +560,21 @@ class ScorecardAndLoopTests(unittest.TestCase):
                 self.assertEqual("$.flows[0].input.mode: list -> query" in out["feedback"], autofix)
                 self.assertIn("some other error", out["feedback"])
 
+    def test_stop_when_stuck_ends_a_prompt_that_keeps_failing_the_same_way(self):
+        fb = backends.FakeBackend(CANARY_MODEL)
+        same = {"stages": [], "failingStage": "acceptance", "feedback": "- probe p2 failed: 403"}
+        changed = {"stages": [], "failingStage": "validate", "feedback": "other error"}
+        prompt = {"id": "bench-905", "prompt": "x", "acceptance": {}}
+        for limit, outcomes, calls in ((3, [changed, same, same, same], 4), (0, [same] * 6, 6)):
+            args = mock.Mock(max_loops=5, ablation="none", keep_apps=False, stop_when_stuck=limit)
+            fb.calls.clear()
+            with tempfile.TemporaryDirectory() as td, mock.patch.object(run_bench, "run_attempt",
+                                                                         side_effect=list(outcomes)):
+                res = run_bench.run_prompt(prompt, fb, None, Path(td), args)
+            self.assertEqual(len(fb.calls), calls)
+            self.assertEqual(res["stoppedStuck"], bool(limit))
+            self.assertEqual(res["outcome"], "fail")
+
     def test_loop_cap(self):
         fb = backends.FakeBackend(CANARY_MODEL)
         args = mock.Mock(max_loops=2, ablation="none", keep_apps=False)
@@ -693,6 +708,18 @@ class CliTests(unittest.TestCase):
 
 
 class StageUnitTests(unittest.TestCase):
+    def test_validate_warnings_pass_and_errors_fail(self):
+        for status, errors, ok in (("warning", 0, True), ("passed", 0, True), ("failed", 1, False)):
+            def fake_run(cmd, cwd, log, timeout, status=status, errors=errors):
+                report = Path(cmd[cmd.index("--report") + 1])
+                report.write_text(json.dumps({"status": status, "summary": {"errors": errors, "warnings": 2},
+                                              "diagnostics": []}), encoding="utf-8")
+                Path(log).write_text("", encoding="utf-8")
+                return (0 if ok else 1), False
+            with tempfile.TemporaryDirectory() as td, mock.patch.object(stages, "run_logged", side_effect=fake_run):
+                res = stages.stage_validate(Path(td) / "model.json", Path(td))
+            self.assertEqual(res.ok, ok, status)
+
     def test_free_port_avoids_reserved(self):
         for _ in range(20):
             self.assertNotIn(stages.free_port(), stages.RESERVED_PORTS)

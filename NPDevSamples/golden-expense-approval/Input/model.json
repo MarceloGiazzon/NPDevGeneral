@@ -1,0 +1,81 @@
+{
+  "namespace": "trial.expenseapproval",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "concepts": [
+    {
+      "name": "ExpenseRequest",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "employeeEmail", "type": "string", "required": true },
+        { "name": "amount", "type": "integer", "required": true, "min": 1 },
+        { "name": "needsManagerApproval", "type": "boolean", "required": true },
+        { "name": "status", "type": "string", "required": true }
+      ],
+      "invariants": [
+        { "name": "LargeNeedsApproval", "expression": "amount <= 1000 || needsManagerApproval == true" }
+      ]
+    }
+  ],
+  "capabilities": [
+    { "name": "notification", "type": "NotificationCapability", "operations": ["send"] },
+    { "name": "webhook", "type": "WebhookCapability", "operations": ["post"] }
+  ],
+  "bindings": [
+    { "capability": "notification", "adapter": "notification-inproc" },
+    { "capability": "webhook", "adapter": "webhook-inproc" }
+  ],
+  "events": [
+    { "name": "ExpenseSubmitted", "payload": [ { "name": "id", "type": "uuid" }, { "name": "status", "type": "string" } ] },
+    { "name": "ExpenseApproved", "payload": [ { "name": "expenseId", "type": "uuid" }, { "name": "approved", "type": "boolean" }, { "name": "reviewer", "type": "string" } ] }
+  ],
+  "queries": [
+    { "name": "PendingExpenseRequests", "concept": "ExpenseRequest", "where": "status == 'SUBMITTED'", "orderBy": ["employeeEmail"] }
+  ],
+  "procedures": [
+    {
+      "name": "SubmitExpenseProcedure",
+      "parameters": [ { "name": "id", "type": "uuid", "required": true } ],
+      "steps": [
+        { "name": "save", "type": "saveConcept", "concept": "ExpenseRequest", "id": "$id", "data": { "input": "$input" }, "target": "savedExpense" },
+        { "name": "done", "type": "return", "value": "$savedExpense" }
+      ]
+    }
+  ],
+  "panels": [
+    {
+      "name": "ExpenseApprovalPanel",
+      "route": "/expenses/approval",
+      "title": "Expense approval",
+      "dataSources": [ { "name": "pendingExpenses", "query": "PendingExpenseRequests" } ],
+      "layout": { "type": "table", "fields": ["employeeEmail", "amount", "needsManagerApproval", "status"] },
+      "actions": [
+        { "name": "SubmitExpense", "binding": "procedure", "procedure": "SubmitExpenseProcedure", "label": "Submit expense" }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "SubmitExpense",
+      "input": { "concept": "ExpenseRequest", "mode": "create" },
+      "steps": [
+        { "name": "save", "type": "createConcept", "scope": "ExpenseRequest", "input": "$input", "output": "$saved" },
+        { "name": "emit-submitted", "type": "emitEvent", "event": "ExpenseSubmitted", "from": "$saved" },
+        {
+          "name": "approval-gate",
+          "type": "branch",
+          "condition": "$saved.needsManagerApproval == true",
+          "then": [
+            { "name": "await-approval", "type": "awaitEvent", "awaitEvent": "ExpenseApproved", "match": { "correlation": true }, "awaitRef": "approval" },
+            { "name": "notify", "type": "capabilityCall", "capability": "notification", "operation": "send", "args": ["$approval"], "output": "$notification" },
+            { "name": "webhook", "type": "capabilityCall", "capability": "webhook", "operation": "post", "args": ["$approval"], "output": "$webhookResult" },
+            { "name": "return-approval", "type": "return", "value": "$approval" }
+          ],
+          "else": [
+            { "name": "return-expense", "type": "return", "value": "$saved" }
+          ]
+        }
+      ]
+    }
+  ]
+}

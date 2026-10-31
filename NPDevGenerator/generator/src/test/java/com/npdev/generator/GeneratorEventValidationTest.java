@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -64,7 +65,7 @@ class GeneratorEventValidationTest {
     }
 
     @Test
-    void generationSucceedsWhenOnlySubsetOfMutationEventsIsDeclared() throws Exception {
+    void declaringOneCrudEventStillEmitsAllThreeDefaults() throws Exception {
         CompiledModel model = compile("""
                 {
                   "namespace": "demo",
@@ -95,9 +96,111 @@ class GeneratorEventValidationTest {
 
         Path service = out.resolve("src/main/java/com/npdev/generated/services/UserServiceBase.java");
         String serviceContent = Files.readString(service);
-        assertTrue(serviceContent.contains("publishMutationEvent(\"created\"") );
-        assertTrue(!serviceContent.contains("publishMutationEvent(\"updated\"") );
-        assertTrue(!serviceContent.contains("publishMutationEvent(\"deleted\"") );
+        // Declared events add to the defaults, never subtract (before 2026-10-31 this was an
+        // allow-list and only "created" survived).
+        assertAllThreeDefaultsEmitted(serviceContent);
+        // UserCreated is the default User.created topic, not a second one.
+        assertEquals(1, occurrences(serviceContent, "topics.add(\"User.created\")"));
+    }
+
+    @Test
+    void declaringAnUnrelatedEventKeepsEveryDefaultCrudEvent() throws Exception {
+        String serviceContent = generateService("""
+                {
+                  "namespace": "demo",
+                  "dslVersion": "1.0.0",
+                  "version": "v1",
+                  "concepts": [
+                    {
+                      "name": "WorkOrder",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "title", "type": "string", "required": true }
+                      ]
+                    }
+                  ],
+                  "events": [
+                    { "name": "WorkOrderStarted", "payload": [ { "name": "id", "type": "uuid" } ] }
+                  ]
+                }
+                """, "WorkOrder");
+        assertAllThreeDefaultsEmitted(serviceContent);
+        assertTrue(serviceContent.contains("topics.add(\"WorkOrder.created\")"));
+        assertTrue(serviceContent.contains("topics.add(\"WorkOrder.updated\")"));
+        assertTrue(serviceContent.contains("topics.add(\"WorkOrder.deleted\")"));
+    }
+
+    @Test
+    void aConceptEventNamedLikeTheDefaultTopicIsPublishedOnceNotTwice() throws Exception {
+        String serviceContent = generateService("""
+                {
+                  "namespace": "demo",
+                  "dslVersion": "1.0.0",
+                  "version": "v1",
+                  "concepts": [
+                    {
+                      "name": "WorkOrder",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "title", "type": "string", "required": true }
+                      ],
+                      "events": [
+                        { "name": "WorkOrder.created", "mode": "create" },
+                        { "name": "WorkOrderOpened", "mode": "create" }
+                      ]
+                    }
+                  ]
+                }
+                """, "WorkOrder");
+        assertAllThreeDefaultsEmitted(serviceContent);
+        assertEquals(0, occurrences(serviceContent, "publishDeclaredEvent(\"WorkOrder.created\""));
+        assertEquals(1, occurrences(serviceContent, "publishDeclaredEvent(\"WorkOrderOpened\""));
+    }
+
+    @Test
+    void noDeclaredEventsEmitsAllThreeDefaults() throws Exception {
+        String serviceContent = generateService("""
+                {
+                  "namespace": "demo",
+                  "dslVersion": "1.0.0",
+                  "version": "v1",
+                  "concepts": [
+                    {
+                      "name": "WorkOrder",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "title", "type": "string", "required": true }
+                      ]
+                    }
+                  ]
+                }
+                """, "WorkOrder");
+        assertAllThreeDefaultsEmitted(serviceContent);
+    }
+
+    private static void assertAllThreeDefaultsEmitted(String serviceContent) {
+        assertEquals(1, occurrences(serviceContent, "publishMutationEvent(\"created\""));
+        assertEquals(1, occurrences(serviceContent, "publishMutationEvent(\"updated\""));
+        assertEquals(1, occurrences(serviceContent, "publishMutationEvent(\"deleted\""));
+    }
+
+    private static int occurrences(String haystack, String needle) {
+        int count = 0;
+        for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + needle.length())) {
+            count++;
+        }
+        return count;
+    }
+
+    private static String generateService(String json, String concept) throws Exception {
+        CompiledModel model = compile(json);
+        Path out = Files.createTempDirectory("npdev-events-gen-");
+        Path migrations = Files.createTempDirectory("npdev-events-gen-mig-");
+        new GeneratorFacade(
+                new TemplateEngine("npdev-templates/"),
+                new GeneratedSourceWriter(out, new RegenerationPolicy())
+        ).generate(model, out, migrations);
+        return Files.readString(out.resolve("src/main/java/com/npdev/generated/services/" + concept + "ServiceBase.java"));
     }
 
     @Test

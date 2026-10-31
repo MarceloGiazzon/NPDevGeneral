@@ -218,7 +218,9 @@ def stage_validate(model_path: Path, log_dir: Path, timeout: float = 300) -> Sta
     if report.exists():
         try:
             data = json.loads(report.read_text(encoding="utf-8"))
-            ok = ok and data.get("status") == "passed"
+            # warnings (e.g. missing_field_label) never block generation; failing them would push authors
+            # back to the ceremony the core context now teaches them to omit
+            ok = ok and data.get("status") in ("passed", "warning")
             if not ok:
                 detail = format_diagnostics(data) or tail(log, 1500)
             return StageResult("validate", ok, secs, detail, str(log),

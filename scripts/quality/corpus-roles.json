@@ -63,6 +63,8 @@
     "NPDevSamples/canonical-demo": "dsl-fixture",
     "NPDevSamples/dsl-conformance-max": "dsl-fixture",
     "NPDevSamples/durable-workflow-demo": "dsl-fixture",
+    "NPDevSamples/golden-contact-intake": "showcase",
+    "NPDevSamples/golden-expense-approval": "showcase",
     "NPDevSamples/medium-expense-approval": "showcase",
     "NPDevSamples/notification-pack-proof": "repro-case",
     "NPDevSamples/npdev-canary": "canary",

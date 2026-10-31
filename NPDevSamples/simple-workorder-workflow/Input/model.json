@@ -9,12 +9,11 @@
   "concepts": [
     {
       "name": "WorkOrder",
-      "ui": { "label": "Work order" },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "title", "type": "string", "required": true, "ui": { "label": "Title" } },
-        { "name": "assignee", "type": "string", "ui": { "label": "Assignee" } },
-        { "name": "status", "type": "enum", "enumValues": ["Open", "InProgress", "Done", "Cancelled"], "ui": { "label": "Status" } }
+        { "name": "title", "type": "string", "required": true },
+        { "name": "assignee", "type": "string" },
+        { "name": "status", "type": "enum", "enumValues": ["Open", "InProgress", "Done", "Cancelled"] }
       ],
       "lifecycle": {
         "statusField": "status",

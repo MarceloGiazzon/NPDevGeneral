@@ -168,6 +168,10 @@ def run_prompt(prompt: dict, backend, knowledge: str | None, run_dir: Path, args
     stateless = getattr(args, "repair_mode", None) == "stateless"   # a Mock args is never "stateless"
     trail: list[str] = []
     last_model: str | None = None
+    stuck_limit = getattr(args, "stop_when_stuck", 0)
+    stuck_limit = stuck_limit if isinstance(stuck_limit, int) else 0   # a Mock args has no real value
+    signatures: list[tuple[str, str]] = []
+    stopped_stuck = False
     for n in range(0, args.max_loops + 1):
         stage_log: list[dict] = []
         try:
@@ -211,6 +215,12 @@ def run_prompt(prompt: dict, backend, knowledge: str | None, run_dir: Path, args
         if attempt["failingStage"] is None:
             passed = True
             break
+        # stop-loss: the same failure N attempts in a row means the feedback is not helping, and on a
+        # free tier every further loop burns quota (72 % of haiku55 tokens went to prompts that failed)
+        signatures.append((attempt["failingStage"], _first_error_line(attempt["feedback"])))
+        if stuck_limit >= 2 and len(signatures) >= stuck_limit and len(set(signatures[-stuck_limit:])) == 1:
+            stopped_stuck = True
+            break
         if stateless:
             last_model = attempt.get("modelText") or last_model
             messages = author.stateless_repair_messages(prompt["prompt"], knowledge,
@@ -233,6 +243,7 @@ def run_prompt(prompt: dict, backend, knowledge: str | None, run_dir: Path, args
         "outcome": "pass" if passed else ("infra" if infra_kind else "fail"),
         "infraKind": infra_kind,
         "loopsUsed": len(attempts) - 1,
+        "stoppedStuck": stopped_stuck,
         "firstAttemptValid": bool(first_valid and not first.get("backendError")),
         "firstAttemptPassed": first["failingStage"] is None,
         "firstAttemptFailingStage": first["failingStage"],
@@ -524,6 +535,7 @@ def cmd_run(args) -> int:
     summary = {"runId": run_id, "startedAt": started_at, "dryRun": args.dry_run, "ablation": args.ablation,
                "backend": info.describe(), "knowledge": knowledge_info, "maxLoops": args.max_loops,
                "autofix": args.autofix, "repairMode": args.repair_mode,
+               "stopWhenStuck": args.stop_when_stuck,
                "wallSeconds": round(time.monotonic() - t0, 1), "stopReason": stop_reason, "notRun": not_run,
                "scorecard": scorecard(results), "results": [
                    {**{k: r.get(k) for k in ("promptId", "passed", "loopsUsed", "failingStage", "wallSeconds", "costUsd")},
@@ -560,6 +572,9 @@ def make_parser() -> argparse.ArgumentParser:
     r.add_argument("--repair-mode", choices=["history", "stateless"], default="history",
                    help="history: re-send the whole conversation each repair (default). stateless: slim "
                         "knowledge + request + one line per earlier attempt + current model + errors (F6)")
+    r.add_argument("--stop-when-stuck", type=int, default=0, metavar="N",
+                   help="stop a prompt after N consecutive attempts fail the same way (same stage, same first "
+                        "error line); 0 = off (default), 2 or more to enable")
     r.add_argument("--no-autofix", dest="autofix", action="store_false",
                    help="validate the model exactly as authored (skip the desire-path rewrite) -- the A/B arm")
     r.add_argument("--ablation", choices=["none", "no-knowledge"], default="none",
