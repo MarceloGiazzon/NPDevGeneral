@@ -3321,7 +3321,8 @@ public final class JsonModelParser {
                 readText(node, "currency"),
                 readLabelLocales(node, "label"),
                 readLabelLocales(node, "shortLabel"),
-                readOptionalBoolean(node, "offlineWrite")
+                readOptionalBoolean(node, "offlineWrite"),
+                readOptionalBoolean(node, "selectionTools")
         );
     }
 

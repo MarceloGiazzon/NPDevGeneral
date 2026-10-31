@@ -1231,6 +1231,9 @@ public final class CompiledModelCanonicalJson {
         if (metadata.getOfflineWrite() != null) {
             node.put("offlineWrite", metadata.getOfflineWrite());
         }
+        if (metadata.getSelectionTools() != null) {
+            node.put("selectionTools", metadata.getSelectionTools());
+        }
         return node;
     }
 

@@ -1,17 +1,38 @@
 {
-  "closedAt": "2026-10-29T03:06:38.7549066Z",
+  "closedAt": "2026-10-31T03:18:23.8058609Z",
   "branch": "main",
-  "head": "0cc97a98",
-  "headSubject": "chore(session): handoff for the 2026-10-28/29 session; restore the 252865a5 history entry",
-  "summary": "Owner decisions recorded: BUILD-4 WONTFIX (stay on Spring Boot 3.5.16, exposure written down), AIP-7 WONTFIX (legacy http assistant kind stays; AIP-2 done-when narrowed). Closed RUN-37 and AIP-4 live in the real Manager window driven over WebView2 CDP; found+fixed MON-33 (unreadable Manager tabs, Manager 0.5.4); ran the OWN-2 section 5.2 domain-fit simulation via a fresh agent and filed REG-312..318 + SEC-16. Pushed fb972de3, dc8b3396, 0cc97a98.",
-  "nextStep": "Fix the simulation's HIGH findings, cheapest first: (1) REG-314 -- read NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevAuthConfig.java and the api-key resolver for the real npdev.auth.api-keys grammar (known: key=tenant:actor:ROLE, entries separated by ;) and rewrite docs/CONFIGURATION.md:85 with an example; (2) REG-312 -- boot a sample and reproduce GET /api/concepts/<SingularConceptName> -> 400 before changing anything, then fix the route or docs/reference/REST_API.md + OpenAPI with a REST test; (3) REG-313 part (a) -- validator refuses non-numeric computeValue operands with a coded diagnostic; ask the owner before building date functions (part b). Then SEC-16. OWN-2 stays open for the owner's 5.1 conversations only.",
+  "head": "56af2cb1",
+  "headSubject": "test(authz): malformed parentField calls deny the write; the live wrapper passes the parent lookup through (SEC-16)",
+  "summary": "Built ui.selectionTools (concept-level, opt-in, off unless declared): open / copy / download of the ticked rows on a list grid, threaded through DSL (parser, AST, compiled, canonical JSON, resolver, validator), 4 schema copies, generator + live manifests, bulk-actions.js, conformance example on ShelfLayout, dsl_coverage detector, twin-pair rule, UI_CONTRACT + BREAKING. Proven in a real browser (new selection-tools-verify-routine, 7th in run-shell-scenarios, 49 steps green, a11y 0/0/0/0). Also fixed the SEC-16 kernel coverage dip with 3 tests (kernel now 71.5024% measured over 45 fresh reports). The request was originally meant for another project (processTrackerForIA), not NPDev.",
+  "nextStep": "Nothing pending on selectionTools. Optional: rerun scripts/quality/run-all-gates.ps1 -IncludePaperwork once to see all four gates plus paperwork green together (the last full run failed only on the kernel coverage floor, since fixed and re-measured alone). Open question for the owner: default off (opt-in) vs on for selectionTools; port the grid tools to processTrackerForIA if wanted.",
   "plan": "",
   "blocked": "",
-  "verified": "aiKnowledge gate green 52/52 (before dc8b3396, which is ledger-only; ledger checkers re-run green after it). Manager cargo test 57/57 (two new guard tests proven red); test_db_discovery 30/30 (guard proven red); check-done-item-guards 0 blocking. Real-window evidence in NPDev_General__OutsideRepo/evidence/2026-10-28-run37-aip4-manager-window/. No full T2 this session.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
-  "unpushed": 0,
+  "verified": "Full gates run at tree before the kernel tests: generator, runtimeHost, weeklyPaperwork passed; kernel and aiKnowledge failed only on the kernel coverage floor (71.4893 vs 71.4936), fixed by 3 tests; kernel then measured 71.5024 over 45 fresh reports via cleanTest + kernelQualityGate + ratchet alone. aiKnowledge and the other gates not rerun after the fix. Browser routine green. Twin-pair, schema-mirror, dsl-coverage checkers pass.",
+  "dirtyCount": 33,
+  "dirtyFiles": [
+    " M BREAKING.md",
+    " M NPDevContract/dsl/resources/Schemas/model.schema.json",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/PresentationMetadataAst.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledPresentationMetadata.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ConceptValidation.java",
+    " M NPDevContract/dsl/src/main/resources/schema/model.schema.json",
+    " M NPDevContract/schemas/authoring/model.schema.json",
+    " M NPDevContract/schemas/model.schema.json",
+    " M NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java",
+    " M NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache",
+    " M NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-style.mustache",
+    " M NPDevGenerator/generator/src/main/resources/npdev-templates/static-assets/business-ui/views/bulk-actions.js",
+    " M NPDevGenerator/generator/src/main/resources/npdev-templates/static-assets/business-ui/views/csv-io.js",
+    " M NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterBulkActionsTest.java",
+    " M NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptUiManifestSupport.java"
+  ],
+  "unpushed": 1,
   "landedCommits": [
-    "0cc97a98 chore(session): handoff for the 2026-10-28/29 session; restore the 252865a5 history entry"
+    "56af2cb1 test(authz): malformed parentField calls deny the write; the live wrapper passes the parent lookup through (SEC-16)"
   ]
 }

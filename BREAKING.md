@@ -5,6 +5,14 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-10-31 — `ui.selectionTools` adds open / copy / download of the ticked rows to a concept's list grid
+
+**What changes.** New, additive, opt-in: a concept that declares `"ui": { "selectionTools": true }` gets three buttons in the grid's selection bar (Open selected, Copy selected, Download selected). Declaring it on a field is a validation error. The bar's existing **Clear selection** button is now labelled **Deselect all**, and a **Select all** button joins it; both appear for every concept, and any browser routine or test that clicks the old label must use the new one.
+
+**Who is affected.** No corpus model changes behaviour; `dsl-conformance-max` declares it on `ShelfLayout` as the example. Only a script that clicks "Clear selection" by its text is affected.
+
+**Codemod.** None: nothing existing changes shape.
+
 ## 2026-10-30 — `parentField('refField', 'targetField')` in `access.write` lets a child be written only by its parent's owner (SEC-16)
 
 **What changes.** New, additive: a write rule can read one field of the row a reference field points at, so a child cannot be attached under another owner's parent. A parent that cannot be found denies the write (fail closed); `parentField` in `access.read` or a field-level rule, or with a first argument that is not a reference field of the concept, is a validation error. The only behaviour that tightens is for a model that already used the name `parentField` in a rule, which was not a function before and could not have validated.

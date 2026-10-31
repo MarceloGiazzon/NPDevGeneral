@@ -588,6 +588,6 @@
 
       openModal("Import " + concept.displayName, body);
     }
-    return { exportPanelCsv, exportPanelXlsx, importCellToPayloadValue, openImportDialog };
+    return { exportPanelCsv, exportPanelXlsx, importCellToPayloadValue, openImportDialog, buildCsv, csvFilenameFor, downloadCsv, neutralizeCsvFormula };
   });
 })();

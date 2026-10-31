@@ -194,6 +194,7 @@ try {
         "longrunning-flow-verify-routine.json"    = @{ sku = "FLOW-SCENARIO-SKU-$runStamp"; name = "Flow Scenario Widget" }
         "permission-denied-verify-routine.json"   = @{ skuOwn = "DENIED-SCENARIO-OWNED-$runStamp"; skuOther = "DENIED-SCENARIO-OTHER-$runStamp" }
         "mob2-offline-write-verify-routine.json"  = @{ code = "M$runStamp" }  # the field allows 16 characters; a longer code is (correctly) refused on replay
+        "selection-tools-verify-routine.json"     = @{ name1 = "SELTOOLS-$runStamp-A"; name2 = "SELTOOLS-$runStamp-B"; prefix = "SELTOOLS-$runStamp" }
     }
     $routineOrder = @(
         "list-verify-routine.json",
@@ -201,7 +202,8 @@ try {
         "workbench-verify-routine.json",
         "longrunning-flow-verify-routine.json",
         "permission-denied-verify-routine.json",
-        "mob2-offline-write-verify-routine.json"
+        "mob2-offline-write-verify-routine.json",
+        "selection-tools-verify-routine.json"
     )
     $routineDir = Join-Path $repoRoot "NPDevSamples\scripts\browser\browser-routines"
     $evidenceDir = Join-Path (Join-Path $outputRoot "RunOutput") "browser"
@@ -225,6 +227,15 @@ try {
         $name = [System.IO.Path]::GetFileNameWithoutExtension($routineName)
         Info ("=== Routine: " + $name + " ===")
         $result = Invoke-ScrapRoutine -Context $scrapCtx -RoutinePath $routinePath -Credentials $creds -Variables $routineVariables[$routineName] -ExtraSteps @($a11yStep)
+        if ($null -eq $result -or $null -eq $result.PSObject.Properties["steps"]) {
+            # The engine refused the request (e.g. a step it does not know) and sent back an error body, not a
+            # run: say what it said instead of dying later in Save-RoutineEvidence on a missing property.
+            $engineSaid = if ($null -eq $result) { "(empty response)" } else { ($result | ConvertTo-Json -Depth 6 -Compress) }
+            Info ("$name : the engine returned no step results: " + $engineSaid)
+            $allGreen = $false
+            $report.routines += [pscustomobject]@{ routine = $name; status = "failed"; message = "engine returned no step results: $engineSaid"; steps = 0 }
+            continue
+        }
         $routineStatus = "passed"
         $routineMessage = "green"
         try {

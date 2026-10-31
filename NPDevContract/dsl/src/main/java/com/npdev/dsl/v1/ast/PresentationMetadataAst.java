@@ -45,6 +45,7 @@ public final class PresentationMetadataAst {
     private final Map<String, String> labelLocales;
     private final Map<String, String> shortLabelLocales;
     private final Boolean offlineWrite;
+    private final Boolean selectionTools;
 
     public PresentationMetadataAst(
             String label,
@@ -85,7 +86,8 @@ public final class PresentationMetadataAst {
             String currency,
             Map<String, String> labelLocales,
             Map<String, String> shortLabelLocales,
-            Boolean offlineWrite
+            Boolean offlineWrite,
+            Boolean selectionTools
     ) {
         this.label = label;
         this.shortLabel = shortLabel;
@@ -126,11 +128,17 @@ public final class PresentationMetadataAst {
         this.labelLocales = (labelLocales == null || labelLocales.isEmpty()) ? Map.of() : Map.copyOf(labelLocales);
         this.shortLabelLocales = (shortLabelLocales == null || shortLabelLocales.isEmpty()) ? Map.of() : Map.copyOf(shortLabelLocales);
         this.offlineWrite = offlineWrite;
+        this.selectionTools = selectionTools;
     }
 
     /** MOB-2: concept-level; the generated UI may queue writes while offline and replay them at sync. */
     public Boolean getOfflineWrite() {
         return offlineWrite;
+    }
+
+    /** Concept-level; the generated list grid offers open / copy / download of the selected rows. Off unless declared. */
+    public Boolean getSelectionTools() {
+        return selectionTools;
     }
 
     public String getLabel() {

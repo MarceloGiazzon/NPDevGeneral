@@ -10,7 +10,7 @@
   "use strict";
   NPDevViews.registerModule("bulkActions", function (host) {
     const {
-      button, closeModal, createInput, fetchJson, formFields, headerRow, headers, importCellToPayloadValue, notify, openModal, reloadAfterMutation, render, textCell
+      buildCsv, button, closeModal, createInput, csvFilenameFor, downloadCsv, fetchJson, formFields, headerRow, headers, importCellToPayloadValue, neutralizeCsvFormula, notify, openDetailsMany, openModal, reloadAfterMutation, render, setStatus, textCell, visibleFields
     } = host;
 
     // ---------------------------------------------------------------------------------------------
@@ -246,6 +246,97 @@
     }
 
 
+    // Selection is page-scoped (loadPanel clears it on every fetch), so the selected rows are always
+    // present in panel.records -- copy/download/open read them from there, in on-screen order, with no
+    // extra request.
+    function selectedRecords(concept, panel) {
+      return panel.records.filter(function (record) { return isRowSelected(panel, record[concept.idField]); });
+    }
+
+
+    function selectAllOnPage(concept, panel) {
+      panel.records.forEach(function (record) { toggleRowSelected(panel, record[concept.idField], true); });
+      render();
+    }
+
+
+    function openSelected(concept, panel) {
+      const records = selectedRecords(concept, panel);
+      if (records.length) { openDetailsMany(concept, records); }
+    }
+
+
+    function cellText(value) {
+      if (value === null || value === undefined) { return ""; }
+      return typeof value === "object" ? JSON.stringify(value) : String(value);
+    }
+
+
+    // Tab-separated, header row first -- what a spreadsheet puts on the clipboard for a selected range, so
+    // a paste into Excel / Sheets / a mail lands in cells. Formula-lead cells are neutralised exactly like
+    // the CSV export (a pasted "=..." would otherwise execute).
+    function buildTsv(columns, rows) {
+      function tsvCell(value) {
+        const cell = neutralizeCsvFormula(cellText(value));
+        return /[\t\r\n"]/.test(cell) ? "\"" + cell.replace(/"/g, "\"\"") + "\"" : cell;
+      }
+      const lines = [columns.map(function (column) { return tsvCell(column.label); }).join("\t")];
+      rows.forEach(function (row) {
+        lines.push(columns.map(function (column) { return tsvCell(row[column.name]); }).join("\t"));
+      });
+      return lines.join("\r\n");
+    }
+
+
+    function selectedExport(concept, panel) {
+      const columns = visibleFields(concept, panel).map(function (field) {
+        return { name: field.name, label: field.label || field.name };
+      });
+      return { columns: columns, rows: selectedRecords(concept, panel) };
+    }
+
+
+    // navigator.clipboard only exists in a secure context (https / localhost); a FinalApp reached over
+    // plain http on a LAN address needs the textarea + execCommand path.
+    async function writeClipboard(value) {
+      if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+        await navigator.clipboard.writeText(value);
+        return;
+      }
+      const area = document.createElement("textarea");
+      area.value = value;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(area);
+      if (!ok) { throw new Error("The browser blocked copying to the clipboard."); }
+    }
+
+
+    async function copySelected(concept, panel) {
+      const picked = selectedExport(concept, panel);
+      if (!picked.rows.length) { return; }
+      try {
+        await writeClipboard(buildTsv(picked.columns, picked.rows));
+        notify("Copied " + picked.rows.length + " selected row(s) to the clipboard.", false);
+      } catch (error) {
+        notify(error.message, true);
+      }
+    }
+
+
+    // The merge: every selected row, one file.
+    function downloadSelected(concept, panel) {
+      const picked = selectedExport(concept, panel);
+      if (!picked.rows.length) { return; }
+      downloadCsv(buildCsv(picked.columns, picked.rows), csvFilenameFor(concept).replace(/\.csv$/, "-selected.csv"));
+      setStatus(picked.rows.length + " selected row(s) downloaded.", false);
+    }
+
+
     // Renders null (nothing appended by the caller) while nothing is selected, so an app generated
     // before this feature and one generated after render byte-identical grids until a user actually
     // checks a row.
@@ -258,7 +349,16 @@
       count.className = "bulk-actions-count";
       count.textContent = ids.length + " selected";
       bar.appendChild(count);
-      bar.appendChild(button("Clear selection", "", function () { clearSelection(panel); render(); }));
+      if (ids.length < panel.records.length) {
+        bar.appendChild(button("Select all", "", function () { selectAllOnPage(concept, panel); }));
+      }
+      bar.appendChild(button("Deselect all", "", function () { clearSelection(panel); render(); }));
+      // ui.selectionTools: opt-in per concept; an app that never declares it renders exactly the bar it did before.
+      if (concept.selectionTools) {
+        bar.appendChild(button("Open selected", "", function () { openSelected(concept, panel); }));
+        bar.appendChild(button("Copy selected", "", function () { copySelected(concept, panel); }));
+        bar.appendChild(button("Download selected", "", function () { downloadSelected(concept, panel); }));
+      }
       bar.appendChild(button("Set field…", "", function () { openBulkSetFieldDialog(concept, panel); }));
       bar.appendChild(button("Delete selected", "danger", function () { runBulkDelete(concept, panel); }));
       return bar;

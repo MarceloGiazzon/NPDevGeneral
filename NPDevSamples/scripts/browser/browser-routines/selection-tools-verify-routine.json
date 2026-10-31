@@ -1,0 +1,259 @@
+{
+  "scenarioName": "shell-selection-tools-scenario",
+  "targetPath": "/npdev-business-ui/",
+  "options": {
+    "headless": true,
+    "screenshots": "always",
+    "collectDomOnFailure": true,
+    "viewport": {
+      "width": 1400,
+      "height": 900
+    }
+  },
+  "variables": {
+    "name1": "SELTOOLS-PLACEHOLDER-1",
+    "name2": "SELTOOLS-PLACEHOLDER-2",
+    "prefix": "SELTOOLS-PLACEHOLDER"
+  },
+  "steps": [
+    {
+      "action": "goto",
+      "url": "$targetUrl"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#apiKey",
+      "state": "visible"
+    },
+    {
+      "action": "fill",
+      "selector": "#apiKey",
+      "valueFromCredential": "apiKey"
+    },
+    {
+      "action": "reload"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#concept-WidgetOrder",
+      "state": "visible",
+      "label": "Confirm auth landed"
+    },
+    {
+      "action": "goto",
+      "url": "http://127.0.0.1:8099/npdev-business-ui/#concept-ShelfLayout",
+      "label": "Open the ShelfLayout list (it declares ui.selectionTools)"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#concept-ShelfLayout",
+      "state": "visible"
+    },
+    {
+      "action": "click",
+      "selector": "#concept-ShelfLayout .panel-actions button:has-text(\"New\")",
+      "label": "Create a shelf (name1)"
+    },
+    {
+      "action": "fill",
+      "selector": "#concept-ShelfLayout [name=\"name\"]",
+      "valueFromVariable": "name1"
+    },
+    {
+      "action": "fill",
+      "selector": "#concept-ShelfLayout [name=\"rows\"]",
+      "value": "2"
+    },
+    {
+      "action": "fill",
+      "selector": "#concept-ShelfLayout [name=\"cols\"]",
+      "value": "3"
+    },
+    {
+      "action": "click",
+      "selector": "#concept-ShelfLayout button:has-text(\"Create\")"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 800
+    },
+    {
+      "action": "click",
+      "selector": "#concept-ShelfLayout .panel-actions button:has-text(\"New\")",
+      "label": "Create a shelf (name2)"
+    },
+    {
+      "action": "fill",
+      "selector": "#concept-ShelfLayout [name=\"name\"]",
+      "valueFromVariable": "name2"
+    },
+    {
+      "action": "fill",
+      "selector": "#concept-ShelfLayout [name=\"rows\"]",
+      "value": "4"
+    },
+    {
+      "action": "fill",
+      "selector": "#concept-ShelfLayout [name=\"cols\"]",
+      "value": "5"
+    },
+    {
+      "action": "click",
+      "selector": "#concept-ShelfLayout button:has-text(\"Create\")"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 800
+    },
+    {
+      "action": "fill",
+      "selector": "#concept-ShelfLayout .filters input[type=\"search\"]",
+      "valueFromVariable": "prefix",
+      "label": "Narrow the grid to just this run's two rows"
+    },
+    {
+      "action": "click",
+      "selector": "#concept-ShelfLayout .filters button:has-text(\"Search\")"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 600
+    },
+    {
+      "action": "assertCount",
+      "selector": "#concept-ShelfLayout tbody tr",
+      "operator": "=",
+      "count": 2,
+      "label": "Exactly this run's two rows"
+    },
+    {
+      "action": "evaluate",
+      "name": "install_hooks",
+      "script": "(function(){window.__copied=null;window.__blob=null;navigator.clipboard.writeText=function(t){window.__copied=t;return Promise.resolve();};var c=URL.createObjectURL.bind(URL);URL.createObjectURL=function(b){window.__blob=b;return c(b);};return 'hooked';})()",
+      "label": "Capture what Copy selected puts on the clipboard and what Download selected builds"
+    },
+    {
+      "action": "click",
+      "selector": "#concept-ShelfLayout thead th.bulk-select-col input[type=\"checkbox\"]",
+      "label": "Tick every row with the header checkbox"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 300
+    },
+    {
+      "action": "assertTextContains",
+      "selector": "#concept-ShelfLayout .bulk-actions-bar",
+      "text": "2 selected",
+      "label": "The selection bar appears with the count"
+    },
+    {
+      "action": "assertCount",
+      "selector": "#concept-ShelfLayout .bulk-actions-bar button:text-is(\"Open selected\"), #concept-ShelfLayout .bulk-actions-bar button:text-is(\"Copy selected\"), #concept-ShelfLayout .bulk-actions-bar button:text-is(\"Download selected\")",
+      "operator": "=",
+      "count": 3,
+      "label": "All three selection tools are offered on a concept that declares the flag"
+    },
+    {
+      "action": "click",
+      "selector": "#concept-ShelfLayout .bulk-actions-bar button:text-is(\"Deselect all\")",
+      "label": "Deselect all clears the selection and the bar"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 300
+    },
+    {
+      "action": "assertCount",
+      "selector": "#concept-ShelfLayout .bulk-actions-bar",
+      "operator": "=",
+      "count": 0
+    },
+    {
+      "action": "click",
+      "selector": "#concept-ShelfLayout tbody tr:nth-child(1) input[aria-label=\"Select row\"]",
+      "label": "Tick just one row"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 300
+    },
+    {
+      "action": "assertTextContains",
+      "selector": "#concept-ShelfLayout .bulk-actions-bar",
+      "text": "1 selected"
+    },
+    {
+      "action": "click",
+      "selector": "#concept-ShelfLayout .bulk-actions-bar button:text-is(\"Select all\")",
+      "label": "Select all ticks the rest"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 300
+    },
+    {
+      "action": "assertTextContains",
+      "selector": "#concept-ShelfLayout .bulk-actions-bar",
+      "text": "2 selected"
+    },
+    {
+      "action": "click",
+      "selector": "#concept-ShelfLayout .bulk-actions-bar button:text-is(\"Open selected\")",
+      "label": "Open both rows in one dialog"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#modalRoot .details-many",
+      "state": "visible"
+    },
+    {
+      "action": "assertCount",
+      "selector": "#modalRoot .details-many-item",
+      "operator": "=",
+      "count": 2,
+      "label": "One section per ticked row, in one dialog"
+    },
+    {
+      "action": "click",
+      "selector": "#modalRoot .modal-header button:has-text(\"Close\")"
+    },
+    {
+      "action": "click",
+      "selector": "#concept-ShelfLayout .bulk-actions-bar button:text-is(\"Copy selected\")"
+    },
+    {
+      "action": "click",
+      "selector": "#concept-ShelfLayout .bulk-actions-bar button:text-is(\"Download selected\")"
+    },
+    {
+      "action": "evaluate",
+      "name": "report_outputs",
+      "script": "(function(){function box(id){var d=document.createElement('pre');d.id=id;d.setAttribute('aria-hidden','true');d.style.cssText='position:fixed;left:-9999px';document.body.appendChild(d);return d;}var names=Array.from(document.querySelectorAll('#concept-ShelfLayout tbody tr td[data-label=\"Name\"]')).map(function(t){return t.textContent.trim();});function hasAll(t){return t!==null&&names.length===2&&names.every(function(n){return t.indexOf(n)>=0;});}var cp=window.__copied;box('selProbe').textContent=(cp!==null&&cp.indexOf(String.fromCharCode(9))>=0&&hasAll(cp)&&cp.split(String.fromCharCode(13,10)).length===3)?'COPY_OK':'COPY_BAD['+JSON.stringify(cp)+']';var f=box('selProbeCsv');if(!window.__blob){f.textContent='FILE_BAD[no blob]';return 'no blob';}window.__blob.text().then(function(t){f.textContent=(hasAll(t)&&(t.slice(-2)===String.fromCharCode(13,10)?t.slice(0,-2):t).split(String.fromCharCode(13,10)).length===3)?'FILE_OK':'FILE_BAD['+JSON.stringify(t)+']';});return 'reported';})()",
+      "label": "Surface a verdict on the captured clipboard text and downloaded file into the DOM"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 500
+    },
+    {
+      "action": "assertTextContains",
+      "selector": "#selProbe",
+      "text": "COPY_OK",
+      "label": "Copy selected: tab-separated, header plus both ticked rows"
+    },
+    {
+      "action": "assertTextContains",
+      "selector": "#selProbeCsv",
+      "text": "FILE_OK",
+      "label": "Download selected: one file, header plus both ticked rows merged"
+    },
+    {
+      "action": "collect",
+      "what": [
+        "console",
+        "pageErrors"
+      ]
+    }
+  ]
+}

@@ -99,6 +99,16 @@ def _has_renamed_field(model: dict) -> bool:
     return False
 
 
+def _has_concept_selection_tools(model: dict) -> bool:
+    """A concept whose ui.selectionTools gives its generated list grid open / copy / download of the
+    ticked rows (off unless declared)."""
+    for concept in (model.get("concepts", None) or []):
+        ui = concept.get("ui") if isinstance(concept, dict) else None
+        if isinstance(ui, dict) and ui.get("selectionTools"):
+            return True
+    return False
+
+
 def _has_concept_offline_write(model: dict) -> bool:
     """MOB-2: a concept whose ui.offlineWrite lets the generated UI queue creates and updates while the
     device is offline and replay them on reconnect (a stale update is rejected, never merged)."""

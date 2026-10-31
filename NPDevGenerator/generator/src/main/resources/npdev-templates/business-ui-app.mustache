@@ -2570,6 +2570,27 @@
   }
 
   function openDetails(concept, record) {
+    openModal(concept.displayName, buildDetailsContent(concept, record));
+  }
+
+  // Several records in ONE dialog (the bulk bar's "Open selected"): the same per-record content
+  // openDetails shows, stacked under a heading per record, so the user can compare them side by side.
+  function openDetailsMany(concept, records) {
+    const wrap = document.createElement("div");
+    wrap.className = "details-many";
+    records.forEach(function (record) {
+      const section = document.createElement("section");
+      section.className = "details-many-item";
+      const heading = document.createElement("h3");
+      heading.textContent = concept.displayName + " " + text(record[concept.idField]);
+      section.appendChild(heading);
+      section.appendChild(buildDetailsContent(concept, record));
+      wrap.appendChild(section);
+    });
+    openModal(records.length + " x " + concept.displayName, wrap);
+  }
+
+  function buildDetailsContent(concept, record) {
     const content = document.createElement("div");
     content.className = "details";
     concept.fields.forEach(function (field) {
@@ -2599,7 +2620,7 @@
         console.error("NPDevViews detail section " + section.name + " failed", error);
       }
     });
-    openModal(concept.displayName, content);
+    return content;
   }
 
   // Read-only detail view for a many-to-many bond field: fetches the current member anchors plus
@@ -3619,9 +3640,9 @@
   // CARVE-1 modules: begin (generated block; edit via views/*.js)
   const { loadStore, renderStorePanel, loadBoxView, renderBoxViewPanel, loadPromotion, renderPromotionPanel } = NPDevViews.module("adminPanels", { BOX_VIEW_SECTION, PROMOTION_SECTION, STORE_SECTION, badgeCell, button, fetchJson, headerRow, headers, lineageCell, openModal, render, sectionId, setStatus, state, text, textCell, visibleConcepts });
   const { loadDeclaredPanel, renderDeclaredPanel } = NPDevViews.module("declaredPanels", { button, el, evaluateWhen, fetchJson, fileHandleUrl, formatValue, headerRow, headers, isImageFileValue, notify, panelContextValues, panelSectionRef, render, sectionId, setStatus, state, text, trackFlowExecution });
-  const { exportPanelCsv, exportPanelXlsx, importCellToPayloadValue, openImportDialog } = NPDevViews.module("csvIo", { baseQueryParams, button, fetchJson, fieldViolations, formFields, headerRow, headers, notify, openModal, panelState, reloadAfterMutation, setStatus, text, visibleFields });
+  const { exportPanelCsv, exportPanelXlsx, importCellToPayloadValue, openImportDialog, buildCsv, csvFilenameFor, downloadCsv, neutralizeCsvFormula } = NPDevViews.module("csvIo", { baseQueryParams, button, fetchJson, fieldViolations, formFields, headerRow, headers, notify, openModal, panelState, reloadAfterMutation, setStatus, text, visibleFields });
   const { createInput, sanitizeRichText } = NPDevViews.module("formInputs", { button, closeModalIn, createCustomWidgetInput, el, fetchJson, fileHandleUrl, formatValue, headers, humanize, isImageField, isImageFileValue, loadReferenceLabel, lookupLabel, openModalInto, referenceCacheKey, setStatus, state, text, whereExpression });
-  const { isRowSelected, toggleRowSelected, postConceptBatch, buildBulkActionsBar } = NPDevViews.module("bulkActions", { button, closeModal, createInput, fetchJson, formFields, headerRow, headers, importCellToPayloadValue, notify, openModal, reloadAfterMutation, render, textCell });
+  const { isRowSelected, toggleRowSelected, postConceptBatch, buildBulkActionsBar } = NPDevViews.module("bulkActions", { buildCsv, button, closeModal, createInput, csvFilenameFor, downloadCsv, fetchJson, formFields, headerRow, headers, importCellToPayloadValue, neutralizeCsvFormula, notify, openDetailsMany, openModal, reloadAfterMutation, render, setStatus, textCell, visibleFields });
   // CARVE-1 modules: end
   bootstrap().catch(function (error) {
     setStatus(error.message, true);

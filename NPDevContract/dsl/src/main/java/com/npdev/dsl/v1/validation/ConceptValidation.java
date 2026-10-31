@@ -188,6 +188,11 @@ final class ConceptValidation {
                             + ": ui.offlineWrite is a concept-level setting"
                             + " -- suggestedFix: move offlineWrite to the concept's own ui block and remove it from this field's ui");
                 }
+                if (f.getUi() != null && f.getUi().getSelectionTools() != null) {
+                    errors.add("Entity " + e.getName() + " field " + f.getName()
+                            + ": ui.selectionTools is a concept-level setting"
+                            + " -- suggestedFix: move selectionTools to the concept's own ui block and remove it from this field's ui");
+                }
                 FieldValueValidation.validateSchemaRegexes(
                         "Entity " + e.getName() + " field " + f.getName(), f.getSchema(), errors);
                 if ("object".equals(normalizedType)) {

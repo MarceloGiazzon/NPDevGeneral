@@ -480,6 +480,29 @@ concept node of `generated-ui-manifest.json`.
   `filterable` field is not searchable, and the server's `filterRows` returns no rows for a non-blank
   `filter` on such a concept (it used to return the whole table).
 
+## Selection tools on a list grid (`ui.selectionTools`)
+
+The generic record grid (the table of a concept's rows) always has a checkbox per row, a select-all
+checkbox in the header, and a bar above the grid once a row is ticked with **Select all**, **Deselect
+all**, **Set field…** and **Delete selected**. A concept can add three more tools to that bar:
+
+```json
+{ "name": "Invoice", "ui": { "selectionTools": true } }
+```
+
+| Button | What it does |
+|---|---|
+| **Open selected** | Opens the ticked rows together in one dialog, one section per row, instead of one dialog per row. |
+| **Copy selected** | Puts the ticked rows on the clipboard as tab-separated cells with a header row, so a paste lands in Excel or Sheets as a grid. |
+| **Download selected** | Merges the ticked rows into one `<Concept>-selected.csv`. |
+
+Rules: concept-level only (declaring it on a field is a validation error); off unless declared, and a
+concept that does not declare it renders the bar it always did; selection is per page of the grid, so
+the tools act on the rows ticked on the page in view; columns are the ones the grid shows; a value that
+starts with `=`, `+`, `-` or `@` is prefixed with `'` on copy and download so a spreadsheet cannot run it
+as a formula, the same rule Export CSV already applies. The manifest carries `selectionTools: true` on
+the concept only when declared.
+
 ## Mobile layout (768 px breakpoint)
 
 At 768 px and below the shell injects one responsive block (`injectResponsiveShellStyle` in

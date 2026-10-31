@@ -281,6 +281,9 @@ public final class LiveConceptUiManifestSupport {
         node.put("formColumns", formColumns(concept));
         node.put("displayMode", displayMode(concept));
         node.put("formPresentation", formPresentation(concept));
+        if (concept.getUi() != null && Boolean.TRUE.equals(concept.getUi().getSelectionTools())) {
+            node.put("selectionTools", true);
+        }
         node.put("frameMode", NpdevSettings.UI_FRAME_MODE.defaultValue());
         node.put("guidePage", defaultGuidePage);
         node.put("fields", fieldNodes(concept, model, contexts));

@@ -539,6 +539,18 @@ textarea {
   border-bottom: 1px solid var(--np-border, var(--np-border));
 }
 
+/* "Open selected": several records stacked in one dialog, a heading per record. */
+.details-many-item + .details-many-item {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--np-border, var(--np-border));
+}
+
+.details-many-item h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
 .bulk-actions-count {
   font-size: 13px;
   font-weight: 600;

@@ -433,7 +433,8 @@ public final class ModelResolver {
                 firstNonBlank(override.getCurrency(), base.getCurrency()),
                 mergeLabelLocales(override.getLabel(), override.getLabelLocales(), base.getLabelLocales()),
                 mergeLabelLocales(override.getShortLabel(), override.getShortLabelLocales(), base.getShortLabelLocales()),
-                override.getOfflineWrite() != null ? override.getOfflineWrite() : base.getOfflineWrite()
+                override.getOfflineWrite() != null ? override.getOfflineWrite() : base.getOfflineWrite(),
+                override.getSelectionTools() != null ? override.getSelectionTools() : base.getSelectionTools()
         );
     }
 
@@ -480,7 +481,8 @@ public final class ModelResolver {
                 metadata.getCurrency(),
                 metadata.getLabelLocales(),
                 metadata.getShortLabelLocales(),
-                metadata.getOfflineWrite()
+                metadata.getOfflineWrite(),
+                metadata.getSelectionTools()
         );
     }
 

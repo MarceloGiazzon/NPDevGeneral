@@ -87,6 +87,22 @@ public class BusinessUiEmitterBulkActionsTest {
     }
 
     @Test
+    void selectionBarOffersOpenCopyDownloadAndSelectDeselectAll() throws Exception {
+        String appJs = readAppJs(emit());
+        for (String label : new String[] {
+                "\"Select all\"", "\"Deselect all\"", "\"Open selected\"", "\"Copy selected\"", "\"Download selected\"" }) {
+            assertTrue(appJs.contains(label), "the bulk bar must offer " + label);
+        }
+        assertTrue(appJs.contains("function openDetailsMany(concept, records)"),
+                "Open selected must show several records in one dialog");
+        assertTrue(appJs.contains("function buildTsv(columns, rows)")
+                        && appJs.contains("neutralizeCsvFormula(cellText(value))"),
+                "Copy selected must paste as spreadsheet cells and neutralise formula-lead values");
+        assertTrue(appJs.contains("-selected.csv"),
+                "Download selected must merge the selection into one CSV file");
+    }
+
+    @Test
     void bulkActionsGoThroughTheBatchedEndpointNotAClientSideLoop() throws Exception {
         String appJs = readAppJs(emit());
         assertTrue(appJs.contains("async function postConceptBatch(concept, operation, ids, extra)"),

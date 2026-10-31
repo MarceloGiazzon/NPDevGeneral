@@ -50,6 +50,14 @@
       "minor": 0,
       "ruleCount": 1,
       "measuredOn": "2026-10-22T04:43:30.8561322Z"
+    },
+    "selection-tools-verify-routine": {
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "ruleCount": 0,
+      "measuredOn": "2026-10-31T02:13:55.0140784Z"
     }
   }
 }

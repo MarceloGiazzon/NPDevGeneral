@@ -785,6 +785,32 @@
       "NPDevRuntimeHost/build.gradle",
       "NPDevRuntimeHost/build.gradle.template"
     ]
+  },
+  {
+    "id": "ui-selection-tools-all-seams",
+    "citedBy": "ui.selectionTools (list-grid open/copy/download of ticked rows)",
+    "description": "A concept-level ui flag must be threaded through every seam or it is silently dropped with no error anywhere: parse (JsonModelParser), AST + resolver merge/copy, compile, the canonical JSON writer AND reader, the generator manifest AND the live runtime-host manifest, the four schema copies, and the shipped bulk-actions.js that reads it. Forgetting one is exactly the REG-104/REG-108 shape.",
+    "kind": "field-in-all-files",
+    "trackedFields": [
+      "selectionTools"
+    ],
+    "caseSensitive": false,
+    "files": [
+      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
+      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/PresentationMetadataAst.java",
+      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
+      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledPresentationMetadata.java",
+      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java",
+      "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java",
+      "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptUiManifestSupport.java",
+      "NPDevContract/schemas/model.schema.json",
+      "NPDevContract/schemas/authoring/model.schema.json",
+      "NPDevContract/dsl/src/main/resources/schema/model.schema.json",
+      "NPDevContract/dsl/resources/Schemas/model.schema.json",
+      "NPDevGenerator/generator/src/main/resources/npdev-templates/static-assets/business-ui/views/bulk-actions.js"
+    ]
   }
 ]
 }
