@@ -53,6 +53,19 @@ class LiveConceptGatewaySemanticPolicyModelReloadTest {
         assertEquals("CONCEPT_FIELD_REQUIRED", afterReload.code());
     }
 
+    /** The wrapper must pass the parent lookup through, or a live app would judge parentField() with none. */
+    @Test
+    void passesTheParentLookupThroughToTheLiveModelsPolicy() {
+        LiveConceptGatewaySemanticPolicy policy = new LiveConceptGatewaySemanticPolicy(
+                () -> widgetModel(false), SequenceAllocator.inMemory());
+        ConceptGatewayRequestContext request = new ConceptGatewayRequestContext(
+                ConceptGatewayOperation.SAVE, "Widget", "widget-1", "tenant-a", Map.of(),
+                ExecutionContext.of("tenant-a", "operator-a"), java.util.Optional.empty());
+
+        assertTrue(policy.isRowWritable(request, ConceptGatewaySemanticPolicy.ParentRecordLookup.NONE),
+                "a concept with no write rule stays writable whichever lookup the caller supplies");
+    }
+
     private static CompiledModel widgetModel(boolean nameRequired) {
         CompiledField nameField = new CompiledField("name", "string", "String", false, nameRequired, false);
         CompiledConcept widget = new CompiledConcept("Widget", "Widget", "widgets", List.of(nameField));

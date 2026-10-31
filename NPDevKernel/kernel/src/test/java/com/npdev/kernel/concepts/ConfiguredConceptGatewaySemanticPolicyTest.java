@@ -554,7 +554,11 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
     }
 
     private static ConceptGateway participantGateway() {
-        ConceptGateway gateway = ConceptGateways.inMemory(participantVisitPolicy(PARENT_RULE));
+        return participantGateway(PARENT_RULE);
+    }
+
+    private static ConceptGateway participantGateway(String visitWriteRule) {
+        ConceptGateway gateway = ConceptGateways.inMemory(participantVisitPolicy(visitWriteRule));
         ExecutionContext admin = new ExecutionContext("tenant-a", "admin", Map.of(), java.util.Set.of("ADMIN"));
         gateway.save(new ConceptWriteRequest("Participant", "p-alice", null, Map.of("coordinator", "alice")), admin);
         gateway.save(new ConceptWriteRequest("Participant", "p-bob", null, Map.of("coordinator", "bob")), admin);
@@ -610,6 +614,26 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
                 () -> gateway.save(new ConceptWriteRequest("Visit", "v4", null, Map.of("participantId", "p-nobody")), alice));
         assertThrows(ConceptGatewayAccessDeniedException.class,
                 () -> gateway.save(new ConceptWriteRequest("Visit", "v5", null, Map.of("note", "no parent at all")), alice));
+    }
+
+    /**
+     * The validator refuses these shapes at model time, but a live-reloaded model can still carry one, and a
+     * malformed {@code parentField} must deny the write rather than be skipped or guessed at.
+     */
+    @Test
+    void malformedParentFieldCallsDenyTheWriteInsteadOfBeingSkipped() {
+        ExecutionContext alice = new ExecutionContext("tenant-a", "alice", Map.of(), java.util.Set.of("USER"));
+        Map<String, Object> ownParent = Map.of("participantId", "p-alice", "coordinator", "alice");
+
+        ConceptGateway oneArgument = participantGateway("parentField('participantId') == $user.id");
+        assertThrows(ConceptGatewayAccessDeniedException.class,
+                () -> oneArgument.save(new ConceptWriteRequest("Visit", "v7", null, ownParent), alice),
+                "parentField takes (referenceField, targetField): one argument is not a rule that holds");
+
+        ConceptGateway numericArgument = participantGateway("parentField(1, 'coordinator') == $user.id");
+        assertThrows(ConceptGatewayAccessDeniedException.class,
+                () -> numericArgument.save(new ConceptWriteRequest("Visit", "v8", null, ownParent), alice),
+                "parentField arguments are field-name strings: a number is not a rule that holds");
     }
 
     /** A parent in another tenant is not a parent: the lookup is tenant-scoped. */
