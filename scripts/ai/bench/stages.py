@@ -108,11 +108,25 @@ def error_excerpt(path: Path | str | None, chars: int = 3500) -> str:
         return ""
     text = Path(path).read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines()
+    # A Java stack trace states its reason last: the deepest `Caused by:` line. Lead with it. Without
+    # this, a boot failure's 3500-char window was spent on Spring's banner and bean warnings, and the
+    # one line that said what to fix ("no persistence capability binding is registered") never reached
+    # the model -- haiku55-core bench-007 burned four repair loops (~90k tokens) blind.
+    causes = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("Caused by:") and stripped[:300] not in causes:
+            causes.append(stripped[:300])
+    if causes:
+        head = "Root cause (deepest last):\n" + "\n".join(causes[-3:]) + "\n\nLog excerpt:\n"
+        chars = max(500, chars - len(head))
+    else:
+        head = ""
     for idx, line in enumerate(lines):
         low = line.lower()
         if "error:" in low or "failed" in low or "exception" in low or "> task" in low and "failed" in low:
-            return "\n".join(lines[max(0, idx - 3): idx + 40])[:chars]
-    return text[-chars:]
+            return head + "\n".join(lines[max(0, idx - 3): idx + 40])[:chars]
+    return head + text[-chars:]
 
 
 def free_port(avoid: set[int] | None = None) -> int:

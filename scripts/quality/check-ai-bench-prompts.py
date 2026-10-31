@@ -17,7 +17,9 @@ WHAT IT CHECKS (stdlib only; reads JSON only, never a markdown file)
     rest-accept probes only 2xx, lifecycle keys are real enum keys, role names are declared, and every
     template ({concept:..}, {id:..}, {field:..}, {enum:..}, {flow:..}, {view:..}) names something the
     acceptance declares (an {id:pN} must point at an EARLIER POST probe).
-  * minimums are not below what the acceptance itself requires.
+  * minimums equal what the acceptance itself names: above it is a requirement the model can never see
+    ("app has 6 fields, minimum is 7" with no word on WHICH field -- 18 of 30 prompts did this, and
+    bench-006 asked for 7 fields while describing 6).
   * tier shape: workflow-roles needs a lifecycle and a role-denied rule; integration-report needs a
     derived-value rule; every prompt needs a rest-reject and a rest-accept rule.
   * NPDevSamples/ai-bench/index.json lists exactly the prompt files with the same id/tier/title.
@@ -187,6 +189,11 @@ def semantic(p, fname):
         errs.append("minimums.concepts is below the number of acceptance concepts")
     if a["minimums"]["fields"] < nfields:
         errs.append(f"minimums.fields ({a['minimums']['fields']}) is below the declared field count ({nfields})")
+    if a["minimums"]["fields"] > nfields:
+        errs.append(f"minimums.fields ({a['minimums']['fields']}) is above the declared field count ({nfields}): "
+                    f"a hidden requirement -- declare the extra field in the acceptance instead")
+    if a["minimums"]["concepts"] > len(concepts):
+        errs.append("minimums.concepts is above the number of acceptance concepts: declare the concept instead")
 
     probes = {}
     order = []

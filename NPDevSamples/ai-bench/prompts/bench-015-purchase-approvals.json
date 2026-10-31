@@ -387,7 +387,7 @@
     ],
     "minimums": {
       "concepts": 1,
-      "fields": 5
+      "fields": 4
     }
   }
 }
