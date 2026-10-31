@@ -97,7 +97,8 @@ def run_attempt(n: int, model_text: str, prompt: dict, prompt_dir: Path, args, s
     paths = stages.write_workspace(attempt_dir, prompt["id"], port, model_text)
     roles = [str(r.get("name")) for r in (model_obj or {}).get("roles", []) if isinstance(r, dict) and r.get("name")]
     running = None
-    out = {"stages": stage_log, "failingStage": None, "feedback": "", "fixesApplied": len(fixes)}
+    out = {"stages": stage_log, "failingStage": None, "feedback": "", "fixesApplied": len(fixes),
+           "modelText": model_text}
 
     def fail(res: stages.StageResult, feedback: str | None = None) -> dict:
         out["stages"].append(res.to_json())
@@ -146,6 +147,15 @@ def run_attempt(n: int, model_text: str, prompt: dict, prompt_dir: Path, args, s
             shutil.rmtree(attempt_dir / "Output", ignore_errors=True)
 
 
+def _first_error_line(feedback: str) -> str:
+    """The trail's one line per attempt: the first line that is not the desire-path rewrite note."""
+    for line in (feedback or "").splitlines():
+        line = line.strip()
+        if line and not line.startswith(("NPDev rewrote", "- $.", "- ...")):
+            return line[:160]
+    return ""
+
+
 def run_prompt(prompt: dict, backend, knowledge: str | None, run_dir: Path, args) -> dict:
     prompt_dir = run_dir / prompt["id"]
     prompt_dir.mkdir(parents=True, exist_ok=True)
@@ -155,6 +165,9 @@ def run_prompt(prompt: dict, backend, knowledge: str | None, run_dir: Path, args
     tokens_in = tokens_out = 0
     author_seconds = 0.0
     passed = False
+    stateless = getattr(args, "repair_mode", None) == "stateless"   # a Mock args is never "stateless"
+    trail: list[str] = []
+    last_model: str | None = None
     for n in range(0, args.max_loops + 1):
         stage_log: list[dict] = []
         try:
@@ -198,7 +211,15 @@ def run_prompt(prompt: dict, backend, knowledge: str | None, run_dir: Path, args
         if attempt["failingStage"] is None:
             passed = True
             break
-        messages = author.repair_messages(messages, completion.text, attempt["failingStage"], attempt["feedback"])
+        if stateless:
+            last_model = attempt.get("modelText") or last_model
+            messages = author.stateless_repair_messages(prompt["prompt"], knowledge,
+                                                        last_model or completion.text[-8000:],
+                                                        attempt["failingStage"], attempt["feedback"], trail)
+            trail.append(f"- attempt {n}: {attempt['failingStage']}: {_first_error_line(attempt['feedback'])}")
+        else:
+            messages = author.repair_messages(messages, completion.text, attempt["failingStage"],
+                                              attempt["feedback"])
     wall = time.monotonic() - started
     infra_kind = None if passed else attempts[-1].get("infraKind")
     first = attempts[0]
@@ -219,7 +240,8 @@ def run_prompt(prompt: dict, backend, knowledge: str | None, run_dir: Path, args
         "tokens": {"prompt": tokens_in, "completion": tokens_out, "total": tokens_in + tokens_out},
         "costUsd": backend.info.cost(tokens_in, tokens_out),
         "wallSeconds": round(wall, 2), "authorSeconds": round(author_seconds, 2),
-        "ablation": args.ablation, "backend": backend.info.describe(),
+        "ablation": args.ablation, "repairMode": "stateless" if stateless else "history",
+        "backend": backend.info.describe(),
         "attempts": [{"attempt": a["attempt"], "failingStage": a["failingStage"],
                       "feedbackExcerpt": (a.get("feedback") or "")[:600], "stages": a["stages"]} for a in attempts],
     }
@@ -501,7 +523,7 @@ def cmd_run(args) -> int:
             print(f"STOP: quota exhausted. Resume later with: --run-id {run_id} --skip-done", flush=True)
     summary = {"runId": run_id, "startedAt": started_at, "dryRun": args.dry_run, "ablation": args.ablation,
                "backend": info.describe(), "knowledge": knowledge_info, "maxLoops": args.max_loops,
-               "autofix": args.autofix,
+               "autofix": args.autofix, "repairMode": args.repair_mode,
                "wallSeconds": round(time.monotonic() - t0, 1), "stopReason": stop_reason, "notRun": not_run,
                "scorecard": scorecard(results), "results": [
                    {**{k: r.get(k) for k in ("promptId", "passed", "loopsUsed", "failingStage", "wallSeconds", "costUsd")},
@@ -535,6 +557,9 @@ def make_parser() -> argparse.ArgumentParser:
                         "(its 'markdown' key) or any text file -- for A/B runs of knowledge variants")
     r.add_argument("--allow-paid", action="store_true",
                    help="permit a PAID provider or a base URL that is not a free/local provider in NPDevCli/ai-providers.json (paid spend: owner approval required)")
+    r.add_argument("--repair-mode", choices=["history", "stateless"], default="history",
+                   help="history: re-send the whole conversation each repair (default). stateless: slim "
+                        "knowledge + request + one line per earlier attempt + current model + errors (F6)")
     r.add_argument("--no-autofix", dest="autofix", action="store_false",
                    help="validate the model exactly as authored (skip the desire-path rewrite) -- the A/B arm")
     r.add_argument("--ablation", choices=["none", "no-knowledge"], default="none",

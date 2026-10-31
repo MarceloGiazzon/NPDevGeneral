@@ -340,8 +340,10 @@ purpose, because a stale limitations page costs more trust than a short feature 
 
 `npdev --help` describes every command. **Windows:** `npdev.bat`, same arguments.
 
-For AI-authored models, `./npdev normalize ai-model <path>` rewrites a draft into canonical form
-before validation.
+For AI-authored models, `./npdev normalize desire-paths <model.json>` rewrites the shapes AI
+authors commonly guess into canonical form before validation, reporting every change. AIs author
+canonical `model.json` only; `./npdev normalize ai-model <path>` just converts a legacy, deprecated
+`ai-model.v1` draft.
 
 ---
 

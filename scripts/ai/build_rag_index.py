@@ -72,6 +72,12 @@ def _strip_json_comments(text: str) -> str:
     return _JSON_COMMENTS.sub(lambda m: m.group(0) if m.group(0).startswith('"') else "", text)
 
 
+def _is_ai_model_v1(value: dict[str, Any]) -> bool:
+    """The deprecated second dialect. It must never be retrieved as an example: an AI that copies it
+    writes a hybrid the canonical schema rejects."""
+    return value.get("schemaVersion") == "ai-model.v1" or ("entities" in value and "concepts" not in value)
+
+
 def _stale_changes(value: Any) -> list[str]:
     """What the DSL 2.0 codemod would change in one parsed example (empty = already canonical)."""
     migration = _migration()
@@ -82,6 +88,8 @@ def _stale_changes(value: Any) -> list[str]:
         return out
     if not isinstance(value, dict):
         return []
+    if _is_ai_model_v1(value):
+        return ["deprecated ai-model.v1 dialect (app/entities/operation) -- author canonical model.json"]
     copy_ = copy.deepcopy(value)  # the codemod mutates its argument
     result = migration.MigrationResult()
     if any(key in copy_ for key in _MODEL_KEYS):
@@ -256,7 +264,7 @@ def main(_argv: list[str]) -> int:
                 model = json.loads(model_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 continue
-            if not isinstance(model, dict):
+            if not isinstance(model, dict) or _is_ai_model_v1(model):
                 continue
             rel = str(model_path.relative_to(root)).replace("\\", "/")
             chunks.extend(chunk_sample(rel, model))

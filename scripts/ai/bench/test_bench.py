@@ -492,6 +492,46 @@ class ScorecardAndLoopTests(unittest.TestCase):
         self.assertIn("MISSING namespace", second_call[-1]["content"])
         self.assertEqual(second_call[-2]["role"], "assistant")
 
+    def test_slim_knowledge_drops_the_golden_examples(self):
+        k = "## Authoring contract\nrules\n\n## Golden example: a\n{}\n## Golden example: b\n{}"
+        self.assertEqual(author.slim_knowledge(k), "## Authoring contract\nrules\n")
+        self.assertEqual(author.slim_knowledge("no examples"), "no examples")
+        self.assertIsNone(author.slim_knowledge(None))
+
+    def test_stateless_repair_sends_two_constant_size_messages(self):
+        bad = "Here you go\n```json\n{\"namespace\": \"x\", \"concepts\": []}\n```"
+        fb = backends.FakeBackend(CANARY_MODEL, replies=[bad, bad, "no json at all", bad])
+        knowledge = "## Authoring contract\nrules\n\n## Golden example: big\n" + "x" * 5000
+        outcomes = iter([{"stages": [], "failingStage": "validate", "feedback": "E1 bad mode\nmore", "modelText": "{\"m\": 1}"},
+                         {"stages": [], "failingStage": "boot", "feedback": "E2 boot died", "modelText": "{\"m\": 2}"},
+                         {"stages": [], "failingStage": "acceptance", "feedback": "E3 probe", "modelText": "{\"m\": 3}"},
+                         {"stages": [], "failingStage": None, "feedback": ""}])
+        args = mock.Mock(max_loops=4, ablation="none", keep_apps=False, repair_mode="stateless")
+        prompt = {"id": "bench-904", "prompt": "make a shop app", "acceptance": {}}
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(run_bench, "run_attempt",
+                                                                     side_effect=lambda *a, **k: next(outcomes)):
+            res = run_bench.run_prompt(prompt, fb, knowledge, Path(td), args)
+        self.assertEqual(res["repairMode"], "stateless")
+        repairs = fb.calls[1:]
+        self.assertTrue(all(len(c) == 2 and [m["role"] for m in c] == ["system", "user"] for c in repairs))
+        self.assertTrue(all("Golden example" not in c[0]["content"] for c in repairs))
+        first, second, third = (c[1]["content"] for c in repairs[:3])
+        self.assertIn("make a shop app", first)
+        self.assertIn('{"m": 1}', first)
+        self.assertIn("E1 bad mode", first)
+        self.assertNotIn("Earlier attempts", first)
+        self.assertNotIn("Here you go", second, "earlier prose is not re-sent")
+        self.assertIn("- attempt 0: validate: E1 bad mode", second)
+        self.assertIn('{"m": 2}', second)
+        # attempt 2's reply had no JSON: the next turn keeps the last good model and carries the extract error
+        self.assertIn('{"m": 2}', third)
+        self.assertIn("'author' stage", third)
+        fourth = repairs[3][1]["content"]
+        self.assertIn('{"m": 3}', fourth)
+        self.assertIn("- attempt 2: author:", fourth)
+        self.assertLess(len(fourth) - len(first), 500)
+        self.assertTrue(res["passed"])
+
     def test_desire_path_fixes_are_applied_saved_and_reported_back(self):
         model = json.dumps({"namespace": "t", "concepts": [{"name": "Item"}],
                             "flows": [{"name": "L", "input": {"concept": "Item", "mode": "list"}}]})

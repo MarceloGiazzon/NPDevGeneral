@@ -111,15 +111,18 @@ Three outcomes, and the third one matters:
 
 ```sh
 ./npdev doctor
-./npdev normalize ai-model NPDevSamples/ai-scenarios/base-ai-loop/ai-model.json
+./npdev normalize desire-paths NPDevContract/dsl/resources/Models/canonical-demo/model.json
 ./npdev report bootstrap
 ```
 
 `doctor` checks this machine is ready -- Java 17 and `JAVA_HOME` agreement, Python, git, disk
 space, and whether the runtimehost jars (`./npdev setup`) and AI knowledge index are staged; safe
-to run any time. `normalize ai-model` is the first step of the AI-authoring loop
-(`docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md`). `./npdev report bootstrap` regenerates the
-maintainer status reports under `scripts/reports/out/`.
+to run any time. `normalize desire-paths` rewrites the shapes AI authors commonly guess (flow
+`mode: list`/`read`, `roleId`, lifecycle `initial`/`final`...) into canonical `model.json` and
+reports every change -- run it on an AI draft before `validate model` (`--output` writes the fixed
+model, `--report` the list of fixes). AIs author canonical `model.json` only; `normalize ai-model`
+survives just to convert a legacy, deprecated `ai-model.v1` draft. `./npdev report bootstrap`
+regenerates the maintainer status reports under `scripts/reports/out/`.
 
 `./npdev init my-app` scaffolds a new app directory (model/config/a real database/README/git
 history) instead of copying `canonical-demo` by hand -- see `docs/YOUR_FIRST_APP.md`. `./npdev mcp

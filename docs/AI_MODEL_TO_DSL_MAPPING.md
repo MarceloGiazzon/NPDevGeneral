@@ -1,5 +1,10 @@
 # AI Model To DSL Mapping
 
+> **Deprecated dialect.** `ai-model.v1` (`app`/`entities`/flow `operation`) is no longer a way to
+> author an NPDev app. AIs and people author canonical `model.json` (`namespace`, `concepts`,
+> `flows[].input.mode`) -- see `docs/ai/AUTHORING_FOR_AI.md`. This page documents the legacy
+> converter (`npdev normalize ai-model`) and its regression corpus only.
+
 Checkpoint 6 locks the `ai-model.v1` contract to the existing NPDev DSL surfaces. The source of truth for field-level coverage is `scripts/policy/ai-model-to-dsl-mapping-policy.json`; this document explains the same mapping in reviewable human form.
 
 ## Schema Version Lock

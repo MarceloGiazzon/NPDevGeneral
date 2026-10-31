@@ -242,7 +242,7 @@
         "purpose": "setup",
         "method": "POST",
         "pathHint": "{concept:Ticket}",
-        "as": "agent",
+        "as": "staff",
         "body": {
           "{field:Ticket.subject}": "Printer jams {unique}",
           "{field:Ticket.description}": "Third floor",

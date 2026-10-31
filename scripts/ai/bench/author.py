@@ -66,14 +66,43 @@ def initial_messages(prompt_text: str, knowledge: str | None) -> list[dict]:
             {"role": "user", "content": "Build this application:\n\n" + prompt_text.strip()}]
 
 
-def repair_messages(history: list[dict], reply_text: str, stage: str, error_text: str) -> list[dict]:
-    """Append the model's last reply and the failing stage's error text as the next user turn."""
+def _clip(error_text: str) -> str:
     error_text = error_text.strip()
     if len(error_text) > 6000:
         error_text = error_text[:3000] + "\n...[truncated]...\n" + error_text[-2800:]
+    return error_text
+
+
+def repair_messages(history: list[dict], reply_text: str, stage: str, error_text: str) -> list[dict]:
+    """Append the model's last reply and the failing stage's error text as the next user turn."""
     note = (f"The model you wrote FAILED at the '{stage}' stage. Error text follows. Fix the cause and reply "
-            f"with the COMPLETE corrected model.json in one ```json block.\n\n{error_text}")
+            f"with the COMPLETE corrected model.json in one ```json block.\n\n{_clip(error_text)}")
     return history + [{"role": "assistant", "content": reply_text}, {"role": "user", "content": note}]
+
+
+GOLDEN_MARKER = "\n## Golden example:"
+
+
+def slim_knowledge(knowledge: str | None) -> str | None:
+    """The bundle without its golden examples: a repair turn already has the author's own model to edit."""
+    if not knowledge or GOLDEN_MARKER not in knowledge:
+        return knowledge
+    return knowledge[: knowledge.index(GOLDEN_MARKER)].rstrip() + "\n"
+
+
+def stateless_repair_messages(prompt_text: str, knowledge: str | None, model_text: str, stage: str,
+                              error_text: str, trail: list[str]) -> list[dict]:
+    """F6 repair turn: two messages whatever the loop number -- slim knowledge, the request, one line per
+    earlier failed attempt, the CURRENT model and its errors. Measured on the haiku55 runs, re-sent history
+    and the full bundle were 67 % of all tokens."""
+    parts = ["Build this application:\n\n" + prompt_text.strip()]
+    if trail:
+        parts.append("Earlier attempts (do not reintroduce these errors):\n" + "\n".join(trail))
+    parts.append(f"Your current model.json FAILED at the '{stage}' stage:\n```json\n{model_text.strip()}\n```")
+    parts.append("Errors:\n" + _clip(error_text))
+    parts.append("Reply with the COMPLETE corrected model.json in one ```json block.")
+    return [{"role": "system", "content": system_prompt(slim_knowledge(knowledge))},
+            {"role": "user", "content": "\n\n".join(parts)}]
 
 
 _FENCE = re.compile(r"```(?:json|JSON)?\s*\n(.*?)```", re.DOTALL)

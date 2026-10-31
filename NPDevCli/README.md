@@ -5,10 +5,12 @@
 ```bash
 ./npdev --version
 ./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json
-./npdev normalize ai-model NPDevSamples/ai-scenarios/base-ai-loop/ai-model.json
+./npdev normalize desire-paths NPDevContract/dsl/resources/Models/canonical-demo/model.json
 ./npdev generate app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json --config NPDevContract/dsl/resources/Models/canonical-demo/config.json --output <a directory outside the repo, e.g. ../npdev-generated>
 ./npdev report bootstrap
 ```
+
+`normalize desire-paths` rewrites the shapes AI authors commonly guess into canonical `model.json` and reports every change (`--output`, `--report`); run it on an AI draft before `validate model`. AIs author canonical `model.json` only -- `normalize ai-model` survives just to convert a legacy, deprecated `ai-model.v1` draft.
 
 ## AI provider keys
 

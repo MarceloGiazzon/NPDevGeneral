@@ -1,5 +1,10 @@
 # AI Authoring Example
 
+> **Deprecated dialect.** `ai-model.v1` (`app`/`entities`/flow `operation`) is no longer a way to
+> author an NPDev app. AIs and people author canonical `model.json` (`namespace`, `concepts`,
+> `flows[].input.mode`) -- see `docs/ai/AUTHORING_FOR_AI.md` (repo root). This example is kept as a
+> regression fixture for the legacy normalizer only.
+
 This example demonstrates the AI-only Beta 0 contract flow.
 
 AI-authored inputs:

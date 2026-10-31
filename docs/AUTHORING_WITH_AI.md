@@ -47,6 +47,9 @@ the same in substance, just relayed by hand:
    ```sh
    ./npdev validate model path/to/model.json
    ```
+   If it reports shape errors, `./npdev normalize desire-paths path/to/model.json --output
+   path/to/model.json` first rewrites the shapes AI authors commonly guess into canonical form and
+   lists every fix on stderr -- paste that list back too.
 3. Paste the JSON report back to the AI. Each diagnostic carries `path`, `message`, and
    `suggestedFix` — the AI does not need MCP to read structured errors, only your copy-paste.
 4. Repeat step 2-3 until `"status": "passed"`, then generate it yourself:

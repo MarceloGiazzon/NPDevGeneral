@@ -1,6 +1,6 @@
 {
   "sourceFile": "docs/ai/AUTHORING_FOR_AI.md",
-  "preamble": "# NPDev authoring contract (for an AI author)\n\nTerse, unambiguous rules for generating a valid NPDev `model.json`. This is the stable core an\nexternal AI should keep in context. After drafting, ALWAYS run `npdev validate model <path>\n--semantic` (or the `npdev_validate` MCP tool) and fix every `error` diagnostic before generating.\n",
+  "preamble": "# NPDev authoring contract (for an AI author)\n\nTerse, unambiguous rules for generating a valid NPDev `model.json`. This is the stable core an\nexternal AI should keep in context. After drafting, ALWAYS run `npdev validate model <path>\n--semantic` (or the `npdev_validate` MCP tool) and fix every `error` diagnostic before generating.\n`npdev normalize desire-paths <path> --output <path>` rewrites commonly guessed non-canonical\nshapes into canonical form first and reports each fix -- read the report; it is a list of mistakes.\n",
   "sections": [
     {
       "level": 2,

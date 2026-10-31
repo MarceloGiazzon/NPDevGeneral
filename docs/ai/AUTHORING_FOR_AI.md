@@ -3,6 +3,8 @@
 Terse, unambiguous rules for generating a valid NPDev `model.json`. This is the stable core an
 external AI should keep in context. After drafting, ALWAYS run `npdev validate model <path>
 --semantic` (or the `npdev_validate` MCP tool) and fix every `error` diagnostic before generating.
+`npdev normalize desire-paths <path> --output <path>` rewrites commonly guessed non-canonical
+shapes into canonical form first and reports each fix -- read the report; it is a list of mistakes.
 
 ## Ask before you write
 

@@ -13,7 +13,9 @@ model --semantic`. Outputs go to <Build>/npdev-ai/constrained/ (never committed 
 
 Usage:
     python scripts/ai/derive_constrained_schemas.py [name ...]
-    # default set: ai-model custom-panel custom-procedure
+    # default set: custom-panel custom-procedure
+    # `ai-model` (the deprecated ai-model.v1 dialect) is derived only when named explicitly: the
+    # canonical model.json is the one dialect an AI authors, and it has no constrained form.
 """
 
 from __future__ import annotations
@@ -37,7 +39,7 @@ UNSUPPORTED_KEYWORDS = {
     "contentEncoding", "contentMediaType",
 }
 
-DEFAULT_SCHEMAS = ["ai-model", "custom-panel", "custom-procedure"]
+DEFAULT_SCHEMAS = ["custom-panel", "custom-procedure"]
 
 
 def transform(node: Any) -> Any:

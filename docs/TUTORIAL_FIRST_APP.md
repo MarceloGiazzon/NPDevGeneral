@@ -195,5 +195,5 @@ full mental model, the exact `renamedFrom` syntax, and a worked example of a 3-c
 - `docs/architecture/FLOW_TRANSACTION_CONTRACT.md` — what happens when a flow step fails partway
   through (this flow's `save-message`/`send-notification`/`emit-contact-event` sequence is exactly
   the shape that contract is about).
-- `docs/GETTING_STARTED.md` — the `npdev` CLI's other commands (`normalize ai-model`, `report
+- `docs/GETTING_STARTED.md` — the `npdev` CLI's other commands (`normalize desire-paths`, `report
   bootstrap`).

@@ -249,7 +249,7 @@
         },
         {
           "type": "prose",
-          "text": "\n`npdev --help` describes every command. **Windows:** `npdev.bat`, same arguments.\n\nFor AI-authored models, `./npdev normalize ai-model <path>` rewrites a draft into canonical form\nbefore validation.\n\n---\n"
+          "text": "\n`npdev --help` describes every command. **Windows:** `npdev.bat`, same arguments.\n\nFor AI-authored models, `./npdev normalize desire-paths <model.json>` rewrites the shapes AI\nauthors commonly guess into canonical form before validation, reporting every change. AIs author\ncanonical `model.json` only; `./npdev normalize ai-model <path>` just converts a legacy, deprecated\n`ai-model.v1` draft.\n\n---\n"
         }
       ]
     },

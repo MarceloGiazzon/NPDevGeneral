@@ -52,6 +52,14 @@ class StaleDslExamplesTest(unittest.TestCase):
         self.assertTrue(build_rag_index._stale_dsl_examples(commented))
         self.assertEqual([], build_rag_index._stale_dsl_examples(_fence('{ "steps": [ ... ] }')))
 
+    def test_ai_model_v1_example_is_refused(self):
+        legacy = ('{"schemaVersion": "ai-model.v1", "app": {"name": "a"}, '
+                  '"entities": [{"name": "E", "fields": []}], "flows": []}')
+        self.assertTrue(build_rag_index._stale_dsl_examples(_fence(legacy)))
+        self.assertTrue(build_rag_index._stale_dsl_examples(_fence('{"entities": [{"name": "E"}]}')))
+        self.assertEqual([], build_rag_index._stale_dsl_examples(
+            _fence('{"namespace": "a", "concepts": [{"name": "E", "fields": []}]}')))
+
     def test_chunk_content_doc_refuses_stale_section_and_keeps_clean_one(self):
         doc = {
             "sourceFile": "docs/X.md",

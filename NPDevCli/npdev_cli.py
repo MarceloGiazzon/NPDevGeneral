@@ -16645,7 +16645,11 @@ def build_parser() -> argparse.ArgumentParser:
         "normalize", help="Rewrite an AI-authored model into canonical form."
     )
     normalize_sub = normalize.add_subparsers(dest="normalize_command")
-    normalize_ai = normalize_sub.add_parser("ai-model")
+    normalize_ai = normalize_sub.add_parser(
+        "ai-model",
+        help="DEPRECATED: convert a legacy ai-model.v1 draft (app/entities) into model.json. "
+             "Author canonical model.json instead; use desire-paths to repair it.",
+    )
     normalize_ai.add_argument("path")
     normalize_ai.add_argument("--output")
     normalize_dp = normalize_sub.add_parser(
