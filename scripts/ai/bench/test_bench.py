@@ -334,6 +334,17 @@ class ProbeUnitTests(unittest.TestCase):
         rows = probes.candidate_rows({"content": [{"t": 1}, {"t": 2}], "total": 2})
         self.assertTrue(any(probes.subset(r, {"t": 2}) for r in rows))
 
+    def test_any_key_matches_any_column(self):
+        row = {"productName": "Hinge x1", "units": 2}
+        self.assertTrue(probes.subset(row, {"{any:1}": "Hinge x1"}))
+        self.assertTrue(probes.subset(row, {"{any:1}": "Hinge x1", "{any:2}": 2}))
+        self.assertFalse(probes.subset(row, {"{any:1}": "Anvil x1"}))
+        self.assertFalse(probes.subset("not a row", {"{any:1}": "Hinge x1"}))
+
+    def test_any_key_survives_template_resolution(self):
+        res = self._resolver()
+        self.assertEqual(res.value({"{any:1}": "Hinge {unique}"}), {"{any:1}": "Hinge " + res.unique})
+
     def _resolver(self):
         cat = probes.Catalog(concepts=[
             probes.CatalogConcept("Bike", "bikes", [probes.CatalogField("id"), probes.CatalogField("frame_size", "int"),

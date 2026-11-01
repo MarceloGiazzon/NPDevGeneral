@@ -228,6 +228,7 @@ class Unresolved(Exception):
 
 
 _TOKEN = re.compile(r"\{([a-z]+)(?::([^{}]*))?\}")
+_ANY_KEY = re.compile(r"\{any:\d+\}")   # expectJsonContains/Lacks key: "any column of the row"
 
 
 class Resolver:
@@ -317,7 +318,7 @@ class Resolver:
         if isinstance(v, str):
             return self.text(v)
         if isinstance(v, dict):
-            return {self.text(k): self.value(x) for k, x in v.items()}
+            return {(k if _ANY_KEY.fullmatch(k) else self.text(k)): self.value(x) for k, x in v.items()}
         if isinstance(v, list):
             return [self.value(x) for x in v]
         return v
@@ -348,7 +349,11 @@ def _eq(a, b) -> bool:
 
 def subset(actual, expected) -> bool:
     if isinstance(expected, dict):
-        return isinstance(actual, dict) and all(k in actual and subset(actual[k], v) for k, v in expected.items())
+        def key_ok(k, v):
+            if _ANY_KEY.fullmatch(k):
+                return any(subset(c, v) for c in actual.values())
+            return k in actual and subset(actual[k], v)
+        return isinstance(actual, dict) and all(key_ok(k, v) for k, v in expected.items())
     if isinstance(expected, list):
         return isinstance(actual, list) and all(any(subset(a, e) for a in actual) for e in expected)
     return _eq(actual, expected)
@@ -397,6 +402,7 @@ def run_probe(probe: dict, res: Resolver, base_url: str, keys: dict, admin_key: 
         path = res.path(probe["pathHint"])
         body = res.value(probe["body"]) if probe.get("body") is not None else None
         expect = res.value(probe["expectJsonContains"]) if probe.get("expectJsonContains") else None
+        lacks = res.value(probe["expectJsonLacks"]) if probe.get("expectJsonLacks") else None
     except Unresolved as exc:
         out["state"], out["detail"] = "unresolved", str(exc)
         return out
@@ -409,6 +415,8 @@ def run_probe(probe: dict, res: Resolver, base_url: str, keys: dict, admin_key: 
     detail = "" if ok else f"expected status {probe['expectStatus']}, got {status}: {json.dumps(resp)[:300]}"
     if ok and expect is not None and not any(subset(row, expect) for row in candidate_rows(resp)):
         ok, detail = False, f"response does not contain {json.dumps(expect)[:200]}; got {json.dumps(resp)[:300]}"
+    if ok and lacks is not None and any(subset(row, lacks) for row in candidate_rows(resp)):
+        ok, detail = False, f"response must not contain {json.dumps(lacks)[:200]}; got {json.dumps(resp)[:300]}"
     # any successful POST: later probes reference {id:pN} of assert probes too (bench-012's p4..p6 read
     # p3's id; capturing only setup probes failed a correct model for 5 loops, ~80k tokens)
     if (probe.get("capture") or probe["method"] == "POST") and 200 <= status < 300:
