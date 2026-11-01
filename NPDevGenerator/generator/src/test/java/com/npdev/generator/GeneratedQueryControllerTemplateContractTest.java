@@ -68,6 +68,18 @@ class GeneratedQueryControllerTemplateContractTest {
     }
 
     @Test
+    void aggregateRowsLabelTheirReferenceGroupKeys() {
+        // REG-318(6): the id stays the key; `<field>Display` is read through the gateway (access.read applies).
+        String source = compact(renderedController());
+        assertTrue(source.contains("CompiledReferenceDisplay.of(modelHolder.get(),query.concept(),field.field())"),
+                "the group key's target/display field must come from the compiled model");
+        assertTrue(source.contains("ConceptAggregateReferenceLabels.apply(result.rows(),labelSpecs"),
+                "the finished aggregate rows must be labelled");
+        assertTrue(source.contains("conceptGateway.read(newConceptReadRequest(targetConcept,id,context.tenantId()),context)"),
+                "labels must be read through the gateway, not the store");
+    }
+
+    @Test
     void oldV1OnlyFlatCompileCallIsGone() {
         assertFalse(renderedController().contains("ConceptQueryPredicateCompiler.compile(query.where())"),
                 "the v1-only flat compile(where) call must not survive in the emitted controller");

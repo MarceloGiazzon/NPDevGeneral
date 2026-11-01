@@ -58,6 +58,18 @@ class ComputedExpressionDateComparisonTest {
     }
 
     @Test
+    void aDateTimeAgainstADateComparesByUtcCalendarDay() {
+        // REG-318(3): no `+ 'T23:59:59'` hack needed at the end of a window.
+        assertTrue(eval("startDate <= endDate", "2026-03-10T14:00:00Z", "2026-03-10"));
+        assertTrue(eval("startDate >= endDate", "2026-03-10T14:00:00Z", "2026-03-10"));
+        assertFalse(eval("startDate < endDate", "2026-03-10T14:00:00Z", "2026-03-10"));
+        assertFalse(eval("startDate <= endDate", "2026-03-11T00:00:00Z", "2026-03-10"));
+        assertTrue(eval("startDate > endDate", "2026-03-11T00:00:00Z", "2026-03-10"));
+        assertTrue(eval("endDate >= startDate", "2026-03-10", "2026-03-10T23:59:59Z"));
+        assertTrue(eval("startDate <= endDate", LocalDateTime.of(2026, 3, 10, 14, 0), LocalDate.of(2026, 3, 10)));
+    }
+
+    @Test
     void aTemporalOperandAgainstNothingOrNonTemporalIsNeverSilentlyTrue() {
         assertFalse(eval("endDate >= startDate", null, "2026-03-10"));
         assertFalse(eval("endDate >= startDate", "2026-03-10", null));

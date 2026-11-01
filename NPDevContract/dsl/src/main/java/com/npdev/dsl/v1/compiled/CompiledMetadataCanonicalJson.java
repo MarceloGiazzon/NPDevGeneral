@@ -2486,7 +2486,7 @@ public final class CompiledMetadataCanonicalJson {
         return options;
     }
 
-    private static String inferReferenceDisplayField(CompiledConcept targetEntity) {
+    static String inferReferenceDisplayField(CompiledConcept targetEntity) {
         if (targetEntity == null) {
             return "";
         }

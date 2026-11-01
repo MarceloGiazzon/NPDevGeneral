@@ -84,8 +84,9 @@ addDays(today(), 7)                                                             
 daysBetween(enrolmentDate, today()) <= 84                                            // invariant
 ```
 
-- **A date is a UTC calendar day**, the same reading the `<`/`>=` comparison already gives dates (a date is
-  00:00 UTC; a date-time counts as the UTC date it falls on). There is no per-app time zone setting, so
+- **A date is a UTC calendar day**, the same reading the `<`/`>=` comparison gives a date against a date-time
+  (REG-318): `visitAt <= windowEnd` is true for a visit at 14:00 on `windowEnd` itself, no `+ 'T23:59:59'`
+  needed. Two date-times still compare as instants, two dates as days. There is no per-app time zone setting, so
   `today()` flips at 00:00 UTC, not local midnight.
 - **Total, never throwing.** An operand that is not a date, a `n` that is not a whole number (`1.5`, `"3"`),
   a wrong argument count, or a result outside the representable range gives `null` — the rule `concat`

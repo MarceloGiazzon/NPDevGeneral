@@ -2545,6 +2545,107 @@
           }
         }
       ]
+    },
+    {
+      "id": "qil-aggregate-reference-group-key-gets-a-display-column",
+      "keywords": [
+        "query.groupBy"
+      ],
+      "description": "REG-318(6): a groupBy on a reference field (WidgetPriceListEntry.catalogEntryId) keeps the catalog entry's id as the group key and adds catalogEntryIdDisplay, the target's display field. Two price-list rows on one catalog entry collapse into one group (count 2, sum 15), and the label is the entry's displayName, not a UUID.",
+      "steps": [
+        {
+          "name": "catalog entry",
+          "method": "POST",
+          "path": "/api/widget_catalog_entries",
+          "body": {
+            "sku": "WID-${rand}",
+            "displayName": "Label ${rand}",
+            "discontinued": false,
+            "unitPrice": 1.5
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "ce": "$.id",
+            "ceName": "$.displayName"
+          }
+        },
+        {
+          "name": "price entry 1",
+          "method": "POST",
+          "path": "/api/widget_price_list_entries",
+          "body": {
+            "productCode": "RG-${rand}",
+            "catalogEntryId": "${ce}",
+            "amount": 5,
+            "validFrom": "2026-01-01",
+            "validTo": "2026-12-31"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "p1": "$.id",
+            "code": "$.productCode"
+          }
+        },
+        {
+          "name": "price entry 2",
+          "method": "POST",
+          "path": "/api/widget_price_list_entries",
+          "body": {
+            "productCode": "${code}",
+            "catalogEntryId": "${ce}",
+            "amount": 10,
+            "validFrom": "2026-01-01",
+            "validTo": "2026-12-31"
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "p2": "$.id"
+          }
+        },
+        {
+          "name": "grouped query",
+          "method": "GET",
+          "path": "/api/queries/PriceListEntriesByCatalogEntry?code=${code}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.aggregate": true,
+              "$.rows": {
+                "len": 1
+              },
+              "$.rows[0].catalogEntryId": "${ce}",
+              "$.rows[0].catalogEntryIdDisplay": "${ceName}",
+              "$.rows[0].entryCount": 2,
+              "$.rows[0].totalAmount": 15
+            }
+          },
+          "stopOnFail": false
+        },
+        {
+          "name": "cleanup p1",
+          "always": true,
+          "method": "DELETE",
+          "path": "/api/widget_price_list_entries/${p1}"
+        },
+        {
+          "name": "cleanup p2",
+          "always": true,
+          "method": "DELETE",
+          "path": "/api/widget_price_list_entries/${p2}"
+        },
+        {
+          "name": "cleanup catalog entry",
+          "always": true,
+          "method": "DELETE",
+          "path": "/api/widget_catalog_entries/${ce}"
+        }
+      ]
     }
   ]
 }

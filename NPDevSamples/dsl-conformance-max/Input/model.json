@@ -1332,6 +1332,20 @@
       }
     },
     {
+      "name": "PriceListEntriesByCatalogEntry",
+      "concept": "WidgetPriceListEntry",
+      "where": "productCode == :code",
+      "parameters": [ { "name": "code", "type": "string", "description": "Only price-list entries with this product code." } ],
+      "groupBy": [ "catalogEntryId" ],
+      "aggregates": [
+        { "name": "entryCount", "fn": "count" },
+        { "name": "totalAmount", "fn": "sum", "field": "amount" }
+      ],
+      "metadata": {
+        "purpose": "REG-318(6): groupBy on a reference field. The row keeps the id as catalogEntryId and gains catalogEntryIdDisplay (the WidgetCatalogEntry display field); the behaviour probe qil-aggregate-reference-group-key-gets-a-display-column asserts both."
+      }
+    },
+    {
       "name": "WarehouseMonthShareOfAllTime",
       "concept": "WidgetShipmentEvent",
       "groupBy": [

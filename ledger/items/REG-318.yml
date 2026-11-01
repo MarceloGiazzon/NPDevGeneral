@@ -4,9 +4,9 @@ title: >-
   expression functions, contradicting docs, enum shape, grouped UUIDs
 type: BUG
 severity: LOW
-status: PARTIAL
+status: DONE
 opened: 2026-10-29
-closed: null
+closed: 2026-10-31
 source: >-
   OWN-2 section 5.2 domain-fit simulation, 2026-10-28/29: a fresh agent given only the public docs and a
   clinical-trial site-visit scheduler (a domain never modelled here), not told what to build. Evidence:
@@ -31,7 +31,7 @@ files:
   - docs/reference/ROW_LEVEL_AUTHORIZATION.md
   - NPDevContract/packs/leave/pack.json
   - NPDevContract/packs/helpdesk/pack.json
-verification: UNIT_TESTED
+verification: VERIFIED_LIVE
 guard:
   kind: test
   ref: NPDevCli/tests/test_init_scaffold_config.py#test_schema_points_at_the_real_schema_and_the_port_is_8080
@@ -58,6 +58,11 @@ note: >-
   (all four copies, pack and sample). docs/reference/ROW_LEVEL_AUTHORIZATION.md now states how access.read scopes
   grouped queries (pushed into the aggregate's WHERE when translatable, refused at validation otherwise); the
   contradicting wording in ACCEPTED_BOUNDARIES B27 is history and was left as the record it is. (5) FIXED: the
-  array-of-enum shape is in docs/NPDEV_USER_MANUAL.md, checked against model.schema.json. (6) NOT DONE: grouped
-  queries still return a reference's raw UUID, not a display value; it needs a change in the aggregate path of
-  both stores. Remaining: (3) date-vs-datetime comparison, and (6).
+  array-of-enum shape is in docs/NPDEV_USER_MANUAL.md, checked against model.schema.json. (3) FIXED 2026-10-31: ComputedExpression.ordered() compares a date with a date-time by UTC calendar
+  day, so `visitAt <= windowEnd` holds on windowEnd itself and the `+ 'T23:59:59'` hack is gone (two date-times
+  still compare as instants, two dates as days); docs/EXPRESSIONS.md says so. (6) FIXED 2026-10-31: the generated
+  query controller adds `<field>Display` beside each plain reference groupBy key (CompiledReferenceDisplay picks
+  the target and the declared or inferred display field; ConceptAggregateReferenceLabels reads each target once
+  through ConceptGateway.read, so access.read applies and an unreadable target gives null). Done above the
+  stores, not in them, so the in-memory and JDBC paths agree by construction; the key stays the id so drill-down
+  still matches. Unit-tested (dsl, kernel, template contract) and proven live: behaviour probe qil-aggregate-reference-group-key-gets-a-display-column against dsl-conformance-max (25/25 in 30-query-invariant-lifecycle).

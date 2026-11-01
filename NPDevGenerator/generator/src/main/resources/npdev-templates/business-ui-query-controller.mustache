@@ -7,6 +7,7 @@ import com.npdev.dsl.v1.compiled.CompiledAggregateFunction;
 import com.npdev.dsl.v1.compiled.CompiledGroupByField;
 import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
+import com.npdev.dsl.v1.compiled.CompiledReferenceDisplay;
 import com.npdev.dsl.v1.compiled.CompiledQueryComputedColumn;
 import com.npdev.dsl.v1.compiled.CompiledQueryLookup;
 import com.npdev.generated.runtime.service.RuntimeContextService;
@@ -14,6 +15,7 @@ import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptAggregateEngine;
 import com.npdev.kernel.concepts.ConceptAggregateLookups;
 import com.npdev.kernel.concepts.ConceptAggregateQuery;
+import com.npdev.kernel.concepts.ConceptAggregateReferenceLabels;
 import com.npdev.kernel.concepts.ConceptAggregateRequest;
 import com.npdev.kernel.concepts.ConceptAggregateResult;
 import com.npdev.kernel.concepts.ConceptGateway;
@@ -22,6 +24,7 @@ import com.npdev.kernel.concepts.ConceptPage;
 import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptQueryPredicateCompiler;
 import com.npdev.kernel.concepts.ConceptQueryRequest;
+import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.ports.PermissionEvaluator;
 import jakarta.servlet.http.HttpServletRequest;
@@ -185,6 +188,25 @@ public class GeneratedQueryController {
             result = new ConceptAggregateResult(
                     ConceptAggregateEngine.applyHavingSortAndLimit(rows, having, sorts, effectiveLimit));
         }
+
+        // REG-318(6): a reference group key is an id; add `<field>Display` so the row is readable.
+        List<ConceptAggregateReferenceLabels.Spec> labelSpecs = new ArrayList<>();
+        for (CompiledGroupByField field : query.groupBy()) {
+            if (field.bucket() == null || field.bucket().isBlank()) {
+                CompiledReferenceDisplay.of(modelHolder.get(), query.concept(), field.field()).ifPresent(target ->
+                        labelSpecs.add(new ConceptAggregateReferenceLabels.Spec(
+                                field.field(), target.conceptName(), target.displayField())));
+            }
+        }
+        result = new ConceptAggregateResult(ConceptAggregateReferenceLabels.apply(
+                result.rows(), labelSpecs, (targetConcept, id) -> {
+                    try {
+                        return conceptGateway.read(new ConceptReadRequest(targetConcept, id, context.tenantId()), context)
+                                .map(ConceptRecord::data).orElse(null);
+                    } catch (ConceptGatewayAccessDeniedException denied) {
+                        return null;
+                    }
+                }));
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("query", query.name());

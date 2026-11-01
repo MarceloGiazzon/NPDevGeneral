@@ -588,12 +588,29 @@ public final class ComputedExpression {
         java.time.Instant li = toInstant(l);
         java.time.Instant ri = toInstant(r);
         if (li != null && ri != null) {
+            // REG-318(3): a date against a date-time is a calendar-day comparison, so
+            // `visitAt <= windowEnd` holds for a visit at 14:00 on windowEnd itself (a date is 00:00 UTC).
+            if (isDateOnly(l) != isDateOnly(r)) {
+                return test.test(utcDay(li).compareTo(utcDay(ri)));
+            }
             return test.test(li.compareTo(ri));
         }
         if (li != null || ri != null) {
             return false;
         }
         return test.test(Double.compare(toNumber(l), toNumber(r)));
+    }
+
+    private static java.time.LocalDate utcDay(java.time.Instant instant) {
+        return instant.atZone(java.time.ZoneOffset.UTC).toLocalDate();
+    }
+
+    /** @return true for a calendar date with no time of day ({@code LocalDate}, {@code java.sql.Date}, {@code "2026-03-10"}). */
+    private static boolean isDateOnly(Object v) {
+        if (v instanceof java.time.LocalDate || v instanceof java.sql.Date) {
+            return true;
+        }
+        return v instanceof String s && s.trim().length() == 10 && ISO_DATE_PREFIX.matcher(s.trim()).matches();
     }
 
     private static final java.util.regex.Pattern ISO_DATE_PREFIX =

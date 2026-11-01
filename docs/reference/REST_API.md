@@ -25,7 +25,7 @@ Send `X-Api-Key: <key>` (issue one under `/api/admin/credentials`, see
 | `POST /api/concepts/{route}` | Create; body is the concept's fields. |
 | `GET/PUT/DELETE /api/concepts/{route}/{id}` | Read, update, delete one record (id is a uuid). Delete answers 204. |
 | `POST /api/concepts/{route}/batch` | `{"operation":"delete"\|"setField","ids":[...],"field":"...","value":...}` (at most 500 ids); per-id outcomes in `results`. |
-| `GET /api/queries/{Query}` | Declared query. Declared parameters are required query-string values. Returns `{query, aggregate, rows, total, offset, limit}` (aggregate queries return `rows`, `concept`, `groupBy`). |
+| `GET /api/queries/{Query}` | Declared query. Declared parameters are required query-string values. Returns `{query, aggregate, rows, total, offset, limit}` (aggregate queries return `rows`, `concept`, `groupBy`; a `groupBy` on a `reference` field keeps the id as its key and adds `<field>Display` beside it, the target's display field, null when the caller may not read that row). |
 | `POST /api/v1/flows/{Flow}/execute` | Run a flow with the input schema shown in the spec. 200 done, 202 waiting for an event, 422 failed. |
 | `GET /api/v1/runtime/aggregate/{Aggregate}/{rootId}`, `POST .../{Aggregate}` | Load / commit an aggregate tree. |
 | `GET /api/public/concepts/{Concept}` and `/{id}` | Anonymous read of concepts that declare `access.public`; only the allow-listed fields. Takes the concept's model name. |
