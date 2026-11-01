@@ -86,6 +86,7 @@ def fix_model(model: Any) -> tuple[Any, list[dict]]:
     _fix_roles(model, concepts, note)
     _fix_lifecycles(model, note)
     _fix_data_sources(model, concepts, note)
+    _fix_queries(model, note)
     return model, fixes
 
 
@@ -263,6 +264,54 @@ def _fix_data_sources(model: dict, concepts: _Concepts, note) -> None:
                     ds["concept"] = name
                     note("datasource-kind-entity", f"$.panels[{pi}].dataSources[{di}].kind", "entity",
                          f"concept: {name}")
+
+
+# queries[].where / orderBy / groupBy are strings (`where: "stock < 5"`, `orderBy: ["stock desc"]`,
+# `groupBy: ["stylist"]`); models keep writing them as {field, op, value} / {field, direction} objects
+# (bench tier 3, 2026-11-01). Only the unambiguous shapes are rewritten.
+WHERE_OPS = {"eq": "==", "==": "==", "=": "==", "ne": "!=", "neq": "!=", "!=": "!=", "lt": "<", "<": "<",
+             "lte": "<=", "<=": "<=", "gt": ">", ">": ">", "gte": ">=", ">=": ">="}
+ORDER_DIRECTIONS = {"asc": "", "ascending": "", "desc": " desc", "descending": " desc"}
+_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*")
+
+
+def _where_literal(value) -> str | None:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return json.dumps(value)
+    if isinstance(value, str) and "'" not in value:
+        return f"'{value}'"
+    return None
+
+
+def _fix_queries(model: dict, note) -> None:
+    for qi, query in enumerate(model.get("queries") or []):
+        if not isinstance(query, dict):
+            continue
+        where = query.get("where")
+        if isinstance(where, dict) and set(where) <= {"field", "op", "operator", "value"} and "field" in where:
+            op = WHERE_OPS.get(str(where.get("op", where.get("operator", "eq"))).strip().lower())
+            literal = _where_literal(where.get("value"))
+            if op and literal is not None and isinstance(where["field"], str) and _IDENT.fullmatch(where["field"]):
+                now = f"{where['field']} {op} {literal}"
+                query["where"] = now
+                note("query-where-object", f"$.queries[{qi}].where", where, now)
+        order = query.get("orderBy")
+        if isinstance(order, list):
+            for oi, item in enumerate(order):
+                if not isinstance(item, dict) or "field" not in item or not isinstance(item["field"], str):
+                    continue
+                direction = str(item.get("direction", item.get("dir", item.get("order", "asc")))).strip().lower()
+                if set(item) <= {"field", "direction", "dir", "order"} and direction in ORDER_DIRECTIONS:
+                    order[oi] = item["field"] + ORDER_DIRECTIONS[direction]
+                    note("query-orderby-object", f"$.queries[{qi}].orderBy[{oi}]", item, order[oi])
+        group = query.get("groupBy")
+        if isinstance(group, list):
+            for gi, item in enumerate(group):
+                if isinstance(item, dict) and set(item) == {"field"} and isinstance(item["field"], str):
+                    group[gi] = item["field"]
+                    note("query-groupby-object", f"$.queries[{qi}].groupBy[{gi}]", item, group[gi])
 
 
 def summary_lines(fixes: list[dict], limit: int = 12) -> list[str]:

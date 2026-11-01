@@ -135,5 +135,36 @@ class CliTests(unittest.TestCase):
             self.assertEqual(json.loads(report.read_text(encoding="utf-8"))["fixes"][0]["rule"], "flow-input-mode")
 
 
+class QueryShapeTests(unittest.TestCase):
+    """Shapes from bench-023/025/030 (Haiku 5.5, 2026-11-01)."""
+
+    def test_group_by_field_object_becomes_the_bare_name_but_bucketed_stays(self):
+        model = _model(queries=[{"name": "Q", "groupBy": [{"field": "stylist"}, {"field": "day", "bucket": "month"}]}])
+        fixed, fixes = dp.fix_model(model)
+        self.assertEqual(fixed["queries"][0]["groupBy"], ["stylist", {"field": "day", "bucket": "month"}])
+        self.assertEqual(_rules(fixes), ["query-groupby-object"])
+
+    def test_order_by_objects_become_strings(self):
+        model = _model(queries=[{"name": "Q", "orderBy": [{"field": "stock", "direction": "DESC"}, {"field": "name"}, "sku"]}])
+        fixed, fixes = dp.fix_model(model)
+        self.assertEqual(fixed["queries"][0]["orderBy"], ["stock desc", "name", "sku"])
+        self.assertEqual(len(fixes), 2)
+
+    def test_where_object_becomes_an_expression(self):
+        model = _model(queries=[{"name": "Q", "where": {"field": "stock", "op": "lt", "value": 5}},
+                                {"name": "R", "where": {"field": "status", "op": "eq", "value": "OPEN"}}])
+        fixed, fixes = dp.fix_model(model)
+        self.assertEqual([q["where"] for q in fixed["queries"]], ["stock < 5", "status == 'OPEN'"])
+        self.assertEqual(fixes[0]["wrote"], {"field": "stock", "op": "lt", "value": 5})
+
+    def test_ambiguous_shapes_are_left_for_the_validator(self):
+        model = _model(queries=[{"name": "Q", "where": {"and": [{"field": "a", "op": "eq", "value": 1}]},
+                                 "orderBy": [{"field": "a", "direction": "sideways"}]},
+                                {"name": "R", "where": {"field": "a", "op": "like", "value": "x"}}])
+        fixed, fixes = dp.fix_model(model)
+        self.assertEqual(fixes, [])
+        self.assertEqual(fixed["queries"], model["queries"])
+
+
 if __name__ == "__main__":
     unittest.main()
