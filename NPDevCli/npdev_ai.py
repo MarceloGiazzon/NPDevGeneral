@@ -295,6 +295,13 @@ def add_arguments(ai_sub) -> None:
     validate = ai_sub.add_parser("validate", help="Check the shipped catalogue and your overlay together.")
     json_flag(validate)
 
+    context = ai_sub.add_parser("context", help="The authoring context to paste into a chat AI that has no MCP "
+                                                "tools: contract, value reference, golden models. Compact by default.")
+    context.add_argument("--full", action="store_true", help="The full bundle instead (adds the interview and "
+                                                             "tool-loop sections an MCP agent uses), ~25 %% larger.")
+    context.add_argument("--output", help="Write it to this file instead of stdout.")
+    json_flag(context)
+
     def target_flags(p):
         p.add_argument("--profile")
         p.add_argument("--feature", help=f"Resolve through the feature's binding ({', '.join(aicfg.FEATURES)}, app:<name>).")
@@ -344,12 +351,14 @@ def argparse_bool():
 
 
 COMMANDS = ("providers", "models", "profiles", "bindings", "bind", "reset", "validate", "complete", "test",
-            "usage", "spend", "detect", "app")
+            "usage", "spend", "detect", "app", "context")
 
 
 def run(args) -> int:
     command, action = args.ai_command, getattr(args, "ai_action", None)
     try:
+        if command == "context":
+            return _run_context(args)
         config = aicfg.load()
         if command == "validate":
             return _answer(args, {"ok": True, "mine": str(aicfg.mine_path()), "providers": len(config.providers),
@@ -506,6 +515,43 @@ def run(args) -> int:
         else:
             print(f"error: {exc}", file=sys.stderr)
         return 2
+
+
+def _run_context(args) -> int:
+    """The core-context bundle the AI bench measures (scripts/ai/build_core_context.py), for a chat AI
+    reached by copy-paste. Compact by default: a one-shot chat cannot use the interview and tool-loop
+    sections, and the compact bundle passed the same bench prompts at ~25 % fewer tokens. The MCP tool
+    npdev_core_context keeps serving the full one to agents that do run a tool loop."""
+    scripts_ai = str(Path(__file__).resolve().parents[1] / "scripts" / "ai")
+    if scripts_ai not in sys.path:
+        sys.path.insert(0, scripts_ai)
+    import build_core_context
+
+    variant = "full" if args.full else "compact"
+    try:
+        bundle, manifest = build_core_context.build_bundle(compact=not args.full)
+    except (OSError, ValueError) as exc:
+        raise AiConfigError(f"cannot build the authoring context: {exc}") from None
+    payload = {"ok": True, "variant": variant, "bytes": manifest["bytes"], "contentSha256": manifest["contentSha256"]}
+    if args.output:
+        target = Path(args.output)
+        try:
+            target.write_bytes(bundle.encode("utf-8"))  # bytes: no CRLF translation, matches `bytes` above
+        except OSError as exc:
+            raise AiConfigError(f"cannot write {target} ({type(exc).__name__})") from None
+        return _answer(args, {**payload, "file": str(target.resolve())},
+                       f"wrote the {variant} authoring context ({manifest['bytes']} bytes) to {target}")
+    if args.json:
+        return _answer(args, {**payload, "markdown": bundle}, "")
+    # A Windows console's code page cannot encode every character of the bundle; send UTF-8 bytes.
+    stream = getattr(sys.stdout, "buffer", None)
+    if stream is None:
+        sys.stdout.write(bundle)
+    else:
+        sys.stdout.flush()
+        stream.write(bundle.encode("utf-8"))
+        stream.flush()
+    return 0
 
 
 def _read_text(path: str | None) -> str | None:

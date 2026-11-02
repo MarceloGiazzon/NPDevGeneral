@@ -54,8 +54,15 @@ sections:
       Chat-only AI use is real and unserved by the above — not every client can call tools. The loop is
       the same in substance, just relayed by hand:
 
-      1. Paste `docs/ai/AUTHORING_FOR_AI.md`'s contents into the chat as context (or link it, if the
-         client can fetch a URL). Describe what you want built.
+      1. Write the authoring context to a file and paste its contents into the chat, then describe
+         what you want built:
+         ```sh
+         ./npdev ai context --output npdev-context.md
+         ```
+         It is the contract plus a reference of every allowed value and three small verified example
+         models (~14 KB), the same prefix NPDev's AI bench measures. `--full` adds the interview and
+         tool-loop sections an MCP agent uses; on the bench a one-shot chat passed the same prompts
+         without them, at ~25 % fewer tokens.
       2. The AI drafts `model.json`. Save it, then run the check yourself:
          ```sh
          ./npdev validate model path/to/model.json
@@ -72,9 +79,9 @@ sections:
          See `docs/YOUR_FIRST_APP.md` for the full build/run steps after that.
 
       **The only difference from the MCP path is who runs the commands.** The contract the AI follows
-      (the eight questions, the non-negotiables, `renamedFrom`) is identical either way — it lives in one
-      place, `docs/ai/AUTHORING_FOR_AI.md`, read by a tool call in one path and pasted by hand in the
-      other.
+      (the non-negotiables, `renamedFrom`) is identical either way — it lives in one place,
+      `docs/content/authoring-for-ai.yml` (rendered as `docs/ai/AUTHORING_FOR_AI.md`), served by the
+      `npdev_core_context` tool in one path and by `npdev ai context` in the other.
 - level: 2
   title: Verifying the connection yourself
   blocks:

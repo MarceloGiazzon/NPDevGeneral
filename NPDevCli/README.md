@@ -60,3 +60,9 @@ Effort is one word (`none`, `low`, `medium`, `high`, `xhigh`, `max`) mapped per 
 ./npdev ai spend cap 20                    # monthly USD cap ('off' removes it)
 ./npdev providers add gemini --account work   # a second key; profiles pick it with "account": "work"
 ```
+
+`npdev ai context` prints the authoring context for a chat AI that has no MCP tools: the contract, every allowed value and three verified example models, compact by default (~14 KB; `--full` adds the interview and tool-loop sections an MCP agent uses). It is the prefix the AI bench measures, so what a pasted chat learns is what the bench scores.
+
+```bash
+./npdev ai context --output npdev-context.md   # paste this file's contents first, then describe the app
+```

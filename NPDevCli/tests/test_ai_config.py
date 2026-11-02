@@ -233,6 +233,20 @@ class CliTests(unittest.TestCase):
         _, bindings = self.ai("bindings")
         self.assertEqual({b["feature"]: b["profiles"] for b in bindings["bindings"]}["review"], ["thorough"])
 
+    def test_context_is_the_compact_bundle_unless_full_is_asked(self):
+        code, compact = self.ai("context")
+        self.assertEqual((code, compact["variant"]), (0, "compact"))
+        self.assertIn("# NPDev core authoring context", compact["markdown"])
+        self.assertEqual(len(compact["markdown"].encode("utf-8")), compact["bytes"])
+        _, full = self.ai("context", "--full")
+        self.assertEqual(full["variant"], "full")
+        self.assertLess(compact["bytes"], full["bytes"])
+        target = self.path.parent / "context.txt"
+        code, written = self.ai("context", "--output", str(target))
+        self.assertEqual(code, 0, written)
+        self.assertNotIn("markdown", written)
+        self.assertEqual(target.read_bytes().decode("utf-8"), compact["markdown"])
+
     def test_providers_listing_shows_the_overridden_field(self):
         self.ai("providers", "set", "gemini", "--base-url", "https://proxy.example/v1")
         _, listing = self.ai("providers")
