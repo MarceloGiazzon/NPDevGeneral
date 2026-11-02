@@ -32,6 +32,7 @@ Output: <BuildRoot>/ai-bench/<run-id>/<prompt-id>/{result.json, attempt-N/...} a
 from __future__ import annotations
 
 import argparse
+import copy
 import datetime
 import json
 import os
@@ -353,7 +354,11 @@ def _value_at(model: dict | None, path: str):
     return node
 
 
-def mine_failures(run_dirs: list[Path]) -> list[dict]:
+def _diag_where(path: str, message: str) -> str:
+    return re.sub(r"\[\d+\]", "[]", path) if path.startswith("$") else _generic(message)
+
+
+def mine_failures(run_dirs: list[Path], keep_attempts: bool = False) -> list[dict]:
     """Every failed attempt of every prompt, grouped by (stage, kind, generic location) and ranked by
     how many distinct prompts hit it: the "desire paths" an AI author walks that the DSL or its
     messages do not accept. For validator errors the value the model actually wrote is read back from
@@ -363,8 +368,9 @@ def mine_failures(run_dirs: list[Path]) -> list[dict]:
     def add(stage, kind, where, prompt, run, example=None, wrote=None):
         g = groups.setdefault((stage, kind, where), {"stage": stage, "kind": kind, "where": where, "hits": 0,
                                                      "prompts": set(), "runs": set(), "wrote": {},
-                                                     "example": example})
+                                                     "example": example, "attempts": set()})
         g["hits"] += 1
+        g["attempts"].add(str(adir))
         g["prompts"].add(prompt)
         g["runs"].add(run)
         if wrote is not None:
@@ -392,7 +398,7 @@ def mine_failures(run_dirs: list[Path]) -> list[dict]:
                         m = _DIAG.match(line.strip())
                         if m:
                             code, path, message = m.groups()
-                            where = re.sub(r"\[\d+\]", "[]", path) if path.startswith("$") else _generic(message)
+                            where = _diag_where(path, message)
                             add(stage, code, where, r["promptId"], run_dir.name, _generic(message),
                                 _value_at(model, path) if path.startswith("$") else None)
                 elif stage in ("boot", "generate", "build"):
@@ -410,18 +416,100 @@ def mine_failures(run_dirs: list[Path]) -> list[dict]:
                         if line and " unresolved" not in line:   # unresolved = a consequence of another line
                             add(stage, line.split(" ", 1)[0], _generic(re.sub(r"\d+", "N", line)), r["promptId"], run_dir.name)
     ranked = sorted(groups.values(), key=lambda g: (-len(g["prompts"]), -g["hits"]))
-    return [{**g, "prompts": sorted(g["prompts"]), "runs": sorted(g["runs"]),
+    return [{**{k: v for k, v in g.items() if k != "attempts" or keep_attempts},
+             **({"attempts": sorted(g["attempts"])} if keep_attempts else {}),
+             "prompts": sorted(g["prompts"]), "runs": sorted(g["runs"]),
              "wrote": dict(sorted(g["wrote"].items(), key=lambda kv: -kv[1])[:6])} for g in ranked]
 
 
+_REPLAY_CACHE: dict[str, frozenset] = {}
+
+
+def replay_validate(model_obj: dict) -> frozenset:
+    """Validator diagnostics of a model as a set of (code, where) keys; empty = valid. Runs the real
+    `npdev validate model` (one JVM call per UNIQUE model, cached by content hash)."""
+    import hashlib
+    import tempfile
+    text = json.dumps(model_obj, indent=2, sort_keys=True)
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    if digest not in _REPLAY_CACHE:
+        with tempfile.TemporaryDirectory(prefix="bench-replay-") as td:
+            model_path = Path(td) / "model.json"
+            model_path.write_text(text, encoding="utf-8")
+            res = stages.stage_validate(model_path, Path(td))
+        keys = set()
+        if not res.ok:
+            for line in (res.detail or "").splitlines():
+                m = _DIAG.match(line.strip())
+                if m:
+                    keys.add((m.group(1), _diag_where(m.group(2), m.group(3))))
+            keys = keys or {("?", "?")}   # failed with no parsable diagnostic: not proven fixed
+        _REPLAY_CACHE[digest] = frozenset(keys)
+    return _REPLAY_CACHE[digest]
+
+
+def _replay_model(adir: Path) -> dict | None:
+    """The model as the AI wrote it: author-model.json when the fixer rewrote it, else model.json."""
+    for name in ("author-model.json", "model.json"):
+        if (adir / name).exists():
+            try:
+                obj = json.loads((adir / name).read_text(encoding="utf-8"))
+            except ValueError:
+                return None
+            return obj if isinstance(obj, dict) else None
+    return None
+
+
+def resolve_groups(rows: list[dict], validator=None) -> list[dict]:
+    """Add stillFailing/resolved/now to every group (needs mine_failures(keep_attempts=True)): each
+    validate-group attempt's authored model goes through the CURRENT desire-path fixer, then the
+    validator, and the group counts as still failing for that attempt only if its (code, where) recurs."""
+    validator = validator or replay_validate
+    for g in rows:
+        if g["stage"] != "validate":
+            g.update(stillFailing=None, resolved=None, now="not replayed")
+            continue
+        still = fixed = 0
+        for adir in g["attempts"]:
+            model = _replay_model(Path(adir))
+            if model is None:
+                still += 1   # nothing to replay: cannot claim fixed
+                continue
+            fixed_model, _ = npdev_desire_paths.fix_model(copy.deepcopy(model))
+            if (g["kind"], g["where"]) in validator(fixed_model):
+                still += 1
+            else:
+                fixed += 1
+        g.update(stillFailing=still, resolved=fixed,
+                 now="FIXED" if still == 0 else f"{still}/{still + fixed} still fail")
+    return rows
+
+
 def cmd_mine(args) -> int:
-    rows = mine_failures([Path(d) for d in args.run_dirs])
+    resolve = getattr(args, "resolve", False)
+    rows = mine_failures([Path(d) for d in args.run_dirs], keep_attempts=resolve)
+    if resolve:
+        started = time.monotonic()
+        # replay only the groups that will be shown: --top applies after --only-open
+        shown, kept = [], []
+        for g in rows:
+            if len(shown) >= (args.top if not args.json else len(rows)):
+                break
+            resolve_groups([g])
+            if getattr(args, "only_open", False) and g["now"] == "FIXED":
+                continue
+            shown.append(g)
+        rows = shown
+        for g in rows:
+            g.pop("attempts", None)
+        print(f"# replayed through the current fixer + validator in {time.monotonic() - started:.0f}s", file=sys.stderr)
     if args.json:
         print(json.dumps(rows, indent=2))
         return 0
     for g in rows[: args.top]:
         wrote = ("  wrote: " + ", ".join(f"{k} x{v}" for k, v in g["wrote"].items())) if g["wrote"] else ""
-        print(f"{len(g['prompts']):3d} prompts {g['hits']:4d} hits  {g['stage']:<10} {g['kind']:<34} {g['where']}{wrote}")
+        now = f"{g['now']:<16} " if resolve else ""
+        print(f"{len(g['prompts']):3d} prompts {g['hits']:4d} hits  {now}{g['stage']:<10} {g['kind']:<34} {g['where']}{wrote}")
     return 0
 
 
@@ -715,6 +803,10 @@ def make_parser() -> argparse.ArgumentParser:
     mine.add_argument("run_dirs", nargs="+")
     mine.add_argument("--top", type=int, default=40)
     mine.add_argument("--json", action="store_true", help="every group as JSON")
+    mine.add_argument("--resolve", action="store_true",
+                      help="replay each validate-stage attempt's authored model through the CURRENT desire-path fixer "
+                           "+ validator and report per group how many attempts still fail (adds a 'now' column)")
+    mine.add_argument("--only-open", action="store_true", help="with --resolve: hide groups that are now fully fixed")
     rep = sub.add_parser("report", help="render scorecard JSON for one or two run dirs")
     rep.add_argument("run_dirs", nargs="+")
     mat = sub.add_parser("matrix", help="every recorded run as matrix.json + one full log per run "

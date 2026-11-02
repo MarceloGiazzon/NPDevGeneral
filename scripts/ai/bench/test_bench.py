@@ -757,6 +757,79 @@ class CliTests(unittest.TestCase):
         self.assertEqual(data["run1"]["scorecard"]["firstAttemptPassRate"], 1.0)
 
 
+class MineResolveTests(unittest.TestCase):
+    """mine --resolve: replay recorded attempts through the current fixer + (stubbed) validator."""
+
+    @staticmethod
+    def _attempt(root: Path, pid: str, n: int, model: dict, detail: str, author_model: dict | None = None):
+        adir = root / pid / f"attempt-{n}"
+        adir.mkdir(parents=True)
+        (adir / "model.json").write_text(json.dumps(model), encoding="utf-8")
+        if author_model is not None:
+            (adir / "author-model.json").write_text(json.dumps(author_model), encoding="utf-8")
+        return {"attempt": n, "failingStage": "validate", "stages": [{"stage": "validate", "detail": detail}]}
+
+    def _run(self, td):
+        root = Path(td) / "run1"
+        d1 = "- bad_shape | $.entities[0].x | Bad 'a' shape"
+        d2 = "- other_code | $.flows[1].y | Other 'b' problem"
+        a1 = self._attempt(root, "bench-001", 0, {"marker": "fixed"}, d1, author_model={"marker": "raw"})
+        a2 = self._attempt(root, "bench-002", 0, {"marker": "stuck"}, d1)
+        a3 = self._attempt(root, "bench-003", 0, {"marker": "stuck"}, d2)
+        for pid, a in (("bench-001", a1), ("bench-002", a2), ("bench-003", a3)):
+            (root / pid / "result.json").write_text(json.dumps(
+                {"promptId": pid, "attempts": [a]}), encoding="utf-8")
+        boot = {"attempt": 0, "failingStage": "boot", "stages": []}
+        (root / "bench-004").mkdir()
+        (root / "bench-004" / "result.json").write_text(json.dumps({"promptId": "bench-004", "attempts": [boot]}), encoding="utf-8")
+        return root
+
+    def test_resolve_counts_and_flags(self):
+        seen = []
+
+        def fake_validator(model):
+            seen.append(model["marker"])
+            # the replayed (raw) model of bench-001 is rewritten by the fixer; 'stuck' models keep failing
+            return frozenset({("bad_shape", "$.entities[].x")}) if model["marker"] == "stuck" else frozenset()
+
+        def fake_fix(model):
+            seen.append("in:" + model["marker"])
+            return ({"marker": "fixed"} if model["marker"] == "raw" else model), []
+
+        with tempfile.TemporaryDirectory() as td:
+            root = self._run(td)
+            rows = run_bench.mine_failures([root], keep_attempts=True)
+            with mock.patch.object(run_bench.npdev_desire_paths, "fix_model", side_effect=fake_fix):
+                run_bench.resolve_groups(rows, validator=fake_validator)
+        by = {(g["stage"], g["kind"]): g for g in rows}
+        shape = by[("validate", "bad_shape")]
+        self.assertEqual((shape["stillFailing"], shape["resolved"], shape["now"]), (1, 1, "1/2 still fail"))
+        other = by[("validate", "other_code")]
+        self.assertEqual((other["stillFailing"], other["resolved"], other["now"]), (0, 1, "FIXED"))
+        self.assertEqual(by[("boot", "no-cause-line")]["now"], "not replayed")
+        self.assertIn("in:raw", seen)   # author-model.json, not the post-fix model.json, was replayed
+
+    def test_cli_only_open_hides_fixed_and_json_has_fields(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._run(td)
+            keys = lambda model: frozenset({("bad_shape", "$.entities[].x")}) if model["marker"] == "stuck" else frozenset()
+            with mock.patch.object(run_bench, "replay_validate", side_effect=keys),                     mock.patch.object(run_bench.npdev_desire_paths, "fix_model", side_effect=lambda m: (m, [])):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                    run_bench.main(["mine", str(root), "--resolve", "--only-open"])
+                text = out.getvalue()
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                    run_bench.main(["mine", str(root), "--resolve", "--json"])
+        self.assertIn("still fail", text)
+        self.assertIn("not replayed", text)
+        data = json.loads(out.getvalue())
+        self.assertTrue(all("stillFailing" in g and "now" in g and "attempts" not in g for g in data))
+        # other_code's model is 'stuck' but the stub reports only bad_shape -> that group is FIXED and hidden
+        self.assertNotIn("other_code", text)
+        self.assertEqual({g["kind"]: g["now"] for g in data}["other_code"], "FIXED")
+
+
 class StageUnitTests(unittest.TestCase):
     def test_validate_warnings_pass_and_errors_fail(self):
         for status, errors, ok in (("warning", 0, True), ("passed", 0, True), ("failed", 1, False)):
