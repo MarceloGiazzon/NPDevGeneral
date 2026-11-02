@@ -198,6 +198,8 @@ def format_diagnostics(report: dict, limit: int = 25) -> str:
         line = " | ".join(b for b in bits if b)
         if d.get("suggestedFix"):
             line += "  -> suggested fix: " + str(d["suggestedFix"])
+        if d.get("hint"):
+            line += "  -> HINT: " + str(d["hint"])
         out.append("- " + line)
     return "\n".join(out)
 

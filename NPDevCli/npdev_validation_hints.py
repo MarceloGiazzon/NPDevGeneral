@@ -1,0 +1,131 @@
+"""'Did you mean' hints for validator diagnostics (raw JSON-Schema text is hard to act on).
+
+A `json_schema_additionalproperties` diagnostic says only that a key is not allowed; the hint names
+the canonical key to use instead and shows the canonical example. The ONLY alias source is desire-path-aliases.json, the table npdev_desire_paths
+also rewrites models with -- add a spelling there, never here. Pure functions, stdlib only.
+"""
+
+from __future__ import annotations
+
+import difflib
+import json
+import re
+from pathlib import Path
+
+ALIASES_FILE = Path(__file__).resolve().parent / "desire-path-aliases.json"
+
+_INDEX = re.compile(r"\[\d+\]")
+_QUOTED = re.compile(r"'([^']*)'")
+_TOKEN = re.compile(r"\.?([^.\[\]]+)|\[(\d+)\]")
+
+_table: list[dict] | None = None
+
+
+def _objects() -> list[dict]:
+    global _table
+    if _table is None:
+        try:
+            _table = json.loads(ALIASES_FILE.read_text(encoding="utf-8")).get("objects", [])
+        except (OSError, ValueError):
+            _table = []
+    return _table
+
+
+def _entry_for(path: str) -> dict | None:
+    pattern = _INDEX.sub("[]", path)
+    return next((o for o in _objects() if o.get("path") == pattern), None)
+
+
+def _walk(model, path: str):
+    """The value at a `$.a[0].b` path in model, or None when it is not there."""
+    node = model
+    for name, idx in _TOKEN.findall(path[1:] if path.startswith("$") else path):
+        try:
+            node = node[int(idx)] if idx != "" else node[name]
+        except (KeyError, IndexError, TypeError):
+            return None
+    return node
+
+
+def _short(path: str) -> str:
+    return path[2:] if path.startswith("$.") else path
+
+
+def _tail(entry: dict, example: bool) -> str:
+    out = ""
+    if example and entry.get("example") is not None:
+        out += " Example: " + json.dumps(entry["example"])
+    if example and entry.get("note"):
+        out += "  (" + entry["note"] + ")"
+    return out
+
+
+def _a(entry: dict) -> str:
+    label = entry.get("label", entry["id"])
+    return ("an " if label[:1] in "aeiou" else "a ") + label
+
+
+def hint_for(diagnostic: dict, model: dict | None = None, *, example: bool = True) -> str | None:
+    """One-line hint for one diagnostic, or None when the table has nothing to say."""
+    code = str(diagnostic.get("code", ""))
+    path = str(diagnostic.get("path", ""))
+    message = str(diagnostic.get("message", ""))
+    where = _short(path)
+
+    if code == "json_schema_enum":
+        # the enum path is the VALUE ("...fields[0].type"), which is the table entry's own path
+        entry = _entry_for(path)
+        if not entry or not entry.get("valueAliases"):
+            return None
+        actual = _walk(model, path) if model is not None else None
+        if not isinstance(actual, str):
+            found = re.search(r"(?:value|was|found) '([^']*)'", message)
+            actual = found.group(1) if found else None
+        right = entry["valueAliases"].get(str(actual).lower()) if actual is not None else None
+        if not right:
+            return None
+        return f"{where}: '{actual}' is not {_a(entry)} -- use '{right}'." + (
+            f" {entry['note']}" if example and entry.get("note") else "")
+
+    entry = _entry_for(path)
+    if not entry:
+        return None
+    key = _QUOTED.search(message)
+    key = key.group(1) if key else None
+    aliases = entry.get("keyAliases") or {}
+    canonical = entry.get("canonicalKeys") or []
+
+    if code == "json_schema_additionalproperties" and key:
+        if key in aliases:
+            head = f"{where}: '{key}' is not {_a(entry)} key -- use '{aliases[key]}'."
+        else:
+            close = difflib.get_close_matches(key, canonical, n=1, cutoff=0.6)
+            head = (f"{where}: '{key}' is not {_a(entry)} key -- did you mean '{close[0]}'?" if close
+                    else f"{where}: '{key}' is not {_a(entry)} key. Keys: {', '.join(canonical)}.")
+        return head + _tail(entry, example)
+
+    if code == "json_schema_required" and key:
+        obj = _walk(model, path) if model is not None else None
+        wrong = next((k for k in obj if aliases.get(k) == key), None) if isinstance(obj, dict) else None
+        head = (f"{where}: required '{key}' is missing -- rename '{wrong}' to '{key}'." if wrong
+                else f"{where}: required '{key}' is missing.")
+        return head + _tail(entry, example)
+    return None
+
+
+def add_hints(report: dict, model: dict | None = None) -> dict:
+    """Set diagnostic["hint"] on every diagnostic that has one. Several schema errors on one object
+    repeat the same example, so only the first hint per path carries it; identical hints collapse."""
+    shown: set[str] = set()
+    seen: set[tuple[str, str]] = set()
+    for d in report.get("diagnostics") or []:
+        if not isinstance(d, dict):
+            continue
+        path = str(d.get("path", ""))
+        bare = hint_for(d, model, example=False)
+        if not bare or (path, bare) in seen:
+            continue
+        seen.add((path, bare))
+        d["hint"] = bare if path in shown else hint_for(d, model)
+        shown.add(path)
+    return report

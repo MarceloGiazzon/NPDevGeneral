@@ -40,6 +40,8 @@ import npdev_monitor
 import npdev_desire_paths
 import npdev_diagram
 import npdev_rename_cascade
+# 'did you mean' hints on validator diagnostics, from the same alias table npdev_desire_paths reads.
+import npdev_validation_hints
 # TRUTH-1: `npdev truth` -- per-concept truth level + the evidence behind it. Stdlib-only, like the rest.
 import npdev_truth
 
@@ -10630,6 +10632,14 @@ def run_validate_semantic(model_path: Path, report_out: Path | None, *, quiet: b
                 + (f": {detail[-500:]}" if detail else "")
             )
         report = read_json(report_target)
+        # a 'did you mean' hint beside each raw JSON-Schema diagnostic; also written into the report
+        # file, which is what the bench repair loop and other readers of --report consume
+        try:
+            npdev_validation_hints.add_hints(report, read_json(model))
+        except (OSError, ValueError):
+            npdev_validation_hints.add_hints(report, None)
+        if written_report and any("hint" in d for d in report.get("diagnostics") or [] if isinstance(d, dict)):
+            written_report.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
     _capture_validation(model, report)
     if not quiet:

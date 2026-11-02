@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "description": "Spellings AI and human authors were measured writing (run_bench mine) for model objects whose canonical shape differs. ONE table, read by npdev_desire_paths (rewrites the model) and npdev_validation_hints (adds a 'did you mean' hint to a validator diagnostic). Add an alias here, never in either module.",
+  "objects": [
+    {
+      "id": "rollup",
+      "label": "rollup",
+      "path": "$.concepts[].rollups[]",
+      "canonicalKeys": ["field", "from", "via", "fn", "of"],
+      "keyAliases": {
+        "name": "field",
+        "source": "from",
+        "concept": "from",
+        "over": "from",
+        "child": "from",
+        "function": "fn",
+        "aggregate": "fn",
+        "op": "fn",
+        "measure": "of"
+      },
+      "example": { "field": "totalHours", "fn": "sum", "from": "Task", "via": "project", "of": "hours" },
+      "note": "field = the stored field on THIS concept that holds the result; from = the child concept; via = the child's reference field pointing back here; of = the child field aggregated (omit for count)."
+    },
+    {
+      "id": "orchestrationTrigger",
+      "label": "orchestration trigger",
+      "path": "$.orchestrations[].trigger",
+      "canonicalKeys": ["type", "event"],
+      "defaults": { "type": "event" },
+      "example": { "type": "event", "event": "OrderShipped" },
+      "note": "type is always \"event\"."
+    },
+    {
+      "id": "orchestrationAction",
+      "label": "orchestration action",
+      "path": "$.orchestrations[].actions[]",
+      "canonicalKeys": ["type", "concept", "capability", "operation", "event", "delaySeconds", "delayMs", "delayMinutes", "action", "map"],
+      "keyAliases": {
+        "data": "map",
+        "input": "map",
+        "values": "map",
+        "fields": "map",
+        "set": "map"
+      },
+      "example": { "type": "create", "concept": "ReturnLogEntry", "map": { "bookTitle": "$event.bookTitle" } },
+      "note": "map holds the values to write, keyed by target field."
+    },
+    {
+      "id": "fieldType",
+      "label": "field type",
+      "path": "$.concepts[].fields[].type",
+      "valueAliases": {
+        "text": "string",
+        "varchar": "string",
+        "char": "string",
+        "str": "string",
+        "bool": "boolean",
+        "number": "decimal",
+        "float": "decimal",
+        "double": "decimal",
+        "money": "decimal",
+        "currency": "decimal",
+        "timestamp": "datetime",
+        "ref": "reference"
+      },
+      "note": "Allowed: string, uuid, int, integer, long, decimal, boolean, date, datetime, enum, reference, object, array, file."
+    }
+  ]
+}

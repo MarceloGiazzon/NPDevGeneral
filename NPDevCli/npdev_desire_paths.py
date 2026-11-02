@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+from pathlib import Path
 from typing import Any
 
 MODE_SYNONYMS = {
@@ -87,6 +88,9 @@ def fix_model(model: Any) -> tuple[Any, list[dict]]:
     _fix_lifecycles(model, note)
     _fix_data_sources(model, concepts, note)
     _fix_queries(model, note)
+    _fix_rollups(model, note)
+    _fix_orchestrations(model, note)
+    _fix_field_types(model, note)
     return model, fixes
 
 
@@ -312,6 +316,108 @@ def _fix_queries(model: dict, note) -> None:
                 if isinstance(item, dict) and set(item) == {"field"} and isinstance(item["field"], str):
                     group[gi] = item["field"]
                     note("query-groupby-object", f"$.queries[{qi}].groupBy[{gi}]", item, group[gi])
+
+
+# Spellings of rollups / orchestration triggers+actions / field types, shared with
+# npdev_validation_hints through one measured table (run_bench mine).
+with open(Path(__file__).resolve().parent / "desire-path-aliases.json", encoding="utf-8") as _fh:
+    _ALIASES = {o["id"]: o for o in json.load(_fh)["objects"]}
+ROLLUP_KEY_ALIASES = _ALIASES["rollup"]["keyAliases"]
+ACTION_KEY_ALIASES = _ALIASES["orchestrationAction"]["keyAliases"]
+FIELD_TYPE_ALIASES = _ALIASES["fieldType"]["valueAliases"]
+FIELD_TYPES = {"string", "uuid", "int", "integer", "long", "decimal", "boolean", "date", "datetime",
+               "enum", "reference", "object", "array", "file"}
+ROLLUP_FNS = {"count", "sum", "min", "max", "avg"}
+ROLLUP_KEYS = set(_ALIASES["rollup"]["canonicalKeys"])
+
+
+def _reference_target(field: dict) -> str | None:
+    ref = field.get("reference", field.get("ref"))
+    if isinstance(ref, dict):
+        ref = ref.get("target")
+    return ref if isinstance(ref, str) else None
+
+
+def _lower_camel(name: str) -> str:
+    return name[:1].lower() + name[1:]
+
+
+def _fix_rollups(model: dict, note) -> None:
+    by_name = {c["name"]: c for c in model.get("concepts") or []
+               if isinstance(c, dict) and isinstance(c.get("name"), str)}
+    for ci, concept in enumerate(model.get("concepts") or []):
+        rollups = concept.get("rollups") if isinstance(concept, dict) else None
+        if not isinstance(rollups, list):
+            continue
+        for ri, item in enumerate(rollups):
+            if not isinstance(item, dict):
+                continue
+            path = f"$.concepts[{ci}].rollups[{ri}]"
+            before = copy.deepcopy(item)
+            # `field` + `name` together: the author's `field` is the aggregated child column
+            aliases_field = [a for a, c in ROLLUP_KEY_ALIASES.items() if c == "field" and a in item]
+            if aliases_field and "field" in item and "of" not in item:
+                item["of"] = item.pop("field")
+            renamed = False
+            for alias, canonical in ROLLUP_KEY_ALIASES.items():
+                if alias in item and canonical not in item:
+                    item[canonical] = item.pop(alias)
+                    renamed = True
+            if renamed:
+                note("rollup-key-alias", path, before, copy.deepcopy(item))
+            # the child's reference field back to this concept, when exactly one exists
+            if "via" not in item and isinstance(item.get("from"), str):
+                child = by_name.get(item["from"])
+                hits = [f.get("name") for f in (child or {}).get("fields") or []
+                        if isinstance(f, dict) and f.get("type") == "reference"
+                        and _reference_target(f) == concept.get("name") and isinstance(f.get("name"), str)]
+                if len(hits) == 1:
+                    item["via"] = hits[0]
+                    note("rollup-via-inferred", f"{path}.via", None, hits[0])
+            if "field" not in item and item.get("fn") in ROLLUP_FNS and isinstance(item.get("from"), str):
+                if item["fn"] == "count":
+                    derived = _lower_camel(item["from"]) + "Count"
+                elif isinstance(item.get("of"), str) and item["of"]:
+                    derived = item["fn"] + item["of"][:1].upper() + item["of"][1:]
+                else:
+                    derived = None
+                if derived:
+                    item["field"] = derived
+                    note("rollup-field-derived", f"{path}.field", None, derived)
+
+
+def _fix_orchestrations(model: dict, note) -> None:
+    for oi, orch in enumerate(model.get("orchestrations") or []):
+        if not isinstance(orch, dict):
+            continue
+        trigger = orch.get("trigger")
+        if isinstance(trigger, dict) and "type" not in trigger and isinstance(trigger.get("event"), str):
+            trigger["type"] = "event"
+            note("orchestration-trigger-type", f"$.orchestrations[{oi}].trigger.type", None, "event")
+        for ai, action in enumerate(orch.get("actions") or []):
+            if not isinstance(action, dict):
+                continue
+            path = f"$.orchestrations[{oi}].actions[{ai}]"
+            for alias, canonical in ACTION_KEY_ALIASES.items():
+                if alias in action and canonical not in action:
+                    action[canonical] = action.pop(alias)
+                    note("orchestration-action-map-alias", f"{path}.{alias}", alias, canonical)
+            if "type" not in action and isinstance(action.get("concept"), str) \
+                    and "capability" not in action and "event" not in action:
+                action["type"] = "create"
+                note("orchestration-action-type", f"{path}.type", None, "create")
+
+
+def _fix_field_types(model: dict, note) -> None:
+    for ci, concept in enumerate(model.get("concepts") or []):
+        for fi, field in enumerate(concept.get("fields") or [] if isinstance(concept, dict) else []):
+            written = field.get("type") if isinstance(field, dict) else None
+            if not isinstance(written, str) or written in FIELD_TYPES:
+                continue
+            canonical = FIELD_TYPE_ALIASES.get(written.strip().lower())
+            if canonical:
+                field["type"] = canonical
+                note("field-type-alias", f"$.concepts[{ci}].fields[{fi}].type", written, canonical)
 
 
 def summary_lines(fixes: list[dict], limit: int = 12) -> list[str]:

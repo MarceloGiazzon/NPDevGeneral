@@ -166,5 +166,90 @@ class QueryShapeTests(unittest.TestCase):
         self.assertEqual(fixed["queries"], model["queries"])
 
 
+def _project_model(rollups=None, child_fields=None, **extra) -> dict:
+    child_fields = child_fields if child_fields is not None else [
+        {"name": "project", "type": "reference", "reference": {"target": "Project"}}, {"name": "hours", "type": "int"}]
+    return {"namespace": "t.pm", "concepts": [
+        {"name": "Project", "rollups": rollups or [], "fields": [{"name": "taskCount", "type": "int"}]},
+        {"name": "Task", "fields": child_fields}], **extra}
+
+
+class RollupTests(unittest.TestCase):
+    """Shapes from the bench failure miner (2026-11-02)."""
+
+    def _fix(self, rollup, **kw):
+        fixed, fixes = dp.fix_model(_project_model([rollup], **kw))
+        return fixed["concepts"][0]["rollups"][0], fixes
+
+    def test_missing_field_and_via_are_derived_for_count(self):
+        item, fixes = self._fix({"fn": "count", "from": "Task"})
+        self.assertEqual(item, {"fn": "count", "from": "Task", "via": "project", "field": "taskCount"})
+        self.assertEqual(sorted(_rules(fixes)), ["rollup-field-derived", "rollup-via-inferred"])
+
+    def test_sum_without_field_derives_fn_plus_of(self):
+        item, _ = self._fix({"fn": "sum", "from": "Task", "of": "hours", "via": "project"})
+        self.assertEqual(item["field"], "sumHours")
+
+    def test_name_and_source_aliases(self):
+        item, fixes = self._fix({"fn": "count", "name": "reviewCount", "source": "Task"})
+        self.assertEqual(item, {"fn": "count", "field": "reviewCount", "from": "Task", "via": "project"})
+        self.assertIn("rollup-key-alias", _rules(fixes))
+
+    def test_concept_and_over_aliases_for_from(self):
+        item, _ = self._fix({"concept": "Task", "fn": "count", "name": "taskCount", "via": "project"})
+        self.assertEqual(item, {"from": "Task", "fn": "count", "field": "taskCount", "via": "project"})
+        item, _ = self._fix({"fn": "count", "name": "n", "over": "Task", "via": "project"})
+        self.assertEqual(item["from"], "Task")
+
+    def test_field_plus_name_moves_field_to_of(self):
+        item, _ = self._fix({"concept": "Task", "field": "hours", "fn": "sum", "name": "totalHours", "via": "project"})
+        self.assertEqual(item, {"from": "Task", "of": "hours", "fn": "sum", "field": "totalHours", "via": "project"})
+        item, _ = self._fix({"field": "rating", "fn": "avg", "name": "averageRating", "source": "Task"})
+        self.assertEqual((item["field"], item["of"], item["from"]), ("averageRating", "rating", "Task"))
+
+    def test_two_references_leave_via_untouched(self):
+        fields = [{"name": "project", "type": "reference", "reference": "Project"},
+                  {"name": "archivedIn", "type": "reference", "reference": {"target": "Project"}}]
+        item, fixes = self._fix({"fn": "count", "from": "Task", "field": "taskCount"}, child_fields=fields)
+        self.assertNotIn("via", item)
+        self.assertEqual(fixes, [])
+
+    def test_canonical_rollup_is_untouched(self):
+        rollup = {"field": "taskCount", "from": "Task", "via": "project", "fn": "count"}
+        item, fixes = self._fix(rollup)
+        self.assertEqual((item, fixes), (rollup, []))
+
+
+class OrchestrationTests(unittest.TestCase):
+    def test_trigger_type_and_action_aliases(self):
+        model = _model(orchestrations=[{"name": "O", "trigger": {"event": "LoanReturned"}, "actions": [
+            {"concept": "ReturnLogEntry", "data": {"a": "$event.a"}},
+            {"concept": "OutgoingMessage", "input": {"b": 1}},
+            {"type": "callCapability", "capability": "mail", "map": {}}]}])
+        fixed, fixes = dp.fix_model(model)
+        orch = fixed["orchestrations"][0]
+        self.assertEqual(orch["trigger"], {"event": "LoanReturned", "type": "event"})
+        self.assertEqual(orch["actions"][0], {"concept": "ReturnLogEntry", "map": {"a": "$event.a"}, "type": "create"})
+        self.assertEqual(orch["actions"][1]["map"], {"b": 1})
+        self.assertEqual(orch["actions"][2], model["orchestrations"][0]["actions"][2])
+        self.assertEqual(sorted(set(_rules(fixes))), ["orchestration-action-map-alias", "orchestration-action-type",
+                                                      "orchestration-trigger-type"])
+
+    def test_canonical_orchestration_is_untouched(self):
+        model = _model(orchestrations=[{"name": "O", "trigger": {"type": "event", "event": "E"},
+                                        "actions": [{"type": "create", "concept": "Customer", "map": {}}]}])
+        self.assertEqual(dp.fix_model(model)[1], [])
+
+
+class FieldTypeTests(unittest.TestCase):
+    def test_aliases_become_canonical_and_allowed_types_stay(self):
+        model = {"concepts": [{"name": "A", "fields": [{"name": "a", "type": "text"}, {"name": "b", "type": "Bool"},
+                                                       {"name": "c", "type": "string"}, {"name": "d", "type": "weird"}]}]}
+        fixed, fixes = dp.fix_model(model)
+        self.assertEqual([f["type"] for f in fixed["concepts"][0]["fields"]], ["string", "boolean", "string", "weird"])
+        self.assertEqual(_rules(fixes), ["field-type-alias"] * 2)
+        self.assertEqual(dp.summary_lines(fixes)[0], "- $.concepts[0].fields[0].type: text -> string")
+
+
 if __name__ == "__main__":
     unittest.main()
