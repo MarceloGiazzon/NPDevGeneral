@@ -1,17 +1,19 @@
 {
-  "closedAt": "2026-11-02T16:34:13.3374581Z",
+  "closedAt": "2026-11-02T18:04:54.3118691Z",
   "branch": "main",
-  "head": "ec367077",
-  "headSubject": "chore(session): handoff after compact core-context bundle work",
-  "summary": "Gemini 3.6 Flash free with the compact bundle: 4/4 measured prompts pass (001/004/011 one-shot at 4.7-5.0k tokens, 021 one repair at 8.3k), median 4.9k tokens/app; with Nemotron 5.2k this meets the <=5k goal on both real free tiers. bench-023 hit the daily quota.",
-  "nextStep": "Optional: finish bench-023 on Gemini when quota returns (--run-id cal-gemini-compact --skip-done). Next real lever for the central goal is adoption: make the compact bundle the one external AIs receive (docs/content or npdev CLI paste command) and measure a small local model (ollama) only if the owner wants it. F4b/F5 not needed now. Always check Get-CimInstance Win32_Process for run_bench before launching a bench.",
+  "head": "c037b235",
+  "headSubject": "docs(ai): MCP opening prompt calls npdev_core_context; first-app points at npdev ai context",
+  "summary": "Adoption step for the compact bundle: npdev ai context [--full] [--output] [--json] prints the compact authoring bundle for chat AIs without MCP (cf2d908d); AUTHORING_WITH_AI/YOUR_FIRST_APP/NPDevCli README point at it, and the MCP opening prompt now calls npdev_core_context instead of a repo path that does not resolve from an app folder (c037b235). MCP default stays full.",
+  "nextStep": "bench-023 on Gemini after the free quota resets (~2026-11-03 08:00 UTC): run_bench --run-id cal-gemini-compact --skip-done --knowledge-file Build/npdev-ai/core-context/bundle-compact.json; check Get-CimInstance Win32_Process for run_bench first. Local ollama is ruled out by the owner. After that the AI-efficiency plan is at its goal; remaining unchecked F2 items (mine_errors.py, no-knowledge ablation) and F7 report only if the owner wants them.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_AI_EFFICIENCY_PLAN_2026-10-31\\PLAN.md",
   "blocked": "",
-  "verified": "Bench cal-gemini-compact 4/4 pass (see PLAN.md). No repo code changed since ec367077 apart from this handoff.",
+  "verified": "aiKnowledge gate: all checks green except the expected doc-drift (uncommitted regenerated docs), cleared by cf2d908d; test_ai_config 33/33; readme-contract, no-markdown-reads, markdown-links, firstrun-extractor OK.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "ec367077 chore(session): handoff after compact core-context bundle work"
+    "c037b235 docs(ai): MCP opening prompt calls npdev_core_context; first-app points at npdev ai context",
+    "cf2d908d feat(ai): npdev ai context prints the compact authoring bundle for chat AIs",
+    "7215832c chore(session): handoff - Gemini free tier meets the 5k tokens/app goal with the compact bundle"
   ]
 }
