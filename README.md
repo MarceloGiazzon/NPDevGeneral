@@ -331,7 +331,7 @@ purpose, because a stale limitations page costs more trust than a short feature 
 ./npdev init <name>               # scaffold a new model, with git history
 ./npdev dev                       # watch the model; rebuild + restart on save
 ./npdev run app                   # generate, build, boot, health-check (one shot)
-./npdev validate <path>     # full structural + semantic check, no generation
+./npdev validate model <path>     # full structural + semantic check, no generation (or just `./npdev validate <path>`)
 ./npdev generate app --model <m> --config <c> --output <dir>
 ./npdev mcp install               # connect an AI tool to NPDev
 ./npdev why B13                   # explain an accepted design limit (id or the code you just hit)
@@ -388,7 +388,7 @@ Apache-2.0 (see `LICENSE`). Pre-1.0; the git tag (e.g. `beta1.4`) is the authori
 version. Two other numbers exist and mean something narrower: `npdev --version` reports the
 portable CLI wrapper's own version, and the Gradle module version pinned in each module's
 `build.gradle` (e.g. `NPDevContract/dsl/build.gradle`) is an internal JAR-artifact version, not the
-platform's. Separately, every model declares `"dslVersion": "1.0.0"` — that is the *model JSON
+platform's. Separately, a model may declare `"dslVersion": "1.0.0"` (optional; omitted means 1.0.0) — that is the *model JSON
 format* version, unrelated to any of the above; it has never changed, including across the
 "DSL 2.0" flowStep-vocabulary change (`BREAKING.md`).
 

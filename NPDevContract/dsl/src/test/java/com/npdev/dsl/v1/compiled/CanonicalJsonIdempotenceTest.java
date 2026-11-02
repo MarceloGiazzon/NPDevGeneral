@@ -61,6 +61,20 @@ class CanonicalJsonIdempotenceTest {
         assertEquals(first, second);
     }
 
+    @Test
+    @DisplayName("A model without dslVersion compiles to canonical JSON carrying the default \"dslVersion\":\"1.0.0\"")
+    void omittedDslVersionIsDefaultedInCanonicalJson() throws Exception {
+        String model = """
+            { "namespace": "dslver.default", "version": "1.0",
+              "concepts": [ { "name": "Thing", "fields": [
+                { "name": "id", "type": "uuid", "id": true, "required": true } ] } ] }
+            """;
+        ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(model));
+        String json = CompiledModelCanonicalJson.toJson(new ModelCompiler().compile(ast));
+        org.junit.jupiter.api.Assertions.assertTrue(json.replaceAll("\s", "").contains("\"dslVersion\":\"1.0.0\""), json);
+        assertEquals(json, CompiledModelCanonicalJson.toJson(CompiledModelCanonicalJsonReader.fromJson(json)));
+    }
+
     /** Rich enough to cover the shapes that actually differed: panels, a layout, an aggregate-bound AutoPanel. */
     private static final String RICH_MODEL = """
         {

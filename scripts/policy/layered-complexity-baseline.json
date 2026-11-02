@@ -5,8 +5,9 @@
   "watched": {
     "model": {
       "kind": "topLevelRequired",
-      "requiredCount": 2,
-      "required": ["dslVersion", "version"]
+      "requiredCount": 1,
+      "required": ["version"],
+      "note": "dslVersion made optional (defaults to 1.0.0); a relaxation, so the ratchet shrinks."
     },
     "concept": {
       "kind": "definitionRequired",

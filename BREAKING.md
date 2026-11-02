@@ -1423,7 +1423,7 @@ does not bump it. Writing `"dslVersion": "2.0.0"` in a model is a mistake, not a
 schema rejects it (`/dslVersion const: must be equal to constant`, or -- with `npdev validate
 model`'s default semantic check -- the clearer `Unsupported dslVersion '2.0.0'. Supported value:
 "1.0.0".`). If you're migrating a model to the new flowStep vocabulary, run `npdev migrate dsl-2`
-below; don't touch `dslVersion`.
+below; don't touch `dslVersion`. (As of 2026-11-02 `dslVersion` may also be omitted entirely; it defaults to `"1.0.0"`, while a blank or other value still errors.)
 
 `model.schema.json`'s `flowStep.type` enum dropped from 23 accepted spellings to 12
 (`invariantCheck`, `capabilityCall`, `generatedAction`, `emitEvent`, `scheduleEvent`, `return`,

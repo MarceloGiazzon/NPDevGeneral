@@ -44,7 +44,7 @@ capability + binding only for what a flow calls (e.g. `notification`→`notifica
    `{"name":"id","type":"uuid","id":true,"required":true}`.
 3. **`reference.target` names a concept in the composed model** (own or from a pack/fragment).
 4. **Root uses `concepts`, not `entities`** (rejected legacy shape).
-5. Required root fields: `dslVersion` (`"1.0.0"`), `version`, `namespace` (or `model`), non-empty `concepts`.
+5. Required root fields: `version`, `namespace` (or `model`), non-empty `concepts`. `dslVersion` is optional (omit it, or write `"1.0.0"`; any other value is an error).
 
 ## Renaming: `renamedFrom` is mandatory
 

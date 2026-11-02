@@ -3,6 +3,7 @@ package com.npdev.dsl.v1.parser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.pack.MinimalVersionSelector;
 import com.npdev.dsl.v1.pack.NetworkPolicy;
 import com.npdev.dsl.v1.pack.PackCache;
@@ -135,7 +136,9 @@ final class PackDependencyGraphWalker {
             boolean enforceLock,
             JsonNode provides
     ) throws IOException {
-        String rootDslVersion = ModelSourceResolver.textOrBlank(resolved.get("dslVersion"));
+        String rootDslVersion = resolved.has("dslVersion")
+                ? ModelSourceResolver.textOrBlank(resolved.get("dslVersion"))
+                : ModelAst.DEFAULT_DSL_VERSION;
         // PK-5 step 2 ("Distribution", PACK-ROADMAP.md card PK-5): this is the ONLY call site
         // ModelSourceResolver.resolvePacks uses (the real generate/validate path), and
         // NetworkPolicy.DENIED is hardcoded here -- not threaded in from any caller -- so a future
@@ -162,7 +165,9 @@ final class PackDependencyGraphWalker {
             ModelSourceResolver.ResolutionState state,
             NetworkPolicy networkPolicy
     ) throws IOException {
-        String rootDslVersion = ModelSourceResolver.textOrBlank(resolved.get("dslVersion"));
+        String rootDslVersion = resolved.has("dslVersion")
+                ? ModelSourceResolver.textOrBlank(resolved.get("dslVersion"))
+                : ModelAst.DEFAULT_DSL_VERSION;
         PackDependencyGraphWalker walker =
                 new PackDependencyGraphWalker(resolver, state, rootDslVersion, networkPolicy, null, false);
         walker.run(packsNode, resolved, modelFile, false);

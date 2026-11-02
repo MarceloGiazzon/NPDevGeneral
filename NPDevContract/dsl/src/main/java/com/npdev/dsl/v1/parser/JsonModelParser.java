@@ -158,8 +158,14 @@ public final class JsonModelParser {
             throw new IOException("Missing/blank required field: namespace (or alias: model)");
         }
         String dslVersion = readText(root, "dslVersion");
-        if (dslVersion == null || dslVersion.isBlank()) {
-            throw new IOException("Missing required field: dslVersion. Supported value: \"" + SUPPORTED_DSL_VERSION + "\".");
+        if (dslVersion == null) {
+            JsonNode rawDslVersion = root.get("dslVersion");
+            if (rawDslVersion != null && !rawDslVersion.isNull()) {
+                throw new IOException("dslVersion must not be blank. Supported value: \"" + SUPPORTED_DSL_VERSION + "\".");
+            }
+            dslVersion = SUPPORTED_DSL_VERSION;
+        } else if (dslVersion.isBlank()) {
+            throw new IOException("dslVersion must not be blank. Supported value: \"" + SUPPORTED_DSL_VERSION + "\".");
         }
         if (!SUPPORTED_DSL_VERSION.equals(dslVersion)) {
             throw new IOException("Unsupported dslVersion '" + dslVersion + "'. Supported value: \"" + SUPPORTED_DSL_VERSION + "\".");

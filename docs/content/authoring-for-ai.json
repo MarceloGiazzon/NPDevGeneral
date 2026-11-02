@@ -15,7 +15,7 @@
     {
       "level": 2,
       "title": "Non-negotiables",
-      "body": "\n1. **Every object is closed (`additionalProperties: false`)** except the free-form `metadata` maps on\n   panels and procedures. An invented key fails generation; it is not ignored.\n2. **Exactly one field per concept has `\"id\": true`**; conventionally\n   `{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true}`.\n3. **`reference.target` names a concept in the composed model** (own or from a pack/fragment).\n4. **Root uses `concepts`, not `entities`** (rejected legacy shape).\n5. Required root fields: `dslVersion` (`\"1.0.0\"`), `version`, `namespace` (or `model`), non-empty `concepts`.\n"
+      "body": "\n1. **Every object is closed (`additionalProperties: false`)** except the free-form `metadata` maps on\n   panels and procedures. An invented key fails generation; it is not ignored.\n2. **Exactly one field per concept has `\"id\": true`**; conventionally\n   `{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true}`.\n3. **`reference.target` names a concept in the composed model** (own or from a pack/fragment).\n4. **Root uses `concepts`, not `entities`** (rejected legacy shape).\n5. Required root fields: `version`, `namespace` (or `model`), non-empty `concepts`. `dslVersion` is optional (omit it, or write `\"1.0.0\"`; any other value is an error).\n"
     },
     {
       "level": 2,

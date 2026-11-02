@@ -539,7 +539,7 @@ class DslSchemaConformanceTest {
     }
 
     @Test
-    void schemaRejectsMissingDslVersion() throws Exception {
+    void schemaAcceptsMissingDslVersion() throws Exception {
         JsonSchema schema = schema();
         JsonNode model = MAPPER.readTree("""
                 {
@@ -556,7 +556,23 @@ class DslSchemaConformanceTest {
                 }
                 """);
         Set<ValidationMessage> violations = schema.validate(model);
-        assertFalse(violations.isEmpty(), "Expected schema to reject model missing dslVersion");
+        assertTrue(violations.isEmpty(), "Expected schema to accept model missing dslVersion: " + violations);
+    }
+
+    @Test
+    void schemaRejectsWrongDslVersion() throws Exception {
+        JsonSchema schema = schema();
+        JsonNode model = MAPPER.readTree("""
+                {
+                  "dslVersion": "2.0.0",
+                  "namespace": "demo",
+                  "version": "v1",
+                  "concepts": [
+                    { "name": "User", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
+                  ]
+                }
+                """);
+        assertFalse(schema.validate(model).isEmpty(), "Expected schema to reject dslVersion 2.0.0");
     }
 
     private static JsonSchema schema() throws Exception {

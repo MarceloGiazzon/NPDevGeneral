@@ -343,9 +343,9 @@ carry it say so in a `NOTICE` on every boot. Existing apps keep working unchange
 
 ### 5.3 `model.json` — the actual app
 
-This is where your app "happens": `dslVersion` (always `"1.0.0"`), `version` (your own app
+This is where your app "happens": `version` (your own app
 version string), `namespace` (a Java-style package name), and `concepts` (at least one) are
-required. Everything else — `flows`, `events`, `queries`, `procedures`, `panels`,
+required. (`dslVersion` is optional: omit it, or write `"1.0.0"`.) Everything else — `flows`, `events`, `queries`, `procedures`, `panels`,
 `orchestrationRules`, `capabilities`, `customCapabilities` — is optional and is exactly what
 the four levels below add, one at a time.
 

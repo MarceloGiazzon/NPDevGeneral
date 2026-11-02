@@ -69,7 +69,7 @@ keys:
     status: shipped
 
   - key: dslVersion
-    mechanism: "Model-level DSL version pin; DSL is at 2.0 (BREAKING.md). npdev migrate dsl_v2_migration.py replays codemods between versions."
+    mechanism: "Optional model-format version (defaults to 1.0.0, only 1.0.0 accepted; unrelated to DSL 2.0 in BREAKING.md). npdev migrate dsl_v2_migration.py replays codemods between versions."
     status: shipped
 
   - key: events

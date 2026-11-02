@@ -14,7 +14,7 @@ missing.
 
 ```sh
 ./npdev --version
-./npdev validate NPDevContract/dsl/resources/Models/canonical-demo/model.json
+./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json
 ```
 
 `validate model` runs full structural + semantic validation by default (it shells out to
@@ -181,7 +181,7 @@ Set `NPDEV_ROOT` to the workspace root before invoking `npdev`.
 
 ```sh
 export NPDEV_ROOT="$(pwd)"
-./npdev validate NPDevContract/dsl/resources/Models/canonical-demo/model.json
+./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json
 ```
 
 ## PowerShell scripts

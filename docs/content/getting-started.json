@@ -18,7 +18,7 @@
         {
           "type": "fence",
           "lang": "sh",
-          "text": "./npdev --version\n./npdev validate NPDevContract/dsl/resources/Models/canonical-demo/model.json"
+          "text": "./npdev --version\n./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json"
         },
         {
           "type": "prose",
@@ -124,7 +124,7 @@
         {
           "type": "fence",
           "lang": "sh",
-          "text": "export NPDEV_ROOT=\"$(pwd)\"\n./npdev validate NPDevContract/dsl/resources/Models/canonical-demo/model.json"
+          "text": "export NPDEV_ROOT=\"$(pwd)\"\n./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json"
         },
         {
           "type": "prose",

@@ -609,7 +609,7 @@ class DslGrammarEvolutionTest {
     }
 
     @Test
-    void parserRejectsModelMissingDslVersionEvenIfVersionExists() throws Exception {
+    void parserDefaultsMissingDslVersion() throws Exception {
         String json = """
                 {
                   "namespace": "demo",
@@ -628,8 +628,25 @@ class DslGrammarEvolutionTest {
         Path modelFile = Files.createTempFile("npdev-grammar-missing-dsl-version-", ".json");
         Files.writeString(modelFile, json, StandardCharsets.UTF_8);
 
+        assertEquals("1.0.0", new JsonModelParser().parse(modelFile).getDslVersion());
+    }
+
+    @Test
+    void parserRejectsBlankDslVersion() throws Exception {
+        String json = """
+                {
+                  "dslVersion": "",
+                  "namespace": "demo",
+                  "version": "v1",
+                  "concepts": [
+                    { "name": "User", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
+                  ]
+                }
+                """;
+        Path modelFile = Files.createTempFile("npdev-grammar-blank-dsl-version-", ".json");
+        Files.writeString(modelFile, json, StandardCharsets.UTF_8);
         IOException error = assertThrows(IOException.class, () -> new JsonModelParser().parse(modelFile));
-        assertTrue(error.getMessage().contains("Missing required field: dslVersion"));
+        assertTrue(error.getMessage().contains("dslVersion must not be blank"));
     }
 
     @Test

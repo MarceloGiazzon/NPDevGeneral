@@ -93,7 +93,7 @@ function Stop-RunRootProcesses {
 function Test-OfficialModel {
     param([object]$Model)
     $failures = [System.Collections.Generic.List[string]]::new()
-    if ($Model.dslVersion -ne "1.0.0") { Add-Failure $failures "model.dslVersion must be 1.0.0." }
+    if ($null -ne $Model.dslVersion -and $Model.dslVersion -ne "1.0.0") { Add-Failure $failures "model.dslVersion must be 1.0.0." }
     if ([string]::IsNullOrWhiteSpace([string]$Model.version)) { Add-Failure $failures "model.version is required." }
     if ([string]::IsNullOrWhiteSpace([string]$Model.namespace) -and [string]::IsNullOrWhiteSpace([string]$Model.model)) {
         Add-Failure $failures "model.namespace or model.model is required."

@@ -215,7 +215,7 @@ final class ExpressionValidation {
     static void validateDslVersion(ModelAst modelAst, List<String> errors) {
         String dslVersion = modelAst.getDslVersion();
         if (dslVersion == null || dslVersion.isBlank()) {
-            errors.add("Model dslVersion is required and must be " + SUPPORTED_DSL_VERSION);
+            errors.add("Model dslVersion must not be blank (omit it to default to " + SUPPORTED_DSL_VERSION + ")");
             return;
         }
         if (!SUPPORTED_DSL_VERSION.equals(dslVersion.trim())) {

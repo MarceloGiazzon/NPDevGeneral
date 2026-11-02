@@ -7,7 +7,6 @@
   "canonicalSchema": "model.schema.json",
   "type": "object",
   "required": [
-    "dslVersion",
     "version"
   ],
   "allOf": [
@@ -41,6 +40,7 @@
     },
     "dslVersion": {
       "type": "string",
+      "description": "Optional. Model-format version; defaults to 1.0.0. Unrelated to the DSL 2.0 step-type rename.",
       "const": "1.0.0"
     },
     "namespace": {
