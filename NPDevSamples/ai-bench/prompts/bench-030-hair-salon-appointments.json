@@ -2,7 +2,7 @@
   "id": "bench-030",
   "tier": "integration-report",
   "title": "Hair salon appointments",
-  "prompt": "I own a hair salon with a few stylists and I book appointments in a diary. I need a list of stylists, and appointments with the stylist, the customer name, the start date and time and the length in minutes. A stylist must never be booked for two appointments that overlap in time, and an appointment must last at least 15 minutes. I would also like a report showing how many appointments each stylist has.",
+  "prompt": "I own a hair salon with a few stylists and I book appointments in a diary. I need a list of stylists, and appointments with the stylist, the customer name, the start date and time and the length in minutes. An appointment must last at least 15 minutes. I would also like a report showing how many appointments each stylist has.",
   "acceptance": {
     "concepts": [
       {
@@ -90,16 +90,6 @@
     ],
     "rules": [
       {
-        "id": "r1",
-        "description": "An overlapping appointment for the same stylist is refused.",
-        "check": {
-          "kind": "rest-reject",
-          "probes": [
-            "p4"
-          ]
-        }
-      },
-      {
         "id": "r2",
         "description": "An appointment shorter than 15 minutes is refused.",
         "check": {
@@ -173,23 +163,6 @@
         "expectStatus": [
           200,
           201
-        ]
-      },
-      {
-        "id": "p4",
-        "purpose": "assert",
-        "method": "POST",
-        "pathHint": "{concept:Appointment}",
-        "body": {
-          "{field:Appointment.stylist}": "{id:p1}",
-          "{field:Appointment.customerName}": "Dex {unique}",
-          "{field:Appointment.startsAt}": "{date:+3}T10:30:00Z",
-          "{field:Appointment.minutes}": 60
-        },
-        "expectStatus": [
-          400,
-          409,
-          422
         ]
       },
       {
