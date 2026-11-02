@@ -258,6 +258,25 @@ class CoreContextTest(unittest.TestCase):
         # the default stays the full bundle
         self.assertIn("core authoring context", _text_of(server.tool_core_context({})))
 
+    def test_compact_variant_manifest_only_and_failed_build(self):
+        self._write_bundle(["docs/content/authoring-for-ai.json"])
+        compact = self.out_dir / "bundle-compact.json"
+        compact.write_text(json.dumps({"bytes": 5, "contentSha256": "c0ffee", "markdown": "# compact\n"}),
+                           encoding="utf-8")
+        with patch.object(server, "run_ai_script", lambda *a, **k: self.fail("should not rebuild")):
+            payload = json.loads(_text_of(server.tool_core_context({"variant": "compact", "manifest_only": True})))
+        self.assertEqual(payload["contentSha256"], "c0ffee")
+        self.assertNotIn("markdown", payload)
+        compact.unlink()
+
+        def failing(script, args, timeout=300):
+            return {"ok": False, "exitCode": 1, "stdout": "", "stderr": "no policy file"}
+
+        with patch.object(server, "run_ai_script", failing):
+            result = server.tool_core_context({"variant": "compact"})
+        self.assertTrue(result["isError"])
+        self.assertIn("no policy file", _text_of(result))
+
     def test_a_missing_bundle_is_stale(self):
         self.assertTrue(server._core_context_stale(self.bundle, self.manifest))
 

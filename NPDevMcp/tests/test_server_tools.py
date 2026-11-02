@@ -200,6 +200,59 @@ class ToolCheckSupportTest(_WithBuildRoot):
                           "absence of a tracked gap must never be reported as a positive support claim")
 
 
+class ToolCoreContextCompactTest(_WithBuildRoot):
+    """npdev_core_context variant=compact: built once on demand, then served from disk."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.out_dir = self.build_root / "npdev-ai" / "core-context"
+        self.out_dir.mkdir(parents=True)
+        manifest = {"contentSha256": "deadbeef", "bytes": 30,
+                    "sections": [{"title": "t", "source": "docs/content/authoring-for-ai.json", "bytes": 1}]}
+        (self.out_dir / "bundle.json").write_text(
+            json.dumps({**manifest, "markdown": "# full context\n"}), encoding="utf-8")
+        (self.out_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        self.compact = self.out_dir / "bundle-compact.json"
+
+    @staticmethod
+    def _text(result: dict) -> str:
+        return result["content"][0]["text"]
+
+    def test_builds_the_compact_bundle_once_then_serves_it_from_disk(self) -> None:
+        calls: list[list[str]] = []
+
+        def build(script, args, timeout=300):
+            calls.append(args)
+            self.compact.write_text(json.dumps({"contentSha256": "c0ffee", "markdown": "# compact context\n"}),
+                                    encoding="utf-8")
+            return {"ok": True, "exitCode": 0, "stdout": "", "stderr": ""}
+
+        with patch.object(server, "run_ai_script", build):
+            first = server.tool_core_context({"variant": "compact"})
+            second = server.tool_core_context({"variant": "compact"})
+        self.assertEqual(calls, [["--compact"]])
+        self.assertIn("compact context", self._text(first))
+        self.assertIn("compact context", self._text(second))
+        self.assertIn("full context", self._text(server.tool_core_context({})))
+
+    def test_manifest_only_drops_the_markdown_and_a_failed_build_is_an_error(self) -> None:
+        self.compact.write_text(json.dumps({"contentSha256": "c0ffee", "markdown": "# compact\n"}),
+                                encoding="utf-8")
+        with patch.object(server, "run_ai_script", lambda *a, **k: self.fail("should not rebuild")):
+            payload = json.loads(self._text(server.tool_core_context({"variant": "compact", "manifest_only": True})))
+        self.assertEqual(payload["contentSha256"], "c0ffee")
+        self.assertNotIn("markdown", payload)
+        self.compact.unlink()
+
+        def failing(script, args, timeout=300):
+            return {"ok": False, "exitCode": 1, "stdout": "", "stderr": "no policy file"}
+
+        with patch.object(server, "run_ai_script", failing):
+            result = server.tool_core_context({"variant": "compact"})
+        self.assertTrue(result["isError"])
+        self.assertIn("no policy file", self._text(result))
+
+
 class JsonRpcDispatchTest(_WithBuildRoot):
     """One end-to-end test through handle_request's real tools/call dispatch, proving the JSON-RPC
     wiring (not just the bare tool function) actually routes to these three tools."""
