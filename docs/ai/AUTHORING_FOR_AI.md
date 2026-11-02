@@ -64,8 +64,25 @@ it "looks unused" -- ask.
 | Flow | `flows[]` | A non-CRUD action (`POST /api/flows/<Name>/execute`) made of `steps[]`. |
 | Capability | `capabilities[]` + `bindings[]` | A verb a flow calls (notification, webhook, http...), bound to an adapter. |
 | Event | `events[]` (or nested in a concept) | A broadcast fact; emitted by a flow step or a lifecycle transition. |
-| Orchestration | `orchestrations[]` | "when event X → do Y"; `trigger` + `action`. |
+| Orchestration | `orchestrations[]` | "when event X → do Y"; `trigger` + `actions[]`. |
 | Query / Panel / Procedure | `queries[]` / `panels[]` / `procedures[]` | A named filtered list; a hand-designed screen; server logic for a panel button. Only when the generic UI is not enough. |
+
+## Totals, reports and reactions
+
+Exact shapes (verified); copy them, do not invent keys.
+
+- **Calculated value on a row:** a field with `derivedExpression`, e.g.
+  `{"name":"lineTotal","type":"decimal","derivedExpression":"quantity * unitPrice"}` (`+ - * /`,
+  field names, `concat`, `coalesce`). Never an invariant: that only refuses writes, so the client would have to send the total.
+- **Stored total over child rows** (on the parent concept, which also declares the numeric field):
+  `"rollups":[{"field":"totalDonated","from":"Donation","via":"donor","fn":"sum","of":"amount"}]`.
+  `via` = the child's reference field to this concept; `fn: count` takes no `of`.
+- **List or report:** `"queries":[{"name":"LowStock","concept":"Product","where":"stock < 5","orderBy":["stock"]}]`,
+  grouped: `{"name":"BySeller","concept":"Sale","groupBy":["seller"],"aggregates":[{"name":"total","fn":"sum","field":"amount"}]}`.
+  `where`, `orderBy[]` and `groupBy[]` entries are plain strings.
+- **Reaction to a status change:** the lifecycle transition names an `event`, `events[]` declares it with a
+  `payload`, and an orchestration creates a record from it:
+  `"orchestrations":[{"name":"LogReturn","trigger":{"type":"event","event":"LoanReturned"},"actions":[{"type":"create","concept":"ReturnLog","map":{"loan":"$event.id"}}]}]`.
 
 ## Field types
 
