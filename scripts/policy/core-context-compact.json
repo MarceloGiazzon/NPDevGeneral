@@ -1,0 +1,30 @@
+{
+  "_comment": "F4a compact core-context variant (scripts/ai/build_core_context.py --compact). Facts only, no logic: which contract sections and which value-reference paths a one-shot external AI authoring simple-crud / workflow-roles / integration-report apps does not need. The full bundle is untouched; the compact one is written beside it as bundle-compact.json. Measure with run_bench.py --knowledge-file before adopting.",
+  "dropContractSectionPrefixes": [
+    "Ask before you write",
+    "Field types",
+    "The loop"
+  ],
+  "valueReferencePathPrefixes": [
+    "$.concepts[]",
+    "$.events[]",
+    "$.flows[]",
+    "$.queries[]",
+    "$.orchestrations[]",
+    "$.capabilities[]",
+    "$.roles[]"
+  ],
+  "valueReferenceExcludeSubstrings": [
+    "truthLevel",
+    "formPresentation",
+    "duplicationPolicy",
+    "inputSchema",
+    "outputSchema",
+    "dangerLevel",
+    "hooks[]",
+    "checkpoint",
+    "phase",
+    "access.public",
+    "http.auth"
+  ]
+}

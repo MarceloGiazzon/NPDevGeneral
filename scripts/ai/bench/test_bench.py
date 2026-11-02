@@ -751,5 +751,30 @@ class StageUnitTests(unittest.TestCase):
         self.assertNotIn("meh", text)
 
 
+class CompactCoreContextTests(unittest.TestCase):
+    """F4a: the compact bundle is a strict slimming of the full one, and keeps what the bench relies on."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        import build_core_context
+        cls.full, _ = build_core_context.build_bundle()
+        cls.compact, _ = build_core_context.build_bundle(compact=True)
+
+    def test_compact_is_smaller_and_drops_dead_sections(self):
+        self.assertLess(len(self.compact), len(self.full) * 0.85)
+        self.assertIn("## Ask before you write", self.full)
+        for gone in ("## Ask before you write", "## The loop"):
+            self.assertNotIn(gone, self.compact)
+
+    def test_compact_keeps_what_authors_and_slim_knowledge_need(self):
+        for kept in ("## Non-negotiables", "## Totals, reports and reactions", "## Gotchas",
+                     "$.flows[].input.mode:", "$.roles[].concepts[]:", "$.queries[].aggregates[].fn:"):
+            self.assertIn(kept, self.compact)
+        # slim_knowledge cuts at this literal header; losing it silently stops stateless trimming.
+        self.assertIn("\n## Golden example:", self.compact)
+        self.assertLess(len(author.slim_knowledge(self.compact)), len(self.compact))
+
+
 if __name__ == "__main__":
     unittest.main()
