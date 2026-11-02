@@ -66,7 +66,7 @@ sections:
          without them, at ~25 % fewer tokens.
       2. The AI drafts `model.json`. Save it, then run the check yourself:
          ```sh
-         ./npdev validate model path/to/model.json
+         ./npdev validate path/to/model.json
          ```
          If it reports shape errors, `./npdev normalize desire-paths path/to/model.json --output
          path/to/model.json` first rewrites the shapes AI authors commonly guess into canonical form and

@@ -66,7 +66,7 @@
         {
           "type": "fence",
           "lang": "sh",
-          "text": "cd ../NPDevGeneral\n./npdev validate model ../my-library/model.json"
+          "text": "cd ../NPDevGeneral\n./npdev validate ../my-library/model.json"
         },
         {
           "type": "prose",
@@ -113,7 +113,7 @@
         {
           "type": "fence",
           "lang": "sh",
-          "text": "cd ../NPDevGeneral\n./npdev validate model ../my-library/model.json\n./npdev generate app --model ../my-library/model.json --config ../my-library/config.json --output ../my-library-app\ncd ../my-library-app && ./gradlew bootJar && java -jar build/libs/FinalExec-0.1.0.jar --spring.profiles.active=dev"
+          "text": "cd ../NPDevGeneral\n./npdev validate ../my-library/model.json\n./npdev generate app --model ../my-library/model.json --config ../my-library/config.json --output ../my-library-app\ncd ../my-library-app && ./gradlew bootJar && java -jar build/libs/FinalExec-0.1.0.jar --spring.profiles.active=dev"
         },
         {
           "type": "prose",

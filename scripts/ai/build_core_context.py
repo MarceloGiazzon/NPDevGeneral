@@ -20,7 +20,7 @@ the first-run harness against Phase 5's own work, when build_rag_index.py's `imp
 `npdev setup` on a fresh install -- same fix applied here pre-emptively). docs/content/authoring-for-ai.json
 carries the identical data, stdlib-readable.
 
-Usage: python scripts/ai/build_core_context.py [--compact]
+Usage: python scripts/ai/build_core_context.py [--compact] [--out <dir>]
 """
 
 from __future__ import annotations
@@ -189,7 +189,12 @@ def build_bundle(compact: bool = False) -> tuple[str, dict]:
 def main(argv: list[str]) -> int:
     compact = "--compact" in argv
     bundle, manifest = build_bundle(compact)
-    out_dir = ai_out_dir("core-context")
+    if "--out" in argv:
+        # Scratch builds (benchmarks read the default dir; never overwrite it while one runs).
+        out_dir = Path(argv[argv.index("--out") + 1])
+        out_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        out_dir = ai_out_dir("core-context")
     if compact:
         # Written BESIDE the full bundle, never over it: bundle.json stays what the MCP tool and
         # the bench serve by default. Feed this one to run_bench.py --knowledge-file.

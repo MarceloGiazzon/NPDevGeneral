@@ -12,7 +12,9 @@
     "$.queries[]",
     "$.orchestrations[]",
     "$.capabilities[]",
-    "$.roles[]"
+    "$.roles[]",
+    "$.procedures[]",
+    "$.panels[]"
   ],
   "valueReferenceExcludeSubstrings": [
     "truthLevel",
@@ -25,6 +27,7 @@
     "checkpoint",
     "phase",
     "access.public",
-    "http.auth"
+    "http.auth",
+    "actionDescriptor"
   ]
 }

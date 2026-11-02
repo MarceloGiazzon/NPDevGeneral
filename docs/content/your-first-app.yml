@@ -92,7 +92,7 @@ sections:
     lang: sh
     text: |-
       cd ../NPDevGeneral
-      ./npdev validate model ../my-library/model.json
+      ./npdev validate ../my-library/model.json
   - type: prose
     text: |2
 
@@ -147,7 +147,7 @@ sections:
     lang: sh
     text: |-
       cd ../NPDevGeneral
-      ./npdev validate model ../my-library/model.json
+      ./npdev validate ../my-library/model.json
       ./npdev generate app --model ../my-library/model.json --config ../my-library/config.json --output ../my-library-app
       cd ../my-library-app && ./gradlew bootJar && java -jar build/libs/FinalExec-0.1.0.jar --spring.profiles.active=dev
   - type: prose

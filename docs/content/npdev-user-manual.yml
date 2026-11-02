@@ -434,16 +434,12 @@ sections:
     }
     ```
 
-    > **Why the `capabilities` + `bindings` blocks are required.** `createConcept` (and
-    > `updateConcept`) is shorthand for "persist this via the `persistence` capability", so
-    > the model must (1) declare the `persistence` capability and (2) **bind** it to an adapter.
-    > `"adapter": "repository"` is the portable abstract name — it resolves to the in-memory store under
-    > the `dev,step0,trial` profile and to Postgres in production; you never name a concrete adapter here.
-    > **Careful:** omit the `bindings` block and the model still *validates cleanly* (a binding can
-    > legitimately be supplied later by a built-in pack, so the validator can't assume it's an error), but
-    > at runtime the flow fails with `Capability binding not found for capability 'persistence'` — a
-    > message that today appears only in the app's stdout log (`_ops\app.out.log`), not the HTTP response.
-    > Every `createConcept`/`updateConcept` flow needs a `persistence` binding.
+    > **About the `capabilities` + `bindings` blocks.** `createConcept` (and `updateConcept`) is shorthand for
+    > "persist this via the `persistence` capability". You may omit both blocks: the compiler adds the
+    > `persistence` capability and a `repository` binding implicitly for any flow that creates, updates or saves a
+    > concept, and an explicit declaration still wins. `"adapter": "repository"` is the portable abstract name —
+    > it resolves to the in-memory store under the `dev,step0,trial` profile and to Postgres in production; you
+    > never name a concrete adapter here. They are shown above only to make the mechanism visible.
 
     `definition\config.json` sets `"defaults": { "ui.generateBusinessUi": false }` (a top-level
     sibling of `scenario`/`generator`/etc.) to deliberately skip the automatic web UI, since this

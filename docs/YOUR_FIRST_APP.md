@@ -70,7 +70,7 @@ in the scaffold that points back at Customer or Order and would break when they 
 
 ```sh
 cd ../NPDevGeneral
-./npdev validate model ../my-library/model.json
+./npdev validate ../my-library/model.json
 ```
 
 Expect `"status": "passed"`.
@@ -113,7 +113,7 @@ Then validate, regenerate, and restart:
 
 ```sh
 cd ../NPDevGeneral
-./npdev validate model ../my-library/model.json
+./npdev validate ../my-library/model.json
 ./npdev generate app --model ../my-library/model.json --config ../my-library/config.json --output ../my-library-app
 cd ../my-library-app && ./gradlew bootJar && java -jar build/libs/FinalExec-0.1.0.jar --spring.profiles.active=dev
 ```
