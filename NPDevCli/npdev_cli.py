@@ -10568,7 +10568,50 @@ def _canonicalize_model_for_sync(model_path: Path, timeout: float = 30.0) -> tup
         return True, out_path.read_text(encoding="utf-8"), None
 
 
-def run_validate_semantic(model_path: Path, report_out: Path | None, *, quiet: bool = False) -> int:
+HUMAN_VALIDATE_DIAGNOSTIC_CAP = 30
+
+
+def format_validation_human(report: dict, model_name: str) -> str:
+    """A readable rendering of an npdev-validation-report.v2 (`validate model --human`, the default on
+    a TTY). The JSON stays the contract for every program; this is only for a person at a terminal."""
+    diags = [d for d in (report.get("diagnostics") or []) if isinstance(d, dict)]
+
+    def level(d: dict) -> str:
+        return str(d.get("severity", "")).lower()
+
+    errors = sum(1 for d in diags if level(d) == "error")
+    warnings = sum(1 for d in diags if level(d) == "warning")
+    if not diags and report.get("status") != "failed":
+        return f"{model_name}: valid"
+    counts = []
+    if errors or report.get("status") == "failed":
+        counts.append(f"{errors} error{'' if errors == 1 else 's'}")
+    if warnings:
+        counts.append(f"{warnings} warning{'' if warnings == 1 else 's'}")
+    other = len(diags) - errors - warnings
+    if other:
+        counts.append(f"{other} note{'' if other == 1 else 's'}")
+    lines = [f"{model_name}: {', '.join(counts)}"]
+    for d in diags[:HUMAN_VALIDATE_DIAGNOSTIC_CAP]:
+        path = str(d.get("path") or "")
+        message = str(d.get("message") or d.get("code") or "")
+        # the raw schema text repeats the path: "$.concepts[0]: property ..." -- drop the repeat
+        if path and message.startswith(f"{path}: "):
+            message = message[len(path) + 2:]
+        shown = path[2:] if path.startswith("$.") else (path if path != "$" else "(model root)")
+        lines.append("")
+        lines.append(f"{(level(d) or 'info').upper():<6} {shown}")
+        lines.append(f"  {message}")
+        if d.get("hint"):
+            lines.append(f"  hint: {d['hint']}")
+    if len(diags) > HUMAN_VALIDATE_DIAGNOSTIC_CAP:
+        lines.append("")
+        lines.append(f"... {len(diags) - HUMAN_VALIDATE_DIAGNOSTIC_CAP} more (use --json)")
+    return "\n".join(lines)
+
+
+def run_validate_semantic(model_path: Path, report_out: Path | None, *, quiet: bool = False,
+                          human: bool = False) -> int:
     """Run full structural + semantic validation via the standalone Java validator.
 
     Runs ModelValidatorMain, which runs the exact validation the generator runs -- without
@@ -10643,7 +10686,10 @@ def run_validate_semantic(model_path: Path, report_out: Path | None, *, quiet: b
 
     _capture_validation(model, report)
     if not quiet:
-        print(json.dumps(report, indent=2))
+        if human:
+            print(format_validation_human(report, model.name))
+        else:
+            print(json.dumps(report, indent=2))
         _print_boundary_limits(report)
         route = "warm" if warm_path else "gradle"
         print(f"validate: {elapsed_ms} ms ({route} path)", file=sys.stderr)
@@ -15843,6 +15889,47 @@ def _extract_json_object(text: str) -> dict | None:
     return None
 
 
+# `npdev --help` groups the subcommands by when a person needs them instead of one flat list. A
+# command in no group lands under "Advanced & internal", so a newly added subcommand is always listed.
+HELP_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Start here", ("doctor", "setup", "init", "dev", "validate", "why")),
+    ("Build & run", ("generate", "run", "test", "acceptance", "seed", "db", "engines", "capabilities",
+                     "widgets")),
+    ("Change a model safely", ("inspect", "impact", "migration", "migrate", "normalize", "add", "author",
+                               "pack", "import", "truth")),
+    ("AI", ("ai", "providers", "mcp", "review", "loop", "eval", "tester")),
+    ("Operate", ("service", "host", "package", "upgrade", "monitor", "bench", "report", "verify",
+                 "admin")),
+)
+HELP_ADVANCED_GROUP = "Advanced & internal"
+
+
+class GroupedHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """Root-parser formatter: renders the subcommand action as the HELP_GROUPS sections. Only the
+    help text changes; subcommand parsing is argparse's own."""
+
+    def _format_action(self, action: argparse.Action) -> str:
+        if not isinstance(action, argparse._SubParsersAction):
+            return super()._format_action(action)
+        helps = {a.dest: (a.help or "") for a in action._choices_actions}
+        remaining = [name for name in action.choices]
+        sections = []
+        for title, names in (*HELP_GROUPS, (HELP_ADVANCED_GROUP, ())):
+            members = [n for n in names if n in remaining] if names else list(remaining)
+            remaining = [n for n in remaining if n not in members]
+            if not members:
+                continue
+            lines = [f"{title}:"]
+            for name in members:
+                text = helps.get(name, "")
+                # long helps are cut for the overview; `npdev <command> --help` has the full text
+                if len(text) > 64:
+                    text = text[:61].rsplit(" ", 1)[0].rstrip(" ,;:-") + "..."
+                lines.append(f"  {name:<14}{text}")
+            sections.append("\n".join(lines))
+        return "\n\n".join(sections) + "\n\n"
+
+
 def build_parser() -> argparse.ArgumentParser:
     # P3 (FIRST_IMPRESSION_PLAN.md I4): the top-level command list used to show all 13 commands
     # with zero descriptions -- a newcomer could not tell which four are theirs. The epilog is the
@@ -15851,7 +15938,7 @@ def build_parser() -> argparse.ArgumentParser:
     # breaks into one paragraph.
     parser = argparse.ArgumentParser(
         prog="npdev",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=GroupedHelpFormatter,
         epilog=(
             "New here?  npdev init my-app && cd my-app && npdev run app\n"
             "           then open http://localhost:8080\n"
@@ -15860,7 +15947,8 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--version", action="store_true", help="Print the portable NPDev CLI version.")
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(
+        dest="command", metavar="<command>", title="commands, grouped by when you need them")
 
     init_parser = subparsers.add_parser(
         "init", help="Scaffold a new NPDev app directory: model, config, a real database, a README, "
@@ -16649,6 +16737,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--report",
         help="Write the typed validation report to this path (in addition to stdout). Ignored with "
              "--structural-only, which has no typed report to write.",
+    )
+    # stdout is JSON whenever it is not a terminal, so every program reading it is unaffected
+    validate_format = validate_model.add_mutually_exclusive_group()
+    validate_format.add_argument(
+        "--json", action="store_true",
+        help="Print the full JSON report (the default when stdout is not a terminal).",
+    )
+    validate_format.add_argument(
+        "--human", action="store_true",
+        help="Print a readable summary (the default when stdout is a terminal).",
     )
 
     normalize = subparsers.add_parser(
@@ -18403,6 +18501,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # `npdev validate <model.json>` is `npdev validate model <model.json>` (options included)
+    if len(argv) > 1 and argv[0] == "validate" and argv[1] not in ("model", "-h", "--help"):
+        argv.insert(1, "model")
     args = parser.parse_args(argv)
     try:
         if args.version:
@@ -18427,7 +18529,8 @@ def main(argv: list[str] | None = None) -> int:
             # errors (e.g. an invariant referencing a field that doesn't exist). --semantic is kept
             # as a no-op alias: it already asked for this, so it changes nothing.
             report_out = Path(args.report).expanduser() if args.report else None
-            return run_validate_semantic(Path(args.path).expanduser(), report_out)
+            human = args.human or (not args.json and sys.stdout.isatty())
+            return run_validate_semantic(Path(args.path).expanduser(), report_out, human=human)
         if args.command == "normalize" and args.normalize_command == "ai-model":
             write_or_print_json(normalize_ai_model(Path(args.path).expanduser()), args.output)
             return 0
