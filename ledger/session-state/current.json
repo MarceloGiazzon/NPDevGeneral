@@ -1,33 +1,24 @@
 {
-  "closedAt": "2026-10-31T04:24:10.0287883Z",
+  "closedAt": "2026-11-02T11:36:57.6987705Z",
   "branch": "main",
-  "head": "572badc2",
-  "headSubject": "feat(ui): ui.selectionTools -- open, copy and download the ticked rows of a concept's list grid (opt-in)",
-  "summary": "ui.selectionTools now ON by default (owner decision): the open / copy / download tools appear on every concept's list grid; a concept opts out with selectionTools: false, and the manifest carries the key only then (live + generator manifests). dsl-conformance-max opts StockLocation out and leaves ShelfLayout on the default. Schema (4 copies), docs, BREAKING (now says every regenerated app shows the buttons), emitter + Node tests and the browser routine updated. processTrackerForIA: owner says it is already supported there; nothing done in this repo for it.",
-  "nextStep": "Nothing pending. Optional: run scripts/quality/run-all-gates.ps1 -IncludePaperwork once to see all gates green together -- the last full run failed only on the kernel coverage floor (fixed by 3 tests, kernel re-measured 71.5024) and aiKnowledge was not rerun after that fix. Open: the first workbench-verify-routine run of this session failed once (page rendered 'undefined') and passed on rerun -- intermittent, root cause not found; the GitHub push note said the required check 'AI knowledge substrate gate' was expected, verify branch protection; commit bd92458b appeared without being made by this session.",
-  "plan": "",
+  "head": "ab213bc5",
+  "headSubject": "chore(quality): ratchet NPDevMcp coverage floor 64.32 -> 67.59 after the compact-variant tests",
+  "summary": "Calibrated the 19 KB bundle on Nemotron free (5/5, 6.5k tok/app); dropped bench-030's overlap rule (d873be2d); built F4a compact bundle (build_core_context.py --compact + scripts/policy/core-context-compact.json, 19.0 -> 14.3 KB, Haiku 12/12, 021/023/025 x3 8/9 no repair, Nemotron free 5/5 median 5.2k tok/app); MCP npdev_core_context variant=compact; NPDevMcp tests moved to NPDevMcp/tests (ratchet 64.32 -> 67.59). aiKnowledge + weeklyPaperwork gates green. All pushed to origin/main.",
+  "nextStep": "Resume the Gemini free-tier calibration when its daily quota returns: python scripts/ai/bench/run_bench.py run --provider gemini --knowledge-file D:/WorkSpace/NPDev/Build/npdev-ai/core-context/bundle-compact.json --repair-mode stateless --stop-when-stuck 3 --prompt bench-001 --prompt bench-004 --prompt bench-011 --prompt bench-021 --prompt bench-023 --run-id cal-gemini-compact --skip-done (bench-001 already passed at 4.7k tokens). F4b (trim goldens) only if a smaller model (local qwen) or Gemini exceeds ~6k tokens/app. Before any bench launch check no run_bench is alive with Get-CimInstance Win32_Process, never ps.",
+  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_AI_EFFICIENCY_PLAN_2026-10-31\\PLAN.md",
   "blocked": "",
-  "verified": "Default-on: check-dsl-coverage, twin-pair, schema-mirror OK; dsl flag tests and 2 emitter tests (Node-driven, not skipped) green; all 7 golden browser routines green (6 in the full run, workbench on rerun after one intermittent failure), selection-tools 49 steps with no declaration on ShelfLayout, a11y 0/0/0/0. Full gates not rerun after the default-on change.",
-  "dirtyCount": 15,
+  "verified": "aiKnowledge gate green (52 checks) on 2a40ddaf; weeklyPaperwork 12/12 green on d873be2d; scripts.ai.bench.test_bench 61 OK; NPDevMcp tests 75 OK (67.6 %). Haiku/Nemotron compact runs in PLAN.md. NOT run: run-all-gates.ps1 with the other three gates (generator/runtimehost/kernel) - changes touched only AI scripts, MCP server and a bench prompt. Lesson: two duplicate bench launches shared a run-id and corrupted the Gemini run; compact Gemini only 1 prompt measured.",
+  "dirtyCount": 2,
   "dirtyFiles": [
-    " M BREAKING.md",
-    " M NPDevContract/dsl/resources/Schemas/model.schema.json",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/PresentationMetadataAst.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledPresentationMetadata.java",
-    " M NPDevContract/dsl/src/main/resources/schema/model.schema.json",
-    " M NPDevContract/schemas/authoring/model.schema.json",
-    " M NPDevContract/schemas/model.schema.json",
-    " M NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java",
-    " M NPDevGenerator/generator/src/main/resources/npdev-templates/static-assets/business-ui/views/bulk-actions.js",
-    " M NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterSelectionToolsTest.java",
-    " M NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptUiManifestSupport.java",
-    " M NPDevSamples/dsl-conformance-max/Input/model.json",
-    " M NPDevSamples/scripts/browser/browser-routines/selection-tools-verify-routine.json",
-    " M docs/UI_CONTRACT.md",
-    " M scripts/quality/dsl_coverage/detectors_model.py"
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl"
   ],
   "unpushed": 0,
   "landedCommits": [
-    "572badc2 feat(ui): ui.selectionTools -- open, copy and download the ticked rows of a concept's list grid (opt-in)"
+    "ab213bc5 chore(quality): ratchet NPDevMcp coverage floor 64.32 -> 67.59 after the compact-variant tests",
+    "2a40ddaf test(mcp): cover npdev_core_context variant=compact where the ratchet measures it",
+    "205eeeb0 feat(mcp): npdev_core_context variant=compact serves the 25 % smaller bundle",
+    "2e24bd90 feat(ai): compact core-context bundle (--compact), 19.0 -> 14.3 KB, same pass rate",
+    "d873be2d test(ai-bench): drop the overlap rule from bench-030, the DSL cannot express it"
   ]
 }
