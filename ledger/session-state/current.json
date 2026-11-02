@@ -1,24 +1,17 @@
 {
-  "closedAt": "2026-11-02T11:36:57.6987705Z",
+  "closedAt": "2026-11-02T16:34:13.3374581Z",
   "branch": "main",
-  "head": "ab213bc5",
-  "headSubject": "chore(quality): ratchet NPDevMcp coverage floor 64.32 -> 67.59 after the compact-variant tests",
-  "summary": "Calibrated the 19 KB bundle on Nemotron free (5/5, 6.5k tok/app); dropped bench-030's overlap rule (d873be2d); built F4a compact bundle (build_core_context.py --compact + scripts/policy/core-context-compact.json, 19.0 -> 14.3 KB, Haiku 12/12, 021/023/025 x3 8/9 no repair, Nemotron free 5/5 median 5.2k tok/app); MCP npdev_core_context variant=compact; NPDevMcp tests moved to NPDevMcp/tests (ratchet 64.32 -> 67.59). aiKnowledge + weeklyPaperwork gates green. All pushed to origin/main.",
-  "nextStep": "Resume the Gemini free-tier calibration when its daily quota returns: python scripts/ai/bench/run_bench.py run --provider gemini --knowledge-file D:/WorkSpace/NPDev/Build/npdev-ai/core-context/bundle-compact.json --repair-mode stateless --stop-when-stuck 3 --prompt bench-001 --prompt bench-004 --prompt bench-011 --prompt bench-021 --prompt bench-023 --run-id cal-gemini-compact --skip-done (bench-001 already passed at 4.7k tokens). F4b (trim goldens) only if a smaller model (local qwen) or Gemini exceeds ~6k tokens/app. Before any bench launch check no run_bench is alive with Get-CimInstance Win32_Process, never ps.",
+  "head": "ec367077",
+  "headSubject": "chore(session): handoff after compact core-context bundle work",
+  "summary": "Gemini 3.6 Flash free with the compact bundle: 4/4 measured prompts pass (001/004/011 one-shot at 4.7-5.0k tokens, 021 one repair at 8.3k), median 4.9k tokens/app; with Nemotron 5.2k this meets the <=5k goal on both real free tiers. bench-023 hit the daily quota.",
+  "nextStep": "Optional: finish bench-023 on Gemini when quota returns (--run-id cal-gemini-compact --skip-done). Next real lever for the central goal is adoption: make the compact bundle the one external AIs receive (docs/content or npdev CLI paste command) and measure a small local model (ollama) only if the owner wants it. F4b/F5 not needed now. Always check Get-CimInstance Win32_Process for run_bench before launching a bench.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_AI_EFFICIENCY_PLAN_2026-10-31\\PLAN.md",
   "blocked": "",
-  "verified": "aiKnowledge gate green (52 checks) on 2a40ddaf; weeklyPaperwork 12/12 green on d873be2d; scripts.ai.bench.test_bench 61 OK; NPDevMcp tests 75 OK (67.6 %). Haiku/Nemotron compact runs in PLAN.md. NOT run: run-all-gates.ps1 with the other three gates (generator/runtimehost/kernel) - changes touched only AI scripts, MCP server and a bench prompt. Lesson: two duplicate bench launches shared a run-id and corrupted the Gemini run; compact Gemini only 1 prompt measured.",
-  "dirtyCount": 2,
-  "dirtyFiles": [
-    " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl"
-  ],
+  "verified": "Bench cal-gemini-compact 4/4 pass (see PLAN.md). No repo code changed since ec367077 apart from this handoff.",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "ab213bc5 chore(quality): ratchet NPDevMcp coverage floor 64.32 -> 67.59 after the compact-variant tests",
-    "2a40ddaf test(mcp): cover npdev_core_context variant=compact where the ratchet measures it",
-    "205eeeb0 feat(mcp): npdev_core_context variant=compact serves the 25 % smaller bundle",
-    "2e24bd90 feat(ai): compact core-context bundle (--compact), 19.0 -> 14.3 KB, same pass rate",
-    "d873be2d test(ai-bench): drop the overlap rule from bench-030, the DSL cannot express it"
+    "ec367077 chore(session): handoff after compact core-context bundle work"
   ]
 }
