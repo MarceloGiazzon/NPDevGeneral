@@ -91,6 +91,8 @@ def fix_model(model: Any) -> tuple[Any, list[dict]]:
     _fix_rollups(model, note)
     _fix_orchestrations(model, note)
     _fix_field_types(model, note)
+    _fix_field_derived(model, note)
+    _fix_flow_steps(model, note)
     return model, fixes
 
 
@@ -325,6 +327,10 @@ with open(Path(__file__).resolve().parent / "desire-path-aliases.json", encoding
 ROLLUP_KEY_ALIASES = _ALIASES["rollup"]["keyAliases"]
 ACTION_KEY_ALIASES = _ALIASES["orchestrationAction"]["keyAliases"]
 FIELD_TYPE_ALIASES = _ALIASES["fieldType"]["valueAliases"]
+FIELD_DERIVED_ALIASES = _ALIASES["fieldDerived"]["keyAliases"]
+FLOW_STEP_TYPE_ALIASES = _ALIASES["flowStepType"]["valueAliases"]
+FLOW_STEP_KEY_ALIASES = _ALIASES["flowStep"]["keyAliases"]
+SCOPED_STEP_TYPES = {"createConcept", "updateConcept"}
 FIELD_TYPES = {"string", "uuid", "int", "integer", "long", "decimal", "boolean", "date", "datetime",
                "enum", "reference", "object", "array", "file"}
 ROLLUP_FNS = {"count", "sum", "min", "max", "avg"}
@@ -418,6 +424,53 @@ def _fix_field_types(model: dict, note) -> None:
             if canonical:
                 field["type"] = canonical
                 note("field-type-alias", f"$.concepts[{ci}].fields[{fi}].type", written, canonical)
+
+
+def _fix_field_derived(model: dict, note) -> None:
+    """`computed` / `formula` / `calculated` -> the field's `derivedExpression` string."""
+    for ci, concept in enumerate(model.get("concepts") or []):
+        for fi, field in enumerate(concept.get("fields") or [] if isinstance(concept, dict) else []):
+            if not isinstance(field, dict) or "derivedExpression" in field:
+                continue
+            for alias in FIELD_DERIVED_ALIASES:
+                if alias not in field:
+                    continue
+                value = field[alias]
+                if isinstance(value, dict) and set(value) == {"expression"}:
+                    value = value["expression"]
+                if isinstance(value, str) and value.strip():
+                    wrote = field.pop(alias)
+                    field["derivedExpression"] = value
+                    note("field-derived-expression", f"$.concepts[{ci}].fields[{fi}].{alias}", wrote, value)
+                break
+
+
+def _fix_flow_steps(model: dict, note) -> None:
+    for fi, flow in enumerate(model.get("flows") or []):
+        if isinstance(flow, dict):
+            _fix_step_list(flow.get("steps"), f"$.flows[{fi}].steps", note)
+
+
+def _fix_step_list(steps, base: str, note) -> None:
+    if not isinstance(steps, list):
+        return
+    for si, step in enumerate(steps):
+        if not isinstance(step, dict):
+            continue
+        path = f"{base}[{si}]"
+        written = step.get("type")
+        if isinstance(written, str):
+            canonical = FLOW_STEP_TYPE_ALIASES.get(written.strip().lower())
+            if canonical and written != canonical:
+                step["type"] = canonical
+                note("flow-step-type-alias", f"{path}.type", written, canonical)
+        if step.get("type") in SCOPED_STEP_TYPES:
+            for alias, canonical in FLOW_STEP_KEY_ALIASES.items():
+                if alias in step and canonical not in step and isinstance(step[alias], str):
+                    step[canonical] = step.pop(alias)
+                    note("flow-step-scope-alias", f"{path}.{alias}", alias, canonical)
+        for nested in ("steps", "then", "else"):
+            _fix_step_list(step.get(nested), f"{path}.{nested}", note)
 
 
 def summary_lines(fixes: list[dict], limit: int = 12) -> list[str]:

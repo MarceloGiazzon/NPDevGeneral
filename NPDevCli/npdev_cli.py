@@ -921,6 +921,7 @@ def write_or_print_json(value: dict, output: str | None) -> None:
 
 
 def inspect_bonds(args: argparse.Namespace) -> None:
+    _default_model_arg(args)
     model_path = Path(args.model).expanduser().resolve()
     model = resolve_split_model(model_path)
     concepts = {concept.get("name"): concept for concept in model.get("concepts") or [] if isinstance(concept, dict)}
@@ -2252,16 +2253,19 @@ def run_init(args: argparse.Namespace) -> int:
         f"## Run it\n\n"
         f"```sh\n"
         f"cd {target.name}\n"
-        f"npdev run app\n"
+        f"npdev validate model.json\n"
+        f"npdev dev --model model.json\n"
+        f"npdev add concept <Name>\n"
         f"```\n\n"
-        f"(`npdev run app` with no flags looks for `model.json`/`config.json` in the current "
-        f"directory and generates the app into a sibling `{target.name}-app` folder.)\n\n"
+        f"(`npdev dev` generates the app into a sibling `{target.name}-app` folder, boots it and "
+        f"regenerates when you save `model.json`. `npdev run app` is the one-shot equivalent and "
+        f"needs PowerShell 7.)\n\n"
         f"Open http://localhost:8080 and paste the API key printed on first boot (it is saved in "
         f"`{target.name}-app/secrets/api-key.env`). SUPER_USER_KEY.txt is a different key, for "
         f"/control-panel.html only.\n\n"
         f"## Next\n\n"
-        f"Edit `model.json` -- add a field, add a concept -- then `npdev run app` again; it "
-        f"regenerates the SAME app in place rather than starting over. See docs/YOUR_FIRST_APP.md "
+        f"Edit `model.json` -- add a field, add a concept -- and `npdev dev` regenerates the SAME "
+        f"app in place rather than starting over. See docs/YOUR_FIRST_APP.md "
         f"for the full walkthrough, including how to declare a rename so NPDev does not mistake it "
         f"for a destructive change.\n"
     )
@@ -2352,7 +2356,8 @@ def run_init(args: argparse.Namespace) -> int:
           else "\ngit: not installed -- no repository created")
     if git_note:
         print(f"\n  ! {git_note}")
-    print(f"\nNext:\n  cd {target.name}\n  npdev run app")
+    print(f"\nNext:\n  cd {target.name}\n  npdev validate model.json\n  npdev dev --model model.json\n"
+          f"  npdev add concept <Name>\n\nWalkthrough: docs/YOUR_FIRST_APP.md")
     return 0
 
 
@@ -10594,7 +10599,7 @@ def format_validation_human(report: dict, model_name: str) -> str:
     lines = [f"{model_name}: {', '.join(counts)}"]
     for d in diags[:HUMAN_VALIDATE_DIAGNOSTIC_CAP]:
         path = str(d.get("path") or "")
-        message = str(d.get("message") or d.get("code") or "")
+        message = npdev_validation_hints.shorten_enum_message(str(d.get("message") or d.get("code") or ""))
         # the raw schema text repeats the path: "$.concepts[0]: property ..." -- drop the repeat
         if path and message.startswith(f"{path}: "):
             message = message[len(path) + 2:]
@@ -10607,7 +10612,27 @@ def format_validation_human(report: dict, model_name: str) -> str:
     if len(diags) > HUMAN_VALIDATE_DIAGNOSTIC_CAP:
         lines.append("")
         lines.append(f"... {len(diags) - HUMAN_VALIDATE_DIAGNOSTIC_CAP} more (use --json)")
+    auto = report.get("autoFixable")
+    if isinstance(auto, dict) and auto.get("count"):
+        lines.append("")
+        lines.append(f"{auto['count']} issue(s) can be fixed automatically: {auto.get('command', '')}")
     return "\n".join(lines)
+
+
+def _auto_fixable(report: dict, model_doc, model_path: Path) -> dict | None:
+    """What `npdev normalize desire-paths` would repair in a failed model, computed in memory on a
+    copy; None when nothing (the model file is never touched)."""
+    if report.get("status") != "failed" or not isinstance(model_doc, dict):
+        return None
+    try:
+        _fixed, fixes = npdev_desire_paths.fix_model(model_doc)
+    except Exception:  # a rule crashing on an odd model must never break validate
+        return None
+    if not fixes:
+        return None
+    quoted = f'"{model_path}"' if " " in str(model_path) else str(model_path)
+    return {"count": len(fixes), "rules": sorted({f["rule"] for f in fixes}),
+            "command": f"npdev normalize desire-paths {quoted} --output {quoted}"}
 
 
 def run_validate_semantic(model_path: Path, report_out: Path | None, *, quiet: bool = False,
@@ -10678,10 +10703,15 @@ def run_validate_semantic(model_path: Path, report_out: Path | None, *, quiet: b
         # a 'did you mean' hint beside each raw JSON-Schema diagnostic; also written into the report
         # file, which is what the bench repair loop and other readers of --report consume
         try:
-            npdev_validation_hints.add_hints(report, read_json(model))
+            model_doc = read_json(model)
         except (OSError, ValueError):
-            npdev_validation_hints.add_hints(report, None)
-        if written_report and any("hint" in d for d in report.get("diagnostics") or [] if isinstance(d, dict)):
+            model_doc = None
+        npdev_validation_hints.add_hints(report, model_doc)
+        auto_fixable = _auto_fixable(report, model_doc, model)
+        if auto_fixable:
+            report["autoFixable"] = auto_fixable
+        if written_report and (auto_fixable or any(
+                "hint" in d for d in report.get("diagnostics") or [] if isinstance(d, dict))):
             written_report.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
     _capture_validation(model, report)
@@ -12294,6 +12324,7 @@ def run_add_member(args: argparse.Namespace, kind: str) -> int:
     still appended to --model's OWN top-level array, never into a fragment -- authoring always
     targets the file the caller named.
     """
+    _default_model_arg(args)
     model_path = Path(args.model).expanduser().resolve()
     if not model_path.exists():
         raise CliError(f"model not found: {model_path}")
@@ -12368,8 +12399,45 @@ def run_add_member(args: argparse.Namespace, kind: str) -> int:
         "from": source_note,
         "uncomposedContributions": uncomposed,
     }
-    print(json.dumps(report, indent=2))
+    human = getattr(args, "human", False) or (not getattr(args, "json", False) and sys.stdout.isatty())
+    if human:
+        print(format_add_human(report, member))
+    else:
+        print(json.dumps(report, indent=2))
     return 0
+
+
+def _default_model_arg(args: argparse.Namespace) -> None:
+    """`add` / `inspect` take --model, defaulting to ./model.json when it exists."""
+    if getattr(args, "model", None):
+        return
+    if Path("model.json").is_file():
+        args.model = "model.json"
+        return
+    raise CliError("no model given: pass --model <path>, or run this from a directory that "
+                   "contains model.json")
+
+
+def _display_path(path: str) -> str:
+    try:
+        return Path(path).resolve().relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return path
+
+
+def format_add_human(report: dict, member: dict) -> str:
+    """Short human summary of `npdev add` (the default on a terminal; piped output stays JSON)."""
+    where = _display_path(report["modelPath"])
+    kind, name = report["kind"], report["name"]
+    names = [f.get("name") for f in (member.get("fields") or []) if isinstance(f, dict) and f.get("name")]
+    detail = f" (fields: {', '.join(names)})" if kind == "concept" and names else ""
+    if kind != "concept" and report.get("concept"):
+        detail = f" (on {report['concept']})"
+    lines = [f"Added {kind} {name}{detail} to {where}"]
+    if report.get("uncomposedContributions"):
+        lines.append(f"note: {len(report['uncomposedContributions'])} pack contribution(s) were not composed")
+    lines.append(f"Next: edit its fields, then `npdev validate {where}`, then `npdev dev --model {where}`")
+    return "\n".join(lines)
 
 
 _ACCEPTED_BOUNDARIES_CACHE: list | None = None
@@ -12771,6 +12839,7 @@ def inspect_app(args: argparse.Namespace) -> None:
     of duplicating a concept. Structural summary only; use `inspect bonds` for bond/anchor detail
     and `validate model --semantic` for correctness.
     """
+    _default_model_arg(args)
     model_path = Path(args.model).expanduser().resolve()
     uncomposed: list[str] = []
     model = resolve_split_model(model_path, collect_uncomposed=uncomposed)
@@ -12822,7 +12891,7 @@ def inspect_app(args: argparse.Namespace) -> None:
             "stepCount": len(flow.get("steps") or []),
         })
 
-    write_or_print_json(
+    report = (
         {
             "model": str(model_path),
             "namespace": model.get("namespace") or model.get("model"),
@@ -12849,9 +12918,33 @@ def inspect_app(args: argparse.Namespace) -> None:
             # EXCLUDES whatever those packs contribute. Reported, never assumed away -- an empty
             # list means "there were none", which is a different claim from "we did not look".
             "uncomposedPacks": uncomposed,
-        },
-        args.output,
+        }
     )
+    human = getattr(args, "human", False) or (
+        not getattr(args, "json", False) and not args.output and sys.stdout.isatty())
+    if human:
+        print(format_inspect_app_human(report))
+    else:
+        write_or_print_json(report, args.output)
+
+
+def format_inspect_app_human(report: dict) -> str:
+    """Compact `inspect app` view: a counts line, then one line per concept (name -- fields)."""
+    counts = report.get("counts") or {}
+    parts = [f"{n} {label}" for label, n in counts.items() if n]
+    lines = [f"{_display_path(report.get('model') or '')}: " + (", ".join(parts) or "empty model")]
+    concepts = report.get("concepts") or []
+    width = max((len(str(c.get("name"))) for c in concepts), default=0)
+    for c in concepts:
+        fields = ", ".join(str(f.get("name")) for f in c.get("fields") or [])
+        lines.append(f"  {str(c.get('name')).ljust(width)} -- {fields or '(no fields)'}")
+    for key in ("flows", "panels", "procedures", "events"):
+        found = [x.get("name") if isinstance(x, dict) else x for x in report.get(key) or []]
+        if found:
+            lines.append(f"{key}: {', '.join(str(x) for x in found)}")
+    if report.get("uncomposedPacks"):
+        lines.append(f"note: {len(report['uncomposedPacks'])} remote pack(s) not expanded (counts exclude them)")
+    return "\n".join(lines)
 
 
 # -------------------------------------------------------------------------------------------------
@@ -12960,6 +13053,7 @@ def _usage_report(report: dict, model_path_label: str, of: str | None, selected:
 
 
 def inspect_usage(args: argparse.Namespace) -> int:
+    _default_model_arg(args)
     model_path = Path(args.model).expanduser().resolve()
     report = load_model_xref(model_path)
     edges = report.get("edges") or []
@@ -17233,7 +17327,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Add a concept with a minimal valid field set (an id field + one more), or --from an exemplar.",
     )
     add_concept.add_argument("name", help="New concept name. Refused if one already exists (by this name).")
-    add_concept.add_argument("--model", required=True, help="path to the model.json to add into")
+    add_concept.add_argument("--model", default=None, help="path to the model.json to add into (default: ./model.json)")
+    _add_format_args(add_concept)
     add_concept.add_argument(
         "--from", dest="from_exemplar", default=None, metavar="SAMPLE[::MEMBER]",
         help="Copy a real concept out of NPDevSamples/<SAMPLE> (Input/model.json, or model.json for "
@@ -17246,7 +17341,8 @@ def build_parser() -> argparse.ArgumentParser:
         "panel", help="Add a panel with a concept-bound dataSource, or --from an exemplar."
     )
     add_panel.add_argument("name", help="New panel name. Refused if one already exists (by this name).")
-    add_panel.add_argument("--model", required=True, help="path to the model.json to add into")
+    add_panel.add_argument("--model", default=None, help="path to the model.json to add into (default: ./model.json)")
+    _add_format_args(add_panel)
     add_panel.add_argument(
         "--concept", default=None,
         help="Concept this panel's dataSource binds to -- must already exist in --model. Required "
@@ -17262,7 +17358,8 @@ def build_parser() -> argparse.ArgumentParser:
         "flow", help="Add a flow with a createConcept/return skeleton bound to --concept, or --from an exemplar."
     )
     add_flow.add_argument("name", help="New flow name. Refused if one already exists (by this name).")
-    add_flow.add_argument("--model", required=True, help="path to the model.json to add into")
+    add_flow.add_argument("--model", default=None, help="path to the model.json to add into (default: ./model.json)")
+    _add_format_args(add_flow)
     add_flow.add_argument(
         "--concept", default=None,
         help="Concept this flow operates on -- must already exist in --model (JsonModelParser "
@@ -17280,7 +17377,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Add a procedure with a readConcept/return skeleton bound to --concept, or --from an exemplar.",
     )
     add_procedure.add_argument("name", help="New procedure name. Refused if one already exists (by this name).")
-    add_procedure.add_argument("--model", required=True, help="path to the model.json to add into")
+    add_procedure.add_argument("--model", default=None, help="path to the model.json to add into (default: ./model.json)")
+    _add_format_args(add_procedure)
     add_procedure.add_argument(
         "--concept", default=None,
         help="Concept this procedure reads -- must already exist in --model. Required unless --from "
@@ -17340,7 +17438,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     inspect_sub = inspect.add_subparsers(dest="inspect_command")
     inspect_bonds_parser = inspect_sub.add_parser("bonds")
-    inspect_bonds_parser.add_argument("--model", required=True)
+    inspect_bonds_parser.add_argument("--model", default=None, help="path to model.json (default: ./model.json)")
     inspect_bonds_parser.add_argument("--output")
     inspect_bonds_parser.add_argument(
         "--diagram",
@@ -17348,8 +17446,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     inspect_app_parser = inspect_sub.add_parser("app")
-    inspect_app_parser.add_argument("--model", required=True)
+    inspect_app_parser.add_argument("--model", default=None, help="path to model.json (default: ./model.json)")
     inspect_app_parser.add_argument("--output")
+    _add_format_args(inspect_app_parser)
 
     # XREF-2: the "what would I break?" surface. Reads the Java-emitted reference index
     # (:NPDevContract:dsl:modelXref), never a second Python walk of the model.
@@ -17357,7 +17456,7 @@ def build_parser() -> argparse.ArgumentParser:
         "usage",
         help="Show every place a field/concept/procedure is referenced, or list unresolved references.",
     )
-    inspect_usage_parser.add_argument("--model", required=True)
+    inspect_usage_parser.add_argument("--model", default=None, help="path to model.json (default: ./model.json)")
     inspect_usage_parser.add_argument(
         "--of",
         help="What to look up: WidgetOrder.lineCount, WidgetOrder, or kind:Name "
@@ -18499,12 +18598,28 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _add_format_args(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--json", action="store_true",
+                       help="Print JSON (the default when stdout is not a terminal).")
+    group.add_argument("--human", action="store_true",
+                       help="Print a short readable summary (the default when stdout is a terminal).")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     argv = list(sys.argv[1:] if argv is None else argv)
     # `npdev validate <model.json>` is `npdev validate model <model.json>` (options included)
     if len(argv) > 1 and argv[0] == "validate" and argv[1] not in ("model", "-h", "--help"):
         argv.insert(1, "model")
+    # `npdev inspect model.json` / `npdev inspect --human` is `npdev inspect app ...`
+    if len(argv) > 1 and argv[0] == "inspect":
+        if argv[1].lower().endswith(".json"):
+            argv[1:2] = ["app", "--model", argv[1]]
+        elif argv[1].startswith("-") and argv[1] not in ("-h", "--help"):
+            argv.insert(1, "app")
+    elif argv == ["inspect"] and Path("model.json").is_file():
+        argv.append("app")
     args = parser.parse_args(argv)
     try:
         if args.version:

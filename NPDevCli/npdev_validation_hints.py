@@ -18,7 +18,14 @@ _INDEX = re.compile(r"\[\d+\]")
 _QUOTED = re.compile(r"'([^']*)'")
 _TOKEN = re.compile(r"\.?([^.\[\]]+)|\[(\d+)\]")
 
+SCHEMA_FILE = Path(__file__).resolve().parent.parent / "NPDevContract" / "schemas" / "model.schema.json"
+ALLOWED_CAP = 20
+ENUM_CAP = 12
+_ENUM_LIST = re.compile(r"\[(?:\s*\"[^\"]*\"\s*,?)+\s*\]")
+
 _table: list[dict] | None = None
+_schema: dict | None = None
+_allowed_cache: dict[str, list[str] | None] = {}
 
 
 def _objects() -> list[dict]:
@@ -45,6 +52,117 @@ def _walk(model, path: str):
         except (KeyError, IndexError, TypeError):
             return None
     return node
+
+
+def _load_schema() -> dict:
+    global _schema
+    if _schema is None:
+        try:
+            _schema = json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _schema = {}
+    return _schema
+
+
+def _deref(node, depth: int = 0):
+    """Follow local $ref pointers ("#/$defs/x") to the node they name."""
+    while isinstance(node, dict) and isinstance(node.get("$ref"), str) and depth < 20:
+        target: object = _load_schema()
+        for part in node["$ref"].lstrip("#/").split("/"):
+            target = target.get(part) if isinstance(target, dict) else None
+        node, depth = target, depth + 1
+    return node if isinstance(node, dict) else {}
+
+
+def _variants(node, depth: int = 0) -> list[dict]:
+    """The node plus every allOf/anyOf/oneOf branch under it, refs resolved."""
+    node = _deref(node)
+    out = [node]
+    if depth < 6:
+        for key in ("allOf", "anyOf", "oneOf"):
+            for branch in node.get(key) or []:
+                out += _variants(branch, depth + 1)
+        for key in ("then", "else"):  # the model's `if $ref then localModelRef else concept` item shape
+            if isinstance(node.get(key), dict):
+                out += _variants(node[key], depth + 1)
+    return out
+
+
+def _schema_at(path: str):
+    """Best-effort schema node for a `$.a[0].b` path, or None."""
+    nodes = [_load_schema()]
+    for name, idx in _TOKEN.findall(path[1:] if path.startswith("$") else path):
+        nxt = []
+        for node in nodes:
+            for v in _variants(node):
+                if idx != "":
+                    if "items" in v:
+                        nxt.append(v["items"])
+                elif name in (v.get("properties") or {}):
+                    nxt.append(v["properties"][name])
+                elif isinstance(v.get("additionalProperties"), dict):
+                    nxt.append(v["additionalProperties"])
+        if not nxt:
+            return None
+        nodes = nxt
+    return nodes[0] if len(nodes) == 1 else {"anyOf": nodes}
+
+
+def allowed_keys(path: str) -> list[str] | None:
+    """Property names the schema allows at a model path (cached), or None when it cannot tell."""
+    pattern = _INDEX.sub("[]", path)
+    if pattern not in _allowed_cache:
+        node = _schema_at(path)
+        keys: list[str] = []
+        for v in _variants(node) if node is not None else []:
+            if "$ref" in (v.get("properties") or {}) and len(v.get("properties")) == 1:
+                continue  # the localModelRef branch of `if $ref`
+            keys += [k for k in (v.get("properties") or {}) if k not in keys]
+        _allowed_cache[pattern] = keys or None
+    return _allowed_cache[pattern]
+
+
+def _capped(items: list[str], cap: int) -> str:
+    return ", ".join(items[:cap]) + (", ..." if len(items) > cap else "")
+
+
+def shorten_enum_message(message: str, cap: int = ENUM_CAP) -> str:
+    """Cap a long `["a", "b", ...]` enumeration inside a validator message to `cap` values."""
+    def cut(m: re.Match) -> str:
+        try:
+            values = json.loads(m.group(0))
+        except ValueError:
+            return m.group(0)
+        if len(values) <= cap:
+            return m.group(0)
+        return "[" + ", ".join(json.dumps(v) for v in values[:cap]) + f", ... ({len(values)} values)]"
+    return _ENUM_LIST.sub(cut, message)
+
+
+def _generic_hint(code: str, path: str, message: str, model, where: str) -> str | None:
+    if code == "json_schema_additionalproperties":
+        found = _QUOTED.search(message)
+        key = found.group(1) if found else None
+        allowed = allowed_keys(path)
+        if not key or not allowed:
+            return None
+        close = difflib.get_close_matches(key, allowed, n=1, cutoff=0.6)
+        head = f"{where}: '{key}' is not allowed here" + (f" -- did you mean '{close[0]}'?" if close else ".")
+        return f"{head} Allowed here: {_capped(allowed, ALLOWED_CAP)}."
+    if code == "json_schema_enum":
+        listed = _ENUM_LIST.search(message)
+        try:
+            values = json.loads(listed.group(0)) if listed else []
+        except ValueError:
+            values = []
+        actual = _walk(model, path) if model is not None else None
+        values = [v for v in values if isinstance(v, str)]
+        if not values or not isinstance(actual, str):
+            return None
+        close = difflib.get_close_matches(actual, values, n=1, cutoff=0.6)
+        return (f"{where}: '{actual}' is not allowed" + (f" -- did you mean '{close[0]}'?" if close else ".")
+                + f" Allowed: {_capped(values, ENUM_CAP)}.")
+    return None
 
 
 def _short(path: str) -> str:
@@ -76,20 +194,20 @@ def hint_for(diagnostic: dict, model: dict | None = None, *, example: bool = Tru
         # the enum path is the VALUE ("...fields[0].type"), which is the table entry's own path
         entry = _entry_for(path)
         if not entry or not entry.get("valueAliases"):
-            return None
+            return _generic_hint(code, path, message, model, where)
         actual = _walk(model, path) if model is not None else None
         if not isinstance(actual, str):
             found = re.search(r"(?:value|was|found) '([^']*)'", message)
             actual = found.group(1) if found else None
         right = entry["valueAliases"].get(str(actual).lower()) if actual is not None else None
         if not right:
-            return None
+            return _generic_hint(code, path, message, model, where)
         return f"{where}: '{actual}' is not {_a(entry)} -- use '{right}'." + (
             f" {entry['note']}" if example and entry.get("note") else "")
 
     entry = _entry_for(path)
     if not entry:
-        return None
+        return _generic_hint(code, path, message, model, where)
     key = _QUOTED.search(message)
     key = key.group(1) if key else None
     aliases = entry.get("keyAliases") or {}
@@ -98,6 +216,8 @@ def hint_for(diagnostic: dict, model: dict | None = None, *, example: bool = Tru
     if code == "json_schema_additionalproperties" and key:
         if key in aliases:
             head = f"{where}: '{key}' is not {_a(entry)} key -- use '{aliases[key]}'."
+        elif not canonical:
+            return _generic_hint(code, path, message, model, where)
         else:
             close = difflib.get_close_matches(key, canonical, n=1, cutoff=0.6)
             head = (f"{where}: '{key}' is not {_a(entry)} key -- did you mean '{close[0]}'?" if close

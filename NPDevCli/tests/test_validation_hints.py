@@ -82,12 +82,58 @@ class HintTests(unittest.TestCase):
         with mock.patch.object(vh, "_table", table["objects"]):
             hint = vh.hint_for(_diag("json_schema_additionalproperties", "$.widgets[2]", "property 'big' is not defined"))
             self.assertIn("'big' is not a widget key -- use 'size'", hint)
-            # the real table's rollup alias is gone with the table
-            self.assertIsNone(vh.hint_for(_diag("json_schema_additionalproperties", "$.concepts[0].rollups[0]", EXTRA)))
+            # the real table's rollup alias is gone with the table: only the generic schema hint is left
+            gone = vh.hint_for(_diag("json_schema_additionalproperties", "$.concepts[0].rollups[0]", EXTRA))
+            self.assertNotIn("use 'from'", gone)
         source = Path(vh.__file__).read_text(encoding="utf-8")
         for alias in ("'source'", "'varchar'", "'data'"):
             self.assertNotIn(alias, source)
         self.assertTrue(json.loads(vh.ALIASES_FILE.read_text(encoding="utf-8"))["objects"])
+
+
+class GenericHintTests(unittest.TestCase):
+    def test_unaliased_key_lists_allowed_keys_and_nearest(self):
+        hint = vh.hint_for(_diag("json_schema_additionalproperties", "$.concepts[0].lifecycle",
+                                 "property 'statusFeld' is not defined in the schema"))
+        self.assertIn("did you mean 'statusField'?", hint)
+        self.assertIn("Allowed here: statusField, states, transitions", hint)
+
+    def test_allowed_list_is_capped(self):
+        hint = vh.hint_for(_diag("json_schema_additionalproperties", "$.concepts[0].fields[2]",
+                                 "property 'zzzz' is not defined in the schema"))
+        self.assertNotIn("did you mean", hint)
+        self.assertTrue(hint.endswith(", ...."), hint[-40:])
+        self.assertLessEqual(hint.count(","), vh.ALLOWED_CAP + 1)
+
+    def test_table_entry_keeps_priority(self):
+        hint = vh.hint_for(_diag("json_schema_additionalproperties", "$.concepts[0].fields[2]",
+                                 "property 'computed' is not defined in the schema"))
+        self.assertIn("use 'derivedExpression'", hint)
+        self.assertNotIn("Allowed here", hint)
+
+    def test_flow_step_shapes_come_from_the_table(self):
+        hint = vh.hint_for(_diag("json_schema_additionalproperties", "$.flows[0].steps[0]",
+                                 "property 'concept' is not defined in the schema"))
+        self.assertIn("use 'scope'", hint)
+        model = {"flows": [{"steps": [{"type": "saveConcept"}]}]}
+        enum = _diag("json_schema_enum", "$.flows[0].steps[0].type", "does not have a value in the enumeration []")
+        self.assertIn("use 'createConcept'", vh.hint_for(enum, model))
+
+    def test_unknown_path_has_no_generic_hint(self):
+        self.assertIsNone(vh.hint_for(_diag("json_schema_additionalproperties", "$.nope[0]", "property 'x' is not defined")))
+
+    def test_enum_hint_and_message_are_capped(self):
+        values = [f"value{i}" for i in range(30)]
+        message = "does not have a value in the enumeration " + json.dumps(values)
+        model = {"x": "value3x"}
+        hint = vh.hint_for(_diag("json_schema_enum", "$.x", message), model)
+        self.assertIn("did you mean", hint)
+        self.assertTrue(hint.endswith("value11, ...."))
+        short = vh.shorten_enum_message(message)
+        self.assertIn("(30 values)", short)
+        self.assertNotIn("value12", short)
+        small = 'in the enumeration ["a", "b"]'
+        self.assertEqual(vh.shorten_enum_message(small), small)
 
 
 if __name__ == "__main__":

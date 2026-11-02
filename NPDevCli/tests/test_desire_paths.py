@@ -251,5 +251,53 @@ class FieldTypeTests(unittest.TestCase):
         self.assertEqual(dp.summary_lines(fixes)[0], "- $.concepts[0].fields[0].type: text -> string")
 
 
+class FieldDerivedTests(unittest.TestCase):
+    def _fields(self, *fields):
+        return _model(concepts=[{"name": "Order", "fields": list(fields)}])
+
+    def test_computed_object_string_formula_and_calculated(self):
+        model = self._fields(
+            {"name": "a", "type": "decimal", "computed": {"expression": "x * y"}},
+            {"name": "b", "type": "decimal", "formula": "x + y"},
+            {"name": "c", "type": "decimal", "calculated": "x - y"})
+        fixed, fixes = dp.fix_model(model)
+        self.assertEqual([f.get("derivedExpression") for f in fixed["concepts"][0]["fields"]],
+                         ["x * y", "x + y", "x - y"])
+        self.assertEqual(_rules(fixes), ["field-derived-expression"] * 3)
+        self.assertNotIn("computed", fixed["concepts"][0]["fields"][0])
+
+    def test_ambiguous_shapes_left_alone(self):
+        model = self._fields({"name": "a", "computed": {"expression": "x", "other": 1}},
+                             {"name": "b", "computed": 5},
+                             {"name": "c", "computed": "x", "derivedExpression": "y"})
+        fixed, fixes = dp.fix_model(model)
+        self.assertEqual(fixes, [])
+        self.assertEqual(fixed, model)
+
+
+class FlowStepTests(unittest.TestCase):
+    def test_type_aliases_and_concept_to_scope_including_nested(self):
+        model = _model(flows=[{"name": "F", "steps": [
+            {"type": "saveConcept", "concept": "Order"},
+            {"type": "conceptUpdate", "concept": "Order"},
+            {"type": "branch", "then": [{"type": "patchConcept", "concept": "Order"}]},
+            {"type": "capabilityCall", "concept": "Order"}]}])
+        fixed, fixes = dp.fix_model(model)
+        steps = fixed["flows"][0]["steps"]
+        self.assertEqual(steps[0], {"type": "createConcept", "scope": "Order"})
+        self.assertEqual(steps[1], {"type": "updateConcept", "scope": "Order"})
+        self.assertEqual(steps[2]["then"][0], {"type": "updateConcept", "scope": "Order"})
+        self.assertEqual(steps[3], {"type": "capabilityCall", "concept": "Order"})  # not a scoped step
+        self.assertIn("flow-step-type-alias", _rules(fixes))
+        self.assertIn("flow-step-scope-alias", _rules(fixes))
+
+    def test_existing_scope_wins_and_canonical_untouched(self):
+        model = _model(flows=[{"name": "F", "steps": [
+            {"type": "createConcept", "scope": "A", "concept": "B"}]}])
+        fixed, fixes = dp.fix_model(model)
+        self.assertEqual(fixes, [])
+        self.assertEqual(fixed, model)
+
+
 if __name__ == "__main__":
     unittest.main()

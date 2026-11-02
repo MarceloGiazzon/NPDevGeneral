@@ -64,6 +64,38 @@
         "ref": "reference"
       },
       "note": "Allowed: string, uuid, int, integer, long, decimal, boolean, date, datetime, enum, reference, object, array, file."
+    },
+    {
+      "id": "fieldDerived",
+      "label": "concept field",
+      "path": "$.concepts[].fields[]",
+      "keyAliases": {
+        "computed": "derivedExpression",
+        "formula": "derivedExpression",
+        "calculated": "derivedExpression"
+      },
+      "example": { "name": "total", "type": "decimal", "derivedExpression": "price * quantity" },
+      "note": "derivedExpression is a string expression over the row's other fields."
+    },
+    {
+      "id": "flowStepType",
+      "label": "flow step type",
+      "path": "$.flows[].steps[].type",
+      "valueAliases": {
+        "saveconcept": "createConcept",
+        "conceptcreate": "createConcept",
+        "conceptupdate": "updateConcept",
+        "patchconcept": "updateConcept"
+      },
+      "note": "Allowed: createConcept, updateConcept, capabilityCall, emitEvent, branch, forEach, map, return, ..."
+    },
+    {
+      "id": "flowStep",
+      "label": "flow step",
+      "path": "$.flows[].steps[]",
+      "keyAliases": { "concept": "scope" },
+      "example": { "type": "createConcept", "scope": "Order" },
+      "note": "scope names the concept a createConcept/updateConcept step writes."
     }
   ]
 }
