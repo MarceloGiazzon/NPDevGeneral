@@ -154,7 +154,7 @@
   "models": [
     { "provider": "gemini", "id": "gemini-3.6-flash", "effortLevels": [], "price": { "in": 0, "out": 0 }, "enabled": true, "status": "available" },
     { "provider": "nvidia", "id": "nvidia/nemotron-3-ultra-550b-a55b", "effortLevels": [], "price": { "in": 0, "out": 0 }, "enabled": true, "status": "available" },
-    { "provider": "groq", "id": "openai/gpt-oss-120b", "effortLevels": [], "price": { "in": 0, "out": 0 }, "enabled": true, "status": "available" },
+    { "provider": "groq", "id": "openai/gpt-oss-120b", "effortLevels": ["low", "medium", "high"], "price": { "in": 0, "out": 0 }, "enabled": true, "status": "available" },
     { "provider": "cerebras", "id": "llama-3.3-70b", "effortLevels": [], "price": { "in": 0, "out": 0 }, "enabled": true, "status": "available" },
     { "provider": "openrouter", "id": "nvidia/nemotron-3.5-lightning:free", "effortLevels": [], "price": { "in": 0, "out": 0 }, "enabled": true, "status": "available" },
     { "provider": "mistral", "id": "mistral-small-latest", "effortLevels": [], "price": { "in": 0, "out": 0 }, "enabled": true, "status": "available" },

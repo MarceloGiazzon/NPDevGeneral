@@ -449,17 +449,134 @@ def cmd_report(args) -> int:
 
 
 # ---------------------------------------------------------------------------------------------
+# matrix: every recorded run as one row source for the provider/model/effort results page
+# ---------------------------------------------------------------------------------------------
+
+PROVIDER_ALIASES = {"gemini-free-tier": "gemini", "ollama-localhost": "ollama", "claude-cli": "anthropic-cli"}
+ATTEMPT_FILE_ORDER = ("author-reply.txt", "model.json", "fixes-applied.json", "validate.log", "generate.log",
+                      "build.log", "boot.log", "acceptance.json")
+
+
+def matrix_score(card: dict) -> float | None:
+    """0-100: 60 pass rate on finished prompts, 25 first-attempt pass rate, 15 token economy (full marks at
+    or under 5k tokens per passed app, the AI-efficiency goal). None when no prompt finished."""
+    if not card.get("completedPrompts"):
+        return None
+    pass_rate = card.get("passRateCompleted") or 0.0
+    first = card.get("firstAttemptPassRate") or 0.0
+    median = card.get("medianTokensPerPassedApp")
+    economy = min(1.0, 5000 / median) if median else 0.0
+    return round(60 * pass_rate + 25 * first + 15 * economy, 1)
+
+
+def matrix_observations(summary: dict, card: dict) -> list[str]:
+    notes = []
+    knowledge = (summary.get("knowledge") or {}).get("source") or ""
+    if summary.get("ablation") not in (None, "none"):
+        notes.append(f"ablation: {summary['ablation']}")
+    if summary.get("stopReason"):
+        notes.append(f"stopped: {summary['stopReason']}")
+    if summary.get("notRun"):
+        notes.append(f"not run: {', '.join(summary['notRun'])}")
+    if card.get("infraHistogram"):
+        notes.append("infra: " + ", ".join(f"{k} x{v}" for k, v in card["infraHistogram"].items()))
+    if card.get("failingStageHistogram"):
+        notes.append("failed at: " + ", ".join(f"{k} x{v}" for k, v in card["failingStageHistogram"].items()))
+    if card.get("meanLoopsPassedPrompts"):
+        notes.append(f"repair loops per pass: {card['meanLoopsPassedPrompts']}")
+    if summary.get("repairMode"):
+        notes.append(f"repair: {summary['repairMode']}")
+    if not knowledge and summary.get("ablation", "none") == "none":
+        notes.append("knowledge not recorded (older runner)")
+    return notes
+
+
+def matrix_log(run_dir: Path, summary: dict, results: list[dict]) -> str:
+    """The whole execution as one text: settings, then per prompt its verdict and every attempt's stages
+    followed by each stage's own log file."""
+    out = [f"run {run_dir.name}  started {summary.get('startedAt')}  wall {summary.get('wallSeconds')}s",
+           "backend " + json.dumps(summary.get("backend")),
+           "knowledge " + json.dumps(summary.get("knowledge")),
+           f"maxLoops={summary.get('maxLoops')} repairMode={summary.get('repairMode')} "
+           f"stopWhenStuck={summary.get('stopWhenStuck')} autofix={summary.get('autofix')} "
+           f"stopReason={summary.get('stopReason')}", ""]
+    for r in results:
+        label = "PASS" if r["passed"] else (f"INFRA:{infra_kind_of(r)}" if outcome_of(r) == "infra"
+                                            else f"FAIL@{r.get('failingStage')}")
+        out += ["=" * 100, f"{r['promptId']}  {r.get('title', '')}  [{r.get('tier', '')}]  {label}  "
+                f"loops={r.get('loopsUsed')} tokens={r['tokens']['total']} wall={r.get('wallSeconds')}s", "=" * 100]
+        for attempt in r.get("attempts") or []:
+            n = attempt.get("attempt")
+            out.append(f"--- attempt {n}: failingStage={attempt.get('failingStage')}")
+            for st in attempt.get("stages") or []:
+                out.append(f"  {st.get('stage'):<11} {'ok ' if st.get('ok') else 'BAD'} {st.get('seconds')}s  "
+                           + (st.get("detail") or "").replace("\n", "\n              "))
+            adir = run_dir / r["promptId"] / f"attempt-{n}"
+            names = [name for name in ATTEMPT_FILE_ORDER if (adir / name).exists()]
+            names += sorted(p.name for p in adir.glob("*") if p.is_file() and p.name not in names) if adir.exists() else []
+            for name in names:
+                out += [f"  ----- attempt-{n}/{name}", (adir / name).read_text(encoding="utf-8", errors="replace").rstrip()]
+            out.append("")
+    # undecodable bytes in a stage log (a console code page) would otherwise reach the page as U+FFFD
+    return ("\n".join(out) + "\n").replace("�", "?")
+
+
+def cmd_matrix(args) -> int:
+    root = Path(args.out_root) if args.out_root else stages.build_root() / "ai-bench"
+    out_dir = Path(args.out) if args.out else root / "_matrix"
+    (out_dir / "logs").mkdir(parents=True, exist_ok=True)
+    runs = []
+    for run_dir in sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith("_")):
+        sp = run_dir / "summary.json"
+        if not sp.exists():
+            continue
+        summary = json.loads(sp.read_text(encoding="utf-8"))
+        if summary.get("dryRun"):
+            continue
+        results = load_results(run_dir)
+        if not results:
+            continue
+        card = scorecard(results)
+        backend = summary.get("backend") or {}
+        knowledge = (summary.get("knowledge") or {}).get("source") or ""
+        bundle = ("none" if summary.get("ablation") == "no-knowledge" else
+                  "compact" if "compact" in knowledge else "full" if knowledge else "unknown")
+        (out_dir / "logs" / f"{run_dir.name}.txt").write_text(matrix_log(run_dir, summary, results), encoding="utf-8")
+        runs.append({
+            "runId": run_dir.name, "startedAt": summary.get("startedAt"),
+            "provider": PROVIDER_ALIASES.get(backend.get("id"), backend.get("id")), "kind": backend.get("kind"),
+            "model": backend.get("model"), "effort": backend.get("effort") or "default", "bundle": bundle,
+            "prompts": card["prompts"], "completed": card["completedPrompts"],
+            "passed": sum(1 for r in results if r["passed"]),
+            "firstAttemptPassRate": card["firstAttemptPassRate"], "passRateCompleted": card["passRateCompleted"],
+            "medianTokensPerPassedApp": card["medianTokensPerPassedApp"], "totalTokens": card["totalTokens"],
+            "costUsd": card["totalCostUsd"], "wallSeconds": summary.get("wallSeconds"),
+            "score": matrix_score(card), "observations": matrix_observations(summary, card),
+            "log": f"logs/{run_dir.name}.txt"})
+    runs.sort(key=lambda x: x["startedAt"] or "", reverse=True)
+    data = {"generatedAt": datetime.datetime.now().isoformat(timespec="seconds"),
+            "scoreFormula": "60 x pass rate on finished prompts + 25 x first-attempt pass rate "
+                            "+ 15 x min(1, 5000 / median tokens per passed app)",
+            "runs": runs}
+    (out_dir / "matrix.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+    print(f"matrix: {len(runs)} runs -> {out_dir}")
+    return 0
+
+
+# ---------------------------------------------------------------------------------------------
 # run
 # ---------------------------------------------------------------------------------------------
 
 def build_backend(args):
+    if getattr(args, "effort", None) and not args.provider:
+        raise backends.BackendRefused("--effort needs --provider (the model's declared effort levels are checked there)")
     if args.dry_run:
         canary = REPO_ROOT / "NPDevSamples" / "npdev-canary" / "Input" / "model.json"
         return backends.FakeBackend(canary)
     if args.claude_cli:
         return backends.ClaudeCliBackend(args.claude_cli, timeout=args.model_timeout)
     if args.provider:
-        return backends.build_provider_backends(args.provider, args.allow_paid, args.model_timeout)
+        return backends.build_provider_backends(args.provider, args.allow_paid, args.model_timeout, effort=args.effort)
     if args.profile or not os.environ.get("NPDEV_BENCH_BASE_URL", "").strip():
         aicfg, _ = backends._ai_modules()
         try:
@@ -567,6 +684,9 @@ def make_parser() -> argparse.ArgumentParser:
     r.add_argument("--knowledge-file", metavar="PATH",
                    help="system-prompt knowledge from this file instead of the core-context bundle: a bundle.json "
                         "(its 'markdown' key) or any text file -- for A/B runs of knowledge variants")
+    r.add_argument("--effort", choices=["none", "low", "medium", "high", "xhigh", "max"],
+                   help="reasoning effort sent to the model (with --provider; refused unless the catalogue model "
+                        "declares that level). Recorded in summary.json as backend.effort")
     r.add_argument("--allow-paid", action="store_true",
                    help="permit a PAID provider or a base URL that is not a free/local provider in NPDevCli/ai-providers.json (paid spend: owner approval required)")
     r.add_argument("--repair-mode", choices=["history", "stateless"], default="history",
@@ -597,6 +717,10 @@ def make_parser() -> argparse.ArgumentParser:
     mine.add_argument("--json", action="store_true", help="every group as JSON")
     rep = sub.add_parser("report", help="render scorecard JSON for one or two run dirs")
     rep.add_argument("run_dirs", nargs="+")
+    mat = sub.add_parser("matrix", help="every recorded run as matrix.json + one full log per run "
+                                        "(the provider/model/effort results page reads them)")
+    mat.add_argument("--out-root", help="runs root (default <BuildRoot>/ai-bench)")
+    mat.add_argument("--out", help="output dir (default <out-root>/_matrix)")
     return p
 
 
@@ -607,6 +731,8 @@ def main(argv: list[str] | None = None) -> int:
     args = make_parser().parse_args(argv)
     if args.command == "report":
         return cmd_report(args)
+    if args.command == "matrix":
+        return cmd_matrix(args)
     if args.command == "mine":
         return cmd_mine(args)
     if args.command == "run":

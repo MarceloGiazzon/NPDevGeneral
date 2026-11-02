@@ -149,7 +149,7 @@ class ProtocolTests(Base):
 
     def test_effort_the_model_does_not_declare_is_not_sent_and_warns(self):
         opener = FakeOpener(OPENAI_OK)
-        result = self.run_complete(config(), opener, provider="groq", effort="high")
+        result = self.run_complete(config(), opener, provider="nvidia", effort="high")
         self.assertNotIn("reasoning_effort", opener.body())
         self.assertTrue(any("does not declare effort" in w for w in result["warnings"]))
 

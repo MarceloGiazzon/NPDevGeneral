@@ -67,11 +67,12 @@ class BackendInfo:
     price_in_per_1k: float = 0.0
     price_out_per_1k: float = 0.0
     allow_paid: bool = False
+    effort: str | None = None      # None = the provider's default
 
     def describe(self) -> dict:
         return {"id": self.id, "kind": self.kind, "baseUrl": self.base_url, "model": self.model,
                 "pricePer1kTokens": {"input": self.price_in_per_1k, "output": self.price_out_per_1k},
-                "allowPaid": self.allow_paid}
+                "allowPaid": self.allow_paid, "effort": self.effort}
 
     def cost(self, prompt_tokens: int, completion_tokens: int) -> float:
         return round(prompt_tokens / 1000.0 * self.price_in_per_1k
@@ -269,8 +270,9 @@ class ClientBackend:
     wire, retry, spend guard and usage log every other NPDev feature uses."""
 
     def __init__(self, config, provider_id: str, model: str, allow_paid: bool, timeout: float,
-                 backoff: tuple | None = None, key_resolver=None, opener=None):
+                 backoff: tuple | None = None, key_resolver=None, opener=None, effort: str | None = None):
         self.info = _info(config, provider_id, model, allow_paid)
+        self.info.effort = effort
         self._config, self._allow_paid, self._timeout, self._backoff = config, allow_paid, timeout, backoff
         self._key_resolver, self._opener = key_resolver, opener
 
@@ -278,6 +280,7 @@ class ClientBackend:
         _, client = _ai_modules()
         extra = {"opener": self._opener} if self._opener else {}
         result = client.complete(self._config, "", messages=messages, provider=self.info.id, model=self.info.model,
+                                 effort=self.info.effort,
                                  feature="bench", allow_paid=self._allow_paid, timeout=self._timeout,
                                  backoff=self._backoff, key_resolver=self._key_resolver, **extra)
         return _completion(result, messages)
@@ -314,11 +317,13 @@ class ProfileBackend:
         return completion
 
 
-def build_provider_backends(spec: str, allow_paid: bool, timeout: float, resolve_key=None, config=None, opener=None):
+def build_provider_backends(spec: str, allow_paid: bool, timeout: float, resolve_key=None, config=None, opener=None,
+                            effort: str | None = None):
     """Backends for `--provider`: catalogue endpoint + the key from the NPDev vault / environment
     (npdev_providers.resolve_key). One provider -> that backend; several -> FailoverBackend, and every
     backend but the last gives up after a short retry budget so failover is quick. Refusals happen here,
-    before any prompt is sent."""
+    before any prompt is sent -- including an effort the model does not declare, which the client would
+    otherwise drop silently and leave the run labelled with an effort it never used."""
     aicfg, _ = _ai_modules()
     import npdev_providers
     try:
@@ -343,6 +348,11 @@ def build_provider_backends(spec: str, allow_paid: bool, timeout: float, resolve
                 f"endpoint are billed" if entry["kind"] != "paid" else
                 f"provider {provider_id!r} is PAID; no paid API spend is permitted (owner approval required, "
                 f"then --allow-paid)")
+        if effort:
+            levels = (config.model(provider_id, model) or {}).get("effortLevels") or []
+            if effort not in levels:
+                raise BackendRefused(f"{provider_id}={model} does not declare effort {effort!r} "
+                                     f"(declared: {', '.join(levels) or 'none'})")
         key = resolve_key(provider_id)
         if entry.get("needsKey") and not key:
             raise BackendRefused(f"no key for {provider_id}: run `npdev providers add {provider_id}` "
@@ -350,7 +360,8 @@ def build_provider_backends(spec: str, allow_paid: bool, timeout: float, resolve
         last = index == len(parsed) - 1
         built.append(ClientBackend(config, provider_id, model, allow_paid, timeout,
                                    backoff=None if last else (15, 30),
-                                   key_resolver=lambda pid, account=None, _key=key: _key, opener=opener))
+                                   key_resolver=lambda pid, account=None, _key=key: _key, opener=opener,
+                                   effort=effort))
     return built[0] if len(built) == 1 else FailoverBackend(built)
 
 

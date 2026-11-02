@@ -155,11 +155,19 @@ class ProviderBackendTests(unittest.TestCase):
 
     KEYS = {"groq": "kg", "nvidia": "kn", "openrouter": "ko", "anthropic": "ka", "gemini": "kgm"}
 
-    def build(self, spec, keys=None, allow_paid=False, opener=None):
+    def build(self, spec, keys=None, allow_paid=False, opener=None, effort=None):
         keys = self.KEYS if keys is None else keys
         aicfg, _ = backends._ai_modules()
         return backends.build_provider_backends(spec, allow_paid, 5.0, resolve_key=keys.get,
-                                                config=aicfg.load(use_mine=False), opener=opener)
+                                                config=aicfg.load(use_mine=False), opener=opener, effort=effort)
+
+    def test_effort_is_recorded_and_an_undeclared_level_is_refused(self):
+        backend = self.build("groq", effort="high")
+        self.assertEqual(backend.info.describe()["effort"], "high")
+        self.assertIsNone(self.build("groq").info.describe()["effort"])
+        with self.assertRaises(backends.BackendRefused) as ctx:
+            self.build("gemini", effort="high")
+        self.assertIn("does not declare effort", str(ctx.exception))
 
     def test_spec_parses_ids_and_models(self):
         self.assertEqual(backends.parse_provider_spec("a, b=m2"), [("a", None), ("b", "m2")])
@@ -488,6 +496,37 @@ class ScorecardAndLoopTests(unittest.TestCase):
         self.assertEqual(sc["totalCostUsd"], 0.5)
         self.assertEqual(sc["costUsdPerPassedApp"], 0.25)
         self.assertEqual(sc["totalTokens"], 400)
+
+    def test_matrix_score_weights_pass_first_attempt_and_token_economy(self):
+        card = {"completedPrompts": 4, "passRateCompleted": 1.0, "firstAttemptPassRate": 0.5,
+                "medianTokensPerPassedApp": 10000}
+        self.assertEqual(run_bench.matrix_score(card), 60 + 12.5 + 7.5)
+        self.assertEqual(run_bench.matrix_score({**card, "medianTokensPerPassedApp": 4000}), 87.5)
+        self.assertIsNone(run_bench.matrix_score({"completedPrompts": 0}))
+
+    def test_matrix_writes_one_row_and_one_full_log_per_real_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for run_id, dry in (("real", False), ("dry", True)):
+                prompt_dir = root / run_id / "bench-001" / "attempt-0"
+                prompt_dir.mkdir(parents=True)
+                (prompt_dir / "boot.log").write_text("Started App �\n", encoding="utf-8")
+                result = {**self._res("bench-001", True, 0),
+                          "attempts": [{"attempt": 0, "stages": [{"stage": "boot", "ok": True, "seconds": 1.0}]}]}
+                (root / run_id / "bench-001" / "result.json").write_text(json.dumps(result), encoding="utf-8")
+                (root / run_id / "summary.json").write_text(json.dumps(
+                    {"runId": run_id, "dryRun": dry, "startedAt": "2026-11-02T10:00:00",
+                     "backend": {"id": "groq", "kind": "free", "model": "m", "effort": "high"},
+                     "knowledge": {"source": "x/bundle-compact.json"}}), encoding="utf-8")
+            out = root / "_matrix"
+            with contextlib.redirect_stdout(io.StringIO()):
+                run_bench.cmd_matrix(mock.Mock(out_root=str(root), out=str(out)))
+            runs = json.loads((out / "matrix.json").read_text(encoding="utf-8"))["runs"]
+            self.assertEqual([(r["runId"], r["effort"], r["bundle"], r["passed"]) for r in runs],
+                             [("real", "high", "compact", 1)])
+            log = (out / "logs" / "real.txt").read_text(encoding="utf-8")
+            self.assertIn("attempt-0/boot.log", log)
+            self.assertIn("Started App ?", log)
 
     def test_repair_loop_feeds_error_text_back_and_stops_on_pass(self):
         bad = "```json\n{\"concepts\": []}\n```"
