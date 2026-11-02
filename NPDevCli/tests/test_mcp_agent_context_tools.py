@@ -239,6 +239,25 @@ class CoreContextTest(unittest.TestCase):
         self.assertEqual(payload["contentSha256"], "deadbeef")
         self.assertEqual(Path(payload["bundle"]), self.bundle)
 
+    def test_compact_variant_serves_the_compact_bundle_and_builds_it_when_missing(self):
+        self._write_bundle(["docs/content/authoring-for-ai.json"])
+        compact = self.out_dir / "bundle-compact.json"
+        calls: list[list[str]] = []
+
+        def build(script, args, timeout=300):
+            calls.append(args)
+            compact.write_text(json.dumps({"bytes": 5, "markdown": "# compact context\n"}), encoding="utf-8")
+            return {"ok": True, "exitCode": 0, "stdout": "", "stderr": ""}
+
+        with patch.object(server, "run_ai_script", build):
+            first = server.tool_core_context({"variant": "compact"})
+            second = server.tool_core_context({"variant": "compact"})
+        self.assertEqual(calls, [["--compact"]])  # built once, then served from disk
+        self.assertIn("compact context", _text_of(first))
+        self.assertIn("compact context", _text_of(second))
+        # the default stays the full bundle
+        self.assertIn("core authoring context", _text_of(server.tool_core_context({})))
+
     def test_a_missing_bundle_is_stale(self):
         self.assertTrue(server._core_context_stale(self.bundle, self.manifest))
 

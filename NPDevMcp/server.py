@@ -340,6 +340,18 @@ def tool_core_context(arguments: dict[str, Any]) -> dict[str, Any]:
         if not result.get("ok") or not bundle.exists():
             detail = (result.get("stderr") or result.get("error") or result.get("stdout") or "").strip()
             return _text_error(f"could not build the core-context bundle: {detail}")
+    if arguments.get("variant") == "compact":
+        compact = out_dir / "bundle-compact.json"
+        if arguments.get("refresh") or not compact.exists() or compact.stat().st_mtime < bundle.stat().st_mtime:
+            result = run_ai_script("build_core_context.py", ["--compact"])
+            if not result.get("ok") or not compact.exists():
+                detail = (result.get("stderr") or result.get("error") or result.get("stdout") or "").strip()
+                return _text_error(f"could not build the compact core-context bundle: {detail}")
+        if arguments.get("manifest_only"):
+            manifest = json.loads(compact.read_text(encoding="utf-8"))
+            manifest.pop("markdown", None)
+            return _text(json.dumps(manifest, indent=2))
+        return _text(json.loads(compact.read_text(encoding="utf-8"))["markdown"])
     if arguments.get("manifest_only"):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         # The hash + section list alone, for a caller that only needs to decide whether the prefix
@@ -1263,6 +1275,13 @@ TOOLS: list[dict[str, Any]] = [
                     "description": "Return the manifest (contentSha256, bytes, sections) instead of the bundle text.",
                 },
                 "refresh": {"type": "boolean", "description": "Force a rebuild even if the bundle looks current."},
+                "variant": {
+                    "type": "string",
+                    "enum": ["full", "compact"],
+                    "description": "compact = ~25 % smaller (no interview/tool-loop sections, value reference limited to "
+                                   "concepts/roles/flows/events/queries/orchestrations/capabilities); same pass rate on "
+                                   "the bench. Default full.",
+                },
             },
         },
     },
