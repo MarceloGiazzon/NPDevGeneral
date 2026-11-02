@@ -520,6 +520,21 @@ textarea {
   cursor: pointer;
 }
 
+.records th.sortable:focus-visible {
+  outline: 2px solid var(--np-focus, #1769aa);
+  outline-offset: -2px;
+}
+
+.records tbody tr.clickable-row {
+  cursor: pointer;
+}
+
+.toast-message .toast-link {
+  margin-left: 4px;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
 /* R7.8: the leading bulk-select checkbox column (renderTable) -- narrow and centered so it never
    competes with .records' own table-layout:fixed column-width split across the real data fields. */
 .records .bulk-select-col {

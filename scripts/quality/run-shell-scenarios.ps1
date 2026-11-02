@@ -194,6 +194,7 @@ try {
         "longrunning-flow-verify-routine.json"    = @{ sku = "FLOW-SCENARIO-SKU-$runStamp"; name = "Flow Scenario Widget" }
         "permission-denied-verify-routine.json"   = @{ skuOwn = "DENIED-SCENARIO-OWNED-$runStamp"; skuOther = "DENIED-SCENARIO-OTHER-$runStamp" }
         "mob2-offline-write-verify-routine.json"  = @{ code = "M$runStamp" }  # the field allows 16 characters; a longer code is (correctly) refused on replay
+        "unsaved-guard-verify-routine.json"       = @{ sku = "GUARD-SCENARIO-SKU-$runStamp" }
         "selection-tools-verify-routine.json"     = @{ name1 = "SELTOOLS-$runStamp-A"; name2 = "SELTOOLS-$runStamp-B"; prefix = "SELTOOLS-$runStamp" }
     }
     $routineOrder = @(
@@ -203,6 +204,7 @@ try {
         "longrunning-flow-verify-routine.json",
         "permission-denied-verify-routine.json",
         "mob2-offline-write-verify-routine.json",
+        "unsaved-guard-verify-routine.json",
         "selection-tools-verify-routine.json"
     )
     $routineDir = Join-Path $repoRoot "NPDevSamples\scripts\browser\browser-routines"

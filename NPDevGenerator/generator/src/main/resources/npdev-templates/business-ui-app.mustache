@@ -69,6 +69,7 @@
     app: document.getElementById("app"),
     modalRoot: document.getElementById("modalRoot"),
     pickerModalRoot: document.getElementById("pickerModalRoot"),
+    confirmRoot: document.getElementById("confirmRoot"),
     printRoot: document.getElementById("printRoot"),
     status: document.createElement("div"),
     apiKey: document.createElement("input")
@@ -426,7 +427,40 @@
   // toast stack only ever carries outcomes the user asked for.
   function notify(message, error) {
     setStatus(message, error);
+    if (error && message === SESSION_EXPIRED_MESSAGE) {
+      return sessionExpiredToast();
+    }
     return toast(message, error ? "error" : "success");
+  }
+
+  // Expired session: ONE persistent error toast with a sign-in link (carrying the current page as
+  // ?next=, which login-page.html honours). Nothing is cleared, so an open form/modal keeps what
+  // the user typed while they sign in from the link.
+  const SESSION_EXPIRED_MESSAGE = "Your session expired. Sign in again.";
+
+  function sessionExpiredToast() {
+    const existing = el.toastHost.querySelector(".toast-session-expired");
+    if (existing) {
+      return existing;
+    }
+    const node = toast(SESSION_EXPIRED_MESSAGE, "error");
+    if (!node) {
+      return node;
+    }
+    node.classList.add("toast-session-expired");
+    const loginPath = state.manifest && state.manifest.auth && state.manifest.auth.loginPath;
+    if (loginPath) {
+      const link = document.createElement("a");
+      link.className = "toast-link";
+      link.textContent = "Sign in";
+      link.href = "/" + String(loginPath).replace(/^\/+/, "") + "?next="
+        + encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
+      link.target = "_blank";
+      link.rel = "noopener";
+      node.querySelector(".toast-message").appendChild(document.createTextNode(" "));
+      node.querySelector(".toast-message").appendChild(link);
+    }
+    return node;
   }
 
   // UI-8: the user's language choice (views/locale.js); empty = Auto (server uses Accept-Language).
@@ -457,7 +491,9 @@
       const response = await fetch("/api/documents/" + encodeURIComponent(doc.name) + "/render.csv", { headers: requestHeaders });
       if (!response.ok) {
         const failure = await response.text();
-        throw new Error(response.status + " " + (failure || response.statusText));
+        let parsedFailure = failure;
+        try { parsedFailure = failure ? JSON.parse(failure) : failure; } catch (ignored) { parsedFailure = failure; }
+        throw new Error(errorMessage(parsedFailure, response.status));
       }
       const blob = await response.blob();
       const link = document.createElement("a");
@@ -474,7 +510,15 @@
   }
 
   async function fetchJson(url, options) {
-    const response = await fetch(url, options || {});
+    let response;
+    try {
+      response = await fetch(url, options || {});
+    } catch (networkError) {
+      console.warn("Network failure for " + url, networkError);
+      // no `status` on purpose: the offline fallbacks (cached list, queued write, cached principal)
+      // all detect a dropped connection as `error.status === undefined`
+      throw new Error("Can't reach the server. Check your connection.");
+    }
     const contentType = response.headers.get("content-type") || "";
     const payload = contentType.includes("application/json") ? await response.json() : await response.text();
     if (!response.ok) {
@@ -490,11 +534,38 @@
     return payload;
   }
 
+  // Human text for a failed response. 401/403/404/5xx get a fixed friendly sentence; a 4xx keeps the
+  // server's own `message` when it reads as prose (not a bare code like "VALIDATION_FAILED").
+  // The raw detail goes to the console so nothing is lost for support.
   function errorMessage(payload, status) {
+    let raw = "";
+    let serverText = "";
     if (payload && typeof payload === "object") {
-      return payload.message || payload.error || payload.code || "HTTP " + status;
+      raw = String(payload.message || payload.error || payload.code || "");
+      serverText = typeof payload.message === "string" ? payload.message.trim() : "";
+    } else if (payload) {
+      raw = String(payload);
+      serverText = raw.trim();
     }
-    return payload ? String(payload) : "HTTP " + status;
+    if (status === 401) {
+      return SESSION_EXPIRED_MESSAGE;
+    }
+    if (status === 403) {
+      return "You don't have permission to do that.";
+    }
+    if (status === 404) {
+      return "That record no longer exists.";
+    }
+    if (status >= 500) {
+      console.warn("Server error HTTP " + status + ": " + raw);
+      return "The server had a problem. Try again.";
+    }
+    const looksLikeCode = /^[A-Z0-9_.:-]+$/.test(serverText) || /^<(!doctype|html)/i.test(serverText);
+    if (serverText && !looksLikeCode) {
+      return serverText;
+    }
+    console.warn("HTTP " + status + ": " + raw);
+    return raw && !/^<(!doctype|html)/i.test(raw) ? raw : "Request failed (HTTP " + status + ").";
   }
 
   // Path A P6.2: the shell reads its per-concept fields from ./generated-ui-manifest.json (static,
@@ -838,6 +909,23 @@
     return (window.NPDevShell && window.NPDevShell.offline) || OFFLINE_NOOP;
   }
 
+  // Live filtering: typing reloads the grid after a short pause (page 0). One timer per concept, so
+  // Enter / the native clear "search" event / the typing debounce coalesce into a single request.
+  const FILTER_DEBOUNCE_MS = 300;
+  const filterReloadTimers = {};
+
+  function scheduleFilterReload(concept, delay) {
+    const key = concept.conceptName || concept.displayName;
+    if (filterReloadTimers[key]) {
+      clearTimeout(filterReloadTimers[key]);
+    }
+    filterReloadTimers[key] = setTimeout(function () {
+      delete filterReloadTimers[key];
+      panelState(concept).page = 0;
+      loadPanel(concept);
+    }, delay);
+  }
+
   async function loadPanel(concept) {
     const panel = panelState(concept);
     panel.loading = true;
@@ -1023,19 +1111,42 @@
     if (!state.manifest) {
       return;
     }
-    document.title = state.manifest.appName || "Business Data";
+    const appTitle = state.manifest.appName || "Business Data";
+    document.title = appTitle;
     el.apiKeyField.style.display = (state.manifest.auth && state.manifest.auth.mode === "jwt") ? "none" : "";
+    // Live filtering re-renders the whole app while the user is typing: remember which filter box had
+    // focus (and the caret) so it can be given back after the rebuild.
+    const focused = document.activeElement;
+    const refocus = focused && focused.dataset && focused.dataset.filterKey
+      ? { key: focused.dataset.filterKey, scope: focused.dataset.filterScope || "", start: focused.selectionStart, end: focused.selectionEnd }
+      : null;
     el.app.innerHTML = "";
     el.app.appendChild(el.authBar);
     const concepts = visibleConcepts();
     const activeId = state.activeConcept ? sectionId(state.activeConcept) : null;
+    let activeTitle = "";
     concepts.forEach(function (concept, index) {
       const panel = renderPanel(concept);
       const isActive = activeId ? sectionId(concept) === activeId : index === 0;
       if (!isActive) panel.style.display = "none";
-      if (isActive) applyActiveGuidePage(concept);
+      if (isActive) { applyActiveGuidePage(concept); activeTitle = concept.displayName || ""; }
       el.app.appendChild(panel);
     });
+    if (activeTitle) {
+      document.title = activeTitle + " - " + appTitle;
+    }
+    if (refocus) {
+      const candidates = el.app.querySelectorAll("[data-filter-key]");
+      for (let i = 0; i < candidates.length; i++) {
+        const candidate = candidates[i];
+        if (candidate.dataset.filterKey === refocus.key && (candidate.dataset.filterScope || "") === refocus.scope
+            && candidate.offsetParent !== null) {
+          candidate.focus();
+          try { candidate.setSelectionRange(refocus.start, refocus.end); } catch (ignored) { /* number/date inputs */ }
+          break;
+        }
+      }
+    }
     (state.manifest.panels || []).forEach(function (panelMeta) {
       if (!evaluateWhen(panelMeta.visibility, panelContextValues())) { return; }
       const ref = panelSectionRef(panelMeta);
@@ -1245,9 +1356,43 @@
     if (whereParam) applyDrilldownFilter(target, whereParam);
   }
 
+  // Unsaved-changes guard for hash navigation: `committedHash` is the last hash the user was
+  // allowed to land on. A change away from it while a form is dirty is reverted (the revert's own
+  // hashchange is skipped), the committed section is re-shown WITHOUT re-rendering (so the form and
+  // its typed values survive), and the user is asked; on Discard the open forms are dropped and the
+  // attempted hash is applied.
+  let committedHash = window.location.hash;
+  let hashRevertPending = false;
+  let hashGuardBusy = false;
+
   function handleHashChange() {
-    const route = parseHashRoute(window.location.hash);
-    activateTarget(resolveHashTarget(window.location.hash), route.where);
+    const current = window.location.hash;
+    if (hashRevertPending && current === committedHash) {
+      hashRevertPending = false;
+      return;
+    }
+    if (current !== committedHash && anyFormDirty()) {
+      const attempted = current;
+      hashRevertPending = true;
+      const committedRoute = parseHashRoute(committedHash);
+      const committedTarget = resolveHashTarget(committedHash);
+      if (committedTarget) { showConcept(committedTarget, committedRoute.where); }
+      if (window.location.hash !== committedHash) { window.location.hash = committedHash; }
+      if (hashGuardBusy) { return; }
+      hashGuardBusy = true;
+      confirmDiscard().then(function (ok) {
+        hashGuardBusy = false;
+        if (!ok) { return; }
+        hashRevertPending = false;
+        discardOpenForms();
+        committedHash = attempted;
+        window.location.hash = attempted;
+      });
+      return;
+    }
+    committedHash = current;
+    const route = parseHashRoute(current);
+    activateTarget(resolveHashTarget(current), route.where);
   }
 
   window.addEventListener("hashchange", handleHashChange);
@@ -1307,16 +1452,21 @@
       formHeader.appendChild(formTitle);
       const backActions = document.createElement("div");
       backActions.className = "panel-actions";
+      let panelForm = null;
       backActions.appendChild(button("« Back to list", "", function () {
-        panel.formMode = null;
-        render();
+        confirmIfDirty(panelForm).then(function (ok) {
+          if (!ok) { return; }
+          panel.formMode = null;
+          render();
+        });
       }));
       formHeader.appendChild(backActions);
       section.appendChild(formHeader);
-      section.appendChild(buildFormElement(concept, panel.formMode.mode, panel.formMode.record, function () {
+      panelForm = buildFormElement(concept, panel.formMode.mode, panel.formMode.record, function () {
         panel.formMode = null;
         render();
-      }));
+      });
+      section.appendChild(panelForm);
       return section;
     }
 
@@ -1406,19 +1556,26 @@
     input.type = "search";
     input.value = panel.filter;
     input.placeholder = "Filter";
+    input.setAttribute("aria-label", "Filter " + concept.displayName);
+    input.dataset.filterKey = "__global";
+    input.dataset.filterScope = concept.conceptName || "";
     input.addEventListener("input", function () {
       panel.filter = input.value;
+      scheduleFilterReload(concept, FILTER_DEBOUNCE_MS);
+    });
+    // The native clear (x) of a type=search box fires "search" without a usable keystroke.
+    input.addEventListener("search", function () {
+      panel.filter = input.value;
+      scheduleFilterReload(concept, 0);
     });
     input.addEventListener("keydown", function (event) {
       if (event.key === "Enter") {
-        panel.page = 0;
-        loadPanel(concept);
+        scheduleFilterReload(concept, 0);
       }
     });
     filters.appendChild(input);
     filters.appendChild(button("Search", "", function () {
-      panel.page = 0;
-      loadPanel(concept);
+      scheduleFilterReload(concept, 0);
     }));
     section.appendChild(filters);
 
@@ -1499,9 +1656,8 @@
     wrap.dataset.field = field.name;
     const operators = filterOperatorsFor(field);
     const entry = columnFilterState(panel, field);
-    function apply() {
-      panel.page = 0;
-      loadPanel(concept);
+    function apply(delay) {
+      scheduleFilterReload(concept, typeof delay === "number" ? delay : 0);
     }
     if (operators.length > 1) {
       const opSelect = document.createElement("select");
@@ -1528,6 +1684,8 @@
     }
     const valueControl = buildColumnFilterValueControl(field, entry, apply);
     valueControl.setAttribute("aria-label", (field.label || field.name) + " filter value");
+    valueControl.dataset.filterKey = "col:" + field.name;
+    valueControl.dataset.filterScope = concept.conceptName || "";
     wrap.appendChild(valueControl);
     return wrap;
   }
@@ -1596,10 +1754,15 @@
     }
     input.addEventListener("input", function () {
       entry.value = input.value;
+      apply(FILTER_DEBOUNCE_MS);
+    });
+    input.addEventListener("search", function () {
+      entry.value = input.value;
+      apply(0);
     });
     input.addEventListener("keydown", function (event) {
       if (event.key === "Enter") {
-        apply();
+        apply(0);
       }
     });
     return input;
@@ -1756,10 +1919,19 @@
       th.textContent = field.label || field.name;
       if (field.sortable) {
         th.className = "sortable";
-        if (panel.sort === field.name) {
-          th.textContent += panel.direction === "desc" ? " v" : " ^";
+        // Keyboard + screen-reader contract for a sortable header: focusable, Enter/Space sorts,
+        // aria-sort says which way (or "none"), and the arrow lives in its own aria-hidden span.
+        th.tabIndex = 0;
+        const sorted = panel.sort === field.name;
+        th.setAttribute("aria-sort", sorted ? (panel.direction === "desc" ? "descending" : "ascending") : "none");
+        if (sorted) {
+          const indicator = document.createElement("span");
+          indicator.className = "sort-indicator";
+          indicator.setAttribute("aria-hidden", "true");
+          indicator.textContent = panel.direction === "desc" ? " v" : " ^";
+          th.appendChild(indicator);
         }
-        th.addEventListener("click", function () {
+        const applySort = function () {
           if (panel.sort === field.name) {
             panel.direction = panel.direction === "asc" ? "desc" : "asc";
           } else {
@@ -1768,6 +1940,13 @@
           }
           panel.page = 0;
           loadPanel(concept);
+        };
+        th.addEventListener("click", applySort);
+        th.addEventListener("keydown", function (event) {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            applySort();
+          }
         });
       }
       appendExtensionBadge(th, field.extensionSource);
@@ -1821,6 +2000,20 @@
         td.appendChild(button("Edit", "", function () { openForm(concept, "edit", record); }));
         td.appendChild(button("Delete", "danger", function () { deleteRecord(concept, record); }));
         tr.appendChild(td);
+        // Whole-row click opens the same details as the View button. Clicks on a control inside the
+        // row (buttons, links, checkboxes, inputs) and the end of a text selection are not "open".
+        tr.classList.add("clickable-row");
+        tr.addEventListener("click", function (event) {
+          const target = event.target;
+          if (target && target.closest && target.closest("button, a, input, label, select, textarea")) {
+            return;
+          }
+          const selection = window.getSelection && window.getSelection();
+          if (selection && String(selection).length > 0) {
+            return;
+          }
+          openDetails(concept, record);
+        });
         tbody.appendChild(tr);
       });
     }
@@ -2679,10 +2872,103 @@
     return concept.formPresentation === "modal";
   }
 
+  // ---- Unsaved-changes guard --------------------------------------------------------------
+  // Dirty = the user TOUCHED the form (input/change/click inside it) AND a snapshot of its named
+  // controls differs from the baseline taken when it was built. The snapshot (not an event flag
+  // alone) is used because widgets in form-inputs.js set hidden-input values in code without events;
+  // the touched flag avoids false positives from async hydration that moves a value after build.
+  const openForms = [];
+
+  function formSnapshot(form) {
+    return JSON.stringify(Array.prototype.filter.call(form.elements, function (control) {
+      return control.name;
+    }).map(function (control) {
+      return [control.name, (control.type === "checkbox" || control.type === "radio") ? control.checked : control.value];
+    }));
+  }
+
+  function registerOpenForm(form, discard) {
+    form._npdevBaseline = formSnapshot(form);
+    form._npdevTouched = false;
+    function touch(event) {
+      const t = event.target;
+      if (event.type === "click" && t && t.closest && t.closest(".form-tabs, .modal-actions")) { return; }
+      form._npdevTouched = true;
+    }
+    form.addEventListener("input", touch);
+    form.addEventListener("change", touch);
+    form.addEventListener("click", touch);
+    openForms.push({ form: form, discard: discard });
+  }
+
+  function pruneOpenForms() {
+    for (let i = openForms.length - 1; i >= 0; i--) {
+      if (!openForms[i].form.isConnected) { openForms.splice(i, 1); }
+    }
+  }
+
+  function isFormDirty(form) {
+    return !!form._npdevTouched && formSnapshot(form) !== form._npdevBaseline;
+  }
+
+  function anyFormDirty() {
+    pruneOpenForms();
+    return openForms.some(function (entry) { return isFormDirty(entry.form); });
+  }
+
+  function discardOpenForms() {
+    pruneOpenForms();
+    openForms.slice().forEach(function (entry) {
+      if (isFormDirty(entry.form)) { entry.discard(); }
+    });
+    pruneOpenForms();
+  }
+
+  window.addEventListener("beforeunload", function (event) {
+    if (anyFormDirty()) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  });
+
+  let confirmFinish = null;
+
+  // Promise<boolean>: true = discard, false = keep editing (also Escape / Close).
+  function confirmDiscard() {
+    if (!el.confirmRoot) { return Promise.resolve(window.confirm("You have unsaved changes. Discard them?")); }
+    if (confirmFinish) { confirmFinish(false); }
+    return new Promise(function (resolve) {
+      let settled = false;
+      function finish(result) {
+        if (settled) { return; }
+        settled = true;
+        confirmFinish = null;
+        closeModalIn(el.confirmRoot);
+        resolve(result);
+      }
+      confirmFinish = finish;
+      const content = document.createElement("div");
+      const message = document.createElement("p");
+      message.textContent = "You have unsaved changes. Discard them?";
+      content.appendChild(message);
+      const actions = document.createElement("div");
+      actions.className = "modal-actions";
+      actions.appendChild(button("Keep editing", "primary", function () { finish(false); }));
+      actions.appendChild(button("Discard", "", function () { finish(true); }));
+      content.appendChild(actions);
+      openModalInto(el.confirmRoot, "Unsaved changes", content, function () { finish(false); return false; });
+    });
+  }
+
+  function confirmIfDirty(form) {
+    return isFormDirty(form) ? confirmDiscard() : Promise.resolve(true);
+  }
+
   function openForm(concept, mode, record) {
     if (isModalPresentation(concept)) {
       const form = buildFormElement(concept, mode, record, closeModal);
-      openModal(mode === "edit" ? "Edit " + concept.displayName : "New " + concept.displayName, form);
+      openModal(mode === "edit" ? "Edit " + concept.displayName : "New " + concept.displayName, form,
+        function () { return confirmIfDirty(form); });
       return;
     }
     const panel = panelState(concept);
@@ -2766,7 +3052,9 @@
 
     const footer = document.createElement("div");
     footer.className = "modal-actions";
-    footer.appendChild(button("Cancel", "", onDone));
+    footer.appendChild(button("Cancel", "", function () {
+      confirmIfDirty(form).then(function (ok) { if (ok) { onDone(); } });
+    }));
     const submit = button(mode === "edit" ? "Save" : "Create", "primary", function () {});
     submit.type = "submit";
     footer.appendChild(submit);
@@ -2776,6 +3064,7 @@
       submitForm(concept, mode, record, form, onDone);
     });
     applyConditionals(concept, form, record);
+    registerOpenForm(form, onDone);
     return form;
   }
 
@@ -3089,6 +3378,9 @@
   }
 
   async function submitForm(concept, mode, record, form, onDone) {
+    if (form.dataset.inFlight === "1") {
+      return;
+    }
     const values = currentFormValues(concept, form, record);
     const payload = {};
     const bondFieldsToSync = [];
@@ -3171,6 +3463,16 @@
     }
     const id = record ? record[concept.idField] : null;
     clearFieldErrorsIn(form);
+    // Double-submit guard: while the request is in flight the submit button is disabled/busy and a
+    // re-entrant submit (Enter key, double click) is ignored; restored in finally.
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const idleLabel = submitBtn ? submitBtn.textContent : "";
+    form.dataset.inFlight = "1";
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.setAttribute("aria-busy", "true");
+      submitBtn.textContent = "Saving…";
+    }
     try {
       const saved = await fetchJson(mode === "edit" ? concept.endpointBase + "/" + encodeURIComponent(id) : concept.endpointBase, {
         method: mode === "edit" ? "PUT" : "POST",
@@ -3206,26 +3508,47 @@
       // it here, and applyFieldErrors touches no control's value. Everything typed is preserved.
       applyFieldErrors(form, fieldViolations(error.payload, error.message));
       notify(error.message, true);
+    } finally {
+      delete form.dataset.inFlight;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.removeAttribute("aria-busy");
+        submitBtn.textContent = idleLabel;
+      }
     }
+  }
+
+  // A human name for one record (delete confirmation, toast): the first of the conventional label
+  // fields (name/title/label/...) it has a value for, else its first non-empty text field, else the id.
+  function recordDisplayLabel(concept, record) {
+    const fieldList = Array.isArray(concept.fields) ? concept.fields : [];
+    const preferred = /^(displayName|name|title|label|fullName|subject|code|number|reference)$/i;
+    const candidates = fieldList.filter(function (field) { return field.name !== concept.idField; });
+    const ordered = candidates.filter(function (field) { return preferred.test(field.name); })
+      .concat(candidates.filter(function (field) { return field.type === "string" || field.type === "text"; }));
+    for (let i = 0; i < ordered.length; i++) {
+      const value = record[ordered[i].name];
+      if (value !== undefined && value !== null && typeof value !== "object" && String(value).trim() !== "") {
+        const shown = String(value).trim();
+        return shown.length > 60 ? shown.slice(0, 57) + "..." : shown;
+      }
+    }
+    return String(record[concept.idField]);
   }
 
   async function deleteRecord(concept, record) {
     const id = record[concept.idField];
-    if (!window.confirm("Delete this record?")) {
+    const label = recordDisplayLabel(concept, record);
+    if (!window.confirm("Delete \"" + label + "\"?")) {
       return;
     }
     try {
-      await fetch(concept.endpointBase + "/" + encodeURIComponent(id), {
+      // fetchJson is the one error seam: 401/403/404/5xx/network all map to the friendly sentences.
+      await fetchJson(concept.endpointBase + "/" + encodeURIComponent(id), {
         method: "DELETE",
         headers: headers()
-      }).then(async function (response) {
-        if (!response.ok) {
-          const contentType = response.headers.get("content-type") || "";
-          const payload = contentType.includes("application/json") ? await response.json() : await response.text();
-          throw new Error(errorMessage(payload, response.status));
-        }
       });
-      notify("Record deleted.", false);
+      notify("Deleted \"" + label + "\".", false);
       await reloadAfterMutation(concept);
     } catch (error) {
       notify(error.message, true);
@@ -3271,8 +3594,21 @@
     );
   }
 
-  function openModalInto(root, title, content) {
+  // Unsaved-changes guard: openModalInto takes an optional 4th `closeGuard` (a function returning a
+  // boolean or Promise<boolean>); the header Close button and Escape go through requestCloseModal,
+  // which only closes when the guard allows it. Programmatic closeModalIn() is never guarded.
+  function requestCloseModal(root) {
+    const guard = root._npdevCloseGuard;
+    if (!guard) { closeModalIn(root); return Promise.resolve(true); }
+    return Promise.resolve(guard()).then(function (ok) {
+      if (ok) { closeModalIn(root); }
+      return !!ok;
+    });
+  }
+
+  function openModalInto(root, title, content, closeGuard) {
     root.innerHTML = "";
+    root._npdevCloseGuard = closeGuard || null;
     const opener = document.activeElement;
     const backdrop = document.createElement("div");
     backdrop.className = "modal-backdrop";
@@ -3287,7 +3623,7 @@
     const heading = document.createElement("h3");
     heading.textContent = title;
     header.appendChild(heading);
-    header.appendChild(button("Close", "", function () { closeModalIn(root); }));
+    header.appendChild(button("Close", "", function () { requestCloseModal(root); }));
     modal.appendChild(header);
     modal.appendChild(content);
     backdrop.appendChild(modal);
@@ -3296,7 +3632,7 @@
     function trapKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();
-        closeModalIn(root);
+        requestCloseModal(root);
         return;
       }
       if (event.key !== "Tab") {
@@ -3333,6 +3669,7 @@
   }
 
   function closeModalIn(root) {
+    root._npdevCloseGuard = null;
     if (root._npdevModalCleanup) {
       const cleanup = root._npdevModalCleanup;
       root._npdevModalCleanup = null;
@@ -3341,8 +3678,8 @@
     root.innerHTML = "";
   }
 
-  function openModal(title, content) {
-    openModalInto(el.modalRoot, title, content);
+  function openModal(title, content, closeGuard) {
+    openModalInto(el.modalRoot, title, content, closeGuard);
   }
 
   function closeModal() {

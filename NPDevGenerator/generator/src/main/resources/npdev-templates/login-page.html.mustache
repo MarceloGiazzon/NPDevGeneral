@@ -42,6 +42,14 @@
   .banner { margin-top: 1rem; padding: .6rem .7rem; border-radius: 7px; font-size: .85rem; line-height: 1.4; }
   .banner.error { background: var(--error-bg); color: var(--error); }
   .banner.ok { background: var(--ok-bg); color: var(--ok); }
+  .pw-tools { display: flex; justify-content: space-between; align-items: center; gap: .5rem;
+              margin: -.55rem 0 .85rem; min-height: 1.75rem; }
+  .pw-caps { font-size: .8rem; color: var(--error); }
+  .pw-toggle { margin-left: auto; background: none; border: 0; padding: .25rem .45rem; border-radius: 5px;
+               color: var(--accent); font-size: .85rem; cursor: pointer; min-height: 1.75rem; }
+  .pw-toggle:hover { text-decoration: underline; }
+  .pw-toggle:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); }
+  button[aria-busy="true"] { cursor: progress; }
 </style>
 </head>
 <body>
@@ -107,6 +115,57 @@
     return value;
   }
   var returnUrl = safeNext(params.get("next"));
+  // UX: show-password toggle + Caps Lock hint for every password input, and an in-flight guard.
+  var PW_SHOW = "Show", PW_HIDE = "Hide", PW_CAPS = "Caps Lock is on";
+  function enhancePasswordField(input) {
+    var anchor = input.closest("label") || input;
+    var row = document.createElement("div");
+    row.className = "pw-tools";
+    var hint = document.createElement("span");
+    hint.className = "pw-caps";
+    hint.id = input.id + "Caps";
+    hint.setAttribute("aria-live", "polite");
+    var toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "pw-toggle";
+    toggle.id = input.id + "Toggle";
+    toggle.setAttribute("aria-controls", input.id);
+    toggle.setAttribute("aria-pressed", "false");
+    toggle.textContent = PW_SHOW;
+    toggle.addEventListener("click", function () {
+      var reveal = input.type === "password";
+      input.type = reveal ? "text" : "password";
+      toggle.textContent = reveal ? PW_HIDE : PW_SHOW;
+      toggle.setAttribute("aria-pressed", String(reveal));
+    });
+    function capsCheck(ev) {
+      var on = !!(ev.getModifierState && ev.getModifierState("CapsLock"));
+      hint.textContent = on ? PW_CAPS : "";
+    }
+    input.addEventListener("keydown", capsCheck);
+    input.addEventListener("keyup", capsCheck);
+    input.addEventListener("blur", function () { hint.textContent = ""; });
+    input.setAttribute("aria-describedby", hint.id);
+    row.appendChild(hint);
+    row.appendChild(toggle);
+    anchor.parentNode.insertBefore(row, anchor.nextSibling);
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('input[type="password"]'), enhancePasswordField);
+
+  // Double-submit guard: disable + aria-busy + busy label while a request is in flight.
+  function setBusy(btn, busy, busyText) {
+    if (busy) {
+      btn.setAttribute("data-label", btn.textContent);
+      btn.textContent = busyText;
+      btn.disabled = true;
+      btn.setAttribute("aria-busy", "true");
+    } else {
+      btn.textContent = btn.getAttribute("data-label") || btn.textContent;
+      btn.disabled = false;
+      btn.removeAttribute("aria-busy");
+    }
+  }
+
 
   var errorBanner = document.getElementById("errorBanner");
   var linkedBanner = document.getElementById("linkedBanner");
@@ -212,6 +271,10 @@
     if (!value || !mfaChallenge) { return; }
     var payload = { challenge: mfaChallenge };
     if (useRecovery) { payload.recoveryCode = value; } else { payload.code = value; }
+    var mfaBtn = mfaForm.querySelector('button[type="submit"]');
+    if (mfaBtn.disabled) { return; }
+    setBusy(mfaBtn, true, "Verifying\u2026");
+    var redirecting = false;
     fetch("/api/auth/login/mfa", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-NPDev-Request": "1" },
@@ -222,6 +285,7 @@
       if (res.status === 200 && res.body.token) {
         localStorage.setItem("npdev.shell.token", res.body.token);
         localStorage.setItem("npdev.businessUi.apiKey", res.body.token);
+        redirecting = true;
         window.location.href = safeNext(res.body.next || mfaNext || returnUrl);
       } else {
         var code = res.body && res.body.error ? res.body.error : "sign_in_failed";
@@ -231,7 +295,9 @@
         mfaCodeInput.value = "";
         showError(code);
       }
-    }).catch(function () { showError("sign_in_failed"); });
+    }).catch(function () { showError("sign_in_failed"); }).then(function () {
+      if (!redirecting) { setBusy(mfaBtn, false); }
+    });
   });
   if (params.get("mfa")) { showMfa(params.get("mfa"), returnUrl); }
   if (params.has("linked")) {
@@ -281,6 +347,9 @@
     var email = document.getElementById("signupEmail").value.trim();
     if (!email) { return; }
     errorBanner.classList.add("hidden");
+    var signupBtn = signupForm.querySelector('button[type="submit"]');
+    if (signupBtn.disabled) { return; }
+    setBusy(signupBtn, true, "Sending\u2026");
     fetch("/api/auth/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-NPDev-Request": "1" },
@@ -295,7 +364,7 @@
       } else {
         showError(res.body && res.body.error ? res.body.error : "signup_failed");
       }
-    }).catch(function () { showError("signup_failed"); });
+    }).catch(function () { showError("signup_failed"); }).then(function () { setBusy(signupBtn, false); });
   });
 
   document.getElementById("signinForm").addEventListener("submit", function (ev) {
@@ -303,6 +372,10 @@
     var username = document.getElementById("username").value.trim();
     var password = document.getElementById("password").value;
     if (!username || !password) { return; }
+    var signinBtn = document.getElementById("signinForm").querySelector('button[type="submit"]');
+    if (signinBtn.disabled) { return; }
+    setBusy(signinBtn, true, "Signing in\u2026");
+    var redirecting = false;
     fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -318,11 +391,14 @@
         // Same keys shell.js's findToken() reads: a login lands directly in the SPA session.
         localStorage.setItem("npdev.shell.token", res.body.token);
         localStorage.setItem("npdev.businessUi.apiKey", res.body.token);
+        redirecting = true;
         window.location.href = returnUrl;
       } else {
         showError(res.body && res.body.error ? res.body.error : "sign_in_failed");
       }
-    }).catch(function () { showError("sign_in_failed"); });
+    }).catch(function () { showError("sign_in_failed"); }).then(function () {
+      if (!redirecting) { setBusy(signinBtn, false); }
+    });
   });
 })();
 </script>

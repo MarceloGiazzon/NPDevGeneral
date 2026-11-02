@@ -188,6 +188,9 @@
     // baseline = the last persisted (or freshly loaded) tree; per-region revert (C8) restores from it.
     var baseline = clone(draft);
     var dirty = { header: false, sections: {} };
+    // Draft as it stood once loading (incl. the onLoad hook's patch, which marks regions dirty) finished;
+    // hasUserChanges() compares against it so the tab-close guard ignores load-time patches.
+    var loadedJson = null;
     function sectionDef(c) { return (descriptor.sections || []).filter(function (s) { return s.collection === c; })[0]; }
     // F6-5: header values for $root.<field>, the row addressed by [section, rowId, band, bandRowId, sub, subRowId],
     // and a computed column's value for that row -- evaluated here in the browser, never by a server round trip.
@@ -212,6 +215,11 @@
       headerFieldTypes: resp.headerFieldTypes || {},
       descriptor: descriptor,
       isDirty: function () { var d = dirty.header; Object.keys(dirty.sections).forEach(function (k) { d = d || dirty.sections[k]; }); return d; },
+      markLoaded: function () { loadedJson = JSON.stringify(draft); },
+      hasUserChanges: function () {
+        var d = dirty.header; Object.keys(dirty.sections).forEach(function (k) { d = d || dirty.sections[k]; });
+        return !!d && (loadedJson === null || JSON.stringify(draft) !== loadedJson);
+      },
       editHeader: function (f, v) { draft[f] = v; dirty.header = true; },
       editRow: function (c, id, f, v) { var r = findRow(c, id); if (r) { r[f] = v; dirty.sections[c] = true; } },
       editBandRow: function (c, id, b, bid, f, v) { var r = findRow(c, id); if (r) { var br = (r[b] || []).filter(function (x) { return String(x.id) === String(bid); })[0]; if (br) { br[f] = v; dirty.sections[c] = true; } } },
@@ -2011,15 +2019,23 @@
           fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate) + "/invoke/" + encodeURIComponent(onLoad),
             { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(store.toDraft()) })
             .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (patched) { if (patched) store.patch(patched); render(); refreshServerDerivedFields(); })
-            .catch(function () { render(); refreshServerDerivedFields(); });
+            .then(function (patched) { if (patched) store.patch(patched); store.markLoaded(); render(); refreshServerDerivedFields(); })
+            .catch(function () { store.markLoaded(); render(); refreshServerDerivedFields(); });
         } else {
+          store.markLoaded();
           render();
           refreshServerDerivedFields();
         }
       })
       .catch(function (e) { renderLoadError(document.getElementById("app"), "Failed to load workbench", e); });
   }
+  // Unsaved-changes guard: closing/reloading the tab with staged, uncommitted edits asks first.
+  window.addEventListener("beforeunload", function (event) {
+    if (store && EDITABLE && store.hasUserChanges()) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  });
   document.addEventListener("DOMContentLoaded", boot);
 }());
 </script>

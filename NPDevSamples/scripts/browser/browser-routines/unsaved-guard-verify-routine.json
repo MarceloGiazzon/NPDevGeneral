@@ -1,0 +1,41 @@
+{
+  "scenarioName": "shell-unsaved-guard-golden-scenario",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true, "viewport": { "width": 1400, "height": 900 } },
+  "variables": { "sku": "GUARD-SCENARIO-SKU-PLACEHOLDER" },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "valueFromCredential": "apiKey" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#concept-WidgetOrder", "state": "visible", "label": "Confirm auth landed" },
+    { "action": "goto", "url": "http://127.0.0.1:8099/npdev-business-ui/#concept-WidgetCatalogEntry", "label": "Open the WidgetCatalogEntry list" },
+    { "action": "waitForSelector", "selector": "#concept-WidgetCatalogEntry", "state": "visible" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry .panel-actions button:has-text(\"New\")", "label": "Open the create form" },
+    { "action": "waitForTimeout", "timeoutMs": 400 },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"sku\"]", "valueFromVariable": "sku", "label": "Type into the form without saving" },
+
+    { "action": "goto", "url": "http://127.0.0.1:8099/npdev-business-ui/#concept-WidgetOrder", "label": "Navigate away with unsaved changes" },
+    { "action": "waitForTimeout", "timeoutMs": 500 },
+    { "action": "assertVisible", "selector": "#confirmRoot [role=\"dialog\"]", "label": "The discard confirmation appears" },
+    { "action": "assertTextContains", "selector": "#confirmRoot", "text": "You have unsaved changes", "label": "Dialog explains the risk" },
+    { "action": "screenshot", "name": "unsaved_guard_confirm" },
+
+    { "action": "click", "selector": "#confirmRoot button:has-text(\"Keep editing\")", "label": "Choose Keep editing" },
+    { "action": "waitForTimeout", "timeoutMs": 400 },
+    { "action": "assertHidden", "selector": "#confirmRoot [role=\"dialog\"]", "label": "Dialog is gone" },
+    { "action": "assertVisible", "selector": "#concept-WidgetCatalogEntry [name=\"sku\"]", "label": "The form is still open on its own section" },
+
+    { "action": "goto", "url": "http://127.0.0.1:8099/npdev-business-ui/#concept-WidgetOrder", "label": "Navigate away again" },
+    { "action": "waitForTimeout", "timeoutMs": 500 },
+    { "action": "assertVisible", "selector": "#confirmRoot [role=\"dialog\"]", "label": "The discard confirmation appears again" },
+    { "action": "click", "selector": "#confirmRoot button:has-text(\"Discard\")", "label": "Choose Discard" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+    { "action": "assertHidden", "selector": "#confirmRoot [role=\"dialog\"]" },
+    { "action": "assertVisible", "selector": "#concept-WidgetOrder", "label": "Navigation proceeded to the attempted section" },
+    { "action": "assertHidden", "selector": "#concept-WidgetCatalogEntry [name=\"sku\"]", "label": "The abandoned form is gone" },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}

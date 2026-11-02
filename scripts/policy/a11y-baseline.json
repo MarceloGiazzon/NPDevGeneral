@@ -58,6 +58,14 @@
       "minor": 0,
       "ruleCount": 0,
       "measuredOn": "2026-10-31T02:13:55.0140784Z"
+    },
+    "unsaved-guard-verify-routine": {
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "ruleCount": 0,
+      "measuredOn": "2026-11-02T21:55:52.8799248Z"
     }
   }
 }

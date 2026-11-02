@@ -1938,6 +1938,7 @@
         try { parsed = raw ? JSON.parse(raw) : null; } catch (ignored) { parsed = raw; }
         if (!res.ok) {
           var message = (parsed && (parsed.message || parsed.error)) || (method + " " + path + " -> HTTP " + res.status);
+          if (res.status === 401) { message = "Your session expired. Sign in again."; }
           var error = new Error(message);
           error.status = res.status;
           error.body = parsed;
