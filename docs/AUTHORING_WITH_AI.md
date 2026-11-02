@@ -26,11 +26,12 @@ it by hand or use `--print` and paste the block in yourself.
 
 > I'm using NPDev, a spec-driven app generator (a JSON model → a real Spring Boot app). You have
 > MCP tools available (`npdev_validate`, `npdev_generate`, `npdev_inspect_app`, `npdev_get_schema`,
-> and others) — use them instead of guessing at the schema. Read `docs/ai/AUTHORING_FOR_AI.md` in
-> this repo first: it lists the eight questions to ask me before drafting anything, and the
-> non-negotiable rules (exactly one `id` field per concept, `renamedFrom` for any rename, start
-> with the smallest model that runs). Ask me those questions, draft `model.json`, validate it with
-> `npdev_validate` and fix every error before generating.
+> and others) — use them instead of guessing at the schema. Call `npdev_core_context` first: it
+> returns the authoring contract (the eight questions to ask me before drafting anything, and the
+> non-negotiable rules — exactly one `id` field per concept, `renamedFrom` for any rename, start
+> with the smallest model that runs), every allowed value, and verified example models. Ask me
+> those questions, draft `model.json`, validate it with `npdev_validate` and fix every error
+> before generating.
 
 **4. Use it.** Open the generated app's URL, and tell the AI what's wrong or what to add next in
 plain language — "members should have a phone number", "two bookings can't share a time slot". It

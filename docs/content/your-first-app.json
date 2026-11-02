@@ -214,7 +214,7 @@
       "blocks": [
         {
           "type": "prose",
-          "text": "\n- **Connect the two concepts** — a `Loan` linking Book and Member is the natural next step;\n  see `docs/NPDEV_CONCEPTS_DEEP_DIVE.md` on bonds.\n- **Let an AI write the model for you** — `docs/AUTHORING_WITH_AI.md` (MCP setup and the\n  chat-only fallback); `docs/ai/AUTHORING_FOR_AI.md` is the underlying contract either path follows.\n- **Edit in the browser** — the authoring editor lives at `/model-authoring.html` on your running app;\n  see `docs/GETTING_STARTED.md`.\n- **Go to production** — `docs/DEPLOYMENT.md` (Postgres, Docker, environment variables).\n- **What NPDev deliberately does not do** — `docs/ACCEPTED_BOUNDARIES.md`.\n"
+          "text": "\n- **Connect the two concepts** — a `Loan` linking Book and Member is the natural next step;\n  see `docs/NPDEV_CONCEPTS_DEEP_DIVE.md` on bonds.\n- **Let an AI write the model for you** — `docs/AUTHORING_WITH_AI.md` (MCP setup and the\n  chat-only fallback, where `./npdev ai context --output npdev-context.md` writes what to paste);\n  `docs/ai/AUTHORING_FOR_AI.md` is the underlying contract either path follows.\n- **Edit in the browser** — the authoring editor lives at `/model-authoring.html` on your running app;\n  see `docs/GETTING_STARTED.md`.\n- **Go to production** — `docs/DEPLOYMENT.md` (Postgres, Docker, environment variables).\n- **What NPDev deliberately does not do** — `docs/ACCEPTED_BOUNDARIES.md`.\n"
         }
       ]
     }
