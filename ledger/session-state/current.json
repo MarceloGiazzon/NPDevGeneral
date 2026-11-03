@@ -1,20 +1,18 @@
 {
-  "closedAt": "2026-11-03T21:15:12.0456117Z",
+  "closedAt": "2026-11-03T23:19:00.9955170Z",
   "branch": "main",
-  "head": "fd502a39",
-  "headSubject": "chore(ledger): close NAV-6 and OWN-2 as WONTFIX by owner instruction (2026-11-03)",
-  "summary": "Ran the T2 gates last session skipped (generator, runtimeHost, kernel green) plus aiKnowledge and weeklyPaperwork; fixed a DOCS-1 false positive by sharing npdev_cli.apply_argv_shorthands between main() and check-doc-references.py; closed NAV-6 and OWN-2 as WONTFIX (owner instruction, tests/outreach NOT performed); ratcheted kernel coverage floor; installed tauri-cli 2.12.4, built the unsigned Manager 0.13.0 NSIS installer and installed it.",
-  "nextStep": "No ledger items are open. First check the GitHub CI run for fd502a39 (AI knowledge substrate gate): it is the first full gate on the apply_argv_shorthands refactor in NPDevCli/npdev_cli.py, so if it is red fix that. Then launch the installed Manager (C:\\Users\\dev1m\\AppData\\Local\\NPDev Manager\\npdev-manager.exe, 0.13.0) and eyeball Browse themes / Share this theme -- the app was never launched this session. After that, a native Portuguese read of NPDevManager/ui/i18n/pt.json, or pick new engineering work.",
+  "head": "7ee0ea97",
+  "headSubject": "fix(ci): two reds left by the themes day -- test_jobs launcher under CI=true, portable-tooling drive-letter fixtures",
+  "summary": "Owner chose open source/free for npdev-themes: MIT LICENSE + README Licence section pushed there (70a00a8), THM-10 note updated. Found CI red on main since ~4d280d9f (not the argv-shorthands refactor): fixed test_jobs launcher under CI=true and 6 drive-letter fixtures in run-portable-tooling-check.ps1 (7ee0ea97). Launched installed Manager 0.13.0 and drove Browse themes by Win32 clicks: live catalogue, preview, sha256, auto-revert all work.",
+  "nextStep": "No ledger items are open and CI is green. Optional polish found while eyeballing the Manager in Portuguese: (1) theme card descriptions and 'Disable'/'Get a key' on the AI providers screen are English inside the pt UI, (2) preview message says 'Visualizando Winter' while the list says 'Inverno', (3) AI providers screen has a retro neon-green look unlike the other screens. Then the owner's native Portuguese read of NPDevManager/ui/i18n/pt.json, or pick new engineering work. Share this theme was never clicked on screen (needs Manter on a catalogue theme, then Remover).",
   "plan": "",
-  "blocked": "npdev-themes LICENSE choice (owner); Gemini bench quota",
-  "verified": "generator 205s, runtimeHost 1068s, kernel 476s: passed. aiKnowledge 1634s: passed, but it ran BEFORE the apply_argv_shorthands refactor. weeklyPaperwork: failed on DOCS-1, passed after the fix. test_cli_usability 16/16. Installer built (SHA-256 4797A0E4...483B, unsigned) and installed; registry shows 0.13.0. NOT verified: aiKnowledge after the refactor, the installed app's UI, GitHub CI.",
+  "blocked": "Gemini bench quota (external)",
+  "verified": "GitHub CI on 7ee0ea97: AI Knowledge Gate, NPDev CI Validation, Security scan, Identity journeys, F6 showcase, Engine support all success (incl. first full gate after the apply_argv_shorthands refactor). Local: test_jobs 25/25 OK with and without CI=true; portable-tooling drive-letter count 0, check-allowlist-citations 0 blocking. Manager 0.13.0 manual check of launch, Browse themes, preview and undo. NOT run: local T2 gates after these small changes; Share this theme on screen.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "fd502a39 chore(ledger): close NAV-6 and OWN-2 as WONTFIX by owner instruction (2026-11-03)",
-    "215834cd fix(docs-check): DOCS-1 applies the CLI's own argv shorthands before walking the argparse tree",
-    "cf9cd333 chore(quality): ratchet kernel coverage floor 71.5298 -> 71.5342",
-    "4d280d9f chore(handoff): session close, THM-10 done"
+    "7ee0ea97 fix(ci): two reds left by the themes day -- test_jobs launcher under CI=true, portable-tooling drive-letter fixtures",
+    "de7b9f91 chore(handoff): session close, T2 gates green, NAV-6/OWN-2 closed, Manager 0.13.0 installed"
   ]
 }
