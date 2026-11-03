@@ -357,7 +357,9 @@ if (-not $overallFailed) {
     $appGradlew = Get-NPDevGradleWrapperExecutable $appRoot
     $bootStdout = Join-Path $appRoot "scale-proof-boot.stdout.log"
     $bootStderr = Join-Path $appRoot "scale-proof-boot.stderr.log"
-    $bootArgs = @("--no-daemon", "bootRun", ('--args="--spring.profiles.active=dev,trial --server.port=' + $Port + '"'))
+    # Tags the single-use GradleDaemon `gradlew --no-daemon` forks, so it can be stopped after its parent died.
+    $runMarker = New-NPDevRunMarker "scale-proof"
+    $bootArgs = @("--no-daemon") + (New-NPDevGradleRunMarkerArgs -AppRoot $appRoot -Marker $runMarker) + @("bootRun", ('--args="--spring.profiles.active=dev,trial --server.port=' + $Port + '"'))
     $process = $null
     $bootOk = $false
     $firstRequestOk = $false
@@ -455,6 +457,7 @@ if (-not $overallFailed) {
         if ($null -ne $process -and -not $process.HasExited) {
             Stop-ProcessTree -RootProcessId $process.Id
         }
+        Stop-NPDevMarkedProcesses -Marker $runMarker
     }
     $phases.boot = New-Phase -Status ($(if ($bootOk) { "passed" } else { "failed" })) -DurationMs $bootSw.ElapsedMilliseconds -Message $healthUri
     if (-not $bootOk) {

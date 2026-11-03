@@ -113,6 +113,8 @@ $sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId $SampleId
 $config = Read-SampleConfig -Sample $sample
 if ($Port -le 0) { $Port = Get-ConfigInt -Config $config -Path @("runtime", "serverPort") -Fallback 8190 }
 $appRoot = $sample.AppRoot
+# Tags the single-use GradleDaemon `gradlew --no-daemon` forks, so it can be stopped after its parent died.
+$runMarker = New-NPDevRunMarker "journeys"
 $profiles = Get-ConfigString -Config $config -Path @("runtime", "springProfile") -Fallback "dev,trial"
 
 foreach ($needed in @($Port, $SmtpPort)) {
@@ -133,7 +135,7 @@ Ensure-File -PathValue $gradlew -Label "Generated app Gradle wrapper"
 Write-Section "Building $SampleId"
 $buildOut = Join-Path $appRoot "journeys-build.stdout.log"
 $buildErr = Join-Path $appRoot "journeys-build.stderr.log"
-$build = Start-Process -FilePath $gradlew -ArgumentList @("--no-daemon", "build", "-x", "test", "--console=plain") -WorkingDirectory $appRoot -NoNewWindow -Wait -PassThru -RedirectStandardOutput $buildOut -RedirectStandardError $buildErr
+$build = Start-Process -FilePath $gradlew -ArgumentList (@("--no-daemon") + (New-NPDevGradleRunMarkerArgs -AppRoot $appRoot -Marker $runMarker) + @("build", "-x", "test", "--console=plain")) -WorkingDirectory $appRoot -NoNewWindow -Wait -PassThru -RedirectStandardOutput $buildOut -RedirectStandardError $buildErr
 $report.stages.build = if ($build.ExitCode -eq 0) { "passed" } else { "failed (exit $($build.ExitCode); see $buildOut)" }
 Write-JsonReport
 if ($build.ExitCode -ne 0) { throw "Build failed for $SampleId -- see $buildOut." }
@@ -192,7 +194,7 @@ try {
     Write-Section "Booting $SampleId on port $Port"
     $bootOut = Join-Path $appRoot "journeys-boot.stdout.log"
     $bootErr = Join-Path $appRoot "journeys-boot.stderr.log"
-    $app = Start-Process -FilePath $gradlew -ArgumentList @("--no-daemon", "bootRun", ('--args="--spring.profiles.active=' + $profiles + ' --server.port=' + $Port + '"')) -WorkingDirectory $appRoot -NoNewWindow -PassThru -RedirectStandardOutput $bootOut -RedirectStandardError $bootErr
+    $app = Start-Process -FilePath $gradlew -ArgumentList (@("--no-daemon") + (New-NPDevGradleRunMarkerArgs -AppRoot $appRoot -Marker $runMarker) + @("bootRun", ('--args="--spring.profiles.active=' + $profiles + ' --server.port=' + $Port + '"'))) -WorkingDirectory $appRoot -NoNewWindow -PassThru -RedirectStandardOutput $bootOut -RedirectStandardError $bootErr
 
     $baseUrl = "http://127.0.0.1:$Port"
     $deadline = (Get-Date).AddSeconds($BootTimeoutSeconds)
@@ -308,6 +310,7 @@ finally {
     foreach ($key in $savedEnv.Keys) { [Environment]::SetEnvironmentVariable($key, $savedEnv[$key]) }
     if ($null -ne $app -and -not $app.HasExited) { Stop-ProcessTree -RootProcessId $app.Id }
     if ($null -ne $sink -and -not $sink.HasExited) { Stop-ProcessTree -RootProcessId $sink.Id }
+    Stop-NPDevMarkedProcesses -Marker $runMarker
 }
 
 if ($report.status -ne "passed") { exit 1 }

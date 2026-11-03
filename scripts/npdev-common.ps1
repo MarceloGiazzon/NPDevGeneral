@@ -361,6 +361,38 @@ function Get-NPDevProcessIdsByCommandLineMarker([string]$Marker) {
     return @($ids)
 }
 
+# A fresh per-run marker for New-NPDevGradleRunMarkerArgs / Stop-NPDevMarkedProcesses.
+function New-NPDevRunMarker([string]$Label = "run") {
+    return "npdev.runMarker=$Label-" + [guid]::NewGuid().ToString("N")
+}
+
+# Extra gradlew arguments that tag a `--no-daemon` run. `gradlew --no-daemon` forks a single-use
+# GradleDaemon (the app's org.gradle.jvmargs differ from the client's) that can outlive its dead parent,
+# so a descendant-tree kill misses it and it leaks -- and keeps any caller capturing the output blocked.
+# Re-passing the app's own jvmargs plus -D<Marker> puts the marker on the daemon's command line, so
+# Stop-NPDevMarkedProcesses can stop exactly it. Returns @() when the app declares no jvmargs.
+function New-NPDevGradleRunMarkerArgs([string]$AppRoot, [string]$Marker) {
+    $gradlePropertiesPath = Join-Path $AppRoot "gradle.properties"
+    if (-not (Test-Path -LiteralPath $gradlePropertiesPath)) { return @() }
+    $jvmArgsLine = Get-Content -LiteralPath $gradlePropertiesPath | Where-Object { $_ -match '^\s*org\.gradle\.jvmargs\s*=' } | Select-Object -Last 1
+    if (-not $jvmArgsLine) { return @() }
+    $appJvmArgs = ($jvmArgsLine -replace '^\s*org\.gradle\.jvmargs\s*=\s*', '').Trim()
+    return @('"-Dorg.gradle.jvmargs=' + $appJvmArgs + ' -D' + $Marker + '"')
+}
+
+# Stops every live process whose command line carries Marker, and their descendants (leaves first).
+# Only ever reaches processes this run tagged, never one it did not start.
+function Stop-NPDevMarkedProcesses([string]$Marker) {
+    foreach ($markedId in @(Get-NPDevProcessIdsByCommandLineMarker -Marker $Marker)) {
+        if ($markedId -eq $PID) { continue }
+        $ids = @(Get-NPDevDescendantProcessIds -RootProcessId $markedId)
+        [array]::Reverse($ids)
+        foreach ($id in ($ids + @($markedId))) {
+            if ($id -ne $PID) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
+        }
+    }
+}
+
 # PIDs of processes LISTENING on a TCP port. Windows: Get-NetTCPConnection. Non-Windows: lsof, else
 # `ss -ltnp`; returns an empty list when neither tool is installed (use Test-NPDevPortFree to learn
 # whether the port is taken without knowing who holds it).

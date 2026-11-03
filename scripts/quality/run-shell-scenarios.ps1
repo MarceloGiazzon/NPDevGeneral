@@ -127,26 +127,9 @@ Ensure-NpdevSampleApiKey -AppRoot $appRootFull
 $gradlew = Get-NPDevGradleWrapperExecutable $appRootFull
 Ensure-File -PathValue $gradlew -Label "Generated app Gradle wrapper"
 
-# `gradlew --no-daemon` forks a single-use GradleDaemon (the app's org.gradle.jvmargs differ from the
-# client's) that can outlive its dead parent, so Stop-ProcessTree misses it and it leaks -- and keeps
-# any caller capturing this script's output blocked. Re-pass the app's own jvmargs plus a per-run
-# marker, so the daemon's command line names this run and the finally block can stop exactly it.
-$runMarker = "npdev.runMarker=shell-scenarios-" + [guid]::NewGuid().ToString("N")
-$gradleMarkerArgs = @()
-$gradlePropertiesPath = Join-Path $appRootFull "gradle.properties"
-if (Test-Path -LiteralPath $gradlePropertiesPath) {
-    $jvmArgsLine = Get-Content -LiteralPath $gradlePropertiesPath | Where-Object { $_ -match '^\s*org\.gradle\.jvmargs\s*=' } | Select-Object -Last 1
-    if ($jvmArgsLine) {
-        $appJvmArgs = ($jvmArgsLine -replace '^\s*org\.gradle\.jvmargs\s*=\s*', '').Trim()
-        $gradleMarkerArgs = @('"-Dorg.gradle.jvmargs=' + $appJvmArgs + ' -D' + $runMarker + '"')
-    }
-}
-
-function Stop-MarkedProcesses {
-    foreach ($markedId in @(Get-NPDevProcessIdsByCommandLineMarker -Marker $runMarker)) {
-        if ($markedId -ne $PID) { Stop-ProcessTree -RootProcessId $markedId }
-    }
-}
+# Tag the forked single-use GradleDaemon so the finally block can stop it even after its parent died.
+$runMarker = New-NPDevRunMarker "shell-scenarios"
+$gradleMarkerArgs = New-NPDevGradleRunMarkerArgs -AppRoot $appRootFull -Marker $runMarker
 
 if ($ReuseBuild) {
     $report.build = New-StageResult -Status "skipped" -Message "ReuseBuild."
@@ -332,7 +315,7 @@ finally {
     if ($null -ne $process -and -not $process.HasExited) {
         Stop-ProcessTree -RootProcessId $process.Id
     }
-    Stop-MarkedProcesses
+    Stop-NPDevMarkedProcesses -Marker $runMarker
 }
 
 if ($report.status -ne "passed") { exit 1 }

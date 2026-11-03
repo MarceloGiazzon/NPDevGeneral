@@ -185,7 +185,7 @@ function Invoke-SampleGenerateAndBuild {
     Write-Section "Building $SampleId"
     $buildOut = Join-Path $appRoot "behavior-probes-build$StageSuffix.stdout.log"
     $buildErr = Join-Path $appRoot "behavior-probes-build$StageSuffix.stderr.log"
-    $build = Start-Process -FilePath $script:gradlew -ArgumentList @("--no-daemon", "build", "-x", "test", "--console=plain") -WorkingDirectory $appRoot -NoNewWindow -Wait -PassThru -RedirectStandardOutput $buildOut -RedirectStandardError $buildErr
+    $build = Start-Process -FilePath $script:gradlew -ArgumentList (@("--no-daemon") + (New-NPDevGradleRunMarkerArgs -AppRoot $appRoot -Marker $runMarker) + @("build", "-x", "test", "--console=plain")) -WorkingDirectory $appRoot -NoNewWindow -Wait -PassThru -RedirectStandardOutput $buildOut -RedirectStandardError $buildErr
     $report.stages["build$StageSuffix"] = if ($build.ExitCode -eq 0) { "passed" } else { "failed (exit $($build.ExitCode); see $buildOut)" }
     Write-JsonReport
     if ($build.ExitCode -ne 0) { throw "Build failed for $SampleId -- see $buildOut." }
@@ -200,7 +200,7 @@ function Start-ProbeApp {
     $bootErr = Join-Path $appRoot "behavior-probes-boot$StageSuffix.stderr.log"
     $bootArgsLine = "--server.port=$Port"
     if ($LiveFieldVariant) { $bootArgsLine += " --npdev.runtime.hotswap.new-concept-provisioning-enabled=true" }
-    $script:app = Start-Process -FilePath $gradlew -ArgumentList @("--no-daemon", "bootRun", ('--args="' + $bootArgsLine + '"')) -WorkingDirectory $appRoot -NoNewWindow -PassThru -RedirectStandardOutput $bootOut -RedirectStandardError $bootErr
+    $script:app = Start-Process -FilePath $gradlew -ArgumentList (@("--no-daemon") + (New-NPDevGradleRunMarkerArgs -AppRoot $appRoot -Marker $runMarker) + @("bootRun", ('--args="' + $bootArgsLine + '"'))) -WorkingDirectory $appRoot -NoNewWindow -PassThru -RedirectStandardOutput $bootOut -RedirectStandardError $bootErr
 
     $deadline = (Get-Date).AddSeconds($BootTimeoutSeconds)
     $healthy = $false
@@ -221,6 +221,8 @@ function Start-ProbeApp {
 }
 
 $baseUrl = "http://127.0.0.1:$Port"
+# Tags the single-use GradleDaemon `gradlew --no-daemon` forks, so it can be stopped after its parent died.
+$runMarker = New-NPDevRunMarker "behavior-probes"
 if (-not $ReuseBuild) {
     Invoke-SampleGenerateAndBuild
 }
@@ -278,6 +280,7 @@ try {
         $report.stages.beforeRestart = "passed"
 
         Stop-ProcessTree -RootProcessId $app.Id
+        Stop-NPDevMarkedProcesses -Marker $runMarker
         $portDeadline = (Get-Date).AddSeconds(60)
         while (-not (Test-PortFree -PortNumber $Port) -and (Get-Date) -lt $portDeadline) { Start-Sleep -Seconds 1 }
         if (-not (Test-PortFree -PortNumber $Port)) { throw "Restart probes: port $Port still taken 60 s after stopping boot 1." }
@@ -318,6 +321,7 @@ try {
 }
 finally {
     if ($null -ne $app -and -not $app.HasExited) { Stop-ProcessTree -RootProcessId $app.Id }
+    Stop-NPDevMarkedProcesses -Marker $runMarker
 }
 
 if ($report.status -ne "passed") { exit 1 }

@@ -69,6 +69,9 @@ function Get-DescendantProcessIds {
     return @($descendants)
 }
 
+# For New-NPDevRunMarker / New-NPDevGradleRunMarkerArgs / Stop-NPDevMarkedProcesses.
+. (Join-Path $PSScriptRoot "..\npdev-common.ps1")
+
 function Stop-ProcessTree {
     param([int]$RootProcessId)
     $ids = @((Get-DescendantProcessIds -RootProcessId $RootProcessId) | Select-Object -Unique)
@@ -249,7 +252,9 @@ $bootPropertyArgs = "--spring.profiles.active=$Profiles --server.port=$Port"
 if (-not [string]::IsNullOrWhiteSpace($AcceptanceScenariosPath)) {
     $bootPropertyArgs += " --npdev.runtime.plugin-timeout-ms=5000"
 }
-$bootArgs = @("--no-daemon", "bootRun", ('--args="' + $bootPropertyArgs + '"'))
+# Tags the single-use GradleDaemon `gradlew --no-daemon` forks, so it can be stopped after its parent died.
+$runMarker = New-NPDevRunMarker "ai-beta-app-smoke"
+$bootArgs = @("--no-daemon") + (New-NPDevGradleRunMarkerArgs -AppRoot $appRootFull -Marker $runMarker) + @("bootRun", ('--args="' + $bootPropertyArgs + '"'))
 $process = $null
 try {
     $process = Start-Process -FilePath $gradlew -ArgumentList $bootArgs -WorkingDirectory $appRootFull -NoNewWindow -PassThru -RedirectStandardOutput $bootStdout -RedirectStandardError $bootStderr
@@ -328,6 +333,7 @@ finally {
     if ($null -ne $process -and -not $process.HasExited) {
         Stop-ProcessTree -RootProcessId $process.Id
     }
+    Stop-NPDevMarkedProcesses -Marker $runMarker
     if ($null -ne $report.boot) {
         $report.boot.status = "stopped"
         $report.boot.message = "Generated app process stopped after verification."

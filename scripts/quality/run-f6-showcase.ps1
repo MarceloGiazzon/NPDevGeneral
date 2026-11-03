@@ -120,7 +120,10 @@ try {
     $gradlew = Get-NPDevGradleWrapperExecutable $appRoot
     $stdout = Join-Path $appRoot "f6-showcase-boot.stdout.log"
     $stderr = Join-Path $appRoot "f6-showcase-boot.stderr.log"
-    $process = Start-Process -FilePath $gradlew -ArgumentList @("--no-daemon", "bootRun", ('--args="--server.port=' + $port + '"')) `
+    # Tags the single-use GradleDaemon `gradlew --no-daemon` forks, so it can be stopped after its parent died.
+    $runMarker = New-NPDevRunMarker "f6-showcase"
+    $bootArgs = @("--no-daemon") + (New-NPDevGradleRunMarkerArgs -AppRoot $appRoot -Marker $runMarker) + @("bootRun", ('--args="--server.port=' + $port + '"'))
+    $process = Start-Process -FilePath $gradlew -ArgumentList $bootArgs `
         -WorkingDirectory $appRoot -NoNewWindow -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
 
     $deadline = (Get-Date).AddSeconds($BootTimeoutSeconds)
@@ -171,4 +174,5 @@ finally {
     & $py (Join-Path $repoRoot "scripts\quality\cadence_state.py") record --id "f6-showcase-browser" --tier T1 --result ($(if ($report.overallStatus -eq "passed") { "passed" } else { "failed" })) 2>&1 | Out-Null
     if ($scrapCtx) { Stop-ScrapForAI -Context $scrapCtx }
     if ($process -and -not $KeepRunning) { Stop-ProcessTree $process.Id }
+    if (-not $KeepRunning) { Stop-NPDevMarkedProcesses -Marker $runMarker }
 }

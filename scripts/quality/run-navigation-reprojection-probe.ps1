@@ -101,6 +101,9 @@ function Write-SeedFile([string]$SourceJsonPath) {
     Ok ("Wrote " + (Split-Path $SourceJsonPath -Leaf) + " into " + $dest)
 }
 
+# Tags the single-use GradleDaemon `gradlew --no-daemon` forks, so it can be stopped after its parent died.
+$runMarker = New-NPDevRunMarker "navigation-reprojection"
+
 function Start-ProbeApp([string]$Label) {
     # gradlew.bat on Windows, the POSIX gradlew elsewhere (Start-Process cannot run a .bat on Linux).
     $gradlew = Get-NPDevGradleWrapperExecutable $appRoot
@@ -114,7 +117,7 @@ function Start-ProbeApp([string]$Label) {
     # The same launch shape invoke-ai-beta-app-smoke.ps1 / run-shell-scenarios.ps1 already run on
     # Linux CI: an argument ARRAY and -NoNewWindow. The old single-string -ArgumentList with
     # -WindowStyle Hidden was Windows-only (-WindowStyle is a binding error on Linux pwsh).
-    $bootArgs = @("--no-daemon", "bootRun", ('--args="--spring.profiles.active=dev,trial --server.port=' + $port + '"'))
+    $bootArgs = @("--no-daemon") + (New-NPDevGradleRunMarkerArgs -AppRoot $appRoot -Marker $runMarker) + @("bootRun", ('--args="--spring.profiles.active=dev,trial --server.port=' + $port + '"'))
     $proc = Start-Process -FilePath $gradlew -ArgumentList $bootArgs -WorkingDirectory $appRoot `
         -NoNewWindow -PassThru -RedirectStandardOutput $outLog -RedirectStandardError $errLog
 
@@ -177,6 +180,7 @@ function Stop-ProbeApp([object]$AppCtx) {
         foreach ($id in $ids) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
         Stop-Process -Id $AppCtx.Proc.Id -Force -ErrorAction SilentlyContinue
     }
+    if ($AppCtx) { Stop-NPDevMarkedProcesses -Marker $runMarker }
     Start-Sleep -Seconds 3
 }
 
