@@ -4,6 +4,8 @@
 `DSL_REFERENCE.md` (generated, not committed — `python scripts/docs/generate_dsl_reference.py`).
 That is the whole path.
 
+**Never programmed, want to use the NPDev Manager?** [guides/FIRST_APP_IN_10_MINUTES.md](guides/FIRST_APP_IN_10_MINUTES.md) ([português](guides/FIRST_APP_IN_10_MINUTES.pt.md)) and [guides/MANAGER_GUIDE.md](guides/MANAGER_GUIDE.md) ([português](guides/MANAGER_GUIDE.pt.md)), generated from the Manager's own navigation and glossary.
+
 `docs/` root holds current product and engineering truth for someone *using* NPDev — one file, one
 purpose. Feature-by-feature reference lives in [reference/](reference/); internal maintainer and
 release-governance material (still live, just not what a newcomer needs) lives in

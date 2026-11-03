@@ -1,0 +1,294 @@
+{
+  "schema": "npdev-help-glossary.v1",
+  "description": "Plain-language answers for the words a first user meets in the Manager: what it is, why NPDev needs it, what happens when it is missing. One source for the Manager's '?' help (I18N-1) and for the generated guides (scripts/docs/generate_manager_guides.py -> docs/guides/). Every text is keyed by language id; English is the fallback and is required. Texts name Manager places and screens by token ({place:ID}, {screen:PLACE/SCREEN}, resolved against navigation.json in the reader's language), never by a hand-spelled label. Facts here must match the code: the private JDK the Manager installs is 17 (NPDevManager/src/runtime.rs), not 21.",
+  "kinds": {
+    "prerequisite": {
+      "en": "Installed once, needed by everything",
+      "pt": "Instalado uma vez, usado por tudo"
+    },
+    "database": {
+      "en": "Where an app keeps its data (you pick one per app)",
+      "pt": "Onde um app guarda os dados (você escolhe um por app)"
+    },
+    "optional-tool": {
+      "en": "Optional: only some features need it",
+      "pt": "Opcional: só alguns recursos precisam"
+    },
+    "concept": {
+      "en": "Words you will see",
+      "pt": "Palavras que você vai ver"
+    }
+  },
+  "entries": [
+    {
+      "id": "java",
+      "kind": "prerequisite",
+      "term": {
+        "en": "Java (JDK 17)",
+        "pt": "Java (JDK 17)"
+      },
+      "en": {
+        "short": "The engine your generated app runs on.",
+        "why": "NPDev turns your model into a Java program. Java is what runs it, the way a music player plays a song file.",
+        "ifMissing": "Nothing can be built or started. {screen:setup/install} downloads a private copy (about 180 MB) that touches nothing else on your computer."
+      },
+      "pt": {
+        "short": "O motor em que o seu app gerado roda.",
+        "why": "O NPDev transforma o seu modelo num programa Java. O Java é quem executa esse programa, como um player toca um arquivo de música.",
+        "ifMissing": "Nada pode ser construído nem iniciado. {screen:setup/install} baixa uma cópia privada (cerca de 180 MB) que não mexe em mais nada do seu computador."
+      }
+    },
+    {
+      "id": "python",
+      "kind": "prerequisite",
+      "term": {
+        "en": "Python",
+        "pt": "Python"
+      },
+      "en": {
+        "short": "Runs NPDev's own tools (the npdev command).",
+        "why": "The checks, the generator launcher and the Monitor are small Python programs. You never write Python yourself.",
+        "ifMissing": "The Manager cannot ask NPDev anything and most screens stay empty. {screen:setup/install} adds a private copy only if your computer has none."
+      },
+      "pt": {
+        "short": "Executa as ferramentas do próprio NPDev (o comando npdev).",
+        "why": "As verificações, o lançador do gerador e o Monitor são pequenos programas em Python. Você nunca escreve Python.",
+        "ifMissing": "O Manager não consegue perguntar nada ao NPDev e a maioria das telas fica vazia. {screen:setup/install} adiciona uma cópia privada só se o computador não tiver nenhuma."
+      }
+    },
+    {
+      "id": "npdev-setup",
+      "kind": "prerequisite",
+      "term": {
+        "en": "NPDev and its setup",
+        "pt": "NPDev e a preparação dele"
+      },
+      "en": {
+        "short": "NPDev itself, downloaded as a version, then prepared once on this computer.",
+        "why": "Setup builds or downloads the pieces every generated app is assembled from. After that, creating an app is fast.",
+        "ifMissing": "Apps cannot be generated, and {screen:setup/ready} shows 'NPDev jars: not staged'. Setup usually takes about a minute, sometimes about ten; the progress lines show it is alive."
+      },
+      "pt": {
+        "short": "O próprio NPDev, baixado como uma versão e depois preparado uma vez neste computador.",
+        "why": "A preparação constrói ou baixa as peças com que todo app gerado é montado. Depois disso, criar um app é rápido.",
+        "ifMissing": "Não dá para gerar apps, e {screen:setup/ready} mostra 'NPDev jars: not staged'. A preparação costuma levar um minuto, às vezes uns dez; as linhas de progresso mostram que está andando."
+      }
+    },
+    {
+      "id": "h2",
+      "kind": "database",
+      "term": {
+        "en": "H2Local",
+        "pt": "H2Local"
+      },
+      "en": {
+        "short": "A small database that lives in a file next to your app. The default, and where to start.",
+        "why": "Nothing to install, nothing to configure. Your data survives when the app stops.",
+        "ifMissing": "Nothing to install. If it refuses to start, another copy of the same app is probably still running and holding the file."
+      },
+      "pt": {
+        "short": "Um banco de dados pequeno que vive num arquivo ao lado do seu app. É o padrão, e é por onde começar.",
+        "why": "Nada para instalar, nada para configurar. Os dados continuam lá quando o app para.",
+        "ifMissing": "Nada para instalar. Se ele se recusar a iniciar, provavelmente outra cópia do mesmo app ainda está rodando e segurando o arquivo."
+      }
+    },
+    {
+      "id": "postgresql",
+      "kind": "database",
+      "term": {
+        "en": "PostgreSQL, MySQL, SQL Server",
+        "pt": "PostgreSQL, MySQL, SQL Server"
+      },
+      "en": {
+        "short": "Full database servers, the usual choice for a real deployment or for a database a company already runs.",
+        "why": "Many people can use the app at once, and the data lives apart from the app.",
+        "ifMissing": "Only needed if you choose one. NPDev runs them through Docker, or connects to one you already run (tick 'This server is mine' when creating the app). Use Test connection to see exactly what fails."
+      },
+      "pt": {
+        "short": "Servidores de banco de dados completos, a escolha comum para uso real ou para o banco que uma empresa já tem.",
+        "why": "Muitas pessoas podem usar o app ao mesmo tempo, e os dados ficam separados do app.",
+        "ifMissing": "Só são necessários se você escolher um deles. O NPDev os roda pelo Docker, ou se conecta a um que você já tenha (marque 'This server is mine' ao criar o app). Use Test connection para ver exatamente o que falha."
+      }
+    },
+    {
+      "id": "docker",
+      "kind": "optional-tool",
+      "term": {
+        "en": "Docker",
+        "pt": "Docker"
+      },
+      "en": {
+        "short": "A program that runs other programs in sealed boxes.",
+        "why": "NPDev uses it to start a PostgreSQL, MySQL or SQL Server database for your app without installing one.",
+        "ifMissing": "Fine. A '!' next to Docker is expected. Choose H2Local and everything works."
+      },
+      "pt": {
+        "short": "Um programa que roda outros programas em caixas isoladas.",
+        "why": "O NPDev o usa para iniciar um banco PostgreSQL, MySQL ou SQL Server para o seu app sem instalar nenhum.",
+        "ifMissing": "Tudo bem. Um '!' ao lado de Docker é esperado. Escolha H2Local e tudo funciona."
+      }
+    },
+    {
+      "id": "git",
+      "kind": "optional-tool",
+      "term": {
+        "en": "git",
+        "pt": "git"
+      },
+      "en": {
+        "short": "Keeps a history of every version of your app's model.",
+        "why": "Your model is your app. With git you can always go back to a version that worked.",
+        "ifMissing": "Fine. The Manager does not install it and nothing needs it; your app simply has no history until you add it."
+      },
+      "pt": {
+        "short": "Guarda um histórico de cada versão do modelo do seu app.",
+        "why": "O seu modelo é o seu app. Com o git você sempre pode voltar a uma versão que funcionava.",
+        "ifMissing": "Tudo bem. O Manager não o instala e nada depende dele; o seu app apenas fica sem histórico até você instalá-lo."
+      }
+    },
+    {
+      "id": "playwright",
+      "kind": "optional-tool",
+      "term": {
+        "en": "Browser checks (ScrapForAI)",
+        "pt": "Testes no navegador (ScrapForAI)"
+      },
+      "en": {
+        "short": "A robot browser that clicks through your app to see that it still works.",
+        "why": "It tests that a person could actually use the screens, not just that the program starts.",
+        "ifMissing": "Optional. Without it, {screen:apps/scrap} cannot run; everything else works."
+      },
+      "pt": {
+        "short": "Um navegador-robô que clica pelo seu app para ver se ele continua funcionando.",
+        "why": "Testa se uma pessoa conseguiria mesmo usar as telas, e não só se o programa inicia.",
+        "ifMissing": "Opcional. Sem ele, {screen:apps/scrap} não roda; todo o resto funciona."
+      }
+    },
+    {
+      "id": "tunnel",
+      "kind": "optional-tool",
+      "term": {
+        "en": "Tunnel (cloudflared)",
+        "pt": "Túnel (cloudflared)"
+      },
+      "en": {
+        "short": "A small program that gives this computer a temporary public web address.",
+        "why": "So someone else can open your app for a quick demo, without renting a server.",
+        "ifMissing": "Optional. Needed only for level 1 of {screen:apps/hosting}, 'Shared by link'."
+      },
+      "pt": {
+        "short": "Um pequeno programa que dá a este computador um endereço público temporário na web.",
+        "why": "Para outra pessoa abrir o seu app numa demonstração rápida, sem alugar um servidor.",
+        "ifMissing": "Opcional. Só é necessário para o nível 1 de {screen:apps/hosting}, 'Shared by link'."
+      }
+    },
+    {
+      "id": "model",
+      "kind": "concept",
+      "term": {
+        "en": "Model",
+        "pt": "Modelo"
+      },
+      "en": {
+        "short": "The description of your app (the file model.json): what it keeps, who may do what, which screens exist.",
+        "why": "You, or an AI, write the model; NPDev writes the program. The model is the part worth keeping: the program can always be generated again from it.",
+        "ifMissing": "Every app starts from one: creating an app writes a first, working model for you."
+      },
+      "pt": {
+        "short": "A descrição do seu app (o arquivo model.json): o que ele guarda, quem pode fazer o quê, quais telas existem.",
+        "why": "Você, ou uma IA, escreve o modelo; o NPDev escreve o programa. O modelo é a parte que vale guardar: o programa sempre pode ser gerado de novo a partir dele.",
+        "ifMissing": "Todo app começa de um: ao criar um app, o NPDev escreve um primeiro modelo que já funciona."
+      }
+    },
+    {
+      "id": "concept",
+      "kind": "concept",
+      "term": {
+        "en": "Concept",
+        "pt": "Conceito"
+      },
+      "en": {
+        "short": "One kind of thing your app keeps, like Customer, Order or Repair.",
+        "why": "Each concept becomes a list screen, a form, a database table and an API, all generated.",
+        "ifMissing": "An app with no concepts has nothing to show."
+      },
+      "pt": {
+        "short": "Um tipo de coisa que o seu app guarda, como Cliente, Pedido ou Conserto.",
+        "why": "Cada conceito vira uma tela de lista, um formulário, uma tabela no banco e uma API, tudo gerado.",
+        "ifMissing": "Um app sem conceitos não tem nada para mostrar."
+      }
+    },
+    {
+      "id": "port",
+      "kind": "concept",
+      "term": {
+        "en": "Port",
+        "pt": "Porta"
+      },
+      "en": {
+        "short": "The 'door number' an app answers on, as in localhost:8080.",
+        "why": "Two programs cannot answer on the same door, so each running app needs its own.",
+        "ifMissing": "If the app builds but will not start, the door is taken (often by an older copy of the same app). Stop it in {place:activity}, or pick another port number."
+      },
+      "pt": {
+        "short": "O 'número da porta' em que um app atende, como em localhost:8080.",
+        "why": "Dois programas não podem atender na mesma porta, então cada app em execução precisa da sua.",
+        "ifMissing": "Se o app compila mas não inicia, a porta está ocupada (muitas vezes por uma cópia antiga do mesmo app). Pare-a em {place:activity}, ou escolha outro número de porta."
+      }
+    },
+    {
+      "id": "api-key",
+      "kind": "concept",
+      "term": {
+        "en": "Access key (API key)",
+        "pt": "Chave de acesso (API key)"
+      },
+      "en": {
+        "short": "The key that opens your new app, created the first time it starts.",
+        "why": "A new app has no users yet, so someone has to be able to get in. The run log prints it once, as 'X-Api-Key: …', and keeps it in the app's secrets/api-key.env file.",
+        "ifMissing": "Lost the log? Open secrets/api-key.env in the app's folder. The line reads NPDEV_AUTH_API_KEYS=<key>=dev:developer:admin; the key is the part between the two '=' signs."
+      },
+      "pt": {
+        "short": "A chave que abre o seu app novo, criada na primeira vez que ele inicia.",
+        "why": "Um app novo ainda não tem usuários, então alguém precisa conseguir entrar. O log de execução a mostra uma vez, como 'X-Api-Key: …', e ela fica guardada no arquivo secrets/api-key.env do app.",
+        "ifMissing": "Perdeu o log? Abra secrets/api-key.env na pasta do app. A linha diz NPDEV_AUTH_API_KEYS=<chave>=dev:developer:admin; a chave é o trecho entre os dois sinais '='."
+      }
+    },
+    {
+      "id": "spring-boot",
+      "kind": "concept",
+      "term": {
+        "en": "Spring Boot",
+        "pt": "Spring Boot"
+      },
+      "en": {
+        "short": "The ready-made Java framework every generated app is built on.",
+        "why": "It gives each app a web server, sign-in and database access out of the box, so NPDev only generates what is specific to your app.",
+        "ifMissing": "Never installed separately: it comes inside each generated app. If an error mentions Spring, the cause is usually Java, the port or the database."
+      },
+      "pt": {
+        "short": "O framework Java pronto sobre o qual todo app gerado é construído.",
+        "why": "Ele dá a cada app um servidor web, login e acesso ao banco de dados de fábrica, e assim o NPDev só gera o que é específico do seu app.",
+        "ifMissing": "Nunca é instalado à parte: vem dentro de cada app gerado. Se um erro menciona Spring, a causa costuma ser o Java, a porta ou o banco de dados."
+      }
+    },
+    {
+      "id": "gradle",
+      "kind": "concept",
+      "term": {
+        "en": "Gradle",
+        "pt": "Gradle"
+      },
+      "en": {
+        "short": "The tool that compiles your app into something that runs.",
+        "why": "Building a Java app means compiling many files and fetching libraries. The first build downloads a lot and takes a few minutes; later ones are fast.",
+        "ifMissing": "Comes with each app. A first build that fails while downloading is usually a network, VPN or proxy problem."
+      },
+      "pt": {
+        "short": "A ferramenta que compila o seu app em algo que roda.",
+        "why": "Construir um app Java é compilar muitos arquivos e buscar bibliotecas. A primeira compilação baixa bastante coisa e leva alguns minutos; as seguintes são rápidas.",
+        "ifMissing": "Vem com cada app. Uma primeira compilação que falha durante o download costuma ser problema de rede, VPN ou proxy."
+      }
+    }
+  ]
+}

@@ -7,7 +7,8 @@ Java and Python. Budget **up to an hour**: the installs are minutes, and the fir
 first app is the slow part.
 
 If you want the full manual instead — every screen, every setting, troubleshooting — read
-[`MANAGER.md`](MANAGER.md). This page is the short path.
+[`MANAGER.md`](MANAGER.md). This page is the short path. The same path for first users, in English and
+Portuguese and with every word explained, is [`guides/FIRST_APP_IN_10_MINUTES.md`](guides/FIRST_APP_IN_10_MINUTES.md).
 
 ---
 
@@ -54,7 +55,8 @@ server image does not, and there the AppImage exits saying `Couldn't open libGLE
 
 ## Step 3 — Install the private runtimes
 
-The Manager opens on the **Ready** screen, which is a list of checks. Go to the **Install** tab and
+The Manager opens in **Set up › Check my computer** (the Ready screen), a list of checks. Go to
+**Set up › Install what is missing** (the Install screen) and
 work down its first four numbered steps **in order** (a fifth, "Monitored App Paths", is optional and only feeds The Monitor):
 
 | | Button | What it does |
@@ -67,15 +69,15 @@ work down its first four numbered steps **in order** (a fifth, "Monitored App Pa
 Step 4 is usually about a minute, occasionally about ten if it has to build the libraries instead of
 downloading them.
 
-## Step 4 — Check the Ready screen
+## Step 4 — Check your computer
 
-Go back to **Ready** and press **Re-check**. Each row shows a mark, not a word:
+Go back to **Set up › Check my computer** and press **Re-check**. Each row shows a mark, not a word:
 
 | Mark | Meaning |
 |---|---|
 | **✓** | Fine. |
 | **!** | Optional, or could not be checked. Something only some features need — usually ignore it. |
-| **✗** | Must be fixed before you can build an app. The row says what to do. One row (**NPDev jars**) also has a **Fix this** button, which takes you to the Install tab rather than fixing anything itself. |
+| **✗** | Must be fixed before you can build an app. The row says what to do. One row (**NPDev jars**) also has a **Fix this** button, which takes you to **Set up › Install what is missing** rather than fixing anything itself. |
 
 A **!** next to Docker is expected and fine — see the next step. A **!** next to git is also
 expected: the Manager does not install git and nothing needs it, except your app's own version
@@ -108,15 +110,15 @@ as containers. If you have not got Docker and do not want it, **pick H2Local**. 
 
 ## Step 6 — Create, build, run
 
-1. **Create app** — on the **Apps** tab, fill in **Name**, **Folder** (where the app is written —
+1. **Create app** — in **My apps › All apps**, fill in **Name**, **Folder** (where the app is written —
    both are required), and the **Database** from step 5. Press **Create**.
-2. **Run** — on the **Run** tab, put that folder in **App folder**, leave **Port** at `8080` unless
+2. **Run** — in **My apps › Start & stop**, pick the app in **App** (or put its folder in **App folder**), leave **Port** at `8080` unless
    something else is using it, and press **▶ Run**. The first run builds the app: it downloads
    dependencies and takes several minutes. Later runs are fast.
 3. **Open it** — the **App:** link on that screen becomes `http://localhost:<the port you set>`.
    Click it.
 
-If you chose Postgres, MySQL or SqlServer, the **Database** buttons on the Run screen only appear to
+If you chose Postgres, MySQL or SqlServer, the **Database** buttons on **Start & stop** only appear to
 work after the app has been generated once — press **▶ Run** first and let it get as far as building,
 then **Start** the database and run again.
 
@@ -132,7 +134,7 @@ That is a working application.
 network.
 
 **Ready says "NPDev jars — not staged"** → Setup has not finished. The **Fix this** button beside
-that row takes you to the Install tab; press **Run setup** there.
+that row takes you to **Set up › Install what is missing**; press **Run setup** there.
 
 **A database button says there is no `_ops` toolbox** → the app has not been generated yet. Press
 **▶ Run** once, then try the database button again.
@@ -141,7 +143,7 @@ that row takes you to the Install tab; press **Run setup** there.
 not running. Start Docker Desktop and wait for it to say *running*, then try again.
 
 **The app builds but will not start** → the port is probably already in use. Nothing picks a port
-for you: change **Port** on the Run screen to any free number and press **▶ Run** again — the
+for you: change **Port** on **My apps › Start & stop** to any free number and press **▶ Run** again — the
 **App:** link follows whatever you set.
 
 **Linux: the AppImage does nothing when double-clicked** → It is probably not marked executable.

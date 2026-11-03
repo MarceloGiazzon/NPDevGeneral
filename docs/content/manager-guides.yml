@@ -1,0 +1,280 @@
+# Source of the two first-user guides in docs/guides/ (English and Portuguese).
+# Rendered by scripts/docs/generate_manager_guides.py -- edit THIS file, never the .md.
+#
+# The prose never spells a Manager label or a glossary term by hand. It names them by id and the
+# generator fills in the words from the same files the Manager itself reads, in the guide's language:
+#   {place:apps}          -> the place's label            (NPDevManager/ui/navigation.json)
+#   {screen:apps/run}     -> "Place › Screen" labels      (NPDevManager/ui/navigation.json)
+#   {term:java}           -> the glossary term            (NPDevManager/ui/help-glossary.json)
+#   {guide:firstApp}      -> a link to the other guide, same language
+#   {doc:MANAGER.md}      -> a link to a file under docs/
+# An id that does not exist fails the generator, so a renamed screen cannot leave a guide pointing
+# at a label the Manager no longer shows.
+# Section kinds besides prose: `generated: places` (the places table) and
+# `generated: glossary` with `kinds: [...]` (the glossary rows of those kinds).
+schema: npdev-manager-guides.v1
+languages: [en, pt]
+guides:
+  guide:
+    out: { en: docs/guides/MANAGER_GUIDE.md, pt: docs/guides/MANAGER_GUIDE.pt.md }
+    title:
+      en: The NPDev Manager, in plain words
+      pt: O NPDev Manager, em palavras simples
+    sections:
+      - body:
+          en: |
+            **For:** someone who wants to build an app with NPDev and has never written Java, Python or SQL.
+            You do not need to know what those are. This guide tells you what each thing is *for*, so you know
+            what you are installing and why.
+
+            NPDev builds web applications from a description. You describe your app (what it keeps, who may do
+            what); NPDev writes, builds and runs the program. The **NPDev Manager** is the window where you do
+            all of it, without a terminal.
+
+            In a hurry? Go straight to {guide:firstApp}.
+          pt: |
+            **Para quem:** quer criar um app com o NPDev e nunca escreveu Java, Python ou SQL. Você não precisa
+            saber o que são. Este guia diz *para que serve* cada coisa, para você saber o que está instalando e
+            por quê.
+
+            O NPDev constrói aplicações web a partir de uma descrição. Você descreve o seu app (o que ele guarda,
+            quem pode fazer o quê); o NPDev escreve, compila e roda o programa. O **NPDev Manager** é a janela
+            onde você faz tudo isso, sem terminal.
+
+            Com pressa? Vá direto para {guide:firstApp}.
+      - heading: { en: The four places, pt: Os quatro lugares }
+        body:
+          en: |
+            The bar at the top of the Manager has four places. Each one answers one question. Inside a place, a
+            second row lists its screens, with one line saying what the place is for.
+          pt: |
+            A barra no alto do Manager tem quatro lugares. Cada um responde a uma pergunta. Dentro de um lugar,
+            uma segunda linha mostra as telas dele, com uma frase dizendo para que ele serve.
+        generated: places
+      - heading: { en: Five paths through the Manager, pt: Cinco caminhos pelo Manager }
+        body:
+          en: |
+            1. **The first time.** {screen:setup/ready}, then {screen:setup/install}, then
+               {screen:apps/apps} to create an app, then {screen:apps/run} to start it and open it in the
+               browser. This is {guide:firstApp}.
+            2. **Every day.** {place:apps}: change the app in {screen:apps/studio} or {screen:apps/prompter},
+               then start it in {screen:apps/run}.
+            3. **Show it to someone.** Check it in {screen:apps/scrap}, then {screen:apps/hosting}.
+            4. **Something went wrong.** {place:activity} shows every app on this computer: which is running,
+               which stopped, which has a problem, and its logs.
+            5. **Once, then forget.** {place:settings}: AI providers, passwords and keys, NPDev versions.
+          pt: |
+            1. **A primeira vez.** {screen:setup/ready}, depois {screen:setup/install}, depois
+               {screen:apps/apps} para criar um app, e {screen:apps/run} para iniciá-lo e abri-lo no navegador.
+               É o {guide:firstApp}.
+            2. **No dia a dia.** {place:apps}: altere o app em {screen:apps/studio} ou {screen:apps/prompter},
+               e inicie-o em {screen:apps/run}.
+            3. **Mostrar para alguém.** Teste em {screen:apps/scrap}, depois {screen:apps/hosting}.
+            4. **Algo deu errado.** {place:activity} mostra todos os apps deste computador: qual está rodando,
+               qual parou, qual tem problema, e os logs de cada um.
+            5. **Uma vez e pronto.** {place:settings}: provedores de IA, senhas e chaves, versões do NPDev.
+      - heading: { en: "What NPDev puts on your computer, and why", pt: "O que o NPDev instala no seu computador, e por quê" }
+        body:
+          en: |
+            Everything below the first table is optional. Nothing is installed without you pressing a button,
+            and the private copies the Manager downloads touch nothing else on your computer.
+          pt: |
+            Tudo abaixo da primeira tabela é opcional. Nada é instalado sem você apertar um botão, e as cópias
+            privadas que o Manager baixa não mexem em mais nada do seu computador.
+        generated: glossary
+        kinds: [prerequisite, database, optional-tool]
+      - heading: { en: Words you will see, pt: Palavras que você vai ver }
+        generated: glossary
+        kinds: [concept]
+      - heading: { en: When something goes wrong, pt: Quando algo dá errado }
+        body:
+          en: |
+            - **"Windows protected your PC"** when installing: expected, the Manager is not code-signed yet.
+              Click *More info*, then *Run anyway*.
+            - **A download fails:** almost always a company network or VPN blocking GitHub. Try another network.
+            - **"NPDev jars: not staged"** in {screen:setup/ready}: setup has not finished. That row's
+              **Fix this** button takes you to {screen:setup/install}; press **Run setup** there.
+            - **The app builds but will not start:** its port is taken. Change **Port** in {screen:apps/run}
+              to another number (8081, 8090...) and press **▶ Run** again.
+            - **Anything else:** take a screenshot of {place:activity} and of the log, and send them with the
+              step you were on. "It did not work on my computer" is the most useful report there is.
+          pt: |
+            - **"O Windows protegeu o computador"** ao instalar: esperado, o Manager ainda não tem assinatura
+              digital. Clique em *Mais informações* e depois em *Executar assim mesmo*.
+            - **Um download falha:** quase sempre é rede de empresa ou VPN bloqueando o GitHub. Tente outra rede.
+            - **"NPDev jars: not staged"** em {screen:setup/ready}: a preparação não terminou. O botão
+              **Fix this** dessa linha leva você a {screen:setup/install}; aperte **Run setup** lá.
+            - **O app compila mas não inicia:** a porta dele está ocupada. Troque **Port** em
+              {screen:apps/run} por outro número (8081, 8090...) e aperte **▶ Run** de novo.
+            - **Qualquer outra coisa:** tire uma captura de tela de {place:activity} e do log, e mande junto
+              com o passo em que você estava. "Não funcionou no meu computador" é o relato mais útil que existe.
+      - heading: { en: Going further, pt: Para ir além }
+        body:
+          en: |
+            - {guide:firstApp}: from nothing to a running app, step by step.
+            - {doc:MANAGER.md}: every screen and every setting, in depth.
+            - {doc:YOUR_FIRST_APP.md}: write your own model by hand, for when you want full control.
+          pt: |
+            - {guide:firstApp}: do zero a um app rodando, passo a passo.
+            - {doc:MANAGER.md} (em inglês): todas as telas e configurações, em detalhe.
+            - {doc:YOUR_FIRST_APP.md} (em inglês): escrever o seu próprio modelo à mão, quando quiser controle total.
+
+            Os botões *dentro* das telas ainda aparecem em inglês; a navegação já segue o idioma escolhido no
+            seletor do alto do Manager, e o resto está sendo traduzido.
+
+  firstApp:
+    out: { en: docs/guides/FIRST_APP_IN_10_MINUTES.md, pt: docs/guides/FIRST_APP_IN_10_MINUTES.pt.md }
+    title:
+      en: Your first app in 10 minutes
+      pt: Seu primeiro app em 10 minutos
+    sections:
+      - body:
+          en: |
+            About ten minutes of your attention. The downloads and the very first build can keep you waiting
+            longer on a slow connection (up to an hour in the worst case); the Manager shows progress the whole
+            time, so you can do something else meanwhile.
+
+            You need: Windows 10 or 11 (64-bit) or a 64-bit Linux desktop, **5 GB free** on disk, and internet.
+            You do **not** need Java, Python or any programming tool: the Manager brings its own.
+          pt: |
+            Uns dez minutos da sua atenção. Os downloads e a primeira compilação podem fazer você esperar mais
+            numa conexão lenta (até uma hora no pior caso); o Manager mostra o progresso o tempo todo, então dá
+            para fazer outra coisa enquanto isso.
+
+            Você precisa de: Windows 10 ou 11 (64 bits) ou Linux de 64 bits com interface gráfica, **5 GB livres**
+            no disco, e internet. Você **não** precisa de Java, Python nem de nenhuma ferramenta de programação:
+            o Manager traz as suas.
+      - heading: { en: 1. Install the Manager, pt: 1. Instale o Manager }
+        body:
+          en: |
+            Download one file from [the latest release](https://github.com/MarceloGiazzon/NPDevGeneral/releases/latest):
+            on Windows the one ending `_x64-setup.exe`, on Linux the one ending `_amd64.AppImage`. Open it.
+
+            Windows will probably say **"Windows protected your PC"**: the Manager is not code-signed yet. Click
+            *More info*, then *Run anyway*. On Linux, mark the AppImage as executable (right-click › Properties)
+            and double-click it.
+          pt: |
+            Baixe um arquivo da [versão mais recente](https://github.com/MarceloGiazzon/NPDevGeneral/releases/latest):
+            no Windows, o que termina em `_x64-setup.exe`; no Linux, o que termina em `_amd64.AppImage`. Abra-o.
+
+            O Windows provavelmente vai dizer **"O Windows protegeu o computador"**: o Manager ainda não tem
+            assinatura digital. Clique em *Mais informações* e depois em *Executar assim mesmo*. No Linux, marque
+            o AppImage como executável (botão direito › Propriedades) e dê um duplo clique.
+      - heading: { en: 2. Choose your language, pt: 2. Escolha o idioma }
+        body:
+          en: |
+            The Manager opens in {place:setup}. The language picker is at the top right.
+          pt: |
+            O Manager abre em {place:setup}. O seletor de idioma fica no canto superior direito; escolha
+            **Português**. A navegação muda na hora; os botões dentro das telas ainda estão em inglês.
+      - heading: { en: 3. Install what is missing, pt: 3. Instale o que falta }
+        body:
+          en: |
+            Open {screen:setup/install} and press its buttons **in order**, waiting for each to finish:
+
+            1. **Install private JDK**: {term:java}, about 180 MB.
+            2. **Install private Python**: only if your computer has none; otherwise the screen already says it found yours.
+            3. **Refresh list**, keep the newest version, **Download this version**: NPDev itself.
+            4. **Run setup**: usually about a minute, sometimes about ten.
+
+            Not sure what one of these is? See the table in {guide:guide}.
+          pt: |
+            Abra {screen:setup/install} e aperte os botões **na ordem**, esperando cada um terminar:
+
+            1. **Install private JDK**: o {term:java}, cerca de 180 MB.
+            2. **Install private Python**: só se o computador não tiver nenhum; senão a tela já diz que encontrou o seu.
+            3. **Refresh list**, mantenha a versão mais nova, **Download this version**: o próprio NPDev.
+            4. **Run setup**: costuma levar um minuto, às vezes uns dez.
+
+            Não sabe o que é algum deles? Veja a tabela em {guide:guide}.
+      - heading: { en: 4. Check your computer, pt: 4. Verifique o computador }
+        body:
+          en: |
+            Open {screen:setup/ready} and press **Re-check**. Each row has a mark:
+
+            - **✓** fine;
+            - **!** optional, usually ignore it (a **!** next to Docker or git is expected);
+            - **✗** must be fixed first; the row says how.
+
+            When there is no **✗** left, your computer is ready. You never have to do steps 3 and 4 again.
+          pt: |
+            Abra {screen:setup/ready} e aperte **Re-check**. Cada linha tem uma marca:
+
+            - **✓** tudo certo;
+            - **!** opcional, normalmente pode ignorar (um **!** ao lado de Docker ou git é esperado);
+            - **✗** precisa ser resolvido antes; a própria linha diz como.
+
+            Quando não sobrar nenhum **✗**, o computador está pronto. Você nunca mais precisa repetir os passos 3 e 4.
+      - heading: { en: 5. Create your app, pt: 5. Crie o seu app }
+        body:
+          en: |
+            Open {screen:apps/apps}. Under **New app**:
+
+            - **Name**: a short name with letters, digits and hyphens, like `my-shop`;
+            - **Folder**: where to keep it, like your Documents folder (**Browse…** helps);
+            - **Database**: leave **H2Local**. It needs nothing installed and keeps your data.
+
+            Press **Create**. NPDev writes a first, working model (`model.json`) into a new folder. That file is your app.
+          pt: |
+            Abra {screen:apps/apps}. Em **New app**:
+
+            - **Name**: um nome curto com letras, números e hífens, como `minha-loja`;
+            - **Folder**: onde guardá-lo, por exemplo a sua pasta Documentos (**Browse…** ajuda);
+            - **Database**: deixe **H2Local**. Não precisa instalar nada e guarda os seus dados.
+
+            Aperte **Create**. O NPDev escreve um primeiro modelo (`model.json`), que já funciona, numa pasta nova. Esse
+            arquivo é o seu app.
+      - heading: { en: 6. Start it, pt: 6. Inicie o app }
+        body:
+          en: |
+            Open {screen:apps/run}, pick your app in **App**, leave **Port** at `8080`, and press **▶ Run**.
+
+            The first start builds the whole application, so it takes a few minutes; the log below shows each
+            step. It is done when a line says **ready in …** with an address like `http://localhost:8080`.
+          pt: |
+            Abra {screen:apps/run}, escolha o seu app em **App**, deixe **Port** em `8080` e aperte **▶ Run**.
+
+            A primeira vez constrói a aplicação inteira, então leva alguns minutos; o log abaixo mostra cada
+            etapa. Termina quando uma linha diz **ready in …** com um endereço como `http://localhost:8080`.
+      - heading: { en: 7. Open it and sign in, pt: 7. Abra e entre }
+        body:
+          en: |
+            Click the **App:** link. The page that opens asks for an **API Key**: the log printed it right after
+            the **ready in …** line, as `X-Api-Key: …`. Copy the text after `X-Api-Key:`, paste it into the
+            **API Key** field, then press **Open business screens** to see your app's own screens.
+
+            That is a working application: a database, screens to list and edit your data, and sign-in.
+          pt: |
+            Clique no link **App:**. A página que abre pede uma **API Key**: o log a mostrou logo depois da linha
+            **ready in …**, como `X-Api-Key: …`. Copie o texto depois de `X-Api-Key:`, cole no campo **API Key**
+            e aperte **Open business screens** para ver as telas do seu app.
+
+            Pronto: uma aplicação funcionando, com banco de dados, telas para listar e editar os seus dados, e login.
+      - heading: { en: 8. Change something, pt: 8. Mude alguma coisa }
+        body:
+          en: |
+            Leave the app running. Open `model.json` in your app's folder, add a field to one of its
+            concepts (Customer, Order...), and save. {screen:apps/run} notices the change and applies it, within seconds
+            (or about a minute when it has to rebuild); refresh the browser to see it. If you save a mistake, the log says exactly where, and the
+            app keeps running on the last version that worked.
+
+            Prefer to describe the change in words? Set up an AI in {screen:settings/providers}, then use
+            {screen:apps/prompter}.
+          pt: |
+            Deixe o app rodando. Abra o `model.json` na pasta do seu app, acrescente um campo a um dos
+            conceitos (Cliente, Pedido...), e salve. {screen:apps/run} percebe a mudança e a aplica em segundos (ou cerca de
+            um minuto quando precisa recompilar); atualize o navegador para ver. Se você salvar um erro, o log diz exatamente onde, e o app continua
+            rodando na última versão que funcionava.
+
+            Prefere descrever a mudança com palavras? Configure uma IA em {screen:settings/providers} e use
+            {screen:apps/prompter}.
+      - heading: { en: Next, pt: Próximos passos }
+        body:
+          en: |
+            - {place:activity}: every app on this computer at a glance.
+            - {screen:apps/hosting}: give your app an address other people can open.
+            - {guide:guide}: what every place and every word in the Manager means.
+          pt: |
+            - {place:activity}: todos os apps deste computador, num relance.
+            - {screen:apps/hosting}: dê ao seu app um endereço que outras pessoas possam abrir.
+            - {guide:guide}: o que significa cada lugar e cada palavra do Manager.

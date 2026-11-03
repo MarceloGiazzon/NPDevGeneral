@@ -173,6 +173,9 @@
     "scripts/docs/generate_group_e_docs.py": {
       "invocation": "ci-gate"
     },
+    "scripts/docs/generate_manager_guides.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/docs/generate_maturity_max_roadmap_docs.py": {
       "invocation": "orchestrated"
     },

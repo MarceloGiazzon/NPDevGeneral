@@ -125,14 +125,24 @@ Linux: `~/.local/share/npdev`. Everything the Manager downloads lives there.
 
 ### The screens, in the order you will use them
 
-The window has seventeen tabs across the top: Ready, Install, The Monitor, Apps, Run, Share, Versions, Scrap Manager,
-Prompter, Verification, Packs, Impact, DB Import/Export, GPU Checks, Secrets, Studio and Evals. A first run uses
-**Ready** (check the machine), **Install** (install NPDev), **Apps** (create an app) and **Run** (run it); **The Monitor**
-sits third because it watches every app on the machine, and **Share** comes right after Run — you run an app, then
-you give it an address other people can open. **Versions** is for later, when you want to update. The numbered sections
-below cover the original screens in depth; **Prompter** (AI-assisted model authoring that writes `model.json`),
-**Studio** (edits a model node and applies it live), **Secrets** (profiles kept in the OS credential store) and the
-remaining tabs are listed in the action reference.
+Since Manager 0.6.0 the bar across the top has four **places**, each with a strip of its screens
+(`NPDevManager/ui/navigation.json`); a language picker beside them switches the navigation between
+English and Portuguese. Every screen this manual describes keeps its own heading, so the sections below
+still use the screen names:
+
+| Place | Screens (heading on the screen) |
+|---|---|
+| **Set up** | Check my computer (*Ready*), Install what is missing (*Install*) |
+| **My apps** | All apps (*Apps*), Start & stop (*Run*), Edit (*Studio*), Ask AI (*Prompter*), Data (*DB Import/Export*), Share, Browser checks (*Scrap Manager*), Data-rule checks (*GPU Checks*), Impact, Packs |
+| **Activity** | Running apps (*The Monitor*) |
+| **Settings** | AI providers, Passwords & keys (*Secrets*), NPDev versions (*Versions*), This computer (*Ready*), Platform checks (*Verification*), AI evaluations (*Evals*) |
+
+A first run uses **Set up** (check the machine, install NPDev), then **My apps** (create an app, run it);
+**Activity** watches every app on the machine. For first users there is a shorter, plain-language guide
+in English and Portuguese: [`guides/MANAGER_GUIDE.md`](guides/MANAGER_GUIDE.md). The numbered sections
+below cover the original screens in depth; **Prompter** (AI-assisted model authoring that writes
+`model.json`), **Studio** (edits a model node and applies it live), **Secrets** (profiles kept in the OS
+credential store) and the remaining screens are listed in the action reference.
 
 ## 1 · Ready
 
@@ -282,10 +292,11 @@ minute when it changes the database.
 
 ### Signing in
 
-Open the link. Your key is in a file called `SUPER_USER_KEY.txt`, written the first time the app
-starts — into the app's working directory — the generated `App` folder (the setting is
-`npdev.superuser.key-file-dir`, default `.`), which the app's `Start-App.ps1` relocates into `_ops` — not the model
-folder beside it.
+Open the link. The page asks for an **API Key**: the first successful start prints it once in the log,
+right after the `ready in …` line, as `X-Api-Key: <key>`, and keeps it in the app's
+`secrets/api-key.env` (the line `NPDEV_AUTH_API_KEYS=<key>=dev:developer:admin`). Paste it into the
+**API Key** field, then **Open business screens**. `SUPER_USER_KEY.txt` is a different key, for the
+platform ControlPanel (`/control-panel.html`), not for using your own app.
 
 **A mistake will not cost you the running app.** The model is checked before anything is
 rebuilt. If you save something invalid, the log shows the error — naming the exact place — and

@@ -235,6 +235,19 @@ try {
         if ($LASTEXITCODE -ne 0) { $failures += "a Group D doc or its docs/content/*.json mirror was STALE relative to its docs/content/*.yml source (regenerating changed a committed file, shown above) -- commit the regenerated result" }
     }
 
+    # NAV-1 / 2026-11-03: the first-user guides (docs/guides/, English + Portuguese) are assembled from
+    # the files the Manager itself reads -- ui/navigation.json and ui/help-glossary.json -- plus the
+    # prose in docs/content/manager-guides.yml. A renamed screen, a glossary edit or a hand-edited
+    # guide all show up here as a stale docs/guides/ file. The generator also fails outright on a
+    # place, screen or term the prose names that no longer exists.
+    & $py "scripts/docs/generate_manager_guides.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "scripts/docs/generate_manager_guides.py failed: the guide prose names a place, screen or term navigation.json / help-glossary.json no longer has (see its output above)"
+    } else {
+        git diff --exit-code -- docs/guides/
+        if ($LASTEXITCODE -ne 0) { $failures += "a docs/guides/ file was STALE relative to docs/content/manager-guides.yml, NPDevManager/ui/navigation.json or help-glossary.json -- commit the regenerated result" }
+    }
+
     Write-Host "[4/39] Checking failure-signature normalizer..."
     $sig = & $py "scripts/ai/failure_signatures.py" "Panel 'Orders' references unknown entity 'Customer'"
     $expected = "panel <id> references unknown entity <id>"
