@@ -27,7 +27,8 @@
  */
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
-import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -59,7 +60,9 @@ const { chromium } = await import(pathToFileURL(playwrightModule).href);
 
 const UI = path.join(REPO, "NPDevManager", "ui");
 const FIX = path.join(REPO, "NPDevManager", "fixtures");
-const OUT = process.argv[2] || ".";
+// Screenshots and the JSON report are build output: never the current directory (that is the repo root when run from it).
+const OUT = process.argv[2] || path.join(tmpdir(), "npdev-manager-ui-render");
+mkdirSync(OUT, { recursive: true });
 
 // Gallery order, same as src/themes.rs BUILT_IN (a Rust test pins that list).
 const BUILTIN_ORDER = ["npdev-dark", "npdev-light", "retro", "synth", "farm", "warm", "windows", "high-contrast"];
