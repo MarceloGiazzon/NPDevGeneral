@@ -3,14 +3,9 @@
    studio.css/verification.css. */
 
 #screen-evals h1 {
-  font-family: var(--font-mono);
-  font-size: 26px;
-  letter-spacing: 4px;
-  color: var(--ok);
-  text-shadow: 0 0 8px rgba(52, 255, 109, .55), 0 0 24px rgba(52, 255, 109, .25);
   margin: 6px 0 2px;
 }
-#screen-evals h1 .dim { color: var(--muted); text-shadow: none; font-size: 14px; letter-spacing: 2px; }
+#screen-evals h1 .dim { color: var(--muted); font-size: 14px; }
 #screen-evals .subtitle { color: var(--muted); font-size: 12.5px; margin-bottom: 10px; }
 
 .evals-toolbar {
@@ -25,7 +20,7 @@
   padding: 7px 16px; border-radius: 6px; cursor: pointer;
   background: var(--t-positive-tint); color: var(--ok); border: 1px solid var(--t-positive-edge);
 }
-.evals-toolbar .btn:hover { background: var(--t-positive-edge); }
+.evals-toolbar .btn:hover { background: color-mix(in srgb, var(--ok) 22%, var(--t-bg)); }
 .evals-toolbar .btn.stop { background: var(--t-negative-tint); color: var(--err); border-color: var(--t-negative-edge); }
 .evals-toolbar .btn.stop:hover { background: var(--t-negative-tint); }
 .evals-toolbar .btn.ghost { background: transparent; color: var(--muted); border-color: var(--t-border); }
@@ -45,7 +40,7 @@
 }
 .evals-table td { padding: 8px 10px; border-bottom: 1px solid var(--t-surface); vertical-align: top; }
 .evals-table tr { cursor: pointer; }
-.evals-table tr:hover td { background: rgba(52, 255, 109, .03); }
+.evals-table tr:hover td { background: color-mix(in srgb, var(--ok) 4%, transparent); }
 .evals-table tr.selected td { background: rgba(56, 223, 255, .06); }
 .evals-table .mono { font-family: var(--font-mono); font-size: 11px; color: var(--t-text-muted); }
 .evals-heavy { font-size: 10px; color: var(--info); border: 1px solid var(--t-info-edge); padding: 0 5px; border-radius: 4px; margin-left: 6px; }

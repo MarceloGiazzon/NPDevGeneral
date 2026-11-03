@@ -1,15 +1,10 @@
 /* Verification tab -- VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 3. */
 
 #screen-verification h1 {
-  font-family: var(--font-mono);
-  font-size: 26px;
-  letter-spacing: 4px;
-  color: var(--ok);
-  text-shadow: 0 0 8px rgba(52, 255, 109, .55), 0 0 24px rgba(52, 255, 109, .25);
   margin: 6px 0 2px;
 }
 #screen-verification h1 .dim {
-  color: var(--muted); text-shadow: none; font-size: 14px; letter-spacing: 2px;
+  color: var(--muted); font-size: 14px;
 }
 #screen-verification .subtitle { color: var(--muted); font-size: 12.5px; margin-bottom: 12px; }
 #screen-verification .btn {
@@ -17,7 +12,7 @@
   padding: 7px 16px; border-radius: 6px; cursor: pointer;
   background: var(--t-positive-tint); color: var(--ok); border: 1px solid var(--t-positive-edge);
 }
-#screen-verification .btn:hover { background: var(--t-positive-edge); }
+#screen-verification .btn:hover { background: color-mix(in srgb, var(--ok) 22%, var(--t-bg)); }
 #screen-verification .btn.ghost { background: transparent; color: var(--muted); border-color: var(--t-border); }
 #screen-verification .btn.ghost:hover { color: var(--text); }
 #screen-verification .btn[disabled] { opacity: .4; cursor: not-allowed; }
@@ -108,7 +103,7 @@
   padding: 6px 10px; border-bottom: 1px solid var(--t-border);
 }
 .vtable td { padding: 8px 10px; border-bottom: 1px solid var(--t-surface); vertical-align: top; }
-.vtable tr:hover td { background: rgba(52, 255, 109, .03); }
+.vtable tr:hover td { background: color-mix(in srgb, var(--ok) 4%, transparent); }
 .vtable .mono { font-family: var(--font-mono); font-size: 11px; color: var(--t-text-muted); word-break: break-all; }
 .vtable .vdesc { -webkit-line-clamp: 2; }
 .tdot {

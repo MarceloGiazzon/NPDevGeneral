@@ -2,14 +2,9 @@
    dark/mono styling convention as secrets.css/dbio.css. */
 
 #screen-studio h1 {
-  font-family: var(--font-mono);
-  font-size: 26px;
-  letter-spacing: 4px;
-  color: var(--ok);
-  text-shadow: 0 0 8px rgba(52, 255, 109, .55), 0 0 24px rgba(52, 255, 109, .25);
   margin: 6px 0 2px;
 }
-#screen-studio h1 .dim { color: var(--muted); text-shadow: none; font-size: 14px; letter-spacing: 2px; }
+#screen-studio h1 .dim { color: var(--muted); font-size: 14px; }
 #screen-studio .subtitle { color: var(--muted); font-size: 12.5px; margin-bottom: 10px; }
 
 .studio-toolbar {
@@ -24,7 +19,7 @@
   padding: 7px 16px; border-radius: 6px; cursor: pointer;
   background: var(--t-positive-tint); color: var(--ok); border: 1px solid var(--t-positive-edge);
 }
-.studio-toolbar .btn:hover { background: var(--t-positive-edge); }
+.studio-toolbar .btn:hover { background: color-mix(in srgb, var(--ok) 22%, var(--t-bg)); }
 .studio-toolbar .btn.ghost { background: transparent; color: var(--muted); border-color: var(--t-border); }
 .studio-toolbar .btn.ghost:hover { color: var(--text); }
 .studio-toolbar .btn:disabled { opacity: .45; cursor: not-allowed; }
