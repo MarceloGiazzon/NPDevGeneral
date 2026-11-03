@@ -24,7 +24,7 @@ uma segunda linha mostra as telas dele, com uma frase dizendo para que ele serve
 | ⌂ **Início** | O que fazer a seguir, num cartão só. | Início |
 | 🔧 **Preparar** | Deixe este computador pronto para criar apps. Você faz isso uma vez só. | Verificar o computador, Instalar o que falta |
 | ▦ **Meus apps** | Crie um app, inicie, altere e compartilhe. | Todos os apps, Iniciar e parar, Editar, Perguntar à IA, Dados, Compartilhar, Testes no navegador (testes), Testes de regras (testes), Impacto (avançado), Pacotes (avançado) |
-| ◉ **Atividade** | Tudo o que está rodando neste computador, num relance. | Apps em execução |
+| ◉ **Atividade** | Tudo o que está rodando neste computador, num relance. | Apps em execução, Tarefas |
 | ⚙ **Configurações** | Provedores de IA, senhas, versões do NPDev. Você ajusta isso uma vez. | Provedores de IA, Senhas e chaves, Aparência e acessibilidade, Versões do NPDev, Este computador, Instalação e pastas, Verificações da plataforma (avançado), Avaliações de IA (avançado) |
 
 ## Cinco caminhos pelo Manager

@@ -82,6 +82,9 @@ window.__TAURI__ = {
           return F.doctors[window.__scenario || "doctor-all-green"];
         case "last_failed_run": return window.__lastFailed || null;
         case "studio_history_list": return [];
+        case "jobs_list": window.__jobsListCalls = (window.__jobsListCalls || 0) + 1; return window.__jobsEmpty ? { ok: true, jobs: [], summary: {} } : F.jobs;
+        case "jobs_action": window.__jobsActions = (window.__jobsActions || []).concat([args.action + ":" + args.jobId]); return { ok: true };
+        case "recent_operations": return [{ operation: "install-java", intent: "install Java (JDK 17)", startedAt: "2026-11-03T10:00:00Z", endedAt: "2026-11-03T10:01:00Z", running: false, ok: false }];
         case "list_apps": return [{ name: "auxscreen", directory: "D:\\\\WorkSpace\\\\NPDev\\\\Build\\\\generated-finalapps\\\\auxscreen", created_at: "2026-11-03" }];
         case "list_engines": return { engines: [] };
         case "jdk_status": return { installed: true, path: "x" };
@@ -164,6 +167,7 @@ await page.addInitScript({
     doctors: Object.fromEntries(["doctor-all-green", "doctor-missing-java", "doctor-wrong-java", "doctor-no-jars", "doctor-acceptable-newer-java"]
       .map((n) => [n, fixture(n + ".json")])),
     scanEmpty: fixture("monitor-scan-empty.json"),
+    jobs: fixture("jobs-list.json"),
     support: fixture("support-install-failed.json"),
     themes: BUILTIN_ORDER.map((id) => Object.assign({ builtin: true }, JSON.parse(readFileSync(path.join(REPO, "NPDevContract", "themes", id + ".json"), "utf8")))),
   })};`,
@@ -288,8 +292,9 @@ const liveIds = await page.$$eval("#jdk-status, #python-status, #setup-status, #
 check("install, setup and create-app results are polite live regions", liveIds.length === 5 && liveIds.every((v) => v === "polite"), liveIds.join(","));
 
 // ---- The Monitor ---------------------------------------------------------------------------
-// The Activity place has one screen, so its place button IS the Monitor's tab.
-await page.click('.tab[data-screen="monitor"]');
+// Activity has two screens (Running apps, Tasks): open the place, then the Monitor's tab in its strip.
+await page.click('.tabs .place[data-place="activity"]');
+await page.click('.place-strip:not([hidden]) .tab[data-screen="monitor"]');
 await page.waitForSelector("#monitor-grid .crt", { timeout: 5000 });
 
 const cards = await page.$$eval("#monitor-grid .crt", (els) =>
@@ -637,6 +642,36 @@ await page.focus("#skip-link");
 await page.keyboard.press("Enter");
 await page.waitForTimeout(100);
 check("activating it moves focus into the page content", (await page.evaluate(() => document.activeElement && document.activeElement.id)) === "main-content", "");
+
+// ---- JOBS-3: Activity > Tasks ----------------------------------------------------------------------------------
+await page.click('.tabs .place[data-place="activity"]');
+await page.click('.place-strip:not([hidden]) .tab[data-screen="jobs"]');
+await page.waitForSelector("#jobs-root .jobs-table", { timeout: 3000 });
+const jobRows = await page.$$eval("#jobs-root tbody tr", (r) => r.map((x) => ({ id: x.dataset.job, text: x.textContent, lost: x.classList.contains("lost"),
+  buttons: [...x.querySelectorAll("button")].map((b) => b.textContent) })));
+check("the board lists every recorded task", jobRows.length === 4, `${jobRows.length}`);
+const lostRow = jobRows.find((r) => /rebuild/i.test(r.id));
+check("a lost task is marked in words and by row, and says what it means", lostRow && lostRow.lost && /LOST/.test(lostRow.text) && /Nothing is watching/.test(lostRow.text), lostRow && lostRow.text.slice(0, 120));
+const gate = jobRows.find((r) => /gates/.test(r.id));
+check("a task started by an AI agent says so and shows its last news", /AI agent/.test(gate.text) && /run-runtimehost-gate/.test(gate.text) && /6m 30s/.test(gate.text), gate.text.slice(0, 160));
+check("a running task offers Stop and Open log, not Restart", gate.buttons.includes("Stop") && gate.buttons.includes("Open log") && !gate.buttons.includes("Restart"), gate.buttons.join(","));
+const ci = jobRows.find((r) => /bench/.test(r.id));
+check("a task started by CI offers only Open log", ci.buttons.join(",") === "Open log", ci.buttons.join(","));
+await page.click('tr[data-job$="gates"] button.destructive');
+await page.waitForTimeout(200);
+check("Stop asks the CLI to stop exactly that task", (await page.evaluate(() => window.__jobsActions)).join() === "stop:20261103T100000Z-gates", "");
+check("this window's own operations are listed too", /install Java/.test(await page.textContent("#jobs-root .jobs-here")), "");
+// polling happens only while the screen is the one being looked at
+const calls1 = await page.evaluate(() => window.__jobsListCalls);
+await page.evaluate(() => window.__npdevShowScreen("monitor"));
+await page.waitForTimeout(100);
+await page.evaluate(() => NPDevJobs.refresh(false));
+check("a refresh while another screen is showing does nothing", (await page.evaluate(() => window.__jobsListCalls)) === calls1, "");
+check("it polls every 10 seconds", (await page.evaluate(() => NPDevJobs.pollMs)) === 10000 && (await page.evaluate(() => NPDevJobs.isPolling())), "");
+await page.evaluate(() => { window.__jobsEmpty = true; window.__npdevShowScreen("jobs"); });
+await page.waitForTimeout(250);
+check("no tasks yet says how to get some", /run_digest/.test(await page.textContent("#jobs-root")), "");
+await page.evaluate(() => { window.__jobsEmpty = false; });
 
 // ---- ACC-4: compare the measured axe counts with the floor ------------------------------------------
 const IMPACTS = ["critical", "serious", "moderate", "minor"];

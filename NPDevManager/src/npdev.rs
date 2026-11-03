@@ -57,6 +57,7 @@ const FIXTURE_DEV_EVENTS: &str = include_str!("../fixtures/dev-events.jsonl");
 // CLI ACTUALLY returns.
 const FIXTURE_MONITOR_SCAN_MIXED: &str = include_str!("../fixtures/monitor-scan-mixed.json");
 const FIXTURE_MONITOR_SCAN_EMPTY: &str = include_str!("../fixtures/monitor-scan-empty.json");
+const FIXTURE_JOBS_LIST: &str = include_str!("../fixtures/jobs-list.json");
 const FIXTURE_MONITOR_PROBE: &str = include_str!("../fixtures/monitor-probe.json");
 const FIXTURE_MONITOR_ENGINE_RUNNING: &str = include_str!("../fixtures/monitor-engine-running.json");
 const FIXTURE_MONITOR_ENGINE_STOPPED: &str = include_str!("../fixtures/monitor-engine-stopped.json");
@@ -855,6 +856,21 @@ pub async fn run_monitor_scan(
         args.push("--include-info".to_string());
     }
     run_json(python_exe, npdev_cli, &args, java_home, "monitor scan").await
+}
+
+/// JOBS-3: `npdev jobs list|stop|restart --json`. Which job is `lost` is decided by the CLI (the Manager rule: no
+/// decision the CLI does not already make); this only carries the question and the answer.
+pub async fn run_jobs(python_exe: &Path, npdev_cli: &Path, java_home: Option<&str>, args: Vec<String>) -> Result<Value, String> {
+    if fake_mode() {
+        return match args.first().map(String::as_str) {
+            Some("list") => serde_json::from_str(FIXTURE_JOBS_LIST).map_err(|e| format!("fixture did not parse: {e}")),
+            _ => Ok(serde_json::json!({ "ok": true, "fake": true })),
+        };
+    }
+    let mut full = vec!["jobs".to_string()];
+    full.extend(args);
+    full.push("--json".to_string());
+    run_json(python_exe, npdev_cli, &full, java_home, "jobs").await
 }
 
 pub async fn run_monitor_probe(

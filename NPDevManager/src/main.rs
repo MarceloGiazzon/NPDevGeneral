@@ -867,6 +867,61 @@ fn appearance_set(state: State<'_, AppState>, appearance: themes::Appearance) ->
     Ok(appearance)
 }
 
+/// JOBS-3: the Activity > Tasks board. The CLI owns the records and the decision that a job is `lost`.
+#[tauri::command]
+async fn jobs_list(state: State<'_, AppState>) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    let args = vec!["list".to_string(), "--limit".to_string(), "60".to_string()];
+    if npdev::fake_mode() {
+        return npdev::run_jobs(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"), java_home.as_deref(), args).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_jobs(&python, &cli, java_home.as_deref(), args).await
+}
+
+/// Stop or restart one job. `action` is checked here against the two the board offers, because the id and the
+/// verb end up as command-line arguments.
+#[tauri::command]
+async fn jobs_action(state: State<'_, AppState>, action: String, job_id: String) -> Result<Value, String> {
+    if action != "stop" && action != "restart" {
+        return Err(format!("unknown task action {action:?}"));
+    }
+    let ok_id = job_id.len() <= 90
+        && job_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_'));
+    if !ok_id {
+        return Err("not a task id".to_string());
+    }
+    let java_home = resolve_java_home(&state);
+    let args = vec![action, job_id];
+    if npdev::fake_mode() {
+        return npdev::run_jobs(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"), java_home.as_deref(), args).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_jobs(&python, &cli, java_home.as_deref(), args).await
+}
+
+/// What THIS window has done recently (the run recorder), for the Tasks board's "started in this window" rows.
+/// Summaries only: no command line, no output.
+#[tauri::command]
+fn recent_operations() -> Vec<Value> {
+    runs::snapshot()
+        .into_iter()
+        .rev()
+        .map(|r| {
+            serde_json::json!({
+                "operation": r.operation,
+                "intent": support::intent_text(&r.operation),
+                "startedAt": r.started_at,
+                "endedAt": r.ended_at,
+                "running": r.running,
+                "ok": r.ok,
+            })
+        })
+        .collect()
+}
+
 /// Home's "Something went wrong" card: the newest operation that failed and was not fixed by a later
 /// success of the same operation, in plain words. None when there is nothing to report.
 #[tauri::command]
@@ -1815,7 +1870,7 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.10.0: Set up disappears once your computer is ready (its screens move to Settings), failing checks on Ready get a Fix button that jumps to the right Install step, the strips of screens work from the keyboard (arrow keys, Home, End) and there is a Skip to content link. Before that: Home -- one card that says what to do next, with one button -- and the app workspace: choose an app once and Start & stop, Edit, Ask AI, Data, Share and the checks all follow it (their own app pickers hide). Also fixes two screens that silently never worked: the Packs app picker was never filled and the Verification table drew nothing, because two scripts shared function names. Before that: every colour in every screen now follows your theme (no hard-coded colours left), statuses show a word as well as a colour, progress is announced to screen readers, and all 19 screens pass the axe accessibility scan. Before that: Appearance & accessibility (Settings) -- pick Dark, Light, Retro, Synth, Farm, Warm, Windows or \
+    "0.11.0: Activity > Tasks -- gates, rebuilds and benchmarks that take a while, with whether each is still alive (a task whose watcher died shows as LOST), Stop, Restart and Open log; checks itself every 10 seconds while open. Before that: Set up disappears once your computer is ready (its screens move to Settings), failing checks on Ready get a Fix button that jumps to the right Install step, the strips of screens work from the keyboard (arrow keys, Home, End) and there is a Skip to content link. Before that: Home -- one card that says what to do next, with one button -- and the app workspace: choose an app once and Start & stop, Edit, Ask AI, Data, Share and the checks all follow it (their own app pickers hide). Also fixes two screens that silently never worked: the Packs app picker was never filled and the Verification table drew nothing, because two scripts shared function names. Before that: every colour in every screen now follows your theme (no hard-coded colours left), statuses show a word as well as a colour, progress is announced to screen readers, and all 19 screens pass the axe accessibility scan. Before that: Appearance & accessibility (Settings) -- pick Dark, Light, Retro, Synth, Farm, Warm, Windows or \
      High contrast, load a theme file, or ask any AI for a new theme (you preview it and can undo); text \
      size, motion, focus, spacing, links and colour-blind safe status colours; remembered between starts \
      with no flash. Before that: one look for the whole window, Get help with this error (copy a redacted \
@@ -1827,7 +1882,7 @@ fn manager_version_description() -> String {
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "Keyboard Ready";
+const CURRENT_VERSION_TITLE: &str = "Tasks";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {
@@ -3588,6 +3643,9 @@ the blast radius needs a baseline to diff against"
             check_doctor,
             support_report,
             last_failed_run,
+            jobs_list,
+            jobs_action,
+            recent_operations,
             theme_list,
             theme_import,
             theme_delete,
@@ -3906,5 +3964,26 @@ mod ui_script_global_tests {
             .map(|(ident, files)| format!("{ident}: {files:?}"))
             .collect();
         assert!(clashes.is_empty(), "top-level names declared in more than one ui/*.js file: {clashes:?}");
+    }
+}
+
+#[cfg(test)]
+mod jobs_fixture_tests {
+    /// The Tasks board's stub fixture must be what `npdev jobs list --json` really answers: the same schema id and
+    /// the fields jobs.js reads, with every status the board draws.
+    #[test]
+    fn the_jobs_fixture_has_every_status_and_the_fields_the_board_reads() {
+        let v: serde_json::Value = serde_json::from_str(include_str!("../fixtures/jobs-list.json")).unwrap();
+        assert_eq!(v["schema"], "npdev-jobs-list.v1");
+        let jobs = v["jobs"].as_array().unwrap();
+        let statuses: std::collections::BTreeSet<&str> = jobs.iter().map(|j| j["status"].as_str().unwrap()).collect();
+        for want in ["running", "succeeded", "failed", "lost"] {
+            assert!(statuses.contains(want), "fixture lacks a {want} job");
+        }
+        for j in jobs {
+            for field in ["jobId", "title", "argv", "status", "startedAt", "launcher", "actions", "logPath"] {
+                assert!(j.get(field).is_some(), "job {} lacks {field}", j["jobId"]);
+            }
+        }
     }
 }

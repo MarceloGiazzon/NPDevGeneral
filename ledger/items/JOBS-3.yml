@@ -2,13 +2,42 @@ id: JOBS-3
 title: Activity board -- Manager Tasks screen with stop / restart / open log
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
 surface: manager/ui
-detail: >-
-  screen-jobs polls npdev jobs list --json every 10 s only while visible.
+detail: screen-jobs polls npdev jobs list --json every 10 s only while visible.
 resolution: >-
-  Done when Stop ends a gate run and its child processes.
+  Manager Activity > Tasks (screen-jobs, jobs.js, jobs.css; Manager 0.11.0): a table of every recorded task with
+  who started it, a status that is a glyph AND a word, start, elapsed time, the last output line and Stop / Restart
+  / Open log (offered only where the record's actions allow); a LOST row is tinted and says nothing is watching
+  it. It polls `npdev jobs list --json` every 10 s only while the screen is showing and the window is visible. New
+  commands jobs_list, jobs_action (verbs and ids validated) and recent_operations (this window's own operations
+  from the run recorder, shown beneath).
+files:
+- NPDevManager/ui/jobs.js
+- NPDevManager/ui/jobs.css
+- NPDevManager/ui/index.html
+- NPDevManager/ui/navigation.json
+- NPDevManager/ui/app.js
+- NPDevManager/src/main.rs
+- NPDevManager/src/npdev.rs
+- NPDevManager/fixtures/jobs-list.json
+- scripts/quality/check-manager-ui-render.mjs
+verification: UNIT_TESTED
+guard:
+  kind: manual
+  ref: scripts/quality/check-manager-ui-render.mjs
+  asserts: >-
+    stub mode: four tasks listed; the lost one marked in words and by row; an agent-started gate shows its last
+    line and 6m 30s with Stop and Open log; a CI task offers only Open log; Stop asks the CLI to stop exactly that
+    task; polling is 10 s and a refresh while another screen shows does nothing; an empty board says how to get
+    tasks; the screen has zero axe violations.
+  provenRed: false
+note: >-
+  2026-11-03: render check 114/114, cargo test 80/80. 'Stop from the Manager ends a gate run and its child processes
+  (check Get-Process java)' was proven for the CLI's stop on a Python process tree, not on a real Gradle gate from
+  the Manager window. The Manager's own setup/dev runs are not recorded as job records.

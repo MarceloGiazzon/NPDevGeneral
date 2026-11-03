@@ -1,0 +1,146 @@
+{
+  "ok": true,
+  "schema": "npdev-jobs-list.v1",
+  "jobs": [
+    {
+      "schema": "npdev-job.v1",
+      "jobId": "20261103T100000Z-gates",
+      "title": "Quality gates",
+      "argv": [
+        "pwsh",
+        "-NoProfile",
+        "-File",
+        "scripts/quality/run-all-gates.ps1"
+      ],
+      "cwd": "D:\\Repo",
+      "pid": 4242,
+      "writerPid": 4200,
+      "status": "running",
+      "recordedStatus": "running",
+      "exitCode": null,
+      "startedAt": "2026-11-03T10:00:00Z",
+      "endedAt": null,
+      "heartbeatAt": "2026-11-03T10:06:00Z",
+      "logPath": "D:\\Build\\digest-logs\u008261103T100000Z-gates.log",
+      "progress": {
+        "lines": 812,
+        "lastLine": "[2/4] run-runtimehost-gate.ps1"
+      },
+      "launcher": {
+        "kind": "claude-code",
+        "sessionId": "sess-0001-aaaa"
+      },
+      "actions": [
+        "openLog",
+        "stop",
+        "restart"
+      ],
+      "elapsedSeconds": 390.0
+    },
+    {
+      "schema": "npdev-job.v1",
+      "jobId": "20261103T093000Z-rebuild",
+      "title": "Rebuild WmsOffice",
+      "argv": [
+        "pwsh",
+        "-File",
+        "Rebuild-And-Restage.ps1"
+      ],
+      "cwd": "D:\\Repo",
+      "pid": 3100,
+      "writerPid": 3090,
+      "status": "lost",
+      "recordedStatus": "running",
+      "exitCode": null,
+      "startedAt": "2026-11-03T09:30:00Z",
+      "endedAt": null,
+      "heartbeatAt": "2026-11-03T09:31:00Z",
+      "logPath": "D:\\Build\\digest-logs\u008261103T093000Z-rebuild.log",
+      "progress": {
+        "lines": 40,
+        "lastLine": "> Task :compileJava"
+      },
+      "launcher": {
+        "kind": "terminal"
+      },
+      "actions": [
+        "openLog",
+        "stop",
+        "restart"
+      ],
+      "elapsedSeconds": 60.0
+    },
+    {
+      "schema": "npdev-job.v1",
+      "jobId": "20261103T090000Z-bench",
+      "title": "Python tests",
+      "argv": [
+        "python",
+        "-m",
+        "unittest"
+      ],
+      "cwd": "D:\\Repo",
+      "pid": 2000,
+      "writerPid": 1990,
+      "status": "failed",
+      "recordedStatus": "failed",
+      "exitCode": 1,
+      "startedAt": "2026-11-03T09:00:00Z",
+      "endedAt": "2026-11-03T09:04:10Z",
+      "heartbeatAt": "2026-11-03T09:04:10Z",
+      "logPath": "D:\\Build\\digest-logs\u008261103T090000Z-bench.log",
+      "progress": {
+        "lines": 300,
+        "lastLine": "FAILED (failures=1)"
+      },
+      "launcher": {
+        "kind": "ci"
+      },
+      "actions": [
+        "openLog"
+      ],
+      "elapsedSeconds": 250.0
+    },
+    {
+      "schema": "npdev-job.v1",
+      "jobId": "20261103T080000Z-gradle",
+      "title": "Gradle build",
+      "argv": [
+        "./gradlew",
+        "build"
+      ],
+      "cwd": "D:\\Repo",
+      "pid": 1000,
+      "writerPid": 990,
+      "status": "succeeded",
+      "recordedStatus": "succeeded",
+      "exitCode": 0,
+      "startedAt": "2026-11-03T08:00:00Z",
+      "endedAt": "2026-11-03T08:02:00Z",
+      "heartbeatAt": "2026-11-03T08:02:00Z",
+      "logPath": "D:\\Build\\digest-logs\u008261103T080000Z-gradle.log",
+      "progress": {
+        "lines": 90,
+        "lastLine": "BUILD SUCCESSFUL"
+      },
+      "launcher": {
+        "kind": "manager"
+      },
+      "actions": [
+        "openLog",
+        "stop",
+        "restart"
+      ],
+      "elapsedSeconds": 120.0
+    }
+  ],
+  "summary": {
+    "running": 1,
+    "lost": 1,
+    "newest": {
+      "title": "Quality gates",
+      "elapsedSeconds": 390.0,
+      "lastLine": "[2/4] run-runtimehost-gate.ps1"
+    }
+  }
+}

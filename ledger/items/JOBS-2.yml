@@ -2,13 +2,32 @@ id: JOBS-2
 title: Activity board -- status-line segment
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
 surface: jobs
-detail: >-
-  session_meter.py appends a running/lost segment from the job records.
+detail: session_meter.py appends a running/lost segment from the job records.
 resolution: >-
-  Done when a running gate shows in the status line with no chat message.
+  scripts/ai/session_meter.py appends a segment from npdev_jobs.summary(): a cyan play glyph, the newest running
+  job's title and elapsed time (and +N more), and a red 'N lost' for jobs lost in the last day; silent when nothing
+  runs; reads only records touched in the last 25 hours; never raises.
+files:
+- scripts/ai/session_meter.py
+- NPDevCli/npdev_jobs.py
+- NPDevCli/tests/test_jobs.py
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: >-
+    NPDevCli/tests/test_jobs.py#test_the_segment_shows_what_runs_and_what_was_lost_and_is_silent_otherwise
+  asserts: >-
+    no jobs folder or only finished jobs -> empty; a running 'Quality gates' job started 6.5 minutes ago -> its
+    title and 6m; a lost one adds '1 lost'; a corrupt record file never breaks the line.
+  provenRed: false
+note: >-
+  2026-11-03: the segment shows the elapsed time and title; it does not show a gate's step ('gates 2/4') because
+  run_digest has no structured progress -- only the last output line, which the Tasks board shows. Not seen in a
+  real Claude Code status line.

@@ -34,6 +34,7 @@
 <link rel="stylesheet" href="appearance.css" />
 <link rel="stylesheet" href="home.css" />
 <link rel="stylesheet" href="workspace.css" />
+<link rel="stylesheet" href="jobs.css" />
 <link rel="stylesheet" href="a11y.css" />
 </head>
 <body>
@@ -340,6 +341,12 @@
     <!-- Versions -->
     <section id="screen-appearance" class="screen" hidden>
       <div id="appearance-root"></div>
+    </section>
+
+    <section id="screen-jobs" class="screen" hidden>
+      <h1 id="jobs-title">Tasks</h1>
+      <p id="jobs-lead" class="field-hint"></p>
+      <div id="jobs-root"></div>
     </section>
 
     <section id="screen-versions" class="screen" hidden>
@@ -1192,6 +1199,7 @@
   <script src="appearance.js"></script>
   <script src="home.js"></script>
   <script src="workspace.js"></script>
+  <script src="jobs.js"></script>
   <script src="monitor.js"></script>
   <script src="hosting.js"></script>
   <script src="scrap.js"></script>

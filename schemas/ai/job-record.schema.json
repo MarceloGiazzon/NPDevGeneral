@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MarceloGiazzon/NPDevGeneral/schemas/ai/job-record.schema.json",
+  "title": "NPDev job record (npdev-job.v1)",
+  "description": "One file per long-running process at <BuildRoot>/jobs/<jobId>.json, written by whoever starts it (run_digest.py, the Manager's run recorder, npdev eval/gpu-check). Read by `npdev jobs`, the Manager's Activity > Tasks screen and the static jobs board. Writers rewrite the whole file atomically (write <id>.json.tmp, then rename).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "jobId",
+    "title",
+    "argv",
+    "status",
+    "startedAt",
+    "launcher"
+  ],
+  "properties": {
+    "schema": {
+      "const": "npdev-job.v1"
+    },
+    "jobId": {
+      "type": "string",
+      "pattern": "^[0-9]{8}T[0-9]{6}Z-[a-z0-9-]{1,60}$",
+      "description": "<UTC stamp>-<label>, same stem as the digest log."
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "What a person would call it: 'All quality gates', 'Rebuild WmsOffice'. Comes from the digest family's `title` in scripts/policy/output-digest-policy.json."
+    },
+    "argv": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The command as typed, already passed through redaction-rules.json."
+    },
+    "cwd": {
+      "type": "string"
+    },
+    "pid": {
+      "type": "integer",
+      "description": "The launched process. On Windows also the root of its job object."
+    },
+    "status": {
+      "enum": [
+        "running",
+        "paused",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "lost"
+      ],
+      "description": "'lost' = record says running but the pid is gone and no end was written (the writer died)."
+    },
+    "exitCode": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "endedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "heartbeatAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Rewritten about every 15 s while running; a stale heartbeat plus a dead writer means 'lost'."
+    },
+    "logPath": {
+      "type": "string"
+    },
+    "progress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lines": {
+          "type": "integer"
+        },
+        "lastLine": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Redacted."
+        },
+        "step": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "Optional, e.g. 'gate 2/4: runtimehost'."
+        }
+      }
+    },
+    "launcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "claude-code",
+            "manager",
+            "terminal",
+            "ci"
+          ]
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "CLAUDE_CODE_SESSION_ID when kind=claude-code."
+        },
+        "transcriptPath": {
+          "type": "string",
+          "description": "The session's .jsonl, so the board can show the prompt that led here."
+        },
+        "promptExcerpt": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Filled lazily by the board from the transcript, never by the writer."
+        }
+      }
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "stop",
+          "pause",
+          "resume",
+          "restart",
+          "openLog"
+        ]
+      },
+      "description": "What this job supports. A job started by another machine or CI offers openLog only."
+    },
+    "writerPid": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "The process that writes this record (run_digest.py). `lost` is decided from it: a running record whose writer is gone and whose heartbeat is older than 60 s."
+    }
+  }
+}

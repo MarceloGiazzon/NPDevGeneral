@@ -62,7 +62,8 @@
         "pt": "Tudo o que está rodando neste computador, num relance."
       },
       "screens": [
-        { "screen": "monitor", "label": { "en": "Running apps", "pt": "Apps em execução" } }
+        { "screen": "monitor", "label": { "en": "Running apps", "pt": "Apps em execução" } },
+        { "screen": "jobs", "label": { "en": "Tasks", "pt": "Tarefas" } }
       ]
     },
     {

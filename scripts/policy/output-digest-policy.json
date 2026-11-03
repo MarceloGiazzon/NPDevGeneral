@@ -37,7 +37,8 @@
         "^\\s*$",
         "Daemon will be stopped",
         "^Welcome to Gradle"
-      ]
+      ],
+      "title": "Gradle build"
     },
     {
       "name": "npdev-gate",
@@ -71,7 +72,8 @@
         "^\\s*\\.+$",
         "^Checking ",
         "^Scanning "
-      ]
+      ],
+      "title": "Quality gates"
     },
     {
       "name": "pytest",
@@ -98,7 +100,8 @@
         "^platform ",
         "^rootdir:",
         "^cachedir:"
-      ]
+      ],
+      "title": "Python tests"
     },
     {
       "name": "generic",

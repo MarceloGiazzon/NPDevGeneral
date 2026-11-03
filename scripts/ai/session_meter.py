@@ -106,6 +106,43 @@ def verdict(tokens: int) -> tuple[str, str, str]:
     return RED, "#####", "/clear now - calls cost ~3x here"
 
 
+def _build_root() -> str:
+    env = os.environ.get("NPDEV_BUILD_ROOT")
+    if env and env.strip():
+        return env
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo = os.path.dirname(os.path.dirname(here))
+    return os.path.join(os.path.dirname(repo), "Build")
+
+
+def jobs_segment() -> str:
+    """JOBS-2: what is running right now, from the job records `run_digest.py` writes -- 'running Quality gates 6m'
+    or 'LOST 1' -- so a status check never has to enter the chat. The CLI module decides what counts as lost; this only
+    formats it. Silent when nothing runs, and never raises."""
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        cli = os.path.join(os.path.dirname(os.path.dirname(here)), "NPDevCli")
+        if cli not in sys.path:
+            sys.path.insert(0, cli)
+        import npdev_jobs
+        build_root = _build_root()
+        if not os.path.isdir(os.path.join(build_root, "jobs")):
+            return ""
+        s = npdev_jobs.summary(__import__("pathlib").Path(build_root))
+    except Exception:
+        return ""
+    parts = []
+    if s["running"]:
+        newest = s["newest"] or {}
+        secs = int(newest.get("elapsedSeconds") or 0)
+        took = f"{secs // 3600}h{(secs % 3600) // 60:02d}m" if secs >= 3600 else (f"{secs // 60}m" if secs >= 60 else f"{secs}s")
+        title = str(newest.get("title") or "job")[:24]
+        parts.append(f"{CYAN}⏵ {title} {took}" + (f" (+{s['running'] - 1} more)" if s["running"] > 1 else "") + RESET)
+    if s["lost"]:
+        parts.append(f"{RED}{BOLD}⚠ {s['lost']} lost{RESET}")
+    return " ".join(parts)
+
+
 def main() -> None:
     try:
         payload = json.load(sys.stdin)
@@ -135,6 +172,9 @@ def main() -> None:
     ]
     if advice:
         parts.append(f"{colour}{BOLD}{advice}{RESET}")
+    jobs_text = jobs_segment()
+    if jobs_text:
+        parts.append(jobs_text)
 
     sys.stdout.write(f"{DIM} | {RESET}".join(parts))
 

@@ -2,14 +2,43 @@ id: JOBS-1
 title: Activity board -- job records from run_digest.py, npdev jobs list/show, lost detection
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
 surface: jobs
 detail: >-
-  One atomic record per job under <BuildRoot>/jobs; a heartbeat; the CLI decides lost (running, pid dead,
-  heartbeat older than 60 s).
+  One atomic record per job under <BuildRoot>/jobs; a heartbeat; the CLI decides lost (running, pid dead, heartbeat
+  older than 60 s).
 resolution: >-
-  Done when killing a running run_digest.py shows lost within 60 s.
+  NPDevCli/npdev_jobs.py + schemas/ai/job-record.schema.json: one atomic record per job at <BuildRoot>/jobs/<jobId>.json
+  (jobId = the digest log's stem). scripts/ai/run_digest.py -- the choke point -- writes it before the command starts,
+  rewrites the heartbeat and the redacted last line every 15 s and the end (status, exit code), with launcher claude-code
+  (CLAUDE_CODE_SESSION_ID), ci (CI=true), manager or terminal; titles come from the digest family in output-digest-policy.json.
+  `npdev jobs list|summary|show|stop|restart|board [--json]` reads them, and the CLI decides `lost`: recorded running,
+  writer pid gone and heartbeat older than 60 s. Stop kills the process tree (taskkill /T /F, or the process group)
+  and records cancelled, which the writer's later exit does not overwrite; restart replays the command through run_digest.py
+  as a new job and refuses a command that had a secret hidden.
+files:
+- NPDevCli/npdev_jobs.py
+- NPDevCli/npdev_cli.py
+- NPDevCli/tests/test_jobs.py
+- scripts/ai/run_digest.py
+- scripts/policy/output-digest-policy.json
+- schemas/ai/job-record.schema.json
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_jobs.py#test_a_dead_writer_and_a_stale_heartbeat_is_lost
+  asserts: >-
+    a record that says running whose writer pid is dead and whose heartbeat is 2 minutes old is lost; with a fresh
+    heartbeat or a live writer it is not; a finished job is never reclassified; run_digest.main creates, heartbeats
+    and ends a real record; stop ends a real process tree; the CLI lists, shows and writes the board as JSON.
+  provenRed: false
+note: >-
+  2026-11-03: 24 tests green, plus a live run_digest.py job listed by `npdev jobs list`. 'Killing run_digest from
+  Task Manager shows lost within 60 s' was proven with a dead pid and a stale heartbeat, not by actually killing
+  a running run_digest.py. Pause/resume (v2) is not built. The Manager's own streaming operations (setup, dev) do
+  not write job records; the Tasks board lists them separately from the run recorder.

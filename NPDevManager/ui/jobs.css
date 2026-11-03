@@ -1,0 +1,15 @@
+/* Activity > Tasks (jobs.js). Colours from --t-* tokens only; a status is a glyph AND a word. */
+#screen-jobs { max-width: none; }
+.jobs-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.jobs-table th, .jobs-table td { border-bottom: 1px solid var(--t-border); padding: 7px 9px; text-align: left; vertical-align: top; }
+.jobs-table th { color: var(--t-text-muted); font-weight: 600; }
+.jobs-table small { display: block; color: var(--t-text-muted); font-family: var(--t-font-mono); font-size: 11px; margin-top: 2px; }
+.jobs-table tr.lost { background: var(--t-negative-tint); }
+.jobs-status { font-weight: 700; white-space: nowrap; }
+.jobs-status.running { color: var(--t-info); }
+.jobs-status.succeeded { color: var(--t-positive); }
+.jobs-status.failed, .jobs-status.lost { color: var(--t-negative); }
+.jobs-status.cancelled, .jobs-status.paused { color: var(--t-warning); }
+.jobs-actions { white-space: nowrap; }
+.jobs-note { color: var(--t-negative); min-height: 1.2em; }
+.jobs-here { padding-left: 18px; color: var(--t-text-muted); font-size: 13px; }

@@ -50,13 +50,29 @@ def repo_root() -> Path:
     return here.parent.parent.parent
 
 
+def build_root() -> Path:
+    env = os.environ.get("NPDEV_BUILD_ROOT")
+    return Path(env) if env else repo_root().parent / "Build"
+
+
 def log_dir() -> Path:
     """Logs are build artifacts: they belong in the Build root, never the repo."""
-    env = os.environ.get("NPDEV_BUILD_ROOT")
-    base = Path(env) if env else repo_root().parent / "Build"
-    d = base / "digest-logs"
+    d = build_root() / "digest-logs"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def jobs_module():
+    """NPDevCli/npdev_jobs.py -- the job records (JOBS-1). Optional: a missing or broken module must never stop
+    the command from running, so every use below is wrapped."""
+    cli = str(repo_root() / "NPDevCli")
+    if cli not in sys.path:
+        sys.path.insert(0, cli)
+    try:
+        import npdev_jobs
+        return npdev_jobs
+    except Exception:
+        return None
 
 
 def load_policy() -> dict:
@@ -192,11 +208,26 @@ def main() -> int:
 
     started = time.time()
     lines: list[str] = []
+    jobs = jobs_module()
+    job_id = f"{stamp}-{label}"[:80]
+    broot = build_root()
+
+    def job(action):
+        """Never let bookkeeping break the run it describes."""
+        if jobs is None:
+            return
+        try:
+            action()
+        except Exception:
+            pass
+
     with open(logpath, "w", encoding="utf-8", errors="replace") as log:
         log.write(f"# {joined}\n# started {stamp}\n\n")
         proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, errors="replace", bufsize=1)
         assert proc.stdout is not None
+        job(lambda: jobs.write_record(broot, jobs.new_record(
+            job_id, fam.get("title") or label, cmd, os.getcwd(), str(logpath), proc.pid, os.getpid(), jobs.launcher_info())))
 
         drained = threading.Event()
 
@@ -214,10 +245,20 @@ def main() -> int:
         # after a finished run-all-gates (found live 2026-10-28). The grace lets the tail drain.
         reader = threading.Thread(target=pump, daemon=True)
         reader.start()
-        code = proc.wait()
+        # a heartbeat every few seconds while the command runs: it is what lets `npdev jobs` tell a job that is
+        # quietly working from one whose writer died (JOBS-1). The last line is redacted by the jobs module.
+        while True:
+            try:
+                code = proc.wait(timeout=jobs.HEARTBEAT_SECONDS if jobs else None)
+                break
+            except subprocess.TimeoutExpired:
+                snapshot = lines[-1] if lines else ""
+                count = len(lines)
+                job(lambda: jobs.heartbeat(broot, job_id, count, snapshot))
         reader.join(timeout=OUTPUT_DRAIN_GRACE_SECONDS)
         drained.set()
         lines = list(lines)
+        job(lambda: jobs.finish(broot, job_id, code))
     elapsed = time.time() - started
 
     failed = code != 0

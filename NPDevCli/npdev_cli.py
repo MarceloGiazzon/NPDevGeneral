@@ -17733,6 +17733,29 @@ def build_parser() -> argparse.ArgumentParser:
     # run-ai-schema-validation.ps1 (schema/config/command-policy/verification-schema stages) and
     # run-ai-beta-gate.ps1 (the full normalize->generate->build->boot->smoke pipeline, for scenarios
     # that need a real boot to verify) -- it owns neither engine, only their per-scenario verdicts.
+    npdev_jobs_p = subparsers.add_parser(
+        "jobs", help="See long-running work (gates, rebuilds, benchmarks) without asking: list, show, stop, restart, board."
+    )
+    jobs_sub = npdev_jobs_p.add_subparsers(dest="jobs_command")
+    jobs_list = jobs_sub.add_parser("list", help="Recorded jobs, newest first; the CLI decides which are `lost`.")
+    jobs_list.add_argument("--limit", type=int, default=50)
+    jobs_list.add_argument("--active", action="store_true", help="only running, paused and lost jobs")
+    jobs_list.add_argument("--json", action="store_true")
+    jobs_summary = jobs_sub.add_parser("summary", help="How many jobs are running or lost (what the status line shows).")
+    jobs_summary.add_argument("--json", action="store_true")
+    jobs_show = jobs_sub.add_parser("show", help="One job, with the request that started it when an AI agent did.")
+    jobs_show.add_argument("job_id")
+    jobs_show.add_argument("--json", action="store_true")
+    jobs_stop = jobs_sub.add_parser("stop", help="Stop a job and every process it started.")
+    jobs_stop.add_argument("job_id")
+    jobs_stop.add_argument("--json", action="store_true")
+    jobs_restart = jobs_sub.add_parser("restart", help="Run the same command again as a new job.")
+    jobs_restart.add_argument("job_id")
+    jobs_restart.add_argument("--json", action="store_true")
+    jobs_board = jobs_sub.add_parser("board", help="Write <BuildRoot>/jobs/board.html, a self-refreshing page of every job.")
+    jobs_board.add_argument("--limit", type=int, default=50)
+    jobs_board.add_argument("--json", action="store_true")
+
     npdev_eval = subparsers.add_parser(
         "eval", help="Run or compare AI-scenario evals in a sandboxed build root."
     )
@@ -18873,6 +18896,11 @@ def main(argv: list[str] | None = None) -> int:
             result = run_closed_loop(args)
             print(json.dumps(result, indent=2))
             return 0 if result.get("ok") else 2
+        if args.command == "jobs":
+            import npdev_jobs
+            if not getattr(args, "jobs_command", None):
+                parser.parse_args(["jobs", "--help"])
+            return npdev_jobs.run(args, _ai_build_root(), repo_root())
         if args.command == "eval" and args.eval_command == "run":
             result = run_eval(args)
             print(json.dumps(result, indent=2))

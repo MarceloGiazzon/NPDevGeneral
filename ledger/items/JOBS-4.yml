@@ -2,13 +2,33 @@ id: JOBS-4
 title: Activity board -- npdev jobs board and the prompt that started each job
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
 surface: jobs
-detail: >-
-  board.html static page plus lazy resolution of the prompt excerpt from the Claude Code transcript.
+detail: board.html static page plus lazy resolution of the prompt excerpt from the Claude Code transcript.
 resolution: >-
-  Done when the board names the prompt that started a gate run.
+  `npdev jobs board` writes <BuildRoot>/jobs/board.html (static, refreshes every 10 s, LOST in words and red). `npdev
+  jobs show` and the board resolve, for a job started by an AI agent, the request behind it: find the session's
+  transcript under ~/.claude/projects/*/<sessionId>.jsonl, the last tool call before the job started whose command
+  contains the job's command (quotes and whitespace ignored, since the shell removed them), and the closest earlier
+  user message; both are redacted and cut to 300 characters; the transcript is only read.
+files:
+- NPDevCli/npdev_jobs.py
+- NPDevCli/tests/test_jobs.py
+verification: LOCAL_PROOF_DONE
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_jobs.py#test_the_board_names_the_request_that_started_the_job
+  asserts: >-
+    on a synthetic transcript the board names the right request (not a later one), with a planted key redacted and
+    300 characters at most; a shell-unquoted command still matches; the transcript is never modified.
+  provenRed: false
+note: >-
+  2026-11-03: also proven live on this very session: a job started through run_digest.py in this conversation was
+  resolved by `npdev jobs show` to the user's latest message ('Continue') and its command. 'Which prompt' means
+  the last user text before the command, which for an agent working through many tool calls is the latest instruction,
+  not necessarily the one that first asked for the work.
