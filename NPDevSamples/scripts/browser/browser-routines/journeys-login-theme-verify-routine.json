@@ -1,0 +1,18 @@
+{
+  "scenarioName": "journeys-login-theme-golden-scenario",
+  "targetPath": "/login.html",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true, "viewport": { "width": 1000, "height": 800 } },
+  "variables": {},
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#signinForm", "state": "visible", "label": "The login page is up" },
+    { "action": "evaluate", "name": "seed_theme", "script": "window.localStorage.setItem('npdev.display', JSON.stringify({theme: 'npdev-dark'})); return {seeded: true};", "label": "Pre-seed the dark theme choice (what the Display menu stores) -- no production code path for tests" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#signinForm", "state": "visible" },
+    { "action": "waitForSelector", "selector": "html[data-np-theme-name=\"npdev-dark\"]", "state": "attached", "timeoutMs": 10000, "label": "Wait until the theme has actually been applied (it loads asynchronously)" },
+    { "action": "evaluate", "name": "probe_login_theme", "script": "var cs = getComputedStyle(document.documentElement); var token = (cs.getPropertyValue('--np-bg') || '').trim(); var probe = document.createElement('div'); probe.style.background = token; document.body.appendChild(probe); var tokenRgb = getComputedStyle(probe).backgroundColor; probe.remove(); var bodyRgb = getComputedStyle(document.body).backgroundColor; var ok = token !== '' && tokenRgb === bodyRgb && bodyRgb !== 'rgb(244, 245, 247)'; document.body.setAttribute('data-login-theme-probe', ok ? 'follows-theme' : 'wrong:' + token + '|' + tokenRgb + '|' + bodyRgb); return {token: token, tokenRgb: tokenRgb, bodyRgb: bodyRgb, ok: ok};", "label": "The login page background is the theme's --np-bg, not the page's own fallback" },
+    { "action": "assertVisible", "selector": "body[data-login-theme-probe=\"follows-theme\"]", "label": "The login page follows the chosen theme" },
+    { "action": "screenshot", "name": "login_dark" },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}

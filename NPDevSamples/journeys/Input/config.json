@@ -40,7 +40,8 @@
     "gradleTask": "bootRun"
   },
   "defaults": {
-    "auth.mode": "jwt"
+    "auth.mode": "jwt",
+    "ui.theme.choices": "npdev-default,npdev-dark"
   },
   "trialDefaults": {
     "recommendedProfiles": "dev,trial",

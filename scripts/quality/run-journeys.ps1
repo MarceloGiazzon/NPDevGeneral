@@ -269,7 +269,10 @@ try {
         $scrapCtx = $null
         try {
             Initialize-ScrapForAI -InstallBrowsers:$InstallBrowsers | Out-Null
-            $scrapCtx = Start-ScrapForAI -AppBaseUrl $baseUrl
+            $scrapCtx = Start-ScrapForAI -AppBaseUrl $baseUrl -AllowEvaluate
+
+            # 0. THM-8: the login page follows a chosen theme (the choice is pre-seeded the way the Display menu stores it)
+            Invoke-BrowserJourney "journeys-login-theme-verify-routine.json" | Out-Null
 
             # 1. the admin the REST half created signs in through the real login page
             Invoke-BrowserJourney "journeys-signin-verify-routine.json" @{ username = "journey-admin"; password = "Admin-journey-pass-1" } | Out-Null
