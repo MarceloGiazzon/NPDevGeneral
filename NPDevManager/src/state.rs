@@ -180,6 +180,10 @@ pub struct ManagerState {
     /// neither field has to lie about what it means.
     #[serde(default)]
     pub use_local_repo: bool,
+    /// THM-3: the look the user chose (theme, light/dark mode, accessibility preferences). Defaults to
+    /// Dark with every accessibility preference off, so a missing or older manager.json loads cleanly.
+    #[serde(default)]
+    pub appearance: crate::themes::Appearance,
 }
 
 /// One configured way to reach a model, for the Prompter tab.

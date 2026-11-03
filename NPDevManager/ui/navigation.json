@@ -63,6 +63,7 @@
       "screens": [
         { "screen": "providers", "label": { "en": "AI providers", "pt": "Provedores de IA" } },
         { "screen": "secrets", "label": { "en": "Passwords & keys", "pt": "Senhas e chaves" } },
+        { "screen": "appearance", "label": { "en": "Appearance & accessibility", "pt": "Aparência e acessibilidade" } },
         { "screen": "versions", "label": { "en": "NPDev versions", "pt": "Versões do NPDev" } },
         { "screen": "ready", "label": { "en": "This computer", "pt": "Este computador" } },
         { "screen": "verification", "label": { "en": "Platform checks", "pt": "Verificações da plataforma" }, "group": "advanced" },

@@ -1,0 +1,62 @@
+/* Appearance & accessibility screen (appearance.js). Colours come only from --t-* tokens. */
+#screen-appearance { max-width: 980px; }
+#screen-appearance h2 { font-size: 15px; margin: 18px 0 8px; }
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.theme-card {
+  text-align: left;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid var(--t-border);
+  border-radius: calc(var(--t-radius) + 2px);
+  background: var(--t-surface);
+  color: var(--t-text);
+  cursor: pointer;
+}
+.theme-card:hover { border-color: var(--t-border-strong); }
+.theme-card[aria-pressed="true"] { border-color: var(--t-accent); }
+.theme-swatches { display: flex; height: 38px; }
+.theme-swatches span { flex: 1; }
+.theme-meta { padding: 8px 10px; }
+.theme-meta b { display: block; }
+.theme-meta small { color: var(--t-text-muted); display: block; min-height: 2.6em; }
+
+.appearance-field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 13px; }
+.appearance-field select, .appearance-field input[type="text"], .appearance-field textarea {
+  background: var(--t-surface);
+  color: var(--t-text);
+  border: 1px solid var(--t-border-strong);
+  border-radius: var(--t-radius);
+  padding: 6px 8px;
+  font: inherit;
+}
+.appearance-field textarea.mono { font-family: var(--t-font-mono); font-size: 12px; }
+.appearance-check { display: block; margin: 6px 0; font-size: 13px; }
+.appearance-actions { display: flex; gap: 8px; margin: 8px 0 4px; }
+.appearance-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-top: 12px; }
+.appearance-a11y { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 4px 16px; }
+
+.appearance-msg { margin: 8px 0 0; font-size: 13px; line-height: 1.4; }
+.appearance-msg:empty { display: none; }
+.appearance-msg.ok { color: var(--t-text); }
+.appearance-msg.bad { color: var(--t-negative); }
+.appearance-countdown { color: var(--t-text-muted); }
+
+/* ACC-2: a status is an icon and a word; the colour only reinforces it. */
+.status-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--t-border-strong);
+  font-size: 12px;
+  font-weight: 600;
+}
+.status-chip.pass { color: var(--t-positive); background: var(--t-positive-tint); border-color: var(--t-positive-edge); }
+.status-chip.fail { color: var(--t-negative); background: var(--t-negative-tint); border-color: var(--t-negative-edge); }
+.status-chip.warn { color: var(--t-warning); background: var(--t-warning-tint); border-color: var(--t-warning-edge); }
+.status-chip.info { color: var(--t-info); background: var(--t-info-tint); border-color: var(--t-info-edge); }

@@ -2,14 +2,41 @@ id: THM-3
 title: Manager theme engine wired with persistence (appearance in manager.json, no flash on start)
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
 surface: manager
 detail: >-
-  ManagerState.appearance, theme_list/theme_import/theme_delete/appearance_get/appearance_set commands, pre-
-  paint apply from localStorage.
+  ManagerState.appearance, theme_list/theme_import/theme_delete/appearance_get/appearance_set commands, pre- paint
+  apply from localStorage.
 resolution: >-
-  Done when restarting keeps the chosen theme with no flash and a missing manager.json falls back to Dark.
+  src/themes.rs embeds the eight Manager built-ins (include_str! of NPDevContract/themes), lists them in gallery
+  order plus the user's <manager_home>/themes/*.json, re-validates STRUCTURE on import (id pattern, hex colours,
+  font characters, allowed keys, radius/elevation ranges, 20 KB cap) and refuses to overwrite a built-in or reserved
+  id. ManagerState gains #[serde(default)] appearance {theme_id (default npdev-dark), mode, a11y}; commands theme_list,
+  theme_import, theme_delete (falls back to Dark when the chosen theme is removed), appearance_get (falls back to
+  Dark when the chosen theme file is gone) and appearance_set (refuses values the engine would silently replace).
+  index.html applies a localStorage snapshot of the resolved theme before first paint; appearance.js confirms it
+  with appearance_get and follows prefers-color-scheme live for System and for themes with darkColors.
+files:
+- NPDevManager/src/themes.rs
+- NPDevManager/src/state.rs
+- NPDevManager/src/main.rs
+- NPDevManager/ui/appearance.js
+- NPDevManager/ui/index.html
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevManager/src/themes.rs#a_stranger_cannot_replace_a_built_in_theme
+  asserts: >-
+    importing a theme whose id is npdev-dark, npdev-default, system or high-contrast is refused; sibling tests pin
+    gallery order, hostile values (CSS in a colour or font, radius 99, a path in the id, an unknown key), the import/list/delete
+    round trip in an isolated folder, and that a missing appearance field or a missing manager.json loads as Dark.
+    The render check proves the remembered theme paints before appearance_get answers.
+  provenRed: false
+note: >-
+  2026-11-03: cargo test and render check 46/46. Not exercised in the real Tauri window (the real first-paint timing
+  and manager.json round trip are covered only by unit tests and the stubbed render check).

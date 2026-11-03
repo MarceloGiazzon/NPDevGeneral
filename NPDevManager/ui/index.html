@@ -4,6 +4,20 @@
 <meta charset="utf-8" />
 <title>NPDev Manager</title>
 <link rel="stylesheet" href="tokens.css" />
+<script src="theme-engine.js"></script>
+<script>
+  // Paint the last chosen theme BEFORE the first frame, from a snapshot appearance.js leaves in
+  // localStorage. Wrapped: a private profile can refuse storage, and then the default (Dark) shows.
+  (function () {
+    try {
+      var c = JSON.parse(window.localStorage.getItem("npdev.manager.appearance") || "null");
+      if (!c || !window.NPDevTheme) return;
+      var th = c.id === "system" ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? c.themes.dark : c.themes.light) : c.themes.chosen;
+      if (th) NPDevTheme.apply(th, { host: "manager", mode: c.mode, cvd: c.a11y && c.a11y.cvd });
+      if (c.a11y) NPDevTheme.applyA11y(c.a11y);
+    } catch (e) { /* default look */ }
+  })();
+</script>
 <link rel="stylesheet" href="app.css" />
 <link rel="stylesheet" href="monitor.css" />
 <link rel="stylesheet" href="hosting.css" />
@@ -17,6 +31,8 @@
 <link rel="stylesheet" href="studio.css" />
 <link rel="stylesheet" href="evals.css" />
 <link rel="stylesheet" href="support.css" />
+<link rel="stylesheet" href="appearance.css" />
+<link rel="stylesheet" href="a11y.css" />
 </head>
 <body>
   <div id="fake-banner" class="fake-banner" hidden>
@@ -313,6 +329,10 @@
     </section>
 
     <!-- Versions -->
+    <section id="screen-appearance" class="screen" hidden>
+      <div id="appearance-root"></div>
+    </section>
+
     <section id="screen-versions" class="screen" hidden>
       <h1>Versions <button type="button" class="help-btn" data-help="versions-overview" aria-label="What is this?" title="What is this?">?</button></h1>
       <p class="subtitle">
@@ -1160,6 +1180,7 @@
   <script src="nav.js"></script>
   <script src="help.js"></script>
   <script src="support.js"></script>
+  <script src="appearance.js"></script>
   <script src="monitor.js"></script>
   <script src="hosting.js"></script>
   <script src="scrap.js"></script>

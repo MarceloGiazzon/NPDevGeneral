@@ -2,15 +2,43 @@ id: THM-4
 title: Appearance screen -- theme gallery, Load theme, Ask an AI for a theme or variation, Export, Remove
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
 surface: manager/ui
 detail: >-
-  screen-appearance with the gallery, file import with live preview and 15 s auto-revert, copy-prompt/paste-
-  answer flows.
+  screen-appearance with the gallery, file import with live preview and 15 s auto-revert, copy-prompt/paste- answer
+  flows.
 resolution: >-
-  Done when the four seasonal files load, a broken file shows readable errors and changes nothing, and a fenced
-  AI answer parses.
+  Settings > Appearance & accessibility (screen-appearance, appearance.js, appearance.css): the gallery in plan
+  order (System, Dark, Light, Retro, Synth, Farm, Warm, Windows, High contrast, then user themes) with five swatches
+  and a sample line each; Load a theme file (FileReader -> parse -> resolve basedOn -> engine validate -> live preview
+  with Keep / Undo and a 15 s auto-revert -> theme_import); Ask an AI for a theme or a variation of the current
+  one (copy the engine's prompt, paste the answer; prose and a code fence around the JSON are stripped); Export
+  this theme; Remove this theme (user themes only). English and Portuguese follow the language picker.
+files:
+- NPDevManager/ui/appearance.js
+- NPDevManager/ui/appearance.css
+- NPDevManager/ui/index.html
+- NPDevManager/ui/navigation.json
+- NPDevManager/ui/app.js
+- scripts/quality/check-manager-ui-render.mjs
+- docs/guides/MANAGER_GUIDE.md
+- docs/guides/MANAGER_GUIDE.pt.md
+verification: UNIT_TESTED
+guard:
+  kind: manual
+  ref: scripts/quality/check-manager-ui-render.mjs
+  asserts: >-
+    the gallery order; Dark default; Light repaints; a seasonal file previews, Keep stores it and adds it to the
+    gallery; a hand-broken file shows readable errors and changes nothing; an AI answer wrapped in prose and a code
+    fence previews and Undo restores; the AI prompt names every token; a restart paints the remembered theme with
+    no flash.
+  provenRed: false
+note: >-
+  2026-11-03: render check 46/46, screenshots reviewed. Only summer.json (valid) and a hand-broken autumn.json were
+  driven through the file input; the other three seasons are covered by check-themes.py. The 15 s auto-revert is
+  implemented but the check clicks Undo rather than waiting 15 s.

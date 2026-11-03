@@ -20,6 +20,7 @@ function showScreen(name) {
   // happened. Refreshing on entry rather than on a timer keeps a tab nobody is looking at from
   // probing the machine every 30 seconds.
   if (name === "scrap" && window.__npdevRefreshScrap) window.__npdevRefreshScrap();
+  if (name === "appearance" && window.__npdevRefreshAppearance) window.__npdevRefreshAppearance();
   if (name === "monitor" && window.__npdevRefreshMonitor) window.__npdevRefreshMonitor();
   // Same reasoning as the Scrap Manager: the Prompter's app picker is fed from the Monitor's last
   // scan, and its provider list can be edited from its own modal, so both are re-read on entry.

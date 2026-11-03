@@ -61,6 +61,10 @@ const UI = path.join(REPO, "NPDevManager", "ui");
 const FIX = path.join(REPO, "NPDevManager", "fixtures");
 const OUT = process.argv[2] || ".";
 
+// Gallery order, same as src/themes.rs BUILT_IN (a Rust test pins that list).
+const BUILTIN_ORDER = ["npdev-dark", "npdev-light", "retro", "synth", "farm", "warm", "windows", "high-contrast"];
+const season = (id) => readFileSync(path.join(REPO, "NPDevSamples", "themes", "seasons", id + ".json"), "utf8");
+
 const fixture = (name) => JSON.parse(readFileSync(path.join(FIX, name), "utf8"));
 
 const SHIM = `
@@ -94,6 +98,19 @@ window.__TAURI__ = {
         case "assistant_config": return { configured: false };
         case "install_jdk": throw "download failed: GROQ_API_KEY=gsk_abcdefghijklmnopqrstuvwx was rejected by the proxy";
         case "support_report": return F.support;
+        case "theme_list": return F.themes.concat(window.__userThemes || []);
+        case "appearance_get":
+          if (sessionStorage.getItem("hang-appearance")) return new Promise(() => {});
+          return window.__appearance || (window.__appearance = { theme_id: "npdev-dark", mode: "system",
+            a11y: { text_scale: 1, motion: "system", focus: "auto", spacing: "normal", links: "auto", cvd: "off" } });
+        case "appearance_set": window.__appearance = args.appearance; return args.appearance;
+        case "theme_import": {
+          const th = JSON.parse(args.jsonText);
+          window.__userThemes = (window.__userThemes || []).filter((x) => x.id !== th.id).concat([Object.assign({ builtin: false }, th)]);
+          window.__imported = th.id;
+          return { id: th.id, name: th.name };
+        }
+        case "theme_delete": window.__userThemes = (window.__userThemes || []).filter((x) => x.id !== args.id); return { removed: true };
         case "manager_log_path": return "C:\\\\x\\\\manager.log";
         default: return {};
       }
@@ -136,6 +153,7 @@ await page.addInitScript({
     validateBad: fixture("explore-validate-bad.json"),
     doctor: fixture("doctor-all-green.json"),
     support: fixture("support-install-failed.json"),
+    themes: BUILTIN_ORDER.map((id) => Object.assign({ builtin: true }, JSON.parse(readFileSync(path.join(REPO, "NPDevContract", "themes", id + ".json"), "utf8")))),
   })};`,
 });
 
@@ -301,6 +319,84 @@ check("the dialog is a native modal that holds focus",
   await page.$eval("#support-dialog", (d) => d.open && d.matches(":modal")), "");
 await page.screenshot({ path: path.join(OUT, "support-dialog.png"), fullPage: false });
 await page.keyboard.press("Escape");
+
+// ---- Appearance & accessibility (THM-3, THM-4, ACC-1) ---------------------------------------------
+const cssVar = (name) => page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);
+await page.click('.tabs .place[data-place="settings"]');
+await page.click('.place-strip:not([hidden]) .tab[data-screen="appearance"]');
+await page.waitForSelector("#appearance-root .theme-card", { timeout: 3000 });
+const cardIds = await page.$$eval(".theme-card", (c) => c.map((x) => x.dataset.theme));
+check("the gallery lists System then the eight built-ins in the planned order",
+  cardIds.join(",") === "system," + BUILTIN_ORDER.join(","), cardIds.join(","));
+check("Dark is the default theme (D1)",
+  (await page.$eval('.theme-card[data-theme="npdev-dark"]', (b) => b.getAttribute("aria-pressed"))) === "true"
+  && (await cssVar("--t-bg")) === "#0b0d10", await cssVar("--t-bg"));
+await page.click('.theme-card[data-theme="npdev-light"]');
+await page.waitForTimeout(150);
+const lightBg = JSON.parse(readFileSync(path.join(REPO, "NPDevContract", "themes", "npdev-light.json"), "utf8")).colors.bg;
+check("choosing Light repaints the whole window", (await cssVar("--t-bg")) === lightBg, await cssVar("--t-bg"));
+check("the choice was sent to be saved", (await page.evaluate(() => window.__appearance.theme_id)) === "npdev-light", "");
+await page.screenshot({ path: path.join(OUT, "appearance-light.png"), fullPage: false });
+
+// Load a theme file: live preview, Keep stores it, a broken file changes nothing.
+const summerBg = JSON.parse(season("summer")).colors.bg;
+await page.setInputFiles("#theme-file", { name: "summer.json", mimeType: "application/json", buffer: Buffer.from(season("summer")) });
+await page.waitForSelector("#load-msg button.primary", { timeout: 3000 });
+check("a seasonal file previews live", (await cssVar("--t-bg")) === summerBg, await cssVar("--t-bg"));
+await page.click("#load-msg button.primary");
+await page.waitForTimeout(250);
+check("Keep stores the theme and selects it", (await page.evaluate(() => window.__imported)) === "summer"
+  && (await page.evaluate(() => window.__appearance.theme_id)) === "summer", "");
+check("a kept theme joins the gallery after the built-ins",
+  (await page.$$eval(".theme-card", (c) => c.map((x) => x.dataset.theme).slice(-1)[0])) === "summer", "");
+
+const broken = JSON.parse(season("autumn"));
+broken.colors.textMuted = broken.colors.bg;
+broken.colors.accent = "red; background:url(https://evil.example/x)";
+await page.setInputFiles("#theme-file", { name: "broken.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(broken)) });
+await page.waitForFunction(() => /Not loaded/.test(document.getElementById("load-msg").textContent), null, { timeout: 3000 });
+const brokenMsg = await page.textContent("#load-msg");
+check("a hand-broken file shows readable errors", /colors\.accent must be #rrggbb/.test(brokenMsg), brokenMsg.slice(0, 140));
+check("...and changes nothing", (await cssVar("--t-bg")) === summerBg, await cssVar("--t-bg"));
+
+// Ask an AI: an answer wrapped in a code fence still parses; Undo restores.
+await page.fill("#ai-answer", "Here you go:\n```json\n" + season("winter") + "\n```");
+await page.click("#ai-preview");
+await page.waitForSelector("#ai-msg button.primary", { timeout: 3000 });
+const winterBg = JSON.parse(season("winter")).colors.bg;
+check("an AI answer wrapped in prose and a code fence still previews", (await cssVar("--t-bg")) === winterBg, await cssVar("--t-bg"));
+await page.click("#ai-msg button:not(.primary)");
+await page.waitForTimeout(150);
+check("Undo puts the previous theme back", (await cssVar("--t-bg")) === summerBg, await cssVar("--t-bg"));
+const prompt = await page.evaluate(() => NPDevTheme.buildThemePrompt("cozy", null));
+check("the AI prompt names every colour token", ["bg", "surfaceRaised", "borderStrong", "onAccent"].every((k) => prompt.includes(k)), "");
+
+// Accessibility preferences change the render (ACC-1).
+await page.selectOption("#a11y-text_scale", "1.3");
+await page.selectOption("#a11y-motion", "reduce");
+await page.selectOption("#a11y-focus", "always");
+await page.selectOption("#a11y-spacing", "wide");
+await page.selectOption("#a11y-links", "underline");
+const positiveBefore = await cssVar("--t-positive");
+await page.selectOption("#a11y-cvd", "safe");
+await page.waitForTimeout(150);
+const attrs = await page.evaluate(() => ({ scale: document.documentElement.style.getPropertyValue("--np-text-scale"),
+  motion: document.documentElement.dataset.npMotion, focus: document.documentElement.dataset.npFocus,
+  spacing: document.documentElement.dataset.npSpacing, links: document.documentElement.dataset.npLinks, cvd: document.documentElement.dataset.npCvd }));
+check("every accessibility preference reaches the document",
+  attrs.scale === "1.3" && attrs.motion === "reduce" && attrs.focus === "always" && attrs.spacing === "wide" && attrs.links === "underline" && attrs.cvd === "safe",
+  JSON.stringify(attrs));
+check("colour-blind safe mode really changes the status colours", (await cssVar("--t-positive")) !== positiveBefore, positiveBefore);
+check("the saved appearance carries the preferences", (await page.evaluate(() => window.__appearance.a11y.text_scale)) === 1.3, "");
+await page.screenshot({ path: path.join(OUT, "appearance-a11y.png"), fullPage: false });
+
+// First paint: the snapshot in localStorage is applied before any command answers (no flash).
+await page.evaluate(() => sessionStorage.setItem("hang-appearance", "1"));
+await page.reload();
+await page.waitForTimeout(300);
+check("a restart paints the remembered theme before the Manager answers (no flash)",
+  (await cssVar("--t-bg")) === summerBg, await cssVar("--t-bg"));
+await page.evaluate(() => sessionStorage.removeItem("hang-appearance"));
 
 check("no console or page errors while rendering either screen", consoleErrors.length === 0,
   consoleErrors.slice(0, 3).join(" | "));

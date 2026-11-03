@@ -12,6 +12,7 @@ mod secrets;
 mod selftest;
 mod state;
 mod support;
+mod themes;
 mod versions;
 
 use std::path::{Path, PathBuf};
@@ -811,6 +812,59 @@ async fn support_report(
         known_secrets: known,
     });
     serde_json::to_value(out).map_err(|e| e.to_string())
+}
+
+// -------------------------------------------------------------------------------------------
+// THM-3: themes and appearance (themes.rs)
+// -------------------------------------------------------------------------------------------
+
+/// Built-ins in gallery order, then the user's own themes. Each carries `builtin: true|false`.
+#[tauri::command]
+fn theme_list() -> Vec<Value> {
+    themes::list()
+}
+
+/// Validate (structure) and store a user theme file's text. Returns `{id, name}`.
+#[tauri::command]
+fn theme_import(json_text: String) -> Result<Value, String> {
+    themes::import(&json_text)
+}
+
+/// Remove a user theme. If it was the chosen theme the choice falls back to Dark, so the Manager
+/// never points at a file that is gone.
+#[tauri::command]
+fn theme_delete(state: State<'_, AppState>, id: String) -> Result<Value, String> {
+    let removed = themes::delete(&id)?;
+    let mut manager = state.manager.lock().expect("lock poisoned");
+    let mut reset = false;
+    if manager.appearance.theme_id == id {
+        manager.appearance.theme_id = themes::DEFAULT_THEME.to_string();
+        manager.save().map_err(|e| e.to_string())?;
+        reset = true;
+    }
+    Ok(serde_json::json!({ "removed": removed, "resetToDefault": reset }))
+}
+
+#[tauri::command]
+fn appearance_get(state: State<'_, AppState>) -> themes::Appearance {
+    let mut a = state.manager.lock().expect("lock poisoned").appearance.clone();
+    // A theme that has since been deleted by hand must not leave the window unstyled.
+    if !themes::exists(&a.theme_id) {
+        a.theme_id = themes::DEFAULT_THEME.to_string();
+    }
+    a
+}
+
+#[tauri::command]
+fn appearance_set(state: State<'_, AppState>, appearance: themes::Appearance) -> Result<themes::Appearance, String> {
+    appearance.validate()?;
+    if !themes::exists(&appearance.theme_id) {
+        return Err(format!("there is no theme {:?}", appearance.theme_id));
+    }
+    let mut manager = state.manager.lock().expect("lock poisoned");
+    manager.appearance = appearance.clone();
+    manager.save().map_err(|e| e.to_string())?;
+    Ok(appearance)
 }
 
 #[tauri::command]
@@ -1748,11 +1802,11 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.7.1: One look for the whole window (every screen now draws from one set of theme colours, dark by \
-     default) on top of: Get help with this error -- when something fails, one button shows exactly what would be \
-     copied (what you were trying to do, what happened, your Java/Python/OS, the last log lines, with \
-     every password, key and personal path hidden) so any AI chat or a GitHub issue can act on it. \
-     Nothing is sent automatically. Before that: four places instead of 18 tabs and a language picker."
+    "0.8.0: Appearance & accessibility (Settings) -- pick Dark, Light, Retro, Synth, Farm, Warm, Windows or \
+     High contrast, load a theme file, or ask any AI for a new theme (you preview it and can undo); text \
+     size, motion, focus, spacing, links and colour-blind safe status colours; remembered between starts \
+     with no flash. Before that: one look for the whole window, Get help with this error (copy a redacted \
+     report for any AI chat), four places instead of 18 tabs and a language picker."
         .to_string()
 }
 
@@ -1760,7 +1814,7 @@ fn manager_version_description() -> String {
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "Get Help";
+const CURRENT_VERSION_TITLE: &str = "Your Look";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {
@@ -3520,6 +3574,11 @@ the blast radius needs a baseline to diff against"
             set_fake_doctor_scenario,
             check_doctor,
             support_report,
+            theme_list,
+            theme_import,
+            theme_delete,
+            appearance_get,
+            appearance_set,
             test_connection,
             detect_databases,
             start_docker_desktop,
