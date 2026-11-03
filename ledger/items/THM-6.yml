@@ -2,15 +2,28 @@ id: THM-6
 title: Generated apps -- theme settings (ui.theme.name/choices, ui.a11y.menu), emitted theme files, generation-time validation
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
-source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+closed: '2026-11-03'
+source: Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03
+  to implement the whole plan.
 surface: generator/themes
-detail: >-
-  New NpdevSettings keys, static/npdev-theme.js, static/themes/*.json and index.json, manifest
-  theme.name/choices; an invalid theme fails generation.
-resolution: >-
-  Done when the generator gate and determinism check are green and an invalid themes/x.json fails generation
-  naming the pair.
+detail: New NpdevSettings keys, static/npdev-theme.js, static/themes/*.json and index.json, manifest theme.name/choices; an
+  invalid theme fails generation.
+resolution: New settings ui.theme.name / ui.theme.choices / ui.a11y.menu; ThemeEmitter validates every owned theme (structure
+  + WCAG pairs, 7:1 for high-contrast) and fails generation naming the file and the pair, then writes static/themes/<id>.json
+  + index.json, npdev-theme.js (the Manager's own engine file), npdev-a11y.css, npdev-display.js, and the manifest theme block.
+  ThemeEmitterTest 13/13 (invalid theme names file+pair, hostile values refused, determinism); run-generator-gate.ps1 green
+  incl. check-deterministic-generation (796 files, no local paths).
+verification: UNIT_TESTED
+files:
+- NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/ThemeEmitter.java
+- NPDevGenerator/generator/src/main/java/com/npdev/generator/themes/ThemeCatalog.java
+- NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/ThemeEmitterTest.java
+- NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/settings/NpdevSettings.java
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/ThemeEmitterTest.java
+  asserts: an invalid themes/x.json fails generation naming the file and the colour pair; built-in themes all validate; generation
+    is deterministic
+  provenRed: false

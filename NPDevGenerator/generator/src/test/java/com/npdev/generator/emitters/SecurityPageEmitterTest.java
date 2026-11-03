@@ -36,7 +36,10 @@ class SecurityPageEmitterTest {
                         + "secrets must never be written to web storage");
         assertTrue(html.contains("/api/auth/sessions/revoke-others"), "sign out of all other devices");
         assertTrue(html.contains("Sign out of all other devices"));
-        assertFalse(html.contains("<script src"), "no external scripts: generated apps work offline");
+        // THM-8: the one script the page loads is the app's own same-origin display script (precached by the service
+        // worker); nothing is fetched from another origin, so the page still works offline.
+        assertFalse(html.replace("<script src=\"/npdev-display.js\"></script>", "").contains("<script src"),
+                "no external scripts: generated apps work offline");
     }
 
     @Test

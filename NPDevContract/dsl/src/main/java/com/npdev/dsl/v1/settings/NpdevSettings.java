@@ -114,6 +114,32 @@ public final class NpdevSettings {
                     "App-wide default UI density (comfortable|compact).");
 
     /**
+     * THM-6: the app's theme, by id -- one of NPDev's built-in themes (NPDevContract/themes) or one of the app's
+     * own {@code themes/*.json} next to its model. {@code npdev-default} is today's look, unchanged. App-scope only;
+     * an unknown id FAILS generation.
+     */
+    public static final SettingKey<String> UI_THEME_NAME =
+            SettingKey.string("ui.theme.name", "npdev-default",
+                    "App theme id: a built-in theme or one of the app's own themes/*.json (default npdev-default).");
+
+    /**
+     * THM-6: the themes an END USER may pick from in the Display menu, comma-separated ids, or {@code *} for every
+     * bundled theme. Empty (default) = no theme picker: the app's author decides the look (owner decision D6).
+     */
+    public static final SettingKey<String> UI_THEME_CHOICES =
+            SettingKey.string("ui.theme.choices", "",
+                    "Theme ids end users may choose from in the Display menu (comma-separated, or *). Empty = no picker.");
+
+    /**
+     * ACC-5: show the Display menu (text size, motion, keyboard focus, text spacing, links, colour-blind safe status
+     * colours) in the shell. OFF by default (owner decision D7, 2026-11-03): the author turns it on. The "Skip to
+     * content" link is always present.
+     */
+    public static final SettingKey<Boolean> UI_A11Y_MENU =
+            SettingKey.bool("ui.a11y.menu", false,
+                    "Show the Display (accessibility) menu in the shell (default off).");
+
+    /**
      * Persistence adapter variant for a concept's generated CRUD, overriding the model's declared
      * binding. Empty (default) = use the binding as declared, unchanged. Generation-time selection,
      * not a live per-request switch -- the resolved value is baked into the generated service when
@@ -158,6 +184,9 @@ public final class NpdevSettings {
             DATABASE_PROVIDER,
             UI_THEME_MODE,
             UI_DENSITY,
+            UI_THEME_NAME,
+            UI_THEME_CHOICES,
+            UI_A11Y_MENU,
             CHECKS_GPU_ARTIFACTS
     );
 

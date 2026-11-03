@@ -2,13 +2,27 @@ id: ACC-7
 title: Generated apps -- axe under the high-contrast and dark themes (T2)
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
-source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+closed: '2026-11-03'
+source: Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03
+  to implement the whole plan.
 surface: quality
-detail: >-
-  Routines pre-seed localStorage npdev.display with the theme; a11y-baseline.json gains per-theme floors.
-resolution: >-
-  Done when per-theme floors exist and are enforced.
+detail: Routines pre-seed localStorage npdev.display with the theme; a11y-baseline.json gains per-theme floors.
+resolution: 'theme-a11y-dark and theme-a11y-high-contrast routines pre-seed localStorage npdev.display and run axe; per-theme
+  floors are in scripts/policy/a11y-baseline.json and enforced by run-shell-scenarios.ps1. First measurement found one real
+  serious colour-contrast violation under dark (the selected view tab hard-coded #fff on the accent); fixed in views.css (uses
+  --np-on-accent), floor now 0. The routines wait on html[data-np-theme-name] instead of a fixed 1.5 s (it flaked once under
+  load). The axe summary now records up to 3 selectors per violation.'
+verification: VERIFIED_LIVE
+files:
+- scripts/policy/a11y-baseline.json
+- NPDevSamples/scripts/browser/browser-routines/theme-a11y-dark-verify-routine.json
+- NPDevSamples/scripts/browser/browser-routines/theme-a11y-high-contrast-verify-routine.json
+- NPDevGenerator/generator/src/main/resources/npdev-templates/static-assets/business-ui/views/views.css
+- NPDevSamples/scripts/browser/scrapforai-harness.ps1
+guard:
+  kind: script
+  ref: scripts/quality/run-shell-scenarios.ps1
+  asserts: dark and high-contrast themes keep their axe floor (0); a regression fails the accessibility baseline
+  provenRed: true

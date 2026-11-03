@@ -2,13 +2,23 @@ id: ACC-6
 title: Generated apps -- --np-danger contrast fix (was 4.38:1 on white)
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
-source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+closed: '2026-11-03'
+source: Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03
+  to implement the whole plan.
 surface: generator/shell
-detail: >-
-  Map the negative colour to both --np-negative and --np-danger.
-resolution: >-
-  Done when a unit test asserts every emitted theme pair meets its minimum.
+detail: Map the negative colour to both --np-negative and --np-danger.
+resolution: '--np-danger now follows --np-negative in shell.css and the workbench page (was #d64545, 4.38:1 on white; now
+  #b42323 light / #e06c6c dark). ThemeEmitterTest validates every built-in theme pair against its minimum via ThemeCatalog.validate.
+  Recorded in BREAKING.md as a visible change.'
+verification: UNIT_TESTED
+files:
+- NPDevGenerator/generator/src/main/resources/npdev-templates/shell.css.mustache
+- NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache
+- BREAKING.md
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/ThemeEmitterTest.java
+  asserts: every built-in theme meets its contrast minimum
+  provenRed: false

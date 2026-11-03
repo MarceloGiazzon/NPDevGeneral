@@ -200,6 +200,9 @@ try {
         "mob2-offline-write-verify-routine.json"  = @{ code = "M$runStamp" }  # the field allows 16 characters; a longer code is (correctly) refused on replay
         "unsaved-guard-verify-routine.json"       = @{ sku = "GUARD-SCENARIO-SKU-$runStamp" }
         "selection-tools-verify-routine.json"     = @{ name1 = "SELTOOLS-$runStamp-A"; name2 = "SELTOOLS-$runStamp-B"; prefix = "SELTOOLS-$runStamp" }
+        "theme-switch-verify-routine.json"        = @{}
+        "theme-a11y-dark-verify-routine.json"          = @{}
+        "theme-a11y-high-contrast-verify-routine.json" = @{}
     }
     $routineOrder = @(
         "list-verify-routine.json",
@@ -209,7 +212,10 @@ try {
         "permission-denied-verify-routine.json",
         "mob2-offline-write-verify-routine.json",
         "unsaved-guard-verify-routine.json",
-        "selection-tools-verify-routine.json"
+        "selection-tools-verify-routine.json",
+        "theme-switch-verify-routine.json",
+        "theme-a11y-dark-verify-routine.json",
+        "theme-a11y-high-contrast-verify-routine.json"
     )
     $routineDir = Join-Path $repoRoot "NPDevSamples\scripts\browser\browser-routines"
     $evidenceDir = Join-Path (Join-Path $outputRoot "RunOutput") "browser"

@@ -469,6 +469,9 @@
     var originalChildren = Array.prototype.slice.call(document.body.childNodes);
     var content = document.createElement("div");
     content.className = "npdev-shell-content";
+    // ACC-5: the target of the "Skip to content" link (see ensureSkipLink).
+    content.id = "npdev-main-content";
+    content.setAttribute("tabindex", "-1");
     // a11y: every shell page gets exactly one page-level heading for assistive tech (axe
     // `page-has-heading-one`); visually hidden because the topbar breadcrumb already shows the
     // same text. setContext() keeps it in step with the active section.
@@ -638,6 +641,20 @@
     return bar;
   }
 
+  // ACC-5: "Skip to content", always present (the Display menu is optional, this is not). First in the tab order.
+  function ensureSkipLink() {
+    if (document.querySelector(".npdev-skip-link")) return;
+    var link = document.createElement("a");
+    link.className = "npdev-skip-link";
+    link.href = "#npdev-main-content";
+    link.textContent = shellString("shell.skipToContent", "Skip to content");
+    link.addEventListener("click", function (event) {
+      var target = document.getElementById("npdev-main-content");
+      if (target) { event.preventDefault(); target.focus(); }
+    });
+    document.body.insertBefore(link, document.body.firstChild);
+  }
+
   function paintSkeleton() {
     var content = wrapContent();
     var sidebar = document.createElement("div");
@@ -668,6 +685,7 @@
     document.body.appendChild(buildTopbar());
     document.body.appendChild(bodyRow);
     document.body.classList.add("npdev-shell-active");
+    ensureSkipLink();
 
     el.sidebar = sidebar;
     el.sidebarBackdrop = sidebarBackdrop;
@@ -775,6 +793,7 @@
     } else {
       el.identity.textContent = shellString("shell.notSignedIn", "Not signed in");
     }
+    mountDisplayMenu();
   }
 
   // WMS-9 N4: best-effort only -- a query named "ShellCompanyName" is entirely optional. A 404
@@ -1716,6 +1735,55 @@
     var theme = (manifest && manifest.theme) || {};
     applyThemeMode(theme.mode);
     applyDensity(theme.density);
+    startDisplay(theme);
+  }
+
+  // THM-7 / ACC-5: the app's theme, what an end user chose in the Display menu, and the accessibility preferences.
+  // The app's DEFAULT theme is applied by shell.css before any script runs, so an app that neither sets another theme
+  // nor offers a choice nor has a stored choice loads no extra script at all.
+  function displayStored() {
+    try {
+      var raw = window.localStorage.getItem("npdev.display");
+      return !!raw && raw !== "{}";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function startDisplay(theme) {
+    var wantsMenu = !!theme.a11yMenu || (theme.choices && theme.choices.length > 0);
+    var nonDefault = !!theme.name && theme.name !== "npdev-default";
+    if (!wantsMenu && !nonDefault && !displayStored()) return;
+    var begin = function () {
+      window.NPDevDisplay.init({
+        themeName: theme.name || "npdev-default", mode: theme.mode || "system", choices: theme.choices || [],
+        done: function () {
+          // a GuidePage's own accent is applied AFTER the theme, so it keeps winning
+          if (state.manifest) applyGuidePage(state.manifest, document.body.dataset.guidePage || currentGuidePageName());
+        }
+      });
+      displayReady = true;
+      mountDisplayMenu();
+    };
+    if (window.NPDevDisplay) return begin();
+    var script = document.createElement("script");
+    script.src = "/npdev-display.js";
+    script.async = true;
+    script.onload = begin;
+    document.head.appendChild(script);
+  }
+
+  var displayReady = false;
+
+  function mountDisplayMenu() {
+    var theme = (state.manifest && state.manifest.theme) || {};
+    var wantsThemes = !!(theme.choices && theme.choices.length > 0);
+    if (!displayReady || !el.identity || !(theme.a11yMenu || wantsThemes)) return;
+    var old = el.identity.querySelector(".np-display");
+    if (old) old.parentNode.removeChild(old);
+    window.NPDevDisplay.mountMenu(el.identity, {
+      t: shellString, showThemes: wantsThemes, showA11y: !!theme.a11yMenu
+    });
   }
 
   // ------------------------------------------------------------ shared states ----
@@ -2551,6 +2619,11 @@
   // it does for a hand-authored page -- app.js itself never builds a header or nav again.
   window.NPDevShell = {
     registerGadget: function (type, renderFn) { gadgetRenderers[type] = renderFn; },
+    // THM-7: NPDevDisplay asks for the light/dark cascade to be re-applied after it clears a theme.
+    reapplyThemeMode: function () {
+      var theme = (state.manifest && state.manifest.theme) || {};
+      applyThemeMode(theme.mode);
+    },
     // MOB-1 (M3): the per-user offline read cache, used by the business UI's list loader.
     offline: {
       setPrincipal: offlineSetPrincipal,

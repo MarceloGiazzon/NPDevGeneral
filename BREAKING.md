@@ -5,6 +5,14 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-11-03 — generated apps can use themes and a Display menu; `--np-danger` is darker (THM-6..9, ACC-5..7)
+
+**What changes.** New and additive: settings `ui.theme.name`, `ui.theme.choices` and `ui.a11y.menu` (all default to today's look: no picker, no menu), emitted theme files under `static/themes/`, `npdev-theme.js`, `npdev-a11y.css`, `npdev-display.js`, and a "Skip to content" link in every shell page. **One visible change:** the shell token `--np-danger` was `#d64545` (4.38:1 on white, below the AA floor for text) and now follows `--np-negative` (`#b42323` light, `#e06c6c` dark), so danger text and the red row-delete button are slightly darker in every regenerated app. `static/themes/` and the three new file names are now reserved: an app's `web/` folder may not contain them.
+
+**Who is affected.** Every regenerated app sees the darker danger red and the skip link. An app whose `web/` folder already had a `themes/` directory or one of `npdev-theme.js`, `npdev-a11y.css`, `npdev-display.js` now fails generation naming the file (rename it).
+
+**Codemod.** None: no model field changes shape. `dsl-conformance-max` sets `ui.theme.choices`/`ui.a11y.menu` and ships `themes/summer.json` as the example.
+
 ## 2026-10-31 — declaring `events[]` no longer switches off the default `<Concept>.created/updated/deleted` events
 
 **What changes.** The generated CRUD service always publishes its three built-in topics. Before, any non-empty root `events[]` became an allow-list: only a default whose name a declared event mapped onto (`UserCreated` → `User.created`) survived, so declaring one lifecycle event (e.g. `WorkOrderStarted`) silently removed every CRUD event of every concept. Declared events now only add; one named like a default is that same event, and a concept-nested `mode` event literally named `<Concept>.created` (etc.) is no longer published a second time.

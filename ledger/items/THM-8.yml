@@ -5,11 +5,12 @@ severity: MEDIUM
 status: OPEN
 opened: 2026-11-03
 closed: null
-source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+source: Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03
+  to implement the whole plan.
 surface: generator/shell
-detail: >-
-  Login, reset, invite, change-password, security and workbench pages load the engine and apply the stored or
-  default theme.
-resolution: >-
-  Done when the login page matches the chosen theme.
+detail: Login, reset, invite, change-password, security and workbench pages load the engine and apply the stored or default
+  theme.
+resolution: Done when the login page matches the chosen theme.
+note: 'Written (login, reset, invite, change-password, security, workbench templates load npdev-display.js; SecurityPageEmitterTest
+  updated; generator gate green) but NOT yet checked in a real browser: no routine opens the login page under a chosen theme.
+  Close with a routine that seeds a theme and asserts the login page''s computed --np-bg.'

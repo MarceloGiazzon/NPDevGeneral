@@ -384,7 +384,7 @@ return axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa",
   var violations = results.violations.map(function (v) {
     var nodeCount = v.nodes.length;
     if (Object.prototype.hasOwnProperty.call(counts, v.impact)) { counts[v.impact] += nodeCount; }
-    return { id: v.id, impact: v.impact, help: v.help, nodeCount: nodeCount };
+    return { id: v.id, impact: v.impact, help: v.help, nodeCount: nodeCount, targets: v.nodes.slice(0, 3).map(function (n) { return String(n.target.join(" ")).slice(0, 160); }) };
   });
   return { ruleCount: results.violations.length, nodeCounts: counts, violations: violations };
 });

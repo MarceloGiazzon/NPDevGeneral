@@ -2,14 +2,24 @@ id: THM-7
 title: Generated apps -- shell.js applies the app theme; Display menu and end-user theme choice
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
-source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+closed: '2026-11-03'
+source: Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03
+  to implement the whole plan.
 surface: generator/shell
-detail: >-
-  applyAppTheme(manifest) fetches /themes/<name>.json, validates, applies; the user choice is stored in
-  localStorage npdev.display.
-resolution: >-
-  Done when the theme-switch browser routine switches to Summer and asserts the computed --np-bg.
+detail: applyAppTheme(manifest) fetches /themes/<name>.json, validates, applies; the user choice is stored in localStorage
+  npdev.display.
+resolution: shell.js applies the app theme via the engine; npdev-display.js stores the end-user choice in localStorage npdev.display
+  and offers a picker when ui.theme.choices is set. theme-switch-verify-routine picks Summer in a real browser and asserts
+  the computed --np-bg (and axe 0) - green in the full run-shell-scenarios.ps1 run on 2026-11-03.
+verification: VERIFIED_LIVE
+files:
+- NPDevGenerator/generator/src/main/resources/npdev-templates/shell.js.mustache
+- NPDevGenerator/generator/src/main/resources/npdev-templates/static-assets/display/npdev-display.js
+- NPDevSamples/scripts/browser/browser-routines/theme-switch-verify-routine.json
+guard:
+  kind: script
+  ref: scripts/quality/run-shell-scenarios.ps1
+  asserts: theme-switch routine switches to Summer and asserts the computed --np-bg
+  provenRed: false

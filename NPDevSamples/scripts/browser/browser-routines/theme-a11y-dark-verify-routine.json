@@ -1,0 +1,82 @@
+{
+  "scenarioName": "shell-theme-a11y-dark-scenario",
+  "targetPath": "/npdev-business-ui/",
+  "options": {
+    "headless": true,
+    "screenshots": "always",
+    "collectDomOnFailure": true,
+    "viewport": {
+      "width": 1400,
+      "height": 900
+    }
+  },
+  "variables": {},
+  "steps": [
+    {
+      "action": "goto",
+      "url": "$targetUrl"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#apiKey",
+      "state": "visible"
+    },
+    {
+      "action": "fill",
+      "selector": "#apiKey",
+      "valueFromCredential": "apiKey"
+    },
+    {
+      "action": "reload"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#concept-WidgetOrder",
+      "state": "visible",
+      "label": "Confirm auth landed"
+    },
+    {
+      "action": "evaluate",
+      "name": "seed_theme",
+      "script": "window.localStorage.setItem('npdev.display', JSON.stringify({theme: 'npdev-dark'})); return {seeded: true};",
+      "label": "Pre-seed the dark theme choice (what the Display menu stores) -- no production code path for tests"
+    },
+    {
+      "action": "reload"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#concept-WidgetOrder",
+      "state": "visible"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "html[data-np-theme-name=\"npdev-dark\"]",
+      "state": "attached",
+      "timeoutMs": 10000,
+      "label": "Wait until the theme has actually been applied (it loads asynchronously; a fixed wait flaked under load)"
+    },
+    {
+      "action": "evaluate",
+      "name": "probe_theme",
+      "script": "document.body.setAttribute('data-theme-probe', document.documentElement.getAttribute('data-np-theme-name') || 'none'); return {name: document.documentElement.getAttribute('data-np-theme-name')};",
+      "label": "Which theme is applied"
+    },
+    {
+      "action": "assertVisible",
+      "selector": "body[data-theme-probe=\"npdev-dark\"]",
+      "label": "The dark theme is the one in force"
+    },
+    {
+      "action": "screenshot",
+      "name": "theme_dark"
+    },
+    {
+      "action": "collect",
+      "what": [
+        "console",
+        "pageErrors"
+      ]
+    }
+  ]
+}

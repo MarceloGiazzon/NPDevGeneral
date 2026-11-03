@@ -66,6 +66,30 @@
       "minor": 0,
       "ruleCount": 0,
       "measuredOn": "2026-11-02T21:55:52.8799248Z"
+    },
+    "theme-switch-verify-routine": {
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "ruleCount": 0,
+      "measuredOn": "2026-11-03T06:29:13.4687008Z"
+    },
+    "theme-a11y-dark-verify-routine": {
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "ruleCount": 0,
+      "measuredOn": "2026-11-03T06:51:49.3462369Z"
+    },
+    "theme-a11y-high-contrast-verify-routine": {
+      "critical": 0,
+      "serious": 0,
+      "moderate": 0,
+      "minor": 0,
+      "ruleCount": 0,
+      "measuredOn": "2026-11-03T06:47:50.6277845Z"
     }
   }
 }

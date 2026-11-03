@@ -15,7 +15,9 @@
     "emitUiAssets": true
   },
   "defaults": {
-    "checks.gpuArtifacts": true
+    "checks.gpuArtifacts": true,
+    "ui.theme.choices": "npdev-default,npdev-dark,high-contrast,summer",
+    "ui.a11y.menu": true
   },
   "overrides": {
     "module:Labeling": { "ui.frame.mode": "minimal" }

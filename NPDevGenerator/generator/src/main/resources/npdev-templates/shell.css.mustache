@@ -14,7 +14,9 @@
   --np-text-muted: #5f6673;
   --np-accent: #0b5fff;
   --np-on-accent: #ffffff;
-  --np-danger: #d64545;
+  /* ACC-6: was #d64545, 4.38:1 on white (below the 4.5:1 AA floor for text). It now follows the semantic colour, so it
+     passes in light and dark and a theme that sets "negative" sets it too. */
+  --np-danger: var(--np-negative);
   --np-radius: 6px;
   --np-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
   --np-pad: 10px;
@@ -323,3 +325,19 @@ body.npdev-shell-rightbar-collapsed .npdev-shell-rightbar { width: 0; padding: 0
   vertical-align: -1px; animation: npdev-shell-state-spin .7s linear infinite;
 }
 @keyframes npdev-shell-state-spin { to { transform: rotate(360deg); } }
+
+/* ACC-5: "Skip to content" -- the first thing a keyboard user can reach, invisible until focused. */
+.npdev-skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 2000;
+  padding: 8px 14px;
+  background: var(--np-surface-raised);
+  color: var(--np-text);
+  border: 2px solid var(--np-accent);
+  border-radius: var(--np-radius);
+  text-decoration: none;
+}
+.npdev-skip-link:focus { top: 8px; }
+.npdev-shell-content:focus { outline: none; }

@@ -216,6 +216,34 @@ literal string `"system"`) — that is what lets the `prefers-color-scheme` medi
 `applyThemeMode()`/`applyDensity()` in `shell.js.mustache` are the one place this logic lives; extend
 them rather than re-deriving the cascade elsewhere.
 
+**Themes (THM-6..9).** Beyond light/dark, an app can use any `npdev-theme.v1` theme -- the same data file that
+styles the NPDev Manager. A theme is DATA (thirteen hex colours, two font lists from a safe character set, a radius
+0..24 and an elevation `flat|soft|bevel|glow`; schema `NPDevContract/themes/theme.schema.json`), never CSS, so a theme
+from an AI or a stranger cannot inject styles or fetch anything. Three settings, in the same config envelope as
+`ui.theme.mode`:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `ui.theme.name` | `npdev-default` | The app's theme: a built-in (`npdev-default` = today's look, `npdev-dark`, `npdev-light`, `retro`, `synth`, `farm`, `warm`, `windows`, `high-contrast`) or one of the app's own `themes/<id>.json` next to its `model.json`. |
+| `ui.theme.choices` | empty | Comma-separated ids an END USER may pick in the Display menu, or `*` for every bundled theme. Empty = no theme picker (the author decides the look). |
+| `ui.a11y.menu` | `false` | Show the Display (accessibility) menu: text size, motion, keyboard focus, text spacing, links, colour-blind safe status colours. Off by default; the author turns it on. |
+
+At generation, `ThemeEmitter` validates every theme the app owns (structure and WCAG 2.2 contrast: 4.5:1 text, 3:1
+control edges, 7:1 for `high-contrast`) and **fails generation** naming the file and the colour pair, e.g.
+`themes/sunny.json: colors: textMuted on bg is 3.10:1, needs 4.5:1`. It then writes `static/themes/<id>.json` for the
+app's theme, its choices and every `basedOn` ancestor, `static/themes/index.json`, the engine `static/npdev-theme.js`
+(copied from `NPDevContract/themes/theme-engine.js`, the very file the Manager runs), `static/npdev-a11y.css` and
+`static/npdev-display.js`. A theme is never fetched from anywhere at runtime: it is copied in here. The manifest's
+`theme` block gains `name`, `choices` and `a11yMenu`.
+
+`shell.js` loads `npdev-display.js` only when the app uses another theme, offers a choice, shows the menu, or this
+browser already stored a choice -- an app that does none of those loads nothing extra and looks exactly as before.
+The user's choice lives in `localStorage["npdev.display"]` (every access wrapped in try/catch) and wins over the app
+default; a GuidePage's own `theme.accent` is applied after the theme. The sign-in, reset, invite, change-password and
+security pages and the workbench pages load `npdev-display.js` too, and their own colour names read the shared
+`--np-*` variables with their previous values as fallbacks. A **Skip to content** link is always the first focusable
+element of the shell. `--np-danger` is now `var(--np-negative)` (it was `#d64545`, 4.38:1 on white, below AA for text).
+
 **Aggregate Workbench pages** (`static/npdev-workbench/<Panel>.html`) are standalone pages that do not
 load `shell.js`, but they link `/shell.css` (before their inline style) and `/theme.css` (last, harmless
 when the app has none), and their page-local names (`--np-ink`, `--np-line`, `--np-danger`, ...) are

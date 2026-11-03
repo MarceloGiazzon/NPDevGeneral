@@ -22,6 +22,7 @@ import com.npdev.generator.emitters.ExtensionInventoryEmitter;
 import com.npdev.generator.emitters.GeneratedFolderSignatureEmitter;
 import com.npdev.generator.emitters.InfoPageEmitter;
 import com.npdev.generator.emitters.LoginPageEmitter;
+import com.npdev.generator.emitters.ThemeEmitter;
 import com.npdev.generator.emitters.MetadataManifestAssetEmitter;
 import com.npdev.generator.emitters.ModelAuthoringEmitter;
 import com.npdev.generator.emitters.ModelSurfaceEmitter;
@@ -378,6 +379,8 @@ public final class GeneratorFacade {
             new GpuCheckEmitter(templates, writer).emit(model);
         }
         if (settingResolver.value(NpdevSettings.UI_GENERATE_BUSINESS_UI, SettingTarget.app())) {
+            // THM-6: the app's themes -- validated here (an invalid theme fails generation), then shipped.
+            new ThemeEmitter(templates, writer).emit(settingResolver, modelSourcePath);
             new BusinessUiEmitter(templates, writer).emit(
                     appOwnedSourceModel, superUserRole, settingResolver, extensionFieldOrigins);
             // SEC-11 (Session 3b): the jwt-mode login/signup screen, emitted only when the app

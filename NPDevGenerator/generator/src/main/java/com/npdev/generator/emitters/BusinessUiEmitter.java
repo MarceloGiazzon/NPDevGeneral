@@ -288,6 +288,10 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 "/shell.js",
                 "/shell.css",
                 "/theme.css",
+                "/npdev-theme.js",
+                "/npdev-display.js",
+                "/npdev-a11y.css",
+                "/themes/index.json",
                 "/npdev-xlsx.js",
                 "/npdev-manifest.json",
                 "/npdev-icon-192.png",
@@ -1200,6 +1204,10 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         Map<String, Object> node = new LinkedHashMap<>();
         node.put("mode", settingResolver.value(NpdevSettings.UI_THEME_MODE, SettingTarget.app()));
         node.put("density", settingResolver.value(NpdevSettings.UI_DENSITY, SettingTarget.app()));
+        // THM-6/ACC-5: which theme, which ones an end user may pick, and whether the Display menu shows.
+        node.put("name", settingResolver.value(NpdevSettings.UI_THEME_NAME, SettingTarget.app()));
+        node.put("choices", ThemeEmitter.parseChoices(settingResolver.value(NpdevSettings.UI_THEME_CHOICES, SettingTarget.app())));
+        node.put("a11yMenu", settingResolver.value(NpdevSettings.UI_A11Y_MENU, SettingTarget.app()));
         return node;
     }
 

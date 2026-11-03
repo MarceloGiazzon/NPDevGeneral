@@ -1,0 +1,124 @@
+{
+  "scenarioName": "shell-theme-switch-scenario",
+  "targetPath": "/npdev-business-ui/",
+  "options": {
+    "headless": true,
+    "screenshots": "always",
+    "collectDomOnFailure": true,
+    "viewport": {
+      "width": 1400,
+      "height": 900
+    }
+  },
+  "variables": {},
+  "steps": [
+    {
+      "action": "goto",
+      "url": "$targetUrl"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#apiKey",
+      "state": "visible"
+    },
+    {
+      "action": "fill",
+      "selector": "#apiKey",
+      "valueFromCredential": "apiKey"
+    },
+    {
+      "action": "reload"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#concept-WidgetOrder",
+      "state": "visible",
+      "label": "Confirm auth landed"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": ".np-display > button",
+      "state": "visible",
+      "label": "The Display menu is offered (ui.theme.choices and ui.a11y.menu are set)"
+    },
+    {
+      "action": "click",
+      "selector": ".np-display > button",
+      "label": "Open the Display menu"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#np-display-theme",
+      "state": "visible",
+      "label": "The theme picker lists the author's choices"
+    },
+    {
+      "action": "assertCount",
+      "selector": "#np-display-theme option",
+      "operator": "=",
+      "count": 4,
+      "label": "Exactly the four allowed themes"
+    },
+    {
+      "action": "screenshot",
+      "name": "display_menu_open"
+    },
+    {
+      "action": "evaluate",
+      "name": "choose_summer",
+      "script": "var s = document.getElementById('np-display-theme'); s.value = 'summer'; s.dispatchEvent(new Event('change', {bubbles: true})); return {chosen: s.value};",
+      "label": "Pick Summer"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 1200,
+      "label": "Let the theme load and apply"
+    },
+    {
+      "action": "evaluate",
+      "name": "probe_summer",
+      "script": "var v = getComputedStyle(document.documentElement).getPropertyValue('--np-bg').trim().toLowerCase(); document.body.setAttribute('data-bg-probe', v); return {bg: v, name: document.documentElement.getAttribute('data-np-theme-name')};",
+      "label": "Read the computed --np-bg"
+    },
+    {
+      "action": "assertVisible",
+      "selector": "body[data-bg-probe=\"#fff8e7\"]",
+      "label": "Summer's background is now the page background (#fff8e7)"
+    },
+    {
+      "action": "screenshot",
+      "name": "theme_summer"
+    },
+    {
+      "action": "reload",
+      "label": "A reload keeps the choice (it is remembered in this browser)"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#concept-WidgetOrder",
+      "state": "visible"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 1500
+    },
+    {
+      "action": "evaluate",
+      "name": "probe_after_reload",
+      "script": "var v = getComputedStyle(document.documentElement).getPropertyValue('--np-bg').trim().toLowerCase(); document.body.setAttribute('data-bg-probe2', v); return {bg: v};",
+      "label": "Read it again after the reload"
+    },
+    {
+      "action": "assertVisible",
+      "selector": "body[data-bg-probe2=\"#fff8e7\"]",
+      "label": "Still Summer after a reload"
+    },
+    {
+      "action": "collect",
+      "what": [
+        "console",
+        "pageErrors"
+      ]
+    }
+  ]
+}

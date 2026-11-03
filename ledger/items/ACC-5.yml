@@ -2,13 +2,24 @@ id: ACC-5
 title: Generated apps -- npdev-a11y.css, Display menu preferences and Skip to content (menu OFF by default, D7)
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
-source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+closed: '2026-11-03'
+source: Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03
+  to implement the whole plan.
 surface: generator/shell
-detail: >-
-  Accessibility CSS and a Display menu emitted when ui.a11y.menu is true; the skip link is always present.
-resolution: >-
-  Done when the golden routines still report 0 axe violations.
+detail: Accessibility CSS and a Display menu emitted when ui.a11y.menu is true; the skip link is always present.
+resolution: npdev-a11y.css and the Display menu (text size, motion, focus, spacing, links, colour-blind safe status colours)
+  are emitted when ui.a11y.menu is true (off by default, D7); a Skip to content link is in every shell page. The full golden-browser
+  run on 2026-11-03 keeps every pre-existing routine at its a11y floor (0 axe violations; mob2 unchanged at its 2 recorded
+  serious).
+verification: VERIFIED_LIVE
+files:
+- NPDevGenerator/generator/src/main/resources/npdev-templates/shell.js.mustache
+- NPDevGenerator/generator/src/main/resources/npdev-templates/shell.css.mustache
+- NPDevSamples/dsl-conformance-max/Input/config.json
+guard:
+  kind: script
+  ref: scripts/quality/run-shell-scenarios.ps1
+  asserts: accessibility baseline holds across all golden routines
+  provenRed: false

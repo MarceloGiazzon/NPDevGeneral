@@ -121,6 +121,8 @@
 <script src="/npdev-expr.js"></script>
 <!-- App-owned theme (404-harmless); last, so it overrides shell and workbench tokens alike. -->
 <link rel="stylesheet" href="/theme.css" onerror="this.remove()">
+<script src="/npdev-display.js"></script>
+<script>if (window.NPDevDisplay) { NPDevDisplay.boot(); }</script>
 </head>
 <body>
 <main class="app" id="app"><p class="sub">Loading workbench…</p></main>

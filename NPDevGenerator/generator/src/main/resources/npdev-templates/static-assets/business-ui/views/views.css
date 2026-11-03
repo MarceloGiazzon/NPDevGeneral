@@ -15,7 +15,7 @@
 .view-switcher button[aria-selected="true"] {
   background: var(--np-accent);
   border-color: var(--np-accent);
-  color: #fff;
+  color: var(--np-on-accent, #fff);
 }
 
 /* UI-4: record history detail section (views/history.js). */
