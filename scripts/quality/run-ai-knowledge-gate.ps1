@@ -1024,6 +1024,24 @@ try {
         $failures += "an AI vendor host is hard-coded outside NPDevCli/ai-providers.json: see scripts/quality/check-no-hardcoded-ai-endpoints.py output above -- reach the vendor through the catalogue (npdev_ai_client / ExternalAiCatalogue); a test, fixture or doc belongs under an allowedPaths entry of scripts/policy/ai-endpoint-policy.json"
     }
 
+    # THM-1 (2026-11-03): a theme is DATA (npdev-theme.v1) and the same file styles the Manager and every
+    # generated app, so a theme that fails contrast here would be unreadable in the user's window. The
+    # checker is the stdlib twin of validate() in theme-engine.js, runs the engine's Node unit test, and
+    # pins tokens.css's pre-script defaults to npdev-dark. Self-tested: it names a planted bad pair.
+    Write-Host '[53/53] Checking every theme is valid data and meets its contrast floor...'
+    & $py "scripts/quality/check-themes.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a theme is invalid or fails contrast: see scripts/quality/check-themes.py output above (it names the file and the colour pair) -- fix the theme JSON under NPDevContract/themes or NPDevSamples/themes/seasons"
+    }
+
+    # THM-2 (2026-11-03): every colour the Manager draws should come from a --t-* token so the chosen theme
+    # reaches it. The count of hard-coded hex literals in NPDevManager/ui may only fall (frozenCount).
+    Write-Host '[54/54] Checking the Manager has no new hard-coded colours...'
+    & $py "scripts/quality/check-manager-css-tokens.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "the Manager's hard-coded colour count moved: see scripts/quality/check-manager-css-tokens.py output above -- use a --t-* token from NPDevManager/ui/tokens.css, or lower frozenCount in scripts/policy/manager-css-token-baseline.json"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red

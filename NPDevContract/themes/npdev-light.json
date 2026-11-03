@@ -1,0 +1,36 @@
+{
+  "schema": "npdev-theme.v1",
+  "id": "npdev-light",
+  "name": "Light",
+  "names": {
+    "pt": "Claro",
+    "es": "Claro"
+  },
+  "version": "1.0.0",
+  "author": "NPDev",
+  "description": "Plain and bright, the Manager's original form look.",
+  "colorScheme": "light",
+  "colors": {
+    "bg": "#ffffff",
+    "surface": "#f6f7f9",
+    "surfaceRaised": "#ffffff",
+    "border": "#e2e2e2",
+    "borderStrong": "#8a8f98",
+    "text": "#1a1a1a",
+    "textMuted": "#5c6370",
+    "accent": "#2257d6",
+    "onAccent": "#ffffff",
+    "positive": "#1a7f37",
+    "negative": "#b8322a",
+    "warning": "#8a5d00",
+    "info": "#0b63b8"
+  },
+  "typography": {
+    "fontUi": "\"Segoe UI\", system-ui, -apple-system, Roboto, sans-serif",
+    "fontMono": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace"
+  },
+  "shape": {
+    "radius": 6,
+    "elevation": "soft"
+  }
+}

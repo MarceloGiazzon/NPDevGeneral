@@ -840,6 +840,26 @@
       "NPDevManager/src/redact.rs",
       "NPDevCli/npdev_redact.py"
     ]
+  },
+  {
+    "id": "theme-engine-twin",
+    "citedBy": "THM-1",
+    "description": "The theme engine is ONE file that two hosts load from their own folder: the Manager (NPDevManager/ui/theme-engine.js) and, from THM-6, every generated app (emitted from a Mustache-free copy). A copy that drifts is a silent fork: a theme would validate in one host and be refused or rendered differently in the other.",
+    "kind": "byte-identical-files",
+    "files": [
+      "NPDevContract/themes/theme-engine.js",
+      "NPDevManager/ui/theme-engine.js"
+    ]
+  },
+  {
+    "id": "a11y-css-twin",
+    "citedBy": "THM-1",
+    "description": "The accessibility stylesheet is driven only by the data-np-* attributes the engine's applyA11y() sets, and is loaded last by the Manager (NPDevManager/ui/a11y.css) and, from ACC-5, by every generated app. The two copies must stay byte-identical so a preference means the same thing in both.",
+    "kind": "byte-identical-files",
+    "files": [
+      "NPDevContract/themes/a11y.css",
+      "NPDevManager/ui/a11y.css"
+    ]
   }
 ]
 }

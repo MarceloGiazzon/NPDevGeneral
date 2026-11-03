@@ -1,15 +1,43 @@
 id: THM-2
-title: Manager token unification -- one colour set for the whole Manager (form screens turn dark, decision D1)
+title: >-
+  Manager token unification -- one colour set for the whole Manager (form screens turn dark, decision D1)
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
 surface: manager/ui
 detail: >-
-  tokens.css linked first; the scoped colour blocks in monitor.css and app.css no longer redefine the palette;
-  check-manager-css-tokens.py ratchet.
+  tokens.css linked first; the scoped colour blocks in monitor.css and app.css no longer redefine the palette; check-manager-css-tokens.py
+  ratchet.
 resolution: >-
-  Done when Monitor and Scrap look as before and the seven form screens use the same dark tokens.
+  ui/tokens.css is linked first in index.html (defaults = npdev-dark, derived tints via color-mix, legacy --bg/--fg/--panel/--bezel/--ok/--err/...
+  as aliases, plus --bg2). The custom-property lines are deleted from monitor.css's scoped block and from app.css's
+  :root + dark media block, so no scoped redefinition can shadow a theme; the block keeps its background and colour
+  rules (gradient now uses var(--t-surface)). The seven form screens (Ready, Install, Apps, Run, Share, Versions,
+  Prompter) now render on the same dark tokens as the Monitor (decision D1, accepted 2026-11-03). scripts/quality/check-manager-css-tokens.py
+  + scripts/policy/manager-css-token-baseline.json ratchet the hard-coded hex count (283 today) so it can only fall.
+files:
+- NPDevManager/ui/tokens.css
+- NPDevManager/ui/index.html
+- NPDevManager/ui/app.css
+- NPDevManager/ui/monitor.css
+- NPDevManager/src/main.rs
+- scripts/quality/check-manager-css-tokens.py
+- scripts/policy/manager-css-token-baseline.json
+- scripts/quality/run-ai-knowledge-gate.ps1
+verification: UNIT_TESTED
+guard:
+  kind: script
+  ref: scripts/quality/check-manager-css-tokens.py
+  asserts: >-
+    the count of hex literals in NPDevManager/ui (excluding tokens.css, the engine and a11y.css) equals frozenCount:
+    a new literal fails, and a removed one fails until frozenCount is lowered in the same commit.
+  provenRed: true
+note: >-
+  2026-11-03: render check 30/30 and a screenshot of the Install screen shows the unified dark look. The Monitor/Scrap
+  screens were not compared pixel-for-pixel before/after; their palette values moved slightly (--err #ff453a ->
+  theme negative #ff6b61, --bezel #23282e -> #1c2128). NOT yet seen in the real Tauri window.

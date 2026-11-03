@@ -1,0 +1,88 @@
+/* NPDev Manager token layer -- NPDevManager/ui/tokens.css, linked FIRST in index.html.
+
+   The theme engine (theme-engine.js, host "manager") sets ONLY the --t-* variables below, on <html>.
+   Everything else in the Manager reads colours through this file:
+     1. the --t-* defaults (npdev-dark, today's look) so the window is styled before any JS runs;
+     2. derived tokens (tints, hover, sunken) computed with color-mix, so a theme stays 13 colours;
+     3. the LEGACY names (app.css --bg/--fg/..., monitor.css --panel/--bezel/...) as aliases.
+   Because legacy names are aliases, no existing rule changes on day one. The hard-coded-colour
+   ratchet (check-manager-css-tokens.py) then retires literal hex values screen by screen.
+
+   IMPORTANT: the custom-property lines inside monitor.css's scoped block
+   `#screen-monitor, #screen-scrap, ... { --bg: #0b0d10; ... }` (monitor.css:25-53, properties at
+   29-43) must be DELETED in the same commit that adds this file -- keep the block's background and
+   color rules. A scoped redefinition beats the inherited value, so the theme would never reach those
+   eleven screens. */
+
+:root {
+  /* 1. defaults = npdev-dark.json */
+  --t-bg: #0b0d10;
+  --t-surface: #161b22;
+  --t-surface-raised: #1c2128;
+  --t-border: #2e343b;
+  --t-border-strong: #6e7681;
+  --t-text: #c9d1d9;
+  --t-text-muted: #8b949e;
+  --t-accent: #5b9dff;
+  --t-on-accent: #0b0d10;
+  --t-positive: #34ff6d;
+  --t-negative: #ff6b61;
+  --t-warning: #ffb000;
+  --t-info: #38dfff;
+  --t-font-ui: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --t-font-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+  --t-radius: 6px;
+  --t-shadow: 0 1px 2px rgba(0, 0, 0, .10), 0 1px 3px rgba(0, 0, 0, .14);
+  color-scheme: dark;
+
+  /* 2. derived -- never set by a theme, always computed from the 13 */
+  --t-bg-sunken: color-mix(in srgb, var(--t-bg) 70%, #000000);
+  --t-surface-hover: color-mix(in srgb, var(--t-surface) 88%, var(--t-text));
+  --t-accent-tint: color-mix(in srgb, var(--t-accent) 16%, var(--t-surface));
+  --t-positive-tint: color-mix(in srgb, var(--t-positive) 14%, var(--t-surface));
+  --t-negative-tint: color-mix(in srgb, var(--t-negative) 14%, var(--t-surface));
+  --t-warning-tint: color-mix(in srgb, var(--t-warning) 14%, var(--t-surface));
+  --t-info-tint: color-mix(in srgb, var(--t-info) 14%, var(--t-surface));
+  --t-positive-edge: color-mix(in srgb, var(--t-positive) 45%, var(--t-surface));
+  --t-negative-edge: color-mix(in srgb, var(--t-negative) 45%, var(--t-surface));
+  --t-warning-edge: color-mix(in srgb, var(--t-warning) 45%, var(--t-surface));
+  --t-info-edge: color-mix(in srgb, var(--t-info) 45%, var(--t-surface));
+
+  /* 3. legacy aliases -- app.css names */
+  --bg: var(--t-bg);
+  --fg: var(--t-text);
+  --muted: var(--t-text-muted);
+  --border: var(--t-border);
+  --pass: var(--t-positive);
+  --fail: var(--t-negative);
+  --warn: var(--t-warning);
+  --accent: var(--t-accent);
+  --surface: var(--t-surface);
+  /* legacy aliases -- monitor.css names */
+  --panel: var(--t-surface);
+  --bezel: var(--t-surface-raised);
+  --bezel-edge: var(--t-border);
+  --bezel-dark: var(--t-bg-sunken);
+  --bg2: color-mix(in srgb, var(--t-bg) 55%, var(--t-surface));
+  --text: var(--t-text);
+  --ok: var(--t-positive);
+  --err: var(--t-negative);
+  --info: var(--t-info);
+  --off: var(--t-text-muted);
+  --font-mono: var(--t-font-mono);
+  --font-ui: var(--t-font-ui);
+
+  font-family: var(--t-font-ui);
+}
+
+body {
+  background: var(--t-bg);
+  color: var(--t-text);
+}
+
+/* Elevation recipes the engine names via data-np-elevation (the shadow itself is --t-shadow). */
+[data-np-elevation="bevel"] button,
+[data-np-elevation="bevel"] .btn {
+  border-radius: 0;
+  box-shadow: var(--t-shadow);
+}

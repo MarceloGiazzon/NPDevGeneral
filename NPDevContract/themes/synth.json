@@ -1,0 +1,36 @@
+{
+  "schema": "npdev-theme.v1",
+  "id": "synth",
+  "name": "Synth",
+  "names": {
+    "pt": "Synth",
+    "es": "Synth"
+  },
+  "version": "1.0.0",
+  "author": "NPDev",
+  "description": "Synthwave night: deep violet, hot pink and cyan.",
+  "colorScheme": "dark",
+  "colors": {
+    "bg": "#1a1033",
+    "surface": "#241446",
+    "surfaceRaised": "#2d1a57",
+    "border": "#3d2a6e",
+    "borderStrong": "#8a6fd1",
+    "text": "#f5e9ff",
+    "textMuted": "#c4aeea",
+    "accent": "#ff5fdc",
+    "onAccent": "#1a1033",
+    "positive": "#3cffb0",
+    "negative": "#ff7b7b",
+    "warning": "#ffd34f",
+    "info": "#4fd8ff"
+  },
+  "typography": {
+    "fontUi": "\"Segoe UI\", system-ui, -apple-system, Roboto, sans-serif",
+    "fontMono": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace"
+  },
+  "shape": {
+    "radius": 10,
+    "elevation": "glow"
+  }
+}

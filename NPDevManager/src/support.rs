@@ -304,7 +304,7 @@ mod tests {
             screen: "install".into(),
             app_dir: None,
             ui_language: "en".into(),
-            manager_version: "0.6.1: test".into(),
+            manager_version: "0.7.0: test".into(),
             source: "downloaded v1".into(),
             os: "windows 11 (x86_64)".into(),
             admin: "no".into(),

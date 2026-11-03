@@ -1,0 +1,36 @@
+{
+  "schema": "npdev-theme.v1",
+  "id": "windows",
+  "name": "Windows",
+  "names": {
+    "pt": "Windows",
+    "es": "Windows"
+  },
+  "version": "1.0.0",
+  "author": "NPDev",
+  "description": "Classic 1990s desktop: grey bevelled windows, navy title bars.",
+  "colorScheme": "light",
+  "colors": {
+    "bg": "#c0c0c0",
+    "surface": "#c0c0c0",
+    "surfaceRaised": "#dfdfdf",
+    "border": "#808080",
+    "borderStrong": "#404040",
+    "text": "#000000",
+    "textMuted": "#2e2e2e",
+    "accent": "#000080",
+    "onAccent": "#ffffff",
+    "positive": "#004d00",
+    "negative": "#8b0000",
+    "warning": "#5c3d00",
+    "info": "#00006b"
+  },
+  "typography": {
+    "fontUi": "Tahoma, \"MS Sans Serif\", \"Segoe UI\", sans-serif",
+    "fontMono": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace"
+  },
+  "shape": {
+    "radius": 0,
+    "elevation": "bevel"
+  }
+}

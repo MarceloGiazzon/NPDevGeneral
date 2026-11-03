@@ -2,14 +2,46 @@ id: THM-1
 title: Theme assets -- schema, nine built-in themes, theme engine, contrast checker and engine tests
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
 surface: themes
 detail: >-
-  NPDevContract/themes holds theme.schema.json, the built-ins, theme-engine.js and a11y.css;
-  scripts/quality/check-themes.py validates structure, WCAG contrast and the twins.
+  NPDevContract/themes holds theme.schema.json, the built-ins, theme-engine.js and a11y.css; scripts/quality/check-themes.py
+  validates structure, WCAG contrast and the twins.
 resolution: >-
-  Done when the aiKnowledge gate is green and breaking one contrast pair fails check-themes.py naming the pair.
+  NPDevContract/themes holds theme.schema.json, the nine built-in themes (npdev-dark, npdev-light, retro, synth,
+  farm, warm, windows, high-contrast, npdev-default), the engine theme-engine.js, a11y.css and theme-engine.test.cjs;
+  NPDevSamples/themes/seasons holds the four seasonal test themes. scripts/quality/check-themes.py (aiKnowledge
+  gate step 53) is the stdlib twin of validate(): structure, WCAG contrast (4.5:1 text, 3:1 control edges, 7:1 high-contrast),
+  file name == id, all nine built-ins present, tokens.css defaults == npdev-dark, and it runs the Node engine test
+  (SKIPPED with a reason when Node is absent). Twin-pair rules pin theme-engine.js and a11y.css as byte-identical
+  with the Manager copies (new byte-identical-files rule kind).
+files:
+- NPDevContract/themes/theme.schema.json
+- NPDevContract/themes/theme-engine.js
+- NPDevContract/themes/a11y.css
+- NPDevContract/themes/theme-engine.test.cjs
+- NPDevSamples/themes/seasons/summer.json
+- NPDevManager/ui/theme-engine.js
+- NPDevManager/ui/a11y.css
+- scripts/quality/check-themes.py
+- scripts/quality/check-twin-pair-consistency.py
+- scripts/quality/twin-pair-registry.json
+- scripts/quality/run-ai-knowledge-gate.ps1
+verification: UNIT_TESTED
+guard:
+  kind: script
+  ref: scripts/quality/check-themes.py
+  asserts: >-
+    13 theme files valid; --self-test plants a #bbbbbb textMuted and requires the failure to name 'colors: textMuted
+    on bg', plants a CSS-injecting colour and font and requires both refused, and requires strict (7:1) mode to
+    pass high-contrast and fail npdev-light.
+  provenRed: true
+note: >-
+  2026-11-03: python scripts/quality/check-themes.py OK; node theme-engine.test.cjs OK (13 themes). The Python port
+  and the JS engine are two implementations of one rule: they are kept honest by the same theme files, not by a
+  shared vector file.

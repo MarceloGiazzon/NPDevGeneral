@@ -1,0 +1,51 @@
+{
+  "schema": "npdev-theme.v1",
+  "id": "high-contrast",
+  "name": "High contrast",
+  "names": {
+    "pt": "Alto contraste",
+    "es": "Alto contraste"
+  },
+  "version": "1.0.0",
+  "author": "NPDev",
+  "description": "Accessibility theme: every text pair at 7:1 or more, strong borders.",
+  "colorScheme": "light",
+  "colors": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "surfaceRaised": "#ffffff",
+    "border": "#000000",
+    "borderStrong": "#000000",
+    "text": "#000000",
+    "textMuted": "#262626",
+    "accent": "#0030a8",
+    "onAccent": "#ffffff",
+    "positive": "#005a1c",
+    "negative": "#9c0000",
+    "warning": "#5a3c00",
+    "info": "#003f8a"
+  },
+  "darkColors": {
+    "bg": "#000000",
+    "surface": "#000000",
+    "surfaceRaised": "#0d0d0d",
+    "border": "#ffffff",
+    "borderStrong": "#ffffff",
+    "text": "#ffffff",
+    "textMuted": "#e0e0e0",
+    "accent": "#7fdbff",
+    "onAccent": "#000000",
+    "positive": "#5cff8f",
+    "negative": "#ff8c8c",
+    "warning": "#ffd84d",
+    "info": "#8fd8ff"
+  },
+  "typography": {
+    "fontUi": "\"Segoe UI\", system-ui, -apple-system, Roboto, sans-serif",
+    "fontMono": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace"
+  },
+  "shape": {
+    "radius": 4,
+    "elevation": "flat"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "schema": "npdev-theme.v1",
+  "id": "farm",
+  "name": "Farm",
+  "names": {
+    "pt": "Fazenda",
+    "es": "Granja"
+  },
+  "version": "1.0.0",
+  "author": "NPDev",
+  "description": "Cream paper, field green and barn red.",
+  "colorScheme": "light",
+  "colors": {
+    "bg": "#f7f3e8",
+    "surface": "#fffdf6",
+    "surfaceRaised": "#ffffff",
+    "border": "#e0d6bf",
+    "borderStrong": "#8c7a55",
+    "text": "#2f2a1f",
+    "textMuted": "#62573f",
+    "accent": "#3a7520",
+    "onAccent": "#ffffff",
+    "positive": "#2f6f1f",
+    "negative": "#a8321e",
+    "warning": "#835500",
+    "info": "#285f7d"
+  },
+  "typography": {
+    "fontUi": "\"Trebuchet MS\", \"Segoe UI\", system-ui, sans-serif",
+    "fontMono": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace"
+  },
+  "shape": {
+    "radius": 8,
+    "elevation": "soft"
+  }
+}

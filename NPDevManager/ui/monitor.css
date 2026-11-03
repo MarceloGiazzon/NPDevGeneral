@@ -20,30 +20,17 @@ main:has(#screen-scrap:not([hidden])) {
   padding: 16px 24px;
 }
 
-/* The later dark tabs (their own *.css styles them with these tokens) get the same palette here.
+/* The later dark tabs (their own *.css styles them with these tokens) get the same CRT look here. Their
+   palette is NOT redefined: a scoped redefinition would shadow the theme, so the colours come from
+   tokens.css (THM-2). Only the background gradient and spacing live in this block.
    They used to get a black background only by accident, from an unscoped `.screen` rule that also
    blacked out the light form screens -- and never the tokens, so their text rendered dark on black. */
 #screen-monitor, #screen-scrap,
 #screen-dbio, #screen-evals, #screen-gpuchecks, #screen-packs, #screen-provenance,
 #screen-providers, #screen-secrets, #screen-studio, #screen-verification {
-  --bg: #0b0d10;
-  --bg2: #11151a;
-  --panel: #161b22;
-  --bezel: #23282e;
-  --bezel-edge: #2e343b;
-  --bezel-dark: #191d22;
-  --text: #c9d1d9;
-  --muted: #8b949e;
-  --ok: #34ff6d;
-  --warn: #ffb000;
-  --err: #ff453a;
-  --info: #38dfff;
-  --off: #6b7280;
-  --font-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
-  --font-ui: "Segoe UI", system-ui, sans-serif;
 
   background:
-    radial-gradient(1200px 600px at 50% -10%, #131a24 0%, transparent 60%),
+    radial-gradient(1200px 600px at 50% -10%, var(--t-surface) 0%, transparent 60%),
     var(--bg);
   color: var(--text);
   font-family: var(--font-ui);

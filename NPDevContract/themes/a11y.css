@@ -1,0 +1,63 @@
+/* NPDev accessibility layer. Loaded LAST by both hosts (Manager: index.html after every screen css;
+   generated app: after shell.css and /theme.css). Driven only by the data-np-* attributes that
+   NPDevTheme.applyA11y() sets on <html>, so it never needs to know a host's class names.
+   The focus ring uses the host's accent token: --t-accent in the Manager, --np-accent in apps. */
+
+/* Text size (WCAG 1.4.4). zoom scales px-based layouts too, which a root font-size cannot. */
+html { zoom: var(--np-text-scale, 1); }
+
+/* Visible focus for everyone (2.4.7), and always-on for keyboard-only users who ask for it. */
+:focus-visible {
+  outline: 2px solid var(--t-accent, var(--np-accent, #2257d6));
+  outline-offset: 2px;
+}
+html[data-np-focus="always"] :focus {
+  outline: 3px solid var(--t-accent, var(--np-accent, #2257d6)) !important;
+  outline-offset: 2px !important;
+}
+
+/* Reduced motion (2.3.3): honour the OS unless the user chose explicitly. */
+@media (prefers-reduced-motion: reduce) {
+  html[data-np-motion="system"] *,
+  html[data-np-motion="system"] *::before,
+  html[data-np-motion="system"] *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+html[data-np-motion="reduce"] *,
+html[data-np-motion="reduce"] *::before,
+html[data-np-motion="reduce"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Wider text spacing (1.4.12): easier for dyslexic and low-vision readers. */
+html[data-np-spacing="wide"] * {
+  line-height: 1.6 !important;
+  letter-spacing: 0.04em !important;
+  word-spacing: 0.12em !important;
+}
+html[data-np-spacing="wide"] p { margin-bottom: 1.2em !important; }
+
+/* Links that do not rely on colour alone (1.4.1). */
+html[data-np-links="underline"] a {
+  text-decoration: underline !important;
+  text-underline-offset: 2px;
+}
+
+/* Windows High Contrast / forced colours: keep every control's edge and the focus visible. */
+@media (forced-colors: active) {
+  button, select, input, textarea, [role="tab"] { border: 1px solid ButtonText; }
+  :focus-visible { outline: 2px solid Highlight; }
+}
+
+/* Screen-reader-only text, for labels that must exist but need not be seen. */
+.np-sr-only {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}

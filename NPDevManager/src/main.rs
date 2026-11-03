@@ -1748,7 +1748,8 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.7.0: Get help with this error -- when something fails, one button shows exactly what would be \
+    "0.7.1: One look for the whole window (every screen now draws from one set of theme colours, dark by \
+     default) on top of: Get help with this error -- when something fails, one button shows exactly what would be \
      copied (what you were trying to do, what happened, your Java/Python/OS, the last log lines, with \
      every password, key and personal path hidden) so any AI chat or a GitHub issue can act on it. \
      Nothing is sent automatically. Before that: four places instead of 18 tabs and a language picker."
@@ -3710,9 +3711,10 @@ mod monitor_css_scope_tests {
         assert!(bare.is_empty(), "unscoped .screen rules in monitor.css: {bare:?}");
     }
 
-    /// The dark tabs style themselves with tokens (`--ok`, `--text`, ...) that only monitor.css's
-    /// palette block defines. A tab missing from that block gets undefined tokens: dark text on its
-    /// dark panel. Every `#screen-<id>` a ui/*.css styles with `var(--ok)` must be in the block.
+    /// The dark tabs style themselves with tokens (`--ok`, `--text`, ...). Since THM-2 those come from
+    /// tokens.css for EVERY screen; monitor.css's scoped block now only gives these tabs their CRT
+    /// background and text colour. A tab missing from that block would render on the bare page
+    /// background. Every `#screen-<id>` a ui/*.css styles with `var(--ok)` must be in the block.
     #[test]
     fn every_dark_tab_gets_the_palette() {
         let ui = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui");

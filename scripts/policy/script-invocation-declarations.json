@@ -420,6 +420,9 @@
     "scripts/quality/check-manager-version-bump.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-manager-css-tokens.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-markdown-links.py": {
       "invocation": "ci-gate"
     },
@@ -475,6 +478,9 @@
       "invocation": "ci-gate"
     },
     "scripts/quality/check-test-task-coverage.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-themes.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-twin-pair-consistency.py": {

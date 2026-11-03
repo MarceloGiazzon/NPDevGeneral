@@ -1,0 +1,36 @@
+{
+  "schema": "npdev-theme.v1",
+  "id": "retro",
+  "name": "Retro",
+  "names": {
+    "pt": "Retrô",
+    "es": "Retro"
+  },
+  "version": "1.0.0",
+  "author": "NPDev",
+  "description": "Green-phosphor terminal. Monospace everywhere, square corners.",
+  "colorScheme": "dark",
+  "colors": {
+    "bg": "#050805",
+    "surface": "#0a120a",
+    "surfaceRaised": "#0f1a0f",
+    "border": "#1d3a1d",
+    "borderStrong": "#3f8f3f",
+    "text": "#33ff66",
+    "textMuted": "#29c752",
+    "accent": "#ffb000",
+    "onAccent": "#050805",
+    "positive": "#33ff66",
+    "negative": "#ff6060",
+    "warning": "#ffb000",
+    "info": "#66ffff"
+  },
+  "typography": {
+    "fontUi": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace",
+    "fontMono": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace"
+  },
+  "shape": {
+    "radius": 0,
+    "elevation": "flat"
+  }
+}

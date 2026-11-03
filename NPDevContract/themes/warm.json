@@ -1,0 +1,36 @@
+{
+  "schema": "npdev-theme.v1",
+  "id": "warm",
+  "name": "Warm",
+  "names": {
+    "pt": "Aconchego",
+    "es": "Cálido"
+  },
+  "version": "1.0.0",
+  "author": "NPDev",
+  "description": "Sepia, easy on the eyes for long reading.",
+  "colorScheme": "light",
+  "colors": {
+    "bg": "#f6efe4",
+    "surface": "#fbf6ee",
+    "surfaceRaised": "#fffaf3",
+    "border": "#e3d5c0",
+    "borderStrong": "#9a8468",
+    "text": "#3b2f25",
+    "textMuted": "#66544a",
+    "accent": "#a94c25",
+    "onAccent": "#ffffff",
+    "positive": "#3a7230",
+    "negative": "#a3301f",
+    "warning": "#805200",
+    "info": "#2c6383"
+  },
+  "typography": {
+    "fontUi": "\"Segoe UI\", system-ui, -apple-system, Roboto, sans-serif",
+    "fontMono": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace"
+  },
+  "shape": {
+    "radius": 8,
+    "elevation": "soft"
+  }
+}

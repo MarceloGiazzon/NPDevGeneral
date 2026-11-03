@@ -1,30 +1,5 @@
-:root {
-  color-scheme: light dark;
-  --bg: #ffffff;
-  --fg: #1a1a1a;
-  --muted: #6b7280;
-  --border: #e2e2e2;
-  --pass: #1a7f37;
-  --fail: #c0392b;
-  --warn: #a3720a;
-  --accent: #2563eb;
-  --surface: #f6f7f9;
-  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #17181a;
-    --fg: #ececec;
-    --muted: #9aa0a6;
-    --border: #2e2f32;
-    --pass: #3fbf5f;
-    --fail: #f2685c;
-    --warn: #e0b13a;
-    --accent: #5b9dff;
-    --surface: #202124;
-  }
-}
+/* Colours, fonts and the dark/light look come from tokens.css (linked first in index.html); the
+   theme engine (theme-engine.js) sets the --t-* tokens and the legacy names below are aliases of them. */
 
 * { box-sizing: border-box; }
 

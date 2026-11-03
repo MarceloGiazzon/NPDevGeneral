@@ -1,0 +1,36 @@
+{
+  "schema": "npdev-theme.v1",
+  "id": "npdev-dark",
+  "name": "Dark",
+  "names": {
+    "pt": "Escuro",
+    "es": "Oscuro"
+  },
+  "version": "1.0.0",
+  "author": "NPDev",
+  "description": "Today's Manager look: near-black panels, neon status colours.",
+  "colorScheme": "dark",
+  "colors": {
+    "bg": "#0b0d10",
+    "surface": "#161b22",
+    "surfaceRaised": "#1c2128",
+    "border": "#2e343b",
+    "borderStrong": "#6e7681",
+    "text": "#c9d1d9",
+    "textMuted": "#8b949e",
+    "accent": "#5b9dff",
+    "onAccent": "#0b0d10",
+    "positive": "#34ff6d",
+    "negative": "#ff6b61",
+    "warning": "#ffb000",
+    "info": "#38dfff"
+  },
+  "typography": {
+    "fontUi": "\"Segoe UI\", system-ui, -apple-system, Roboto, sans-serif",
+    "fontMono": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace"
+  },
+  "shape": {
+    "radius": 6,
+    "elevation": "soft"
+  }
+}

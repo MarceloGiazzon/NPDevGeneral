@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MarceloGiazzon/NPDevGeneral/schemas/theme.schema.json",
+  "title": "NPDev theme (npdev-theme.v1)",
+  "description": "A theme is DATA, never CSS. Every value is a 6-digit hex colour, a font-family list from a safe character set, a small integer or an enum, so a theme file from anywhere (an AI, a catalogue, a stranger) cannot inject CSS, load a remote resource or run code. The same file styles the NPDev Manager and every generated app. Contrast is checked by the theme engine, not by this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "name", "version", "colorScheme"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema": { "const": "npdev-theme.v1" },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,40}$",
+      "description": "Stable identifier, also the file name (<id>.json). Built-in ids: npdev-dark, npdev-light, retro, synth, farm, warm, windows, high-contrast, npdev-default."
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "names": {
+      "type": "object",
+      "description": "Optional translated display names keyed by BCP-47 language (pt, es, ...).",
+      "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 40 },
+      "propertyNames": { "pattern": "^[a-z]{2}(-[A-Z]{2})?$" }
+    },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "author": { "type": "string", "maxLength": 80 },
+    "description": { "type": "string", "maxLength": 200 },
+    "license": { "type": "string", "maxLength": 40, "description": "SPDX id for catalogue themes, e.g. CC0-1.0 or MIT." },
+    "colorScheme": {
+      "enum": ["light", "dark"],
+      "description": "Which scheme `colors` is. Sets CSS color-scheme so scrollbars and native controls match."
+    },
+    "basedOn": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,40}$",
+      "description": "Inherit every token from this theme id, then override. Lets an AI 'make a variation' by changing three colours. Chains are allowed up to depth 3; cycles are an error."
+    },
+    "colors": { "$ref": "#/$defs/colorSet" },
+    "darkColors": {
+      "$ref": "#/$defs/colorSet",
+      "description": "Optional. When present the theme supports light/dark/system switching: `colors` is the light set and `darkColors` the dark one (colorScheme must then be light)."
+    },
+    "typography": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fontUi": { "$ref": "#/$defs/fontList" },
+        "fontMono": { "$ref": "#/$defs/fontList" }
+      }
+    },
+    "shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "radius": { "type": "integer", "minimum": 0, "maximum": 24 },
+        "elevation": {
+          "enum": ["flat", "soft", "bevel", "glow"],
+          "description": "A named shadow recipe the engine expands; never a raw box-shadow string."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "not": { "required": ["basedOn"] } },
+      "then": { "required": ["colors"], "properties": { "colors": { "$ref": "#/$defs/fullColorSet" } } }
+    },
+    {
+      "if": { "required": ["darkColors"] },
+      "then": { "properties": { "colorScheme": { "const": "light" } } }
+    }
+  ],
+  "$defs": {
+    "hex": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+    "fontList": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[A-Za-z0-9 ,\"'-]+$",
+      "description": "A CSS font-family list using fonts already on the machine. No url(), no @font-face, no semicolons or braces -- the character set makes those impossible."
+    },
+    "colorSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bg": { "$ref": "#/$defs/hex", "description": "Page background." },
+        "surface": { "$ref": "#/$defs/hex", "description": "Cards, panels, table bodies." },
+        "surfaceRaised": { "$ref": "#/$defs/hex", "description": "Dialogs, menus, raised controls." },
+        "border": { "$ref": "#/$defs/hex", "description": "Decorative dividers (no contrast requirement)." },
+        "borderStrong": { "$ref": "#/$defs/hex", "description": "Input and control outlines (>= 3:1 on bg and surface)." },
+        "text": { "$ref": "#/$defs/hex", "description": "Body text (>= 4.5:1 on bg, surface, surfaceRaised)." },
+        "textMuted": { "$ref": "#/$defs/hex", "description": "Secondary text -- still text, so >= 4.5:1." },
+        "accent": { "$ref": "#/$defs/hex", "description": "Links, active tab, primary button fill (>= 4.5:1 on bg and surface)." },
+        "onAccent": { "$ref": "#/$defs/hex", "description": "Text on an accent fill (>= 4.5:1 on accent)." },
+        "positive": { "$ref": "#/$defs/hex", "description": "Pass / healthy / saved." },
+        "negative": { "$ref": "#/$defs/hex", "description": "Fail / error / delete." },
+        "warning": { "$ref": "#/$defs/hex", "description": "Needs attention." },
+        "info": { "$ref": "#/$defs/hex", "description": "Neutral information." }
+      }
+    },
+    "fullColorSet": {
+      "allOf": [
+        { "$ref": "#/$defs/colorSet" },
+        {
+          "required": ["bg", "surface", "surfaceRaised", "border", "borderStrong", "text", "textMuted", "accent", "onAccent", "positive", "negative", "warning", "info"]
+        }
+      ]
+    }
+  }
+}

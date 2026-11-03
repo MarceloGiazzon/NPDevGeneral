@@ -1,0 +1,51 @@
+{
+  "schema": "npdev-theme.v1",
+  "id": "npdev-default",
+  "name": "NPDev default",
+  "names": {
+    "pt": "Padrão NPDev",
+    "es": "Predeterminado NPDev"
+  },
+  "version": "1.0.0",
+  "author": "NPDev",
+  "description": "The generated-app shell's current corporate look (shell.css), light and dark.",
+  "colorScheme": "light",
+  "colors": {
+    "bg": "#f5f6f8",
+    "surface": "#ffffff",
+    "surfaceRaised": "#ffffff",
+    "border": "#e3e6ec",
+    "borderStrong": "#7d8da1",
+    "text": "#1c2333",
+    "textMuted": "#5f6673",
+    "accent": "#0b5fff",
+    "onAccent": "#ffffff",
+    "positive": "#1e7a34",
+    "negative": "#b42323",
+    "warning": "#95620a",
+    "info": "#0b5fff"
+  },
+  "darkColors": {
+    "bg": "#14161a",
+    "surface": "#1b1e24",
+    "surfaceRaised": "#22262e",
+    "border": "#2c313b",
+    "borderStrong": "#6b7689",
+    "text": "#e7e9ee",
+    "textMuted": "#9aa2b1",
+    "accent": "#6fa8ff",
+    "onAccent": "#0b1220",
+    "positive": "#58b96b",
+    "negative": "#e06c6c",
+    "warning": "#d9a13c",
+    "info": "#6fa8ff"
+  },
+  "typography": {
+    "fontUi": "\"Segoe UI\", system-ui, -apple-system, Roboto, sans-serif",
+    "fontMono": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace"
+  },
+  "shape": {
+    "radius": 6,
+    "elevation": "soft"
+  }
+}
