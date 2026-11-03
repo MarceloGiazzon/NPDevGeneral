@@ -94,9 +94,17 @@
     if (!ID.test(String(theme.id || ""))) errors.push("id must match " + ID);
     if (!theme.name || String(theme.name).length > 40) errors.push("name is required (max 40 characters)");
     if (theme.colorScheme !== "light" && theme.colorScheme !== "dark") errors.push("colorScheme must be light or dark");
-    var allowed = { "$schema": 1, schema: 1, id: 1, name: 1, names: 1, version: 1, author: 1, description: 1, license: 1,
+    var allowed = { "$schema": 1, schema: 1, id: 1, name: 1, names: 1, version: 1, author: 1, description: 1, descriptions: 1, license: 1,
       colorScheme: 1, basedOn: 1, colors: 1, darkColors: 1, typography: 1, shape: 1 };
     Object.keys(theme).forEach(function (k) { if (!allowed[k]) errors.push("unknown key: " + k); });
+    if (theme.descriptions !== undefined) {
+      var ds = theme.descriptions;
+      if (!ds || typeof ds !== "object" || Array.isArray(ds)) errors.push("descriptions must be an object of language -> text");
+      else Object.keys(ds).forEach(function (l) {
+        if (!/^[a-z]{2}(-[A-Z]{2})?$/.test(l)) errors.push("descriptions." + l + " is not a language code");
+        else if (typeof ds[l] !== "string" || !ds[l] || ds[l].length > 200) errors.push("descriptions." + l + " must be 1-200 characters");
+      });
+    }
     ["colors", "darkColors"].forEach(function (setName) {
       var set = theme[setName];
       if (set === undefined) return;

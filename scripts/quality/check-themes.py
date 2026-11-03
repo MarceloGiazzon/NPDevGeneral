@@ -54,7 +54,7 @@ HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 FONT = re.compile(r'^[A-Za-z0-9 ,"\'-]{1,200}$')
 ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")
 ELEVATIONS = {"flat", "soft", "bevel", "glow"}
-ALLOWED_KEYS = {"$schema", "schema", "id", "name", "names", "version", "author", "description", "license",
+ALLOWED_KEYS = {"$schema", "schema", "id", "name", "names", "version", "author", "description", "descriptions", "license",
                 "colorScheme", "basedOn", "colors", "darkColors", "typography", "shape"}
 BUILT_IN_IDS = {"npdev-dark", "npdev-light", "retro", "synth", "farm", "warm", "windows", "high-contrast",
                 "npdev-default"}

@@ -759,6 +759,14 @@ const untranslated = await page.evaluate(() => NPDevI18n.missingNow());
 writeFileSync(path.join(OUT, "i18n-untranslated.json"), JSON.stringify(untranslated, null, 1));
 check("i18n: every screen's text is in the Portuguese catalogue", untranslated.length === 0,
   `${untranslated.length} untranslated: ${JSON.stringify(untranslated.slice(0, 12))}`);
+// THM-descriptions: a theme card shows its description in the UI language when the theme has one (npdev-dark has pt + es),
+// and the English text otherwise (npdev-light has none).
+await page.evaluate(() => window.__npdevShowScreen("appearance"));
+await page.waitForTimeout(300);
+const cardDesc = (id) => page.textContent(`.theme-card[data-theme="${id}"] small`);
+check("i18n: a theme card shows its Portuguese description", /^O visual atual do Manager/.test(await cardDesc("npdev-dark")), String(await cardDesc("npdev-dark")));
+check("i18n: a theme with no Portuguese description stays English", !/[ãçé]/.test(await cardDesc("npdev-light")), String(await cardDesc("npdev-light")));
+
 await page.evaluate(() => NPDevI18n.setLang("en"));
 await page.waitForTimeout(400);
 check("i18n: back to English restores the original text", (await page.textContent("#doctor-refresh")).trim() === "Re-check"

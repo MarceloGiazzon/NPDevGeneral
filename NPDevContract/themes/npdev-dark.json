@@ -9,6 +9,10 @@
   "version": "1.0.0",
   "author": "NPDev",
   "description": "Today's Manager look: near-black panels, neon status colours.",
+  "descriptions": {
+    "pt": "O visual atual do Manager: painéis quase pretos e cores de status neon.",
+    "es": "El aspecto actual del Manager: paneles casi negros y colores de estado neón."
+  },
   "colorScheme": "dark",
   "colors": {
     "bg": "#0b0d10",

@@ -248,6 +248,12 @@
     return (th.names && th.names[lang]) || th.name;
   }
 
+  // The card's description in the UI language: `descriptions[lang]`, else the English `description`.
+  function displayDescription(th) {
+    const lang = (window.NPDevI18n && window.NPDevI18n.lang) || "en";
+    return (th.descriptions && th.descriptions[lang]) || th.description || "";
+  }
+
   function swatches(th) {
     let c;
     try {
@@ -280,7 +286,7 @@
       isSystem ? swatches({ colors: null }) : swatches(th),
       el("div", { class: "theme-meta" },
         el("b", { text: isSystem ? t(TEXT.system) : displayName(th) }),
-        el("small", { text: isSystem ? t(TEXT.systemDesc) : th.description || "" }))
+        el("small", { text: isSystem ? t(TEXT.systemDesc) : displayDescription(th) }))
     );
     return btn;
   }
@@ -517,7 +523,7 @@
     if (!th) return;
     try {
       const flat = Object.assign(T.resolve(th, state.catalog), { id: th.id, name: th.name });
-      ["names", "version", "author", "description", "license"].forEach((k) => {
+      ["names", "version", "author", "description", "descriptions", "license"].forEach((k) => {
         if (th[k] != null) flat[k] = th[k];
       });
       delete flat.builtin;

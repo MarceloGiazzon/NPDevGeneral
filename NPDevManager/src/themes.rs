@@ -40,8 +40,8 @@ const TOKENS: [&str; 13] = [
     "bg", "surface", "surfaceRaised", "border", "borderStrong", "text", "textMuted", "accent", "onAccent",
     "positive", "negative", "warning", "info",
 ];
-const ALLOWED_KEYS: [&str; 15] = [
-    "$schema", "schema", "id", "name", "names", "version", "author", "description", "license", "colorScheme",
+const ALLOWED_KEYS: [&str; 16] = [
+    "$schema", "schema", "id", "name", "names", "version", "author", "description", "descriptions", "license", "colorScheme",
     "basedOn", "colors", "darkColors", "typography", "shape",
 ];
 
