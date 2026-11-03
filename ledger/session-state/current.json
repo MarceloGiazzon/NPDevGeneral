@@ -1,18 +1,21 @@
 {
-  "closedAt": "2026-11-03T17:16:54.7481007Z",
+  "closedAt": "2026-11-03T18:35:27.0591357Z",
   "branch": "main",
-  "head": "7101ce0b",
-  "headSubject": "chore(ledger): THM-10 unblocked, npdev-themes repo created",
-  "summary": "I18N-1 closed (Manager 0.12.0, 70c7f797); THM-8 and THM-9 closed earlier this session. Public repo https://github.com/MarceloGiazzon/npdev-themes created (README only, main only, no LICENSE -- owner decides the licence); THM-10 note updated, item still OPEN.",
-  "nextStep": "THM-10: seed npdev-themes with themes/*.json from the built-in themes + generated index.json (sha256) + CI running check-themes.py there, then Manager Browse themes / Share this theme and the tampered-sha256 refusal. Also: a native Portuguese read of NPDevManager/ui/i18n/pt.json, and the FULL aiKnowledge gate (not run this session).",
+  "head": "de38d27d",
+  "headSubject": "fix(quality): check-manager-ui-render writes its screenshots to the temp dir, not the cwd",
+  "summary": "THM-10 closed: npdev-themes seeded (4 seasonal themes, generated sha256 index.json, CI green) and Manager 0.13.0 has Browse themes + Share this theme with sha256 refusal. Full aiKnowledge gate run: found and fixed missing guards on I18N-1/THM-8/THM-9/THM-10 and a CRLF shebang; re-run green. UI render check now writes to temp dir.",
+  "nextStep": "Open items are NAV-6 (owner user test) and OWN-2 (owner outreach) -- both owner-only. Engineering candidates: a native Portuguese read of NPDevManager/ui/i18n/pt.json; run the other T2 gates (generator, runtimehost, kernel) which were not run this session.",
   "plan": "",
-  "blocked": "NAV-6 owner user test; npdev-themes LICENSE choice (owner); Gemini bench quota",
-  "verified": "check-manager-ui-render.mjs 123/123; check-manager-i18n.py OK; Manager cargo test exit 0; version-bump, css-tokens, themes, doc-inventory, no-markdown-reads, record-surfaces, cadence-coverage, script-inventory green; run-journeys.ps1 green. Full aiKnowledge gate NOT run.",
+  "blocked": "NAV-6 owner user test; OWN-2 owner outreach; npdev-themes LICENSE choice (owner); Gemini bench quota",
+  "verified": "cargo test 86/86; check-manager-ui-render.mjs 131/131; aiKnowledge gate green after fixes; npdev-themes CI green; raw-served theme sha256 equals index",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "7101ce0b chore(ledger): THM-10 unblocked, npdev-themes repo created",
-    "b679db00 chore(handoff): I18N-1 closed"
+    "de38d27d fix(quality): check-manager-ui-render writes its screenshots to the temp dir, not the cwd",
+    "7a9cc3f0 chore: remove UI-render check output that was committed by mistake",
+    "df549369 feat(manager): Browse themes and Share this theme, sha256-verified (THM-10, Manager 0.13.0)",
+    "f5e0b437 feat(themes): check-themes.py --catalogue validates a themes repo and its sha256 index (THM-10)",
+    "136f5602 chore(handoff): session close, THM-10 next"
   ]
 }
