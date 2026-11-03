@@ -221,6 +221,28 @@ pub fn latest(operation: Option<&str>) -> Option<RunRecord> {
     }
 }
 
+/// The newest failed operation that nothing has fixed since: a later success of the SAME operation
+/// clears it (the user retried and it worked), so Home never nags about a problem that is gone.
+pub fn latest_unresolved_failure() -> Option<RunRecord> {
+    let q = store().lock().ok()?;
+    unresolved_in(&q)
+}
+
+fn unresolved_in(records: &VecDeque<RunRecord>) -> Option<RunRecord> {
+    let mut resolved: Vec<&str> = Vec::new();
+    for r in records.iter().rev() {
+        if r.running {
+            continue;
+        }
+        if r.ok {
+            resolved.push(r.operation.as_str());
+        } else if !resolved.contains(&r.operation.as_str()) {
+            return Some(r.clone());
+        }
+    }
+    None
+}
+
 /// Test/selftest hook: forget everything.
 #[allow(dead_code)]
 pub fn clear() {
@@ -257,6 +279,43 @@ mod tests {
         assert_eq!(rec.stdout_tail, vec!["line one".to_string()]);
         assert_eq!(rec.stderr_tail, vec!["boom".to_string()]);
         assert_eq!(rec.exit_code, Some(3));
+    }
+
+    fn rec(id: u64, op: &str, ok: bool) -> RunRecord {
+        RunRecord {
+            id,
+            operation: op.into(),
+            started_at: String::new(),
+            ended_at: None,
+            started_ms: 0,
+            ended_ms: None,
+            argv: vec![],
+            cwd: None,
+            exit_code: None,
+            ok,
+            running: false,
+            error: if ok { None } else { Some("boom".into()) },
+            stdout_tail: vec![],
+            stderr_tail: vec![],
+        }
+    }
+
+    #[test]
+    fn a_later_success_of_the_same_operation_clears_the_failure() {
+        let mut q: VecDeque<RunRecord> = VecDeque::new();
+        q.push_back(rec(1, "install-java", false));
+        assert_eq!(unresolved_in(&q).map(|r| r.id), Some(1));
+        q.push_back(rec(2, "install-java", true));
+        assert!(unresolved_in(&q).is_none(), "the retry worked, so nothing is wrong any more");
+        // a different operation's success does not clear it, and the newest unresolved failure wins
+        q.push_back(rec(3, "npdev-setup", false));
+        q.push_back(rec(4, "doctor", true));
+        assert_eq!(unresolved_in(&q).map(|r| r.operation), Some("npdev-setup".to_string()));
+        // a record that is still running is not a failure
+        let mut running = rec(5, "start-app", false);
+        running.running = true;
+        q.push_back(running);
+        assert_eq!(unresolved_in(&q).map(|r| r.id), Some(3));
     }
 
     #[tokio::test]

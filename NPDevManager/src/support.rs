@@ -172,6 +172,11 @@ fn language_name(code: &str) -> &'static str {
     }
 }
 
+/// The plain-language goal of an operation (support-intents.json), for Home's "Something went wrong" card.
+pub fn intent_text(operation: &str) -> String {
+    intent_for(operation).0
+}
+
 pub fn build_report(inp: ReportInputs) -> ReportOut {
     let (intent, glossary_ids) = intent_for(&inp.operation);
     let lang = if inp.ui_language == "pt" { "pt" } else { "en" };

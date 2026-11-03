@@ -15,13 +15,13 @@ const packsState = {
   why: null,
 };
 
-function pEsc(value) {
+function packsEsc(value) {
   const div = document.createElement("div");
   div.textContent = value == null ? "" : String(value);
   return div.innerHTML;
 }
 
-function shortDigest(digest) {
+function packsShortDigest(digest) {
   if (!digest) return "—";
   const bare = digest.startsWith("sha256:") ? digest.slice(7) : digest;
   return bare.length > 12 ? `${bare.slice(0, 12)}…` : bare;
@@ -33,35 +33,35 @@ function shortDigest(digest) {
 function signatureBadge(entry) {
   const sig = entry.signature;
   if (!sig) return `<span class="pbadge local">local</span>`;
-  if (sig.status === "verified") return `<span class="pbadge verified">✓ verified (${pEsc(sig.keyId || "")})</span>`;
+  if (sig.status === "verified") return `<span class="pbadge verified">✓ verified (${packsEsc(sig.keyId || "")})</span>`;
   if (sig.status === "unsigned") return `<span class="pbadge unsigned">unsigned${sig.allowedUnsigned ? " (allowed)" : ""}</span>`;
-  return `<span class="pbadge unknown">${pEsc(sig.status || "unknown")}</span>`;
+  return `<span class="pbadge unknown">${packsEsc(sig.status || "unknown")}</span>`;
 }
 
 function deprecatedBadge(entry) {
   const dep = entry.deprecated;
   if (!dep) return "";
   const successor = dep.supersededBy
-    ? ` — use <code>${pEsc(dep.supersededBy.pack)}</code> @ ${pEsc(dep.supersededBy.version)} instead`
+    ? ` — use <code>${packsEsc(dep.supersededBy.pack)}</code> @ ${packsEsc(dep.supersededBy.version)} instead`
     : "";
   return `
     <div class="pdeprecated">
-      ⚠ <b>DEPRECATED</b> since ${pEsc(dep.since)}: ${pEsc(dep.reason)}${successor}
+      ⚠ <b>DEPRECATED</b> since ${packsEsc(dep.since)}: ${packsEsc(dep.reason)}${successor}
     </div>`;
 }
 
 function packRow(packId, entry) {
   const selected = packId === packsState.selectedPackId;
   return `
-    <div class="prow${selected ? " selected" : ""}" data-pack-id="${pEsc(packId)}">
+    <div class="prow${selected ? " selected" : ""}" data-pack-id="${packsEsc(packId)}">
       <div class="prow-main">
-        <span class="pname">${pEsc(packId)}</span>
-        <span class="pversion">${pEsc(entry.resolvedVersion || "?")}</span>
-        <span class="pdigest" title="${pEsc(entry.digest || "")}">${shortDigest(entry.digest)}</span>
+        <span class="pname">${packsEsc(packId)}</span>
+        <span class="pversion">${packsEsc(entry.resolvedVersion || "?")}</span>
+        <span class="pdigest" title="${packsEsc(entry.digest || "")}">${packsShortDigest(entry.digest)}</span>
         ${signatureBadge(entry)}
         <span class="pactions">
-          <button class="btn ghost" data-why="${pEsc(packId)}">why?</button>
-          <button class="btn ghost" data-export="${pEsc(packId)}">export…</button>
+          <button class="btn ghost" data-why="${packsEsc(packId)}">why?</button>
+          <button class="btn ghost" data-export="${packsEsc(packId)}">export…</button>
         </span>
       </div>
       ${deprecatedBadge(entry)}
@@ -76,7 +76,7 @@ function renderPacks() {
     return;
   }
   if (report.status === "failed") {
-    list.innerHTML = `<p class="status-line err">${pEsc(report.error || "pack list failed")}</p>`;
+    list.innerHTML = `<p class="status-line err">${packsEsc(report.error || "pack list failed")}</p>`;
     return;
   }
   const packs = report.packs || {};
@@ -104,24 +104,24 @@ async function showWhy(packId) {
   renderPacks();
   const box = document.getElementById("packs-why");
   box.hidden = false;
-  box.innerHTML = `<p class="status-line">asking why <code>${pEsc(packId)}</code> resolved…</p>`;
-  const appDir = currentAppDir();
+  box.innerHTML = `<p class="status-line">asking why <code>${packsEsc(packId)}</code> resolved…</p>`;
+  const appDir = packsCurrentAppDir();
   if (!appDir) return;
   try {
     const why = await kInvoke("pack_why", { appDir, packId });
     packsState.why = why;
     if (why.status !== "ok") {
-      box.innerHTML = `<p class="status-line err">${pEsc(why.error || "pack why failed")}</p>`;
+      box.innerHTML = `<p class="status-line err">${packsEsc(why.error || "pack why failed")}</p>`;
       return;
     }
     const requiredBy = Array.isArray(why.requiredBy) ? why.requiredBy : [];
     box.innerHTML = `
-      <h4>Why <code>${pEsc(packId)}</code> resolved</h4>
+      <h4>Why <code>${packsEsc(packId)}</code> resolved</h4>
       ${requiredBy.length
-        ? `<ul class="pwhy-list">${requiredBy.map((r) => `<li>${pEsc(r)}</li>`).join("")}</ul>`
+        ? `<ul class="pwhy-list">${requiredBy.map((r) => `<li>${packsEsc(r)}</li>`).join("")}</ul>`
         : `<p class="status-line">Directly declared by this app — nothing else requires it.</p>`}`;
   } catch (error) {
-    box.innerHTML = `<p class="status-line err">could not ask why: ${pEsc(error)}</p>`;
+    box.innerHTML = `<p class="status-line err">could not ask why: ${packsEsc(error)}</p>`;
   }
 }
 
@@ -146,14 +146,14 @@ function packsStatus(message, bad) {
   el.style.color = bad ? "var(--err)" : "var(--muted)";
 }
 
-function currentAppDir() {
+function packsCurrentAppDir() {
   const picker = document.getElementById("packs-app-picker");
   return picker && picker.value ? picker.value : null;
 }
 
 // Same "populate from list_apps, keep the user's choice across a refresh, otherwise default to
 // the most recently created app" shape as app.js's refreshDoctorAppPicker.
-async function refreshAppPicker() {
+async function packsRefreshAppPicker() {
   const label = document.getElementById("packs-app-label");
   const picker = document.getElementById("packs-app-picker");
   let apps = [];
@@ -170,13 +170,13 @@ async function refreshAppPicker() {
   }
   const previous = picker.value;
   label.hidden = false;
-  picker.innerHTML = apps.map((a) => `<option value="${pEsc(a.directory)}">${pEsc(a.name)}</option>`).join("");
+  picker.innerHTML = apps.map((a) => `<option value="${packsEsc(a.directory)}">${packsEsc(a.name)}</option>`).join("");
   if (previous && apps.some((a) => a.directory === previous)) picker.value = previous;
   else picker.value = apps[apps.length - 1].directory;
 }
 
 async function refreshPacks() {
-  const appDir = currentAppDir();
+  const appDir = packsCurrentAppDir();
   document.getElementById("packs-why").hidden = true;
   packsState.selectedPackId = null;
   if (!appDir) {
@@ -197,11 +197,11 @@ async function refreshPacks() {
 
 function initPacks() {
   document.getElementById("packs-refresh").addEventListener("click", async () => {
-    await refreshAppPicker();
+    await packsRefreshAppPicker();
     await refreshPacks();
   });
   document.getElementById("packs-app-picker").addEventListener("change", refreshPacks);
-  refreshAppPicker().then(refreshPacks);
+  packsRefreshAppPicker().then(refreshPacks);
 }
 
 window.__npdevInitPacks = initPacks;

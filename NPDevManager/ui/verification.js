@@ -32,7 +32,7 @@ const verifyState = {
   view: "kanban",
 };
 
-function esc(value) {
+function verifyEsc(value) {
   const div = document.createElement("div");
   div.textContent = value == null ? "" : String(value);
   return div.innerHTML;
@@ -60,7 +60,7 @@ function dur(value) {
 function relativeTime(iso) {
   if (!iso) return "—";
   const diff = Date.now() - new Date(iso).getTime();
-  if (!Number.isFinite(diff)) return esc(iso);
+  if (!Number.isFinite(diff)) return verifyEsc(iso);
   const min = Math.floor(diff / 60000);
   if (min < 1) return "just now";
   if (min < 60) return `${min}m ago`;
@@ -72,9 +72,9 @@ function relativeTime(iso) {
 
 function resultBadge(result) {
   if (!result) return "";
-  const label = esc((result || "").toUpperCase());
+  const label = verifyEsc((result || "").toUpperCase());
   // `skipped` / `not-applicable` render distinctly from passed -- never green (S1.1).
-  const cls = result === "skipped" || result === "not-applicable" ? "skip" : esc(result);
+  const cls = result === "skipped" || result === "not-applicable" ? "skip" : verifyEsc(result);
   return `<span class="vbadge ${cls}">${label}</span>`;
 }
 
@@ -83,7 +83,7 @@ function actionCell(item) {
   const report = item.lastRun && item.lastRun.reportPath;
   const reportBtn = report
     // Local report file -- opens with its default app (same open_folder the Monitor uses for logs).
-    ? `<button class="btn ghost" data-report="${esc(report)}">View report</button>`
+    ? `<button class="btn ghost" data-report="${verifyEsc(report)}">View report</button>`
     : `<button class="btn ghost" disabled>View report</button>`;
   return `<div style="display:flex;gap:6px">${runButtonHtml(item)}${reportBtn}</div>`;
 }
@@ -91,7 +91,7 @@ function actionCell(item) {
 function subjectText(doc) {
   if (!doc || !doc.subject) return "";
   const s = doc.subject;
-  return `Showing <strong>${esc(s.name)}</strong> · commit <code>${esc(s.commit || "—")}</code> · generated ${esc(doc.generatedAt || "—")}`;
+  return `Showing <strong>${verifyEsc(s.name)}</strong> · commit <code>${verifyEsc(s.commit || "—")}</code> · generated ${verifyEsc(doc.generatedAt || "—")}`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -121,7 +121,7 @@ async function runItem(itemId) {
       `${result.itemId}: ${String(result.result || "?").toUpperCase()} in ` +
       `${dur(result.durationSeconds)}` +
       (ledger.recorded ? " · recorded in the ledger" : " · NOT recorded") +
-      (result.controlled && result.controlled.stderr ? ` · ${esc(String(result.controlled.stderr).slice(0, 300))}` : ""),
+      (result.controlled && result.controlled.stderr ? ` · ${verifyEsc(String(result.controlled.stderr).slice(0, 300))}` : ""),
       bad);
     refreshVerification();
   } catch (error) {
@@ -135,7 +135,7 @@ async function runItem(itemId) {
 
 function runButtonHtml(item) {
   if (!item.runnable) return "";
-  return `<button class="btn ghost run" data-run-id="${esc(item.id)}" title="${esc(item.command || "")}">▶ RUN</button>`;
+  return `<button class="btn ghost run" data-run-id="${verifyEsc(item.id)}" title="${verifyEsc(item.command || "")}">▶ RUN</button>`;
 }
 
 function wireRunButtons(wrap) {
@@ -149,14 +149,14 @@ function kanbanCard(item, now) {
   return `
     <div class="vcard" data-column="${col}">
       <div class="vcard-head">
-        <span class="vname">${esc(item.name)}</span>
-        <span class="vcat">${esc(item.category || "")}</span>
+        <span class="vname">${verifyEsc(item.name)}</span>
+        <span class="vcat">${verifyEsc(item.category || "")}</span>
       </div>
-      <div class="vdesc" title="${esc(item.description || "")}">${esc(item.description || "")}</div>
+      <div class="vdesc" title="${verifyEsc(item.description || "")}">${verifyEsc(item.description || "")}</div>
       <div class="vmeta">
         ${resultBadge(last && last.result)}
         <span class="vwhen">${last ? relativeTime(last.startedAt) : "never"}</span>
-        ${item.tier ? `<span class="vtier">T${esc(item.tier.slice(-1))}</span>` : ""}
+        ${item.tier ? `<span class="vtier">T${verifyEsc(item.tier.slice(-1))}</span>` : ""}
         ${runButtonHtml(item)}
       </div>
       ${last && last.durationSeconds != null ? `<div class="vdur">last ${dur(last.durationSeconds)}</div>` : ""}
@@ -189,7 +189,7 @@ function renderKanban() {
   wireRunButtons(wrap);
 }
 
-function renderTable() {
+function verifyRenderTable() {
   const doc = verifyState.document;
   const wrap = document.getElementById("verify-table-wrap");
   if (!doc || !doc.items || doc.items.length === 0) {
@@ -203,10 +203,10 @@ function renderTable() {
       const last = item.lastRun;
       const stat = item.typicalDurationSeconds;
       return `<tr>
-        <td><span class="tdot" data-column="${kanbanColumn(item, now)}"></span>${esc(item.name)}</td>
-        <td class="vdesc" title="${esc(item.description || "")}">${esc(item.description || "")}</td>
-        <td>${esc(item.category || "—")}</td>
-        <td class="mono">${esc(item.command || "—")}</td>
+        <td><span class="tdot" data-column="${kanbanColumn(item, now)}"></span>${verifyEsc(item.name)}</td>
+        <td class="vdesc" title="${verifyEsc(item.description || "")}">${verifyEsc(item.description || "")}</td>
+        <td>${verifyEsc(item.category || "—")}</td>
+        <td class="mono">${verifyEsc(item.command || "—")}</td>
         <td>${stat ? `${dur(stat.p50)} <span class="dim">(p50)</span>` : "—"}</td>
         <td>${resultBadge(last && last.result)}</td>
         <td class="vwhen">${last ? relativeTime(last.startedAt) : "never"}</td>
@@ -234,7 +234,7 @@ function toggleView(view) {
     b.classList.toggle("active", b.dataset.v === view));
   if (view === "table") {
     kanban.hidden = true;
-    renderTable();
+    verifyRenderTable();
   } else {
     table.hidden = true;
     renderKanban();

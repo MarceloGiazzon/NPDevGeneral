@@ -21,6 +21,7 @@ second row lists its screens, with one line saying what the place is for.
 
 | Place | What it is for | Screens inside |
 |---|---|---|
+| ⌂ **Home** | What to do next, in one card. | Home |
 | 🔧 **Set up** | Get this computer ready to build apps. You do this once. | Check my computer, Install what is missing |
 | ▦ **My apps** | Create an app, start it, change it, share it. | All apps, Start & stop, Edit, Ask AI, Data, Share, Browser checks (checks), Data-rule checks (checks), Impact (advanced), Packs (advanced) |
 | ◉ **Activity** | Everything running on this computer, at a glance. | Running apps |

@@ -1,0 +1,42 @@
+/* The app workspace (workspace.js). Inside a workspace screen the app is already chosen, so that screen's own
+   app picker is hidden; elsewhere the pickers behave exactly as before. One rule per screen. */
+main[data-in-workspace="true"] label:has(> #run-app-picker),
+main[data-in-workspace="true"] #run-app-picker,
+main[data-in-workspace="true"] .run-row,
+main[data-in-workspace="true"] label:has(> #run-app-dir),
+main[data-in-workspace="true"] label:has(> #studio-app-picker),
+main[data-in-workspace="true"] #studio-app-picker,
+main[data-in-workspace="true"] label:has(> #prompter-app),
+main[data-in-workspace="true"] #prompter-app,
+main[data-in-workspace="true"] label:has(> #dbio-app-picker),
+main[data-in-workspace="true"] #dbio-app-label,
+main[data-in-workspace="true"] label:has(> #hosting-app-picker),
+main[data-in-workspace="true"] #hosting-app-picker,
+main[data-in-workspace="true"] label:has(> #scrap-app),
+main[data-in-workspace="true"] #scrap-app,
+main[data-in-workspace="true"] label:has(> #gpuchecks-app-picker),
+main[data-in-workspace="true"] #gpuchecks-app-label,
+main[data-in-workspace="true"] label:has(> #provenance-app-picker),
+main[data-in-workspace="true"] #provenance-app-label,
+main[data-in-workspace="true"] label:has(> #packs-app-picker),
+main[data-in-workspace="true"] #packs-app-label {
+  display: none !important;
+}
+
+/* The tabs that only make sense once an app is chosen. */
+body:not([data-app-selected]) .place-strip .tab[data-ws] { display: none; }
+body:not([data-app-selected]) .place-strip[data-place="apps"] .strip-group { display: none; }
+
+.workspace-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 20px;
+  border-top: 1px solid var(--t-border);
+  background: var(--t-surface);
+  font-size: 13px;
+}
+.workspace-bar[hidden] { display: none; }
+.workspace-bar .ws-label { color: var(--t-text-muted); }
+.workspace-bar .ws-change { padding: 2px 10px; font-size: 12px; }
+.app-item .ws-open { margin-right: 6px; }

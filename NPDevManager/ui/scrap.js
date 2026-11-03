@@ -601,6 +601,9 @@ window.__npdevInitScrap = initScrap;
 window.__npdevRefreshScrap = refreshScrapApps;
 // The Monitor's "Explore this app" -- the one button that turns two tools into one flow.
 window.__npdevOpenScrap = async (appDir) => {
+  // Choose this app for the whole workspace too, so the Checks tab does not show one app while the
+  // other tabs still show another.
+  if (window.NPDevWorkspace) await window.NPDevWorkspace.select({ appDir });
   window.__npdevShowScreen("scrap");
   await refreshScrapApps(appDir);
 };

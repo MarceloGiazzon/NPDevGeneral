@@ -867,6 +867,19 @@ fn appearance_set(state: State<'_, AppState>, appearance: themes::Appearance) ->
     Ok(appearance)
 }
 
+/// Home's "Something went wrong" card: the newest operation that failed and was not fixed by a later
+/// success of the same operation, in plain words. None when there is nothing to report.
+#[tauri::command]
+fn last_failed_run() -> Option<Value> {
+    runs::latest_unresolved_failure().map(|r| {
+        serde_json::json!({
+            "operation": r.operation,
+            "intent": support::intent_text(&r.operation),
+            "endedAt": r.ended_at,
+        })
+    })
+}
+
 #[tauri::command]
 fn open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
@@ -1802,7 +1815,7 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.8.1: Every colour in every screen now follows your theme (no hard-coded colours left), statuses show a word as well as a colour, progress is announced to screen readers, and all 19 screens pass the axe accessibility scan. Before that: Appearance & accessibility (Settings) -- pick Dark, Light, Retro, Synth, Farm, Warm, Windows or \
+    "0.9.0: Home -- one card that says what to do next, with one button -- and the app workspace: choose an app once and Start & stop, Edit, Ask AI, Data, Share and the checks all follow it (their own app pickers hide). Also fixes two screens that silently never worked: the Packs app picker was never filled and the Verification table drew nothing, because two scripts shared function names. Before that: every colour in every screen now follows your theme (no hard-coded colours left), statuses show a word as well as a colour, progress is announced to screen readers, and all 19 screens pass the axe accessibility scan. Before that: Appearance & accessibility (Settings) -- pick Dark, Light, Retro, Synth, Farm, Warm, Windows or \
      High contrast, load a theme file, or ask any AI for a new theme (you preview it and can undo); text \
      size, motion, focus, spacing, links and colour-blind safe status colours; remembered between starts \
      with no flash. Before that: one look for the whole window, Get help with this error (copy a redacted \
@@ -1814,7 +1827,7 @@ fn manager_version_description() -> String {
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "Your Look";
+const CURRENT_VERSION_TITLE: &str = "Home";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {
@@ -3574,6 +3587,7 @@ the blast radius needs a baseline to diff against"
             set_fake_doctor_scenario,
             check_doctor,
             support_report,
+            last_failed_run,
             theme_list,
             theme_import,
             theme_delete,
@@ -3853,5 +3867,44 @@ mod monitor_css_scope_tests {
             }
         }
         assert!(problems.is_empty(), "navigation problems: {problems:#?}");
+    }
+}
+
+/// The Manager's scripts are plain `<script>` files sharing ONE global scope, so a function with the same
+/// name in two files silently replaces the first -- no error anywhere. It happened twice: packs.js and
+/// provenance.js both declared `refreshAppPicker` and `currentAppDir` (the Packs app picker was never
+/// filled), and evals.js shadowed verification.js's `renderTable` (the Verification table drew nothing).
+/// Found 2026-11-03 while building the app workspace, which has to drive every screen's app picker.
+#[cfg(test)]
+mod ui_script_global_tests {
+    #[test]
+    fn no_two_manager_scripts_declare_the_same_top_level_name() {
+        let ui = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui");
+        let decl = regex::Regex::new(r"(?m)^(?:async\s+)?function\s+([A-Za-z0-9_$]+)\s*\(|^(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=").unwrap();
+        let mut owners: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+        for entry in std::fs::read_dir(&ui).unwrap() {
+            let path = entry.unwrap().path();
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+            // theme-engine.js is an IIFE (it declares nothing global) and is a shared twin.
+            if path.extension().and_then(|e| e.to_str()) != Some("js") || name == "theme-engine.js" {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            for cap in decl.captures_iter(&text) {
+                let ident = cap.get(1).or_else(|| cap.get(2)).unwrap().as_str().to_string();
+                owners.entry(ident).or_default().push(name.clone());
+            }
+        }
+        let clashes: Vec<String> = owners
+            .into_iter()
+            .filter(|(_, files)| {
+                let mut f = files.clone();
+                f.sort();
+                f.dedup();
+                f.len() > 1
+            })
+            .map(|(ident, files)| format!("{ident}: {files:?}"))
+            .collect();
+        assert!(clashes.is_empty(), "top-level names declared in more than one ui/*.js file: {clashes:?}");
     }
 }

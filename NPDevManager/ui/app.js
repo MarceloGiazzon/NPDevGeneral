@@ -16,11 +16,14 @@ function showScreen(name) {
   // every screen change, including the ones no tab asked for (init, the Monitor's Explore button).
   window.__npdevCurrentScreen = name;
   if (window.__npdevNavSync) window.__npdevNavSync(name);
+  // workspace.js hides a screen's own app picker while an app is chosen, and re-applies the choice.
+  document.dispatchEvent(new CustomEvent("npdev:screen-shown", { detail: { screen: name } }));
   // The Scrap Manager's app picker is fed from the Monitor's last scan, so it needs the scan to have
   // happened. Refreshing on entry rather than on a timer keeps a tab nobody is looking at from
   // probing the machine every 30 seconds.
   if (name === "scrap" && window.__npdevRefreshScrap) window.__npdevRefreshScrap();
   if (name === "appearance" && window.__npdevRefreshAppearance) window.__npdevRefreshAppearance();
+  if (name === "home" && window.__npdevRefreshHome) window.__npdevRefreshHome();
   if (name === "monitor" && window.__npdevRefreshMonitor) window.__npdevRefreshMonitor();
   // Same reasoning as the Scrap Manager: the Prompter's app picker is fed from the Monitor's last
   // scan, and its provider list can be edited from its own modal, so both are re-read on entry.
@@ -196,6 +199,9 @@ async function loadDoctor() {
   try {
     const result = await invoke("check_doctor", { appDir });
     renderCheckRows(container, result.checks);
+    // Home reads this; it is set here, not by home.js, so it does not matter which script loaded first.
+    window.__npdevLastDoctor = { at: Date.now(), checks: result.checks };
+    if (window.__npdevDoctorRan) window.__npdevDoctorRan(result.checks);
   } catch (err) {
     reportableError(container, {
       operation: "doctor",
@@ -819,7 +825,10 @@ async function refreshAppList() {
       (a) => `
       <div class="app-item">
         <span>${escapeHtml(a.name)} <span class="found">${escapeHtml(a.directory)}</span></span>
-        <button data-open="${escapeHtml(a.directory)}">Open folder</button>
+        <span>
+          <button class="primary ws-open" data-ws-open="${escapeHtml(a.directory)}" data-name="${escapeHtml(a.name)}">Open</button>
+          <button data-open="${escapeHtml(a.directory)}">Open folder</button>
+        </span>
       </div>`
     )
     .join("");
@@ -1460,7 +1469,7 @@ async function loadManagerVersion() {
 (async function init() {
   await initFakeBanner();
   await loadManagerVersion();
-  showScreen("ready");
+  showScreen("home");
   // Before loadDoctor: the picker's value is what tells doctor which app's database to check, so
   // populating it afterwards would make the first render the one WITHOUT database rows.
   await refreshDoctorAppPicker();

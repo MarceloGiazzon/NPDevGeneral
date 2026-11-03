@@ -2,13 +2,49 @@ id: NAV-2
 title: Manager Home -- one card that says what to do next, with one button
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md), WS-3 Home; follows NAV-1.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md), WS-3 Home; follows
+  NAV-1.
 surface: manager/ui
 detail: >-
-  A first-time user still lands on a screen, not on a next step. Home evaluates navigation homeDecisions (doctor never run, doctor failures, no apps, last operation failed, apps stopped) and shows the first that applies, with a one-line status strip.
+  A first-time user still lands on a screen, not on a next step. Home evaluates navigation homeDecisions (doctor
+  never run, doctor failures, no apps, last operation failed, apps stopped) and shows the first that applies, with
+  a one-line status strip.
 resolution: >-
-  Done when in stub mode each fake_doctor_scenarios scenario shows the right card, and Home is the first place in the bar.
+  Home is the first place in the bar and the screen the Manager opens on. home.js evaluates homeDecisions (data
+  in navigation.json, English and Portuguese: doctorNeverRun, doctorHasFailures, noApps, lastOperationFailed, appsAllStopped,
+  appRunning) top to bottom and draws the first that applies as ONE card with ONE button, plus a status strip (Computer
+  ready, N apps, N running, last problem). Inputs are existing commands: the cached doctor result (Home re-asks
+  check_doctor only after the computer has been checked once), monitor_scan, and a new last_failed_run command backed
+  by the run recorder (the newest failure not fixed by a later success of the same operation). Buttons go to a screen
+  (the create-app one also focuses the name field), open the support dialog, open the running app's URL, or open
+  the app workspace.
+files:
+- NPDevManager/ui/home.js
+- NPDevManager/ui/home.css
+- NPDevManager/ui/navigation.json
+- NPDevManager/ui/index.html
+- NPDevManager/ui/app.js
+- NPDevManager/src/runs.rs
+- NPDevManager/src/support.rs
+- NPDevManager/src/main.rs
+- scripts/quality/check-manager-ui-render.mjs
+verification: UNIT_TESTED
+guard:
+  kind: manual
+  ref: scripts/quality/check-manager-ui-render.mjs
+  asserts: >-
+    in stub mode: all-green with a running app -> 'is running at', with the strip 'Computer ready, 5 apps, 1 running,
+    last problem: none'; doctor-missing-java, doctor-wrong-java and doctor-no-jars -> 'things are missing' with
+    Install them; doctor-acceptable-newer-java is not a failure; an empty scan -> Create an app (and the button
+    opens Apps with the name field focused); a recorded failure -> the card names it and its button opens the support
+    dialog; a computer never checked -> Check now; Portuguese renders. runs.rs#a_later_success_of_the_same_operation_clears_the_failure
+    is the Rust guard for the failure rule.
+  provenRed: false
+note: >-
+  2026-11-03: render check 89/89. The Manager already runs the computer check at launch, so 'doctorNeverRun' normally
+  shows only when that check itself could not run (no Python); on a healthy first launch Home goes straight to 'things
+  are missing' or 'create your first app'. Not seen in the real Tauri window.

@@ -203,6 +203,7 @@ function wireNotGenerated(grid) {
       ev.stopPropagation();
       // The Run tab's folder field accepts the model directory `npdev init` created.
       document.getElementById("run-app-dir").value = btn.dataset.runNew;
+      if (window.NPDevWorkspace) window.NPDevWorkspace.select({ directory: btn.dataset.runNew });
       window.__npdevShowScreen("run");
     });
   });

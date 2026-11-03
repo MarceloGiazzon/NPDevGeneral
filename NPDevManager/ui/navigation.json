@@ -7,6 +7,18 @@
   ],
   "places": [
     {
+      "id": "home",
+      "icon": "⌂",
+      "label": { "en": "Home", "pt": "Início" },
+      "summary": {
+        "en": "What to do next, in one card.",
+        "pt": "O que fazer a seguir, num cartão só."
+      },
+      "screens": [
+        { "screen": "home", "label": { "en": "Home", "pt": "Início" } }
+      ]
+    },
+    {
       "id": "setup",
       "icon": "🔧",
       "label": { "en": "Set up", "pt": "Preparar" },
@@ -29,15 +41,15 @@
       },
       "screens": [
         { "screen": "apps", "label": { "en": "All apps", "pt": "Todos os apps" } },
-        { "screen": "run", "label": { "en": "Start & stop", "pt": "Iniciar e parar" } },
-        { "screen": "studio", "label": { "en": "Edit", "pt": "Editar" } },
-        { "screen": "prompter", "label": { "en": "Ask AI", "pt": "Perguntar à IA" } },
-        { "screen": "dbio", "label": { "en": "Data", "pt": "Dados" } },
-        { "screen": "hosting", "label": { "en": "Share", "pt": "Compartilhar" } },
-        { "screen": "scrap", "label": { "en": "Browser checks", "pt": "Testes no navegador" }, "group": "checks" },
-        { "screen": "gpuchecks", "label": { "en": "Data-rule checks", "pt": "Testes de regras" }, "group": "checks" },
-        { "screen": "provenance", "label": { "en": "Impact", "pt": "Impacto" }, "group": "advanced" },
-        { "screen": "packs", "label": { "en": "Packs", "pt": "Pacotes" }, "group": "advanced" }
+        { "screen": "run", "label": { "en": "Start & stop", "pt": "Iniciar e parar" }, "workspace": true },
+        { "screen": "studio", "label": { "en": "Edit", "pt": "Editar" }, "workspace": true },
+        { "screen": "prompter", "label": { "en": "Ask AI", "pt": "Perguntar à IA" }, "workspace": true },
+        { "screen": "dbio", "label": { "en": "Data", "pt": "Dados" }, "workspace": true },
+        { "screen": "hosting", "label": { "en": "Share", "pt": "Compartilhar" }, "workspace": true },
+        { "screen": "scrap", "label": { "en": "Browser checks", "pt": "Testes no navegador" }, "group": "checks", "workspace": true },
+        { "screen": "gpuchecks", "label": { "en": "Data-rule checks", "pt": "Testes de regras" }, "group": "checks", "workspace": true },
+        { "screen": "provenance", "label": { "en": "Impact", "pt": "Impacto" }, "group": "advanced", "workspace": true },
+        { "screen": "packs", "label": { "en": "Packs", "pt": "Pacotes" }, "group": "advanced", "workspace": true }
       ]
     },
     {
@@ -69,6 +81,60 @@
         { "screen": "verification", "label": { "en": "Platform checks", "pt": "Verificações da plataforma" }, "group": "advanced" },
         { "screen": "evals", "label": { "en": "AI evaluations", "pt": "Avaliações de IA" }, "group": "advanced" }
       ]
+    }
+  ],
+  "homeDecisions": [
+    {
+      "when": "doctorNeverRun",
+      "card": { "en": "Let's check your computer", "pt": "Vamos verificar o seu computador" },
+      "detail": {
+        "en": "NPDev needs Java and a few other things. One click finds out what is already there.",
+        "pt": "O NPDev precisa de Java e de mais algumas coisas. Um clique descobre o que já existe."
+      },
+      "action": { "screen": "ready", "label": { "en": "Check now", "pt": "Verificar agora" } }
+    },
+    {
+      "when": "doctorHasFailures",
+      "card": {
+        "en": "{n} things are missing before you can build apps",
+        "pt": "Faltam {n} coisas para você poder criar apps"
+      },
+      "detail": {
+        "en": "The next screen installs them for you; nothing else on your computer is touched.",
+        "pt": "A próxima tela instala tudo para você; nada mais no seu computador é alterado."
+      },
+      "action": { "screen": "install", "label": { "en": "Install them", "pt": "Instalar" } }
+    },
+    {
+      "when": "noApps",
+      "card": {
+        "en": "Your computer is ready. Create your first app",
+        "pt": "Seu computador está pronto. Crie o seu primeiro app"
+      },
+      "detail": {
+        "en": "Give it a name and pick where to keep it. You can change everything later.",
+        "pt": "Dê um nome e escolha onde guardá-lo. Você pode mudar tudo depois."
+      },
+      "action": { "screen": "apps", "intent": "create", "label": { "en": "Create an app", "pt": "Criar um app" } }
+    },
+    {
+      "when": "lastOperationFailed",
+      "card": { "en": "Something went wrong: {operation}", "pt": "Algo deu errado: {operation}" },
+      "detail": {
+        "en": "One button prepares a report you can paste into any AI chat. Nothing is sent for you.",
+        "pt": "Um botão prepara um relatório que você cola em qualquer chat de IA. Nada é enviado por você."
+      },
+      "action": { "kind": "supportReport", "label": { "en": "Get help with this error", "pt": "Pedir ajuda com este erro" } }
+    },
+    {
+      "when": "appsAllStopped",
+      "card": { "en": "{app} is stopped", "pt": "{app} está parado" },
+      "action": { "workspace": "overview", "label": { "en": "Start it", "pt": "Iniciar" } }
+    },
+    {
+      "when": "appRunning",
+      "card": { "en": "{app} is running at {url}", "pt": "{app} está rodando em {url}" },
+      "action": { "kind": "openUrl", "label": { "en": "Open it", "pt": "Abrir" } }
     }
   ],
   "groups": {

@@ -32,6 +32,8 @@
 <link rel="stylesheet" href="evals.css" />
 <link rel="stylesheet" href="support.css" />
 <link rel="stylesheet" href="appearance.css" />
+<link rel="stylesheet" href="home.css" />
+<link rel="stylesheet" href="workspace.css" />
 <link rel="stylesheet" href="a11y.css" />
 </head>
 <body>
@@ -55,6 +57,11 @@
 
   <main>
     <!-- Ready. Sections are addressed by id; the tab strip above sets the ORDER they are shown in, which is no longer this file's order. -->
+    <section id="screen-home" class="screen" hidden>
+      <h1 class="visually-hidden">Home</h1>
+      <div id="home-root" aria-live="polite"></div>
+    </section>
+
     <section id="screen-ready" class="screen">
       <h1>Ready</h1>
       <p class="subtitle">Your app is a model; NPDev projects it into a working application through
@@ -1175,13 +1182,15 @@
   </div>
 
   <div class="lightbox" id="lightbox"><img alt="screenshot" /></div>
-  <div class="toast" id="monitor-toast"></div>
+  <div class="toast" id="monitor-toast" role="status" aria-live="polite"></div>
 
   <script src="app.js"></script>
   <script src="nav.js"></script>
   <script src="help.js"></script>
   <script src="support.js"></script>
   <script src="appearance.js"></script>
+  <script src="home.js"></script>
+  <script src="workspace.js"></script>
   <script src="monitor.js"></script>
   <script src="hosting.js"></script>
   <script src="scrap.js"></script>

@@ -2,13 +2,53 @@ id: NAV-3
 title: Manager app workspace -- choose an app once, every app screen follows it
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md), WS-3 App workspace; follows NAV-1.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md), WS-3 App workspace;
+  follows NAV-1.
 surface: manager/ui
 detail: >-
-  Inside My apps each screen (run, studio, prompter, dbio, hosting, scrap, gpuchecks, provenance, packs) still has its own app picker, so the user picks the same app again on every screen.
+  Inside My apps each screen (run, studio, prompter, dbio, hosting, scrap, gpuchecks, provenance, packs) still has
+  its own app picker, so the user picks the same app again on every screen.
 resolution: >-
-  Done when choosing an app once and visiting every My apps screen never asks for the app again (npdev:app-selected event, pickers hidden inside the workspace).
+  workspace.js: choose an app ONCE (the Open button in My apps > All apps, Home's Start it, the Monitor's Explore
+  this app) and nine screens follow. It dispatches npdev:app-selected, sets each screen's own picker to the app
+  (matching either the model folder or the generated <model>-app folder) and fires the picker's change event, re-applies
+  the choice through a MutationObserver whenever a screen rebuilds its option list, and sets <main data-in-workspace>
+  so workspace.css hides each screen's picker (one rule per screen). The My apps strip shows only All apps until
+  an app is chosen, then the app's tabs plus a bar with the app's name and Change app; the choice survives a restart.
+  navigation.json marks the nine workspace screens (workspace: true). Found and fixed on the way: packs.js and provenance.js
+  both declared refreshAppPicker/currentAppDir and evals.js shadowed verification.js's renderTable, so the Packs
+  app picker was never filled and the Verification table drew nothing; the colliding functions are renamed and a
+  cargo test fails on any top-level name declared in two ui scripts.
+files:
+- NPDevManager/ui/workspace.js
+- NPDevManager/ui/workspace.css
+- NPDevManager/ui/nav.js
+- NPDevManager/ui/navigation.json
+- NPDevManager/ui/app.js
+- NPDevManager/ui/index.html
+- NPDevManager/ui/monitor.js
+- NPDevManager/ui/scrap.js
+- NPDevManager/ui/packs.js
+- NPDevManager/ui/verification.js
+- NPDevManager/src/main.rs
+- scripts/quality/check-manager-ui-render.mjs
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevManager/src/main.rs#no_two_manager_scripts_declare_the_same_top_level_name
+  asserts: >-
+    no function or const name is declared at top level in two ui/*.js files; the render check chooses 'auxscreen'
+    once, visits all nine workspace tabs and finds each screen's picker already on it and hidden, Start & stop's
+    folder field filled, and the pickers back outside the workspace.
+  provenRed: false
+note: >-
+  2026-11-03: render check 89/89, cargo test green. The Rust name-collision test was not run against the colliding
+  code; an equivalent Python scan found the six collisions (refreshAppPicker, currentAppDir, shortDigest, pEsc,
+  renderTable, esc) before they were renamed. Only 'auxscreen' (one app whose model and generated folders are the
+  same string in the fixtures) was driven; the real <model> vs <model>-app mapping is covered by workspace.js's
+  identity rule but not by a fixture. Not seen in the real Tauri window. The Verification screen now renders its
+  table for the first time since the collision, and has no render-check case of its own.

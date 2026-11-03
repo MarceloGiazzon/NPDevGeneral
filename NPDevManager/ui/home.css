@@ -1,0 +1,17 @@
+/* Home (home.js): one card, one button, one status line. Colours from --t-* tokens only. */
+#screen-home { max-width: 760px; }
+.home-card {
+  background: var(--t-surface);
+  border: 1px solid var(--t-border);
+  border-left: 4px solid var(--t-accent);
+  border-radius: var(--t-radius);
+  padding: 22px 24px;
+  margin: 12px 0;
+}
+.home-title { font-size: 22px; margin: 0 0 8px; }
+.home-detail { color: var(--t-text-muted); margin: 0 0 16px; line-height: 1.5; }
+.home-action { font-size: 15px; padding: 10px 22px; }
+.home-strip { color: var(--t-text-muted); font-size: 13px; margin: 6px 2px; }
+.home-card[data-when="doctorHasFailures"], .home-card[data-when="lastOperationFailed"] { border-left-color: var(--t-negative); }
+.home-card[data-when="noApps"], .home-card[data-when="appsAllStopped"] { border-left-color: var(--t-warning); }
+.home-card[data-when="appRunning"] { border-left-color: var(--t-positive); }

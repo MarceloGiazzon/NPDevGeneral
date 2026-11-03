@@ -162,7 +162,7 @@
             group = s.group || null;
             if (group) row.append(el("span", { class: "strip-group" }, I18n.t(nav.groups[group])));
           }
-          row.append(el("button", { type: "button", class: "tab", "data-screen": s.screen }, I18n.t(s.label)));
+          row.append(el("button", { type: "button", class: "tab", "data-screen": s.screen, "data-ws": s.workspace ? "1" : undefined }, I18n.t(s.label)));
         }
         strip.append(row);
       }
@@ -174,6 +174,8 @@
       document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.screen === current));
       sync(current);
     }
+    // workspace.js puts the app bar into the My apps strip once the strips exist.
+    document.dispatchEvent(new CustomEvent("npdev:nav-rendered"));
   }
 
   // If navigation.json cannot be read, every screen must still be reachable: fall back to one plain

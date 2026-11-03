@@ -75,9 +75,14 @@ window.__TAURI__ = {
       const F = window.__FIXTURES__;
       switch (name) {
         case "is_fake_mode": return true;
-        case "fake_doctor_scenarios": return ["doctor-all-green"];
-        case "check_doctor": return F.doctor;
-        case "list_apps": return [];
+        case "fake_doctor_scenarios": return Object.keys(F.doctors);
+        case "set_fake_doctor_scenario": window.__scenario = args.name; return null;
+        case "check_doctor":
+          if (window.__doctorBroken) throw "python was not found";
+          return F.doctors[window.__scenario || "doctor-all-green"];
+        case "last_failed_run": return window.__lastFailed || null;
+        case "studio_history_list": return [];
+        case "list_apps": return [{ name: "auxscreen", directory: "D:\\\\WorkSpace\\\\NPDev\\\\Build\\\\generated-finalapps\\\\auxscreen", created_at: "2026-11-03" }];
         case "list_engines": return { engines: [] };
         case "jdk_status": return { installed: true, path: "x" };
         case "python_status": return { systemPython: "python" };
@@ -86,7 +91,7 @@ window.__TAURI__ = {
         case "current_version": return null;
         case "get_inspect_paths": return ["D:\\\\WorkSpace\\\\NPDev\\\\Build"];
         case "set_inspect_paths": return null;
-        case "monitor_scan": return F.scan;
+        case "monitor_scan": return window.__scanEmpty ? F.scanEmpty : F.scan;
         case "monitor_probe": case "read_info_json": return F.probe;
         case "monitor_logs": return F.logs;
         case "engine_status": return Object.assign({}, F.engineRunning, { startedByThisWindow: false });
@@ -135,11 +140,15 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(4599, "127.0.0.1", r));
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+// A fixed locale: the Manager picks its language from the browser, and the check must not depend on the machine it runs on.
+const page = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: "en-US" });
 
 const consoleErrors = [];
-page.on("console", (m) => m.type() === "error" && consoleErrors.push(m.text()));
+// A browser-level "connection refused" is the Manager probing a stub app's localhost port that nothing listens on;
+// it is not a script error, so it is not counted.
+page.on("console", (m) => m.type() === "error" && !/net::ERR_CONNECTION_REFUSED/.test(m.text()) && consoleErrors.push(m.text()));
 page.on("pageerror", (e) => consoleErrors.push("pageerror: " + e.message));
+if (process.env.NPDEV_RENDER_DEBUG) { page.on("console", (m) => console.log("[page]", m.type(), m.text())); page.on("pageerror", (e) => console.log("[pageerror]", e.message)); }
 
 await page.addInitScript({
   content: `window.__FIXTURES__ = ${JSON.stringify({
@@ -152,6 +161,9 @@ await page.addInitScript({
     preflight: fixture("explore-preflight.json"),
     validateBad: fixture("explore-validate-bad.json"),
     doctor: fixture("doctor-all-green.json"),
+    doctors: Object.fromEntries(["doctor-all-green", "doctor-missing-java", "doctor-wrong-java", "doctor-no-jars", "doctor-acceptable-newer-java"]
+      .map((n) => [n, fixture(n + ".json")])),
+    scanEmpty: fixture("monitor-scan-empty.json"),
     support: fixture("support-install-failed.json"),
     themes: BUILTIN_ORDER.map((id) => Object.assign({ builtin: true }, JSON.parse(readFileSync(path.join(REPO, "NPDevContract", "themes", id + ".json"), "utf8")))),
   })};`,
@@ -194,9 +206,57 @@ async function axeScan(screenId) {
 
 // ---- Navigation (NAV-1): four places from navigation.json, the language follows the picker ------
 const places = await page.$$eval(".tabs .place", (e) => e.map((b) => b.dataset.place));
-check("the main bar renders the four places", places.join(",") === "setup,apps,activity,settings", places.join(","));
+check("the main bar renders Home and the four places", places.join(",") === "home,setup,apps,activity,settings", places.join(","));
 const startPlace = await page.$eval(".tabs .place.active", (b) => b.dataset.place).catch(() => null);
-check("the first screen (Ready) opens inside Set up", startPlace === "setup", `${startPlace}`);
+check("the Manager opens on Home", startPlace === "home", `${startPlace}`);
+// ---- Home (NAV-2): each doctor scenario, and the other decisions, show the right card ----------------------
+const homeCard = async (setup) => {
+  await page.evaluate(setup);
+  await page.evaluate(async () => { NPDevHome.reset(); await window.__npdevShowScreen("home"); await NPDevHome.refresh(); });
+  await page.waitForFunction(() => document.querySelector("#home-root .home-card"), null, { timeout: 3000 });
+  return page.evaluate(() => ({ when: document.querySelector(".home-card").dataset.when, title: document.querySelector(".home-title").textContent,
+    button: document.querySelector(".home-action")?.textContent, strip: document.querySelector(".home-strip").textContent }));
+};
+let card = await homeCard(() => { window.__scenario = "doctor-all-green"; window.__scanEmpty = false; window.__lastFailed = null; });
+check("healthy computer with a running app: Home offers to open it", card.when === "appRunning" && /npdev-canary is running at http:\/\/localhost:8411/.test(card.title) && card.button === "Open it", JSON.stringify(card));
+check("the status strip summarises the whole picture", /Computer ready/.test(card.strip) && /5 apps/.test(card.strip) && /1 running/.test(card.strip) && /last problem: none/.test(card.strip), card.strip);
+for (const scenario of ["doctor-missing-java", "doctor-wrong-java", "doctor-no-jars"]) {
+  await page.evaluate((sc) => { window.__scenario = sc; window.__scanEmpty = false; window.__lastFailed = null; }, scenario);
+  await page.evaluate(async () => { NPDevHome.reset(); await window.__npdevShowScreen("home"); await NPDevHome.refresh(); });
+  await page.waitForTimeout(150);
+  const c = await page.evaluate(() => ({ when: document.querySelector(".home-card").dataset.when, title: document.querySelector(".home-title").textContent, button: document.querySelector(".home-action").textContent }));
+  check(`scenario ${scenario}: Home says what is missing and offers to install it`, c.when === "doctorHasFailures" && /things are missing/.test(c.title) && c.button === "Install them", JSON.stringify(c));
+}
+await page.evaluate(() => { window.__scenario = "doctor-acceptable-newer-java"; });
+await page.evaluate(async () => { NPDevHome.reset(); await window.__npdevShowScreen("home"); await NPDevHome.refresh(); });
+check("scenario doctor-acceptable-newer-java is not a failure", (await page.$eval(".home-card", (c) => c.dataset.when)) === "appRunning", "");
+await page.evaluate(() => { window.__scenario = "doctor-all-green"; window.__scanEmpty = true; });
+await page.evaluate(async () => { NPDevHome.reset(); await window.__npdevShowScreen("home"); await NPDevHome.refresh(); });
+const noApps = await page.evaluate(() => ({ when: document.querySelector(".home-card").dataset.when, button: document.querySelector(".home-action").textContent }));
+check("no apps yet: Home offers to create the first one", noApps.when === "noApps" && noApps.button === "Create an app", JSON.stringify(noApps));
+await page.click(".home-action");
+await page.waitForTimeout(200);
+check("that button opens the Apps screen with the name field focused",
+  (await page.evaluate(() => window.__npdevCurrentScreen)) === "apps" && (await page.evaluate(() => document.activeElement && document.activeElement.id)) === "new-app-name", "");
+await page.evaluate(() => { window.__scanEmpty = false; window.__lastFailed = { operation: "install-java", intent: "install Java (JDK 17), the runtime generated apps run on", endedAt: "2026-11-03T10:00:00Z" }; });
+await page.evaluate(async () => { NPDevHome.reset(); await window.__npdevShowScreen("home"); await NPDevHome.refresh(); });
+const failedCard = await page.evaluate(() => ({ when: document.querySelector(".home-card").dataset.when, title: document.querySelector(".home-title").textContent, button: document.querySelector(".home-action").textContent }));
+check("a failed operation: Home names it and offers the help dialog", failedCard.when === "lastOperationFailed" && /install Java/.test(failedCard.title) && failedCard.button === "Get help with this error", JSON.stringify(failedCard));
+await page.click(".home-action");
+await page.waitForFunction(() => document.getElementById("support-dialog")?.open, null, { timeout: 3000 });
+check("...and that button opens the support dialog", true, "");
+await page.keyboard.press("Escape");
+await page.evaluate(() => { window.__lastFailed = null; window.__doctorBroken = true; });
+await page.evaluate(async () => { NPDevHome.reset(true); await window.__npdevShowScreen("home"); await NPDevHome.refresh(); });
+check("a computer that was never checked: Home asks to check it", (await page.$eval(".home-card", (c) => c.dataset.when)) === "doctorNeverRun", "");
+await page.evaluate(() => { window.__doctorBroken = false; window.__npdevDoctorRan([]); });
+await page.selectOption("#lang-picker", "pt");
+await page.evaluate(async () => { NPDevHome.reset(); await window.__npdevShowScreen("home"); await NPDevHome.refresh(); });
+check("Home speaks Portuguese when asked", /está rodando/.test(await page.textContent(".home-title")) && (await page.textContent(".home-action")) === "Abrir", await page.textContent(".home-title"));
+await page.selectOption("#lang-picker", "en");
+await page.evaluate(async () => { NPDevHome.reset(); await window.__npdevShowScreen("home"); await NPDevHome.refresh(); });
+await page.screenshot({ path: path.join(OUT, "home.png"), fullPage: false });
+
 await page.click('.tabs .place[data-place="settings"]');
 await page.waitForTimeout(200);
 const settingsScreen = await page.$eval("main > section.screen:not([hidden])", (s) => s.id);
@@ -296,6 +356,40 @@ await page.waitForTimeout(500);
 
 await page.screenshot({ path: path.join(OUT, "monitor-wall.png"), fullPage: false });
 await axeScan("monitor");
+
+// ---- The app workspace (NAV-3): choose the app ONCE ----------------------------------------------------
+await page.click('.tabs .place[data-place="apps"]');
+await page.waitForSelector("#app-list [data-ws-open]", { timeout: 3000 });
+const hiddenBefore = await page.$$eval('.place-strip[data-place="apps"] .tab[data-ws]', (t) => t.every((x) => getComputedStyle(x).display === "none"));
+check("before an app is chosen the app tabs are not offered", hiddenBefore, "");
+await page.click("#app-list [data-ws-open]");
+await page.waitForTimeout(400);
+check("Open lands on the app's first tab", (await page.evaluate(() => window.__npdevCurrentScreen)) === "run", "");
+check("the workspace bar names the chosen app", /auxscreen/.test(await page.textContent("#workspace-bar")) && !(await page.$eval("#workspace-bar", (b) => b.hidden)), "");
+const WS_PICKERS = { run: "#run-app-picker", studio: "#studio-app-picker", prompter: "#prompter-app", dbio: "#dbio-app-picker", hosting: "#hosting-app-picker",
+  scrap: "#scrap-app", gpuchecks: "#gpuchecks-app-picker", provenance: "#provenance-app-picker", packs: "#packs-app-picker" };
+const wsProblems = [];
+for (const [screen, sel] of Object.entries(WS_PICKERS)) {
+  await page.click(`.place-strip:not([hidden]) .tab[data-screen="${screen}"]`);
+  await page.waitForTimeout(350);
+  const r = await page.evaluate((q) => {
+    const el = document.querySelector(q);
+    const shown = !!el && el.offsetParent !== null;
+    return { value: el ? el.value : null, shown, main: document.querySelector("main").getAttribute("data-in-workspace") };
+  }, sel);
+  const ok = (screen === "run" || /auxscreen/i.test(String(r.value))) && !r.shown && r.main === "true";
+  if (!ok) wsProblems.push(`${screen}: ${JSON.stringify(r)}`);
+}
+check("every app screen already has the chosen app and never shows its own picker", wsProblems.length === 0, wsProblems.join(" | "));
+const runDir = await page.evaluate(async () => { await window.__npdevShowScreen("run"); return document.getElementById("run-app-dir").value; });
+check("Start & stop uses the chosen app's folder", /auxscreen/i.test(runDir), runDir);
+await page.click("#workspace-bar .ws-change");
+await page.waitForTimeout(150);
+check("Change app returns to the list", (await page.evaluate(() => window.__npdevCurrentScreen)) === "apps", "");
+await page.click('.tabs .place[data-place="settings"]');
+await page.waitForTimeout(150);
+check("outside the workspace the pickers come back", (await page.evaluate(() => document.querySelector("main").getAttribute("data-in-workspace"))) === null, "");
+await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false });
 
 // ---- The Scrap Manager ---------------------------------------------------------------------
 // NAV-1: it lives in the My apps strip, which shows only once that place is open.
