@@ -20,6 +20,7 @@
     },
     {
       "id": "setup",
+      "showWhen": "machineNotReady",
       "icon": "🔧",
       "label": { "en": "Set up", "pt": "Preparar" },
       "summary": {
@@ -77,7 +78,8 @@
         { "screen": "secrets", "label": { "en": "Passwords & keys", "pt": "Senhas e chaves" } },
         { "screen": "appearance", "label": { "en": "Appearance & accessibility", "pt": "Aparência e acessibilidade" } },
         { "screen": "versions", "label": { "en": "NPDev versions", "pt": "Versões do NPDev" } },
-        { "screen": "ready", "label": { "en": "This computer", "pt": "Este computador" } },
+        { "screen": "ready", "label": { "en": "This computer", "pt": "Este computador" }, "showWhen": "machineReady" },
+        { "screen": "install", "label": { "en": "Install & folders", "pt": "Instalação e pastas" }, "showWhen": "machineReady" },
         { "screen": "verification", "label": { "en": "Platform checks", "pt": "Verificações da plataforma" }, "group": "advanced" },
         { "screen": "evals", "label": { "en": "AI evaluations", "pt": "Avaliações de IA" }, "group": "advanced" }
       ]
@@ -141,7 +143,20 @@
     "checks": { "en": "Checks", "pt": "Testes" },
     "advanced": { "en": "Advanced", "pt": "Avançado" }
   },
+  "fixTargets": {
+    "description": "Ready's Fix button: which step of the Install screen repairs a failing check, as the CSS selector of the step's own button. A check not listed here has no automatic fix and shows no button.",
+    "label": { "en": "Fix", "pt": "Corrigir" },
+    "checks": {
+      "java-present": "#jdk-install-btn",
+      "java-version": "#jdk-install-btn",
+      "java-home-agreement": "#jdk-install-btn",
+      "python-version": "#python-install-btn",
+      "runtimehost-jars": "#setup-run-btn",
+      "ai-knowledge-index": "#setup-run-btn"
+    }
+  },
   "chrome": {
+    "skipToContent": { "en": "Skip to content", "pt": "Pular para o conteúdo" },
     "language": { "en": "Language", "pt": "Idioma" },
     "mainNav": { "en": "Main", "pt": "Principal" }
   }

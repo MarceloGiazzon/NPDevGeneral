@@ -2,13 +2,40 @@ id: NAV-5
 title: Manager navigation is keyboard- and screen-reader-operable
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md), WS-3 Keyboard and ARIA; follows NAV-1.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md), WS-3 Keyboard
+  and ARIA; follows NAV-1.
 surface: manager/ui
 detail: >-
   The NAV-1 bar uses buttons and aria-current but strips have no roving tabindex, no role=tablist, no skip link.
 resolution: >-
-  Done when every place and strip tab is operable without a mouse (arrow keys in strips), and a Skip to content link exists.
+  The main bar is a labelled <nav> whose current place carries aria-current=page; each secondary strip is a labelled
+  role=tablist of role=tab buttons with aria-selected and aria-controls, exactly one tab in the tab order, and arrow-key
+  (Left, Right, Home, End) roving that moves focus and opens the screen; a Skip to content link is the first thing
+  in the page and moves focus to <main id=main-content tabindex=-1>; it is translated with the language picker.
+  app.css hides it until focused.
+files:
+- NPDevManager/ui/nav.js
+- NPDevManager/ui/index.html
+- NPDevManager/ui/app.css
+- NPDevManager/ui/navigation.json
+- NPDevManager/ui/monitor.css
+- scripts/quality/check-manager-ui-render.mjs
+verification: UNIT_TESTED
+guard:
+  kind: manual
+  ref: scripts/quality/check-manager-ui-render.mjs
+  asserts: >-
+    the strip is a labelled tablist with one selected tab and one tab in the tab order; ArrowRight opens the next
+    tab with focus on it, End and Home jump to the last and first tab; the main bar is a labelled nav with aria-current;
+    Skip to content precedes every other focusable element and Enter moves focus to #main-content; all 20 screens
+    still report zero axe violations.
+  provenRed: false
+note: >-
+  2026-11-03: render check 103/103. The first axe run after adding the skip link flagged a half-faded toast (contrast
+  1.01) -- the toast is now visibility:hidden when not shown and the scan waits for transitions. Place buttons in
+  the main bar are plain buttons in the tab order, not an arrow-key group. Not tried with a real screen reader or
+  keyboard in the Tauri window.

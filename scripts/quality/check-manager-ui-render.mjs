@@ -171,6 +171,10 @@ await page.addInitScript({
 
 await page.goto("http://127.0.0.1:4599/");
 await page.waitForTimeout(500);
+// The stub machine is "all green", so Set up has already disappeared (NAV-4). Most checks below drive the
+// Set up place, so start them as a fresh profile would: not ready. The NAV-4 block restores the real flow.
+await page.evaluate(() => document.dispatchEvent(new CustomEvent("npdev:doctor-result", { detail: { ready: false } })));
+await page.waitForTimeout(200);
 
 const results = [];
 const check = (name, ok, detail) => { results.push({ name, ok, detail }); };
@@ -187,6 +191,7 @@ const a11yBaseline = existsSync(A11Y_BASELINE_PATH)
   : { schema: "npdev-manager-a11y-baseline.v1", screens: {} };
 const a11yMeasured = {};
 async function axeScan(screenId) {
+  await page.waitForTimeout(350); // let transitions (toasts, panels) settle: axe would measure a half-faded element
   if (!(await page.evaluate(() => typeof window.axe !== "undefined"))) await page.addScriptTag({ content: AXE_SRC });
   const out = await page.evaluate(async () => {
     const r = await window.axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa", "best-practice"] } });
@@ -570,6 +575,68 @@ for (const screenId of navScreens.filter((id) => !(id in a11yMeasured))) {
   await page.waitForTimeout(250);
   await axeScan(screenId);
 }
+
+// ---- NAV-4: Set up disappears once the computer is ready; Ready rows get a Fix button ----------------------
+const placeIds = () => page.$$eval(".tabs .places .place", (b) => b.map((x) => x.dataset.place));
+await page.evaluate(async () => { window.__scenario = "doctor-missing-java"; await loadDoctor(); });
+await page.waitForTimeout(250);
+check("a computer with something missing keeps Set up in the bar", (await placeIds()).includes("setup"), (await placeIds()).join(","));
+await page.evaluate(() => window.__npdevShowScreen("ready"));
+await page.waitForSelector("#doctor-rows .fix-btn", { timeout: 3000 });
+check("the failing Java row offers Fix", (await page.$$eval("#doctor-rows .check-row.fail .fix-btn", (b) => b.length)) === 1, "");
+await page.click("#doctor-rows .check-row.fail .fix-btn");
+await page.waitForTimeout(250);
+check("Fix jumps to the Java step of Install and focuses its button",
+  (await page.evaluate(() => window.__npdevCurrentScreen)) === "install" && (await page.evaluate(() => document.activeElement && document.activeElement.id)) === "jdk-install-btn", "");
+await page.evaluate(async () => { window.__scenario = "doctor-no-jars"; await loadDoctor(); window.__npdevShowScreen("ready"); });
+await page.waitForSelector("#doctor-rows .fix-btn", { timeout: 3000 });
+await page.click("#doctor-rows .check-row.fail .fix-btn");
+await page.waitForTimeout(250);
+check("a missing-jars failure jumps to the Setup step and shows its button",
+  (await page.evaluate(() => window.__npdevCurrentScreen)) === "install" && (await page.$eval("#setup-run-btn", (b) => { const r = b.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight; })), "");
+await page.evaluate(async () => { window.__scenario = "doctor-all-green"; await loadDoctor(); });
+await page.waitForTimeout(250);
+check("once the computer is ready Set up is gone from the bar", !(await placeIds()).includes("setup"), (await placeIds()).join(","));
+await page.click('.tabs .place[data-place="settings"]');
+await page.waitForTimeout(150);
+const settingsTabs = await page.$$eval('.place-strip:not([hidden]) .tab', (t) => t.map((x) => x.dataset.screen));
+check("...and Settings now shows This computer and Install & folders", settingsTabs.includes("ready") && settingsTabs.includes("install"), settingsTabs.join(","));
+await page.evaluate(() => window.__npdevShowScreen("ready"));
+await page.waitForTimeout(150);
+check("Ready stays reachable inside Settings", (await page.$eval(".tabs .place.active", (b) => b.dataset.place)) === "settings", "");
+
+// ---- NAV-5: keyboard and ARIA ---------------------------------------------------------------------------------
+await page.click('.tabs .place[data-place="settings"]');
+await page.waitForTimeout(150);
+const aria = await page.evaluate(() => {
+  const strip = document.querySelector(".place-strip:not([hidden]) [role=tablist]");
+  const tabs = [...strip.querySelectorAll("[role=tab]")];
+  return { label: strip.getAttribute("aria-label"), tabs: tabs.length, selected: tabs.filter((t) => t.getAttribute("aria-selected") === "true").length,
+    inOrder: tabs.filter((t) => t.tabIndex === 0).length, nav: document.querySelector("nav.tabs").getAttribute("aria-label"),
+    current: document.querySelector(".tabs .place.active")?.getAttribute("aria-current") };
+});
+check("the secondary strip is a labelled tablist with one tab selected and one in the tab order",
+  !!aria.label && aria.tabs > 1 && aria.selected === 1 && aria.inOrder === 1, JSON.stringify(aria));
+check("the main bar is a labelled nav and marks the current place", !!aria.nav && aria.current === "page", JSON.stringify(aria));
+await page.focus('.place-strip:not([hidden]) [role=tab][tabindex="0"]');
+const before = await page.evaluate(() => window.__npdevCurrentScreen);
+await page.keyboard.press("ArrowRight");
+await page.waitForTimeout(200);
+const after = await page.evaluate(() => ({ screen: window.__npdevCurrentScreen, focus: document.activeElement.dataset.screen }));
+check("ArrowRight moves to the next tab and opens it", after.screen !== before && after.focus === after.screen, `${before} -> ${JSON.stringify(after)}`);
+await page.keyboard.press("End");
+await page.waitForTimeout(200);
+const last = await page.evaluate(() => ({ screen: window.__npdevCurrentScreen, isLast: document.activeElement === [...document.querySelectorAll(".place-strip:not([hidden]) [role=tab]")].filter((t) => t.offsetParent).pop() }));
+check("End jumps to the last tab", last.isLast, JSON.stringify(last));
+await page.keyboard.press("Home");
+await page.waitForTimeout(200);
+check("Home jumps back to the first tab", (await page.evaluate(() => document.activeElement === [...document.querySelectorAll(".place-strip:not([hidden]) [role=tab]")].filter((t) => t.offsetParent)[0])), "");
+check("Skip to content comes before everything else in the page",
+  await page.evaluate(() => { const first = document.querySelector("a[href], button, input, select, textarea, [tabindex]:not([tabindex='-1'])"); return first && first.id === "skip-link"; }), "");
+await page.focus("#skip-link");
+await page.keyboard.press("Enter");
+await page.waitForTimeout(100);
+check("activating it moves focus into the page content", (await page.evaluate(() => document.activeElement && document.activeElement.id)) === "main-content", "");
 
 // ---- ACC-4: compare the measured axe counts with the floor ------------------------------------------
 const IMPACTS = ["critical", "serious", "moderate", "minor"];

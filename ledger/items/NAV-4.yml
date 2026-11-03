@@ -2,13 +2,40 @@ id: NAV-4
 title: Manager Set up merges Ready and Install; Set up disappears once the computer is ready
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md), WS-3 Set up merge; follows NAV-1.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md), WS-3 Set up
+  merge; follows NAV-1.
 surface: manager/ui
 detail: >-
-  Ready lists problems and Install fixes them, on two screens with no link between them; Set up stays in the bar forever.
+  Ready lists problems and Install fixes them, on two screens with no link between them; Set up stays in the bar
+  forever.
 resolution: >-
-  Done when each failing Ready row has a Fix button that jumps to the matching Install step, and after an all-green doctor Set up leaves the bar (Settings > This computer keeps Ready).
+  navigation.json gives the Set up place showWhen machineNotReady and Settings' This computer and a new Install
+  & folders screen showWhen machineReady; nav.js renders only what applies and re-renders when app.js reports a
+  computer check (npdev:doctor-result: ready when none of the machine's own checks fails; database rows are about
+  one app and do not count). Unknown readiness counts as not ready so a fresh profile sees Set up; the last answer
+  is remembered for a stable first paint. Ready rows that fail and have a target in navigation.json's fixTargets
+  (Java checks -> the Java step, python-version -> the Python step, runtimehost-jars and ai-knowledge-index -> Setup)
+  get a Fix button (English and Portuguese) that opens Install, scrolls to and focuses that step.
+files:
+- NPDevManager/ui/navigation.json
+- NPDevManager/ui/nav.js
+- NPDevManager/ui/app.js
+- scripts/quality/check-manager-ui-render.mjs
+verification: UNIT_TESTED
+guard:
+  kind: manual
+  ref: scripts/quality/check-manager-ui-render.mjs
+  asserts: >-
+    a computer with Java missing keeps Set up in the bar and its Ready row offers Fix, which lands on Install with
+    the Java button focused; a missing-jars failure lands on the Setup step with its button in view; once the doctor
+    is all green Set up is gone and Settings lists This computer and Install & folders, with Ready still reachable
+    inside Settings.
+  provenRed: false
+note: >-
+  2026-11-03: render check 103/103 in stub mode. The Setup button is disabled when no NPDev version is installed
+  (the stub case), so the Fix there scrolls to it but cannot focus it. A fresh profile's first paint shows Set up
+  until the first computer check answers (about a second). Not seen in the real Tauri window.

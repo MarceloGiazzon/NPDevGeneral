@@ -67,6 +67,21 @@
 
   let nav = null; // the parsed navigation.json
   let activePlace = null;
+
+  // NAV-4: "Set up" is only shown until this computer is ready; afterwards its screens live under
+  // Settings. `showWhen` in navigation.json names the condition. Unknown readiness counts as NOT ready
+  // (a fresh profile must see Set up); the last answer is remembered so the first paint is stable.
+  const READY_KEY = "npdev.manager.machineReady";
+  let machineReady = (() => {
+    try {
+      return window.localStorage.getItem(READY_KEY) === "1";
+    } catch (e) {
+      return false;
+    }
+  })();
+  const shows = (x) => (x.showWhen === "machineReady" ? machineReady : x.showWhen === "machineNotReady" ? !machineReady : true);
+  const screensOf = (place) => place.screens.filter(shows);
+  const visiblePlaces = () => nav.places.filter((p) => shows(p) && screensOf(p).length > 0);
   const lastScreenOf = {}; // place id -> the screen last shown there, so a place reopens where you left it
 
   function el(tag, attrs, text) {
@@ -80,7 +95,7 @@
   }
 
   function placesFor(screen) {
-    return nav.places.filter((p) => p.screens.some((s) => s.screen === screen));
+    return visiblePlaces().filter((p) => screensOf(p).some((s) => s.screen === screen));
   }
 
   // Called by app.js's showScreen after every screen change, whoever asked for it (a tab, the
@@ -101,13 +116,45 @@
       else b.removeAttribute("aria-current");
     });
     document.querySelectorAll(".tabs .place-strip").forEach((s) => (s.hidden = s.dataset.place !== place.id));
+    syncTabs(screen);
+  }
+
+  // NAV-5: the strip is a tablist -- exactly one tab is in the tab order (the selected one, or the first
+  // when the strip's place is not the current one), and the others are reached with the arrow keys.
+  function syncTabs(screen) {
+    document.querySelectorAll('.tabs [role="tablist"]').forEach((list) => {
+      const tabs = [...list.querySelectorAll('[role="tab"]')];
+      const current = tabs.find((t) => t.dataset.screen === screen);
+      tabs.forEach((t) => {
+        t.setAttribute("aria-selected", t === current ? "true" : "false");
+        t.tabIndex = t === (current || tabs[0]) ? 0 : -1;
+      });
+    });
+  }
+
+  function onStripKey(e) {
+    const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+    if (!keys.includes(e.key)) return;
+    const list = e.currentTarget;
+    const tabs = [...list.querySelectorAll('[role="tab"]')].filter((t) => t.offsetParent !== null);
+    if (!tabs.length) return;
+    const at = tabs.indexOf(document.activeElement);
+    let next = at;
+    if (e.key === "ArrowRight") next = (at + 1) % tabs.length;
+    else if (e.key === "ArrowLeft") next = (at - 1 + tabs.length) % tabs.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = tabs.length - 1;
+    e.preventDefault();
+    tabs[next].focus();
+    tabs[next].click(); // automatic activation: the arrow keys move AND open
   }
 
   function openPlace(placeId) {
-    const place = nav.places.find((p) => p.id === placeId);
+    const place = visiblePlaces().find((p) => p.id === placeId);
     if (!place) return;
     activePlace = place.id;
-    const screen = lastScreenOf[place.id] || place.screens[0].screen;
+    const screens = screensOf(place);
+    const screen = screens.some((s) => s.screen === lastScreenOf[place.id]) ? lastScreenOf[place.id] : screens[0].screen;
     window.__npdevShowScreen(screen);
   }
 
@@ -117,9 +164,12 @@
     bar.replaceChildren();
     bar.setAttribute("aria-label", I18n.t(nav.chrome.mainNav));
 
+    const skip = document.getElementById("skip-link");
+    if (skip) skip.textContent = I18n.t(nav.chrome.skipToContent);
+
     const places = el("div", { class: "places" });
-    for (const place of nav.places) {
-      const single = place.screens.length === 1;
+    for (const place of visiblePlaces()) {
+      const single = screensOf(place).length === 1;
       // A place with one screen IS that screen's tab, so it carries `.tab` + data-screen and app.js's
       // router highlights it like any other tab (check-manager-ui-render.mjs clicks
       // `.tab[data-screen="monitor"]`, which is the Activity place).
@@ -127,7 +177,7 @@
         type: "button",
         class: single ? "place tab" : "place",
         "data-place": place.id,
-        "data-screen": single ? place.screens[0].screen : undefined,
+        "data-screen": single ? screensOf(place)[0].screen : undefined,
         title: I18n.t(place.summary),
       });
       b.append(el("span", { class: "place-icon", "aria-hidden": "true" }, place.icon || ""));
@@ -151,18 +201,20 @@
     places.append(tools);
     bar.append(places);
 
-    for (const place of nav.places) {
+    for (const place of visiblePlaces()) {
       const strip = el("div", { class: "place-strip", "data-place": place.id, hidden: true });
       strip.append(el("p", { class: "place-summary" }, I18n.t(place.summary)));
-      if (place.screens.length > 1) {
-        const row = el("div", { class: "strip-tabs" });
+      if (screensOf(place).length > 1) {
+        const row = el("div", { class: "strip-tabs", role: "tablist", "aria-label": I18n.t(place.label) });
+        row.addEventListener("keydown", onStripKey);
         let group = null;
-        for (const s of place.screens) {
+        for (const s of screensOf(place)) {
           if ((s.group || null) !== group) {
             group = s.group || null;
             if (group) row.append(el("span", { class: "strip-group" }, I18n.t(nav.groups[group])));
           }
-          row.append(el("button", { type: "button", class: "tab", "data-screen": s.screen, "data-ws": s.workspace ? "1" : undefined }, I18n.t(s.label)));
+          row.append(el("button", { type: "button", class: "tab", role: "tab", "aria-controls": `screen-${s.screen}`,
+            "data-screen": s.screen, "data-ws": s.workspace ? "1" : undefined }, I18n.t(s.label)));
         }
         strip.append(row);
       }
@@ -174,6 +226,7 @@
       document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.screen === current));
       sync(current);
     }
+    syncTabs(current || null);
     // workspace.js puts the app bar into the My apps strip once the strips exist.
     document.dispatchEvent(new CustomEvent("npdev:nav-rendered"));
   }
@@ -204,6 +257,19 @@
 
   window.__npdevNavSync = sync;
 
+  // app.js reports every computer check; Set up appears and disappears with the answer.
+  document.addEventListener("npdev:doctor-result", (e) => {
+    const ready = !!(e.detail && e.detail.ready);
+    if (ready === machineReady) return;
+    machineReady = ready;
+    try {
+      window.localStorage.setItem(READY_KEY, ready ? "1" : "0");
+    } catch (err) {
+      /* the next start just assumes not ready until the check answers */
+    }
+    if (nav) render();
+  });
+
   fetch("navigation.json")
     .then((r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -211,6 +277,7 @@
     })
     .then((data) => {
       nav = data;
+      window.__npdevNav = data;
       I18n.languages = data.languages;
       I18n.lang = initialLang(data.languages);
       document.documentElement.lang = I18n.lang;

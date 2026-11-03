@@ -37,6 +37,7 @@
 <link rel="stylesheet" href="a11y.css" />
 </head>
 <body>
+  <a id="skip-link" class="skip-link" href="#main-content">Skip to content</a>
   <div id="fake-banner" class="fake-banner" role="region" aria-label="Stub mode" hidden>
     <span>STUB MODE -- no real command is being run.</span>
     <label>
@@ -55,7 +56,7 @@
     <span id="manager-version" class="manager-version" title="NPDev Manager version"></span>
   </nav>
 
-  <main>
+  <main id="main-content" tabindex="-1">
     <!-- Ready. Sections are addressed by id; the tab strip above sets the ORDER they are shown in, which is no longer this file's order. -->
     <section id="screen-home" class="screen" hidden>
       <h1 class="visually-hidden">Home</h1>

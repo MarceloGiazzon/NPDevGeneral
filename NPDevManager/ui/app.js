@@ -133,9 +133,15 @@ function renderCheckRows(container, checks) {
     const naText = `<span class="found">n/a -- ${escapeHtml(check.expected.replace(/^n\/a\s*/, "") || "nothing to check")}</span>`;
     const found = check.found ? `<span class="found">${escapeHtml(check.found)}</span>` : "";
     const detail = check.detail ? `<span class="detail" title="${escapeHtml(check.detail)}">${escapeHtml(check.detail)}</span>` : found;
+    // NAV-4: a failing check that the Install screen can repair gets a Fix button that jumps to that step
+    // (the table lives in navigation.json: fixTargets). A check the CLI says `npdev setup` fixes maps to the
+    // Setup step even if the table does not list it.
+    const fixTargets = (window.__npdevNav && window.__npdevNav.fixTargets) || { checks: {} };
+    const fixTarget = fixTargets.checks[check.id] || (check.fixCommand === "npdev setup" ? "#setup-run-btn" : "");
+    const fixLabel = window.NPDevI18n && fixTargets.label ? window.NPDevI18n.t(fixTargets.label) : "Fix";
     const fixBtn =
-      check.status === "fail" && check.fixCommand
-        ? `<button class="fix-btn" data-fix="${escapeHtml(check.fixCommand)}">Fix this</button>`
+      check.status === "fail" && !na && fixTarget
+        ? `<button class="fix-btn" data-fix-target="${escapeHtml(fixTarget)}">${escapeHtml(fixLabel)}</button>`
         : "";
     // ACC-2: the mark is an icon AND a word -- the glyph for the eye, the word for a screen reader --
     // so a row never relies on its colour class alone.
@@ -148,10 +154,13 @@ function renderCheckRows(container, checks) {
     `;
     container.appendChild(row);
   }
-  container.querySelectorAll("[data-fix]").forEach((btn) => {
+  container.querySelectorAll("[data-fix-target]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      if (btn.dataset.fix === "npdev setup") {
-        showScreen("install");
+      showScreen("install");
+      const step = document.querySelector(btn.dataset.fixTarget);
+      if (step) {
+        step.scrollIntoView({ block: "center" });
+        step.focus();
       }
     });
   });
@@ -201,6 +210,11 @@ async function loadDoctor() {
     renderCheckRows(container, result.checks);
     // Home reads this; it is set here, not by home.js, so it does not matter which script loaded first.
     window.__npdevLastDoctor = { at: Date.now(), checks: result.checks };
+    // The MACHINE is ready when none of its own checks fails; the database rows are about one app.
+    const machineChecks = (result.checks || []).filter((c) => !/^database-/.test(c.id) && !isNotApplicable(c));
+    document.dispatchEvent(new CustomEvent("npdev:doctor-result", {
+      detail: { ready: machineChecks.length > 0 && machineChecks.every((c) => c.status !== "fail") },
+    }));
     if (window.__npdevDoctorRan) window.__npdevDoctorRan(result.checks);
   } catch (err) {
     reportableError(container, {

@@ -81,6 +81,21 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+/* NAV-5: the first thing a keyboard user can reach; invisible until focused. */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 1000;
+  padding: 8px 14px;
+  background: var(--t-surface-raised);
+  color: var(--t-text);
+  border: 2px solid var(--t-accent);
+  border-radius: var(--t-radius);
+  text-decoration: none;
+}
+.skip-link:focus { top: 8px; }
+main:focus { outline: none; }
 .visually-hidden {
   position: absolute;
   width: 1px;

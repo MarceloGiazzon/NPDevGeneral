@@ -361,10 +361,10 @@ dl.kv dd small { opacity: .6; }
   position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
   background: var(--t-bg-sunken); border: 1px solid var(--t-positive-edge); color: var(--ok);
   font-family: var(--font-mono); font-size: 12.5px; padding: 9px 18px;
-  border-radius: 8px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 200;
-  max-width: 80vw;
+  border-radius: 8px; opacity: 0; visibility: hidden; transition: opacity .25s, visibility 0s .25s;
+  pointer-events: none; z-index: 200; max-width: 80vw;
 }
-.toast.show { opacity: 1; }
+.toast.show { opacity: 1; visibility: visible; transition: opacity .25s; }
 .toast.bad { border-color: var(--err); color: var(--err); }
 
 /* ============ Scrap Manager ============ */
