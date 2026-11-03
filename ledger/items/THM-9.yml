@@ -2,14 +2,13 @@ id: THM-9
 title: Generated apps -- document the theme and accessibility contract (UI_CONTRACT Theme section, feature guide YAML)
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: 2026-11-03
 source: Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03
   to implement the whole plan.
 surface: docs
 detail: The plan lists THM-9 in its id table with no step; the WS-5 Docs line names docs/UI_CONTRACT.md and docs/content/npdev-feature-guide.yml.
 resolution: Done when UI_CONTRACT.md has a Theme section and the feature guide is regenerated from its YAML.
-note: 'Partly done 2026-11-03: docs/UI_CONTRACT.md has a Themes paragraph and BREAKING.md has its entry. Still missing: the
-  feature guide (docs/content/npdev-feature-guide.yml) does not mention themes or the Display menu; add it to the YAML and
-  regenerate.'
+note: 'Closed 2026-11-03: docs/UI_CONTRACT.md has its Themes section, BREAKING.md its entry, and docs/content/npdev-feature-guide.yml now has
+  section 11 (Themes and the Display menu); the guide .md/.json were regenerated with scripts/docs/generate_group_e_docs.py.'

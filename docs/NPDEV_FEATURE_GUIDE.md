@@ -289,6 +289,34 @@ The scope with no `from` is the root and must be declared last — enforced at c
 the app. Values live in the database and are served by `GET/PUT /api/properties`, with a
 generated admin page at `/properties.html`.
 
+## 11. Themes and the Display menu — how the generated app looks, and who chooses
+
+**What it is.** The author picks the app's look; the end user may be allowed to pick their own.
+Both are settings, not code: nothing here needs a rebuild of your model's logic.
+
+```json
+"defaults": {
+  "ui.theme.name": "npdev-dark",
+  "ui.theme.choices": "npdev-default,npdev-dark,high-contrast",
+  "ui.a11y.menu": true
+}
+```
+
+`ui.theme.name` is the app's default theme (a built-in, or your own `themes/<id>.json` beside
+`model.json`). `ui.theme.choices` lists the themes an end user may switch to (`*` = every bundled
+theme); empty means no picker. `ui.a11y.menu` adds text size, motion, focus, spacing, link and
+colour-blind-safe status options to the Display menu.
+
+**What you get for free.** The business screens, the workbench and the sign-in, reset-password,
+invitation, change-password and security pages all follow the same theme, and the choice is
+remembered in the browser. Only the default theme and the listed choices are shipped in the app,
+so a theme that is not listed cannot be selected.
+
+**When to reach for it.** Branding an app, offering a dark or high-contrast option, or giving
+users with low vision or motion sensitivity the controls they need. Every built-in theme is
+checked for text contrast when the platform is built; a theme of your own is checked when you
+generate, and a failing one stops the generation with the pair of colours that miss.
+
 ## Where to go next
 
 - `docs/GETTING_STARTED.md` — validate, generate, run, change, regenerate.
