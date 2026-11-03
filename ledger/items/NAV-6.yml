@@ -2,9 +2,13 @@ id: NAV-6
 title: User test -- three real first users before and after the new navigation
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: WONTFIX
 opened: 2026-11-03
-closed: null
+closed: 2026-11-03
+decision: >-
+  Owner instruction 2026-11-03: close all open items. The first-user test was NOT performed and no notes exist, so this
+  is WONTFIX, not DONE -- nothing here claims the navigation was validated by real users. Reopen (or file a new item)
+  when the owner schedules the three-user test.
 source: >-
   Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
 surface: owner

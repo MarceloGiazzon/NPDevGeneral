@@ -2,9 +2,13 @@ id: OWN-2
 title: Three outreach conversations (abandonment, domain fit, worth) -- owner-only, slipped nine consecutive plans
 type: PROCESS
 severity: MEDIUM
-status: OPEN
+status: WONTFIX
 opened: 2026-10-17
-closed: null
+closed: 2026-11-03
+decision: >-
+  Owner instruction 2026-11-03: close all open items. Section 5.1's real conversations were NOT held, so this is WONTFIX,
+  not DONE -- the abandonment, domain-fit and worth signals remain unmeasured by any human. The simulated half (5.2)
+  stays DONE per the 2026-10-29 note. Reopen when the owner schedules the outreach.
 source: >-
   Carried out of the archived plans that each listed it as owner-only
   (docs/archive/NEXT_EXECUTION_PLAN.md P6.3, INVOCATION_TOPOLOGY_PLAN.md T7, FAIL_OPEN_PLAN.md R6,
