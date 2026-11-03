@@ -13,3 +13,7 @@ detail: >-
   new-file page prefilled. Owner D2 accepted a separate repo.
 resolution: >-
   Done when Browse themes lists a catalogue index (fixture in stub mode) and a tampered sha256 is refused.
+note: >-
+  2026-11-03: the owner's blocker is cleared -- https://github.com/MarceloGiazzon/npdev-themes was created (public, main only, README only).
+  Still to build: themes/*.json, the generated index.json with sha256, a CI check running check-themes.py there, then the Manager's
+  Browse themes / Share this theme screens and the tampered-sha256 refusal in this repo.
