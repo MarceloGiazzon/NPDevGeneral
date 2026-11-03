@@ -381,7 +381,7 @@
     const keepBtn = el("button", { type: "button", class: "primary", text: t(TEXT.keep) });
     const undoBtn = el("button", { type: "button", text: t(TEXT.undo) });
     msgEl.append(
-      el("span", { text: `${t(TEXT.previewing)} ${theme.name}. ` }),
+      el("span", { text: `${t(TEXT.previewing)} ${displayName(theme)}. ` }),
       worst ? el("span", { text: `${t(TEXT.weakest)}: ${worst.pair} ${worst.ratio}:1 (${t(TEXT.needs)} ${worst.min}). ` }) : "",
       keepBtn, " ", undoBtn, " ", countdown
     );
@@ -409,7 +409,7 @@
       await persist();
       applyNow();
       renderScreen();
-      flash(`${theme.name} ${t(TEXT.kept)}.`, true);
+      flash(`${displayName(theme)} ${t(TEXT.kept)}.`, true);
     });
   }
 
