@@ -541,6 +541,10 @@ function Save-RoutineEvidence {
             screenshots               = @($ev.screenshots).Count
         }
         screenshots     = @($ev.screenshots | ForEach-Object { $_.name })
+        # The entries themselves, not just their counts: an intermittent failure (e.g. a 401 mid-run)
+        # is only diagnosable afterwards if the evidence names the request that got it. Capped.
+        networkFailures = @($ev.networkFailures | Select-Object -First 200)
+        consoleErrors   = @($ev.consoleErrors | Select-Object -First 200)
         extracted       = $Result.extracted
     }
     $path = Join-Path $OutDir ($Name + ".json")

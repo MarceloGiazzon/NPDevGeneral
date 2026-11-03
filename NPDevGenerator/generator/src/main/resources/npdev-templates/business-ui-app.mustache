@@ -32,6 +32,7 @@
     lookupTimers: {},
     referenceLabels: {},
     activeConcept: null,
+    bootLoading: false,
     roles: [],
     isSuperUser: false,
     actorId: "",
@@ -926,6 +927,27 @@
     }, delay);
   }
 
+  // Boot loads every visible concept at once, and each load rendered the whole app two or three times:
+  // ~100 full rebuilds per page load, each one refetching the side-panel gadgets and detaching the
+  // field under the user's typing. While state.bootLoading, only the concept on screen asks for a
+  // (throttled) render; hidden ones wait for the single render bootstrap() does once all have settled.
+  let bootRenderTimer = null;
+  function renderAfterLoad(concept) {
+    if (!state.bootLoading) {
+      render();
+      return;
+    }
+    if (concept !== state.activeConcept) {
+      return;
+    }
+    if (bootRenderTimer === null) {
+      bootRenderTimer = window.setTimeout(function () {
+        bootRenderTimer = null;
+        render();
+      }, 100);
+    }
+  }
+
   async function loadPanel(concept) {
     const panel = panelState(concept);
     panel.loading = true;
@@ -933,7 +955,7 @@
     // no longer be on screen (different page/filter/sort), so starting empty is the only choice that
     // can't silently point the bulk actions bar at rows the user can no longer see.
     panel.selectedIds = [];
-    render();
+    renderAfterLoad(concept);
     try {
       const url = listUrl(concept);
       const payload = await fetchJson(url, {
@@ -947,7 +969,7 @@
       panel.totalElements = Number(payload.totalElements || panel.records.length);
       panel.loading = false;
       announceLoaded(concept);
-      render();
+      renderAfterLoad(concept);
       await hydrateReferenceLabels(concept, panel.records);
     } catch (error) {
       panel.loading = false;
@@ -977,7 +999,7 @@
         setStatus(error.message, true);
       }
     }
-    render();
+    renderAfterLoad(concept);
   }
 
   // MOB-2: a concept with ui.offlineWrite queues its creates and updates on this device while the
@@ -1120,6 +1142,14 @@
     const refocus = focused && focused.dataset && focused.dataset.filterKey
       ? { key: focused.dataset.filterKey, scope: focused.dataset.filterScope || "", start: focused.selectionStart, end: focused.selectionEnd }
       : null;
+    // Some nodes survive the rebuild (the API Key field, an open inline form), but detaching them drops
+    // focus: whatever the user was typing went nowhere. Remember it to give focus (and caret) back.
+    const survivor = !refocus && focused && focused !== document.body && el.app.contains(focused)
+      ? { node: focused, start: null, end: null }
+      : null;
+    if (survivor) {
+      try { survivor.start = focused.selectionStart; survivor.end = focused.selectionEnd; } catch (ignored) { /* number/date inputs */ }
+    }
     el.app.innerHTML = "";
     el.app.appendChild(el.authBar);
     const concepts = visibleConcepts();
@@ -1145,6 +1175,12 @@
           try { candidate.setSelectionRange(refocus.start, refocus.end); } catch (ignored) { /* number/date inputs */ }
           break;
         }
+      }
+    }
+    if (survivor && survivor.node.isConnected && document.activeElement !== survivor.node) {
+      survivor.node.focus();
+      if (survivor.start !== null) {
+        try { survivor.node.setSelectionRange(survivor.start, survivor.end); } catch (ignored) { /* number/date inputs */ }
       }
     }
     (state.manifest.panels || []).forEach(function (panelMeta) {
@@ -1462,10 +1498,17 @@
       }));
       formHeader.appendChild(backActions);
       section.appendChild(formHeader);
-      panelForm = buildFormElement(concept, panel.formMode.mode, panel.formMode.record, function () {
-        panel.formMode = null;
-        render();
-      });
+      // Built once per openForm and reused by every later render (a background load, a toast, a
+      // label lookup): rebuilding it from panel.formMode.record wiped whatever the user had typed.
+      if (panel.formElementFor !== panel.formMode) {
+        const formMode = panel.formMode;
+        panel.formElement = buildFormElement(concept, formMode.mode, formMode.record, function () {
+          panel.formMode = null;
+          render();
+        });
+        panel.formElementFor = formMode;
+      }
+      panelForm = panel.formElement;
       section.appendChild(panelForm);
       return section;
     }
@@ -3866,11 +3909,17 @@
     // field-level permission answers onto the manifest before that concept's own records load, so
     // the very first form/grid render already reflects the real per-actor visible/editable state
     // rather than an unfiltered one that then jumps ("fixes itself") a moment later.
-    await Promise.all(visibleConcepts().map(async function (concept) {
-      const bundle = await fetchUiContractBundle(concept.conceptName);
-      applyUiContractFieldOverlay(concept, bundle);
-      await loadPanel(concept);
-    }));
+    state.bootLoading = true;
+    try {
+      await Promise.all(visibleConcepts().map(async function (concept) {
+        const bundle = await fetchUiContractBundle(concept.conceptName);
+        applyUiContractFieldOverlay(concept, bundle);
+        await loadPanel(concept);
+      }));
+    } finally {
+      state.bootLoading = false;
+      render();
+    }
   }
 
   // Resolve the current user's roles to decide whether to surface the admin section.
