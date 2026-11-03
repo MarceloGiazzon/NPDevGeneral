@@ -295,5 +295,86 @@
       "concepts": 1,
       "fields": 4
     }
-  }
+  },
+  "changes": [
+    {
+      "id": "c1",
+      "request": "Each booking also needs a deposit amount. The deposit can be zero but it can never be negative.",
+      "acceptanceDelta": {
+        "concepts": [
+          {
+            "name": "Booking",
+            "fields": [
+              {
+                "name": "deposit",
+                "type": "decimal"
+              }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "r5",
+            "description": "A booking with a negative deposit must be refused.",
+            "check": {
+              "kind": "rest-reject",
+              "probes": [
+                "p9"
+              ]
+            }
+          },
+          {
+            "id": "r6",
+            "description": "A booking with a normal deposit can be saved.",
+            "check": {
+              "kind": "rest-accept",
+              "probes": [
+                "p10"
+              ]
+            }
+          }
+        ],
+        "probes": [
+          {
+            "id": "p9",
+            "purpose": "assert",
+            "method": "POST",
+            "pathHint": "{concept:Booking}",
+            "as": "owner",
+            "body": {
+              "{field:Booking.clientName}": "Zed {unique}",
+              "{field:Booking.eventDate}": "{date:+120}",
+              "{field:Booking.guests}": 50,
+              "{field:Booking.deposit}": -10
+            },
+            "expectStatus": [
+              400,
+              409,
+              422
+            ]
+          },
+          {
+            "id": "p10",
+            "purpose": "assert",
+            "method": "POST",
+            "pathHint": "{concept:Booking}",
+            "as": "owner",
+            "body": {
+              "{field:Booking.clientName}": "Yan {unique}",
+              "{field:Booking.eventDate}": "{date:+130}",
+              "{field:Booking.guests}": 60,
+              "{field:Booking.deposit}": 500
+            },
+            "expectStatus": [
+              200,
+              201
+            ]
+          }
+        ],
+        "minimums": {
+          "fields": 5
+        }
+      }
+    }
+  ]
 }

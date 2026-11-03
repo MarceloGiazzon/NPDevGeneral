@@ -5,27 +5,189 @@
   "prompt": "I run a small team and I want a simple task list. Each task has a title that must always be filled in, a priority number and a status. We also keep a list of owners with their names. That is all I need for now, but I want to add, change and look up tasks and owners easily from a screen.",
   "acceptance": {
     "concepts": [
-      {"name": "Task", "aliases": ["CanaryTask"], "fields": [
-        {"name": "title", "type": "text", "required": true},
-        {"name": "priority", "type": "integer"},
-        {"name": "status", "type": "text"}]},
-      {"name": "Owner", "aliases": ["CanaryOwner"], "fields": [{"name": "name", "type": "text", "required": true}]}
+      {
+        "name": "Task",
+        "aliases": [
+          "CanaryTask"
+        ],
+        "fields": [
+          {
+            "name": "title",
+            "type": "text",
+            "required": true
+          },
+          {
+            "name": "priority",
+            "type": "integer"
+          },
+          {
+            "name": "status",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "Owner",
+        "aliases": [
+          "CanaryOwner"
+        ],
+        "fields": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true
+          }
+        ]
+      }
     ],
-    "flows": [{"name": "CreateTask", "aliases": ["CreateCanaryTask"]}],
-    "views": [{"name": "OpenHigh", "aliases": ["OpenHighPriorityCanaryTasks"]}],
+    "flows": [
+      {
+        "name": "CreateTask",
+        "aliases": [
+          "CreateCanaryTask"
+        ]
+      }
+    ],
+    "views": [
+      {
+        "name": "OpenHigh",
+        "aliases": [
+          "OpenHighPriorityCanaryTasks"
+        ]
+      }
+    ],
     "rules": [
-      {"id": "r1", "description": "A task without a title must be refused.", "check": {"kind": "rest-reject", "probes": ["p2"]}},
-      {"id": "r2", "description": "A complete task can be created and read back.", "check": {"kind": "rest-accept", "probes": ["p1", "p3"]}}
+      {
+        "id": "r1",
+        "description": "A task without a title must be refused.",
+        "check": {
+          "kind": "rest-reject",
+          "probes": [
+            "p2"
+          ]
+        }
+      },
+      {
+        "id": "r2",
+        "description": "A complete task can be created and read back.",
+        "check": {
+          "kind": "rest-accept",
+          "probes": [
+            "p1",
+            "p3"
+          ]
+        }
+      }
     ],
     "probes": [
-      {"id": "p1", "purpose": "setup", "method": "POST", "pathHint": "/api/{concept:Task}",
-       "body": {"{field:Task.title}": "Dry run {unique}", "{field:Task.priority}": 3, "{field:Task.status}": "OPEN"},
-       "expectStatus": [200, 201]},
-      {"id": "p2", "purpose": "assert", "method": "POST", "pathHint": "/api/{concept:Task}",
-       "body": {"{field:Task.priority}": 1, "{field:Task.status}": "OPEN"}, "expectStatus": [400, 422]},
-      {"id": "p3", "purpose": "assert", "method": "GET", "pathHint": "/api/{concept:Task}/{id:p1}",
-       "expectStatus": [200], "expectJsonContains": {"{field:Task.priority}": 3}}
+      {
+        "id": "p1",
+        "purpose": "setup",
+        "method": "POST",
+        "pathHint": "/api/{concept:Task}",
+        "body": {
+          "{field:Task.title}": "Dry run {unique}",
+          "{field:Task.priority}": 3,
+          "{field:Task.status}": "OPEN"
+        },
+        "expectStatus": [
+          200,
+          201
+        ]
+      },
+      {
+        "id": "p2",
+        "purpose": "assert",
+        "method": "POST",
+        "pathHint": "/api/{concept:Task}",
+        "body": {
+          "{field:Task.priority}": 1,
+          "{field:Task.status}": "OPEN"
+        },
+        "expectStatus": [
+          400,
+          422
+        ]
+      },
+      {
+        "id": "p3",
+        "purpose": "assert",
+        "method": "GET",
+        "pathHint": "/api/{concept:Task}/{id:p1}",
+        "expectStatus": [
+          200
+        ],
+        "expectJsonContains": {
+          "{field:Task.priority}": 3
+        }
+      }
     ],
-    "minimums": {"concepts": 2, "fields": 4}
-  }
+    "minimums": {
+      "concepts": 2,
+      "fields": 4
+    }
+  },
+  "changes": [
+    {
+      "id": "c1",
+      "request": "We also want a notes field on every task so the team can leave a remark, and it must come back when the task is read.",
+      "acceptanceDelta": {
+        "concepts": [
+          {
+            "name": "Task",
+            "fields": [
+              {
+                "name": "notes",
+                "type": "text"
+              }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "r3",
+            "description": "A task keeps its notes when it is read back.",
+            "check": {
+              "kind": "rest-accept",
+              "probes": [
+                "p4",
+                "p5"
+              ]
+            }
+          }
+        ],
+        "probes": [
+          {
+            "id": "p4",
+            "purpose": "setup",
+            "method": "POST",
+            "pathHint": "/api/{concept:Task}",
+            "body": {
+              "{field:Task.title}": "Noted {unique}",
+              "{field:Task.notes}": "remember the milk"
+            },
+            "expectStatus": [
+              200,
+              201
+            ]
+          },
+          {
+            "id": "p5",
+            "purpose": "assert",
+            "method": "GET",
+            "pathHint": "/api/{concept:Task}/{id:p4}",
+            "expectStatus": [
+              200
+            ],
+            "expectJsonContains": {
+              "{field:Task.notes}": "remember the milk"
+            }
+          }
+        ],
+        "minimums": {
+          "fields": 5
+        }
+      }
+    }
+  ]
 }

@@ -2,13 +2,42 @@ id: BENCH-4
 title: Token benchmark -- evolution phase (changes[] applied after a first pass)
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
 surface: bench
 detail: >-
   prompt.schema.json gains changes[]; six prompts carry them; the harness re-runs acceptance after each change.
 resolution: >-
-  Done when a pilot reports changeTokens and changePassRate per arm.
+  A prompt may declare changes[] ({id, request, acceptanceDelta}); NPDevSamples/ai-bench/prompt.schema.json defines
+  it, scripts/ai/bench/evolve.py merges each delta into the acceptance (new ids only, minimums replaced) and applies
+  the changes in order after a pass (run_bench.py run --evolve): the NPDev arm edits model.json (author.change_messages:
+  same knowledge, the original request, the working model, the new request), the direct arm edits files; the FULL
+  acceptance (old + all deltas) is re-run after each change, and result.json records per change tokens (input/output),
+  loops, regressed earlier probes, plus changeTokens and changePassRate. Six prompts carry changes[] (bench-001,
+  002, 011, 013, 021, 023: two per tier) and the dry-run fixture one; check-ai-bench-prompts.py merges every change
+  in order and runs the same cross-reference checks on the result.
+files:
+- scripts/ai/bench/evolve.py
+- scripts/ai/bench/author.py
+- scripts/ai/bench/run_bench.py
+- scripts/quality/check-ai-bench-prompts.py
+- NPDevSamples/ai-bench/prompt.schema.json
+- NPDevSamples/ai-bench/prompts/bench-001-bike-repair-shop.json
+- scripts/ai/bench/fixtures/bench-900-canary-dry.json
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: scripts/ai/bench/test_bench.py#test_a_working_app_is_changed_and_the_change_cost_is_recorded
+  asserts: >-
+    a passing dry-run Python app is changed by a fake model; changePassRate 1.0, changeTokens split 1000 in / 700
+    out, the model saw its own files and the request; an undelivered change fails at acceptance and later changes
+    are not attempted; the NPDev adapter re-runs the full acceptance; every shipped change merges cleanly.
+  provenRed: false
+note: >-
+  2026-11-03: the pilot (changeTokens and changePassRate per arm from a real model) has NOT been run -- no model
+  quota was spent; only fake backends. The NPDev-arm adapter is tested with run_attempt mocked, not through generate/build/boot.
+  Whether the six change requests are fair to both arms is untested.

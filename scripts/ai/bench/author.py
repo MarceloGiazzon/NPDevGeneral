@@ -80,6 +80,18 @@ def repair_messages(history: list[dict], reply_text: str, stage: str, error_text
     return history + [{"role": "assistant", "content": reply_text}, {"role": "user", "content": note}]
 
 
+def change_messages(prompt_text: str, knowledge: str | None, model_text: str, request: str) -> list[dict]:
+    """BENCH-4 (evolution): an app that already works is changed. The model sees the ORIGINAL request, its own
+    working model.json as its previous answer, and the owner's new request. The system prompt carries the same
+    knowledge as the first call: every token counts, and a fair comparison cannot skip the cost of teaching the DSL."""
+    note = ("The application now works. The owner wants one more change:\n\n" + request.strip()
+            + "\n\nReply with the COMPLETE updated model.json in one ```json block. Keep everything that already works.")
+    return [{"role": "system", "content": system_prompt(knowledge)},
+            {"role": "user", "content": "Build this application:\n\n" + prompt_text.strip()},
+            {"role": "assistant", "content": "```json\n" + model_text.strip() + "\n```"},
+            {"role": "user", "content": note}]
+
+
 GOLDEN_MARKER = "\n## Golden example:"
 
 

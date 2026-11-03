@@ -41,6 +41,18 @@
     "scripts/ai/bench/backends.py": {
       "invocation": "orchestrated"
     },
+    "scripts/ai/bench/compare.py": {
+      "invocation": "orchestrated"
+    },
+    "scripts/ai/bench/direct.py": {
+      "invocation": "orchestrated"
+    },
+    "scripts/ai/bench/evolve.py": {
+      "invocation": "orchestrated"
+    },
+    "scripts/ai/bench/fixtures/direct-python-app.py": {
+      "invocation": "orchestrated"
+    },
     "scripts/ai/bench/probes.py": {
       "invocation": "orchestrated"
     },

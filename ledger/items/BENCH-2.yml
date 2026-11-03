@@ -2,13 +2,31 @@ id: BENCH-2
 title: Token benchmark -- probes that work without NPDev metadata (OpenAPI catalog)
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
 surface: bench
-detail: >-
-  probes.fetch_catalog falls back to OpenAPI components.schemas when the metadata endpoint is absent.
+detail: probes.fetch_catalog falls back to OpenAPI components.schemas when the metadata endpoint is absent.
 resolution: >-
-  Done when test_bench.py has a case with the catalog from OpenAPI only.
+  probes.fetch_catalog falls back to OpenAPI when /api/admin/runtime/metadata/concepts is not 200: probes.catalog_from_openapi
+  makes one concept per /api/<collection> route, named from the POST body (else the GET items) schema without a
+  Request/Response/Dto suffix, fields from its properties (required from `required`, enums from `enum`, date/datetime
+  from format), the collection being the exact route segment; flows and queries come from the same document. An
+  NPDev app keeps using its metadata (Catalog.source says which).
+files:
+- scripts/ai/bench/probes.py
+- scripts/ai/bench/test_bench.py
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: scripts/ai/bench/test_bench.py#test_fetch_catalog_falls_back_to_openapi_only_when_metadata_is_absent
+  asserts: >-
+    with the metadata endpoint at 404 the catalog comes from OpenAPI (concepts, fields, required, enum values, flows,
+    queries); with metadata present it is untouched; with neither the error is still reported.
+  provenRed: false
+note: >-
+  2026-11-03: only the OpenAPI shapes springdoc and the fixture app emit were tested; a model's hand-written OpenAPI
+  may differ.

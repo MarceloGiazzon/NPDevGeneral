@@ -11,9 +11,96 @@
     "tier": { "enum": ["simple-crud", "workflow-roles", "integration-report"] },
     "title": { "type": "string", "minLength": 3, "maxLength": 80 },
     "prompt": { "type": "string", "minLength": 200, "maxLength": 1400, "description": "3 to 8 sentences, English, written by a business owner. Must not contain platform or technical jargon (the validator rejects NPDev, DSL, JSON, schema, API, REST, Gradle)." },
-    "acceptance": { "$ref": "#/$defs/acceptance" }
+    "acceptance": { "$ref": "#/$defs/acceptance" },
+    "changes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+        "$ref": "#/$defs/change"
+      },
+      "description": "BENCH-4 (evolution): changes an owner asks for AFTER the app works, applied in order to the passing app (run_bench.py run --evolve). Each carries a request in plain words and an acceptanceDelta that is merged into the acceptance, so the full check (everything that worked before plus the new behaviour) is re-run after each change. The cost per change (tokens, loops) and which earlier probes broke are what the benchmark reports as changeTokens and changePassRate."
+    }
   },
   "$defs": {
+    "change": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "request",
+        "acceptanceDelta"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^c[0-9]+$"
+        },
+        "request": {
+          "type": "string",
+          "minLength": 30,
+          "maxLength": 400,
+          "description": "What the owner now wants, in plain words (the same no-jargon rule as the prompt)."
+        },
+        "acceptanceDelta": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Merged into the acceptance: concepts merge by name (new fields are appended), rules/probes/roles/flows/views are appended with NEW ids, minimums replace the base's.",
+          "properties": {
+            "concepts": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/concept"
+              }
+            },
+            "roles": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/named"
+              }
+            },
+            "flows": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/named"
+              }
+            },
+            "views": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/named"
+              }
+            },
+            "rules": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/rule"
+              }
+            },
+            "probes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/probe"
+              }
+            },
+            "minimums": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "concepts": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "fields": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "logicalName": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*$" },
     "aliases": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true, "description": "Synonyms the matcher also accepts (case-insensitive, ignoring spaces, underscores and a trailing plural s)." },
     "acceptance": {

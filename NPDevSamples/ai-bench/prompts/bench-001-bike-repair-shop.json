@@ -178,5 +178,80 @@
       "concepts": 2,
       "fields": 6
     }
-  }
+  },
+  "changes": [
+    {
+      "id": "c1",
+      "request": "I also want to keep each customer's email address. An email must contain an @ sign, so a typo is caught when I save the customer.",
+      "acceptanceDelta": {
+        "concepts": [
+          {
+            "name": "Customer",
+            "fields": [
+              {
+                "name": "email",
+                "type": "text"
+              }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "r4",
+            "description": "A customer with a valid email can be saved.",
+            "check": {
+              "kind": "rest-accept",
+              "probes": [
+                "p5"
+              ]
+            }
+          },
+          {
+            "id": "r5",
+            "description": "A customer whose email has no @ sign must be refused.",
+            "check": {
+              "kind": "rest-reject",
+              "probes": [
+                "p6"
+              ]
+            }
+          }
+        ],
+        "probes": [
+          {
+            "id": "p5",
+            "purpose": "assert",
+            "method": "POST",
+            "pathHint": "{concept:Customer}",
+            "body": {
+              "{field:Customer.name}": "Eve {unique}",
+              "{field:Customer.email}": "eve{unique}@example.com"
+            },
+            "expectStatus": [
+              200,
+              201
+            ]
+          },
+          {
+            "id": "p6",
+            "purpose": "assert",
+            "method": "POST",
+            "pathHint": "{concept:Customer}",
+            "body": {
+              "{field:Customer.name}": "Fay {unique}",
+              "{field:Customer.email}": "not-an-email"
+            },
+            "expectStatus": [
+              400,
+              409,
+              422
+            ]
+          }
+        ],
+        "minimums": {
+          "fields": 7
+        }
+      }
+    }
+  ]
 }

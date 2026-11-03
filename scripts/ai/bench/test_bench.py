@@ -20,6 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import author  # noqa: E402
 import backends  # noqa: E402
+import compare  # noqa: E402
+import direct  # noqa: E402
+import evolve  # noqa: E402
 import probes  # noqa: E402
 import run_bench  # noqa: E402
 import stages  # noqa: E402
@@ -886,6 +889,389 @@ class CompactCoreContextTests(unittest.TestCase):
         # slim_knowledge cuts at this literal header; losing it silently stops stateless trimming.
         self.assertIn("\n## Golden example:", self.compact)
         self.assertLess(len(author.slim_knowledge(self.compact)), len(self.compact))
+
+
+class OpenApiCatalogTests(unittest.TestCase):
+    """BENCH-2: an app with no NPDev metadata endpoint is judged by the SAME probes, with the catalog derived
+    from its OpenAPI document."""
+
+    API = {"openapi": "3.0.1", "paths": {
+        "/api/tasks": {"get": {"responses": {"200": {"content": {"application/json": {"schema": {
+            "type": "array", "items": {"$ref": "#/components/schemas/Task"}}}}}}},
+                       "post": {"requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/TaskRequest"}}}}}},
+        "/api/tasks/{id}": {"get": {}},
+        "/api/owners": {"post": {"requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Owner"}}}}}},
+        "/api/flows/CreateTask/execute": {"post": {}},
+        "/api/queries/OpenHigh": {"get": {}},
+        "/v3/api-docs": {}},
+        "components": {"schemas": {
+            "TaskRequest": {"type": "object", "required": ["title"], "properties": {
+                "title": {"type": "string"}, "priority": {"type": "integer"},
+                "status": {"type": "string", "enum": ["OPEN", "DONE"]}, "due": {"type": "string", "format": "date"}}},
+            "Task": {"type": "object", "properties": {"id": {"type": "string"}, "title": {"type": "string"}}},
+            "Owner": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}}}
+
+    def test_concepts_fields_required_and_enums_come_from_the_schemas(self):
+        concepts = {c.name: c for c in probes.catalog_from_openapi(self.API)}
+        self.assertEqual(set(concepts), {"Task", "Owner"})          # TaskRequest -> Task: the suffix is dropped
+        task = concepts["Task"]
+        self.assertEqual(task.collection, "tasks")
+        by_name = {f.name: f for f in task.fields}
+        self.assertNotIn("id", by_name)
+        self.assertTrue(by_name["title"].required)
+        self.assertEqual(by_name["priority"].type, "integer")
+        self.assertEqual(by_name["status"].type, "enum")
+        self.assertEqual(by_name["status"].enum_values, ["OPEN", "DONE"])
+        self.assertEqual(by_name["due"].type, "date")
+        self.assertTrue({f.name for f in concepts["Owner"].fields} == {"name"})
+
+    def test_a_route_with_no_schema_still_yields_a_concept_named_from_the_segment(self):
+        concepts = probes.catalog_from_openapi({"paths": {"/api/categories": {}, "/api/queries/X": {}, "/api/admin": {}}})
+        self.assertEqual([(c.name, c.collection) for c in concepts], [("Category", "categories")])
+
+    def test_fetch_catalog_falls_back_to_openapi_only_when_metadata_is_absent(self):
+        replies = {"/api/admin/runtime/metadata/concepts": (404, None), "/v3/api-docs": (200, self.API)}
+
+        def fake_call(base, method, path, body, key, timeout=30.0):
+            return replies.get(path, (404, None))
+
+        with mock.patch.object(probes, "http_call", side_effect=fake_call):
+            cat, err = probes.fetch_catalog("http://x", "k", None)
+        self.assertEqual(err, "")
+        self.assertEqual(cat.source, "openapi")
+        self.assertEqual([c.collection for c in cat.concepts], ["tasks", "owners"])
+        self.assertEqual(cat.flows, ["CreateTask"])
+        self.assertEqual(cat.queries, ["OpenHigh"])
+        # and an app with neither metadata nor OpenAPI concepts is still reported as broken
+        with mock.patch.object(probes, "http_call", side_effect=lambda *a, **k: (404, None)):
+            cat, err = probes.fetch_catalog("http://x", "k", None)
+        self.assertIn("404", err)
+
+    def test_an_npdev_app_keeps_using_its_metadata(self):
+        concepts = {"items": [{"name": "Thing", "fieldPaths": ["id", "label"]}]}
+        replies = {"/api/admin/runtime/metadata/concepts": (200, concepts), "/api/admin/runtime/metadata/fields": (404, None),
+                   "/v3/api-docs": (200, {"paths": {"/api/things": {}}})}
+        with mock.patch.object(probes, "http_call", side_effect=lambda b, m, p, *a, **k: replies.get(p, (404, None))):
+            cat, err = probes.fetch_catalog("http://x", "k", None)
+        self.assertEqual((cat.source, err), ("metadata", ""))
+
+
+class DirectArmTests(unittest.TestCase):
+    """BENCH-1: the 'AI writes the app directly' arm."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.spec = direct.load_spec()
+
+    def test_the_prompt_tells_the_model_everything_the_probes_check(self):
+        st = direct.stack_for(self.spec, "direct-node")
+        text = direct.system_prompt(self.spec, st)
+        for needle in ("PORT", "/v3/api-docs", "X-Api-Key", "NPDEV_BENCH_ROLE_KEYS", "400 or 422", "/api/flows/<flowName>/execute",
+                       "survives a restart", st["label"], "express", "better-sqlite3"):
+            self.assertIn(needle, text)
+        self.assertNotIn("{probeContract}", text)
+        self.assertIn("standard library only", direct.system_prompt(self.spec, direct.stack_for(self.spec, "direct-python")))
+
+    def test_files_are_parsed_and_a_fence_around_a_file_is_stripped(self):
+        reply = ("Here you go\n=== FILE: app.py ===\n```python\nprint('hi')\n```\n=== FILE: sub/dir/readme.txt ===\nplain\n")
+        files, err = direct.parse_files(reply)
+        self.assertEqual(err, "")
+        self.assertEqual(files, {"app.py": "print('hi')\n", "sub/dir/readme.txt": "plain\n"})
+
+    def test_unsafe_paths_and_empty_replies_are_refused(self):
+        for bad in ("../evil.py", "/etc/passwd", "C:\\Windows\\x.py", "a/../../b.py", "\\\\server\\share\\x"):
+            files, err = direct.parse_files(f"=== FILE: {bad} ===\nx\n")
+            self.assertEqual(files, {}, bad)
+            self.assertIn("unsafe", err, bad)
+        files, err = direct.parse_files("I could not do that.")
+        self.assertEqual(files, {})
+        self.assertIn("no `=== FILE", err)
+        with tempfile.TemporaryDirectory() as td:
+            with self.assertRaises(ValueError):
+                direct.write_files(Path(td) / "app", {"../escape.txt": "x"})
+
+    def test_the_cleared_environment_has_no_secrets(self):
+        with mock.patch.dict(os.environ, {"GROQ_API_KEY": "gsk_secret", "NPDEV_AUTH_API_KEYS": "x", "HOME": "/home/me",
+                                          "USERPROFILE": "C:\\Users\\me", "PATH": os.environ.get("PATH", "")}):
+            env = direct.clean_env({"PORT": "1234"})
+        self.assertEqual(env["PORT"], "1234")
+        self.assertNotIn("GROQ_API_KEY", env)
+        self.assertNotIn("NPDEV_AUTH_API_KEYS", env)
+        self.assertNotIn("HOME", env)
+        self.assertNotIn("USERPROFILE", env)
+
+    def test_one_key_per_role_plus_admin(self):
+        keys = direct.role_keys_for({"roles": [{"name": "Mechanic"}], "probes": [{"as": "Manager"}, {"as": "admin"}, {}]})
+        self.assertEqual(set(keys), {"Mechanic", "Manager", "admin"})
+        self.assertEqual(len(set(keys.values())), 3)
+
+    def test_dependencies_outside_the_allowlist_are_refused_before_anything_is_installed(self):
+        with tempfile.TemporaryDirectory() as td:
+            app = Path(td)
+            (app / "package.json").write_text(json.dumps({"dependencies": {"express": "4", "left-pad": "1"}}), encoding="utf-8")
+            res = direct.stage_install(direct.stack_for(self.spec, "direct-node"), app, app, 5)
+            self.assertFalse(res.ok)
+            self.assertIn("left-pad", res.detail)
+            (app / "requirements.txt").write_text("requests==2\n", encoding="utf-8")
+            res = direct.stage_install(direct.stack_for(self.spec, "direct-python"), app, app, 5)
+            self.assertFalse(res.ok)
+            self.assertIn("standard library", res.detail)
+
+    def test_repair_message_carries_the_stage_and_the_error(self):
+        history = direct.initial_messages(self.spec, direct.stack_for(self.spec, "direct-python"), "Make a task list.")
+        msgs = direct.repair_messages(self.spec, history, "reply", "boot", "Traceback: boom")
+        self.assertEqual([m["role"] for m in msgs], ["system", "user", "assistant", "user"])
+        self.assertIn("`boot`", msgs[-1]["content"])
+        self.assertIn("Traceback: boom", msgs[-1]["content"])
+
+    def _run(self, td, replies=None, loops=0):
+        args = mock.Mock(max_loops=loops, stop_when_stuck=0, keep_apps=True, build_timeout=60, boot_timeout=30)
+        prompt = json.loads((run_bench.DRY_RUN_PROMPTS / "bench-900-canary-dry.json").read_text(encoding="utf-8"))
+        backend = direct.FakeDirectBackend(replies)
+        return direct.run_prompt_direct(prompt, backend, "direct-python", Path(td), args), backend
+
+    def test_a_known_good_python_app_passes_the_real_probes_end_to_end(self):
+        with tempfile.TemporaryDirectory() as td:
+            result, backend = self._run(td)
+            self.assertTrue(result["passed"], json.dumps(result["attempts"], indent=1)[:1500])
+            self.assertEqual(result["arm"], "direct-python")
+            self.assertEqual(result["tokens"]["prompt"], 1000)
+            self.assertEqual(result["tokens"]["completion"], 700)
+            self.assertEqual(result["filesWritten"], 1)
+            stages_run = [s["stage"] for s in result["attempts"][-1]["stages"]]
+            self.assertEqual(stages_run, ["author", "install", "boot", "acceptance"])
+            self.assertEqual(len(backend.calls), 1)
+
+    def test_a_broken_app_is_repaired_with_the_boot_error_and_tokens_add_up(self):
+        broken = "=== FILE: app.py ===\nthis is not python (\n"
+        with tempfile.TemporaryDirectory() as td:
+            result, backend = self._run(td, replies=[broken], loops=2)
+            self.assertTrue(result["passed"])
+            self.assertEqual(result["loopsUsed"], 1)
+            self.assertEqual(result["attempts"][0]["failingStage"], "boot")
+            self.assertEqual(result["tokens"]["total"], 2 * 1700)
+            repair_turn = backend.calls[1][-1]["content"]
+            self.assertIn("SyntaxError", repair_turn)
+
+    def test_the_cli_runs_the_direct_arm_in_dry_run_mode(self):
+        out = io.StringIO()
+        with tempfile.TemporaryDirectory() as td, contextlib.redirect_stdout(out):
+            rc = run_bench.main(["run", "--arm", "direct-python", "--dry-run", "--out-root", td, "--run-id", "d1"])
+            summary = json.loads((Path(td) / "d1" / "summary.json").read_text(encoding="utf-8"))
+        self.assertEqual(rc, 0)
+        self.assertEqual(summary["arm"], "direct-python")
+        self.assertEqual(summary["scorecard"]["passWithin5LoopsRate"], 1.0)
+
+    def test_the_direct_arm_refuses_to_run_elevated(self):
+        err = io.StringIO()
+        with mock.patch.object(direct, "is_admin", return_value=True), contextlib.redirect_stderr(err):
+            rc = run_bench.main(["run", "--arm", "direct-node", "--prompt", "none"])
+        self.assertEqual(rc, 3)
+        self.assertIn("administrator", err.getvalue())
+
+    def test_the_arm_choices_are_the_two_npdev_arms_and_the_three_stacks(self):
+        self.assertEqual(run_bench.ARMS, ["npdev", "npdev-no-knowledge", "direct-python", "direct-node", "direct-spring"])
+
+
+class EvolutionTests(unittest.TestCase):
+    """BENCH-4: changes applied to an app that already passes."""
+
+    BASE = {"concepts": [{"name": "Task", "fields": [{"name": "title", "type": "text", "required": True}]}],
+            "rules": [{"id": "r1", "description": "A task without a title is refused.", "check": {"kind": "rest-reject", "probes": ["p2"]}}],
+            "probes": [{"id": "p2", "purpose": "assert", "method": "POST", "pathHint": "{concept:Task}", "body": {}, "expectStatus": [400]}],
+            "minimums": {"concepts": 1, "fields": 1}}
+
+    def test_a_delta_merges_without_touching_the_base_and_replaces_minimums(self):
+        delta = {"concepts": [{"name": "Task", "fields": [{"name": "notes", "type": "text"}]}, {"name": "Owner", "fields": [{"name": "name", "type": "text"}]}],
+                 "rules": [{"id": "r2", "description": "Notes are kept on a task.", "check": {"kind": "rest-accept", "probes": ["p3"]}}],
+                 "probes": [{"id": "p3", "purpose": "assert", "method": "POST", "pathHint": "{concept:Task}", "body": {}, "expectStatus": [201]}],
+                 "minimums": {"fields": 3}}
+        before = copy.deepcopy(self.BASE)
+        merged = evolve.merge_acceptance(self.BASE, delta)
+        self.assertEqual(self.BASE, before)
+        self.assertEqual([f["name"] for f in merged["concepts"][0]["fields"]], ["title", "notes"])
+        self.assertEqual([c["name"] for c in merged["concepts"]], ["Task", "Owner"])
+        self.assertEqual([r["id"] for r in merged["rules"]], ["r1", "r2"])
+        self.assertEqual(merged["minimums"], {"concepts": 1, "fields": 3})
+
+    def test_a_change_must_use_new_ids(self):
+        with self.assertRaises(evolve.EvolutionError):
+            evolve.merge_acceptance(self.BASE, {"probes": [dict(self.BASE["probes"][0])]})
+
+    def test_validate_changes_names_the_problem(self):
+        prompt = {"id": "bench-x", "acceptance": self.BASE, "changes": [
+            {"id": "c1", "request": "short", "acceptanceDelta": {"rules": [
+                {"id": "r2", "description": "x" * 12, "check": {"kind": "rest-accept", "probes": ["p9"]}}]}}]}
+        problems = " | ".join(evolve.validate_changes(prompt))
+        self.assertIn("too short", problems)
+        self.assertIn("unknown probe p9", problems)
+
+    def test_every_shipped_prompt_change_merges_cleanly(self):
+        count = 0
+        for path in sorted((Path(__file__).resolve().parents[3] / "NPDevSamples" / "ai-bench" / "prompts").glob("bench-*.json")):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if data.get("changes"):
+                count += 1
+                self.assertEqual(evolve.validate_changes(data), [], path.name)
+        self.assertEqual(count, 6, "two prompts per tier carry changes[]")
+
+    def _evolve(self, replies, loops=0):
+        args = mock.Mock(max_loops=loops, stop_when_stuck=0, keep_apps=True, build_timeout=60, boot_timeout=30, evolve=True)
+        prompt = json.loads((run_bench.DRY_RUN_PROMPTS / "bench-900-canary-dry.json").read_text(encoding="utf-8"))
+        backend = direct.FakeDirectBackend(replies)
+        with tempfile.TemporaryDirectory() as td:
+            result = direct.run_prompt_direct(prompt, backend, "direct-python", Path(td), args)
+            self.assertTrue(result["passed"])
+            result = run_bench.run_evolution(prompt, result, backend, None, Path(td), args, "direct-python")
+            return result, backend
+
+    def test_a_working_app_is_changed_and_the_change_cost_is_recorded(self):
+        result, backend = self._evolve([direct.FakeDirectBackend.good_reply(), direct.FakeDirectBackend.evolved_reply()])
+        self.assertEqual(result["changePassRate"], 1.0)
+        self.assertEqual(result["changeTokens"], 1700)           # one call: 1000 in + 700 out, counted separately below
+        self.assertEqual((result["changeTokensInput"], result["changeTokensOutput"]), (1000, 700))
+        self.assertTrue(result["changes"][0]["passed"])
+        self.assertEqual(result["changes"][0]["regressions"], [])
+        # the model was shown its own working app and the owner's request, and told to reply with changed files only
+        last = backend.calls[1]
+        self.assertEqual([m["role"] for m in last], ["system", "user", "assistant", "user"])
+        self.assertIn("=== FILE: app.py ===", last[2]["content"])
+        self.assertIn("notes field", last[3]["content"])
+        self.assertIn("ONLY the files that change", last[3]["content"])
+
+    def test_a_change_that_is_not_delivered_fails_and_later_changes_are_not_attempted(self):
+        result, _ = self._evolve([direct.FakeDirectBackend.good_reply(), direct.FakeDirectBackend.good_reply()])
+        self.assertEqual(result["changePassRate"], 0.0)
+        self.assertFalse(result["changes"][0]["passed"])
+        self.assertEqual(result["changes"][0]["failingStage"], "acceptance")
+        self.assertEqual(result["changesAttempted"], 1)
+
+    def test_the_npdev_arm_sends_the_knowledge_the_model_and_the_request(self):
+        msgs = author.change_messages("Make a task list for my team.", "KNOWLEDGE-CARDS", '{"concepts": []}', "Add a notes field to tasks.")
+        self.assertEqual([m["role"] for m in msgs], ["system", "user", "assistant", "user"])
+        self.assertIn("KNOWLEDGE-CARDS", msgs[0]["content"])
+        self.assertIn('{"concepts": []}', msgs[2]["content"])
+        self.assertIn("notes field", msgs[3]["content"])
+        self.assertIn("COMPLETE updated model.json", msgs[3]["content"])
+
+    def test_the_npdev_adapter_applies_the_edit_through_the_normal_attempt(self):
+        prompt = json.loads((run_bench.DRY_RUN_PROMPTS / "bench-900-canary-dry.json").read_text(encoding="utf-8"))
+        backend = backends.FakeBackend(CANARY_MODEL)
+        args = mock.Mock(max_loops=0)
+        seen = {}
+
+        def fake_attempt(n, model_text, p, change_dir, a, stage_log):
+            seen["acceptance_probes"] = [x["id"] for x in p["acceptance"]["probes"]]
+            return {"failingStage": None, "feedback": "", "stages": stage_log, "modelText": model_text}
+
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(run_bench, "run_attempt", side_effect=fake_attempt):
+            adapter = run_bench.NpdevEvolution(prompt, "K", '{"x": 1}', args)
+            block = evolve.apply_changes(prompt, adapter, backend, args, Path(td))
+        self.assertEqual(block["changePassRate"], 1.0)
+        self.assertEqual(seen["acceptance_probes"], ["p1", "p2", "p3", "p4", "p5"], "the FULL acceptance is re-run, old probes included")
+        self.assertEqual(block["changeTokens"], 1500)
+
+
+class CompareTests(unittest.TestCase):
+    """BENCH-3: one report across arms."""
+
+    @staticmethod
+    def _result(pid, tier, passed, prompt_tokens, completion_tokens, probes=4, arm="npdev", outcome=None, wall=10.0, loops=0):
+        stage = {"stage": "acceptance", "ok": passed, "probeCounts": {"passed": probes if passed else 1, "failed": 0, "unresolved": 0}}
+        return {"promptId": pid, "tier": tier, "arm": arm, "passed": passed, "outcome": outcome or ("pass" if passed else "fail"),
+                "loopsUsed": loops, "firstAttemptPassed": passed and loops == 0, "wallSeconds": wall, "costUsd": 0.0,
+                "tokens": {"prompt": prompt_tokens, "completion": completion_tokens, "total": prompt_tokens + completion_tokens},
+                "attempts": [{"attempt": 0, "failingStage": None if passed else "acceptance", "stages": [stage]}]}
+
+    def _run(self, root, name, arm, results):
+        d = Path(root) / name
+        for r in results:
+            (d / r["promptId"]).mkdir(parents=True, exist_ok=True)
+            (d / r["promptId"] / "result.json").write_text(json.dumps(r), encoding="utf-8")
+        (d / "summary.json").write_text(json.dumps({"arm": arm}), encoding="utf-8")
+        return d
+
+    def test_per_tier_per_arm_numbers_and_the_input_output_split(self):
+        with tempfile.TemporaryDirectory() as td:
+            a = self._run(td, "a", "npdev", [self._result("bench-001", "simple-crud", True, 30000, 2000),
+                                             self._result("bench-002", "simple-crud", True, 32000, 4000, loops=1),
+                                             self._result("bench-011", "workflow-roles", False, 60000, 6000)])
+            b = self._run(td, "b", "direct-python", [self._result("bench-001", "simple-crud", True, 2000, 5000, arm="direct-python"),
+                                                    self._result("bench-002", "simple-crud", True, 2500, 7000, arm="direct-python"),
+                                                    self._result("bench-011", "workflow-roles", True, 3000, 9000, arm="direct-python")])
+            out = Path(td) / "out"
+            with contextlib.redirect_stdout(io.StringIO()):
+                rc = run_bench.main(["compare", str(a), str(b), "--out", str(out)])
+            self.assertEqual(rc, 0)
+            data = json.loads((out / "comparison.json").read_text(encoding="utf-8"))
+            html_text = (out / "comparison.html").read_text(encoding="utf-8")
+        self.assertEqual(data["arms"], ["npdev", "direct-python"])
+        crud = data["table"]["simple-crud"]
+        self.assertEqual(crud["npdev"]["passRate"], 1.0)
+        self.assertEqual(crud["npdev"]["medianTokensPerPassedApp"], 34000)    # median of 32000 and 36000
+        self.assertEqual(crud["npdev"]["inputTokensPerPassedApp"], 31000)
+        self.assertEqual(crud["npdev"]["outputTokensPerPassedApp"], 3000)
+        self.assertEqual(crud["npdev"]["tokensPerPassedProbe"], 8500.0)       # 68000 tokens / 8 probes
+        self.assertEqual(crud["direct-python"]["medianTokensPerPassedApp"], 8250)
+        overall = data["table"]["all"]
+        self.assertAlmostEqual(overall["npdev"]["passRate"], 2 / 3, places=3)
+        self.assertEqual(overall["direct-python"]["passRate"], 1.0)
+        for tier in ("simple-crud", "workflow-roles", "all"):
+            self.assertIn(tier, html_text)
+        self.assertIn("direct-python", html_text)
+
+    def test_the_reading_says_so_when_npdev_loses(self):
+        with tempfile.TemporaryDirectory() as td:
+            a = self._run(td, "a", "npdev", [self._result("bench-001", "simple-crud", False, 30000, 2000)])
+            b = self._run(td, "b", "direct-python", [self._result("bench-001", "simple-crud", True, 2000, 5000, arm="direct-python")])
+            data = compare.compare([compare.load_run(a), compare.load_run(b)])
+        text = " ".join(data["reading"])
+        self.assertIn("0% of prompts vs 100%", text)
+        self.assertIn("lower for npdev", text)
+        self.assertIn("no passing app", text)
+
+    def test_only_prompts_every_arm_finished_are_counted(self):
+        with tempfile.TemporaryDirectory() as td:
+            a = self._run(td, "a", "npdev", [self._result("bench-001", "simple-crud", True, 1, 1),
+                                             self._result("bench-002", "simple-crud", True, 1, 1),
+                                             self._result("bench-003", "simple-crud", True, 1, 1)])
+            b = self._run(td, "b", "direct-python", [self._result("bench-001", "simple-crud", True, 1, 1, arm="direct-python"),
+                                                    self._result("bench-002", "simple-crud", False, 1, 1, arm="direct-python", outcome="infra")])
+            only = compare.compare([compare.load_run(a), compare.load_run(b)])
+            every = compare.compare([compare.load_run(a), compare.load_run(b)], common_only=False)
+        self.assertEqual(only["promptsCompared"], 1)                  # bench-002 was not finished by direct-python (quota)
+        self.assertEqual(only["promptsDroppedForNotBeingFinishedByEveryArm"], 2)
+        self.assertEqual(every["table"]["all"]["npdev"]["prompts"], 3)
+
+    def test_an_interval_needs_at_least_three_prompts(self):
+        rows = [self._result(f"bench-00{i}", "simple-crud", True, 1000 * i, 100) for i in range(1, 5)]
+        self.assertIsNotNone(compare.cell(rows)["medianTokensInterval95"])
+        self.assertIsNone(compare.cell(rows[:2])["medianTokensInterval95"])
+
+    def test_the_evolution_numbers_are_reported_per_arm(self):
+        def evolved(pid, passes, tokens):
+            r = self._result(pid, "simple-crud", True, 30000, 2000)
+            r["changesDeclared"] = 1
+            r["changes"] = [{"id": "c1", "passed": passes, "tokens": {"total": tokens}, "regressions": [] if passes else ["p1"]}]
+            return r
+        rows = [evolved("bench-001", True, 4000), evolved("bench-002", True, 6000), evolved("bench-003", False, 9000)]
+        cell = compare.cell(rows)
+        self.assertEqual(cell["changesDeclared"], 3)
+        self.assertAlmostEqual(cell["changePassRate"], 2 / 3, places=3)
+        self.assertEqual(cell["medianTokensPerChange"], 5000)
+        self.assertEqual(cell["changeRegressedProbes"], 1)
+        self.assertIsNone(compare.cell([self._result("bench-004", "simple-crud", True, 1, 1)])["changePassRate"])
+
+    def test_two_dry_runs_produce_both_files(self):
+        with tempfile.TemporaryDirectory() as td:
+            for run_id in ("d1", "d2"):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    run_bench.main(["run", "--arm", "direct-python", "--dry-run", "--out-root", td, "--run-id", run_id])
+            with contextlib.redirect_stdout(io.StringIO()):
+                rc = run_bench.main(["compare", str(Path(td) / "d1"), str(Path(td) / "d2"), "--out", str(Path(td) / "cmp")])
+            self.assertEqual(rc, 0)
+            self.assertTrue((Path(td) / "cmp" / "comparison.json").exists())
+            self.assertTrue((Path(td) / "cmp" / "comparison.html").exists())
 
 
 if __name__ == "__main__":

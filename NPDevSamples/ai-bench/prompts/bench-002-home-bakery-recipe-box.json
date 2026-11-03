@@ -222,5 +222,93 @@
       "concepts": 2,
       "fields": 7
     }
-  }
+  },
+  "changes": [
+    {
+      "id": "c1",
+      "request": "Each recipe should also say how hard it is: easy, medium or hard. A recipe can be saved without one, but any other word must be refused.",
+      "acceptanceDelta": {
+        "concepts": [
+          {
+            "name": "Recipe",
+            "fields": [
+              {
+                "name": "difficulty",
+                "type": "enum",
+                "enumValues": [
+                  {
+                    "key": "easy"
+                  },
+                  {
+                    "key": "medium"
+                  },
+                  {
+                    "key": "hard"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "r5",
+            "description": "A recipe with a valid difficulty can be saved.",
+            "check": {
+              "kind": "rest-accept",
+              "probes": [
+                "p7"
+              ]
+            }
+          },
+          {
+            "id": "r6",
+            "description": "A recipe with a difficulty that is not easy, medium or hard must be refused.",
+            "check": {
+              "kind": "rest-reject",
+              "probes": [
+                "p8"
+              ]
+            }
+          }
+        ],
+        "probes": [
+          {
+            "id": "p7",
+            "purpose": "assert",
+            "method": "POST",
+            "pathHint": "{concept:Recipe}",
+            "body": {
+              "{field:Recipe.title}": "Focaccia {unique}",
+              "{field:Recipe.servings}": 6,
+              "{field:Recipe.difficulty}": "{enum:Recipe.difficulty=easy}"
+            },
+            "expectStatus": [
+              200,
+              201
+            ]
+          },
+          {
+            "id": "p8",
+            "purpose": "assert",
+            "method": "POST",
+            "pathHint": "{concept:Recipe}",
+            "body": {
+              "{field:Recipe.title}": "Souffle {unique}",
+              "{field:Recipe.servings}": 2,
+              "{field:Recipe.difficulty}": "impossible"
+            },
+            "expectStatus": [
+              400,
+              409,
+              422
+            ]
+          }
+        ],
+        "minimums": {
+          "fields": 8
+        }
+      }
+    }
+  ]
 }

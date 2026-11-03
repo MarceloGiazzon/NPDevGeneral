@@ -8,6 +8,12 @@ A probe that uses a template or logical name this runner cannot resolve is 'unre
 The app is the source of truth for names: concepts/fields/collection routes come from the booted
 app's metadata endpoint (GET /api/admin/runtime/metadata/concepts); flows and roles come from the
 authored model.json (a flow is executed at /api/flows/<name>/execute).
+
+BENCH-2: an app NPDev did not generate (the benchmark's "AI writes the app directly" arm) has no metadata
+endpoint. `fetch_catalog` then derives the same catalog from the app's OpenAPI document
+(GET /v3/api-docs): one concept per /api/<collection> route, its fields from the request (or response)
+schema's properties, `required` from the schema's `required` list, enums from `enum`. The probes themselves
+are unchanged, so both arms are judged by the very same acceptance.
 """
 from __future__ import annotations
 
@@ -75,6 +81,7 @@ class Catalog:
     flows: list[str] = field(default_factory=list)
     queries: list[str] = field(default_factory=list)
     roles: dict = field(default_factory=dict)   # real role name -> api key
+    source: str = "metadata"                    # "metadata" (an NPDev app) or "openapi" (any other app)
 
     def find_concept(self, logical: str, aliases=None) -> CatalogConcept | None:
         for c in self.concepts:
@@ -132,6 +139,92 @@ def catalog_from_metadata(concepts_payload, fields_payload=None) -> list[Catalog
 
 
 # ---------------------------------------------------------------------------------------------
+# catalog from OpenAPI (BENCH-2): for apps that have no NPDev metadata endpoint
+# ---------------------------------------------------------------------------------------------
+
+_SCHEMA_SUFFIX = re.compile(r"(Request|Response|Input|Output|Dto|DTO|Payload|Create|Update)$")
+_NOT_COLLECTIONS = {"flows", "queries", "admin", "actuator", "auth", "health"}
+
+
+def _first_ref(node) -> str | None:
+    """The first `$ref` anywhere under `node` (a requestBody / responses / items object)."""
+    if isinstance(node, dict):
+        if isinstance(node.get("$ref"), str):
+            return node["$ref"]
+        for value in node.values():
+            found = _first_ref(value)
+            if found:
+                return found
+    elif isinstance(node, list):
+        for value in node:
+            found = _first_ref(value)
+            if found:
+                return found
+    return None
+
+
+def _schema_props(schemas: dict, schema: dict, depth: int = 0) -> tuple[dict, set]:
+    """properties and required names of a schema, following one level of allOf / $ref."""
+    props: dict = {}
+    required: set = set()
+    if not isinstance(schema, dict) or depth > 3:
+        return props, required
+    if isinstance(schema.get("$ref"), str):
+        return _schema_props(schemas, schemas.get(schema["$ref"].rsplit("/", 1)[-1]) or {}, depth + 1)
+    for part in schema.get("allOf") or []:
+        p, r = _schema_props(schemas, part, depth + 1)
+        props.update(p)
+        required |= r
+    props.update(schema.get("properties") or {})
+    required |= set(schema.get("required") or [])
+    return props, required
+
+
+def _openapi_type(spec: dict) -> str:
+    if not isinstance(spec, dict):
+        return ""
+    if spec.get("enum"):
+        return "enum"
+    kind, fmt = spec.get("type"), spec.get("format")
+    if kind == "string":
+        return "datetime" if fmt == "date-time" else "date" if fmt == "date" else "text"
+    return {"integer": "integer", "number": "decimal", "boolean": "boolean"}.get(kind, "")
+
+
+def _pascal(segment: str) -> str:
+    singular = re.sub(r"ies$", "y", segment) if segment.endswith("ies") else (
+        segment[:-1] if segment.endswith("s") and not segment.endswith("ss") else segment)
+    return "".join(w.capitalize() for w in re.split(r"[^A-Za-z0-9]+", singular) if w)
+
+
+def catalog_from_openapi(api) -> list[CatalogConcept]:
+    """One concept per `/api/<collection>` route. The concept's name is the schema name of the route's POST
+    body (else the GET response items) without a Request/Response/Dto suffix; its fields are that schema's
+    properties. The collection is the exact route segment, so no naming guess is needed."""
+    if not isinstance(api, dict):
+        return []
+    schemas = (api.get("components") or {}).get("schemas") or {}
+    out: dict[str, CatalogConcept] = {}
+    for path, ops in (api.get("paths") or {}).items():
+        m = re.match(r"^/api/(?:v1/)?([^/{]+)$", path)
+        if not m or m.group(1).lower() in _NOT_COLLECTIONS or not isinstance(ops, dict):
+            continue
+        segment = m.group(1)
+        ref = _first_ref((ops.get("post") or {}).get("requestBody")) or _first_ref((ops.get("get") or {}).get("responses"))
+        schema_name = ref.rsplit("/", 1)[-1] if ref else None
+        props, required = _schema_props(schemas, schemas.get(schema_name) or {}) if schema_name else ({}, set())
+        name = _SCHEMA_SUFFIX.sub("", schema_name) if schema_name else _pascal(segment)
+        fields = []
+        for fname, spec in props.items():
+            if fname == "id":
+                continue
+            enum_values = [str(e) for e in (spec.get("enum") or [])] if isinstance(spec, dict) else []
+            fields.append(CatalogField(str(fname), _openapi_type(spec), fname in required, enum_values))
+        out[segment] = CatalogConcept(name or _pascal(segment), segment, fields)
+    return list(out.values())
+
+
+# ---------------------------------------------------------------------------------------------
 # http
 # ---------------------------------------------------------------------------------------------
 
@@ -170,6 +263,12 @@ def fetch_catalog(base_url: str, api_key: str | None, model: dict | None) -> tup
         err = f"metadata endpoint returned {status}"
     # OpenAPI is the route truth: pick the real /api/<collection> segment, fall back to the port.
     _, api = http_call(base_url, "GET", "/v3/api-docs", None, api_key)
+    derived = False
+    if not cat.concepts and isinstance(api, dict):
+        # BENCH-2: no NPDev metadata (the app was not generated by NPDev) -> the catalog comes from OpenAPI
+        cat.concepts = catalog_from_openapi(api)
+        if cat.concepts:
+            cat.source, err, derived = "openapi", "", True
     segments, queries, flows = set(), [], []
     for path in ((api or {}).get("paths") or {}) if isinstance(api, dict) else []:
         m = re.match(r"^/api/(?:v1/)?([^/{]+)", path)
@@ -181,7 +280,7 @@ def fetch_catalog(base_url: str, api_key: str | None, model: dict | None) -> tup
         f = re.match(r"^/api/(?:v1/)?flows/([^/{]+)/execute$", path)
         if f:
             flows.append(f.group(1))
-    for c in cat.concepts:
+    for c in (c for c in cat.concepts if not derived):
         guess = rest_collection_name(c.name)
         c.collection = guess if (guess in segments or not segments) else next(
             (s for s in sorted(segments) if norm(s) == norm(guess)), guess)

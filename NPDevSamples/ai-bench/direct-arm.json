@@ -1,0 +1,44 @@
+{
+  "schema": "npdev-bench-direct-arm.v1",
+  "description": "The 'AI writes the app directly' arm of the token benchmark (BENCH comparison). Same prompts (NPDevSamples/ai-bench/prompts), same model, same repair-loop budget as the NPDev arm; only the route differs. The probe contract below is what makes the SAME acceptance probes (scripts/ai/bench/probes.py) runnable against an app NPDev did not generate. It is part of the prompt, so the direct arm is told everything the probes will check -- the comparison must never be won by hiding the test from the competitor.",
+  "stacks": [
+    {
+      "id": "direct-python",
+      "label": "Python 3.12 stdlib + sqlite3 (single process)",
+      "why": "The stack free models write best and boot fastest. This is the steel-man arm: if NPDev does not beat this, it does not beat direct generation.",
+      "boot": ["python", "app.py"],
+      "allowedDependencies": []
+    },
+    {
+      "id": "direct-node",
+      "label": "Node 24 + express + better-sqlite3",
+      "why": "The second most common stack in AI-generated apps.",
+      "boot": ["node", "server.js"],
+      "allowedDependencies": ["express", "better-sqlite3"]
+    },
+    {
+      "id": "direct-spring",
+      "label": "Java 21 + Spring Boot 3 + H2 (like-for-like with NPDev's output)",
+      "why": "Same runtime NPDev emits; shows the cost of the code NPDev writes for free. Report it separately -- it is not the headline number.",
+      "boot": ["./gradlew", "bootRun"],
+      "allowedDependencies": ["spring-boot-starter-web", "spring-boot-starter-data-jpa", "h2", "springdoc-openapi-starter-webmvc-ui"]
+    }
+  ],
+  "probeContract": [
+    "Listen on the port given in the PORT environment variable.",
+    "Serve an OpenAPI 3 document at GET /v3/api-docs listing every route.",
+    "Expose each kind of record as a REST collection: GET/POST /api/<collection>, GET/PUT/PATCH/DELETE /api/<collection>/{id}. JSON bodies, field names in camelCase.",
+    "Authenticate every /api request with the X-Api-Key header. The harness passes the keys in the environment as NPDEV_BENCH_ROLE_KEYS, a JSON object {\"<role>\": \"<key>\", \"admin\": \"<key>\"}; a request whose key's role may not do something gets HTTP 403.",
+    "Reject invalid input (missing required field, value outside the allowed list, rule broken) with HTTP 400 or 422 and a JSON body {\"error\": \"<message>\"}.",
+    "A workflow step named in the prompt is a POST /api/flows/<flowName>/execute with a JSON body; return 200 with the resulting record.",
+    "Store data so it survives a restart of the app (a file-backed database).",
+    "Do not read or write anything outside the working directory."
+  ],
+  "systemPrompt": "You are writing a complete, runnable web application from a description. Output every file of the project as a sequence of blocks, each starting with a line `=== FILE: <relative path> ===` followed by the file's full content. No explanations outside files. The application MUST follow this contract exactly, because automated tests will call it:\n{probeContract}\nStack: {stackLabel}. Allowed third-party dependencies: {allowedDependencies}. Include whatever build or dependency file the stack needs.",
+  "repairPrompt": "The application failed at stage `{stage}`. Here is the error output (trimmed):\n{feedback}\nReply with ONLY the files that change, in the same `=== FILE: path ===` format, each with its full new content.",
+  "metrics": {
+    "perPrompt": ["passed", "loopsUsed", "promptTokens", "completionTokens", "totalTokens", "costUsd", "wallSeconds", "authorSeconds", "failingStage", "probesPassed", "probesTotal", "filesWritten", "linesWritten"],
+    "perArm": ["passWithin5LoopsRate", "firstAttemptPassRate", "meanTokensPerPassedApp", "medianTokensPerPassedApp", "p90TokensPerPassedApp", "tokensPerPassedProbe", "meanWallSecondsPerPassedApp"],
+    "evolution": ["changeTokens: tokens to apply each scripted change request to an already-passing app", "changePassRate: change applied AND all previous probes still pass"]
+  }
+}

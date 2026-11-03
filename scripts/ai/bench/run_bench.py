@@ -6,6 +6,8 @@ text is fed back to the model). Stdlib only.
   python scripts/ai/bench/run_bench.py run --dry-run                       # pipeline test, no model
   python scripts/ai/bench/run_bench.py run --prompt bench-001              # real model (env below)
   python scripts/ai/bench/run_bench.py run --ablation no-knowledge ...     # knowledge cards off
+  python scripts/ai/bench/run_bench.py run --arm direct-python --dry-run   # the AI writes the app directly (BENCH-1)
+  python scripts/ai/bench/run_bench.py compare <run-dir> [<run-dir> ...]   # per tier x arm report (BENCH-3)
   python scripts/ai/bench/run_bench.py report <run-dir> [<run-dir> ...]    # scorecard JSON
   python scripts/ai/bench/run_bench.py mine <run-dir> [<run-dir> ...]      # rank what AI authors get wrong
 
@@ -23,7 +25,8 @@ OpenAI-compatible URL):
 The base URL must be a free/local provider of NPDevCli/ai-providers.json unless --allow-paid is passed.
 
 Modules next to this file: author.py (prompts + model extraction), backends.py (allowlist + OpenAI-compatible
-and fake backends), stages.py (validate/generate/build/boot), probes.py (acceptance probes), test_bench.py
+and fake backends), direct.py (the "AI writes the app directly" arm), evolve.py (changes applied after a pass),
+compare.py (cross-arm report), stages.py (validate/generate/build/boot), probes.py (acceptance probes), test_bench.py
 (unit tests: python -m unittest discover -s scripts/ai/bench -p "test_bench.py").
 
 Output: <BuildRoot>/ai-bench/<run-id>/<prompt-id>/{result.json, attempt-N/...} and
@@ -46,6 +49,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import author  # noqa: E402
 import backends  # noqa: E402
+import compare  # noqa: E402
+import direct  # noqa: E402
+import evolve  # noqa: E402
 import probes  # noqa: E402
 import stages  # noqa: E402
 
@@ -56,6 +62,9 @@ DEFAULT_PROMPTS = REPO_ROOT / "NPDevSamples" / "ai-bench" / "prompts"
 DRY_RUN_PROMPTS = Path(__file__).resolve().parent / "fixtures"
 MAX_LOOPS_CAP = 5
 STAGE_ORDER = ["author", "validate", "generate", "build", "boot", "acceptance"]
+# BENCH-1/3: which route the model takes to a working app. `npdev` writes a model.json; the direct arms write a
+# whole application (direct.py). Same prompts, same loop cap, same acceptance probes.
+ARMS = ["npdev", "npdev-no-knowledge"] + direct.arm_ids()
 
 
 def now_id() -> str:
@@ -235,6 +244,7 @@ def run_prompt(prompt: dict, backend, knowledge: str | None, run_dir: Path, args
     infra_kind = None if passed else attempts[-1].get("infraKind")
     first = attempts[0]
     first_valid = first["failingStage"] not in ("author", "validate")
+    passed_model = next((a.get("modelText") for a in reversed(attempts) if a["failingStage"] is None), None)
     result = {
         "promptId": prompt["id"], "tier": prompt.get("tier"), "title": prompt.get("title"),
         "passed": passed,
@@ -252,12 +262,59 @@ def run_prompt(prompt: dict, backend, knowledge: str | None, run_dir: Path, args
         "tokens": {"prompt": tokens_in, "completion": tokens_out, "total": tokens_in + tokens_out},
         "costUsd": backend.info.cost(tokens_in, tokens_out),
         "wallSeconds": round(wall, 2), "authorSeconds": round(author_seconds, 2),
+        "arm": "npdev" if args.ablation == "none" else "npdev-no-knowledge",
         "ablation": args.ablation, "repairMode": "stateless" if stateless else "history",
         "backend": backend.info.describe(),
         "attempts": [{"attempt": a["attempt"], "failingStage": a["failingStage"],
                       "feedbackExcerpt": (a.get("feedback") or "")[:600], "stages": a["stages"]} for a in attempts],
     }
+    if passed and passed_model:
+        (prompt_dir / "final-model.json").write_text(passed_model, encoding="utf-8")
     (prompt_dir / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    result["_modelText"] = passed_model      # in memory only: the evolution phase starts from it
+    return result
+
+
+class NpdevEvolution:
+    """The NPDev arm's adapter for evolve.apply_changes: the model edits its own working model.json."""
+
+    def __init__(self, prompt: dict, knowledge: str | None, model_text: str, args):
+        self.prompt, self.knowledge, self.model_text, self.args = prompt, knowledge, model_text, args
+
+    def messages(self, change: dict) -> list[dict]:
+        return author.change_messages(self.prompt["prompt"], self.knowledge, self.model_text, change["request"])
+
+    def repair(self, messages: list[dict], reply: str, stage: str, feedback: str) -> list[dict]:
+        return author.repair_messages(messages, reply, stage, feedback)
+
+    def attempt(self, n: int, reply: str, prompt: dict, change_dir: Path, stage_log: list) -> dict:
+        model_text, error = author.extract_model(reply)
+        if model_text is None:
+            stage_log.append(stages.StageResult("author", False, 0.0, error).to_json())
+            return {"failingStage": "author", "feedback": error, "stages": stage_log}
+        return run_attempt(n, model_text, prompt, change_dir, self.args, stage_log)
+
+    def commit(self, attempt: dict) -> None:
+        self.model_text = attempt.get("modelText") or self.model_text
+
+
+def run_evolution(prompt: dict, result: dict, backend, knowledge: str | None, run_dir: Path, args, arm: str) -> dict:
+    """BENCH-4: after a prompt passes, apply its `changes[]` and record what each one cost. Mutates and rewrites
+    the prompt's result.json; returns the result."""
+    prompt_dir = run_dir / prompt["id"]
+    if arm.startswith("direct-"):
+        spec = direct.load_spec()
+        adapter = direct.DirectEvolution(spec, direct.stack_for(spec, arm), prompt, Path(result["_finalAppDir"]), args)
+    else:
+        adapter = NpdevEvolution(prompt, knowledge, result["_modelText"], args)
+    try:
+        block = evolve.apply_changes(prompt, adapter, backend, args, prompt_dir)
+    except evolve.EvolutionError as exc:
+        block = {"changes": [], "changesDeclared": len(prompt.get("changes", [])), "changesAttempted": 0,
+                 "changePassRate": None, "changeTokens": 0, "error": str(exc)}
+    result.update(block)
+    (prompt_dir / "result.json").write_text(json.dumps({k: v for k, v in result.items() if not k.startswith("_")}, indent=2),
+                                            encoding="utf-8")
     return result
 
 
@@ -658,6 +715,8 @@ def cmd_matrix(args) -> int:
 def build_backend(args):
     if getattr(args, "effort", None) and not args.provider:
         raise backends.BackendRefused("--effort needs --provider (the model's declared effort levels are checked there)")
+    if args.dry_run and getattr(args, "arm", "npdev").startswith("direct-"):
+        return direct.FakeDirectBackend()
     if args.dry_run:
         canary = REPO_ROOT / "NPDevSamples" / "npdev-canary" / "Input" / "model.json"
         return backends.FakeBackend(canary)
@@ -678,6 +737,14 @@ def build_backend(args):
 
 
 def cmd_run(args) -> int:
+    arm = getattr(args, "arm", "npdev") or "npdev"
+    if arm == "npdev-no-knowledge":
+        args.ablation = "no-knowledge"
+    is_direct = arm.startswith("direct-")
+    if is_direct and not args.dry_run and direct.is_admin():
+        print("REFUSED: the direct arm runs code an AI wrote; it will not run as an administrator "
+              "(owner decision D3). Start a normal, unelevated terminal.", file=sys.stderr)
+        return 3
     if args.max_loops is None:
         args.max_loops = 0 if args.dry_run else MAX_LOOPS_CAP
     args.max_loops = max(0, min(args.max_loops, MAX_LOOPS_CAP))
@@ -705,11 +772,11 @@ def cmd_run(args) -> int:
     run_dir = root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     knowledge = None
-    if args.ablation == "none":
+    if args.ablation == "none" and not is_direct:
         knowledge = (author.load_knowledge_file(Path(args.knowledge_file)) if args.knowledge_file
                      else author.load_core_context(stages.build_root()))
     knowledge_info = author.describe_knowledge(knowledge, args.knowledge_file)
-    print(f"run: {run_dir}  prompts={len(prompts)} ablation={args.ablation} maxLoops={args.max_loops}")
+    print(f"run: {run_dir}  arm={arm} prompts={len(prompts)} ablation={args.ablation} maxLoops={args.max_loops}")
     started_at = datetime.datetime.now().isoformat(timespec="seconds")
     t0 = time.monotonic()
     results = []
@@ -726,7 +793,12 @@ def cmd_run(args) -> int:
                 results.append(previous)
                 print(f"{prompt['id']}: skipped (already done)")
                 continue
-        r = run_prompt(prompt, backend, knowledge, run_dir, args)
+        r = (direct.run_prompt_direct(prompt, backend, arm, run_dir, args) if is_direct
+             else run_prompt(prompt, backend, knowledge, run_dir, args))
+        if getattr(args, "evolve", False) and r["passed"] and prompt.get("changes"):
+            r = run_evolution(prompt, r, backend, knowledge, run_dir, args, arm)
+            print(f"{prompt['id']}: evolution {sum(1 for c in r['changes'] if c['passed'])}/{r['changesDeclared']} changes, "
+                  f"{r['changeTokens']} tokens", flush=True)
         results.append(r)
         label = "PASS" if r["passed"] else (f"INFRA:{infra_kind_of(r)}" if outcome_of(r) == "infra"
                                             else "FAIL@" + str(r["failingStage"]))
@@ -737,7 +809,7 @@ def cmd_run(args) -> int:
             # 20 of 30). Stop, and say how to resume once the quota resets.
             stop_reason = "quota exhausted"
             print(f"STOP: quota exhausted. Resume later with: --run-id {run_id} --skip-done", flush=True)
-    summary = {"runId": run_id, "startedAt": started_at, "dryRun": args.dry_run, "ablation": args.ablation,
+    summary = {"runId": run_id, "arm": arm, "startedAt": started_at, "dryRun": args.dry_run, "ablation": args.ablation,
                "backend": info.describe(), "knowledge": knowledge_info, "maxLoops": args.max_loops,
                "autofix": args.autofix, "repairMode": args.repair_mode,
                "stopWhenStuck": args.stop_when_stuck,
@@ -749,6 +821,23 @@ def cmd_run(args) -> int:
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary["scorecard"], indent=2))
     return 0 if all(r["passed"] for r in results) else 1
+
+
+def cmd_compare(args) -> int:
+    """BENCH-3: one report across arms -- per tier and arm: pass rate, tokens per passing app (median, p90),
+    tokens per passing probe, the input/output split and wall time -- as comparison.json + comparison.html."""
+    runs = [compare.load_run(Path(d)) for d in args.run_dirs]
+    empty = [r["dir"] for r in runs if not r["results"]]
+    if empty:
+        print(f"no results in: {', '.join(empty)}", file=sys.stderr)
+        return 2
+    out = Path(args.out) if args.out else Path(runs[0]["dir"]).parent / "_compare"
+    result = compare.write(runs, out, common_only=not args.all_prompts)
+    print(f"comparison: {out / 'comparison.json'}  and  {out / 'comparison.html'}")
+    print(f"arms: {', '.join(result['arms'])}; prompts compared: {result['promptsCompared']}")
+    for line in result["reading"]:
+        print("  " + line)
+    return 0
 
 
 def make_parser() -> argparse.ArgumentParser:
@@ -780,11 +869,18 @@ def make_parser() -> argparse.ArgumentParser:
     r.add_argument("--repair-mode", choices=["history", "stateless"], default="history",
                    help="history: re-send the whole conversation each repair (default). stateless: slim "
                         "knowledge + request + one line per earlier attempt + current model + errors (F6)")
+    r.add_argument("--evolve", action="store_true",
+                   help="after a prompt passes, apply its changes[] (BENCH-4) and record changeTokens and changePassRate; "
+                        "the full acceptance (original + every change so far) is re-run after each change")
     r.add_argument("--stop-when-stuck", type=int, default=0, metavar="N",
                    help="stop a prompt after N consecutive attempts fail the same way (same stage, same first "
                         "error line); 0 = off (default), 2 or more to enable")
     r.add_argument("--no-autofix", dest="autofix", action="store_false",
                    help="validate the model exactly as authored (skip the desire-path rewrite) -- the A/B arm")
+    r.add_argument("--arm", choices=ARMS, default="npdev",
+                   help="which route the model takes to a working app: npdev (writes a model.json), "
+                        "npdev-no-knowledge (same, knowledge cards off), or direct-python / direct-node / "
+                        "direct-spring (writes the whole application; BENCH-1). Same prompts, loop cap and acceptance")
     r.add_argument("--ablation", choices=["none", "no-knowledge"], default="none",
                    help="no-knowledge omits the knowledge-card context from the system prompt")
     r.add_argument("--prompts-dir", help="directory of bench-NNN-*.json (default NPDevSamples/ai-bench/prompts)")
@@ -809,6 +905,12 @@ def make_parser() -> argparse.ArgumentParser:
     mine.add_argument("--only-open", action="store_true", help="with --resolve: hide groups that are now fully fixed")
     rep = sub.add_parser("report", help="render scorecard JSON for one or two run dirs")
     rep.add_argument("run_dirs", nargs="+")
+    cmp_ = sub.add_parser("compare", help="compare runs across arms (npdev vs direct-python/node/spring): "
+                                          "comparison.json + comparison.html per tier and arm")
+    cmp_.add_argument("run_dirs", nargs="+")
+    cmp_.add_argument("--out", help="output dir (default <first run's parent>/_compare)")
+    cmp_.add_argument("--all-prompts", action="store_true",
+                      help="count every prompt each arm attempted (default: only prompts every arm finished)")
     mat = sub.add_parser("matrix", help="every recorded run as matrix.json + one full log per run "
                                         "(the provider/model/effort results page reads them)")
     mat.add_argument("--out-root", help="runs root (default <BuildRoot>/ai-bench)")
@@ -825,6 +927,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_report(args)
     if args.command == "matrix":
         return cmd_matrix(args)
+    if args.command == "compare":
+        return cmd_compare(args)
     if args.command == "mine":
         return cmd_mine(args)
     if args.command == "run":

@@ -23,6 +23,10 @@ WHAT IT CHECKS (stdlib only; reads JSON only, never a markdown file)
   * tier shape: workflow-roles needs a lifecycle and a role-denied rule; integration-report needs a
     derived-value rule; every prompt needs a rest-reject and a rest-accept rule.
   * NPDevSamples/ai-bench/index.json lists exactly the prompt files with the same id/tier/title.
+  * BENCH-4: a prompt's optional `changes[]` (changes an owner asks for after the app works) is checked by
+    MERGING each acceptanceDelta into the acceptance in order and running the very same cross-reference checks on
+    the result: new ids only, probes named by rules exist, minimums equal what the merged acceptance names, and
+    every template resolves -- so a change can never ask for something the probes cannot check.
 
 Overrides (used to red-prove the checker against a doctored COPY outside the repo):
   --root <dir>   the ai-bench directory (default NPDevSamples/ai-bench next to this repo's root)
@@ -36,6 +40,9 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "scripts" / "ai" / "bench"))
+import evolve  # noqa: E402  (stdlib only; the same merge the benchmark runs)
+
 TIERS = ("simple-crud", "workflow-roles", "integration-report")
 PER_TIER = 10
 TOTAL = 30
@@ -370,6 +377,18 @@ def main():
             continue
         for e in semantic(data, f.name):
             bad(f.name, e)
+        # BENCH-4: every change, merged into the acceptance so far, must pass the same checks
+        merged_so_far = data["acceptance"]
+        for change in data.get("changes", []):
+            try:
+                merged_so_far = evolve.merge_acceptance(merged_so_far, change.get("acceptanceDelta"))
+            except evolve.EvolutionError as exc:
+                bad(f.name, f"change {change.get('id')}: {exc}")
+                break
+            for e in semantic(dict(data, acceptance=merged_so_far), f.name):
+                bad(f.name, f"change {change.get('id')}: {e}")
+        for e in evolve.validate_changes(data):
+            bad(f.name, e)
         if data["id"] in prompts:
             bad(f.name, f"duplicate id {data['id']}")
         prompts[data["id"]] = (data, f.name)
@@ -412,7 +431,9 @@ def main():
         for f in findings:
             print("  " + f)
         return 1
-    print(f"OK check-ai-bench-prompts: {len(prompts)} prompts ({', '.join(f'{t}={n}' for t, n in by_tier.items())}), index in sync")
+    with_changes = sum(1 for d, _ in prompts.values() if d.get("changes"))
+    print(f"OK check-ai-bench-prompts: {len(prompts)} prompts ({', '.join(f'{t}={n}' for t, n in by_tier.items())}), index in sync, "
+          f"{with_changes} with changes[]")
     return 0
 
 

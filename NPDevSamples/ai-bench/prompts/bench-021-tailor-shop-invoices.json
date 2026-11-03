@@ -233,5 +233,80 @@
       "concepts": 2,
       "fields": 7
     }
-  }
+  },
+  "changes": [
+    {
+      "id": "c1",
+      "request": "An invoice should also have a discount percentage from 0 to 100. A discount above 100 makes no sense and must be refused.",
+      "acceptanceDelta": {
+        "concepts": [
+          {
+            "name": "Invoice",
+            "fields": [
+              {
+                "name": "discountPercent",
+                "type": "decimal"
+              }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "r5",
+            "description": "An invoice with a discount above 100 percent must be refused.",
+            "check": {
+              "kind": "rest-reject",
+              "probes": [
+                "p6"
+              ]
+            }
+          },
+          {
+            "id": "r6",
+            "description": "An invoice with a normal discount can be saved.",
+            "check": {
+              "kind": "rest-accept",
+              "probes": [
+                "p7"
+              ]
+            }
+          }
+        ],
+        "probes": [
+          {
+            "id": "p6",
+            "purpose": "assert",
+            "method": "POST",
+            "pathHint": "{concept:Invoice}",
+            "body": {
+              "{field:Invoice.customerName}": "Ira {unique}",
+              "{field:Invoice.discountPercent}": 150
+            },
+            "expectStatus": [
+              400,
+              409,
+              422
+            ]
+          },
+          {
+            "id": "p7",
+            "purpose": "assert",
+            "method": "POST",
+            "pathHint": "{concept:Invoice}",
+            "body": {
+              "{field:Invoice.customerName}": "Jon {unique}",
+              "{field:Invoice.discountPercent}": 10
+            },
+            "expectStatus": [
+              200,
+              201
+            ]
+          }
+        ],
+        "minimums": {
+          "fields": 8
+        }
+      }
+    }
+  ]
 }

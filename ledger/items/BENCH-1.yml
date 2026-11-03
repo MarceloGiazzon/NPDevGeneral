@@ -2,14 +2,43 @@ id: BENCH-1
 title: Token benchmark -- direct arm (the AI writes the app without NPDev)
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
 surface: bench
 detail: >-
-  scripts/ai/bench/direct.py builds the prompt from bench-direct-arm.json, parses FILE blocks, runs the app
-  under isolation and the same acceptance probes.
+  scripts/ai/bench/direct.py builds the prompt from bench-direct-arm.json, parses FILE blocks, runs the app under
+  isolation and the same acceptance probes.
 resolution: >-
-  Done when run_bench.py run --arm direct-python --dry-run passes with a fake backend.
+  scripts/ai/bench/direct.py is the 'AI writes the app directly' arm: NPDevSamples/ai-bench/direct-arm.json holds
+  the three stacks (direct-python, direct-node, direct-spring), the probe contract the model is TOLD (port from
+  PORT, /v3/api-docs, REST collections, X-Api-Key role keys in NPDEV_BENCH_ROLE_KEYS, 4xx on bad input, /api/flows/<name>/execute,
+  persistence) and the prompts; replies are parsed from `=== FILE: path ===` blocks (absolute paths, drive letters,
+  UNC and `..` refused), written under <BuildRoot>/ai-bench/<run>/<prompt>/attempt-N/app, dependencies checked against
+  the stack allowlist (npm install --ignore-scripts), the app booted with an environment cleared to PATH, PORT and
+  the role keys, waited for GET /v3/api-docs = 200, then the SAME probes.run_acceptance; repairs apply only the
+  changed files on top of the previous tree. run_bench.py run --arm direct-python|direct-node|direct-spring|npdev|npdev-no-knowledge;
+  the direct arm refuses to run as administrator.
+files:
+- scripts/ai/bench/direct.py
+- scripts/ai/bench/run_bench.py
+- scripts/ai/bench/fixtures/direct-python-app.py
+- NPDevSamples/ai-bench/direct-arm.json
+- scripts/ai/bench/test_bench.py
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: scripts/ai/bench/test_bench.py#test_a_known_good_python_app_passes_the_real_probes_end_to_end
+  asserts: >-
+    run_bench.py run --arm direct-python --dry-run: a fake backend returns a known-good tiny Python app, which is
+    written, booted under the cleared environment and passes the real acceptance probes with the catalog derived
+    from OpenAPI; a broken first reply is repaired with the boot error fed back and tokens add up; unsafe paths,
+    out-of-allowlist dependencies and an elevated process are refused.
+  provenRed: false
+note: >-
+  2026-11-03: 96 bench unit tests green; the dry run boots a real Python process. NOT run against a real model,
+  and the node and spring stacks were not booted at all (npm/Gradle paths are unit-tested only for their refusals).
+  Local isolation only (owner decision D3 for the pilot): folder, cleared env, timeout, tree kill; no WSL/Docker.

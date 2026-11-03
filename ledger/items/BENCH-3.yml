@@ -2,13 +2,33 @@ id: BENCH-3
 title: Token benchmark -- compare command with per-tier, per-arm report
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
 surface: bench
-detail: >-
-  run_bench.py compare writes comparison.json and comparison.html.
+detail: run_bench.py compare writes comparison.json and comparison.html.
 resolution: >-
-  Done when compare on two dry runs produces both files.
+  run_bench.py compare <run-dir>... [--out DIR] [--all-prompts] (scripts/ai/bench/compare.py) writes comparison.json
+  and comparison.html: per tier and arm the pass rate, first-try rate, median / p90 / mean tokens per passing app,
+  input and output tokens separately, tokens per passing probe, loops, wall time, change pass rate and median tokens
+  per change, with 95 % bootstrap intervals over prompts (only with at least 3). By default only prompts every arm
+  FINISHED are counted (infra failures such as quota are not model failures), the raw run folders are listed, and
+  the 'reading' sentences are computed so they say when NPDev loses. Every result.json and summary.json now carries
+  `arm`.
+files:
+- scripts/ai/bench/compare.py
+- scripts/ai/bench/run_bench.py
+- scripts/ai/bench/test_bench.py
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: scripts/ai/bench/test_bench.py#test_two_dry_runs_produce_both_files
+  asserts: >-
+    compare on two dry runs produces both files; the numbers per tier and arm, the input/output split, the 'NPDev
+    loses' reading, the common-prompts-only rule and the 3-prompt interval floor are each asserted.
+  provenRed: false
+note: >-
+  2026-11-03: arm is inferred for runs recorded before this change (ablation -> npdev or npdev-no-knowledge).

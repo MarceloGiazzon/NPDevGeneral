@@ -303,5 +303,71 @@
       "concepts": 1,
       "fields": 4
     }
-  }
+  },
+  "changes": [
+    {
+      "id": "c1",
+      "request": "A job should also record the name of the mechanic who is working on it, in a field called mechanic name, and it must be there when I open the job again.",
+      "acceptanceDelta": {
+        "concepts": [
+          {
+            "name": "WorkOrder",
+            "fields": [
+              {
+                "name": "mechanicName",
+                "type": "text"
+              }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "r5",
+            "description": "A job keeps the name of its mechanic.",
+            "check": {
+              "kind": "rest-accept",
+              "probes": [
+                "p9",
+                "p10"
+              ]
+            }
+          }
+        ],
+        "probes": [
+          {
+            "id": "p9",
+            "purpose": "assert",
+            "method": "POST",
+            "pathHint": "{concept:WorkOrder}",
+            "as": "mechanic",
+            "body": {
+              "{field:WorkOrder.customerName}": "Cy {unique}",
+              "{field:WorkOrder.car}": "Red van",
+              "{field:WorkOrder.mechanicName}": "Sam"
+            },
+            "expectStatus": [
+              200,
+              201
+            ]
+          },
+          {
+            "id": "p10",
+            "purpose": "assert",
+            "method": "GET",
+            "pathHint": "{concept:WorkOrder}/{id:p9}",
+            "as": "mechanic",
+            "expectStatus": [
+              200
+            ],
+            "expectJsonContains": {
+              "{field:WorkOrder.mechanicName}": "Sam"
+            }
+          }
+        ],
+        "minimums": {
+          "fields": 5
+        }
+      }
+    }
+  ]
 }

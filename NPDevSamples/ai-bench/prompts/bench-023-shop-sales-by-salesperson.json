@@ -209,5 +209,69 @@
       "concepts": 1,
       "fields": 4
     }
-  }
+  },
+  "changes": [
+    {
+      "id": "c1",
+      "request": "Each sale should also record the region it was made in, such as north or south, and I want to read it back when I look the sale up.",
+      "acceptanceDelta": {
+        "concepts": [
+          {
+            "name": "Sale",
+            "fields": [
+              {
+                "name": "region",
+                "type": "text"
+              }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "r5",
+            "description": "A sale keeps its region.",
+            "check": {
+              "kind": "rest-accept",
+              "probes": [
+                "p7",
+                "p8"
+              ]
+            }
+          }
+        ],
+        "probes": [
+          {
+            "id": "p7",
+            "purpose": "assert",
+            "method": "POST",
+            "pathHint": "{concept:Sale}",
+            "body": {
+              "{field:Sale.salesperson}": "Lee {unique}",
+              "{field:Sale.amount}": 80,
+              "{field:Sale.region}": "north"
+            },
+            "expectStatus": [
+              200,
+              201
+            ]
+          },
+          {
+            "id": "p8",
+            "purpose": "assert",
+            "method": "GET",
+            "pathHint": "{concept:Sale}/{id:p7}",
+            "expectStatus": [
+              200
+            ],
+            "expectJsonContains": {
+              "{field:Sale.region}": "north"
+            }
+          }
+        ],
+        "minimums": {
+          "fields": 5
+        }
+      }
+    }
+  ]
 }
