@@ -12,3 +12,8 @@ detail: The plan lists THM-9 in its id table with no step; the WS-5 Docs line na
 resolution: Done when UI_CONTRACT.md has a Theme section and the feature guide is regenerated from its YAML.
 note: 'Closed 2026-11-03: docs/UI_CONTRACT.md has its Themes section, BREAKING.md its entry, and docs/content/npdev-feature-guide.yml now has
   section 11 (Themes and the Display menu); the guide .md/.json were regenerated with scripts/docs/generate_group_e_docs.py.'
+guard:
+  kind: manual
+  ref: docs/UI_CONTRACT.md
+  asserts: 'the Themes section of the UI contract exists and the feature guide carries the Themes and Display menu section'
+  provenRed: false

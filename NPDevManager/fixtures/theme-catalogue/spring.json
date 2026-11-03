@@ -1,0 +1,37 @@
+{
+  "schema": "npdev-theme.v1",
+  "id": "spring",
+  "name": "Spring",
+  "names": {
+    "pt": "Primavera",
+    "es": "Primavera"
+  },
+  "version": "1.0.0",
+  "author": "NPDev",
+  "license": "MIT",
+  "description": "Fresh leaves and cherry blossom.",
+  "colorScheme": "light",
+  "colors": {
+    "bg": "#f5fbf3",
+    "surface": "#ffffff",
+    "surfaceRaised": "#ffffff",
+    "border": "#d9ecd3",
+    "borderStrong": "#71906a",
+    "text": "#1f2d1c",
+    "textMuted": "#526549",
+    "accent": "#b0174f",
+    "onAccent": "#ffffff",
+    "positive": "#2e7d32",
+    "negative": "#c0262d",
+    "warning": "#835500",
+    "info": "#1565c0"
+  },
+  "typography": {
+    "fontUi": "\"Segoe UI\", system-ui, -apple-system, Roboto, sans-serif",
+    "fontMono": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace"
+  },
+  "shape": {
+    "radius": 10,
+    "elevation": "soft"
+  }
+}

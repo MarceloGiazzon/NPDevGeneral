@@ -1,0 +1,37 @@
+{
+  "schema": "npdev-theme.v1",
+  "id": "summer",
+  "name": "Summer",
+  "names": {
+    "pt": "Verão",
+    "es": "Verano"
+  },
+  "version": "1.0.0",
+  "author": "NPDev",
+  "license": "MIT",
+  "description": "Sand, sun and ocean blue.",
+  "colorScheme": "light",
+  "colors": {
+    "bg": "#fff8e7",
+    "surface": "#fffdf7",
+    "surfaceRaised": "#ffffff",
+    "border": "#f1dfb3",
+    "borderStrong": "#a08540",
+    "text": "#2b2112",
+    "textMuted": "#665530",
+    "accent": "#006da8",
+    "onAccent": "#ffffff",
+    "positive": "#2d7d32",
+    "negative": "#c0272d",
+    "warning": "#865100",
+    "info": "#00658a"
+  },
+  "typography": {
+    "fontUi": "\"Segoe UI\", system-ui, -apple-system, Roboto, sans-serif",
+    "fontMono": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace"
+  },
+  "shape": {
+    "radius": 12,
+    "elevation": "soft"
+  }
+}

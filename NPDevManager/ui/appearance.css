@@ -60,3 +60,11 @@
 .status-chip.fail { color: var(--t-negative); background: var(--t-negative-tint); border-color: var(--t-negative-edge); }
 .status-chip.warn { color: var(--t-warning); background: var(--t-warning-tint); border-color: var(--t-warning-edge); }
 .status-chip.info { color: var(--t-info); background: var(--t-info-tint); border-color: var(--t-info-edge); }
+
+/* THM-10: Browse themes. The swatches are decoration; the name and the previewed theme carry the meaning. */
+.catalogue-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.catalogue-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border: 1px solid var(--t-border); border-radius: var(--t-radius); background: var(--t-surface); }
+.catalogue-swatches { display: flex; width: 90px; height: 24px; border-radius: 4px; overflow: hidden; border: 1px solid var(--t-border-strong); flex: none; }
+.catalogue-swatches span { flex: 1; }
+.catalogue-name { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.catalogue-name small { color: var(--t-text-muted); }

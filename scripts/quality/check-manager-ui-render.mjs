@@ -118,6 +118,17 @@ window.__TAURI__ = {
           window.__imported = th.id;
           return { id: th.id, name: th.name };
         }
+        case "theme_catalogue_index": {
+          const have = F.themes.concat(window.__userThemes || []).map((x) => x.id);
+          const demo = Object.assign({}, F.catalogue.index.themes.find((x) => x.id === "winter"), { id: "tampered-demo", name: "Tampered (stub demo)", names: {} });
+          return { repo: "MarceloGiazzon/npdev-themes", stub: true,
+            themes: F.catalogue.index.themes.concat([demo]).map((x) => Object.assign({}, x, { installed: have.includes(x.id) })) };
+        }
+        case "theme_catalogue_fetch":
+          if (args.id === "tampered-demo") throw 'the file for tampered-demo does not match the catalogue sha256 (expected 9b0f23349e3b, got 0123456789ab); it was NOT imported';
+          return F.catalogue.files[args.id];
+        case "theme_share_url": return "https://github.com/MarceloGiazzon/npdev-themes/new/main/themes?filename=" + JSON.parse(args.jsonText).id + ".json&value=x";
+        case "open_url": window.__opened = args.url; return null;
         case "theme_delete": window.__userThemes = (window.__userThemes || []).filter((x) => x.id !== args.id); return { removed: true };
         case "manager_log_path": return "C:\\\\x\\\\manager.log";
         default: return {};
@@ -169,6 +180,11 @@ await page.addInitScript({
     scanEmpty: fixture("monitor-scan-empty.json"),
     jobs: fixture("jobs-list.json"),
     support: fixture("support-install-failed.json"),
+    catalogue: (() => {
+      const dir = path.join(REPO, "NPDevManager", "fixtures", "theme-catalogue");
+      const index = JSON.parse(readFileSync(path.join(dir, "index.json"), "utf8"));
+      return { index, files: Object.fromEntries(index.themes.map((t) => [t.id, readFileSync(path.join(dir, t.id + ".json"), "utf8")])) };
+    })(),
     themes: BUILTIN_ORDER.map((id) => Object.assign({ builtin: true }, JSON.parse(readFileSync(path.join(REPO, "NPDevContract", "themes", id + ".json"), "utf8")))),
   })};`,
 });
@@ -523,6 +539,41 @@ await page.waitForTimeout(150);
 check("Undo puts the previous theme back", (await cssVar("--t-bg")) === summerBg, await cssVar("--t-bg"));
 const prompt = await page.evaluate(() => NPDevTheme.buildThemePrompt("cozy", null));
 check("the AI prompt names every colour token", ["bg", "surfaceRaised", "borderStrong", "onAccent"].every((k) => prompt.includes(k)), "");
+
+// Browse themes and Share this theme (THM-10): nothing is fetched until asked; a verified file previews and Keep
+// stores it; a file that fails its sha256 is refused and changes nothing; Share opens the catalogue's new-file page.
+check("opening Appearance fetches nothing: the catalogue list is not there yet", (await page.$("#catalogue-list")) === null, "");
+await page.click("#catalogue-load");
+await page.waitForSelector("#catalogue-list .catalogue-row", { timeout: 3000 });
+const rowIds = await page.$$eval(".catalogue-row", (r) => r.map((x) => x.dataset.themeId));
+check("Browse themes lists the catalogue index", rowIds.join(",") === "autumn,spring,summer,winter,tampered-demo", rowIds.join(","));
+check("a theme the user already has is marked installed, not offered again",
+  (await page.$('.catalogue-row[data-theme-id="summer"] button')) === null
+  && /Installed/.test(await page.textContent('.catalogue-row[data-theme-id="summer"]')), "");
+const springBg = JSON.parse(season("spring")).colors.bg;
+await page.click('#catalogue-list button[data-theme-id="spring"]');
+await page.waitForSelector("#catalogue-msg button.primary", { timeout: 3000 });
+check("a catalogue theme previews live", (await cssVar("--t-bg")) === springBg, await cssVar("--t-bg"));
+await page.click("#catalogue-msg button.primary");
+await page.waitForTimeout(250);
+check("Keep imports the catalogue theme and selects it", (await page.evaluate(() => window.__imported)) === "spring"
+  && (await page.evaluate(() => window.__appearance.theme_id)) === "spring", "");
+await page.click("#theme-share");
+await page.waitForFunction(() => !!window.__opened, null, { timeout: 3000 });
+const opened = await page.evaluate(() => window.__opened);
+check("Share this theme opens the catalogue repo's new-file page for that theme",
+  opened.startsWith("https://github.com/MarceloGiazzon/npdev-themes/new/main/themes?filename=spring.json"), opened);
+await page.click('#catalogue-load');
+await page.waitForSelector("#catalogue-list .catalogue-row", { timeout: 3000 });
+await page.click('#catalogue-list button[data-theme-id="tampered-demo"]');
+await page.waitForFunction(() => /Refused/.test(document.getElementById("catalogue-msg").textContent), null, { timeout: 3000 });
+const refusal = await page.textContent("#catalogue-msg");
+check("a file that fails its sha256 is refused and says so", /sha256/.test(refusal) && /NOT imported/.test(refusal), refusal.slice(0, 160));
+check("...and nothing was imported or repainted",
+  (await page.evaluate(() => window.__imported)) === "spring" && (await cssVar("--t-bg")) === springBg
+  && (await page.evaluate(() => (window.__userThemes || []).some((x) => x.id === "tampered-demo"))) === false, "");
+await page.click('.theme-card[data-theme="summer"]');
+await page.waitForTimeout(150);
 
 // Accessibility preferences change the render (ACC-1).
 await page.selectOption("#a11y-text_scale", "1.3");

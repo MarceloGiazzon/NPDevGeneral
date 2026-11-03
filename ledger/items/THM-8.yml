@@ -14,3 +14,8 @@ resolution: Done when the login page matches the chosen theme.
 note: 'Closed by journeys-login-theme-verify-routine.json (run-journeys.ps1, journeys sample): seeds npdev-dark the way the Display menu
   stores it, reloads /login.html and asserts the page background is the theme''s --np-bg, not the page fallback. Run green 2026-11-03. The
   journeys sample needed ui.theme.choices (only the default theme plus choices ship), which is correct product behaviour.'
+guard:
+  kind: live
+  ref: NPDevSamples/scripts/browser/browser-routines/journeys-login-theme-verify-routine.json
+  asserts: 'reloads /login.html in a real browser and asserts the page background is the chosen theme''s --np-bg, not the page fallback'
+  provenRed: false

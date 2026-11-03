@@ -124,6 +124,17 @@ disabled; a `local-coder` profile falling back to `fast`; `bind prompter local-c
 
 Not covered: a successful `ai test` and a `detect` that finds a server (neither could be produced here).
 
+## The theme catalogue (THM-10), captured 2026-11-03
+
+| File | Captured from | Covers |
+|---|---|---|
+| `theme-catalogue/index.json` | `https://raw.githubusercontent.com/MarceloGiazzon/npdev-themes/main/index.json`, verbatim | the generated `npdev-theme-index.v1` index: four seasonal themes, each with a sha256 |
+| `theme-catalogue/{autumn,spring,summer,winter}.json` | the same repo's `themes/<id>.json`, verbatim | the files those hashes cover (a Rust test checks every one matches its hash) |
+
+Not captured, and deliberately built in code (`theme_catalogue.rs`, stub mode only): a fifth entry, `tampered-demo`, carrying
+Winter's hash but served with one extra byte -- the refusal path. A real tampered download could not be produced honestly.
+These files are pinned `-text` in `.gitattributes` because the Manager hashes them byte for byte.
+
 ## Re-capturing
 
 Fixtures go stale when a CLI contract changes; that is what they are for. Re-capture by running the

@@ -93,6 +93,24 @@
     info: { en: "Info", pt: "Info" },
     link: { en: "a link", pt: "um link" },
     saveFailed: { en: "Could not save the choice", pt: "Não consegui salvar a escolha" },
+    browseTitle: { en: "Browse themes", pt: "Procurar temas" },
+    browseHelp: {
+      en: "Themes shared by the community. Nothing is downloaded until you ask, and every file is checked against the catalogue's fingerprint (sha256) before it is imported.",
+      pt: "Temas compartilhados pela comunidade. Nada é baixado até você pedir, e cada arquivo é conferido com a impressão digital (sha256) do catálogo antes de ser importado.",
+    },
+    browseBtn: { en: "Load the catalogue", pt: "Carregar o catálogo" },
+    browseLoading: { en: "Loading the catalogue…", pt: "Carregando o catálogo…" },
+    browseEmpty: { en: "The catalogue has no themes yet.", pt: "O catálogo ainda não tem temas." },
+    browseFailed: { en: "Could not load the catalogue", pt: "Não consegui carregar o catálogo" },
+    browseStub: { en: "Stub mode: showing the captured catalogue, not the network.", pt: "Modo de demonstração: mostrando o catálogo capturado, não a rede." },
+    browseInstalled: { en: "Installed", pt: "Instalado" },
+    browsePreview: { en: "Preview", pt: "Pré-visualizar" },
+    browseRefused: { en: "Refused. Nothing was imported.", pt: "Recusado. Nada foi importado." },
+    shareBtn: { en: "Share this theme", pt: "Compartilhar este tema" },
+    shareOpened: {
+      en: "GitHub's new-file page is open in your browser. Review it and commit to submit your theme.",
+      pt: "A página de novo arquivo do GitHub foi aberta no seu navegador. Revise e confirme para enviar seu tema.",
+    },
     highContrastHint: {
       en: "For maximum legibility choose the High contrast theme.",
       pt: "Para máxima legibilidade escolha o tema Alto contraste.",
@@ -105,6 +123,8 @@
     catalog: {},
     previewTimer: null,
     previewing: false,
+    // THM-10: the public catalogue, loaded only when the user asks (no network on opening the screen).
+    catalogue: { status: "idle", themes: [], error: "", stub: false },
   };
 
   // ----------------------------------------------------------------------------------- applying
@@ -436,6 +456,80 @@
     flash(t(TEXT.removed), true);
   }
 
+  // ----- THM-10: the public catalogue ----------------------------------------------------------
+
+  async function loadCatalogue() {
+    state.catalogue = { status: "loading", themes: [], error: "", stub: false };
+    renderScreen();
+    try {
+      const r = await invoke("theme_catalogue_index");
+      state.catalogue = { status: "ready", themes: r.themes || [], error: "", stub: !!r.stub };
+    } catch (err) {
+      state.catalogue = { status: "error", themes: [], error: String(err), stub: false };
+    }
+    renderScreen();
+    const first = document.querySelector("#catalogue-list button, #catalogue-msg");
+    if (first && first.focus) first.focus();
+  }
+
+  // The Rust side downloads the file and returns it ONLY if its sha256 matches the index; a mismatch comes back
+  // as an error and nothing is stored. A verified file then takes the same preview-then-keep path as any other.
+  async function previewFromCatalogue(entry, msgEl) {
+    showMsg(msgEl, true, t(TEXT.browseLoading));
+    let text;
+    try {
+      text = await invoke("theme_catalogue_fetch", { id: entry.id });
+    } catch (err) {
+      return showMsg(msgEl, false, `${t(TEXT.browseRefused)} ${err}`);
+    }
+    tryTheme(text, msgEl);
+  }
+
+  function catalogueCard() {
+    const c = state.catalogue;
+    const msg = el("div", { id: "catalogue-msg", class: "appearance-msg", "aria-live": "polite", tabindex: "-1" });
+    if (c.status === "error") showMsg(msg, false, `${t(TEXT.browseFailed)}: ${c.error}`);
+    if (c.status === "loading") showMsg(msg, true, t(TEXT.browseLoading));
+    const rows = c.themes.map((th) => {
+      const sw = el("span", { class: "catalogue-swatches", "aria-hidden": "true" },
+        (th.swatches || []).map((hex) => el("span", { style: `background:${/^#[0-9a-fA-F]{6}$/.test(hex) ? hex : "transparent"}` })));
+      const meta = [th.author, th.license, th.version].filter(Boolean).join(" · ");
+      const action = th.installed
+        ? el("span", { class: "status-chip pass" }, el("span", { "aria-hidden": "true", text: "✓" }), " ", t(TEXT.browseInstalled))
+        : el("button", { type: "button", "data-theme-id": th.id, "aria-label": `${t(TEXT.browsePreview)}: ${displayName(th)}`, text: t(TEXT.browsePreview),
+            onclick: () => previewFromCatalogue(th, msg) });
+      return el("li", { class: "catalogue-row", "data-theme-id": th.id }, sw,
+        el("span", { class: "catalogue-name" }, el("b", { text: displayName(th) }), el("small", { text: meta })), action);
+    });
+    return el("div", { class: "card", id: "catalogue-card" },
+      el("h2", { text: t(TEXT.browseTitle) }),
+      el("p", { class: "field-hint", text: t(TEXT.browseHelp) }),
+      el("button", { type: "button", id: "catalogue-load", text: t(TEXT.browseBtn), disabled: c.status === "loading", onclick: loadCatalogue }),
+      c.stub ? el("p", { class: "field-hint", text: t(TEXT.browseStub) }) : null,
+      c.status === "ready" && !rows.length ? el("p", { class: "field-hint", text: t(TEXT.browseEmpty) }) : null,
+      rows.length ? el("ul", { id: "catalogue-list", class: "catalogue-list" }, rows) : null,
+      msg);
+  }
+
+  // A shared theme must be self-contained, so a `basedOn` theme is flattened first (the engine's own resolve).
+  async function shareCurrent() {
+    const th = state.catalog[state.appearance.theme_id];
+    if (!th) return;
+    try {
+      const flat = Object.assign(T.resolve(th, state.catalog), { id: th.id, name: th.name });
+      ["names", "version", "author", "description", "license"].forEach((k) => {
+        if (th[k] != null) flat[k] = th[k];
+      });
+      delete flat.builtin;
+      delete flat.basedOn;
+      const url = await invoke("theme_share_url", { jsonText: JSON.stringify(flat, null, 2) });
+      await invoke("open_url", { url });
+      flash(t(TEXT.shareOpened), true);
+    } catch (err) {
+      flash(String(err), false);
+    }
+  }
+
   function renderScreen() {
     const root = document.getElementById("appearance-root");
     if (!root) return;
@@ -494,7 +588,9 @@
       el("label", { class: "appearance-field", for: "appearance-mode" }, el("span", { text: t(TEXT.mode) }), modeSel),
       el("div", { class: "appearance-actions" },
         el("button", { type: "button", id: "theme-export", text: t(TEXT.exportBtn), onclick: exportCurrent }),
+        isUser ? el("button", { type: "button", id: "theme-share", text: t(TEXT.shareBtn), onclick: shareCurrent }) : null,
         isUser ? el("button", { type: "button", id: "theme-remove", class: "destructive", text: t(TEXT.removeBtn), onclick: removeCurrent }) : null),
+      catalogueCard(),
       el("div", { class: "appearance-two" },
         el("div", { class: "card" }, el("h2", { text: t(TEXT.loadTitle) }), el("p", { class: "field-hint", text: t(TEXT.loadHelp) }), fileInput, loadMsg),
         el("div", { class: "card" }, el("h2", { text: t(TEXT.askTitle) }),

@@ -1,0 +1,37 @@
+{
+  "schema": "npdev-theme.v1",
+  "id": "winter",
+  "name": "Winter",
+  "names": {
+    "pt": "Inverno",
+    "es": "Invierno"
+  },
+  "version": "1.0.0",
+  "author": "NPDev",
+  "license": "MIT",
+  "description": "Long night, ice blue, snow white.",
+  "colorScheme": "dark",
+  "colors": {
+    "bg": "#0d1420",
+    "surface": "#142033",
+    "surfaceRaised": "#1b2a42",
+    "border": "#26395a",
+    "borderStrong": "#7f95b8",
+    "text": "#e6eef8",
+    "textMuted": "#a9bad3",
+    "accent": "#8fd3ff",
+    "onAccent": "#0d1420",
+    "positive": "#7ee0b5",
+    "negative": "#ff9a9a",
+    "warning": "#ffd27a",
+    "info": "#9fdcff"
+  },
+  "typography": {
+    "fontUi": "\"Segoe UI\", system-ui, -apple-system, Roboto, sans-serif",
+    "fontMono": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace"
+  },
+  "shape": {
+    "radius": 6,
+    "elevation": "soft"
+  }
+}

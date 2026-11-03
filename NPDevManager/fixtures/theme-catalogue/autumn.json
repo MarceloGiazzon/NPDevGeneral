@@ -1,0 +1,37 @@
+{
+  "schema": "npdev-theme.v1",
+  "id": "autumn",
+  "name": "Autumn",
+  "names": {
+    "pt": "Outono",
+    "es": "Otoño"
+  },
+  "version": "1.0.0",
+  "author": "NPDev",
+  "license": "MIT",
+  "description": "Pumpkin, chestnut and fallen leaves.",
+  "colorScheme": "dark",
+  "colors": {
+    "bg": "#1c140f",
+    "surface": "#271b14",
+    "surfaceRaised": "#31231a",
+    "border": "#4a3426",
+    "borderStrong": "#a07a5c",
+    "text": "#f4e4d4",
+    "textMuted": "#c9a98c",
+    "accent": "#f08a3e",
+    "onAccent": "#1c140f",
+    "positive": "#a8c972",
+    "negative": "#ff8466",
+    "warning": "#f2b84b",
+    "info": "#8cc7d1"
+  },
+  "typography": {
+    "fontUi": "\"Segoe UI\", system-ui, -apple-system, Roboto, sans-serif",
+    "fontMono": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace"
+  },
+  "shape": {
+    "radius": 8,
+    "elevation": "soft"
+  }
+}

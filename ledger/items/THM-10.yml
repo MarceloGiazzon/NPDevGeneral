@@ -2,9 +2,9 @@ id: THM-10
 title: Theme catalogue v1 -- public npdev-themes repo index, Browse themes and Share this theme in the Manager
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: 2026-11-03
 source: >-
   Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
 surface: manager/themes
@@ -14,6 +14,14 @@ detail: >-
 resolution: >-
   Done when Browse themes lists a catalogue index (fixture in stub mode) and a tampered sha256 is refused.
 note: >-
-  2026-11-03: the owner's blocker is cleared -- https://github.com/MarceloGiazzon/npdev-themes was created (public, main only, README only).
-  Still to build: themes/*.json, the generated index.json with sha256, a CI check running check-themes.py there, then the Manager's
-  Browse themes / Share this theme screens and the tampered-sha256 refusal in this repo.
+  Closed 2026-11-03: github.com/MarceloGiazzon/npdev-themes is seeded (themes/{autumn,spring,summer,winter}.json -- the four seasonal
+  themes, because a catalogue theme may not reuse a built-in id -- the generated index.json with a sha256 per file, and a CI workflow
+  that runs this repo's check-themes.py --catalogue; first run green). The Manager (0.13.0) has Browse themes and Share this theme on
+  Appearance: theme_catalogue.rs fetches the index, verifies sha256 over the downloaded bytes before anything is returned, and builds the
+  GitHub new-file URL. Tampered-sha256 refusal is covered by Rust tests and a stub 'tampered-demo' entry in check-manager-ui-render.mjs
+  (131/131). The repo has no LICENSE yet -- the owner's choice; the seeded theme files carry license MIT.
+guard:
+  kind: test
+  ref: NPDevManager/src/theme_catalogue.rs#a_tampered_file_is_refused_and_never_returned
+  asserts: 'a catalogue file whose sha256 differs from the index is refused with "NOT imported" and its text is never returned; one changed byte in a real theme is refused too'
+  provenRed: true

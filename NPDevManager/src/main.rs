@@ -12,6 +12,7 @@ mod secrets;
 mod selftest;
 mod state;
 mod support;
+mod theme_catalogue;
 mod themes;
 mod versions;
 
@@ -843,6 +844,32 @@ fn theme_delete(state: State<'_, AppState>, id: String) -> Result<Value, String>
         reset = true;
     }
     Ok(serde_json::json!({ "removed": removed, "resetToDefault": reset }))
+}
+
+/// THM-10: the public catalogue's entries (sanitised), each marked `installed` when the user already has that id.
+#[tauri::command]
+async fn theme_catalogue_index() -> Result<Value, String> {
+    let fake = npdev::fake_mode();
+    let mut entries = theme_catalogue::index(fake).await?;
+    let have: Vec<String> = themes::list().iter().filter_map(|t| t["id"].as_str().map(String::from)).collect();
+    for e in entries.iter_mut() {
+        let installed = e["id"].as_str().map(|id| have.iter().any(|h| h == id)).unwrap_or(false);
+        e["installed"] = Value::Bool(installed);
+    }
+    Ok(serde_json::json!({ "repo": theme_catalogue::REPO, "stub": fake, "themes": entries }))
+}
+
+/// THM-10: one catalogue theme's JSON text, returned ONLY if its SHA-256 matches the index. It is not stored here;
+/// the webview previews it and `theme_import` stores it when the user keeps it.
+#[tauri::command]
+async fn theme_catalogue_fetch(id: String) -> Result<String, String> {
+    theme_catalogue::fetch(npdev::fake_mode(), &id).await
+}
+
+/// THM-10: GitHub's "new file" URL for `themes/<id>.json` in the catalogue repo, prefilled with this theme.
+#[tauri::command]
+fn theme_share_url(json_text: String) -> Result<String, String> {
+    theme_catalogue::share_url(&json_text)
 }
 
 #[tauri::command]
@@ -1870,7 +1897,7 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.12.0: the whole window follows the language picker (English and Portuguese) -- every screen, button, status line and message is translated as it is drawn, switching language redraws the open screen, and a new English string with no translation fails the build. Before that: Activity > Tasks -- gates, rebuilds and benchmarks that take a while, with whether each is still alive (a task whose watcher died shows as LOST), Stop, Restart and Open log; checks itself every 10 seconds while open. Before that: Set up disappears once your computer is ready (its screens move to Settings), failing checks on Ready get a Fix button that jumps to the right Install step, the strips of screens work from the keyboard (arrow keys, Home, End) and there is a Skip to content link. Before that: Home -- one card that says what to do next, with one button -- and the app workspace: choose an app once and Start & stop, Edit, Ask AI, Data, Share and the checks all follow it (their own app pickers hide). Also fixes two screens that silently never worked: the Packs app picker was never filled and the Verification table drew nothing, because two scripts shared function names. Before that: every colour in every screen now follows your theme (no hard-coded colours left), statuses show a word as well as a colour, progress is announced to screen readers, and all 19 screens pass the axe accessibility scan. Before that: Appearance & accessibility (Settings) -- pick Dark, Light, Retro, Synth, Farm, Warm, Windows or \
+    "0.13.0: Appearance gets Browse themes -- a community catalogue of themes you can preview and keep (every file is checked against the catalogue's sha256 first, and a file that does not match is refused) -- and Share this theme, which opens GitHub's new-file page with your theme filled in. Before that: the whole window follows the language picker (English and Portuguese) -- every screen, button, status line and message is translated as it is drawn, switching language redraws the open screen, and a new English string with no translation fails the build. Before that: Activity > Tasks -- gates, rebuilds and benchmarks that take a while, with whether each is still alive (a task whose watcher died shows as LOST), Stop, Restart and Open log; checks itself every 10 seconds while open. Before that: Set up disappears once your computer is ready (its screens move to Settings), failing checks on Ready get a Fix button that jumps to the right Install step, the strips of screens work from the keyboard (arrow keys, Home, End) and there is a Skip to content link. Before that: Home -- one card that says what to do next, with one button -- and the app workspace: choose an app once and Start & stop, Edit, Ask AI, Data, Share and the checks all follow it (their own app pickers hide). Also fixes two screens that silently never worked: the Packs app picker was never filled and the Verification table drew nothing, because two scripts shared function names. Before that: every colour in every screen now follows your theme (no hard-coded colours left), statuses show a word as well as a colour, progress is announced to screen readers, and all 19 screens pass the axe accessibility scan. Before that: Appearance & accessibility (Settings) -- pick Dark, Light, Retro, Synth, Farm, Warm, Windows or \
      High contrast, load a theme file, or ask any AI for a new theme (you preview it and can undo); text \
      size, motion, focus, spacing, links and colour-blind safe status colours; remembered between starts \
      with no flash. Before that: one look for the whole window, Get help with this error (copy a redacted \
@@ -1882,7 +1909,7 @@ fn manager_version_description() -> String {
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "Languages";
+const CURRENT_VERSION_TITLE: &str = "Theme catalogue";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {
@@ -3649,6 +3676,9 @@ the blast radius needs a baseline to diff against"
             theme_list,
             theme_import,
             theme_delete,
+            theme_catalogue_index,
+            theme_catalogue_fetch,
+            theme_share_url,
             appearance_get,
             appearance_set,
             test_connection,

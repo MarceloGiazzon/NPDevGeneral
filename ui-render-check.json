@@ -1,0 +1,872 @@
+{
+  "results": [
+    {
+      "name": "the main bar renders Home and the four places",
+      "ok": true,
+      "detail": "home,setup,apps,activity,settings"
+    },
+    {
+      "name": "the Manager opens on Home",
+      "ok": true,
+      "detail": "home"
+    },
+    {
+      "name": "healthy computer with a running app: Home offers to open it",
+      "ok": true,
+      "detail": "{\"when\":\"appRunning\",\"title\":\"npdev-canary is running at http://localhost:8411\",\"button\":\"Open it\",\"strip\":\"✓ Computer ready · 5 apps · 1 running · last problem: none\"}"
+    },
+    {
+      "name": "the status strip summarises the whole picture",
+      "ok": true,
+      "detail": "✓ Computer ready · 5 apps · 1 running · last problem: none"
+    },
+    {
+      "name": "scenario doctor-missing-java: Home says what is missing and offers to install it",
+      "ok": true,
+      "detail": "{\"when\":\"doctorHasFailures\",\"title\":\"1 things are missing before you can build apps\",\"button\":\"Install them\"}"
+    },
+    {
+      "name": "scenario doctor-wrong-java: Home says what is missing and offers to install it",
+      "ok": true,
+      "detail": "{\"when\":\"doctorHasFailures\",\"title\":\"1 things are missing before you can build apps\",\"button\":\"Install them\"}"
+    },
+    {
+      "name": "scenario doctor-no-jars: Home says what is missing and offers to install it",
+      "ok": true,
+      "detail": "{\"when\":\"doctorHasFailures\",\"title\":\"1 things are missing before you can build apps\",\"button\":\"Install them\"}"
+    },
+    {
+      "name": "scenario doctor-acceptable-newer-java is not a failure",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no apps yet: Home offers to create the first one",
+      "ok": true,
+      "detail": "{\"when\":\"noApps\",\"button\":\"Create an app\"}"
+    },
+    {
+      "name": "that button opens the Apps screen with the name field focused",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a failed operation: Home names it and offers the help dialog",
+      "ok": true,
+      "detail": "{\"when\":\"lastOperationFailed\",\"title\":\"Something went wrong: install Java (JDK 17), the runtime generated apps run on\",\"button\":\"Get help with this error\"}"
+    },
+    {
+      "name": "...and that button opens the support dialog",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a computer that was never checked: Home asks to check it",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Home speaks Portuguese when asked",
+      "ok": true,
+      "detail": "npdev-canary está rodando em http://localhost:8411"
+    },
+    {
+      "name": "opening a place shows its first screen",
+      "ok": true,
+      "detail": "screen-providers"
+    },
+    {
+      "name": "choosing Portugues relabels the navigation",
+      "ok": true,
+      "detail": "▦Meus apps / lang=pt"
+    },
+    {
+      "name": "every Ready row carries a status word as well as a glyph",
+      "ok": true,
+      "detail": "{\"rows\":10,\"withWord\":10}"
+    },
+    {
+      "name": "install, setup and create-app results are polite live regions",
+      "ok": true,
+      "detail": "polite,polite,polite,polite,polite"
+    },
+    {
+      "name": "Monitor renders one card per scanned app",
+      "ok": true,
+      "detail": "5 cards"
+    },
+    {
+      "name": "running state is drawn",
+      "ok": true,
+      "detail": "[\"stopped\",\"stopped\",\"running\",\"port-conflict\",\"stopped\"]"
+    },
+    {
+      "name": "port-conflict is its OWN state, not running",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "stopped state is drawn",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "counts line summarises the wall",
+      "ok": true,
+      "detail": "1 running 3 stopped 1 port taken"
+    },
+    {
+      "name": "list view toggles",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Attention filter shows only the problem cards",
+      "ok": true,
+      "detail": "1 card(s)"
+    },
+    {
+      "name": "inspector renders the app's generated info.json sections",
+      "ok": true,
+      "detail": "▶URLs10 | ▶Monitoring3 | ▶Flows2 | ▶Concepts2 | ▶Database1 | ▶Customizations2 | ▶This machine (probed)14 | ▶AI providers? | ▶Runbook (_ops)9 | ▶Logs3 | ▶app (1 file)1 | ▶ops (0 files)0 | ▶manager (0 files)0"
+    },
+    {
+      "name": "inspector renders the PROBED section separately",
+      "ok": true,
+      "detail": "▶URLs10 | ▶Monitoring3 | ▶Flows2 | ▶Concepts2 | ▶Database1 | ▶Customizations2 | ▶This machine (probed)14 | ▶AI providers? | ▶Runbook (_ops)9 | ▶Logs3 | ▶app (1 file)1 | ▶ops (0 files)0 | ▶manager (0 files)0"
+    },
+    {
+      "name": "inspector offers the runbook",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "probed rows are visually distinguished from generated ones",
+      "ok": true,
+      "detail": "16 rows"
+    },
+    {
+      "name": "inspector rows stay inside the panel (the Copy button is reachable)",
+      "ok": true,
+      "detail": "row right 1374 vs panel right 1401, viewport 1400"
+    },
+    {
+      "name": "logs section offers Export support bundle",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "before an app is chosen the app tabs are not offered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Open lands on the app's first tab",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the workspace bar names the chosen app",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "every app screen already has the chosen app and never shows its own picker",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Start & stop uses the chosen app's folder",
+      "ok": true,
+      "detail": "D:\\WorkSpace\\NPDev\\Build\\generated-finalapps\\auxscreen"
+    },
+    {
+      "name": "Change app returns to the list",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "outside the workspace the pickers come back",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Scrap Manager's app picker is fed from the Monitor's scan",
+      "ok": true,
+      "detail": "5"
+    },
+    {
+      "name": "history renders green and red runs",
+      "ok": true,
+      "detail": "dot green,dot green,dot green,dot red,dot red"
+    },
+    {
+      "name": "run detail shows the verdict",
+      "ok": true,
+      "detail": "RED"
+    },
+    {
+      "name": "the failing step is highlighted",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "identity panel carries the three hashes",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "preflight renders each precondition as its own row",
+      "ok": true,
+      "detail": "4 rows"
+    },
+    {
+      "name": "Play stays disabled until the CLI says VALID",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "an install failure offers 'Get help with this error'",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the help dialog names what the user was trying to do",
+      "ok": true,
+      "detail": "This is an error report from NPDev, a free, open-source app generator.\nProject: https://github.com/MarceloGiazzon/NPDevG"
+    },
+    {
+      "name": "the help dialog shows the key as <redacted:api-key>, never the key",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the dialog says how much was hidden",
+      "ok": true,
+      "detail": "2 secrets hidden, 0 personal details shortened"
+    },
+    {
+      "name": "the dialog is a native modal that holds focus",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the gallery lists System then the eight built-ins in the planned order",
+      "ok": true,
+      "detail": "system,npdev-dark,npdev-light,retro,synth,farm,warm,windows,high-contrast"
+    },
+    {
+      "name": "Dark is the default theme (D1)",
+      "ok": true,
+      "detail": "#0b0d10"
+    },
+    {
+      "name": "choosing Light repaints the whole window",
+      "ok": true,
+      "detail": "#ffffff"
+    },
+    {
+      "name": "the choice was sent to be saved",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a seasonal file previews live",
+      "ok": true,
+      "detail": "#fff8e7"
+    },
+    {
+      "name": "Keep stores the theme and selects it",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a kept theme joins the gallery after the built-ins",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a hand-broken file shows readable errors",
+      "ok": true,
+      "detail": "Not loaded. Nothing changed. colors.accent must be #rrggbb, got \"red; background:url(https://evil.example/x)\""
+    },
+    {
+      "name": "...and changes nothing",
+      "ok": true,
+      "detail": "#fff8e7"
+    },
+    {
+      "name": "an AI answer wrapped in prose and a code fence still previews",
+      "ok": true,
+      "detail": "#0d1420"
+    },
+    {
+      "name": "Undo puts the previous theme back",
+      "ok": true,
+      "detail": "#fff8e7"
+    },
+    {
+      "name": "the AI prompt names every colour token",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opening Appearance fetches nothing: the catalogue list is not there yet",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Browse themes lists the catalogue index",
+      "ok": true,
+      "detail": "autumn,spring,summer,winter,tampered-demo"
+    },
+    {
+      "name": "a theme the user already has is marked installed, not offered again",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a catalogue theme previews live",
+      "ok": true,
+      "detail": "#f5fbf3"
+    },
+    {
+      "name": "Keep imports the catalogue theme and selects it",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Share this theme opens the catalogue repo's new-file page for that theme",
+      "ok": true,
+      "detail": "https://github.com/MarceloGiazzon/npdev-themes/new/main/themes?filename=spring.json&value=x"
+    },
+    {
+      "name": "a file that fails its sha256 is refused and says so",
+      "ok": true,
+      "detail": "Refused. Nothing was imported. the file for tampered-demo does not match the catalogue sha256 (expected 9b0f23349e3b, got 0123456789ab); it was NOT imported"
+    },
+    {
+      "name": "...and nothing was imported or repainted",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "every accessibility preference reaches the document",
+      "ok": true,
+      "detail": "{\"scale\":\"1.3\",\"motion\":\"reduce\",\"focus\":\"always\",\"spacing\":\"wide\",\"links\":\"underline\",\"cvd\":\"safe\"}"
+    },
+    {
+      "name": "colour-blind safe mode really changes the status colours",
+      "ok": true,
+      "detail": "#2d7d32"
+    },
+    {
+      "name": "the saved appearance carries the preferences",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a restart paints the remembered theme before the Manager answers (no flash)",
+      "ok": true,
+      "detail": "#fff8e7"
+    },
+    {
+      "name": "the Monitor wall follows the npdev-light theme",
+      "ok": true,
+      "detail": "rgb(255, 255, 255) vs --t-bg #ffffff"
+    },
+    {
+      "name": "the Monitor wall follows the high-contrast theme",
+      "ok": true,
+      "detail": "rgb(255, 255, 255) vs --t-bg #ffffff"
+    },
+    {
+      "name": "a computer with something missing keeps Set up in the bar",
+      "ok": true,
+      "detail": "home,setup,apps,activity,settings"
+    },
+    {
+      "name": "the failing Java row offers Fix",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Fix jumps to the Java step of Install and focuses its button",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a missing-jars failure jumps to the Setup step and shows its button",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "once the computer is ready Set up is gone from the bar",
+      "ok": true,
+      "detail": "home,apps,activity,settings"
+    },
+    {
+      "name": "...and Settings now shows This computer and Install & folders",
+      "ok": true,
+      "detail": "providers,secrets,appearance,versions,ready,install,verification,evals"
+    },
+    {
+      "name": "Ready stays reachable inside Settings",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the secondary strip is a labelled tablist with one tab selected and one in the tab order",
+      "ok": true,
+      "detail": "{\"label\":\"Settings\",\"tabs\":8,\"selected\":1,\"inOrder\":1,\"nav\":\"Main\",\"current\":\"page\"}"
+    },
+    {
+      "name": "the main bar is a labelled nav and marks the current place",
+      "ok": true,
+      "detail": "{\"label\":\"Settings\",\"tabs\":8,\"selected\":1,\"inOrder\":1,\"nav\":\"Main\",\"current\":\"page\"}"
+    },
+    {
+      "name": "ArrowRight moves to the next tab and opens it",
+      "ok": true,
+      "detail": "ready -> {\"screen\":\"install\",\"focus\":\"install\"}"
+    },
+    {
+      "name": "End jumps to the last tab",
+      "ok": true,
+      "detail": "{\"screen\":\"evals\",\"isLast\":true}"
+    },
+    {
+      "name": "Home jumps back to the first tab",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Skip to content comes before everything else in the page",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "activating it moves focus into the page content",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the board lists every recorded task",
+      "ok": true,
+      "detail": "4"
+    },
+    {
+      "name": "a lost task is marked in words and by row, and says what it means",
+      "ok": true,
+      "detail": "Rebuild WmsOfficepwsh -File Rebuild-And-Restage.ps1Terminal! LOSTNothing is watching this task any more. It may still be"
+    },
+    {
+      "name": "a task started by an AI agent says so and shows its last news",
+      "ok": true,
+      "detail": "Quality gatespwsh -NoProfile -File scripts/quality/run-all-gates.ps1AI agent▶ Running2026-11-03T10:00:00Z6m 30s[2/4] run-runtimehost-gate.ps1Stop Open log"
+    },
+    {
+      "name": "a running task offers Stop and Open log, not Restart",
+      "ok": true,
+      "detail": "Stop,Open log"
+    },
+    {
+      "name": "a task started by CI offers only Open log",
+      "ok": true,
+      "detail": "Open log"
+    },
+    {
+      "name": "Stop asks the CLI to stop exactly that task",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "this window's own operations are listed too",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a refresh while another screen is showing does nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "it polls every 10 seconds",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no tasks yet says how to get some",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "i18n: <html lang> follows the picker",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "i18n: a static button is translated",
+      "ok": true,
+      "detail": "Verificar de novo"
+    },
+    {
+      "name": "i18n: a static heading is translated",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "i18n: an attribute (aria-label) is translated",
+      "ok": true,
+      "detail": "Modo de simulação"
+    },
+    {
+      "name": "i18n: text a script writes later is translated",
+      "ok": true,
+      "detail": "Executar a configuração"
+    },
+    {
+      "name": "i18n: text a script REWRITES is translated again",
+      "ok": true,
+      "detail": "Parar"
+    },
+    {
+      "name": "i18n: <code> is never translated",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "i18n: every screen's text is in the Portuguese catalogue",
+      "ok": true,
+      "detail": "0 untranslated: []"
+    },
+    {
+      "name": "i18n: back to English restores the original text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "axe: ready has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: monitor has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: install has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: appearance has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: home has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: apps has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: run has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: studio has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: prompter has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: dbio has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: hosting has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: scrap has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: gpuchecks has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: provenance has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: packs has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: jobs has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: providers has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: secrets has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: versions has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: verification has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "axe: evals has no more violations than its floor",
+      "ok": true,
+      "detail": "{\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0} vs floor {\"critical\":0,\"serious\":0,\"moderate\":0,\"minor\":0}; rules {}"
+    },
+    {
+      "name": "no console or page errors while rendering either screen",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "consoleErrors": [],
+  "a11y": {
+    "ready": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "monitor": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "install": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "appearance": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "home": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "apps": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "run": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "studio": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "prompter": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "dbio": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "hosting": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "scrap": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "gpuchecks": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "provenance": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "packs": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "jobs": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "providers": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "secrets": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "versions": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "verification": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    },
+    "evals": {
+      "counts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0
+      },
+      "rules": {},
+      "targets": {}
+    }
+  }
+}

@@ -81,3 +81,6 @@ gradlew.bat     text eol=crlf
 # make the checked-out file diverge from the hash that file records as "this is exactly what was
 # downloaded."
 NPDevSamples/scripts/browser/vendor/axe-core/axe.min.js binary
+
+# THM-10: the Manager hashes these byte for byte (the catalogue index carries a sha256 per file), so git must never rewrite their line endings.
+NPDevManager/fixtures/theme-catalogue/*.json -text

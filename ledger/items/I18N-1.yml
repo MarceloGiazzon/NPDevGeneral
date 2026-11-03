@@ -34,3 +34,8 @@ note: >-
   translation"; the runtime check sees only what the stub fixtures make the screens draw, error paths are covered by the static
   literal scan (heuristic: text built from pieces at runtime can slip through); home/jobs/workspace/support/appearance keep their
   own {en, pt} objects; the pt text was written by Claude and has not been read by a native speaker.
+guard:
+  kind: script
+  ref: scripts/quality/check-manager-i18n.py
+  asserts: 'every static string the Manager draws has a pt translation with the same placeholders, no stale keys, and script-drawn literals are ratcheted at 0'
+  provenRed: false

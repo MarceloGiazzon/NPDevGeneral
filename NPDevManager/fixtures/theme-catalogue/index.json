@@ -1,0 +1,89 @@
+{
+  "schema": "npdev-theme-index.v1",
+  "themes": [
+    {
+      "id": "autumn",
+      "name": "Autumn",
+      "names": {
+        "pt": "Outono",
+        "es": "Otoño"
+      },
+      "version": "1.0.0",
+      "author": "NPDev",
+      "license": "MIT",
+      "colorScheme": "dark",
+      "swatches": [
+        "#1c140f",
+        "#271b14",
+        "#f08a3e",
+        "#f4e4d4",
+        "#a8c972"
+      ],
+      "file": "themes/autumn.json",
+      "sha256": "6ac57a12086dca29fc50653827237ed71c70b8e561cacf435c628b49ec639985"
+    },
+    {
+      "id": "spring",
+      "name": "Spring",
+      "names": {
+        "pt": "Primavera",
+        "es": "Primavera"
+      },
+      "version": "1.0.0",
+      "author": "NPDev",
+      "license": "MIT",
+      "colorScheme": "light",
+      "swatches": [
+        "#f5fbf3",
+        "#ffffff",
+        "#b0174f",
+        "#1f2d1c",
+        "#2e7d32"
+      ],
+      "file": "themes/spring.json",
+      "sha256": "ffcbb4680e0566e22f808defabb7b52ee0fae29535ec76834752f7f9a4748080"
+    },
+    {
+      "id": "summer",
+      "name": "Summer",
+      "names": {
+        "pt": "Verão",
+        "es": "Verano"
+      },
+      "version": "1.0.0",
+      "author": "NPDev",
+      "license": "MIT",
+      "colorScheme": "light",
+      "swatches": [
+        "#fff8e7",
+        "#fffdf7",
+        "#006da8",
+        "#2b2112",
+        "#2d7d32"
+      ],
+      "file": "themes/summer.json",
+      "sha256": "9d35a4f2629bc8e75673ed32bdb559786ca4a9f50e15317d7224c2c3bc88da5f"
+    },
+    {
+      "id": "winter",
+      "name": "Winter",
+      "names": {
+        "pt": "Inverno",
+        "es": "Invierno"
+      },
+      "version": "1.0.0",
+      "author": "NPDev",
+      "license": "MIT",
+      "colorScheme": "dark",
+      "swatches": [
+        "#0d1420",
+        "#142033",
+        "#8fd3ff",
+        "#e6eef8",
+        "#7ee0b5"
+      ],
+      "file": "themes/winter.json",
+      "sha256": "9b0f23349e3b5555f75bb402cbd734bedb88df90a6ee738d50d4eab87de86806"
+    }
+  ]
+}

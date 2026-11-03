@@ -29,13 +29,13 @@ pub const BUILT_IN: &[(&str, &str)] = &[
 
 /// Ids a user theme may never take: every built-in, plus the generated-app default (also a built-in
 /// in NPDevContract/themes, just not offered in the Manager's gallery) and the gallery's own "system".
-const RESERVED_IDS: &[&str] = &[
+pub(crate) const RESERVED_IDS: &[&str] = &[
     "npdev-dark", "npdev-light", "retro", "synth", "farm", "warm", "windows", "high-contrast", "npdev-default",
     "system",
 ];
 
 pub const DEFAULT_THEME: &str = "npdev-dark";
-const MAX_THEME_BYTES: usize = 20_000;
+pub(crate) const MAX_THEME_BYTES: usize = 20_000;
 const TOKENS: [&str; 13] = [
     "bg", "surface", "surfaceRaised", "border", "borderStrong", "text", "textMuted", "accent", "onAccent",
     "positive", "negative", "warning", "info",
@@ -122,7 +122,7 @@ fn is_hex_colour(v: &Value) -> bool {
     v.as_str().is_some_and(|s| s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit()))
 }
 
-fn is_valid_id(id: &str) -> bool {
+pub(crate) fn is_valid_id(id: &str) -> bool {
     let b = id.as_bytes();
     (2..=41).contains(&b.len())
         && (b[0].is_ascii_lowercase() || b[0].is_ascii_digit())
