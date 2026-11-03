@@ -1,0 +1,43 @@
+id: NAV-1
+title: Manager navigation is four places (Set up, My apps, Activity, Settings) rendered from navigation.json, not 18 flat tabs; language picker
+type: FEATURE
+severity: MEDIUM
+status: DONE
+opened: 2026-11-03
+closed: 2026-11-03
+source: >-
+  Owner, 2026-11-02/03: "the Monitor is confusing, too many tabs, I see no obvious logical path for the user".
+  Manager UX plan of 2026-10-31, workstream WS-3 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md).
+surface: manager/ui
+detail: |
+  The 18 tabs were in the order the subsystems were built; each was something the platform has, none a step of
+  what the user does. Owner decisions 2026-11-03: names Home / Set up / My apps / Activity / Settings (Home is
+  NAV-2); D5 no developer mode with the old flat strip, so every screen must be reachable from a place;
+  D4 the Manager has its own language setting and everything follows it (full translation is I18N-1).
+resolution: >-
+  ui/navigation.json lists four places, each with a strip of its screens (grouped Checks / Advanced) and a one-line
+  summary; ui/nav.js renders them and keeps the highlighted place in step with showScreen. Every screen keeps its
+  section id; showScreen stays the only router; tab clicks are delegated. Labels and summaries are en + pt; a
+  language picker in the bar sets <html lang> and fires npdev:lang-changed; a missing navigation.json falls back to
+  one plain tab per screen. Manager 0.6.0.
+files:
+  - NPDevManager/ui/navigation.json
+  - NPDevManager/ui/nav.js
+  - NPDevManager/ui/app.js
+  - NPDevManager/ui/app.css
+  - NPDevManager/ui/index.html
+  - NPDevManager/src/main.rs
+  - scripts/quality/check-manager-ui-render.mjs
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevManager/src/main.rs#every_screen_is_reachable_from_the_navigation
+  asserts: >-
+    Every <section id="screen-X"> in index.html is listed by some place in navigation.json, every listed screen
+    exists, every place has a screen, every label/summary has English. Proven red by removing packs from the JSON.
+  provenRed: true
+note: >-
+  2026-11-03: check-manager-ui-render.mjs 25/25 (headless, stub fixtures) including four new navigation checks
+  (four places, Ready opens in Set up, a place opens its first screen, Portuguese relabels the bar). That check had
+  been red on main since the inspector's Logs tab became an accordion section; fixed in the same commit. NOT yet seen
+  in the real Tauri window. Evidence: NPDev_General__OutsideRepo/evidence/2026-11-03-nav1/.

@@ -12,6 +12,10 @@ const { listen } = window.__TAURI__.event;
 function showScreen(name) {
   document.querySelectorAll(".screen").forEach((s) => (s.hidden = s.id !== `screen-${name}`));
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.screen === name));
+  // nav.js owns WHICH place is highlighted and which strip of tabs shows; it needs to hear about
+  // every screen change, including the ones no tab asked for (init, the Monitor's Explore button).
+  window.__npdevCurrentScreen = name;
+  if (window.__npdevNavSync) window.__npdevNavSync(name);
   // The Scrap Manager's app picker is fed from the Monitor's last scan, so it needs the scan to have
   // happened. Refreshing on entry rather than on a timer keeps a tab nobody is looking at from
   // probing the machine every 30 seconds.
@@ -46,8 +50,11 @@ function showScreen(name) {
 // two tools into one flow (D9).
 window.__npdevShowScreen = showScreen;
 
-document.querySelectorAll(".tab").forEach((tab) => {
-  tab.addEventListener("click", () => showScreen(tab.dataset.screen));
+// Delegated, because nav.js renders the tabs from navigation.json after this file has run, and
+// re-renders them when the language changes.
+document.addEventListener("click", (e) => {
+  const tab = e.target.closest(".tab[data-screen]");
+  if (tab) showScreen(tab.dataset.screen);
 });
 
 // ---------------------------------------------------------------------------------------------

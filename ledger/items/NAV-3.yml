@@ -1,0 +1,14 @@
+id: NAV-3
+title: Manager app workspace -- choose an app once, every app screen follows it
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md), WS-3 App workspace; follows NAV-1.
+surface: manager/ui
+detail: >-
+  Inside My apps each screen (run, studio, prompter, dbio, hosting, scrap, gpuchecks, provenance, packs) still has its own app picker, so the user picks the same app again on every screen.
+resolution: >-
+  Done when choosing an app once and visiting every My apps screen never asks for the app again (npdev:app-selected event, pickers hidden inside the workspace).

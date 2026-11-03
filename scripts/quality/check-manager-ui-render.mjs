@@ -142,7 +142,26 @@ await page.waitForTimeout(500);
 const results = [];
 const check = (name, ok, detail) => { results.push({ name, ok, detail }); };
 
+// ---- Navigation (NAV-1): four places from navigation.json, the language follows the picker ------
+const places = await page.$$eval(".tabs .place", (e) => e.map((b) => b.dataset.place));
+check("the main bar renders the four places", places.join(",") === "setup,apps,activity,settings", places.join(","));
+const startPlace = await page.$eval(".tabs .place.active", (b) => b.dataset.place).catch(() => null);
+check("the first screen (Ready) opens inside Set up", startPlace === "setup", `${startPlace}`);
+await page.click('.tabs .place[data-place="settings"]');
+await page.waitForTimeout(200);
+const settingsScreen = await page.$eval("main > section.screen:not([hidden])", (s) => s.id);
+check("opening a place shows its first screen", settingsScreen === "screen-providers", settingsScreen);
+await page.selectOption("#lang-picker", "pt");
+await page.waitForTimeout(200);
+const ptLabel = await page.textContent('.tabs .place[data-place="apps"]');
+const ptLang = await page.$eval("html", (h) => h.lang);
+check("choosing Portugues relabels the navigation", /Meus apps/.test(ptLabel) && ptLang === "pt", `${ptLabel.trim()} / lang=${ptLang}`);
+await page.selectOption("#lang-picker", "en");
+await page.waitForTimeout(200);
+await page.screenshot({ path: path.join(OUT, "navigation-settings.png"), fullPage: false });
+
 // ---- The Monitor ---------------------------------------------------------------------------
+// The Activity place has one screen, so its place button IS the Monitor's tab.
 await page.click('.tab[data-screen="monitor"]');
 await page.waitForSelector("#monitor-grid .crt", { timeout: 5000 });
 
@@ -206,17 +225,19 @@ check("inspector rows stay inside the panel (the Copy button is reachable)",
 
 await page.screenshot({ path: path.join(OUT, "monitor-inspector.png"), fullPage: false });
 
-// Logs tab
-await page.click('#insp-tabs button[data-tab="logs"]');
-await page.waitForSelector("#logs-export", { timeout: 5000 });
-check("logs tab offers Export support bundle", true, "");
+// Logs: once a tab of the inspector, now one of its accordion sections, so the button is in the
+// panel whether or not the section is expanded.
+await page.waitForSelector("#logs-export", { state: "attached", timeout: 5000 });
+check("logs section offers Export support bundle", true, "");
 await page.click("#insp-close");
 await page.waitForTimeout(500);
 
 await page.screenshot({ path: path.join(OUT, "monitor-wall.png"), fullPage: false });
 
 // ---- The Scrap Manager ---------------------------------------------------------------------
-await page.click('.tab[data-screen="scrap"]');
+// NAV-1: it lives in the My apps strip, which shows only once that place is open.
+await page.click('.tabs .place[data-place="apps"]');
+await page.click('.place-strip:not([hidden]) .tab[data-screen="scrap"]');
 await page.waitForTimeout(600);
 const appOptions = await page.$$eval("#scrap-app option", (e) => e.length);
 check("Scrap Manager's app picker is fed from the Monitor's scan", appOptions === 5, `${appOptions}`);

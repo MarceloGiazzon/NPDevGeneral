@@ -1,0 +1,14 @@
+id: I18N-1
+title: Manager speaks the user's language everywhere -- screens, buttons and help follow the language picker
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md), owner decision D4 (2026-11-03); follows NAV-1.
+surface: manager/ui
+detail: >-
+  NAV-1 added the picker (en, pt) and translated the navigation only. The 18 screens, their buttons, status lines and the help popups (help.js, English only; the plan's help-glossary.json has pt) still render English whatever is chosen.
+resolution: >-
+  Done when every user-visible string on every screen and every help popup comes from a per-language catalogue, switching language re-renders the open screen, and a checker fails on a string with no English.

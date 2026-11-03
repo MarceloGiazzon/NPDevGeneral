@@ -54,13 +54,64 @@ body {
 }
 .fake-banner select { margin-left: 6px; }
 
+/* NAV-1: the bar is two rows -- the four places, then the strip of the active place's screens with a
+   one-line summary of what the place is for. nav.js renders both from navigation.json. */
 .tabs {
   display: flex;
-  /* 18 tabs are ~1630px; the window opens at 1080. Without wrapping the whole page scrolls sideways
-     and picking a right-hand tab shifts every screen off to the left. */
-  flex-wrap: wrap;
+  flex-direction: column;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
+}
+.tabs .places {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+}
+.tabs .place {
+  padding: 14px 22px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.tabs .place:hover { color: var(--fg); }
+.tabs .place.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tabs .place-icon { font-size: 16px; line-height: 1; }
+.tabs .nav-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-left: 12px;
+}
+.tabs .nav-tools .manager-version { margin-left: 0; }
+.tabs .lang-picker select { font-size: 13px; padding: 3px 6px; }
+.tabs .place-strip { padding: 6px 12px 0; }
+.tabs .place-summary { margin: 2px 8px 4px; color: var(--muted); font-size: 13px; }
+.tabs .strip-tabs { display: flex; flex-wrap: wrap; align-items: center; }
+.tabs .strip-group {
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 .tab {
   padding: 12px 20px;
@@ -85,6 +136,7 @@ body {
   border-bottom-color: var(--accent);
   font-weight: 600;
 }
+.tabs .strip-tabs .tab { padding: 8px 14px; }
 
 main {
   flex: 1;

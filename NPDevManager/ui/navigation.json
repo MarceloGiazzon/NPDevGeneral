@@ -1,0 +1,81 @@
+{
+  "schema": "npdev-manager-navigation.v1",
+  "description": "The Manager's navigation as data (NAV-1). nav.js renders the main bar and each place's strip of screens from this file; nothing indexes screens by position. Every <section id=\"screen-X\"> in index.html must be reached from at least one place -- there is no developer mode (owner decision D5, 2026-11-03), so a screen missing here is a screen nobody can open. main.rs's `every_screen_is_reachable_from_the_navigation` test enforces that. Every user-visible string is an object keyed by language id; a language missing from one string falls back to English.",
+  "languages": [
+    { "id": "en", "label": "English" },
+    { "id": "pt", "label": "Português" }
+  ],
+  "places": [
+    {
+      "id": "setup",
+      "icon": "🔧",
+      "label": { "en": "Set up", "pt": "Preparar" },
+      "summary": {
+        "en": "Get this computer ready to build apps. You do this once.",
+        "pt": "Deixe este computador pronto para criar apps. Você faz isso uma vez só."
+      },
+      "screens": [
+        { "screen": "ready", "label": { "en": "Check my computer", "pt": "Verificar o computador" } },
+        { "screen": "install", "label": { "en": "Install what is missing", "pt": "Instalar o que falta" } }
+      ]
+    },
+    {
+      "id": "apps",
+      "icon": "▦",
+      "label": { "en": "My apps", "pt": "Meus apps" },
+      "summary": {
+        "en": "Create an app, start it, change it, share it.",
+        "pt": "Crie um app, inicie, altere e compartilhe."
+      },
+      "screens": [
+        { "screen": "apps", "label": { "en": "All apps", "pt": "Todos os apps" } },
+        { "screen": "run", "label": { "en": "Start & stop", "pt": "Iniciar e parar" } },
+        { "screen": "studio", "label": { "en": "Edit", "pt": "Editar" } },
+        { "screen": "prompter", "label": { "en": "Ask AI", "pt": "Perguntar à IA" } },
+        { "screen": "dbio", "label": { "en": "Data", "pt": "Dados" } },
+        { "screen": "hosting", "label": { "en": "Share", "pt": "Compartilhar" } },
+        { "screen": "scrap", "label": { "en": "Browser checks", "pt": "Testes no navegador" }, "group": "checks" },
+        { "screen": "gpuchecks", "label": { "en": "Data-rule checks", "pt": "Testes de regras" }, "group": "checks" },
+        { "screen": "provenance", "label": { "en": "Impact", "pt": "Impacto" }, "group": "advanced" },
+        { "screen": "packs", "label": { "en": "Packs", "pt": "Pacotes" }, "group": "advanced" }
+      ]
+    },
+    {
+      "id": "activity",
+      "icon": "◉",
+      "label": { "en": "Activity", "pt": "Atividade" },
+      "summary": {
+        "en": "Everything running on this computer, at a glance.",
+        "pt": "Tudo o que está rodando neste computador, num relance."
+      },
+      "screens": [
+        { "screen": "monitor", "label": { "en": "Running apps", "pt": "Apps em execução" } }
+      ]
+    },
+    {
+      "id": "settings",
+      "icon": "⚙",
+      "label": { "en": "Settings", "pt": "Configurações" },
+      "summary": {
+        "en": "AI providers, passwords, NPDev versions. You set these once.",
+        "pt": "Provedores de IA, senhas, versões do NPDev. Você ajusta isso uma vez."
+      },
+      "screens": [
+        { "screen": "providers", "label": { "en": "AI providers", "pt": "Provedores de IA" } },
+        { "screen": "secrets", "label": { "en": "Passwords & keys", "pt": "Senhas e chaves" } },
+        { "screen": "versions", "label": { "en": "NPDev versions", "pt": "Versões do NPDev" } },
+        { "screen": "ready", "label": { "en": "This computer", "pt": "Este computador" } },
+        { "screen": "verification", "label": { "en": "Platform checks", "pt": "Verificações da plataforma" }, "group": "advanced" },
+        { "screen": "evals", "label": { "en": "AI evaluations", "pt": "Avaliações de IA" }, "group": "advanced" }
+      ]
+    }
+  ],
+  "groups": {
+    "checks": { "en": "Checks", "pt": "Testes" },
+    "advanced": { "en": "Advanced", "pt": "Avançado" }
+  },
+  "chrome": {
+    "language": { "en": "Language", "pt": "Idioma" },
+    "mainNav": { "en": "Main", "pt": "Principal" }
+  }
+}

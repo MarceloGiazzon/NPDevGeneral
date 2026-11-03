@@ -26,29 +26,12 @@
   </div>
 
   <!--
-    The Monitor sits third: after the two screens you use once to set the machine up, and before the
-    four you use to work on one app. It is the screen you come back to. Every selection here is by
-    `data-screen`/id and nothing indexes by position, so the order is presentation only.
+    The main navigation is rendered by nav.js from navigation.json (NAV-1): four places (Set up, My
+    apps, Activity, Settings), each with a strip of its screens. Every screen below is addressed by
+    its section id; nothing indexes screens by position, so where a screen is reached from is
+    presentation only. The version chip is moved into the rendered bar.
   -->
-  <nav class="tabs">
-    <button class="tab" data-screen="ready">Ready</button>
-    <button class="tab" data-screen="install">Install</button>
-    <button class="tab" data-screen="monitor">The Monitor</button>
-    <button class="tab" data-screen="apps">Apps</button>
-    <button class="tab" data-screen="run">Run</button>
-    <button class="tab" data-screen="hosting">Share</button>
-    <button class="tab" data-screen="versions">Versions</button>
-    <button class="tab" data-screen="scrap">Scrap Manager</button>
-    <button class="tab" data-screen="prompter">Prompter</button>
-    <button class="tab" data-screen="verification">Verification</button>
-    <button class="tab" data-screen="packs">Packs</button>
-    <button class="tab" data-screen="provenance">Impact</button>
-    <button class="tab" data-screen="dbio">DB Import/Export</button>
-    <button class="tab" data-screen="gpuchecks">GPU Checks</button>
-    <button class="tab" data-screen="providers">AI Providers</button>
-    <button class="tab" data-screen="secrets">Secrets</button>
-    <button class="tab" data-screen="studio">Studio</button>
-    <button class="tab" data-screen="evals">Evals</button>
+  <nav class="tabs" aria-label="Main">
     <span id="manager-version" class="manager-version" title="NPDev Manager version"></span>
   </nav>
 
@@ -1172,6 +1155,7 @@
   <div class="toast" id="monitor-toast"></div>
 
   <script src="app.js"></script>
+  <script src="nav.js"></script>
   <script src="help.js"></script>
   <script src="monitor.js"></script>
   <script src="hosting.js"></script>

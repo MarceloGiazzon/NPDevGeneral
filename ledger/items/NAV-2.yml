@@ -1,0 +1,14 @@
+id: NAV-2
+title: Manager Home -- one card that says what to do next, with one button
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md), WS-3 Home; follows NAV-1.
+surface: manager/ui
+detail: >-
+  A first-time user still lands on a screen, not on a next step. Home evaluates navigation homeDecisions (doctor never run, doctor failures, no apps, last operation failed, apps stopped) and shows the first that applies, with a one-line status strip.
+resolution: >-
+  Done when in stub mode each fake_doctor_scenarios scenario shows the right card, and Home is the first place in the bar.

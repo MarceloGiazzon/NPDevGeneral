@@ -1606,9 +1606,9 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.5.4: Every tab is readable again -- the form tabs (Apps, Ready, Install...) are light, the \
-     dark tabs (AI Providers, Secrets, Packs...) get their light-on-dark colours, and the tab bar \
-     wraps instead of scrolling the whole window sideways."
+    "0.6.0: Four places instead of 18 tabs -- Set up, My apps, Activity, Settings -- each with a \
+     strip of its screens and one line saying what it is for; and a language picker (English, \
+     Portugues) that the navigation follows."
         .to_string()
 }
 
@@ -1616,7 +1616,7 @@ fn manager_version_description() -> String {
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "Readable Tabs";
+const CURRENT_VERSION_TITLE: &str = "Four Places";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {
@@ -3597,5 +3597,53 @@ mod monitor_css_scope_tests {
         missing.sort();
         missing.dedup();
         assert!(missing.is_empty(), "dark tabs without the palette: {missing:?}");
+    }
+
+    /// NAV-1: the navigation is rendered from ui/navigation.json and there is no developer mode with
+    /// the old flat strip (owner decision D5), so a `<section id="screen-X">` that no place lists is
+    /// a screen nobody can open. Also: every string has English (the fallback), and every place has
+    /// at least one screen.
+    #[test]
+    fn every_screen_is_reachable_from_the_navigation() {
+        let ui = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui");
+        let html = std::fs::read_to_string(ui.join("index.html")).unwrap();
+        let nav: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(ui.join("navigation.json")).unwrap()).unwrap();
+        let mut listed = std::collections::BTreeSet::new();
+        let mut problems = Vec::new();
+        for place in nav["places"].as_array().unwrap() {
+            let id = place["id"].as_str().unwrap_or("?");
+            for key in ["label", "summary"] {
+                if place[key]["en"].as_str().is_none() {
+                    problems.push(format!("place {id}: {key} has no English"));
+                }
+            }
+            let screens = place["screens"].as_array().unwrap();
+            if screens.is_empty() {
+                problems.push(format!("place {id}: no screens"));
+            }
+            for s in screens {
+                let name = s["screen"].as_str().unwrap();
+                if s["label"]["en"].as_str().is_none() {
+                    problems.push(format!("place {id} > {name}: label has no English"));
+                }
+                if let Some(g) = s["group"].as_str() {
+                    if nav["groups"][g]["en"].as_str().is_none() {
+                        problems.push(format!("place {id} > {name}: unknown group {g}"));
+                    }
+                }
+                if !html.contains(&format!("id=\"screen-{name}\"")) {
+                    problems.push(format!("place {id} lists screen {name}, which index.html does not have"));
+                }
+                listed.insert(name.to_string());
+            }
+        }
+        for chunk in html.split("<section id=\"screen-").skip(1) {
+            let name: String = chunk.chars().take_while(|c| *c != '"').collect();
+            if !listed.contains(&name) {
+                problems.push(format!("screen {name} is in index.html but no place in navigation.json lists it"));
+            }
+        }
+        assert!(problems.is_empty(), "navigation problems: {problems:#?}");
     }
 }
