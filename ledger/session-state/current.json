@@ -1,18 +1,18 @@
 {
-  "closedAt": "2026-11-03T00:35:06.1132209Z",
+  "closedAt": "2026-11-03T00:40:51.0155026Z",
   "branch": "main",
-  "head": "e01e9e54",
-  "headSubject": "fix(ui): page load no longer swallows typing or wipes an open form",
-  "summary": "Fixed the intermittent HTTP 401 in run-shell-scenarios (e01e9e54): generated business UI rebuilt the whole page ~100x on load, losing typed API keys and wiping open inline forms; now boot re-renders only the on-screen concept, reuses open forms, restores focus. Browser evidence now keeps failed requests/console errors. Gemini bench-023 still quota-blocked (429).",
-  "nextStep": "After 2026-11-03 08:00 UTC: python run_bench run --run-id cal-gemini-compact --skip-done --knowledge-file Build/npdev-ai/core-context/bundle-compact.json --provider gemini --repair-mode stateless --stop-when-stuck 3 (only bench-023 left), then run_bench matrix --out <scratch> and publish a NEW bench page (old artifact 3f7b84U77DwmCksqoe6Pc1 was deleted). Then fix run-shell-scenarios leaking the single-use GradleDaemon from gradlew --no-daemon bootRun (see memory bootrun-orphan-gradle-daemon).",
+  "head": "b983357e",
+  "headSubject": "fix(quality): run-shell-scenarios no longer leaks the single-use GradleDaemon",
+  "summary": "Fixed run-shell-scenarios leaking the single-use GradleDaemon (b983357e): per-run -Dnpdev.runMarker in org.gradle.jvmargs, finally stops only marked processes (new Get-NPDevProcessIdsByCommandLineMarker in npdev-common.ps1).",
+  "nextStep": "After 2026-11-03 08:00 UTC: python run_bench run --run-id cal-gemini-compact --skip-done --knowledge-file Build/npdev-ai/core-context/bundle-compact.json --provider gemini --repair-mode stateless --stop-when-stuck 3 (only bench-023 left), then run_bench matrix --out <scratch> and publish a NEW bench page. Optionally port the GradleDaemon marker pattern to other --no-daemon bootRun scripts (run-journeys, run-behavior-probes, run-f6-showcase, fast-gate canary).",
   "plan": "",
   "blocked": "Gemini bench-023: free-tier quota (HTTP 429) until ~2026-11-03 08:00 UTC.",
-  "verified": "run-shell-scenarios 3/3 runs green on fresh regenerate (24/24 routines; before fix 2/3 runs failed); run-generator-gate.ps1 green. Full run-all-gates NOT run.",
+  "verified": "run-shell-scenarios -ReuseBuild green in 96s under digest runner, no java left behind. Full run-all-gates NOT run.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "e01e9e54 fix(ui): page load no longer swallows typing or wipes an open form",
-    "e4ae172d chore(session): handoff - authoring hints/fixes, optional dslVersion, generated-app UX, groq bench 5/5"
+    "b983357e fix(quality): run-shell-scenarios no longer leaks the single-use GradleDaemon",
+    "07b5bf96 chore(session): handoff - fix load-time re-render storm (401 flake), gemini bench still quota-blocked"
   ]
 }
