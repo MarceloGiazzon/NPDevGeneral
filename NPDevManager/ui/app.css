@@ -19,8 +19,9 @@ body {
 }
 
 .fake-banner {
-  background: #7a3b00;
-  color: #fff;
+  background: var(--t-warning-tint);
+  color: var(--t-warning);
+  border-bottom: 1px solid var(--t-warning-edge);
   padding: 6px 14px;
   display: flex;
   gap: 16px;
@@ -209,7 +210,7 @@ button {
 }
 button:hover { border-color: var(--accent); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
-button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--t-on-accent); border-color: var(--accent); }
 button.fix-btn { color: var(--fail); border-color: var(--fail); }
 
 .install-step {
@@ -268,8 +269,8 @@ button.fix-btn { color: var(--fail); border-color: var(--fail); }
 progress { width: 100%; margin: 8px 0; }
 
 .log-view {
-  background: #0d0f12;
-  color: #d7e0ea;
+  background: var(--t-bg-sunken);
+  color: var(--t-text);
   font-family: "SF Mono", Consolas, monospace;
   font-size: 12px;
   padding: 10px 12px;
@@ -346,7 +347,7 @@ form input {
    Deliberately loud -- the whole failure this guards against is a dropdown that offers MySQL as
    though it were Postgres. Not an error colour: choosing it is allowed, just not silent. */
 .engine-warning {
-  border-left: 3px solid #d08700;
+  border-left: 3px solid var(--t-warning);
   background: rgba(208, 135, 0, 0.08);
   padding: 8px 10px;
   margin: 6px 0;

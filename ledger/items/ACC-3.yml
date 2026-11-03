@@ -2,14 +2,36 @@ id: ACC-3
 title: Manager -- live regions, labelled buttons and inputs
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
 surface: manager/ui
 detail: >-
   aria-live=polite on setup narration, run status and the support summary; aria-busy on running sections; aria-
   label on icon-only buttons; a label on every input.
 resolution: >-
-  Done when setup progress lines are announced by a screen reader and the axe label rules are clean.
+  Install (Java, Python, Setup), create-app, Run and Monitor-count results are polite live regions; a throttled
+  sr-only region (#setup-announce, at most one announcement per 6 s) carries setup narration so Gradle's hundreds
+  of lines do not flood a screen reader; the Install section is aria-busy while setup runs; icon-only path-removal
+  buttons are labelled; four unlabelled controls (hosting/studio app pickers, the model editor, empty table headers)
+  got names; seven screens' h3 under the h1 are announced as level 2; the second <main> landmark (the Monitor grid)
+  became a div and the stub banner became a labelled region.
+files:
+- NPDevManager/ui/index.html
+- NPDevManager/ui/app.js
+- NPDevManager/ui/providers.js
+verification: UNIT_TESTED
+guard:
+  kind: manual
+  ref: scripts/quality/check-manager-ui-render.mjs
+  asserts: >-
+    the five status regions report aria-live=polite, and all 19 screens have zero axe-core violations (wcag2a, wcag2aa,
+    wcag21aa, best-practice).
+  provenRed: true
+note: >-
+  2026-11-03: proven red by removing the label of the light/dark select: axe reported select-name critical 1 and
+  the floor check failed. NOT yet heard through Narrator; the roles/aria-live attributes are correct by construction
+  and by axe, but a real screen-reader pass is still owed.

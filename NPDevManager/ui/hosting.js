@@ -265,7 +265,7 @@ function renderKeys() {
   const rows = keys.length
     ? keys.map((k) => `
         <div class="check-row ok">
-          <span class="mark">•</span>
+          <span class="mark"><span aria-hidden="true">•</span><span class="np-sr-only">Key</span></span>
           <span class="name">${escapeHtml(k.tenant)} / ${escapeHtml(k.actor)}</span>
           <span class="detail">${escapeHtml(k.role)}</span>
           <span class="found">${escapeHtml(k.masked)}</span>
@@ -682,7 +682,7 @@ function renderDeploy() {
 
   const youRows = youVars.map(([name, info]) => `
     <div class="check-row fail">
-      <span class="mark">✗</span>
+      <span class="mark"><span aria-hidden="true">✗</span><span class="np-sr-only">Missing</span></span>
       <span class="name">${escapeHtml(name)}</span>
       <span class="detail" title="${escapeHtml(info.why || "")}">${escapeHtml(info.why || "")}</span>
       <button type="button" class="env-copy-btn" data-name="${escapeHtml(name)}">Copy name</button>

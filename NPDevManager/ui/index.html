@@ -35,7 +35,7 @@
 <link rel="stylesheet" href="a11y.css" />
 </head>
 <body>
-  <div id="fake-banner" class="fake-banner" hidden>
+  <div id="fake-banner" class="fake-banner" role="region" aria-label="Stub mode" hidden>
     <span>STUB MODE -- no real command is being run.</span>
     <label>
       doctor scenario:
@@ -100,14 +100,14 @@
 
       <div class="install-step">
         <h2>1. Java 17</h2>
-        <div id="jdk-status" class="status-line">checking&hellip;</div>
+        <div id="jdk-status" class="status-line" role="status" aria-live="polite">checking&hellip;</div>
         <progress id="jdk-progress" value="0" max="100" hidden></progress>
         <button id="jdk-install-btn">Install private JDK</button>
       </div>
 
       <div class="install-step">
         <h2>2. Python</h2>
-        <div id="python-status" class="status-line">checking&hellip;</div>
+        <div id="python-status" class="status-line" role="status" aria-live="polite">checking&hellip;</div>
         <progress id="python-progress" value="0" max="100" hidden></progress>
         <button id="python-install-btn">Install private Python</button>
       </div>
@@ -147,9 +147,10 @@
         <!-- "not run yet" used to be written HERE, as a literal, and no code ever asked the machine
              whether it was true. `setup_status` answers that now; this placeholder matches steps 1
              and 2 and is replaced on every entry to the screen. -->
-        <div id="setup-status" class="status-line">checking&hellip;</div>
+        <div id="setup-status" class="status-line" role="status" aria-live="polite">checking&hellip;</div>
         <!-- Shown only while setup runs: elapsed time, how long it usually takes, the latest line. -->
         <div id="setup-progress" class="field-hint" hidden></div>
+        <div id="setup-announce" class="np-sr-only" role="status" aria-live="polite"></div>
         <div id="setup-log" class="log-view" hidden></div>
         <button id="setup-run-btn">Run setup</button>
       </div>
@@ -243,7 +244,7 @@
         </div>
         <button type="submit" id="new-app-create-btn">Create</button>
       </form>
-      <p id="new-app-status" class="status-line"></p>
+      <p id="new-app-status" class="status-line" role="status" aria-live="polite"></p>
     </section>
 
     <!-- Run -->
@@ -290,7 +291,7 @@
         <button id="run-start-btn" class="primary">&#9654; Run</button>
         <button id="run-stop-btn" disabled>&#9632; Stop</button>
       </div>
-      <div id="run-banner" class="run-banner" hidden></div>
+      <div id="run-banner" class="run-banner" role="status" aria-live="polite" hidden></div>
       <p>
         App: <a id="run-link" href="#" target="_blank" rel="noopener">not started</a>
         &middot;
@@ -311,7 +312,7 @@
 
       <div class="picker-row">
         <span>App</span>
-        <select id="hosting-app-picker"></select>
+        <select id="hosting-app-picker" aria-label="App"></select>
         <span id="hosting-app-state" class="status-line"></span>
       </div>
 
@@ -345,7 +346,7 @@
     </section>
     <!-- The Monitor (MONITOR_PLAN Phase B) -- third in the tab strip -->
     <section id="screen-monitor" class="screen" hidden>
-      <h1>▚ THE MONITOR <span class="dim">// every generated app on this machine</span></h1>
+      <h1><span aria-hidden="true">▚</span> THE MONITOR <span class="dim">// every generated app on this machine</span></h1>
       <p class="subtitle">
         One wall of screens. Each card is what <code>npdev monitor probe</code> just saw — never what
         this window remembers, so it stays right across a restart.
@@ -368,7 +369,7 @@
       </section>
 
       <div class="statusbar">
-        <span id="monitor-counts"></span>
+        <span id="monitor-counts" role="status" aria-live="polite"></span>
         <div class="viewtoggle" id="monitor-view">
           <button data-v="grid" class="active" title="Wall of monitors">⊞ GRID</button>
           <button data-v="list" title="Vertical list, info beside each monitor">☰ LIST</button>
@@ -381,12 +382,12 @@
         </div>
       </div>
 
-      <main class="grid" id="monitor-grid"></main>
+      <div class="grid" id="monitor-grid"></div>
     </section>
 
     <!-- Scrap Manager (MONITOR_PLAN Phase D) -->
     <section id="screen-scrap" class="screen" hidden>
-      <h1>▚ SCRAP MANAGER <span class="dim">// browser explorations</span></h1>
+      <h1><span aria-hidden="true">▚</span> SCRAP MANAGER <span class="dim">// browser explorations</span></h1>
       <p class="subtitle">
         Does this app still work in a real browser, and did that change? History, evidence and one
         definition of green — the same one the PowerShell harness and the Playwright reporter record
@@ -411,11 +412,11 @@
       <div class="scrap-layout">
         <div>
           <div class="pane">
-            <h3>Routines</h3>
+            <h3 aria-level="2">Routines</h3>
             <div id="scrap-definitions" class="runlist"></div>
           </div>
           <div class="pane" style="margin-top:14px">
-            <h3>History</h3>
+            <h3 aria-level="2">History</h3>
             <div id="scrap-runs" class="runlist"></div>
           </div>
         </div>
@@ -427,7 +428,7 @@
 
     <!-- Prompter (Phase F) -->
     <section id="screen-prompter" class="screen" hidden>
-      <h1>▚ PROMPTER <span class="dim">// ask a model about an app</span></h1>
+      <h1><span aria-hidden="true">▚</span> PROMPTER <span class="dim">// ask a model about an app</span></h1>
       <p class="subtitle">
         Compose a prompt describing one of your apps, then copy it or send it to a provider you
         configured. Your API key lives in this machine's credential store, never in the Manager's
@@ -443,7 +444,7 @@
       </div>
 
       <div class="pane" style="margin-top:14px">
-        <h3>Target app</h3>
+        <h3 aria-level="2">Target app</h3>
         <label class="subtitle" style="display:block;margin-top:8px">
           App name used in the prompt (edit if the detected name is wrong)
           <input type="text" id="prompter-appname" placeholder="my-app" autocomplete="off" style="width:100%">
@@ -455,7 +456,7 @@
       </div>
 
       <div class="pane" style="margin-top:14px">
-        <h3>Provider</h3>
+        <h3 aria-level="2">Provider</h3>
         <div class="statusbar" style="margin-top:8px">
           <label class="subtitle" style="margin:0">Profile
             <select id="prompter-profile"></select>
@@ -481,7 +482,7 @@
       </div>
 
       <div class="pane" style="margin-top:14px">
-        <h3>What do you want to build or change?</h3>
+        <h3 aria-level="2">What do you want to build or change?</h3>
         <textarea id="prompter-ask" rows="4" style="width:100%"
           placeholder="e.g. Add a 'Priority' field to the Ticket concept, with values Low/Medium/High, and show it as a column on the Tickets list."></textarea>
         <div class="statusbar" style="margin-top:10px">
@@ -499,7 +500,7 @@
            this is an alternative to the manual Send/Validate/Apply steps below, not a duplicate of
            their inputs. -->
       <div class="pane" style="margin-top:14px">
-        <h3>Automatic (AI loop)</h3>
+        <h3 aria-level="2">Automatic (AI loop)</h3>
         <p class="subtitle">
           Sends the prompt above, then validates, applies, builds, starts and checks health on its
           own -- re-prompting the AI with the specific failure if a step fails, up to the iteration
@@ -530,7 +531,7 @@
       </div>
 
       <div class="pane" style="margin-top:14px" id="prompter-answer-pane" hidden>
-        <h3>Response</h3>
+        <h3 aria-level="2">Response</h3>
         <pre class="runout" id="prompter-answer" style="max-height:420px"></pre>
         <div class="statusbar" style="margin-top:10px">
           <button class="btn ghost" id="prompter-copy-answer">📋 COPY RESPONSE</button>
@@ -539,13 +540,13 @@
       </div>
 
       <div class="pane" style="margin-top:14px" id="prompter-validate-pane" hidden>
-        <h3>Validation</h3>
+        <h3 aria-level="2">Validation</h3>
         <p class="subtitle" id="prompter-validate-status">—</p>
         <div id="prompter-diagnostics"></div>
       </div>
 
       <div class="pane" style="margin-top:14px" id="prompter-apply-pane" hidden>
-        <h3>Apply</h3>
+        <h3 aria-level="2">Apply</h3>
         <p class="subtitle">
           Overwrites the app's real <code>model.json</code> (a timestamped backup is kept alongside it).
         </p>
@@ -564,7 +565,7 @@
          decision about what any state means -- kanban_column() in the CLI does, so this window and a
          terminal agree on what counts as failing vs stale vs never-run. -->
     <section id="screen-verification" class="screen" hidden>
-      <h1>▚ VERIFICATION <span class="dim">// what checks exist and what they last said</span></h1>
+      <h1><span aria-hidden="true">▚</span> VERIFICATION <span class="dim">// what checks exist and what they last said</span></h1>
       <p class="subtitle" id="verify-subject">…</p>
 
       <div class="statusbar">
@@ -589,7 +590,7 @@
          Thin pipe over `npdev pack list`/`pack why` -- nothing here decides what a signature or a
          deprecation means, the CLI already enriched the report before this ever renders it. -->
     <section id="screen-packs" class="screen" hidden>
-      <h1>▤ PACKS <span class="dim">// what this app has resolved and locked</span></h1>
+      <h1><span aria-hidden="true">▤</span> PACKS <span class="dim">// what this app has resolved and locked</span></h1>
       <p class="subtitle">Reads npdev.lock through <code>npdev pack list</code> — nothing is re-resolved here.</p>
 
       <div class="packs-toolbar">
@@ -606,7 +607,7 @@
          provenance-index.json. Click a concept node; its generated classes, schema migration and
          frontend route highlight; click an artifact to jump back to its spec node. -->
     <section id="screen-provenance" class="screen" hidden>
-      <h1>▚ IMPACT <span class="dim">// spec node → emitted artifact</span></h1>
+      <h1><span aria-hidden="true">▚</span> IMPACT <span class="dim">// spec node → emitted artifact</span></h1>
       <p class="subtitle">
         What each concept in your model generated: the Spring classes, the schema migration and the
         frontend route that exist BECAUSE of it, from <code>provenance-index.json</code>. Click a
@@ -628,7 +629,7 @@
     <!-- Data mobility (ListaSementes.txt): export a database's tables to CSV/SQL-insert files, or
          import a directory `db export` wrote back in, gated by a per-table structure check. -->
     <section id="screen-dbio" class="screen" hidden>
-      <h1>⇄ DB IMPORT/EXPORT <span class="dim">// move an app's data in or out</span></h1>
+      <h1><span aria-hidden="true">⇄</span> DB IMPORT/EXPORT <span class="dim">// move an app's data in or out</span></h1>
       <p class="subtitle">
         Reads/writes through <code>npdev db export</code> / <code>npdev db import</code> -- format,
         table scoping and the pre-import structure check are all decided there, never here.
@@ -642,7 +643,7 @@
 
       <div class="dbio-columns">
         <div class="dbio-panel">
-          <h3>EXPORT</h3>
+          <h3 aria-level="2">EXPORT</h3>
           <label>Output folder
             <div class="dbio-path-row">
               <input type="text" id="dbio-export-out" readonly placeholder="Pick a folder…" />
@@ -666,7 +667,7 @@
         </div>
 
         <div class="dbio-panel">
-          <h3>IMPORT</h3>
+          <h3 aria-level="2">IMPORT</h3>
           <label>Input folder
             <div class="dbio-path-row">
               <input type="text" id="dbio-import-in" readonly placeholder="Pick a folder…" />
@@ -721,7 +722,7 @@
 
       <div id="gpuchecks-columns" class="gpuchecks-columns">
         <div class="gpuchecks-panel">
-          <h3>CHECKS</h3>
+          <h3 aria-level="2">CHECKS</h3>
           <div class="gpuchecks-scroll">
             <table class="gpuchecks-table">
               <thead><tr><th>Concept</th><th>Check</th><th>Kind</th><th>Engine</th></tr></thead>
@@ -731,7 +732,7 @@
         </div>
 
         <div class="gpuchecks-panel">
-          <h3>RUNS</h3>
+          <h3 aria-level="2">RUNS</h3>
           <div class="gpuchecks-scroll">
             <table class="gpuchecks-table">
               <thead><tr><th>Time</th><th>Engine</th><th>Rows</th><th>Violations</th><th>Verify</th><th>Total</th></tr></thead>
@@ -742,7 +743,7 @@
       </div>
 
       <div id="gpuchecks-details" class="gpuchecks-details" hidden>
-        <h3 id="gpuchecks-details-title">Run details</h3>
+        <h3 aria-level="2" id="gpuchecks-details-title">Run details</h3>
         <div class="gpuchecks-details-actions">
           <button class="btn ghost" id="gpuchecks-download-bundle">⬇ Download bundle</button>
           <button class="btn ghost" id="gpuchecks-copy-prompt">⧉ Copy AI prompt</button>
@@ -782,7 +783,7 @@
       <div class="secrets-columns" data-ai-pane="providers">
         <div class="secrets-table"><div id="providers-list"></div></div>
         <div class="secrets-panel">
-          <h3>ADD OR REPLACE A KEY</h3>
+          <h3 aria-level="2">ADD OR REPLACE A KEY</h3>
           <label>Provider
             <select id="providers-form-id"></select>
           </label>
@@ -792,7 +793,7 @@
           </label>
           <button class="btn" id="providers-form-save">SAVE</button>
 
-          <h3 class="providers-gap">FIND LOCAL LLMS</h3>
+          <h3 aria-level="2" class="providers-gap">FIND LOCAL LLMS</h3>
           <p class="secrets-note">
             Looks for Ollama, LM Studio, llama.cpp, vLLM and Jan on this machine. Adding records each
             server as a keyless local provider with the models it serves.
@@ -800,7 +801,7 @@
           <button class="btn" id="ai-detect-go">SEARCH THIS MACHINE</button>
           <div id="ai-detect-result" class="ai-detect"></div>
 
-          <h3 class="providers-gap">ADD A PROVIDER</h3>
+          <h3 aria-level="2" class="providers-gap">ADD A PROVIDER</h3>
           <p class="secrets-note">Any server speaking one of the three protocols. Add its models in MODELS afterwards.</p>
           <label>Id <input type="text" id="ai-prov-id" placeholder="e.g. lmstudio-desk" autocomplete="off" /></label>
           <label>Name <input type="text" id="ai-prov-name" autocomplete="off" /></label>
@@ -821,7 +822,7 @@
           </label>
           <button class="btn" id="ai-prov-add">ADD PROVIDER</button>
 
-          <h3 class="providers-gap">USE IN A GENERATED APP</h3>
+          <h3 aria-level="2" class="providers-gap">USE IN A GENERATED APP</h3>
           <p class="secrets-note">
             Writes the checked providers' keys into the app's <code>secrets/agent-proxy.env</code>
             (gitignored, spared by regeneration). Only providers marked "app" are supported there.
@@ -843,7 +844,7 @@
           <div id="ai-models-list"></div>
         </div>
         <div class="secrets-panel">
-          <h3>ADD OR EDIT A MODEL</h3>
+          <h3 aria-level="2">ADD OR EDIT A MODEL</h3>
           <p class="secrets-note">Prices are USD per million tokens; they feed the usage report and the spend cap.</p>
           <label>Provider <select id="ai-model-provider"></select></label>
           <label>Model id <input type="text" id="ai-model-id" autocomplete="off" /></label>
@@ -858,7 +859,7 @@
       <div class="secrets-columns" data-ai-pane="profiles" hidden>
         <div class="secrets-table"><div id="ai-profiles-list"></div></div>
         <div class="secrets-panel">
-          <h3>ADD OR EDIT A PROFILE</h3>
+          <h3 aria-level="2">ADD OR EDIT A PROFILE</h3>
           <p class="secrets-note">A profile is a provider, a model and how hard it should think. Features use profiles, never a bare endpoint.</p>
           <label>Name <input type="text" id="ai-profile-name" autocomplete="off" /></label>
           <label>Description <input type="text" id="ai-profile-desc" autocomplete="off" /></label>
@@ -878,9 +879,9 @@
       </div>
 
       <div data-ai-pane="uses" hidden>
-        <h3 class="ai-h3">WHICH FEATURE USES WHAT</h3>
+        <h3 aria-level="2" class="ai-h3">WHICH FEATURE USES WHAT</h3>
         <div id="ai-uses-list"></div>
-        <h3 class="ai-h3">BY PROVIDER, SINCE <span id="ai-usage-since"></span></h3>
+        <h3 aria-level="2" class="ai-h3">BY PROVIDER, SINCE <span id="ai-usage-since"></span></h3>
         <div id="ai-by-provider"></div>
         <div class="ai-spend">
           <label class="ai-inline">Monthly cap (USD) <input type="text" id="ai-spend-cap" placeholder="none" autocomplete="off" /></label>
@@ -908,7 +909,7 @@
         </div>
 
         <div class="secrets-panel">
-          <h3>SET A CREDENTIAL</h3>
+          <h3 aria-level="2">SET A CREDENTIAL</h3>
           <p class="secrets-note">
             Saving replaces any existing value for the same scope/env/profile id combination.
             Click "Replace…" on a row to refill this form for an existing profile.
@@ -948,31 +949,31 @@
       </div>
 
       <div class="studio-toolbar">
-        <select id="studio-app-picker"></select>
+        <select id="studio-app-picker" aria-label="App"></select>
         <button type="button" class="btn ghost" id="studio-refresh">&#8635; REFRESH</button>
         <span id="studio-status" class="status-line"></span>
       </div>
 
       <div class="studio-columns">
         <div class="studio-pane">
-          <h3>Model tree</h3>
+          <h3 aria-level="2">Model tree</h3>
           <div id="studio-tree"></div>
         </div>
 
         <div class="studio-pane studio-editor-pane">
-          <h3>Selected node (JSON)</h3>
-          <textarea id="studio-editor" spellcheck="false" disabled></textarea>
+          <h3 aria-level="2">Selected node (JSON)</h3>
+          <textarea id="studio-editor" spellcheck="false" aria-label="Model JSON" disabled></textarea>
           <div class="studio-editor-error" id="studio-editor-error"></div>
           <div class="studio-widget-chips" id="studio-widget-chips"></div>
           <button type="button" class="btn" id="studio-apply" style="margin-top:8px;" disabled>APPLY</button>
 
-          <h3 style="margin-top:14px;">Undo</h3>
+          <h3 aria-level="2" style="margin-top:14px;">Undo</h3>
           <ul class="studio-history-list" id="studio-history-list"></ul>
         </div>
 
         <div class="studio-pane studio-preview-pane">
           <div class="studio-preview-toolbar">
-            <h3 style="margin:0;">Live preview</h3>
+            <h3 aria-level="2" style="margin:0;">Live preview</h3>
             <button type="button" class="btn ghost" id="studio-preview-refresh">&#8635; Reload</button>
           </div>
           <iframe id="studio-iframe" title="Running app preview"></iframe>

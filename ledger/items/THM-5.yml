@@ -2,13 +2,44 @@ id: THM-5
 title: Retire the hard-coded colours in the Manager CSS/JS, role by role, ratcheting the baseline to zero
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
 surface: manager/ui
-detail: >-
-  Map each hex literal to its --t-* role token; check-manager-css-tokens.py frozenCount only falls.
+detail: Map each hex literal to its --t-* role token; check-manager-css-tokens.py frozenCount only falls.
 resolution: >-
-  Done when frozenCount reaches 0 or the remainder is listed with a reason in the baseline file.
+  All 283 hard-coded hex colours in NPDevManager/ui (12 stylesheets and scrap.js) were replaced, by ROLE, with --t-*
+  tokens (surface, raised, sunken, border, the positive/warning/negative/info edge, tint and text families, muted
+  text, on-accent) using the plan's mapping table plus per-literal decisions for the banner and the armed knobs.
+  scripts/policy/manager-css-token-baseline.json frozenCount is 0; check-manager-css-tokens.py (aiKnowledge gate
+  step 54) fails on any new literal.
+files:
+- NPDevManager/ui/app.css
+- NPDevManager/ui/monitor.css
+- NPDevManager/ui/dbio.css
+- NPDevManager/ui/evals.css
+- NPDevManager/ui/gpuchecks.css
+- NPDevManager/ui/packs.css
+- NPDevManager/ui/provenance.css
+- NPDevManager/ui/providers.css
+- NPDevManager/ui/secrets.css
+- NPDevManager/ui/studio.css
+- NPDevManager/ui/verification.css
+- NPDevManager/ui/scrap.js
+- scripts/policy/manager-css-token-baseline.json
+verification: UNIT_TESTED
+guard:
+  kind: script
+  ref: scripts/quality/check-manager-css-tokens.py
+  asserts: >-
+    zero hex literals remain in NPDevManager/ui outside tokens.css, the engine and a11y.css; any new one fails the
+    check; the render check follows Light and High contrast through the Monitor wall.
+  provenRed: true
+note: >-
+  2026-11-03: the mapping is by hex value, not by looking at each screen, and the Monitor's CRT glass screens now
+  use --t-bg-sunken, so on Light they are pale grey instead of near-black (readable, but the CRT look is Dark-only).
+  Screenshots of the Monitor under Light and High contrast were reviewed for Light only; the other themes' look
+  on the remaining screens has not been eyeballed. The axe scan (ACC-4) is what measures contrast under Dark.

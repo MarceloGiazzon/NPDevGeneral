@@ -2,13 +2,34 @@ id: ACC-2
 title: Manager -- status is never colour alone (icon and word together)
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
 surface: manager/ui
 detail: >-
   Every pass/fail/warn row and Monitor card carries an icon and a word; decorative glyphs are aria-hidden.
 resolution: >-
-  Done when no status element has a colour class as its only signal.
+  Ready/doctor rows and Share rows carry the status glyph (aria-hidden) AND a word (np-sr-only: Pass, Fail, Warning,
+  Not applicable, Key, Missing); the Scrap Manager run rows show a check or cross inside the verdict square with
+  a green/red word; Monitor LEDs are aria-hidden (their counts and cards already say the state in words); the decorative
+  leading glyph of seven screen headings is aria-hidden.
+files:
+- NPDevManager/ui/app.js
+- NPDevManager/ui/hosting.js
+- NPDevManager/ui/monitor.js
+- NPDevManager/ui/monitor.css
+- NPDevManager/ui/scrap.js
+- NPDevManager/ui/index.html
+verification: UNIT_TESTED
+guard:
+  kind: manual
+  ref: scripts/quality/check-manager-ui-render.mjs
+  asserts: every Ready check row has a non-empty status word next to its glyph (10 of 10 in the stub fixture).
+  provenRed: false
+note: >-
+  2026-11-03: the grep-level claim 'no status element whose only signal is a colour class' was reviewed by reading
+  the class lists in the JS (check rows, run rows, LEDs, chips); the Verification/Evals/Packs/GPU chips already
+  print a word. There is no automated check that would catch a NEW colour-only status.

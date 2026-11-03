@@ -163,6 +163,35 @@ await page.waitForTimeout(500);
 const results = [];
 const check = (name, ok, detail) => { results.push({ name, ok, detail }); };
 
+// ---- Accessibility measurement (ACC-4) ---------------------------------------------------------
+// The vendored axe-core build the golden browser routines use (NPDevSamples/scripts/browser/vendor/axe-core)
+// is injected on the Manager's key screens and the per-impact violation NODE counts are compared with the
+// floor in scripts/policy/manager-a11y-baseline.json. Same ratchet shape as scripts/policy/a11y-baseline.json:
+// the floor may only FALL; a higher count fails; NPDEV_A11Y_WRITE=1 records a lower (or first) measurement.
+const AXE_SRC = readFileSync(path.join(REPO, "NPDevSamples", "scripts", "browser", "vendor", "axe-core", "axe.min.js"), "utf8");
+const A11Y_BASELINE_PATH = path.join(REPO, "scripts", "policy", "manager-a11y-baseline.json");
+const a11yBaseline = existsSync(A11Y_BASELINE_PATH)
+  ? JSON.parse(readFileSync(A11Y_BASELINE_PATH, "utf8"))
+  : { schema: "npdev-manager-a11y-baseline.v1", screens: {} };
+const a11yMeasured = {};
+async function axeScan(screenId) {
+  if (!(await page.evaluate(() => typeof window.axe !== "undefined"))) await page.addScriptTag({ content: AXE_SRC });
+  const out = await page.evaluate(async () => {
+    const r = await window.axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa", "best-practice"] } });
+    const counts = { critical: 0, serious: 0, moderate: 0, minor: 0 };
+    const rules = {};
+    const targets = {};
+    for (const v of r.violations) {
+      counts[v.impact] = (counts[v.impact] || 0) + v.nodes.length;
+      rules[v.id] = (rules[v.id] || 0) + v.nodes.length;
+      targets[v.id] = v.nodes.slice(0, 4).map((n) => n.target.join(" ") + " :: " + (n.any[0] && n.any[0].message || n.failureSummary || "").slice(0, 160));
+    }
+    return { counts, rules, targets };
+  });
+  a11yMeasured[screenId] = out;
+  return out;
+}
+
 // ---- Navigation (NAV-1): four places from navigation.json, the language follows the picker ------
 const places = await page.$$eval(".tabs .place", (e) => e.map((b) => b.dataset.place));
 check("the main bar renders the four places", places.join(",") === "setup,apps,activity,settings", places.join(","));
@@ -180,6 +209,18 @@ check("choosing Portugues relabels the navigation", /Meus apps/.test(ptLabel) &&
 await page.selectOption("#lang-picker", "en");
 await page.waitForTimeout(200);
 await page.screenshot({ path: path.join(OUT, "navigation-settings.png"), fullPage: false });
+
+await page.click('.tabs .place[data-place="setup"]');
+await page.waitForTimeout(150);
+await axeScan("ready");
+// ACC-2 / ACC-3: a status row is a glyph AND a word, and the progress and result regions are live.
+const rowStats = await page.$$eval("#doctor-checks .check-row, .check-row", (rows) => ({
+  rows: rows.length,
+  withWord: rows.filter((r) => (r.querySelector(".mark .np-sr-only")?.textContent || "").trim().length > 0).length,
+}));
+check("every Ready row carries a status word as well as a glyph", rowStats.rows > 0 && rowStats.rows === rowStats.withWord, JSON.stringify(rowStats));
+const liveIds = await page.$$eval("#jdk-status, #python-status, #setup-status, #setup-announce, #new-app-status", (e) => e.map((x) => x.getAttribute("aria-live")));
+check("install, setup and create-app results are polite live regions", liveIds.length === 5 && liveIds.every((v) => v === "polite"), liveIds.join(","));
 
 // ---- The Monitor ---------------------------------------------------------------------------
 // The Activity place has one screen, so its place button IS the Monitor's tab.
@@ -254,6 +295,7 @@ await page.click("#insp-close");
 await page.waitForTimeout(500);
 
 await page.screenshot({ path: path.join(OUT, "monitor-wall.png"), fullPage: false });
+await axeScan("monitor");
 
 // ---- The Scrap Manager ---------------------------------------------------------------------
 // NAV-1: it lives in the My apps strip, which shows only once that place is open.
@@ -319,6 +361,8 @@ check("the dialog is a native modal that holds focus",
   await page.$eval("#support-dialog", (d) => d.open && d.matches(":modal")), "");
 await page.screenshot({ path: path.join(OUT, "support-dialog.png"), fullPage: false });
 await page.keyboard.press("Escape");
+await page.waitForTimeout(150);
+await axeScan("install");
 
 // ---- Appearance & accessibility (THM-3, THM-4, ACC-1) ---------------------------------------------
 const cssVar = (name) => page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);
@@ -337,6 +381,11 @@ const lightBg = JSON.parse(readFileSync(path.join(REPO, "NPDevContract", "themes
 check("choosing Light repaints the whole window", (await cssVar("--t-bg")) === lightBg, await cssVar("--t-bg"));
 check("the choice was sent to be saved", (await page.evaluate(() => window.__appearance.theme_id)) === "npdev-light", "");
 await page.screenshot({ path: path.join(OUT, "appearance-light.png"), fullPage: false });
+await page.click('.theme-card[data-theme="npdev-dark"]');
+await page.waitForTimeout(150);
+await axeScan("appearance");
+await page.click('.theme-card[data-theme="npdev-light"]');
+await page.waitForTimeout(150);
 
 // Load a theme file: live preview, Keep stores it, a broken file changes nothing.
 const summerBg = JSON.parse(season("summer")).colors.bg;
@@ -398,6 +447,59 @@ check("a restart paints the remembered theme before the Manager answers (no flas
   (await cssVar("--t-bg")) === summerBg, await cssVar("--t-bg"));
 await page.evaluate(() => sessionStorage.removeItem("hang-appearance"));
 
+// Every screen must follow the theme (THM-5): look at the Monitor wall and a form screen in Light and High contrast.
+for (const themeId of ["npdev-light", "high-contrast"]) {
+  await page.click('.tabs .place[data-place="settings"]');
+  await page.click('.place-strip:not([hidden]) .tab[data-screen="appearance"]');
+  await page.waitForSelector(`.theme-card[data-theme="${themeId}"]`, { timeout: 3000 });
+  await page.click(`.theme-card[data-theme="${themeId}"]`);
+  await page.waitForTimeout(150);
+  await page.click('.tabs .place[data-place="activity"]');
+  await page.waitForSelector("#monitor-grid .crt", { timeout: 3000 });
+  await page.screenshot({ path: path.join(OUT, `monitor-${themeId}.png`), fullPage: false });
+  const bgNow = await cssVar("--t-bg");
+  const wallBg = await page.$eval("#screen-monitor", (e) => getComputedStyle(e).backgroundColor);
+  check(`the Monitor wall follows the ${themeId} theme`, wallBg !== "rgb(11, 13, 16)" || bgNow === "#0b0d10", `${wallBg} vs --t-bg ${bgNow}`);
+}
+await page.click('.tabs .place[data-place="settings"]');
+await page.click('.place-strip:not([hidden]) .tab[data-screen="appearance"]');
+await page.click('.theme-card[data-theme="npdev-dark"]');
+await page.waitForTimeout(150);
+
+// Every other screen the navigation can open gets the same scan, so no screen is left unmeasured.
+await page.click('.tabs .place[data-place="settings"]');
+await page.click('.place-strip:not([hidden]) .tab[data-screen="appearance"]');
+await page.click('.theme-card[data-theme="npdev-dark"]');
+const navScreens = [...new Set(JSON.parse(readFileSync(path.join(UI, "navigation.json"), "utf8")).places.flatMap((p) => p.screens.map((x) => x.screen)))];
+for (const screenId of navScreens.filter((id) => !(id in a11yMeasured))) {
+  await page.evaluate((id) => window.__npdevShowScreen(id), screenId);
+  await page.waitForTimeout(250);
+  await axeScan(screenId);
+}
+
+// ---- ACC-4: compare the measured axe counts with the floor ------------------------------------------
+const IMPACTS = ["critical", "serious", "moderate", "minor"];
+for (const [screenId, out] of Object.entries(a11yMeasured)) {
+  const floor = a11yBaseline.screens[screenId];
+  const total = IMPACTS.reduce((n, k) => n + out.counts[k], 0);
+  if (!floor) {
+    check(`axe: ${screenId} has a recorded floor`, process.env.NPDEV_A11Y_WRITE === "1", `${total} violation node(s) measured, no floor yet (NPDEV_A11Y_WRITE=1 records it)`);
+    continue;
+  }
+  const worse = IMPACTS.filter((k) => out.counts[k] > floor.counts[k]);
+  check(`axe: ${screenId} has no more violations than its floor`, worse.length === 0,
+    `${JSON.stringify(out.counts)} vs floor ${JSON.stringify(floor.counts)}; rules ${JSON.stringify(out.rules)}`);
+}
+if (process.env.NPDEV_A11Y_WRITE === "1") {
+  for (const [screenId, out] of Object.entries(a11yMeasured)) {
+    const floor = a11yBaseline.screens[screenId];
+    const lower = !floor || IMPACTS.every((k) => out.counts[k] <= floor.counts[k]);
+    if (lower) a11yBaseline.screens[screenId] = { counts: out.counts, rules: out.rules };
+  }
+  a11yBaseline.comment = "ACC-4. Ratchet floor per Manager screen (dark theme, stub fixtures), written by scripts/quality/check-manager-ui-render.mjs with NPDEV_A11Y_WRITE=1 from a real axe-core scan. Counts are violation NODE counts per impact; the floor may only fall. Never hand-edit a count downward.";
+  writeFileSync(A11Y_BASELINE_PATH, JSON.stringify(a11yBaseline, null, 2) + "\n");
+}
+
 check("no console or page errors while rendering either screen", consoleErrors.length === 0,
   consoleErrors.slice(0, 3).join(" | "));
 
@@ -407,5 +509,5 @@ server.close();
 const failedChecks = results.filter((r) => !r.ok);
 for (const r of results) console.log(`  ${r.ok ? "PASS" : "FAIL"}  ${r.name}${r.detail ? "  -- " + r.detail : ""}`);
 console.log(`\n${results.length - failedChecks.length}/${results.length} checks passed`);
-writeFileSync(path.join(OUT, "ui-render-check.json"), JSON.stringify({ results, consoleErrors }, null, 2));
+writeFileSync(path.join(OUT, "ui-render-check.json"), JSON.stringify({ results, consoleErrors, a11y: a11yMeasured }, null, 2));
 process.exit(failedChecks.length ? 1 : 0);

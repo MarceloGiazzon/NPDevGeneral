@@ -98,7 +98,7 @@ function providersRenderTable() {
     </tr>`;
   }).join("");
   el.innerHTML = `<table class="secrets-list">
-    <thead><tr><th>Provider</th><th>Kind</th><th>Key</th><th>Models</th><th>Last test</th><th></th></tr></thead>
+    <thead><tr><th>Provider</th><th>Kind</th><th>Key</th><th>Models</th><th>Last test</th><th><span class="np-sr-only">Actions</span></th></tr></thead>
     <tbody>${body}</tbody>
   </table>`;
 
@@ -282,7 +282,7 @@ function aiRenderModels() {
   }).join("");
   const el = document.getElementById("ai-models-list");
   el.innerHTML = `<table class="secrets-list">
-    <thead><tr><th>Model</th><th>Context</th><th>USD / M tokens in / out</th><th>Effort</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Model</th><th>Context</th><th>USD / M tokens in / out</th><th>Effort</th><th>Status</th><th><span class="np-sr-only">Actions</span></th></tr></thead>
     <tbody>${body || `<tr><td colspan="6" class="dim">no models -- Refresh from server, or add one</td></tr>`}</tbody>
   </table>`;
   el.querySelectorAll("[data-ai-model-toggle]").forEach((btn) => btn.addEventListener("click", () => {
@@ -368,7 +368,7 @@ function aiRenderProfiles() {
   }).join("");
   const el = document.getElementById("ai-profiles-list");
   el.innerHTML = `<table class="secrets-list">
-    <thead><tr><th>Profile</th><th>Provider / model</th><th>Effort</th><th>Then</th><th>Used by</th><th>Last test</th><th></th></tr></thead>
+    <thead><tr><th>Profile</th><th>Provider / model</th><th>Effort</th><th>Then</th><th>Used by</th><th>Last test</th><th><span class="np-sr-only">Actions</span></th></tr></thead>
     <tbody>${body}</tbody>
   </table>`;
   el.querySelectorAll("[data-ai-profile-test]").forEach((btn) =>
@@ -485,7 +485,7 @@ function aiRenderUses() {
   }).join("");
   const el = document.getElementById("ai-uses-list");
   el.innerHTML = `<table class="secrets-list">
-    <thead><tr><th>Feature</th><th>Profile, then fallbacks</th><th>Reaches</th><th>Paid</th><th>This month</th><th></th></tr></thead>
+    <thead><tr><th>Feature</th><th>Profile, then fallbacks</th><th>Reaches</th><th>Paid</th><th>This month</th><th><span class="np-sr-only">Actions</span></th></tr></thead>
     <tbody>${body}</tbody>
   </table>`;
   el.querySelectorAll("[data-ai-bind-save]").forEach((btn) => btn.addEventListener("click", () => {

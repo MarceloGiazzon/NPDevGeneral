@@ -131,7 +131,7 @@ function renderMonitor() {
     ["error", "error"], ["port-conflict", "port taken"], ["unknown", "no signal"],
   ]
     .filter(([key]) => counts[key])
-    .map(([key, label]) => `<span class="count"><span class="led ${LED_FOR[key]}"></span> ${counts[key]} ${label}</span>`)
+    .map(([key, label]) => `<span class="count"><span class="led ${LED_FOR[key]}" aria-hidden="true"></span> ${counts[key]} ${label}</span>`)
     .join("");
 
   const grid = document.getElementById("monitor-grid");
@@ -351,7 +351,7 @@ function cardHtml(app) {
     </div>
     <div class="bezel-bottom">
       <span class="brand">NPDEV · CRT-9000</span>
-      <span class="power"><small>PWR</small><span class="led ${LED_FOR[state]}"></span></span>
+      <span class="power"><small>PWR</small><span class="led ${LED_FOR[state]}" aria-hidden="true"></span></span>
     </div>
     <div class="controls">
       <button class="knob primary" data-open-url="${esc(app.baseUrl || "")}" ${app.baseUrl && state === "running" ? "" : "disabled"}>⛶ OPEN</button>

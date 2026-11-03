@@ -14,25 +14,25 @@
 #screen-providers .btn {
   font-family: var(--font-ui); font-size: 12.5px; font-weight: 600;
   padding: 7px 16px; border-radius: 6px; cursor: pointer; text-decoration: none;
-  background: #1c2b1f; color: var(--ok); border: 1px solid #2c5236;
+  background: var(--t-positive-tint); color: var(--ok); border: 1px solid var(--t-positive-edge);
 }
-#screen-providers .btn:hover { background: #234030; }
-#screen-providers .btn.ghost { background: transparent; color: var(--muted); border-color: #262c33; padding: 4px 10px; font-size: 11.5px; }
+#screen-providers .btn:hover { background: var(--t-positive-edge); }
+#screen-providers .btn.ghost { background: transparent; color: var(--muted); border-color: var(--t-border); padding: 4px 10px; font-size: 11.5px; }
 #screen-providers .btn.ghost:hover { color: var(--text); }
 #screen-providers .status-line.err, #screen-providers .err { color: var(--err); }
 #screen-providers .dim { color: var(--muted); font-size: 11px; }
 
 .providers-store {
   font-size: 12px; color: var(--text); margin-bottom: 12px;
-  padding: 6px 10px; border-left: 2px solid #2c5236; background: var(--bg2);
+  padding: 6px 10px; border-left: 2px solid var(--t-positive-edge); background: var(--bg2);
 }
 .providers-store.bad { border-left-color: var(--err); }
 
 .providers-kind {
   font-family: var(--font-mono); font-size: 10.5px; padding: 2px 7px; border-radius: 10px;
-  border: 1px solid #262c33; color: var(--muted);
+  border: 1px solid var(--t-border); color: var(--muted);
 }
-.providers-kind.free { color: var(--ok); border-color: #2c5236; }
+.providers-kind.free { color: var(--ok); border-color: var(--t-positive-edge); }
 .providers-kind.paid { color: var(--err); }
 
 .providers-gap { margin-top: 18px !important; }
@@ -43,12 +43,12 @@
 #screen-providers .packs-toolbar .tabbar { margin-bottom: 0; }
 .ai-source {
   font-family: var(--font-mono); font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-left: 6px;
-  color: var(--warn, #e8c35a); border: 1px solid #4a4128;
+  color: var(--warn, var(--t-warning)); border: 1px solid var(--t-warning-edge);
 }
 table.secrets-list tr.ai-off td { opacity: .5; }
 .ai-inline { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
 .ai-inline select, .ai-inline input, #screen-providers td select, #screen-providers td input.ai-then {
-  background: var(--bg2); color: var(--text); border: 1px solid #262c33; border-radius: 4px;
+  background: var(--bg2); color: var(--text); border: 1px solid var(--t-border); border-radius: 4px;
   padding: 3px 6px; font-size: 12px;
 }
 #screen-providers td input.ai-then { width: 120px; margin-left: 4px; }

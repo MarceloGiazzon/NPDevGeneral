@@ -2,14 +2,35 @@ id: ACC-4
 title: Manager -- measure accessibility with axe in the render check, ratcheted
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: '2026-11-03'
 source: >-
-  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
 surface: manager/ui
 detail: >-
-  check-manager-ui-render.mjs injects axe on Home, Monitor, Appearance and Setup; counts in
-  scripts/policy/manager-a11y-baseline.json, floor only falls.
+  check-manager-ui-render.mjs injects axe on Home, Monitor, Appearance and Setup; counts in scripts/policy/manager-a11y-baseline.json,
+  floor only falls.
 resolution: >-
-  Done when the baseline exists with real numbers and a removed label raises the count and fails the check.
+  check-manager-ui-render.mjs injects the vendored axe-core (NPDevSamples/scripts/browser/vendor/axe-core) on every
+  screen the navigation opens (19) and compares per-impact violation node counts with scripts/policy/manager-a11y-baseline.json:
+  more than the floor fails; NPDEV_A11Y_WRITE=1 records a first or lower measurement; the per-rule counts and the
+  first target nodes are written to ui-render-check.json. The first measurement found 3 serious and 4 moderate on
+  the Monitor and several on the form screens; they were fixed rather than recorded, so every floor is 0.
+files:
+- scripts/quality/check-manager-ui-render.mjs
+- scripts/policy/manager-a11y-baseline.json
+verification: UNIT_TESTED
+guard:
+  kind: manual
+  ref: scripts/quality/check-manager-ui-render.mjs
+  asserts: >-
+    a deliberately removed label (the mode select) raises select-name to critical 1 on the Appearance screen and
+    fails the 'no more violations than its floor' check.
+  provenRed: true
+note: >-
+  2026-11-03: the scan runs on the Dark theme with stub fixtures, so it does not see states only real data produces
+  (error text, long lists) and does not measure Light or High contrast; that is ACC-4's natural follow-up. The render
+  check is not part of run-all-gates (it needs Playwright, which this repo does not depend on) -- it is the cadence
+  the earlier Manager checks already had.

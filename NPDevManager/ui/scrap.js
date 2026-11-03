@@ -137,7 +137,7 @@ async function refreshScrapList() {
           .map(
             (r) => `
         <div class="runrow" data-run="${sEsc(r.runId)}">
-          <span class="dot ${r.verdict && r.verdict.green ? "green" : "red"}"></span>
+          <span class="dot ${r.verdict && r.verdict.green ? "green" : "red"}"><span class="np-sr-only">${r.verdict && r.verdict.green ? "green" : "red"}</span></span>
           <span>${sEsc((r.definition && r.definition.scenarioName) || r.runId)}
             <br><span class="meta">${sEsc(r.startedAt || r.runId)} · ${r.stepCount || 0} steps${
               r.baselineDiff && r.baselineDiff.screenshotsChanged
@@ -249,7 +249,7 @@ function renderRun(run) {
           ${verdict.green ? "" : `<button class="btn" id="run-repair" data-needs-engine="1">Ask assistant to fix…</button>`}
         </span>
       </div>
-      ${(verdict.reasons || []).map((r) => `<p class="subtitle" style="color:#e2b7b3">why not green: ${sEsc(r)}</p>`).join("")}
+      ${(verdict.reasons || []).map((r) => `<p class="subtitle" style="color:var(--t-negative)">why not green: ${sEsc(r)}</p>`).join("")}
 
       <h3 style="margin-top:14px">Identity</h3>
       <div class="irow"><span class="k">routine sha256</span><span class="v">${sEsc(definition.contentSha256 || "—")}</span><span></span></div>

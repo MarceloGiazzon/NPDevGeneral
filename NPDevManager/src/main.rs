@@ -1802,7 +1802,7 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.8.0: Appearance & accessibility (Settings) -- pick Dark, Light, Retro, Synth, Farm, Warm, Windows or \
+    "0.8.1: Every colour in every screen now follows your theme (no hard-coded colours left), statuses show a word as well as a colour, progress is announced to screen readers, and all 19 screens pass the axe accessibility scan. Before that: Appearance & accessibility (Settings) -- pick Dark, Light, Retro, Synth, Farm, Warm, Windows or \
      High contrast, load a theme file, or ask any AI for a new theme (you preview it and can undo); text \
      size, motion, focus, spacing, links and colour-blind safe status colours; remembered between starts \
      with no flash. Before that: one look for the whole window, Get help with this error (copy a redacted \

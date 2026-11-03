@@ -134,8 +134,11 @@ function renderCheckRows(container, checks) {
       check.status === "fail" && check.fixCommand
         ? `<button class="fix-btn" data-fix="${escapeHtml(check.fixCommand)}">Fix this</button>`
         : "";
+    // ACC-2: the mark is an icon AND a word -- the glyph for the eye, the word for a screen reader --
+    // so a row never relies on its colour class alone.
+    const markWord = na ? "Not applicable" : check.status === "pass" ? "Pass" : check.status === "fail" ? "Fail" : "Warning";
     row.innerHTML = `
-      <span class="mark">${na ? "–" : markFor(check.status)}</span>
+      <span class="mark"><span aria-hidden="true">${na ? "–" : markFor(check.status)}</span><span class="np-sr-only">${markWord}</span></span>
       <span class="name">${escapeHtml(CHECK_NAMES[check.id] || check.name)}</span>
       ${na ? naText : detail}
       ${fixBtn}
@@ -655,6 +658,7 @@ document.getElementById("setup-run-btn").addEventListener("click", async () => {
   };
   lastSetupNarration = "";
   progressEl.hidden = false;
+  progressEl.closest("section").setAttribute("aria-busy", "true");
   tick();
   const timer = setInterval(tick, 1000);
   try {
@@ -673,6 +677,7 @@ document.getElementById("setup-run-btn").addEventListener("click", async () => {
   } finally {
     clearInterval(timer);
     progressEl.hidden = true;
+    progressEl.closest("section").removeAttribute("aria-busy");
     btn.disabled = false;
     await refreshSetupStatus();
   }
@@ -685,6 +690,14 @@ let lastSetupNarration = "";
 listen("setup-narration", (event) => {
   const line = String(event.payload);
   lastSetupNarration = line.length > 160 ? `${line.slice(0, 157)}...` : line;
+  // ACC-3: tell a screen reader about progress, but at most once every 6 seconds -- Gradle narrates
+  // hundreds of lines and announcing each one would make the announcement useless.
+  const now = Date.now();
+  if (now - (window.__lastSetupAnnounce || 0) > 6000) {
+    window.__lastSetupAnnounce = now;
+    const announce = document.getElementById("setup-announce");
+    if (announce) announce.textContent = lastSetupNarration;
+  }
   const logEl = document.getElementById("setup-log");
   logEl.hidden = false;
   logEl.textContent += line + "\n";
@@ -733,7 +746,7 @@ function renderAppPaths() {
   holder.innerHTML = monitoredPaths
     .map(
       (p, i) =>
-        `<span class="path-chip">${escapeHtml(p)}<button class="path-chip-x" data-rm="${i}" title="Remove">✕</button></span>`
+        `<span class="path-chip">${escapeHtml(p)}<button class="path-chip-x" data-rm="${i}" title="Remove" aria-label="Remove ${escapeHtml(p)}">✕</button></span>`
     )
     .join("");
   holder.querySelectorAll("[data-rm]").forEach((btn) => {

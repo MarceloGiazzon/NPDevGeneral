@@ -10,19 +10,6 @@
     "theme-engine.js": "byte-identical twin shared with generated apps; its hex literals are candidate colours for cvdSafe and bevel highlights, i.e. theme-engine data",
     "a11y.css": "byte-identical twin shared with generated apps; its two hex literals are the focus-ring fallback when no theme token is set"
   },
-  "frozenCount": 283,
-  "perFile": {
-    "app.css": 6,
-    "dbio.css": 10,
-    "evals.css": 25,
-    "gpuchecks.css": 16,
-    "monitor.css": 125,
-    "packs.css": 20,
-    "provenance.css": 9,
-    "providers.css": 10,
-    "scrap.js": 1,
-    "secrets.css": 14,
-    "studio.css": 23,
-    "verification.css": 24
-  }
+  "frozenCount": 0,
+  "perFile": {}
 }
