@@ -1,18 +1,18 @@
 {
-  "closedAt": "2026-11-03T00:40:51.0155026Z",
+  "closedAt": "2026-11-03T00:57:21.5318617Z",
   "branch": "main",
-  "head": "b983357e",
-  "headSubject": "fix(quality): run-shell-scenarios no longer leaks the single-use GradleDaemon",
-  "summary": "Fixed run-shell-scenarios leaking the single-use GradleDaemon (b983357e): per-run -Dnpdev.runMarker in org.gradle.jvmargs, finally stops only marked processes (new Get-NPDevProcessIdsByCommandLineMarker in npdev-common.ps1).",
-  "nextStep": "After 2026-11-03 08:00 UTC: python run_bench run --run-id cal-gemini-compact --skip-done --knowledge-file Build/npdev-ai/core-context/bundle-compact.json --provider gemini --repair-mode stateless --stop-when-stuck 3 (only bench-023 left), then run_bench matrix --out <scratch> and publish a NEW bench page. Optionally port the GradleDaemon marker pattern to other --no-daemon bootRun scripts (run-journeys, run-behavior-probes, run-f6-showcase, fast-gate canary).",
+  "head": "e17b3220",
+  "headSubject": "fix(quality): every bootRun launcher stops its own single-use GradleDaemon",
+  "summary": "GradleDaemon leak fixed in every Start-Process bootRun launcher (b983357e, e17b3220): npdev-common New-NPDevRunMarker / New-NPDevGradleRunMarkerArgs / Stop-NPDevMarkedProcesses; 7 scripts wired.",
+  "nextStep": "After 2026-11-03 08:00 UTC: python run_bench run --run-id cal-gemini-compact --skip-done --knowledge-file Build/npdev-ai/core-context/bundle-compact.json --provider gemini --repair-mode stateless --stop-when-stuck 3 (only bench-023 left), then run_bench matrix --out <scratch> and publish a NEW bench page.",
   "plan": "",
-  "blocked": "Gemini bench-023: free-tier quota (HTTP 429) until ~2026-11-03 08:00 UTC.",
-  "verified": "run-shell-scenarios -ReuseBuild green in 96s under digest runner, no java left behind. Full run-all-gates NOT run.",
+  "blocked": "Gemini bench-023: free-tier quota (HTTP 429) until ~2026-11-03 08:00 UTC. OWN-2 is owner-only outreach.",
+  "verified": "T1 fast gate PASSED; shell-scenarios, journeys 36/36, behavior-probes 142/142, f6-showcase 5/5, navigation-reprojection probe all green with no java left behind. run-scale-proof parse-checked only. Full run-all-gates NOT run.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "b983357e fix(quality): run-shell-scenarios no longer leaks the single-use GradleDaemon",
-    "07b5bf96 chore(session): handoff - fix load-time re-render storm (401 flake), gemini bench still quota-blocked"
+    "e17b3220 fix(quality): every bootRun launcher stops its own single-use GradleDaemon",
+    "bc98bbe3 chore(session): handoff - GradleDaemon leak fixed in run-shell-scenarios, gemini bench still quota-blocked"
   ]
 }
