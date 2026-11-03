@@ -344,6 +344,23 @@ function Get-NPDevDescendantProcessIds([int]$RootProcessId) {
     return @($descendants)
 }
 
+# PIDs of live processes whose command line contains Marker. Used to find a process this script
+# started but whose parent already died (so Get-NPDevDescendantProcessIds can no longer reach it),
+# e.g. the single-use GradleDaemon forked by `gradlew --no-daemon`. Non-Windows: `ps -A -o pid= -o args=`.
+function Get-NPDevProcessIdsByCommandLineMarker([string]$Marker) {
+    if ([string]::IsNullOrWhiteSpace($Marker)) { return @() }
+    if ($IsWindows) {
+        return @(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($Marker) } |
+            ForEach-Object { [int]$_.ProcessId })
+    }
+
+    $ids = [System.Collections.Generic.List[int]]::new()
+    foreach ($line in @(& ps -A -o pid= -o args= 2>$null)) {
+        if ("$line" -match '^\s*(\d+)\s+(.*)$' -and $Matches[2].Contains($Marker)) { $ids.Add([int]$Matches[1]) | Out-Null }
+    }
+    return @($ids)
+}
+
 # PIDs of processes LISTENING on a TCP port. Windows: Get-NetTCPConnection. Non-Windows: lsof, else
 # `ss -ltnp`; returns an empty list when neither tool is installed (use Test-NPDevPortFree to learn
 # whether the port is taken without knowing who holds it).
