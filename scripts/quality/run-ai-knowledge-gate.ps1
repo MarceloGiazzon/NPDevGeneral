@@ -1042,6 +1042,16 @@ try {
         $failures += "the Manager's hard-coded colour count moved: see scripts/quality/check-manager-css-tokens.py output above -- use a --t-* token from NPDevManager/ui/tokens.css, or lower frozenCount in scripts/policy/manager-css-token-baseline.json"
     }
 
+    # I18N-1 (2026-11-03): the Manager speaks the language its picker says by translating what each screen
+    # draws from NPDevManager/ui/i18n/<lang>.json. A new English string with no entry just stays English, so
+    # this is what notices: every string index.html draws must be in every shipped catalogue, placeholders
+    # must agree, and a key nothing draws any more is stale. (The runtime half is check-manager-ui-render.mjs.)
+    Write-Host '[55/55] Checking every static Manager string is translated in every shipped language...'
+    & $py "scripts/quality/check-manager-i18n.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a Manager string has no translation: see scripts/quality/check-manager-i18n.py output above -- add it to NPDevManager/ui/i18n/<lang>.json (run the checker with --list to print what is missing)"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red

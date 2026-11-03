@@ -518,7 +518,7 @@ document.getElementById("local-repo-pick-btn").addEventListener("click", async (
   try {
     await invoke("set_local_repo_path", { path });
   } catch (err) {
-    alert(`could not use ${path}: ${err}`);
+    alert(NPDevI18n.tr("could not use {path}: {err}", { path, err }));
     return;
   } finally {
     await refreshLocalRepoConfig();
@@ -539,7 +539,7 @@ document.getElementById("local-repo-toggle").addEventListener("change", async (e
       try {
         await invoke("set_local_repo_path", { path: cfg.path });
       } catch (err) {
-        alert(`could not use ${cfg.path}: ${err}`);
+        alert(NPDevI18n.tr("could not use {path}: {err}", { path: cfg.path, err }));
       }
     } else {
       document.getElementById("local-repo-pick-btn").click();
@@ -577,7 +577,7 @@ document.getElementById("version-install-btn").addEventListener("click", async (
     // Setup's status names the CURRENT version, which this download may or may not have changed.
     await refreshSetupStatus();
   } catch (err) {
-    alert(`could not install ${tag}: ${err}`);
+    alert(NPDevI18n.tr("could not install {tag}: {err}", { tag, err }));
   } finally {
     btn.disabled = false;
     bar.hidden = true;
@@ -1227,7 +1227,7 @@ document.getElementById("run-start-btn").addEventListener("click", async () => {
   const appDir = document.getElementById("run-app-dir").value.trim();
   const port = parseInt(document.getElementById("run-port").value, 10) || 8080;
   if (!appDir) {
-    alert("pick an app folder first");
+    alert(NPDevI18n.tr("pick an app folder first"));
     return;
   }
   const logEl = document.getElementById("run-log");
@@ -1314,8 +1314,10 @@ document.getElementById("db-reset-btn").addEventListener("click", async () => {
     return;
   }
   const answer = prompt(
-    `This DELETES all data in this app's database and removes its container.\n\n` +
-      `${appDir}\n\nThis cannot be undone. To confirm, type:\n${DB_RESET_CONFIRMATION}`
+    NPDevI18n.tr(
+      "This DELETES all data in this app's database and removes its container.\n\n{appDir}\n\nThis cannot be undone. To confirm, type:\n{confirmation}",
+      { appDir, confirmation: DB_RESET_CONFIRMATION }
+    )
   );
   if (answer !== DB_RESET_CONFIRMATION) {
     const out = document.getElementById("db-output");
@@ -1434,7 +1436,7 @@ async function refreshVersionsScreen() {
   });
   container.querySelectorAll("[data-remove]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      if (!confirm(`Remove ${btn.dataset.remove}? This deletes its folder.`)) return;
+      if (!confirm(NPDevI18n.tr("Remove {version}? This deletes its folder.", { version: btn.dataset.remove }))) return;
       try {
         await invoke("remove_installed_version", { tag: btn.dataset.remove });
         await refreshVersionsScreen();

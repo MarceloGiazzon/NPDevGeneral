@@ -673,6 +673,43 @@ await page.waitForTimeout(250);
 check("no tasks yet says how to get some", /run_digest/.test(await page.textContent("#jobs-root")), "");
 await page.evaluate(() => { window.__jobsEmpty = false; });
 
+// ---- I18N-1: the whole window follows the language picker ---------------------------------------------------
+// i18n.js translates what every screen DRAWS from ui/i18n/pt.json, so this drives the real window: switch to
+// Portuguese, look at a static screen, text a script writes afterwards, and every screen's leftovers, then
+// switch back. Last in the file on purpose: everything above asserts English text.
+await page.evaluate(() => window.__npdevShowScreen("ready"));
+await page.evaluate(() => NPDevI18n.setLang("pt"));
+await page.waitForTimeout(400);
+check("i18n: <html lang> follows the picker", (await page.evaluate(() => document.documentElement.lang)) === "pt", "");
+check("i18n: a static button is translated", (await page.textContent("#doctor-refresh")).trim() === "Verificar de novo", await page.textContent("#doctor-refresh"));
+check("i18n: a static heading is translated", /Bancos de dados/.test(await page.textContent("#screen-ready h2")), "");
+check("i18n: an attribute (aria-label) is translated", (await page.getAttribute("#fake-banner", "aria-label")) === "Modo de simulação", String(await page.getAttribute("#fake-banner", "aria-label")));
+await page.evaluate(() => {
+  const p = document.createElement("p");
+  p.id = "i18n-probe";
+  p.textContent = "Run setup";
+  document.getElementById("screen-ready").append(p);
+});
+await page.waitForTimeout(100);
+check("i18n: text a script writes later is translated", (await page.textContent("#i18n-probe")) === "Executar a configuração", await page.textContent("#i18n-probe"));
+await page.evaluate(() => { document.getElementById("i18n-probe").textContent = "Stop"; });
+await page.waitForTimeout(100);
+check("i18n: text a script REWRITES is translated again", (await page.textContent("#i18n-probe")) === "Parar", await page.textContent("#i18n-probe"));
+await page.evaluate(() => { document.getElementById("i18n-probe").innerHTML = "<code>npdev doctor</code> Run setup"; });
+await page.waitForTimeout(100);
+check("i18n: <code> is never translated", (await page.textContent("#i18n-probe code")) === "npdev doctor", "");
+// every screen, in Portuguese, then ask the engine what it could not translate
+const screens = await page.evaluate(() => Array.from(document.querySelectorAll("main > section.screen")).map((s) => s.id.replace("screen-", "")));
+for (const s of screens) { await page.evaluate((n) => window.__npdevShowScreen(n), s); await page.waitForTimeout(150); }
+const untranslated = await page.evaluate(() => NPDevI18n.missingNow());
+writeFileSync(path.join(OUT, "i18n-untranslated.json"), JSON.stringify(untranslated, null, 1));
+check("i18n: every screen's text is in the Portuguese catalogue", untranslated.length === 0,
+  `${untranslated.length} untranslated: ${JSON.stringify(untranslated.slice(0, 12))}`);
+await page.evaluate(() => NPDevI18n.setLang("en"));
+await page.waitForTimeout(400);
+check("i18n: back to English restores the original text", (await page.textContent("#doctor-refresh")).trim() === "Re-check"
+  && (await page.getAttribute("#fake-banner", "aria-label")) === "Stub mode", "");
+
 // ---- ACC-4: compare the measured axe counts with the floor ------------------------------------------
 const IMPACTS = ["critical", "serious", "moderate", "minor"];
 for (const [screenId, out] of Object.entries(a11yMeasured)) {

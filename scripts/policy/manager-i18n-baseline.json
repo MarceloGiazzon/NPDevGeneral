@@ -1,0 +1,4 @@
+{
+  "comment": "I18N-1 ratchet: prose string literals in the Manager's screen scripts with no catalogue entry. May only fall; written by scripts/quality/check-manager-i18n.py --write-baseline (never raise it by hand).",
+  "uncoveredScriptStrings": 0
+}

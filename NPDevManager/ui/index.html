@@ -53,7 +53,7 @@
     its section id; nothing indexes screens by position, so where a screen is reached from is
     presentation only. The version chip is moved into the rendered bar.
   -->
-  <nav class="tabs" aria-label="Main">
+  <nav class="tabs" aria-label="Main" translate="no">
     <span id="manager-version" class="manager-version" title="NPDev Manager version"></span>
   </nav>
 
@@ -61,7 +61,7 @@
     <!-- Ready. Sections are addressed by id; the tab strip above sets the ORDER they are shown in, which is no longer this file's order. -->
     <section id="screen-home" class="screen" hidden>
       <h1 class="visually-hidden">Home</h1>
-      <div id="home-root" aria-live="polite"></div>
+      <div id="home-root" aria-live="polite" translate="no"></div>
     </section>
 
     <section id="screen-ready" class="screen">
@@ -340,13 +340,13 @@
 
     <!-- Versions -->
     <section id="screen-appearance" class="screen" hidden>
-      <div id="appearance-root"></div>
+      <div id="appearance-root" translate="no"></div>
     </section>
 
     <section id="screen-jobs" class="screen" hidden>
       <h1 id="jobs-title">Tasks</h1>
       <p id="jobs-lead" class="field-hint"></p>
-      <div id="jobs-root"></div>
+      <div id="jobs-root" translate="no"></div>
     </section>
 
     <section id="screen-versions" class="screen" hidden>
@@ -1192,6 +1192,7 @@
   <div class="lightbox" id="lightbox"><img alt="screenshot" /></div>
   <div class="toast" id="monitor-toast" role="status" aria-live="polite"></div>
 
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
   <script src="nav.js"></script>
   <script src="help.js"></script>

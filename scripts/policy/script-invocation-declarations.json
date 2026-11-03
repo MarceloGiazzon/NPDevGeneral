@@ -432,6 +432,9 @@
     "scripts/quality/check-manager-version-bump.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-manager-i18n.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-manager-css-tokens.py": {
       "invocation": "ci-gate"
     },

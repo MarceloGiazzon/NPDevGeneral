@@ -113,8 +113,8 @@ function providersRenderTable() {
     btn.addEventListener("click", () => providersRemove(btn.dataset.providersRemove)));
   el.querySelectorAll("[data-ai-provider-toggle]").forEach((btn) => btn.addEventListener("click", () => {
     const id = btn.dataset.aiProviderToggle;
-    const verb = btn.textContent === "Enable" ? "enable" : "disable";
-    aiChange(["providers", verb, id], `${verb}d ${id}`);
+    const verb = btn.textContent === NPDevI18n.tr("Enable") ? "enable" : "disable";
+    aiChange(["providers", verb, id], NPDevI18n.tr(verb === "enable" ? "enabled {id}" : "disabled {id}", { id }));
   }));
   aiBindResets(el);
 }
@@ -287,8 +287,9 @@ function aiRenderModels() {
   </table>`;
   el.querySelectorAll("[data-ai-model-toggle]").forEach((btn) => btn.addEventListener("click", () => {
     const [provider, model] = btn.dataset.aiModelToggle.split("|");
-    const verb = btn.textContent === "Enable" ? "enable" : "disable";
-    aiChange(["models", verb, provider, model], `${verb}d ${provider}/${model}`);
+    const verb = btn.textContent === NPDevI18n.tr("Enable") ? "enable" : "disable";
+    aiChange(["models", verb, provider, model],
+      NPDevI18n.tr(verb === "enable" ? "enabled {pm}" : "disabled {pm}", { pm: `${provider}/${model}` }));
   }));
   el.querySelectorAll("[data-ai-model-edit]").forEach((btn) => btn.addEventListener("click", () => {
     const [provider, id] = btn.dataset.aiModelEdit.split("|");
@@ -377,8 +378,9 @@ function aiRenderProfiles() {
     btn.addEventListener("click", () => aiEditProfile(btn.dataset.aiProfileEdit)));
   el.querySelectorAll("[data-ai-profile-toggle]").forEach((btn) => btn.addEventListener("click", () => {
     const name = btn.dataset.aiProfileToggle;
-    const verb = btn.textContent === "Enable" ? "enable" : "disable";
-    aiChange(["profiles", verb, name], `${verb}d profile ${name}`);
+    const verb = btn.textContent === NPDevI18n.tr("Enable") ? "enable" : "disable";
+    aiChange(["profiles", verb, name],
+      NPDevI18n.tr(verb === "enable" ? "enabled profile {name}" : "disabled profile {name}", { name }));
   }));
   el.querySelectorAll("[data-ai-profile-remove]").forEach((btn) => btn.addEventListener("click", () =>
     aiChange(["profiles", "remove", btn.dataset.aiProfileRemove], `removed profile ${btn.dataset.aiProfileRemove}`)));
@@ -438,7 +440,7 @@ function aiSaveProfile() {
   if (value("ai-profile-effort")) args.push("--effort", value("ai-profile-effort"));
   if (value("ai-profile-max")) args.push("--max-tokens", value("ai-profile-max"));
   if (value("ai-profile-fallback")) args.push("--fallback", value("ai-profile-fallback"));
-  aiChange(args, `${exists ? "saved" : "added"} profile ${name}`);
+  aiChange(args, NPDevI18n.tr(exists ? "saved profile {name}" : "added profile {name}", { name }));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -498,7 +500,7 @@ function aiRenderUses() {
   el.querySelectorAll("[data-ai-paid]").forEach((box) => box.addEventListener("change", () => {
     const feature = box.dataset.aiPaid;
     aiChange(box.checked ? ["spend", "allow-paid", feature] : ["spend", "allow-paid", feature, "--off"],
-      `${feature} ${box.checked ? "may" : "may no longer"} make paid calls`);
+      NPDevI18n.tr(box.checked ? "{feature} may make paid calls" : "{feature} may no longer make paid calls", { feature }));
   }));
   aiBindResets(el);
   aiRenderByProvider();

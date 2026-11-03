@@ -573,7 +573,7 @@ async function openInspector(appDir, focus) {
     monitorState.managerLog = managerLog;
     renderInspector(probe);
     if (focus === "logs") {
-      const acc = [...body.querySelectorAll(".acc")].find((a) => a.querySelector(".hd").textContent.includes("Logs"));
+      const acc = [...body.querySelectorAll(".acc")].find((a) => a.querySelector(".hd").textContent.includes(NPDevI18n.tr("Logs")));
       if (acc) {
         acc.classList.add("open");
         acc.scrollIntoView({ behavior: "smooth", block: "start" });

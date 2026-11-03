@@ -17,53 +17,12 @@
 // Every string in navigation.json is an object keyed by language id. `NPDevI18n.t(obj)` picks the
 // current language and falls back to English. The choice is a per-viewer presentation preference, so
 // it lives in localStorage (wrapped: a private profile can refuse it, and the Manager must still
-// work). Changing it fires `npdev:lang-changed` so other screens can re-render their own text as they
-// gain translations; today the navigation, the place summaries and the language picker follow it.
+// work). Changing it fires `npdev:lang-changed`. The engine itself is i18n.js (I18N-1): it translates
+// every screen's text from `i18n/<lang>.json`, so a screen needs no code to follow the picker.
 
 (function () {
-  const STORAGE_KEY = "npdev.manager.lang";
-
-  function storedLang() {
-    try {
-      return window.localStorage.getItem(STORAGE_KEY);
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function storeLang(id) {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, id);
-    } catch (e) {
-      /* a refused write only means the choice is not remembered next time */
-    }
-  }
-
-  const I18n = {
-    lang: "en",
-    languages: [{ id: "en", label: "English" }],
-    t(value) {
-      if (value == null) return "";
-      if (typeof value === "string") return value;
-      return value[I18n.lang] ?? value.en ?? Object.values(value)[0] ?? "";
-    },
-    setLang(id) {
-      if (!I18n.languages.some((l) => l.id === id)) id = "en";
-      I18n.lang = id;
-      document.documentElement.lang = id;
-      storeLang(id);
-      document.dispatchEvent(new CustomEvent("npdev:lang-changed", { detail: { lang: id } }));
-    },
-  };
-  window.NPDevI18n = I18n;
-
-  function initialLang(languages) {
-    const ids = languages.map((l) => l.id);
-    const stored = storedLang();
-    if (stored && ids.includes(stored)) return stored;
-    const browser = (navigator.language || "en").slice(0, 2).toLowerCase();
-    return ids.includes(browser) ? browser : "en";
-  }
+  // The language engine (state, storage, catalogue, DOM translation) is i18n.js, loaded before this file.
+  const I18n = window.NPDevI18n;
 
   let nav = null; // the parsed navigation.json
   let activePlace = null;
@@ -278,9 +237,7 @@
     .then((data) => {
       nav = data;
       window.__npdevNav = data;
-      I18n.languages = data.languages;
-      I18n.lang = initialLang(data.languages);
-      document.documentElement.lang = I18n.lang;
+      I18n.init(data.languages);
       render();
     })
     .catch(renderFallback);

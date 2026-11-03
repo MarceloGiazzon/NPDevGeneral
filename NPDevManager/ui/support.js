@@ -71,6 +71,7 @@
     if (dlg) return dlg;
     dlg = document.createElement("dialog");
     dlg.id = "support-dialog";
+    dlg.setAttribute("translate", "no"); // support.js speaks the chosen language itself (t({en, pt}))
     dlg.className = "support-dialog";
     dlg.setAttribute("aria-labelledby", "support-title");
     dlg.innerHTML = `

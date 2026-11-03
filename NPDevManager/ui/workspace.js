@@ -205,6 +205,7 @@
     if (bar && strip.contains(bar)) return paint();
     bar = document.createElement("div");
     bar.id = "workspace-bar";
+    bar.setAttribute("translate", "no"); // workspace.js speaks the chosen language itself (t({en, pt}))
     bar.className = "workspace-bar";
     bar.hidden = true;
     const label = document.createElement("span");

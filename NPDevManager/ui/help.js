@@ -176,15 +176,23 @@ function openHelp(key) {
   const entry = HELP[key];
   if (!entry) return;
   const dialog = helpDialog();
+  // I18N-1: a popup is rich text whose inline tags split its sentences, so it is translated as a WHOLE block
+  // (ui/i18n/<lang>.json, ids `help:<key>:title` / `help:<key>:body`), not sentence by sentence. English is the
+  // fallback for a language with no entry for this popup.
+  const I18n = window.NPDevI18n;
+  const tr = (s) => (I18n ? I18n.tr(s) : s);
+  const title = (I18n && I18n.block(`help:${key}:title`)) || entry.title;
+  const body = (I18n && I18n.block(`help:${key}:body`)) || entry.body;
   const links = (entry.links || [])
-    .map((l, i) => `<li><a href="#" data-help-link="${i}">${l.label} &#8599;</a></li>`)
+    .map((l, i) => `<li><a href="#" data-help-link="${i}">${tr(l.label)} &#8599;</a></li>`)
     .join("");
+  dialog.setAttribute("translate", "no"); // translated above, as a block
   dialog.innerHTML = `
     <div class="help-body">
-      <h2>${entry.title}</h2>
-      ${entry.body}
-      ${links ? `<p class="help-more">Learn more:</p><ul class="help-links">${links}</ul>` : ""}
-      <div class="help-actions"><button type="button" class="help-close">Close</button></div>
+      <h2>${title}</h2>
+      ${body}
+      ${links ? `<p class="help-more">${tr("Learn more:")}</p><ul class="help-links">${links}</ul>` : ""}
+      <div class="help-actions"><button type="button" class="help-close">${tr("Close")}</button></div>
     </div>`;
   dialog.querySelector(".help-close").addEventListener("click", () => dialog.close());
   dialog.querySelectorAll("[data-help-link]").forEach((a) => {

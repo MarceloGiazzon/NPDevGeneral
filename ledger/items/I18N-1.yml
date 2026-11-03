@@ -2,9 +2,9 @@ id: I18N-1
 title: Manager speaks the user's language everywhere -- screens, buttons and help follow the language picker
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-03
-closed: null
+closed: 2026-11-03
 source: >-
   Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md), owner decision D4 (2026-11-03); follows NAV-1.
 surface: manager/ui
@@ -12,3 +12,25 @@ detail: >-
   NAV-1 added the picker (en, pt) and translated the navigation only. The 18 screens, their buttons, status lines and the help popups (help.js, English only; the plan's help-glossary.json has pt) still render English whatever is chosen.
 resolution: >-
   Done when every user-visible string on every screen and every help popup comes from a per-language catalogue, switching language re-renders the open screen, and a checker fails on a string with no English.
+files:
+  - NPDevManager/ui/i18n.js
+  - NPDevManager/ui/i18n/pt.json
+  - NPDevManager/ui/help.js
+  - NPDevManager/ui/nav.js
+  - NPDevManager/ui/index.html
+  - scripts/quality/check-manager-i18n.py
+  - scripts/quality/check-manager-ui-render.mjs
+  - scripts/policy/manager-i18n-baseline.json
+note: >-
+  Closed 2026-11-03, Manager 0.12.0. Design: i18n.js translates what every screen DRAWS from ui/i18n/<lang>.json (flat
+  { English text: translation }, {placeholder} patterns, numeric placeholders, " · "-joined lines), via a MutationObserver that keeps
+  each node's English original, so switching language redraws the open screen in place and switching back restores English; a
+  screen needs no code to follow the picker. Help popups are translated as whole blocks (help:<key>:title/body). The native
+  alert/confirm/prompt dialogs and two status messages go through NPDevI18n.tr. Two script comparisons that read displayed text
+  (the Enable button, the Logs accordion) were made language-proof. check-manager-i18n.py (aiKnowledge gate step 55) fails when a
+  string index.html draws has no entry, when a placeholder disagrees, on a stale key, when a help popup lacks its block, and
+  ratchets script-drawn literals (baseline 0); check-manager-ui-render.mjs asserts in a real browser that every screen draws only
+  catalogued text in pt. LIMITS, stated plainly: English is the source text (no en.json), so "no English" is enforced as "no
+  translation"; the runtime check sees only what the stub fixtures make the screens draw, error paths are covered by the static
+  literal scan (heuristic: text built from pieces at runtime can slip through); home/jobs/workspace/support/appearance keep their
+  own {en, pt} objects; the pt text was written by Claude and has not been read by a native speaker.

@@ -783,8 +783,10 @@ async function applyPrompterModel() {
   // deletes data with no backup at all). The Rust side still independently requires the exact
   // token below -- this dialog is the only thing that got simpler, not the safety check itself.
   const confirmed = confirm(
-    "This OVERWRITES this app's real model.json (a timestamped backup is kept alongside it).\n\n" +
-      `${prompterState.appDir}\n\nApply the validated model now?`
+    NPDevI18n.tr(
+      "This OVERWRITES this app's real model.json (a timestamped backup is kept alongside it).\n\n{appDir}\n\nApply the validated model now?",
+      { appDir: prompterState.appDir }
+    )
   );
   if (!confirmed) {
     applyStatus.textContent = "not confirmed -- model.json was not touched";
