@@ -19,7 +19,7 @@ note: >-
   that runs this repo's check-themes.py --catalogue; first run green). The Manager (0.13.0) has Browse themes and Share this theme on
   Appearance: theme_catalogue.rs fetches the index, verifies sha256 over the downloaded bytes before anything is returned, and builds the
   GitHub new-file URL. Tampered-sha256 refusal is covered by Rust tests and a stub 'tampered-demo' entry in check-manager-ui-render.mjs
-  (131/131). The repo has no LICENSE yet -- the owner's choice; the seeded theme files carry license MIT.
+  (131/131). The owner chose open source and free (2026-11-03): npdev-themes carries an MIT LICENSE (commit 70a00a8, GitHub detects "mit") plus a README Licence section; the seeded theme files carry license MIT.
 guard:
   kind: test
   ref: NPDevManager/src/theme_catalogue.rs#a_tampered_file_is_refused_and_never_returned

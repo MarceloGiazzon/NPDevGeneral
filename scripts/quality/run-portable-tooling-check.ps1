@@ -134,6 +134,9 @@ function Get-PathNeutralityExcludedPaths {
         [pscustomobject]@{ path = "**/MIGRATION_DIGEST.md"; reason = "Historical migration digests preserve source-local path provenance." },
         [pscustomobject]@{ path = "scripts/quality/run-controlled-command-runner-tests.ps1"; reason = "Intentional security-test fixture uses drive-letter examples." },
         [pscustomobject]@{ path = "NPDevCli/tests/test_pack_signing.py"; reason = "GitCoordinateParseUnitTest.test_without_subpath constructs a synthetic git+file:///D:/x/y@v2.0.0 coordinate specifically to test Windows drive-letter parsing -- the string IS the test." },
+        [pscustomobject]@{ path = "NPDevCli/redaction-test-vectors.json"; reason = "Shared redaction vectors (Python and Rust read them) whose job is to prove a Windows profile path such as C:\Users\<name>\... is rewritten to <user>; the drive-letter string IS the input under test." },
+        [pscustomobject]@{ path = "NPDevCli/tests/test_redaction_rules.py"; reason = "Asserts the redactor rewrites a Windows user path and that a synthetic drive-letter value passes through the shared vectors; the string IS the fixture, nothing resolves it as a path." },
+        [pscustomobject]@{ path = "scripts/ai/bench/test_bench.py"; reason = "Asserts bench rejects a Windows-absolute path (C:\Windows\x.py) as an unsafe relative path and fakes USERPROFILE for an env-scrubbing test; synthetic fixtures, never resolved on disk." },
         # 2026-08-23 (T2.1): the entries below are the triage of the first run that ever scanned
         # NPDevMcp/ and scripts/. Every one is a hit that CANNOT reach CI: prose, recorded run
         # output, a synthetic test fixture, or a manual-runbook script CI never invokes. There is

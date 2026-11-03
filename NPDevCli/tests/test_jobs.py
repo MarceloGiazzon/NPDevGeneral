@@ -181,7 +181,9 @@ class RunDigestWritesTheRecordTests(unittest.TestCase):
     def test_run_digest_creates_a_record_heartbeats_and_ends_it(self):
         import run_digest
         with tempfile.TemporaryDirectory() as td:
-            env = {"NPDEV_BUILD_ROOT": td, "CLAUDE_CODE_SESSION_ID": "sess-0001-aaaa"}
+            # CI and NPDEV_JOB_LAUNCHER outrank CLAUDE_CODE_SESSION_ID in launcher_info(); blank them so the
+            # test sees the same launcher on a laptop and on GitHub (CI=true).
+            env = {"NPDEV_BUILD_ROOT": td, "CLAUDE_CODE_SESSION_ID": "sess-0001-aaaa", "CI": "", "NPDEV_JOB_LAUNCHER": ""}
             argv = ["run_digest.py", "--label", "jobtest", "--family", "generic", "--", sys.executable, "-c",
                     "import time;print('first');time.sleep(3);print('last gsk_abcdefghijklmnopqrstuvwx')"]
             with mock.patch.dict(os.environ, env), mock.patch.object(sys, "argv", argv), \
