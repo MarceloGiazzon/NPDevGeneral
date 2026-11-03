@@ -1,18 +1,18 @@
 {
-  "closedAt": "2026-11-03T16:17:10.5560198Z",
+  "closedAt": "2026-11-03T17:16:54.7481007Z",
   "branch": "main",
-  "head": "70c7f797",
-  "headSubject": "feat(manager): the whole window follows the language picker (I18N-1)",
-  "summary": "I18N-1 closed (Manager 0.12.0, 70c7f797): i18n.js translates what screens draw from ui/i18n/pt.json (~850 entries), help popups as whole blocks, native dialogs via NPDevI18n.tr; check-manager-i18n.py = aiKnowledge step 55 (static strings + help blocks + script-literal ratchet at 0); render checker asserts pt in a real browser (123/123). Earlier this session: THM-8 and THM-9 closed.",
-  "nextStep": "THM-10 needs the owner to create the public npdev-themes repo; NAV-6 is the owner's user test. Otherwise: have a Portuguese speaker read ui/i18n/pt.json, then run the FULL aiKnowledge gate (only the i18n/doc/policy checkers + render checker + cargo test were run)",
+  "head": "7101ce0b",
+  "headSubject": "chore(ledger): THM-10 unblocked, npdev-themes repo created",
+  "summary": "I18N-1 closed (Manager 0.12.0, 70c7f797); THM-8 and THM-9 closed earlier this session. Public repo https://github.com/MarceloGiazzon/npdev-themes created (README only, main only, no LICENSE -- owner decides the licence); THM-10 note updated, item still OPEN.",
+  "nextStep": "THM-10: seed npdev-themes with themes/*.json from the built-in themes + generated index.json (sha256) + CI running check-themes.py there, then Manager Browse themes / Share this theme and the tampered-sha256 refusal. Also: a native Portuguese read of NPDevManager/ui/i18n/pt.json, and the FULL aiKnowledge gate (not run this session).",
   "plan": "",
-  "blocked": "THM-10 (owner creates npdev-themes repo); NAV-6 owner user test; Gemini bench quota",
-  "verified": "check-manager-ui-render.mjs 123/123; check-manager-i18n.py OK; cargo test (Manager) exit 0; version-bump, css-tokens, themes, doc-inventory, no-markdown-reads, record-surfaces, cadence-coverage, script-inventory green. Full aiKnowledge gate NOT run.",
+  "blocked": "NAV-6 owner user test; npdev-themes LICENSE choice (owner); Gemini bench quota",
+  "verified": "check-manager-ui-render.mjs 123/123; check-manager-i18n.py OK; Manager cargo test exit 0; version-bump, css-tokens, themes, doc-inventory, no-markdown-reads, record-surfaces, cadence-coverage, script-inventory green; run-journeys.ps1 green. Full aiKnowledge gate NOT run.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "70c7f797 feat(manager): the whole window follows the language picker (I18N-1)",
-    "c78c3451 chore(handoff): THM-8 and THM-9 closed, I18N-1 next"
+    "7101ce0b chore(ledger): THM-10 unblocked, npdev-themes repo created",
+    "b679db00 chore(handoff): I18N-1 closed"
   ]
 }
