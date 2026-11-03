@@ -1,0 +1,45 @@
+id: SUP-1
+title: Copy for AI -- shared secret-redaction rules (Rust+Python), run recorder, support_report command
+type: FEATURE
+severity: MEDIUM
+status: DONE
+opened: 2026-11-03
+closed: '2026-11-03'
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
+surface: manager/support
+detail: >-
+  Redaction rules JSON shared by Rust and Python plus a ring buffer of the last 20 operations and a support_report
+  command that builds the redacted report.
+resolution: >-
+  NPDevCli/redaction-rules.json + redaction-test-vectors.json (29 vectors) are the one definition of a secret; NPDevManager/src/redact.rs
+  embeds them (regex crate, already in Cargo.lock); src/runs.rs is a 20-entry ring buffer with a recorded() wrapper
+  around ten commands (doctor, install-java, install-python, install-npdev, npdev-setup, create-app, generate-app,
+  start-app x2, db-test-connection); src/support.rs + the support_report command build the report from support-intents.json
+  and help-glossary.json, redact the whole text with known secret values (credential store + secret-named env vars)
+  first, and cap it at 12,000 characters. Manager 0.7.0.
+files:
+- NPDevCli/redaction-rules.json
+- NPDevCli/redaction-test-vectors.json
+- NPDevManager/src/redact.rs
+- NPDevManager/src/runs.rs
+- NPDevManager/src/support.rs
+- NPDevManager/src/main.rs
+- NPDevManager/src/selftest.rs
+- NPDevManager/ui/support-intents.json
+- NPDevManager/fixtures/support-install-failed.json
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevManager/src/support.rs#the_report_shows_neither_a_vendor_key_nor_a_known_secret
+  asserts: >-
+    a failing operation carrying GROQ_API_KEY=gsk_... in its error, a known secret value in its log, an e-mail and
+    a Windows home path yields a report with none of them in it, with the intent text and the failing log line present;
+    sibling tests pin the 12,000-character cap, the UI-error fallback, glossary references and the golden fixture
+    the UI render check uses; redact.rs runs every shared vector.
+  provenRed: true
+note: >-
+  2026-11-03: cargo test 71/71. The vector file gained three vectors (nvidia, huggingface, slack) because the Python
+  test refuses a rule no vector exercises. NOT yet seen in the real Tauri window (clipboard in the built app is
+  untested).

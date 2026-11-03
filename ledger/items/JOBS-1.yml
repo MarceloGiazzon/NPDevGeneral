@@ -1,0 +1,15 @@
+id: JOBS-1
+title: Activity board -- job records from run_digest.py, npdev jobs list/show, lost detection
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: jobs
+detail: >-
+  One atomic record per job under <BuildRoot>/jobs; a heartbeat; the CLI decides lost (running, pid dead,
+  heartbeat older than 60 s).
+resolution: >-
+  Done when killing a running run_digest.py shows lost within 60 s.

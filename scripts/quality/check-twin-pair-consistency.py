@@ -87,9 +87,33 @@ def check_field_in_all_files(rule: dict, root: Path) -> list[str]:
     return failures
 
 
+def check_byte_identical_files(rule: dict, root: Path) -> list[str]:
+    """kind "byte-identical-files": every listed file must hold exactly the bytes of the first one.
+    For a file that has to exist in two places because two hosts load it from their own folder (the
+    theme engine for the Manager and for generated apps) -- a copy that drifts is a silent fork."""
+    failures: list[str] = []
+    paths = rule["files"]
+    first = root / paths[0]
+    if not first.exists():
+        return [f"{rule['id']}: declared file {paths[0]} does not exist (registry is stale)"]
+    # Compare with line endings normalised: git's autocrlf makes working copies differ by EOL only.
+    reference = first.read_bytes().replace(b"\r\n", b"\n")
+    for rel_path in paths[1:]:
+        full_path = root / rel_path
+        if not full_path.exists():
+            failures.append(f"{rule['id']}: declared file {rel_path} does not exist (registry is stale)")
+            continue
+        if full_path.read_bytes().replace(b"\r\n", b"\n") != reference:
+            failures.append(
+                f"{rule['id']}: {rel_path} differs from {paths[0]} -- these are twins and must be "
+                f"byte-identical (copy the canonical one over the other)")
+    return failures
+
+
 CHECKERS = {
     "sibling-group-in-list": check_sibling_group_in_list,
     "field-in-all-files": check_field_in_all_files,
+    "byte-identical-files": check_byte_identical_files,
 }
 
 
@@ -126,7 +150,15 @@ def run_self_test() -> bool:
             print("SELF-TEST FAILED: field-in-all-files did not separate diverged from consistent")
             return False
 
-    print("Self-test: both checker shapes correctly separate a diverged fixture from a consistent one -- OK")
+        (root / "t1.js").write_bytes(b"same\n")
+        (root / "t2.js").write_bytes(b"same\r\n")
+        (root / "t3.js").write_bytes(b"other\n")
+        if check_byte_identical_files({"id": "st-same", "files": ["t1.js", "t2.js"]}, root) or not \
+                check_byte_identical_files({"id": "st-diff", "files": ["t1.js", "t3.js"]}, root):
+            print("SELF-TEST FAILED: byte-identical-files did not separate diverged from consistent")
+            return False
+
+    print("Self-test: every checker shape correctly separates a diverged fixture from a consistent one -- OK")
     return True
 
 

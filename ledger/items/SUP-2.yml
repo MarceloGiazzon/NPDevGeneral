@@ -1,0 +1,33 @@
+id: SUP-2
+title: >-
+  Copy for AI -- keep the tail of each process output so a failed setup shows the Gradle line that broke
+type: FEATURE
+severity: MEDIUM
+status: DONE
+opened: 2026-11-03
+closed: '2026-11-03'
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
+surface: manager/support
+detail: The process layer pushes stdout/stderr lines into the current RunRecord tails.
+resolution: >-
+  The process layer: build_command callers that run to completion go through OutputRecorded::output_recorded (argv,
+  cwd, stdout/stderr tails of the last 400 lines, exit code), and the streaming drains of run_setup_streaming_with
+  and start_dev_streaming push each line into the record through runs::sink() (a Copy handle, because task-locals
+  do not cross tokio::spawn).
+files:
+- NPDevManager/src/npdev.rs
+- NPDevManager/src/runs.rs
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevManager/src/npdev.rs#a_failing_setup_leaves_the_failing_gradle_line_in_the_report
+  asserts: >-
+    a real child process that prints a Gradle failure to stderr and exits 1, run through run_setup_streaming_with
+    under recorded(), leaves its failing line in the report's LOG section with its password= value masked.
+  provenRed: false
+note: >-
+  2026-11-03: proven with a fake npdev_cli.py, not a genuine multi-minute Gradle failure. run_host_share_streaming
+  and the other streaming launchers are not yet wired to the recorder; their errors still reach the report through
+  the UI fallback text.

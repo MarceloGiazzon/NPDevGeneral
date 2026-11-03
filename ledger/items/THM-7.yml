@@ -1,0 +1,15 @@
+id: THM-7
+title: Generated apps -- shell.js applies the app theme; Display menu and end-user theme choice
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: generator/shell
+detail: >-
+  applyAppTheme(manifest) fetches /themes/<name>.json, validates, applies; the user choice is stored in
+  localStorage npdev.display.
+resolution: >-
+  Done when the theme-switch browser routine switches to Summer and asserts the computed --np-bg.

@@ -1,0 +1,15 @@
+id: THM-8
+title: Generated apps -- auth pages and workbench follow the chosen theme
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: generator/shell
+detail: >-
+  Login, reset, invite, change-password, security and workbench pages load the engine and apply the stored or
+  default theme.
+resolution: >-
+  Done when the login page matches the chosen theme.

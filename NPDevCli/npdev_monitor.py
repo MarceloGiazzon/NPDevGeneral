@@ -1377,18 +1377,22 @@ def _no_logs_detail(source: str) -> str:
 # alternatives and a bare `pass`, `dbPass` or `pass_value` still matches. The other stems were
 # checked for the same over-match and are fine: `keyCount` does NOT match today (verified), because
 # `key` only appears here inside `apikey`/`api[_-]?key`.
-_SECRET_KEYS = re.compile(
-    r"(password|passwd|passphrase|pass(?![a-z])|pwd|secret|token|apikey|api[_-]?key"
-    r"|authorization|credential|privatekey)",
-    re.IGNORECASE,
-)
+# SUP-4: the key-NAME pattern and the text rules now come from the shared redaction-rules.json
+# (npdev_redact.py), the SAME file the Manager's Rust redactor embeds, so "what is a secret" has one
+# definition. The shared key-name pattern is the former `_SECRET_KEYS` with the Python-only lookahead
+# `pass(?![a-z])` spelled `pass([^a-z]|$)` (portable to Rust; same matches under IGNORECASE).
+import npdev_redact  # noqa: E402
+
+_SECRET_KEYS = npdev_redact.secret_key_name()
 
 
 def redact(value: object) -> object:
     """E3-a / D10's redaction, in ONE place so the log bundle and the assistant payload cannot
     disagree about what a secret is. Key-name driven, like ScrapForAI's own `SECRET_KEY_PATTERN`:
     it catches CREDENTIALS, not content, which is why the assistant path additionally defaults to
-    structure-only.
+    structure-only. Since SUP-4 every string value also runs the shared text rules (vendor key
+    shapes, bearer tokens, URL credentials, ...) -- the `secret` class only: the privacy rules
+    (home folder, e-mail) would rewrite paths the Manager UI reads back out of this JSON.
 
     `resolved-db-plan.json` carries a DB password and the entire point of `export` is that the file
     leaves the machine -- a log bundle is the MOST likely thing to be pasted into a chat window."""
@@ -1403,8 +1407,10 @@ def redact(value: object) -> object:
     if isinstance(value, list):
         return [redact(item) for item in value]
     if isinstance(value, str):
-        # jdbc:...password=xyz and ?token=... shapes, which are values rather than keys.
-        return re.sub(r"(?i)\b(password|pwd|token|api[_-]?key)=([^;&\s\"']+)", r"\1=<redacted>", value)
+        text = npdev_redact.redact_text(value, classes=("secret",))[0]
+        # Kept from before SUP-4 as a floor, so this can only get stricter: jdbc:...password=xyz and
+        # ?token=... shapes, which are values rather than keys.
+        return re.sub(r"(?i)\b(password|pwd|token|api[_-]?key)=([^;&\s\"']+)", r"\1=<redacted>", text)
     return value
 
 

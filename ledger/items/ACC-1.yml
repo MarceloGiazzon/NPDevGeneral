@@ -1,0 +1,14 @@
+id: ACC-1
+title: Manager accessibility preferences (text size, motion, focus, spacing, links, colour-blind safe) in Appearance
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: manager/ui
+detail: >-
+  Preferences UI persisted in Appearance.a11y and applied by applyA11y; a11y.css linked last.
+resolution: >-
+  Done when each toggle visibly changes the render.

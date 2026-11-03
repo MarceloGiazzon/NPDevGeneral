@@ -92,6 +92,8 @@ window.__TAURI__ = {
         case "explore_run": await new Promise((r) => setTimeout(r, 2500)); return { runId: "x", verdict: { green: true } };
         case "explore_validate": return F.validateBad;
         case "assistant_config": return { configured: false };
+        case "install_jdk": throw "download failed: GROQ_API_KEY=gsk_abcdefghijklmnopqrstuvwx was rejected by the proxy";
+        case "support_report": return F.support;
         case "manager_log_path": return "C:\\\\x\\\\manager.log";
         default: return {};
       }
@@ -133,6 +135,7 @@ await page.addInitScript({
     preflight: fixture("explore-preflight.json"),
     validateBad: fixture("explore-validate-bad.json"),
     doctor: fixture("doctor-all-green.json"),
+    support: fixture("support-install-failed.json"),
   })};`,
 });
 
@@ -273,6 +276,31 @@ await page.waitForTimeout(400);
 check("Play stays disabled until the CLI says VALID",
   await page.$eval("#create-play", (e) => e.disabled), "");
 await page.screenshot({ path: path.join(OUT, "scrap-create.png"), fullPage: false });
+
+await page.click('[data-close-modal="create-modal"]');
+await page.waitForTimeout(150);
+
+// ---- Get help with this error (SUP-3) ----------------------------------------------------------
+// The shim answers support_report with fixtures/support-install-failed.json, which a Rust test pins to
+// what src/support.rs really produces for a planted API key and a planted known secret.
+await page.click('.tabs .place[data-place="setup"]');
+await page.click('.place-strip:not([hidden]) .tab[data-screen="install"]');
+await page.waitForSelector("#jdk-install-btn", { state: "visible", timeout: 3000 });
+await page.click("#jdk-install-btn");
+await page.waitForSelector("#jdk-status + .support-help-btn", { timeout: 3000 });
+check("an install failure offers 'Get help with this error'", true, "");
+await page.click("#jdk-status + .support-help-btn");
+await page.waitForFunction(() => document.getElementById("support-text")?.value.length > 50, null, { timeout: 3000 });
+const report = await page.$eval("#support-text", (t) => t.value);
+check("the help dialog names what the user was trying to do", /install Java/i.test(report), report.slice(0, 120));
+check("the help dialog shows the key as <redacted:api-key>, never the key",
+  report.includes("<redacted:api-key>") && !report.includes("gsk_abcdefghijklmnopqrstuvwx") && !report.includes("hunter-two-secret-value"), "");
+const summaryText = await page.textContent("#support-summary");
+check("the dialog says how much was hidden", /secret/.test(summaryText), summaryText.trim());
+check("the dialog is a native modal that holds focus",
+  await page.$eval("#support-dialog", (d) => d.open && d.matches(":modal")), "");
+await page.screenshot({ path: path.join(OUT, "support-dialog.png"), fullPage: false });
+await page.keyboard.press("Escape");
 
 check("no console or page errors while rendering either screen", consoleErrors.length === 0,
   consoleErrors.slice(0, 3).join(" | "));

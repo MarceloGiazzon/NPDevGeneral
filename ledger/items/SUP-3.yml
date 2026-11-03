@@ -1,0 +1,37 @@
+id: SUP-3
+title: >-
+  Copy for AI -- Get help with this error dialog wired to error sites (Install/Setup, Ready, Apps, Run, Share, Providers)
+type: FEATURE
+severity: MEDIUM
+status: DONE
+opened: 2026-11-03
+closed: '2026-11-03'
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
+surface: manager/ui
+detail: >-
+  support.js reportableError() plus a native dialog showing the exact redacted text, with Copy for AI, Open a GitHub
+  issue, Save as file.
+resolution: >-
+  ui/support.js (offerHelp, reportableError, a native <dialog> showing the exact redacted text with Copy for AI,
+  Open a GitHub issue, Save as file) + support.css, wired into the Install (Java, Python, Setup), Ready (doctor),
+  Apps (create app, test connection) and Run (start) error sites. English and Portuguese strings follow the language
+  picker.
+files:
+- NPDevManager/ui/support.js
+- NPDevManager/ui/support.css
+- NPDevManager/ui/app.js
+- NPDevManager/ui/index.html
+- scripts/quality/check-manager-ui-render.mjs
+verification: UNIT_TESTED
+guard:
+  kind: manual
+  ref: scripts/quality/check-manager-ui-render.mjs
+  asserts: >-
+    install failure -> the Get help button appears -> the dialog text names the intent, shows <redacted:api-key>
+    and neither the planted key nor the planted known secret, says how much was hidden, and is a native modal.
+  provenRed: false
+note: >-
+  2026-11-03: render check 30/30. Still to migrate: Share (hosting.js), AI providers (providers.js) and the remaining
+  screens; Versions download still uses alert(). Not yet seen in the real Tauri window.

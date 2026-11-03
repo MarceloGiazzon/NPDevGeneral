@@ -5,10 +5,13 @@
 mod ai_loop;
 mod log;
 mod npdev;
+mod redact;
+mod runs;
 mod runtime;
 mod secrets;
 mod selftest;
 mod state;
+mod support;
 mod versions;
 
 use std::path::{Path, PathBuf};
@@ -131,19 +134,22 @@ fn set_fake_pack_scenario(name: String) {
 /// no app on it at all -- "no app yet" is not a broken machine.
 #[tauri::command]
 async fn check_doctor(state: State<'_, AppState>, app_dir: Option<String>) -> Result<Value, String> {
-    let java_home = resolve_java_home(&state);
-    if npdev::fake_mode() {
-        return npdev::run_doctor(
-            &PathBuf::from("python"),
-            &PathBuf::from("npdev_cli.py"),
-            java_home.as_deref(),
-            app_dir.as_deref(),
-        )
-        .await;
-    }
-    let python = resolve_python_exe(&state).await?;
-    let cli = resolve_npdev_cli(&state)?;
-    npdev::run_doctor(&python, &cli, java_home.as_deref(), app_dir.as_deref()).await
+    runs::recorded("doctor", async move {
+        let java_home = resolve_java_home(&state);
+        if npdev::fake_mode() {
+            return npdev::run_doctor(
+                &PathBuf::from("python"),
+                &PathBuf::from("npdev_cli.py"),
+                java_home.as_deref(),
+                app_dir.as_deref(),
+            )
+            .await;
+        }
+        let python = resolve_python_exe(&state).await?;
+        let cli = resolve_npdev_cli(&state)?;
+        npdev::run_doctor(&python, &cli, java_home.as_deref(), app_dir.as_deref()).await
+    })
+    .await
 }
 
 /// M13: "Test connection", beside the connection fields on the create-app form.
@@ -162,11 +168,26 @@ async fn test_connection(
     db_user: Option<String>,
     db_password: Option<String>,
 ) -> Result<Value, String> {
-    let java_home = resolve_java_home(&state);
-    if npdev::fake_mode() {
-        return npdev::run_db_test_connection(
-            &PathBuf::from("python"),
-            &PathBuf::from("npdev_cli.py"),
+    runs::recorded("db-test-connection", async move {
+        let java_home = resolve_java_home(&state);
+        if npdev::fake_mode() {
+            return npdev::run_db_test_connection(
+                &PathBuf::from("python"),
+                &PathBuf::from("npdev_cli.py"),
+                java_home.as_deref(),
+                &engine,
+                db_host.as_deref(),
+                db_port,
+                db_user.as_deref(),
+                db_password.as_deref(),
+            )
+            .await;
+        }
+        let python = resolve_python_exe(&state).await?;
+        let cli = resolve_npdev_cli(&state)?;
+        npdev::run_db_test_connection(
+            &python,
+            &cli,
             java_home.as_deref(),
             &engine,
             db_host.as_deref(),
@@ -174,20 +195,8 @@ async fn test_connection(
             db_user.as_deref(),
             db_password.as_deref(),
         )
-        .await;
-    }
-    let python = resolve_python_exe(&state).await?;
-    let cli = resolve_npdev_cli(&state)?;
-    npdev::run_db_test_connection(
-        &python,
-        &cli,
-        java_home.as_deref(),
-        &engine,
-        db_host.as_deref(),
-        db_port,
-        db_user.as_deref(),
-        db_password.as_deref(),
-    )
+        .await
+    })
     .await
 }
 
@@ -290,17 +299,20 @@ async fn jdk_status() -> Value {
 
 #[tauri::command]
 async fn install_jdk(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    let target = runtime::resolve_jdk17().await?;
-    let dest = state::jdk_dir();
-    let app2 = app.clone();
-    runtime::download_verify_extract(&target, &dest, move |downloaded, total| {
-        let _ = app2.emit("jdk-progress", DownloadProgress { downloaded, total });
+    runs::recorded("install-java", async move {
+        let target = runtime::resolve_jdk17().await?;
+        let dest = state::jdk_dir();
+        let app2 = app.clone();
+        runtime::download_verify_extract(&target, &dest, move |downloaded, total| {
+            let _ = app2.emit("jdk-progress", DownloadProgress { downloaded, total });
+        })
+        .await?;
+        let mut manager = state.manager.lock().expect("lock poisoned");
+        manager.jdk_home = Some(dest.to_string_lossy().to_string());
+        manager.save().map_err(|e| e.to_string())?;
+        Ok(())
     })
-    .await?;
-    let mut manager = state.manager.lock().expect("lock poisoned");
-    manager.jdk_home = Some(dest.to_string_lossy().to_string());
-    manager.save().map_err(|e| e.to_string())?;
-    Ok(())
+    .await
 }
 
 // -------------------------------------------------------------------------------------------
@@ -331,17 +343,20 @@ async fn python_status(state: State<'_, AppState>) -> Result<Value, String> {
 
 #[tauri::command]
 async fn install_python(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    let target = runtime::resolve_portable_python();
-    let dest = state::python_dir();
-    let app2 = app.clone();
-    runtime::download_verify_extract(&target, &dest, move |downloaded, total| {
-        let _ = app2.emit("python-progress", DownloadProgress { downloaded, total });
+    runs::recorded("install-python", async move {
+        let target = runtime::resolve_portable_python();
+        let dest = state::python_dir();
+        let app2 = app.clone();
+        runtime::download_verify_extract(&target, &dest, move |downloaded, total| {
+            let _ = app2.emit("python-progress", DownloadProgress { downloaded, total });
+        })
+        .await?;
+        let mut manager = state.manager.lock().expect("lock poisoned");
+        manager.python_exe = Some(runtime::python_binary_in(&dest).to_string_lossy().to_string());
+        manager.save().map_err(|e| e.to_string())?;
+        Ok(())
     })
-    .await?;
-    let mut manager = state.manager.lock().expect("lock poisoned");
-    manager.python_exe = Some(runtime::python_binary_in(&dest).to_string_lossy().to_string());
-    manager.save().map_err(|e| e.to_string())?;
-    Ok(())
+    .await
 }
 
 #[tauri::command]
@@ -351,19 +366,25 @@ async fn list_tags(force_refresh: bool) -> Result<Vec<versions::TagInfo>, String
 
 #[tauri::command]
 async fn install_npdev_version(app: tauri::AppHandle, state: State<'_, AppState>, tag: String) -> Result<(), String> {
-    let app2 = app.clone();
-    versions::install_version(&state, &tag, move |downloaded, total| {
-        let _ = app2.emit("version-install-progress", DownloadProgress { downloaded, total });
+    runs::recorded("install-npdev", async move {
+        let app2 = app.clone();
+        versions::install_version(&state, &tag, move |downloaded, total| {
+            let _ = app2.emit("version-install-progress", DownloadProgress { downloaded, total });
+        })
+        .await
     })
     .await
 }
 
 #[tauri::command]
 async fn run_setup(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
-    let java_home = resolve_java_home(&state);
-    let python = resolve_python_exe(&state).await?;
-    let cli = resolve_npdev_cli(&state)?;
-    npdev::run_setup_streaming(app, python, cli, java_home).await
+    runs::recorded("npdev-setup", async move {
+        let java_home = resolve_java_home(&state);
+        let python = resolve_python_exe(&state).await?;
+        let cli = resolve_npdev_cli(&state)?;
+        npdev::run_setup_streaming(app, python, cli, java_home).await
+    })
+    .await
 }
 
 /// Has setup ever actually run, and is its result still there?
@@ -462,39 +483,42 @@ async fn create_app(
     // invite a caller to omit it -- which is exactly how this flag came to have no writer at all.
     externally_provisioned: bool,
 ) -> Result<Value, String> {
-    let java_home = resolve_java_home(&state);
-    let python = resolve_python_exe(&state).await?;
-    let cli = resolve_npdev_cli(&state)?;
-    let target_dir = app_target_dir(&parent_dir, &name);
-    let result = npdev::run_init(
-        &python,
-        &cli,
-        java_home.as_deref(),
-        &target_dir.to_string_lossy(),
-        engine.as_deref(),
-        db_host.as_deref(),
-        db_port,
-        db_user.as_deref(),
-        db_password.as_deref(),
-        externally_provisioned,
-    )
-    .await?;
+    runs::recorded("create-app", async move {
+        let java_home = resolve_java_home(&state);
+        let python = resolve_python_exe(&state).await?;
+        let cli = resolve_npdev_cli(&state)?;
+        let target_dir = app_target_dir(&parent_dir, &name);
+        let result = npdev::run_init(
+            &python,
+            &cli,
+            java_home.as_deref(),
+            &target_dir.to_string_lossy(),
+            engine.as_deref(),
+            db_host.as_deref(),
+            db_port,
+            db_user.as_deref(),
+            db_password.as_deref(),
+            externally_provisioned,
+        )
+        .await?;
 
-    let directory = result
-        .get("created")
-        .and_then(|c| c.get("directory"))
-        .and_then(|d| d.as_str())
-        .unwrap_or(&parent_dir)
-        .to_string();
+        let directory = result
+            .get("created")
+            .and_then(|c| c.get("directory"))
+            .and_then(|d| d.as_str())
+            .unwrap_or(&parent_dir)
+            .to_string();
 
-    let mut manager = state.manager.lock().expect("lock poisoned");
-    manager.apps.push(AppEntry {
-        name: name.clone(),
-        directory,
-        created_at: versions::chrono_now_iso(),
-    });
-    manager.save().map_err(|e| e.to_string())?;
-    Ok(result)
+        let mut manager = state.manager.lock().expect("lock poisoned");
+        manager.apps.push(AppEntry {
+            name: name.clone(),
+            directory,
+            created_at: versions::chrono_now_iso(),
+        });
+        manager.save().map_err(|e| e.to_string())?;
+        Ok(result)
+    })
+    .await
 }
 
 /// M14: Start / Stop / Status / Connection details / Reset, without a terminal.
@@ -677,6 +701,118 @@ fn read_json_file(path: String) -> Result<Value, String> {
     serde_json::from_str(&text).map_err(|e| format!("{path} did not parse as JSON: {e}"))
 }
 
+// -------------------------------------------------------------------------------------------
+// SUP-1: "Get help with this error" -- the redacted report (support.rs)
+// -------------------------------------------------------------------------------------------
+
+/// Every secret VALUE this machine holds for the Manager: the OS credential store entries behind the
+/// Prompter profiles and the db/deploy secret profiles, plus the values of secret-named environment
+/// variables. Used only to scrub text; never logged, never returned to the UI.
+fn known_secret_values(state: &AppState) -> Vec<String> {
+    let mut out = redact::known_env_secrets();
+    let (prompter, keyed): (Vec<String>, Vec<(String, String, String)>) = {
+        let m = state.manager.lock().expect("lock poisoned");
+        (
+            m.prompter_profiles.iter().map(|p| p.id.clone()).collect(),
+            m.secret_profile_keys.iter().map(|k| (k.scope.clone(), k.env.clone(), k.profile_id.clone())).collect(),
+        )
+    };
+    for id in prompter {
+        if let Ok(Some(v)) = secrets::get_secret_scoped("prompter", None, &id) {
+            out.push(v);
+        }
+    }
+    for (scope, env, id) in keyed {
+        if let Ok(Some(v)) = secrets::get_secret_scoped(&scope, Some(&env), &id) {
+            out.push(v);
+        }
+    }
+    out
+}
+
+/// Best-effort OS version and administrator state, for the report. Short-lived child processes with no
+/// console window; any failure just yields "unknown" -- a report must never fail because of its header.
+fn os_and_admin() -> (String, String) {
+    let base = format!("{} ({})", std::env::consts::OS, std::env::consts::ARCH);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let run = |prog: &str, args: &[&str]| -> Option<String> {
+            std::process::Command::new(prog)
+                .args(args)
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        };
+        let ver = run("cmd", &["/C", "ver"]).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+        let admin = match run("whoami", &["/groups"]) {
+            Some(t) if t.contains("S-1-16-12288") => "yes",
+            Some(_) => "no",
+            None => "unknown",
+        };
+        (format!("{} {}", ver.unwrap_or_default(), base).trim().to_string(), admin.to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        (base, "unknown".to_string())
+    }
+}
+
+fn summarize_tool(path: &Option<String>, label: &str) -> String {
+    match path {
+        Some(_) => format!("a private {label} installed by the Manager"),
+        None => format!("system {label} (or none installed)"),
+    }
+}
+
+/// `operation` is an id from ui/support-intents.json; None means "the latest failed operation".
+/// `error` is what the UI caught -- used when the recorder holds nothing for that operation, so every
+/// error site can offer help even before its command is wrapped by the recorder.
+#[tauri::command]
+async fn support_report(
+    state: State<'_, AppState>,
+    operation: Option<String>,
+    screen: String,
+    app_dir: Option<String>,
+    ui_language: String,
+    error: Option<String>,
+) -> Result<Value, String> {
+    let record = runs::latest(operation.as_deref());
+    let op = operation
+        .clone()
+        .or_else(|| record.as_ref().map(|r| r.operation.clone()))
+        .unwrap_or_else(|| "unknown".to_string());
+    let known = known_secret_values(&state);
+    let (os, admin) = os_and_admin();
+    let (java, python, source) = {
+        let m = state.manager.lock().expect("lock poisoned");
+        let source = if m.use_local_repo {
+            "a local checkout (path hidden)".to_string()
+        } else {
+            m.current_version.clone().unwrap_or_else(|| "none installed yet".to_string())
+        };
+        (summarize_tool(&m.jdk_home, "Java"), summarize_tool(&m.python_exe, "Python"), source)
+    };
+    let out = support::build_report(support::ReportInputs {
+        record,
+        operation: op,
+        fallback_error: error,
+        screen,
+        app_dir,
+        ui_language,
+        manager_version: manager_version_description(),
+        source,
+        os,
+        admin,
+        java,
+        python,
+        known_secrets: known,
+    });
+    serde_json::to_value(out).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
@@ -722,29 +858,32 @@ pub(crate) fn model_dir_of_app(app_dir: &str) -> Option<String> {
 
 #[tauri::command]
 async fn start_dev(app: tauri::AppHandle, state: State<'_, AppState>, app_dir: String, port: u16) -> Result<(), String> {
-    {
-        let running = state.running.lock().expect("lock poisoned");
-        if running.contains_key(RUN_SCREEN_KEY) {
-            return Err("dev is already running -- stop it first".to_string());
+    runs::recorded("start-app", async move {
+        {
+            let running = state.running.lock().expect("lock poisoned");
+            if running.contains_key(RUN_SCREEN_KEY) {
+                return Err("dev is already running -- stop it first".to_string());
+            }
+            let built_app_dir = format!("{}-app", app_dir.trim_end_matches(['\\', '/']));
+            if running.keys().any(|k| norm_path(k) == norm_path(&built_app_dir)) {
+                return Err(format!(
+                    "the app built from this model ({built_app_dir}) is already running from the Apps/Run \
+                     tab -- stop it first. Both hold the same database file and a second opener crashes on boot."
+                ));
+            }
         }
-        let built_app_dir = format!("{}-app", app_dir.trim_end_matches(['\\', '/']));
-        if running.keys().any(|k| norm_path(k) == norm_path(&built_app_dir)) {
-            return Err(format!(
-                "the app built from this model ({built_app_dir}) is already running from the Apps/Run \
-                 tab -- stop it first. Both hold the same database file and a second opener crashes on boot."
-            ));
+        let java_home = resolve_java_home(&state);
+        let python = resolve_python_exe(&state).await?;
+        let cli = resolve_npdev_cli(&state)?;
+        log::info(format!("start_dev app_dir={app_dir} port={port}"));
+        let running = npdev::start_dev_streaming(app, python, cli, java_home, PathBuf::from(&app_dir), port).await?;
+        if let Some(proc) = running {
+            state.running.lock().expect("lock poisoned").insert(RUN_SCREEN_KEY.to_string(), proc);
+            *state.dev_app_dir.lock().expect("lock poisoned") = Some(app_dir);
         }
-    }
-    let java_home = resolve_java_home(&state);
-    let python = resolve_python_exe(&state).await?;
-    let cli = resolve_npdev_cli(&state)?;
-    log::info(format!("start_dev app_dir={app_dir} port={port}"));
-    let running = npdev::start_dev_streaming(app, python, cli, java_home, PathBuf::from(&app_dir), port).await?;
-    if let Some(proc) = running {
-        state.running.lock().expect("lock poisoned").insert(RUN_SCREEN_KEY.to_string(), proc);
-        *state.dev_app_dir.lock().expect("lock poisoned") = Some(app_dir);
-    }
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1261,37 +1400,40 @@ async fn stop_app(
 
 #[tauri::command]
 async fn start_app(app: tauri::AppHandle, state: State<'_, AppState>, app_dir: String) -> Result<(), String> {
-    let key = app_dir.clone();
-    {
-        let running = state.running.lock().expect("lock poisoned");
-        if running.contains_key(&key) {
-            return Err("this app is already running from this window".to_string());
-        }
-    }
-    if let Some(model_dir) = model_dir_of_app(&app_dir) {
-        let dev_dir = state.dev_app_dir.lock().expect("lock poisoned").clone();
-        if let Some(dev_dir) = dev_dir {
-            if norm_path(&dev_dir) == norm_path(&model_dir) {
-                return Err(format!(
-                    "dev mode is running against this app's model ({dev_dir}, Run tab) -- stop it \
-                     first. Both hold the same database file and a second opener crashes on boot."
-                ));
+    runs::recorded("start-app", async move {
+        let key = app_dir.clone();
+        {
+            let running = state.running.lock().expect("lock poisoned");
+            if running.contains_key(&key) {
+                return Err("this app is already running from this window".to_string());
             }
         }
-    }
-    let java_home = resolve_java_home(&state);
-    let (python, cli) = if npdev::fake_mode() {
-        (PathBuf::from("python"), PathBuf::from("npdev_cli.py"))
-    } else {
-        (resolve_python_exe(&state).await?, resolve_npdev_cli(&state)?)
-    };
-    log::info(format!("start_app {app_dir}"));
-    let running = npdev::run_ops_script_streaming(app, python, cli, java_home, app_dir,
-                                                  "run-finalapp".to_string(), None).await?;
-    if let Some(proc) = running {
-        state.running.lock().expect("lock poisoned").insert(key, proc);
-    }
-    Ok(())
+        if let Some(model_dir) = model_dir_of_app(&app_dir) {
+            let dev_dir = state.dev_app_dir.lock().expect("lock poisoned").clone();
+            if let Some(dev_dir) = dev_dir {
+                if norm_path(&dev_dir) == norm_path(&model_dir) {
+                    return Err(format!(
+                        "dev mode is running against this app's model ({dev_dir}, Run tab) -- stop it \
+                         first. Both hold the same database file and a second opener crashes on boot."
+                    ));
+                }
+            }
+        }
+        let java_home = resolve_java_home(&state);
+        let (python, cli) = if npdev::fake_mode() {
+            (PathBuf::from("python"), PathBuf::from("npdev_cli.py"))
+        } else {
+            (resolve_python_exe(&state).await?, resolve_npdev_cli(&state)?)
+        };
+        log::info(format!("start_app {app_dir}"));
+        let running = npdev::run_ops_script_streaming(app, python, cli, java_home, app_dir,
+                                                      "run-finalapp".to_string(), None).await?;
+        if let Some(proc) = running {
+            state.running.lock().expect("lock poisoned").insert(key, proc);
+        }
+        Ok(())
+    })
+    .await
 }
 
 /// Which apps THIS window is holding a process for. Deliberately not "which apps are running" --
@@ -1606,9 +1748,10 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.6.0: Four places instead of 18 tabs -- Set up, My apps, Activity, Settings -- each with a \
-     strip of its screens and one line saying what it is for; and a language picker (English, \
-     Portugues) that the navigation follows."
+    "0.7.0: Get help with this error -- when something fails, one button shows exactly what would be \
+     copied (what you were trying to do, what happened, your Java/Python/OS, the last log lines, with \
+     every password, key and personal path hidden) so any AI chat or a GitHub issue can act on it. \
+     Nothing is sent automatically. Before that: four places instead of 18 tabs and a language picker."
         .to_string()
 }
 
@@ -1616,7 +1759,7 @@ fn manager_version_description() -> String {
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "Four Places";
+const CURRENT_VERSION_TITLE: &str = "Get Help";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {
@@ -2439,14 +2582,17 @@ pub(crate) fn apply_validated_model(app_dir: String, candidate: Value, confirm: 
 /// generated source, it does not regenerate.
 #[tauri::command]
 async fn generate_app_from_model(state: State<'_, AppState>, app_dir: String) -> Result<(), String> {
-    let model_dir = model_dir_of_app(&app_dir)
-        .ok_or_else(|| "not an npdev-init app (no '<name>-app' suffix on its directory)".to_string())?;
-    let model = format!("{model_dir}/model.json");
-    let config = format!("{model_dir}/config.json");
-    let python = resolve_python_exe(&state).await?;
-    let cli = resolve_npdev_cli(&state)?;
-    let java_home = resolve_java_home(&state);
-    npdev::run_generate_app(&python, &cli, java_home.as_deref(), &model, &config, &app_dir).await
+    runs::recorded("generate-app", async move {
+        let model_dir = model_dir_of_app(&app_dir)
+            .ok_or_else(|| "not an npdev-init app (no '<name>-app' suffix on its directory)".to_string())?;
+        let model = format!("{model_dir}/model.json");
+        let config = format!("{model_dir}/config.json");
+        let python = resolve_python_exe(&state).await?;
+        let cli = resolve_npdev_cli(&state)?;
+        let java_home = resolve_java_home(&state);
+        npdev::run_generate_app(&python, &cli, java_home.as_deref(), &model, &config, &app_dir).await
+    })
+    .await
 }
 
 /// Wave 6.1 (the Manager's Studio tab, NPDEV_FEATURE_PLAN_2026-09-24.md): the "Apply" button's live
@@ -3372,6 +3518,7 @@ the blast radius needs a baseline to diff against"
             fake_doctor_scenarios,
             set_fake_doctor_scenario,
             check_doctor,
+            support_report,
             test_connection,
             detect_databases,
             start_docker_desktop,

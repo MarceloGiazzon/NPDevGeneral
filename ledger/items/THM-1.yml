@@ -1,0 +1,15 @@
+id: THM-1
+title: Theme assets -- schema, nine built-in themes, theme engine, contrast checker and engine tests
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: themes
+detail: >-
+  NPDevContract/themes holds theme.schema.json, the built-ins, theme-engine.js and a11y.css;
+  scripts/quality/check-themes.py validates structure, WCAG contrast and the twins.
+resolution: >-
+  Done when the aiKnowledge gate is green and breaking one contrast pair fails check-themes.py naming the pair.

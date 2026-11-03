@@ -1,0 +1,39 @@
+/* "Get help with this error" (support.js). Colours come from the shared Manager variables so the dialog
+   follows whatever look the screen under it has. */
+.support-help-btn {
+  margin: 6px 0 0 0;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.support-error-line { margin-bottom: 0; }
+
+.support-dialog {
+  max-width: 760px;
+  width: calc(100% - 32px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+}
+.support-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+.support-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; }
+.support-body h2 { margin: 0; font-size: 16px; }
+.support-intro, .support-summary, .support-note, .support-nothing { margin: 0; font-size: 13px; line-height: 1.4; }
+.support-summary { color: var(--muted); }
+.support-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.support-text {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  resize: vertical;
+}
+.support-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.support-nothing { color: var(--muted); }

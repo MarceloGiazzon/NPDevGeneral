@@ -1,0 +1,14 @@
+id: ACC-5
+title: Generated apps -- npdev-a11y.css, Display menu preferences and Skip to content (menu OFF by default, D7)
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: generator/shell
+detail: >-
+  Accessibility CSS and a Display menu emitted when ui.a11y.menu is true; the skip link is always present.
+resolution: >-
+  Done when the golden routines still report 0 axe violations.

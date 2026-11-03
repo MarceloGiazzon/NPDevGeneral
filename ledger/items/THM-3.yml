@@ -1,0 +1,15 @@
+id: THM-3
+title: Manager theme engine wired with persistence (appearance in manager.json, no flash on start)
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: manager
+detail: >-
+  ManagerState.appearance, theme_list/theme_import/theme_delete/appearance_get/appearance_set commands, pre-
+  paint apply from localStorage.
+resolution: >-
+  Done when restarting keeps the chosen theme with no flash and a missing manager.json falls back to Dark.

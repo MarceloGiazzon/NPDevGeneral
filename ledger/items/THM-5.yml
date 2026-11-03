@@ -1,0 +1,14 @@
+id: THM-5
+title: Retire the hard-coded colours in the Manager CSS/JS, role by role, ratcheting the baseline to zero
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: manager/ui
+detail: >-
+  Map each hex literal to its --t-* role token; check-manager-css-tokens.py frozenCount only falls.
+resolution: >-
+  Done when frozenCount reaches 0 or the remainder is listed with a reason in the baseline file.

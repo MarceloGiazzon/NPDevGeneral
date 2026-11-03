@@ -1,0 +1,117 @@
+{
+  "schema": "npdev-redaction-rules.v1",
+  "description": "One definition of 'secret' for every NPDev surface that lets text leave the machine (Copy for AI, log bundles, issue reports). Read by NPDevCli (Python re) and NPDevManager (Rust regex, include_str!). Patterns: no lookaround, no backreferences, inline flags only at the start, exactly one named group `secret` whose span is replaced by `mask`.",
+  "secretKeyNamePattern": "(?i)(password|passwd|passphrase|pass([^a-z]|$)|pwd|secret|token|apikey|api[_-]?key|authorization|credential|privatekey)",
+  "knownValueMinLength": 6,
+  "knownValueMask": "<redacted:known-secret>",
+  "rules": [
+    {
+      "id": "pem-private-key",
+      "class": "secret",
+      "mask": "<redacted:private-key>",
+      "pattern": "(?P<secret>-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----)"
+    },
+    {
+      "id": "url-credentials",
+      "class": "secret",
+      "mask": "<redacted>",
+      "pattern": "(?i)\\b[a-z][a-z0-9+.-]*://[^/\\s:@]+:(?P<secret>[^/\\s@]+)@"
+    },
+    {
+      "id": "auth-header",
+      "class": "secret",
+      "mask": "<redacted>",
+      "pattern": "(?im)\\b(?:authorization|proxy-authorization|x-api-key|api-key)\\s*:\\s*(?P<secret>[^\\r\\n]+)"
+    },
+    {
+      "id": "bearer-or-basic",
+      "class": "secret",
+      "mask": "<redacted>",
+      "pattern": "(?i)\\b(?:bearer|basic)\\s+(?P<secret>[A-Za-z0-9._~+/=-]{8,})"
+    },
+    {
+      "id": "jwt",
+      "class": "secret",
+      "mask": "<redacted:jwt>",
+      "pattern": "(?P<secret>\\beyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,})"
+    },
+    {
+      "id": "anthropic-key",
+      "class": "secret",
+      "mask": "<redacted:api-key>",
+      "pattern": "(?P<secret>\\bsk-ant-[A-Za-z0-9_-]{16,})"
+    },
+    {
+      "id": "openai-style-key",
+      "class": "secret",
+      "mask": "<redacted:api-key>",
+      "pattern": "(?P<secret>\\bsk-[A-Za-z0-9_-]{16,})"
+    },
+    {
+      "id": "groq-key",
+      "class": "secret",
+      "mask": "<redacted:api-key>",
+      "pattern": "(?P<secret>\\bgsk_[A-Za-z0-9]{16,})"
+    },
+    {
+      "id": "google-key",
+      "class": "secret",
+      "mask": "<redacted:api-key>",
+      "pattern": "(?P<secret>\\bAIza[0-9A-Za-z_-]{35})"
+    },
+    {
+      "id": "nvidia-key",
+      "class": "secret",
+      "mask": "<redacted:api-key>",
+      "pattern": "(?P<secret>\\bnvapi-[A-Za-z0-9_-]{20,})"
+    },
+    {
+      "id": "huggingface-token",
+      "class": "secret",
+      "mask": "<redacted:api-key>",
+      "pattern": "(?P<secret>\\bhf_[A-Za-z0-9]{30,})"
+    },
+    {
+      "id": "github-token",
+      "class": "secret",
+      "mask": "<redacted:github-token>",
+      "pattern": "(?P<secret>\\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}))"
+    },
+    {
+      "id": "slack-token",
+      "class": "secret",
+      "mask": "<redacted:slack-token>",
+      "pattern": "(?P<secret>\\bxox[abposr]-[A-Za-z0-9-]{10,})"
+    },
+    {
+      "id": "aws-access-key",
+      "class": "secret",
+      "mask": "<redacted:aws-key>",
+      "pattern": "(?P<secret>\\b(?:AKIA|ASIA)[0-9A-Z]{16}\\b)"
+    },
+    {
+      "id": "key-value",
+      "class": "secret",
+      "mask": "<redacted>",
+      "pattern": "(?i)\\b[A-Za-z0-9_.-]*?(?:password|passwd|passphrase|pass|pwd|secret|token|api[_-]?key|apikey|(?:secret|access|private)[_-]?key|credentials?)[\\\"']?\\s*[=:]\\s*(?P<secret>\\\"[^\\\"]*\\\"|'[^']*'|[^\\s;&,\\\"'<]+)"
+    },
+    {
+      "id": "windows-user-home",
+      "class": "privacy",
+      "mask": "<user>",
+      "pattern": "(?i)\\b[A-Z]:\\\\Users\\\\(?P<secret>[^\\\\/\\s\\\"':]+)"
+    },
+    {
+      "id": "unix-user-home",
+      "class": "privacy",
+      "mask": "<user>",
+      "pattern": "(?:/home/|/Users/)(?P<secret>[^/\\s\\\"':]+)"
+    },
+    {
+      "id": "email",
+      "class": "privacy",
+      "mask": "<email>",
+      "pattern": "(?P<secret>\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b)"
+    }
+  ]
+}

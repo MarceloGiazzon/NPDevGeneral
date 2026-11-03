@@ -1,0 +1,16 @@
+id: THM-4
+title: Appearance screen -- theme gallery, Load theme, Ask an AI for a theme or variation, Export, Remove
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: manager/ui
+detail: >-
+  screen-appearance with the gallery, file import with live preview and 15 s auto-revert, copy-prompt/paste-
+  answer flows.
+resolution: >-
+  Done when the four seasonal files load, a broken file shows readable errors and changes nothing, and a fenced
+  AI answer parses.

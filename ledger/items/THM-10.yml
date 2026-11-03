@@ -1,0 +1,15 @@
+id: THM-10
+title: Theme catalogue v1 -- public npdev-themes repo index, Browse themes and Share this theme in the Manager
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: manager/themes
+detail: >-
+  Browse themes reads index.json over HTTPS and verifies sha256 before import; Share this theme opens the GitHub
+  new-file page prefilled. Owner D2 accepted a separate repo.
+resolution: >-
+  Done when Browse themes lists a catalogue index (fixture in stub mode) and a tampered sha256 is refused.

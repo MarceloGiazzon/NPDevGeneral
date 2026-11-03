@@ -46,7 +46,46 @@ async fn run_steps() -> Result<(), StepError> {
 
     run_host_steps(&python_path, &cli_path, java_home.as_deref()).await?;
 
-    run_database_steps(&python_path, &cli_path, java_home.as_deref()).await
+    run_database_steps(&python_path, &cli_path, java_home.as_deref()).await?;
+
+    run_support_step().await
+}
+
+// ------------------------------------------------------------------------------------------------
+// SUP-1: "Get help with this error" builds a redacted report. No app, no network: a failing operation
+// carrying a planted vendor key and a planted secret value goes through the recorder and the report
+// builder, and neither may survive into the text.
+// ------------------------------------------------------------------------------------------------
+
+async fn run_support_step() -> Result<(), StepError> {
+    let _ = crate::runs::recorded::<(), _>("install-java", async {
+        Err("download failed: GROQ_API_KEY=gsk_selftestselftestselftest1234 was rejected".to_string())
+    })
+    .await;
+    let record = crate::runs::latest(Some("install-java"));
+    let out = crate::support::build_report(crate::support::ReportInputs {
+        record,
+        operation: "install-java".into(),
+        fallback_error: None,
+        screen: "install".into(),
+        app_dir: None,
+        ui_language: "en".into(),
+        manager_version: "selftest".into(),
+        source: "selftest".into(),
+        os: std::env::consts::OS.into(),
+        admin: "unknown".into(),
+        java: "n/a".into(),
+        python: "n/a".into(),
+        known_secrets: vec!["selftest-known-secret-value".into()],
+    });
+    if out.text.contains("gsk_selftest") || out.text.contains("selftest-known-secret-value") {
+        return Err(("10/10 support report", "a planted secret survived into the report".to_string()));
+    }
+    if !out.text.contains("<redacted:api-key>") || !out.text.contains("install Java") {
+        return Err(("10/10 support report", format!("report is missing its intent or mask: {}", out.text)));
+    }
+    println!("  [10/10] support report redacts a planted key ........ OK ({} chars)", out.chars);
+    Ok(())
 }
 
 // ------------------------------------------------------------------------------------------------

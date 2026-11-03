@@ -1,0 +1,14 @@
+id: ACC-7
+title: Generated apps -- axe under the high-contrast and dark themes (T2)
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: quality
+detail: >-
+  Routines pre-seed localStorage npdev.display with the theme; a11y-baseline.json gains per-theme floors.
+resolution: >-
+  Done when per-theme floors exist and are enforced.

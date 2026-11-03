@@ -1,0 +1,14 @@
+id: JOBS-3
+title: Activity board -- Manager Tasks screen with stop / restart / open log
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: manager/ui
+detail: >-
+  screen-jobs polls npdev jobs list --json every 10 s only while visible.
+resolution: >-
+  Done when Stop ends a gate run and its child processes.

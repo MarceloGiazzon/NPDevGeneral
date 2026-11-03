@@ -1,0 +1,16 @@
+id: THM-6
+title: Generated apps -- theme settings (ui.theme.name/choices, ui.a11y.menu), emitted theme files, generation-time validation
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: generator/themes
+detail: >-
+  New NpdevSettings keys, static/npdev-theme.js, static/themes/*.json and index.json, manifest
+  theme.name/choices; an invalid theme fails generation.
+resolution: >-
+  Done when the generator gate and determinism check are green and an invalid themes/x.json fails generation
+  naming the pair.

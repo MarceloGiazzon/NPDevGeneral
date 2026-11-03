@@ -184,6 +184,25 @@ pub fn npdev_cli_path(version_dir: &Path) -> PathBuf {
     version_dir.join("NPDevCli").join("npdev_cli.py")
 }
 
+/// Run a command to completion and leave its command line, output tails and exit code on the current
+/// run record (runs.rs) -- the process layer of "Get help with this error". The record is only
+/// touched when the call happens under `runs::recorded`; elsewhere it is a plain `.output()`.
+trait OutputRecorded {
+    async fn output_recorded(&mut self) -> std::io::Result<std::process::Output>;
+}
+
+impl OutputRecorded for Command {
+    async fn output_recorded(&mut self) -> std::io::Result<std::process::Output> {
+        let std_cmd = self.as_std();
+        let mut argv = vec![std_cmd.get_program().to_string_lossy().to_string()];
+        argv.extend(std_cmd.get_args().map(|a| a.to_string_lossy().to_string()));
+        let cwd = std_cmd.get_current_dir().map(|p| p.to_string_lossy().to_string());
+        let output = self.output().await?;
+        crate::runs::note_output(argv, cwd, &output.stdout, &output.stderr, output.status.code());
+        Ok(output)
+    }
+}
+
 fn build_command(python_exe: &Path, npdev_cli: &Path, args: &[&str], java_home: Option<&str>, cwd: Option<&Path>) -> Command {
     let mut cmd = Command::new(python_exe);
     cmd.arg(npdev_cli);
@@ -323,7 +342,7 @@ pub async fn run_doctor(
         args.push(dir);
     }
     let output = build_command(python_exe, npdev_cli, &args, java_home, None)
-        .output()
+        .output_recorded()
         .await
         .map_err(|e| format!("could not run doctor: {e}"))?;
     parse_single_json(&output.stdout, &output.stderr, "doctor")
@@ -377,7 +396,7 @@ pub async fn run_db_test_connection(
     }
     let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
     let output = build_command(python_exe, npdev_cli, &borrowed, java_home, None)
-        .output()
+        .output_recorded()
         .await
         .map_err(|e| format!("could not test the connection: {e}"))?;
     // Exit 1 here means "the checks ran and some FAILED", which is a result to render, not an error
@@ -399,7 +418,7 @@ pub async fn run_db_detect(
         return serde_json::from_str(FIXTURE_DB_DETECT).map_err(|e| format!("fixture did not parse: {e}"));
     }
     let output = build_command(python_exe, npdev_cli, &["db", "detect", "--json"], java_home, None)
-        .output()
+        .output_recorded()
         .await
         .map_err(|e| format!("could not look for databases: {e}"))?;
     parse_single_json(&output.stdout, &output.stderr, "db detect")
@@ -428,7 +447,7 @@ pub async fn run_engines(
         return serde_json::from_str(FIXTURE_ENGINES).map_err(|e| format!("fixture engines did not parse: {e}"));
     }
     let output = build_command(python_exe, npdev_cli, &["engines", "--json"], java_home, None)
-        .output()
+        .output_recorded()
         .await
         .map_err(|e| format!("could not list engines: {e}"))?;
     if !output.status.success() {
@@ -484,7 +503,7 @@ pub async fn run_init(
     }
     let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
     let output = build_command(python_exe, npdev_cli, &borrowed, java_home, None)
-        .output()
+        .output_recorded()
         .await
         .map_err(|e| format!("could not run init: {e}"))?;
     if !output.status.success() {
@@ -517,7 +536,7 @@ pub async fn run_generate_app(
         java_home,
         None,
     )
-    .output()
+    .output_recorded()
     .await
     .map_err(|e| format!("could not run generate app: {e}"))?;
     if !output_result.status.success() {
@@ -543,7 +562,7 @@ pub async fn run_validate_model(
     model_path: &str,
 ) -> Result<Value, String> {
     let output = build_command(python_exe, npdev_cli, &["validate", "model", model_path], java_home, None)
-        .output()
+        .output_recorded()
         .await
         .map_err(|e| format!("could not run validate model: {e}"))?;
     parse_single_json(&output.stdout, &output.stderr, "validate model")
@@ -579,7 +598,7 @@ pub async fn run_db_operation(
     }
     let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
     let output = build_command(python_exe, npdev_cli, &borrowed, java_home, None)
-        .output()
+        .output_recorded()
         .await
         .map_err(|e| format!("could not run db {operation}: {e}"))?;
     // A non-zero exit is a RESULT here (the database is not running, the reset was refused), not a
@@ -661,6 +680,13 @@ pub async fn run_setup_streaming_with(
     mut on_narration: impl FnMut(&str) + Send + 'static,
 ) -> Result<Value, String> {
     let mut cmd = build_command(&python_exe, &npdev_cli, &["setup", "--json"], java_home.as_deref(), None);
+    // SUP-2: the tail of setup's output is what a "Get help with this error" report quotes -- the
+    // Gradle line that broke is on stderr, long before the exit code says anything useful.
+    crate::runs::note_command(
+        vec![python_exe.to_string_lossy().to_string(), npdev_cli.to_string_lossy().to_string(), "setup".into(), "--json".into()],
+        None,
+    );
+    let sink = crate::runs::sink();
     let mut child = cmd.spawn().map_err(|e| format!("could not start setup: {e}"))?;
     let stdout = child.stdout.take().ok_or("setup: no stdout pipe")?;
     let stderr = child.stderr.take().ok_or("setup: no stderr pipe")?;
@@ -676,6 +702,7 @@ pub async fn run_setup_streaming_with(
     tokio::spawn(async move {
         while let Ok(Some(line)) = stderr_reader.next_line().await {
             if !line.trim().is_empty() {
+                sink.stderr(&line);
                 on_narration(&line);
             }
         }
@@ -687,12 +714,14 @@ pub async fn run_setup_streaming_with(
         if line.is_empty() {
             continue;
         }
+        sink.stdout(line);
         if let Ok(value) = serde_json::from_str::<Value>(line) {
             on_event(&value);
             last = Some(value);
         }
     }
     let status = child.wait().await.map_err(|e| e.to_string())?;
+    sink.exit(status.code());
     match last {
         Some(value) if status.success() => Ok(value),
         Some(value) => Err(format!(
@@ -730,6 +759,11 @@ pub async fn start_dev_streaming(
         java_home.as_deref(),
         Some(&model_dir),
     );
+    crate::runs::note_command(
+        vec![python_exe.to_string_lossy().to_string(), npdev_cli.to_string_lossy().to_string(), "dev".into(), "--json".into(), "--port".into(), port_str.clone()],
+        Some(model_dir.to_string_lossy().to_string()),
+    );
+    let sink = crate::runs::sink();
     let mut child = cmd.spawn().map_err(|e| format!("could not start dev: {e}"))?;
     #[cfg(windows)]
     let job = assign_to_new_job(&child);
@@ -740,7 +774,11 @@ pub async fn start_dev_streaming(
     // Same reasoning as run_setup_streaming: drain stderr concurrently so the child can never
     // stall on a full pipe buffer even though nothing here surfaces it yet.
     let mut stderr_reader = BufReader::new(stderr).lines();
-    tokio::spawn(async move { while let Ok(Some(_)) = stderr_reader.next_line().await {} });
+    tokio::spawn(async move {
+        while let Ok(Some(line)) = stderr_reader.next_line().await {
+            sink.stderr(&line);
+        }
+    });
 
     tauri::async_runtime::spawn(async move {
         while let Ok(Some(line)) = reader.next_line().await {
@@ -748,6 +786,7 @@ pub async fn start_dev_streaming(
             if line.is_empty() {
                 continue;
             }
+            sink.stdout(line);
             if let Ok(value) = serde_json::from_str::<Value>(line) {
                 let _ = app.emit("dev-event", value);
             }
@@ -784,7 +823,7 @@ async fn run_json(
 ) -> Result<Value, String> {
     let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
     let output = build_command(python_exe, npdev_cli, &borrowed, java_home, None)
-        .output()
+        .output_recorded()
         .await
         .map_err(|e| format!("could not run {label}: {e}"))?;
     parse_single_json(&output.stdout, &output.stderr, label)
@@ -1604,7 +1643,7 @@ pub async fn run_gpu_check_bundle(
                      "--out".to_string(), out_zip.to_string()];
     let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
     let output = build_command(python_exe, npdev_cli, &borrowed, java_home, None)
-        .output()
+        .output_recorded()
         .await
         .map_err(|e| format!("could not run gpu-check bundle: {e}"))?;
     if !output.status.success() {
@@ -1837,7 +1876,7 @@ pub async fn run_explore_with_env(
         command.env(name, value);
     }
     let output = command
-        .output()
+        .output_recorded()
         .await
         .map_err(|e| format!("could not run {label}: {e}"))?;
     parse_single_json(&output.stdout, &output.stderr, label)
@@ -2111,5 +2150,74 @@ mod fake_ai_tests {
         assert_eq!(fake_ai_fixture(&args(&["spend", "cap", "20", "--json"])), FIXTURE_AI_WRITE_OK);
         assert_eq!(fake_ai_fixture(&args(&["bind", "prompter", "deep", "--json"])), FIXTURE_AI_WRITE_OK);
         assert_eq!(fake_ai_fixture(&args(&["test", "deep", "--json"])), FIXTURE_AI_TEST);
+    }
+}
+
+/// SUP-2: the process layer. A real child process that fails the way `npdev setup` does -- narration on
+/// stderr, a Gradle failure line, a non-zero exit -- must leave that line in the run record, so a
+/// "Get help with this error" report quotes the line that broke and not just "setup exited with 1".
+#[cfg(test)]
+mod process_layer_tests {
+    use super::*;
+
+    fn find_python() -> Option<PathBuf> {
+        for name in ["python", "python3"] {
+            if std::process::Command::new(name).arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
+                return Some(PathBuf::from(name));
+            }
+        }
+        None
+    }
+
+    #[tokio::test]
+    async fn a_failing_setup_leaves_the_failing_gradle_line_in_the_report() {
+        let Some(python) = find_python() else {
+            eprintln!("SKIPPED: no python on PATH");
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("npdev-sup2-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("fake_npdev_cli.py");
+        std::fs::write(
+            &script,
+            "import sys\n\
+             print('npdev setup: [1/3] building Kernel/Contract runtime jars', file=sys.stderr)\n\
+             print('> Task :kernel:compileJava FAILED', file=sys.stderr)\n\
+             print('FAILURE: Build failed with an exception. password=hunter-two-secret', file=sys.stderr)\n\
+             print('{\"ok\": false}')\n\
+             sys.exit(1)\n",
+        )
+        .unwrap();
+
+        let result = crate::runs::recorded("npdev-setup", async {
+            run_setup_streaming_with(python, script.clone(), None, |_| {}, |_| {}).await
+        })
+        .await;
+        assert!(result.is_err(), "the fake setup exits 1");
+        // the stderr drain runs on a spawned task; give it a moment to finish the last lines
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+        let rec = crate::runs::latest(Some("npdev-setup")).expect("setup was recorded");
+        assert_eq!(rec.exit_code, Some(1));
+        assert!(rec.argv.iter().any(|a| a == "setup"), "{:?}", rec.argv);
+        let out = crate::support::build_report(crate::support::ReportInputs {
+            record: Some(rec),
+            operation: "npdev-setup".into(),
+            fallback_error: None,
+            screen: "install".into(),
+            app_dir: None,
+            ui_language: "en".into(),
+            manager_version: "test".into(),
+            source: "test".into(),
+            os: "test".into(),
+            admin: "no".into(),
+            java: "17".into(),
+            python: "3".into(),
+            known_secrets: vec![],
+        });
+        assert!(out.text.contains("kernel:compileJava FAILED"), "{}", out.text);
+        assert!(out.text.contains("FAILURE: Build failed"), "{}", out.text);
+        assert!(!out.text.contains("hunter-two-secret"), "{}", out.text);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

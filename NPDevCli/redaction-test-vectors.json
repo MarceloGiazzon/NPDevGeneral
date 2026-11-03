@@ -1,0 +1,184 @@
+{
+  "schema": "npdev-redaction-test-vectors.v1",
+  "description": "Every implementation of redaction-rules.json must turn each `input` into exactly `expected`. knownSecrets are applied first (longest first), then rules in file order.",
+  "vectors": [
+    {
+      "name": "jdbc url query password",
+      "input": "jdbc:postgresql://db:5432/app?user=app&password=hunter22",
+      "expected": "jdbc:postgresql://db:5432/app?user=app&password=<redacted>",
+      "knownSecrets": []
+    },
+    {
+      "name": "spring property",
+      "input": "spring.datasource.password=S3cret!x",
+      "expected": "spring.datasource.password=<redacted>",
+      "knownSecrets": []
+    },
+    {
+      "name": "jvm system property",
+      "input": "-Dspring.datasource.password=abc123 -Xmx512m",
+      "expected": "-Dspring.datasource.password=<redacted> -Xmx512m",
+      "knownSecrets": []
+    },
+    {
+      "name": "env var with vendor-shaped key",
+      "input": "GROQ_API_KEY=gsk_abcdefghijklmnopqrstuvwx",
+      "expected": "GROQ_API_KEY=<redacted:api-key>",
+      "knownSecrets": []
+    },
+    {
+      "name": "json password",
+      "input": "{\"user\": \"app\", \"password\": \"hunter 22\"}",
+      "expected": "{\"user\": \"app\", \"password\": <redacted>}",
+      "knownSecrets": []
+    },
+    {
+      "name": "env var with opaque key",
+      "input": "NPDEV_BENCH_API_KEY=abc123opaque",
+      "expected": "NPDEV_BENCH_API_KEY=<redacted>",
+      "knownSecrets": []
+    },
+    {
+      "name": "authorization header",
+      "input": "Authorization: Bearer abcdefghijklmnop.qrs",
+      "expected": "Authorization: <redacted>",
+      "knownSecrets": []
+    },
+    {
+      "name": "bare bearer",
+      "input": "curl failed with bearer abcdefgh12345678 rejected",
+      "expected": "curl failed with bearer <redacted> rejected",
+      "knownSecrets": []
+    },
+    {
+      "name": "anthropic key in text",
+      "input": "using key sk-ant-api03-AbCdEf0123456789xyzXYZ now",
+      "expected": "using key <redacted:api-key> now",
+      "knownSecrets": []
+    },
+    {
+      "name": "openai key",
+      "input": "OPENAI said: invalid sk-proj-abcdefghijklmnop1234",
+      "expected": "OPENAI said: invalid <redacted:api-key>",
+      "knownSecrets": []
+    },
+    {
+      "name": "google key after key=",
+      "input": "key=AIzaSyA1234567890abcdefghijklmnopqrstuv",
+      "expected": "key=<redacted:api-key>",
+      "knownSecrets": []
+    },
+    {
+      "name": "google key standalone",
+      "input": "got AIzaSyA1234567890abcdefghijklmnopqrstuv back",
+      "expected": "got <redacted:api-key> back",
+      "knownSecrets": []
+    },
+    {
+      "name": "github pat",
+      "input": "push with ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+      "expected": "push with <redacted:github-token>",
+      "knownSecrets": []
+    },
+    {
+      "name": "aws key",
+      "input": "AKIAIOSFODNN7EXAMPLE leaked",
+      "expected": "<redacted:aws-key> leaked",
+      "knownSecrets": []
+    },
+    {
+      "name": "jwt",
+      "input": "cookie eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U ok",
+      "expected": "cookie <redacted:jwt> ok",
+      "knownSecrets": []
+    },
+    {
+      "name": "url credentials",
+      "input": "fatal: https://alice:pa55word@github.com/x.git",
+      "expected": "fatal: https://alice:<redacted>@github.com/x.git",
+      "knownSecrets": []
+    },
+    {
+      "name": "pem block",
+      "input": "x\n-----BEGIN RSA PRIVATE KEY-----\nMIIEow\nAAAA\n-----END RSA PRIVATE KEY-----\ny",
+      "expected": "x\n<redacted:private-key>\ny",
+      "knownSecrets": []
+    },
+    {
+      "name": "known secret value",
+      "input": "login failed for Tr0ub4dor&3 at db",
+      "expected": "login failed for <redacted:known-secret> at db",
+      "knownSecrets": [
+        "Tr0ub4dor&3"
+      ]
+    },
+    {
+      "name": "known secret too short is ignored",
+      "input": "port abc ok",
+      "expected": "port abc ok",
+      "knownSecrets": [
+        "abc"
+      ]
+    },
+    {
+      "name": "windows home",
+      "input": "C:\\Users\\dev1m\\AppData\\Local\\NPDev\\manager.log",
+      "expected": "C:\\Users\\<user>\\AppData\\Local\\NPDev\\manager.log",
+      "knownSecrets": []
+    },
+    {
+      "name": "unix home",
+      "input": "/home/marcelo/npdev/build.log",
+      "expected": "/home/<user>/npdev/build.log",
+      "knownSecrets": []
+    },
+    {
+      "name": "email",
+      "input": "contact someone@example.com for access",
+      "expected": "contact <email> for access",
+      "knownSecrets": []
+    },
+    {
+      "name": "no over-redaction: counters",
+      "input": "passCount=12 passRate=0.9 tokenCount=5",
+      "expected": "passCount=12 passRate=0.9 tokenCount=5",
+      "knownSecrets": []
+    },
+    {
+      "name": "no over-redaction: build line",
+      "input": "BUILD FAILED in 2m 3s",
+      "expected": "BUILD FAILED in 2m 3s",
+      "knownSecrets": []
+    },
+    {
+      "name": "no over-redaction: jvm notice",
+      "input": "Picked up JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8",
+      "expected": "Picked up JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8",
+      "knownSecrets": []
+    },
+    {
+      "name": "no over-redaction: windows error",
+      "input": "Access is denied. (os error 5)",
+      "expected": "Access is denied. (os error 5)",
+      "knownSecrets": []
+    },
+    {
+      "name": "nvidia key",
+      "input": "NVIDIA_API_KEY was nvapi-AbCdEfGhIjKlMnOpQrStUvWx and then it failed",
+      "expected": "NVIDIA_API_KEY was <redacted:api-key> and then it failed",
+      "knownSecrets": []
+    },
+    {
+      "name": "huggingface token",
+      "input": "downloading with hf_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789 from the hub",
+      "expected": "downloading with <redacted:api-key> from the hub",
+      "knownSecrets": []
+    },
+    {
+      "name": "slack token",
+      "input": "posted with xoxb-1234567890-abcdefghij to the channel",
+      "expected": "posted with <redacted:slack-token> to the channel",
+      "knownSecrets": []
+    }
+  ]
+}

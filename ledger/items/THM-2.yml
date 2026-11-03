@@ -1,0 +1,15 @@
+id: THM-2
+title: Manager token unification -- one colour set for the whole Manager (form screens turn dark, decision D1)
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: manager/ui
+detail: >-
+  tokens.css linked first; the scoped colour blocks in monitor.css and app.css no longer redefine the palette;
+  check-manager-css-tokens.py ratchet.
+resolution: >-
+  Done when Monitor and Scrap look as before and the seven form screens use the same dark tokens.

@@ -1,0 +1,15 @@
+id: BENCH-1
+title: Token benchmark -- direct arm (the AI writes the app without NPDev)
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: bench
+detail: >-
+  scripts/ai/bench/direct.py builds the prompt from bench-direct-arm.json, parses FILE blocks, runs the app
+  under isolation and the same acceptance probes.
+resolution: >-
+  Done when run_bench.py run --arm direct-python --dry-run passes with a fake backend.

@@ -1,0 +1,14 @@
+id: JOBS-4
+title: Activity board -- npdev jobs board and the prompt that started each job
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: jobs
+detail: >-
+  board.html static page plus lazy resolution of the prompt excerpt from the Claude Code transcript.
+resolution: >-
+  Done when the board names the prompt that started a gate run.

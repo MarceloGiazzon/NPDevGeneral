@@ -1,0 +1,15 @@
+id: NAV-6
+title: User test -- three real first users before and after the new navigation
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: owner
+detail: >-
+  Give the Manager to 3 first users one at a time, no help: ready the computer, create Bakery, open it, load
+  Autumn from a file, get help after a forced failure. Notes go to the OutsideRepo evidence folder.
+resolution: >-
+  Owner-only; done when the notes exist and each hesitation is a filed UI fix.

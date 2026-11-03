@@ -1,0 +1,15 @@
+id: ACC-3
+title: Manager -- live regions, labelled buttons and inputs
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: manager/ui
+detail: >-
+  aria-live=polite on setup narration, run status and the support summary; aria-busy on running sections; aria-
+  label on icon-only buttons; a label on every input.
+resolution: >-
+  Done when setup progress lines are announced by a screen reader and the axe label rules are clean.

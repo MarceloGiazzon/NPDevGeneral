@@ -193,7 +193,13 @@ async function loadDoctor() {
     const result = await invoke("check_doctor", { appDir });
     renderCheckRows(container, result.checks);
   } catch (err) {
-    container.innerHTML = `<p class="status-line">could not run doctor: ${escapeHtml(err)}</p>`;
+    reportableError(container, {
+      operation: "doctor",
+      error: err,
+      screen: "ready",
+      appDir,
+      message: `could not run doctor: ${err}`,
+    });
   }
 }
 
@@ -367,6 +373,7 @@ async function refreshJdkStatus() {
 document.getElementById("jdk-install-btn").addEventListener("click", async () => {
   const btn = document.getElementById("jdk-install-btn");
   const bar = document.getElementById("jdk-progress");
+  NPDevSupport.clearHelp(document.getElementById("jdk-status"));
   btn.disabled = true;
   bar.hidden = false;
   bar.removeAttribute("value");
@@ -375,7 +382,9 @@ document.getElementById("jdk-install-btn").addEventListener("click", async () =>
     await refreshJdkStatus();
     await loadDoctor();
   } catch (err) {
-    document.getElementById("jdk-status").textContent = `failed: ${err}`;
+    const jdkStatus = document.getElementById("jdk-status");
+    jdkStatus.textContent = `failed: ${err}`;
+    offerHelp(jdkStatus, { operation: "install-java", error: err, screen: "install" });
     btn.disabled = false;
   } finally {
     bar.hidden = true;
@@ -416,6 +425,7 @@ async function refreshPythonStatus() {
 document.getElementById("python-install-btn").addEventListener("click", async () => {
   const btn = document.getElementById("python-install-btn");
   const bar = document.getElementById("python-progress");
+  NPDevSupport.clearHelp(document.getElementById("python-status"));
   btn.disabled = true;
   bar.hidden = false;
   bar.removeAttribute("value");
@@ -423,7 +433,9 @@ document.getElementById("python-install-btn").addEventListener("click", async ()
     await invoke("install_python");
     await refreshPythonStatus();
   } catch (err) {
-    document.getElementById("python-status").textContent = `failed: ${err}`;
+    const pyStatus = document.getElementById("python-status");
+    pyStatus.textContent = `failed: ${err}`;
+    offerHelp(pyStatus, { operation: "install-python", error: err, screen: "install" });
     btn.disabled = false;
   } finally {
     bar.hidden = true;
@@ -627,6 +639,7 @@ document.getElementById("setup-run-btn").addEventListener("click", async () => {
   logEl.hidden = false;
   logEl.textContent = "";
   statusEl.textContent = "running…";
+  NPDevSupport.clearHelp(statusEl);
   // A local jar build is ~10 silent minutes on stdout. Elapsed time, the usual range and the latest
   // narration line are what tell a user "working" apart from "hung".
   const progressEl = document.getElementById("setup-progress");
@@ -650,6 +663,7 @@ document.getElementById("setup-run-btn").addEventListener("click", async () => {
     logEl.textContent += `done -- jars ${source}\n`;
   } catch (err) {
     statusEl.textContent = `failed: ${err}`;
+    offerHelp(statusEl, { operation: "npdev-setup", error: err, screen: "install" });
     // The run's own account goes to the log as well as the status line, because the line below is
     // about to be replaced by what is actually on disk NOW. The two answer different questions --
     // "what did this run do" and "what is staged" -- and only the second survives a restart, which
@@ -913,7 +927,7 @@ document.getElementById("test-connection-btn").addEventListener("click", async (
       : "This connection is NOT usable yet -- see the rows above.";
     rows.appendChild(verdict);
   } catch (err) {
-    rows.innerHTML = `<p class="status-line">could not test: ${escapeHtml(err)}</p>`;
+    reportableError(rows, { operation: "db-test-connection", error: err, screen: "apps", message: `could not test: ${err}` });
   } finally {
     btn.disabled = false;
   }
@@ -1018,6 +1032,7 @@ document.getElementById("new-app-form").addEventListener("submit", async (event)
   if (createBtn.disabled) return;
   createBtn.disabled = true;
   statusEl.textContent = "creating…";
+  NPDevSupport.clearHelp(statusEl);
   try {
     const result = await invoke("create_app", {
       name,
@@ -1053,6 +1068,7 @@ document.getElementById("new-app-form").addEventListener("submit", async (event)
       ? `not created: ${parentDir}\\${name} already exists and is not empty. Pick another name or ` +
         `folder -- if you created it here earlier, it is already in the app list above.`
       : `failed: ${text}`;
+    offerHelp(statusEl, { operation: "create-app", error: text, screen: "apps", appDir: `${parentDir}\\${name}` });
   } finally {
     createBtn.disabled = false;
   }
@@ -1188,7 +1204,9 @@ document.getElementById("run-start-btn").addEventListener("click", async () => {
     document.getElementById("run-start-btn").disabled = true;
     document.getElementById("run-stop-btn").disabled = false;
   } catch (err) {
-    alert(`could not start: ${err}`);
+    const banner = document.getElementById("run-banner");
+    reportableError(banner, { operation: "start-app", error: err, screen: "run", appDir, message: `could not start: ${err}` });
+    banner.hidden = false;
   }
 });
 

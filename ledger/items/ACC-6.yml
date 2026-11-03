@@ -1,0 +1,14 @@
+id: ACC-6
+title: Generated apps -- --np-danger contrast fix (was 4.38:1 on white)
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-03
+closed: null
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked on 2026-11-03 to implement the whole plan.
+surface: generator/shell
+detail: >-
+  Map the negative colour to both --np-negative and --np-danger.
+resolution: >-
+  Done when a unit test asserts every emitted theme pair meets its minimum.

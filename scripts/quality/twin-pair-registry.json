@@ -811,6 +811,35 @@
       "NPDevContract/dsl/resources/Schemas/model.schema.json",
       "NPDevGenerator/generator/src/main/resources/npdev-templates/static-assets/business-ui/views/bulk-actions.js"
     ]
+  },
+  {
+    "id": "redaction-rules-one-definition",
+    "citedBy": "SUP-1/SUP-4",
+    "description": "What counts as a secret is ONE JSON file (NPDevCli/redaction-rules.json), read by the Python redactor (npdev_redact.py, which the Monitor's redact() uses) and embedded by the Manager's Rust redactor (redact.rs). A reader that names its own copy of the rules is a second definition, which is how a key leaks through one surface and not another.",
+    "kind": "field-in-all-files",
+    "trackedFields": [
+      "redaction-rules.json"
+    ],
+    "caseSensitive": true,
+    "files": [
+      "NPDevCli/npdev_redact.py",
+      "NPDevManager/src/redact.rs"
+    ]
+  },
+  {
+    "id": "redaction-vectors-one-file",
+    "citedBy": "SUP-1/SUP-4",
+    "description": "The Rust and Python redaction tests must both read NPDevCli/redaction-test-vectors.json itself, never a copy: two engines, one set of vectors, byte-identical output.",
+    "kind": "field-in-all-files",
+    "trackedFields": [
+      "redaction-test-vectors.json"
+    ],
+    "caseSensitive": true,
+    "files": [
+      "NPDevCli/tests/test_redaction_rules.py",
+      "NPDevManager/src/redact.rs",
+      "NPDevCli/npdev_redact.py"
+    ]
   }
 ]
 }

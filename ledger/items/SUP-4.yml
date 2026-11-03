@@ -1,0 +1,37 @@
+id: SUP-4
+title: Copy for AI -- Python twin of the redaction (npdev_redact.py) shared with the Monitor
+type: FEATURE
+severity: MEDIUM
+status: DONE
+opened: 2026-11-03
+closed: '2026-11-03'
+source: >-
+  Manager UX plan 2026-10-31 (NPDev_General__OutsideRepo/NPDEV_MANAGER_UX_PLAN_2026-10-31/PLAN.md); owner asked
+  on 2026-11-03 to implement the whole plan.
+surface: cli/redaction
+detail: >-
+  NPDevCli/npdev_redact.py loads the same JSON rules; npdev_monitor.redact() takes its key pattern from it.
+resolution: >-
+  NPDevCli/npdev_redact.py loads the same rules (refusing a non-portable pattern); npdev_monitor.redact() takes
+  its key-name pattern from it and runs the secret-class text rules on every string value, keeping the old key=value
+  floor so it can only get stricter (privacy rules stay off there: the Manager UI reads paths back out of that JSON).
+  NPDevCli/tests/test_redaction_rules.py reads the SAME vector file as the Rust test and fails for any rule no vector
+  exercises. Twin-pair rules pin both single-definition claims.
+files:
+- NPDevCli/npdev_redact.py
+- NPDevCli/npdev_monitor.py
+- NPDevCli/tests/test_redaction_rules.py
+- scripts/quality/twin-pair-registry.json
+- scripts/quality/check-twin-pair-consistency.py
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_redaction_rules.py#test_every_vector_redacts_as_expected
+  asserts: >-
+    every vector in the shared file redacts to its expected text under Python re (the Rust test asserts the same
+    file); every rule fires on some vector; the Monitor's redact keeps password=/token= masking and passCount, and
+    now also masks a vendor key inside a value.
+  provenRed: true
+note: >-
+  2026-11-03: 12 Python tests green including test_monitor_data_policy. The optional `npdev support-report` CLI
+  command was not built.
