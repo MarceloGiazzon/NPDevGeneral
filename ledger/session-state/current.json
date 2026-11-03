@@ -1,21 +1,20 @@
 {
-  "closedAt": "2026-11-03T18:35:27.0591357Z",
+  "closedAt": "2026-11-03T21:15:12.0456117Z",
   "branch": "main",
-  "head": "de38d27d",
-  "headSubject": "fix(quality): check-manager-ui-render writes its screenshots to the temp dir, not the cwd",
-  "summary": "THM-10 closed: npdev-themes seeded (4 seasonal themes, generated sha256 index.json, CI green) and Manager 0.13.0 has Browse themes + Share this theme with sha256 refusal. Full aiKnowledge gate run: found and fixed missing guards on I18N-1/THM-8/THM-9/THM-10 and a CRLF shebang; re-run green. UI render check now writes to temp dir.",
-  "nextStep": "Open items are NAV-6 (owner user test) and OWN-2 (owner outreach) -- both owner-only. Engineering candidates: a native Portuguese read of NPDevManager/ui/i18n/pt.json; run the other T2 gates (generator, runtimehost, kernel) which were not run this session.",
+  "head": "fd502a39",
+  "headSubject": "chore(ledger): close NAV-6 and OWN-2 as WONTFIX by owner instruction (2026-11-03)",
+  "summary": "Ran the T2 gates last session skipped (generator, runtimeHost, kernel green) plus aiKnowledge and weeklyPaperwork; fixed a DOCS-1 false positive by sharing npdev_cli.apply_argv_shorthands between main() and check-doc-references.py; closed NAV-6 and OWN-2 as WONTFIX (owner instruction, tests/outreach NOT performed); ratcheted kernel coverage floor; installed tauri-cli 2.12.4, built the unsigned Manager 0.13.0 NSIS installer and installed it.",
+  "nextStep": "No ledger items are open. First check the GitHub CI run for fd502a39 (AI knowledge substrate gate): it is the first full gate on the apply_argv_shorthands refactor in NPDevCli/npdev_cli.py, so if it is red fix that. Then launch the installed Manager (C:\\Users\\dev1m\\AppData\\Local\\NPDev Manager\\npdev-manager.exe, 0.13.0) and eyeball Browse themes / Share this theme -- the app was never launched this session. After that, a native Portuguese read of NPDevManager/ui/i18n/pt.json, or pick new engineering work.",
   "plan": "",
-  "blocked": "NAV-6 owner user test; OWN-2 owner outreach; npdev-themes LICENSE choice (owner); Gemini bench quota",
-  "verified": "cargo test 86/86; check-manager-ui-render.mjs 131/131; aiKnowledge gate green after fixes; npdev-themes CI green; raw-served theme sha256 equals index",
+  "blocked": "npdev-themes LICENSE choice (owner); Gemini bench quota",
+  "verified": "generator 205s, runtimeHost 1068s, kernel 476s: passed. aiKnowledge 1634s: passed, but it ran BEFORE the apply_argv_shorthands refactor. weeklyPaperwork: failed on DOCS-1, passed after the fix. test_cli_usability 16/16. Installer built (SHA-256 4797A0E4...483B, unsigned) and installed; registry shows 0.13.0. NOT verified: aiKnowledge after the refactor, the installed app's UI, GitHub CI.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "de38d27d fix(quality): check-manager-ui-render writes its screenshots to the temp dir, not the cwd",
-    "7a9cc3f0 chore: remove UI-render check output that was committed by mistake",
-    "df549369 feat(manager): Browse themes and Share this theme, sha256-verified (THM-10, Manager 0.13.0)",
-    "f5e0b437 feat(themes): check-themes.py --catalogue validates a themes repo and its sha256 index (THM-10)",
-    "136f5602 chore(handoff): session close, THM-10 next"
+    "fd502a39 chore(ledger): close NAV-6 and OWN-2 as WONTFIX by owner instruction (2026-11-03)",
+    "215834cd fix(docs-check): DOCS-1 applies the CLI's own argv shorthands before walking the argparse tree",
+    "cf9cd333 chore(quality): ratchet kernel coverage floor 71.5298 -> 71.5342",
+    "4d280d9f chore(handoff): session close, THM-10 done"
   ]
 }
