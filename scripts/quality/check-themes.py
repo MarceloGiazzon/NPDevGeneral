@@ -21,12 +21,20 @@ What it checks
 The two byte-identical twins (theme-engine.js, a11y.css in the Manager) are pinned by twin-pair rules in
 scripts/quality/twin-pair-registry.json, checked by check-twin-pair-consistency.py.
 
+5. THM-10, the public catalogue repo (github.com/MarceloGiazzon/npdev-themes): with `--catalogue <repo>` the
+   same `validate()` runs over `<repo>/themes/*.json` (each must also be self-contained, carry version, author
+   and license, and not reuse a built-in id) and `<repo>/index.json` must equal what `build_index()` computes
+   from those files -- sha256 over the raw file bytes. `--write-index` regenerates it. The catalogue's CI
+   checks this repo out beside it and runs exactly this script, so there is one checker, not a copy.
+
 Usage:  python scripts/quality/check-themes.py [--self-test]
+        python scripts/quality/check-themes.py --catalogue <repo-dir> [--write-index]
 Exit 0 = every theme valid; 1 = at least one failure (each named).
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -161,6 +169,78 @@ def check_all_themes() -> list[str]:
     return failures
 
 
+INDEX_SCHEMA = "npdev-theme-index.v1"
+SWATCH_TOKENS = ["bg", "surface", "accent", "text", "positive"]
+CATALOGUE_REQUIRED = ["version", "author", "license"]
+
+
+def build_index(themes_dir: Path) -> dict:
+    """The catalogue index: one entry per themes/<id>.json, sorted by id, sha256 over the RAW bytes (what the
+    Manager downloads and hashes before it imports anything)."""
+    entries = []
+    for path in sorted(themes_dir.glob("*.json")):
+        raw = path.read_bytes()
+        theme = json.loads(raw.decode("utf-8"))
+        colors = theme.get("colors") or {}
+        entry = {
+            "id": theme["id"], "name": theme["name"], "names": theme.get("names") or {},
+            "version": theme.get("version", ""), "author": theme.get("author", ""),
+            "license": theme.get("license", ""), "colorScheme": theme["colorScheme"],
+            "swatches": [colors.get(t, "") for t in SWATCH_TOKENS],
+            "file": f"themes/{path.name}", "sha256": hashlib.sha256(raw).hexdigest(),
+        }
+        entries.append(entry)
+    return {"schema": INDEX_SCHEMA, "themes": entries}
+
+
+def index_text(index: dict) -> str:
+    return json.dumps(index, indent=2, ensure_ascii=False) + "\n"
+
+
+def check_catalogue(repo: Path, write_index: bool) -> list[str]:
+    themes_dir = repo / "themes"
+    if not themes_dir.is_dir():
+        return [f"{themes_dir} does not exist"]
+    failures: list[str] = []
+    seen: set[str] = set()
+    for path in sorted(themes_dir.glob("*.json")):
+        try:
+            theme = json.loads(path.read_bytes().decode("utf-8"))
+        except (OSError, ValueError) as exc:
+            failures.append(f"{path.name}: unreadable ({exc})")
+            continue
+        tid = str(theme.get("id")) if isinstance(theme, dict) else "?"
+        if path.name != f"{tid}.json":
+            failures.append(f"{path.name}: file name must be <id>.json (id is {tid!r})")
+        if tid in seen:
+            failures.append(f"{path.name}: duplicate theme id {tid!r}")
+        seen.add(tid)
+        if tid in BUILT_IN_IDS:
+            failures.append(f"{path.name}: {tid!r} is a built-in NPDev theme id; the Manager refuses to replace it")
+        if isinstance(theme, dict):
+            if theme.get("basedOn"):
+                failures.append(f"{path.name}: catalogue themes must be self-contained (no basedOn)")
+            for key in CATALOGUE_REQUIRED:
+                if not theme.get(key):
+                    failures.append(f"{path.name}: {key} is required in a catalogue theme")
+        for err in validate(theme):
+            failures.append(f"{path.name}: {err}")
+    if failures:
+        return failures
+    wanted = index_text(build_index(themes_dir))
+    index_path = repo / "index.json"
+    if write_index:
+        index_path.write_bytes(wanted.encode("utf-8"))
+        print(f"  wrote {index_path} ({len(seen)} themes)")
+        return []
+    if not index_path.exists():
+        return ["index.json does not exist (run with --write-index)"]
+    if index_path.read_bytes().decode("utf-8") != wanted:
+        return ["index.json is stale: it does not match themes/*.json (run with --write-index)"]
+    print(f"  index.json matches {len(seen)} theme files (sha256 over raw bytes)")
+    return []
+
+
 def check_tokens_css_defaults() -> list[str]:
     if not TOKENS_CSS.exists():
         return [f"{TOKENS_CSS.relative_to(ROOT)} does not exist"]
@@ -229,6 +309,17 @@ def main() -> int:
     if not self_test():
         return 1
     if "--self-test" in sys.argv:
+        return 0
+    if "--catalogue" in sys.argv:
+        repo = Path(sys.argv[sys.argv.index("--catalogue") + 1]).resolve()
+        print(f"Theme catalogue check (THM-10): {repo}")
+        failures = check_catalogue(repo, "--write-index" in sys.argv)
+        if failures:
+            print(f"\nFAILED: {len(failures)} problem(s):")
+            for f in failures:
+                print(f"  - {f}")
+            return 1
+        print("OK: every catalogue theme is valid data and the index matches.")
         return 0
     print("Theme check (THM-1):")
     failures: list[str] = []
