@@ -18629,9 +18629,14 @@ def _add_format_args(parser: argparse.ArgumentParser) -> None:
                        help="Print a short readable summary (the default when stdout is a terminal).")
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    argv = list(sys.argv[1:] if argv is None else argv)
+def apply_argv_shorthands(argv: list[str]) -> list[str]:
+    """The pre-parse rewrites that let a newcomer type the short form of a command.
+
+    ONE place, used by main() AND by scripts/quality/check-doc-references.py, so a doc that shows the
+    short form (`npdev validate model.json`) is checked against the same rewrite the CLI really applies
+    instead of failing as "not a subcommand".
+    """
+    argv = list(argv)
     # `npdev validate <model.json>` is `npdev validate model <model.json>` (options included)
     if len(argv) > 1 and argv[0] == "validate" and argv[1] not in ("model", "-h", "--help"):
         argv.insert(1, "model")
@@ -18643,6 +18648,12 @@ def main(argv: list[str] | None = None) -> int:
             argv.insert(1, "app")
     elif argv == ["inspect"] and Path("model.json").is_file():
         argv.append("app")
+    return argv
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    argv = apply_argv_shorthands(sys.argv[1:] if argv is None else argv)
     args = parser.parse_args(argv)
     try:
         if args.version:

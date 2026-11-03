@@ -243,6 +243,11 @@ def check_cli(command: str, ctx: Context) -> str | None:
     if not words:
         return None
     words = words[1:]  # drop the launcher
+    try:
+        import npdev_cli  # noqa: E402  -- already importable: ctx.parser came from it
+        words = npdev_cli.apply_argv_shorthands(words)  # the short forms main() really accepts
+    except Exception:
+        pass  # no shorthand knowledge: walk the words as written
     node = ctx.parser
     ancestors: list[argparse.ArgumentParser] = []
     i = 0
