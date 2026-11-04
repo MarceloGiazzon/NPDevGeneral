@@ -99,6 +99,22 @@ The AppImage carries its own browser engine, so there is nothing to install firs
 > manager has been exercised. If it fails to start on a real desktop, that is a known-unverified
 > surface and worth reporting rather than working around.
 
+### Building the installer from a checkout
+
+`scripts/release/New-ManagerInstaller.ps1` builds this platform's bundle (`cargo tauri build`: the
+NSIS `.exe` on Windows, the AppImage on Linux) and prints where it landed — under the cargo target
+dir that `NPDevManager/.cargo/config.toml` names. It needs Rust and the Tauri CLI
+(`cargo install tauri-cli --version '^2' --locked`).
+
+```powershell
+pwsh -NoProfile -File scripts/release/New-ManagerInstaller.ps1                        # build only
+pwsh -NoProfile -File scripts/release/New-ManagerInstaller.ps1 -Install -StopRunning -Launch
+```
+
+`-Install` (Windows) runs the installer silently and fails unless Windows then lists the version
+just built. It refuses while the Manager is open unless `-StopRunning` closes it; `-Launch` starts
+the installed Manager afterwards; `-DryRun` only prints the plan.
+
 ### The one prerequisite: Docker, and only for some engines
 
 **H2Local, H2Server and InMemory need nothing.** They are embedded — no server, no container —

@@ -140,6 +140,7 @@
       "Build-ClaudeApp",
       "Build-AppGenApp",
       "Rebuild-And-Restage",
+      "New-ManagerInstaller",
       "sync-runtimehost-libs",
       "generate-sample-app",
       "npm test",
