@@ -86,7 +86,7 @@ window.__TAURI__ = {
         case "last_failed_run": return window.__lastFailed || null;
         // Only the Home block turns the providers fixture on: the AI providers screen drawing it exposes provider
         // names and a key tooltip that are not in the pt catalogue yet (a known gap, not Home's).
-        case "providers_list": return window.__providersBroken ? Promise.reject("python was not found") : window.__homeProviders ? F.providers : {};
+        case "providers_list": return window.__providersBroken ? Promise.reject("python was not found") : F.providers;
         case "start_app": window.__started = args.appDir; return null;
         case "stop_app": window.__stopped = args.appDir; return { ok: true, how: "stub" };
         case "studio_history_list": return [];
@@ -251,7 +251,6 @@ const homeCard = async (setup) => {
   return page.evaluate(() => ({ when: document.querySelector(".home-card").dataset.when, title: document.querySelector(".home-title").textContent,
     button: document.querySelector(".home-action")?.textContent, strip: document.querySelector(".home-strip").textContent }));
 };
-await page.evaluate(() => { window.__homeProviders = true; });
 let card = await homeCard(() => { window.__scenario = "doctor-all-green"; window.__scanEmpty = false; window.__lastFailed = null; });
 check("healthy computer with a running app: Home offers to open it", card.when === "appRunning" && /npdev-canary is running at http:\/\/localhost:8411/.test(card.title) && card.button === "Open it", JSON.stringify(card));
 check("the status strip summarises the whole picture", /Computer ready/.test(card.strip) && /5 apps/.test(card.strip) && /1 running/.test(card.strip) && /last problem: none/.test(card.strip), card.strip);
@@ -325,7 +324,6 @@ await page.evaluate(async () => { window.__scanEmpty = false; NPDevHome.reset();
 check("Home has no horizontal scroll in a narrow window", await page.evaluate(() => document.querySelector("main").scrollWidth <= document.querySelector("main").clientWidth + 1), "");
 await page.screenshot({ path: path.join(OUT, "home-narrow.png"), fullPage: true });
 await page.setViewportSize({ width: 1400, height: 1000 });
-await page.evaluate(() => { window.__homeProviders = false; });
 
 await page.click('.tabs .place[data-place="settings"]');
 await page.waitForTimeout(200);

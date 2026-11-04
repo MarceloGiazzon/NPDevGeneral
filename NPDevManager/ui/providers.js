@@ -144,8 +144,11 @@ function providersFormHint() {
   const row = providersRows.find((p) => p.id === id);
   const el = document.getElementById("providers-form-hint");
   if (!row) { el.textContent = ""; return; }
-  const paid = row.kind === "paid" ? " PAID provider: a feature uses it only after a paid opt-in (USES)." : "";
-  el.textContent = `Env var that overrides the stored key: ${row.keyEnvVar}.${paid}`;
+  // split around <code> so each fragment translates on its own and the variable name is left alone
+  const code = document.createElement("code");
+  code.textContent = row.keyEnvVar;
+  el.replaceChildren(document.createTextNode("Env var that overrides the stored key: "), code, document.createTextNode("."));
+  if (row.kind === "paid") el.append(document.createTextNode(" PAID provider: a feature uses it only after a paid opt-in (USES)."));
 }
 
 function providersAnswer(result, verb) {
