@@ -50,7 +50,8 @@ public final class ThemeCatalog {
     private static final Pattern ID = Pattern.compile("^[a-z0-9][a-z0-9-]{1,40}$");
     private static final Set<String> ELEVATIONS = Set.of("flat", "soft", "bevel", "glow");
     private static final Set<String> ALLOWED_KEYS = Set.of("$schema", "schema", "id", "name", "names", "version",
-            "author", "description", "license", "colorScheme", "basedOn", "colors", "darkColors", "typography", "shape");
+            "author", "description", "descriptions", "license", "colorScheme", "basedOn", "colors", "darkColors",
+            "typography", "shape");
     private static final int MAX_THEME_BYTES = 20_000;
 
     /** foreground, background, minimum ratio -- WCAG 2.2: 1.4.3 text 4.5:1, 1.4.11 control edges 3:1. */

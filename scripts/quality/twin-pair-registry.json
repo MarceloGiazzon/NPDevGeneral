@@ -860,6 +860,37 @@
       "NPDevContract/themes/a11y.css",
       "NPDevManager/ui/a11y.css"
     ]
+  },
+  {
+    "id": "theme-allowed-keys-four-place",
+    "citedBy": "THM-1",
+    "description": "A theme's top-level keys are declared in FOUR places that each refuse what the others do not know: NPDevContract/themes/theme.schema.json, the generator's ThemeCatalog.ALLOWED_KEYS (Java), the Manager importer's ALLOWED_KEYS (Rust, themes.rs) and check-themes.py's ALLOWED_KEYS. Manager 0.13.3 (commit 73c5bc0c) added `descriptions` to three of them and not to the Java one: every generation of every app then failed with \"built-in theme npdev-dark: unknown key: descriptions\", and four GitHub checks (generator unit tests, segmented CI, AI knowledge gate, identity journeys) stayed red until it was caught. Quoted so the key must appear as a string literal, not merely as a substring of prose. Adding a theme key means adding it to this list AND to all four files.",
+    "kind": "field-in-all-files",
+    "trackedFields": [
+      "\"$schema\"",
+      "\"schema\"",
+      "\"id\"",
+      "\"name\"",
+      "\"names\"",
+      "\"version\"",
+      "\"author\"",
+      "\"description\"",
+      "\"descriptions\"",
+      "\"license\"",
+      "\"colorScheme\"",
+      "\"basedOn\"",
+      "\"colors\"",
+      "\"darkColors\"",
+      "\"typography\"",
+      "\"shape\""
+    ],
+    "caseSensitive": true,
+    "files": [
+      "NPDevContract/themes/theme.schema.json",
+      "NPDevGenerator/generator/src/main/java/com/npdev/generator/themes/ThemeCatalog.java",
+      "NPDevManager/src/themes.rs",
+      "scripts/quality/check-themes.py"
+    ]
   }
 ]
 }
