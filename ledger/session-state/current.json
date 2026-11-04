@@ -1,22 +1,19 @@
 {
-  "closedAt": "2026-11-04T05:19:53.7474255Z",
+  "closedAt": "2026-11-04T14:42:20.0758731Z",
   "branch": "main",
-  "head": "cda7183f",
-  "headSubject": "feat(manager): Home becomes a real starting point; quieter top bar (0.13.5, 0.13.6)",
-  "summary": "Rebuilt the Manager Home (Inicio) screen into a dashboard: next-step card as hero, four clickable status tiles (computer/apps/running/AI), Your apps with per-app Open/Start/Stop/Manage, Recent activity with Get help, six shortcuts; committed with the pending 0.13.5 top-bar change as cda7183f (Manager 0.13.6), pushed, installer built and installed locally.",
-  "nextStep": "Owner tests installed Manager 0.13.6 Home in the real Tauri window (Start/Stop on a real app, AI tile reading providers_list) and reports issues; meanwhile check GitHub CI on cda7183f. Known follow-up: the AI providers screen draws provider names and the key-override tooltip untranslated in pt (render check only avoids it by feeding providers fixture to Home checks alone) - translate or mark as data, then drop the __homeProviders gate in check-manager-ui-render.mjs.",
+  "head": "cc48cda7",
+  "headSubject": "fix(manager): AI providers screen reads fully in Portuguese; drop the Home-only providers gate in the render check (0.13.7)",
+  "summary": "Verified T2 gates green on 139e5c24 (paste), then fixed the pt AI-providers leak: tooltip split around <code>, 10 provider names added to pt.json, Home-only __homeProviders gate removed from check-manager-ui-render.mjs; Manager 0.13.7 (cc48cda7) pushed to main. Ran weekly paperwork checks (12/12 ok), explained the 29s kernel gate (tests FROM-CACHE), built the 0.13.7 NSIS installer (not installed).",
+  "nextStep": "Owner installs Manager 0.13.7 (Build/manager-target/release/bundle/nsis/NPDev Manager_0.13.7_x64-setup.exe, or ask Claude to silent-install) and tests in the real Tauri window: Home Start/Stop on a real app, AI tile reading providers_list, and the pt AI providers screen (translated provider names + env-var hint); report any issues.",
   "plan": "",
-  "blocked": "Gemini bench quota (external)",
-  "verified": "check-manager-ui-render.mjs 144/144 (10 new Home checks, en+pt, narrow, empty); check-manager-css-tokens, check-manager-i18n, check-manager-version-bump OK; cargo check OK; cargo tauri build OK, silent install shows 0.13.6 in registry. NOT run: T2 gates, GitHub CI result, the installed app's UI.",
+  "blocked": "",
+  "verified": "check-manager-ui-render.mjs 144/144 (providers fixture now fed to all screens), check-manager-i18n OK, check-manager-version-bump OK, cargo check OK, cargo tauri build OK (0.13.7 installer); run-weekly-paperwork-checks.ps1 12/12 OK; GitHub CI on cc48cda7 all 7 workflows green. NOT run locally: T2 gates on cc48cda7, release gate, shell scenarios, behaviour probes; installer not installed; installed UI untested.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "cda7183f feat(manager): Home becomes a real starting point; quieter top bar (0.13.5, 0.13.6)",
-    "9fac35c8 fix(manager): GENERATE & RUN no longer sits on its own message; AI-provider row buttons no longer overlap (0.13.4)",
-    "73c5bc0c feat(themes): a theme may carry descriptions in several languages; Dark ships en/pt/es (Manager 0.13.3)",
-    "e6bdaa01 fix(manager): eight screens drop the neon-glow title; hover on their buttons stays readable (0.13.2)",
-    "dbdd1756 fix(manager): pt UI finishes AI-provider buttons, preview names the theme in the user's language (0.13.1)",
-    "9cc1a1a7 chore(handoff): session close, CI green again, themes LICENSE (MIT) done, Manager browse-themes verified"
+    "cc48cda7 fix(manager): AI providers screen reads fully in Portuguese; drop the Home-only providers gate in the render check (0.13.7)",
+    "139e5c24 fix(generator): ThemeCatalog accepts `descriptions`; pin the four theme-key lists as a twin-pair rule",
+    "d90e5ad8 chore(handoff): session close, Manager 0.13.6 Home dashboard installed for owner testing"
   ]
 }
