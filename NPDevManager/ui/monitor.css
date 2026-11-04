@@ -196,6 +196,9 @@ dl.kv dd small { opacity: .6; }
   z-index: 1; flex-direction: column; gap: 10px;
   background: repeating-conic-gradient(rgba(255, 255, 255, .045) 0% .0003%, transparent .0004% .0009%);
 }
+/* In flow (the not-generated card): the message sits between the MODEL row and the button instead of
+   being centred over them, where the button used to land on top of it. */
+.nosignal.flow { position: static; inset: auto; background: none; margin: 22px 0 16px; }
 .nosignal b { font-size: 18px; letter-spacing: 6px; color: var(--t-text-muted); }
 .nosignal span { font-size: 11px; color: var(--t-text-muted); font-family: var(--font-mono); text-align: center; padding: 0 20px; }
 

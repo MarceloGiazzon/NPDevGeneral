@@ -384,6 +384,23 @@ await page.click("#insp-close");
 await page.waitForTimeout(500);
 
 await page.screenshot({ path: path.join(OUT, "monitor-wall.png"), fullPage: false });
+// A not-generated card: its GENERATE & RUN button must sit below the "NOT GENERATED YET" message, never on it.
+const ngBoxes = await page.evaluate(() => {
+  // The fixture has no not-generated app, so draw one with the real template and measure it in the live Monitor.
+  const saved = monitorState.notGenerated;
+  monitorState.notGenerated = [{ name: "demo", directory: "D:\models\demo" }];
+  const host = document.createElement("div");
+  host.className = "grid";
+  host.id = "ng-probe";
+  host.innerHTML = notGeneratedHtml();
+  document.getElementById("screen-monitor").appendChild(host);
+  const b = host.querySelector("[data-run-new]"), m = host.querySelector(".nosignal.flow");
+  const out = b && m ? { buttonTop: b.getBoundingClientRect().top, messageBottom: m.getBoundingClientRect().bottom } : null;
+  host.remove();
+  monitorState.notGenerated = saved;
+  return out;
+});
+check("monitor: a not-generated card has its message above GENERATE & RUN, not under it", ngBoxes !== null && ngBoxes.buttonTop >= ngBoxes.messageBottom, JSON.stringify(ngBoxes));
 await axeScan("monitor");
 
 // ---- The app workspace (NAV-3): choose the app ONCE ----------------------------------------------------

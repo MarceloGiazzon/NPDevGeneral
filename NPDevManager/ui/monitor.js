@@ -181,7 +181,6 @@ function notGeneratedHtml() {
       return `
   <article class="crt" data-status="unknown" data-dir="${dir}">
     <div class="screen">
-      <div class="nosignal"><b>NOT GENERATED YET</b><span>created as a model only -- run it once to generate, build and start it</span></div>
       <div class="phos">
         <div class="scr-head">
           <span class="app">${esc((app.name || "").toUpperCase())}</span>
@@ -189,6 +188,7 @@ function notGeneratedHtml() {
         </div>
         <hr class="scr-rule">
         <dl class="kv"><dt>MODEL</dt><dd><span title="${dir}">${esc(shortPath(app.directory))}</span></dd></dl>
+        <div class="nosignal flow"><b>NOT GENERATED YET</b><span>created as a model only -- run it once to generate, build and start it</span></div>
         <p class="scr-msg"><button class="btn" data-run-new="${dir}">&#9654; GENERATE &amp; RUN</button></p>
       </div>
     </div>
