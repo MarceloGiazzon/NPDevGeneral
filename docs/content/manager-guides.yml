@@ -62,7 +62,7 @@ guides:
             3. **Show it to someone.** Check it in {screen:apps/scrap}, then {screen:apps/hosting}.
             4. **Something went wrong.** {place:activity} shows every app on this computer: which is running,
                which stopped, which has a problem, and its logs.
-            5. **Once, then forget.** {place:settings}: AI providers, passwords and keys, NPDev versions.
+            5. **Once, then forget.** {place:settings}: AI, credentials, versions.
           pt: |
             1. **A primeira vez.** {screen:setup/ready}, depois {screen:setup/install}, depois
                {screen:apps/apps} para criar um app, e {screen:apps/run} para iniciá-lo e abri-lo no navegador.
@@ -72,7 +72,7 @@ guides:
             3. **Mostrar para alguém.** Teste em {screen:apps/scrap}, depois {screen:apps/hosting}.
             4. **Algo deu errado.** {place:activity} mostra todos os apps deste computador: qual está rodando,
                qual parou, qual tem problema, e os logs de cada um.
-            5. **Uma vez e pronto.** {place:settings}: provedores de IA, senhas e chaves, versões do NPDev.
+            5. **Uma vez e pronto.** {place:settings}: IA, credenciais, versões.
       - heading: { en: "What NPDev puts on your computer, and why", pt: "O que o NPDev instala no seu computador, e por quê" }
         body:
           en: |

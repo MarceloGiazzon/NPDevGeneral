@@ -23,9 +23,9 @@ uma segunda linha mostra as telas dele, com uma frase dizendo para que ele serve
 |---|---|---|
 | ⌂ **Início** | O que fazer a seguir, num cartão só. | Início |
 | 🔧 **Preparar** | Deixe este computador pronto para criar apps. Você faz isso uma vez só. | Verificar o computador, Instalar o que falta |
-| ▦ **Meus apps** | Crie um app, inicie, altere e compartilhe. | Todos os apps, Iniciar e parar, Editar, Perguntar à IA, Dados, Compartilhar, Testes no navegador (testes), Testes de regras (testes), Impacto (avançado), Pacotes (avançado) |
+| ▦ **Meus apps** | Crie um app, inicie, altere e compartilhe. | Todos os apps, Iniciar e parar, Editar, Perguntar à IA, Dados, Compartilhar, Navegador (testes), Regras (testes), Impacto (avançado), Pacotes (avançado) |
 | ◉ **Atividade** | Tudo o que está rodando neste computador, num relance. | Apps em execução, Tarefas |
-| ⚙ **Configurações** | Provedores de IA, senhas, versões do NPDev. Você ajusta isso uma vez. | Provedores de IA, Senhas e chaves, Aparência e acessibilidade, Versões do NPDev, Este computador, Instalação e pastas, Verificações da plataforma (avançado), Avaliações de IA (avançado) |
+| ⚙ **Configurações** | IA, credenciais, versões. Você ajusta isso uma vez. | IA, Credenciais, Aparência, Versões, Computador, Instalação, Verificações (avançado), Avaliações (avançado) |
 
 ## Cinco caminhos pelo Manager
 
@@ -34,10 +34,10 @@ uma segunda linha mostra as telas dele, com uma frase dizendo para que ele serve
    É o [Seu primeiro app em 10 minutos](FIRST_APP_IN_10_MINUTES.pt.md).
 2. **No dia a dia.** **Meus apps**: altere o app em **Meus apps › Editar** ou **Meus apps › Perguntar à IA**,
    e inicie-o em **Meus apps › Iniciar e parar**.
-3. **Mostrar para alguém.** Teste em **Meus apps › Testes no navegador**, depois **Meus apps › Compartilhar**.
+3. **Mostrar para alguém.** Teste em **Meus apps › Navegador**, depois **Meus apps › Compartilhar**.
 4. **Algo deu errado.** **Atividade** mostra todos os apps deste computador: qual está rodando,
    qual parou, qual tem problema, e os logs de cada um.
-5. **Uma vez e pronto.** **Configurações**: provedores de IA, senhas e chaves, versões do NPDev.
+5. **Uma vez e pronto.** **Configurações**: IA, credenciais, versões.
 
 ## O que o NPDev instala no seu computador, e por quê
 
@@ -65,7 +65,7 @@ privadas que o Manager baixa não mexem em mais nada do seu computador.
 |---|---|---|---|
 | **Docker** | Um programa que roda outros programas em caixas isoladas. | O NPDev o usa para iniciar um banco PostgreSQL, MySQL ou SQL Server para o seu app sem instalar nenhum. | Tudo bem. Um '!' ao lado de Docker é esperado. Escolha H2Local e tudo funciona. |
 | **git** | Guarda um histórico de cada versão do modelo do seu app. | O seu modelo é o seu app. Com o git você sempre pode voltar a uma versão que funcionava. | Tudo bem. O Manager não o instala e nada depende dele; o seu app apenas fica sem histórico até você instalá-lo. |
-| **Testes no navegador (ScrapForAI)** | Um navegador-robô que clica pelo seu app para ver se ele continua funcionando. | Testa se uma pessoa conseguiria mesmo usar as telas, e não só se o programa inicia. | Opcional. Sem ele, **Meus apps › Testes no navegador** não roda; todo o resto funciona. |
+| **Testes no navegador (ScrapForAI)** | Um navegador-robô que clica pelo seu app para ver se ele continua funcionando. | Testa se uma pessoa conseguiria mesmo usar as telas, e não só se o programa inicia. | Opcional. Sem ele, **Meus apps › Navegador** não roda; todo o resto funciona. |
 | **Túnel (cloudflared)** | Um pequeno programa que dá a este computador um endereço público temporário na web. | Para outra pessoa abrir o seu app numa demonstração rápida, sem alugar um servidor. | Opcional. Só é necessário para o nível 1 de **Meus apps › Compartilhar**, 'Shared by link'. |
 
 ## Palavras que você vai ver

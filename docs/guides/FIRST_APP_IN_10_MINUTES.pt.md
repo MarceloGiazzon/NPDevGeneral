@@ -80,7 +80,7 @@ conceitos (Cliente, Pedido...), e salve. **Meus apps › Iniciar e parar** perce
 um minuto quando precisa recompilar); atualize o navegador para ver. Se você salvar um erro, o log diz exatamente onde, e o app continua
 rodando na última versão que funcionava.
 
-Prefere descrever a mudança com palavras? Configure uma IA em **Configurações › Provedores de IA** e use
+Prefere descrever a mudança com palavras? Configure uma IA em **Configurações › IA** e use
 **Meus apps › Perguntar à IA**.
 
 ## Próximos passos

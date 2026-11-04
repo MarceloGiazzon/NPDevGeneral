@@ -133,9 +133,9 @@ still use the screen names:
 | Place | Screens (heading on the screen) |
 |---|---|
 | **Set up** | Check my computer (*Ready*), Install what is missing (*Install*) |
-| **My apps** | All apps (*Apps*), Start & stop (*Run*), Edit (*Studio*), Ask AI (*Prompter*), Data (*DB Import/Export*), Share, Browser checks (*Scrap Manager*), Data-rule checks (*GPU Checks*), Impact, Packs |
+| **My apps** | All apps (*Apps*), Start & stop (*Run*), Edit (*Studio*), Ask AI (*Prompter*), Data (*DB Import/Export*), Share, Browser (*Scrap Manager*), Data rules (*GPU Checks*), Impact, Packs |
 | **Activity** | Running apps (*The Monitor*) |
-| **Settings** | AI providers, Passwords & keys (*Secrets*), NPDev versions (*Versions*), This computer (*Ready*), Platform checks (*Verification*), AI evaluations (*Evals*) |
+| **Settings** | AI (*Providers*), Credentials (*Secrets*), Appearance, Versions, Computer (*Ready*), Install, Checks (*Verification*), Evaluations (*Evals*) |
 
 A first run uses **Set up** (check the machine, install NPDev), then **My apps** (create an app, run it);
 **Activity** watches every app on the machine. For first users there is a shorter, plain-language guide

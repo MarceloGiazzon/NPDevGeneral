@@ -77,7 +77,7 @@ concepts (Customer, Order...), and save. **My apps › Start & stop** notices th
 (or about a minute when it has to rebuild); refresh the browser to see it. If you save a mistake, the log says exactly where, and the
 app keeps running on the last version that worked.
 
-Prefer to describe the change in words? Set up an AI in **Settings › AI providers**, then use
+Prefer to describe the change in words? Set up an AI in **Settings › AI**, then use
 **My apps › Ask AI**.
 
 ## Next

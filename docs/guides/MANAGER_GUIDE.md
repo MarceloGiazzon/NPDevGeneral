@@ -23,9 +23,9 @@ second row lists its screens, with one line saying what the place is for.
 |---|---|---|
 | ⌂ **Home** | What to do next, in one card. | Home |
 | 🔧 **Set up** | Get this computer ready to build apps. You do this once. | Check my computer, Install what is missing |
-| ▦ **My apps** | Create an app, start it, change it, share it. | All apps, Start & stop, Edit, Ask AI, Data, Share, Browser checks (checks), Data-rule checks (checks), Impact (advanced), Packs (advanced) |
+| ▦ **My apps** | Create an app, start it, change it, share it. | All apps, Start & stop, Edit, Ask AI, Data, Share, Browser (checks), Data rules (checks), Impact (advanced), Packs (advanced) |
 | ◉ **Activity** | Everything running on this computer, at a glance. | Running apps, Tasks |
-| ⚙ **Settings** | AI providers, passwords, NPDev versions. You set these once. | AI providers, Passwords & keys, Appearance & accessibility, NPDev versions, This computer, Install & folders, Platform checks (advanced), AI evaluations (advanced) |
+| ⚙ **Settings** | AI, credentials, versions. You set these once. | AI, Credentials, Appearance, Versions, Computer, Install, Checks (advanced), Evaluations (advanced) |
 
 ## Five paths through the Manager
 
@@ -34,10 +34,10 @@ second row lists its screens, with one line saying what the place is for.
    browser. This is [Your first app in 10 minutes](FIRST_APP_IN_10_MINUTES.md).
 2. **Every day.** **My apps**: change the app in **My apps › Edit** or **My apps › Ask AI**,
    then start it in **My apps › Start & stop**.
-3. **Show it to someone.** Check it in **My apps › Browser checks**, then **My apps › Share**.
+3. **Show it to someone.** Check it in **My apps › Browser**, then **My apps › Share**.
 4. **Something went wrong.** **Activity** shows every app on this computer: which is running,
    which stopped, which has a problem, and its logs.
-5. **Once, then forget.** **Settings**: AI providers, passwords and keys, NPDev versions.
+5. **Once, then forget.** **Settings**: AI, credentials, versions.
 
 ## What NPDev puts on your computer, and why
 
@@ -65,7 +65,7 @@ and the private copies the Manager downloads touch nothing else on your computer
 |---|---|---|---|
 | **Docker** | A program that runs other programs in sealed boxes. | NPDev uses it to start a PostgreSQL, MySQL or SQL Server database for your app without installing one. | Fine. A '!' next to Docker is expected. Choose H2Local and everything works. |
 | **git** | Keeps a history of every version of your app's model. | Your model is your app. With git you can always go back to a version that worked. | Fine. The Manager does not install it and nothing needs it; your app simply has no history until you add it. |
-| **Browser checks (ScrapForAI)** | A robot browser that clicks through your app to see that it still works. | It tests that a person could actually use the screens, not just that the program starts. | Optional. Without it, **My apps › Browser checks** cannot run; everything else works. |
+| **Browser checks (ScrapForAI)** | A robot browser that clicks through your app to see that it still works. | It tests that a person could actually use the screens, not just that the program starts. | Optional. Without it, **My apps › Browser** cannot run; everything else works. |
 | **Tunnel (cloudflared)** | A small program that gives this computer a temporary public web address. | So someone else can open your app for a quick demo, without renting a server. | Optional. Needed only for level 1 of **My apps › Share**, 'Shared by link'. |
 
 ## Words you will see

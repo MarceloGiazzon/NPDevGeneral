@@ -839,8 +839,8 @@ async function refreshAppList() {
     .map(
       (a) => `
       <div class="app-item">
-        <span>${escapeHtml(a.name)} <span class="found">${escapeHtml(a.directory)}</span></span>
-        <span>
+        <span class="app-item-name"><strong>${escapeHtml(a.name)}</strong><span class="found" translate="no">${escapeHtml(a.directory)}</span></span>
+        <span class="app-item-actions">
           <button class="primary ws-open" data-ws-open="${escapeHtml(a.directory)}" data-name="${escapeHtml(a.name)}">Open</button>
           <button data-open="${escapeHtml(a.directory)}">Open folder</button>
         </span>

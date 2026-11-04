@@ -1,6 +1,6 @@
 {
   "schema": "npdev-manager-navigation.v1",
-  "description": "The Manager's navigation as data (NAV-1). nav.js renders the main bar and each place's strip of screens from this file; nothing indexes screens by position. Every <section id=\"screen-X\"> in index.html must be reached from at least one place -- there is no developer mode (owner decision D5, 2026-11-03), so a screen missing here is a screen nobody can open. main.rs's `every_screen_is_reachable_from_the_navigation` test enforces that. Every user-visible string is an object keyed by language id; a language missing from one string falls back to English.",
+  "description": "The Manager's navigation as data (NAV-1). nav.js renders the main bar and each place's strip of screens from this file; nothing indexes screens by position. Every <section id=\"screen-X\"> in index.html must be reached from at least one place -- there is no developer mode (owner decision D5, 2026-11-03), so a screen missing here is a screen nobody can open. main.rs's `every_screen_is_reachable_from_the_navigation` test enforces that. Every user-visible string is an object keyed by language id; a language missing from one string falls back to English. A screen's `label` is kept short (one or two words); its optional `hint` is the tab's tooltip and carries the longer explanation.",
   "languages": [
     { "id": "en", "label": "English" },
     { "id": "pt", "label": "Português" }
@@ -47,8 +47,8 @@
         { "screen": "prompter", "label": { "en": "Ask AI", "pt": "Perguntar à IA" }, "workspace": true },
         { "screen": "dbio", "label": { "en": "Data", "pt": "Dados" }, "workspace": true },
         { "screen": "hosting", "label": { "en": "Share", "pt": "Compartilhar" }, "workspace": true },
-        { "screen": "scrap", "label": { "en": "Browser checks", "pt": "Testes no navegador" }, "group": "checks", "workspace": true },
-        { "screen": "gpuchecks", "label": { "en": "Data-rule checks", "pt": "Testes de regras" }, "group": "checks", "workspace": true },
+        { "screen": "scrap", "label": { "en": "Browser", "pt": "Navegador" }, "hint": { "en": "Browser checks: a robot browser clicks through your app.", "pt": "Testes no navegador: um navegador robô clica pelo seu app." }, "group": "checks", "workspace": true },
+        { "screen": "gpuchecks", "label": { "en": "Data rules", "pt": "Regras" }, "hint": { "en": "Data-rule checks: test your app's data rules.", "pt": "Testes de regras: testa as regras de dados do seu app." }, "group": "checks", "workspace": true },
         { "screen": "provenance", "label": { "en": "Impact", "pt": "Impacto" }, "group": "advanced", "workspace": true },
         { "screen": "packs", "label": { "en": "Packs", "pt": "Pacotes" }, "group": "advanced", "workspace": true }
       ]
@@ -71,18 +71,18 @@
       "icon": "⚙",
       "label": { "en": "Settings", "pt": "Configurações" },
       "summary": {
-        "en": "AI providers, passwords, NPDev versions. You set these once.",
-        "pt": "Provedores de IA, senhas, versões do NPDev. Você ajusta isso uma vez."
+        "en": "AI, credentials, versions. You set these once.",
+        "pt": "IA, credenciais, versões. Você ajusta isso uma vez."
       },
       "screens": [
-        { "screen": "providers", "label": { "en": "AI providers", "pt": "Provedores de IA" } },
-        { "screen": "secrets", "label": { "en": "Passwords & keys", "pt": "Senhas e chaves" } },
-        { "screen": "appearance", "label": { "en": "Appearance & accessibility", "pt": "Aparência e acessibilidade" } },
-        { "screen": "versions", "label": { "en": "NPDev versions", "pt": "Versões do NPDev" } },
-        { "screen": "ready", "label": { "en": "This computer", "pt": "Este computador" }, "showWhen": "machineReady" },
-        { "screen": "install", "label": { "en": "Install & folders", "pt": "Instalação e pastas" }, "showWhen": "machineReady" },
-        { "screen": "verification", "label": { "en": "Platform checks", "pt": "Verificações da plataforma" }, "group": "advanced" },
-        { "screen": "evals", "label": { "en": "AI evaluations", "pt": "Avaliações de IA" }, "group": "advanced" }
+        { "screen": "providers", "label": { "en": "AI", "pt": "IA" }, "hint": { "en": "AI providers: which AI services NPDev may use, and their keys.", "pt": "Provedores de IA: quais serviços de IA o NPDev pode usar, e as chaves deles." } },
+        { "screen": "secrets", "label": { "en": "Credentials", "pt": "Credenciais" }, "hint": { "en": "Passwords and keys your apps use.", "pt": "Senhas e chaves que os seus apps usam." } },
+        { "screen": "appearance", "label": { "en": "Appearance", "pt": "Aparência" }, "hint": { "en": "Theme, colours and accessibility.", "pt": "Tema, cores e acessibilidade." } },
+        { "screen": "versions", "label": { "en": "Versions", "pt": "Versões" }, "hint": { "en": "NPDev versions on this computer, and which one is in use.", "pt": "Versões do NPDev neste computador, e qual está em uso." } },
+        { "screen": "ready", "label": { "en": "Computer", "pt": "Computador" }, "hint": { "en": "Check that this computer has what NPDev needs.", "pt": "Verifica se este computador tem o que o NPDev precisa." }, "showWhen": "machineReady" },
+        { "screen": "install", "label": { "en": "Install", "pt": "Instalação" }, "hint": { "en": "Install what is missing and choose the folders NPDev uses.", "pt": "Instala o que falta e escolhe as pastas que o NPDev usa." }, "showWhen": "machineReady" },
+        { "screen": "verification", "label": { "en": "Checks", "pt": "Verificações" }, "hint": { "en": "Platform checks: NPDev's own quality gates.", "pt": "Verificações da plataforma: os testes de qualidade do próprio NPDev." }, "group": "advanced" },
+        { "screen": "evals", "label": { "en": "Evaluations", "pt": "Avaliações" }, "hint": { "en": "AI evaluations: how well each AI builds NPDev apps.", "pt": "Avaliações de IA: quão bem cada IA cria apps NPDev." }, "group": "advanced" }
       ]
     }
   ],

@@ -162,6 +162,7 @@
 
     for (const place of visiblePlaces()) {
       const strip = el("div", { class: "place-strip", "data-place": place.id, hidden: true });
+      // Labels stay short (minimalism at first sight); a screen's `hint` is its tab's tooltip.
       // The place's one-line summary is NOT drawn here -- it is the tooltip (title) of the place's button above.
       if (screensOf(place).length > 1) {
         const row = el("div", { class: "strip-tabs", role: "tablist", "aria-label": I18n.t(place.label) });
@@ -173,7 +174,8 @@
             if (group) row.append(el("span", { class: "strip-group" }, I18n.t(nav.groups[group])));
           }
           row.append(el("button", { type: "button", class: "tab", role: "tab", "aria-controls": `screen-${s.screen}`,
-            "data-screen": s.screen, "data-ws": s.workspace ? "1" : undefined }, I18n.t(s.label)));
+            "data-screen": s.screen, "data-ws": s.workspace ? "1" : undefined,
+            title: s.hint ? I18n.t(s.hint) : undefined }, I18n.t(s.label)));
         }
         strip.append(row);
       }
