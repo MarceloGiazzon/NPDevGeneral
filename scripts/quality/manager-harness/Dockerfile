@@ -34,6 +34,12 @@ COPY NPDevManager/capabilities ./capabilities
 COPY NPDevManager/icons ./icons
 COPY NPDevManager/tauri.conf.json ./tauri.conf.json
 COPY NPDevManager/ui ./ui
+# The Manager `include_str!`s files OUTSIDE NPDevManager/ with `../../` from src/, i.e. /NPDevCli and
+# /NPDevContract here (sources sit at /src/src). Without these the build dies with "couldn't read
+# src/../../NPDevCli/redaction-rules.json" (nightly red 2026-11-03 and 11-04 after redact.rs/themes.rs
+# started embedding them). Add a line here whenever a new `include_str!("../../...")` appears.
+COPY NPDevCli/redaction-rules.json NPDevCli/redaction-test-vectors.json /NPDevCli/
+COPY NPDevContract/themes/*.json /NPDevContract/themes/
 # Stays on `release`, and that is a MEASURED decision rather than an oversight. NPDevManager has a
 # faster `quick` profile (lto=false, codegen-units=16) and pointing this at it looks obvious -- but
 # this layer is a FROM-SCRATCH build every time the Manager's source changes (deps and app compile
