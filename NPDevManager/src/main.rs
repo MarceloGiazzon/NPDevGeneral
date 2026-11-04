@@ -1897,28 +1897,31 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.13.4: the action buttons on the AI providers table no longer overlap in Portuguese, and on Running apps the GENERATE & RUN button of a not-yet-generated app no longer sits on top of its message (which is now translated). Before that: a theme can describe itself in more than one language (a `descriptions` map next to `names`) and its card shows the one matching the language picker -- Dark ships English, Portuguese and Spanish, every other theme stays English for now. Before that: eight screens (AI providers, Secrets, Packs, Studio, Verification, Evals, DB import/export, GPU checks) drop their neon-green glowing title and match the rest of the window, and their buttons stay readable when hovered. Before that: the Portuguese window is more complete -- Disable, Test, Reset, Remove key and Get a key on AI providers are translated, and previewing or keeping a theme names it in your language. Before that: Appearance gets Browse themes -- a community catalogue of themes you can preview and keep (every file is checked against the catalogue's sha256 first, and a file that does not match is refused) -- and Share this theme, which opens GitHub's new-file page with your theme filled in. Before that: the whole window follows the language picker (English and Portuguese) -- every screen, button, status line and message is translated as it is drawn, switching language redraws the open screen, and a new English string with no translation fails the build. Before that: Activity > Tasks -- gates, rebuilds and benchmarks that take a while, with whether each is still alive (a task whose watcher died shows as LOST), Stop, Restart and Open log; checks itself every 10 seconds while open. Before that: Set up disappears once your computer is ready (its screens move to Settings), failing checks on Ready get a Fix button that jumps to the right Install step, the strips of screens work from the keyboard (arrow keys, Home, End) and there is a Skip to content link. Before that: Home -- one card that says what to do next, with one button -- and the app workspace: choose an app once and Start & stop, Edit, Ask AI, Data, Share and the checks all follow it (their own app pickers hide). Also fixes two screens that silently never worked: the Packs app picker was never filled and the Verification table drew nothing, because two scripts shared function names. Before that: every colour in every screen now follows your theme (no hard-coded colours left), statuses show a word as well as a colour, progress is announced to screen readers, and all 19 screens pass the axe accessibility scan. Before that: Appearance & accessibility (Settings) -- pick Dark, Light, Retro, Synth, Farm, Warm, Windows or \
+    format!(
+        "{CURRENT_VERSION_TITLE}\nBuilt {}\n{}",
+        env!("NPDEV_MANAGER_BUILD_TIMESTAMP"),
+        VERSION_DESCRIPTION
+    )
+}
+
+const VERSION_DESCRIPTION: &str =
+    "0.13.6: Home is a real starting point -- under the next-step card it now shows four status tiles (computer, apps, running, AI keys) that each open the screen where that is fixed, Your apps with every app's state and its own Open, Start, Stop and Manage buttons (running first; two apps with the same name are told apart by folder), Recent activity with a Get help link on a failure, and six shortcuts; a greeting with Refresh and the time it last looked. Before that, 0.13.5: the version chip shows only the version number (what this version is about and when it was built are the first two lines of its tooltip), and the one-line explanation under each place in the top bar is gone -- it is the tooltip of the place's button. Before that: the action buttons on the AI providers table no longer overlap in Portuguese, and on Running apps the GENERATE & RUN button of a not-yet-generated app no longer sits on top of its message (which is now translated). Before that: a theme can describe itself in more than one language (a `descriptions` map next to `names`) and its card shows the one matching the language picker -- Dark ships English, Portuguese and Spanish, every other theme stays English for now. Before that: eight screens (AI providers, Secrets, Packs, Studio, Verification, Evals, DB import/export, GPU checks) drop their neon-green glowing title and match the rest of the window, and their buttons stay readable when hovered. Before that: the Portuguese window is more complete -- Disable, Test, Reset, Remove key and Get a key on AI providers are translated, and previewing or keeping a theme names it in your language. Before that: Appearance gets Browse themes -- a community catalogue of themes you can preview and keep (every file is checked against the catalogue's sha256 first, and a file that does not match is refused) -- and Share this theme, which opens GitHub's new-file page with your theme filled in. Before that: the whole window follows the language picker (English and Portuguese) -- every screen, button, status line and message is translated as it is drawn, switching language redraws the open screen, and a new English string with no translation fails the build. Before that: Activity > Tasks -- gates, rebuilds and benchmarks that take a while, with whether each is still alive (a task whose watcher died shows as LOST), Stop, Restart and Open log; checks itself every 10 seconds while open. Before that: Set up disappears once your computer is ready (its screens move to Settings), failing checks on Ready get a Fix button that jumps to the right Install step, the strips of screens work from the keyboard (arrow keys, Home, End) and there is a Skip to content link. Before that: Home -- one card that says what to do next, with one button -- and the app workspace: choose an app once and Start & stop, Edit, Ask AI, Data, Share and the checks all follow it (their own app pickers hide). Also fixes two screens that silently never worked: the Packs app picker was never filled and the Verification table drew nothing, because two scripts shared function names. Before that: every colour in every screen now follows your theme (no hard-coded colours left), statuses show a word as well as a colour, progress is announced to screen readers, and all 19 screens pass the axe accessibility scan. Before that: Appearance & accessibility (Settings) -- pick Dark, Light, Retro, Synth, Farm, Warm, Windows or \
      High contrast, load a theme file, or ask any AI for a new theme (you preview it and can undo); text \
      size, motion, focus, spacing, links and colour-blind safe status colours; remembered between starts \
      with no flash. Before that: one look for the whole window, Get help with this error (copy a redacted \
-     report for any AI chat), four places instead of 18 tabs and a language picker."
-        .to_string()
-}
+     report for any AI chat), four places instead of 18 tabs and a language picker.";
 
 /// Short headline for the version chip's own visible text (not just its tooltip) -- update
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "Theme descriptions";
+const CURRENT_VERSION_TITLE: &str = "A real Home";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {
-    format!(
-        "v{} - {} - {}",
-        env!("CARGO_PKG_VERSION"),
-        CURRENT_VERSION_TITLE,
-        env!("NPDEV_MANAGER_BUILD_TIMESTAMP")
-    )
+    // Only the version number is visible. The title and the build time are the first two lines of
+    // the tooltip (`manager_version_description`).
+    format!("v{}", env!("CARGO_PKG_VERSION"))
 }
 
 // -------------------------------------------------------------------------------------------

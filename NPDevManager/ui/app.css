@@ -70,7 +70,6 @@ body {
 .tabs .nav-tools .manager-version { margin-left: 0; }
 .tabs .lang-picker select { font-size: 13px; padding: 3px 6px; }
 .tabs .place-strip { padding: 6px 12px 0; }
-.tabs .place-summary { margin: 2px 8px 4px; color: var(--muted); font-size: 13px; }
 .tabs .strip-tabs { display: flex; flex-wrap: wrap; align-items: center; }
 .tabs .strip-group {
   margin-left: 14px;

@@ -162,7 +162,7 @@
 
     for (const place of visiblePlaces()) {
       const strip = el("div", { class: "place-strip", "data-place": place.id, hidden: true });
-      strip.append(el("p", { class: "place-summary" }, I18n.t(place.summary)));
+      // The place's one-line summary is NOT drawn here -- it is the tooltip (title) of the place's button above.
       if (screensOf(place).length > 1) {
         const row = el("div", { class: "strip-tabs", role: "tablist", "aria-label": I18n.t(place.label) });
         row.addEventListener("keydown", onStripKey);

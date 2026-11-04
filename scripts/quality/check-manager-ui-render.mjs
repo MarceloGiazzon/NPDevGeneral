@@ -84,6 +84,11 @@ window.__TAURI__ = {
           if (window.__doctorBroken) throw "python was not found";
           return F.doctors[window.__scenario || "doctor-all-green"];
         case "last_failed_run": return window.__lastFailed || null;
+        // Only the Home block turns the providers fixture on: the AI providers screen drawing it exposes provider
+        // names and a key tooltip that are not in the pt catalogue yet (a known gap, not Home's).
+        case "providers_list": return window.__providersBroken ? Promise.reject("python was not found") : window.__homeProviders ? F.providers : {};
+        case "start_app": window.__started = args.appDir; return null;
+        case "stop_app": window.__stopped = args.appDir; return { ok: true, how: "stub" };
         case "studio_history_list": return [];
         case "jobs_list": window.__jobsListCalls = (window.__jobsListCalls || 0) + 1; return window.__jobsEmpty ? { ok: true, jobs: [], summary: {} } : F.jobs;
         case "jobs_action": window.__jobsActions = (window.__jobsActions || []).concat([args.action + ":" + args.jobId]); return { ok: true };
@@ -182,6 +187,7 @@ await page.addInitScript({
       .map((n) => [n, fixture(n + ".json")])),
     scanEmpty: fixture("monitor-scan-empty.json"),
     jobs: fixture("jobs-list.json"),
+    providers: fixture("ai-providers.json"),
     support: fixture("support-install-failed.json"),
     catalogue: (() => {
       const dir = path.join(REPO, "NPDevManager", "fixtures", "theme-catalogue");
@@ -245,6 +251,7 @@ const homeCard = async (setup) => {
   return page.evaluate(() => ({ when: document.querySelector(".home-card").dataset.when, title: document.querySelector(".home-title").textContent,
     button: document.querySelector(".home-action")?.textContent, strip: document.querySelector(".home-strip").textContent }));
 };
+await page.evaluate(() => { window.__homeProviders = true; });
 let card = await homeCard(() => { window.__scenario = "doctor-all-green"; window.__scanEmpty = false; window.__lastFailed = null; });
 check("healthy computer with a running app: Home offers to open it", card.when === "appRunning" && /npdev-canary is running at http:\/\/localhost:8411/.test(card.title) && card.button === "Open it", JSON.stringify(card));
 check("the status strip summarises the whole picture", /Computer ready/.test(card.strip) && /5 apps/.test(card.strip) && /1 running/.test(card.strip) && /last problem: none/.test(card.strip), card.strip);
@@ -281,9 +288,44 @@ await page.evaluate(() => { window.__doctorBroken = false; window.__npdevDoctorR
 await page.selectOption("#lang-picker", "pt");
 await page.evaluate(async () => { NPDevHome.reset(); await window.__npdevShowScreen("home"); await NPDevHome.refresh(); });
 check("Home speaks Portuguese when asked", /está rodando/.test(await page.textContent(".home-title")) && (await page.textContent(".home-action")) === "Abrir", await page.textContent(".home-title"));
+await page.screenshot({ path: path.join(OUT, "home-pt.png"), fullPage: true });
 await page.selectOption("#lang-picker", "en");
 await page.evaluate(async () => { NPDevHome.reset(); await window.__npdevShowScreen("home"); await NPDevHome.refresh(); });
-await page.screenshot({ path: path.join(OUT, "home.png"), fullPage: false });
+await page.screenshot({ path: path.join(OUT, "home.png"), fullPage: true });
+// ---- Home (HOME-1): tiles, your apps, recent activity, shortcuts ---------------------------------------------
+const homeView = await page.evaluate(() => ({
+  tiles: [...document.querySelectorAll(".home-tile")].map((x) => [x.dataset.tile, x.dataset.tone, x.querySelector(".home-tile-value").textContent]),
+  apps: [...document.querySelectorAll(".home-app")].map((x) => [x.dataset.state, x.querySelector(".home-app-name").textContent]),
+  ops: [...document.querySelectorAll(".home-op")].map((x) => x.dataset.state),
+  shortcuts: document.querySelectorAll(".home-shortcut").length,
+}));
+check("Home draws four status tiles: computer ready, 5 apps, 1 running, AI keys known",
+  JSON.stringify(homeView.tiles.map((x) => x[0])) === '["computer","apps","running","ai"]' && homeView.tiles[0][1] === "positive" && homeView.tiles[1][2] === "5" && homeView.tiles[2][2] === "1"
+  && /2 ready/.test(homeView.tiles[3][2]), JSON.stringify(homeView.tiles));
+check("Your apps lists every app, the running one first, and tells duplicate names apart by folder",
+  homeView.apps.length === 5 && homeView.apps[0][0] === "running" && homeView.apps.some(([st, name]) => st === "problem" && /npdev-canary · /.test(name)), JSON.stringify(homeView.apps));
+check("Recent activity shows what this window did, with the failure marked", JSON.stringify(homeView.ops) === '["failed"]', JSON.stringify(homeView.ops));
+check("Home offers six shortcuts", homeView.shortcuts === 6, String(homeView.shortcuts));
+await page.evaluate(() => [...document.querySelectorAll(".home-app")].find((r) => r.dataset.state === "stopped" && !r.querySelector("button").disabled).querySelector("button").click());
+await page.waitForTimeout(150);
+check("Start on a built, stopped app starts THAT app and shows it as starting",
+  /engine-proof/.test(await page.evaluate(() => window.__started || "")) && (await page.$$eval('.home-pill[data-state="starting"]', (x) => x.length)) === 1, await page.evaluate(() => window.__started || "none"));
+check("Start is disabled for an app that was never built", await page.evaluate(() =>
+  [...document.querySelectorAll(".home-app")].filter((r) => /wordlab|auxscreen/.test(r.textContent)).every((r) => r.querySelector(".home-app-actions button").disabled)), "");
+await page.click('.home-tile[data-tile="ai"]');
+await page.waitForTimeout(150);
+check("the AI tile opens AI providers", (await page.evaluate(() => window.__npdevCurrentScreen)) === "providers", "");
+await page.evaluate(async () => { window.__providersBroken = true; NPDevHome.reset(); await window.__npdevShowScreen("home"); await NPDevHome.refresh(); });
+check("an AI tile that could not ask says so instead of claiming zero", (await page.$eval('.home-tile[data-tile="ai"]', (x) => x.dataset.tone)) === "muted", "");
+await page.evaluate(async () => { window.__providersBroken = false; window.__scanEmpty = true; NPDevHome.reset(); await NPDevHome.refresh(); });
+check("with no apps, Your apps offers to create one", (await page.$$eval(".home-empty button.primary", (x) => x.length)) === 1, "");
+await page.screenshot({ path: path.join(OUT, "home-empty.png"), fullPage: true });
+await page.setViewportSize({ width: 760, height: 1000 });
+await page.evaluate(async () => { window.__scanEmpty = false; NPDevHome.reset(); await NPDevHome.refresh(); });
+check("Home has no horizontal scroll in a narrow window", await page.evaluate(() => document.querySelector("main").scrollWidth <= document.querySelector("main").clientWidth + 1), "");
+await page.screenshot({ path: path.join(OUT, "home-narrow.png"), fullPage: true });
+await page.setViewportSize({ width: 1400, height: 1000 });
+await page.evaluate(() => { window.__homeProviders = false; });
 
 await page.click('.tabs .place[data-place="settings"]');
 await page.waitForTimeout(200);

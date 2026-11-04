@@ -132,11 +132,13 @@
     {
       "when": "appsAllStopped",
       "card": { "en": "{app} is stopped", "pt": "{app} está parado" },
+      "detail": { "en": "Start it, then open it in your browser. Every app is listed below with its own Start button.", "pt": "Inicie e depois abra no navegador. Todos os apps estão listados abaixo, cada um com o seu botão Iniciar." },
       "action": { "workspace": "overview", "label": { "en": "Start it", "pt": "Iniciar" } }
     },
     {
       "when": "appRunning",
       "card": { "en": "{app} is running at {url}", "pt": "{app} está rodando em {url}" },
+      "detail": { "en": "Open it in your browser. To change it, use Manage below or Ask AI.", "pt": "Abra no navegador. Para alterá-lo, use Gerenciar abaixo ou Perguntar à IA." },
       "action": { "kind": "openUrl", "label": { "en": "Open it", "pt": "Abrir" } }
     }
   ],

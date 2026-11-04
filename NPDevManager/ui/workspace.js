@@ -217,9 +217,7 @@
     change.className = "ws-change";
     change.addEventListener("click", () => window.__npdevShowScreen && window.__npdevShowScreen("apps"));
     bar.append(label, " ", name, " ", change);
-    const summary = strip.querySelector(".place-summary");
-    if (summary) summary.insertAdjacentElement("afterend", bar);
-    else strip.prepend(bar);
+    strip.prepend(bar);
     paint();
   }
 
