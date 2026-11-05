@@ -118,6 +118,21 @@ def _run(cmd: list[str], *, timeout: float, input_text: str | None = None, env: 
                           creationflags=NO_WINDOW, env=env)
 
 
+def _run_leaving_children(cmd: list[str], *, timeout: float, env: dict | None = None):
+    """Like `_run`, for a command that leaves a long-lived child behind (`pg_ctl start` leaves the server).
+
+    The output goes to a temporary FILE, never a pipe. The server inherits whatever standard handles the
+    command had; with a pipe, `subprocess.run` can only return once the SERVER exits (the pipe has no EOF
+    until then), and after its own timeout it blocks forever in `communicate()` on Windows. That is how
+    `db provision --where private` hung for good with a perfectly healthy server already running. A file
+    has no EOF to wait for. Found by the first real run on a real machine (2026-11-05)."""
+    with tempfile.TemporaryFile(mode="w+", errors="replace") as out:
+        done = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
+                              timeout=timeout, creationflags=NO_WINDOW, env=env)
+        out.seek(0)
+        return subprocess.CompletedProcess(cmd, done.returncode, out.read(), "")
+
+
 # ---- private ------------------------------------------------------------------------------------------
 
 
@@ -187,6 +202,8 @@ def _pg_ctl(server: dict, action: str, timeout: float = 90) -> subprocess.Comple
         args += ["-l", str(Path(server["dataDir"]).parent / "server.log")]
     if action == "stop":
         args += ["-m", "fast"]
+    if action == "start":
+        return _run_leaving_children(args, timeout=timeout)
     return _run(args, timeout=timeout)
 
 

@@ -144,5 +144,44 @@ class ServiceTests(Home):
         self.assertEqual("admin-declined", ctx.exception.code)
 
 
+class StartLeavesTheServerRunningTests(Home):
+    """`pg_ctl start` returns while the server it started keeps running. The first real run of
+    `db provision --where private` (2026-11-05) hung forever because that server inherited a captured pipe."""
+
+    # Stands in for pg_ctl: starts a long-lived child that inherits our output, prints its pid, exits 0.
+    PARENT = ("import subprocess, sys\n"
+              "c = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(25)'],"
+              " stdin=subprocess.DEVNULL, stdout=sys.stdout, stderr=sys.stderr)\n"
+              "print('child', c.pid, flush=True)\n")
+
+    def test_a_server_left_running_does_not_hold_the_call_open(self):
+        import time
+        started = time.monotonic()
+        child_pid = None
+        try:
+            result = ds._run_leaving_children([sys.executable, "-c", self.PARENT], timeout=15)
+            elapsed = time.monotonic() - started
+            self.assertEqual(0, result.returncode)
+            self.assertIn("child", result.stdout, "what the command printed is still returned")
+            child_pid = int(result.stdout.split("child", 1)[1].split()[0])
+            self.assertLess(elapsed, 10, "returned at once, not when the server exited")
+        finally:
+            if child_pid:
+                try:
+                    os.kill(child_pid, 15)
+                except OSError:
+                    pass
+
+    def test_start_uses_the_file_route_and_stop_keeps_the_pipe_route(self):
+        server = {"dataDir": str(Path(self.tmp.name) / "data")}
+        done = subprocess.CompletedProcess([], 0, "", "")
+        with mock.patch.object(ds, "_run_leaving_children", return_value=done) as leaving, \
+                mock.patch.object(ds, "_run", return_value=done) as piped:
+            ds._pg_ctl(server, "start")
+            self.assertEqual((1, 0), (leaving.call_count, piped.call_count))
+            ds._pg_ctl(server, "stop")
+            self.assertEqual((1, 1), (leaving.call_count, piped.call_count))
+
+
 if __name__ == "__main__":
     unittest.main()
