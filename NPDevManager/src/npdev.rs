@@ -444,12 +444,14 @@ pub async fn run_db_provision(
     engine: &str,
     app_name: &str,
     port: Option<u16>,
+    placement: &str,
 ) -> Result<Value, String> {
     if fake_mode() {
         return serde_json::from_str(FIXTURE_DB_PROVISION).map_err(|e| format!("fixture did not parse: {e}"));
     }
     let port_text = port.map(|p| p.to_string());
-    let mut args: Vec<&str> = vec!["db", "provision", "--json", "--engine", engine, "--app-name", app_name];
+    let mut args: Vec<&str> =
+        vec!["db", "provision", "--json", "--engine", engine, "--app-name", app_name, "--where", placement];
     if let Some(p) = port_text.as_deref() {
         args.push("--port");
         args.push(p);
@@ -459,6 +461,15 @@ pub async fn run_db_provision(
         .await
         .map_err(|e| format!("could not create the database: {e}"))?;
     parse_single_json(&output.stdout, &output.stderr, "db provision")
+}
+
+/// `npdev db server start`: start NPDev's own (Docker-free) database servers that are not running.
+pub async fn run_db_server_start(python_exe: &Path, npdev_cli: &Path, java_home: Option<&str>) -> Result<(), String> {
+    let output = build_command(python_exe, npdev_cli, &["db", "server", "start", "--json"], java_home, None)
+        .output_recorded()
+        .await
+        .map_err(|e| format!("could not start NPDev's database servers: {e}"))?;
+    parse_single_json(&output.stdout, &output.stderr, "db server start").map(|_| ())
 }
 
 // ---------------------------------------------------------------------------------------------

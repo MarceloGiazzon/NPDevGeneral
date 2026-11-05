@@ -157,6 +157,17 @@ touched. If the container does not become ready it is removed again and Docker's
 shown. This is a different thing from the app's `_ops/Start-Environment`, which creates a container
 the *app owns* at first run; `provision` is for the moment before any app exists.
 
+**Without Docker (Postgres only, for now).** `--where private` installs NPDev's *own* Postgres 16 — a
+~23 MB package pinned by sha256 from Maven Central, unpacked under the NPDev home
+(`%LOCALAPPDATA%\NPDev\db-servers`), listening on `127.0.0.1` only, started now and at every Windows
+sign-in (one per-user `Run` entry; skip it with `--no-autostart`); no administrator prompt.
+`--where service` runs the official installer through winget in a visible, elevated window and installs
+Postgres as a Windows service. Both keep the server's admin password in `db-servers/servers.json` (every
+later app on that server needs it) and create one database per app. `npdev db server status` lists them
+(never a password); `npdev db server start` starts NPDev's own copies. MySQL and SQL Server answer
+`no-docker-free-option`: Docker is the way for them today. In the Manager these are the two options
+under "Install Postgres without Docker", with a **?** that says which to pick.
+
 In the Manager, the **Database** card on My apps > New app does all of this for the engine you pick,
 without being asked: it lists servers and stopped containers it finds (**Use this**, **Start**), offers
 to create one when Docker is running (ticked by default when none exists), starts Docker Desktop when

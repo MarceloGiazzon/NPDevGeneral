@@ -1067,10 +1067,14 @@ document.getElementById("new-app-form").addEventListener("submit", async (event)
     // "Create a new <engine> server in Docker" is ticked on the database card: make the container
     // FIRST, so a Docker problem is reported before an app folder exists, and fill the connection from
     // what the CLI created. Everything below then runs unchanged -- it only reads the form.
-    if (NPDevDbSetup.wantsNewContainer()) {
+    const where = NPDevDbSetup.createWhere();
+    if (where) {
       const engineLabel = NPDevDbSetup.engineLabel();
-      statusEl.textContent =
-        `Creating the ${engineLabel} server in Docker… the first time this downloads the image and can take a few minutes.`;
+      statusEl.textContent = where === "private"
+        ? `Installing NPDev's own ${engineLabel}… this takes a minute or two the first time.`
+        : where === "service"
+          ? `Installing ${engineLabel} as a Windows service… answer Yes when Windows asks for permission. This can take a few minutes.`
+          : `Creating the ${engineLabel} server in Docker… the first time this downloads the image and can take a few minutes.`;
       const made = await NPDevDbSetup.createContainer(name);
       if (!made || !made.ok) {
         const e = (made && made.error) || {};
@@ -1122,9 +1126,12 @@ document.getElementById("new-app-form").addEventListener("submit", async (event)
     if (provisioned) {
       const detail = document.createElement("span");
       detail.className = "field-hint db-detail";
-      detail.textContent =
-        `The ${NPDevDbSetup.engineLabel()} database runs in the Docker container ${provisioned.name} ` +
-        `(${provisioned.host}:${provisioned.port}) and starts again with Docker.`;
+      detail.textContent = provisioned.where === "private"
+        ? `The ${NPDevDbSetup.engineLabel()} database runs in NPDev's own copy (${provisioned.host}:${provisioned.port}) and starts by itself when you sign in to Windows.`
+        : provisioned.where === "service"
+          ? `The ${NPDevDbSetup.engineLabel()} database runs as a Windows service (${provisioned.host}:${provisioned.port}) and starts with Windows.`
+          : `The ${NPDevDbSetup.engineLabel()} database runs in the Docker container ${provisioned.name} ` +
+            `(${provisioned.host}:${provisioned.port}) and starts again with Docker.`;
       statusEl.appendChild(detail);
     }
     // Cleared so pressing Create again cannot target the folder that now exists.
@@ -1543,6 +1550,8 @@ async function loadManagerVersion() {
   await refreshSetupStatus();
   await refreshAppPaths();
   await refreshAppList();
+  // NPDev's own database servers (made without Docker) should be up before an app needs them. Best effort.
+  invoke("start_own_db_servers").catch(() => {});
   await prefillRunAppDir();
   await refreshTagList(false);
   await refreshVersionsScreen();

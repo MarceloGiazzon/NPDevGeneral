@@ -950,6 +950,34 @@ await page.evaluate(() => { window.__jobsEmpty = false; });
     el.textContent = "";
   });
 
+  // -- without Docker: two ways for Postgres, with a "?" that says which to pick
+  await setDetect(withDocker(DOCKER_MISSING, []));
+  await pick("mysql"); await pick("postgres");
+  t = await cardText();
+  check("db card: with no Docker, Postgres offers NPDev's own copy and a Windows service", /Install Postgres without Docker:/.test(t) && t.indexOf("without Docker:") < t.indexOf("Docker is not installed")
+    && /NPDev's own Postgres \(recommended\)/.test(t) && /Postgres as a Windows service/.test(t), t);
+  check("db card: the choice explanation stays closed until \"?\" is pressed", !/Not sure\?/.test(t), t);
+  await page.click("#db-setup-card .db-help-btn"); await settle();
+  t = await cardText();
+  check("db card: \"?\" explains which to choose, recommending NPDev's own copy", /Not sure\? Choose NPDev's own Postgres/.test(t)
+    && (await page.getAttribute("#db-setup-card .db-help-btn", "aria-expanded")) === "true", t);
+  await page.locator("#new-app-form").screenshot({ path: path.join(OUT, "db-card-no-docker.png") });
+  await page.click('#db-setup-card .db-option:has-text("recommended") button'); await settle();
+  check("db card: choosing NPDev's own copy marks it and says Create installs it first",
+    /✓ NPDev's own Postgres/.test(await cardText()) && (await page.evaluate(() => NPDevDbSetup.createWhere())) === "private", await cardText());
+  await page.fill("#new-app-name", "shop3");
+  await page.evaluate(() => { window.__provisionCalls = []; window.__createdApp = null; });
+  await page.click("#new-app-create-btn");
+  await page.waitForTimeout(500);
+  const madeNd = await page.evaluate(() => ({ prov: window.__provisionCalls, app: window.__createdApp }));
+  check("db card: Create asks the CLI for NPDev's own Postgres, then creates the app on it",
+    madeNd.prov.length === 1 && madeNd.prov[0].placement === "private" && madeNd.prov[0].engine === "postgres" && !!madeNd.app, JSON.stringify(madeNd.prov));
+  await setDetect(withDocker(DOCKER_MISSING, []));
+  await pick("postgres"); await pick("mysql");
+  check("db card: MySQL without Docker says plainly it needs Docker for now, and that Postgres does not",
+    /Without Docker, NPDev cannot install MySQL for you yet/.test(await cardText()) && (await page.locator("#db-setup-card .db-option").count()) === 0, await cardText());
+  await page.evaluate(() => { const el = document.getElementById("new-app-status"); NPDevSupport.clearHelp(el); el.textContent = ""; });
+
   // -- typing a connection by hand means "use THIS server"
   await setDetect(withDocker(DOCKER_OK, []));
   await pick("postgres"); await pick("mysql");
@@ -962,7 +990,7 @@ await page.evaluate(() => { window.__jobsEmpty = false; });
   await page.waitForTimeout(300);
   const ptStates = [
     ["mysql", withDocker(DOCKER_OK, [])], ["mysql", withDocker(DOCKER_OK, [stopped])], ["postgres", withDocker(DOCKER_OK)],
-    ["mysql", withDocker(DOCKER_OFF, [])], ["mysql", withDocker(DOCKER_MISSING, [])],
+    ["mysql", withDocker(DOCKER_OFF, [])], ["mysql", withDocker(DOCKER_MISSING, [])], ["postgres", withDocker(DOCKER_MISSING, [])],
   ];
   const ptMissing = [];
   // Only what the Apps screen is showing: the other screens are not visited yet at this point (the I18N-1 block below
@@ -975,6 +1003,7 @@ await page.evaluate(() => { window.__jobsEmpty = false; });
     await setDetect(detect);
     await pick("sqlserver"); await pick(key);
     if (detect.docker.installed === false) { await page.click("#db-setup-card button:has-text('Instalar o Docker')"); await settle(); }
+    if (key === "postgres" && detect.docker.installed === false) { await page.click("#db-setup-card .db-help-btn"); await settle(); }
     ptMissing.push(...(await missingOnApps()));
   }
   await pick("sqlserver");

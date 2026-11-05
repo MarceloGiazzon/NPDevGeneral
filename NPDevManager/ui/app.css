@@ -427,5 +427,13 @@ form .checkbox-line input { display: inline-block; width: auto; margin: 0; }
 .db-setup .db-step.done .mark { color: var(--pass); }
 .db-setup .db-step .field-hint { margin: 2px 0 6px; }
 .db-setup .db-error { color: var(--fail); }
+.db-setup .db-nodocker { margin: 10px 0 4px; display: flex; flex-direction: column; gap: 8px; }
+.db-setup .db-nodocker-head { display: flex; align-items: center; gap: 8px; }
+.db-setup .db-help-btn { width: 24px; height: 24px; padding: 0; border-radius: 50%; font-weight: 700; line-height: 1; }
+.db-setup .db-help-text { padding: 8px 12px; border-left: 3px solid var(--border); }
+.db-setup .db-help-text p { margin: 0 0 6px; }
+.db-setup .db-option { padding: 10px 12px; border: 1px dashed var(--border); border-radius: var(--t-radius, 6px); }
+.db-setup .db-option.chosen { border-style: solid; border-color: var(--pass); }
+.db-setup .db-option .field-hint { margin: 2px 0 6px; }
 .db-detail { display: block; margin-top: 4px; white-space: pre-line; }
 .db-setup .db-step-title { font-weight: 600; font-size: 13px; }

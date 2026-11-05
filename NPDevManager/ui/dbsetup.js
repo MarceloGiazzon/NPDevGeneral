@@ -47,6 +47,8 @@
   let filledEngine = null; // the engine whose connection THIS card put in the form (adopted or created), until the person types their own
   let installState = null; // null | { opened, error, noWinget }
   let showAll = false;
+  let noDocker = null; // null | "private" | "service": a server WITHOUT Docker, made when Create is pressed
+  let noDockerHelp = false; // the "?" explanation is open
   let wsl = null; // null = unknown (not asked, or not answered) | { applicable, installed }
   let wslState = null; // null | { opened, error }
 
@@ -112,10 +114,12 @@
       engine = opts.engine;
       adopted = null;
       wantNew = null;
+      noDocker = null;
     }
     if (opts.forget) {
       adopted = null;
       wantNew = null;
+      noDocker = null;
     }
     const root = card();
     if (!root) return;
@@ -380,6 +384,10 @@
     const box = h("input", { type: "checkbox", id: "db-setup-create", checked, disabled: !!adopted });
     box.addEventListener("change", () => {
       wantNew = box.checked;
+      if (box.checked && noDocker) {
+        noDocker = null; // one way at a time
+        render();
+      }
     });
     return h(
       "div",
@@ -387,6 +395,58 @@
       h("label", { class: "checkbox-line" }, box, `Create a new ${label()} server in Docker when I press Create`),
       h("div", { class: "field-hint" }, "A new container from the official image, reachable only from this computer, with a generated password that NPDev fills in for you. The first time, Docker downloads the image (a few hundred MB), so it can take a few minutes.")
     );
+  }
+
+  // ---- a server WITHOUT Docker --------------------------------------------------------------------
+  // Two ways, side by side, with a "?" that says which to pick (the CLI's npdev_db_server does the work).
+  // Postgres only for now; for the other engines the card says plainly that Docker is the way.
+  const NO_DOCKER_ENGINES = ["postgres"];
+
+  function noDockerBlock(docker) {
+    const dockerOk = docker.status === "ok";
+    if (!NO_DOCKER_ENGINES.includes(engine.key)) {
+      if (dockerOk) return null;
+      return h("p", { class: "field-hint db-nodocker-note" },
+        `Without Docker, NPDev cannot install ${label()} for you yet. Postgres can be installed without Docker: if your app does not need ${label()}, pick Postgres above.`);
+    }
+    const helpBtn = h("button", {
+      type: "button", class: "db-help-btn", "aria-label": "Which one should I choose?", title: "Which one should I choose?",
+      "aria-expanded": noDockerHelp ? "true" : "false",
+      on: { click: () => { noDockerHelp = !noDockerHelp; render(); } },
+    }, "?");
+    const option = (where, title, text) => {
+      const chosen = noDocker === where;
+      const btn = h("button", { type: "button", class: chosen ? "" : "primary", on: { click: () => chooseNoDocker(chosen ? null : where) } },
+        chosen ? "Undo" : "Use this when I press Create");
+      return h("div", { class: `db-option ${chosen ? "chosen" : ""}` },
+        h("div", { class: "db-step-title" }, chosen ? `✓ ${title}` : title),
+        h("p", { class: "field-hint" }, text),
+        chosen ? h("p", { class: "field-hint" }, "When you press Create, NPDev installs it first and fills in the connection for you.") : null,
+        h("div", { class: "panel-actions" }, btn));
+    };
+    const body = [
+      h("div", { class: "db-nodocker-head" },
+        h("span", { class: "status-line" }, dockerOk ? "Or, without Docker:" : "Install Postgres without Docker:"), helpBtn),
+      noDockerHelp ? h("div", { class: "field-hint db-help-text", role: "note" },
+        h("p", {}, "Not sure? Choose NPDev's own Postgres. It is the simplest: no permission prompt, and it stays inside NPDev's own folder."),
+        h("p", {}, "Choose the Windows service only if other programs on this computer will use the same Postgres, or if someone who looks after this computer asked for it. It is installed for the whole computer, like any other program."),
+        h("p", {}, "Docker is the third way: it can also run MySQL and SQL Server, but it is a bigger program to install.")) : null,
+      option("private", "NPDev's own Postgres (recommended)",
+        "NPDev downloads its own copy (about 25 MB), just for NPDev. No permission prompt, nothing else on your computer changes. It starts by itself when you sign in to Windows."),
+      option("service", "Postgres as a Windows service",
+        "The official installer. Windows asks for your permission, then Postgres is installed for the whole computer and starts with Windows. It can take a few minutes."),
+    ];
+    return h("div", { class: "db-nodocker" }, ...body);
+  }
+
+  function chooseNoDocker(where) {
+    noDocker = where;
+    if (where) {
+      wantNew = false; // one way at a time: the Docker tick goes off
+      const box = document.getElementById("db-setup-create");
+      if (box) box.checked = false;
+    }
+    render();
   }
 
   function render() {
@@ -447,8 +507,13 @@
         root.append(h("p", { class: "status-line" }, `No ${label()} server is running on this machine.`));
       }
       if (mine.length) root.append(h("div", { class: "check-list" }, mine.map(foundRow)));
+      // Without Docker, the Docker-free way (when this engine has one) is the easier path: it comes first.
+      const alt = !adopted && !running.length ? noDockerBlock(docker) : null;
+      const altFirst = alt && docker.status !== "ok" && NO_DOCKER_ENGINES.includes(engine.key);
+      if (altFirst) root.append(alt);
       root.append(dockerBlock(docker));
       if (docker.status === "ok") root.append(createOption(running));
+      if (alt && !altFirst) root.append(alt);
     }
 
     if (showAll) {
@@ -492,14 +557,24 @@
     /** The person typed their own connection: stop offering to create one over it. */
     connectionEdited() {
       wantNew = false;
+      if (noDocker) {
+        noDocker = null;
+        render();
+      }
       filledEngine = null; // theirs now, not ours to clear
       const box = document.getElementById("db-setup-create");
       if (box) box.checked = false;
     },
     /** True when Create app should first create a database container. */
     wantsNewContainer() {
+      return this.createWhere() !== null;
+    },
+    /** Where Create should make the server: "docker", "private", "service", or null for nowhere. */
+    createWhere() {
+      if (!containerized() || adopted) return null;
       const box = document.getElementById("db-setup-create");
-      return !!(box && box.checked && !box.disabled && containerized() && last && last.docker && last.docker.status === "ok");
+      if (box && box.checked && !box.disabled && last && last.docker && last.docker.status === "ok") return "docker";
+      return noDocker && NO_DOCKER_ENGINES.includes(engine.key) ? noDocker : null;
     },
     engineLabel: label,
     setPollMs(ms) {
@@ -510,7 +585,7 @@
      * `{ok:false, error:{code,message,fix}}` -- a refusal is an answer, not an exception.
      */
     async createContainer(appName) {
-      return invoke("provision_database", { engine: engine.key, appName, port: null });
+      return invoke("provision_database", { engine: engine.key, appName, port: null, placement: this.createWhere() || "docker" });
     },
     /** After a container was created (or the app was): look again so the card shows what now exists. */
     afterCreate() {

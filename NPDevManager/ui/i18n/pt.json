@@ -990,5 +990,22 @@
   "This can take a few minutes. You can keep using the Manager.": "Isso pode levar alguns minutos. Você pode continuar usando o Manager.",
   "{what} could not be installed.": "Não foi possível instalar o {what}.",
   "Check the internet connection and press the button again. If it keeps failing, Get help explains what happened. ({err})": "Verifique a conexão com a internet e clique no botão de novo. Se continuar falhando, o botão de ajuda explica o que aconteceu. ({err})",
-  "Python": "Python"
+  "Python": "Python",
+  "Installing NPDev's own {engine}… this takes a minute or two the first time.": "Instalando a cópia própria do {engine} do NPDev… na primeira vez isso leva um ou dois minutos.",
+  "Installing {engine} as a Windows service… answer Yes when Windows asks for permission. This can take a few minutes.": "Instalando o {engine} como serviço do Windows… responda Sim quando o Windows pedir permissão. Isso pode levar alguns minutos.",
+  "The {engine} database runs in NPDev's own copy ({host}:{port}) and starts by itself when you sign in to Windows.": "O banco {engine} roda na cópia própria do NPDev ({host}:{port}) e inicia sozinho quando você entra no Windows.",
+  "The {engine} database runs as a Windows service ({host}:{port}) and starts with Windows.": "O banco {engine} roda como serviço do Windows ({host}:{port}) e inicia junto com o Windows.",
+  "Without Docker, NPDev cannot install {engine} for you yet. Postgres can be installed without Docker: if your app does not need {engine2}, pick Postgres above.": "Sem o Docker, o NPDev ainda não consegue instalar o {engine} para você. O Postgres pode ser instalado sem Docker: se o seu app não precisa do {engine2}, escolha Postgres acima.",
+  "Which one should I choose?": "Qual devo escolher?",
+  "Use this when I press Create": "Usar esta opção quando eu clicar em Criar",
+  "When you press Create, NPDev installs it first and fills in the connection for you.": "Quando você clicar em Criar, o NPDev instala primeiro e preenche a conexão para você.",
+  "Or, without Docker:": "Ou, sem Docker:",
+  "Install Postgres without Docker:": "Instalar o Postgres sem Docker:",
+  "Not sure? Choose NPDev's own Postgres. It is the simplest: no permission prompt, and it stays inside NPDev's own folder.": "Na dúvida? Escolha o Postgres próprio do NPDev. É o mais simples: não pede permissão e fica dentro da pasta do próprio NPDev.",
+  "Choose the Windows service only if other programs on this computer will use the same Postgres, or if someone who looks after this computer asked for it. It is installed for the whole computer, like any other program.": "Escolha o serviço do Windows só se outros programas deste computador forem usar o mesmo Postgres, ou se quem cuida deste computador pediu. Ele é instalado para o computador inteiro, como qualquer outro programa.",
+  "Docker is the third way: it can also run MySQL and SQL Server, but it is a bigger program to install.": "O Docker é o terceiro caminho: ele também roda MySQL e SQL Server, mas é um programa maior para instalar.",
+  "NPDev's own Postgres (recommended)": "Postgres próprio do NPDev (recomendado)",
+  "NPDev downloads its own copy (about 25 MB), just for NPDev. No permission prompt, nothing else on your computer changes. It starts by itself when you sign in to Windows.": "O NPDev baixa uma cópia própria (cerca de 25 MB), só para o NPDev. Não pede permissão e nada mais muda no seu computador. Ele inicia sozinho quando você entra no Windows.",
+  "Postgres as a Windows service": "Postgres como serviço do Windows",
+  "The official installer. Windows asks for your permission, then Postgres is installed for the whole computer and starts with Windows. It can take a few minutes.": "O instalador oficial. O Windows pede sua permissão e o Postgres é instalado para o computador inteiro, iniciando junto com o Windows. Pode levar alguns minutos."
 }

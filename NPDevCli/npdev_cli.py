@@ -4687,9 +4687,20 @@ def run_db_provision(args: argparse.Namespace) -> int:
     """
     import npdev_db_provision
 
+    where = getattr(args, "where", "docker") or "docker"
     try:
-        provisioned = npdev_db_provision.provision(
-            args.engine, app_name=args.app_name, port=args.port, name=args.name)
+        if where == "docker":
+            provisioned = npdev_db_provision.provision(
+                args.engine, app_name=args.app_name, port=args.port, name=args.name)
+        else:
+            # No Docker: NPDev's own copy, or a Windows service (see npdev_db_server for both).
+            import npdev_db_server
+            if where == "private":
+                provisioned = npdev_db_server.provision_private(
+                    args.engine, app_name=args.app_name, port=args.port,
+                    autostart=not getattr(args, "no_autostart", False))
+            else:
+                provisioned = npdev_db_server.provision_service(args.engine, app_name=args.app_name, port=args.port)
     except npdev_db_provision.ProvisionError as exc:
         if getattr(args, "json", False):
             print(json.dumps({"schemaVersion": "npdev-cli-result.v1", "command": "db provision",
@@ -4705,6 +4716,31 @@ def run_db_provision(args: argparse.Namespace) -> int:
                           "ok": True, "exitCode": 0, "provisioned": provisioned}, indent=2))
     else:
         print(npdev_db_provision.render(provisioned))
+    return 0
+
+
+def run_db_server(args: argparse.Namespace) -> int:
+    """`npdev db server status|start` -- the servers `db provision --where private|service` made."""
+    import npdev_db_provision
+    import npdev_db_server
+
+    try:
+        result = npdev_db_server.status() if args.action == "status" else {"started": npdev_db_server.start_all()}
+    except npdev_db_provision.ProvisionError as exc:
+        print(json.dumps({"schemaVersion": "npdev-cli-result.v1", "command": f"db server {args.action}", "ok": False,
+                          "exitCode": 1, "error": {"code": exc.code, "message": str(exc), "fix": exc.fix}}, indent=2)
+              if args.json else f"npdev: {exc}", file=sys.stdout if args.json else sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps({"schemaVersion": "npdev-cli-result.v1", "command": f"db server {args.action}",
+                          "ok": True, "exitCode": 0, **result}, indent=2))
+    elif args.action == "status":
+        for srv in result["servers"]:
+            print(f"{srv['engine']} ({srv['kind']}) 127.0.0.1:{srv['port']}  {'running' if srv['running'] else 'stopped'}")
+        if not result["servers"]:
+            print("no database server installed by NPDev without Docker")
+    else:
+        print("started: " + (", ".join(result["started"]) or "nothing (all running)"))
     return 0
 
 
@@ -16180,6 +16216,21 @@ def build_parser() -> argparse.ArgumentParser:
     db_provision.add_argument("--name", default=None,
                               help="Container name. Default: npdev-<engine>, then npdev-<engine>-2, ...")
     db_provision.add_argument("--json", action="store_true", help="Emit an npdev-cli-result.v1 object.")
+    db_provision.add_argument("--where", choices=["docker", "private", "service"], default="docker",
+                              help="docker (default): a container. private: NPDev's own copy of the server, no "
+                                   "Docker and no administrator prompt (Postgres). service: the official installer "
+                                   "as a Windows service, in an elevated window (Postgres).")
+    db_provision.add_argument("--no-autostart", action="store_true",
+                              help="With --where private: do not start the server when you sign in to Windows.")
+
+    # The servers `provision --where private|service` made: list them, or start NPDev's own again.
+    db_server = db_sub.add_parser(
+        "server",
+        help="NPDev's own database servers (made by `db provision --where private|service`): "
+             "`status` lists them (no passwords), `start` starts NPDev's own copies that are not running.",
+    )
+    db_server.add_argument("action", choices=["status", "start"])
+    db_server.add_argument("--json", action="store_true", help="Emit an npdev-cli-result.v1 object.")
 
     # Item 1, SUPPORT_FEATURES_PLAN_2026-08-26: "does my database match my model?" with NO app boot
     # required -- the recovery hole B6 (mark-done trusts the operator) and B7 (a refusal is not
@@ -18869,6 +18920,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_db_detect(args)
         if args.command == "db" and args.db_command == "provision":
             return run_db_provision(args)
+        if args.command == "db" and args.db_command == "server":
+            return run_db_server(args)
         if args.command == "db" and args.db_command == "verify":
             return run_db_verify(args)
         if args.command == "db" and args.db_command == "schema-ahead":
