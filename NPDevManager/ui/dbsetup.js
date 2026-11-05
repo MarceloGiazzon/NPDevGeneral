@@ -203,8 +203,17 @@
     // The CLI's note for a stopped container says how to start it in a terminal; the Start button below
     // says it in the window, so showing both would be the same instruction twice.
     const hasStart = db.source === "docker" && !db.running && db.port;
-    if (db.note && !hasStart) row.append(h("div", { class: "field-hint db-note" }, db.note));
+    if (db.note && !hasStart) row.append(h("div", { class: "field-hint db-note", title: db.note }, plainNote(db)));
     return row;
+  }
+
+  // The CLI's notes are written for a terminal user; a beginner gets one plain sentence and the
+  // original stays in the tooltip.
+  function plainNote(db) {
+    if (db.source === "docker" && !db.port) {
+      return "This one cannot be used from here: it runs inside Docker without an open port.";
+    }
+    return db.note;
   }
 
   function actionFor(db) {

@@ -846,10 +846,17 @@ await page.evaluate(() => { window.__jobsEmpty = false; });
 
   // -- Docker running, a Postgres is up, the only MySQL is a stopped container with no published port
   await setDetect(withDocker(DOCKER_OK));
+  const engineLocal = await page.evaluate(async () => {
+    await refreshEngineMatrix();
+    const el = document.querySelector('.engine-local[data-engine="postgres"]');
+    return el ? { text: el.textContent, title: el.title } : null;
+  });
+  check("engine panel: each engine says in one plain sentence whether it is usable here, the CLI detail is its tooltip",
+    engineLocal && engineLocal.text === "Already running on this computer." && /localhost:15432/.test(engineLocal.title), JSON.stringify(engineLocal));
   await pick("mysql");
   let t = await cardText();
   check("db card: MySQL says plainly that no MySQL server is running", /No MySQL server is running on this machine\./.test(t), t);
-  check("db card: the stopped MySQL container is listed, with why it cannot be used", /old-mysql/.test(t) && /no published port/.test(t), t);
+  check("db card: the stopped MySQL container is listed, with why it cannot be used", /old-mysql/.test(t) && /cannot be used from here: it runs inside Docker without an open port/.test(t), t);
   check("db card: with Docker running and no server, creating one is offered and ticked", (await page.isChecked("#db-setup-create"))
     && /Create a new MySQL server in Docker when I press Create/.test(t), t);
   check("db card: it says what creating does (official image, local only, generated password, first download)",

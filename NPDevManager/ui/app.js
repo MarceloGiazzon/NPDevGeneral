@@ -333,6 +333,12 @@ async function refreshEngineMatrix() {
 // "supported" (npdev engines) and "usable here" (npdev db detect) are different questions. Showing
 // only the first, next to a Find databases that found nothing, read as a contradiction -- so every
 // engine row also carries the CLI's own per-machine verdict.
+const LOCAL_VERDICT_TEXT = {
+  ready: "Ready to use on this computer.",
+  running: "Already running on this computer.",
+  "needs-docker": "Needs Docker running on this computer first.",
+};
+
 async function refreshLocalAvailability() {
   let result;
   try {
@@ -347,9 +353,12 @@ async function refreshLocalAvailability() {
   for (const el of document.querySelectorAll(".engine-local")) {
     const verdict = verdicts.get(el.dataset.engine);
     el.className = `engine-local ${verdict ? verdict.status : ""}`;
+    // One plain sentence per verdict; the CLI's technical detail stays one hover away.
     el.textContent = verdict
-      ? `on this machine: ${verdict.status === "needs-docker" ? "not yet" : verdict.status} -- ${verdict.detail}`
+      ? LOCAL_VERDICT_TEXT[verdict.status] || verdict.detail
       : "on this machine: this NPDev version does not report it";
+    if (verdict && verdict.detail) el.title = verdict.detail;
+    else el.removeAttribute("title");
   }
   const notice = document.getElementById("engine-docker-notice");
   if (notice) renderDockerNotice(notice, result.docker, refreshLocalAvailability);
