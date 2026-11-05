@@ -307,7 +307,7 @@ await page.evaluate(async () => { NPDevHome.reset(); await window.__npdevShowScr
 await page.screenshot({ path: path.join(OUT, "home.png"), fullPage: true });
 // ---- Home (HOME-1): tiles, your apps, recent activity, shortcuts ---------------------------------------------
 const homeView = await page.evaluate(() => ({
-  tiles: [...document.querySelectorAll(".home-tile")].map((x) => [x.dataset.tile, x.dataset.tone, x.querySelector(".home-tile-value").textContent]),
+  tiles: [...document.querySelectorAll(".home-tile")].map((x) => [x.dataset.tile, x.dataset.tone, x.querySelector(".home-tile-value").textContent, x.textContent]),
   apps: [...document.querySelectorAll(".home-app")].map((x) => [x.dataset.state, x.querySelector(".home-app-name").textContent]),
   ops: [...document.querySelectorAll(".home-op")].map((x) => x.dataset.state),
   shortcuts: document.querySelectorAll(".home-shortcut").length,
@@ -315,6 +315,7 @@ const homeView = await page.evaluate(() => ({
 check("Home draws four status tiles: computer ready, 5 apps, 1 running, AI keys known",
   JSON.stringify(homeView.tiles.map((x) => x[0])) === '["computer","apps","running","ai"]' && homeView.tiles[0][1] === "positive" && homeView.tiles[1][2] === "5" && homeView.tiles[2][2] === "1"
   && /2 ready/.test(homeView.tiles[3][2]), JSON.stringify(homeView.tiles));
+check("Home: one app with a problem reads in the singular", /1 needs attention/.test(homeView.tiles[2][3]), homeView.tiles[2][3]);
 check("Your apps lists every app, the running one first, and tells duplicate names apart by folder",
   homeView.apps.length === 5 && homeView.apps[0][0] === "running" && homeView.apps.some(([st, name]) => st === "problem" && /npdev-canary · /.test(name)), JSON.stringify(homeView.apps));
 check("Recent activity shows what this window did, with the failure marked", JSON.stringify(homeView.ops) === '["failed"]', JSON.stringify(homeView.ops));
@@ -1089,6 +1090,7 @@ await page.evaluate(() => { window.__jobsEmpty = false; });
     (await page.evaluate(() => window.__installedTag)) === "v9.2.0" && (await page.evaluate(() => window.__setupRuns)) === 1
     && /NPDev v9\.2\.0 is installed/.test(await page.textContent("#npdev-easy-status")) && !(await page.isVisible("#npdev-easy-btn"))
     && /NPDev is prepared/.test(await page.textContent("#setup-status")), await page.textContent("#npdev-easy-status") + " | " + await page.textContent("#setup-status"));
+  check("npdev assistant: a successful preparation hides its technical log", !(await page.isVisible("#setup-log")), await page.textContent("#setup-log"));
   await page.evaluate(async () => { window.__tags = []; window.__npdevVersion = null; window.__setupDone = false; await refreshTagList(false); await refreshSetupStatus(); });
   await setDetect(withDocker(DOCKER_OK, []));
   await page.evaluate(() => NPDevDbSetup.refreshAssistant()); await settle();

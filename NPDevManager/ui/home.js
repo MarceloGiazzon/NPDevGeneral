@@ -52,6 +52,7 @@
     tileRunning: { en: "Running", pt: "Em execução" },
     runningHintNone: { en: "Nothing is running", pt: "Nada está rodando" },
     runningHintProblems: { en: "{n} need attention", pt: "{n} precisam de atenção" },
+    runningHintProblem: { en: "1 needs attention", pt: "1 precisa de atenção" },
     runningHintOk: { en: "All healthy", pt: "Todos saudáveis" },
     tileAi: { en: "AI", pt: "IA" },
     aiReady: { en: "{n} ready", pt: "{n} prontos" },
@@ -392,7 +393,7 @@
       c.apps.length === 0 ? t(TEXT.appsHintNone) : unbuilt ? sub(TEXT.appsHintSome, { n: unbuilt }) : t(TEXT.appsHintAll),
       c.apps.length === 0 ? "warning" : "neutral", () => (c.apps.length ? go("apps") : goCreate()));
     const running = tile("running", t(TEXT.tileRunning), String(c.running.length),
-      problems ? sub(TEXT.runningHintProblems, { n: problems }) : c.running.length ? t(TEXT.runningHintOk) : t(TEXT.runningHintNone),
+      problems === 1 ? t(TEXT.runningHintProblem) : problems ? sub(TEXT.runningHintProblems, { n: problems }) : c.running.length ? t(TEXT.runningHintOk) : t(TEXT.runningHintNone),
       problems ? "warning" : c.running.length ? "positive" : "neutral", () => go("monitor"));
     const ai = c.ai == null
       ? tile("ai", t(TEXT.tileAi), t(TEXT.aiUnknown), t(TEXT.aiHintUnknown), "muted", () => go("providers"))

@@ -763,8 +763,11 @@ async function runSetup() {
   try {
     const result = await invoke("run_setup");
     const source = result.jarsSource === "download" ? "downloaded (fast)" : "built locally (slow)";
-    statusEl.textContent = `done -- jars ${source}`;
+    statusEl.textContent = "Done: NPDev is ready to make apps.";
+    statusEl.title = `jars ${source}`;
     logEl.textContent += `done -- jars ${source}\n`;
+    // The log is for when something goes wrong; on success the one sentence above is the whole answer.
+    logEl.hidden = true;
   } catch (err) {
     statusEl.textContent = `failed: ${err}`;
     offerHelp(statusEl, { operation: "npdev-setup", error: err, screen: "install" });

@@ -49,6 +49,8 @@
   "Choose folder…": "Escolher pasta…",
   "4. Setup": "4. Configuração",
   "Run setup": "Executar a configuração",
+  "Done: NPDev is ready to make apps.": "Pronto: o NPDev já pode criar apps.",
+  "jars {source}": "jars {source}",
   "5. Monitored App Paths": "5. Pastas de apps monitoradas",
   "Folders where your generated apps live. The Monitor scans them; the Run tab offers the apps it finds. (An app =": "Pastas onde ficam os apps que você gerou. O Monitor as varre; a aba Executar oferece os apps que encontrar. (Um app =",
   "— never a folder name.)": "— nunca apenas o nome de uma pasta.)",
