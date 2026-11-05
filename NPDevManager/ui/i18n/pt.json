@@ -948,5 +948,21 @@
   "MySQL COMMITS IMPLICITLY ON DDL, so a migration that fails partway CANNOT be rolled back: earlier steps are already permanent. NPDev reports this truthfully (PartialApplicationTruth) rather than claiming a rollback, but it is a real operational difference from Postgres.": "O MySQL CONFIRMA IMPLICITAMENTE A DDL, então uma migração que falha no meio NÃO PODE ser desfeita: as etapas anteriores já são permanentes. O NPDev informa isso com verdade (PartialApplicationTruth) em vez de alegar um desfazer, mas é uma diferença operacional real em relação ao Postgres.",
   "Microsoft SQL Server 2022+. The app's _ops/Start-Environment runs it in Docker for you, or point the app at a server you already run.": "Microsoft SQL Server 2022+. O _ops/Start-Environment do app o roda no Docker para você, ou aponte o app para um servidor que você já tenha.",
   "Text columns are mapped to NVARCHAR so unicode survives -- plain VARCHAR is non-Unicode there and loses characters silently.": "Colunas de texto são mapeadas para NVARCHAR para que o unicode sobreviva -- VARCHAR simples não é Unicode ali e perde caracteres em silêncio.",
-  "Postgres": "Postgres"
+  "Postgres": "Postgres",
+  "Checking Docker on this computer…": "Verificando o Docker neste computador…",
+  "could not check Docker: {err}": "não foi possível verificar o Docker: {err}",
+  "Turn on WSL": "Ativar o WSL",
+  "Turn on WSL again": "Ativar o WSL de novo",
+  "A window is turning WSL on. When it finishes, restart the computer, open NPDev Manager again and come back here.": "Uma janela está ativando o WSL. Quando terminar, reinicie o computador, abra o NPDev Manager de novo e volte aqui.",
+  "First: turn on WSL, the part of Windows that Docker runs on.": "Primeiro: ative o WSL, a parte do Windows em que o Docker roda.",
+  "It is off on this computer. Press the button: Windows asks for your permission and turns it on. Nothing else is installed.": "Ele está desligado neste computador. Clique no botão: o Windows pede sua permissão e o ativa. Nada mais é instalado.",
+  "The administrator prompt was declined, so nothing was changed. Press the button to try again.": "A permissão de administrador foi recusada, então nada foi alterado. Clique no botão para tentar de novo.",
+  "could not turn on WSL: {err}": "não foi possível ativar o WSL: {err}",
+  "When you create an app with Postgres, MySQL or SQL Server, NPDev can now make that database for you. Nothing else to do here.": "Quando você criar um app com Postgres, MySQL ou SQL Server, o NPDev já consegue criar esse banco de dados para você. Não há mais nada a fazer aqui.",
+  "Docker is not installed on this computer.": "O Docker não está instalado neste computador.",
+  "You only need Docker for apps that use Postgres, MySQL or SQL Server: with it, NPDev creates that database for you, so you never install a database server by hand. Apps that use H2 work without it.": "Você só precisa do Docker para apps que usam Postgres, MySQL ou SQL Server: com ele, o NPDev cria esse banco de dados para você, e você nunca precisa instalar um servidor de banco à mão. Apps que usam H2 funcionam sem ele.",
+  "Docker is installed but not running.": "O Docker está instalado, mas não está rodando.",
+  "Press the button: Docker Desktop opens (the first time it asks you to accept its terms). NPDev notices by itself when it is ready.": "Clique no botão: o Docker Desktop abre (na primeira vez ele pede que você aceite os termos). O NPDev percebe sozinho quando ele estiver pronto.",
+  "6. Docker (optional)": "6. Docker (opcional)",
+  "For apps that use Postgres, MySQL or SQL Server. NPDev helps you install it, step by step.": "Para apps que usam Postgres, MySQL ou SQL Server. O NPDev ajuda você a instalá-lo, passo a passo."
 }

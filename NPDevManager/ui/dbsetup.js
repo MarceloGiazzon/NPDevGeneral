@@ -17,6 +17,13 @@
 // for "Find databases". A server NPDev does not own is never started, stopped or removed from here
 // except the one container the person pressed "Start" on.
 //
+// THE DOCKER ASSISTANT. The same guided Docker steps also live on their own, on Settings > Install
+// (`#docker-assistant`), so a person can get Docker ready before they ever pick an engine -- help that is
+// only reachable from one state of one card does not exist for someone who never lands in that state.
+// Both hosts draw from ONE state (one Docker, one install in progress), so starting the install on one
+// screen and finishing it on the other just works. On Windows the steps first check WSL 2, which Docker
+// Desktop runs on and a fresh Windows often lacks.
+//
 // Wrapped in a function: the Manager's scripts share ONE global scope (see ui_script_global_tests).
 
 (function () {
@@ -40,8 +47,11 @@
   let filledEngine = null; // the engine whose connection THIS card put in the form (adopted or created), until the person types their own
   let installState = null; // null | { opened, error, noWinget }
   let showAll = false;
+  let wsl = null; // null = unknown (not asked, or not answered) | { applicable, installed }
+  let wslState = null; // null | { opened, error }
 
   const card = () => document.getElementById("db-setup-card");
+  const assistantHost = () => document.getElementById("docker-assistant");
 
   function h(tag, props, ...children) {
     const el = document.createElement(tag);
@@ -77,9 +87,11 @@
         render();
         return;
       }
-      await refresh({ keepInstall: true, quiet: true });
+      // With no engine picked the card does not look at all, so the Install screen's assistant asks itself.
+      if (card() && containerized()) await refresh({ keepInstall: true, quiet: true });
+      else await refreshAssistant();
       const docker = last && last.docker;
-      if (polling && docker && docker.status !== "ok" && card() && containerized()) pollTimer = setTimeout(tick, pollMs);
+      if (polling && docker && docker.status !== "ok" && ((card() && containerized()) || assistantHost())) pollTimer = setTimeout(tick, pollMs);
       else if (polling) {
         polling = false; // Docker answered (or the card no longer needs it): the next render shows the outcome
         render();
@@ -129,6 +141,40 @@
     }
     if (mine !== seq) return; // the engine changed while Docker was answering
     last = result;
+    await refreshWsl();
+    render();
+  }
+
+  // Asked only while Docker is not installed: once Docker is there, WSL evidently is too.
+  async function refreshWsl() {
+    const docker = last && last.docker;
+    if (!docker || docker.installed !== false) return;
+    try {
+      const answer = await invoke("wsl_status");
+      wsl = answer && typeof answer === "object" ? answer : null;
+    } catch (e) {
+      wsl = null; // unknown: the Docker installer itself says so if WSL is missing
+    }
+  }
+
+  // The Install screen's own copy of the assistant: look at Docker, whatever engine (if any) is picked.
+  async function refreshAssistant() {
+    const host = assistantHost();
+    if (!host) return;
+    if (!last) {
+      host.innerHTML = "";
+      host.append(h("p", { class: "status-line" }, "Checking Docker on this computer…"));
+    }
+    let result;
+    try {
+      result = await invoke("detect_databases");
+    } catch (err) {
+      host.innerHTML = "";
+      host.append(h("p", { class: "status-line" }, `could not check Docker: ${err}`));
+      return;
+    }
+    last = result;
+    await refreshWsl();
     render();
   }
 
@@ -274,14 +320,42 @@
           ? waitingNote()
           : h("button", { type: "button", on: { click: () => { startPolling(); render(); } } }, "Check now");
 
+    const first = wsl && wsl.applicable && !wsl.installed && !installed ? [wslStep(step)] : [];
     return h(
       "ol",
       { class: "db-steps" },
+      ...first,
       step(installed, "1. Install Docker Desktop.", h("p", { class: "field-hint" }, "Press the button. Windows asks for your permission, then a window shows the installation."), h("div", { class: "panel-actions" }, open), ...notes),
       step(running, "2. Restart if it asks.", h("p", { class: "field-hint" }, "Docker may ask to restart the computer. If it does, restart, open NPDev Manager again and come back to this screen -- your apps are kept.")),
       step(running, "3. Start Docker Desktop and accept its terms.", h("div", { class: "panel-actions" }, startBtn)),
       step(running, "4. NPDev notices by itself.", watching)
     );
+  }
+
+  // Before step 1, only when Windows lacks it: WSL 2, the Linux layer Docker Desktop runs on.
+  function wslStep(step) {
+    wslState = wslState || {};
+    const btn = h("button", { type: "button", class: "primary", on: { click: () => openWslInstaller(btn) } }, wslState.opened ? "Turn on WSL again" : "Turn on WSL");
+    const notes = [];
+    if (wslState.opened) notes.push(h("p", { class: "field-hint" }, "A window is turning WSL on. When it finishes, restart the computer, open NPDev Manager again and come back here."));
+    if (wslState.error) notes.push(h("p", { class: "field-hint db-error" }, wslState.error));
+    return step(false, "First: turn on WSL, the part of Windows that Docker runs on.",
+      h("p", { class: "field-hint" }, "It is off on this computer. Press the button: Windows asks for your permission and turns it on. Nothing else is installed."),
+      h("div", { class: "panel-actions" }, btn), ...notes);
+  }
+
+  async function openWslInstaller(button) {
+    button.disabled = true;
+    wslState = Object.assign(wslState || {}, { error: null });
+    try {
+      await invoke("install_wsl");
+      wslState.opened = true;
+    } catch (err) {
+      wslState.error = /declined/.test(String(err))
+        ? "The administrator prompt was declined, so nothing was changed. Press the button to try again."
+        : `could not turn on WSL: ${err}`;
+    }
+    render();
   }
 
   async function openInstaller(button) {
@@ -316,8 +390,48 @@
   }
 
   function render() {
+    renderCard();
+    renderAssistant();
+  }
+
+  // The standalone assistant: Docker's state in plain words, and the one thing to do next.
+  function renderAssistant() {
+    const host = assistantHost();
+    if (!host || !last) return;
+    host.innerHTML = "";
+    const docker = last.docker || { status: "ok" };
+    if (docker.status === "ok") {
+      host.append(
+        h("div", { class: "check-row pass" }, h("span", { class: "mark", "aria-hidden": "true" }, "✓"), h("span", { class: "name" }, "Docker is ready.")),
+        h("p", { class: "field-hint" }, "When you create an app with Postgres, MySQL or SQL Server, NPDev can now make that database for you. Nothing else to do here.")
+      );
+      return;
+    }
+    if (docker.installed === false) {
+      installState = installState || {};
+      host.append(
+        h("p", { class: "status-line" }, "Docker is not installed on this computer."),
+        h("p", { class: "field-hint" }, "You only need Docker for apps that use Postgres, MySQL or SQL Server: with it, NPDev creates that database for you, so you never install a database server by hand. Apps that use H2 work without it."),
+        installSteps(docker)
+      );
+      return;
+    }
+    const actions = h("div", { class: "panel-actions" });
+    const start = h("button", { type: "button", class: "primary", on: { click: () => startDocker(start, actions) } }, "Start Docker Desktop");
+    start.disabled = polling;
+    actions.append(start);
+    if (polling) actions.append(waitingNote());
+    host.append(
+      h("p", { class: "status-line" }, "Docker is installed but not running."),
+      h("p", { class: "field-hint" }, "Press the button: Docker Desktop opens (the first time it asks you to accept its terms). NPDev notices by itself when it is ready."),
+      actions
+    );
+  }
+
+  function renderCard() {
     const root = card();
     if (!root || !last) return;
+    if (!containerized() && !showAll) return; // refresh() cleared it; a redraw for the assistant must not bring it back
     root.innerHTML = "";
     const docker = last.docker || { status: "ok" };
     const all = last.databases || [];
@@ -407,5 +521,7 @@
       filledEngine = engine ? engine.key : null;
     },
     stop: stopPolling,
+    /** Settings > Install: draw (or redraw) the standalone Docker assistant. */
+    refreshAssistant,
   };
 })();

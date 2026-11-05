@@ -101,6 +101,8 @@ window.__TAURI__ = {
         case "start_db_container": window.__startedContainer = args.name; return args.name;
         case "install_docker_desktop": window.__installCalls = (window.__installCalls || 0) + 1; if (window.__installError) throw window.__installError; return "opened";
         case "start_docker_desktop": window.__dockerStarted = (window.__dockerStarted || 0) + 1; return "Docker Desktop.exe";
+        case "wsl_status": return window.__wsl;
+        case "install_wsl": window.__wslInstallCalls = (window.__wslInstallCalls || 0) + 1; if (window.__wslError) throw window.__wslError; return "opened";
         case "create_app": window.__createdApp = args; return { created: { directory: "D:/Apps/" + args.name + "/" + args.name } };
         case "jdk_status": return { installed: true, path: "x" };
         case "python_status": return { systemPython: "python" };
@@ -986,8 +988,40 @@ await page.evaluate(() => { window.__jobsEmpty = false; });
     /Nenhum servidor MySQL está rodando neste computador\./.test(await cardText()) && /Criar um novo servidor MySQL no Docker quando eu clicar em Criar/.test(await cardText()), await cardText());
   await page.evaluate(() => NPDevI18n.setLang("en"));
   await page.waitForTimeout(300);
+  // -- The standalone Docker assistant (Settings > Install): the same steps, reachable with no engine picked.
   await pick("h2local");
-  await page.evaluate(() => { window.__engines = []; window.__detect = null; NPDevDbSetup.stop(); });
+  const helpText = async () => (await page.textContent("#docker-assistant")).replace(/\s+/g, " ").trim();
+  await page.evaluate(() => window.__npdevShowScreen("install"));
+  await setDetect(withDocker(DOCKER_OK, []));
+  await page.evaluate(() => NPDevDbSetup.refreshAssistant()); await settle();
+  t = await helpText();
+  check("docker assistant: Docker running says it is ready and what that gives you", /Docker is ready\./.test(t) && /NPDev can now make that database for you/.test(t), t);
+  await setDetect(withDocker(DOCKER_MISSING, []));
+  await page.evaluate(() => { window.__wsl = { applicable: true, installed: false }; window.__wslInstallCalls = 0; });
+  await page.evaluate(() => NPDevDbSetup.refreshAssistant()); await settle();
+  t = await helpText();
+  check("docker assistant: no Docker shows the guided steps at once, no extra click", /Docker is not installed on this computer\./.test(t) && t.includes("1. Install Docker Desktop.") && t.includes("4. NPDev notices by itself."), t);
+  check("docker assistant: missing WSL is the first step, explained in plain words", /First: turn on WSL, the part of Windows that Docker runs on\./.test(t), t);
+  await page.locator("#screen-install .install-step:has(#docker-assistant)").screenshot({ path: path.join(OUT, "docker-assistant-missing.png") });
+  await page.click("#docker-assistant button:has-text('Turn on WSL')"); await settle();
+  check("docker assistant: Turn on WSL opens the installer and says to restart after", (await page.evaluate(() => window.__wslInstallCalls)) === 1 && /restart the computer/.test(await helpText()), await helpText());
+  await page.evaluate(() => { window.__wsl = { applicable: true, installed: true }; });
+  await page.evaluate(() => NPDevDbSetup.refreshAssistant()); await settle();
+  check("docker assistant: with WSL on, the WSL step is gone", !/turn on WSL/.test(await helpText()), await helpText());
+  await page.evaluate(() => { window.__wsl = { applicable: true, installed: false }; });
+  await page.evaluate(() => NPDevI18n.setLang("pt")); await page.waitForTimeout(300);
+  const ptHelpMissing = [];
+  for (const d of [withDocker(DOCKER_OK, []), withDocker(DOCKER_OFF, []), withDocker(DOCKER_MISSING, [])]) {
+    await setDetect(d);
+    await page.evaluate(() => NPDevDbSetup.refreshAssistant()); await settle();
+    ptHelpMissing.push(...(await page.evaluate(() => {
+      const shown = document.getElementById("screen-install").textContent.replace(/\s+/g, " ");
+      return NPDevI18n.missingNow().filter((x) => shown.includes(x));
+    })));
+  }
+  check("docker assistant (pt): no state leaves English on screen", ptHelpMissing.length === 0, JSON.stringify([...new Set(ptHelpMissing)].slice(0, 8)));
+  await page.evaluate(() => NPDevI18n.setLang("en")); await page.waitForTimeout(300);
+  await page.evaluate(() => { window.__engines = []; window.__detect = null; window.__wsl = undefined; NPDevDbSetup.stop(); window.__npdevShowScreen("apps"); });
 }
 
 // ---- I18N-1: the whole window follows the language picker ---------------------------------------------------

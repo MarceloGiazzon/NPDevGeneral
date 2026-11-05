@@ -184,6 +184,14 @@
         <button id="apppaths-browse">&#128193; Browse&hellip;</button>
         <div id="apppaths-status" class="status-line"></div>
       </div>
+
+      <!-- The Docker assistant (dbsetup.js draws it): the same guided steps the New-app Database card
+           shows, reachable before anyone picks an engine. Optional -- H2 apps never need Docker. -->
+      <div class="install-step">
+        <h2>6. Docker (optional)</h2>
+        <p class="subtitle">For apps that use Postgres, MySQL or SQL Server. NPDev helps you install it, step by step.</p>
+        <div id="docker-assistant" class="db-setup" role="status" aria-live="polite"></div>
+      </div>
     </section>
 
     <!-- Apps -->

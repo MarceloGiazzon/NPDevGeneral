@@ -1488,6 +1488,7 @@ window.__npdevRefreshInstall = async function refreshInstall() {
   // Also picks up paths added before this step existed: they are the same `inspect_paths` the
   // Monitor has been writing since D7, read out of the same manager.json.
   await refreshAppPaths();
+  await NPDevDbSetup.refreshAssistant();
 };
 
 async function loadManagerVersion() {
