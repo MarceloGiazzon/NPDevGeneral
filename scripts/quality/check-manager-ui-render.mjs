@@ -105,7 +105,10 @@ window.__TAURI__ = {
         case "install_wsl": window.__wslInstallCalls = (window.__wslInstallCalls || 0) + 1; if (window.__wslError) throw window.__wslError; return "opened";
         case "create_app": window.__createdApp = args; return { created: { directory: "D:/Apps/" + args.name + "/" + args.name } };
         case "manager_build_stamp": return "v0.0.0";
-        case "jdk_status": return { installed: true, path: "x" };
+        // The shape the real jdk_status command returns (main.rs). Default is "no Java anywhere" (the first-run
+        // screen several checks below expect). The old installed/path mock carried no resolved field, so it only
+        // looked like "Java present" and nothing ever exercised the ready path; window.__jdk overrides it.
+        case "jdk_status": return window.__jdk || { portableInstalled: false, systemJava: null, systemJavaVersion: null, resolved: "none", path: null };
         case "python_status": return { systemPython: "python" };
         case "list_tags": return window.__tags || [];
         case "install_npdev_version": window.__installedTag = args.tag; window.__npdevVersion = args.tag; return null;
@@ -1073,6 +1076,18 @@ await page.evaluate(() => { window.__jobsEmpty = false; });
   t = await stepText("jdk-status");
   check("java assistant: no Java says so in plain words, with one visible button", /Java is not on this computer yet\./.test(t)
     && /No permission is needed/.test(t) && (await page.isVisible("#jdk-install-btn")) && /Install Java for NPDev/.test(await page.textContent("#jdk-install-btn")), t);
+  // A Java the machine already has (system) or NPDev's own copy (portable) is simply ready: no button, the
+  // path only under Details. This is the state a developer machine is in; the screen must not say "not here yet".
+  for (const [label, jdk] of [
+    ["system", { portableInstalled: false, systemJava: "C:\\Java\\jdk-17", systemJavaVersion: "17.0.11", resolved: "system", path: null }],
+    ["portable", { portableInstalled: true, systemJava: null, systemJavaVersion: null, resolved: "portable", path: "C:\\NPDev\\jdk" }],
+  ]) {
+    await page.evaluate(async (j) => { window.__jdk = j; await refreshJdkStatus(); }, jdk);
+    t = await stepText("jdk-status");
+    check(`java assistant: a ${label} Java is simply ready, with no install button`, /✓ Java is ready\./.test(t)
+      && !/not on this computer yet/.test(t) && !(await page.isVisible("#jdk-install-btn")) && !(await page.isVisible("#jdk-details-text")), t);
+  }
+  await page.evaluate(async () => { window.__jdk = null; await refreshJdkStatus(); });
   t = await stepText("python-status");
   check("python assistant: a Python already here is simply ready, its path only under Details", /✓ Python is ready\./.test(t)
     && !(await page.isVisible("#python-install-btn")) && !(await page.isVisible("#python-details-text")), t);
