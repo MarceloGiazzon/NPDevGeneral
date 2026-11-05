@@ -213,6 +213,11 @@
     if (db.source === "docker" && !db.port) {
       return "This one cannot be used from here: it runs inside Docker without an open port.";
     }
+    // A database the person installed themselves, found on its default port. The CLI's note ends with
+    // a terminal command (`npdev db test-connection`); the window says what is known and leaves it there.
+    if (db.source === "listener") {
+      return `Something is answering on port ${db.port}, but NPDev has not confirmed it is a ${db.engine} server.`;
+    }
     return db.note;
   }
 

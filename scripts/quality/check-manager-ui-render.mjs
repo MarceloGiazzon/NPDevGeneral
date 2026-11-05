@@ -950,6 +950,14 @@ await page.evaluate(() => { window.__jobsEmpty = false; });
   await settle();
   check("db card: Start starts exactly that container", (await page.evaluate(() => window.__startedContainer)) === "dev-mysql", "");
 
+  // -- a database the person installed themselves, found on its default port (no container, no name)
+  const listener = { source: "listener", engine: "postgres", name: null, image: null, matchedBy: "port", state: "listening", running: true, host: "localhost", port: 5432, initArgs: ["--engine", "postgres", "--db-host", "localhost", "--db-port", "5432"], note: "something answers on 5432; NPDev has not confirmed it is postgres -- `npdev db test-connection` does" };
+  await setDetect(withDocker(DOCKER_OK, [listener]));
+  await pick("mysql"); await pick("postgres");
+  t = await cardText();
+  check("db card: a database found on its port says what is known in one sentence, with no terminal command",
+    /Something is answering on port 5432, but NPDev has not confirmed it is a postgres server\./.test(t) && !/npdev db test-connection/.test(t), t);
+
   // -- the create flow
   await setDetect(withDocker(DOCKER_OK, []));
   await pick("postgres"); await pick("mysql");
