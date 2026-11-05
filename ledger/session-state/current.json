@@ -1,19 +1,22 @@
 {
-  "closedAt": "2026-11-05T04:52:27.9459618Z",
+  "closedAt": "2026-11-05T06:15:30.2816076Z",
   "branch": "main",
-  "head": "09ee1285",
-  "headSubject": "feat(manager): advanced screens say so; plain titles on Impact, Packs, Checks, Evaluations (0.13.16)",
-  "summary": "Manager screen review for beginners finished: wave 2 (0.13.15, 30b7a5f6) Edit leads with 'What do you want to change?' handing off to Ask AI with JSON editor under Advanced, Data in plain words, Share 'Access keys' explained; item 9 (0.13.16, 09ee1285) nav.js Advanced note on every advanced-group screen and on the Activity place, plain titles/subtitles on Impact, Packs, Checks, Evaluations. Pushed to main.",
-  "nextStep": "Run the T2 gates (pwsh -NoProfile -File scripts/quality/run-all-gates.ps1 via run_digest.py) -- not run since 0.13.10. Then leftover beginner copy per D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\manager-dummies-review-2026-11-05.md: Monitor card internals and db detect / db-card notes are still CLI English.",
+  "head": "92978984",
+  "headSubject": "feat(manager): singular attention hint on Home, plain end of NPDev setup (0.13.19)",
+  "summary": "Confirmed T2 fully green at f1c88944 (prior session's aiKnowledge rerun PASSED 848s). Shipped Manager 0.13.17 (c6ee0283: plain engine-availability sentences, plain no-published-port note, CLI detail as tooltip), 0.13.18 (053cea3c: pt for db-detect tooltips) and 0.13.19 (92978984: singular '1 needs attention' on Home, plain end of NPDev setup with log hidden on success), found via the pt screenshot tour; built the 0.13.19 installer (not installed). Found UX plan items NAV-2..5/I18N-1/ACC and AI-efficiency target (<=5k tokens/app) already done; corrected stale memory.",
+  "nextStep": "Owner decisions pending, none started: (1) install + click through D:\\WorkSpace\\NPDev\\Build\\manager-target\\release\\bundle\\nsis\\NPDev Manager_0.13.19_x64-setup.exe (or run pwsh -NoProfile -File D:\\WorkSpace\\NPDev\\NPDev_General\\scripts\\release\\New-ManagerInstaller.ps1 -Install -Launch with approval) -- check whether Install step 1 really says 'Java ainda nao esta neste computador' when Java is present (seen in the all-green tour fixture, likely fixture-only); (2) approve real 'npdev db provision --where private' run; (3) approve bench-023 on Gemini free tier (only missing AI-efficiency measurement, see D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_AI_EFFICIENCY_PLAN_2026-10-31\\PLAN.md). Owner-only: THM-10 npdev-themes repo, NAV-6 user test, native pt.json read.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\manager-dummies-review-2026-11-05.md",
-  "blocked": "Real 'npdev db provision --where private' end-to-end run still needs owner approval; Windows-service path untested by design.",
-  "verified": "check-manager-ui-render.mjs 196/196 (new cases: Edit->Ask AI hand-off, Advanced note placement); check-manager-i18n OK; css-tokens OK; version-bump OK; cargo test 89/89. NOT run: T2 gates, real Tauri window, installer build.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "blocked": "Real window test, private Postgres provision and the Gemini bench-023 run all await owner approval.",
+  "verified": "aiKnowledge gate PASSED (848s, prior session's rerun on f1c88944) -> T2 all four green at f1c88944. After each Manager change: check-manager-ui-render.mjs 200/200, check-manager-i18n.py OK, check-manager-version-bump.py OK. No full gate run on 0.13.17-0.13.19. Installer build 0.13.19 OK (589s). Real Tauri window not run.",
+  "dirtyCount": 2,
+  "dirtyFiles": [
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl"
+  ],
   "unpushed": 0,
   "landedCommits": [
-    "09ee1285 feat(manager): advanced screens say so; plain titles on Impact, Packs, Checks, Evaluations (0.13.16)",
-    "30b7a5f6 feat(manager): Edit, Data and Share read for beginners (0.13.15)",
-    "0a3e30a5 chore(handoff): session close, Manager 0.13.10-0.13.14 beginner assistants and screen review wave 1"
+    "92978984 feat(manager): singular attention hint on Home, plain end of NPDev setup (0.13.19)",
+    "053cea3c feat(manager): database tooltips read in Portuguese (0.13.18)",
+    "c6ee0283 feat(manager): plain database availability and Docker-port sentences (0.13.17)"
   ]
 }
