@@ -267,6 +267,10 @@
             <button type="button" id="find-databases-btn">Find databases</button>
           </div>
           <p id="new-app-engine-summary" class="status-line"></p>
+          <details id="new-app-engine-tech" class="install-details" hidden>
+            <summary>Technical details</summary>
+            <p class="field-hint"></p>
+          </details>
           <!--
             Shown ONLY for an engine the platform does not yet claim to support, and shown before the
             Create button rather than after the fact. BREAKING.md saying "selectable but NOT supported"
@@ -284,6 +288,10 @@
         <!-- Revealed only for engines that actually connect somewhere. -->
         <fieldset id="new-app-connection" class="field-group" hidden>
           <legend>Connection</legend>
+          <!-- A beginner never types this: creating or picking a server fills it. Closed by default;
+               "Use this" on a found server opens it (the user and password are still theirs to type). -->
+          <details id="new-app-connection-details" class="install-details">
+          <summary>NPDev fills this in for you. Open it only to type a server of your own.</summary>
           <div class="field-row">
             <label>Host <input id="new-app-db-host" placeholder="localhost" /></label>
             <label class="field-narrow">Port <input id="new-app-db-port" type="number" placeholder="5432" /></label>
@@ -312,13 +320,14 @@
           -->
           <label class="checkbox-line">
             <input type="checkbox" id="new-app-externally-provisioned" />
-            This server is mine, not NPDev's
+            This database was here before NPDev (do not let NPDev erase it)
           </label>
           <p class="field-hint">
-            Tick this when you are pointing NPDev at a database server you already run. NPDev will
-            then refuse to start, stop or reset it. Leave it clear and the toolbox treats the server
-            as its own &mdash; <strong>Reset deletes the data root</strong>.
+            Tick this for a database that already existed, for example your company's server. NPDev will
+            then never start, stop or erase it. Leave it clear only for a database NPDev created for this
+            app &mdash; <strong>Reset erases all its data</strong>.
           </p>
+          </details>
         </fieldset>
 
         <div class="panel-actions">

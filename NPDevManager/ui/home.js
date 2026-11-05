@@ -72,12 +72,15 @@
     manage: { en: "Manage", pt: "Gerenciar" },
     starting: { en: "Starting…", pt: "Iniciando…" },
     stopping: { en: "Stopping…", pt: "Parando…" },
-    notBuilt: { en: "Not built yet", pt: "Ainda não gerado" },
-    buildFirst: { en: "Build it first (Manage)", pt: "Gere primeiro (Gerenciar)" },
+    notBuilt: { en: "Not ready yet: see Manage", pt: "Ainda não está pronto: veja em Gerenciar" },
+    buildFirst: { en: "Get it ready first: press Manage", pt: "Deixe-o pronto primeiro: clique em Gerenciar" },
     stRunning: { en: "Running", pt: "Rodando" },
     stStarting: { en: "Starting", pt: "Iniciando" },
     stStopped: { en: "Stopped", pt: "Parado" },
     stProblem: { en: "Problem", pt: "Problema" },
+    // The monitor's own sentence ("PID 17544 holds port 8103 but ...") is for the Manage screen and the
+    // row's tooltip; on Home a beginner gets what to do.
+    problemHint: { en: "Something is wrong: see Manage.", pt: "Algo está errado: veja em Gerenciar." },
     stUnknown: { en: "Unknown", pt: "Desconhecido" },
 
     activity: { en: "Recent activity", pt: "Atividade recente" },
@@ -479,7 +482,7 @@
     const subline = a.health === "running" && a.baseUrl
       ? a.baseUrl
       : !a.jarPath ? t(TEXT.notBuilt)
-        : state === "problem" && a.healthDetail ? a.healthDetail
+        : state === "problem" && a.healthDetail ? t(TEXT.problemHint)
           : [a.engine, a.port ? `:${a.port}` : null].filter(Boolean).join(" ");
     const actions = h("div", { class: "home-app-actions" });
     if (a.health === "running") {
@@ -498,7 +501,7 @@
       h("div", { class: "home-app-text" },
         h("span", { class: "home-app-name", title: a.appDir }, a.name || shortDir(a.appDir),
           dupNames.has(a.name) ? h("span", { class: "home-app-dir" }, " · " + shortDir(a.appDir)) : null),
-        h("span", { class: "home-app-sub", title: subline }, subline),
+        h("span", { class: "home-app-sub", title: state === "problem" && a.healthDetail ? a.healthDetail : subline }, subline),
         error ? h("span", { class: "home-app-error", role: "alert" }, error) : null),
       actions);
   }
@@ -546,7 +549,7 @@
       return h("li", { class: "home-op", data: { state } },
         h("span", { class: "home-op-mark", "aria-hidden": "true" }, mark),
         h("div", { class: "home-op-text" },
-          h("span", { class: "home-op-intent" }, op.intent || op.operation),
+          h("span", { class: "home-op-intent", title: op.intent || null }, op.label ? t(op.label) : op.intent || op.operation),
           h("span", { class: "home-op-meta" }, word, " · ", ago(op.endedAt || op.startedAt))),
         help);
     }));

@@ -177,6 +177,17 @@ pub fn intent_text(operation: &str) -> String {
     intent_for(operation).0
 }
 
+/// The short, plain name of an operation (`label` in support-intents.json, `{en, pt}`), for Home's
+/// activity list. Null when the operation has none, and Home falls back to the intent.
+pub fn intent_label(operation: &str) -> serde_json::Value {
+    let parsed: serde_json::Value = serde_json::from_str(INTENTS_JSON).unwrap_or(serde_json::Value::Null);
+    parsed["intents"]
+        .as_array()
+        .and_then(|list| list.iter().find(|i| i["operation"] == operation))
+        .map(|i| i["label"].clone())
+        .unwrap_or(serde_json::Value::Null)
+}
+
 pub fn build_report(inp: ReportInputs) -> ReportOut {
     let (intent, glossary_ids) = intent_for(&inp.operation);
     let lang = if inp.ui_language == "pt" { "pt" } else { "en" };

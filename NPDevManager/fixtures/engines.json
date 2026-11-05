@@ -14,6 +14,8 @@
       "containerized": false,
       "status": "supported",
       "summary": "File-backed H2 in the app's own process. No server to install. The default. Commits schema changes implicitly: a failed schema change is not fully rolled back -- see `npdev capabilities`.",
+      "plainName": "Simple: built in, nothing to install (recommended)",
+      "plainSummary": "The easiest choice: your data is kept in a file next to the app. Nothing to install. Good for getting started and for most small apps.",
       "caveat": null,
       "honestyNotice": null
     },
@@ -26,6 +28,8 @@
       "containerized": false,
       "status": "supported",
       "summary": "H2 in TCP server mode, so more than one process can share the database. Nothing to install: the H2 jar ships with every generated app and its _ops/Start-Environment starts the server. Also commits schema changes implicitly -- see `npdev capabilities`.",
+      "plainName": "Simple, shared: built in, other programs can open it",
+      "plainSummary": "Like the simple option, but other programs (a reporting tool, for example) can open the same data while the app runs. Nothing to install.",
       "caveat": null,
       "honestyNotice": null
     },
@@ -38,6 +42,8 @@
       "containerized": true,
       "status": "supported",
       "summary": "PostgreSQL 16. The engine NPDev's schema engine was built against. The app's _ops/Start-Environment runs it in Docker for you, or point the app at a server you already run.",
+      "plainName": "PostgreSQL",
+      "plainSummary": "A full database server, the one NPDev works best with. Choose it if your app will grow or many people will use it. NPDev can install it for you.",
       "caveat": null,
       "honestyNotice": null
     },
@@ -50,6 +56,8 @@
       "containerized": true,
       "status": "supported",
       "summary": "MySQL 8.4+. The app's _ops/Start-Environment runs it in Docker for you (already utf8mb4), or point the app at a server you already run -- which must use utf8mb4: the legacy three-byte 'utf8' cannot store emoji or other characters outside the BMP (`npdev doctor` checks this).",
+      "plainName": "MySQL",
+      "plainSummary": "A full database server. Choose it if your company already uses MySQL. NPDev can create one for you with Docker.",
       "caveat": "MySQL COMMITS IMPLICITLY ON DDL, so a migration that fails partway CANNOT be rolled back: earlier steps are already permanent. NPDev reports this truthfully (PartialApplicationTruth) rather than claiming a rollback, but it is a real operational difference from Postgres.",
       "honestyNotice": null
     },
@@ -62,6 +70,8 @@
       "containerized": true,
       "status": "supported",
       "summary": "Microsoft SQL Server 2022+. The app's _ops/Start-Environment runs it in Docker for you, or point the app at a server you already run.",
+      "plainName": "Microsoft SQL Server",
+      "plainSummary": "Microsoft's database server. Choose it if your company already uses SQL Server. NPDev can create one for you with Docker.",
       "caveat": "Text columns are mapped to NVARCHAR so unicode survives -- plain VARCHAR is non-Unicode there and loses characters silently.",
       "honestyNotice": null
     },
@@ -74,6 +84,8 @@
       "containerized": false,
       "status": "supported",
       "summary": "Nothing is persisted. Everything is lost when the app stops -- tests and demos only.",
+      "plainName": "Temporary: nothing is saved",
+      "plainSummary": "Nothing is saved: everything disappears when the app stops. Only for trying things out.",
       "caveat": null,
       "honestyNotice": null
     }

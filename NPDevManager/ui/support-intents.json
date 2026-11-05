@@ -1,31 +1,448 @@
 {
   "schema": "npdev-support-intents.v1",
-  "description": "What the user was trying to do, in plain language, for every Manager operation that can fail. The support report quotes `intent` verbatim, so a stranger's AI knows the goal before it reads the log. `operation` is the id the Rust run recorder stores; `commands` are the #[tauri::command] names in NPDevManager/src/main.rs that record under it (verified 2026-10-31 against main.rs at fc4ff17e). `glossary` links to help-glossary.json ids.",
+  "description": "What the user was trying to do, in plain language, for every Manager operation that can fail. The support report quotes `intent` verbatim, so a stranger's AI knows the goal before it reads the log. `operation` is the id the Rust run recorder stores; `commands` are the #[tauri::command] names in NPDevManager/src/main.rs that record under it (verified 2026-10-31 against main.rs at fc4ff17e). `glossary` links to help-glossary.json ids. `label` is the short, plain name Home's activity list shows (en/pt).",
   "intents": [
-    { "operation": "install-java", "intent": "install Java (JDK 17), the runtime generated apps run on", "commands": ["install_jdk"], "glossary": ["java"], "commonCauses": ["no internet or a proxy blocks the download", "antivirus quarantined the archive", "no write permission to the install folder"] },
-    { "operation": "install-python", "intent": "install Python, which runs NPDev's own tools", "commands": ["install_python"], "glossary": ["python"], "commonCauses": ["the Microsoft Store 'python' alias shadows the real one", "no write permission"] },
-    { "operation": "install-npdev", "intent": "download and install an NPDev version", "commands": ["install_npdev_version"], "glossary": [], "commonCauses": ["GitHub rate limit or no internet", "disk full", "folder in use by a running app"] },
-    { "operation": "switch-npdev-version", "intent": "switch which NPDev version the Manager uses", "commands": ["set_current_version", "use_downloaded_npdev_version", "set_local_repo_path"], "glossary": [], "commonCauses": ["the chosen folder is not an NPDev checkout or release"] },
-    { "operation": "npdev-setup", "intent": "prepare NPDev's building blocks on this computer (npdev setup)", "commands": ["run_setup"], "glossary": ["npdev-setup", "gradle", "java"], "commonCauses": ["wrong Java version on PATH", "Gradle download blocked", "a file locked by an editor or antivirus"] },
-    { "operation": "doctor", "intent": "check whether this computer can build and run NPDev apps", "commands": ["check_doctor"], "glossary": ["java", "python"], "commonCauses": [] },
-    { "operation": "create-app", "intent": "create a new app from a starter model", "commands": ["create_app"], "glossary": ["model"], "commonCauses": ["app name already used", "folder not writable"] },
-    { "operation": "generate-app", "intent": "turn the app's model into a runnable program", "commands": ["generate_app_from_model"], "glossary": ["model", "concept"], "commonCauses": ["the model has a validation error (the log names the field)", "generator version older than the model"] },
-    { "operation": "rebuild-app", "intent": "rebuild the app after a platform change", "commands": ["rebuild_app_engine", "run_ops_script"], "glossary": ["gradle"], "commonCauses": ["a file locked by the IDE (bump the build folder suffix)", "stale generator cache"] },
-    { "operation": "start-app", "intent": "start the app so it can be opened in a browser", "commands": ["start_dev", "start_app"], "glossary": ["port", "h2", "gradle"], "commonCauses": ["port already in use", "database not reachable", "first Gradle build still downloading"] },
-    { "operation": "stop-app", "intent": "stop a running app", "commands": ["stop_dev", "stop_app"], "glossary": ["port"], "commonCauses": [] },
-    { "operation": "db-test-connection", "intent": "test the connection to the app's database", "commands": ["test_connection", "detect_databases"], "glossary": ["postgresql"], "commonCauses": ["wrong host or port", "wrong user or password", "firewall"] },
-    { "operation": "db-operation", "intent": "create, reset or migrate the app's database", "commands": ["db_operation"], "glossary": ["h2", "postgresql"], "commonCauses": ["the database user may read but not create tables"] },
-    { "operation": "db-export", "intent": "export the app's data to files", "commands": ["db_export"], "glossary": [], "commonCauses": [] },
-    { "operation": "db-import", "intent": "import data files into the app's database", "commands": ["db_import"], "glossary": [], "commonCauses": ["file columns do not match the concept", "the app is running and holds the database"] },
-    { "operation": "docker", "intent": "start Docker Desktop for a database container", "commands": ["start_docker_desktop"], "glossary": [], "commonCauses": ["Docker Desktop not installed", "virtualisation disabled in the BIOS"] },
-    { "operation": "host-share", "intent": "give the app a temporary public link (tunnel)", "commands": ["host_share", "host_share_streaming", "host_down"], "glossary": ["tunnel"], "commonCauses": ["cloudflared not installed", "corporate network blocks tunnels"] },
-    { "operation": "host-deploy", "intent": "deploy the app to an external host", "commands": ["host_deploy", "host_check", "host_plan"], "glossary": [], "commonCauses": ["missing deploy key", "host free-tier limits"] },
-    { "operation": "provider-test", "intent": "test the connection to an AI provider", "commands": ["providers_test", "ai_command"], "glossary": [], "commonCauses": ["key invalid or expired", "quota exhausted", "model not offered on the free tier"] },
-    { "operation": "ai-loop", "intent": "let an AI build or change the app in a loop", "commands": ["run_ai_loop", "prompter_generate", "assistant_generate"], "glossary": ["model"], "commonCauses": ["provider quota", "the model returned something that is not a valid NPDev model"] },
-    { "operation": "browser-engine", "intent": "start the browser-check engine", "commands": ["start_engine", "engine_status"], "glossary": ["playwright"], "commonCauses": ["engine folder not found", "Node not installed"] },
-    { "operation": "browser-check", "intent": "run browser checks against the app", "commands": ["explore_run", "explore_preflight"], "glossary": ["playwright"], "commonCauses": ["browser engine not running", "app not running"] },
-    { "operation": "eval-run", "intent": "run the AI evaluation scenarios", "commands": ["eval_run"], "glossary": [], "commonCauses": [] },
-    { "operation": "gpu-check-run", "intent": "check which existing rows a model change would break", "commands": ["gpu_check_run"], "glossary": [], "commonCauses": [] },
-    { "operation": "studio-apply", "intent": "apply an edit to the running app", "commands": ["studio_apply_live"], "glossary": ["concept"], "commonCauses": ["the change needs a rebuild, not a live apply"] }
+    {
+      "operation": "install-java",
+      "intent": "install Java (JDK 17), the runtime generated apps run on",
+      "commands": [
+        "install_jdk"
+      ],
+      "glossary": [
+        "java"
+      ],
+      "commonCauses": [
+        "no internet or a proxy blocks the download",
+        "antivirus quarantined the archive",
+        "no write permission to the install folder"
+      ],
+      "label": {
+        "en": "Install Java",
+        "pt": "Instalar o Java"
+      }
+    },
+    {
+      "operation": "install-python",
+      "intent": "install Python, which runs NPDev's own tools",
+      "commands": [
+        "install_python"
+      ],
+      "glossary": [
+        "python"
+      ],
+      "commonCauses": [
+        "the Microsoft Store 'python' alias shadows the real one",
+        "no write permission"
+      ],
+      "label": {
+        "en": "Install Python",
+        "pt": "Instalar o Python"
+      }
+    },
+    {
+      "operation": "install-npdev",
+      "intent": "download and install an NPDev version",
+      "commands": [
+        "install_npdev_version"
+      ],
+      "glossary": [],
+      "commonCauses": [
+        "GitHub rate limit or no internet",
+        "disk full",
+        "folder in use by a running app"
+      ],
+      "label": {
+        "en": "Download NPDev",
+        "pt": "Baixar o NPDev"
+      }
+    },
+    {
+      "operation": "switch-npdev-version",
+      "intent": "switch which NPDev version the Manager uses",
+      "commands": [
+        "set_current_version",
+        "use_downloaded_npdev_version",
+        "set_local_repo_path"
+      ],
+      "glossary": [],
+      "commonCauses": [
+        "the chosen folder is not an NPDev checkout or release"
+      ],
+      "label": {
+        "en": "Change the NPDev version",
+        "pt": "Trocar a versão do NPDev"
+      }
+    },
+    {
+      "operation": "npdev-setup",
+      "intent": "prepare NPDev's building blocks on this computer (npdev setup)",
+      "commands": [
+        "run_setup"
+      ],
+      "glossary": [
+        "npdev-setup",
+        "gradle",
+        "java"
+      ],
+      "commonCauses": [
+        "wrong Java version on PATH",
+        "Gradle download blocked",
+        "a file locked by an editor or antivirus"
+      ],
+      "label": {
+        "en": "Prepare NPDev",
+        "pt": "Preparar o NPDev"
+      }
+    },
+    {
+      "operation": "doctor",
+      "intent": "check whether this computer can build and run NPDev apps",
+      "commands": [
+        "check_doctor"
+      ],
+      "glossary": [
+        "java",
+        "python"
+      ],
+      "commonCauses": [],
+      "label": {
+        "en": "Check this computer",
+        "pt": "Verificar este computador"
+      }
+    },
+    {
+      "operation": "create-app",
+      "intent": "create a new app from a starter model",
+      "commands": [
+        "create_app"
+      ],
+      "glossary": [
+        "model"
+      ],
+      "commonCauses": [
+        "app name already used",
+        "folder not writable"
+      ],
+      "label": {
+        "en": "Create an app",
+        "pt": "Criar um app"
+      }
+    },
+    {
+      "operation": "generate-app",
+      "intent": "turn the app's model into a runnable program",
+      "commands": [
+        "generate_app_from_model"
+      ],
+      "glossary": [
+        "model",
+        "concept"
+      ],
+      "commonCauses": [
+        "the model has a validation error (the log names the field)",
+        "generator version older than the model"
+      ],
+      "label": {
+        "en": "Build an app",
+        "pt": "Montar um app"
+      }
+    },
+    {
+      "operation": "rebuild-app",
+      "intent": "rebuild the app after a platform change",
+      "commands": [
+        "rebuild_app_engine",
+        "run_ops_script"
+      ],
+      "glossary": [
+        "gradle"
+      ],
+      "commonCauses": [
+        "a file locked by the IDE (bump the build folder suffix)",
+        "stale generator cache"
+      ],
+      "label": {
+        "en": "Rebuild an app",
+        "pt": "Remontar um app"
+      }
+    },
+    {
+      "operation": "start-app",
+      "intent": "start the app so it can be opened in a browser",
+      "commands": [
+        "start_dev",
+        "start_app"
+      ],
+      "glossary": [
+        "port",
+        "h2",
+        "gradle"
+      ],
+      "commonCauses": [
+        "port already in use",
+        "database not reachable",
+        "first Gradle build still downloading"
+      ],
+      "label": {
+        "en": "Start an app",
+        "pt": "Iniciar um app"
+      }
+    },
+    {
+      "operation": "stop-app",
+      "intent": "stop a running app",
+      "commands": [
+        "stop_dev",
+        "stop_app"
+      ],
+      "glossary": [
+        "port"
+      ],
+      "commonCauses": [],
+      "label": {
+        "en": "Stop an app",
+        "pt": "Parar um app"
+      }
+    },
+    {
+      "operation": "db-test-connection",
+      "intent": "test the connection to the app's database",
+      "commands": [
+        "test_connection",
+        "detect_databases"
+      ],
+      "glossary": [
+        "postgresql"
+      ],
+      "commonCauses": [
+        "wrong host or port",
+        "wrong user or password",
+        "firewall"
+      ],
+      "label": {
+        "en": "Test a database connection",
+        "pt": "Testar a conexão com um banco"
+      }
+    },
+    {
+      "operation": "db-operation",
+      "intent": "create, reset or migrate the app's database",
+      "commands": [
+        "db_operation"
+      ],
+      "glossary": [
+        "h2",
+        "postgresql"
+      ],
+      "commonCauses": [
+        "the database user may read but not create tables"
+      ],
+      "label": {
+        "en": "Work on an app's database",
+        "pt": "Mexer no banco de um app"
+      }
+    },
+    {
+      "operation": "db-export",
+      "intent": "export the app's data to files",
+      "commands": [
+        "db_export"
+      ],
+      "glossary": [],
+      "commonCauses": [],
+      "label": {
+        "en": "Export data",
+        "pt": "Exportar dados"
+      }
+    },
+    {
+      "operation": "db-import",
+      "intent": "import data files into the app's database",
+      "commands": [
+        "db_import"
+      ],
+      "glossary": [],
+      "commonCauses": [
+        "file columns do not match the concept",
+        "the app is running and holds the database"
+      ],
+      "label": {
+        "en": "Import data",
+        "pt": "Importar dados"
+      }
+    },
+    {
+      "operation": "docker",
+      "intent": "start Docker Desktop for a database container",
+      "commands": [
+        "start_docker_desktop"
+      ],
+      "glossary": [],
+      "commonCauses": [
+        "Docker Desktop not installed",
+        "virtualisation disabled in the BIOS"
+      ],
+      "label": {
+        "en": "Start Docker",
+        "pt": "Iniciar o Docker"
+      }
+    },
+    {
+      "operation": "host-share",
+      "intent": "give the app a temporary public link (tunnel)",
+      "commands": [
+        "host_share",
+        "host_share_streaming",
+        "host_down"
+      ],
+      "glossary": [
+        "tunnel"
+      ],
+      "commonCauses": [
+        "cloudflared not installed",
+        "corporate network blocks tunnels"
+      ],
+      "label": {
+        "en": "Share an app by link",
+        "pt": "Compartilhar um app por link"
+      }
+    },
+    {
+      "operation": "host-deploy",
+      "intent": "deploy the app to an external host",
+      "commands": [
+        "host_deploy",
+        "host_check",
+        "host_plan"
+      ],
+      "glossary": [],
+      "commonCauses": [
+        "missing deploy key",
+        "host free-tier limits"
+      ],
+      "label": {
+        "en": "Put an app on a server",
+        "pt": "Colocar um app num servidor"
+      }
+    },
+    {
+      "operation": "provider-test",
+      "intent": "test the connection to an AI provider",
+      "commands": [
+        "providers_test",
+        "ai_command"
+      ],
+      "glossary": [],
+      "commonCauses": [
+        "key invalid or expired",
+        "quota exhausted",
+        "model not offered on the free tier"
+      ],
+      "label": {
+        "en": "Test an AI provider",
+        "pt": "Testar um provedor de IA"
+      }
+    },
+    {
+      "operation": "ai-loop",
+      "intent": "let an AI build or change the app in a loop",
+      "commands": [
+        "run_ai_loop",
+        "prompter_generate",
+        "assistant_generate"
+      ],
+      "glossary": [
+        "model"
+      ],
+      "commonCauses": [
+        "provider quota",
+        "the model returned something that is not a valid NPDev model"
+      ],
+      "label": {
+        "en": "Let the AI change an app",
+        "pt": "Deixar a IA alterar um app"
+      }
+    },
+    {
+      "operation": "browser-engine",
+      "intent": "start the browser-check engine",
+      "commands": [
+        "start_engine",
+        "engine_status"
+      ],
+      "glossary": [
+        "playwright"
+      ],
+      "commonCauses": [
+        "engine folder not found",
+        "Node not installed"
+      ],
+      "label": {
+        "en": "Start the browser checks",
+        "pt": "Iniciar os testes no navegador"
+      }
+    },
+    {
+      "operation": "browser-check",
+      "intent": "run browser checks against the app",
+      "commands": [
+        "explore_run",
+        "explore_preflight"
+      ],
+      "glossary": [
+        "playwright"
+      ],
+      "commonCauses": [
+        "browser engine not running",
+        "app not running"
+      ],
+      "label": {
+        "en": "Run browser checks",
+        "pt": "Rodar testes no navegador"
+      }
+    },
+    {
+      "operation": "eval-run",
+      "intent": "run the AI evaluation scenarios",
+      "commands": [
+        "eval_run"
+      ],
+      "glossary": [],
+      "commonCauses": [],
+      "label": {
+        "en": "Run AI evaluations",
+        "pt": "Rodar avaliações de IA"
+      }
+    },
+    {
+      "operation": "gpu-check-run",
+      "intent": "check which existing rows a model change would break",
+      "commands": [
+        "gpu_check_run"
+      ],
+      "glossary": [],
+      "commonCauses": [],
+      "label": {
+        "en": "Check data rules",
+        "pt": "Testar regras de dados"
+      }
+    },
+    {
+      "operation": "studio-apply",
+      "intent": "apply an edit to the running app",
+      "commands": [
+        "studio_apply_live"
+      ],
+      "glossary": [
+        "concept"
+      ],
+      "commonCauses": [
+        "the change needs a rebuild, not a live apply"
+      ],
+      "label": {
+        "en": "Apply an edit",
+        "pt": "Aplicar uma edição"
+      }
+    }
   ]
 }

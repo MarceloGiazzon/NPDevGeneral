@@ -34,8 +34,12 @@ import re
 # ideal, but they are all real and all consumed; recording the mapping once beats each caller
 # guessing, which is how an app ends up with a db.definition the generator accepts and a config the
 # schema rejects.
+# `plainName` / `plainSummary` are the same engine said for someone who is not technical -- the
+# Manager's audience. They say what it is and when to pick it; `summary` keeps the technical account.
 ENGINES: dict[str, dict] = {
     "h2local": {
+        "plainName": "Simple: built in, nothing to install (recommended)",
+        "plainSummary": "The easiest choice: your data is kept in a file next to the app. Nothing to install. Good for getting started and for most small apps.",
         "externalName": "H2Local",
         "provider": "h2-local",
         "port": 0,
@@ -47,6 +51,8 @@ ENGINES: dict[str, dict] = {
                    "back -- see `npdev capabilities`.",
     },
     "h2server": {
+        "plainName": "Simple, shared: built in, other programs can open it",
+        "plainSummary": "Like the simple option, but other programs (a reporting tool, for example) can open the same data while the app runs. Nothing to install.",
         "externalName": "H2Server",
         "provider": "h2-server",
         "port": 9092,
@@ -59,6 +65,8 @@ ENGINES: dict[str, dict] = {
                    "-- see `npdev capabilities`.",
     },
     "inmemory": {
+        "plainName": "Temporary: nothing is saved",
+        "plainSummary": "Nothing is saved: everything disappears when the app stops. Only for trying things out.",
         "externalName": "InMemory",
         "provider": "in-memory",
         "port": 0,
@@ -68,6 +76,8 @@ ENGINES: dict[str, dict] = {
         "summary": "Nothing is persisted. Everything is lost when the app stops -- tests and demos only.",
     },
     "postgres": {
+        "plainName": "PostgreSQL",
+        "plainSummary": "A full database server, the one NPDev works best with. Choose it if your app will grow or many people will use it. NPDev can install it for you.",
         "externalName": "Postgres",
         "provider": "postgres",
         "port": 5432,
@@ -79,6 +89,8 @@ ENGINES: dict[str, dict] = {
                    "you already run.",
     },
     "mysql": {
+        "plainName": "MySQL",
+        "plainSummary": "A full database server. Choose it if your company already uses MySQL. NPDev can create one for you with Docker.",
         "externalName": "MySQL",
         "provider": "mysql",
         "port": 3306,
@@ -96,6 +108,8 @@ ENGINES: dict[str, dict] = {
                   "operational difference from Postgres.",
     },
     "sqlserver": {
+        "plainName": "Microsoft SQL Server",
+        "plainSummary": "Microsoft's database server. Choose it if your company already uses SQL Server. NPDev can create one for you with Docker.",
         "externalName": "SqlServer",
         "provider": "sqlserver",
         "port": 1433,
@@ -268,6 +282,10 @@ def as_json() -> dict:
                 "containerized": ENGINES[key]["containerized"],
                 "status": ENGINES[key]["status"],
                 "summary": ENGINES[key]["summary"],
+                # For a non-technical reader (the Manager's picker): what it is and when to choose it,
+                # no jargon. `summary` stays the technical account, shown as detail.
+                "plainName": ENGINES[key]["plainName"],
+                "plainSummary": ENGINES[key]["plainSummary"],
                 "caveat": ENGINES[key].get("caveat"),
                 "honestyNotice": honesty_notice(key),
             }

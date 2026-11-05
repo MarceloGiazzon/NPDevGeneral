@@ -981,7 +981,7 @@ async function loadEngines() {
   select.innerHTML = engineCatalog
     .map(
       (e) =>
-        `<option value="${escapeHtml(e.key)}">${escapeHtml(e.externalName)}${
+        `<option value="${escapeHtml(e.key)}">${escapeHtml(e.plainName || e.externalName)}${
           e.status === "supported" ? "" : "  (experimental)"
         }</option>`
     )
@@ -1004,7 +1004,13 @@ function applyEngineSelection() {
     connectionEl.hidden = true;
     return;
   }
-  summaryEl.textContent = engine.summary || "";
+  // The plain account first; the technical one (an older CLI has only that) under Technical details.
+  summaryEl.textContent = engine.plainSummary || engine.summary || "";
+  const techEl = document.getElementById("new-app-engine-tech");
+  if (techEl) {
+    techEl.querySelector("p").textContent = engine.plainSummary ? engine.summary || "" : "";
+    techEl.hidden = !engine.plainSummary || !engine.summary;
+  }
   // The honesty notice is composed by the CLI, not here, so the wording a user sees in the Manager
   // and the wording they see in a terminal are the same sentence.
   warningEl.textContent = engine.honestyNotice || "";
@@ -1093,7 +1099,11 @@ document.getElementById("find-databases-btn").addEventListener("click", async ()
 });
 
 NPDevDbSetup.init({
-  onUse: (db) => useDetectedDatabase(db),
+  onUse: (db) => {
+    useDetectedDatabase(db);
+    // The user and password of a found server are the person's to type: show the fields.
+    document.getElementById("new-app-connection-details").open = true;
+  },
   // A server filled in for one engine must not follow the person to another engine's form.
   onRelease: () => {
     for (const id of ["new-app-db-host", "new-app-db-port", "new-app-db-user", "new-app-db-password"]) {

@@ -92,7 +92,7 @@ window.__TAURI__ = {
         case "studio_history_list": return [];
         case "jobs_list": window.__jobsListCalls = (window.__jobsListCalls || 0) + 1; return window.__jobsEmpty ? { ok: true, jobs: [], summary: {} } : F.jobs;
         case "jobs_action": window.__jobsActions = (window.__jobsActions || []).concat([args.action + ":" + args.jobId]); return { ok: true };
-        case "recent_operations": return [{ operation: "install-java", intent: "install Java (JDK 17)", startedAt: "2026-11-03T10:00:00Z", endedAt: "2026-11-03T10:01:00Z", running: false, ok: false }];
+        case "recent_operations": return [{ operation: "install-java", intent: "install Java (JDK 17)", label: { en: "Install Java", pt: "Instalar o Java" }, startedAt: "2026-11-03T10:00:00Z", endedAt: "2026-11-03T10:01:00Z", running: false, ok: false }];
         case "list_apps": return [{ name: "auxscreen", directory: "D:\\\\WorkSpace\\\\NPDev\\\\Build\\\\generated-finalapps\\\\auxscreen", created_at: "2026-11-03" }];
         case "list_engines": return { engines: window.__engines || [] };
         // The New-app database card (dbsetup.js). Each answer is overridable per case by the checks below.
@@ -986,6 +986,7 @@ await page.evaluate(() => { window.__jobsEmpty = false; });
   await setDetect(withDocker(DOCKER_OK, []));
   await pick("postgres"); await pick("mysql");
   check("db card: starts ticked", await page.isChecked("#db-setup-create"), "");
+  await page.evaluate(() => { document.getElementById("new-app-connection-details").open = true; });
   await page.fill("#new-app-db-host", "db.internal");
   check("db card: typing your own connection unticks the create option", !(await page.isChecked("#db-setup-create")), "");
 
