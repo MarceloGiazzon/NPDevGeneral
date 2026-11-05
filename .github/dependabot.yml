@@ -16,8 +16,20 @@
 # ledger/items/SEC-2.yml (DONE, 2026-08-13) is UNAFFECTED by this change -- its guard checks
 # scripts/security/check-npm-audit-policy.py and workflow `permissions:` blocks, neither of which
 # reads this file's `updates:` list.
+# WHY ONE ENTRY WITH `open-pull-requests-limit: 0`, NOT `updates: []` (2026-11-05). An empty `updates`
+# list is not a valid Dependabot config (the schema wants at least one entry), and GitHub answered it
+# by keeping the LAST VALID config alive: on 2026-10-29 and again on 2026-11-05 (both Thursdays, the
+# old weekly day) all 8 historical scan jobs ran from that stale copy -- the job logs show the old
+# `npm-dependencies` group and `chore(deps)` prefix -- and opened 18 and then 14 PRs/branches. A limit of
+# 0 is Dependabot's documented way to disable version updates and, being a valid file, replaces the
+# stale config. Do not "simplify" this back to `updates: []`.
 version: 2
-updates: []
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 0
 
 # -------------------------------------------------------------------------------------------------
 # HISTORICAL CONFIG (2026-08-13 - 2026-08-29), kept for reference only -- not live, not read by

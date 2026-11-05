@@ -40,7 +40,8 @@ forbidden above). Stated explicitly, emphatically, twice
 (2026-09-29, close-all-open-2026-09-22 session) after Dependabot left 15 stray PRs open on the repo
 and Claude asked whether to open one of its own for a CI signal — the answer is always no, not even
 to get a real CI run: merge to `main` first, CI runs there. `.github/dependabot.yml` already sets
-`updates: []` for the identical reason (see that file's own comment) — routine Dependabot PRs are
+`open-pull-requests-limit: 0` for the identical reason (see that file's own comment; a bare
+`updates: []` is invalid and GitHub kept the old config alive) — routine Dependabot PRs are
 also unwanted here, not just Claude-initiated ones.
 
 ## ALERT (2026-09-26) — read before touching Rebuild-And-Restage.ps1 or any generated app's _ops/*.ps1
