@@ -58,14 +58,14 @@ async function studioLoadApp() {
   studioAppDir = appDir;
   studioSelectedPath = null;
   studioHideRebuildBanner();
-  studioStatus("loading model...", null);
+  studioStatus("loading the app...", null);
 
   try {
     const context = await studioInvoke("prompter_app_context", { appDir });
     studioModel = context.context;
   } catch (error) {
     studioModel = null;
-    studioStatus(`could not load model: ${error}`, "err");
+    studioStatus(`could not read this app: ${error}`, "err");
     studioRenderTree();
     studioRenderEditor();
     return;
@@ -89,12 +89,12 @@ async function studioLoadApp() {
 function studioRenderTree() {
   const el = document.getElementById("studio-tree");
   if (!studioModel) {
-    el.innerHTML = `<p class="secrets-empty">Pick an app above.</p>`;
+    el.innerHTML = `<p class="secrets-empty">Choose an app with Change app at the top.</p>`;
     return;
   }
   const groups = [
-    ["concepts", "Concepts"],
-    ["panels", "Panels"],
+    ["concepts", "Concepts (your data)"],
+    ["panels", "Screens"],
     ["flows", "Flows"],
     ["procedures", "Procedures"],
   ];
@@ -116,7 +116,7 @@ function studioRenderTree() {
     });
     html += `</div>`;
   }
-  el.innerHTML = html || `<p class="secrets-empty">No concepts/panels/flows in this model.</p>`;
+  el.innerHTML = html || `<p class="secrets-empty">This app has nothing to edit here yet.</p>`;
   el.querySelectorAll("[data-studio-path]").forEach((btn) => {
     btn.addEventListener("click", () => {
       studioSelectedPath = btn.dataset.studioPath;
@@ -177,7 +177,7 @@ function studioValidateTextarea() {
     return parsed;
   } catch (error) {
     textarea.classList.add("studio-invalid");
-    errorEl.textContent = `invalid JSON: ${error.message}`;
+    errorEl.textContent = `this is not valid JSON: ${error.message}`;
     return undefined;
   }
 }
@@ -235,7 +235,7 @@ function studioRefreshPreview() {
 
 function studioShowRebuildBanner(message) {
   document.getElementById("studio-rebuild-message").textContent =
-    message || "This change needs a rebuild to take effect.";
+    message || "This change needs a rebuild before the app shows it.";
   document.getElementById("studio-rebuild-banner").classList.add("show");
 }
 
@@ -267,46 +267,46 @@ async function studioApply() {
 // live" through the exact same path, per the plan's own "Undo re-applies the previous one through
 // the same path."
 async function studioApplyCandidate(candidate) {
-  studioStatus("validating...", null);
+  studioStatus("checking the change...", null);
   let validation;
   try {
     validation = await studioInvoke("validate_prompter_model", { candidate });
   } catch (error) {
-    studioStatus(`validation failed: ${error}`, "err");
+    studioStatus(`the change could not be checked: ${error}`, "err");
     return false;
   }
   if (validation && validation.status === "failed") {
     const messages = (validation.diagnostics || [])
       .filter((d) => d.severity !== "warning")
       .map((d) => d.message);
-    studioStatus(`validation failed: ${messages.join("; ") || "see diagnostics"}`, "err");
+    studioStatus(`the change has a problem: ${messages.join("; ") || "see the details in Activity"}`, "err");
     return false;
   }
 
-  studioStatus("writing model.json...", null);
+  studioStatus("saving...", null);
   let written;
   try {
     written = await studioInvoke("apply_prompter_model", {
       appDir: studioAppDir, candidate, confirm: STUDIO_CONFIRM_TOKEN,
     });
   } catch (error) {
-    studioStatus(`write failed: ${error}`, "err");
+    studioStatus(`could not save: ${error}`, "err");
     return false;
   }
 
   await studioRecordHistory(written.modelPath);
   studioModel = candidate;
 
-  studioStatus("applying live...", null);
+  studioStatus("updating the running app...", null);
   try {
     const result = await studioInvoke("studio_apply_live", {
       appDir: studioAppDir, modelPath: written.modelPath, baselinePath: written.backupPath,
     });
     if (result && result.code === "NEEDS_REBUILD") {
       studioShowRebuildBanner(result.message);
-      studioStatus("written -- needs a rebuild to take effect", "ok");
+      studioStatus("saved -- the app must be rebuilt to show it", "ok");
     } else if (result && result.ok) {
-      studioStatus(result.message || "applied live", "ok");
+      studioStatus(result.message || "done -- the running app shows the change", "ok");
       studioRefreshPreview();
     } else {
       studioStatus(`apply failed: ${(result && result.message) || "unknown error"}`, "err");
@@ -389,7 +389,7 @@ async function studioRefreshHistory() {
     entries = [];
   }
   if (!entries || entries.length < 2) {
-    el.innerHTML = `<li class="secrets-empty">No previous version to undo to yet.</li>`;
+    el.innerHTML = `<li class="secrets-empty">Nothing to undo yet.</li>`;
     return;
   }
   // entries[0] is the just-applied current state; Undo targets entries[1] (the one before it).
@@ -420,7 +420,27 @@ async function studioUndo(fileName) {
   }
 }
 
+// The beginner path (screen review wave 2): a change is described in plain words and handed to the Ask AI
+// screen, which already composes the prompt, sends it, validates the answer and asks before saving. This
+// file adds no second AI path -- it only fills Ask AI's request box and switches to it.
+function studioDescribeChange() {
+  const text = document.getElementById("studio-describe-text").value.trim();
+  const box = document.getElementById("studio-describe-text");
+  if (!text) {
+    box.focus();
+    return;
+  }
+  const ask = document.getElementById("prompter-ask");
+  if (ask) {
+    ask.value = text;
+    ask.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  if (typeof window.__npdevShowScreen === "function") window.__npdevShowScreen("prompter");
+  if (typeof buildPrompterPrompt === "function") buildPrompterPrompt();
+}
+
 function initStudio() {
+  document.getElementById("studio-describe-go").addEventListener("click", studioDescribeChange);
   document.getElementById("studio-app-picker").addEventListener("change", studioLoadApp);
   document.getElementById("studio-refresh").addEventListener("click", async () => {
     await studioRefreshAppPicker();

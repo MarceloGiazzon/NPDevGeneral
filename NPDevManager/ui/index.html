@@ -733,64 +733,64 @@
     <!-- Data mobility (ListaSementes.txt): export a database's tables to CSV/SQL-insert files, or
          import a directory `db export` wrote back in, gated by a per-table structure check. -->
     <section id="screen-dbio" class="screen" hidden>
-      <h1><span aria-hidden="true">⇄</span> DB IMPORT/EXPORT <span class="dim">// move an app's data in or out</span></h1>
+      <h1>Your app's data</h1>
       <p class="subtitle">
-        Reads/writes through <code>npdev db export</code> / <code>npdev db import</code> -- format,
-        table scoping and the pre-import structure check are all decided there, never here.
+        Save a copy of everything stored in your app into a folder, or bring data from such a folder
+        into the app -- to keep a backup, or to move records from one app or computer to another.
       </p>
 
       <div class="packs-toolbar">
         <label id="dbio-app-label" hidden>App <select id="dbio-app-picker"></select></label>
-        <button class="btn" id="dbio-refresh-apps">⟳ REFRESH APPS</button>
+        <button class="btn ghost" id="dbio-refresh-apps">&#8635; Reload apps</button>
         <span id="dbio-status" class="status-line"></span>
       </div>
 
       <div class="dbio-columns">
         <div class="dbio-panel">
-          <h3 aria-level="2">EXPORT</h3>
-          <label>Output folder
+          <h3 aria-level="2">Save a copy</h3>
+          <label>Folder to save into
             <div class="dbio-path-row">
               <input type="text" id="dbio-export-out" readonly placeholder="Pick a folder…" />
-              <button class="btn ghost" id="dbio-export-pick">Browse…</button>
+              <button class="btn ghost" id="dbio-export-pick">Choose folder…</button>
             </div>
           </label>
           <label>Format
             <select id="dbio-export-format">
-              <option value="csv">CSV</option>
-              <option value="sql-insert">SQL insert statements</option>
+              <option value="csv">CSV (opens in Excel)</option>
+              <option value="sql-insert">SQL file (for database tools)</option>
             </select>
           </label>
           <label>Tables
             <select id="dbio-export-scope">
-              <option value="business">Business tables only</option>
-              <option value="all">All tables (incl. kernel/system)</option>
+              <option value="business">Only your app's data</option>
+              <option value="all">Everything, including NPDev's own tables</option>
             </select>
           </label>
-          <button class="btn" id="dbio-export-run">⬇ EXPORT</button>
+          <button class="primary" id="dbio-export-run">Save a copy</button>
           <pre class="dbio-output" id="dbio-export-output"></pre>
         </div>
 
         <div class="dbio-panel">
-          <h3 aria-level="2">IMPORT</h3>
-          <label>Input folder
+          <h3 aria-level="2">Bring data in</h3>
+          <label>Folder with the data
             <div class="dbio-path-row">
               <input type="text" id="dbio-import-in" readonly placeholder="Pick a folder…" />
-              <button class="btn ghost" id="dbio-import-pick">Browse…</button>
+              <button class="btn ghost" id="dbio-import-pick">Choose folder…</button>
             </div>
           </label>
           <label>Format
             <select id="dbio-import-format">
-              <option value="csv">CSV</option>
-              <option value="sql-insert">SQL insert statements</option>
+              <option value="csv">CSV (opens in Excel)</option>
+              <option value="sql-insert">SQL file (for database tools)</option>
             </select>
           </label>
           <label class="dbio-force">
             <input type="checkbox" id="dbio-import-force" />
-            Also import COMPATIBLE (not just EQUAL) tables
+            Also bring in tables that differ a little from this app (extra or missing columns)
           </label>
           <div class="dbio-actions">
-            <button class="btn ghost" id="dbio-import-check">CHECK STRUCTURE</button>
-            <button class="btn" id="dbio-import-run">⬆ IMPORT</button>
+            <button class="btn ghost" id="dbio-import-check">Check first (changes nothing)</button>
+            <button class="primary" id="dbio-import-run">Bring the data in</button>
           </div>
           <pre class="dbio-output" id="dbio-import-output"></pre>
         </div>
@@ -1039,50 +1039,66 @@
     </section>
 
     <section id="screen-studio" class="screen" hidden>
-      <h1>&#127912; STUDIO <span class="dim">// edit a concept/panel/field and see it live, no rebuild</span></h1>
+      <h1>Edit</h1>
       <p class="subtitle">
-        Pick a node on the left, edit its JSON in the middle, click Apply. A metadata-only change
-        (labels, widgets, panel/flow logic) or a brand-new concept goes live in the running app
-        within seconds; anything else on an EXISTING concept's shape needs a rebuild, named honestly
-        rather than silently half-applied.
+        Say what you want changed in your app, in your own words -- for example "add a phone number to
+        customers" or "rename Orders to Sales". The AI writes the change; you see it and approve it before
+        anything is saved.
       </p>
+
+      <div class="studio-describe">
+        <label for="studio-describe-text">What do you want to change?</label>
+        <textarea id="studio-describe-text" rows="4"></textarea>
+        <div class="studio-describe-actions">
+          <button type="button" class="primary big" id="studio-describe-go">Ask the AI to make this change</button>
+          <span class="field-hint">Opens Ask AI with your words already filled in.</span>
+        </div>
+      </div>
 
       <div class="studio-rebuild-banner" id="studio-rebuild-banner">
         <span id="studio-rebuild-message"></span>
         <button type="button" class="btn" id="studio-rebuild-btn">Rebuild &amp; restart</button>
       </div>
 
-      <div class="studio-toolbar">
-        <select id="studio-app-picker" aria-label="App"></select>
-        <button type="button" class="btn ghost" id="studio-refresh">&#8635; REFRESH</button>
-        <span id="studio-status" class="status-line"></span>
-      </div>
-
-      <div class="studio-columns">
-        <div class="studio-pane">
-          <h3 aria-level="2">Model tree</h3>
-          <div id="studio-tree"></div>
+      <details class="run-advanced" id="studio-advanced">
+        <summary>Advanced: change the app by hand (model JSON)</summary>
+        <p class="field-hint">
+          Pick a part of the app on the left, edit its JSON in the middle, click Apply. Labels, widgets and
+          screen logic, or a brand-new concept, show up in the running app within seconds; changing the
+          shape of an existing concept needs a rebuild, and this screen says so instead of half-applying it.
+        </p>
+        <div class="studio-toolbar">
+          <select id="studio-app-picker" aria-label="App"></select>
+          <button type="button" class="btn ghost" id="studio-refresh">&#8635; Reload</button>
+          <span id="studio-status" class="status-line"></span>
         </div>
 
-        <div class="studio-pane studio-editor-pane">
-          <h3 aria-level="2">Selected node (JSON)</h3>
-          <textarea id="studio-editor" spellcheck="false" aria-label="Model JSON" disabled></textarea>
-          <div class="studio-editor-error" id="studio-editor-error"></div>
-          <div class="studio-widget-chips" id="studio-widget-chips"></div>
-          <button type="button" class="btn" id="studio-apply" style="margin-top:8px;" disabled>APPLY</button>
-
-          <h3 aria-level="2" style="margin-top:14px;">Undo</h3>
-          <ul class="studio-history-list" id="studio-history-list"></ul>
-        </div>
-
-        <div class="studio-pane studio-preview-pane">
-          <div class="studio-preview-toolbar">
-            <h3 aria-level="2" style="margin:0;">Live preview</h3>
-            <button type="button" class="btn ghost" id="studio-preview-refresh">&#8635; Reload</button>
+        <div class="studio-columns">
+          <div class="studio-pane">
+            <h3 aria-level="2">Parts of the app</h3>
+            <div id="studio-tree"></div>
           </div>
-          <iframe id="studio-iframe" title="Running app preview"></iframe>
+
+          <div class="studio-pane studio-editor-pane">
+            <h3 aria-level="2">Selected part (JSON)</h3>
+            <textarea id="studio-editor" spellcheck="false" aria-label="Model JSON" disabled></textarea>
+            <div class="studio-editor-error" id="studio-editor-error"></div>
+            <div class="studio-widget-chips" id="studio-widget-chips"></div>
+            <button type="button" class="btn" id="studio-apply" style="margin-top:8px;" disabled>Apply</button>
+
+            <h3 aria-level="2" style="margin-top:14px;">Undo</h3>
+            <ul class="studio-history-list" id="studio-history-list"></ul>
+          </div>
+
+          <div class="studio-pane studio-preview-pane">
+            <div class="studio-preview-toolbar">
+              <h3 aria-level="2" style="margin:0;">Live preview</h3>
+              <button type="button" class="btn ghost" id="studio-preview-refresh">&#8635; Reload</button>
+            </div>
+            <iframe id="studio-iframe" title="Running app preview"></iframe>
+          </div>
         </div>
-      </div>
+      </details>
     </section>
 
     <!-- Wave 7.2 (the Manager's Evals tab, NPDEV_FEATURE_PLAN_2026-09-24.md): a table of

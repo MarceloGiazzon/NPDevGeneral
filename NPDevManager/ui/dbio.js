@@ -63,9 +63,9 @@ async function dbioRunExport() {
   const appDir = dbioCurrentAppDir();
   const outDir = document.getElementById("dbio-export-out").value.trim();
   const output = document.getElementById("dbio-export-output");
-  if (!appDir) { dbioStatus("pick an app first", true); return; }
-  if (!outDir) { dbioStatus("pick an output folder first", true); return; }
-  output.textContent = "exporting…";
+  if (!appDir) { dbioStatus("choose an app first", true); return; }
+  if (!outDir) { dbioStatus("choose the folder to save into first", true); return; }
+  output.textContent = "saving a copy…";
   dbioStatus("", false);
   try {
     const result = await dbioInvoke("db_export", {
@@ -76,10 +76,10 @@ async function dbioRunExport() {
       tables: null,
     });
     const ok = dbioRenderResult("dbio-export-output", result);
-    if (!ok) dbioStatus("export finished with problems -- see output above", true);
+    if (!ok) dbioStatus("the copy finished with problems -- see the details above", true);
   } catch (error) {
     output.textContent = String(error);
-    dbioStatus(`export failed: ${error}`, true);
+    dbioStatus(`could not save a copy: ${error}`, true);
   }
 }
 
@@ -87,9 +87,9 @@ async function dbioRunImport(apply) {
   const appDir = dbioCurrentAppDir();
   const inDir = document.getElementById("dbio-import-in").value.trim();
   const output = document.getElementById("dbio-import-output");
-  if (!appDir) { dbioStatus("pick an app first", true); return; }
-  if (!inDir) { dbioStatus("pick an input folder first", true); return; }
-  output.textContent = apply ? "importing…" : "checking structure…";
+  if (!appDir) { dbioStatus("choose an app first", true); return; }
+  if (!inDir) { dbioStatus("choose the folder with the data first", true); return; }
+  output.textContent = apply ? "bringing the data in…" : "checking…";
   dbioStatus("", false);
   try {
     const result = await dbioInvoke("db_import", {
@@ -101,21 +101,21 @@ async function dbioRunImport(apply) {
     });
     const ok = dbioRenderResult("dbio-import-output", result);
     if (!ok) {
-      dbioStatus(apply ? "import finished with problems -- see output above"
-                        : "at least one table is INCOMPATIBLE -- see output above", true);
+      dbioStatus(apply ? "bringing the data in finished with problems -- see the details above"
+                        : "some of the data does not fit this app -- see the details above", true);
     }
   } catch (error) {
     output.textContent = String(error);
-    dbioStatus(`${apply ? "import" : "structure check"} failed: ${error}`, true);
+    dbioStatus(`${apply ? "could not bring the data in" : "could not check the data"}: ${error}`, true);
   }
 }
 
 function initDbio() {
   document.getElementById("dbio-refresh-apps").addEventListener("click", dbioRefreshAppPicker);
   document.getElementById("dbio-export-pick").addEventListener("click", () =>
-    dbioPickFolder("dbio-export-out", "Select export output folder"));
+    dbioPickFolder("dbio-export-out", "Choose the folder to save into"));
   document.getElementById("dbio-import-pick").addEventListener("click", () =>
-    dbioPickFolder("dbio-import-in", "Select import input folder"));
+    dbioPickFolder("dbio-import-in", "Choose the folder with the data"));
   document.getElementById("dbio-export-run").addEventListener("click", dbioRunExport);
   document.getElementById("dbio-import-check").addEventListener("click", () => dbioRunImport(false));
   document.getElementById("dbio-import-run").addEventListener("click", () => dbioRunImport(true));

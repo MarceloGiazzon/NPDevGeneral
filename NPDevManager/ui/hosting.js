@@ -190,7 +190,7 @@ function renderLive() {
   const keyLine = keyCount === null
     ? ""
     : keyCount === 0
-      ? `<p class="status-line key-warning">No API keys exist yet -- visitors cannot get in. <a href="#" class="keys-link">Mint one</a>.</p>`
+      ? `<p class="status-line key-warning">No access keys yet -- visitors cannot get in. <a href="#" class="keys-link">Make one</a>.</p>`
       : `<p class="status-line">Visitors still need one of your ${keyCount} key${keyCount === 1 ? "" : "s"}. <a href="#" class="keys-link">Manage keys</a>.</p>`;
   const hops = HOP_LABELS.map((label) => `<span class="hop">${escapeHtml(label)}</span>`).join(`<span class="hop-arrow">&rarr;</span>`);
   const routed = Array.isArray(state.routedApps) ? state.routedApps : [];
@@ -271,9 +271,10 @@ function renderKeys() {
           <span class="found">${escapeHtml(k.masked)}</span>
         </div>
       `).join("")
-    : `<p class="status-line">No keys yet.</p>`;
+    : `<p class="status-line">No keys yet -- nobody else can get in.</p>`;
   el.innerHTML = `
-    <h2>Keys ${helpButton("share-keys")}</h2>
+    <h2>Access keys ${helpButton("share-keys")}</h2>
+    <p class="status-line">A key works like a password you hand out: once the app is shared, whoever opens it needs one to get in. Make one, copy it, and send it to the person you share the app with.</p>
     ${mintedBanner}
     <div class="check-list">${rows}</div>
     <button type="button" id="hosting-new-key-btn">New key</button>
@@ -332,7 +333,7 @@ function renderLadder() {
     return;
   }
   if (!hostingState.targets || !hostingState.targets.ok) {
-    el.innerHTML = `<p class="status-line">Could not load hosting targets.</p>`;
+    el.innerHTML = `<p class="status-line">NPDev could not list the ways to share this app right now. Check that NPDev is installed (Install), then open this screen again.</p>`;
     return;
   }
   const byRung = {};

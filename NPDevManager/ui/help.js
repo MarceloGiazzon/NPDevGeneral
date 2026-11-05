@@ -112,12 +112,14 @@ const HELP = {
       <code>https://…/app-one/</code>, <code>https://…/app-two/</code>.</p>`,
   },
   "share-keys": {
-    title: "API keys",
+    title: "Access keys",
     body: `
-      <p>An <strong>API key</strong> is a password for programs (scripts, other apps, the AI tools)
-      that call your app directly instead of through the login page.</p>
-      <p>"New key" creates one and shows it <strong>once</strong>; copy it then. Anyone holding a
-      key can use the app's API, so share keys only with programs and people you trust.</p>`,
+      <p>An <strong>access key</strong> is a password you hand out. Once your app is shared, a visitor
+      needs a key to get in; so does a program (a script, another app, an AI tool) that calls your app
+      directly.</p>
+      <p>"New key" creates one and shows it <strong>once</strong>; copy it then and send it to the
+      person. Anyone holding a key can use your app, so give keys only to people and programs you
+      trust.</p>`,
   },
   "share-deploy-vars": {
     title: "Settings you must supply",

@@ -483,6 +483,17 @@ for (const [screen, sel] of Object.entries(WS_PICKERS)) {
 check("every app screen already has the chosen app and never shows its own picker", wsProblems.length === 0, wsProblems.join(" | "));
 const runDir = await page.evaluate(async () => { await window.__npdevShowScreen("run"); return document.getElementById("run-app-dir").value; });
 check("Start & stop uses the chosen app's folder", /auxscreen/i.test(runDir), runDir);
+// Screen review wave 2: Edit leads with a plain request that Ask AI then carries out.
+const editHandoff = await page.evaluate(async () => {
+  await window.__npdevShowScreen("studio");
+  const jsonFolded = !document.getElementById("studio-advanced").open;
+  document.getElementById("studio-describe-text").value = "add a phone number to customers";
+  document.getElementById("studio-describe-go").click();
+  await new Promise((r) => setTimeout(r, 150));
+  return { jsonFolded, screen: window.__npdevCurrentScreen, ask: document.getElementById("prompter-ask").value };
+});
+check("Edit folds the JSON editor and hands a described change to Ask AI, words filled in",
+  editHandoff.jsonFolded && editHandoff.screen === "prompter" && editHandoff.ask === "add a phone number to customers", JSON.stringify(editHandoff));
 await page.click("#workspace-bar .ws-change");
 await page.waitForTimeout(150);
 check("Change app returns to the list", (await page.evaluate(() => window.__npdevCurrentScreen)) === "apps", "");
