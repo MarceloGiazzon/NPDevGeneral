@@ -104,9 +104,13 @@ window.__TAURI__ = {
         case "wsl_status": return window.__wsl;
         case "install_wsl": window.__wslInstallCalls = (window.__wslInstallCalls || 0) + 1; if (window.__wslError) throw window.__wslError; return "opened";
         case "create_app": window.__createdApp = args; return { created: { directory: "D:/Apps/" + args.name + "/" + args.name } };
+        case "manager_build_stamp": return "v0.0.0";
         case "jdk_status": return { installed: true, path: "x" };
         case "python_status": return { systemPython: "python" };
-        case "list_tags": return [];
+        case "list_tags": return window.__tags || [];
+        case "install_npdev_version": window.__installedTag = args.tag; window.__npdevVersion = args.tag; return null;
+        case "run_setup": window.__setupRuns = (window.__setupRuns || 0) + 1; window.__setupDone = true; return { jarsSource: "download" };
+        case "setup_status": return { currentVersion: window.__npdevVersion || null, jarsStaged: !!window.__setupDone, aiIndexPresent: !!window.__setupDone, jarCount: 3, libsDir: "x" };
         case "list_installed_versions": return [];
         case "current_version": return null;
         case "get_inspect_paths": return ["D:\\\\WorkSpace\\\\NPDev\\\\Build"];
@@ -1029,6 +1033,21 @@ await page.evaluate(() => { window.__jobsEmpty = false; });
   t = await stepText("python-status");
   check("python assistant: a Python already here is simply ready, its path only under Details", /✓ Python is ready\./.test(t)
     && !(await page.isVisible("#python-install-btn")) && !(await page.isVisible("#python-details-text")), t);
+  // -- Install step 3: one button downloads the NEWEST NPDev and prepares it
+  await page.evaluate(async () => {
+    window.__tags = [{ name: "v9.2.0", committed_at: "2026-11-01T00:00:00Z" }, { name: "v9.1.0", committed_at: "2026-10-01T00:00:00Z" }];
+    window.__npdevVersion = null; window.__setupDone = false; window.__setupRuns = 0;
+    await refreshTagList(false); await refreshSetupStatus();
+  });
+  check("npdev assistant: with no NPDev, one Install NPDev button is offered in plain words",
+    (await page.isVisible("#npdev-easy-btn")) && /NPDev is not on this computer yet/.test(await page.textContent("#npdev-easy-status")), await page.textContent("#npdev-easy-status"));
+  await page.click("#npdev-easy-btn");
+  await page.waitForTimeout(600);
+  check("npdev assistant: it downloads the newest version and then prepares it, and says so",
+    (await page.evaluate(() => window.__installedTag)) === "v9.2.0" && (await page.evaluate(() => window.__setupRuns)) === 1
+    && /NPDev v9\.2\.0 is installed/.test(await page.textContent("#npdev-easy-status")) && !(await page.isVisible("#npdev-easy-btn"))
+    && /NPDev is prepared/.test(await page.textContent("#setup-status")), await page.textContent("#npdev-easy-status") + " | " + await page.textContent("#setup-status"));
+  await page.evaluate(async () => { window.__tags = []; window.__npdevVersion = null; window.__setupDone = false; await refreshTagList(false); await refreshSetupStatus(); });
   await setDetect(withDocker(DOCKER_OK, []));
   await page.evaluate(() => NPDevDbSetup.refreshAssistant()); await settle();
   t = await helpText();
@@ -1059,6 +1078,7 @@ await page.evaluate(() => { window.__jobsEmpty = false; });
   check("docker assistant (pt): no state leaves English on screen", ptHelpMissing.length === 0, JSON.stringify([...new Set(ptHelpMissing)].slice(0, 8)));
   await page.evaluate(() => NPDevI18n.setLang("en")); await page.waitForTimeout(300);
   await page.evaluate(() => { window.__engines = []; window.__detect = null; window.__wsl = undefined; NPDevDbSetup.stop(); window.__npdevShowScreen("apps"); });
+  await page.evaluate(() => refreshEngineMatrix());
 }
 
 // ---- I18N-1: the whole window follows the language picker ---------------------------------------------------
@@ -1088,7 +1108,15 @@ await page.waitForTimeout(100);
 check("i18n: <code> is never translated", (await page.textContent("#i18n-probe code")) === "npdev doctor", "");
 // every screen, in Portuguese, then ask the engine what it could not translate
 const screens = await page.evaluate(() => Array.from(document.querySelectorAll("main > section.screen")).map((s) => s.id.replace("screen-", "")));
-for (const s of screens) { await page.evaluate((n) => window.__npdevShowScreen(n), s); await page.waitForTimeout(150); }
+// NPDEV_UI_TOUR=1 also saves a full-page picture of every screen, in Portuguese, under <out>/tour/ -- the
+// material of a "could a non-technical person do this?" review (owner rule: the Manager is for beginners).
+const tour = process.env.NPDEV_UI_TOUR === "1";
+if (tour) mkdirSync(path.join(OUT, "tour"), { recursive: true });
+for (const s of screens) {
+  await page.evaluate((n) => window.__npdevShowScreen(n), s);
+  await page.waitForTimeout(tour ? 400 : 150);
+  if (tour) await page.screenshot({ path: path.join(OUT, "tour", `pt-${s}.png`), fullPage: true });
+}
 const untranslated = await page.evaluate(() => NPDevI18n.missingNow());
 writeFileSync(path.join(OUT, "i18n-untranslated.json"), JSON.stringify(untranslated, null, 1));
 check("i18n: every screen's text is in the Portuguese catalogue", untranslated.length === 0,

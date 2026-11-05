@@ -65,10 +65,15 @@
     </section>
 
     <section id="screen-ready" class="screen">
-      <h1>Ready</h1>
-      <p class="subtitle">Your app is a model; NPDev projects it into a working application through
-      Spring Boot, today's runtime binder. This checks that projection can actually run here --
-      every row, including passes, from NPDev's own <code>doctor</code>.</p>
+      <h1>This computer</h1>
+      <p class="subtitle">NPDev checks that this computer has everything it needs to make and run your apps.</p>
+      <!-- The verdict, in one sentence, from the same doctor answer the rows below show (loadDoctor). -->
+      <div id="ready-verdict" class="ready-verdict" role="status" aria-live="polite"></div>
+      <button id="doctor-refresh">Re-check</button>
+      <!-- Every check, the paths and the engine list are detail: closed while everything passes, opened
+           by loadDoctor when something fails so its Fix button is in view. -->
+      <details id="ready-details" class="ready-details">
+        <summary>Details: every check</summary>
       <!--
         M15: the six database checks are app-scoped, so doctor has to be TOLD which app. Without
         this picker it defaulted to the Manager's own working directory, which is never an app
@@ -79,7 +84,6 @@
         <select id="doctor-app-picker"></select>
       </label>
       <div id="doctor-rows" class="check-list"></div>
-      <button id="doctor-refresh">Re-check</button>
 
       <!--
         The six database rows above are APP-SCOPED: they report the one engine the selected app
@@ -97,6 +101,7 @@
         questions, so each row answers both.
       </p>
       <div id="engine-matrix" class="check-list"><p class="status-line">reading the engine list&hellip;</p></div>
+      </details>
     </section>
 
     <!-- Install -->
@@ -137,12 +142,19 @@
 
       <div class="install-step">
         <h2>3. NPDev</h2>
+        <p class="subtitle">NPDev itself: the part that turns your app description into a working app.</p>
+        <!-- One button for a beginner: download the newest version and prepare it (step 4) in one go.
+             Choosing a version, and a local repo checkout, are under Details. -->
+        <div id="npdev-easy-status" class="status-line" role="status" aria-live="polite"></div>
+        <button id="npdev-easy-btn" class="primary" hidden>Install NPDev</button>
+        <progress id="version-progress" value="0" max="100" hidden></progress>
+        <details class="install-details">
+          <summary>Details: choose a version</summary>
         <label>
           Version:
           <select id="tag-picker"></select>
         </label>
         <button id="tag-refresh-btn">Refresh list</button>
-        <progress id="version-progress" value="0" max="100" hidden></progress>
         <button id="version-install-btn">Download this version</button>
         <!--
           Downloading a version does NOT make it current when one already is (versions.rs) -- so
@@ -163,10 +175,12 @@
             <button id="local-repo-pick-btn">Choose folder&hellip;</button>
           </div>
         </div>
+        </details>
       </div>
 
       <div class="install-step">
-        <h2>4. Setup</h2>
+        <h2>4. Prepare NPDev</h2>
+        <p class="subtitle">Once, after installing: NPDev gets its parts ready on this computer. Install NPDev above does this for you.</p>
         <!-- "not run yet" used to be written HERE, as a literal, and no code ever asked the machine
              whether it was true. `setup_status` answers that now; this placeholder matches steps 1
              and 2 and is replaced on every entry to the screen. -->
@@ -175,7 +189,7 @@
         <div id="setup-progress" class="field-hint" hidden></div>
         <div id="setup-announce" class="np-sr-only" role="status" aria-live="polite"></div>
         <div id="setup-log" class="log-view" hidden></div>
-        <button id="setup-run-btn">Run setup</button>
+        <button id="setup-run-btn">Prepare NPDev</button>
       </div>
 
       <!--
@@ -187,11 +201,10 @@
         existing manager.json for a label change.
       -->
       <div class="install-step">
-        <h2>5. Monitored App Paths</h2>
+        <h2>5. Where your apps live</h2>
         <p class="subtitle">
-          Folders where your generated apps live. The Monitor scans them; the Run tab offers the apps
-          it finds. (An app = <code>_ops</code> plus <code>.npdev-root</code> or
-          <code>_ops/resolved-db-plan.json</code> &mdash; never a folder name.)
+          The folders NPDev looks in to find your apps. Apps you create here are found by themselves;
+          add a folder only if you keep apps somewhere else.
         </p>
         <div id="apppaths-chips" class="path-chips"></div>
         <input id="apppaths-add" type="text" placeholder="Add a folder, then press Enter&hellip;" />
@@ -317,55 +330,63 @@
 
     <!-- Run -->
     <section id="screen-run" class="screen" hidden>
-      <h1>Run</h1>
+      <h1>Start and stop</h1>
       <!--
-        Fed by the same scan the Monitor uses, over the Monitored App Paths from Install step 5 plus
-        every app this Manager created. `#run-app-dir` below stays the single source every button on
-        this screen reads (Start/Stop and all five database operations), so picking here just fills
-        it in: typing a folder by hand keeps working exactly as before, which matters for an app the
-        scan cannot see.
+        For a beginner this screen is ONE sentence (is the app running?) and ONE button. Starting also
+        starts the app's database (`npdev dev` runs the app's _ops/Start-Environment first), so the
+        database buttons, the port, the app folder and the build log are all under "Advanced" -- every id
+        is unchanged, so every handler below still finds its element.
       -->
-      <div class="run-row">
-        <label>App
-          <select id="run-app-picker">
-            <option value="">(type a folder below)</option>
-          </select>
-        </label>
-        <button id="run-app-refresh">&#10227; Refresh list</button>
-      </div>
-      <label>App folder <input id="run-app-dir" placeholder="D:\Apps\my-app" /></label>
-      <label>Port <input id="run-port" type="number" value="8080" /></label>
-
-      <!--
-        M14. The five operations the generated `_ops` toolbox provides, here rather than in a
-        terminal. This screen is where they belong: "start its database and run it" is one sentence,
-        and until now the first half of it required PowerShell and the second half did not.
-        Reset is separated and styled as destructive -- it deletes data, and a button is much easier
-        to press than the acknowledgement token is to type.
-      -->
-      <div class="db-toolbox">
-        <h2>Database</h2>
-        <div class="run-buttons">
-          <button id="db-start-btn">Start</button>
-          <button id="db-stop-btn">Stop</button>
-          <button id="db-status-btn">Status</button>
-          <button id="db-connection-btn">Connection details</button>
-          <button id="db-reset-btn" class="destructive">Reset&hellip;</button>
-        </div>
-        <div id="db-output" class="log-view" hidden></div>
-      </div>
-
-      <div class="run-buttons">
-        <button id="run-start-btn" class="primary">&#9654; Run</button>
+      <p id="run-state" class="run-state" role="status" aria-live="polite">The app is not running.</p>
+      <div class="run-buttons run-main">
+        <button id="run-start-btn" class="primary big">&#9654; Start the app</button>
+        <button id="run-open-btn" class="primary big" hidden>Open in the browser</button>
         <button id="run-stop-btn" disabled>&#9632; Stop</button>
       </div>
+      <p class="field-hint">The first start can take a minute or two while NPDev builds the app. After that, saving a change updates the running app by itself.</p>
       <div id="run-banner" class="run-banner" role="status" aria-live="polite" hidden></div>
-      <p>
-        App: <a id="run-link" href="#" target="_blank" rel="noopener">not started</a>
-        &middot;
-        <a id="run-widgets-link" href="#" target="_blank" rel="noopener">Widgets</a>
-      </p>
-      <div id="run-log" class="log-view"></div>
+
+      <details class="run-advanced">
+        <summary>Advanced: app folder, port, database and log</summary>
+        <!--
+          Fed by the same scan the Monitor uses, over the Monitored App Paths from Install step 5 plus
+          every app this Manager created. `#run-app-dir` stays the single source every button on this
+          screen reads (Start/Stop and all five database operations).
+        -->
+        <div class="run-row">
+          <label>App
+            <select id="run-app-picker">
+              <option value="">(type a folder below)</option>
+            </select>
+          </label>
+          <button id="run-app-refresh">&#10227; Refresh list</button>
+        </div>
+        <label>App folder <input id="run-app-dir" placeholder="D:\Apps\my-app" /></label>
+        <label>Port <input id="run-port" type="number" value="8080" /></label>
+        <p>
+          Address: <a id="run-link" href="#" target="_blank" rel="noopener">not started</a>
+          &middot;
+          <a id="run-widgets-link" href="#" target="_blank" rel="noopener">Widgets</a>
+        </p>
+        <!--
+          M14. The five operations the generated `_ops` toolbox provides. Reset is separated and styled as
+          destructive -- it deletes data.
+        -->
+        <div class="db-toolbox">
+          <h2>Database</h2>
+          <p class="field-hint">Start the app above already starts its database. These buttons are for when you need the database on its own.</p>
+          <div class="run-buttons">
+            <button id="db-start-btn">Start</button>
+            <button id="db-stop-btn">Stop</button>
+            <button id="db-status-btn">Status</button>
+            <button id="db-connection-btn">Connection details</button>
+            <button id="db-reset-btn" class="destructive">Reset&hellip;</button>
+          </div>
+          <div id="db-output" class="log-view" hidden></div>
+        </div>
+        <h2>Log</h2>
+        <div id="run-log" class="log-view"></div>
+      </details>
     </section>
 
     <!-- Share -->

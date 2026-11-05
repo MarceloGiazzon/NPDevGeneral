@@ -201,6 +201,46 @@ async function refreshDoctorAppPicker() {
   else picker.value = apps[apps.length - 1].directory;
 }
 
+// The Computer screen's verdict: one sentence a beginner can act on. A failing check names itself in
+// plain words (the doctor's own name) and the details open, so its Fix button is right there.
+function renderReadyVerdict(machineChecks) {
+  const el = document.getElementById("ready-verdict");
+  const details = document.getElementById("ready-details");
+  if (!el) return;
+  const failing = machineChecks.filter((c) => c.status === "fail");
+  el.innerHTML = "";
+  const line = document.createElement("p");
+  line.className = "ready-line";
+  if (machineChecks.length && !failing.length) {
+    line.dataset.state = "ok";
+    line.textContent = "✓ This computer is ready to make apps.";
+    el.append(line);
+    const hint = document.createElement("p");
+    hint.className = "field-hint";
+    hint.textContent = "Nothing to do here.";
+    el.append(hint);
+    if (details) details.open = false;
+    return;
+  }
+  line.dataset.state = "fail";
+  line.textContent = failing.length === 1
+    ? "1 thing is missing before you can make apps:"
+    : `${failing.length} things are missing before you can make apps:`;
+  el.append(line);
+  const list = document.createElement("ul");
+  for (const c of failing) {
+    const li = document.createElement("li");
+    li.textContent = c.name || c.id;
+    list.append(li);
+  }
+  el.append(list);
+  const hint = document.createElement("p");
+  hint.className = "field-hint";
+  hint.textContent = "Press Fix next to each one below: it takes you to the step that installs it.";
+  el.append(hint);
+  if (details) details.open = true;
+}
+
 async function loadDoctor() {
   const container = document.getElementById("doctor-rows");
   container.innerHTML = `<p class="status-line">running doctor&hellip;</p>`;
@@ -213,6 +253,7 @@ async function loadDoctor() {
     window.__npdevLastDoctor = { at: Date.now(), checks: result.checks };
     // The MACHINE is ready when none of its own checks fails; the database rows are about one app.
     const machineChecks = (result.checks || []).filter((c) => !/^database-/.test(c.id) && !isNotApplicable(c));
+    renderReadyVerdict(machineChecks);
     document.dispatchEvent(new CustomEvent("npdev:doctor-result", {
       detail: { ready: machineChecks.length > 0 && machineChecks.every((c) => c.status !== "fail") },
     }));
@@ -570,10 +611,11 @@ document.getElementById("local-repo-toggle").addEventListener("change", async (e
 // one. Deliberately not persisted: it is about what just happened in front of the user.
 let lastDownloadedTag = null;
 
-document.getElementById("version-install-btn").addEventListener("click", async () => {
+async function installSelectedVersion() {
   const picker = document.getElementById("tag-picker");
   const tag = picker.value;
-  if (!tag) return;
+  if (!tag) return false;
+  let ok = false;
   const btn = document.getElementById("version-install-btn");
   const bar = document.getElementById("version-progress");
   btn.disabled = true;
@@ -589,13 +631,16 @@ document.getElementById("version-install-btn").addEventListener("click", async (
     await refreshEngineMatrix();
     // Setup's status names the CURRENT version, which this download may or may not have changed.
     await refreshSetupStatus();
+    ok = true;
   } catch (err) {
     alert(NPDevI18n.tr("could not install {tag}: {err}", { tag, err }));
   } finally {
     btn.disabled = false;
     bar.hidden = true;
   }
-});
+  return ok;
+}
+document.getElementById("version-install-btn").addEventListener("click", () => installSelectedVersion());
 
 listen("version-install-progress", (event) => {
   const bar = document.getElementById("version-progress");
@@ -626,31 +671,42 @@ async function refreshSetupStatus() {
     return;
   }
   renderVersionHint(status.currentVersion);
+  renderNpdevEasy(status);
   if (!status.currentVersion) {
     // Pressing Run setup here fails with the CLI resolver's raw string ("no NPDev version installed
     // -- install one first"). Saying which step to do instead, and disabling the button, is the same
     // information delivered before the failure rather than after it.
-    statusEl.textContent = "no NPDev version installed -- do step 3 first.";
+    statusEl.textContent = "First install NPDev (step 3).";
     btn.disabled = true;
     return;
   }
   btn.disabled = false;
   if (status.jarsStaged && status.aiIndexPresent) {
-    statusEl.textContent =
-      `ready -- ${status.jarCount} jar(s) staged for ${status.currentVersion}, in ${status.libsDir} ` +
-      `(shared across versions).`;
+    statusEl.textContent = "✓ NPDev is prepared.";
   } else if (status.jarsStaged) {
-    statusEl.textContent =
-      `jars staged (${status.jarCount}) for ${status.currentVersion}; the AI knowledge index is ` +
-      `missing -- Run setup to rebuild it. (It is needed by the MCP tools, not by generate/build/run.)`;
+    statusEl.textContent = "✓ NPDev is prepared. (One optional part for AI tools is missing: Prepare NPDev again adds it.)";
   } else {
-    statusEl.textContent = `not run yet -- Run setup stages the runtime jars into ${status.libsDir}.`;
+    statusEl.textContent = "NPDev still needs to prepare itself on this computer: press Prepare NPDev (once, a few minutes).";
   }
 }
 
 // Step 3's own line. `install_npdev_version` deliberately does not switch `current_version` when one
 // is already set, so downloading a newer tag and then pressing Run setup sets up the OLD version.
 // The Versions tab owns switching; this only stops the difference being invisible.
+// Step 3's plain status and its one button (shown while NPDev is missing or not prepared).
+function renderNpdevEasy(status) {
+  const el = document.getElementById("npdev-easy-status");
+  const btn = document.getElementById("npdev-easy-btn");
+  if (!el || !btn || btn.disabled) return; // mid-install: the click handler owns the line
+  if (status.currentVersion) {
+    el.textContent = `✓ NPDev ${status.currentVersion} is installed.`;
+    btn.hidden = true;
+  } else {
+    el.textContent = "NPDev is not on this computer yet. Press the button: NPDev downloads its newest version and prepares it.";
+    btn.hidden = false;
+  }
+}
+
 function renderVersionHint(currentVersion) {
   const el = document.getElementById("version-status");
   if (!el) return;
@@ -669,7 +725,7 @@ function renderVersionHint(currentVersion) {
   }
 }
 
-document.getElementById("setup-run-btn").addEventListener("click", async () => {
+async function runSetup() {
   const btn = document.getElementById("setup-run-btn");
   const statusEl = document.getElementById("setup-status");
   const logEl = document.getElementById("setup-log");
@@ -712,6 +768,34 @@ document.getElementById("setup-run-btn").addEventListener("click", async () => {
     clearInterval(timer);
     progressEl.hidden = true;
     progressEl.closest("section").removeAttribute("aria-busy");
+    btn.disabled = false;
+    await refreshSetupStatus();
+  }
+}
+document.getElementById("setup-run-btn").addEventListener("click", () => runSetup());
+
+// Step 3's one button: the newest version, downloaded and prepared, in one go. The tag list is
+// newest-first (list_tags), so the first entry is the one a beginner wants.
+document.getElementById("npdev-easy-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("npdev-easy-btn");
+  const statusEl = document.getElementById("npdev-easy-status");
+  btn.disabled = true;
+  try {
+    const picker = document.getElementById("tag-picker");
+    if (!picker.options.length || !picker.options[0].value) await refreshTagList(true);
+    if (!picker.options.length || !picker.options[0].value) {
+      statusEl.textContent = "Could not reach the internet to find NPDev. Check the connection and press the button again.";
+      return;
+    }
+    picker.selectedIndex = 0;
+    statusEl.textContent = "Downloading NPDev…";
+    if (!(await installSelectedVersion())) {
+      statusEl.textContent = "NPDev could not be downloaded. Check the internet connection and press the button again.";
+      return;
+    }
+    statusEl.textContent = "Preparing NPDev… this can take a few minutes. You can keep using the Manager.";
+    await runSetup();
+  } finally {
     btn.disabled = false;
     await refreshSetupStatus();
   }
@@ -1266,9 +1350,39 @@ document.getElementById("run-app-refresh").addEventListener("click", async () =>
 window.__npdevRefreshRun = async function refreshRun() {
   await prefillRunAppDir();
   await refreshRunAppPicker();
+  if (!devRunning) setRunState("stopped");
 };
 
 let devRunning = false;
+
+// The one sentence at the top of Start and stop, and whether "Open in the browser" is offered.
+function runAppName() {
+  const dir = document.getElementById("run-app-dir").value.trim().replace(/[\\/]+$/, "");
+  return dir ? dir.split(/[\\/]/).pop() : "";
+}
+function setRunState(state) {
+  const el = document.getElementById("run-state");
+  const open = document.getElementById("run-open-btn");
+  const name = runAppName();
+  if (!name) {
+    el.textContent = "Choose an app first: press Change app at the top.";
+  } else {
+    el.textContent = state === "starting"
+      ? `Starting ${name}… NPDev is building it; this can take a minute or two.`
+      : state === "running"
+        ? `✓ ${name} is running.`
+        : state === "failed"
+          ? `${name} could not start. The message below says why.`
+          : `${name} is not running.`;
+  }
+  el.dataset.state = state;
+  open.hidden = state !== "running";
+}
+
+document.getElementById("run-open-btn").addEventListener("click", () => {
+  const href = document.getElementById("run-link").href;
+  if (href && !href.endsWith("#")) invoke("open_url", { url: href });
+});
 
 document.getElementById("run-start-btn").addEventListener("click", async () => {
   const appDir = document.getElementById("run-app-dir").value.trim();
@@ -1284,6 +1398,7 @@ document.getElementById("run-start-btn").addEventListener("click", async () => {
   document.getElementById("run-link").href = `http://localhost:${port}`;
   document.getElementById("run-widgets-link").href = `http://localhost:${port}/widget-catalog.html`;
   try {
+    setRunState("starting");
     await invoke("start_dev", { appDir, port });
     devRunning = true;
     document.getElementById("run-start-btn").disabled = true;
@@ -1292,12 +1407,14 @@ document.getElementById("run-start-btn").addEventListener("click", async () => {
     const banner = document.getElementById("run-banner");
     reportableError(banner, { operation: "start-app", error: err, screen: "run", appDir, message: `could not start: ${err}` });
     banner.hidden = false;
+    setRunState("failed");
   }
 });
 
 document.getElementById("run-stop-btn").addEventListener("click", async () => {
   await invoke("stop_dev");
   devRunning = false;
+  setRunState("stopped");
   document.getElementById("run-start-btn").disabled = false;
   document.getElementById("run-stop-btn").disabled = true;
 });
@@ -1419,10 +1536,12 @@ listen("dev-event", (event) => {
     case "ready":
       line = `ready in ${payload.seconds}s${payload.metadataOnly ? " (fast path)" : ""}`;
       banner.hidden = true;
+      setRunState("running");
       break;
     case "stopped":
       line = "stopped.";
       devRunning = false;
+      setRunState("stopped");
       document.getElementById("run-start-btn").disabled = false;
       document.getElementById("run-stop-btn").disabled = true;
       break;

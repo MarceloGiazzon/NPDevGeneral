@@ -352,6 +352,12 @@ form input, form select {
 #run-app-dir { min-width: 380px; }
 
 .run-buttons { display: flex; gap: 10px; margin: 14px 0; }
+.run-state { font-size: 18px; font-weight: 600; margin: 8px 0 4px; }
+.run-state[data-state="running"] { color: var(--pass); }
+.run-state[data-state="failed"] { color: var(--fail); }
+.run-buttons.run-main button.big { font-size: 16px; padding: 10px 22px; }
+.run-advanced { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 10px; }
+.run-advanced > summary { cursor: pointer; color: var(--muted); }
 .run-banner {
   border: 1px solid var(--fail);
   color: var(--fail);
@@ -437,3 +443,10 @@ form .checkbox-line input { display: inline-block; width: auto; margin: 0; }
 .db-setup .db-option .field-hint { margin: 2px 0 6px; }
 .db-detail { display: block; margin-top: 4px; white-space: pre-line; }
 .db-setup .db-step-title { font-weight: 600; font-size: 13px; }
+
+/* The Computer screen's verdict (renderReadyVerdict). */
+.ready-verdict .ready-line { font-size: 18px; font-weight: 600; margin: 8px 0 4px; }
+.ready-verdict .ready-line[data-state="ok"] { color: var(--pass); }
+.ready-verdict .ready-line[data-state="fail"] { color: var(--fail); }
+.ready-details { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 10px; }
+.ready-details > summary { cursor: pointer; color: var(--muted); margin-bottom: 8px; }
