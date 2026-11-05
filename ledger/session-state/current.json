@@ -1,26 +1,19 @@
 {
-  "closedAt": "2026-11-05T04:26:49.6216150Z",
+  "closedAt": "2026-11-05T04:52:27.9459618Z",
   "branch": "main",
-  "head": "10a3b497",
-  "headSubject": "feat(manager,cli): plain database names on New app, folded Connection, plainer Home (0.13.14)",
-  "summary": "Manager made beginner-friendly per owner order (Manager is for 'dummies', every operation): Docker assistant + WSL step (0.13.10), Java/Python assistants (0.13.11), Postgres without Docker via 'npdev db provision --where private|service' + card options with '?' help (0.13.12), then screen review wave 1: Start and stop, Computer, Install (0.13.13) and New app plain engine names/folded Connection + Home (0.13.14). All pushed to main (last 10a3b497).",
-  "nextStep": "Screen review wave 2 per D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\manager-dummies-review-2026-11-05.md: rework Edit (studio: lead with 'describe the change' via AI, JSON editor under Advanced), Data (dbio: drop npdev db export/import jargon, SCREAMING headings, untranslated Browse..., COMPATIBLE/EQUAL tables wording), Share (hosting: explain Chaves). Capture screens with NPDEV_UI_TOUR=1 node scripts/quality/check-manager-ui-render.mjs <out> (pt-*.png under <out>/tour), fix, rerun check (194/194 baseline) + check-manager-i18n.py, bump Manager version via the bump script pattern, commit to main.",
+  "head": "09ee1285",
+  "headSubject": "feat(manager): advanced screens say so; plain titles on Impact, Packs, Checks, Evaluations (0.13.16)",
+  "summary": "Manager screen review for beginners finished: wave 2 (0.13.15, 30b7a5f6) Edit leads with 'What do you want to change?' handing off to Ask AI with JSON editor under Advanced, Data in plain words, Share 'Access keys' explained; item 9 (0.13.16, 09ee1285) nav.js Advanced note on every advanced-group screen and on the Activity place, plain titles/subtitles on Impact, Packs, Checks, Evaluations. Pushed to main.",
+  "nextStep": "Run the T2 gates (pwsh -NoProfile -File scripts/quality/run-all-gates.ps1 via run_digest.py) -- not run since 0.13.10. Then leftover beginner copy per D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\manager-dummies-review-2026-11-05.md: Monitor card internals and db detect / db-card notes are still CLI English.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\manager-dummies-review-2026-11-05.md",
-  "blocked": "Real end-to-end run of 'npdev db provision --where private' (downloads and runs Postgres in a scratch NPDEV_MANAGER_HOME with --no-autostart) was denied by the auto-mode permission classifier; needs owner approval to run. Windows-service path untested on a real machine by design (installs a system service).",
-  "verified": "check-manager-ui-render.mjs 194/194; check-manager-i18n.py OK; check-manager-css-tokens OK; check-manager-version-bump OK; cargo test 89/89; NPDevCli tests test_db_provision+test_db_server 34/34 and engines tests OK. NOT run: T2 gates (run-all-gates.ps1), real Tauri window, installer build, real Postgres private/service install.",
+  "blocked": "Real 'npdev db provision --where private' end-to-end run still needs owner approval; Windows-service path untested by design.",
+  "verified": "check-manager-ui-render.mjs 196/196 (new cases: Edit->Ask AI hand-off, Advanced note placement); check-manager-i18n OK; css-tokens OK; version-bump OK; cargo test 89/89. NOT run: T2 gates, real Tauri window, installer build.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "10a3b497 feat(manager,cli): plain database names on New app, folded Connection, plainer Home (0.13.14)",
-    "f85582c5 feat(manager): Start and stop, Computer and Install read for beginners (0.13.13)",
-    "11de79a4 feat(manager,cli): Postgres without Docker -- NPDev's own copy or a Windows service (0.13.12)",
-    "c98d28b7 feat(manager): Java and Python install steps become plain-language assistants (0.13.11)",
-    "057baad6 feat(manager): standalone Docker assistant on Settings > Install, with a WSL step (0.13.10)",
-    "b0f0fa1a feat(manager): New-app \"Database\" card detects Docker and can provision a server (0.13.9)",
-    "3cda513e feat(release): New-ManagerInstaller.ps1 builds the Manager installer, -Install installs it",
-    "545def82 feat(manager): grouped My apps screen, short Settings tab names with tooltips (0.13.8)",
-    "f92092e9 fix(ci): manager-harness image copies the out-of-tree files the Manager include_str!s",
-    "6c399fb8 chore(handoff): session close, Manager 0.13.7 built, pt AI-providers fix landed"
+    "09ee1285 feat(manager): advanced screens say so; plain titles on Impact, Packs, Checks, Evaluations (0.13.16)",
+    "30b7a5f6 feat(manager): Edit, Data and Share read for beginners (0.13.15)",
+    "0a3e30a5 chore(handoff): session close, Manager 0.13.10-0.13.14 beginner assistants and screen review wave 1"
   ]
 }
