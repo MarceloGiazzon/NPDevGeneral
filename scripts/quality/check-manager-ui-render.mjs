@@ -94,7 +94,14 @@ window.__TAURI__ = {
         case "jobs_action": window.__jobsActions = (window.__jobsActions || []).concat([args.action + ":" + args.jobId]); return { ok: true };
         case "recent_operations": return [{ operation: "install-java", intent: "install Java (JDK 17)", startedAt: "2026-11-03T10:00:00Z", endedAt: "2026-11-03T10:01:00Z", running: false, ok: false }];
         case "list_apps": return [{ name: "auxscreen", directory: "D:\\\\WorkSpace\\\\NPDev\\\\Build\\\\generated-finalapps\\\\auxscreen", created_at: "2026-11-03" }];
-        case "list_engines": return { engines: [] };
+        case "list_engines": return { engines: window.__engines || [] };
+        // The New-app database card (dbsetup.js). Each answer is overridable per case by the checks below.
+        case "detect_databases": return window.__detect ? JSON.parse(JSON.stringify(window.__detect)) : {};
+        case "provision_database": window.__provisionCalls = (window.__provisionCalls || []).concat([args]); return window.__provisionAnswer || F.dbProvision;
+        case "start_db_container": window.__startedContainer = args.name; return args.name;
+        case "install_docker_desktop": window.__installCalls = (window.__installCalls || 0) + 1; if (window.__installError) throw window.__installError; return "opened";
+        case "start_docker_desktop": window.__dockerStarted = (window.__dockerStarted || 0) + 1; return "Docker Desktop.exe";
+        case "create_app": window.__createdApp = args; return { created: { directory: "D:/Apps/" + args.name + "/" + args.name } };
         case "jdk_status": return { installed: true, path: "x" };
         case "python_status": return { systemPython: "python" };
         case "list_tags": return [];
@@ -189,6 +196,7 @@ await page.addInitScript({
     jobs: fixture("jobs-list.json"),
     providers: fixture("ai-providers.json"),
     support: fixture("support-install-failed.json"),
+    dbProvision: fixture("db-provision.json"),
     catalogue: (() => {
       const dir = path.join(REPO, "NPDevManager", "fixtures", "theme-catalogue");
       const index = JSON.parse(readFileSync(path.join(dir, "index.json"), "utf8"));
@@ -783,6 +791,204 @@ await page.evaluate(() => { window.__jobsEmpty = true; window.__npdevShowScreen(
 await page.waitForTimeout(250);
 check("no tasks yet says how to get some", /run_digest/.test(await page.textContent("#jobs-root")), "");
 await page.evaluate(() => { window.__jobsEmpty = false; });
+
+// ---- The New-app database card (dbsetup.js) -------------------------------------------------------------
+// The card answers "where will the database run?" for the engine picked, by itself: what already runs here,
+// whether Docker is usable, and the one next action -- use it, start it, create one, or fix Docker.
+// Every state is driven through the real window against the CLI's own `db detect` shape (db-detect.json);
+// only the Docker block of that object is varied.
+{
+  const detectFixture = fixture("db-detect.json");
+  const withDocker = (docker, databases = detectFixture.databases) => Object.assign({}, detectFixture, { docker, databases });
+  const DOCKER_OK = { status: "ok", detail: null, installed: true };
+  const DOCKER_OFF = { status: "unavailable", detail: "error during connect: the system cannot find the file specified", installed: true };
+  const DOCKER_MISSING = { status: "unavailable", detail: "docker is not on PATH", installed: false };
+  const cardText = async () => (await page.textContent("#db-setup-card")).replace(/\s+/g, " ").trim();
+  const settle = () => page.waitForTimeout(200);
+  const pick = async (key) => { await page.selectOption("#new-app-engine", key); await settle(); };
+  const setDetect = (d) => page.evaluate((x) => { window.__detect = x; }, d);
+
+  await page.evaluate((engines) => { window.__engines = engines; }, fixture("engines.json").engines);
+  await page.evaluate(async () => { await loadEngines(); window.__npdevShowScreen("apps"); NPDevDbSetup.setPollMs(120); });
+  await settle();
+
+  check("db card: an engine that needs no server shows nothing", (await cardText()) === "", await cardText());
+
+  // -- Docker running, a Postgres is up, the only MySQL is a stopped container with no published port
+  await setDetect(withDocker(DOCKER_OK));
+  await pick("mysql");
+  let t = await cardText();
+  check("db card: MySQL says plainly that no MySQL server is running", /No MySQL server is running on this machine\./.test(t), t);
+  check("db card: the stopped MySQL container is listed, with why it cannot be used", /old-mysql/.test(t) && /no published port/.test(t), t);
+  check("db card: with Docker running and no server, creating one is offered and ticked", (await page.isChecked("#db-setup-create"))
+    && /Create a new MySQL server in Docker when I press Create/.test(t), t);
+  check("db card: it says what creating does (official image, local only, generated password, first download)",
+    /official image/.test(t) && /only from this computer/.test(t) && /generated password/.test(t) && /downloads the image/.test(t), t);
+  await page.locator("#new-app-form").screenshot({ path: path.join(OUT, "db-card-create.png") });
+
+  await pick("postgres");
+  t = await cardText();
+  check("db card: a running Postgres is announced and offered", /Found a Postgres server running on this machine\./.test(t) && (await page.locator("#db-setup-card button", { hasText: "Use this" }).count()) === 1, t);
+  check("db card: with a server found, creating a new one is NOT ticked by default", !(await page.isChecked("#db-setup-create")), "");
+  await page.click("#db-setup-card button:has-text('Use this')");
+  await settle();
+  t = await cardText();
+  check("db card: Use this fills host and port and ticks 'this server is mine'",
+    (await page.inputValue("#new-app-db-host")) === "localhost" && (await page.inputValue("#new-app-db-port")) === "15432"
+    && (await page.isChecked("#new-app-externally-provisioned")) && /Filled in postgres at localhost:15432/.test(t), t);
+  check("db card: an adopted server turns the create option off", (await page.isDisabled("#db-setup-create")) && !(await page.isChecked("#db-setup-create")), "");
+  await pick("mysql");
+  check("db card: switching engine does not carry another engine's server into the form",
+    (await page.inputValue("#new-app-db-host")) === "" && (await page.inputValue("#new-app-db-port")) === "" && !(await page.isChecked("#new-app-externally-provisioned")),
+    `${await page.inputValue("#new-app-db-host")}:${await page.inputValue("#new-app-db-port")}`);
+
+  // -- Docker missing: the guided install
+  await setDetect(withDocker(DOCKER_MISSING, []));
+  await pick("sqlserver");
+  t = await cardText();
+  check("db card: no Docker says so, and that Docker is how NPDev makes the server",
+    /Docker is not installed/.test(t) && /create a SqlServer server for you in one click/.test(t), t);
+  check("db card: there is no create option while Docker is missing", (await page.locator("#db-setup-create").count()) === 0, "");
+  await page.click("#db-setup-card button:has-text('Install Docker, step by step')");
+  await settle();
+  t = await cardText();
+  check("db card: the guided install shows its four steps", ["1. Install Docker Desktop.", "2. Restart if it asks.", "3. Start Docker Desktop and accept its terms.", "4. NPDev notices by itself."].every((x) => t.includes(x)), t);
+  await page.locator("#new-app-form").screenshot({ path: path.join(OUT, "db-card-install.png") });
+  check("db card: step 3 is not available before Docker is installed", await page.locator("#db-setup-card li", { hasText: "3. Start Docker Desktop" }).locator("button").isDisabled(), "");
+  await page.click("#db-setup-card button:has-text('Open the installer')");
+  await settle();
+  check("db card: Open the installer asks the Manager to run it, and says to follow the other window",
+    (await page.evaluate(() => window.__installCalls)) === 1 && /follow it there/.test(await cardText()), await cardText());
+  // Docker gets installed (but is off): the card notices by itself
+  await setDetect(withDocker(DOCKER_OFF, []));
+  await page.waitForTimeout(500);
+  t = await cardText();
+  check("db card: it notices the install by itself and moves on to starting Docker", /Docker is installed but not running/.test(t), t);
+  // ...and then Docker comes up
+  await setDetect(withDocker(DOCKER_OK, []));
+  await page.waitForTimeout(500);
+  check("db card: when Docker comes up it offers to create the server, ticked", (await page.locator("#db-setup-create").count()) === 1 && (await page.isChecked("#db-setup-create")), await cardText());
+
+  // -- declined admin prompt and no winget are different, honest messages
+  await setDetect(withDocker(DOCKER_MISSING, []));
+  await page.evaluate(() => { window.__installError = "the administrator prompt was declined"; });
+  await pick("postgres"); await pick("sqlserver");
+  await page.click("#db-setup-card button:has-text('Install Docker, step by step')");
+  await page.click("#db-setup-card button:has-text('Open the installer')");
+  await settle();
+  check("db card: a declined administrator prompt is explained, and can be retried", /administrator prompt was declined/.test(await cardText()) && (await page.locator("#db-setup-card button", { hasText: "Open the installer" }).isEnabled()), await cardText());
+  await page.evaluate(() => { window.__installError = "winget was not found on this computer"; });
+  await page.click("#db-setup-card button:has-text('Open the installer')");
+  await settle();
+  check("db card: no winget offers Docker's download page", (await page.locator("#db-setup-card button", { hasText: "Open Docker's download page" }).count()) === 1, await cardText());
+  await page.click("#db-setup-card button:has-text(\"Open Docker's download page\")");
+  check("db card: ...which opens docker.com", /^https:\/\/www\.docker\.com\//.test(String(await page.evaluate(() => window.__opened))), "");
+  await page.evaluate(() => { window.__installError = null; });
+
+  // -- Docker installed but off
+  await setDetect(withDocker(DOCKER_OFF, []));
+  await pick("postgres"); await pick("mysql");
+  t = await cardText();
+  check("db card: Docker installed but off says so and offers to start it", /Docker is installed but not running/.test(t) && (await page.locator("#db-setup-card button", { hasText: "Start Docker Desktop" }).count()) === 1, t);
+  await page.locator("#new-app-form").screenshot({ path: path.join(OUT, "db-card-docker-off.png") });
+  await page.click("#db-setup-card button:has-text('Start Docker Desktop')");
+  await settle();
+  check("db card: Start Docker Desktop starts it and says it is waiting", (await page.evaluate(() => window.__dockerStarted)) === 1 && /Waiting for Docker to start/.test(await cardText()), await cardText());
+  await setDetect(withDocker(DOCKER_OK, []));
+  await page.waitForTimeout(500);
+  check("db card: once Docker answers, the wait ends and the create option appears", (await page.locator("#db-setup-create").count()) === 1 && !/Waiting for Docker/.test(await cardText()), await cardText());
+
+  // -- a stopped container that CAN be started
+  const stopped = { source: "docker", engine: "mysql", name: "dev-mysql", image: "mysql:8.4", matchedBy: "image", state: "exited", running: false, host: "localhost", port: 3307, initArgs: null, note: "container is exited, not running -- `docker start dev-mysql` brings it up" };
+  await setDetect(withDocker(DOCKER_OK, [stopped]));
+  await pick("postgres"); await pick("mysql");
+  t = await cardText();
+  check("db card: a stopped MySQL container offers Start (and not the terminal instruction)", (await page.locator("#db-setup-card button:text-is('Start')").count()) === 1 && !/docker start dev-mysql/.test(t), t);
+  await page.locator("#new-app-form").screenshot({ path: path.join(OUT, "db-card-stopped.png") });
+  await page.click("#db-setup-card button:text-is('Start')");
+  await settle();
+  check("db card: Start starts exactly that container", (await page.evaluate(() => window.__startedContainer)) === "dev-mysql", "");
+
+  // -- the create flow
+  await setDetect(withDocker(DOCKER_OK, []));
+  await pick("postgres"); await pick("mysql");
+  await page.fill("#new-app-name", "shop");
+  await page.fill("#new-app-parent", "D:\\Apps");
+  await page.evaluate(() => { window.__provisionCalls = []; window.__createdApp = null; });
+  await page.click("#new-app-create-btn");
+  await page.waitForTimeout(500);
+  const made = await page.evaluate(() => ({ prov: window.__provisionCalls, app: window.__createdApp }));
+  check("db card: Create first makes the container, for this engine and this app", made.prov.length === 1 && made.prov[0].engine === "mysql" && made.prov[0].appName === "shop", JSON.stringify(made.prov));
+  const dbFix = fixture("db-provision.json").provisioned;
+  check("db card: the app is created against the container that was made, as a server it adopts",
+    made.app && made.app.dbHost === dbFix.host && made.app.dbPort === dbFix.port && made.app.dbUser === dbFix.user
+    && made.app.dbPassword === dbFix.password && made.app.externallyProvisioned === true && made.app.engine === "mysql", JSON.stringify(made.app));
+  t = (await page.textContent("#new-app-status")).replace(/\s+/g, " ");
+  check("db card: the result names the container and says it restarts with Docker", /created shop/.test(t) && /Docker container npdev-mysql/.test(t) && /starts again with Docker/.test(t), t);
+  check("db card: after creating, a second create is not ticked for the next app", !(await page.isChecked("#db-setup-create")), "");
+
+  // -- the create flow when Docker refuses
+  await setDetect(withDocker(DOCKER_OK, []));
+  await pick("postgres"); await pick("mysql");
+  await page.evaluate(() => {
+    window.__provisionAnswer = { ok: false, error: { code: "image-pull-failed", message: "Could not download mysql:8.4: offline", fix: "Check the internet connection and that Docker Desktop is signed in if it asks, then try again." } };
+    window.__provisionCalls = []; window.__createdApp = null;
+  });
+  await page.fill("#new-app-name", "shop2");
+  await page.click("#new-app-create-btn");
+  await page.waitForTimeout(500);
+  t = (await page.textContent("#new-app-status")).replace(/\s+/g, " ");
+  check("db card: a failed container creation creates NO app and says why and what to do",
+    (await page.evaluate(() => window.__createdApp)) === null && /not created: the MySQL server could not be created/.test(t) && /Could not download mysql:8.4: offline/.test(t) && /Check the internet connection/.test(t), t);
+  await page.evaluate(() => {
+    window.__provisionAnswer = null;
+    // the support button the failure offered is drawn once, in the language of the moment: clear it before the language checks
+    const el = document.getElementById("new-app-status");
+    NPDevSupport.clearHelp(el);
+    el.textContent = "";
+  });
+
+  // -- typing a connection by hand means "use THIS server"
+  await setDetect(withDocker(DOCKER_OK, []));
+  await pick("postgres"); await pick("mysql");
+  check("db card: starts ticked", await page.isChecked("#db-setup-create"), "");
+  await page.fill("#new-app-db-host", "db.internal");
+  check("db card: typing your own connection unticks the create option", !(await page.isChecked("#db-setup-create")), "");
+
+  // -- every state above, in Portuguese, leaves nothing untranslated
+  await page.evaluate(() => NPDevI18n.setLang("pt"));
+  await page.waitForTimeout(300);
+  const ptStates = [
+    ["mysql", withDocker(DOCKER_OK, [])], ["mysql", withDocker(DOCKER_OK, [stopped])], ["postgres", withDocker(DOCKER_OK)],
+    ["mysql", withDocker(DOCKER_OFF, [])], ["mysql", withDocker(DOCKER_MISSING, [])],
+  ];
+  const ptMissing = [];
+  // Only what the Apps screen is showing: the other screens are not visited yet at this point (the I18N-1 block below
+  // visits them all).
+  const missingOnApps = () => page.evaluate(() => {
+    const shown = document.getElementById("screen-apps").textContent.replace(/\s+/g, " ");
+    return NPDevI18n.missingNow().filter((x) => shown.includes(x));
+  });
+  for (const [key, detect] of ptStates) {
+    await setDetect(detect);
+    await pick("sqlserver"); await pick(key);
+    if (detect.docker.installed === false) { await page.click("#db-setup-card button:has-text('Instalar o Docker')"); await settle(); }
+    ptMissing.push(...(await missingOnApps()));
+  }
+  await pick("sqlserver");
+  await setDetect(withDocker(DOCKER_MISSING, []));
+  await page.click("#find-databases-btn"); await settle();
+  ptMissing.push(...(await missingOnApps()));
+  check("db card (pt): no state leaves English on screen", ptMissing.length === 0, JSON.stringify([...new Set(ptMissing)].slice(0, 8)));
+  await setDetect(withDocker(DOCKER_OK, []));
+  await pick("postgres"); await pick("mysql");
+  check("db card (pt): the headline and the create option read in Portuguese",
+    /Nenhum servidor MySQL está rodando neste computador\./.test(await cardText()) && /Criar um novo servidor MySQL no Docker quando eu clicar em Criar/.test(await cardText()), await cardText());
+  await page.evaluate(() => NPDevI18n.setLang("en"));
+  await page.waitForTimeout(300);
+  await pick("h2local");
+  await page.evaluate(() => { window.__engines = []; window.__detect = null; NPDevDbSetup.stop(); });
+}
 
 // ---- I18N-1: the whole window follows the language picker ---------------------------------------------------
 // i18n.js translates what every screen DRAWS from ui/i18n/pt.json, so this drives the real window: switch to

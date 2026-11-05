@@ -26,6 +26,8 @@ BREAKING.md disagree, so the claim cannot drift in either direction.
 """
 from __future__ import annotations
 
+import re
+
 # Engine keys are the CLI's lower-case spelling. `externalName` is DatabaseEngine.externalName --
 # the value db.definition.json's database.engine actually takes, and the one the generator parses.
 # `provider` is config.json's scenario-level database.provider. Three spellings for one thing is not
@@ -139,6 +141,17 @@ def resolve(key: str) -> dict:
         f"unknown engine '{key}'. Known: {', '.join(engine_keys())}. "
         "(The db.definition.json spellings -- H2Local, Postgres, MySQL, SqlServer, ... -- work too.)"
     )
+
+
+def database_name_for_app(app_name: str) -> str:
+    """The database name `npdev init` gives an app called `app_name`.
+
+    One definition for the two callers that must agree: `init` writes it into db.definition.json, and
+    `db provision` creates a database of that name inside a fresh container. If they ever differed, the
+    app would boot against a server that has no database it can find -- the exact failure
+    `database-exists` reports as "Create it once, e.g. CREATE DATABASE ...".
+    """
+    return re.sub(r"[^a-zA-Z0-9]+", "_", app_name or "").strip("_").lower() or "npdev_app"
 
 
 def db_definition_for(key: str, *, database_name: str, host: str | None = None,

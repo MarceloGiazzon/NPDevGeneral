@@ -48,6 +48,10 @@ const FIXTURE_DB_TEST_CONNECTION_REFUSED: &str = include_str!("../fixtures/db-te
 // produced by the CLI's own `npdev_db_discovery.detect` with injected `docker ps` rows, so the SHAPE is
 // the CLI's, only the two containers are made up.
 const FIXTURE_DB_DETECT: &str = include_str!("../fixtures/db-detect.json");
+// `npdev db provision --json` as the CLI's own `provision()` returns it, run against a scripted Docker
+// (no daemon on the authoring machine, and a real run would pull a database image). Shape is the CLI's;
+// the container and its password are made up.
+const FIXTURE_DB_PROVISION: &str = include_str!("../fixtures/db-provision.json");
 const FIXTURE_INIT_RESULT: &str = include_str!("../fixtures/init-result.json");
 const FIXTURE_SETUP_EVENTS: &str = include_str!("../fixtures/setup-events.jsonl");
 const FIXTURE_DEV_EVENTS: &str = include_str!("../fixtures/dev-events.jsonl");
@@ -423,6 +427,38 @@ pub async fn run_db_detect(
         .await
         .map_err(|e| format!("could not look for databases: {e}"))?;
     parse_single_json(&output.stdout, &output.stderr, "db detect")
+}
+
+/// New-app, "create a database for me": `npdev db provision` -- a NEW Postgres/MySQL/SQL Server
+/// container, published on 127.0.0.1 with a generated password, handed back for the app to adopt.
+///
+/// Unlike `run_db_detect` this changes the machine, so it is only ever called from a button the person
+/// pressed. A refusal ("port in use", "Docker is not running") is NOT an `Err`: it arrives as the CLI's
+/// own `{ok:false, error:{code,message,fix}}` object, because the card branches on `error.code` and an
+/// `Err(String)` would flatten "Docker is down" and "image download failed" into one sentence.
+/// The first run downloads the image (hundreds of MB), so there is deliberately no timeout here.
+pub async fn run_db_provision(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    engine: &str,
+    app_name: &str,
+    port: Option<u16>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_DB_PROVISION).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let port_text = port.map(|p| p.to_string());
+    let mut args: Vec<&str> = vec!["db", "provision", "--json", "--engine", engine, "--app-name", app_name];
+    if let Some(p) = port_text.as_deref() {
+        args.push("--port");
+        args.push(p);
+    }
+    let output = build_command(python_exe, npdev_cli, &args, java_home, None)
+        .output_recorded()
+        .await
+        .map_err(|e| format!("could not create the database: {e}"))?;
+    parse_single_json(&output.stdout, &output.stderr, "db provision")
 }
 
 // ---------------------------------------------------------------------------------------------

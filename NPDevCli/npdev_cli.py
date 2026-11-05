@@ -2171,7 +2171,7 @@ def run_init(args: argparse.Namespace) -> int:
         )
 
     token = re.sub(r"[^a-zA-Z0-9]+", "", target.name) or "app"
-    db_name = re.sub(r"[^a-zA-Z0-9]+", "_", target.name).strip("_").lower() or "npdev_app"
+    db_name = npdev_engines.database_name_for_app(target.name)
 
     target.mkdir(parents=True, exist_ok=True)
 
@@ -4675,6 +4675,36 @@ def run_db_detect(args: argparse.Namespace) -> int:
                           "ok": True, "exitCode": 0, **result}, indent=2))
     else:
         print(npdev_db_discovery.render(result))
+    return 0
+
+
+def run_db_provision(args: argparse.Namespace) -> int:
+    """Create a NEW database container to adopt; see npdev_db_provision for exactly what it does.
+
+    A refusal or failure is ONE parseable object on stdout (ok:false, a stable error.code, a fix) and
+    exit 1: the Manager branches on the code, and "docker is not running" reads differently from
+    "port in use" to the person looking at it.
+    """
+    import npdev_db_provision
+
+    try:
+        provisioned = npdev_db_provision.provision(
+            args.engine, app_name=args.app_name, port=args.port, name=args.name)
+    except npdev_db_provision.ProvisionError as exc:
+        if getattr(args, "json", False):
+            print(json.dumps({"schemaVersion": "npdev-cli-result.v1", "command": "db provision",
+                              "ok": False, "exitCode": 1,
+                              "error": {"code": exc.code, "message": str(exc), "fix": exc.fix}}, indent=2))
+        else:
+            print(f"npdev: {exc}", file=sys.stderr)
+            if exc.fix:
+                print(f"       {exc.fix}", file=sys.stderr)
+        return 1
+    if getattr(args, "json", False):
+        print(json.dumps({"schemaVersion": "npdev-cli-result.v1", "command": "db provision",
+                          "ok": True, "exitCode": 0, "provisioned": provisioned}, indent=2))
+    else:
+        print(npdev_db_provision.render(provisioned))
     return 0
 
 
@@ -16134,6 +16164,23 @@ def build_parser() -> argparse.ArgumentParser:
                            help="Seconds to wait on each default-port connect (default: 0.5).")
     db_detect.add_argument("--json", action="store_true", help="Emit an npdev-cli-result.v1 object.")
 
+    # The explicit counterpart of `detect`: when there is nothing to adopt, create a server.
+    db_provision = db_sub.add_parser(
+        "provision",
+        help="Create a NEW Postgres, MySQL or SQL Server container in Docker (127.0.0.1 only, "
+             "generated password, restarts with Docker) for an app to adopt with "
+             "`npdev init ... --externally-provisioned`. Prints the password once.",
+    )
+    db_provision.add_argument("--engine", required=True, help="postgres, mysql or sqlserver.")
+    db_provision.add_argument("--app-name", default="",
+                              help="The app the database is for; the database inside the container gets "
+                                   "the name `npdev init` would give it.")
+    db_provision.add_argument("--port", type=int, default=None,
+                              help="Host port to publish. Default: the engine's usual port if free, else the next free one.")
+    db_provision.add_argument("--name", default=None,
+                              help="Container name. Default: npdev-<engine>, then npdev-<engine>-2, ...")
+    db_provision.add_argument("--json", action="store_true", help="Emit an npdev-cli-result.v1 object.")
+
     # Item 1, SUPPORT_FEATURES_PLAN_2026-08-26: "does my database match my model?" with NO app boot
     # required -- the recovery hole B6 (mark-done trusts the operator) and B7 (a refusal is not
     # side-effect-free) leave open, and the one diagnostic that DOES answer this today
@@ -18820,6 +18867,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_db_test_connection(args)
         if args.command == "db" and args.db_command == "detect":
             return run_db_detect(args)
+        if args.command == "db" and args.db_command == "provision":
+            return run_db_provision(args)
         if args.command == "db" and args.db_command == "verify":
             return run_db_verify(args)
         if args.command == "db" and args.db_command == "schema-ahead":

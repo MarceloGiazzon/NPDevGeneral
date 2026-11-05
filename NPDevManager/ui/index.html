@@ -238,7 +238,12 @@
             in a changelog is not the user being told.
           -->
           <p id="new-app-engine-warning" class="engine-warning" hidden></p>
-          <div id="find-databases-result" class="check-list"></div>
+          <!--
+            The database card (dbsetup.js): for the engine picked above it says what already runs here,
+            whether Docker is usable, and offers to create a server. Filled in by script; polite live
+            region so a screen reader hears "Docker is ready" without hunting for it.
+          -->
+          <div id="db-setup-card" class="db-setup" aria-live="polite"></div>
         </fieldset>
 
         <!-- Revealed only for engines that actually connect somewhere. -->
@@ -1225,6 +1230,7 @@
   <div class="toast" id="monitor-toast" role="status" aria-live="polite"></div>
 
   <script src="i18n.js"></script>
+  <script src="dbsetup.js"></script>
   <script src="app.js"></script>
   <script src="nav.js"></script>
   <script src="help.js"></script>

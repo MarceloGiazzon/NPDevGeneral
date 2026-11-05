@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod ai_loop;
+mod dockersetup;
 mod log;
 mod npdev;
 mod redact;
@@ -228,6 +229,47 @@ fn start_docker_desktop() -> Result<String, String> {
         .spawn()
         .map_err(|e| format!("could not start {}: {e}", exe.display()))?;
     Ok(exe.display().to_string())
+}
+
+/// New-app, the card's "Install Docker" step. Opens a visible, elevated window running winget (see
+/// `dockersetup`), and returns at once: the install takes minutes and may end in a restart, so the card
+/// polls detection instead of this command pretending to know when Docker is up. An `Err` is a reason
+/// the card can act on -- no winget (it then offers Docker's download page) or a declined admin prompt.
+#[tauri::command]
+fn install_docker_desktop() -> Result<String, String> {
+    if npdev::fake_mode() {
+        return Ok("STUB MODE -- the Docker Desktop installer was not opened.".to_string());
+    }
+    dockersetup::install_docker_desktop()
+}
+
+/// Start a stopped database container the New-app card listed (`docker start <name>`).
+#[tauri::command]
+async fn start_db_container(name: String) -> Result<String, String> {
+    if npdev::fake_mode() {
+        return Ok(name);
+    }
+    tokio::task::spawn_blocking(move || dockersetup::start_container(&name))
+        .await
+        .map_err(|e| format!("could not start the container: {e}"))?
+}
+
+/// New-app, "create a database for me": see `npdev::run_db_provision`.
+#[tauri::command]
+async fn provision_database(
+    state: State<'_, AppState>,
+    engine: String,
+    app_name: String,
+    port: Option<u16>,
+) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_db_provision(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+                                       java_home.as_deref(), &engine, &app_name, port).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_db_provision(&python, &cli, java_home.as_deref(), &engine, &app_name, port).await
 }
 
 #[cfg(windows)]
@@ -1905,7 +1947,7 @@ fn manager_version_description() -> String {
 }
 
 const VERSION_DESCRIPTION: &str =
-    "0.13.8: My apps > All apps is two panels -- Your apps (each app's name, with its folder beneath) and New app, whose fields are grouped into Name and folder, Database and Connection -- and Settings has short tab names (AI, Credentials, Appearance, Versions, Computer, Install, Checks, Evaluations) with the longer explanation in each tab's tooltip; the two check tabs under My apps are now Browser and Data rules. Before that, 0.13.7: the AI providers screen reads fully in Portuguese -- provider names (Anthropic (pago), Groq (plano gratuito)...) and the hint about the environment variable that overrides a stored key are translated. Before that, 0.13.6: Home is a real starting point -- under the next-step card it now shows four status tiles (computer, apps, running, AI keys) that each open the screen where that is fixed, Your apps with every app's state and its own Open, Start, Stop and Manage buttons (running first; two apps with the same name are told apart by folder), Recent activity with a Get help link on a failure, and six shortcuts; a greeting with Refresh and the time it last looked. Before that, 0.13.5: the version chip shows only the version number (what this version is about and when it was built are the first two lines of its tooltip), and the one-line explanation under each place in the top bar is gone -- it is the tooltip of the place's button. Before that: the action buttons on the AI providers table no longer overlap in Portuguese, and on Running apps the GENERATE & RUN button of a not-yet-generated app no longer sits on top of its message (which is now translated). Before that: a theme can describe itself in more than one language (a `descriptions` map next to `names`) and its card shows the one matching the language picker -- Dark ships English, Portuguese and Spanish, every other theme stays English for now. Before that: eight screens (AI providers, Secrets, Packs, Studio, Verification, Evals, DB import/export, GPU checks) drop their neon-green glowing title and match the rest of the window, and their buttons stay readable when hovered. Before that: the Portuguese window is more complete -- Disable, Test, Reset, Remove key and Get a key on AI providers are translated, and previewing or keeping a theme names it in your language. Before that: Appearance gets Browse themes -- a community catalogue of themes you can preview and keep (every file is checked against the catalogue's sha256 first, and a file that does not match is refused) -- and Share this theme, which opens GitHub's new-file page with your theme filled in. Before that: the whole window follows the language picker (English and Portuguese) -- every screen, button, status line and message is translated as it is drawn, switching language redraws the open screen, and a new English string with no translation fails the build. Before that: Activity > Tasks -- gates, rebuilds and benchmarks that take a while, with whether each is still alive (a task whose watcher died shows as LOST), Stop, Restart and Open log; checks itself every 10 seconds while open. Before that: Set up disappears once your computer is ready (its screens move to Settings), failing checks on Ready get a Fix button that jumps to the right Install step, the strips of screens work from the keyboard (arrow keys, Home, End) and there is a Skip to content link. Before that: Home -- one card that says what to do next, with one button -- and the app workspace: choose an app once and Start & stop, Edit, Ask AI, Data, Share and the checks all follow it (their own app pickers hide). Also fixes two screens that silently never worked: the Packs app picker was never filled and the Verification table drew nothing, because two scripts shared function names. Before that: every colour in every screen now follows your theme (no hard-coded colours left), statuses show a word as well as a colour, progress is announced to screen readers, and all 19 screens pass the axe accessibility scan. Before that: Appearance & accessibility (Settings) -- pick Dark, Light, Retro, Synth, Farm, Warm, Windows or \
+    "0.13.9: Setting up a database is guided. Pick Postgres, MySQL or SQL Server on My apps > New app and the Database card looks for that engine on this computer by itself: it lists the servers and stopped containers it finds (Use this, Start) and, when Docker is running, offers to create a new server in Docker for you -- the official image, reachable only from this computer, with a generated password it fills in. If Docker is installed but off it starts it and waits; if Docker is missing it walks you through installing it (install, restart, start) and notices by itself when it is ready. The database descriptions (MySQL, Postgres, SQL Server, H2) are now translated to Portuguese. Before that, 0.13.8: My apps > All apps is two panels -- Your apps (each app's name, with its folder beneath) and New app, whose fields are grouped into Name and folder, Database and Connection -- and Settings has short tab names (AI, Credentials, Appearance, Versions, Computer, Install, Checks, Evaluations) with the longer explanation in each tab's tooltip; the two check tabs under My apps are now Browser and Data rules. Before that, 0.13.7: the AI providers screen reads fully in Portuguese -- provider names (Anthropic (pago), Groq (plano gratuito)...) and the hint about the environment variable that overrides a stored key are translated. Before that, 0.13.6: Home is a real starting point -- under the next-step card it now shows four status tiles (computer, apps, running, AI keys) that each open the screen where that is fixed, Your apps with every app's state and its own Open, Start, Stop and Manage buttons (running first; two apps with the same name are told apart by folder), Recent activity with a Get help link on a failure, and six shortcuts; a greeting with Refresh and the time it last looked. Before that, 0.13.5: the version chip shows only the version number (what this version is about and when it was built are the first two lines of its tooltip), and the one-line explanation under each place in the top bar is gone -- it is the tooltip of the place's button. Before that: the action buttons on the AI providers table no longer overlap in Portuguese, and on Running apps the GENERATE & RUN button of a not-yet-generated app no longer sits on top of its message (which is now translated). Before that: a theme can describe itself in more than one language (a `descriptions` map next to `names`) and its card shows the one matching the language picker -- Dark ships English, Portuguese and Spanish, every other theme stays English for now. Before that: eight screens (AI providers, Secrets, Packs, Studio, Verification, Evals, DB import/export, GPU checks) drop their neon-green glowing title and match the rest of the window, and their buttons stay readable when hovered. Before that: the Portuguese window is more complete -- Disable, Test, Reset, Remove key and Get a key on AI providers are translated, and previewing or keeping a theme names it in your language. Before that: Appearance gets Browse themes -- a community catalogue of themes you can preview and keep (every file is checked against the catalogue's sha256 first, and a file that does not match is refused) -- and Share this theme, which opens GitHub's new-file page with your theme filled in. Before that: the whole window follows the language picker (English and Portuguese) -- every screen, button, status line and message is translated as it is drawn, switching language redraws the open screen, and a new English string with no translation fails the build. Before that: Activity > Tasks -- gates, rebuilds and benchmarks that take a while, with whether each is still alive (a task whose watcher died shows as LOST), Stop, Restart and Open log; checks itself every 10 seconds while open. Before that: Set up disappears once your computer is ready (its screens move to Settings), failing checks on Ready get a Fix button that jumps to the right Install step, the strips of screens work from the keyboard (arrow keys, Home, End) and there is a Skip to content link. Before that: Home -- one card that says what to do next, with one button -- and the app workspace: choose an app once and Start & stop, Edit, Ask AI, Data, Share and the checks all follow it (their own app pickers hide). Also fixes two screens that silently never worked: the Packs app picker was never filled and the Verification table drew nothing, because two scripts shared function names. Before that: every colour in every screen now follows your theme (no hard-coded colours left), statuses show a word as well as a colour, progress is announced to screen readers, and all 19 screens pass the axe accessibility scan. Before that: Appearance & accessibility (Settings) -- pick Dark, Light, Retro, Synth, Farm, Warm, Windows or \
      High contrast, load a theme file, or ask any AI for a new theme (you preview it and can undo); text \
      size, motion, focus, spacing, links and colour-blind safe status colours; remembered between starts \
      with no flash. Before that: one look for the whole window, Get help with this error (copy a redacted \
@@ -1915,7 +1957,7 @@ const VERSION_DESCRIPTION: &str =
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "Grouped apps screen, short Settings names";
+const CURRENT_VERSION_TITLE: &str = "Guided database setup";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {
@@ -3687,6 +3729,9 @@ the blast radius needs a baseline to diff against"
             test_connection,
             detect_databases,
             start_docker_desktop,
+            install_docker_desktop,
+            start_db_container,
+            provision_database,
             jdk_status,
             install_jdk,
             python_status,

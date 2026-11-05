@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "db provision",
+  "ok": true,
+  "exitCode": 0,
+  "provisioned": {
+    "engine": "mysql",
+    "name": "npdev-mysql",
+    "image": "mysql:8.4",
+    "host": "127.0.0.1",
+    "port": 3306,
+    "user": "root",
+    "password": "Kq7mXw2RbN9vLz4TcY8hJd3F",
+    "database": "my_app",
+    "restartPolicy": "unless-stopped",
+    "imagePulled": false,
+    "portChanged": false
+  }
+}

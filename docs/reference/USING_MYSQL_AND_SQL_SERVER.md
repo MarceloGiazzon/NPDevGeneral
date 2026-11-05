@@ -140,6 +140,29 @@ so — that is not the same as "no databases". It never reads a password (you su
 password yourself, then run `test-connection`) and never starts, stops or removes anything. The
 Manager's **Find databases** button on the create-app form runs this and fills in engine, host and port.
 
+#### Creating one when there is none: `npdev db provision`
+
+If nothing is running and Docker is, create a server for an app to adopt:
+
+```sh
+npdev db provision --engine mysql --app-name my-app      # or --json; --port N, --name NAME
+```
+
+It starts a new `postgres:16`, `mysql:8.4` (with `utf8mb4`) or SQL Server 2022 container, published on
+`127.0.0.1` only (never the LAN) with `--restart unless-stopped`, a generated password, and an empty
+database named the way `npdev init` names it. It prints the connection **once** — the password is not
+stored anywhere else — and you adopt it with `npdev init ... --externally-provisioned`. The first
+free port from the engine's default upward is used, and an existing container is never reused or
+touched. If the container does not become ready it is removed again and Docker's own log lines are
+shown. This is a different thing from the app's `_ops/Start-Environment`, which creates a container
+the *app owns* at first run; `provision` is for the moment before any app exists.
+
+In the Manager, the **Database** card on My apps > New app does all of this for the engine you pick,
+without being asked: it lists servers and stopped containers it finds (**Use this**, **Start**), offers
+to create one when Docker is running (ticked by default when none exists), starts Docker Desktop when
+it is installed but off, and walks through installing it — with a visible, administrator-approved
+`winget` window — when it is missing.
+
 ### 3.2 Running the database itself: `npdev db`
 
 Once an app is generated, five operations drive its own generated `_ops` scripts:

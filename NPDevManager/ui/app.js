@@ -898,6 +898,9 @@ function applyEngineSelection() {
   const summaryEl = document.getElementById("new-app-engine-summary");
   const warningEl = document.getElementById("new-app-engine-warning");
   const connectionEl = document.getElementById("new-app-connection");
+  // The database card looks for THIS engine on this machine (and Docker, for the three that need it).
+  // Called for "no engine" too, so it clears itself instead of describing the previous pick.
+  if (window.NPDevDbSetup) NPDevDbSetup.setEngine(engine || null);
   if (!engine) {
     summaryEl.textContent = "";
     warningEl.hidden = true;
@@ -979,58 +982,35 @@ document.getElementById("test-connection-btn").addEventListener("click", async (
 // user to type, because detection never reads one.
 // ---------------------------------------------------------------------------------------------
 
+// The button lists EVERYTHING found (every engine); the card below it does the same job for the
+// engine picked, by itself, whenever the pick changes. One renderer (dbsetup.js) serves both so the
+// two can never describe the same machine differently.
 document.getElementById("find-databases-btn").addEventListener("click", async () => {
   const btn = document.getElementById("find-databases-btn");
-  const out = document.getElementById("find-databases-result");
   btn.disabled = true;
-  out.innerHTML = `<p class="status-line">looking&hellip;</p>`;
   try {
-    const result = await invoke("detect_databases");
-    out.innerHTML = "";
-    // Not "none found": Docker was not asked, and that is a different fact.
-    const notice = document.createElement("div");
-    renderDockerNotice(notice, result.docker, () => document.getElementById("find-databases-btn").click());
-    out.appendChild(notice);
-    const found = result.databases || [];
-    for (const db of found) {
-      const row = document.createElement("div");
-      row.className = "status-line";
-      const label = db.name ? `${db.name} (${db.engine})` : `${db.engine} listener`;
-      const where = db.port ? ` ${db.host}:${db.port}` : "";
-      row.appendChild(document.createTextNode(`${label}${where} [${db.state}]`));
-      if (db.initArgs) {
-        const use = document.createElement("button");
-        use.type = "button";
-        use.textContent = "Use this";
-        use.addEventListener("click", () => useDetectedDatabase(db));
-        row.appendChild(document.createTextNode(" "));
-        row.appendChild(use);
-      }
-      if (db.note) {
-        const note = document.createElement("div");
-        note.className = "field-hint";
-        note.textContent = db.note;
-        row.appendChild(note);
-      }
-      out.appendChild(row);
-    }
-    if (!found.length) {
-      // "Nothing found" alone reads as "nothing works here". It only means nothing is RUNNING to
-      // adopt -- the engines that need nothing, or that the app starts itself, are still options.
-      const ready = (result.engines || []).filter((e) => e.status === "ready").map((e) => e.engine);
-      const p = document.createElement("p");
-      p.className = "status-line";
-      p.textContent =
-        "No running database server to adopt here." +
-        (ready.length ? ` Usable without one: ${ready.join(", ")} (see Ready > Database engines).` : "");
-      out.appendChild(p);
-    }
-  } catch (err) {
-    out.innerHTML = `<p class="status-line">could not look: ${escapeHtml(err)}</p>`;
+    await NPDevDbSetup.findAll();
   } finally {
     btn.disabled = false;
   }
 });
+
+NPDevDbSetup.init({
+  onUse: (db) => useDetectedDatabase(db),
+  // A server filled in for one engine must not follow the person to another engine's form.
+  onRelease: () => {
+    for (const id of ["new-app-db-host", "new-app-db-port", "new-app-db-user", "new-app-db-password"]) {
+      document.getElementById(id).value = "";
+    }
+    document.getElementById("new-app-externally-provisioned").checked = false;
+    document.getElementById("test-connection-rows").innerHTML = "";
+  },
+});
+
+// Typing a connection by hand means "use THIS server": the card must stop offering to create one over it.
+for (const id of ["new-app-db-host", "new-app-db-port", "new-app-db-user", "new-app-db-password"]) {
+  document.getElementById(id).addEventListener("input", () => NPDevDbSetup.connectionEdited());
+}
 
 document.getElementById("new-app-parent-browse").addEventListener("click", async () => {
   let picked;
@@ -1052,9 +1032,8 @@ function useDetectedDatabase(db) {
   document.getElementById("new-app-db-host").value = db.host || "";
   document.getElementById("new-app-db-port").value = db.port ? String(db.port) : "";
   document.getElementById("new-app-externally-provisioned").checked = true;
-  document.getElementById("find-databases-result").innerHTML =
-    `<p class="status-line">Filled in ${escapeHtml(db.engine)} at ${escapeHtml(db.host)}:${escapeHtml(db.port)}. ` +
-    `Type the user and password, then Test connection.</p>`;
+  // The card says "Filled in ... Type the user and password, then Test connection." itself (it is the
+  // one that called this), so nothing is written here.
 }
 
 document.getElementById("new-app-form").addEventListener("submit", async (event) => {
@@ -1063,7 +1042,6 @@ document.getElementById("new-app-form").addEventListener("submit", async (event)
   const parentDir = document.getElementById("new-app-parent").value.trim();
   const engine = document.getElementById("new-app-engine").value || null;
   const statusEl = document.getElementById("new-app-status");
-  const portRaw = document.getElementById("new-app-db-port").value.trim();
   const createBtn = document.getElementById("new-app-create-btn");
   // `init` takes seconds; without this a second click (or Enter) ran it again on the folder the
   // first one had just filled, and its refusal overwrote "created." -- a success reported as a failure.
@@ -1071,7 +1049,43 @@ document.getElementById("new-app-form").addEventListener("submit", async (event)
   createBtn.disabled = true;
   statusEl.textContent = "creating…";
   NPDevSupport.clearHelp(statusEl);
+  let provisioned = null;
   try {
+    // "Create a new <engine> server in Docker" is ticked on the database card: make the container
+    // FIRST, so a Docker problem is reported before an app folder exists, and fill the connection from
+    // what the CLI created. Everything below then runs unchanged -- it only reads the form.
+    if (NPDevDbSetup.wantsNewContainer()) {
+      const engineLabel = NPDevDbSetup.engineLabel();
+      statusEl.textContent =
+        `Creating the ${engineLabel} server in Docker… the first time this downloads the image and can take a few minutes.`;
+      const made = await NPDevDbSetup.createContainer(name);
+      if (!made || !made.ok) {
+        const e = (made && made.error) || {};
+        statusEl.textContent = `not created: the ${engineLabel} server could not be created.`;
+        for (const line of [e.message, e.fix]) {
+          if (line) {
+            const detail = document.createElement("span");
+            detail.className = "field-hint db-detail";
+            detail.textContent = line;
+            statusEl.appendChild(detail);
+          }
+        }
+        offerHelp(statusEl, { operation: "create-db-container", error: e.message || "", screen: "apps" });
+        // Docker may have changed state under us (stopped, or its port taken): show what is true now.
+        NPDevDbSetup.afterCreate();
+        return;
+      }
+      provisioned = made.provisioned;
+      document.getElementById("new-app-db-host").value = provisioned.host;
+      document.getElementById("new-app-db-port").value = String(provisioned.port);
+      document.getElementById("new-app-db-user").value = provisioned.user;
+      document.getElementById("new-app-db-password").value = provisioned.password;
+      document.getElementById("new-app-externally-provisioned").checked = true;
+      // The container exists now: a retry (or the next app) must not tick "create" again and make a second one.
+      NPDevDbSetup.connectionEdited();
+      NPDevDbSetup.noteFilled();
+      statusEl.textContent = "creating…";
+    }
     const result = await invoke("create_app", {
       name,
       parentDir,
@@ -1079,7 +1093,8 @@ document.getElementById("new-app-form").addEventListener("submit", async (event)
       // Blank fields are sent as null rather than "" so the CLI's own per-engine defaults stay in
       // charge -- an empty string would override a good default with nothing.
       dbHost: document.getElementById("new-app-db-host").value.trim() || null,
-      dbPort: portRaw ? parseInt(portRaw, 10) : null,
+      // Read NOW, not from `portRaw` above: creating a database container fills this field after that was read.
+      dbPort: parseInt(document.getElementById("new-app-db-port").value.trim(), 10) || null,
       dbUser: document.getElementById("new-app-db-user").value.trim() || null,
       dbPassword: document.getElementById("new-app-db-password").value || null,
       // STOR-15. Sent unconditionally as a real boolean, never omitted-when-false: `false` IS the
@@ -1091,6 +1106,14 @@ document.getElementById("new-app-form").addEventListener("submit", async (event)
     });
     const createdDir = (result && result.created && result.created.directory) || `${parentDir}\\${name}\\${name}`;
     statusEl.textContent = `created ${name} in ${createdDir}. It is in the app list above and on the Run tab.`;
+    if (provisioned) {
+      const detail = document.createElement("span");
+      detail.className = "field-hint db-detail";
+      detail.textContent =
+        `The ${NPDevDbSetup.engineLabel()} database runs in the Docker container ${provisioned.name} ` +
+        `(${provisioned.host}:${provisioned.port}) and starts again with Docker.`;
+      statusEl.appendChild(detail);
+    }
     // Cleared so pressing Create again cannot target the folder that now exists.
     document.getElementById("new-app-name").value = "";
     await refreshAppList();
@@ -1102,6 +1125,10 @@ document.getElementById("new-app-form").addEventListener("submit", async (event)
     await prefillRunAppDir();
   } catch (err) {
     const text = String(err);
+    if (provisioned) {
+      // The server exists even though the app does not; say so, or it is an orphan nobody knows about.
+      NPDevDbSetup.afterCreate();
+    }
     statusEl.textContent = text.includes("non-empty directory")
       ? `not created: ${parentDir}\\${name} already exists and is not empty. Pick another name or ` +
         `folder -- if you created it here earlier, it is already in the app list above.`

@@ -134,7 +134,7 @@ def _from_container(row: dict, ports_by_default: dict[int, str]) -> dict | None:
         record["note"] = (f"no published port for {default}/tcp -- not reachable from this machine "
                           "unless the app joins the container's Docker network")
     elif not record["running"]:
-        record["note"] = f"container is {state}, not running -- NPDev will not start it for you"
+        record["note"] = f"container is {state}, not running -- `docker start {name}` brings it up"
     else:
         record["initArgs"] = _init_args(engine, mapping["host"], mapping["hostPort"])
     return record

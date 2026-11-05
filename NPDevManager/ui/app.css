@@ -410,3 +410,22 @@ form input, form select {
 .panel-actions .status-line { margin: 0; }
 form .checkbox-line { display: flex; align-items: center; gap: 8px; }
 form .checkbox-line input { display: inline-block; width: auto; margin: 0; }
+
+/* The New-app database card (dbsetup.js): what runs here for the engine picked, Docker's state, and the
+   one next action. Reuses .check-row for found servers; the guided Docker install is a plain ordered list
+   whose marks follow what detection reports. Tokens only. */
+.db-setup { margin: 6px 0 10px; }
+.db-setup .check-row.db-found { grid-template-columns: 24px minmax(120px, 200px) 1fr auto; }
+.db-setup .db-found .db-note { grid-column: 1 / -1; }
+.db-setup .db-found .detail { white-space: normal; }
+.db-setup .db-docker { margin: 8px 0; }
+.db-setup .db-create { margin: 10px 0 4px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: var(--t-radius, 6px); }
+.db-setup .db-create .field-hint { margin: 4px 0 0 24px; }
+.db-setup .db-steps { list-style: none; margin: 10px 0 4px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.db-setup .db-step { display: grid; grid-template-columns: 24px 1fr; gap: 8px; align-items: start; }
+.db-setup .db-step .mark { font-weight: 700; text-align: center; color: var(--muted); }
+.db-setup .db-step.done .mark { color: var(--pass); }
+.db-setup .db-step .field-hint { margin: 2px 0 6px; }
+.db-setup .db-error { color: var(--fail); }
+.db-detail { display: block; margin-top: 4px; white-space: pre-line; }
+.db-setup .db-step-title { font-weight: 600; font-size: 13px; }
