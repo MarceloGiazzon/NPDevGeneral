@@ -4,8 +4,6 @@
   "plus": "mais",
   "PROMPTER": "PROMPTER",
   "VERIFICATION": "VERIFICAÇÃO",
-  "PACKS": "PACOTES",
-  "IMPACT": "IMPACTO",
   "EXPORT": "EXPORTAR",
   "CHECKS": "VERIFICAÇÕES",
   "RUNS": "EXECUÇÕES",
@@ -274,7 +272,6 @@
   "Live preview": "Pré-visualização ao vivo",
   "↻ Reload": "↻ Recarregar",
   "Running app preview": "Pré-visualização do app em execução",
-  "▣ EVALS": "▣ AVALIAÇÕES",
   "// AI-scenario corpus, last verdict per scenario": "// conjunto de cenários de IA, último veredito de cada cenário",
   "Reads NPDevSamples/ai-scenarios/*/ through": "Lê NPDevSamples/ai-scenarios/*/ por meio do",
   "and every past run's verdicts through": "e os vereditos de todas as execuções passadas por meio do",
@@ -1104,5 +1101,15 @@
   "This app has nothing to edit here yet.": "Este app ainda não tem nada para editar aqui.",
   "see the details in Activity": "veja os detalhes em Atividade",
   "Access keys": "Chaves de acesso",
-  "Nothing to undo yet.": "Nada para desfazer ainda."
+  "Nothing to undo yet.": "Nada para desfazer ainda.",
+  "Advanced.": "Avançado.",
+  "You do not need this screen to make, run, change or share an app -- Home and My apps cover that. It is here for when you want the technical detail.": "Você não precisa desta tela para criar, rodar, mudar ou compartilhar um app -- Início e Meus apps cuidam disso. Ela está aqui para quando você quiser os detalhes técnicos.",
+  "Impact": "Impacto",
+  "What each concept of your app turns into when NPDev builds it: the Java classes, the database change and the screen address it produces. Click a concept on the left to highlight what it produced on the right.": "No que cada conceito do seu app se transforma quando o NPDev o constrói: as classes Java, a mudança no banco de dados e o endereço de tela que ele produz. Clique em um conceito à esquerda para destacar à direita o que ele produziu.",
+  "Packs": "Pacotes",
+  "Packs are ready-made parts an app can include, such as user accounts and sign-in. This lists the ones this app uses and the exact version of each.": "Pacotes são partes prontas que um app pode incluir, como contas de usuário e login. Aqui estão os que este app usa e a versão exata de cada um.",
+  "Platform checks": "Verificações da plataforma",
+  "// what NPDev's own checks last said": "// o que as verificações do próprio NPDev disseram da última vez",
+  "AI evaluations": "Avaliações de IA",
+  "A fixed set of practice requests that measures how well each AI builds NPDev apps, with the last result of each. Running them uses your AI keys and can take a while.": "Um conjunto fixo de pedidos de treino que mede quão bem cada IA cria apps NPDev, com o último resultado de cada um. Executá-los usa suas chaves de IA e pode demorar."
 }

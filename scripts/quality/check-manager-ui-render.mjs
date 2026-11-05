@@ -492,6 +492,19 @@ const editHandoff = await page.evaluate(async () => {
   await new Promise((r) => setTimeout(r, 150));
   return { jsonFolded, screen: window.__npdevCurrentScreen, ask: document.getElementById("prompter-ask").value };
 });
+// Item 9: every advanced screen (its group, or the Activity place) says so; the beginner screens do not.
+const advancedNotes = await page.evaluate(async () => {
+  const out = {};
+  for (const id of ["provenance", "packs", "verification", "evals", "monitor", "jobs", "studio", "dbio", "hosting"]) {
+    await window.__npdevShowScreen(id);
+    out[id] = !!document.querySelector(`#screen-${id} > .advanced-note`);
+  }
+  await window.__npdevShowScreen("run");
+  return out;
+});
+check("advanced screens carry the Advanced note and Edit, Data and Share do not",
+  ["provenance", "packs", "verification", "evals", "monitor", "jobs"].every((k) => advancedNotes[k]) &&
+  !advancedNotes.studio && !advancedNotes.dbio && !advancedNotes.hosting, JSON.stringify(advancedNotes));
 check("Edit folds the JSON editor and hands a described change to Ask AI, words filled in",
   editHandoff.jsonFolded && editHandoff.screen === "prompter" && editHandoff.ask === "add a phone number to customers", JSON.stringify(editHandoff));
 await page.click("#workspace-bar .ws-change");

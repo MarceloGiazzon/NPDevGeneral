@@ -669,7 +669,7 @@
          decision about what any state means -- kanban_column() in the CLI does, so this window and a
          terminal agree on what counts as failing vs stale vs never-run. -->
     <section id="screen-verification" class="screen" hidden>
-      <h1><span aria-hidden="true">▚</span> VERIFICATION <span class="dim">// what checks exist and what they last said</span></h1>
+      <h1>Platform checks <span class="dim">// what NPDev's own checks last said</span></h1>
       <p class="subtitle" id="verify-subject">…</p>
 
       <div class="statusbar">
@@ -694,8 +694,8 @@
          Thin pipe over `npdev pack list`/`pack why` -- nothing here decides what a signature or a
          deprecation means, the CLI already enriched the report before this ever renders it. -->
     <section id="screen-packs" class="screen" hidden>
-      <h1><span aria-hidden="true">▤</span> PACKS <span class="dim">// what this app has resolved and locked</span></h1>
-      <p class="subtitle">Reads npdev.lock through <code>npdev pack list</code> — nothing is re-resolved here.</p>
+      <h1>Packs</h1>
+      <p class="subtitle">Packs are ready-made parts an app can include, such as user accounts and sign-in. This lists the ones this app uses and the exact version of each.</p>
 
       <div class="packs-toolbar">
         <label id="packs-app-label" hidden>App <select id="packs-app-picker"></select></label>
@@ -711,11 +711,11 @@
          provenance-index.json. Click a concept node; its generated classes, schema migration and
          frontend route highlight; click an artifact to jump back to its spec node. -->
     <section id="screen-provenance" class="screen" hidden>
-      <h1><span aria-hidden="true">▚</span> IMPACT <span class="dim">// spec node → emitted artifact</span></h1>
+      <h1>Impact</h1>
       <p class="subtitle">
-        What each concept in your model generated: the Spring classes, the schema migration and the
-        frontend route that exist BECAUSE of it, from <code>provenance-index.json</code>. Click a
-        node on the left; its artifacts highlight on the right.
+        What each concept of your app turns into when NPDev builds it: the Java classes, the database
+        change and the screen address it produces. Click a concept on the left to highlight what it
+        produced on the right.
       </p>
 
       <div class="packs-toolbar">
@@ -1107,8 +1107,8 @@
          comparison. There is no live multi-turn transcript here -- see evals.js's own header comment
          for why -- clicking a row shows that scenario's stage-by-stage evidence instead. -->
     <section id="screen-evals" class="screen" hidden>
-      <h1>&#9635; EVALS <span class="dim">// AI-scenario corpus, last verdict per scenario</span></h1>
-      <p class="subtitle">Reads NPDevSamples/ai-scenarios/*/ through <code>npdev eval list-scenarios</code> and every past run's verdicts through <code>npdev eval list-runs</code> — nothing is reclassified here.</p>
+      <h1>AI evaluations</h1>
+      <p class="subtitle">A fixed set of practice requests that measures how well each AI builds NPDev apps, with the last result of each. Running them uses your AI keys and can take a while.</p>
 
       <div class="evals-toolbar">
         <button type="button" class="btn" id="evals-run-all">&#9654; RUN ALL</button>

@@ -358,6 +358,9 @@ form input, form select {
 .run-buttons.run-main button.big { font-size: 16px; padding: 10px 22px; }
 .run-advanced { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 10px; }
 .run-advanced > summary { cursor: pointer; color: var(--muted); }
+/* Item 9 of the screen review: nav.js marks every advanced screen with this note at its top. */
+.advanced-note { margin: 0 0 12px; padding: 8px 12px; border-left: 3px solid var(--warn); color: var(--muted); font-size: 13px; }
+.advanced-note strong { color: var(--text); margin-right: 2px; }
 .run-banner {
   border: 1px solid var(--fail);
   color: var(--fail);

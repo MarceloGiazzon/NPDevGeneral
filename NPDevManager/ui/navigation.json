@@ -55,6 +55,7 @@
     },
     {
       "id": "activity",
+      "advanced": true,
       "icon": "◉",
       "label": { "en": "Activity", "pt": "Atividade" },
       "summary": {

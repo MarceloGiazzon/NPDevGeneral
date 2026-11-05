@@ -76,6 +76,30 @@
     });
     document.querySelectorAll(".tabs .place-strip").forEach((s) => (s.hidden = s.dataset.place !== place.id));
     syncTabs(screen);
+    markAdvanced(place, screen);
+  }
+
+  // Screen review wave 2, item 9: a screen in the "advanced" group, or in a place navigation.json marks
+  // `advanced` (Activity), says so at its top -- a beginner who lands there learns they do not need it.
+  // English text, translated by the i18n engine as it is drawn like any other screen text.
+  function markAdvanced(place, screen) {
+    const section = document.getElementById(`screen-${screen}`);
+    if (!section) return;
+    const entry = screensOf(place).find((s) => s.screen === screen) || {};
+    const advanced = place.advanced === true || entry.group === "advanced";
+    let note = section.querySelector(":scope > .advanced-note");
+    if (!advanced) {
+      if (note) note.remove();
+      return;
+    }
+    if (note) return;
+    note = el("p", { class: "advanced-note", role: "note" });
+    note.append(
+      el("strong", {}, "Advanced."),
+      document.createTextNode(" "),
+      el("span", {}, "You do not need this screen to make, run, change or share an app -- Home and My apps cover that. It is here for when you want the technical detail."),
+    );
+    section.prepend(note);
   }
 
   // NAV-5: the strip is a tablist -- exactly one tab is in the tab order (the selected one, or the first
