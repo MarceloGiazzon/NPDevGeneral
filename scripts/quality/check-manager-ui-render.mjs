@@ -1051,6 +1051,16 @@ await page.evaluate(() => { window.__jobsEmpty = false; });
   await pick("postgres"); await pick("mysql");
   check("db card (pt): the headline and the create option read in Portuguese",
     /Nenhum servidor MySQL está rodando neste computador\./.test(await cardText()) && /Criar um novo servidor MySQL no Docker quando eu clicar em Criar/.test(await cardText()), await cardText());
+  await setDetect(withDocker(DOCKER_OK));
+  const ptEngine = await page.evaluate(async () => {
+    await refreshEngineMatrix();
+    await new Promise((r) => setTimeout(r, 300));
+    const pick = (k) => document.querySelector(`.engine-local[data-engine="${k}"]`);
+    return { text: pick("postgres").textContent, title: pick("postgres").title, h2title: pick("h2local").title };
+  });
+  check("engine panel (pt): the sentence and its CLI tooltip read in Portuguese",
+    ptEngine.text === "Já está rodando neste computador." && /^já está rodando aqui \(localhost:15432\)/.test(ptEngine.title)
+      && /^roda dentro do próprio processo/.test(ptEngine.h2title), JSON.stringify(ptEngine));
   await page.evaluate(() => NPDevI18n.setLang("en"));
   await page.waitForTimeout(300);
   // -- The standalone Docker assistant (Settings > Install): the same steps, reachable with no engine picked.
