@@ -1106,6 +1106,16 @@ await page.evaluate(() => { window.__jobsEmpty = false; });
     && /NPDev v9\.2\.0 is installed/.test(await page.textContent("#npdev-easy-status")) && !(await page.isVisible("#npdev-easy-btn"))
     && /NPDev is prepared/.test(await page.textContent("#setup-status")), await page.textContent("#npdev-easy-status") + " | " + await page.textContent("#setup-status"));
   check("npdev assistant: a successful preparation hides its technical log", !(await page.isVisible("#setup-log")), await page.textContent("#setup-log"));
+  // 0.13.20: with "Use local repo" on, setup_status reports currentVersion as "local checkout (<path>)", which step 3
+  // interpolates into "NPDev {version} is installed." -- in Portuguese the label must not stay an English fragment.
+  await page.evaluate(async () => { window.__npdevVersion = "local checkout (C:\\Dev\\NPDev)"; await refreshSetupStatus(); });
+  await page.evaluate(() => NPDevI18n.setLang("pt")); await page.waitForTimeout(300);
+  t = (await page.textContent("#npdev-easy-status")).trim();
+  check("npdev assistant (pt): a local checkout is named in Portuguese, not an English fragment",
+    t === "✓ O NPDev da sua cópia local (C:\\Dev\\NPDev) está instalado." && !/checkout/.test(t), t);
+  await page.evaluate(() => NPDevI18n.setLang("en")); await page.waitForTimeout(300);
+  t = (await page.textContent("#npdev-easy-status")).trim();
+  check("npdev assistant (en): a local checkout still reads in English", t === "✓ NPDev local checkout (C:\\Dev\\NPDev) is installed.", t);
   await page.evaluate(async () => { window.__tags = []; window.__npdevVersion = null; window.__setupDone = false; await refreshTagList(false); await refreshSetupStatus(); });
   await setDetect(withDocker(DOCKER_OK, []));
   await page.evaluate(() => NPDevDbSetup.refreshAssistant()); await settle();

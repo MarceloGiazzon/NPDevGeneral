@@ -2515,7 +2515,7 @@ dependencies = [
 
 [[package]]
 name = "npdev-manager"
-version = "0.13.19"
+version = "0.13.20"
 dependencies = [
  "chrono",
  "dirs",
