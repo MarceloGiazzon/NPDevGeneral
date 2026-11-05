@@ -992,6 +992,14 @@ await page.evaluate(() => { window.__jobsEmpty = false; });
   await pick("h2local");
   const helpText = async () => (await page.textContent("#docker-assistant")).replace(/\s+/g, " ").trim();
   await page.evaluate(() => window.__npdevShowScreen("install"));
+  await page.evaluate(async () => { await refreshJdkStatus(); await refreshPythonStatus(); });
+  const stepText = async (id) => (await page.textContent(`.install-step:has(#${id})`)).replace(/\s+/g, " ");
+  t = await stepText("jdk-status");
+  check("java assistant: no Java says so in plain words, with one visible button", /Java is not on this computer yet\./.test(t)
+    && /No permission is needed/.test(t) && (await page.isVisible("#jdk-install-btn")) && /Install Java for NPDev/.test(await page.textContent("#jdk-install-btn")), t);
+  t = await stepText("python-status");
+  check("python assistant: a Python already here is simply ready, its path only under Details", /✓ Python is ready\./.test(t)
+    && !(await page.isVisible("#python-install-btn")) && !(await page.isVisible("#python-details-text")), t);
   await setDetect(withDocker(DOCKER_OK, []));
   await page.evaluate(() => NPDevDbSetup.refreshAssistant()); await settle();
   t = await helpText();

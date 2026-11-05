@@ -371,112 +371,125 @@ document.getElementById("doctor-app-picker").addEventListener("change", loadDoct
 // 2: Install screen (M3/M4)
 // ---------------------------------------------------------------------------------------------
 
-// A system Java that already works is reported as what it is, and the private download becomes an
-// OPTION rather than the path. The Manager never records the system Java anywhere: when
-// `manager.jdk_home` is unset the CLI resolves JAVA_HOME/PATH itself, which is the proven fallback
-// -- so this is reporting and button gating, and deliberately nothing else.
-async function refreshJdkStatus() {
-  const status = await invoke("jdk_status");
-  const el = document.getElementById("jdk-status");
-  const btn = document.getElementById("jdk-install-btn");
-  if (status.resolved === "portable") {
-    el.textContent = `private JDK installed at ${status.path}`;
-    btn.textContent = "Reinstall private JDK";
-  } else if (status.resolved === "system") {
-    el.textContent = `using system Java ${status.systemJavaVersion} at ${status.systemJava}`;
-    // Enabled on purpose: wanting a private copy anyway is a real choice (a pinned JDK the machine's
-    // own Java cannot drift out from under), and the Manager's whole thesis is that it never has to
-    // touch the system one either way.
-    btn.textContent = "Install private JDK anyway (optional)";
-  } else {
-    el.textContent = "not installed -- no Java 17+ found on this machine";
-    btn.textContent = "Install private JDK";
+// Java and Python: two guided assistants of the same shape (the Docker one lives in dbsetup.js).
+//
+// The audience is not technical. Each step says, in plain words, what the thing is for, whether this
+// computer already has it, and the ONE thing to do next -- a single button that downloads NPDev's own
+// copy (no administrator prompt, nothing else on the computer changes), with a percentage while it runs
+// and a re-check by itself afterwards. Paths and version numbers are secondary detail under "Details".
+//
+// A system Java/Python that already works is used as it is: the Manager never records it anywhere
+// (when `manager.jdk_home` is unset the CLI resolves JAVA_HOME/PATH itself, the proven fallback), and
+// installing NPDev's own copy anyway stays possible from Details -- a pinned copy the machine's own
+// cannot drift out from under is a real choice, just not one a beginner has to make.
+const RUNTIME_ASSISTANTS = {
+  jdk: {
+    command: "install_jdk",
+    operation: "install-java",
+    what: "Java",
+    size: "about 190 MB",
+    describe(status) {
+      if (status.resolved === "portable") return { ready: true, detail: `NPDev's own copy, in ${status.path}` };
+      if (status.resolved === "system") return { ready: true, detail: `Java ${status.systemJavaVersion} already on this computer, in ${status.systemJava}`, system: true };
+      return { ready: false };
+    },
+    async status() { return invoke("jdk_status"); },
+  },
+  python: {
+    command: "install_python",
+    operation: "install-python",
+    what: "Python",
+    size: "about 30 MB",
+    describe(status) {
+      if (status.systemPython) return { ready: true, detail: `Python already on this computer: ${status.systemPython}`, system: true };
+      if (status.portableInstalled) return { ready: true, detail: "NPDev's own copy" };
+      return { ready: false };
+    },
+    async status() { return invoke("python_status"); },
+  },
+};
+
+const runtimeEls = (key) => ({
+  status: document.getElementById(`${key}-status`),
+  hint: document.getElementById(`${key}-hint`),
+  bar: document.getElementById(`${key}-progress`),
+  btn: document.getElementById(`${key}-install-btn`),
+  details: document.getElementById(`${key}-details`),
+  detailText: document.getElementById(`${key}-details-text`),
+  anyway: document.getElementById(`${key}-install-anyway`),
+});
+
+async function refreshRuntimeAssistant(key) {
+  const a = RUNTIME_ASSISTANTS[key];
+  const el = runtimeEls(key);
+  let state;
+  try {
+    state = a.describe(await a.status());
+  } catch (err) {
+    el.status.textContent = `Could not check ${a.what} on this computer.`;
+    el.hint.textContent = String(err);
+    return;
   }
-  btn.disabled = false;
+  el.btn.disabled = false;
+  if (state.ready) {
+    el.status.textContent = `✓ ${a.what} is ready.`;
+    el.hint.textContent = "Nothing to do here.";
+    el.btn.hidden = true;
+    el.details.hidden = false;
+    el.detailText.textContent = state.detail;
+    el.anyway.hidden = !state.system;
+  } else {
+    el.status.textContent = `${a.what} is not on this computer yet.`;
+    el.hint.textContent = `Press the button: NPDev downloads its own copy (${a.size}), just for NPDev. No permission is needed and nothing else on your computer changes.`;
+    el.btn.hidden = false;
+    el.btn.textContent = `Install ${a.what} for NPDev`;
+    el.details.hidden = true;
+  }
+}
+async function refreshJdkStatus() { return refreshRuntimeAssistant("jdk"); }
+async function refreshPythonStatus() { return refreshRuntimeAssistant("python"); }
+
+async function installRuntime(key) {
+  const a = RUNTIME_ASSISTANTS[key];
+  const el = runtimeEls(key);
+  NPDevSupport.clearHelp(el.status);
+  el.btn.disabled = true;
+  el.anyway.disabled = true;
+  el.bar.hidden = false;
+  el.bar.removeAttribute("value");
+  el.status.textContent = `Downloading ${a.what}…`;
+  el.hint.textContent = "This can take a few minutes. You can keep using the Manager.";
+  try {
+    await invoke(a.command);
+    await refreshRuntimeAssistant(key);
+    if (key === "jdk") await loadDoctor();
+  } catch (err) {
+    el.status.textContent = `${a.what} could not be installed.`;
+    el.hint.textContent = `Check the internet connection and press the button again. If it keeps failing, Get help explains what happened. (${err})`;
+    offerHelp(el.status, { operation: a.operation, error: err, screen: "install" });
+    el.btn.hidden = false;
+    el.btn.disabled = false;
+  } finally {
+    el.bar.hidden = true;
+    el.anyway.disabled = false;
+  }
 }
 
-document.getElementById("jdk-install-btn").addEventListener("click", async () => {
-  const btn = document.getElementById("jdk-install-btn");
-  const bar = document.getElementById("jdk-progress");
-  NPDevSupport.clearHelp(document.getElementById("jdk-status"));
-  btn.disabled = true;
-  bar.hidden = false;
-  bar.removeAttribute("value");
-  try {
-    await invoke("install_jdk");
-    await refreshJdkStatus();
-    await loadDoctor();
-  } catch (err) {
-    const jdkStatus = document.getElementById("jdk-status");
-    jdkStatus.textContent = `failed: ${err}`;
-    offerHelp(jdkStatus, { operation: "install-java", error: err, screen: "install" });
-    btn.disabled = false;
-  } finally {
-    bar.hidden = true;
-  }
-});
-
-listen("jdk-progress", (event) => {
-  const bar = document.getElementById("jdk-progress");
-  const { downloaded, total } = event.payload;
-  if (total) {
-    bar.max = total;
-    bar.value = downloaded;
-  } else {
-    bar.removeAttribute("value");
-  }
-});
-
-// Same rule as Java above: a found system Python is used, and the private download stays available
-// rather than being disabled. Disabling it made the one thing this step can do unreachable for
-// anybody who wanted a pinned copy, and said nothing about why.
-async function refreshPythonStatus() {
-  const status = await invoke("python_status");
-  const el = document.getElementById("python-status");
-  const btn = document.getElementById("python-install-btn");
-  if (status.systemPython) {
-    el.textContent = `using system Python: ${status.systemPython}`;
-    btn.textContent = "Install private Python anyway (optional)";
-  } else if (status.portableInstalled) {
-    el.textContent = "private Python installed";
-    btn.textContent = "Reinstall private Python";
-  } else {
-    el.textContent = "no Python found";
-    btn.textContent = "Install private Python";
-  }
-  btn.disabled = false;
+for (const key of Object.keys(RUNTIME_ASSISTANTS)) {
+  runtimeEls(key).btn.addEventListener("click", () => installRuntime(key));
+  runtimeEls(key).anyway.addEventListener("click", () => installRuntime(key));
+  listen(`${key}-progress`, (event) => {
+    const el = runtimeEls(key);
+    const { downloaded, total } = event.payload;
+    if (total) {
+      el.bar.max = total;
+      el.bar.value = downloaded;
+      el.status.textContent = `Downloading ${RUNTIME_ASSISTANTS[key].what}… ${Math.floor((downloaded / total) * 100)}%`;
+    } else {
+      el.bar.removeAttribute("value");
+    }
+  });
 }
-
-document.getElementById("python-install-btn").addEventListener("click", async () => {
-  const btn = document.getElementById("python-install-btn");
-  const bar = document.getElementById("python-progress");
-  NPDevSupport.clearHelp(document.getElementById("python-status"));
-  btn.disabled = true;
-  bar.hidden = false;
-  bar.removeAttribute("value");
-  try {
-    await invoke("install_python");
-    await refreshPythonStatus();
-  } catch (err) {
-    const pyStatus = document.getElementById("python-status");
-    pyStatus.textContent = `failed: ${err}`;
-    offerHelp(pyStatus, { operation: "install-python", error: err, screen: "install" });
-    btn.disabled = false;
-  } finally {
-    bar.hidden = true;
-  }
-});
-
-listen("python-progress", (event) => {
-  const bar = document.getElementById("python-progress");
-  const { downloaded, total } = event.payload;
-  if (total) {
-    bar.max = total;
-    bar.value = downloaded;
-  } else {
-    bar.removeAttribute("value");
-  }
-});
 
 async function refreshTagList(forceRefresh) {
   const picker = document.getElementById("tag-picker");

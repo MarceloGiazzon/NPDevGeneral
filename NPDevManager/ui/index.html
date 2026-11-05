@@ -103,22 +103,36 @@
     <section id="screen-install" class="screen" hidden>
       <h1>Install</h1>
       <p class="subtitle">
-        Java &rarr; Python &rarr; NPDev &rarr; <code>npdev setup</code> &rarr; app paths. Existing
-        system installs are used when found; private downloads are optional.
+        Everything NPDev needs on this computer, one step at a time. What is already here is used as
+        it is; for what is missing, a button does the work for you.
       </p>
 
       <div class="install-step">
-        <h2>1. Java 17</h2>
+        <h2>1. Java</h2>
+        <p class="subtitle">NPDev uses Java to build and run your apps.</p>
         <div id="jdk-status" class="status-line" role="status" aria-live="polite">checking&hellip;</div>
+        <p id="jdk-hint" class="field-hint"></p>
         <progress id="jdk-progress" value="0" max="100" hidden></progress>
-        <button id="jdk-install-btn">Install private JDK</button>
+        <button id="jdk-install-btn" class="primary" hidden>Install Java for NPDev</button>
+        <details id="jdk-details" class="install-details" hidden>
+          <summary>Details</summary>
+          <p id="jdk-details-text" class="field-hint" translate="no"></p>
+          <button id="jdk-install-anyway" type="button" hidden>Install NPDev's own copy anyway (optional)</button>
+        </details>
       </div>
 
       <div class="install-step">
         <h2>2. Python</h2>
+        <p class="subtitle">NPDev uses Python for its checks and helpers.</p>
         <div id="python-status" class="status-line" role="status" aria-live="polite">checking&hellip;</div>
+        <p id="python-hint" class="field-hint"></p>
         <progress id="python-progress" value="0" max="100" hidden></progress>
-        <button id="python-install-btn">Install private Python</button>
+        <button id="python-install-btn" class="primary" hidden>Install Python for NPDev</button>
+        <details id="python-details" class="install-details" hidden>
+          <summary>Details</summary>
+          <p id="python-details-text" class="field-hint" translate="no"></p>
+          <button id="python-install-anyway" type="button" hidden>Install NPDev's own copy anyway (optional)</button>
+        </details>
       </div>
 
       <div class="install-step">
