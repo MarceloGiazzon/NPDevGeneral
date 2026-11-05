@@ -1,22 +1,19 @@
 {
-  "closedAt": "2026-11-05T06:15:30.2816076Z",
+  "closedAt": "2026-11-05T09:56:53.1412987Z",
   "branch": "main",
-  "head": "92978984",
-  "headSubject": "feat(manager): singular attention hint on Home, plain end of NPDev setup (0.13.19)",
-  "summary": "Confirmed T2 fully green at f1c88944 (prior session's aiKnowledge rerun PASSED 848s). Shipped Manager 0.13.17 (c6ee0283: plain engine-availability sentences, plain no-published-port note, CLI detail as tooltip), 0.13.18 (053cea3c: pt for db-detect tooltips) and 0.13.19 (92978984: singular '1 needs attention' on Home, plain end of NPDev setup with log hidden on success), found via the pt screenshot tour; built the 0.13.19 installer (not installed). Found UX plan items NAV-2..5/I18N-1/ACC and AI-efficiency target (<=5k tokens/app) already done; corrected stale memory.",
-  "nextStep": "Owner decisions pending, none started: (1) install + click through D:\\WorkSpace\\NPDev\\Build\\manager-target\\release\\bundle\\nsis\\NPDev Manager_0.13.19_x64-setup.exe (or run pwsh -NoProfile -File D:\\WorkSpace\\NPDev\\NPDev_General\\scripts\\release\\New-ManagerInstaller.ps1 -Install -Launch with approval) -- check whether Install step 1 really says 'Java ainda nao esta neste computador' when Java is present (seen in the all-green tour fixture, likely fixture-only); (2) approve real 'npdev db provision --where private' run; (3) approve bench-023 on Gemini free tier (only missing AI-efficiency measurement, see D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_AI_EFFICIENCY_PLAN_2026-10-31\\PLAN.md). Owner-only: THM-10 npdev-themes repo, NAV-6 user test, native pt.json read.",
+  "head": "9093b077",
+  "headSubject": "test(manager): jdk_status mock returns the real shape, Java-ready states are checked",
+  "summary": "Fixed the stale jdk_status mock in the Manager render check (202/202, +2 Java-ready checks) and proved in the real installed 0.13.19 window (Playwright over CDP) that Java shows ready, so the false no-Java screen was fixture-only. Ran the real npdev db provision --where private: it hung on Windows because pg_ctl start was run with captured pipes; fixed (e37b8951, 2 tests) and verified end to end. Ran bench-023 on Gemini free tier: passed, 1 repair, 11.2k tokens, median of 5 prompts 5.0k (target met). Commits e37b8951 and 9093b077 pushed to main.",
+  "nextStep": "Run the T2 gates once, because the CLI change e37b8951 only had targeted tests: python D:\\WorkSpace\\NPDev\\NPDev_General\\scripts\\ai\\run_digest.py -- pwsh -NoProfile -File D:\\WorkSpace\\NPDev\\NPDev_General\\scripts\\quality\\run-all-gates.ps1 (about 17 min, never alongside a build). Then fix the English fragment in Install step 3 (pt shows O NPDev local checkout (path) esta instalado): the label comes from D:\\WorkSpace\\NPDev\\NPDev_General\\NPDevManager\\src\\main.rs line 507 (format local checkout ({p})) and is interpolated into a pt string by D:\\WorkSpace\\NPDev\\NPDev_General\\NPDevManager\\ui\\app.js; translate it in the UI or via D:\\WorkSpace\\NPDev\\NPDev_General\\NPDevManager\\ui\\i18n\\pt.json, bump the Manager version to 0.13.20, run check-manager-ui-render.mjs, check-manager-i18n.py and check-manager-version-bump.py, then rebuild with D:\\WorkSpace\\NPDev\\NPDev_General\\scripts\\release\\New-ManagerInstaller.ps1.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\manager-dummies-review-2026-11-05.md",
-  "blocked": "Real window test, private Postgres provision and the Gemini bench-023 run all await owner approval.",
-  "verified": "aiKnowledge gate PASSED (848s, prior session's rerun on f1c88944) -> T2 all four green at f1c88944. After each Manager change: check-manager-ui-render.mjs 200/200, check-manager-i18n.py OK, check-manager-version-bump.py OK. No full gate run on 0.13.17-0.13.19. Installer build 0.13.19 OK (589s). Real Tauri window not run.",
-  "dirtyCount": 2,
-  "dirtyFiles": [
-    " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl"
-  ],
+  "blocked": "Owner-only items: THM-10 npdev-themes repo, NAV-6 user test, native pt.json read. Nothing else is blocked.",
+  "verified": "check-manager-ui-render.mjs 202/202; NPDevCli tests.test_db_server 11/11 (2 new); real installed Manager 0.13.19 window read via CDP (Java ready); real db provision --where private 40 s then db test-connection 6/6 checks pass and wrong password rejected, db server start 7 s; bench-023 Gemini compact bundle PASS. NO full T2 or aiKnowledge gate run on e37b8951 or 9093b077.",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "92978984 feat(manager): singular attention hint on Home, plain end of NPDev setup (0.13.19)",
-    "053cea3c feat(manager): database tooltips read in Portuguese (0.13.18)",
-    "c6ee0283 feat(manager): plain database availability and Docker-port sentences (0.13.17)"
+    "9093b077 test(manager): jdk_status mock returns the real shape, Java-ready states are checked",
+    "e37b8951 fix(cli): db provision --where private no longer hangs after the server is up",
+    "df7e0384 chore(handoff): session close, Manager 0.13.17-0.13.19 and pending owner decisions"
   ]
 }
