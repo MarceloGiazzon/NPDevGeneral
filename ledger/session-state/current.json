@@ -1,19 +1,21 @@
 {
-  "closedAt": "2026-11-05T09:56:53.1412987Z",
+  "closedAt": "2026-11-05T17:01:38.2919071Z",
   "branch": "main",
-  "head": "9093b077",
-  "headSubject": "test(manager): jdk_status mock returns the real shape, Java-ready states are checked",
-  "summary": "Fixed the stale jdk_status mock in the Manager render check (202/202, +2 Java-ready checks) and proved in the real installed 0.13.19 window (Playwright over CDP) that Java shows ready, so the false no-Java screen was fixture-only. Ran the real npdev db provision --where private: it hung on Windows because pg_ctl start was run with captured pipes; fixed (e37b8951, 2 tests) and verified end to end. Ran bench-023 on Gemini free tier: passed, 1 repair, 11.2k tokens, median of 5 prompts 5.0k (target met). Commits e37b8951 and 9093b077 pushed to main.",
-  "nextStep": "Run the T2 gates once, because the CLI change e37b8951 only had targeted tests: python D:\\WorkSpace\\NPDev\\NPDev_General\\scripts\\ai\\run_digest.py -- pwsh -NoProfile -File D:\\WorkSpace\\NPDev\\NPDev_General\\scripts\\quality\\run-all-gates.ps1 (about 17 min, never alongside a build). Then fix the English fragment in Install step 3 (pt shows O NPDev local checkout (path) esta instalado): the label comes from D:\\WorkSpace\\NPDev\\NPDev_General\\NPDevManager\\src\\main.rs line 507 (format local checkout ({p})) and is interpolated into a pt string by D:\\WorkSpace\\NPDev\\NPDev_General\\NPDevManager\\ui\\app.js; translate it in the UI or via D:\\WorkSpace\\NPDev\\NPDev_General\\NPDevManager\\ui\\i18n\\pt.json, bump the Manager version to 0.13.20, run check-manager-ui-render.mjs, check-manager-i18n.py and check-manager-version-bump.py, then rebuild with D:\\WorkSpace\\NPDev\\NPDev_General\\scripts\\release\\New-ManagerInstaller.ps1.",
+  "head": "b514df6e",
+  "headSubject": "fix(manager): a database found on its port gets one plain sentence, not a terminal command (0.13.21)",
+  "summary": "Removed 14 stray Dependabot branches/PRs (#241-#254, bundled to D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\branch-archive\\dependabot-2026-11-05.bundle) and fixed the likely cause in a9563819: an empty 'updates: []' is invalid so GitHub kept running the old 8-job config on Thursdays; now one github-actions entry with open-pull-requests-limit: 0. Also shipped Manager 0.13.21 (b514df6e): a database found on its default port shows one plain sentence instead of the 'npdev db test-connection' command, with a new render-check case.",
+  "nextStep": "On or after Thursday 2026-11-12 14:05 UTC run 'git fetch origin --prune; git branch -r' in D:\\WorkSpace\\NPDev\\NPDev_General. Only origin/main = the Dependabot fix is confirmed (then shorten C:\\Users\\dev1m\\.claude\\projects\\d--WorkSpace-NPDev-NPDev-General\\memory\\dependabot-branches-reappear.md). Dependabot branches back = the limit-0 fix failed: bundle then delete once more and tell the owner to switch Dependabot off in the GitHub repo settings. Everything else is owner-only (see BLOCKED); if none is ready, take the top item of D:\\WorkSpace\\NPDev\\NPDev_General\\ledger\\session-state\\open-state.md (currently nothing open).",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\manager-dummies-review-2026-11-05.md",
-  "blocked": "Owner-only items: THM-10 npdev-themes repo, NAV-6 user test, native pt.json read. Nothing else is blocked.",
-  "verified": "check-manager-ui-render.mjs 202/202; NPDevCli tests.test_db_server 11/11 (2 new); real installed Manager 0.13.19 window read via CDP (Java ready); real db provision --where private 40 s then db test-connection 6/6 checks pass and wrong password rejected, db server start 7 s; bench-023 Gemini compact bundle PASS. NO full T2 or aiKnowledge gate run on e37b8951 or 9093b077.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "blocked": "Owner-only: native Portuguese read of D:\\WorkSpace\\NPDev\\NPDev_General\\NPDevManager\\ui\\i18n\\pt.json (new key this session: 'Something is answering on port {port}, but NPDev has not confirmed it is a {engine} server.'; Install step 3 keys at lines 1055 and 1057), THM-10 npdev-themes repo, NAV-6 user test. The Dependabot fix cannot be confirmed before 2026-11-12.",
+  "verified": "T2 run-all-gates on a9563819: generator 196.5 s, runtimeHost 290.3 s, kernel 36 s, aiKnowledge 677.3 s, ALL 4 GATES GREEN. b514df6e (Manager 0.13.21) was NOT re-run through T2: check-manager-ui-render.mjs 205/205, check-manager-i18n.py, check-manager-version-bump.py, check-manager-css-tokens.py pass, plus check-doc-inventory, check-no-markdown-reads, check-record-surfaces, check-readme-contract, check-markdown-links after the CLAUDE.md edit. 0.13.21 was not installed or read in the real Tauri window. After the push no new Dependabot run had appeared yet; 0 open PRs, git branch -a is main only.",
+  "dirtyCount": 2,
+  "dirtyFiles": [
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl"
+  ],
   "unpushed": 0,
   "landedCommits": [
-    "9093b077 test(manager): jdk_status mock returns the real shape, Java-ready states are checked",
-    "e37b8951 fix(cli): db provision --where private no longer hangs after the server is up",
-    "df7e0384 chore(handoff): session close, Manager 0.13.17-0.13.19 and pending owner decisions"
+    "b514df6e fix(manager): a database found on its port gets one plain sentence, not a terminal command (0.13.21)",
+    "a9563819 fix(deps): Dependabot kept running a stale config; use a valid limit-0 entry, not updates: []"
   ]
 }
