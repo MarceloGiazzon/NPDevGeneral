@@ -671,8 +671,14 @@ function Initialize-NPDevGradleWrapperDistribution {
     $distributionPath = if ($properties.ContainsKey('distributionPath')) { $properties['distributionPath'] } else { 'wrapper/dists' }
     $distributionRoot = Join-Path (Join-Path $GradleUserHome $distributionPath) ([System.IO.Path]::GetFileNameWithoutExtension($zipName))
 
-    if ($null -eq $script:NPDevGradleDistributionsReady) { $script:NPDevGradleDistributionsReady = @{} }
-    if ($script:NPDevGradleDistributionsReady.ContainsKey($distributionRoot)) { return }
+    # Callers run under Set-StrictMode -Version Latest, where reading an unset $script: variable
+    # throws -- so never read the memo directly; Get-Variable returns $null instead.
+    $readyDistributions = Get-Variable -Name NPDevGradleDistributionsReady -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+    if ($null -eq $readyDistributions) {
+        $readyDistributions = @{}
+        Set-Variable -Name NPDevGradleDistributionsReady -Scope Script -Value $readyDistributions
+    }
+    if ($readyDistributions.ContainsKey($distributionRoot)) { return }
 
     # The wrapper writes <zipName>.ok beside the zip once it has downloaded and unpacked it.
     $isReady = {
@@ -683,7 +689,7 @@ function Initialize-NPDevGradleWrapperDistribution {
         return $false
     }
     if (& $isReady) {
-        $script:NPDevGradleDistributionsReady[$distributionRoot] = $true
+        $readyDistributions[$distributionRoot] = $true
         return
     }
 
@@ -697,7 +703,7 @@ function Initialize-NPDevGradleWrapperDistribution {
             $exitCode = 1
         }
         if ($exitCode -eq 0 -or (& $isReady)) {
-            $script:NPDevGradleDistributionsReady[$distributionRoot] = $true
+            $readyDistributions[$distributionRoot] = $true
             return
         }
         if ($output -notmatch 'java\.io\.IOException') { return }
