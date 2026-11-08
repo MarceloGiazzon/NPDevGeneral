@@ -636,6 +636,80 @@ function Get-NPDevBuildRoot([string]$WorkspaceRoot) {
     return Normalize-NPDevPath (Join-Path $workspace.Parent.FullName "Build")
 }
 
+# CI-flake fix (2026-11-08): the Gradle wrapper downloads its distribution once per GRADLE_USER_HOME,
+# and Invoke-NPDevCommandStreaming points that at <local cache>\gradle -- NOT the ~/.gradle the CI
+# workflows cache -- so every CI run fetched gradle-9.5.1-bin.zip from scratch. One HTTP 504 from the
+# GitHub release redirect (npdev-ci-validation) and one 10 s timeout (R9 nightly) each failed a whole
+# job on a commit that had passed hours earlier. Warm the distribution here with a bounded retry so a
+# transient download failure costs seconds, not the run. Only the wrapper's own download failure
+# (java.io.IOException) is retried; any other failure is left for the real command to report
+# unchanged, and this function never throws.
+function Initialize-NPDevGradleWrapperDistribution {
+    param(
+        [string]$Executable,
+        [string]$GradleUserHome,
+        [int]$MaxAttempts = 4,
+        [int]$BackoffSeconds = 15
+    )
+
+    $executableDir = Split-Path -Parent $Executable
+    if ([string]::IsNullOrWhiteSpace($executableDir)) { return }
+    $propertiesPath = Join-Path $executableDir "gradle/wrapper/gradle-wrapper.properties"
+    if (-not (Test-Path -LiteralPath $propertiesPath -PathType Leaf)) { return }
+
+    $properties = @{}
+    foreach ($line in (Get-Content -LiteralPath $propertiesPath)) {
+        if ($line -match '^\s*([^#=\s][^=]*?)\s*=\s*(.*)$') {
+            $properties[$Matches[1]] = $Matches[2].Replace('\:', ':')
+        }
+    }
+    $distributionUrl = $properties['distributionUrl']
+    if ([string]::IsNullOrWhiteSpace($distributionUrl)) { return }
+    if ($properties.ContainsKey('distributionBase') -and $properties['distributionBase'] -ne 'GRADLE_USER_HOME') { return }
+
+    $zipName = ($distributionUrl -split '/')[-1]
+    $distributionPath = if ($properties.ContainsKey('distributionPath')) { $properties['distributionPath'] } else { 'wrapper/dists' }
+    $distributionRoot = Join-Path (Join-Path $GradleUserHome $distributionPath) ([System.IO.Path]::GetFileNameWithoutExtension($zipName))
+
+    if ($null -eq $script:NPDevGradleDistributionsReady) { $script:NPDevGradleDistributionsReady = @{} }
+    if ($script:NPDevGradleDistributionsReady.ContainsKey($distributionRoot)) { return }
+
+    # The wrapper writes <zipName>.ok beside the zip once it has downloaded and unpacked it.
+    $isReady = {
+        $hashDirs = @(Get-ChildItem -LiteralPath $distributionRoot -Directory -ErrorAction SilentlyContinue)
+        foreach ($hashDir in $hashDirs) {
+            if (Test-Path -LiteralPath (Join-Path $hashDir.FullName ($zipName + ".ok")) -PathType Leaf) { return $true }
+        }
+        return $false
+    }
+    if (& $isReady) {
+        $script:NPDevGradleDistributionsReady[$distributionRoot] = $true
+        return
+    }
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            $output = (& $Executable --version 2>&1 | Out-String)
+            $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
+        }
+        catch {
+            $output = ($_ | Out-String)
+            $exitCode = 1
+        }
+        if ($exitCode -eq 0 -or (& $isReady)) {
+            $script:NPDevGradleDistributionsReady[$distributionRoot] = $true
+            return
+        }
+        if ($output -notmatch 'java\.io\.IOException') { return }
+        if ($attempt -lt $MaxAttempts) {
+            $wait = $BackoffSeconds * $attempt
+            Write-NPDevWarn ("Gradle wrapper download failed (attempt " + $attempt + " of " + $MaxAttempts + "): " + $zipName + "; retrying in " + $wait + "s")
+            if ($wait -gt 0) { Start-Sleep -Seconds $wait }
+        }
+    }
+    Write-NPDevWarn ("Gradle wrapper download still failing after " + $MaxAttempts + " attempts: " + $zipName + "; the real command will report the error")
+}
+
 function Invoke-NPDevCommandStreaming {
     param(
         [string]$WorkingDirectory,
@@ -651,6 +725,9 @@ function Invoke-NPDevCommandStreaming {
 
     Push-Location $WorkingDirectory
     try {
+        if ($overrideGradleUserHome) {
+            Initialize-NPDevGradleWrapperDistribution -Executable $Executable -GradleUserHome $env:GRADLE_USER_HOME
+        }
         & $Executable @Arguments
         $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
     }
