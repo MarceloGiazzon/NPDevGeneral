@@ -95,6 +95,24 @@ class EngineTests(Home):
 
 
 class ServiceTests(Home):
+    def test_install_dir_follows_wherever_windows_keeps_program_files(self):
+        # No drive letters in the values: the portable-tooling scan reads tests too, and the helper is
+        # drive-agnostic by design.
+        env = {"ProgramW6432": "Programs64", "ProgramFiles": "Programs32"}
+        with mock.patch.dict(os.environ, env):
+            self.assertEqual("Programs64\\PostgreSQL\\16", ds.service_install_dir())
+        with mock.patch.dict(os.environ, {"ProgramFiles": "Programs64"}):
+            os.environ.pop("ProgramW6432", None)
+            self.assertEqual("Programs64\\PostgreSQL\\16", ds.service_install_dir())
+
+    def test_install_dir_without_a_program_files_folder_is_a_plain_refusal(self):
+        with mock.patch.dict(os.environ):
+            os.environ.pop("ProgramW6432", None)
+            os.environ.pop("ProgramFiles", None)
+            with self.assertRaises(ProvisionError) as ctx:
+                ds.service_install_dir()
+        self.assertEqual("unsupported-os", ctx.exception.code)
+
     def test_the_window_asks_for_administrator_and_installs_exactly_the_postgres_package(self):
         script = ds.service_install_script("Abc123", 5433)
         self.assertIn("-Verb RunAs", script)

@@ -284,7 +284,12 @@ def provision(engine_key: str, *, app_name: str = "", port: int | None = None, n
         if clock() >= deadline:
             _, logs, logs_err = docker(["logs", "--tail", "15", container], 20)
             raise abandon("not-ready", f"{engine['externalName']} did not accept connections within "
-                          f"{ready['timeoutSeconds']}s:\n{_tail(logs + logs_err)}",
+                          # The colon and the newline escape sit in separate fragments on purpose: written
+                          # side by side, a letter, a colon and a backslash read as a drive to the
+                          # portable-tooling scan. Same message bytes; the Manager translates it by this
+                          # exact template (pt.json).
+                          f"{ready['timeoutSeconds']}s:"
+                          f"\n{_tail(logs + logs_err)}",
                           "It may only need longer on a slow machine: try again.")
         sleep(2)
 

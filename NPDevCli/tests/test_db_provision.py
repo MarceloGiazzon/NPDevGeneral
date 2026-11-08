@@ -225,6 +225,9 @@ class Provisioning(unittest.TestCase):
         self.assertEqual("not-ready", ctx.exception.code)
         self.assertIn("line-two", str(ctx.exception))
         self.assertIn(["rm", "-f", "npdev-mysql"], docker.calls)
+        # The Manager translates this message by its English template (pt.json: "{engine} did not accept
+        # connections within {n}s: {logs}"): the colon-then-newline shape is a contract, not styling.
+        self.assertRegex(str(ctx.exception), r"did not accept connections within \d+s:[\n]")
 
     def test_container_that_exits_while_starting_fails_at_once(self):
         docker = FakeDocker(ready_after=10_000, state="exited")

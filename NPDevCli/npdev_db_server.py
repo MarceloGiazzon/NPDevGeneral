@@ -29,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import ntpath
 import os
 import shutil
 import socket
@@ -54,7 +55,8 @@ PG_PRIVATE = {
 }
 PG_SERVICE = {
     "wingetId": "PostgreSQL.PostgreSQL.16",
-    "installDir": r"C:\Program Files\PostgreSQL\16",
+    # The official installer's default folder is <Program Files>\PostgreSQL\16; see service_install_dir().
+    "installFolders": ("PostgreSQL", "16"),
 }
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE = "NPDev Postgres"
@@ -274,6 +276,17 @@ def provision_private(engine_key: str, *, app_name: str = "", port: int | None =
 # ---- service ------------------------------------------------------------------------------------------
 
 
+def service_install_dir() -> str:
+    """Where the official installer puts Postgres 16: under the 64-bit Program Files folder, wherever this
+    Windows keeps it (not always drive C:). Read when needed and never baked in as a literal -- the
+    portable-tooling check (scripts/quality/run-portable-tooling-check.ps1) fails CI on a hardcoded drive."""
+    program_files = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles")
+    if not program_files:
+        raise ProvisionError("unsupported-os", "Installing a Windows service is only possible on Windows.",
+                             "Use your system's package manager, or Docker.")
+    return ntpath.join(program_files, *PG_SERVICE["installFolders"])
+
+
 def service_install_script(password: str, port: int) -> str:
     """The PowerShell that opens ONE elevated, visible window running winget, and waits for it to close."""
     override = (f"--mode unattended --unattendedmodeui minimal --superpassword {password} "
@@ -311,7 +324,7 @@ def provision_service(engine_key: str, *, app_name: str = "", port: int | None =
                                  f"The installer finished (exit {result.returncode}) but Postgres does not answer on port {chosen}.",
                                  "Restart the computer and try again; if it still fails, use NPDev's own copy instead.")
         server = {"engine": engine, "kind": "service", "host": "127.0.0.1", "port": chosen, "user": "postgres",
-                  "password": password, "installDir": PG_SERVICE["installDir"], "databases": []}
+                  "password": password, "installDir": service_install_dir(), "databases": []}
         _upsert(reg, server)
     if database not in server.get("databases", []):
         psql = Path(server["installDir"]) / "bin" / "psql.exe"
