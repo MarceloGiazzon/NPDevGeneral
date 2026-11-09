@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.dev/schemas/ai/ai-relay-session.schema.json",
+  "title": "NPDev browser-AI relay: session",
+  "description": "One conversation between the user's browser AI and NPDev, persisted as session.json in <relay root>/<code>/, where <relay root> is the same per-user NPDev folder npdev_ai_config.mine_path() lives in, plus 'ai-relay' (never a hard-coded path). Layout: session.json, round-<n>/prompt.txt, round-<n>/answer-raw.txt (+ received files), round-<n>/result.json (an ai-relay-ingest-result), transcript.jsonl.",
+  "type": "object",
+  "required": ["schemaVersion", "code", "createdAt", "intent", "target", "language", "state", "phase", "ask", "rounds"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": "npdev-ai-relay-session.v1" },
+    "code": { "type": "string", "pattern": "^[ABCDEFGHJKMNPQRSTVWXYZ23456789]{4}$" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "intent": { "enum": ["create", "change", "fix"] },
+    "target": { "enum": ["chatgpt", "gemini", "claude", "grok", "kimi", "deepseek", "google-ai-mode", "generic"] },
+    "language": { "type": "string", "description": "Human language name put in the prompt, from the Manager's language (D-8), e.g. 'Portuguese (Brazil)'." },
+    "interview": { "type": "boolean", "default": false },
+    "phase": { "enum": ["mvp", "f4"] },
+    "appDir": { "type": ["string", "null"], "description": "null for intent=create until apply creates the app." },
+    "newAppName": { "type": ["string", "null"], "description": "intent=create: the folder name the user chose." },
+    "baseModelSha256": { "type": ["string", "null"], "description": "sha256 of model.json when the session started (change/fix). Differs at apply time -> merge S5 or refuse with a plain message." },
+    "knowledgeSha256": { "type": "string", "description": "contentSha256 of the compact bundle used (build_core_context manifest)." },
+    "ask": { "type": "string" },
+    "state": { "enum": ["waiting-answer", "answer-received", "ready-to-apply", "applying", "building", "done", "abandoned"] },
+    "trail": { "type": "array", "items": { "type": "string" }, "description": "One line per failed round (error signature), fed to fresh-chat prompts and used to detect going in circles." },
+    "rounds": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["round", "promptKind", "promptSha256", "promptBytes"],
+        "additionalProperties": false,
+        "properties": {
+          "round": { "type": "integer", "minimum": 1 },
+          "promptKind": { "enum": ["round1", "same-chat", "fresh-chat"] },
+          "promptSha256": { "type": "string" },
+          "promptBytes": { "type": "integer" },
+          "delivery": { "enum": ["paste", "attachment"] },
+          "answerSource": { "enum": ["clipboard-watch", "paste", "drop", "file-picker", "downloads-watch", null] },
+          "outcome": { "type": ["string", "null"] },
+          "errorSignature": { "type": ["string", "null"] },
+          "appliedAt": { "type": ["string", "null"] },
+          "backupPath": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

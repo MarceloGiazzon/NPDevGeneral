@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.dev/schemas/ai/ai-relay-ingest-result.schema.json",
+  "title": "NPDev browser-AI relay: ingest result",
+  "description": "What `npdev ai relay ingest --json` prints for one answer brought back from a browser chat AI. The text stage (NPDevCli/npdev_relay_ingest.py) sets outcome to one of the text outcomes; when it is PARSED the CLI continues (desire-paths, validate, diff gate) and replaces it with READY or NEEDS_FIX, filling `validation` and `preview`.",
+  "type": "object",
+  "required": ["schemaVersion", "protocol", "phase", "session", "outcome", "files", "findings", "normalization", "prose"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": "npdev-ai-relay-ingest-result.v1" },
+    "protocol": { "const": "npdev-relay-answer.v1" },
+    "phase": { "enum": ["mvp", "f4"] },
+    "session": {
+      "type": "object",
+      "required": ["expected", "expectedRound", "found", "foundRound"],
+      "additionalProperties": false,
+      "properties": {
+        "expected": { "type": "string", "pattern": "^[A-Z0-9]{4}$" },
+        "expectedRound": { "type": "integer", "minimum": 1 },
+        "found": { "type": ["string", "null"] },
+        "foundRound": { "type": ["integer", "null"] }
+      }
+    },
+    "outcome": {
+      "enum": ["PROMPT_ECHO", "WRONG_SESSION", "STALE_ROUND", "LIMIT_REACHED", "FILE_LINK_ONLY", "QUESTIONS",
+               "NO_FILES", "TRUNCATED", "ELIDED", "BAD_JSON", "PARTIAL", "PARSED", "READY", "NEEDS_FIX"]
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "status", "reason", "kind", "labelSource", "fenced", "repairs", "bytes", "sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string" },
+          "status": { "enum": ["allowed", "quarantine", "denied"] },
+          "reason": { "type": ["string", "null"], "description": "null when allowed; e.g. code, html-has-script, config-file-denied, path-traversal, absolute-path, later-phase, not-in-allowlist, executable, protected-directory, manager-owned-file" },
+          "kind": { "enum": ["json", "text"] },
+          "labelSource": { "enum": ["info-string", "file-marker", "heading", null] },
+          "fenced": { "type": "boolean" },
+          "repairs": { "type": "array", "items": { "enum": ["removed-comments", "removed-trailing-commas", "smart-quotes"] } },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "content": { "type": "string", "description": "Absent for denied files: a denied file's bytes are never handed on." }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "severity"],
+        "additionalProperties": false,
+        "properties": {
+          "code": { "type": "string" },
+          "severity": { "enum": ["info", "warning", "error"] },
+          "detail": { "type": "object" }
+        }
+      }
+    },
+    "normalization": { "type": "array", "items": { "enum": ["bom", "crlf", "nbsp", "zero-width"] } },
+    "prose": { "type": "string", "description": "The AI's words outside the files. DISPLAY AS PLAIN TEXT ONLY (textContent), never as HTML, links not clickable." },
+    "validation": { "type": "object", "description": "READY/NEEDS_FIX only: the npdev-validation-report.v2 of the composed model." },
+    "desirePathFixes": { "type": "array", "description": "READY/NEEDS_FIX only: what `normalize desire-paths` rewrote." },
+    "preview": {
+      "type": "object",
+      "description": "READY only: the plain-language preview the Manager shows (plan 2, step 4). Built from the diff-gate report and the compiled model, never by the UI.",
+      "properties": {
+        "sentences": { "type": "array", "items": { "type": "string" } },
+        "warnings": { "type": "array", "items": { "type": "object", "required": ["code", "text", "needsConfirmation"],
+                       "properties": { "code": { "type": "string" }, "text": { "type": "string" }, "needsConfirmation": { "type": "boolean" } } } },
+        "dataLoss": { "type": "boolean" }
+      }
+    },
+    "next": {
+      "type": "object",
+      "description": "What the user does next. kind=copy-prompt carries the follow-up text; kind=user-action carries only a message id (the Manager's relay message catalogue).",
+      "required": ["kind", "messageId"],
+      "properties": {
+        "kind": { "enum": ["copy-prompt", "user-action", "apply"] },
+        "messageId": { "type": "string" },
+        "prompt": { "type": "string" },
+        "freshChatPrompt": { "type": "string" }
+      }
+    }
+  }
+}
