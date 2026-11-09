@@ -343,6 +343,9 @@ def add_arguments(ai_sub) -> None:
     cap.add_argument("usd")
     json_flag(cap)
 
+    import npdev_relay  # `npdev ai relay ...`: the browser-chat engine (prompt, ingest)
+    npdev_relay.add_arguments(ai_sub)
+
 
 def argparse_bool():
     import argparse
@@ -351,11 +354,15 @@ def argparse_bool():
 
 
 COMMANDS = ("providers", "models", "profiles", "bindings", "bind", "reset", "validate", "complete", "test",
-            "usage", "spend", "detect", "app", "context")
+            "usage", "spend", "detect", "app", "context", "relay")
 
 
 def run(args) -> int:
     command, action = args.ai_command, getattr(args, "ai_action", None)
+    if command == "relay":
+        import npdev_relay
+
+        return npdev_relay.run(args)
     try:
         if command == "context":
             return _run_context(args)

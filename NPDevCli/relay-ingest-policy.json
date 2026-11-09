@@ -1,0 +1,80 @@
+{
+  "_comment": "Every pattern `npdev ai relay ingest` uses. Every regex is Python syntax and is compiled with re.MULTILINE | re.IGNORECASE. npdev_relay_ingest.py reads ONLY this file for patterns: to teach ingest a new desire path, add a pattern here and a case in tests/fixtures/relay/build_cases.py, never a literal in code. Paths use forward slashes after normalisation.",
+  "schemaVersion": "npdev-relay-ingest-policy.v1",
+  "limits": {
+    "maxAnswerChars": 2000000,
+    "maxFileChars": 1000000,
+    "maxFiles": 200,
+    "proseMaxChars": 4000
+  },
+  "pathPrefixesToStrip": ["./", "definition/", "Input/", "input/"],
+  "paths": {
+    "denied": [
+      { "glob": "config.json", "reason": "config-file-denied" },
+      { "glob": "db.definition.json", "reason": "config-file-denied" },
+      { "glob": "manifest.json", "reason": "manager-owned-file" },
+      { "glob": "smoke-plan.json", "reason": "manager-owned-file" },
+      { "glob": "secrets/*", "reason": "protected-directory" },
+      { "glob": "data/*", "reason": "protected-directory" },
+      { "glob": "logs/*", "reason": "protected-directory" },
+      { "glob": "*.exe", "reason": "executable" },
+      { "glob": "*.bat", "reason": "executable" },
+      { "glob": "*.cmd", "reason": "executable" },
+      { "glob": "*.ps1", "reason": "executable" },
+      { "glob": "*.sh", "reason": "executable" },
+      { "glob": "*.jar", "reason": "executable" },
+      { "glob": "*.class", "reason": "executable" }
+    ],
+    "phases": {
+      "mvp": {
+        "allowed": ["model.json", "npdev-submission.json"],
+        "quarantine": []
+      },
+      "f4": {
+        "allowed": [
+          "model.json", "npdev-submission.json", "npdev-elements.json", "npdev-config-proposal.json",
+          "fragments/*.json", "contexts/*.json", "themes/*.json",
+          "web/*.html", "web/*.css", "web/*.svg"
+        ],
+        "quarantine": ["capabilities/*", "conversion-hooks/*", "web/*.js", "web/*.mjs"]
+      }
+    }
+  },
+  "htmlScriptPatterns": [
+    "<script\\b",
+    "\\son[a-z]+\\s*=",
+    "javascript:"
+  ],
+  "elisionPatterns": [
+    { "id": "ellipsis-line", "regex": "^[ \\t]*(\\.\\.\\.|\u2026)[ \\t]*,?[ \\t]*$" },
+    { "id": "elision-comment", "regex": "(^|[,\\[{(])[ \\t]*(//|/\\*)[^\\n]*?(\\.\\.\\.|\u2026|\\brest\\b|remaining|unchanged|same as|as before|\\bother\\b|existing|\\bkeep\\b|omitted|truncated|\\bresto\\b|restante|demais|igual|inalterad|mantid|outros|outras|existentes|anterior|omitid)" },
+    { "id": "ellipsis-string", "regex": "\"[ \\t]*(\\.\\.\\.|\u2026)[ \\t]*\"" },
+    { "id": "ellipsis-container", "regex": "[\\[{][ \\t\\n]*(\\.\\.\\.|\u2026)[ \\t\\n]*[\\]}]" },
+    { "id": "ellipsis-value", "regex": ":[ \\t]*(\\.\\.\\.|\u2026)[ \\t]*[,}\\n]" },
+    { "id": "ellipsis-after-element", "regex": ",[ \\t]*(\\.\\.\\.|\u2026)[ \\t]*[\\]}]" },
+    { "id": "unchanged-marker", "regex": "\\((unchanged|same as before|as before|inalterado|inalterada|igual|sem mudan\\w*|mesmo que antes)\\)" }
+  ],
+  "limitPatterns": [
+    "(reached|hit|exceeded)\\s+(your|the)\\s+(\\w+\\s+){0,2}(limit|cap|quota)",
+    "you'?ve\\s+(reached|hit)\\s+(your|the)",
+    "(limite|cota)\\s+(de\\s+)?(uso|mensagens|di\u00e1ri\\w*|gratuit\\w*)",
+    "(atingiu|alcan\u00e7ou|excedeu)\\s+o\\s+limite",
+    "try\\s+again\\s+(later|in|after|tomorrow)",
+    "tente\\s+novamente\\s+(mais\\s+tarde|em|daqui|amanh\u00e3)",
+    "upgrade\\s+to\\s+(plus|pro|premium|advanced|supergrok|max)",
+    "rate[\\s-]limit",
+    "too\\s+many\\s+(requests|messages)",
+    "(server|servidor)\\s+(is\\s+|est\u00e1\\s+)?(busy|ocupado|overloaded|sobrecarregado)"
+  ],
+  "fileLinkPatterns": [
+    { "id": "sandbox-link", "strength": "strong", "regex": "sandbox:/mnt/data/" },
+    { "id": "markdown-file-link", "strength": "strong", "regex": "\\]\\([^)\\s]*\\.(json|zip)\\)" },
+    { "id": "download-wording", "strength": "strong", "regex": "\\b(download|baixe|baixar|descargar|descarga)\\b[^\\n]{0,80}\\.(json|zip)\\b" },
+    { "id": "artifact-wording", "strength": "weak", "regex": "\\b(artifact|artefato|canvas)\\b" }
+  ],
+  "promptEcho": {
+    "_comment": "Every prompt NPDev composes starts with 'NPDEV-PROMPT <code>-<round>' and ends with 'NPDEV-PROMPT-END <code>-<round>'. Text holding BOTH is the prompt itself (the clipboard still holds it right after COPY), never an answer.",
+    "startRegex": "^[ \\t>*_`#~-]*NPDEV-PROMPT[ \\t]+([A-Z0-9]{4})-(\\d+)",
+    "endRegex": "^[ \\t>*_`#~-]*NPDEV-PROMPT-END[ \\t]+([A-Z0-9]{4})-(\\d+)"
+  }
+}
