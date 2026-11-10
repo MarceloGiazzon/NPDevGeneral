@@ -703,14 +703,17 @@
             <summary>See what happened</summary>
             <pre id="browserai-launch-prose" translate="no"></pre>
           </details>
+          <p class="ba-note" id="browserai-fix-note" hidden>The end of what went wrong goes into a message for the chat AI you choose, after NPDev has removed passwords and folder names from it.</p>
           <div class="ba-actions">
             <button type="button" class="btn" id="browserai-open" hidden>Open the app</button>
             <button type="button" class="btn ghost" id="browserai-see-run" hidden>See it in Running apps</button>
+            <button type="button" class="btn" id="browserai-fix" aria-describedby="browserai-fix-note" hidden>Ask the AI to fix this</button>
             <button type="button" class="btn" id="browserai-rebuild" hidden>Update the app now</button>
             <button type="button" class="btn" id="browserai-go-apps" hidden>Show my apps</button>
             <button type="button" class="btn ghost" id="browserai-undo" hidden>Undo</button>
             <button type="button" class="btn ghost" id="browserai-again">Ask for something else</button>
           </div>
+          <p class="ba-note" id="browserai-fix-status" role="status" aria-live="polite"></p>
         </div>
       </section>
     </section>

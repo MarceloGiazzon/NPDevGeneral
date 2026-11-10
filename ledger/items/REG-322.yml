@@ -4,17 +4,22 @@ title: >-
   and the fix conversation (T4.6) has no caller
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-10
+closed: 2026-11-10
 source: >-
   F3/F4 browser-AI relay work, 2026-11-10: T4.6 ("fix intent") was started from the CLI side and stopped where the Manager
   would have to read a log.
 surface: manager/browserai, cli/relay
 files:
   - NPDevManager/ui/browserai.js
+  - NPDevManager/ui/index.html
+  - NPDevManager/ui/i18n/pt.json
   - NPDevManager/src/main.rs
+  - NPDevManager/src/relay_fix.rs
   - NPDevCli/npdev_relay_scrub.py
   - NPDevCli/npdev_relay_engine.py
+  - scripts/quality/check-manager-ui-render.mjs
 detail: |
   Done (b5f85718): `npdev ai relay start|prompt --intent fix --errors-file` scrubs the failure text itself
   (npdev_relay_scrub.py: the app's folder -> <app>, the home folder -> <home>, other absolute paths -> <path>/<last name>,
@@ -28,8 +33,38 @@ detail: |
   there is a log to send, worded "Ask the AI to fix this"; (3) the new conversation goes through steps 2-5 with the app the
   launch was for (S.builtAppDir), and its Apply re-runs the same launch; (4) the sentence says the text goes to the chat AI
   after NPDev has removed passwords and folder names.
+
+  DONE 2026-11-10 (Manager 0.13.35). Rust: `relay_fix.rs` + `relay_start_fix` / `relay_fix_available`; the page names the
+  app and which run failed ("build" or "start") and can never name a file. Offered after a failed build, and after an app that
+  started but never answered; NOT offered when the app could not even be started (no fresh log of its own), when another
+  app holds its port, or when the run left no log. Two things the real window showed that no mock could:
+  (a) the stack frames. A Gradle build run with --stacktrace ends in tens of thousands of characters of `at org.gradle...`
+  with the cause above them, so the plain last-6000-characters tail sent the AI only frames and "BUILD FAILED"; `relay_fix.rs`
+  now drops Java stack frames before taking the tail, and the stored prompt carries "What went wrong ... Missing NPDev
+  RuntimeHost libs manifest in <path>/reg322-no-libs".
+  (b) REG-324: the Manager never saw a build's exit code or log file at all, so a failed build was "started" and the person
+  waited minutes for an app that could not run -- the button could not have been shown in the real app. Fixed in the CLI.
+  Found and filed, not fixed here: REG-325 (the workspace picker flips a new-app conversation into a change).
+  Not exercised live: Apply of the fix answer re-running the launch (covered by the render check with stubs, the same launch
+  code path a change already uses) and the "start" failure kind against a real boot log (render check + unit tests only).
 resolution: >-
   Done when a real failing build (an app whose model passes validation but fails to build) ends on a button that starts a fix
   conversation whose stored prompt carries the error text with no secret, no user name and no local folder, proven on the real
   window with the stored prompt read back from the conversation; and the render check covers the button, its absence when
   there is no log, and the Portuguese sentence.
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: NPDevManager/src/relay_fix.rs#stack_frames_are_left_out_so_the_cause_above_them_is_what_gets_sent
+  asserts: >-
+    a build log whose cause line ("What went wrong ... Missing NPDev RuntimeHost libs manifest") sits above 3000 stack-frame
+    lines gives a tail that keeps the cause, the "Caused by:" line and the final verdict, and holds no "at org.gradle..." frame
+    and no "... N more" line; the sibling tests pin that only the build or app log of the failed run is read (never another
+    ops script's, never a file the page names), that nothing is sent when there is no log or only frames, and that a sentence
+    starting with "at" is not mistaken for a frame. The screen half (button shown after a failed build and a never-answering
+    start, absent with no log / on a start error / on a port clash, Portuguese sentence, the click-through into a change
+    conversation and its Apply re-running the launch) is in scripts/quality/check-manager-ui-render.mjs (359/359).
+    Proven RED on the real window 2026-11-10: tour run 4 (before the frame filter) stored a prompt that held only stack
+    frames and "BUILD FAILED"; run 5 (reg322-tour/tour.mjs, 20/20, real build failure, stored prompt read back) carries the cause,
+    no frame, no secret, no user name and no local folder.
+  provenRed: true

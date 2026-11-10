@@ -98,6 +98,9 @@ window.__TAURI__ = {
           if (window.__fireOpsDone) setTimeout(() => (window.__listeners["ops-event"] || []).forEach((f) => f({ payload: { kind: "done", script: args.script, exitCode: window.__buildExit || 0, logFile: "C:/apps/logs/ops-build.log" } })), 30);
           return null;
         case "relay_generated_app_dir": return args.modelDir + "-app";
+        // "Ask the AI to fix this": Rust decides whether the failed run left a log (the page never reads one) and opens the conversation.
+        case "relay_fix_available": (window.__fixAsked = window.__fixAsked || []).push(args.failure); return window.__fixAvailable !== false;
+        case "relay_start_fix": window.__relayFixStarts = (window.__relayFixStarts || []).concat([args]); return F.relay.prompt;
         case "studio_history_list": return [];
         case "jobs_list": window.__jobsListCalls = (window.__jobsListCalls || 0) + 1; return window.__jobsEmpty ? { ok: true, jobs: [], summary: {} } : F.jobs;
         case "jobs_action": window.__jobsActions = (window.__jobsActions || []).concat([args.action + ":" + args.jobId]); return { ok: true };
@@ -1306,6 +1309,19 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
     /exit code 2/.test(await text("#browserai-launch-prose")) && /ops-build\.log/.test(await text("#browserai-launch-prose")) &&
     (await shown("#browserai-launch-details")) && (await shown("#browserai-rebuild")) && (await shown("#browserai-see-run")) && !(await shown("#browserai-open")) &&
     (await page.evaluate(() => window.__launchLog.every((l) => !l.startsWith("start:")))), String(await text("#browserai-launch")));
+  check("browser AI: a failed build offers 'Ask the AI to fix this', with the sentence that says what leaves the computer and what is removed first",
+    (await shown("#browserai-fix")) && (await text("#browserai-fix")) === "Ask the AI to fix this" && (await shown("#browserai-fix-note")) &&
+    /after NPDev has removed passwords and folder names/.test(await text("#browserai-fix-note")) &&
+    (await page.evaluate(() => window.__fixAsked.at(-1))) === "build", String(await text("#browserai-fix-note")));
+  // a failed run that left no log (Rust says so) is not offered the button: the failure sentence and the other buttons stay
+  await page.evaluate(() => { window.__fixAvailable = false; window.__launchLog = []; window.__buildExit = 2; window.__probeQueue = ["stopped"]; });
+  await page.click("#browserai-rebuild");
+  await page.waitForTimeout(300);
+  check("browser AI: a failed build with no log to send has no 'Ask the AI to fix this' and no sentence about it, and the rest of the failure is unchanged",
+    !(await shown("#browserai-fix")) && !(await shown("#browserai-fix-note")) && (await text("#browserai-launch")) === "The app could not be built." && (await shown("#browserai-rebuild")), "");
+  await page.evaluate(() => { window.__fixAvailable = true; window.__launchLog = []; window.__buildExit = 2; window.__probeQueue = ["stopped"]; });
+  await page.click("#browserai-rebuild");
+  await page.waitForTimeout(300);
   // the failure state is the richest on step 5 (a bad line, the reason under See what happened, three buttons): measured on its own
   await page.evaluate(() => { document.getElementById("browserai-launch-details").open = true; });
   const failAxe = await axeScan("browserai-failed");
@@ -1316,11 +1332,15 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   await page.waitForTimeout(300);
   check("browser AI: an app that will not start says so with the reason, and does not wait for it",
     (await text("#browserai-launch")) === "The app could not be started." && /port 8080/.test(await text("#browserai-launch-prose")) && (await shown("#browserai-rebuild")), String(await text("#browserai-launch")));
+  check("browser AI: an app that could not even be started has no 'Ask the AI to fix this' (no fresh log of its own to learn from)",
+    !(await shown("#browserai-fix")) && !(await shown("#browserai-fix-note")), "");
   await page.evaluate(() => { window.__startError = null; window.__probeQueue = ["stopped"]; });
   await page.click("#browserai-rebuild");
   await settled();
   check("browser AI: an app that starts but never answers says where to look, with the app's own words about why",
     (await text("#browserai-launch")) === "The app was started but has not answered yet. Look at it in Running apps." && /127\.0\.0\.1:8411/.test(await text("#browserai-launch-prose")) && (await shown("#browserai-see-run")), String(await text("#browserai-launch")));
+  check("browser AI: an app that started but never answered offers 'Ask the AI to fix this' from the app's own log",
+    (await shown("#browserai-fix")) && (await page.evaluate(() => window.__fixAsked.at(-1))) === "start", String(await page.evaluate(() => window.__fixAsked.at(-1))));
   // another app holds the port (two generated apps share 8080 by default): one plain sentence, not a three-minute wait
   const clash = { health: "port-conflict", healthDetail: "PID 4242 holds port 8411 but its command line does not mention this app -- this app is NOT the one serving." };
   // a clash that lasts is reported, and only after it has lasted
@@ -1333,6 +1353,7 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   check("browser AI: an app whose port another app holds says so in plain words, with the app's own words under the details, and offers another try",
     (await text("#browserai-launch")) === "Another app is already using this app's address, so it could not start. Stop the other app in Running apps, then try again." &&
     /PID 4242 holds port 8411/.test(await text("#browserai-launch-prose")) && (await shown("#browserai-rebuild")) && (await shown("#browserai-see-run")), String(await text("#browserai-launch")));
+  check("browser AI: a port held by another app is not a fault to ask an AI about -- no 'Ask the AI to fix this'", !(await shown("#browserai-fix")) && !(await shown("#browserai-fix-note")), "");
   await page.evaluate(() => { window.__npdevConflictMs = null; window.__launchLog = []; window.__probeQueue = ["running", "stopped"]; }); // up when asked, down once stopped, then never answers
   await page.click("#browserai-rebuild");
   await settled();
@@ -1378,6 +1399,56 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   await page.waitForTimeout(200);
   check("browser AI: 'Ask for something else' on a preview closes that conversation",
     (await page.evaluate(() => window.__relayAborts.length)) === 1 && (await shown("#browserai-ask")), "");
+
+  // REG-322: a failed build ends on a button that opens a fix conversation about the SAME app; its Apply runs the same launch again
+  await page.evaluate(() => {
+    window.__relayStarts = []; window.__relayApplies = []; window.__relayAborts = []; window.__relayFixStarts = [];
+    window.__fixAvailable = true; window.__launchLog = []; window.__buildExit = 2; window.__probeQueue = ["stopped"];
+    window.__applyAnswer = Object.assign({}, window.__FIXTURES__.relay.apply, { created: true, backupPath: null, intent: "create", appDir: "/home/you/NPDev/Apps/Crane" });
+    const picker = document.getElementById("browserai-app");
+    picker.value = "";
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
+    document.getElementById("browserai-intent-create").click();
+  });
+  await page.fill("#browserai-ask", "a crane rental list");
+  await page.fill("#browserai-newname", "Crane");
+  await page.click("#browserai-continue");
+  await page.waitForTimeout(200);
+  await page.click("#browserai-copy");
+  await page.fill("#browserai-paste", "STUB-READY");
+  await page.click("#browserai-check");
+  await page.waitForTimeout(200);
+  await page.click("#browserai-apply");
+  await settled();
+  check("browser AI: a new app whose build fails ends on 'Ask the AI to fix this'", (await text("#browserai-launch")) === "The app could not be built." && (await shown("#browserai-fix")), String(await text("#browserai-launch")));
+  const startsBeforeFix = await page.evaluate(() => window.__relayStarts.length); // the create conversation that made the app
+  await page.click("#browserai-fix");
+  await page.waitForTimeout(300);
+  const fixStarts = await page.evaluate(() => window.__relayFixStarts);
+  check("browser AI: the fix button names the generated app and which run failed -- never a log, a path to one, or any text from this page",
+    fixStarts.length === 1 && JSON.stringify(Object.keys(fixStarts[0]).sort()) === JSON.stringify(["appDir", "failure", "language", "target"]) &&
+    fixStarts[0].appDir === "/home/you/NPDev/Apps/Crane-app" && fixStarts[0].failure === "build" && fixStarts[0].language === "en" && (await page.evaluate(() => window.__relayStarts.length)) === startsBeforeFix, JSON.stringify(fixStarts));
+  check("browser AI: the fix conversation opens on step 2 (the text to copy) as a change to that app, and the failure screen is gone",
+    (await shown("#browserai-step-2")) && !(await shown("#browserai-step-5")) && !(await shown("#browserai-fix")) &&
+    (await page.$eval("#browserai-intent-change", (e) => e.checked)) && (await page.$eval("#browserai-app", (e) => e.value)) === "/home/you/NPDev/Apps/Crane-app" &&
+    (await page.$eval("#browserai-prompt-text", (e) => e.textContent)).startsWith("NPDEV-PROMPT ZWW4-1"), String(await page.evaluate(() => window.__npdevCurrentScreen)));
+  await page.evaluate(() => {
+    window.__launchLog = []; window.__buildExit = 0; window.__probeQueue = ["stopped", "running"];
+    window.__applyAnswer = Object.assign({}, window.__FIXTURES__.relay.apply, { created: false, intent: "fix", appDir: "/home/you/NPDev/Apps/Crane-app" });
+  });
+  await page.click("#browserai-copy");
+  await page.fill("#browserai-paste", "STUB-READY");
+  await page.click("#browserai-check");
+  await page.waitForTimeout(200);
+  await page.click("#browserai-apply");
+  await settled();
+  check("browser AI: applying the fix builds and starts the same app again, and it answers",
+    JSON.stringify(await page.evaluate(() => window.__launchLog)) === JSON.stringify([
+      "generate:/home/you/NPDev/Apps/Crane-app", "run:build-finalapp:/home/you/NPDev/Apps/Crane-app", "start:/home/you/NPDev/Apps/Crane-app"]) &&
+    (await text("#browserai-launch")) === "Your app is running." && !(await shown("#browserai-fix")), JSON.stringify(await page.evaluate(() => window.__launchLog)));
+  await page.evaluate(() => { window.__relayAborts = []; window.__applyAnswer = null; });
+  await page.click("#browserai-again");
+  await page.waitForTimeout(250);
 
   // the two screens are one switch apart and the request travels with it
   await page.fill("#browserai-ask", "carry me across");
@@ -1466,6 +1537,9 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   check("browser AI: in Portuguese a build that fails is told in Portuguese, with its buttons",
     (await text("#browserai-launch")) === "Não foi possível montar o app." && (await text("#browserai-launch-details summary")) === "Ver o que aconteceu" &&
     (await text("#browserai-rebuild")) === "Atualizar o app agora" && (await text("#browserai-see-run")) === "Ver em Apps em execução", String(await text("#browserai-launch")));
+  check("browser AI: in Portuguese the fix button and the sentence about what leaves the computer read in Portuguese",
+    (await shown("#browserai-fix")) && (await text("#browserai-fix")) === "Pedir à IA para corrigir isto" &&
+    (await text("#browserai-fix-note")) === "O final do que deu errado vai para uma mensagem para a IA de chat que você escolher, depois de o NPDev remover senhas e nomes de pastas.", String(await text("#browserai-fix-note")));
   await page.evaluate(() => { window.__buildExit = 0; });
   await page.click("#browserai-rebuild");
   await page.waitForTimeout(300);

@@ -1178,6 +1178,8 @@
   "Ask for something else": "Pedir outra coisa",
   "All done": "Tudo pronto",
   "Update the app now": "Atualizar o app agora",
+  "Ask the AI to fix this": "Pedir à IA para corrigir isto",
+  "The end of what went wrong goes into a message for the chat AI you choose, after NPDev has removed passwords and folder names from it.": "O final do que deu errado vai para uma mensagem para a IA de chat que você escolher, depois de o NPDev remover senhas e nomes de pastas.",
   "Show my apps": "Mostrar meus apps",
   "The AI made a mistake. Copy this message and paste it in the same conversation.": "A IA cometeu um erro. Copie esta mensagem e cole na mesma conversa.",
   "NPDev cannot check the answer yet because Java is missing on this computer. Install it in Settings, then paste the answer again.": "O NPDev ainda não consegue conferir a resposta porque falta o Java neste computador. Instale em Configurações e cole a resposta de novo.",

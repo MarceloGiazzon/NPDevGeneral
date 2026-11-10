@@ -45,6 +45,7 @@
     launching: false, // building / starting it right now
     launchToken: 0, // a later launch (or starting over) makes an earlier one stop drawing
     openUrl: null,
+    failure: null, // which run the last launch failed in -- "build" or "start" -- so "Ask the AI to fix this" knows which log
     targets: null, // the chat AIs the CLI lists (relay_targets), read once
     target: null, // the one picked for this conversation
     blocked: false, // the answer would delete stored data, which this window cannot do (the CLI says so: needsSchemaAcknowledgment)
@@ -158,7 +159,7 @@
 
   function setBusy(on) {
     S.busy = on;
-    for (const id of ["browserai-continue", "browserai-check", "browserai-pick-file", "browserai-undo", "browserai-rebuild", "browserai-else", "browserai-again"]) {
+    for (const id of ["browserai-continue", "browserai-check", "browserai-pick-file", "browserai-undo", "browserai-rebuild", "browserai-fix", "browserai-else", "browserai-again"]) {
       const el = $(id);
       // Undo and Update would fight the build that is running: they wait for it. Asking for something else does not.
       if (el) el.disabled = on || (S.launching && (id === "browserai-undo" || id === "browserai-rebuild"));
@@ -276,21 +277,26 @@
         return note("browserai-step1-note", WENT_WRONG, true);
       }
       if (!r || r.ok === false || !r.code || typeof r.prompt !== "string") return note("browserai-step1-note", WENT_WRONG, true);
-      S.code = r.code;
-      drawRounds([]);
-      forgetTarget();
-      S.appDir = appDir;
-      S.promptText = r.prompt;
-      S.result = null;
-      S.applied = null;
-      $("browserai-prompt-text").textContent = r.prompt;
-      note("browserai-step1-note", "");
-      note("browserai-copy-note", "");
-      setPhase("copy");
-      focusStep();
+      openCopyStep(r, appDir);
     } finally {
       setBusy(false);
     }
+  }
+
+  // The conversation the CLI just opened is on screen: step 2, the text to copy.
+  function openCopyStep(r, appDir) {
+    S.code = r.code;
+    drawRounds([]);
+    forgetTarget();
+    S.appDir = appDir;
+    S.promptText = r.prompt;
+    S.result = null;
+    S.applied = null;
+    $("browserai-prompt-text").textContent = r.prompt;
+    note("browserai-step1-note", "");
+    note("browserai-copy-note", "");
+    setPhase("copy");
+    focusStep();
   }
 
   // --------------------------------------------------------------------------------- 2. copy
@@ -878,10 +884,57 @@
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  function showLaunchButtons({ open, rebuild, seeRun }) {
+  function showLaunchButtons({ open, rebuild, seeRun, fix }) {
     $("browserai-open").hidden = !open;
     $("browserai-rebuild").hidden = !rebuild;
     $("browserai-see-run").hidden = !seeRun;
+    $("browserai-fix").hidden = !fix;
+    $("browserai-fix-note").hidden = !fix;
+  }
+
+  // "Ask the AI to fix this" is offered only when the failed run left a log to send. Whether it did is Rust's answer
+  // (this page never reads a log), asked after the failure is drawn; a launch that has moved on since is not drawn on.
+  async function offerFix(appDir, failure, current) {
+    let has = false;
+    try {
+      has = (await invoke("relay_fix_available", { appDir, failure })) === true;
+    } catch (e) {
+      has = false;
+    }
+    if (!has || !current() || S.failure !== failure) return;
+    $("browserai-fix").hidden = false;
+    $("browserai-fix-note").hidden = false;
+  }
+
+  // The failed build or start becomes a fix conversation: Rust reads the end of that run's log, the CLI removes
+  // passwords and folder names from it, and the prompt goes through steps 2-5 for THIS app. Its Apply then runs the
+  // same launch again (a change to an app builds the app it changed).
+  async function onFix() {
+    const appDir = S.builtAppDir;
+    const failure = S.failure;
+    if (S.busy || !appDir || !failure) return;
+    setBusy(true);
+    note("browserai-fix-status", "Getting your text ready…");
+    try {
+      let r;
+      try {
+        r = await invoke("relay_start_fix", { appDir, failure, target: null, language: (window.NPDevI18n && window.NPDevI18n.lang) || "en" });
+      } catch (e) {
+        return note("browserai-fix-status", WENT_WRONG, true);
+      }
+      if (!r || r.ok === false || !r.code || typeof r.prompt !== "string") return note("browserai-fix-status", WENT_WRONG, true);
+      note("browserai-fix-status", "");
+      forgetConversation(); // the failure screen goes with the old conversation; the new one is about the same app
+      setIntent("change");
+      const picker = $("browserai-app");
+      const label = String(appDir).split(/[\\/]+/).filter(Boolean).pop() || appDir;
+      if (![...picker.options].some((o) => o.value === appDir)) picker.append(new Option(label, appDir));
+      picker.value = appDir;
+      onAppChanged(false); // only to enable the "change" choice
+      openCopyStep(r, appDir);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function probe(appDir) {
@@ -928,15 +981,21 @@
     const current = () => token === S.launchToken;
     const pollMs = window.__npdevPollMs || 3000; // the render check shortens it
     const say = (text) => current() && note("browserai-launch", text, false);
-    const stop = (text, details) => {
+    // `failure` ("build" or "start") names the run whose log can be sent to a chat AI to ask for a fix; left out when
+    // there is nothing in a log to learn from (another app holds the port, the build could not even be started).
+    const stop = (text, details, failure) => {
       if (!current()) return;
+      S.failure = failure || null;
       note("browserai-launch", text, true);
       $("browserai-launch-prose").textContent = details || "";
       $("browserai-launch-details").hidden = !details;
       showLaunchButtons({ rebuild: true, seeRun: true });
+      if (S.failure) offerFix(appDir, S.failure, current);
     };
     S.launching = true;
     S.openUrl = null;
+    S.failure = null;
+    note("browserai-fix-status", "");
     showLaunchButtons({});
     $("browserai-launch-details").hidden = true;
     setBusy(S.busy);
@@ -969,7 +1028,7 @@
         return stop("The app could not be built.", String(e));
       }
       if (!current()) return;
-      if (built.exitCode !== 0) return stop("The app could not be built.", `exit code ${built.exitCode}${built.logFile ? `\n${built.logFile}` : ""}`);
+      if (built.exitCode !== 0) return stop("The app could not be built.", `exit code ${built.exitCode}${built.logFile ? `\n${built.logFile}` : ""}`, "build");
       say("Starting the app…");
       try {
         await invoke("start_app", { appDir });
@@ -998,7 +1057,7 @@
       if (seen.health === "port-conflict") {
         return stop("Another app is already using this app's address, so it could not start. Stop the other app in Running apps, then try again.", seen.healthDetail || "");
       }
-      if (seen.health !== "running") return stop("The app was started but has not answered yet. Look at it in Running apps.", seen.healthDetail || "");
+      if (seen.health !== "running") return stop("The app was started but has not answered yet. Look at it in Running apps.", seen.healthDetail || "", "start");
       S.openUrl = seen.baseUrl || null;
       say("Your app is running.");
       showLaunchButtons({ open: !!S.openUrl });
@@ -1097,7 +1156,9 @@
     S.launching = false;
     S.builtAppDir = null;
     S.openUrl = null;
+    S.failure = null;
     note("browserai-launch", "");
+    note("browserai-fix-status", "");
     $("browserai-launch-details").hidden = true;
     showLaunchButtons({});
     $("browserai-paste").value = "";
@@ -1240,6 +1301,7 @@
     $("browserai-else").addEventListener("click", () => startOver(true));
     $("browserai-again").addEventListener("click", () => startOver(false));
     $("browserai-rebuild").addEventListener("click", launch);
+    $("browserai-fix").addEventListener("click", onFix);
     $("browserai-open").addEventListener("click", onOpenApp);
     $("browserai-see-run").addEventListener("click", onSeeRun);
     $("browserai-go-apps").addEventListener("click", onGoApps);

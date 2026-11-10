@@ -142,6 +142,25 @@ release. Ships in the next tag.
   translation templates both matched a sentence, the shorter won and a Portuguese rename read half in
   English -- the template with more fixed words is now tried first (`ui/i18n.js`). After a check, focus
   now lands on the preview's button (it was requested while the buttons were still disabled).
+- **Use a browser AI: a failed build or start can ask the AI to fix it** (Manager 0.13.35, REG-322) --
+  when the app just made or changed could not be built, or was started but never answered, the screen
+  kept only an exit code and a log path. It now offers Ask the AI to fix this: the Manager (`relay_fix.rs`)
+  finds that run's own newest log inside the app's `logs` folder -- the page names the app and which run
+  failed and can never name a file -- reads the last ~6000 characters with the Java stack frames left
+  out (a Gradle `--stacktrace` build ends in tens of thousands of characters of `at org.gradle...` with
+  the cause above them; the plain tail held only frames), and `relay start --intent fix`
+  scrubs it (secrets redacted, the app's folder and the home folder anonymised) before it goes into the
+  prompt. The conversation is a change to the same app and its Apply builds and starts it again. Not
+  offered when the run left no log, when the app could not even be started (no fresh log of its own to
+  learn from), or when another app holds its port (not a fault in the app).
+- **Fixed: the Manager never saw whether a script failed** (REG-324) -- `npdev monitor ops --json` ended
+  its stream with an indented, multi-line result; the Manager reads that stream one line at a time, so
+  every script's `done` event said exit 0 with no log file. A failed build was "started" and the person
+  waited minutes for an app that could not run ("The app was started but has not answered yet"); Studio's
+  rebuild said "rebuilt and restarted"; the AI loop only coped by scanning for "BUILD FAILED" (RUN-35).
+  The verdict is now one JSON line (`exitCode`, `ok`, `logFile`; without `output`, which was already
+  streamed and which the Monitor's run box would print twice). A real failing build now ends in about
+  45 seconds on "The app could not be built." with its exit code and log path.
 - **`npdev ai relay stats`: what the conversations on this computer say about each chat AI** -- read-only,
   from the stored conversations, nothing sent anywhere. `--csv` prints one row per round in the calibration
   log's column order (`date,target,plan,prompt_id,intent,round,prompt_bytes,paste_ok,answer_chars,copy_method,outcome,findings,final,rounds_to_pass,minutes,notes`;
