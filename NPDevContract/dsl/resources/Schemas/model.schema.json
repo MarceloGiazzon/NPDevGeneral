@@ -814,7 +814,18 @@
               "action.cancel",
               "action.save",
               "action.delete",
-              "action.new"
+              "action.new",
+              "shell.signedInAs",
+              "shell.changePassword",
+              "shell.inviteUser",
+              "shell.signOut",
+              "shell.notSignedIn",
+              "shell.toggleMenu",
+              "shell.quickAccess",
+              "shell.toggleRightbar",
+              "shell.security",
+              "shell.navData",
+              "shell.navPanels"
             ]
           }
         },

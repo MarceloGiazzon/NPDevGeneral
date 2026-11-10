@@ -95,6 +95,39 @@ public class BusinessUiEmitterLocaleManifestTest {
         assertTrue(index.indexOf("./views/locale.js") < index.indexOf("./app.js"));
     }
 
+    private static final String PORTUGUESE_APP = """
+            {
+              "namespace": "locale.pt", "dslVersion": "1.0.0", "version": "1.0",
+              "settings": { "locale": "pt-BR" },
+              "concepts": [
+                { "name": "Note", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
+              ]
+            }
+            """;
+
+    @Test
+    void fallbackNavigationGroupsAreCatalogueStringsNotPortugueseLiterals() throws Exception {
+        Path out = emit(PLAIN);
+        String appJs = Files.readString(out.resolve(STATIC + "app.js"));
+        assertTrue(appJs.contains("platformString(\"shell.navData\", \"Data\")"), "data group uses the catalogue");
+        assertTrue(appJs.contains("platformString(\"shell.navPanels\", \"Panels\")"), "panels group uses the catalogue");
+        assertFalse(appJs.contains("label: \"Dados\""), "no Portuguese literal for the data group");
+        assertFalse(appJs.contains("label: \"Paineis\""), "no Portuguese literal for the panels group");
+        com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.JsonNode manifest =
+                json.readTree(out.resolve(STATIC + "generated-ui-manifest.json").toFile());
+        assertEquals("Data", manifest.path("stringsByLocale").path("en").path("shell.navData").asText());
+        assertEquals("Panels", manifest.path("stringsByLocale").path("en").path("shell.navPanels").asText());
+        assertEquals("Dados", manifest.path("stringsByLocale").path("pt").path("shell.navData").asText());
+        assertEquals("Paineis", manifest.path("stringsByLocale").path("pt").path("shell.navPanels").asText());
+
+        com.fasterxml.jackson.databind.JsonNode pt =
+                json.readTree(emit(PORTUGUESE_APP).resolve(STATIC + "generated-ui-manifest.json").toFile());
+        assertEquals("Dados", pt.path("strings").path("shell.navData").asText(),
+                "a pt app's own catalogue (what the Auto language uses) keeps the old words");
+        assertEquals("Paineis", pt.path("strings").path("shell.navPanels").asText());
+    }
+
     @Test
     void emittedScriptsParse() throws Exception {
         boolean node;

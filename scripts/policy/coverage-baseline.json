@@ -4,8 +4,8 @@
   "metric": "LINE",
   "modules": {
     "NPDevContract/dsl": {
-      "coveragePercent": 87.0316,
-      "measuredOn": "2026-11-03T06:59:29Z",
+      "coveragePercent": 87.0335,
+      "measuredOn": "2026-11-09T01:10:14Z",
       "reportFormat": "jacoco-xml",
       "reportGlobs": [
         "**/gradle/npdev-*/dsl/reports/jacoco/test/jacocoTestReport.xml",

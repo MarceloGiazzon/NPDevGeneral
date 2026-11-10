@@ -150,6 +150,11 @@ release. Ships in the next tag.
   surface; the generated app's panel has no execute path at all.
 
 ### Fixed
+- The generated business UI's two fallback navigation groups were hard-coded Portuguese
+  ("Dados"/"Paineis") in every app, so an English app's sidebar showed Portuguese headings. They are
+  now the platform strings `shell.navData`/`shell.navPanels`: "Data"/"Panels" by default,
+  "Dados"/"Paineis" for a `settings.locale` `pt` app. The `shell.*` string ids, which the generator
+  already applied but `model.schema.json` refused, can now be overridden in `settings.strings`.
 - The **Beta 0 release gate** had never completed a run since April, for three stacked reasons in its
   own plumbing, none of them a defect in NPDev: `npm --prefix` ENOENTing on Windows so the schema
   validator never started (gate 1 of 27); the gate installing Java 21 while the builds request a

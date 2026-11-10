@@ -48,7 +48,7 @@ endpoint composes what actually exists rather than inventing six new filters.
 
 ## The platform's catalogs — and which ones this endpoint exposes
 
-The generator emits twelve named catalogs into every app's `compiled-metadata.json`. The bundle
+The generator emits thirteen named catalogs into every app's `compiled-metadata.json`. The bundle
 endpoint exposes eight of them as scoped arrays, plus the single matching `concept` object:
 
 | Catalog | In the bundle? | Answers |
@@ -65,6 +65,7 @@ endpoint exposes eight of them as scoped arrays, plus the single matching `conce
 | `panels` | **no** | Declared screens and their data sources — fetch `GET .../ui/panels/{panelName}` directly. |
 | `procedures` | **no** | Callable server-side procedures — not yet exposed through this endpoint. |
 | `domainTypes` | **no** | Reusable value types with format hints — read `compiled-metadata.json` directly if you need these. |
+| `queries` | **no** | The model's named queries — read `compiled-metadata.json` directly, or run one through the query endpoints. |
 
 ## Scoping
 
@@ -164,8 +165,9 @@ see `BREAKING.md`.
 ## Shell versioning
 
 The browser shell (`business-ui-index.mustache` + `business-ui-app.mustache` + `business-ui-style.mustache`
-+ `shell.js.mustache` + `shell.css.mustache`, ~11,200 lines total) carries no model data and is emitted
-byte-identical into every generated app — see Path A finding 1.3(a). `NpdevUiShellVersion`
++ `shell.js.mustache` + `shell.css.mustache`, about 9,000 lines, plus the verbatim, non-Mustache view
+modules carved out of `business-ui-app.mustache` into `npdev-templates/static-assets/`, about 7,000
+more, as of 2026-11-08) carries no model data and is emitted byte-identical into every generated app — see Path A finding 1.3(a). `NpdevUiShellVersion`
 (`NPDevGenerator/generator/.../emitters/`) is the single source of truth for its version
 (`npdev-ui-shell.v1`) and its declared compatibility range against this contract's `schemaVersion`
 (currently `npdev-ui-contract.v1`..`npdev-ui-contract.v1`). `BusinessUiEmitter` threads that identity
@@ -182,9 +184,10 @@ included by any other template, so it does not carry a version stamp.
 property of the shell and business UI; `business-ui-style.mustache` consumes them (never re-declares its own base colors) via
 `var(--np-token, <fallback>)`, so an app-owned `/theme.css` (injected by `shell.js` when present)
 restyles both the shell chrome and every generated business-UI screen by overriding one token in one
-place. **Exception:** the Aggregate Workbench page (`workbench-page.html.mustache`, emitted to
-`static/npdev-workbench/<Panel>.html`) declares its own `:root` block with different values and links
-neither `shell.css` nor `/theme.css`, so a token override does not reach it. This is a public surface: an app author's own theme override should target these tokens, not
+place. The Aggregate Workbench page (`workbench-page.html.mustache`, emitted to
+`static/npdev-workbench/<Panel>.html`) links `/shell.css` first and `/theme.css` last, and its
+page-local names are aliases of the shared tokens, so a token override reaches it too (see
+"Aggregate Workbench pages" below for the one difference: an explicit app-wide `ui.theme.mode`). This is a public surface: an app author's own theme override should target these tokens, not
 guess at the underlying literal colors/spacing they resolve to today.
 
 **Density.** `--np-density-scale` plus a matching set of row/control tokens
@@ -577,7 +580,8 @@ The topbar breadcrumb is a projection of the same nav tree `renderSidebar()` alr
 (`deriveNativeGroups()` in `business-ui-app.mustache`), not a second, hand-maintained hierarchy.
 `setContext({ title, path, rows })` accepts an ordered `path` array; `shell.js.mustache` joins it with
 `" / "`. On activating a concept or declared Panel, `business-ui-app.mustache` looks up which group
-(`appShell`-curated, or the native `"Dados"`/`"Paineis"` fallback) contains that target's `hash` and
+(`appShell`-curated, or the native fallback groups, labelled by the platform strings `shell.navData` /
+`shell.navPanels`: "Data"/"Panels", "Dados"/"Paineis" in a `pt` app, overridable in `settings.strings`) contains that target's `hash` and
 passes `[groupLabel, title]` — a nested route (e.g. `appShell.navigation` placing `WidgetOrder` under
 group `"Operations"`) renders `/ Operations / Widget order`. A target with no group (the superuser-only
 Store/Box View/Promotion sections, which have no home in that tree) falls back to a flat `/ Title`,
