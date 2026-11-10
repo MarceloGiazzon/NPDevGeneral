@@ -179,11 +179,15 @@
             return part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           })
           .join("");
-        patterns.push({ re: new RegExp("^" + src + "$"), tr, names });
+        patterns.push({ re: new RegExp("^" + src + "$"), tr, names, literal: norm(en).replace(/\{\w+\}/g, "").length });
       } else {
         exact.set(norm(en), tr);
       }
     }
+    // The most specific template wins when several match: "{from} is renamed to {to}." also matches the whole of
+    // "In {concept}, the field {from} is renamed to {to}." (its {from} swallows "In Customer, the field First name"), so
+    // the one with more fixed words is tried first. The sort is stable: equally specific templates keep file order.
+    patterns.sort((a, b) => b.literal - a.literal);
     return { exact, patterns };
   }
 

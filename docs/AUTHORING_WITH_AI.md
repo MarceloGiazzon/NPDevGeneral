@@ -96,6 +96,12 @@ self-contained prompt for a new chat or another AI. `QUESTIONS`, `STALE_ROUND`, 
 Nothing is written unless the model passes the validator and, for a change, the authoring gate: a
 rename, a removal or a security change the AI did not declare is refused, and each one it did
 declare needs the owner's explicit yes (`--confirm-warning <code>`, the codes are in the preview).
+A removed kind of record or field also drops a table or a column, and the app's own schema guard then
+refuses to start until it gets a separate, itemized acknowledgment of that data (see
+`docs/SCHEMA_EVOLUTION.md`, "Acknowledging destructive changes"). The preview says so
+(`needsSchemaAcknowledgment`), and the Manager, which cannot give that acknowledgment, shows such an
+answer but does not offer to apply it; `relay apply` itself still writes the model, for someone who will
+acknowledge the change when they deploy it.
 Conversations are kept in the per-user NPDev folder (`ai-relay/<code>/`) and survive restarts:
 `relay list`, `relay status --code`, `relay abort --code`. An answer the AI saved as a file works
 too: `relay ingest --code K7Q2 --file model.json` (or a `.zip`, which is read in memory and never

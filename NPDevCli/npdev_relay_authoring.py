@@ -592,10 +592,14 @@ def _line(code: str, **params) -> dict:
     return {"code": code, "params": params, "text": PREVIEW_TEMPLATES[code].format(**params)}
 
 
-def _warning(code: str, template: str, needs: bool, **params) -> dict:
+def _warning(code: str, template: str, needs: bool, *, schema_ack: bool = False, **params) -> dict:
+    """`schema_ack`: applying this makes the app's own schema guard refuse to boot until someone gives it a separate,
+    itemized acknowledgment of the data that would be dropped (docs/SCHEMA_EVOLUTION.md, "Acknowledging destructive
+    changes"). It is a fact about the change, not a decision: a caller that cannot give that acknowledgment (the
+    Manager's window) declines to offer Apply; `npdev ai relay apply` still writes the model."""
     family = template
     return {"code": code, "text": PREVIEW_TEMPLATES[family].format(**params), "needsConfirmation": needs,
-            "params": {"family": family, **params}}
+            "needsSchemaAcknowledgment": schema_ack, "params": {"family": family, **params}}
 
 
 def _attr_words(keys: list) -> str:
@@ -830,10 +834,10 @@ def build_preview(gate_report, base_model, candidate_model, ai_manifest, intent)
                            what_text=_join_words([_humanize_key(k) for k in diff["changedSettings"]])))
 
     for entry in diff["removedConcepts"]:
-        warnings.append(_warning(f"REMOVAL:concept:{entry['name']}", "REMOVAL:concept", True,
+        warnings.append(_warning(f"REMOVAL:concept:{entry['name']}", "REMOVAL:concept", True, schema_ack=True,
                                  kind="concept", name=entry["name"], label=entry["label"]))
     for entry in diff["removedFields"]:
-        warnings.append(_warning(f"REMOVAL:field:{entry['concept']}.{entry['name']}", "REMOVAL:field", True,
+        warnings.append(_warning(f"REMOVAL:field:{entry['concept']}.{entry['name']}", "REMOVAL:field", True, schema_ack=True,
                                  kind="field", concept=entry["concept"], name=entry["name"], label=entry["label"]))
     for key, removed in diff["removedItems"].items():
         for name, label in removed:
@@ -858,7 +862,8 @@ def build_preview(gate_report, base_model, candidate_model, ai_manifest, intent)
         lines.append(_line("NO_CHANGES"))
     _add_ai_notes(lines, warnings, ai_manifest)
     data_loss = any(w["code"].startswith("REMOVAL:") for w in warnings)
-    return {"sentences": [l["text"] for l in lines], "warnings": warnings, "dataLoss": data_loss, "lines": lines}
+    return {"sentences": [l["text"] for l in lines], "warnings": warnings, "dataLoss": data_loss, "lines": lines,
+            "needsSchemaAcknowledgment": any(w.get("needsSchemaAcknowledgment") for w in warnings)}
 
 
 # ----------------------------------------------------------------------------------------------

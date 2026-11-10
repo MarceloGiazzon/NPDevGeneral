@@ -128,6 +128,20 @@ release. Ships in the next tag.
   `relay-prompts.json`), records the round as delivered by attachment and goes on to step 3. The
   window shows no path unless the folder could not be opened. Picking up a conversation marks the AI it
   was taken to. New commands `relay_targets`, `relay_choose_target`, `relay_prompt_attachment`.
+- **Use a browser AI: an answer that deletes data is shown, not applied** (Manager 0.13.34, REG-320) -- a
+  change that removed a kind of record or a field could be ticked and applied, and the app then refused to
+  boot: dropping a table or a column needs the app's own separate, itemized acknowledgment, which this
+  window cannot give, and by then the running app had been stopped. The CLI's preview now says so as data
+  (`needsSchemaAcknowledgment` on the warning and on the preview, in `schemas/ai/ai-relay-ingest-result.schema.json`);
+  the screen draws the removal as a plain line, offers no Apply and no box, and says in one sentence that
+  NPDev cannot do this from here yet and that Ask for something else is the way on. Nothing is stopped,
+  regenerated or written. A rename (the data is kept) still asks for the person's yes. `relay apply` on the
+  command line is unchanged. Making the Manager finish such a change instead of declining it is REG-321.
+  Found on the way, and fixed here: confirming a rename failed in the Manager because the pipe's own check
+  refused the `>` every RENAME code carries (`RENAME:field:Customer.firstName>givenName`); and when two
+  translation templates both matched a sentence, the shorter won and a Portuguese rename read half in
+  English -- the template with more fixed words is now tried first (`ui/i18n.js`). After a check, focus
+  now lands on the preview's button (it was requested while the buttons were still disabled).
 - **Agent Access** (`agentAccess` model block): a generated app serves a standard MCP endpoint
   (`/api/mcp`) so Claude Code/Desktop or any MCP client can use its data as tools, and optionally
   runs a Telegram bot linking a Telegram account to an app user for plain-language chat -- every

@@ -18,9 +18,9 @@
       "labelSource": "file-marker",
       "fenced": true,
       "repairs": [],
-      "bytes": 1556,
-      "sha256": "40a834eb559579181f4334fb16ae0b398a3adc808f9a52ec0bbe7b432e5c1a9c",
-      "content": "{\n  \"namespace\": \"my.shop\",\n  \"dslVersion\": \"1.0.0\",\n  \"version\": \"0.1.1\",\n  \"concepts\": [\n    {\n      \"name\": \"Customer\",\n      \"ui\": {\n        \"label\": \"Customer\"\n      },\n      \"fields\": [\n        {\n          \"name\": \"id\",\n          \"type\": \"uuid\",\n          \"id\": true,\n          \"required\": true\n        },\n        {\n          \"name\": \"customerRef\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Customer reference number\"\n          }\n        },\n        {\n          \"name\": \"lastName\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Last name\"\n          }\n        }\n      ],\n      \"invariants\": [\n        {\n          \"name\": \"CustomerRefUnique\",\n          \"type\": \"unique\",\n          \"fields\": [\n            \"customerRef\"\n          ]\n        }\n      ]\n    },\n    {\n      \"name\": \"Order\",\n      \"ui\": {\n        \"label\": \"Order\"\n      },\n      \"fields\": [\n        {\n          \"name\": \"id\",\n          \"type\": \"uuid\",\n          \"id\": true,\n          \"required\": true\n        },\n        {\n          \"name\": \"customerId\",\n          \"type\": \"reference\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Customer\"\n          },\n          \"reference\": {\n            \"target\": \"Customer\",\n            \"displayField\": \"lastName\"\n          }\n        },\n        {\n          \"name\": \"orderedAt\",\n          \"type\": \"datetime\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Ordered at\"\n          }\n        }\n      ]\n    }\n  ]\n}\n"
+      "bytes": 1559,
+      "sha256": "50bcd3324cb5cff2de10f139ab354503c862be3f011c516c2cd6717b02582ec2",
+      "content": "{\n  \"namespace\": \"npdev.seed\",\n  \"dslVersion\": \"1.0.0\",\n  \"version\": \"0.1.1\",\n  \"concepts\": [\n    {\n      \"name\": \"Customer\",\n      \"ui\": {\n        \"label\": \"Customer\"\n      },\n      \"fields\": [\n        {\n          \"name\": \"id\",\n          \"type\": \"uuid\",\n          \"id\": true,\n          \"required\": true\n        },\n        {\n          \"name\": \"customerRef\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Customer reference number\"\n          }\n        },\n        {\n          \"name\": \"lastName\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Last name\"\n          }\n        }\n      ],\n      \"invariants\": [\n        {\n          \"name\": \"CustomerRefUnique\",\n          \"type\": \"unique\",\n          \"fields\": [\n            \"customerRef\"\n          ]\n        }\n      ]\n    },\n    {\n      \"name\": \"Order\",\n      \"ui\": {\n        \"label\": \"Order\"\n      },\n      \"fields\": [\n        {\n          \"name\": \"id\",\n          \"type\": \"uuid\",\n          \"id\": true,\n          \"required\": true\n        },\n        {\n          \"name\": \"customerId\",\n          \"type\": \"reference\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Customer\"\n          },\n          \"reference\": {\n            \"target\": \"Customer\",\n            \"displayField\": \"lastName\"\n          }\n        },\n        {\n          \"name\": \"orderedAt\",\n          \"type\": \"datetime\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Ordered at\"\n          }\n        }\n      ]\n    }\n  ]\n}\n"
     },
     {
       "path": "npdev-submission.json",
@@ -30,9 +30,9 @@
       "labelSource": "file-marker",
       "fenced": true,
       "repairs": [],
-      "bytes": 278,
-      "sha256": "f7b3417abada0a4fe611541148fe9e8c1c0f9688880068df30d9395a51db5118",
-      "content": "{\n  \"request\": \"drop the first name\",\n  \"renames\": [],\n  \"deliberateRemovals\": [\n    {\n      \"kind\": \"field\",\n      \"concept\": \"Customer\",\n      \"name\": \"firstName\",\n      \"reason\": \"not needed\"\n    }\n  ],\n  \"securityChanges\": [],\n  \"couldNotExpress\": [],\n  \"assumptions\": []\n}\n"
+      "bytes": 265,
+      "sha256": "63ab6292e54217618fc41c64fdb7364748f99b40e1e838970fcfd992111dbc56",
+      "content": "{\n  \"request\": \"change\",\n  \"renames\": [],\n  \"deliberateRemovals\": [\n    {\n      \"kind\": \"field\",\n      \"concept\": \"Customer\",\n      \"name\": \"firstName\",\n      \"reason\": \"not needed\"\n    }\n  ],\n  \"securityChanges\": [],\n  \"couldNotExpress\": [],\n  \"assumptions\": []\n}\n"
     }
   ],
   "findings": [
@@ -61,7 +61,7 @@
   "validation": {
     "contractVersion": "npdev-validation-report.v2",
     "status": "passed",
-    "model": "model.json",
+    "model": "C:\\fixture\\ai-relay\\ZWW4\\round-1\\files\\model.json",
     "summary": {
       "errors": 0,
       "warnings": 0
@@ -75,6 +75,7 @@
         "code": "REMOVAL:field:Customer.firstName",
         "text": "This removes the field First name from Customer and the data stored in it.",
         "needsConfirmation": true,
+        "needsSchemaAcknowledgment": true,
         "params": {
           "family": "REMOVAL:field",
           "kind": "field",
@@ -85,7 +86,8 @@
       }
     ],
     "dataLoss": true,
-    "lines": []
+    "lines": [],
+    "needsSchemaAcknowledgment": true
   },
   "next": {
     "kind": "apply",

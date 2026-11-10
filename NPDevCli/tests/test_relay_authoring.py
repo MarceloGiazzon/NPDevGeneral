@@ -139,6 +139,49 @@ class PreviewTests(unittest.TestCase):
         self.assertTrue(preview["dataLoss"])
         self.assertEqual([w["code"] for w in preview["warnings"] if w["needsConfirmation"]], ["REMOVAL:field:Customer.nm"])
 
+    def gate(self):
+        return {"status": "passed", "diagnostics": []}
+
+    def test_a_removed_record_type_or_field_says_the_app_will_ask_for_its_own_acknowledgment(self):
+        # REG-320: dropping a table or a column makes the app's schema guard refuse to boot until it gets a separate,
+        # itemized acknowledgment. The preview says so as data; whoever cannot give that acknowledgment (the Manager's
+        # window) declines to offer Apply, and `npdev ai relay apply` still writes the model.
+        base = copy.deepcopy(BASE)
+        base["concepts"].append({"name": "Order", "fields": [{"name": "id", "type": "uuid", "id": True}]})
+        cand = copy.deepcopy(base)
+        cand["version"] = "1.1"
+        cand["concepts"] = [c for c in cand["concepts"] if c["name"] != "Order"]
+        cand["concepts"][0]["fields"] = [cand["concepts"][0]["fields"][0]]
+        ai = {"deliberateRemovals": [{"kind": "concept", "name": "Order"}, {"kind": "field", "concept": "Customer", "name": "nm"}]}
+        preview = authoring.build_preview(self.gate(), base, cand, ai, "change")
+        flagged = sorted(w["code"] for w in preview["warnings"] if w["needsSchemaAcknowledgment"])
+        self.assertEqual(flagged, ["REMOVAL:concept:Order", "REMOVAL:field:Customer.nm"])
+        self.assertTrue(preview["needsSchemaAcknowledgment"])
+        for w in preview["warnings"]:
+            self.assertTrue(w["needsConfirmation"], "the CLI still wants the owner's yes before it writes")
+        localized = preview_pt.localize_preview(preview, "Portuguese (Brazil)")
+        self.assertTrue(localized["needsSchemaAcknowledgment"], "the words change, the fact does not")
+        self.assertTrue(all(w["needsSchemaAcknowledgment"] for w in localized["warnings"]))
+
+    def test_removing_something_that_is_not_stored_data_does_not_say_it(self):
+        base = copy.deepcopy(BASE)
+        base["flows"] = [{"name": "Charge"}]
+        cand = copy.deepcopy(base)
+        cand["version"] = "1.1"
+        cand["flows"] = []
+        preview = authoring.build_preview(self.gate(), base, cand, {"deliberateRemovals": [{"kind": "flows", "name": "Charge"}]}, "change")
+        self.assertEqual([w["code"] for w in preview["warnings"]], ["REMOVAL:flows:Charge"])
+        self.assertTrue(preview["warnings"][0]["needsConfirmation"])
+        self.assertFalse(preview["warnings"][0]["needsSchemaAcknowledgment"])
+        self.assertFalse(preview["needsSchemaAcknowledgment"])
+
+    def test_a_rename_and_an_addition_never_say_it(self):
+        cand = candidate(version="1.1")
+        cand["concepts"][0]["fields"].append({"name": "phone", "type": "string"})
+        preview = authoring.build_preview(self.gate(), BASE, cand, {}, "change")
+        self.assertFalse(preview["needsSchemaAcknowledgment"])
+        self.assertFalse(authoring.build_create_preview(copy.deepcopy(BASE), None).get("needsSchemaAcknowledgment", False))
+
     def test_a_create_preview_says_nothing_is_deleted(self):
         preview = authoring.build_create_preview(copy.deepcopy(BASE), None)
         self.assertIn("Nothing is deleted", " ".join(preview["sentences"]))

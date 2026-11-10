@@ -68,8 +68,9 @@
       "properties": {
         "sentences": { "type": "array", "items": { "type": "string" } },
         "warnings": { "type": "array", "items": { "type": "object", "required": ["code", "text", "needsConfirmation"],
-                       "properties": { "code": { "type": "string" }, "text": { "type": "string" }, "needsConfirmation": { "type": "boolean" } } } },
-        "dataLoss": { "type": "boolean" }
+                       "properties": { "code": { "type": "string" }, "text": { "type": "string" }, "needsConfirmation": { "type": "boolean" }, "needsSchemaAcknowledgment": { "type": "boolean" } } } },
+        "dataLoss": { "type": "boolean" },
+        "needsSchemaAcknowledgment": { "type": "boolean" }
       }
     },
     "next": {

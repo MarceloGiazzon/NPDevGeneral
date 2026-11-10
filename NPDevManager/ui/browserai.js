@@ -47,6 +47,7 @@
     openUrl: null,
     targets: null, // the chat AIs the CLI lists (relay_targets), read once
     target: null, // the one picked for this conversation
+    blocked: false, // the answer would delete stored data, which this window cannot do (the CLI says so: needsSchemaAcknowledgment)
   };
 
   // What the CLI says about an answer that is not ready, as one plain sentence and at most one button.
@@ -140,7 +141,7 @@
   }
 
   function focusStep() {
-    const target = { compose: "browserai-ask", copy: "browserai-copy", waiting: "browserai-paste", preview: "browserai-apply", done: "browserai-progress" }[S.phase];
+    const target = { compose: "browserai-ask", copy: "browserai-copy", waiting: "browserai-paste", preview: S.blocked ? "browserai-else" : "browserai-apply", done: "browserai-progress" }[S.phase];
     const el = $(target);
     if (el) el.focus({ preventScroll: false });
   }
@@ -447,6 +448,8 @@
     } finally {
       setBusy(false);
     }
+    // handleAnswer asked for focus while the buttons were still disabled for the check, which a browser refuses
+    if (S.phase === "preview") focusStep();
     refreshRounds(); // after the answer is drawn: the history is a companion, it never delays or blocks the sentence
   }
 
@@ -726,6 +729,10 @@
   // needs the person's explicit yes. Nothing is worked out here.
   function renderPreview(r) {
     const p = r.preview || { sentences: [], warnings: [], dataLoss: true };
+    // The CLI says when applying would make the app's own schema guard refuse to boot until it gets a separate, itemized
+    // acknowledgment of the data that would be dropped (a removed record type or field). This window cannot give that, so
+    // it offers no Apply: the sentence says why and "Ask for something else" is the way on. Nothing is decided here.
+    const blocked = p.needsSchemaAcknowledgment === true;
     const list = $("browserai-preview");
     list.replaceChildren();
     const li = (cls, mark, text) => {
@@ -745,7 +752,7 @@
     confirms.replaceChildren();
     let needsYes = 0;
     for (const w of p.warnings || []) {
-      if (w.needsConfirmation) {
+      if (w.needsConfirmation && !blocked) {
         needsYes += 1;
         const label = document.createElement("label");
         label.className = "ba-confirm";
@@ -767,13 +774,16 @@
     $("browserai-safe").hidden = !(S.intent === "change" && p.dataLoss === false && !needsYes);
     $("browserai-prose").textContent = r.prose || "";
     $("browserai-details").hidden = !r.prose;
+    S.blocked = blocked;
+    $("browserai-blocked").hidden = !blocked;
+    $("browserai-apply").hidden = blocked;
     note("browserai-apply-note", needsYes ? "Tick each box to say you agree." : "");
     updateApply();
   }
 
   function updateApply() {
     const boxes = [...document.querySelectorAll("#browserai-confirms input")];
-    $("browserai-apply").disabled = S.busy || boxes.some((b) => !b.checked);
+    $("browserai-apply").disabled = S.busy || S.blocked || boxes.some((b) => !b.checked);
   }
 
   // Where a NEW app goes: the folders NPDev already watches for apps ("Where your apps live"), else ask once.
@@ -801,7 +811,7 @@
   };
 
   async function onApply() {
-    if (S.busy || !S.code) return;
+    if (S.busy || !S.code || S.blocked) return;
     const confirmed = [...document.querySelectorAll("#browserai-confirms input:checked")].map((b) => b.dataset.code);
     let parentDir = null;
     if (S.intent === "create") {
@@ -1095,6 +1105,9 @@
     note("browserai-apply-note", "");
     note("browserai-progress", "");
     announce("");
+    S.blocked = false;
+    $("browserai-blocked").hidden = true;
+    $("browserai-apply").hidden = false;
     forgetTarget();
   }
 

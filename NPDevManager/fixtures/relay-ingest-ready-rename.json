@@ -1,0 +1,114 @@
+{
+  "schemaVersion": "npdev-ai-relay-ingest-result.v1",
+  "protocol": "npdev-relay-answer.v1",
+  "phase": "mvp",
+  "session": {
+    "expected": "ZWW4",
+    "expectedRound": 1,
+    "found": "ZWW4",
+    "foundRound": 1
+  },
+  "outcome": "READY",
+  "files": [
+    {
+      "path": "model.json",
+      "status": "allowed",
+      "reason": null,
+      "kind": "json",
+      "labelSource": "file-marker",
+      "fenced": true,
+      "repairs": [],
+      "bytes": 1769,
+      "sha256": "5fbc30674984612144a87968133a0b3e6e421ce462e253c54b06eb8a673edeb7",
+      "content": "{\n  \"namespace\": \"npdev.seed\",\n  \"dslVersion\": \"1.0.0\",\n  \"version\": \"0.1.1\",\n  \"concepts\": [\n    {\n      \"name\": \"Customer\",\n      \"ui\": {\n        \"label\": \"Customer\"\n      },\n      \"fields\": [\n        {\n          \"name\": \"id\",\n          \"type\": \"uuid\",\n          \"id\": true,\n          \"required\": true\n        },\n        {\n          \"name\": \"customerRef\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Customer reference number\"\n          }\n        },\n        {\n          \"name\": \"givenName\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Given name\"\n          },\n          \"renamedFrom\": \"firstName\"\n        },\n        {\n          \"name\": \"lastName\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Last name\"\n          }\n        }\n      ],\n      \"invariants\": [\n        {\n          \"name\": \"CustomerRefUnique\",\n          \"type\": \"unique\",\n          \"fields\": [\n            \"customerRef\"\n          ]\n        }\n      ]\n    },\n    {\n      \"name\": \"Order\",\n      \"ui\": {\n        \"label\": \"Order\"\n      },\n      \"fields\": [\n        {\n          \"name\": \"id\",\n          \"type\": \"uuid\",\n          \"id\": true,\n          \"required\": true\n        },\n        {\n          \"name\": \"customerId\",\n          \"type\": \"reference\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Customer\"\n          },\n          \"reference\": {\n            \"target\": \"Customer\",\n            \"displayField\": \"lastName\"\n          }\n        },\n        {\n          \"name\": \"orderedAt\",\n          \"type\": \"datetime\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Ordered at\"\n          }\n        }\n      ]\n    }\n  ]\n}\n"
+    },
+    {
+      "path": "npdev-submission.json",
+      "status": "allowed",
+      "reason": null,
+      "kind": "json",
+      "labelSource": "file-marker",
+      "fenced": true,
+      "repairs": [],
+      "bytes": 260,
+      "sha256": "a86c7e9ed534942b8875f26ea27949a346303efd2cbfb5895d4a1dd65b183681",
+      "content": "{\n  \"request\": \"change\",\n  \"renames\": [\n    {\n      \"kind\": \"field\",\n      \"concept\": \"Customer\",\n      \"from\": \"firstName\",\n      \"to\": \"givenName\"\n    }\n  ],\n  \"deliberateRemovals\": [],\n  \"securityChanges\": [],\n  \"couldNotExpress\": [],\n  \"assumptions\": []\n}\n"
+    }
+  ],
+  "findings": [
+    {
+      "code": "version-bumped",
+      "severity": "info",
+      "detail": {
+        "previous": "0.1.0",
+        "fromVersion": "0.1.0",
+        "to": "0.1.1"
+      }
+    },
+    {
+      "code": "confirmation-required",
+      "severity": "info",
+      "detail": {
+        "codes": [
+          "RENAME:field:Customer.firstName>givenName"
+        ]
+      }
+    }
+  ],
+  "normalization": [],
+  "prose": "Done.",
+  "desirePathFixes": [],
+  "validation": {
+    "contractVersion": "npdev-validation-report.v2",
+    "status": "passed",
+    "model": "C:\\fixture\\ai-relay\\ZWW4\\round-1\\files\\model.json",
+    "summary": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "diagnostics": []
+  },
+  "preview": {
+    "sentences": [
+      "Customer: the field Given name changes (how it looks)."
+    ],
+    "warnings": [
+      {
+        "code": "RENAME:field:Customer.firstName>givenName",
+        "text": "In Customer, the field First name is renamed to Given name. The data is kept.",
+        "needsConfirmation": true,
+        "needsSchemaAcknowledgment": false,
+        "params": {
+          "family": "RENAME:field",
+          "kind": "field",
+          "concept": "Customer",
+          "from": "firstName",
+          "to": "givenName",
+          "from_label": "First name",
+          "to_label": "Given name"
+        }
+      }
+    ],
+    "dataLoss": false,
+    "lines": [
+      {
+        "code": "CHANGE_FIELD",
+        "params": {
+          "concept": "Customer",
+          "field": "Given name",
+          "name": "givenName",
+          "keys": [
+            "ui"
+          ],
+          "what_text": "how it looks"
+        },
+        "text": "Customer: the field Given name changes (how it looks)."
+      }
+    ],
+    "needsSchemaAcknowledgment": false
+  },
+  "next": {
+    "kind": "apply",
+    "messageId": "READY"
+  }
+}

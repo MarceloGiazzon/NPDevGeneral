@@ -672,6 +672,10 @@ const FIXTURE_RELAY_INGEST_TRUNCATED: &str = include_str!("../fixtures/relay-ing
 const FIXTURE_RELAY_INGEST_READY_CREATE: &str = include_str!("../fixtures/relay-ingest-ready-create.json");
 const FIXTURE_RELAY_INGEST_READY_CHANGE: &str = include_str!("../fixtures/relay-ingest-ready-change.json");
 const FIXTURE_RELAY_INGEST_READY_REMOVAL: &str = include_str!("../fixtures/relay-ingest-ready-removal.json");
+// A rename (the data is kept): the confirm-box flow without the schema acknowledgment a removal needs (REG-320). Captured
+// from the real engine on 2026-11-10 in a scratch session; the code is rewritten to the captured session's and the
+// validator report names a neutral path.
+const FIXTURE_RELAY_INGEST_READY_RENAME: &str = include_str!("../fixtures/relay-ingest-ready-rename.json");
 const FIXTURE_RELAY_INGEST_NEEDS_FIX: &str = include_str!("../fixtures/relay-ingest-needs-fix.json");
 const FIXTURE_RELAY_STATUS: &str = include_str!("../fixtures/relay-status.json");
 const FIXTURE_RELAY_LIST: &str = include_str!("../fixtures/relay-list.json");
@@ -844,10 +848,11 @@ fn relay_fixture(text: &str, name: &str) -> Result<Value, String> {
 /// which REAL capture comes back, so a person or a render check can walk every outcome without an AI. No
 /// marker is the clean text-only answer. Every one of these was captured from the real CLI.
 fn relay_ingest_stub(marker_text: &str) -> &'static str {
-    const MARKERS: [(&str, &str); 5] = [
+    const MARKERS: [(&str, &str); 6] = [
         ("STUB-TRUNCATED", FIXTURE_RELAY_INGEST_TRUNCATED),
         ("STUB-NEEDS-FIX", FIXTURE_RELAY_INGEST_NEEDS_FIX),
         ("STUB-REMOVAL", FIXTURE_RELAY_INGEST_READY_REMOVAL),
+        ("STUB-RENAME", FIXTURE_RELAY_INGEST_READY_RENAME),
         ("STUB-CREATE", FIXTURE_RELAY_INGEST_READY_CREATE),
         ("STUB-READY", FIXTURE_RELAY_INGEST_READY_CHANGE),
     ];
@@ -879,7 +884,8 @@ fn check_relay_warning_code(value: &str) -> Result<(), String> {
     let shape_ok = !value.is_empty()
         && value.chars().count() <= 200
         && !value.starts_with('-')
-        && value.chars().all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | ':' | '.'));
+        // `>` is in every RENAME code (`RENAME:field:Customer.firstName>givenName`); the CLI is run directly, never through a shell.
+        && value.chars().all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | ':' | '.' | '>'));
     if shape_ok { Ok(()) } else { Err("a warning code is not valid".to_string()) }
 }
 
@@ -3151,7 +3157,7 @@ mod relay_pipe_tests {
         assert_eq!(outcome("anything"), "PARSED");
         assert_eq!(outcome("x STUB-TRUNCATED x"), "TRUNCATED");
         assert_eq!(outcome("STUB-NEEDS-FIX"), "NEEDS_FIX");
-        for marker in ["STUB-READY", "STUB-REMOVAL", "STUB-CREATE"] {
+        for marker in ["STUB-READY", "STUB-REMOVAL", "STUB-RENAME", "STUB-CREATE"] {
             assert_eq!(outcome(marker), "READY", "{marker}");
         }
     }
@@ -3194,6 +3200,7 @@ mod relay_pipe_tests {
             (FIXTURE_RELAY_INGEST_READY_CREATE, "READY"),
             (FIXTURE_RELAY_INGEST_READY_CHANGE, "READY"),
             (FIXTURE_RELAY_INGEST_READY_REMOVAL, "READY"),
+            (FIXTURE_RELAY_INGEST_READY_RENAME, "READY"),
             (FIXTURE_RELAY_INGEST_NEEDS_FIX, "NEEDS_FIX"),
         ] {
             let ingest: Value = serde_json::from_str(text).unwrap();
@@ -3209,8 +3216,20 @@ mod relay_pipe_tests {
             .filter(|w| w["needsConfirmation"] == true)
             .map(|w| w["code"].as_str().unwrap())
             .collect();
-        assert_eq!(needs, ["REMOVAL:field:Customer.firstName"], "the capture the confirm-box checks rely on");
+        assert_eq!(needs, ["REMOVAL:field:Customer.firstName"], "the capture the blocked-removal checks rely on");
         assert!(needs.iter().all(|c| check_relay_warning_code(c).is_ok()), "a real warning code passes the pipe's own check");
+        assert_eq!(removal["preview"]["needsSchemaAcknowledgment"], true, "a removal says the app will want its own acknowledgment");
+        let rename: Value = serde_json::from_str(FIXTURE_RELAY_INGEST_READY_RENAME).unwrap();
+        let renames: Vec<&str> = rename["preview"]["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|w| w["needsConfirmation"] == true)
+            .map(|w| w["code"].as_str().unwrap())
+            .collect();
+        assert_eq!(renames, ["RENAME:field:Customer.firstName>givenName"], "the capture the confirm-box checks rely on");
+        assert!(renames.iter().all(|c| check_relay_warning_code(c).is_ok()), "a real RENAME code (it carries a `>`) passes the pipe's own check");
+        assert_ne!(rename["preview"]["needsSchemaAcknowledgment"], true, "a rename keeps the data: nothing for the app to acknowledge");
         let needs_fix: Value = serde_json::from_str(FIXTURE_RELAY_INGEST_NEEDS_FIX).unwrap();
         assert!(needs_fix["next"]["prompt"].as_str().unwrap().starts_with("NPDEV-PROMPT "), "the message to copy back");
         let apply: Value = serde_json::from_str(FIXTURE_RELAY_APPLY).unwrap();

@@ -181,7 +181,7 @@ window.__TAURI__ = {
           if (window.__ingestAnswer) return window.__ingestAnswer; // a check that needs a result the captured ones do not cover
           const t = args.text || "";
           return t.includes("STUB-TRUNCATED") ? F.relay.truncated : t.includes("STUB-NEEDS-FIX") ? F.relay.needsFix
-            : t.includes("STUB-REMOVAL") ? F.relay.removal : t.includes("STUB-CREATE") ? F.relay.create
+            : t.includes("STUB-REMOVAL") ? F.relay.removal : t.includes("STUB-RENAME") ? F.relay.rename : t.includes("STUB-CREATE") ? F.relay.create
             : t.includes("STUB-READY") ? F.relay.change : F.relay.parsed;
         }
         // A file the AI made, dropped on the window or picked: the stub answers by the file's NAME (a marker in it), the
@@ -190,7 +190,7 @@ window.__TAURI__ = {
           window.__relayFileIngests = (window.__relayFileIngests || []).concat([args]);
           const n = (args.files || []).join("|");
           return n.includes("STUB-TRUNCATED") ? F.relay.truncated : n.includes("STUB-NEEDS-FIX") ? F.relay.needsFix
-            : n.includes("STUB-REMOVAL") ? F.relay.removal : n.includes("STUB-CREATE") ? F.relay.create : F.relay.parsed;
+            : n.includes("STUB-REMOVAL") ? F.relay.removal : n.includes("STUB-RENAME") ? F.relay.rename : n.includes("STUB-CREATE") ? F.relay.create : F.relay.parsed;
         }
         // The record of the rounds so far (the CLI's "relay status"): the captured one, or what a check puts in __statusAnswer.
         case "relay_status":
@@ -283,7 +283,7 @@ await page.addInitScript({
     relay: {
       prompt: fixture("relay-prompt.json"), parsed: fixture("relay-ingest-parsed.json"), truncated: fixture("relay-ingest-truncated.json"),
       needsFix: fixture("relay-ingest-needs-fix.json"), create: fixture("relay-ingest-ready-create.json"),
-      change: fixture("relay-ingest-ready-change.json"), removal: fixture("relay-ingest-ready-removal.json"),
+      change: fixture("relay-ingest-ready-change.json"), removal: fixture("relay-ingest-ready-removal.json"), rename: fixture("relay-ingest-ready-rename.json"),
       apply: fixture("relay-apply.json"), undo: fixture("relay-undo.json"), abort: fixture("relay-abort.json"),
       status: fixture("relay-status.json"), list: fixture("relay-list.json"),
       targets: fixture("relay-targets.json"), chosen: fixture("relay-target-chosen.json"),
@@ -710,6 +710,44 @@ await page.setViewportSize({ width: 1400, height: 1000 });
   await page.waitForTimeout(200);
   check("browser AI: a picked-up conversation shows the AI it was taken to, opens nothing and offers no file",
     (await page.$eval("#browserai-open-gemini", (b) => b.getAttribute("aria-current"))) === "true" && (await page.evaluate(() => window.__opened)) === null && !(await shown("#browserai-big")), "");
+  await leave();
+  // REG-320: an answer that would delete a kind of record or a field. The CLI says the app will want its own acknowledgment
+  // (needsSchemaAcknowledgment) -- the app's schema guard refuses to boot without a separate, itemized token -- and this
+  // window cannot give one, so it offers no Apply: one sentence, and "Ask for something else" is the way on.
+  await start();
+  await page.click("#browserai-copy");
+  await page.fill("#browserai-paste", "STUB-REMOVAL");
+  await page.click("#browserai-check");
+  await current(4);
+  await page.evaluate(() => { window.__relayApplies = []; });
+  check("browser AI: an answer that deletes data is shown with the CLI's own sentence, and offers neither Apply nor a box to tick",
+    (await steps()) === "done,done,done,current,todo" && !(await shown("#browserai-apply")) && (await page.$$eval("#browserai-confirms input", (i) => i.length)) === 0 &&
+    /This removes the field First name from Customer and the data stored in it\./.test(await text("#browserai-preview")), await steps());
+  check("browser AI: ...and says in one sentence why, with Ask for something else as the way on",
+    (await shown("#browserai-blocked")) &&
+    (await text("#browserai-blocked")) === "NPDev cannot delete a kind of record or a field from here yet. Your app protects its data and would refuse to start after this change. Press Ask for something else and tell the AI to keep it." &&
+    (await shown("#browserai-else")) && (await page.evaluate(() => document.activeElement && document.activeElement.id)) === "browserai-else", String(await text("#browserai-blocked")));
+  await page.evaluate(() => document.getElementById("browserai-apply").click());
+  await page.waitForTimeout(250);
+  check("browser AI: ...and nothing reaches the CLI even if Apply is pressed anyway", (await page.evaluate(() => window.__relayApplies.length)) === 0, "");
+  const blockedAxe = await axeScan("browserai-blocked");
+  delete a11yMeasured["browserai-blocked"];
+  check("browser AI: the blocked state has no accessibility violations", Object.values(blockedAxe.counts).reduce((a, b) => a + b, 0) === 0, JSON.stringify(blockedAxe.targets).slice(0, 300));
+  await page.screenshot({ path: path.join(OUT, "browserai-blocked.png"), fullPage: true });
+  await page.selectOption("#lang-picker", "pt");
+  await page.waitForTimeout(200);
+  check("browser AI: the sentence speaks Portuguese when asked",
+    (await text("#browserai-blocked")) === "O NPDev ainda não consegue apagar um tipo de registro ou um campo por aqui. O seu app protege os dados dele e se recusaria a iniciar depois desta mudança. Aperte Pedir outra coisa e diga à IA para manter.", String(await text("#browserai-blocked")));
+  await page.selectOption("#lang-picker", "en");
+  await page.waitForTimeout(200);
+  await leave();
+  await start();
+  await page.click("#browserai-copy");
+  await page.fill("#browserai-paste", "STUB-RENAME");
+  await page.click("#browserai-check");
+  await current(4);
+  check("browser AI: the blocked state does not leak into the next conversation -- a rename gets its box and its Apply back",
+    (await shown("#browserai-apply")) && !(await shown("#browserai-blocked")) && (await page.$$eval("#browserai-confirms input", (i) => i.length)) === 1, "");
   await leave();
   // The sections after this one start from an empty first step.
   await page.evaluate(() => { window.__statusAnswer = null; document.getElementById("browserai-ask").value = ""; document.getElementById("browserai-newname").value = ""; });
@@ -1204,7 +1242,7 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   check("browser AI: a created app ends on 'Show my apps', with no Undo offered for it",
     (await text("#browserai-progress")) === "Done. Your new app was created." && (await shown("#browserai-go-apps")) && !(await shown("#browserai-undo")) && !(await shown("#browserai-rebuild")), String(await text("#browserai-progress")));
 
-  // start over keeps the request; then CHANGE an app: a removal needs the person's explicit yes
+  // start over keeps the request; then CHANGE an app: a rename needs the person's explicit yes (a removal is not offered at all: REG-320)
   await page.click("#browserai-again");
   check("browser AI: asking for something else returns to step 1 with the request still there",
     (await shown("#browserai-ask")) && (await page.$eval("#browserai-ask", (e) => e.value)) === "a small bike repair shop", "");
@@ -1230,12 +1268,13 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   check("browser AI: a change is started for the picked app, and 'let the AI ask me questions' is passed on",
     changeStart.length === 1 && changeStart[0].intent === "change" && /auxscreen/i.test(changeStart[0].appDir) && !changeStart[0].newAppName && changeStart[0].interview === true, JSON.stringify(changeStart));
   await page.click("#browserai-copy");
-  await page.fill("#browserai-paste", "STUB-REMOVAL");
+  await page.fill("#browserai-paste", "STUB-RENAME");
   await page.click("#browserai-check");
   await page.waitForTimeout(250);
   const boxes = await page.$$eval("#browserai-confirms label", (l) => l.map((x) => x.textContent.replace(/^\s*⚠\s*/, "").trim()));
-  check("browser AI: a removal shows the CLI's warning as a box to tick, and Apply waits for it",
-    boxes.length === 1 && boxes[0] === "This removes the field First name from Customer and the data stored in it." && (await page.$eval("#browserai-apply", (b) => b.disabled)), JSON.stringify(boxes));
+  check("browser AI: a rename shows the CLI's warning as a box to tick, and Apply waits for it",
+    boxes.length === 1 && boxes[0] === "In Customer, the field First name is renamed to Given name. The data is kept." && (await page.$eval("#browserai-apply", (b) => b.disabled)) &&
+    (await shown("#browserai-apply")) && !(await shown("#browserai-blocked")), JSON.stringify(boxes));
   // the richest state (a folded step 1-3, a warning box, the AI's words under See details): measured for accessibility here
   await axeScan("browserai");
   await page.check("#browserai-confirms input");
@@ -1244,7 +1283,7 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   await page.waitForTimeout(300);
   const changeApply = await page.evaluate(() => window.__relayApplies);
   check("browser AI: Apply names exactly the warning that was ticked, and no folder (the app exists)",
-    changeApply.length === 1 && changeApply[0].confirmed.join() === "REMOVAL:field:Customer.firstName" && !changeApply[0].parentDir, JSON.stringify(changeApply));
+    changeApply.length === 1 && changeApply[0].confirmed.join() === "RENAME:field:Customer.firstName>givenName" && !changeApply[0].parentDir, JSON.stringify(changeApply));
   const changeLog = await page.evaluate(() => window.__launchLog);
   check("browser AI: a RUNNING app that is changed is stopped, generated, built, then started -- stopped BEFORE it is generated, since it holds its files (the real window failed on this)",
     changeLog.length === 4 && changeLog.map((l) => l.split(":")[0]).join() === "stop,generate,run,start" && changeLog.every((l) => /auxscreen$/i.test(l)), JSON.stringify(changeLog));
@@ -1409,12 +1448,12 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   check("browser AI: in Portuguese a file held over the window says so in Portuguese", (await text("#browserai-drop-label")) === "Solte o arquivo agora", String(await text("#browserai-drop-label")));
   await fireDrag("tauri://drag-leave", []);
   check("browser AI: in Portuguese the drop place goes back to its resting sentence", (await text("#browserai-drop-label")) === "Ou solte aqui o arquivo que a IA criou", "");
-  await page.fill("#browserai-paste", "STUB-REMOVAL");
+  await page.fill("#browserai-paste", "STUB-RENAME");
   await page.click("#browserai-check");
   await page.waitForTimeout(250);
   const ptBox = await page.$eval("#browserai-confirms label", (l) => l.textContent.replace(/^\s*⚠\s*/, "").trim());
   check("browser AI: in Portuguese the box a person must tick, the sentence they agree to, reads in Portuguese",
-    ptBox === "Isto remove o campo First name de Customer e os dados guardados nele.", ptBox);
+    ptBox === "Em Customer, o campo First name passa a se chamar Given name. Os dados são mantidos.", ptBox);
   check("browser AI: the CLI's summary list is marked as English text, not silently half-translated",
     (await page.getAttribute("#browserai-preview", "lang")) === "en" && (await page.getAttribute("#browserai-preview", "translate")) === "no", "");
   await page.check("#browserai-confirms input");

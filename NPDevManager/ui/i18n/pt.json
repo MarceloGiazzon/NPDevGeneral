@@ -1195,6 +1195,7 @@
   "Open your AI's website yourself, start a new conversation and paste the text there.": "Abra você mesmo o site da sua IA, comece uma conversa nova e cole o texto lá.",
   "NPDev could not open your browser. Open your AI's website yourself.": "O NPDev não conseguiu abrir o navegador. Abra você mesmo o site da sua IA.",
   "Saving the file…": "Salvando o arquivo…",
+  "NPDev cannot delete a kind of record or a field from here yet. Your app protects its data and would refuse to start after this change. Press Ask for something else and tell the AI to keep it.": "O NPDev ainda não consegue apagar um tipo de registro ou um campo por aqui. O seu app protege os dados dele e se recusaria a iniciar depois desta mudança. Aperte Pedir outra coisa e diga à IA para manter.",
   "The file is in the folder that just opened. Drag it into the chat, paste the short message that is now on your clipboard, and send.": "O arquivo está na pasta que acabou de abrir. Arraste-o para a conversa, cole a mensagem curta que agora está na sua área de transferência e envie.",
   "The file is saved, but NPDev could not do all of it for you. Open See details for what is missing, drag the file into the chat and send.": "O arquivo foi salvo, mas o NPDev não conseguiu fazer tudo por você. Abra Ver detalhes para ver o que falta, arraste o arquivo para a conversa e envie.",
   "Done": "Pronto",
