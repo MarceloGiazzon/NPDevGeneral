@@ -5,6 +5,7 @@ Run with: python -m unittest NPDevCli.tests.test_relay_cli -v
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -135,6 +136,57 @@ class IngestVerbTests(unittest.TestCase):
         done = run_cli("ingest", "--text-file", str(Path(self.tmp.name) / "nope.txt"), "--code", "K7Q2", "--json")
         self.assertEqual(done.returncode, 2)
         self.assertFalse(json.loads(done.stdout)["ok"])
+
+
+class SessionVerbTests(unittest.TestCase):
+    """start / prompt --code / ingest --code / status / list / abort through the real CLI, in a throwaway store."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.env = {**os.environ, "NPDEV_AI_CONFIG": str(self.dir / "ai.json")}
+
+    def call(self, *argv: str) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, str(CLI), "ai", "relay", *argv], capture_output=True, text=True,
+                              encoding="utf-8", timeout=120, env=self.env)
+
+    def test_a_conversation_from_start_to_abort(self):
+        ask = self.dir / "ask.txt"
+        ask.write_text("A shop with customers and orders", encoding="utf-8")
+        started = self.call("start", "--intent", "create", "--ask-file", str(ask), "--new-app-name", "shop", "--json")
+        self.assertEqual(started.returncode, 0, started.stderr)
+        code = json.loads(started.stdout)["code"]
+
+        again = self.call("prompt", "--code", code, "--json")
+        self.assertEqual(json.loads(again.stdout)["prompt"], json.loads(started.stdout)["prompt"])
+
+        echo = self.dir / "echo.txt"
+        echo.write_text(json.loads(started.stdout)["prompt"], encoding="utf-8")
+        got = json.loads(self.call("ingest", "--code", code, "--text-file", str(echo), "--source", "clipboard-watch", "--json").stdout)
+        self.assertEqual(got["outcome"], "PROMPT_ECHO")
+
+        listed = json.loads(self.call("list", "--json").stdout)
+        self.assertEqual([s["code"] for s in listed["sessions"]], [code])
+        status = json.loads(self.call("status", "--code", code, "--json").stdout)
+        self.assertEqual(status["session"]["intent"], "create")
+
+        self.assertEqual(json.loads(self.call("abort", "--code", code, "--json").stdout)["state"], "abandoned")
+        self.assertEqual(json.loads(self.call("list", "--json").stdout)["sessions"], [])
+
+    def test_an_unknown_conversation_is_an_error_with_a_plain_message(self):
+        done = self.call("status", "--code", "ZZZZ", "--json")
+        self.assertEqual(done.returncode, 2)
+        self.assertFalse(json.loads(done.stdout)["ok"])
+
+    def test_apply_before_any_answer_is_a_result_not_a_crash(self):
+        ask = self.dir / "ask.txt"
+        ask.write_text("A shop", encoding="utf-8")
+        code = json.loads(self.call("start", "--intent", "create", "--ask-file", str(ask), "--json").stdout)["code"]
+        done = self.call("apply", "--code", code, "--json")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        out = json.loads(done.stdout)
+        self.assertEqual((out["ok"], out["error"]), (False, "not-ready"))
 
 
 class HelpTests(unittest.TestCase):
