@@ -855,8 +855,8 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   check("browser AI: Apply names exactly the warning that was ticked, and no folder (the app exists)",
     changeApply.length === 1 && changeApply[0].confirmed.join() === "REMOVAL:field:Customer.firstName" && !changeApply[0].parentDir, JSON.stringify(changeApply));
   const changeLog = await page.evaluate(() => window.__launchLog);
-  check("browser AI: a RUNNING app that is changed is generated, stopped, built, then started -- stopped BEFORE the build, since it holds its files",
-    changeLog.length === 4 && changeLog.map((l) => l.split(":")[0]).join() === "generate,stop,run,start" && changeLog.every((l) => /auxscreen$/i.test(l)), JSON.stringify(changeLog));
+  check("browser AI: a RUNNING app that is changed is stopped, generated, built, then started -- stopped BEFORE it is generated, since it holds its files (the real window failed on this)",
+    changeLog.length === 4 && changeLog.map((l) => l.split(":")[0]).join() === "stop,generate,run,start" && changeLog.every((l) => /auxscreen$/i.test(l)), JSON.stringify(changeLog));
   check("browser AI: a changed app ends with the change in, the app running, Open the app and Undo",
     (await text("#browserai-progress")) === "Done. The change is in your app." && (await text("#browserai-launch")) === "Your app is running." &&
     (await shown("#browserai-open")) && (await shown("#browserai-undo")) && !(await shown("#browserai-rebuild")) && !(await shown("#browserai-go-apps")), String(await text("#browserai-launch")));
@@ -902,8 +902,18 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
     (await text("#browserai-launch")) === "Your app is running." && !(await shown("#browserai-launch-details")) && (await shown("#browserai-open")) && !(await shown("#browserai-rebuild")), String(await text("#browserai-launch")));
 
   // a conversation given up on is closed in the CLI too
+  // an app the Monitor learns about while this screen is open (the one just made): found on the real window, where
+  // "make another change" showed a list read before the app existed
+  await page.evaluate(() => {
+    const was = window.__npdevMonitorApps;
+    window.__keepMonitorApps = was;
+    window.__npdevMonitorApps = () => was().concat([{ name: "freshly-made", appDir: "D:\\WorkSpace\\NPDev\\Build\\generated-finalapps\\freshly-made-app", isAppRoot: true, health: "stopped" }]);
+  });
   await page.click("#browserai-again");
+  await page.waitForTimeout(250);
   check("browser AI: starting over empties the rounds list", !(await shown("#browserai-rounds-wrap")) && (await page.$$eval("#browserai-rounds li", (l) => l.length)) === 0, "");
+  check("browser AI: starting over re-reads the list, so the app just made can be picked for the next change",
+    (await page.$$eval("#browserai-app option", (o) => o.map((x) => x.textContent))).includes("freshly-made"), "");
   await page.fill("#browserai-ask", "one more change");
   await page.click("#browserai-continue");
   await page.waitForTimeout(200);
@@ -929,6 +939,35 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   check("browser AI: and back, with the request carried again",
     (await page.evaluate(() => window.__npdevCurrentScreen)) === "browserai" && (await page.$eval("#browserai-ask", (e) => e.value)) === "and back again" &&
     (await page.getAttribute("#browserai-mode-browser", "aria-pressed")) === "true", "");
+  // ... but the typed request does not wait for the other screen to finish re-reading its apps (on the real window that
+  // read takes seconds): it is there at once
+  await page.evaluate(() => { window.__keepRefreshPrompter = window.__npdevRefreshPrompter; window.__npdevRefreshPrompter = () => new Promise((done) => setTimeout(done, 1500)); });
+  await page.fill("#browserai-ask", "typed before a slow switch");
+  await page.click("#browserai-mode-api");
+  await page.waitForTimeout(150);
+  check("browser AI: the request is on the other screen at once, not after its list of apps has been re-read",
+    (await page.$eval("#prompter-ask", (e) => e.value)) === "typed before a slow switch", String(await page.$eval("#prompter-ask", (e) => e.value)));
+  await page.waitForTimeout(1600);
+  await page.evaluate(() => { window.__npdevRefreshPrompter = window.__keepRefreshPrompter; });
+  await page.click("#prompter-mode-browser");
+  await page.waitForTimeout(350);
+  const LATER_DIR ="D:\WorkSpace\NPDev\Build\generated-finalapps\later-made-app";
+  await page.evaluate((dir) => {
+    const was = window.__keepMonitorApps;
+    window.__npdevMonitorApps = () => was().concat([{ name: "later-made", appDir: dir, isAppRoot: true, health: "stopped" }]);
+    return window.__npdevRefreshBrowserAi();
+  }, LATER_DIR);
+  await page.selectOption("#browserai-app", LATER_DIR);
+  await page.click("#browserai-mode-api");
+  await page.waitForTimeout(350);
+  check("browser AI: the switch carries the chosen app to the API-key screen, though that screen's list was read before the app existed",
+    (await page.$eval("#prompter-app", (e) => e.value)) === LATER_DIR, String(await page.$eval("#prompter-app", (e) => e.value)));
+  await page.click("#prompter-mode-browser");
+  await page.waitForTimeout(350);
+  check("browser AI: and the way back keeps that app, not the other screen's older choice",
+    (await page.$eval("#browserai-app", (e) => e.value)) === LATER_DIR, String(await page.$eval("#browserai-app", (e) => e.value)));
+  await page.evaluate(() => { window.__npdevMonitorApps = window.__keepMonitorApps; return window.__npdevRefreshBrowserAi(); });
+  await page.selectOption("#browserai-app", "");
   check("browser AI: Ask AI (Home, Edit) lands here, not on the API-key screen",
     await page.evaluate(async () => { await window.NPDevWorkspace.open({ name: "auxscreen", directory: "D:\\WorkSpace\\NPDev\\Build\\generated-finalapps\\auxscreen" }, "ask-ai"); return window.__npdevCurrentScreen === "browserai"; }), "");
 

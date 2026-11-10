@@ -38,6 +38,20 @@ release. Ships in the next tag.
   `next.prompt`, the short message for the conversation already open. A small list under the answer
   box, drawn from `npdev ai relay status`, shows the rounds so far (cut off, mistakes to fix, new
   conversation, waiting for the answer).
+- **Use a browser AI: changing the app you just made works** (Manager 0.13.28) -- four defects found
+  driving the real window, none visible to the mocked render check. (1) `npdev ai relay` found the
+  model of a Manager-made app (its `<name>-app` folder, the model beside it) when starting a change
+  but not when checking or applying one, so every answer came back as "the app changed since" and
+  nothing could be applied; start, check, apply and undo now share one resolver. (2) A change to a
+  running app regenerated it before stopping it, and Windows refused to replace the folder the
+  running app held open ("The app could not be built"); it is now stopped first. (3) After creating an
+  app, Make another change listed the apps read before the new one existed, and switching to the
+  API-key screen and back brought the other screen's older app choice with it; starting over now
+  re-reads the list and the switch carries the chosen app once the other screen has re-read its own.
+  (4) An app this window started that then stopped by itself (the schema guard refuses to boot a
+  destructive change, on purpose) stayed in the Manager's table of running apps, so every later start
+  answered "already running from this window" and nothing ran, even after Undo; an exited process is
+  now forgotten.
 - **Agent Access** (`agentAccess` model block): a generated app serves a standard MCP endpoint
   (`/api/mcp`) so Claude Code/Desktop or any MCP client can use its data as tools, and optionally
   runs a Telegram bot linking a Telegram account to an app user for plain-language chat -- every

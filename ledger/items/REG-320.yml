@@ -1,0 +1,40 @@
+id: REG-320
+title: >-
+  Use a browser AI, a change that REMOVES a record type: the person ticks "this removes Customer and all its data" and the
+  app then refuses to start (schema guard wants a second, itemized acknowledgment token) with no path in the Manager to give it
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-11-10
+source: >-
+  F2 acceptance tour of "Use a browser AI" on the REAL Manager window (0.13.28), 2026-11-10: a change answer that drops the
+  Customer concept of a running app, applied after ticking the preview's box. Reproduced three times (apps WorkshopTwo,
+  WorkshopThree, WorkshopFour in MonitorGenApps). Evidence: NPDev_General__OutsideRepo/f2-tour/ (tour.log, shots/).
+surface: manager/browserai, runtimehost/schema-lifecycle
+files:
+  - NPDevManager/ui/browserai.js
+  - NPDevCli/npdev_relay_apply.py
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+detail: |
+  What happens, in order:
+    1. The preview warns "This removes the kind of record Customer and all the data stored in it." with a box; Apply stays
+       disabled until it is ticked. This part works (check-manager-ui-render and the real window agree).
+    2. Apply writes the new model (with a backup), the Manager stops the running app, regenerates, builds and starts it.
+    3. The app boots, its schema lifecycle computes a DESTRUCTIVE impact report ([DROP_TABLE:customers]) and REFUSES to boot:
+       "includes destructive change(s) requiring an explicit, itemized acknowledgment (LNCH-1 Phase 4) ... Expected
+       acknowledgment token: <sha>". The refusal is by design and is correct for a table that may hold data.
+    4. The Manager screen ends on "The app was started but has not answered yet. Look at it in Running apps." -- true but no
+       help: the person already agreed to the removal and has no way to give the acknowledgment the app is asking for, and
+       the sentence does not say that the app refused on purpose.
+  Undo puts the model back and "Update the app now" starts the original again (this works since 0.13.28, which also fixed
+  the stale "already running" entry that used to block that restart).
+  Decision needed from the owner (not taken in the tour, because it spans the platform's data-protection rule):
+    (a) the preview's tick IS the itemized acknowledgment: the Manager/CLI passes the expected token to the app when it
+        starts it after a confirmed removal (where the app reads it from is a runtimehost/schema-lifecycle question), or
+    (b) the screen detects the refusal and says in one plain sentence what happened and what to do, with the token step
+        in a button, or
+    (c) refuse destructive removals in this flow for now and send the person to the data screens.
+resolution: >-
+  Done when applying a confirmed concept removal on a running app ends on "Your app is running." (a) or on one plain
+  sentence plus at most one button that explains the refusal and finishes the job (b), proven on the real window with a
+  second app; and the choice is recorded in docs/UI_CONTRACT.md or the relay contract.

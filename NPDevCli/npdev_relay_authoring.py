@@ -151,15 +151,25 @@ def model_matches_base(model_bytes: bytes, expected_sha256) -> bool:
 
 
 def resolve_model_path(app_dir) -> Path | None:
-    """The model.json of an app folder (plain init layout first, then the corpus layouts)."""
+    """The model.json of an app, given the folder the Manager knows it by.
+
+    That is the model folder itself (plain init layout first, then the corpus layouts under it), or the generated
+    `<name>-app` folder -- which is what the Manager's app list holds, and whose model sits BESIDE it in `<name>` --
+    or an AppGen output root (`App` beside `Input`). One resolver for start, check, apply and undo: when they
+    disagreed, a conversation started fine on a Manager-made app and every answer then came back "base-moved"."""
     if not app_dir:
         return None
-    root = Path(app_dir)
-    for relative in MODEL_FILE_CANDIDATES:
-        candidate = root / relative
-        if candidate.is_file():
-            return candidate
-    return None
+    root = Path(str(app_dir).rstrip("\\/"))
+    roots = [root]
+    if root.name.endswith("-app") and len(root.name) > len("-app"):
+        roots.append(root.with_name(root.name[: -len("-app")]))
+    for folder in roots:
+        for relative in MODEL_FILE_CANDIDATES:
+            candidate = folder / relative
+            if candidate.is_file():
+                return candidate
+    beside_input = root.parent / "Input" / "model.json"
+    return beside_input if beside_input.is_file() else None
 
 
 def atomic_write_bytes(path, data: bytes) -> None:

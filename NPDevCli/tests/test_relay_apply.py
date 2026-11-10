@@ -160,6 +160,28 @@ class ChangeTests(ApplyCase):
         self.assertTrue(undone["ok"], undone)
         self.assertEqual((app / "model.json").read_bytes(), original)
 
+    def test_a_change_to_the_generated_folder_lands_in_the_model_folder_beside_it(self):
+        # What the Manager hands over is the generated `<name>-app` folder; the model lives next to it.
+        app = self.make_app()
+        generated = self.dir / "shop-app"
+        generated.mkdir()
+        original = (app / "model.json").read_bytes()
+        code = engine.start(intent="change", ask="Add a phone number to the customer", app_dir=str(generated))["code"]
+        model = json.loads(SEED_MODEL)
+        model["concepts"][0]["fields"].append({"name": "phone", "type": "string"})
+        result = engine.ingest(code, answer(code, 1, model, manifest()), source="paste")
+        self.assertEqual(result["outcome"], "READY", result["findings"])
+        self.assertNotIn("base-moved", [f["code"] for f in result["findings"]])
+
+        done = apply_mod.apply_round(sessions.load(code), None, [])
+        self.assertTrue(done["ok"], done)
+        self.assertIn("phone", [f["name"] for f in json.loads((app / "model.json").read_text(encoding="utf-8"))["concepts"][0]["fields"]])
+        self.assertFalse((generated / "model.json").exists())
+
+        undone = apply_mod.undo(sessions.load(code))
+        self.assertTrue(undone["ok"], undone)
+        self.assertEqual((app / "model.json").read_bytes(), original)
+
     def test_a_removal_needs_the_owners_yes_before_anything_is_written(self):
         app = self.make_app()
         original = (app / "model.json").read_bytes()

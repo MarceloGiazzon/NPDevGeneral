@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -25,6 +26,51 @@ def candidate(**changes):
     model = copy.deepcopy(BASE)
     model.update(changes)
     return model
+
+
+class ResolveModelPathTests(unittest.TestCase):
+    """Where an app's model.json is, from the folder the Manager hands over. Start, check, apply and undo all ask
+    this one function; when they disagreed, a change to a Manager-made app was refused as 'base-moved'."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+
+    def put(self, *parts):
+        path = self.dir.joinpath(*parts)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}", encoding="utf-8")
+        return path
+
+    def test_the_model_folder_itself(self):
+        model = self.put("shop", "model.json")
+        self.assertEqual(authoring.resolve_model_path(str(self.dir / "shop")), model)
+
+    def test_the_generated_folder_finds_the_model_beside_it(self):
+        model = self.put("shop", "model.json")
+        (self.dir / "shop-app").mkdir()
+        self.assertEqual(authoring.resolve_model_path(str(self.dir / "shop-app")), model)
+        self.assertEqual(authoring.resolve_model_path(str(self.dir / "shop-app") + "\\"), model)
+
+    def test_a_model_inside_the_generated_folder_wins_over_the_one_beside_it(self):
+        self.put("shop", "model.json")
+        inside = self.put("shop-app", "model.json")
+        self.assertEqual(authoring.resolve_model_path(str(self.dir / "shop-app")), inside)
+
+    def test_the_corpus_layouts_and_the_appgen_input_beside_the_output(self):
+        corpus = self.put("one", "Input", "model.json")
+        self.assertEqual(authoring.resolve_model_path(str(self.dir / "one")), corpus)
+        appgen = self.put("two", "Input", "model.json")
+        (self.dir / "two" / "App").mkdir()
+        self.assertEqual(authoring.resolve_model_path(str(self.dir / "two" / "App")), appgen)
+
+    def test_nothing_found_is_none(self):
+        (self.dir / "empty-app").mkdir()
+        self.assertIsNone(authoring.resolve_model_path(str(self.dir / "empty-app")))
+        self.assertIsNone(authoring.resolve_model_path(str(self.dir / "-app")))
+        self.assertIsNone(authoring.resolve_model_path(None))
+        self.assertIsNone(authoring.resolve_model_path(""))
 
 
 class VersionTests(unittest.TestCase):

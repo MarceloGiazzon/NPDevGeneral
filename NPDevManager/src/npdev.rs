@@ -1127,6 +1127,23 @@ pub struct RunningProcess {
     pub job: Option<win32job::Job>,
 }
 
+/// Is `key` held by a process that is still running? One that has exited since (the app crashed, or refused to
+/// boot -- the schema guard does, on purpose, for a destructive change) is forgotten here, because a stale entry
+/// answered every later start with "already running from this window" while nothing was running. A process whose
+/// state cannot be read counts as alive: a hiccup must not drop a live app from the table.
+pub fn holds_live_process(running: &mut std::collections::HashMap<String, RunningProcess>, key: &str) -> bool {
+    match running.remove(key) {
+        None => false,
+        Some(mut proc) => {
+            let alive = proc.child.try_wait().ok().flatten().is_none();
+            if alive {
+                running.insert(key.to_string(), proc);
+            }
+            alive
+        }
+    }
+}
+
 #[cfg(windows)]
 fn assign_to_new_job(child: &Child) -> Option<win32job::Job> {
     let job = win32job::Job::create().ok()?;
@@ -2686,6 +2703,39 @@ mod process_layer_tests {
             }
         }
         None
+    }
+
+    fn tracked(python: &PathBuf, code: &str) -> RunningProcess {
+        let child = Command::new(python).args(["-c", code]).spawn().expect("python starts");
+        RunningProcess {
+            child,
+            #[cfg(windows)]
+            job: None,
+        }
+    }
+
+    /// Found on the real window: an app this window started refused to boot (the schema guard, on purpose), and its
+    /// dead process stayed in the table, so every later start said "already running" and nothing ever ran.
+    #[tokio::test]
+    async fn a_process_that_has_exited_does_not_count_as_a_running_app() {
+        let Some(python) = find_python() else {
+            eprintln!("SKIPPED: no python on PATH");
+            return;
+        };
+        let mut running = std::collections::HashMap::new();
+        assert!(!holds_live_process(&mut running, "nothing"), "an unknown app holds nothing");
+
+        let mut gone = tracked(&python, "pass");
+        gone.child.wait().await.expect("exits at once");
+        running.insert("gone".to_string(), gone);
+        assert!(!holds_live_process(&mut running, "gone"), "an exited process is not a running app");
+        assert!(!running.contains_key("gone"), "and it is forgotten, so the next start is not refused");
+
+        running.insert("alive".to_string(), tracked(&python, "import time; time.sleep(60)"));
+        assert!(holds_live_process(&mut running, "alive"), "a live process is held");
+        assert!(running.contains_key("alive"), "and stays in the table");
+        let mut alive = running.remove("alive").unwrap();
+        alive.child.kill().await.ok();
     }
 
     #[tokio::test]

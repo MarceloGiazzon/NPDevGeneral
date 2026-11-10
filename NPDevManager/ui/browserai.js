@@ -192,20 +192,32 @@
   }
 
   // Both screens carry the typed request and the chosen app across, so switching loses nothing.
-  function switchTo(screen, fromAsk, fromApp, toAsk, toApp) {
+  // The chosen app is carried AFTER the other screen has re-read its list of apps (app.js does that when a screen
+  // opens): an app made a moment ago is not in a list read earlier, and copying the choice into a stale list drops
+  // it -- then the way back would bring the other screen's old choice with it.
+  async function switchTo(screen, fromAsk, fromApp, toAsk, toApp) {
     const ask = $(fromAsk).value;
+    const app = $(fromApp).value;
+    // The request crosses at once; re-reading the other screen's apps can take a moment (it reads the app's model).
     if (ask.trim()) {
       const box = $(toAsk);
       box.value = ask;
       box.dispatchEvent(new Event("input", { bubbles: true }));
     }
-    const app = $(fromApp).value;
+    if (window.__npdevShowScreen) window.__npdevShowScreen(screen);
+    const reread = screen === "prompter" ? window.__npdevRefreshPrompter : window.__npdevRefreshBrowserAi;
+    if (reread) {
+      try {
+        await reread();
+      } catch (e) {
+        /* a list that could not be re-read is the one already on screen */
+      }
+    }
     const picker = $(toApp);
     if (app && picker && [...picker.options].some((o) => o.value === app)) {
       picker.value = app;
       picker.dispatchEvent(new Event("change", { bubbles: true }));
     }
-    if (window.__npdevShowScreen) window.__npdevShowScreen(screen);
   }
 
   // ------------------------------------------------------------------------------- 1. compose
@@ -589,6 +601,7 @@
         return note("browserai-apply-note", why || "The change could not be applied. Nothing was changed.", true);
       }
       S.applied = r;
+      note("browserai-apply-note", ""); // "Applying…" must not stay behind the folded step
       showDone(r);
       S.builtAppDir = await generatedAppDir(r);
     } finally {
@@ -696,13 +709,9 @@
     $("browserai-launch-details").hidden = true;
     setBusy(S.busy);
     try {
-      say("Preparing the app…");
-      try {
-        await invoke("generate_app_from_model", { appDir });
-      } catch (e) {
-        return stop("The app could not be built.", String(e));
-      }
-      // A running app holds its own files: it is stopped before it is built again, and started afterwards.
+      // A running app holds its own files, its _ops folder among them: it is stopped BEFORE the app is generated again
+      // (generating replaces those files -- on Windows that fails while the app's script still has the folder open),
+      // then generated, built and started.
       if (S.applied && S.applied.created !== true && (await probe(appDir)).health === "running") {
         say("Stopping the running app so it can be rebuilt…");
         try {
@@ -711,6 +720,13 @@
           return stop("The app could not be built.", String(e));
         }
         for (let i = 0; i < 15 && current() && (await probe(appDir)).health === "running"; i++) await sleep(pollMs / 3);
+      }
+      if (!current()) return;
+      say("Preparing the app…");
+      try {
+        await invoke("generate_app_from_model", { appDir });
+      } catch (e) {
+        return stop("The app could not be built.", String(e));
       }
       if (!current()) return;
       say("Building the app. This can take a few minutes.");
@@ -827,6 +843,8 @@
     announce("");
     setPhase("compose");
     focusStep();
+    // The app just made (or the one just changed) may not be in the list this screen drew when it opened.
+    refreshApps();
   }
 
   // ------------------------------------------------------------------------------------- wiring

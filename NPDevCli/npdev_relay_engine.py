@@ -57,15 +57,12 @@ def find_model_file(app_dir) -> Path:
     base = Path(app_dir)
     if base.is_file():
         return base
-    trimmed = Path(str(base).rstrip("\\/"))
-    candidates = [trimmed / "model.json"]
-    if trimmed.name.endswith("-app"):
-        candidates.append(trimmed.with_name(trimmed.name[: -len("-app")]) / "model.json")
-    candidates.append(trimmed.parent / "Input" / "model.json")
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
-    raise RelayStageError("the app's model was not found; pick the app again")
+    import npdev_relay_authoring as authoring  # the one resolver check, apply and undo use too
+
+    found = authoring.resolve_model_path(app_dir)
+    if found is None:
+        raise RelayStageError("the app's model was not found; pick the app again")
+    return found
 
 
 def _read_text(path: Path) -> str:
