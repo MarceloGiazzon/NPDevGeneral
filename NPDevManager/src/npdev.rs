@@ -665,6 +665,15 @@ pub async fn run_db_operation(
 const FIXTURE_RELAY_PROMPT: &str = include_str!("../fixtures/relay-prompt.json");
 const FIXTURE_RELAY_INGEST_PARSED: &str = include_str!("../fixtures/relay-ingest-parsed.json");
 const FIXTURE_RELAY_INGEST_TRUNCATED: &str = include_str!("../fixtures/relay-ingest-truncated.json");
+// The session verbs, captured the same way on 2026-11-10 (a real create, then a real change applied with
+// a backup and undone). Only the session code was relabelled to the prompt fixture's and the machine's
+// own paths replaced by neutral ones. `relay start` answers with the same shape as `relay prompt`, so
+// it serves FIXTURE_RELAY_PROMPT.
+const FIXTURE_RELAY_STATUS: &str = include_str!("../fixtures/relay-status.json");
+const FIXTURE_RELAY_LIST: &str = include_str!("../fixtures/relay-list.json");
+const FIXTURE_RELAY_APPLY: &str = include_str!("../fixtures/relay-apply.json");
+const FIXTURE_RELAY_UNDO: &str = include_str!("../fixtures/relay-undo.json");
+const FIXTURE_RELAY_ABORT: &str = include_str!("../fixtures/relay-abort.json");
 
 /// A scratch text file that deletes itself when it goes out of scope, on every path out of the caller
 /// (an early `?` included). The ask, the app's model and a pasted answer are handed to the CLI this
@@ -809,6 +818,255 @@ pub async fn run_relay_ingest_text(
         .await
         .map_err(|e| format!("could not run relay ingest: {e}"))?;
     parse_single_json(&output.stdout, &output.stderr, "relay ingest")
+}
+
+fn relay_fixture(text: &str, name: &str) -> Result<Value, String> {
+    serde_json::from_str(text).map_err(|e| format!("fixture {name} did not parse: {e}"))
+}
+
+/// A session code is what `relay start|prompt` printed: letters and digits, nothing else.
+fn check_relay_code(code: &str) -> Result<(), String> {
+    if code.is_empty() || code.len() > 16 || !code.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err("the session code is not valid".to_string());
+    }
+    Ok(())
+}
+
+/// A short name that follows a flag as its own argument (a chat AI, a way an answer arrived, a preview
+/// warning's code). Only its SHAPE is checked here; which names exist is the CLI's decision.
+fn check_relay_token(what: &str, value: &str) -> Result<(), String> {
+    let shape_ok = !value.is_empty()
+        && value.len() <= 64
+        && !value.starts_with('-')
+        && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    if shape_ok { Ok(()) } else { Err(format!("{what} is not valid")) }
+}
+
+/// Free text or a path that follows a flag as its own argument. A leading dash would be read as the
+/// next flag, a NUL cannot be on a command line; anything else is the CLI's to judge.
+fn check_relay_value(what: &str, value: &str) -> Result<(), String> {
+    if value.is_empty() || value.len() > 4096 || value.starts_with('-') || value.contains('\0') {
+        return Err(format!("{what} is not valid"));
+    }
+    Ok(())
+}
+
+/// Runs one `npdev ai relay <verb> ... --json` and reads its single JSON answer. A refusal by the CLI
+/// (`{"ok": false, "error": ...}`, exit 0 or 2) is a RESULT the screen words, not a transport error.
+async fn run_relay_json(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    args: &[&str],
+    what: &str,
+) -> Result<Value, String> {
+    let mut command = build_command(python_exe, npdev_cli, args, java_home, None);
+    // Answers carry the user's own words and app; a Windows pipe would otherwise use the console code page.
+    command.env("PYTHONUTF8", "1");
+    let output = command
+        .output_recorded()
+        .await
+        .map_err(|e| format!("could not run relay {what}: {e}"))?;
+    parse_single_json(&output.stdout, &output.stderr, &format!("relay {what}"))
+}
+
+/// `npdev ai relay start` -- open a session: remembers the ask (and, for a change or fix, which app), and
+/// composes the first prompt. Same answer shape as `run_relay_prompt` (code, round, prompt) plus the
+/// session now exists, so `status`, `list`, `apply`, `undo` and `abort` can follow it. The ask and the
+/// error text travel in temporary files; the app folder and the names are plain arguments.
+pub async fn run_relay_start(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    intent: &str,
+    ask: &str,
+    app_dir: Option<&str>,
+    new_app_name: Option<&str>,
+    target: Option<&str>,
+    language: &str,
+    interview: bool,
+    errors_text: Option<&str>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return relay_fixture(FIXTURE_RELAY_PROMPT, "relay-prompt");
+    }
+    if !matches!(intent, "create" | "change" | "fix") {
+        return Err(format!("not a relay intent: '{intent}'"));
+    }
+    check_relay_value("the language for the AI", language)?;
+    if language.len() > 64 {
+        return Err("the language for the AI is not valid".to_string());
+    }
+    if let Some(dir) = app_dir {
+        check_relay_value("the app folder", dir)?;
+    }
+    if let Some(name) = new_app_name {
+        check_relay_value("the new app's name", name)?;
+    }
+    if let Some(t) = target {
+        check_relay_token("the chat AI", t)?;
+    }
+    let ask_file = TempTextFile::create("ask", ask)?;
+    let errors_file = match errors_text {
+        Some(text) => Some(TempTextFile::create("errors", text)?),
+        None => None,
+    };
+    let ask_path = ask_file.path_text();
+    let errors_path = errors_file.as_ref().map(TempTextFile::path_text);
+    let mut args: Vec<&str> = vec!["ai", "relay", "start", "--intent", intent, "--ask-file", ask_path.as_str()];
+    if let Some(dir) = app_dir {
+        args.extend(["--app-dir", dir]);
+    }
+    if let Some(name) = new_app_name {
+        args.extend(["--new-app-name", name]);
+    }
+    if let Some(t) = target {
+        args.extend(["--target", t]);
+    }
+    if interview {
+        args.push("--interview");
+    }
+    if let Some(path) = errors_path.as_deref() {
+        args.extend(["--errors-file", path]);
+    }
+    args.extend(["--language", language, "--json"]);
+    run_relay_json(python_exe, npdev_cli, java_home, &args, "start").await
+}
+
+/// `npdev ai relay ingest --file` -- the file(s) an AI made (`.json`, `.txt`, `.md` or `.zip`) and the
+/// user dropped, picked, or that the Manager found in Downloads. Same answer as `run_relay_ingest_text`.
+/// `source` says how it arrived (`drop`, `file-picker`, `downloads-watch`).
+pub async fn run_relay_ingest_file(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    files: &[String],
+    code: &str,
+    round: Option<u32>,
+    source: Option<&str>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        let truncated = files.iter().any(|f| f.contains("STUB-TRUNCATED"));
+        let fixture = if truncated { FIXTURE_RELAY_INGEST_TRUNCATED } else { FIXTURE_RELAY_INGEST_PARSED };
+        return relay_fixture(fixture, "relay-ingest");
+    }
+    check_relay_code(code)?;
+    if files.is_empty() || files.len() > 16 {
+        return Err("choose between one and sixteen files".to_string());
+    }
+    for file in files {
+        check_relay_value("a file path", file)?;
+    }
+    if let Some(s) = source {
+        check_relay_token("how the answer arrived", s)?;
+    }
+    let round_text = round.map(|r| r.to_string());
+    let mut args: Vec<&str> = vec!["ai", "relay", "ingest", "--code", code];
+    for file in files {
+        args.extend(["--file", file.as_str()]);
+    }
+    if let Some(r) = round_text.as_deref() {
+        args.extend(["--round", r]);
+    }
+    if let Some(s) = source {
+        args.extend(["--source", s]);
+    }
+    args.push("--json");
+    run_relay_json(python_exe, npdev_cli, java_home, &args, "ingest").await
+}
+
+/// `npdev ai relay status` -- one session's state, rounds and last result.
+pub async fn run_relay_status(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    code: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return relay_fixture(FIXTURE_RELAY_STATUS, "relay-status");
+    }
+    check_relay_code(code)?;
+    run_relay_json(python_exe, npdev_cli, java_home, &["ai", "relay", "status", "--code", code, "--json"], "status").await
+}
+
+/// `npdev ai relay list` -- the sessions still open, so a window closed mid-conversation can pick one up.
+pub async fn run_relay_list(python_exe: &Path, npdev_cli: &Path, java_home: Option<&str>) -> Result<Value, String> {
+    if fake_mode() {
+        return relay_fixture(FIXTURE_RELAY_LIST, "relay-list");
+    }
+    run_relay_json(python_exe, npdev_cli, java_home, &["ai", "relay", "list", "--json"], "list").await
+}
+
+/// `npdev ai relay apply` -- writes a READY answer: a create makes the app under `parent_dir`, a change
+/// replaces the model after a backup. `confirmed` is the owner's yes to each preview warning that asked
+/// for one (the CLI refuses with `confirmation-required` and names the missing ones, nothing written).
+pub async fn run_relay_apply(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    code: &str,
+    round: Option<u32>,
+    confirmed: &[String],
+    parent_dir: Option<&str>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return relay_fixture(FIXTURE_RELAY_APPLY, "relay-apply");
+    }
+    check_relay_code(code)?;
+    for warning in confirmed {
+        check_relay_token("a warning code", warning)?;
+    }
+    if let Some(dir) = parent_dir {
+        check_relay_value("the folder for the new app", dir)?;
+    }
+    let round_text = round.map(|r| r.to_string());
+    let mut args: Vec<&str> = vec!["ai", "relay", "apply", "--code", code];
+    if let Some(r) = round_text.as_deref() {
+        args.extend(["--round", r]);
+    }
+    for warning in confirmed {
+        args.extend(["--confirm-warning", warning.as_str()]);
+    }
+    if let Some(dir) = parent_dir {
+        args.extend(["--parent-dir", dir]);
+    }
+    args.push("--json");
+    run_relay_json(python_exe, npdev_cli, java_home, &args, "apply").await
+}
+
+/// `npdev ai relay undo` -- puts the app's model back byte for byte from the backup `apply` made.
+/// Refuses when the app changed since (the owner's later edits are not overwritten) unless `force`.
+pub async fn run_relay_undo(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    code: &str,
+    force: bool,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return relay_fixture(FIXTURE_RELAY_UNDO, "relay-undo");
+    }
+    check_relay_code(code)?;
+    let mut args: Vec<&str> = vec!["ai", "relay", "undo", "--code", code];
+    if force {
+        args.push("--force");
+    }
+    args.push("--json");
+    run_relay_json(python_exe, npdev_cli, java_home, &args, "undo").await
+}
+
+/// `npdev ai relay abort` -- gives up on a session: it is marked abandoned and no longer listed as open.
+pub async fn run_relay_abort(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    code: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return relay_fixture(FIXTURE_RELAY_ABORT, "relay-abort");
+    }
+    check_relay_code(code)?;
+    run_relay_json(python_exe, npdev_cli, java_home, &["ai", "relay", "abort", "--code", code, "--json"], "abort").await
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2471,7 +2729,8 @@ mod relay_pipe_tests {
              \x20   path = val(flag)\n\
              \x20   return open(path, encoding='utf-8').read() if path else None\n\
              print(json.dumps({'ok': True, 'argv': a, 'ask': read('--ask-file'), 'model': read('--model-file'),\n\
-             \x20                'text': read('--text-file'), 'files': [val(f) for f in ('--ask-file', '--model-file', '--text-file') if val(f)]}))\n",
+             \x20                'text': read('--text-file'), 'errors': read('--errors-file'),\n\
+             \x20                'files': [val(f) for f in ('--ask-file', '--model-file', '--text-file', '--errors-file') if val(f)]}))\n",
         )
         .unwrap();
         script
@@ -2551,6 +2810,139 @@ mod relay_pipe_tests {
         assert!(run_relay_ingest_text(python, cli, None, "x", "", None).await.is_err());
     }
 
+    fn argv_of(result: &Value) -> Vec<String> {
+        result["argv"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect()
+    }
+
+    fn has_pair(argv: &[String], flag: &str, value: &str) -> bool {
+        argv.windows(2).any(|w| w[0] == flag && w[1] == value)
+    }
+
+    #[tokio::test]
+    async fn a_started_session_sends_the_ask_and_the_errors_in_files_and_the_rest_as_flags() {
+        let Some(python) = find_python() else {
+            eprintln!("SKIPPED: no python on PATH");
+            return;
+        };
+        if fake_mode() {
+            eprintln!("SKIPPED: stub mode serves fixtures");
+            return;
+        }
+        let dir = scratch("start");
+        let script = write_echo_cli(&dir);
+        let ask = "Corrija o pedido — não abre";
+        let errors = "ERROR: falha ao compilar a ação";
+        let result = run_relay_start(
+            &python, &script, None, "fix", ask, Some("some/app"), Some("Loja"), Some("claude"), "Portuguese (Brazil)", true, Some(errors),
+        )
+        .await
+        .expect("the stand-in CLI answers");
+        assert_eq!(result["ask"], ask);
+        assert_eq!(result["errors"], errors);
+        let argv = argv_of(&result);
+        assert_eq!(&argv[..3], ["ai", "relay", "start"], "{argv:?}");
+        assert!(has_pair(&argv, "--intent", "fix") && has_pair(&argv, "--app-dir", "some/app"), "{argv:?}");
+        assert!(has_pair(&argv, "--new-app-name", "Loja") && has_pair(&argv, "--target", "claude"), "{argv:?}");
+        assert!(has_pair(&argv, "--language", "Portuguese (Brazil)") && argv.iter().any(|a| a == "--interview"), "{argv:?}");
+        assert_eq!(argv.last().map(String::as_str), Some("--json"), "{argv:?}");
+        assert!(!argv.iter().any(|a| a.contains("Corrija") || a.contains("compilar")), "no content on argv: {argv:?}");
+        for file in result["files"].as_array().unwrap() {
+            assert!(!Path::new(file.as_str().unwrap()).exists(), "temporary file left behind: {file}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn dropped_files_reach_the_cli_as_repeated_file_flags() {
+        let Some(python) = find_python() else {
+            eprintln!("SKIPPED: no python on PATH");
+            return;
+        };
+        if fake_mode() {
+            eprintln!("SKIPPED: stub mode serves fixtures");
+            return;
+        }
+        let dir = scratch("ingest-file");
+        let script = write_echo_cli(&dir);
+        let files = vec!["downloads/answer one.zip".to_string(), "downloads/model.json".to_string()];
+        let result = run_relay_ingest_file(&python, &script, None, &files, "K7Q2", Some(2), Some("drop"))
+            .await
+            .expect("the stand-in CLI answers");
+        let argv = argv_of(&result);
+        assert_eq!(&argv[..3], ["ai", "relay", "ingest"], "{argv:?}");
+        assert!(has_pair(&argv, "--file", "downloads/answer one.zip") && has_pair(&argv, "--file", "downloads/model.json"), "{argv:?}");
+        assert!(has_pair(&argv, "--code", "K7Q2") && has_pair(&argv, "--round", "2") && has_pair(&argv, "--source", "drop"), "{argv:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn the_session_verbs_reach_the_cli_with_their_own_flags() {
+        let Some(python) = find_python() else {
+            eprintln!("SKIPPED: no python on PATH");
+            return;
+        };
+        if fake_mode() {
+            eprintln!("SKIPPED: stub mode serves fixtures");
+            return;
+        }
+        let dir = scratch("verbs");
+        let script = write_echo_cli(&dir);
+
+        let status = argv_of(&run_relay_status(&python, &script, None, "K7Q2").await.unwrap());
+        assert_eq!(status, ["ai", "relay", "status", "--code", "K7Q2", "--json"]);
+        let list = argv_of(&run_relay_list(&python, &script, None).await.unwrap());
+        assert_eq!(list, ["ai", "relay", "list", "--json"]);
+        let abort = argv_of(&run_relay_abort(&python, &script, None, "K7Q2").await.unwrap());
+        assert_eq!(abort, ["ai", "relay", "abort", "--code", "K7Q2", "--json"]);
+
+        let undo = argv_of(&run_relay_undo(&python, &script, None, "K7Q2", false).await.unwrap());
+        assert_eq!(undo, ["ai", "relay", "undo", "--code", "K7Q2", "--json"]);
+        let forced = argv_of(&run_relay_undo(&python, &script, None, "K7Q2", true).await.unwrap());
+        assert_eq!(forced, ["ai", "relay", "undo", "--code", "K7Q2", "--force", "--json"]);
+
+        let confirmed = vec!["REMOVE_FIELDS".to_string(), "RENAME_FIELD".to_string()];
+        let apply = argv_of(&run_relay_apply(&python, &script, None, "K7Q2", Some(2), &confirmed, Some("apps")).await.unwrap());
+        assert_eq!(&apply[..5], ["ai", "relay", "apply", "--code", "K7Q2"], "{apply:?}");
+        assert!(has_pair(&apply, "--round", "2") && has_pair(&apply, "--parent-dir", "apps"), "{apply:?}");
+        assert!(has_pair(&apply, "--confirm-warning", "REMOVE_FIELDS") && has_pair(&apply, "--confirm-warning", "RENAME_FIELD"), "{apply:?}");
+        let bare = argv_of(&run_relay_apply(&python, &script, None, "K7Q2", None, &[], None).await.unwrap());
+        assert_eq!(bare, ["ai", "relay", "apply", "--code", "K7Q2", "--json"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn nothing_odd_reaches_the_command_line_from_the_session_verbs() {
+        if fake_mode() {
+            return;
+        }
+        let python = Path::new("python");
+        let cli = Path::new("never-run.py");
+        for bad in ["", "--json", "AB CD", "K7Q2;rm", "WAYTOOLONGACODEFORASESSION1"] {
+            assert!(run_relay_status(python, cli, None, bad).await.is_err(), "status accepted {bad:?}");
+            assert!(run_relay_abort(python, cli, None, bad).await.is_err(), "abort accepted {bad:?}");
+            assert!(run_relay_undo(python, cli, None, bad, false).await.is_err(), "undo accepted {bad:?}");
+            assert!(run_relay_apply(python, cli, None, bad, None, &[], None).await.is_err(), "apply accepted {bad:?}");
+            assert!(run_relay_ingest_file(python, cli, None, &["a.json".to_string()], bad, None, None).await.is_err());
+        }
+        let ok_files = ["a.json".to_string()];
+        assert!(run_relay_ingest_file(python, cli, None, &[], "K7Q2", None, None).await.is_err(), "no files");
+        assert!(run_relay_ingest_file(python, cli, None, &["--code".to_string()], "K7Q2", None, None).await.is_err());
+        assert!(run_relay_ingest_file(python, cli, None, &ok_files, "K7Q2", None, Some("--json")).await.is_err());
+        assert!(run_relay_ingest_file(python, cli, None, &vec!["x".to_string(); 17], "K7Q2", None, None).await.is_err());
+        assert!(run_relay_apply(python, cli, None, "K7Q2", None, &["--force".to_string()], None).await.is_err());
+        assert!(run_relay_apply(python, cli, None, "K7Q2", None, &["a b".to_string()], None).await.is_err());
+        assert!(run_relay_apply(python, cli, None, "K7Q2", None, &[], Some("--json")).await.is_err());
+        let start = |intent: &'static str, app: Option<&'static str>, name: Option<&'static str>, target: Option<&'static str>, lang: &'static str| async move {
+            run_relay_start(Path::new("python"), Path::new("never-run.py"), None, intent, "x", app, name, target, lang, false, None).await
+        };
+        assert!(start("format-the-disk", None, None, None, "English").await.is_err());
+        assert!(start("create", None, None, None, "--json").await.is_err());
+        assert!(start("create", Some("--json"), None, None, "English").await.is_err());
+        assert!(start("create", None, Some("-rf"), None, "English").await.is_err());
+        assert!(start("create", None, None, Some("chat gpt"), "English").await.is_err());
+        assert!(start("create", None, None, Some("-x"), "English").await.is_err());
+    }
+
     #[test]
     fn the_managers_language_picks_the_ais_language() {
         assert_eq!(relay_language_name("pt"), "Portuguese (Brazil)");
@@ -2572,5 +2964,29 @@ mod relay_pipe_tests {
         assert!(parsed["files"].as_array().unwrap().iter().any(|f| f["path"] == "model.json" && f["content"].is_string()));
         let truncated: Value = serde_json::from_str(FIXTURE_RELAY_INGEST_TRUNCATED).unwrap();
         assert_eq!(truncated["outcome"], "TRUNCATED");
+    }
+
+    #[test]
+    fn the_session_fixtures_are_one_session_the_screens_can_follow() {
+        let prompt: Value = serde_json::from_str(FIXTURE_RELAY_PROMPT).unwrap();
+        let code = prompt["code"].as_str().unwrap();
+        let status: Value = serde_json::from_str(FIXTURE_RELAY_STATUS).unwrap();
+        assert_eq!(status["ok"], true);
+        assert_eq!(status["session"]["code"], code, "status describes the session the prompt opened");
+        assert_eq!(status["session"]["state"], "waiting-answer");
+        assert_eq!(status["session"]["rounds"][0]["round"], 1);
+        let list: Value = serde_json::from_str(FIXTURE_RELAY_LIST).unwrap();
+        assert_eq!(list["sessions"][0]["code"], code);
+        let apply: Value = serde_json::from_str(FIXTURE_RELAY_APPLY).unwrap();
+        assert_eq!(apply["ok"], true);
+        assert_eq!(apply["code"], code);
+        assert!(apply["backupPath"].is_string(), "a change is applied with a backup, so there is something to undo");
+        let undo: Value = serde_json::from_str(FIXTURE_RELAY_UNDO).unwrap();
+        assert_eq!((undo["ok"].clone(), undo["code"].clone()), (Value::Bool(true), Value::String(code.to_string())));
+        let abort: Value = serde_json::from_str(FIXTURE_RELAY_ABORT).unwrap();
+        assert_eq!(abort["state"], "abandoned");
+        for text in [FIXTURE_RELAY_STATUS, FIXTURE_RELAY_LIST, FIXTURE_RELAY_APPLY, FIXTURE_RELAY_UNDO, FIXTURE_RELAY_ABORT] {
+            assert!(!text.contains("dev1m") && !text.contains("scratchpad"), "a fixture carries a real machine path");
+        }
     }
 }

@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "sessions": [
+    {
+      "code": "ZWW4",
+      "intent": "create",
+      "state": "waiting-answer",
+      "phase": "mvp",
+      "target": "chatgpt",
+      "language": "English",
+      "appDir": null,
+      "newAppName": "TrialOrders",
+      "ask": "customers and their orders",
+      "createdAt": "2026-11-10T02:16:41Z",
+      "updatedAt": "2026-11-10T02:16:41Z",
+      "round": 1,
+      "rounds": [
+        {
+          "round": 1,
+          "promptKind": "round1",
+          "promptSha256": "bc0aa79ecf8f1ecaaab1c4b6ff00d78a514a7c72c693735cbc77668f92bb84b3",
+          "promptBytes": 19235
+        }
+      ],
+      "trail": []
+    }
+  ]
+}

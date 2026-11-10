@@ -1987,7 +1987,7 @@ fn manager_version_description() -> String {
 }
 
 const VERSION_DESCRIPTION: &str =
-    "0.13.22: The Prompter shows the measured prompt for a chat AI in your browser and has a box to paste the answer back -- NPDev reads it, tells you if it was cut off or left parts out, and applies a change only after you say yes (with a backup you can undo). Before that, 0.13.21: A database you installed yourself, found on its port, gets one plain sentence instead of a terminal command. Before that, 0.13.20: Install step 3 and the version lines name your own local copy of NPDev in Portuguese (cópia local) instead of an English fragment. Before that, 0.13.19: Home says 1 app needs attention (not 1 need), and preparing NPDev ends with one sentence (Done: NPDev is ready to make apps.) instead of a technical log. Before that, 0.13.18: The technical detail behind each database line (its tooltip) now reads in Portuguese too. Before that, 0.13.17: The database list on New app speaks plainly -- each database says Ready to use on this computer, Already running on this computer or Needs Docker running on this computer first (the technical detail is its tooltip), and a Docker database that cannot be reached says so in one sentence. Before that, 0.13.16: Screens for advanced users say so at the top -- Impact, Packs, Checks, Evaluations, Running apps and Tasks open with a note that you do not need them to make, run, change or share an app -- and Impact, Packs, Checks and Evaluations get plain titles and a sentence on what each is for instead of the commands behind them. Before that, 0.13.15: Edit starts with What do you want to change? -- say it in your own words and Ask the AI to make this change opens Ask AI with your words filled in; editing the model JSON by hand is under Advanced. Data reads plainly (Save a copy, Bring data in, Check first (changes nothing), CSV (opens in Excel)) with no commands or capital-letter headings. On Share, Keys is now Access keys, with one line saying what a key is for (whoever opens your shared app needs one to get in). Before that, 0.13.14: New app names each database for what it is and when to choose it (Simple: built in, nothing to install (recommended); PostgreSQL ... NPDev can install it for you), with the technical text under Technical details; the Connection fields are folded away (NPDev fills them in) and open by themselves when you pick a found server; the old This server is mine checkbox now reads This database was here before NPDev (do not let NPDev erase it). On Home, an app with a problem says Something is wrong: see Manage (the monitor's own sentence is its tooltip), and Recent activity names each task plainly (Install Java, Start an app...). Before that, 0.13.13: Three screens read for beginners -- Start and stop is one sentence (is the app running?) and one big Start the app button, with Open in the browser once it runs; the port, the app folder, the database buttons and the log are under Advanced. Settings > Computer opens with a verdict (This computer is ready to make apps, or which things are missing) and keeps every check under Details, opened by itself when something fails. Install's NPDev step is one Install NPDev button that downloads the newest version and prepares it; choosing a version is under Details, and Monitored App Paths is now Where your apps live. Before that, 0.13.12: Postgres without Docker -- on New app, Postgres offers two more ways side by side, with a ? that says which to pick: NPDev's own Postgres (recommended: a small download just for NPDev, no permission prompt, starts by itself when you sign in) or Postgres as a Windows service (the official installer; Windows asks for permission). When Docker is missing this comes first. Press Create and NPDev installs it, makes the app's database and fills in the connection. MySQL and SQL Server say plainly that Docker is the way for them, for now. Before that, 0.13.11: Java and Python are guided the same way -- Settings > Install says in plain words what each is for and whether this computer already has it (\"Java is ready.\"), and when one is missing a single button downloads NPDev's own copy, with the percentage while it downloads and no permission prompt; folders and versions moved under Details. Before that, 0.13.10: Docker has its own assistant -- Settings > Install > 6. Docker walks you through getting Docker ready before you create any app: it checks this computer, turns on WSL (the part of Windows Docker runs on) when it is off, installs Docker Desktop, tells you when to restart, starts it, and notices by itself when it is ready. The New app Database card uses the same steps. Before that, 0.13.9: Setting up a database is guided. Pick Postgres, MySQL or SQL Server on My apps > New app and the Database card looks for that engine on this computer by itself: it lists the servers and stopped containers it finds (Use this, Start) and, when Docker is running, offers to create a new server in Docker for you -- the official image, reachable only from this computer, with a generated password it fills in. If Docker is installed but off it starts it and waits; if Docker is missing it walks you through installing it (install, restart, start) and notices by itself when it is ready. The database descriptions (MySQL, Postgres, SQL Server, H2) are now translated to Portuguese. Before that, 0.13.8: My apps > All apps is two panels -- Your apps (each app's name, with its folder beneath) and New app, whose fields are grouped into Name and folder, Database and Connection -- and Settings has short tab names (AI, Credentials, Appearance, Versions, Computer, Install, Checks, Evaluations) with the longer explanation in each tab's tooltip; the two check tabs under My apps are now Browser and Data rules. Before that, 0.13.7: the AI providers screen reads fully in Portuguese -- provider names (Anthropic (pago), Groq (plano gratuito)...) and the hint about the environment variable that overrides a stored key are translated. Before that, 0.13.6: Home is a real starting point -- under the next-step card it now shows four status tiles (computer, apps, running, AI keys) that each open the screen where that is fixed, Your apps with every app's state and its own Open, Start, Stop and Manage buttons (running first; two apps with the same name are told apart by folder), Recent activity with a Get help link on a failure, and six shortcuts; a greeting with Refresh and the time it last looked. Before that, 0.13.5: the version chip shows only the version number (what this version is about and when it was built are the first two lines of its tooltip), and the one-line explanation under each place in the top bar is gone -- it is the tooltip of the place's button. Before that: the action buttons on the AI providers table no longer overlap in Portuguese, and on Running apps the GENERATE & RUN button of a not-yet-generated app no longer sits on top of its message (which is now translated). Before that: a theme can describe itself in more than one language (a `descriptions` map next to `names`) and its card shows the one matching the language picker -- Dark ships English, Portuguese and Spanish, every other theme stays English for now. Before that: eight screens (AI providers, Secrets, Packs, Studio, Verification, Evals, DB import/export, GPU checks) drop their neon-green glowing title and match the rest of the window, and their buttons stay readable when hovered. Before that: the Portuguese window is more complete -- Disable, Test, Reset, Remove key and Get a key on AI providers are translated, and previewing or keeping a theme names it in your language. Before that: Appearance gets Browse themes -- a community catalogue of themes you can preview and keep (every file is checked against the catalogue's sha256 first, and a file that does not match is refused) -- and Share this theme, which opens GitHub's new-file page with your theme filled in. Before that: the whole window follows the language picker (English and Portuguese) -- every screen, button, status line and message is translated as it is drawn, switching language redraws the open screen, and a new English string with no translation fails the build. Before that: Activity > Tasks -- gates, rebuilds and benchmarks that take a while, with whether each is still alive (a task whose watcher died shows as LOST), Stop, Restart and Open log; checks itself every 10 seconds while open. Before that: Set up disappears once your computer is ready (its screens move to Settings), failing checks on Ready get a Fix button that jumps to the right Install step, the strips of screens work from the keyboard (arrow keys, Home, End) and there is a Skip to content link. Before that: Home -- one card that says what to do next, with one button -- and the app workspace: choose an app once and Start & stop, Edit, Ask AI, Data, Share and the checks all follow it (their own app pickers hide). Also fixes two screens that silently never worked: the Packs app picker was never filled and the Verification table drew nothing, because two scripts shared function names. Before that: every colour in every screen now follows your theme (no hard-coded colours left), statuses show a word as well as a colour, progress is announced to screen readers, and all 19 screens pass the axe accessibility scan. Before that: Appearance & accessibility (Settings) -- pick Dark, Light, Retro, Synth, Farm, Warm, Windows or \
+    "0.13.23: Behind the scenes, the window can now open a browser-AI session, read an answer from a dropped file, apply it, undo it and give it up (the screen that uses all this comes next; nothing you see changes yet). Before that, 0.13.22: The Prompter shows the measured prompt for a chat AI in your browser and has a box to paste the answer back -- NPDev reads it, tells you if it was cut off or left parts out, and applies a change only after you say yes (with a backup you can undo). Before that, 0.13.21: A database you installed yourself, found on its port, gets one plain sentence instead of a terminal command. Before that, 0.13.20: Install step 3 and the version lines name your own local copy of NPDev in Portuguese (cópia local) instead of an English fragment. Before that, 0.13.19: Home says 1 app needs attention (not 1 need), and preparing NPDev ends with one sentence (Done: NPDev is ready to make apps.) instead of a technical log. Before that, 0.13.18: The technical detail behind each database line (its tooltip) now reads in Portuguese too. Before that, 0.13.17: The database list on New app speaks plainly -- each database says Ready to use on this computer, Already running on this computer or Needs Docker running on this computer first (the technical detail is its tooltip), and a Docker database that cannot be reached says so in one sentence. Before that, 0.13.16: Screens for advanced users say so at the top -- Impact, Packs, Checks, Evaluations, Running apps and Tasks open with a note that you do not need them to make, run, change or share an app -- and Impact, Packs, Checks and Evaluations get plain titles and a sentence on what each is for instead of the commands behind them. Before that, 0.13.15: Edit starts with What do you want to change? -- say it in your own words and Ask the AI to make this change opens Ask AI with your words filled in; editing the model JSON by hand is under Advanced. Data reads plainly (Save a copy, Bring data in, Check first (changes nothing), CSV (opens in Excel)) with no commands or capital-letter headings. On Share, Keys is now Access keys, with one line saying what a key is for (whoever opens your shared app needs one to get in). Before that, 0.13.14: New app names each database for what it is and when to choose it (Simple: built in, nothing to install (recommended); PostgreSQL ... NPDev can install it for you), with the technical text under Technical details; the Connection fields are folded away (NPDev fills them in) and open by themselves when you pick a found server; the old This server is mine checkbox now reads This database was here before NPDev (do not let NPDev erase it). On Home, an app with a problem says Something is wrong: see Manage (the monitor's own sentence is its tooltip), and Recent activity names each task plainly (Install Java, Start an app...). Before that, 0.13.13: Three screens read for beginners -- Start and stop is one sentence (is the app running?) and one big Start the app button, with Open in the browser once it runs; the port, the app folder, the database buttons and the log are under Advanced. Settings > Computer opens with a verdict (This computer is ready to make apps, or which things are missing) and keeps every check under Details, opened by itself when something fails. Install's NPDev step is one Install NPDev button that downloads the newest version and prepares it; choosing a version is under Details, and Monitored App Paths is now Where your apps live. Before that, 0.13.12: Postgres without Docker -- on New app, Postgres offers two more ways side by side, with a ? that says which to pick: NPDev's own Postgres (recommended: a small download just for NPDev, no permission prompt, starts by itself when you sign in) or Postgres as a Windows service (the official installer; Windows asks for permission). When Docker is missing this comes first. Press Create and NPDev installs it, makes the app's database and fills in the connection. MySQL and SQL Server say plainly that Docker is the way for them, for now. Before that, 0.13.11: Java and Python are guided the same way -- Settings > Install says in plain words what each is for and whether this computer already has it (\"Java is ready.\"), and when one is missing a single button downloads NPDev's own copy, with the percentage while it downloads and no permission prompt; folders and versions moved under Details. Before that, 0.13.10: Docker has its own assistant -- Settings > Install > 6. Docker walks you through getting Docker ready before you create any app: it checks this computer, turns on WSL (the part of Windows Docker runs on) when it is off, installs Docker Desktop, tells you when to restart, starts it, and notices by itself when it is ready. The New app Database card uses the same steps. Before that, 0.13.9: Setting up a database is guided. Pick Postgres, MySQL or SQL Server on My apps > New app and the Database card looks for that engine on this computer by itself: it lists the servers and stopped containers it finds (Use this, Start) and, when Docker is running, offers to create a new server in Docker for you -- the official image, reachable only from this computer, with a generated password it fills in. If Docker is installed but off it starts it and waits; if Docker is missing it walks you through installing it (install, restart, start) and notices by itself when it is ready. The database descriptions (MySQL, Postgres, SQL Server, H2) are now translated to Portuguese. Before that, 0.13.8: My apps > All apps is two panels -- Your apps (each app's name, with its folder beneath) and New app, whose fields are grouped into Name and folder, Database and Connection -- and Settings has short tab names (AI, Credentials, Appearance, Versions, Computer, Install, Checks, Evaluations) with the longer explanation in each tab's tooltip; the two check tabs under My apps are now Browser and Data rules. Before that, 0.13.7: the AI providers screen reads fully in Portuguese -- provider names (Anthropic (pago), Groq (plano gratuito)...) and the hint about the environment variable that overrides a stored key are translated. Before that, 0.13.6: Home is a real starting point -- under the next-step card it now shows four status tiles (computer, apps, running, AI keys) that each open the screen where that is fixed, Your apps with every app's state and its own Open, Start, Stop and Manage buttons (running first; two apps with the same name are told apart by folder), Recent activity with a Get help link on a failure, and six shortcuts; a greeting with Refresh and the time it last looked. Before that, 0.13.5: the version chip shows only the version number (what this version is about and when it was built are the first two lines of its tooltip), and the one-line explanation under each place in the top bar is gone -- it is the tooltip of the place's button. Before that: the action buttons on the AI providers table no longer overlap in Portuguese, and on Running apps the GENERATE & RUN button of a not-yet-generated app no longer sits on top of its message (which is now translated). Before that: a theme can describe itself in more than one language (a `descriptions` map next to `names`) and its card shows the one matching the language picker -- Dark ships English, Portuguese and Spanish, every other theme stays English for now. Before that: eight screens (AI providers, Secrets, Packs, Studio, Verification, Evals, DB import/export, GPU checks) drop their neon-green glowing title and match the rest of the window, and their buttons stay readable when hovered. Before that: the Portuguese window is more complete -- Disable, Test, Reset, Remove key and Get a key on AI providers are translated, and previewing or keeping a theme names it in your language. Before that: Appearance gets Browse themes -- a community catalogue of themes you can preview and keep (every file is checked against the catalogue's sha256 first, and a file that does not match is refused) -- and Share this theme, which opens GitHub's new-file page with your theme filled in. Before that: the whole window follows the language picker (English and Portuguese) -- every screen, button, status line and message is translated as it is drawn, switching language redraws the open screen, and a new English string with no translation fails the build. Before that: Activity > Tasks -- gates, rebuilds and benchmarks that take a while, with whether each is still alive (a task whose watcher died shows as LOST), Stop, Restart and Open log; checks itself every 10 seconds while open. Before that: Set up disappears once your computer is ready (its screens move to Settings), failing checks on Ready get a Fix button that jumps to the right Install step, the strips of screens work from the keyboard (arrow keys, Home, End) and there is a Skip to content link. Before that: Home -- one card that says what to do next, with one button -- and the app workspace: choose an app once and Start & stop, Edit, Ask AI, Data, Share and the checks all follow it (their own app pickers hide). Also fixes two screens that silently never worked: the Packs app picker was never filled and the Verification table drew nothing, because two scripts shared function names. Before that: every colour in every screen now follows your theme (no hard-coded colours left), statuses show a word as well as a colour, progress is announced to screen readers, and all 19 screens pass the axe accessibility scan. Before that: Appearance & accessibility (Settings) -- pick Dark, Light, Retro, Synth, Farm, Warm, Windows or \
      High contrast, load a theme file, or ask any AI for a new theme (you preview it and can undo); text \
      size, motion, focus, spacing, links and colour-blind safe status colours; remembered between starts \
      with no flash. Before that: one look for the whole window, Get help with this error (copy a redacted \
@@ -2837,6 +2837,154 @@ async fn relay_ingest_text(
         "relay_ingest_text code={code} outcome={}",
         result.get("outcome").and_then(|o| o.as_str()).unwrap_or("-")
     ));
+    Ok(result)
+}
+
+/// What every `relay_*` command below needs to run the CLI: Python, the CLI script and JAVA_HOME.
+async fn relay_cli(state: &AppState) -> Result<(PathBuf, PathBuf, Option<String>), String> {
+    Ok((resolve_python_exe(state).await?, resolve_npdev_cli(state)?, resolve_java_home(state)))
+}
+
+/// One word for the log: the answer's `outcome` (ingest), else `ok`, else `refused:<the CLI's error code>`.
+/// Never any of the user's words, files or app.
+fn relay_verdict(result: &Value) -> String {
+    if let Some(outcome) = result.get("outcome").and_then(|o| o.as_str()) {
+        return outcome.to_string();
+    }
+    match result.get("ok").and_then(|ok| ok.as_bool()) {
+        Some(true) => "ok".to_string(),
+        Some(false) => format!("refused:{}", result.get("error").and_then(|e| e.as_str()).unwrap_or("-")),
+        None => "-".to_string(),
+    }
+}
+
+/// "Use a browser AI": open a session -- like `relay_prompt`, but the session is kept, so the answer can be
+/// checked, applied and undone later (even after the window is closed). `intent` is `create`, `change` or
+/// `fix`; a change or fix names the app (`app_dir`, its model or generated folder -- the CLI reads the model
+/// itself), a create may name the folder it will get (`new_app_name`). `target` is the chat AI the user is
+/// going to (it shapes the prompt), `errors` is what went wrong for a fix. Answers like `relay_prompt`.
+#[tauri::command]
+async fn relay_start(
+    state: State<'_, AppState>,
+    intent: String,
+    ask: String,
+    app_dir: Option<String>,
+    new_app_name: Option<String>,
+    target: Option<String>,
+    language: Option<String>,
+    interview: Option<bool>,
+    errors: Option<String>,
+) -> Result<Value, String> {
+    if !matches!(intent.as_str(), "create" | "change" | "fix") {
+        return Err(format!("not an intent this window can compose: '{intent}'"));
+    }
+    if intent != "fix" && ask.trim().is_empty() {
+        return Err("describe what to build or change first".to_string());
+    }
+    let app_dir = app_dir.filter(|d| !d.trim().is_empty());
+    if intent != "create" && app_dir.is_none() && !npdev::fake_mode() {
+        return Err("a change needs an app to change".to_string());
+    }
+    let new_app_name = new_app_name.filter(|n| !n.trim().is_empty());
+    let language_name = npdev::relay_language_name(language.as_deref().unwrap_or("en"));
+    let (python, cli, java_home) = relay_cli(&state).await?;
+    let result = npdev::run_relay_start(
+        &python,
+        &cli,
+        java_home.as_deref(),
+        &intent,
+        &ask,
+        app_dir.as_deref(),
+        new_app_name.as_deref(),
+        target.as_deref(),
+        language_name,
+        interview.unwrap_or(false),
+        errors.as_deref(),
+    )
+    .await?;
+    log::info(format!(
+        "relay_start intent={intent} code={} round={}",
+        result.get("code").and_then(|c| c.as_str()).unwrap_or("-"),
+        result.get("round").and_then(|r| r.as_u64()).unwrap_or(0)
+    ));
+    Ok(result)
+}
+
+/// "Use a browser AI": the file(s) the chat AI made (`.json`, `.txt`, `.md`, `.zip`) -- dropped on the
+/// window, picked, or found in Downloads -- classified like a pasted answer. `source` says how they arrived
+/// (`drop`, `file-picker`, `downloads-watch`).
+#[tauri::command]
+async fn relay_ingest_file(
+    state: State<'_, AppState>,
+    files: Vec<String>,
+    code: String,
+    round: Option<u32>,
+    source: Option<String>,
+) -> Result<Value, String> {
+    let (python, cli, java_home) = relay_cli(&state).await?;
+    let result =
+        npdev::run_relay_ingest_file(&python, &cli, java_home.as_deref(), &files, &code, round, source.as_deref()).await?;
+    log::info(format!("relay_ingest_file code={code} files={} outcome={}", files.len(), relay_verdict(&result)));
+    Ok(result)
+}
+
+/// "Use a browser AI": one session's state, rounds and last result.
+#[tauri::command]
+async fn relay_status(state: State<'_, AppState>, code: String) -> Result<Value, String> {
+    let (python, cli, java_home) = relay_cli(&state).await?;
+    npdev::run_relay_status(&python, &cli, java_home.as_deref(), &code).await
+}
+
+/// "Use a browser AI": the sessions still open, newest first -- how a closed window finds its way back.
+#[tauri::command]
+async fn relay_list(state: State<'_, AppState>) -> Result<Value, String> {
+    let (python, cli, java_home) = relay_cli(&state).await?;
+    npdev::run_relay_list(&python, &cli, java_home.as_deref()).await
+}
+
+/// "Use a browser AI": write a READY answer -- a create makes the app inside `parent_dir`, a change
+/// replaces the model after a backup. `confirmed` carries the user's yes to each preview warning that asked
+/// for one; without it the CLI refuses (`confirmation-required`, naming what is missing) and writes nothing.
+#[tauri::command]
+async fn relay_apply(
+    state: State<'_, AppState>,
+    code: String,
+    round: Option<u32>,
+    confirmed: Option<Vec<String>>,
+    parent_dir: Option<String>,
+) -> Result<Value, String> {
+    let (python, cli, java_home) = relay_cli(&state).await?;
+    let parent_dir = parent_dir.filter(|d| !d.trim().is_empty());
+    let result = npdev::run_relay_apply(
+        &python,
+        &cli,
+        java_home.as_deref(),
+        &code,
+        round,
+        confirmed.as_deref().unwrap_or(&[]),
+        parent_dir.as_deref(),
+    )
+    .await?;
+    log::info(format!("relay_apply code={code} {}", relay_verdict(&result)));
+    Ok(result)
+}
+
+/// "Use a browser AI": put the app's model back from the backup `relay_apply` made. The CLI refuses when the
+/// app changed since the answer was applied, unless `force` -- so a later edit is never lost silently.
+#[tauri::command]
+async fn relay_undo(state: State<'_, AppState>, code: String, force: Option<bool>) -> Result<Value, String> {
+    let (python, cli, java_home) = relay_cli(&state).await?;
+    let result = npdev::run_relay_undo(&python, &cli, java_home.as_deref(), &code, force.unwrap_or(false)).await?;
+    log::info(format!("relay_undo code={code} {}", relay_verdict(&result)));
+    Ok(result)
+}
+
+/// "Use a browser AI": give up on a session (it stops being listed as open).
+#[tauri::command]
+async fn relay_abort(state: State<'_, AppState>, code: String) -> Result<Value, String> {
+    let (python, cli, java_home) = relay_cli(&state).await?;
+    let result = npdev::run_relay_abort(&python, &cli, java_home.as_deref(), &code).await?;
+    log::info(format!("relay_abort code={code} {}", relay_verdict(&result)));
     Ok(result)
 }
 
@@ -3956,6 +4104,13 @@ the blast radius needs a baseline to diff against"
             validate_prompter_model,
             relay_prompt,
             relay_ingest_text,
+            relay_start,
+            relay_ingest_file,
+            relay_status,
+            relay_list,
+            relay_apply,
+            relay_undo,
+            relay_abort,
             apply_prompter_model,
             generate_app_from_model,
             studio_apply_live,

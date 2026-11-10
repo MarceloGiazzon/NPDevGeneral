@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "code": "ZWW4",
+  "round": 1,
+  "intent": "change",
+  "created": false,
+  "appDir": "/home/you/NPDev/Apps/Shop",
+  "modelPath": "/home/you/NPDev/Apps/Shop/model.json",
+  "backupPath": "/home/you/.config/NPDev/ai-relay/ZWW4/backup/model.before.json",
+  "appliedAt": "2026-11-10T02:18:27Z"
+}
