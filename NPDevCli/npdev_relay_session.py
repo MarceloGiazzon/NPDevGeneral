@@ -372,3 +372,27 @@ def abandon(code: str) -> dict:
         save(session)
         append_event(session["code"], "abandoned", None)
     return session
+
+
+def set_target(code: str, target: str, **fields) -> dict:
+    """Record which chat AI the person is taking this conversation to (chosen in step 2, after the prompt exists)."""
+    if target not in TARGETS:
+        raise RelaySessionError(f"Unknown target {target!r}.")
+    session = load(code)
+    if session.get("state") == "abandoned":
+        raise RelaySessionError("This conversation was abandoned.")
+    session["target"] = target
+    save(session)
+    append_event(session["code"], "target-chosen", None, target=target, **fields)
+    return session
+
+
+def set_delivery(session: dict, round_number: int, delivery: str) -> dict:
+    """Record how a round's prompt reached the chat (pasted, or attached as a file). Returns the round entry."""
+    if delivery not in DELIVERIES:
+        raise RelaySessionError(f"Unknown delivery {delivery!r}.")
+    entry = _round_entry(session, round_number)
+    entry["delivery"] = delivery
+    save(session)
+    append_event(session["code"], "delivery-set", round_number, delivery=delivery)
+    return entry

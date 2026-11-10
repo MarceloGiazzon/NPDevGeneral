@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "code": "ZWW4",
+  "round": 1,
+  "target": {
+    "delivery": "paste",
+    "maxPasteChars": 8000,
+    "outputBudgetChars": 8000,
+    "canMakeFiles": false,
+    "id": "google-ai-mode",
+    "label": "Google AI Mode",
+    "labels": {
+      "pt": "Google Modo IA"
+    },
+    "url": "https://www.google.com/search?udm=50",
+    "tier": "short",
+    "calibrated": false,
+    "verifyUrl": true,
+    "notes": "Search product; input box and answer length expected to be the tightest. If round 1 does not fit, the profile switches to delivery=attachment or the UI shows 'works with limits, prefer Gemini'."
+  },
+  "chars": 19261,
+  "fits": false,
+  "delivery": "attachment"
+}

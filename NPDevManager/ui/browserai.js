@@ -45,6 +45,8 @@
     launching: false, // building / starting it right now
     launchToken: 0, // a later launch (or starting over) makes an earlier one stop drawing
     openUrl: null,
+    targets: null, // the chat AIs the CLI lists (relay_targets), read once
+    target: null, // the one picked for this conversation
   };
 
   // What the CLI says about an answer that is not ready, as one plain sentence and at most one button.
@@ -102,6 +104,12 @@
   const WENT_WRONG = "Something went wrong. Nothing was changed. Try again.";
   const RESUMED = "Your conversation is open again. Pick up where you left off.";
   const RESUME_FAILED = "That conversation could not be opened. You can start a new one.";
+  const OPENING = "Your AI is opening in your browser. Press COPY here, start a new conversation there and paste the text.";
+  const OPEN_BY_HAND = "Open your AI's website yourself, start a new conversation and paste the text there.";
+  const OPEN_FAILED = "NPDev could not open your browser. Open your AI's website yourself.";
+  const SAVING = "Saving the file…";
+  const SAVED = "The file is in the folder that just opened. Drag it into the chat, paste the short message that is now on your clipboard, and send.";
+  const SAVED_BY_HAND = "The file is saved, but NPDev could not do all of it for you. Open See details for what is missing, drag the file into the chat and send.";
 
   // ------------------------------------------------------------------------------------ the steps
 
@@ -269,6 +277,7 @@
       if (!r || r.ok === false || !r.code || typeof r.prompt !== "string") return note("browserai-step1-note", WENT_WRONG, true);
       S.code = r.code;
       drawRounds([]);
+      forgetTarget();
       S.appDir = appDir;
       S.promptText = r.prompt;
       S.result = null;
@@ -304,6 +313,107 @@
       note("browserai-copy-note", 'Could not copy. Open "See the text" and copy it by hand.', true);
       $("browserai-show-text").open = true;
     }
+  }
+
+  // ------------------------------------------------------------------------ 2b. which AI (F3 T3.5)
+
+  // The chat AIs come from the CLI (`relay_targets`: a name, an https address, how much text each takes pasted). This file
+  // holds no address of its own and opens only one of THESE -- never an address that appeared in an AI's answer. A list
+  // that cannot be read leaves the row hidden: COPY still works with any AI. Whether the text fits the chat the person
+  // picked is the CLI's answer (`relay_choose_target`), not a comparison made here.
+  async function loadTargets() {
+    if (S.targets) return;
+    try {
+      const r = await invoke("relay_targets");
+      S.targets = r && r.ok !== false && Array.isArray(r.targets) ? r.targets : null;
+    } catch (e) {
+      S.targets = null; // asked again the next time the screen opens
+    }
+    drawTargets();
+  }
+
+  function targetName(t) {
+    const lang = (window.NPDevI18n && window.NPDevI18n.lang) || "en";
+    return (t.labels && t.labels[lang]) || t.label;
+  }
+
+  function drawTargets() {
+    const row = $("browserai-targets-row");
+    row.replaceChildren();
+    const list = S.targets || [];
+    $("browserai-targets").hidden = !list.length;
+    for (const t of list) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn ghost";
+      b.id = `browserai-open-${t.id}`;
+      b.translate = false; // the CLI's list already carries the right name for each language
+      b.textContent = (S.target === t.id ? "✓ " : "") + targetName(t);
+      if (S.target === t.id) b.setAttribute("aria-current", "true");
+      b.addEventListener("click", () => onTarget(t));
+      row.append(b);
+    }
+  }
+
+  function forgetTarget() {
+    S.target = null;
+    $("browserai-big").hidden = true;
+    $("browserai-save-details").hidden = true;
+    note("browserai-target-note", "");
+    note("browserai-save-note", "");
+    drawTargets();
+  }
+
+  async function onTarget(t) {
+    const code = S.code;
+    if (!code) return;
+    S.target = t.id;
+    $("browserai-big").hidden = true;
+    note("browserai-save-note", "");
+    $("browserai-save-details").hidden = true;
+    drawTargets();
+    const b = $(`browserai-open-${t.id}`);
+    if (b) b.focus();
+    if (typeof t.url === "string" && t.url.startsWith("https://")) {
+      note("browserai-target-note", OPENING);
+      invoke("open_url", { url: t.url }).catch(() => note("browserai-target-note", OPEN_FAILED, true));
+    } else {
+      note("browserai-target-note", OPEN_BY_HAND);
+    }
+    let r;
+    try {
+      r = await invoke("relay_choose_target", { code, target: t.id });
+    } catch (e) {
+      return; // no verdict, no offer: the paste still works
+    }
+    if (code !== S.code || S.target !== t.id) return; // the person moved on while the CLI answered
+    $("browserai-big").hidden = !(r && r.ok !== false && r.fits === false);
+  }
+
+  // The text is too long for the AI picked: save it as a file in the conversation's own folder (the Rust side opens that
+  // folder with the file selected), put the one short line to write beside it on the clipboard, and go on to step 3 -- the
+  // file replaces COPY, so there is nothing else to press here. Step 2 stays open so the person can read what to do.
+  async function onSaveFile() {
+    if (S.busy || !S.code) return;
+    note("browserai-save-note", SAVING);
+    let r;
+    try {
+      r = await invoke("relay_prompt_attachment", { code: S.code });
+    } catch (e) {
+      return note("browserai-save-note", WENT_WRONG, true);
+    }
+    if (!r || r.ok === false) return note("browserai-save-note", WENT_WRONG, true);
+    const message = typeof r.chatMessage === "string" ? r.chatMessage : "";
+    const copied = message ? await copyOut(message) : false;
+    const opened = r.revealed === true;
+    const missing = [opened ? "" : typeof r.file === "string" ? r.file : "", copied ? "" : message].filter(Boolean).join("\n");
+    $("browserai-save-text").textContent = missing;
+    $("browserai-save-details").hidden = !missing;
+    note("browserai-save-note", opened && copied ? SAVED : SAVED_BY_HAND, !(opened && copied));
+    announce(opened && copied ? SAVED : SAVED_BY_HAND);
+    setPhase("waiting");
+    S.expanded[2] = true;
+    render();
   }
 
   // ------------------------------------------------------------------ 3. wait for / check the answer
@@ -985,6 +1095,7 @@
     note("browserai-apply-note", "");
     note("browserai-progress", "");
     announce("");
+    forgetTarget();
   }
 
   // ----------------------------------------------------------- coming back to a conversation (F3 T3.4)
@@ -1035,6 +1146,8 @@
         onAppChanged(false); // only to enable the "change" choice: the kind of conversation is already fixed
       }
       note("browserai-step1-note", "");
+      S.target = session.target && session.target !== "generic" ? session.target : null;
+      drawTargets();
 
       const last = st.lastResult;
       drawRounds(Array.isArray(session.rounds) ? session.rounds : []);
@@ -1124,12 +1237,19 @@
         render();
       });
     }
-    document.addEventListener("npdev:lang-changed", render);
+    $("browserai-save-file").addEventListener("click", onSaveFile);
+    document.addEventListener("npdev:lang-changed", () => {
+      render();
+      drawTargets(); // an AI name can differ by language (Google AI Mode / Google Modo IA)
+    });
     setIntent("create");
     render();
   }
 
   window.__npdevInitBrowserAi = initBrowserAi;
-  window.__npdevRefreshBrowserAi = refreshApps;
+  window.__npdevRefreshBrowserAi = () => {
+    loadTargets(); // the CLI takes a moment: have the AIs ready by the time the person reaches step 2
+    return refreshApps();
+  };
   window.__npdevResumeBrowserAi = resume; // Home's resume card (home.js)
 })();

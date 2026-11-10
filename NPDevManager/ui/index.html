@@ -598,6 +598,20 @@
             <span class="subtitle" style="margin:0">Use a new conversation.</span>
           </div>
           <p class="ba-note" id="browserai-copy-note" role="status" aria-live="polite"></p>
+          <div class="ba-targets" id="browserai-targets" hidden>
+            <p class="ba-targets-label" id="browserai-targets-label">Open your AI in the browser:</p>
+            <div class="ba-actions" id="browserai-targets-row" role="group" aria-labelledby="browserai-targets-label"></div>
+            <p class="ba-note" id="browserai-target-note" role="status" aria-live="polite"></p>
+          </div>
+          <div class="ba-big" id="browserai-big" hidden>
+            <p id="browserai-big-text">This text is long for the AI you chose. Save it as a file and attach it to the chat instead.</p>
+            <div class="ba-actions"><button type="button" class="btn" id="browserai-save-file">Save as a file to attach</button></div>
+            <p class="ba-note" id="browserai-save-note" role="status" aria-live="polite"></p>
+            <details class="ba-details" id="browserai-save-details" hidden>
+              <summary>See details</summary>
+              <pre id="browserai-save-text" translate="no"></pre>
+            </details>
+          </div>
           <p class="ba-notice">What you copy goes to the AI service you choose, outside your computer. NPDev removes passwords and keys, and never includes your app's records.</p>
           <details class="ba-details" id="browserai-show-text">
             <summary>See the text</summary>

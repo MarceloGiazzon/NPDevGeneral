@@ -1,0 +1,122 @@
+{
+  "ok": true,
+  "schemaVersion": "npdev-relay-targets.v1",
+  "targets": [
+    {
+      "delivery": "paste",
+      "maxPasteChars": 40000,
+      "outputBudgetChars": 24000,
+      "canMakeFiles": false,
+      "id": "chatgpt",
+      "label": "ChatGPT",
+      "url": "https://chatgpt.com/",
+      "tier": "full",
+      "calibrated": false,
+      "notes": "Long pastes become an attachment chip automatically (fine). Code-interpreter may offer sandbox:/mnt/data links -> FILE_LINK_ONLY.",
+      "labels": {},
+      "verifyUrl": false
+    },
+    {
+      "delivery": "paste",
+      "maxPasteChars": 40000,
+      "outputBudgetChars": 24000,
+      "canMakeFiles": false,
+      "id": "gemini",
+      "label": "Gemini",
+      "url": "https://gemini.google.com/app",
+      "tier": "full",
+      "calibrated": false,
+      "notes": "May move long output into Canvas -> answer text lacks the files (NO_FILES with mentions-artifact).",
+      "labels": {},
+      "verifyUrl": false
+    },
+    {
+      "delivery": "paste",
+      "maxPasteChars": 40000,
+      "outputBudgetChars": 24000,
+      "canMakeFiles": false,
+      "id": "claude",
+      "label": "Claude",
+      "url": "https://claude.ai/new",
+      "tier": "full",
+      "calibrated": false,
+      "notes": "Long pastes become an attachment (fine). May put files in an artifact panel -> same handling as canvas.",
+      "labels": {},
+      "verifyUrl": false
+    },
+    {
+      "delivery": "paste",
+      "maxPasteChars": 40000,
+      "outputBudgetChars": 24000,
+      "canMakeFiles": false,
+      "id": "grok",
+      "label": "Grok",
+      "url": "https://grok.com/",
+      "tier": "short",
+      "calibrated": false,
+      "verifyUrl": true,
+      "notes": "",
+      "labels": {}
+    },
+    {
+      "delivery": "paste",
+      "maxPasteChars": 40000,
+      "outputBudgetChars": 24000,
+      "canMakeFiles": false,
+      "id": "kimi",
+      "label": "Kimi",
+      "url": "https://www.kimi.com/",
+      "tier": "short",
+      "calibrated": false,
+      "verifyUrl": true,
+      "notes": "",
+      "labels": {}
+    },
+    {
+      "delivery": "paste",
+      "maxPasteChars": 40000,
+      "outputBudgetChars": 24000,
+      "canMakeFiles": false,
+      "id": "deepseek",
+      "label": "DeepSeek",
+      "url": "https://chat.deepseek.com/",
+      "tier": "short",
+      "calibrated": false,
+      "notes": "",
+      "labels": {},
+      "verifyUrl": false
+    },
+    {
+      "delivery": "paste",
+      "maxPasteChars": 8000,
+      "outputBudgetChars": 8000,
+      "canMakeFiles": false,
+      "id": "google-ai-mode",
+      "label": "Google AI Mode",
+      "labels": {
+        "pt": "Google Modo IA"
+      },
+      "url": "https://www.google.com/search?udm=50",
+      "tier": "short",
+      "calibrated": false,
+      "verifyUrl": true,
+      "notes": "Search product; input box and answer length expected to be the tightest. If round 1 does not fit, the profile switches to delivery=attachment or the UI shows 'works with limits, prefer Gemini'."
+    },
+    {
+      "delivery": "paste",
+      "maxPasteChars": 40000,
+      "outputBudgetChars": 24000,
+      "canMakeFiles": false,
+      "id": "generic",
+      "label": "Another AI",
+      "labels": {
+        "pt": "Outra IA"
+      },
+      "url": null,
+      "tier": "none",
+      "calibrated": false,
+      "notes": "Defaults only.",
+      "verifyUrl": false
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "code": "ZWW4",
+  "round": 1,
+  "target": {
+    "delivery": "paste",
+    "maxPasteChars": 40000,
+    "outputBudgetChars": 24000,
+    "canMakeFiles": false,
+    "id": "chatgpt",
+    "label": "ChatGPT",
+    "url": "https://chatgpt.com/",
+    "tier": "full",
+    "calibrated": false,
+    "notes": "Long pastes become an attachment chip automatically (fine). Code-interpreter may offer sandbox:/mnt/data links -> FILE_LINK_ONLY.",
+    "labels": {},
+    "verifyUrl": false
+  },
+  "chars": 19261,
+  "fits": true,
+  "delivery": "paste"
+}

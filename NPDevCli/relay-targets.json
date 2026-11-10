@@ -1,0 +1,26 @@
+{
+  "_comment": "The browser chat AIs 'Use a browser AI' knows (D-5): small data adjustments (where to open, how much text a chat takes pasted, whether it can make files), never separate prompts. Read by npdev_relay_targets.py; the Manager draws its 'Open <name>' buttons from it and never holds a URL of its own. Every number is a CONSERVATIVE PLACEHOLDER until the owner's calibration run (a row in the calibration log behind it) flips 'calibrated' to true for that target. A target marked verifyUrl has a URL a human must open once before it is trusted (products move). Google AI Mode is a Search feature, NOT the Gemini app: a separate target, expected weaker for long structured output. 'label' is English; 'labels' holds the other languages by Manager language id.",
+  "schemaVersion": "npdev-relay-targets.v1",
+  "defaults": {
+    "delivery": "paste",
+    "maxPasteChars": 40000,
+    "outputBudgetChars": 24000,
+    "canMakeFiles": false
+  },
+  "targets": [
+    { "id": "chatgpt", "label": "ChatGPT", "url": "https://chatgpt.com/", "tier": "full", "calibrated": false,
+      "notes": "Long pastes become an attachment chip automatically (fine). Code-interpreter may offer sandbox:/mnt/data links -> FILE_LINK_ONLY." },
+    { "id": "gemini", "label": "Gemini", "url": "https://gemini.google.com/app", "tier": "full", "calibrated": false,
+      "notes": "May move long output into Canvas -> answer text lacks the files (NO_FILES with mentions-artifact)." },
+    { "id": "claude", "label": "Claude", "url": "https://claude.ai/new", "tier": "full", "calibrated": false,
+      "notes": "Long pastes become an attachment (fine). May put files in an artifact panel -> same handling as canvas." },
+    { "id": "grok", "label": "Grok", "url": "https://grok.com/", "tier": "short", "calibrated": false, "verifyUrl": true, "notes": "" },
+    { "id": "kimi", "label": "Kimi", "url": "https://www.kimi.com/", "tier": "short", "calibrated": false, "verifyUrl": true, "notes": "" },
+    { "id": "deepseek", "label": "DeepSeek", "url": "https://chat.deepseek.com/", "tier": "short", "calibrated": false, "notes": "" },
+    { "id": "google-ai-mode", "label": "Google AI Mode", "labels": { "pt": "Google Modo IA" },
+      "url": "https://www.google.com/search?udm=50", "tier": "short", "calibrated": false, "verifyUrl": true,
+      "maxPasteChars": 8000, "outputBudgetChars": 8000,
+      "notes": "Search product; input box and answer length expected to be the tightest. If round 1 does not fit, the profile switches to delivery=attachment or the UI shows 'works with limits, prefer Gemini'." },
+    { "id": "generic", "label": "Another AI", "labels": { "pt": "Outra IA" }, "url": null, "tier": "none", "calibrated": false, "notes": "Defaults only." }
+  ]
+}

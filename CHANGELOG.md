@@ -113,6 +113,21 @@ release. Ships in the next tag.
   card. A re-read of the app list no longer turns an open change into a
   create. Home's card text now fills `{app}`/`{ask}`/... with function replacers, so a request or an
   app name containing `$&` shows as typed.
+- **Use a browser AI: pick the chat AI, and send a long text as a file** (Manager 0.13.33) -- step 2
+  now has a button for each AI the CLI knows (`NPDevCli/relay-targets.json`, read by
+  `npdev_relay_targets.py`, listed by `npdev ai relay targets`): ChatGPT, Gemini, Claude, Grok, Kimi,
+  DeepSeek, Google AI Mode (its own target, not Gemini) and Another AI. A button opens that AI's
+  https address (the window holds no address of its own and never opens one from an AI's answer) and
+  `npdev ai relay target --code X --target T` records the choice on the conversation and says whether
+  the latest prompt fits that chat as a plain paste (`maxPasteChars`, a conservative placeholder per
+  AI until the owner's calibration run flips `calibrated`). When it does not fit -- today only Google
+  AI Mode (8000 characters against a 19,000-character prompt) -- **Save as a file to attach** writes
+  the prompt into the conversation's own folder (never Downloads, where the watcher would read it
+  back), opens that folder with the file selected (`relay_prompt_attachment`, the opener's reveal),
+  puts the one short line to write beside it on the clipboard (`attachmentMessage` in
+  `relay-prompts.json`), records the round as delivered by attachment and goes on to step 3. The
+  window shows no path unless the folder could not be opened. Picking up a conversation marks the AI it
+  was taken to. New commands `relay_targets`, `relay_choose_target`, `relay_prompt_attachment`.
 - **Agent Access** (`agentAccess` model block): a generated app serves a standard MCP endpoint
   (`/api/mcp`) so Claude Code/Desktop or any MCP client can use its data as tools, and optionally
   runs a Telegram bot linking a Telegram account to an app user for plain-language chat -- every

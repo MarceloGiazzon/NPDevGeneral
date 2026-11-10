@@ -170,7 +170,7 @@ window.__TAURI__ = {
           if (args.id === "tampered-demo") throw 'the file for tampered-demo does not match the catalogue sha256 (expected 9b0f23349e3b, got 0123456789ab); it was NOT imported';
           return F.catalogue.files[args.id];
         case "theme_share_url": return "https://github.com/MarceloGiazzon/npdev-themes/new/main/themes?filename=" + JSON.parse(args.jsonText).id + ".json&value=x";
-        case "open_url": window.__opened = args.url; return null;
+        case "open_url": if (window.__openFails) throw "no browser"; window.__opened = args.url; return null;
         case "theme_delete": window.__userThemes = (window.__userThemes || []).filter((x) => x.id !== args.id); return { removed: true };
         case "manager_log_path": return "C:\\\\x\\\\manager.log";
         // Use a browser AI (the relay_* commands): the CAPTURED answers of the real CLI. A marker in the pasted
@@ -204,6 +204,20 @@ window.__TAURI__ = {
           if (window.__relayListFails) throw "list unavailable";
           return window.__relayListAnswer || {};
         case "relay_stored_prompt": window.__relayStoredPrompts = (window.__relayStoredPrompts || []).concat([args]); return window.__storedAnswer || F.relay.prompt;
+        // Which chat AI (F3 T3.5): the CLI's list, its verdict on whether the prompt fits the AI picked (the same captured prompt
+        // fits ChatGPT's limit and not Google AI Mode's), and the prompt as a file -- what the Rust side returns once it has
+        // opened the folder (no path, revealed: true).
+        case "relay_targets": return window.__targetsAnswer || F.relay.targets;
+        case "relay_choose_target":
+          window.__targetChoices = (window.__targetChoices || []).concat([args]);
+          if (window.__chooseFails) throw "no verdict";
+          return args.target === "google-ai-mode" ? F.relay.chosenBig : F.relay.chosen;
+        case "relay_prompt_attachment": {
+          window.__attachmentCalls = (window.__attachmentCalls || []).concat([args]);
+          if (window.__attachmentAnswer) return window.__attachmentAnswer;
+          const { file, ...rest } = F.relay.attachment;
+          return Object.assign(rest, { revealed: true });
+        }
         case "relay_pick_answer_files": window.__pickCalls = (window.__pickCalls || 0) + 1; return window.__pickAnswer || [];
         case "relay_apply": window.__relayApplies = (window.__relayApplies || []).concat([args]); return window.__applyAnswer || F.relay.apply;
         case "relay_undo": window.__relayUndos = (window.__relayUndos || []).concat([args]); return window.__undoAnswer || F.relay.undo;
@@ -272,6 +286,8 @@ await page.addInitScript({
       change: fixture("relay-ingest-ready-change.json"), removal: fixture("relay-ingest-ready-removal.json"),
       apply: fixture("relay-apply.json"), undo: fixture("relay-undo.json"), abort: fixture("relay-abort.json"),
       status: fixture("relay-status.json"), list: fixture("relay-list.json"),
+      targets: fixture("relay-targets.json"), chosen: fixture("relay-target-chosen.json"),
+      chosenBig: fixture("relay-target-chosen-big.json"), attachment: fixture("relay-attachment.json"),
     },
     dbProvision: fixture("db-provision.json"),
     catalogue: (() => {
@@ -567,6 +583,138 @@ await page.setViewportSize({ width: 1400, height: 1000 });
   // A place opens on the screen last used in it: leave "Apps" on its own list, as the sections after this expect.
   await page.evaluate(() => window.__npdevShowScreen("apps"));
   await homeAgain();
+}
+
+// ---- Use a browser AI, step 2 (F3 T3.5): which AI, and a text too long to paste goes as a file -------------------------
+// The buttons come from the CLI's list (captured), opening one opens ITS address, and whether the text fits is the CLI's
+// verdict (the same captured prompt fits ChatGPT's limit and not Google AI Mode's). The page decides none of it.
+{
+  const shown = (sel) => page.$eval(sel, (e) => !e.hidden && e.offsetParent !== null).catch(() => false);
+  const text = (sel) => page.$eval(sel, (e) => e.textContent.trim()).catch(() => null);
+  const steps = () => page.evaluate(() => [1, 2, 3, 4, 5].map((n) => document.getElementById("browserai-step-" + n).dataset.state).join(","));
+  const current = (n) => page.waitForFunction((k) => document.getElementById("browserai-step-" + k)?.dataset.state === "current", n, { timeout: 4000 }).catch(() => {});
+  const start = async () => {
+    await page.evaluate(() => { window.__relayStarts = []; return window.__npdevShowScreen("browserai"); });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => { const p = document.getElementById("browserai-app"); p.value = ""; p.dispatchEvent(new Event("change", { bubbles: true })); });
+    await page.fill("#browserai-ask", "a tiny reading list");
+    await page.fill("#browserai-newname", "ReadingList");
+    await page.click("#browserai-continue");
+    await current(2);
+  };
+  const leave = async () => { await page.evaluate(() => document.getElementById("browserai-else").click()); await page.waitForTimeout(200); };
+  const pick = async (id) => { await page.click("#browserai-open-" + id); await page.waitForTimeout(200); };
+  const noteOf = (id) => page.$eval(id, (e) => ({ text: e.textContent.trim(), bad: e.classList.contains("bad") })).catch(() => null);
+  await page.evaluate(() => {
+    window.__clip = null; window.__opened = null; window.__targetChoices = []; window.__attachmentCalls = []; window.__watchStarts = [];
+    window.__statusAnswer = null; window.__statusFails = false; window.__openFails = false; window.__chooseFails = false; window.__attachmentAnswer = null;
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (t) => { window.__clip = t; } } });
+  });
+  await start();
+  const buttons = await page.$$eval("#browserai-targets-row button", (b) => b.map((x) => [x.id, x.textContent]));
+  check("browser AI: step 2 offers one button per AI the CLI lists, named from its list",
+    buttons.length === 8 && buttons[0][0] === "browserai-open-chatgpt" && buttons.some(([id, t]) => id === "browserai-open-google-ai-mode" && t === "Google AI Mode") && buttons.at(-1)[1] === "Another AI", JSON.stringify(buttons));
+  check("browser AI: before any AI is picked nothing is marked and no file is offered",
+    (await page.$$eval('#browserai-targets-row [aria-current="true"]', (b) => b.length)) === 0 && !(await shown("#browserai-big")), "");
+  await pick("chatgpt");
+  check("browser AI: ChatGPT opens its own address, the CLI remembers the choice, and a text that fits is not offered as a file",
+    (await page.evaluate(() => window.__opened)) === "https://chatgpt.com/" &&
+    JSON.stringify(await page.evaluate(() => window.__targetChoices)) === JSON.stringify([{ code: "ZWW4", target: "chatgpt" }]) &&
+    !(await shown("#browserai-big")) && (await page.$eval("#browserai-open-chatgpt", (b) => b.getAttribute("aria-current"))) === "true" &&
+    (await text("#browserai-open-chatgpt")) === "✓ ChatGPT", String(await page.evaluate(() => window.__opened)));
+  check("browser AI: opening an AI says what to do next, in one sentence",
+    (await text("#browserai-target-note")) === "Your AI is opening in your browser. Press COPY here, start a new conversation there and paste the text.", String(await text("#browserai-target-note")));
+  await pick("google-ai-mode");
+  check("browser AI: Google AI Mode is its own address, and the same text is too long for it, so a file is offered",
+    (await page.evaluate(() => window.__opened)) === "https://www.google.com/search?udm=50" && (await shown("#browserai-big")) && (await shown("#browserai-save-file")) &&
+    (await text("#browserai-save-file")) === "Save as a file to attach" &&
+    (await page.$eval("#browserai-open-chatgpt", (b) => b.getAttribute("aria-current"))) === null &&
+    (await page.$eval("#browserai-open-google-ai-mode", (b) => b.getAttribute("aria-current"))) === "true", "");
+  await pick("chatgpt");
+  check("browser AI: going back to an AI that fits takes the file offer away", !(await shown("#browserai-big")), "");
+  await page.evaluate(() => { window.__opened = null; });
+  await pick("generic");
+  check("browser AI: 'Another AI' has no address: nothing opens and the person is told what to do",
+    (await page.evaluate(() => window.__opened)) === null && (await text("#browserai-target-note")) === "Open your AI's website yourself, start a new conversation and paste the text there." &&
+    (await page.evaluate(() => window.__targetChoices.at(-1).target)) === "generic", String(await text("#browserai-target-note")));
+  await page.evaluate(() => { window.__openFails = true; });
+  await pick("gemini");
+  const openFailed = await noteOf("#browserai-target-note");
+  await page.evaluate(() => { window.__openFails = false; });
+  check("browser AI: a browser that cannot be opened is said in a sentence", openFailed && openFailed.bad && openFailed.text === "NPDev could not open your browser. Open your AI's website yourself.", JSON.stringify(openFailed));
+  await page.evaluate(() => { window.__chooseFails = true; });
+  await pick("claude");
+  await page.evaluate(() => { window.__chooseFails = false; });
+  check("browser AI: no verdict from the CLI means no file offer and no error -- the paste still works", !(await shown("#browserai-big")) && (await steps()) === "done,current,todo,todo,todo", await steps());
+  await page.selectOption("#lang-picker", "pt");
+  await page.waitForTimeout(200);
+  await pick("google-ai-mode");
+  const ptNames = await page.$$eval("#browserai-targets-row button", (b) => b.map((x) => x.textContent.replace("✓ ", "")));
+  check("browser AI: the buttons and the offer speak Portuguese when asked, with each AI's own name",
+    ptNames.includes("Google Modo IA") && ptNames.at(-1) === "Outra IA" && (await text("#browserai-targets-label")) === "Abra a sua IA no navegador:" &&
+    (await text("#browserai-save-file")) === "Salvar como arquivo para anexar" && /^Este texto é longo/.test(await text("#browserai-big-text")), JSON.stringify(ptNames));
+  await page.selectOption("#lang-picker", "en");
+  await page.waitForTimeout(200);
+  const targetsAxe = await axeScan("browserai-step2-targets");
+  delete a11yMeasured["browserai-step2-targets"];
+  const targetsBad = Object.values(targetsAxe.counts).reduce((a, b) => a + b, 0);
+  check("browser AI: step 2 with its AI buttons and the file offer has no accessibility violations", targetsBad === 0, JSON.stringify(targetsAxe.targets).slice(0, 400));
+  await page.screenshot({ path: path.join(OUT, "browserai-targets.png"), fullPage: true });
+
+  // Save as a file: the CLI writes it, the folder opens (no path shown), the short line to write beside it is on the
+  // clipboard, and step 3 starts watching -- the file replaces COPY.
+  await page.click("#browserai-save-file");
+  await page.waitForTimeout(300);
+  check("browser AI: Save as a file asks the CLI for this conversation's file once and puts the one short line on the clipboard",
+    JSON.stringify(await page.evaluate(() => window.__attachmentCalls)) === JSON.stringify([{ code: "ZWW4" }]) &&
+    (await page.evaluate(() => window.__clip === window.__FIXTURES__.relay.attachment.chatMessage)), String(await page.evaluate(() => window.__clip)));
+  check("browser AI: ...tells the person what to do with the file and shows no path",
+    (await text("#browserai-save-note")) === "The file is in the folder that just opened. Drag it into the chat, paste the short message that is now on your clipboard, and send." &&
+    !(await shown("#browserai-save-details")) && !/fixture|ai-relay|\.txt/.test(await page.evaluate(() => document.getElementById("browserai-body-2").textContent)), String(await text("#browserai-save-note")));
+  check("browser AI: ...goes on to step 3 (watching this conversation) and keeps step 2 open to read",
+    (await steps()) === "done,done,current,todo,todo" && (await shown("#browserai-save-note")) &&
+    JSON.stringify(await page.evaluate(() => window.__watchStarts)) === JSON.stringify([{ code: "ZWW4" }]), await steps());
+  check("browser AI: ...and announces it", (await text("#browserai-announce")).startsWith("The file is in the folder that just opened."), String(await text("#browserai-announce")));
+  await leave();
+
+  // The folder could not be opened: the file's place goes under See details, the sentence says something is left to do.
+  await start();
+  await pick("google-ai-mode");
+  await page.evaluate(() => { window.__attachmentAnswer = { ok: true, code: "ZWW4", round: 1, bytes: 19277, file: "C:/fixture/ai-relay/ZWW4/round-1/npdev-prompt-ZWW4-1.txt", chatMessage: window.__FIXTURES__.relay.attachment.chatMessage, revealed: false }; });
+  await page.click("#browserai-save-file");
+  await page.waitForTimeout(300);
+  const byHand = await noteOf("#browserai-save-note");
+  check("browser AI: when the folder cannot be opened, the sentence says so and the file's place is under See details",
+    byHand && byHand.bad && /^The file is saved, but NPDev could not do all of it for you\./.test(byHand.text) && (await shown("#browserai-save-details")) &&
+    (await text("#browserai-save-text")) === "C:/fixture/ai-relay/ZWW4/round-1/npdev-prompt-ZWW4-1.txt", JSON.stringify(byHand));
+  await leave();
+
+  // The CLI refuses: one sentence, still on step 2, nothing moved.
+  await start();
+  await pick("google-ai-mode");
+  await page.evaluate(() => { window.__attachmentAnswer = { ok: false, error: "no such conversation" }; });
+  await page.click("#browserai-save-file");
+  await page.waitForTimeout(300);
+  const refused = await noteOf("#browserai-save-note");
+  check("browser AI: a refusal by the CLI is one sentence and leaves step 2 as it was",
+    refused && refused.bad && refused.text === "Something went wrong. Nothing was changed. Try again." && (await steps()) === "done,current,todo,todo,todo", JSON.stringify(refused));
+  await page.evaluate(() => { window.__attachmentAnswer = null; });
+  await leave();
+
+  // Coming back to a conversation remembers the AI it was taken to, and opens nothing.
+  await page.evaluate(() => {
+    const st = structuredClone(window.__FIXTURES__.relay.status); st.session.target = "gemini"; window.__statusAnswer = st; window.__opened = null;
+    return window.__npdevShowScreen("browserai");
+  });
+  await page.evaluate(() => window.__npdevResumeBrowserAi("ZWW4"));
+  await page.waitForTimeout(200);
+  check("browser AI: a picked-up conversation shows the AI it was taken to, opens nothing and offers no file",
+    (await page.$eval("#browserai-open-gemini", (b) => b.getAttribute("aria-current"))) === "true" && (await page.evaluate(() => window.__opened)) === null && !(await shown("#browserai-big")), "");
+  await leave();
+  // The sections after this one start from an empty first step.
+  await page.evaluate(() => { window.__statusAnswer = null; document.getElementById("browserai-ask").value = ""; document.getElementById("browserai-newname").value = ""; });
+  await page.evaluate(() => window.__npdevShowScreen("apps"));
+  await page.evaluate(async () => { NPDevHome.reset(); await window.__npdevShowScreen("home"); await NPDevHome.refresh(); });
 }
 
 await page.click('.tabs .place[data-place="settings"]');

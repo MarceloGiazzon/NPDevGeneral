@@ -24,6 +24,11 @@ def load_prompts(path: Path | None = None) -> dict:
     return json.loads(Path(path or DEFAULT_PROMPTS_PATH).read_text(encoding="utf-8"))
 
 
+def attachment_message(p: dict) -> str:
+    """The one short line to write in the chat next to an attached prompt file (the file carries everything else)."""
+    return p["attachmentMessage"]
+
+
 def slim(knowledge: str) -> str:
     return knowledge[: knowledge.index(GOLDEN_MARKER)].rstrip() + "\n" if GOLDEN_MARKER in knowledge else knowledge
 

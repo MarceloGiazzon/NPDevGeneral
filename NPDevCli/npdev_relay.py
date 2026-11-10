@@ -114,14 +114,23 @@ def add_arguments(ai_sub) -> None:
     abort.add_argument("--code", required=True)
     json_flag(abort)
 
+    targets = rsub.add_parser("targets", help="The chat AIs this NPDev knows: where to open each and how much text it takes.")
+    json_flag(targets)
+
+    target = rsub.add_parser("target", help="Say which chat AI a conversation is going to; tells whether its prompt fits a paste.")
+    target.add_argument("--code", required=True)
+    target.add_argument("--target", required=True, help="One of the ids from `relay targets`.")
+    json_flag(target)
+
 
 def run(args) -> int:
     action = getattr(args, "relay_command", None)
     try:
         handler = {"start": _run_start, "prompt": _run_prompt, "ingest": _run_ingest, "status": _run_status,
-                   "list": _run_list, "abort": _run_abort, "apply": _run_apply, "undo": _run_undo}.get(action)
+                   "list": _run_list, "abort": _run_abort, "apply": _run_apply, "undo": _run_undo,
+                   "targets": _run_targets, "target": _run_target}.get(action)
         if handler is None:
-            raise AiConfigError("npdev ai relay needs a verb: start, prompt, ingest, apply, undo, status, list or abort (see --help)")
+            raise AiConfigError("npdev ai relay needs a verb: start, prompt, ingest, apply, undo, status, list, abort, targets or target (see --help)")
         return handler(args)
     except sessions.SessionNotFound as exc:
         return _fail(args, str(exc))
@@ -342,4 +351,22 @@ def _run_abort(args) -> int:
     if args.json:
         return _print_json(payload)
     print(f"closed {payload['code']}")
+    return 0
+
+
+def _run_targets(args) -> int:
+    payload = engine.targets_list()
+    if args.json:
+        return _print_json(payload)
+    for t in payload["targets"]:
+        print(f"{t['id']:<15} {t['label']:<16} {t['maxPasteChars']:>6} chars  {t['url'] or '(no address)'}")
+    return 0
+
+
+def _run_target(args) -> int:
+    payload = engine.choose_target(args.code, args.target)
+    if args.json:
+        return _print_json(payload)
+    verdict = "fits a paste" if payload["fits"] else "too long to paste: attach it as a file"
+    print(f"{payload['code']} -> {payload['target']['id']}: {payload['chars']} characters, {verdict}")
     return 0

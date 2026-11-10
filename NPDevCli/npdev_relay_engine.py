@@ -22,6 +22,7 @@ import npdev_desire_paths as desire_paths
 import npdev_relay_ingest as ri
 import npdev_relay_prompts as rp
 import npdev_relay_session as rs
+import npdev_relay_targets as rt
 from npdev_ai_config import AiConfigError
 
 # Outcomes whose follow-up is a short text for the SAME chat (the AI can fix them), by compose_same_chat.
@@ -141,12 +142,48 @@ def stored_prompt(code: str, round_number: int | None = None) -> dict:
 
 def write_attachment(code: str, round_number: int | None = None) -> dict:
     """The prompt as a file to attach to a chat, kept in the session folder (never in Downloads, where the
-    downloads watcher would read it back)."""
+    downloads watcher would read it back). `chatMessage` is the one short line to write in the chat beside it.
+    The round is recorded as delivered by attachment."""
     found = stored_prompt(code, round_number)
     session = load_session(code)
     target = rs.round_dir(session, found["round"]) / f"npdev-prompt-{session['code']}-{found['round']}.txt"
     target.write_bytes(found["prompt"].encode("utf-8"))
-    return {"ok": True, "code": session["code"], "round": found["round"], "bytes": found["bytes"], "file": str(target)}
+    rs.set_delivery(session, found["round"], "attachment")
+    return {"ok": True, "code": session["code"], "round": found["round"], "bytes": found["bytes"], "file": str(target),
+            "chatMessage": rp.attachment_message(rp.load_prompts())}
+
+
+def _targets_error(exc: Exception) -> RelayStageError:
+    return RelayStageError(str(exc))
+
+
+def targets_list() -> dict:
+    """The chat AIs this NPDev knows, with where to open each and how much text it takes pasted."""
+    try:
+        return {"ok": True, "schemaVersion": rt.SCHEMA_VERSION, "targets": rt.profiles()}
+    except rt.RelayTargetsError as exc:
+        raise _targets_error(exc) from None
+
+
+def choose_target(code: str, target_id: str) -> dict:
+    """The person picked a chat AI in step 2: remember it on the conversation and say whether the latest prompt
+    goes into that chat as a plain paste (`fits`) or should be offered as a file to attach. The CLI decides; the
+    Manager only draws it."""
+    try:
+        profile = rt.find(target_id)
+    except rt.RelayTargetsError as exc:
+        raise _targets_error(exc) from None
+    found = stored_prompt(code)
+    chars = len(found["prompt"])
+    fitting = rt.fits(profile, chars)
+    try:
+        rs.set_target(code, target_id, chars=chars, fits=fitting)
+    except rs.SessionNotFound:
+        raise
+    except rs.RelaySessionError as exc:
+        raise _wrong_session_error(exc) from None
+    return {"ok": True, "code": found["code"], "round": found["round"], "target": profile, "chars": chars,
+            "fits": fitting, "delivery": "paste" if fitting else "attachment"}
 
 
 def session_summary(session: dict) -> dict:

@@ -678,6 +678,13 @@ const FIXTURE_RELAY_LIST: &str = include_str!("../fixtures/relay-list.json");
 const FIXTURE_RELAY_APPLY: &str = include_str!("../fixtures/relay-apply.json");
 const FIXTURE_RELAY_UNDO: &str = include_str!("../fixtures/relay-undo.json");
 const FIXTURE_RELAY_ABORT: &str = include_str!("../fixtures/relay-abort.json");
+// Choosing the chat AI (F3 T3.5), captured from the real CLI on 2026-11-10 with a scratch session; the code and sizes are
+// rewritten to those of FIXTURE_RELAY_PROMPT and the file path is neutral. `chosen` is a prompt that fits ChatGPT's paste
+// limit, `chosen-big` the same prompt against Google AI Mode's (8000), so it must go as a file.
+const FIXTURE_RELAY_TARGETS: &str = include_str!("../fixtures/relay-targets.json");
+const FIXTURE_RELAY_TARGET_CHOSEN: &str = include_str!("../fixtures/relay-target-chosen.json");
+const FIXTURE_RELAY_TARGET_CHOSEN_BIG: &str = include_str!("../fixtures/relay-target-chosen-big.json");
+const FIXTURE_RELAY_ATTACHMENT: &str = include_str!("../fixtures/relay-attachment.json");
 
 /// A scratch text file that deletes itself when it goes out of scope, on every path out of the caller
 /// (an early `?` included). The ask, the app's model and a pasted answer are handed to the CLI this
@@ -1117,6 +1124,62 @@ pub async fn run_relay_undo(
     }
     args.push("--json");
     run_relay_json(python_exe, npdev_cli, java_home, &args, "undo").await
+}
+
+/// `npdev ai relay targets` -- the chat AIs this NPDev knows: where to open each and how much text it takes pasted.
+/// The addresses come from the CLI's own list and nowhere else (never from an AI's answer).
+pub async fn run_relay_targets(python_exe: &Path, npdev_cli: &Path, java_home: Option<&str>) -> Result<Value, String> {
+    if fake_mode() {
+        return relay_fixture(FIXTURE_RELAY_TARGETS, "relay-targets");
+    }
+    run_relay_json(python_exe, npdev_cli, java_home, &["ai", "relay", "targets", "--json"], "targets").await
+}
+
+/// `npdev ai relay target` -- the person picked a chat AI: it is remembered on the conversation, and the answer says
+/// whether the latest prompt goes into that chat as a plain paste (`fits`) or should be offered as a file to attach.
+pub async fn run_relay_choose_target(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    code: &str,
+    target: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        let text = if target == "google-ai-mode" { FIXTURE_RELAY_TARGET_CHOSEN_BIG } else { FIXTURE_RELAY_TARGET_CHOSEN };
+        return relay_fixture(text, "relay-target");
+    }
+    check_relay_code(code)?;
+    check_relay_token("the AI", target)?;
+    run_relay_json(
+        python_exe,
+        npdev_cli,
+        java_home,
+        &["ai", "relay", "target", "--code", code, "--target", target, "--json"],
+        "target",
+    )
+    .await
+}
+
+/// `npdev ai relay prompt --as attachment` -- the latest prompt written to a file in the conversation's own folder
+/// (never in Downloads, where the Downloads watcher would read it back), plus the one line to write in the chat beside it.
+pub async fn run_relay_prompt_attachment(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    code: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return relay_fixture(FIXTURE_RELAY_ATTACHMENT, "relay-attachment");
+    }
+    check_relay_code(code)?;
+    run_relay_json(
+        python_exe,
+        npdev_cli,
+        java_home,
+        &["ai", "relay", "prompt", "--code", code, "--as", "attachment", "--json"],
+        "attachment",
+    )
+    .await
 }
 
 /// `npdev ai relay abort` -- gives up on a session: it is marked abandoned and no longer listed as open.
@@ -3158,6 +3221,19 @@ mod relay_pipe_tests {
         assert_eq!((undo["ok"].clone(), undo["code"].clone()), (Value::Bool(true), Value::String(code.to_string())));
         let abort: Value = serde_json::from_str(FIXTURE_RELAY_ABORT).unwrap();
         assert_eq!(abort["state"], "abandoned");
+        let targets: Value = serde_json::from_str(FIXTURE_RELAY_TARGETS).unwrap();
+        let listed = targets["targets"].as_array().unwrap();
+        assert!(listed.iter().all(|t| t["url"].is_null() || t["url"].as_str().unwrap().starts_with("https://")), "only https addresses");
+        let chosen: Value = serde_json::from_str(FIXTURE_RELAY_TARGET_CHOSEN).unwrap();
+        let big: Value = serde_json::from_str(FIXTURE_RELAY_TARGET_CHOSEN_BIG).unwrap();
+        assert_eq!((chosen["code"].clone(), big["code"].clone()), (Value::String(code.to_string()), Value::String(code.to_string())));
+        assert_eq!((chosen["fits"].clone(), big["fits"].clone()), (Value::Bool(true), Value::Bool(false)), "the same prompt fits one chat, not the other");
+        assert_eq!(chosen["chars"].as_u64().unwrap() as usize, prompt["prompt"].as_str().unwrap().chars().count(), "sizes belong to the captured prompt");
+        let attachment: Value = serde_json::from_str(FIXTURE_RELAY_ATTACHMENT).unwrap();
+        assert!(attachment["chatMessage"].as_str().unwrap().contains("attached file"));
+        for text in [FIXTURE_RELAY_TARGETS, FIXTURE_RELAY_TARGET_CHOSEN, FIXTURE_RELAY_TARGET_CHOSEN_BIG, FIXTURE_RELAY_ATTACHMENT] {
+            assert!(!text.contains("dev1m") && !text.contains("scratchpad"), "a fixture carries a real machine path");
+        }
         for text in [FIXTURE_RELAY_STATUS, FIXTURE_RELAY_LIST, FIXTURE_RELAY_APPLY, FIXTURE_RELAY_UNDO, FIXTURE_RELAY_ABORT] {
             assert!(!text.contains("dev1m") && !text.contains("scratchpad"), "a fixture carries a real machine path");
         }
