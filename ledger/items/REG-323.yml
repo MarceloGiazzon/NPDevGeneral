@@ -1,0 +1,41 @@
+id: REG-323
+title: >-
+  Use a browser AI, F4: answers that carry more than model.json -- fragments, element upserts for big models, themes, hand-made
+  pages, config proposals, quarantined code -- are accepted by the policy but not by apply, undo or the composer
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-11-10
+source: >-
+  Browser-AI relay plan (D:/WorkSpace/NPDev/NPDev_General__OutsideRepo/BROWSER_AI_RELAY_PLAN_2026-11-09/impl/TASKS.md, F4) after F0-F3
+  landed; nothing here was started except T4.6's CLI half (REG-322).
+surface: cli/relay, manager/browserai
+files:
+  - NPDevCli/relay-ingest-policy.json
+  - NPDevCli/npdev_relay_apply.py
+  - NPDevCli/npdev_relay_engine.py
+  - NPDevCli/npdev_relay_prompts.py
+  - NPDevCli/relay-prompts.json
+detail: |
+  Where things stand: relay-ingest-policy.json already lists the `f4` phase (allowed: npdev-elements.json, npdev-config-proposal.json,
+  fragments/*.json, contexts/*.json, themes/*.json, web/*.html|css|svg; quarantine: capabilities/*, conversion-hooks/*, web/*.js|mjs),
+  and a session carries a `phase` (default `mvp`; the Manager never passes another). What is missing is everything behind the list:
+  - npdev_relay_apply.py writes ONE file (model.json) with ONE backup (the model as the AI was shown it) and undo restores that one
+    file: a multi-file answer needs an all-or-nothing write and an undo of every file;
+  - there is no expander for `npdev-elements.json` (base + upserts by `name` + removals -> the full model); each root key of
+    model.schema.json must first be confirmed to identify its elements by `name`;
+  - the composer (npdev_relay_prompts.py) cannot choose "whole file" vs "upsert" by `len(base model) > target outputBudgetChars * 0.6`
+    -- and relay-prompts.json is BENCH-MEASURED: changing prompt text means re-measuring, and the bench compiles the generator from the
+    repo, so never edit platform code while a bench run is on;
+  - quarantined code (JS pages, Java capabilities) needs PLAN section 8.1's six steps: pattern scan, bytecode inspector, a strong
+    acceptance (checkbox and a separate button), provenance `origin: browser-ai`, one-click removal, a second confirmation before a JS
+    page becomes public. This is the security-sensitive part: do it last, with the owner.
+  Suggested order (each its own commit, each behind phase f4): T4.2 element upsert (the one that unlocks big apps), T4.1 fragments,
+  T4.5 config proposals (each knob located first in the property cascade; no writer, no knob), T4.3 themes/pages/seed/translations,
+  T4.4 code quarantine.
+resolution: >-
+  Done per impl/ACCEPTANCE.md section F4: fragment and upsert answers expand to the same model as the equivalent whole-file answer
+  (test); a JS page with a `block` pattern and Java the bytecode inspector refuses cannot be accepted; an accepted program is marked
+  origin: browser-ai and removable in one click; a JS page never goes public without the second confirmation; a config proposal for a
+  property outside the allowlist is shown as "you can do that in Settings" and never applied; one large corpus app is changed through the
+  relay without truncation and one hand-made page is created through it; T2 gates green.

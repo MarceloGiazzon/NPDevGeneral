@@ -1,0 +1,35 @@
+id: REG-322
+title: >-
+  Use a browser AI: a failed build or start has no "Ask the AI to fix this" -- the screen keeps only an exit code and a log path,
+  and the fix conversation (T4.6) has no caller
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-10
+source: >-
+  F3/F4 browser-AI relay work, 2026-11-10: T4.6 ("fix intent") was started from the CLI side and stopped where the Manager
+  would have to read a log.
+surface: manager/browserai, cli/relay
+files:
+  - NPDevManager/ui/browserai.js
+  - NPDevManager/src/main.rs
+  - NPDevCli/npdev_relay_scrub.py
+  - NPDevCli/npdev_relay_engine.py
+detail: |
+  Done (b5f85718): `npdev ai relay start|prompt --intent fix --errors-file` scrubs the failure text itself
+  (npdev_relay_scrub.py: the app's folder -> <app>, the home folder -> <home>, other absolute paths -> <path>/<last name>,
+  then npdev_redact's secrets and privacy data), so the prompt's promise "secrets and personal paths removed" is true whoever
+  calls it. `relay_start` in the Manager already accepts intent `fix` with `errors`.
+  Not done: nothing in the Manager calls it. When the launch ends in "The app could not be built." (browserai.js, launch())
+  the "See what happened" fold holds only `exit code N` and the build log's PATH, not the text. A fix button needs, in order:
+  (1) a Rust command that reads a BOUNDED tail (about 6000 characters, the CLI clips to that anyway) of the failed run's log
+  -- the build log for a build failure, the app's own log (monitor_logs) for a boot failure -- and hands it to `relay start
+  --intent fix --errors-file`; the page never reads or shows the log; (2) a button in the launch failure area, shown only when
+  there is a log to send, worded "Ask the AI to fix this"; (3) the new conversation goes through steps 2-5 with the app the
+  launch was for (S.builtAppDir), and its Apply re-runs the same launch; (4) the sentence says the text goes to the chat AI
+  after NPDev has removed passwords and folder names.
+resolution: >-
+  Done when a real failing build (an app whose model passes validation but fails to build) ends on a button that starts a fix
+  conversation whose stored prompt carries the error text with no secret, no user name and no local folder, proven on the real
+  window with the stored prompt read back from the conversation; and the render check covers the button, its absence when
+  there is no log, and the Portuguese sentence.
