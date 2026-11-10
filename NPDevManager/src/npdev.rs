@@ -669,6 +669,10 @@ const FIXTURE_RELAY_INGEST_TRUNCATED: &str = include_str!("../fixtures/relay-ing
 // a backup and undone). Only the session code was relabelled to the prompt fixture's and the machine's
 // own paths replaced by neutral ones. `relay start` answers with the same shape as `relay prompt`, so
 // it serves FIXTURE_RELAY_PROMPT.
+const FIXTURE_RELAY_INGEST_READY_CREATE: &str = include_str!("../fixtures/relay-ingest-ready-create.json");
+const FIXTURE_RELAY_INGEST_READY_CHANGE: &str = include_str!("../fixtures/relay-ingest-ready-change.json");
+const FIXTURE_RELAY_INGEST_READY_REMOVAL: &str = include_str!("../fixtures/relay-ingest-ready-removal.json");
+const FIXTURE_RELAY_INGEST_NEEDS_FIX: &str = include_str!("../fixtures/relay-ingest-needs-fix.json");
 const FIXTURE_RELAY_STATUS: &str = include_str!("../fixtures/relay-status.json");
 const FIXTURE_RELAY_LIST: &str = include_str!("../fixtures/relay-list.json");
 const FIXTURE_RELAY_APPLY: &str = include_str!("../fixtures/relay-apply.json");
@@ -794,10 +798,7 @@ pub async fn run_relay_ingest_text(
     round: Option<u32>,
 ) -> Result<Value, String> {
     if fake_mode() {
-        // Stub convention (like `db`'s STUB MODE): pasting text containing STUB-TRUNCATED gets the
-        // "cut off" answer, anything else the clean one -- both are real CLI captures.
-        let fixture = if text.contains("STUB-TRUNCATED") { FIXTURE_RELAY_INGEST_TRUNCATED } else { FIXTURE_RELAY_INGEST_PARSED };
-        return serde_json::from_str(fixture).map_err(|e| format!("fixture relay-ingest did not parse: {e}"));
+        return relay_fixture(relay_ingest_stub(text), "relay-ingest");
     }
     if code.is_empty() || code.len() > 16 || !code.chars().all(|c| c.is_ascii_alphanumeric()) {
         return Err("the session code is not valid".to_string());
@@ -824,6 +825,20 @@ fn relay_fixture(text: &str, name: &str) -> Result<Value, String> {
     serde_json::from_str(text).map_err(|e| format!("fixture {name} did not parse: {e}"))
 }
 
+/// Stub mode's answer to a pasted text or a dropped file name (like `db`'s STUB MODE): a marker in it picks
+/// which REAL capture comes back, so a person or a render check can walk every outcome without an AI. No
+/// marker is the clean text-only answer. Every one of these was captured from the real CLI.
+fn relay_ingest_stub(marker_text: &str) -> &'static str {
+    const MARKERS: [(&str, &str); 5] = [
+        ("STUB-TRUNCATED", FIXTURE_RELAY_INGEST_TRUNCATED),
+        ("STUB-NEEDS-FIX", FIXTURE_RELAY_INGEST_NEEDS_FIX),
+        ("STUB-REMOVAL", FIXTURE_RELAY_INGEST_READY_REMOVAL),
+        ("STUB-CREATE", FIXTURE_RELAY_INGEST_READY_CREATE),
+        ("STUB-READY", FIXTURE_RELAY_INGEST_READY_CHANGE),
+    ];
+    MARKERS.iter().find(|(m, _)| marker_text.contains(m)).map(|(_, f)| *f).unwrap_or(FIXTURE_RELAY_INGEST_PARSED)
+}
+
 /// A session code is what `relay start|prompt` printed: letters and digits, nothing else.
 fn check_relay_code(code: &str) -> Result<(), String> {
     if code.is_empty() || code.len() > 16 || !code.chars().all(|c| c.is_ascii_alphanumeric()) {
@@ -840,6 +855,27 @@ fn check_relay_token(what: &str, value: &str) -> Result<(), String> {
         && !value.starts_with('-')
         && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     if shape_ok { Ok(()) } else { Err(format!("{what} is not valid")) }
+}
+
+/// A preview warning's code, as the CLI printed it -- `REMOVAL:field:Customer.lastName` -- handed back with
+/// the owner's yes. Names are the app's own, so letters of any language are fine; nothing that could be read
+/// as a flag or split an argument is.
+fn check_relay_warning_code(value: &str) -> Result<(), String> {
+    let shape_ok = !value.is_empty()
+        && value.chars().count() <= 200
+        && !value.starts_with('-')
+        && value.chars().all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | ':' | '.'));
+    if shape_ok { Ok(()) } else { Err("a warning code is not valid".to_string()) }
+}
+
+/// The folder name of a NEW app: it is joined to a parent folder by the CLI, so it must be one plain name --
+/// no separator, no `..`, no drive, no leading dot or dash.
+fn check_relay_app_name(value: &str) -> Result<(), String> {
+    let shape_ok = !value.is_empty()
+        && value.chars().count() <= 60
+        && !value.starts_with(['-', '.'])
+        && value.chars().all(|c| c.is_alphanumeric() || matches!(c, '_' | '-'));
+    if shape_ok { Ok(()) } else { Err("the new app's name is not valid".to_string()) }
 }
 
 /// Free text or a path that follows a flag as its own argument. A leading dash would be read as the
@@ -901,7 +937,7 @@ pub async fn run_relay_start(
         check_relay_value("the app folder", dir)?;
     }
     if let Some(name) = new_app_name {
-        check_relay_value("the new app's name", name)?;
+        check_relay_app_name(name)?;
     }
     if let Some(t) = target {
         check_relay_token("the chat AI", t)?;
@@ -946,9 +982,7 @@ pub async fn run_relay_ingest_file(
     source: Option<&str>,
 ) -> Result<Value, String> {
     if fake_mode() {
-        let truncated = files.iter().any(|f| f.contains("STUB-TRUNCATED"));
-        let fixture = if truncated { FIXTURE_RELAY_INGEST_TRUNCATED } else { FIXTURE_RELAY_INGEST_PARSED };
-        return relay_fixture(fixture, "relay-ingest");
+        return relay_fixture(relay_ingest_stub(&files.join("\n")), "relay-ingest");
     }
     check_relay_code(code)?;
     if files.is_empty() || files.len() > 16 {
@@ -1014,7 +1048,7 @@ pub async fn run_relay_apply(
     }
     check_relay_code(code)?;
     for warning in confirmed {
-        check_relay_token("a warning code", warning)?;
+        check_relay_warning_code(warning)?;
     }
     if let Some(dir) = parent_dir {
         check_relay_value("the folder for the new app", dir)?;
@@ -2900,11 +2934,14 @@ mod relay_pipe_tests {
         let forced = argv_of(&run_relay_undo(&python, &script, None, "K7Q2", true).await.unwrap());
         assert_eq!(forced, ["ai", "relay", "undo", "--code", "K7Q2", "--force", "--json"]);
 
-        let confirmed = vec!["REMOVE_FIELDS".to_string(), "RENAME_FIELD".to_string()];
+        let confirmed = vec!["REMOVAL:field:Customer.lastName".to_string(), "RENAME:field:Order.situação".to_string()];
         let apply = argv_of(&run_relay_apply(&python, &script, None, "K7Q2", Some(2), &confirmed, Some("apps")).await.unwrap());
         assert_eq!(&apply[..5], ["ai", "relay", "apply", "--code", "K7Q2"], "{apply:?}");
         assert!(has_pair(&apply, "--round", "2") && has_pair(&apply, "--parent-dir", "apps"), "{apply:?}");
-        assert!(has_pair(&apply, "--confirm-warning", "REMOVE_FIELDS") && has_pair(&apply, "--confirm-warning", "RENAME_FIELD"), "{apply:?}");
+        assert!(
+            has_pair(&apply, "--confirm-warning", "REMOVAL:field:Customer.lastName") && has_pair(&apply, "--confirm-warning", "RENAME:field:Order.situação"),
+            "{apply:?}"
+        );
         let bare = argv_of(&run_relay_apply(&python, &script, None, "K7Q2", None, &[], None).await.unwrap());
         assert_eq!(bare, ["ai", "relay", "apply", "--code", "K7Q2", "--json"]);
         let _ = std::fs::remove_dir_all(&dir);
@@ -2944,6 +2981,37 @@ mod relay_pipe_tests {
     }
 
     #[test]
+    fn a_warning_code_and_a_new_apps_name_have_to_be_one_plain_token() {
+        // The codes the CLI really prints (see the removal fixture), accents included.
+        for ok in ["REMOVAL:field:Customer.lastName", "RENAME:field:Order.situação", "SECURITY_CHANGE", "a-b_c"] {
+            assert!(check_relay_warning_code(ok).is_ok(), "{ok}");
+        }
+        let long_code = "A".repeat(201);
+        for bad in ["", "--force", "-x", "a b", "a;b", "a\"b", "a/b", "a\\b", "x\0y", long_code.as_str()] {
+            assert!(check_relay_warning_code(bad).is_err(), "{bad:?}");
+        }
+        for ok in ["Shop", "Bike-shop", "oficina_2", "Oficina-de-bicicletas", "Mercadão"] {
+            assert!(check_relay_app_name(ok).is_ok(), "{ok}");
+        }
+        // The CLI joins this to a parent folder: nothing that is more than one plain name gets through.
+        let long_name = "A".repeat(61);
+        for bad in ["", ".", "..", "../x", "a/b", "a\\b", "C:x", "D:\\x", "-x", ".hidden", "a b", "a.b", "x\0y", long_name.as_str()] {
+            assert!(check_relay_app_name(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn stub_mode_walks_every_outcome_from_a_marker() {
+        let outcome = |marker: &str| serde_json::from_str::<Value>(relay_ingest_stub(marker)).unwrap()["outcome"].as_str().unwrap().to_string();
+        assert_eq!(outcome("anything"), "PARSED");
+        assert_eq!(outcome("x STUB-TRUNCATED x"), "TRUNCATED");
+        assert_eq!(outcome("STUB-NEEDS-FIX"), "NEEDS_FIX");
+        for marker in ["STUB-READY", "STUB-REMOVAL", "STUB-CREATE"] {
+            assert_eq!(outcome(marker), "READY", "{marker}");
+        }
+    }
+
+    #[test]
     fn the_managers_language_picks_the_ais_language() {
         assert_eq!(relay_language_name("pt"), "Portuguese (Brazil)");
         assert_eq!(relay_language_name("pt-BR"), "Portuguese (Brazil)");
@@ -2977,6 +3045,29 @@ mod relay_pipe_tests {
         assert_eq!(status["session"]["rounds"][0]["round"], 1);
         let list: Value = serde_json::from_str(FIXTURE_RELAY_LIST).unwrap();
         assert_eq!(list["sessions"][0]["code"], code);
+        for (text, outcome) in [
+            (FIXTURE_RELAY_INGEST_READY_CREATE, "READY"),
+            (FIXTURE_RELAY_INGEST_READY_CHANGE, "READY"),
+            (FIXTURE_RELAY_INGEST_READY_REMOVAL, "READY"),
+            (FIXTURE_RELAY_INGEST_NEEDS_FIX, "NEEDS_FIX"),
+        ] {
+            let ingest: Value = serde_json::from_str(text).unwrap();
+            assert_eq!(ingest["outcome"], outcome);
+            assert_eq!(ingest["session"]["expected"], code, "every captured answer belongs to the one captured session");
+            assert!(!text.contains("dev1m") && !text.contains("scratchpad"), "a fixture carries a real machine path");
+        }
+        let removal: Value = serde_json::from_str(FIXTURE_RELAY_INGEST_READY_REMOVAL).unwrap();
+        let needs: Vec<&str> = removal["preview"]["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|w| w["needsConfirmation"] == true)
+            .map(|w| w["code"].as_str().unwrap())
+            .collect();
+        assert_eq!(needs, ["REMOVAL:field:Customer.firstName"], "the capture the confirm-box checks rely on");
+        assert!(needs.iter().all(|c| check_relay_warning_code(c).is_ok()), "a real warning code passes the pipe's own check");
+        let needs_fix: Value = serde_json::from_str(FIXTURE_RELAY_INGEST_NEEDS_FIX).unwrap();
+        assert!(needs_fix["next"]["prompt"].as_str().unwrap().starts_with("NPDEV-PROMPT "), "the message to copy back");
         let apply: Value = serde_json::from_str(FIXTURE_RELAY_APPLY).unwrap();
         assert_eq!(apply["ok"], true);
         assert_eq!(apply["code"], code);

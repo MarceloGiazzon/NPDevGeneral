@@ -35,6 +35,7 @@
 <link rel="stylesheet" href="home.css" />
 <link rel="stylesheet" href="workspace.css" />
 <link rel="stylesheet" href="jobs.css" />
+<link rel="stylesheet" href="browserai.css" />
 <link rel="stylesheet" href="a11y.css" />
 </head>
 <body>
@@ -530,9 +531,158 @@
       </div>
     </section>
 
+    <!-- Use a browser AI (browser-AI relay, F2). A chat AI the user already has, no key: the CLI
+         (`npdev ai relay`) composes the one measured prompt, says what the answer is and what applying it
+         changes; this screen only draws that and asks for the user's yes. Five steps, only the current one
+         open. Every sentence is relay-messages.json's; nothing here parses an answer. -->
+    <section id="screen-browserai" class="screen" hidden>
+      <h1><span aria-hidden="true">✦</span> Use a browser AI</h1>
+      <p class="subtitle">
+        Take your request to any chat AI you already use (ChatGPT, Gemini, Claude and others) and bring
+        its answer back here. It is free and needs no key.
+      </p>
+
+      <div class="ba-mode" role="group" aria-label="Which kind of AI">
+        <button type="button" class="btn" id="browserai-mode-browser" aria-pressed="true">Use a browser AI</button>
+        <button type="button" class="btn ghost" id="browserai-mode-api" aria-pressed="false">Use an AI with an API key</button>
+      </div>
+
+      <div class="ba-app">
+        <label class="subtitle" style="margin:0">App
+          <select id="browserai-app"></select>
+        </label>
+      </div>
+      <p class="ba-note" id="browserai-announce" role="status" aria-live="polite"></p>
+
+      <section class="pane ba-step" id="browserai-step-1" data-state="current" aria-labelledby="browserai-h-1">
+        <div class="ba-step-head">
+          <span class="ba-step-num" aria-hidden="true">1</span>
+          <h2 id="browserai-h-1">What do you want to do?</h2>
+          <span class="ba-step-state" id="browserai-state-1"></span>
+          <button type="button" class="btn ghost ba-step-toggle" id="browserai-toggle-1" aria-expanded="false" aria-controls="browserai-body-1" hidden>Show</button>
+        </div>
+        <div class="ba-step-body" id="browserai-body-1">
+          <div class="ba-intent" role="radiogroup" aria-labelledby="browserai-h-1">
+            <label><input type="radio" name="browserai-intent" id="browserai-intent-create" value="create" checked> Create a new app</label>
+            <label><input type="radio" name="browserai-intent" id="browserai-intent-change" value="change"> Change this app</label>
+          </div>
+          <label class="ba-field" id="browserai-newname-label">What should the new app be called?
+            <input type="text" id="browserai-newname" placeholder="e.g. Bike shop" autocomplete="off" maxlength="60">
+          </label>
+          <textarea id="browserai-ask" rows="5" aria-label="Describe what you want" placeholder="Describe it in your own words, as you would to a person."></textarea>
+          <details class="ba-details">
+            <summary>Help me describe it</summary>
+            <p class="subtitle">
+              Say what the app is for, who will use it and what they need to keep track of. For example:
+              A bike repair shop with customers, bikes and repair orders, each order with a status.
+            </p>
+          </details>
+          <label class="ba-field"><input type="checkbox" id="browserai-interview"> Let the AI ask me questions first</label>
+          <div class="ba-actions">
+            <button type="button" class="btn" id="browserai-continue">Continue <span aria-hidden="true">→</span></button>
+          </div>
+          <p class="ba-note" id="browserai-step1-note" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section class="pane ba-step" id="browserai-step-2" data-state="todo" aria-labelledby="browserai-h-2" hidden>
+        <div class="ba-step-head">
+          <span class="ba-step-num" aria-hidden="true">2</span>
+          <h2 id="browserai-h-2">Take this to your AI</h2>
+          <span class="ba-step-state" id="browserai-state-2"></span>
+          <button type="button" class="btn ghost ba-step-toggle" id="browserai-toggle-2" aria-expanded="false" aria-controls="browserai-body-2" hidden>Show</button>
+        </div>
+        <div class="ba-step-body" id="browserai-body-2">
+          <div class="ba-actions">
+            <button type="button" class="btn" id="browserai-copy">COPY</button>
+            <span class="subtitle" style="margin:0">Use a new conversation.</span>
+          </div>
+          <p class="ba-note" id="browserai-copy-note" role="status" aria-live="polite"></p>
+          <p class="ba-notice">What you copy goes to the AI service you choose, outside your computer. NPDev removes passwords and keys, and never includes your app's records.</p>
+          <details class="ba-details" id="browserai-show-text">
+            <summary>See the text</summary>
+            <pre id="browserai-prompt-text" translate="no"></pre>
+          </details>
+        </div>
+      </section>
+
+      <section class="pane ba-step" id="browserai-step-3" data-state="todo" aria-labelledby="browserai-h-3" hidden>
+        <div class="ba-step-head">
+          <span class="ba-step-num" aria-hidden="true">3</span>
+          <h2 id="browserai-h-3">Waiting for the AI's answer…</h2>
+          <span class="ba-step-state" id="browserai-state-3"></span>
+          <button type="button" class="btn ghost ba-step-toggle" id="browserai-toggle-3" aria-expanded="false" aria-controls="browserai-body-3" hidden>Show</button>
+        </div>
+        <div class="ba-step-body" id="browserai-body-3">
+          <p class="subtitle">When the AI has finished, copy its whole answer and paste it here.</p>
+          <label class="ba-field">Paste the AI's answer here
+            <textarea id="browserai-paste" rows="6" autocomplete="off" spellcheck="false"></textarea>
+          </label>
+          <div class="ba-actions">
+            <button type="button" class="btn" id="browserai-check">Check the answer</button>
+          </div>
+          <p class="ba-outcome" id="browserai-outcome" role="status" aria-live="polite" hidden></p>
+          <div class="ba-actions">
+            <button type="button" class="btn" id="browserai-outcome-button" hidden></button>
+          </div>
+          <details class="ba-details" id="browserai-outcome-details" hidden>
+            <summary>See details</summary>
+            <pre id="browserai-outcome-prose" translate="no"></pre>
+          </details>
+        </div>
+      </section>
+
+      <section class="pane ba-step" id="browserai-step-4" data-state="todo" aria-labelledby="browserai-h-4" hidden>
+        <div class="ba-step-head">
+          <span class="ba-step-num" aria-hidden="true">4</span>
+          <h2 id="browserai-h-4">What the AI proposes</h2>
+          <span class="ba-step-state" id="browserai-state-4"></span>
+          <button type="button" class="btn ghost ba-step-toggle" id="browserai-toggle-4" aria-expanded="false" aria-controls="browserai-body-4" hidden>Show</button>
+        </div>
+        <div class="ba-step-body" id="browserai-body-4">
+          <!-- The CLI writes these sentences, in English for now (its preview text is not localised yet): the
+               list says so (lang) and the language engine leaves it alone. The boxes below it ARE translated:
+               they only carry names, and they are what the person agrees to. -->
+          <ul class="ba-preview" id="browserai-preview" lang="en" translate="no"></ul>
+          <p class="ba-safe" id="browserai-safe" hidden><span class="ba-mark" aria-hidden="true">✓</span> <span>Nothing will be deleted. Your data stays.</span></p>
+          <div id="browserai-confirms"></div>
+          <div class="ba-actions">
+            <button type="button" class="btn" id="browserai-apply">Apply</button>
+            <button type="button" class="btn ghost" id="browserai-else">Ask for something else</button>
+          </div>
+          <p class="ba-note" id="browserai-apply-note" role="status" aria-live="polite"></p>
+          <details class="ba-details" id="browserai-details" hidden>
+            <summary>See details</summary>
+            <pre id="browserai-prose" translate="no"></pre>
+          </details>
+        </div>
+      </section>
+
+      <section class="pane ba-step" id="browserai-step-5" data-state="todo" aria-labelledby="browserai-h-5" hidden>
+        <div class="ba-step-head">
+          <span class="ba-step-num" aria-hidden="true">5</span>
+          <h2 id="browserai-h-5">All done</h2>
+          <span class="ba-step-state" id="browserai-state-5"></span>
+        </div>
+        <div class="ba-step-body" id="browserai-body-5">
+          <p class="ba-progress" id="browserai-progress" role="status" aria-live="polite" tabindex="-1"></p>
+          <div class="ba-actions">
+            <button type="button" class="btn" id="browserai-rebuild" hidden>Update the app now</button>
+            <button type="button" class="btn" id="browserai-go-apps" hidden>Show my apps</button>
+            <button type="button" class="btn ghost" id="browserai-undo" hidden>Undo</button>
+            <button type="button" class="btn ghost" id="browserai-again">Ask for something else</button>
+          </div>
+        </div>
+      </section>
+    </section>
+
     <!-- Prompter (Phase F) -->
     <section id="screen-prompter" class="screen" hidden>
       <h1><span aria-hidden="true">▚</span> PROMPTER <span class="dim">// ask a model about an app</span></h1>
+      <div class="ba-mode" role="group" aria-label="Which kind of AI">
+        <button type="button" class="btn ghost" id="prompter-mode-browser" aria-pressed="false">Use a browser AI</button>
+        <button type="button" class="btn" id="prompter-mode-api" aria-pressed="true">Use an AI with an API key</button>
+      </div>
       <p class="subtitle">
         Compose a prompt describing one of your apps, then copy it or send it to a provider you
         configured. Your API key lives in this machine's credential store, never in the Manager's
@@ -1331,6 +1481,7 @@
   <script src="hosting.js"></script>
   <script src="scrap.js"></script>
   <script src="prompter.js"></script>
+  <script src="browserai.js"></script>
   <script src="verification.js"></script>
   <script src="packs.js"></script>
   <script src="provenance.js"></script>
@@ -1348,6 +1499,7 @@
     try { window.__npdevInitMonitor(); } catch (e) { console.error("Monitor init failed", e); }
     try { window.__npdevInitScrap(); } catch (e) { console.error("Scrap Manager init failed", e); }
     try { window.__npdevInitPrompter(); } catch (e) { console.error("Prompter init failed", e); }
+    try { window.__npdevInitBrowserAi(); } catch (e) { console.error("Browser AI init failed", e); }
     try { window.__npdevInitVerification(); } catch (e) { console.error("Verification init failed", e); }
     try { window.__npdevInitPacks(); } catch (e) { console.error("Packs init failed", e); }
     try { window.__npdevInitProvenance(); } catch (e) { console.error("Impact init failed", e); }

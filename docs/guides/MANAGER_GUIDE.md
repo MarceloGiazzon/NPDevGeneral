@@ -23,7 +23,7 @@ second row lists its screens, with one line saying what the place is for.
 |---|---|---|
 | ⌂ **Home** | What to do next, in one card. | Home |
 | 🔧 **Set up** | Get this computer ready to build apps. You do this once. | Check my computer, Install what is missing |
-| ▦ **My apps** | Create an app, start it, change it, share it. | All apps, Start & stop, Edit, Ask AI, Data, Share, Browser (checks), Data rules (checks), Impact (advanced), Packs (advanced) |
+| ▦ **My apps** | Create an app, start it, change it, share it. | All apps, Start & stop, Edit, Use a browser AI, Use an AI with an API key, Data, Share, Browser (checks), Data rules (checks), Impact (advanced), Packs (advanced) |
 | ◉ **Activity** | Everything running on this computer, at a glance. | Running apps, Tasks |
 | ⚙ **Settings** | AI, credentials, versions. You set these once. | AI, Credentials, Appearance, Versions, Computer, Install, Checks (advanced), Evaluations (advanced) |
 
@@ -32,7 +32,7 @@ second row lists its screens, with one line saying what the place is for.
 1. **The first time.** **Set up › Check my computer**, then **Set up › Install what is missing**, then
    **My apps › All apps** to create an app, then **My apps › Start & stop** to start it and open it in the
    browser. This is [Your first app in 10 minutes](FIRST_APP_IN_10_MINUTES.md).
-2. **Every day.** **My apps**: change the app in **My apps › Edit** or **My apps › Ask AI**,
+2. **Every day.** **My apps**: change the app in **My apps › Edit** or **My apps › Use a browser AI**,
    then start it in **My apps › Start & stop**.
 3. **Show it to someone.** Check it in **My apps › Browser**, then **My apps › Share**.
 4. **Something went wrong.** **Activity** shows every app on this computer: which is running,

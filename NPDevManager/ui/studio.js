@@ -420,9 +420,10 @@ async function studioUndo(fileName) {
   }
 }
 
-// The beginner path (screen review wave 2): a change is described in plain words and handed to the Ask AI
-// screen, which already composes the prompt, sends it, validates the answer and asks before saving. This
-// file adds no second AI path -- it only fills Ask AI's request box and switches to it.
+// The beginner path (screen review wave 2): a change is described in plain words and handed to the Use a
+// browser AI screen, which composes the one text to take to a chat AI, checks the answer that comes back
+// and asks before saving. This file adds no second AI path -- it only fills that screen's request box,
+// asks for "change this app", and switches to it (the person presses Continue there).
 function studioDescribeChange() {
   const text = document.getElementById("studio-describe-text").value.trim();
   const box = document.getElementById("studio-describe-text");
@@ -430,13 +431,12 @@ function studioDescribeChange() {
     box.focus();
     return;
   }
-  const ask = document.getElementById("prompter-ask");
+  const ask = document.getElementById("browserai-ask");
   if (ask) {
     ask.value = text;
     ask.dispatchEvent(new Event("input", { bubbles: true }));
   }
-  if (typeof window.__npdevShowScreen === "function") window.__npdevShowScreen("prompter");
-  if (typeof buildPrompterPrompt === "function") buildPrompterPrompt();
+  if (typeof window.__npdevShowScreen === "function") window.__npdevShowScreen("browserai");
 }
 
 function initStudio() {

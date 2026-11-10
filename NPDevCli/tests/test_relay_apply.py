@@ -97,6 +97,17 @@ class CreateTests(ApplyCase):
         refused = apply_mod.apply_round(sessions.load(code), None, [])
         self.assertEqual((refused["ok"], refused["error"]), (False, "no-target"))
 
+    def test_a_new_apps_name_cannot_walk_out_of_its_parent_folder(self):
+        for bad in ["../escaped", "a/b", "a\\b", "C:x", "..", ".hidden", "-flag", "x" * 101]:
+            code = engine.start(intent="create", ask="A shop", new_app_name=bad)["code"]
+            engine.ingest(code, answer(code, 1, json.loads(SEED_MODEL), manifest()), source="paste")
+            refused = apply_mod.apply_round(sessions.load(code), None, [], parent_dir=str(self.dir / "apps"))
+            self.assertEqual((refused["ok"], refused["error"]), (False, "bad-name"), bad)
+        self.assertFalse((self.dir / "apps").exists(), "a refused name wrote nothing")
+        self.assertFalse((self.dir / "escaped").exists())
+        for fine in ["Shop", "Bike-shop", "oficina_2", "Mercadão", "My shop"]:
+            self.assertTrue(apply_mod._plain_folder_name(fine), fine)
+
     def test_an_answer_that_is_not_ready_is_never_applied(self):
         code = engine.start(intent="create", ask="A shop", new_app_name="notready")["code"]
         engine.ingest(code, "Sorry, I cannot do that.", source="paste")

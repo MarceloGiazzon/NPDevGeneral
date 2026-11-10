@@ -29,6 +29,8 @@ function showScreen(name) {
   // Same reasoning as the Scrap Manager: the Prompter's app picker is fed from the Monitor's last
   // scan, and its provider list can be edited from its own modal, so both are re-read on entry.
   if (name === "prompter" && window.__npdevRefreshPrompter) window.__npdevRefreshPrompter();
+  // Use a browser AI: its app picker is fed from the same scan, so it is re-read on entry too.
+  if (name === "browserai" && window.__npdevRefreshBrowserAi) window.__npdevRefreshBrowserAi();
   // Verification: a gate can run (or go stale) while the Manager is open, so re-read the panel on
   // entry rather than showing whatever the last visit rendered.
   if (name === "verification" && window.__npdevRefreshVerification) window.__npdevRefreshVerification();

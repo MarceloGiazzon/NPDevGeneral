@@ -129,12 +129,22 @@ def _apply_change(session: dict, number: int, entry: dict, model_text: str, mani
 
 # --------------------------------------------------------------------------- create
 
+def _plain_folder_name(name: str) -> bool:
+    """One folder name and nothing that walks out of the parent folder: no separator, no drive, no `..`,
+    no leading dot or dash. (The name is the person's own, but it is joined to a path, so it is checked.)"""
+    if not name or len(name) > 100 or name in (".", "..") or name.startswith((".", "-")):
+        return False
+    return not any(ch in name for ch in '/\\:\0*?"<>|')
+
+
 def _apply_create(session: dict, number: int, entry: dict, model_text: str, parent_dir) -> dict:
     target = session.get("appDir")
     if not target:
         name = (session.get("newAppName") or "").strip()
         if not name or not parent_dir:
             return _refuse("no-target", detail="say where the new app goes (--parent-dir) and what it is called")
+        if not _plain_folder_name(name):
+            return _refuse("bad-name", detail="the new app's name must be one plain folder name")
         target = str(Path(parent_dir) / name)
     target_path = Path(target)
     existed = target_path.exists()

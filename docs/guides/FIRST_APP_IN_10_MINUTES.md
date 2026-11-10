@@ -77,8 +77,9 @@ concepts (Customer, Order...), and save. **My apps › Start & stop** notices th
 (or about a minute when it has to rebuild); refresh the browser to see it. If you save a mistake, the log says exactly where, and the
 app keeps running on the last version that worked.
 
-Prefer to describe the change in words? Set up an AI in **Settings › AI**, then use
-**My apps › Ask AI**.
+Prefer to describe the change in words? Use **My apps › Use a browser AI**: take your request to any chat AI
+you already use, with no key to set up. (Or set up an AI key in **Settings › AI** and use
+**My apps › Use an AI with an API key**.)
 
 ## Next
 

@@ -155,6 +155,19 @@ window.__TAURI__ = {
         case "open_url": window.__opened = args.url; return null;
         case "theme_delete": window.__userThemes = (window.__userThemes || []).filter((x) => x.id !== args.id); return { removed: true };
         case "manager_log_path": return "C:\\\\x\\\\manager.log";
+        // Use a browser AI (the relay_* commands): the CAPTURED answers of the real CLI. A marker in the pasted
+        // text picks which one, exactly as NPDev's own stub mode does (npdev.rs relay_ingest_stub).
+        case "relay_start": window.__relayStarts = (window.__relayStarts || []).concat([args]); return F.relay.prompt;
+        case "relay_ingest_text": {
+          window.__relayIngests = (window.__relayIngests || []).concat([args]);
+          const t = args.text || "";
+          return t.includes("STUB-TRUNCATED") ? F.relay.truncated : t.includes("STUB-NEEDS-FIX") ? F.relay.needsFix
+            : t.includes("STUB-REMOVAL") ? F.relay.removal : t.includes("STUB-CREATE") ? F.relay.create
+            : t.includes("STUB-READY") ? F.relay.change : F.relay.parsed;
+        }
+        case "relay_apply": window.__relayApplies = (window.__relayApplies || []).concat([args]); return window.__applyAnswer || F.relay.apply;
+        case "relay_undo": window.__relayUndos = (window.__relayUndos || []).concat([args]); return window.__undoAnswer || F.relay.undo;
+        case "relay_abort": window.__relayAborts = (window.__relayAborts || []).concat([args]); return F.relay.abort;
         default: return {};
       }
     },
@@ -205,6 +218,12 @@ await page.addInitScript({
     jobs: fixture("jobs-list.json"),
     providers: fixture("ai-providers.json"),
     support: fixture("support-install-failed.json"),
+    relay: {
+      prompt: fixture("relay-prompt.json"), parsed: fixture("relay-ingest-parsed.json"), truncated: fixture("relay-ingest-truncated.json"),
+      needsFix: fixture("relay-ingest-needs-fix.json"), create: fixture("relay-ingest-ready-create.json"),
+      change: fixture("relay-ingest-ready-change.json"), removal: fixture("relay-ingest-ready-removal.json"),
+      apply: fixture("relay-apply.json"), undo: fixture("relay-undo.json"), abort: fixture("relay-abort.json"),
+    },
     dbProvision: fixture("db-provision.json"),
     catalogue: (() => {
       const dir = path.join(REPO, "NPDevManager", "fixtures", "theme-catalogue");
@@ -470,7 +489,7 @@ await page.click("#app-list [data-ws-open]");
 await page.waitForTimeout(400);
 check("Open lands on the app's first tab", (await page.evaluate(() => window.__npdevCurrentScreen)) === "run", "");
 check("the workspace bar names the chosen app", /auxscreen/.test(await page.textContent("#workspace-bar")) && !(await page.$eval("#workspace-bar", (b) => b.hidden)), "");
-const WS_PICKERS = { run: "#run-app-picker", studio: "#studio-app-picker", prompter: "#prompter-app", dbio: "#dbio-app-picker", hosting: "#hosting-app-picker",
+const WS_PICKERS = { run: "#run-app-picker", studio: "#studio-app-picker", browserai: "#browserai-app", prompter: "#prompter-app", dbio: "#dbio-app-picker", hosting: "#hosting-app-picker",
   scrap: "#scrap-app", gpuchecks: "#gpuchecks-app-picker", provenance: "#provenance-app-picker", packs: "#packs-app-picker" };
 const wsProblems = [];
 for (const [screen, sel] of Object.entries(WS_PICKERS)) {
@@ -487,14 +506,15 @@ for (const [screen, sel] of Object.entries(WS_PICKERS)) {
 check("every app screen already has the chosen app and never shows its own picker", wsProblems.length === 0, wsProblems.join(" | "));
 const runDir = await page.evaluate(async () => { await window.__npdevShowScreen("run"); return document.getElementById("run-app-dir").value; });
 check("Start & stop uses the chosen app's folder", /auxscreen/i.test(runDir), runDir);
-// Screen review wave 2: Edit leads with a plain request that Ask AI then carries out.
+// Screen review wave 2: Edit leads with a plain request that Use a browser AI then carries out.
 const editHandoff = await page.evaluate(async () => {
   await window.__npdevShowScreen("studio");
   const jsonFolded = !document.getElementById("studio-advanced").open;
   document.getElementById("studio-describe-text").value = "add a phone number to customers";
   document.getElementById("studio-describe-go").click();
-  await new Promise((r) => setTimeout(r, 150));
-  return { jsonFolded, screen: window.__npdevCurrentScreen, ask: document.getElementById("prompter-ask").value };
+  await new Promise((r) => setTimeout(r, 400));
+  const change = document.getElementById("browserai-intent-change");
+  return { jsonFolded, screen: window.__npdevCurrentScreen, ask: document.getElementById("browserai-ask").value, intentChange: change.checked };
 });
 // Item 9: every advanced screen (its group, or the Activity place) says so; the beginner screens do not.
 const advancedNotes = await page.evaluate(async () => {
@@ -509,8 +529,8 @@ const advancedNotes = await page.evaluate(async () => {
 check("advanced screens carry the Advanced note and Edit, Data and Share do not",
   ["provenance", "packs", "verification", "evals", "monitor", "jobs"].every((k) => advancedNotes[k]) &&
   !advancedNotes.studio && !advancedNotes.dbio && !advancedNotes.hosting, JSON.stringify(advancedNotes));
-check("Edit folds the JSON editor and hands a described change to Ask AI, words filled in",
-  editHandoff.jsonFolded && editHandoff.screen === "prompter" && editHandoff.ask === "add a phone number to customers", JSON.stringify(editHandoff));
+check("Edit folds the JSON editor and hands a described change to Use a browser AI, words filled in and 'change this app' chosen",
+  editHandoff.jsonFolded && editHandoff.screen === "browserai" && editHandoff.ask === "add a phone number to customers" && editHandoff.intentChange, JSON.stringify(editHandoff));
 await page.click("#workspace-bar .ws-change");
 await page.waitForTimeout(150);
 check("Change app returns to the list", (await page.evaluate(() => window.__npdevCurrentScreen)) === "apps", "");
@@ -518,6 +538,220 @@ await page.click('.tabs .place[data-place="settings"]');
 await page.waitForTimeout(150);
 check("outside the workspace the pickers come back", (await page.evaluate(() => document.querySelector("main").getAttribute("data-in-workspace"))) === null, "");
 await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false });
+
+// ---- Use a browser AI (browser-AI relay F2/T2.2): the five steps against the CAPTURED relay answers ----------
+// Nothing here is invented: every answer the shim returns is a file in NPDevManager/fixtures captured from the real
+// `npdev ai relay` (a marker in the pasted text picks which). What this asserts is that the screen DRAWS what the CLI
+// said -- one plain sentence per outcome, the preview from `preview` only, a box per warning that needs a yes, the
+// copied text byte for byte -- and decides nothing else.
+{
+  // The sections after this one expect the workspace app the section before it chose: remember it, give it back.
+  const keptApp = await page.evaluate(() => window.NPDevWorkspace.current());
+  await page.evaluate(() => {
+    window.NPDevWorkspace.clear();
+    window.__clip = null;
+    window.__relayStarts = []; window.__relayIngests = []; window.__relayApplies = []; window.__relayUndos = []; window.__relayAborts = [];
+    window.__applyAnswer = null;
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (t) => { window.__clip = t; } } });
+    return window.__npdevShowScreen("browserai");
+  });
+  await page.waitForTimeout(400);
+  // A clean start: the Edit hand-off check above left its request in the box and the workspace's app in the picker.
+  await page.evaluate(() => {
+    const picker = document.getElementById("browserai-app");
+    picker.value = "";
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
+    document.getElementById("browserai-ask").value = "";
+  });
+  const shown = (sel) => page.$eval(sel, (e) => !e.hidden && e.offsetParent !== null).catch(() => false);
+  const text = (sel) => page.$eval(sel, (e) => e.textContent.trim()).catch(() => null);
+  const fixtureNext = (name) => fixture(name).next.prompt;
+  check("browser AI: its tab is offered before any app is chosen (a new app needs none)",
+    await page.$eval('.place-strip[data-place="apps"] .tab[data-screen="browserai"]', (t) => getComputedStyle(t).display !== "none"), "");
+  check("browser AI: opens on step 1 only, as 'create a new app'",
+    (await shown("#browserai-step-1")) && !(await shown("#browserai-step-2")) && !(await shown("#browserai-step-4")) &&
+    (await page.$eval("#browserai-intent-create", (e) => e.checked)) && (await shown("#browserai-newname")), "");
+  await page.click("#browserai-continue");
+  check("browser AI: Continue with nothing typed says what is missing, in a sentence",
+    (await text("#browserai-step1-note")) === "Describe what you want first." && (await page.evaluate(() => window.__relayStarts.length)) === 0, String(await text("#browserai-step1-note")));
+  await page.fill("#browserai-ask", "a small bike repair shop");
+  await page.click("#browserai-continue");
+  check("browser AI: a new app needs a name before anything is asked of the CLI",
+    (await text("#browserai-step1-note")) === "Give the new app a name first." && (await page.evaluate(() => window.__relayStarts.length)) === 0, "");
+  await page.fill("#browserai-newname", "../Bike shop");
+  await page.click("#browserai-continue");
+  check("browser AI: a name that is more than one plain name is refused here, and never reaches the CLI",
+    /letters, numbers, spaces and dashes/.test(await text("#browserai-step1-note")) && (await page.evaluate(() => window.__relayStarts.length)) === 0, String(await text("#browserai-step1-note")));
+  await page.fill("#browserai-newname", "Bike shop");
+  await page.click("#browserai-continue");
+  await page.waitForTimeout(250);
+  const starts = await page.evaluate(() => window.__relayStarts);
+  check("browser AI: Continue opens ONE conversation for a NEW app, with a folder-safe name",
+    starts.length === 1 && starts[0].intent === "create" && starts[0].newAppName === "Bike-shop" && !starts[0].appDir && starts[0].ask === "a small bike repair shop" && starts[0].interview === false, JSON.stringify(starts));
+  check("browser AI: step 2 is current with COPY, and step 1 is folded away",
+    (await shown("#browserai-copy")) && !(await shown("#browserai-ask")) && (await text("#browserai-state-1")) === "Done" && (await text("#browserai-state-2")) === "Now", "");
+  check("browser AI: 'See the text' holds the CLI's text as plain text",
+    /^NPDEV-PROMPT /.test(await text("#browserai-prompt-text")), "");
+  await page.click("#browserai-copy");
+  await page.waitForTimeout(150);
+  const clip = await page.evaluate(() => window.__clip);
+  check("browser AI: COPY puts the CLI's text on the clipboard byte for byte and moves to step 3",
+    clip === fixture("relay-prompt.json").prompt && (await shown("#browserai-paste")) && !(await shown("#browserai-copy")), `${(clip || "").length} chars`);
+  check("browser AI: the copy is announced in a live region", (await text("#browserai-announce")) === "Copied. Now paste it into your AI and send it.", String(await text("#browserai-announce")));
+
+  // an answer that is not ready: one sentence, one button, and the button copies the CLI's message
+  await page.fill("#browserai-paste", "STUB-TRUNCATED half an answer");
+  await page.click("#browserai-check");
+  await page.waitForTimeout(200);
+  check("browser AI: a cut-off answer is one plain sentence with a Copy message button",
+    (await text("#browserai-outcome")) === "The answer was cut off. Copy this message so the AI sends it complete." && (await text("#browserai-outcome-button")) === "Copy message", String(await text("#browserai-outcome")));
+  check("browser AI: the check asked about THIS conversation, with the pasted text",
+    await page.evaluate(() => { const i = window.__relayIngests.at(-1); return i.code === "ZWW4" && i.text.startsWith("STUB-TRUNCATED"); }), "");
+  await page.click("#browserai-outcome-button");
+  await page.waitForTimeout(150);
+  check("browser AI: Copy message copies the CLI's own message and clears the box for the next answer",
+    (await page.evaluate(() => window.__clip)) === fixtureNext("relay-ingest-truncated.json") && (await page.$eval("#browserai-paste", (e) => e.value)) === "", "");
+  await page.fill("#browserai-paste", "STUB-NEEDS-FIX");
+  await page.click("#browserai-check");
+  await page.waitForTimeout(200);
+  check("browser AI: mistakes the AI made are one sentence and the message to send back",
+    (await text("#browserai-outcome")) === "The AI made a mistake. Copy this message and paste it in the same conversation." && (await text("#browserai-outcome-button")) === "Copy message", String(await text("#browserai-outcome")));
+  await page.fill("#browserai-paste", "");
+  await page.click("#browserai-check");
+  check("browser AI: checking an empty box says to paste first", (await text("#browserai-outcome")) === "Paste the AI's answer first.", "");
+
+  // a ready answer for a NEW app: the preview is the CLI's sentences, no box to tick, Apply with a place to keep it
+  await page.fill("#browserai-paste", "STUB-CREATE");
+  await page.click("#browserai-check");
+  await page.waitForTimeout(250);
+  const createPreview = await page.$$eval("#browserai-preview li", (l) => l.map((x) => x.textContent.replace(/^\S\s*/, "").trim()));
+  check("browser AI: a ready answer opens step 4 with the CLI's own sentences, and nothing else",
+    (await shown("#browserai-step-4")) && createPreview[0] === "A new app with 2 kinds of records and 7 fields." && createPreview.length === fixture("relay-ingest-ready-create.json").preview.sentences.length, JSON.stringify(createPreview));
+  check("browser AI: step 4 asks for no tick when the CLI asked for none",
+    (await page.$$eval("#browserai-confirms input", (b) => b.length)) === 0 && !(await page.$eval("#browserai-apply", (b) => b.disabled)), "");
+  await page.evaluate(() => { window.__applyAnswer = Object.assign({}, window.__FIXTURES__.relay.apply, { created: true, backupPath: null, intent: "create", appDir: "/home/you/NPDev/Apps/Bike-shop" }); });
+  await page.click("#browserai-apply");
+  await page.waitForTimeout(250);
+  const createApply = await page.evaluate(() => window.__relayApplies);
+  check("browser AI: Apply sends the conversation, no ticks, and the folder NPDev already keeps apps in",
+    createApply.length === 1 && createApply[0].code === "ZWW4" && createApply[0].confirmed.length === 0 && createApply[0].parentDir === "D:\\WorkSpace\\NPDev\\Build", JSON.stringify(createApply));
+  check("browser AI: a created app ends on 'Show my apps', with no Undo offered for it",
+    (await text("#browserai-progress")) === "Done. Your new app was created." && (await shown("#browserai-go-apps")) && !(await shown("#browserai-undo")) && !(await shown("#browserai-rebuild")), String(await text("#browserai-progress")));
+
+  // start over keeps the request; then CHANGE an app: a removal needs the person's explicit yes
+  await page.click("#browserai-again");
+  check("browser AI: asking for something else returns to step 1 with the request still there",
+    (await shown("#browserai-ask")) && (await page.$eval("#browserai-ask", (e) => e.value)) === "a small bike repair shop", "");
+  await page.evaluate(() => {
+    window.__relayStarts = []; window.__relayApplies = []; window.__relayUndos = []; window.__relayAborts = [];
+    window.__applyAnswer = null;
+    const p = document.getElementById("browserai-app");
+    const opt = [...p.options].find((o) => /auxscreen/i.test(o.textContent));
+    if (opt) { p.value = opt.value; p.dispatchEvent(new Event("change", { bubbles: true })); }
+  });
+  check("browser AI: picking an app means 'change this app'",
+    (await page.$eval("#browserai-intent-change", (e) => e.checked)) && !(await shown("#browserai-newname")), "");
+  await page.fill("#browserai-ask", "drop the first name");
+  await page.check("#browserai-interview");
+  await page.click("#browserai-continue");
+  await page.waitForTimeout(250);
+  const changeStart = await page.evaluate(() => window.__relayStarts);
+  check("browser AI: a change is started for the picked app, and 'let the AI ask me questions' is passed on",
+    changeStart.length === 1 && changeStart[0].intent === "change" && /auxscreen/i.test(changeStart[0].appDir) && !changeStart[0].newAppName && changeStart[0].interview === true, JSON.stringify(changeStart));
+  await page.click("#browserai-copy");
+  await page.fill("#browserai-paste", "STUB-REMOVAL");
+  await page.click("#browserai-check");
+  await page.waitForTimeout(250);
+  const boxes = await page.$$eval("#browserai-confirms label", (l) => l.map((x) => x.textContent.replace(/^\s*⚠\s*/, "").trim()));
+  check("browser AI: a removal shows the CLI's warning as a box to tick, and Apply waits for it",
+    boxes.length === 1 && boxes[0] === "This removes the field First name from Customer and the data stored in it." && (await page.$eval("#browserai-apply", (b) => b.disabled)), JSON.stringify(boxes));
+  // the richest state (a folded step 1-3, a warning box, the AI's words under See details): measured for accessibility here
+  await axeScan("browserai");
+  await page.check("#browserai-confirms input");
+  check("browser AI: ticking the box enables Apply", !(await page.$eval("#browserai-apply", (b) => b.disabled)), "");
+  await page.click("#browserai-apply");
+  await page.waitForTimeout(250);
+  const changeApply = await page.evaluate(() => window.__relayApplies);
+  check("browser AI: Apply names exactly the warning that was ticked, and no folder (the app exists)",
+    changeApply.length === 1 && changeApply[0].confirmed.join() === "REMOVAL:field:Customer.firstName" && !changeApply[0].parentDir, JSON.stringify(changeApply));
+  check("browser AI: a changed app ends with Update the app and Undo",
+    (await text("#browserai-progress")) === "Done. The change is in your app." && (await shown("#browserai-rebuild")) && (await shown("#browserai-undo")) && !(await shown("#browserai-go-apps")), "");
+  await page.click("#browserai-undo");
+  await page.waitForTimeout(250);
+  check("browser AI: Undo asks the CLI for this conversation and says so in a sentence",
+    (await page.evaluate(() => window.__relayUndos.length)) === 1 && (await text("#browserai-progress")) === "Undone. Your app is as it was before." && !(await shown("#browserai-undo")), String(await text("#browserai-progress")));
+
+  // a conversation given up on is closed in the CLI too
+  await page.click("#browserai-again");
+  await page.fill("#browserai-ask", "one more change");
+  await page.click("#browserai-continue");
+  await page.waitForTimeout(200);
+  await page.click("#browserai-copy");
+  await page.fill("#browserai-paste", "STUB-READY");
+  await page.click("#browserai-check");
+  await page.waitForTimeout(200);
+  await page.click("#browserai-else");
+  await page.waitForTimeout(200);
+  check("browser AI: 'Ask for something else' on a preview closes that conversation",
+    (await page.evaluate(() => window.__relayAborts.length)) === 1 && (await shown("#browserai-ask")), "");
+
+  // the two screens are one switch apart and the request travels with it
+  await page.fill("#browserai-ask", "carry me across");
+  await page.click("#browserai-mode-api");
+  await page.waitForTimeout(250);
+  check("browser AI: the switch opens the API-key screen with the request carried across",
+    (await page.evaluate(() => window.__npdevCurrentScreen)) === "prompter" && (await page.$eval("#prompter-ask", (e) => e.value)) === "carry me across" &&
+    (await page.getAttribute("#prompter-mode-api", "aria-pressed")) === "true", "");
+  await page.fill("#prompter-ask", "and back again");
+  await page.click("#prompter-mode-browser");
+  await page.waitForTimeout(250);
+  check("browser AI: and back, with the request carried again",
+    (await page.evaluate(() => window.__npdevCurrentScreen)) === "browserai" && (await page.$eval("#browserai-ask", (e) => e.value)) === "and back again" &&
+    (await page.getAttribute("#browserai-mode-browser", "aria-pressed")) === "true", "");
+  check("browser AI: Ask AI (Home, Edit) lands here, not on the API-key screen",
+    await page.evaluate(async () => { await window.NPDevWorkspace.open({ name: "auxscreen", directory: "D:\\WorkSpace\\NPDev\\Build\\generated-finalapps\\auxscreen" }, "ask-ai"); return window.__npdevCurrentScreen === "browserai"; }), "");
+
+  // the same walk in Portuguese: every sentence the screen draws is in the catalogue and reads in Portuguese
+  await page.evaluate(() => { window.NPDevWorkspace.clear(); return NPDevI18n.setLang("pt"); });
+  await page.waitForTimeout(400);
+  await page.evaluate(() => window.__npdevShowScreen("browserai"));
+  await page.waitForTimeout(300);
+  await page.check("#browserai-intent-create");
+  await page.fill("#browserai-ask", "uma oficina de bicicletas");
+  await page.fill("#browserai-newname", "Oficina");
+  await page.click("#browserai-continue");
+  await page.waitForTimeout(250);
+  await page.click("#browserai-copy");
+  await page.fill("#browserai-paste", "STUB-NEEDS-FIX");
+  await page.click("#browserai-check");
+  await page.waitForTimeout(250);
+  const ptOutcome = await text("#browserai-outcome");
+  check("browser AI: in Portuguese the outcome is one Portuguese sentence with a Portuguese button",
+    ptOutcome === "A IA cometeu um erro. Copie esta mensagem e cole na mesma conversa." && (await text("#browserai-outcome-button")) === "Copiar mensagem", String(ptOutcome));
+  await page.fill("#browserai-paste", "STUB-REMOVAL");
+  await page.click("#browserai-check");
+  await page.waitForTimeout(250);
+  const ptBox = await page.$eval("#browserai-confirms label", (l) => l.textContent.replace(/^\s*⚠\s*/, "").trim());
+  check("browser AI: in Portuguese the box a person must tick, the sentence they agree to, reads in Portuguese",
+    ptBox === "Isto remove o campo First name de Customer e os dados guardados nele.", ptBox);
+  check("browser AI: the CLI's summary list is marked as English text, not silently half-translated",
+    (await page.getAttribute("#browserai-preview", "lang")) === "en" && (await page.getAttribute("#browserai-preview", "translate")) === "no", "");
+  await page.check("#browserai-confirms input");
+  await page.evaluate(() => { window.__applyAnswer = null; });
+  await page.click("#browserai-apply");
+  await page.waitForTimeout(250);
+  const ptMissing = await page.evaluate(() => {
+    const visible = (e) => !!(e.offsetParent || e.getClientRects().length);
+    const shownText = Array.from(document.querySelectorAll("#screen-browserai *")).filter((e) => visible(e)).map((e) => e.textContent);
+    return NPDevI18n.missingNow().filter((x) => shownText.some((t) => t.includes(x)));
+  });
+  check("browser AI: every sentence on the screen, in every step it walked, is in the Portuguese catalogue", ptMissing.length === 0, JSON.stringify(ptMissing.slice(0, 8)));
+  await page.evaluate(() => NPDevI18n.setLang("en"));
+  await page.waitForTimeout(300);
+  if (keptApp) await page.evaluate((a) => window.NPDevWorkspace.select(a), keptApp);
+  await page.click('.tabs .place[data-place="settings"]');
+  await page.waitForTimeout(200);
+}
 
 // ---- The Scrap Manager ---------------------------------------------------------------------
 // NAV-1: it lives in the My apps strip, which shows only once that place is open.

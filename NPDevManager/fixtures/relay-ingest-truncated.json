@@ -25,5 +25,10 @@
     }
   ],
   "normalization": [],
-  "prose": "I created Customer and Order, and linked each order to its customer."
+  "prose": "Here is the app.",
+  "next": {
+    "kind": "copy-prompt",
+    "messageId": "TRUNCATED",
+    "prompt": "NPDEV-PROMPT ZWW4-2\n(The line above and the matching NPDEV-PROMPT-END line below are for the NPDev app on my computer. Never repeat any line that starts with NPDEV-PROMPT.)\n\nYour last answer was cut off before the end, so NPDev could not use it. Send it again COMPLETE, in the same format (NPDEV-BEGIN ZWW4-2 ... NPDEV-END ZWW4-2 files=2). If it does not fit in one message, tell me in one sentence instead.\n\nNPDEV-PROMPT-END ZWW4-2\n"
+  }
 }

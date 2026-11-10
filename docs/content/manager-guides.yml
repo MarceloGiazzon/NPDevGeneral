@@ -57,7 +57,7 @@ guides:
             1. **The first time.** {screen:setup/ready}, then {screen:setup/install}, then
                {screen:apps/apps} to create an app, then {screen:apps/run} to start it and open it in the
                browser. This is {guide:firstApp}.
-            2. **Every day.** {place:apps}: change the app in {screen:apps/studio} or {screen:apps/prompter},
+            2. **Every day.** {place:apps}: change the app in {screen:apps/studio} or {screen:apps/browserai},
                then start it in {screen:apps/run}.
             3. **Show it to someone.** Check it in {screen:apps/scrap}, then {screen:apps/hosting}.
             4. **Something went wrong.** {place:activity} shows every app on this computer: which is running,
@@ -67,7 +67,7 @@ guides:
             1. **A primeira vez.** {screen:setup/ready}, depois {screen:setup/install}, depois
                {screen:apps/apps} para criar um app, e {screen:apps/run} para iniciá-lo e abri-lo no navegador.
                É o {guide:firstApp}.
-            2. **No dia a dia.** {place:apps}: altere o app em {screen:apps/studio} ou {screen:apps/prompter},
+            2. **No dia a dia.** {place:apps}: altere o app em {screen:apps/studio} ou {screen:apps/browserai},
                e inicie-o em {screen:apps/run}.
             3. **Mostrar para alguém.** Teste em {screen:apps/scrap}, depois {screen:apps/hosting}.
             4. **Algo deu errado.** {place:activity} mostra todos os apps deste computador: qual está rodando,
@@ -258,16 +258,18 @@ guides:
             (or about a minute when it has to rebuild); refresh the browser to see it. If you save a mistake, the log says exactly where, and the
             app keeps running on the last version that worked.
 
-            Prefer to describe the change in words? Set up an AI in {screen:settings/providers}, then use
-            {screen:apps/prompter}.
+            Prefer to describe the change in words? Use {screen:apps/browserai}: take your request to any chat AI
+            you already use, with no key to set up. (Or set up an AI key in {screen:settings/providers} and use
+            {screen:apps/prompter}.)
           pt: |
             Deixe o app rodando. Abra o `model.json` na pasta do seu app, acrescente um campo a um dos
             conceitos (Cliente, Pedido...), e salve. {screen:apps/run} percebe a mudança e a aplica em segundos (ou cerca de
             um minuto quando precisa recompilar); atualize o navegador para ver. Se você salvar um erro, o log diz exatamente onde, e o app continua
             rodando na última versão que funcionava.
 
-            Prefere descrever a mudança com palavras? Configure uma IA em {screen:settings/providers} e use
-            {screen:apps/prompter}.
+            Prefere descrever a mudança com palavras? Use {screen:apps/browserai}: leve o seu pedido a qualquer IA de chat
+            que você já usa, sem chave para configurar. (Ou configure uma chave de IA em {screen:settings/providers} e use
+            {screen:apps/prompter}.)
       - heading: { en: Next, pt: Próximos passos }
         body:
           en: |

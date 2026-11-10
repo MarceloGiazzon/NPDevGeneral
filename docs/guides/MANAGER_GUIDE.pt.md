@@ -23,7 +23,7 @@ uma segunda linha mostra as telas dele, com uma frase dizendo para que ele serve
 |---|---|---|
 | ⌂ **Início** | O que fazer a seguir, num cartão só. | Início |
 | 🔧 **Preparar** | Deixe este computador pronto para criar apps. Você faz isso uma vez só. | Verificar o computador, Instalar o que falta |
-| ▦ **Meus apps** | Crie um app, inicie, altere e compartilhe. | Todos os apps, Iniciar e parar, Editar, Perguntar à IA, Dados, Compartilhar, Navegador (testes), Regras (testes), Impacto (avançado), Pacotes (avançado) |
+| ▦ **Meus apps** | Crie um app, inicie, altere e compartilhe. | Todos os apps, Iniciar e parar, Editar, Usar IA do navegador, Usar IA com chave de API, Dados, Compartilhar, Navegador (testes), Regras (testes), Impacto (avançado), Pacotes (avançado) |
 | ◉ **Atividade** | Tudo o que está rodando neste computador, num relance. | Apps em execução, Tarefas |
 | ⚙ **Configurações** | IA, credenciais, versões. Você ajusta isso uma vez. | IA, Credenciais, Aparência, Versões, Computador, Instalação, Verificações (avançado), Avaliações (avançado) |
 
@@ -32,7 +32,7 @@ uma segunda linha mostra as telas dele, com uma frase dizendo para que ele serve
 1. **A primeira vez.** **Preparar › Verificar o computador**, depois **Preparar › Instalar o que falta**, depois
    **Meus apps › Todos os apps** para criar um app, e **Meus apps › Iniciar e parar** para iniciá-lo e abri-lo no navegador.
    É o [Seu primeiro app em 10 minutos](FIRST_APP_IN_10_MINUTES.pt.md).
-2. **No dia a dia.** **Meus apps**: altere o app em **Meus apps › Editar** ou **Meus apps › Perguntar à IA**,
+2. **No dia a dia.** **Meus apps**: altere o app em **Meus apps › Editar** ou **Meus apps › Usar IA do navegador**,
    e inicie-o em **Meus apps › Iniciar e parar**.
 3. **Mostrar para alguém.** Teste em **Meus apps › Navegador**, depois **Meus apps › Compartilhar**.
 4. **Algo deu errado.** **Atividade** mostra todos os apps deste computador: qual está rodando,

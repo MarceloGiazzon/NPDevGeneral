@@ -1,0 +1,104 @@
+{
+  "schemaVersion": "npdev-ai-relay-ingest-result.v1",
+  "protocol": "npdev-relay-answer.v1",
+  "phase": "mvp",
+  "session": {
+    "expected": "ZWW4",
+    "expectedRound": 1,
+    "found": "ZWW4",
+    "foundRound": 1
+  },
+  "outcome": "READY",
+  "files": [
+    {
+      "path": "model.json",
+      "status": "allowed",
+      "reason": null,
+      "kind": "json",
+      "labelSource": "file-marker",
+      "fenced": true,
+      "repairs": [],
+      "bytes": 1728,
+      "sha256": "97f634bbdda3dcffc73894aaad5323f06b866275821d2168f2158fc614242c73",
+      "content": "{\n  \"namespace\": \"my.shop\",\n  \"dslVersion\": \"1.0.0\",\n  \"version\": \"0.1.0\",\n  \"concepts\": [\n    {\n      \"name\": \"Customer\",\n      \"ui\": {\n        \"label\": \"Customer\"\n      },\n      \"fields\": [\n        {\n          \"name\": \"id\",\n          \"type\": \"uuid\",\n          \"id\": true,\n          \"required\": true\n        },\n        {\n          \"name\": \"customerRef\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Customer reference number\"\n          }\n        },\n        {\n          \"name\": \"firstName\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"First name\"\n          }\n        },\n        {\n          \"name\": \"lastName\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Last name\"\n          }\n        }\n      ],\n      \"invariants\": [\n        {\n          \"name\": \"CustomerRefUnique\",\n          \"type\": \"unique\",\n          \"fields\": [\n            \"customerRef\"\n          ]\n        }\n      ]\n    },\n    {\n      \"name\": \"Order\",\n      \"ui\": {\n        \"label\": \"Order\"\n      },\n      \"fields\": [\n        {\n          \"name\": \"id\",\n          \"type\": \"uuid\",\n          \"id\": true,\n          \"required\": true\n        },\n        {\n          \"name\": \"customerId\",\n          \"type\": \"reference\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Customer\"\n          },\n          \"reference\": {\n            \"target\": \"Customer\",\n            \"displayField\": \"lastName\"\n          }\n        },\n        {\n          \"name\": \"orderedAt\",\n          \"type\": \"datetime\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Ordered at\"\n          }\n        }\n      ]\n    }\n  ]\n}\n"
+    },
+    {
+      "path": "npdev-submission.json",
+      "status": "allowed",
+      "reason": null,
+      "kind": "json",
+      "labelSource": "file-marker",
+      "fenced": true,
+      "repairs": [],
+      "bytes": 148,
+      "sha256": "b39df75fa1b80a4e69741f212c6a99743aa70dd0d18629d2a0bb00367267ea07",
+      "content": "{\n  \"request\": \"a small shop\",\n  \"renames\": [],\n  \"deliberateRemovals\": [],\n  \"securityChanges\": [],\n  \"couldNotExpress\": [],\n  \"assumptions\": []\n}\n"
+    }
+  ],
+  "findings": [],
+  "normalization": [],
+  "prose": "Done.",
+  "desirePathFixes": [],
+  "validation": {
+    "contractVersion": "npdev-validation-report.v2",
+    "status": "passed",
+    "model": "model.json",
+    "summary": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "diagnostics": []
+  },
+  "preview": {
+    "sentences": [
+      "A new app with 2 kinds of records and 7 fields.",
+      "Customer: 4 fields (id, Customer reference number, First name and Last name).",
+      "Order: 3 fields (id, Customer and Ordered at).",
+      "Nothing is deleted: this is a new app."
+    ],
+    "warnings": [],
+    "dataLoss": false,
+    "lines": [
+      {
+        "code": "CREATE_SUMMARY",
+        "params": {
+          "counts_text": "2 kinds of records and 7 fields",
+          "concepts": 2,
+          "fields": 7
+        },
+        "text": "A new app with 2 kinds of records and 7 fields."
+      },
+      {
+        "code": "CREATE_CONCEPT",
+        "params": {
+          "label": "Customer",
+          "count": 4,
+          "count_text": "4 fields",
+          "fields_part": " (id, Customer reference number, First name and Last name)",
+          "fields_text": "id, Customer reference number, First name and Last name"
+        },
+        "text": "Customer: 4 fields (id, Customer reference number, First name and Last name)."
+      },
+      {
+        "code": "CREATE_CONCEPT",
+        "params": {
+          "label": "Order",
+          "count": 3,
+          "count_text": "3 fields",
+          "fields_part": " (id, Customer and Ordered at)",
+          "fields_text": "id, Customer and Ordered at"
+        },
+        "text": "Order: 3 fields (id, Customer and Ordered at)."
+      },
+      {
+        "code": "CREATE_NOTHING_DELETED",
+        "params": {},
+        "text": "Nothing is deleted: this is a new app."
+      }
+    ]
+  },
+  "next": {
+    "kind": "apply",
+    "messageId": "READY"
+  }
+}

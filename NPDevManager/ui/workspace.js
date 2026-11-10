@@ -27,6 +27,7 @@
   const SCREENS = {
     run: { selects: ["#run-app-picker"], input: "#run-app-dir" },
     studio: { selects: ["#studio-app-picker"] },
+    browserai: { selects: ["#browserai-app"] },
     prompter: { selects: ["#prompter-app"] },
     dbio: { selects: ["#dbio-app-picker"] },
     hosting: { selects: ["#hosting-app-picker"] },
@@ -36,7 +37,7 @@
     packs: { selects: ["#packs-app-picker"] },
   };
   // The workspace tabs of navigation.json's apps place, by the tab ids a caller may ask for.
-  const TAB_SCREEN = { overview: "run", edit: "studio", "ask-ai": "prompter", data: "dbio", share: "hosting", checks: "scrap", inside: "provenance" };
+  const TAB_SCREEN = { overview: "run", edit: "studio", "ask-ai": "browserai", "ask-ai-key": "prompter", data: "dbio", share: "hosting", checks: "scrap", inside: "provenance" };
 
   const TEXT = {
     app: { en: "App", pt: "App" },

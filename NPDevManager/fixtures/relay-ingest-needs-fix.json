@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "npdev-ai-relay-ingest-result.v1",
+  "protocol": "npdev-relay-answer.v1",
+  "phase": "mvp",
+  "session": {
+    "expected": "ZWW4",
+    "expectedRound": 1,
+    "found": "ZWW4",
+    "foundRound": 1
+  },
+  "outcome": "NEEDS_FIX",
+  "files": [
+    {
+      "path": "model.json",
+      "status": "allowed",
+      "reason": null,
+      "kind": "json",
+      "labelSource": "file-marker",
+      "fenced": true,
+      "repairs": [],
+      "bytes": 1726,
+      "sha256": "5da7adfc07e0a0fc8fa7ae9e7e8cee21b110d054d5c68135a63e799a22ec1e51",
+      "content": "{\n  \"namespace\": \"my.shop\",\n  \"dslVersion\": \"1.0.0\",\n  \"version\": \"1.1\",\n  \"concepts\": [\n    {\n      \"name\": \"Customer\",\n      \"ui\": {\n        \"label\": \"Customer\"\n      },\n      \"fields\": [\n        {\n          \"name\": \"id\",\n          \"type\": \"uuid\",\n          \"id\": true,\n          \"required\": true\n        },\n        {\n          \"name\": \"customerRef\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Customer reference number\"\n          }\n        },\n        {\n          \"name\": \"firstName\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"First name\"\n          }\n        },\n        {\n          \"name\": \"lastName\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Last name\"\n          }\n        }\n      ],\n      \"invariants\": [\n        {\n          \"name\": \"CustomerRefUnique\",\n          \"type\": \"unique\",\n          \"fields\": [\n            \"customerRef\"\n          ]\n        }\n      ]\n    },\n    {\n      \"name\": \"Order\",\n      \"ui\": {\n        \"label\": \"Order\"\n      },\n      \"fields\": [\n        {\n          \"name\": \"id\",\n          \"type\": \"uuid\",\n          \"id\": true,\n          \"required\": true\n        },\n        {\n          \"name\": \"customerId\",\n          \"type\": \"reference\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Customer\"\n          },\n          \"reference\": {\n            \"target\": \"Customer\",\n            \"displayField\": \"lastName\"\n          }\n        },\n        {\n          \"name\": \"orderedAt\",\n          \"type\": \"datetime\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Ordered at\"\n          }\n        }\n      ]\n    }\n  ]\n}\n"
+    },
+    {
+      "path": "npdev-submission.json",
+      "status": "allowed",
+      "reason": null,
+      "kind": "json",
+      "labelSource": "file-marker",
+      "fenced": true,
+      "repairs": [],
+      "bytes": 158,
+      "sha256": "3319775c851b526be2ee6774c917c738b619d0230ee8ef302eeb0a06ea473fee",
+      "content": "{\n  \"request\": \"bump the model version\",\n  \"renames\": [],\n  \"deliberateRemovals\": [],\n  \"securityChanges\": [],\n  \"couldNotExpress\": [],\n  \"assumptions\": []\n}\n"
+    }
+  ],
+  "findings": [
+    {
+      "code": "no-changes",
+      "severity": "error"
+    }
+  ],
+  "normalization": [],
+  "prose": "Done.",
+  "desirePathFixes": [],
+  "validation": {
+    "contractVersion": "npdev-validation-report.v2",
+    "status": "passed",
+    "model": "model.json",
+    "summary": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "diagnostics": []
+  },
+  "errorLines": [
+    "model.json - identical to the current model, nothing was changed - apply the requested change and send the complete model.json"
+  ],
+  "next": {
+    "kind": "copy-prompt",
+    "messageId": "NEEDS_FIX",
+    "prompt": "NPDEV-PROMPT ZWW4-2\n(The line above and the matching NPDEV-PROMPT-END line below are for the NPDev app on my computer. Never repeat any line that starts with NPDEV-PROMPT.)\n\nNPDev checked your model and found these problems:\nmodel.json - identical to the current model, nothing was changed - apply the requested change and send the complete model.json\n\nFix every one and send the COMPLETE corrected files again, in the same format, starting with NPDEV-BEGIN ZWW4-2 and ending with NPDEV-END ZWW4-2 files=2.\n\nNPDEV-PROMPT-END ZWW4-2\n"
+  }
+}

@@ -15,6 +15,12 @@ release. Ships in the next tag.
   (a rename, removal or security change needs the owner's explicit yes), applies with a backup and
   undoes byte for byte. The Manager's Prompter now shows this same prompt and has a paste-back box.
   See `docs/AUTHORING_WITH_AI.md`.
+- **Use a browser AI** (Manager 0.13.24) -- a new screen under My apps for the same job with no API
+  key: say what you want, COPY one text, give it to any chat AI you already use, paste its answer
+  back, read what it would change in plain words, tick the box a removal or rename asks for, and
+  Apply; a change can be undone. Ask AI on Home and Edit now lead here, and the API-key screen is
+  one button away on both, carrying the request across. `npdev ai relay apply` now refuses a new
+  app's name that is not one plain folder name (`../x`, `a/b`, `C:x`).
 - **Agent Access** (`agentAccess` model block): a generated app serves a standard MCP endpoint
   (`/api/mcp`) so Claude Code/Desktop or any MCP client can use its data as tools, and optionally
   runs a Telegram bot linking a Telegram account to an app user for plain-language chat -- every

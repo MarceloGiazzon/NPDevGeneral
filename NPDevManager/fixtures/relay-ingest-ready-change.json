@@ -1,0 +1,101 @@
+{
+  "schemaVersion": "npdev-ai-relay-ingest-result.v1",
+  "protocol": "npdev-relay-answer.v1",
+  "phase": "mvp",
+  "session": {
+    "expected": "ZWW4",
+    "expectedRound": 1,
+    "found": "ZWW4",
+    "foundRound": 1
+  },
+  "outcome": "READY",
+  "files": [
+    {
+      "path": "model.json",
+      "status": "allowed",
+      "reason": null,
+      "kind": "json",
+      "labelSource": "file-marker",
+      "fenced": true,
+      "repairs": [],
+      "bytes": 1803,
+      "sha256": "b152db5ecb0d5b3031c5c71e734067d3990757897cfa6336558ae0cf7ff8f993",
+      "content": "{\n  \"namespace\": \"my.shop\",\n  \"dslVersion\": \"1.0.0\",\n  \"version\": \"0.1.1\",\n  \"concepts\": [\n    {\n      \"name\": \"Customer\",\n      \"ui\": {\n        \"label\": \"Customer\"\n      },\n      \"fields\": [\n        {\n          \"name\": \"id\",\n          \"type\": \"uuid\",\n          \"id\": true,\n          \"required\": true\n        },\n        {\n          \"name\": \"customerRef\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Customer reference number\"\n          }\n        },\n        {\n          \"name\": \"firstName\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"First name\"\n          }\n        },\n        {\n          \"name\": \"lastName\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Last name\"\n          }\n        },\n        {\n          \"name\": \"email\",\n          \"type\": \"string\"\n        }\n      ],\n      \"invariants\": [\n        {\n          \"name\": \"CustomerRefUnique\",\n          \"type\": \"unique\",\n          \"fields\": [\n            \"customerRef\"\n          ]\n        }\n      ]\n    },\n    {\n      \"name\": \"Order\",\n      \"ui\": {\n        \"label\": \"Order\"\n      },\n      \"fields\": [\n        {\n          \"name\": \"id\",\n          \"type\": \"uuid\",\n          \"id\": true,\n          \"required\": true\n        },\n        {\n          \"name\": \"customerId\",\n          \"type\": \"reference\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Customer\"\n          },\n          \"reference\": {\n            \"target\": \"Customer\",\n            \"displayField\": \"lastName\"\n          }\n        },\n        {\n          \"name\": \"orderedAt\",\n          \"type\": \"datetime\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Ordered at\"\n          }\n        }\n      ]\n    }\n  ]\n}\n"
+    },
+    {
+      "path": "npdev-submission.json",
+      "status": "allowed",
+      "reason": null,
+      "kind": "json",
+      "labelSource": "file-marker",
+      "fenced": true,
+      "repairs": [],
+      "bytes": 161,
+      "sha256": "8ba1aeb840476fe4f85b6b2cb3ccaa3bf689b6bd419f00ae62ef525d54f89baf",
+      "content": "{\n  \"request\": \"add an email to customers\",\n  \"renames\": [],\n  \"deliberateRemovals\": [],\n  \"securityChanges\": [],\n  \"couldNotExpress\": [],\n  \"assumptions\": []\n}\n"
+    }
+  ],
+  "findings": [
+    {
+      "code": "version-bumped",
+      "severity": "info",
+      "detail": {
+        "previous": "0.1.0",
+        "fromVersion": "0.1.0",
+        "to": "0.1.1"
+      }
+    }
+  ],
+  "normalization": [],
+  "prose": "Done.",
+  "desirePathFixes": [],
+  "validation": {
+    "contractVersion": "npdev-validation-report.v2",
+    "status": "warning",
+    "model": "model.json",
+    "summary": {
+      "errors": 0,
+      "warnings": 1
+    },
+    "diagnostics": [
+      {
+        "layer": "ux-metadata",
+        "severity": "warning",
+        "code": "missing_field_label",
+        "message": "Concept Customer field email: presentation metadata should declare a user-visible label",
+        "path": "concepts[Customer].fields[email]",
+        "concept": "Customer",
+        "field": "email",
+        "section": "fields",
+        "suggestedFix": "Add ui.label so guided editors and generated forms have a stable field title.",
+        "helpKey": "validation.ux-metadata.missing_field_label"
+      }
+    ]
+  },
+  "preview": {
+    "sentences": [
+      "Customer: new field email."
+    ],
+    "warnings": [],
+    "dataLoss": false,
+    "lines": [
+      {
+        "code": "ADD_FIELDS",
+        "params": {
+          "concept": "Customer",
+          "fields": [
+            "email"
+          ],
+          "count": 1,
+          "field_word": "field",
+          "fields_text": "email"
+        },
+        "text": "Customer: new field email."
+      }
+    ]
+  },
+  "next": {
+    "kind": "apply",
+    "messageId": "READY"
+  }
+}
