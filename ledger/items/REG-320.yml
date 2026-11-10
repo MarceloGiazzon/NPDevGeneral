@@ -28,9 +28,17 @@ detail: |
        the sentence does not say that the app refused on purpose.
   Undo puts the model back and "Update the app now" starts the original again (this works since 0.13.28, which also fixed
   the stale "already running" entry that used to block that restart).
+  What the platform already provides (read, not changed): an operator pre-authorizes the change on the CURRENTLY RUNNING
+  (old) app, BEFORE the new build boots -- SchemaImpactController previews the pending change and its ackToken, and
+  SchemaAcknowledgmentController (POST /api/admin/schema-migration/acknowledge, SUPERUSER-gated, body toFingerprint +
+  ackToken) stores it in PendingSchemaAcknowledgmentStore, which SchemaLifecycleExecutor consults at boot (see the class
+  comment in SchemaAcknowledgmentController.java). The CLI side is Build-NpdevApp.ps1 -PlanOnly / -Upgrade. A refused boot
+  has no server left to take an acknowledgment, which is why the order matters. The Manager flow stops the old app BEFORE
+  it can do any of that.
   Decision needed from the owner (not taken in the tour, because it spans the platform's data-protection rule):
-    (a) the preview's tick IS the itemized acknowledgment: the Manager/CLI passes the expected token to the app when it
-        starts it after a confirmed removal (where the app reads it from is a runtimehost/schema-lifecycle question), or
+    (a) the preview's tick IS the itemized acknowledgment: after Apply and BEFORE stopping the old app, the Manager/CLI
+        asks the old app for the impact (its ackToken) and posts the acknowledgment with the app's admin credentials, then
+        stops, rebuilds and starts as today (needs a SUPERUSER credential path from the Manager to the app), or
     (b) the screen detects the refusal and says in one plain sentence what happened and what to do, with the token step
         in a button, or
     (c) refuse destructive removals in this flow for now and send the person to the data screens.

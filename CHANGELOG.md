@@ -60,6 +60,11 @@ release. Ships in the next tag.
   it is and what to do (stop the other app in Running apps, then try again); the app's own
   explanation stays under See what happened. Try again on a new app that is already running now stops
   it before regenerating it, as a change always did.
+- **Use a browser AI: what the answer would change, in Portuguese** -- the preview sentences and the
+  removal/rename warnings were English in a Portuguese window. `npdev ai relay` now writes them in
+  the conversation's language (`npdev_relay_preview_pt.py`, from each line's `code` and `params`, so
+  the words change but what a tick confirms does not); other languages are untouched, and a line it
+  cannot write keeps its English text. Model names and the AI's own words stay as they are.
 - **Agent Access** (`agentAccess` model block): a generated app serves a standard MCP endpoint
   (`/api/mcp`) so Claude Code/Desktop or any MCP client can use its data as tools, and optionally
   runs a Telegram bot linking a Telegram account to an app user for plain-language chat -- every

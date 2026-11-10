@@ -758,12 +758,15 @@ def build_create_preview(candidate_model: dict, ai_manifest=None) -> dict:
     concepts = _items(candidate_model, "concepts")
     field_total = sum(len(_items(c, "fields")) for c in concepts)
     counts = [(len(concepts), ) + _item_words("concepts"), (field_total, "field", "fields")]
+    count_keys = ["concepts", "fields"]  # what each count is, so a translation can name it in its own words
     for key in sorted(k for k, v in (candidate_model or {}).items()
                       if k != "concepts" and isinstance(v, list) and v and k in ITEM_LABELS):
         counts.append((len(candidate_model[key]),) + _item_words(key))
+        count_keys.append(key)
     counts_text = _join_words([_pl(n, one, many) for n, one, many in counts if n])
     lines = [_line("CREATE_SUMMARY", counts_text=counts_text or "nothing in it yet",
-                   concepts=len(concepts), fields=field_total)]
+                   concepts=len(concepts), fields=field_total,
+                   counts=[[key, c[0]] for key, c in zip(count_keys, counts)])]
     built = []
     for concept in concepts:
         name = concept.get("name") if isinstance(concept.get("name"), str) else "?"
@@ -772,7 +775,8 @@ def build_create_preview(candidate_model: dict, ai_manifest=None) -> dict:
         fields_text = _join_words(shown) + (f" and {len(fields) - 6} more" if len(fields) > 6 else "")
         built.append(_line("CREATE_CONCEPT", label=_label(concept, name), count=len(fields),
                            count_text=_pl(len(fields), "field", "fields"),
-                           fields_part=f" ({fields_text})" if fields else "", fields_text=fields_text))
+                           fields_part=f" ({fields_text})" if fields else "", fields_text=fields_text,
+                           fields_shown=shown, fields_more=max(0, len(fields) - 6)))
     _capped(lines, built, ("concepts",))
     lines.append(_line("CREATE_NOTHING_DELETED"))
     warnings: list = []
@@ -803,7 +807,7 @@ def build_preview(gate_report, base_model, candidate_model, ai_manifest, intent)
     built = []
     for concept, added in diff["addedFields"].items():
         labels = [label for _, label in added]
-        built.append(_line("ADD_FIELDS", concept=concept, fields=[n for n, _ in added], count=len(labels),
+        built.append(_line("ADD_FIELDS", concept=concept, fields=[n for n, _ in added], count=len(labels), labels=labels,
                            field_word="field" if len(labels) == 1 else "fields", fields_text=_join_words(labels)))
     _capped(lines, built, ("fields",))
     built = [_line("CHANGE_FIELD", concept=e["concept"], field=e["label"], name=e["field"], keys=e["keys"],

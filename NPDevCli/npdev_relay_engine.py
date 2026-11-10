@@ -371,7 +371,9 @@ def finish_ready(session: dict, number: int, result: dict, model_entry: dict) ->
     result["outcome"] = outcome["outcome"]
     result["findings"].extend(outcome["findings"])
     if outcome["preview"] is not None:
-        result["preview"] = outcome["preview"]
+        import npdev_relay_preview_pt as preview_pt  # the sentences in the person's language; codes and params stay
+
+        result["preview"] = preview_pt.localize_preview(outcome["preview"], session.get("language"))
     if outcome["errors"]:
         result["errorLines"] = list(outcome["errors"])
     text = outcome.get("candidateModelText")

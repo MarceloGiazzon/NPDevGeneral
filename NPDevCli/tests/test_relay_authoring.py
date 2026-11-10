@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import npdev_relay_authoring as authoring  # noqa: E402
+import npdev_relay_preview_pt as preview_pt  # noqa: E402
 
 BASE = {"namespace": "t.shop", "version": "1.0", "concepts": [
     {"name": "Customer", "fields": [{"name": "id", "type": "uuid", "id": True}, {"name": "nm", "type": "string"}]}]}
@@ -143,6 +144,83 @@ class PreviewTests(unittest.TestCase):
         self.assertIn("Nothing is deleted", " ".join(preview["sentences"]))
         self.assertEqual(preview["warnings"], [])
         json.dumps(preview)  # serialisable as is
+
+
+class PortuguesePreviewTests(unittest.TestCase):
+    """The same preview in Portuguese: written from the CLI's own codes and params, never by guessing at English."""
+
+    def gate(self):
+        return {"status": "passed", "diagnostics": []}
+
+    def test_a_new_app_is_described_in_portuguese(self):
+        model = copy.deepcopy(BASE)
+        model["concepts"].append({"name": "Order", "fields": [{"name": "id", "type": "uuid", "id": True}]})
+        model["flows"] = [{"name": "PlaceOrder"}, {"name": "CancelOrder"}]
+        english = authoring.build_create_preview(model, {"assumptions": ["Status has two values"]})
+        portuguese = preview_pt.localize_preview(english, "Portuguese (Brazil)")
+        self.assertEqual(portuguese["sentences"][0], "Um app novo com 2 tipos de registro, 3 campos e 2 processos.")
+        self.assertIn("Customer: 2 campos (id e nm).", portuguese["sentences"])
+        self.assertIn("Order: 1 campo (id).", portuguese["sentences"])
+        self.assertIn("Nada é apagado: este é um app novo.", portuguese["sentences"])
+        self.assertIn("A IA presumiu: Status has two values", portuguese["sentences"])
+        self.assertEqual(portuguese["lines"][0]["code"], "CREATE_SUMMARY")  # the codes are what Apply keys off
+        self.assertEqual(english["sentences"][0], "A new app with 2 kinds of records, 3 fields and 2 processes.")
+
+    def test_a_change_names_what_is_added_in_portuguese_with_the_right_gender(self):
+        cand = candidate(version="1.1")
+        cand["concepts"][0]["fields"].append({"name": "phone", "type": "string"})
+        cand["concepts"].append({"name": "Invoice", "fields": [{"name": "id", "type": "uuid", "id": True}]})
+        cand["flows"] = [{"name": "Charge"}]
+        cand["queries"] = [{"name": "FindOverdue"}]
+        english = authoring.build_preview(self.gate(), BASE, cand, {}, "change")
+        pt = preview_pt.localize_preview(english, "pt-BR")["sentences"]
+        self.assertIn("Novo tipo de registro: Invoice, com 1 campo.", pt)
+        self.assertIn("Customer: novo campo phone.", pt)
+        self.assertIn("Novo processo: Charge.", pt)
+        self.assertIn("Nova busca: FindOverdue.", pt)
+        for sentence in pt:
+            self.assertNotRegex(sentence, r"[{}\[\]$]|\.json")
+
+    def test_a_removal_and_a_rename_keep_their_codes_and_say_it_in_portuguese(self):
+        cand = candidate(version="1.1")
+        cand["concepts"][0]["fields"] = [cand["concepts"][0]["fields"][0]]
+        ai = {"deliberateRemovals": [{"kind": "field", "concept": "Customer", "name": "nm"}]}
+        english = authoring.build_preview(self.gate(), BASE, cand, ai, "change")
+        pt = preview_pt.localize_preview(english, "Portuguese (Brazil)")
+        warning = pt["warnings"][0]
+        self.assertEqual(warning["code"], "REMOVAL:field:Customer.nm")
+        self.assertTrue(warning["needsConfirmation"])
+        self.assertEqual(warning["text"], "Isto remove o campo nm de Customer e os dados guardados nele.")
+        self.assertTrue(pt["dataLoss"])
+
+    def test_a_changed_field_names_what_changed_in_portuguese(self):
+        cand = candidate(version="1.1")
+        cand["concepts"][0]["fields"][1] = {"name": "nm", "type": "text", "required": True}
+        english = authoring.build_preview(self.gate(), BASE, cand, {}, "change")
+        pt = preview_pt.localize_preview(english, "Portuguese (Brazil)")["sentences"]
+        self.assertIn("Customer: o campo nm muda (se é obrigatório e o tipo).", pt)
+
+    def test_other_languages_and_unknown_lines_are_left_alone(self):
+        english = authoring.build_create_preview(copy.deepcopy(BASE), None)
+        self.assertIs(preview_pt.localize_preview(english, "English"), english)
+        self.assertIs(preview_pt.localize_preview(english, None), english)
+        broken = copy.deepcopy(english)
+        broken["lines"][0]["params"] = {}  # a line this module cannot write keeps its English words
+        kept = preview_pt.localize_preview(broken, "Portuguese (Brazil)")
+        self.assertEqual(kept["sentences"][0], english["sentences"][0])
+        self.assertEqual(kept["sentences"][-1], "Nada é apagado: este é um app novo.")
+
+    def test_every_english_template_has_a_portuguese_one_and_the_same_placeholders(self):
+        import string
+        names = lambda text: {f for _, f, _, _ in string.Formatter().parse(text) if f}  # noqa: E731
+        for code, english in authoring.PREVIEW_TEMPLATES.items():
+            with self.subTest(code=code):
+                self.assertIn(code, preview_pt.TEMPLATES_PT)
+                if code in ("ADD_ITEM", "CHANGE_ITEM", "ADD_FIELDS"):
+                    continue  # gendered / pluralised words are chosen in code, not by placeholder
+                self.assertEqual(names(preview_pt.TEMPLATES_PT[code]), names(english))
+        for key in authoring.ITEM_LABELS:
+            self.assertIn(key, preview_pt.ITEM_PT)
 
 
 if __name__ == "__main__":

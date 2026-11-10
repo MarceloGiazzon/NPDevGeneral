@@ -101,6 +101,16 @@ class StartTests(EngineCase):
 
 
 class IngestTests(EngineCase):
+    def test_a_portuguese_conversation_gets_a_portuguese_preview_with_the_same_codes(self):
+        code = self.start(language="Portuguese (Brazil)")["code"]
+        result = engine.ingest(code, answer(code, 1), source="paste")
+        self.assertEqual(result["outcome"], "READY")
+        self.assertTrue(result["preview"]["sentences"][0].startswith("Um app novo com "), result["preview"]["sentences"])
+        self.assertIn("Nada é apagado", " ".join(result["preview"]["sentences"]))
+        self.assertEqual(result["preview"]["lines"][0]["code"], "CREATE_SUMMARY")
+        english = self.start()["code"]
+        self.assertTrue(engine.ingest(english, answer(english, 1), source="paste")["preview"]["sentences"][0].startswith("A new app with "))
+
     def test_a_valid_create_answer_is_ready_with_a_plain_preview(self):
         code = self.start()["code"]
         result = engine.ingest(code, answer(code, 1), source="paste")
