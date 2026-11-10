@@ -38,6 +38,25 @@
     },
     {
       "level": 2,
+      "title": "Without MCP, the easy way — npdev ai relay",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\n`npdev ai relay` carries the measured prompt to ANY chat AI in a browser (ChatGPT, Gemini, Claude,\nGrok, Kimi, DeepSeek, Google AI Mode, ...) and reads its answer back. No API key and no MCP. The\nManager's **Use a browser AI** screen runs these same commands, so a terminal user and the Manager\nsend the same text and classify an answer the same way.\n"
+        },
+        {
+          "type": "fence",
+          "lang": "sh",
+          "text": "echo \"A workshop app with customers, vehicles and work orders\" > ask.txt\n./npdev ai relay start --intent create --ask-file ask.txt --new-app-name workshop   # prints the prompt: paste it into a NEW chat\n./npdev ai relay ingest --code K7Q2 --text-file answer.txt                         # K7Q2 = the code in the prompt; answer.txt = the AI's reply\n./npdev ai relay apply --code K7Q2 --parent-dir ~/apps                             # create the app (a change names its warnings with --confirm-warning)\n./npdev ai relay undo --code K7Q2                                                  # change/fix only: put the previous model back"
+        },
+        {
+          "type": "prose",
+          "text": "\nEvery answer ends in exactly one outcome and one next step. `READY` comes with a preview in plain\nwords and is applied with a backup. `NEEDS_FIX`, `TRUNCATED`, `ELIDED`, `BAD_JSON`, `PARTIAL`,\n`NO_FILES` and `FILE_LINK_ONLY` come with a short message to paste into the same chat (the errors\none per line). `LIMIT_REACHED` and an AI that repeats the same mistake twice come with a\nself-contained prompt for a new chat or another AI. `QUESTIONS`, `STALE_ROUND`, `WRONG_SESSION` and\n`PROMPT_ECHO` mean the AI needs the person, or the wrong text was copied.\n\nNothing is written unless the model passes the validator and, for a change, the authoring gate: a\nrename, a removal or a security change the AI did not declare is refused, and each one it did\ndeclare needs the owner's explicit yes (`--confirm-warning <code>`, the codes are in the preview).\nConversations are kept in the per-user NPDev folder (`ai-relay/<code>/`) and survive restarts:\n`relay list`, `relay status --code`, `relay abort --code`. An answer the AI saved as a file works\ntoo: `relay ingest --code K7Q2 --file model.json` (or a `.zip`, which is read in memory and never\nextracted).\n"
+        }
+      ]
+    },
+    {
+      "level": 2,
       "title": "Verifying the connection yourself",
       "blocks": [
         {

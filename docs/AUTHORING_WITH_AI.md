@@ -71,6 +71,36 @@ the same in substance, just relayed by hand:
 `docs/content/authoring-for-ai.yml` (rendered as `docs/ai/AUTHORING_FOR_AI.md`), served by the
 `npdev_core_context` tool in one path and by `npdev ai context` in the other.
 
+## Without MCP, the easy way — npdev ai relay
+
+`npdev ai relay` carries the measured prompt to ANY chat AI in a browser (ChatGPT, Gemini, Claude,
+Grok, Kimi, DeepSeek, Google AI Mode, ...) and reads its answer back. No API key and no MCP. The
+Manager's **Use a browser AI** screen runs these same commands, so a terminal user and the Manager
+send the same text and classify an answer the same way.
+
+```sh
+echo "A workshop app with customers, vehicles and work orders" > ask.txt
+./npdev ai relay start --intent create --ask-file ask.txt --new-app-name workshop   # prints the prompt: paste it into a NEW chat
+./npdev ai relay ingest --code K7Q2 --text-file answer.txt                         # K7Q2 = the code in the prompt; answer.txt = the AI's reply
+./npdev ai relay apply --code K7Q2 --parent-dir ~/apps                             # create the app (a change names its warnings with --confirm-warning)
+./npdev ai relay undo --code K7Q2                                                  # change/fix only: put the previous model back
+```
+
+Every answer ends in exactly one outcome and one next step. `READY` comes with a preview in plain
+words and is applied with a backup. `NEEDS_FIX`, `TRUNCATED`, `ELIDED`, `BAD_JSON`, `PARTIAL`,
+`NO_FILES` and `FILE_LINK_ONLY` come with a short message to paste into the same chat (the errors
+one per line). `LIMIT_REACHED` and an AI that repeats the same mistake twice come with a
+self-contained prompt for a new chat or another AI. `QUESTIONS`, `STALE_ROUND`, `WRONG_SESSION` and
+`PROMPT_ECHO` mean the AI needs the person, or the wrong text was copied.
+
+Nothing is written unless the model passes the validator and, for a change, the authoring gate: a
+rename, a removal or a security change the AI did not declare is refused, and each one it did
+declare needs the owner's explicit yes (`--confirm-warning <code>`, the codes are in the preview).
+Conversations are kept in the per-user NPDev folder (`ai-relay/<code>/`) and survive restarts:
+`relay list`, `relay status --code`, `relay abort --code`. An answer the AI saved as a file works
+too: `relay ingest --code K7Q2 --file model.json` (or a `.zip`, which is read in memory and never
+extracted).
+
 ## Verifying the connection yourself
 
 `npdev mcp install` cannot confirm your GUI client actually loaded the config — that needs a
