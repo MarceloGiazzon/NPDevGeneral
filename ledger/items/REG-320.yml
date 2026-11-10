@@ -4,8 +4,9 @@ title: >-
   app then refuses to start (schema guard wants a second, itemized acknowledgment token) with no path in the Manager to give it
 type: GAP
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-11-10
+closed: 2026-11-10
 source: >-
   F2 acceptance tour of "Use a browser AI" on the REAL Manager window (0.13.28), 2026-11-10: a change answer that drops the
   Customer concept of a running app, applied after ticking the preview's box. Reproduced three times (apps WorkshopTwo,
@@ -13,6 +14,12 @@ source: >-
 surface: manager/browserai, runtimehost/schema-lifecycle
 files:
   - NPDevManager/ui/browserai.js
+  - NPDevManager/ui/index.html
+  - NPDevCli/npdev_relay_authoring.py
+  - NPDevCli/tests/test_relay_authoring.py
+  - schemas/ai/ai-relay-ingest-result.schema.json
+  - NPDevManager/fixtures/relay-ingest-ready-removal.json
+  - docs/content/authoring-with-ai.yml
   - NPDevCli/npdev_relay_apply.py
   - NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
 detail: |
@@ -43,6 +50,25 @@ detail: |
         in a button, or
     (c) refuse destructive removals in this flow for now and send the person to the data screens.
 resolution: >-
-  Done when applying a confirmed concept removal on a running app ends on "Your app is running." (a) or on one plain
-  sentence plus at most one button that explains the refusal and finishes the job (b), proven on the real window with a
-  second app; and the choice is recorded in docs/UI_CONTRACT.md or the relay contract.
+  DECIDED AND DONE 2026-11-10, option (c): a removal of a record type or a field is shown but not offered. The CLI's
+  preview now says, as data, that applying it makes the app's schema guard demand its own acknowledgment
+  (`needsSchemaAcknowledgment` on the warning and on the preview); the Manager draws the removal as a plain line, offers
+  no Apply and no box, and says in one sentence that NPDev cannot do this from here yet, with Ask for something else as the
+  way on. Nothing is stopped, regenerated, built or written. `npdev ai relay apply` is unchanged (a person who will
+  acknowledge the change at deploy time can still use it). The choice is recorded in docs/AUTHORING_WITH_AI.md (generated
+  from docs/content/authoring-with-ai.yml). Why (c) and not (a): the supported way to give the acknowledgment without a
+  running app, `npdev upgrade --app --allow-destructive`, passes the impact check but the boot step still refuses because
+  no token is carried to it (npdev_app_upgrade.py, the IMPACT block), so (a) needs a platform change first -- REG-321.
+  Proven on the REAL window (0.13.34, NPDev_General__OutsideRepo/reg320-tour/tour.mjs, 9/9) against a real app's model and the
+  real Java validator: a removed record type and a removed field each give the flag and a screen with no Apply; pressing
+  Apply anyway sends nothing to the CLI and leaves the model byte for byte; a rename on the same app still gets its box.
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_relay_authoring.py#test_a_removed_record_type_or_field_says_the_app_will_ask_for_its_own_acknowledgment
+  asserts: >-
+    a change preview that removes a kind of record and a field carries needsSchemaAcknowledgment true on exactly those two
+    warnings and on the preview, still asks for the owner's yes (needsConfirmation), keeps the flag through the Portuguese
+    localisation, and says nothing of the kind for the removal of something that is not stored data (a flow), for a rename,
+    or for an addition (the sibling tests). Proven red 2026-11-10 against the previous npdev_relay_authoring.py (KeyError).
+  provenRed: true

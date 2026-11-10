@@ -1,0 +1,37 @@
+id: REG-321
+title: >-
+  Use a browser AI: finish a confirmed removal of a record type or field instead of declining it -- npdev upgrade --app
+  --allow-destructive passes the impact check but the boot step still refuses for lack of the acknowledgment token
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-10
+source: >-
+  REG-320 (2026-11-10): choosing between its options (a) "the preview's tick IS the itemized acknowledgment" and (c) "decline
+  for now", the way to (a) was read in code and found incomplete.
+surface: cli/app-upgrade, manager/browserai
+files:
+  - NPDevCli/npdev_app_upgrade.py
+  - NPDevCli/npdev_cli.py
+  - NPDevManager/ui/browserai.js
+  - docs/SCHEMA_EVOLUTION.md
+detail: |
+  `npdev upgrade --app <dir> --stop --allow-destructive` (OPS-12, NPDevCli/npdev_app_upgrade.py) is the guarded in-place upgrade:
+  backup, validate, regenerate, build, schema-impact check, boot, health, automatic rollback. A destructive change is exit code
+  3 of the impact check; `--allow-destructive` lets the upgrade past that gate. The BOOT step then starts the new jar for real,
+  and the app's own schema guard refuses again: it wants the itemized token (docs/SCHEMA_EVOLUTION.md, "Acknowledging
+  destructive changes") in the generated manifest's `destructiveAcknowledgment` or from the ControlPanel on the OLD running
+  app. Nothing in the upgrade passes the token it could read from the impact run, so a confirmed removal ends in
+  ROLLED_BACK. The supported deploy-time channel is Build-NpdevApp.ps1 -PlanOnly (prints the token) then -AcknowledgeDestructive
+  <token> (writes it verbatim into the manifest); it is not wired into `npdev upgrade --app` or into the Manager.
+  What a fix needs: (1) `npdev upgrade --app` takes the expected token from the REPORT_ONLY impact run (or computes it as
+  DestructiveAckToken does) and gives it to the boot, only when --allow-destructive was passed; (2) the Manager, for an answer
+  whose preview says needsSchemaAcknowledgment AND whose person ticked every removal warning, runs the upgrade with that flag
+  instead of its own stop/generate/build/start, and words UPGRADED / REFUSED / ROLLED_BACK in plain sentences; (3) the
+  acknowledgment must stay ITEMIZED: only proceed when every destructive item the plan lists is one the person ticked (a type
+  narrowing the preview did not show must still stop it). Until then the Manager declines such an answer (REG-320, option c).
+resolution: >-
+  Done when applying a confirmed removal of a record type, on a running app, ends in the app running again with the data of
+  that table in the pre-upgrade backup, proven on the real window with a second app, and a destructive item the person did not
+  tick still stops the upgrade; then drop the "cannot do this from here yet" screen (or keep it only for the cases the
+  upgrade still refuses).
