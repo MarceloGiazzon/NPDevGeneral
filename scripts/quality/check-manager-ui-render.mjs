@@ -131,7 +131,9 @@ window.__TAURI__ = {
         // __probeQueue: the health the next probes report (the last one repeats) -- how a check scripts "still stopped, then up".
         case "monitor_probe": case "read_info_json": {
           if (name === "monitor_probe" && window.__probeQueue) {
-            const h = window.__probeQueue.length > 1 ? window.__probeQueue.shift() : window.__probeQueue[0];
+            const e = window.__probeQueue.length > 1 ? window.__probeQueue.shift() : window.__probeQueue[0];
+            if (e && typeof e === "object") return Object.assign({}, F.probe, e); // a whole probe answer, for the states a word cannot carry
+            const h = e;
             return Object.assign({}, F.probe, { health: h, healthDetail: h === "running" ? null : "nothing is listening on 127.0.0.1:8411" });
           }
           return F.probe;
@@ -601,6 +603,10 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   const shown = (sel) => page.$eval(sel, (e) => !e.hidden && e.offsetParent !== null).catch(() => false);
   const text = (sel) => page.$eval(sel, (e) => e.textContent.trim()).catch(() => null);
   const fixtureNext = (name) => fixture(name).next.prompt;
+  const settled = () => page.waitForFunction(() => {
+    const t = (document.getElementById("browserai-launch").textContent || "").trim();
+    return t && !/^(Preparing the app|Stopping the running app|Building the app|Starting the app)/.test(t) && !document.getElementById("browserai-rebuild").disabled;
+  }, null, { timeout: 20000 }).then(() => page.waitForTimeout(50));
   check("browser AI: its tab is offered before any app is chosen (a new app needs none)",
     await page.$eval('.place-strip[data-place="apps"] .tab[data-screen="browserai"]', (t) => getComputedStyle(t).display !== "none"), "");
   check("browser AI: opens on step 1 only, as 'create a new app'",
@@ -888,16 +894,39 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
     (await text("#browserai-launch")) === "The app could not be started." && /port 8080/.test(await text("#browserai-launch-prose")) && (await shown("#browserai-rebuild")), String(await text("#browserai-launch")));
   await page.evaluate(() => { window.__startError = null; window.__probeQueue = ["stopped"]; });
   await page.click("#browserai-rebuild");
-  await page.waitForTimeout(900);
+  await settled();
   check("browser AI: an app that starts but never answers says where to look, with the app's own words about why",
     (await text("#browserai-launch")) === "The app was started but has not answered yet. Look at it in Running apps." && /127\.0\.0\.1:8411/.test(await text("#browserai-launch-prose")) && (await shown("#browserai-see-run")), String(await text("#browserai-launch")));
+  // another app holds the port (two generated apps share 8080 by default): one plain sentence, not a three-minute wait
+  const clash = { health: "port-conflict", healthDetail: "PID 4242 holds port 8411 but its command line does not mention this app -- this app is NOT the one serving." };
+  // a clash that lasts is reported, and only after it has lasted
+  await page.evaluate((c) => { window.__npdevConflictMs = 100; window.__probeQueue = ["stopped", c]; }, clash);
+  const clashStart = Date.now();
+  await page.click("#browserai-rebuild");
+  await settled();
+  const clashTook = Date.now() - clashStart;
+  check("browser AI: a clash that lasts is reported, no sooner than the time it has to last", clashTook >= 100, String(clashTook));
+  check("browser AI: an app whose port another app holds says so in plain words, with the app's own words under the details, and offers another try",
+    (await text("#browserai-launch")) === "Another app is already using this app's address, so it could not start. Stop the other app in Running apps, then try again." &&
+    /PID 4242 holds port 8411/.test(await text("#browserai-launch-prose")) && (await shown("#browserai-rebuild")) && (await shown("#browserai-see-run")), String(await text("#browserai-launch")));
+  await page.evaluate(() => { window.__npdevConflictMs = null; window.__launchLog = []; window.__probeQueue = ["running", "stopped"]; }); // up when asked, down once stopped, then never answers
+  await page.click("#browserai-rebuild");
+  await settled();
+  check("browser AI: trying again on a NEW app that is running stops it first -- before it is generated again, as for a change",
+    (await page.evaluate(() => window.__launchLog)).map((l) => l.split(":")[0]).join() === "stop,generate,run,start", JSON.stringify(await page.evaluate(() => window.__launchLog)));
+  await page.evaluate(() => { window.__probeQueue = ["stopped"]; });
+  await page.click("#browserai-rebuild");
+  await settled();
   await page.click("#browserai-see-run");
   await page.waitForTimeout(250);
   check("browser AI: 'See it in Running apps' goes to the Monitor", (await page.evaluate(() => window.__npdevCurrentScreen)) === "monitor", "");
-  await page.evaluate(() => { window.__probeQueue = ["stopped", "running"]; return window.__npdevShowScreen("browserai"); });
+  // not up yet, a clash that clears by itself (the other app was only just being stopped) -- never reported, the app just comes up
+  await page.evaluate((c) => { window.__npdevConflictMs = 100000; window.__probeQueue = ["stopped", c, c, "running"]; return window.__npdevShowScreen("browserai"); }, clash);
   await page.waitForTimeout(250);
   await page.click("#browserai-rebuild");
-  await page.waitForTimeout(300);
+  await settled();
+  check("browser AI: a clash that clears by itself is never reported -- the app just comes up",
+    (await text("#browserai-launch")) === "Your app is running.", String(await text("#browserai-launch")));
   check("browser AI: trying again once it works ends in 'Your app is running.', and the failure's reason is gone",
     (await text("#browserai-launch")) === "Your app is running." && !(await shown("#browserai-launch-details")) && (await shown("#browserai-open")) && !(await shown("#browserai-rebuild")), String(await text("#browserai-launch")));
 

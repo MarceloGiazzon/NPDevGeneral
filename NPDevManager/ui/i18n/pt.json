@@ -1254,5 +1254,6 @@
   "a file to download": "um arquivo para baixar",
   "the AI asked questions": "a IA fez perguntas",
   "free limit reached": "limite gratuito atingido",
-  "answer checked": "resposta conferida"
+  "answer checked": "resposta conferida",
+  "Another app is already using this app's address, so it could not start. Stop the other app in Running apps, then try again.": "Outro app já está usando o endereço deste app, então ele não conseguiu iniciar. Pare o outro app em Apps em execução e tente de novo."
 }

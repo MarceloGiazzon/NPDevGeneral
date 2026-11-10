@@ -711,8 +711,8 @@
     try {
       // A running app holds its own files, its _ops folder among them: it is stopped BEFORE the app is generated again
       // (generating replaces those files -- on Windows that fails while the app's script still has the folder open),
-      // then generated, built and started.
-      if (S.applied && S.applied.created !== true && (await probe(appDir)).health === "running") {
+      // then generated, built and started. That holds for a retry of a new app as much as for a change.
+      if ((await probe(appDir)).health === "running") {
         say("Stopping the running app so it can be rebuilt…");
         try {
           await invoke("stop_app", { appDir });
@@ -746,12 +746,26 @@
         if (!/already running/i.test(String(e))) return stop("The app could not be started.", String(e));
       }
       let seen = {};
+      let clashSince = null;
+      const clashMs = window.__npdevConflictMs != null ? window.__npdevConflictMs : 30000; // the render check shortens it
       for (let i = 0; i < 60 && current(); i++) {
         seen = await probe(appDir);
         if (seen.health === "running") break;
+        // Another app holds this app's port: this one will not come up while that one runs, so waiting out all the time
+        // helps nobody. But only once the clash has lasted: a new app takes a while before it even tries the port, and
+        // the other one may be on its way out (stopped a moment ago) -- then it simply starts.
+        if (seen.health === "port-conflict") {
+          if (clashSince === null) clashSince = Date.now();
+          if (Date.now() - clashSince >= clashMs) break;
+        } else {
+          clashSince = null;
+        }
         await sleep(pollMs);
       }
       if (!current()) return;
+      if (seen.health === "port-conflict") {
+        return stop("Another app is already using this app's address, so it could not start. Stop the other app in Running apps, then try again.", seen.healthDetail || "");
+      }
       if (seen.health !== "running") return stop("The app was started but has not answered yet. Look at it in Running apps.", seen.healthDetail || "");
       S.openUrl = seen.baseUrl || null;
       say("Your app is running.");

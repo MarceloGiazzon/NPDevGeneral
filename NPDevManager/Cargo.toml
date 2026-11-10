@@ -1,6 +1,6 @@
 [package]
 name = "npdev-manager"
-version = "0.13.28"
+version = "0.13.29"
 edition = "2021"
 description = "Installs and runs NPDev for someone who will never open a terminal."
 license = "Apache-2.0"

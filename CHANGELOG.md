@@ -52,6 +52,14 @@ release. Ships in the next tag.
   destructive change, on purpose) stayed in the Manager's table of running apps, so every later start
   answered "already running from this window" and nothing ran, even after Undo; an exited process is
   now forgotten.
+- **Use a browser AI: a second app on the same address says so** (Manager 0.13.29) -- generated apps
+  share port 8080 by default, so making a second app while the first runs could not start. The
+  screen waited three minutes and said only "started but has not answered yet"; it now stops waiting
+  once the probe has said another app holds the port for 30 seconds (a new app needs a while before it
+  even tries the port, and the other one may just be stopping) and says in one sentence which problem
+  it is and what to do (stop the other app in Running apps, then try again); the app's own
+  explanation stays under See what happened. Try again on a new app that is already running now stops
+  it before regenerating it, as a change always did.
 - **Agent Access** (`agentAccess` model block): a generated app serves a standard MCP endpoint
   (`/api/mcp`) so Claude Code/Desktop or any MCP client can use its data as tools, and optionally
   runs a Telegram bot linking a Telegram account to an app user for plain-language chat -- every
