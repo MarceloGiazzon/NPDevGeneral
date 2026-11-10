@@ -47,6 +47,18 @@
 .ba-outcome { margin: 0.8em 0 0; padding: 0.55em 0.8em; border-left: 0.2em solid var(--t-warning-edge); background: var(--t-warning-tint); }
 .ba-outcome[hidden] { display: none; }
 
+/* The conversation so far: one line per round, a mark and words on every line (never colour alone). */
+.ba-rounds-wrap { margin-top: 1em; }
+.ba-rounds-wrap[hidden] { display: none; }
+.ba-rounds-title { margin: 0 0 0.3em; color: var(--t-text-muted); }
+.ba-rounds { list-style: none; padding: 0; margin: 0; }
+.ba-rounds li { display: flex; flex-wrap: wrap; gap: 0.5em; margin: 0.2em 0; }
+.ba-rounds .ba-mark { flex: none; width: 1.4em; text-align: center; }
+.ba-rounds .ba-round-n { font-weight: 700; }
+.ba-rounds .ba-round-kind::before { content: "· "; }
+.ba-rounds .ba-round-state::before { content: "— "; }
+.ba-rounds li[aria-current="step"] { font-weight: 600; }
+
 /* The preview: a list of what changes, a mark and a word on every line. */
 .ba-preview { list-style: none; padding: 0; margin: 0 0 0.6em; }
 .ba-preview li { display: flex; gap: 0.6em; margin: 0.3em 0; }

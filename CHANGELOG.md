@@ -32,6 +32,12 @@ release. Ships in the next tag.
   or start says so in a sentence, keeps the reason under See what happened and offers another try;
   Undo makes Update the app now available again. `npdev ai relay apply --parent-dir D` now puts a new
   app in `D/<name>/<name>`, the folder layout New app makes, so two apps never share one `ArtifactNP`.
+- **Use a browser AI: follow-ups and a history** (Manager 0.13.27) -- "Take it to another AI" (free
+  limit reached) and "Copy for a new conversation" (going in circles) now copy the CLI's
+  `next.freshChatPrompt`, the whole request for a new chat; every other follow-up button still copies
+  `next.prompt`, the short message for the conversation already open. A small list under the answer
+  box, drawn from `npdev ai relay status`, shows the rounds so far (cut off, mistakes to fix, new
+  conversation, waiting for the answer).
 - **Agent Access** (`agentAccess` model block): a generated app serves a standard MCP endpoint
   (`/api/mcp`) so Claude Code/Desktop or any MCP client can use its data as tools, and optionally
   runs a Telegram bot linking a Telegram account to an app user for plain-language chat -- every

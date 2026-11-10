@@ -1239,5 +1239,20 @@
   "The app still shows the change until you update it.": "O app continua com a mudança até você atualizá-lo.",
   "Open the app": "Abrir o app",
   "See it in Running apps": "Ver em Apps em execução",
-  "See what happened": "Ver o que aconteceu"
+  "See what happened": "Ver o que aconteceu",
+  "The conversation so far": "A conversa até agora",
+  "Round {n}": "Rodada {n}",
+  "new conversation": "conversa nova",
+  "waiting for the answer": "esperando a resposta",
+  "ready to apply": "pronta para aplicar",
+  "cut off": "cortada",
+  "parts left out": "partes deixadas de fora",
+  "writing mistakes": "erros de escrita",
+  "only partly usable": "só em parte aproveitável",
+  "mistakes to fix": "erros para corrigir",
+  "no app in it": "sem o app",
+  "a file to download": "um arquivo para baixar",
+  "the AI asked questions": "a IA fez perguntas",
+  "free limit reached": "limite gratuito atingido",
+  "answer checked": "resposta conferida"
 }

@@ -77,6 +77,26 @@
     PARTIAL: "Copy message",
     NEEDS_FIX: "Copy message",
   };
+  // The two outcomes whose button copies the text for a NEW conversation (`next.freshChatPrompt`): the AI cannot
+  // go on (free limit) or will not (same mistake twice), so repeating the same-chat message to it would not help.
+  // Every other button copies `next.prompt`, the short message for the conversation the person already has.
+  const FRESH_CHAT = new Set(["LIMIT_REACHED", "GOING_IN_CIRCLES"]);
+  // How one round of the conversation reads in the small history list, by the CLI's outcome for that round.
+  const ROUND_STATES = {
+    READY: ["✓", "ready to apply"],
+    TRUNCATED: ["⚠", "cut off"],
+    ELIDED: ["⚠", "parts left out"],
+    BAD_JSON: ["⚠", "writing mistakes"],
+    PARTIAL: ["⚠", "only partly usable"],
+    NEEDS_FIX: ["⚠", "mistakes to fix"],
+    NO_FILES: ["⚠", "no app in it"],
+    FILE_LINK_ONLY: ["⚠", "a file to download"],
+    QUESTIONS: ["•", "the AI asked questions"],
+    LIMIT_REACHED: ["⚠", "free limit reached"],
+  };
+  const ROUND_CHECKED = ["•", "answer checked"]; // an outcome this list has no words for yet: still shown, never hidden
+  const ROUND_WAITING = ["…", "waiting for the answer"];
+  const MAX_ROUNDS_SHOWN = 8;
   const COPIED = "Copied. Now paste it into your AI and send it.";
   const WENT_WRONG = "Something went wrong. Nothing was changed. Try again.";
 
@@ -230,6 +250,7 @@
       }
       if (!r || r.ok === false || !r.code || typeof r.prompt !== "string") return note("browserai-step1-note", WENT_WRONG, true);
       S.code = r.code;
+      drawRounds([]);
       S.appDir = appDir;
       S.promptText = r.prompt;
       S.result = null;
@@ -297,6 +318,59 @@
       handleAnswer(r);
     } finally {
       setBusy(false);
+    }
+    refreshRounds(); // after the answer is drawn: the history is a companion, it never delays or blocks the sentence
+  }
+
+  // ------------------------------------------------------------- the rounds so far (small history list)
+
+  // The CLI keeps the record (`relay_status`: one entry per message sent, with the outcome of its answer); this
+  // only draws it, so the person sees the conversation moving: "Round 1 cut off", "Round 2 waiting for the answer".
+  // Shown once a round has an answer; a conversation that has just begun has nothing to list.
+  async function refreshRounds() {
+    const code = S.code;
+    if (!code) return;
+    let st;
+    try {
+      st = await invoke("relay_status", { code });
+    } catch (e) {
+      return; // no history this time; the sentence above is what matters
+    }
+    if (code !== S.code) return; // the person started over meanwhile
+    const rounds = st && st.session && Array.isArray(st.session.rounds) ? st.session.rounds : [];
+    drawRounds(rounds);
+  }
+
+  function drawRounds(rounds) {
+    const list = $("browserai-rounds");
+    const wrap = $("browserai-rounds-wrap");
+    list.replaceChildren();
+    const answered = rounds.some((r) => r && r.outcome);
+    wrap.hidden = !answered;
+    if (!answered) return;
+    for (const r of rounds.slice(-MAX_ROUNDS_SHOWN)) {
+      const [mark, words] = !r.outcome ? ROUND_WAITING : ROUND_STATES[r.outcome] || ROUND_CHECKED;
+      const item = document.createElement("li");
+      const m = document.createElement("span");
+      m.className = "ba-mark";
+      m.setAttribute("aria-hidden", "true");
+      m.textContent = mark;
+      const n = document.createElement("span");
+      n.className = "ba-round-n";
+      n.textContent = `Round ${r.round}`;
+      item.append(m, n);
+      if (r.promptKind === "fresh-chat") {
+        const kind = document.createElement("span");
+        kind.className = "ba-round-kind";
+        kind.textContent = "new conversation";
+        item.append(kind);
+      }
+      const s = document.createElement("span");
+      s.className = "ba-round-state";
+      s.textContent = words;
+      item.append(s);
+      if (!r.outcome) item.setAttribute("aria-current", "step");
+      list.append(item);
     }
   }
 
@@ -394,7 +468,8 @@
     const next = r.next || {};
     const key = SENTENCES[next.messageId] ? next.messageId : SENTENCES[r.outcome] ? r.outcome : "GENERAL";
     const label = BUTTONS[key];
-    const text = typeof next.prompt === "string" ? next.prompt : "";
+    const own = (v) => (typeof v === "string" ? v : "");
+    const text = FRESH_CHAT.has(key) ? own(next.freshChatPrompt) || own(next.prompt) : own(next.prompt);
     showOutcome(SENTENCES[key], label && text ? { label, text } : null, r.prose);
   }
 
@@ -734,6 +809,7 @@
       }
     }
     S.code = null;
+    drawRounds([]);
     S.promptText = "";
     S.result = null;
     S.applied = null;

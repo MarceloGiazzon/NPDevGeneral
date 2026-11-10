@@ -176,6 +176,7 @@ window.__TAURI__ = {
         case "relay_start": window.__relayStarts = (window.__relayStarts || []).concat([args]); return F.relay.prompt;
         case "relay_ingest_text": {
           window.__relayIngests = (window.__relayIngests || []).concat([args]);
+          if (window.__ingestAnswer) return window.__ingestAnswer; // a check that needs a result the captured ones do not cover
           const t = args.text || "";
           return t.includes("STUB-TRUNCATED") ? F.relay.truncated : t.includes("STUB-NEEDS-FIX") ? F.relay.needsFix
             : t.includes("STUB-REMOVAL") ? F.relay.removal : t.includes("STUB-CREATE") ? F.relay.create
@@ -189,6 +190,11 @@ window.__TAURI__ = {
           return n.includes("STUB-TRUNCATED") ? F.relay.truncated : n.includes("STUB-NEEDS-FIX") ? F.relay.needsFix
             : n.includes("STUB-REMOVAL") ? F.relay.removal : n.includes("STUB-CREATE") ? F.relay.create : F.relay.parsed;
         }
+        // The record of the rounds so far (the CLI's "relay status"): the captured one, or what a check puts in __statusAnswer.
+        case "relay_status":
+          window.__relayStatuses = (window.__relayStatuses || []).concat([args]);
+          if (window.__statusFails) throw "status unavailable";
+          return window.__statusAnswer || F.relay.status;
         case "relay_pick_answer_files": window.__pickCalls = (window.__pickCalls || 0) + 1; return window.__pickAnswer || [];
         case "relay_apply": window.__relayApplies = (window.__relayApplies || []).concat([args]); return window.__applyAnswer || F.relay.apply;
         case "relay_undo": window.__relayUndos = (window.__relayUndos || []).concat([args]); return window.__undoAnswer || F.relay.undo;
@@ -249,6 +255,7 @@ await page.addInitScript({
       needsFix: fixture("relay-ingest-needs-fix.json"), create: fixture("relay-ingest-ready-create.json"),
       change: fixture("relay-ingest-ready-change.json"), removal: fixture("relay-ingest-ready-removal.json"),
       apply: fixture("relay-apply.json"), undo: fixture("relay-undo.json"), abort: fixture("relay-abort.json"),
+      status: fixture("relay-status.json"),
     },
     dbProvision: fixture("db-provision.json"),
     catalogue: (() => {
@@ -704,6 +711,78 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   await page.click("#browserai-check");
   check("browser AI: checking an empty box says to paste first", (await text("#browserai-outcome")) === "Paste the AI's answer first.", "");
 
+  // T2.5 -- which text each button copies, and the rounds so far. The captured answers carry only the same-chat
+  // message, so these results are the captured cut-off one with its `next` (and outcome) replaced, the two texts made
+  // different on purpose: a button that copied the wrong one could not pass by accident.
+  const FRESH_TEXT = "NPDEV-PROMPT ZWW4-4\nFRESH-CHAT-TEXT the whole request again, for a new conversation";
+  const SAME_TEXT = "NPDEV-PROMPT ZWW4-4\nSAME-CHAT-TEXT only the correction";
+  const answerWith = (outcome, messageId, next) => page.evaluate(([o, m, n]) => {
+    window.__ingestAnswer = Object.assign({}, window.__FIXTURES__.relay.truncated, { outcome: o, next: Object.assign({ kind: "copy-prompt", messageId: m }, n) });
+  }, [outcome, messageId, next]);
+  const askAndCopy = async () => {
+    await page.fill("#browserai-paste", "anything: the stub answers with what the check set");
+    await page.click("#browserai-check");
+    await page.waitForTimeout(200);
+    const sentence = await text("#browserai-outcome");
+    const button = await text("#browserai-outcome-button");
+    await page.evaluate(() => { window.__clip = null; });
+    if (button) { await page.click("#browserai-outcome-button"); await page.waitForTimeout(120); }
+    return { sentence, button, clip: await page.evaluate(() => window.__clip) };
+  };
+  await answerWith("TRUNCATED", "TRUNCATED", { prompt: SAME_TEXT, freshChatPrompt: FRESH_TEXT });
+  const sameChat = await askAndCopy();
+  check("browser AI: a cut-off answer's button copies the short message for the SAME conversation, not the fresh-chat text",
+    sameChat.button === "Copy message" && sameChat.clip === SAME_TEXT, JSON.stringify(sameChat));
+  await answerWith("LIMIT_REACHED", "LIMIT_REACHED", { prompt: SAME_TEXT, freshChatPrompt: FRESH_TEXT });
+  const limit = await askAndCopy();
+  check("browser AI: 'Take it to another AI' copies the text for a NEW conversation",
+    limit.sentence === "Your AI reached its free limit. Take this conversation to another AI, or try again later." && limit.button === "Take it to another AI" && limit.clip === FRESH_TEXT, JSON.stringify(limit));
+  await answerWith("NEEDS_FIX", "GOING_IN_CIRCLES", { prompt: SAME_TEXT, freshChatPrompt: FRESH_TEXT });
+  const circles = await askAndCopy();
+  check("browser AI: going in circles is one sentence, and its button copies the text for a NEW conversation",
+    circles.sentence === "This AI is going in circles. Start a new conversation or try another AI — the text is ready." && circles.button === "Copy for a new conversation" && circles.clip === FRESH_TEXT, JSON.stringify(circles));
+  await answerWith("LIMIT_REACHED", "LIMIT_REACHED", { prompt: SAME_TEXT });
+  const noFresh = await askAndCopy();
+  check("browser AI: a result with no separate fresh-chat text still gives the button the message it has",
+    noFresh.clip === SAME_TEXT, JSON.stringify(noFresh));
+
+  // the rounds so far come from the CLI's own record (relay status) and are drawn, never worked out here
+  check("browser AI: each checked answer asks the CLI for the rounds of THIS conversation",
+    await page.evaluate(() => window.__relayStatuses.length >= 4 && window.__relayStatuses.every((s) => s.code === "ZWW4")), "");
+  check("browser AI: before any round has an answer, there is no history list",
+    !(await shown("#browserai-rounds-wrap")), "");
+  await page.evaluate(() => {
+    window.__statusAnswer = Object.assign({}, window.__FIXTURES__.relay.status, {
+      session: Object.assign({}, window.__FIXTURES__.relay.status.session, {
+        round: 3,
+        rounds: [
+          { round: 1, promptKind: "round1", outcome: "TRUNCATED" },
+          { round: 2, promptKind: "same-chat", outcome: "NEEDS_FIX" },
+          { round: 3, promptKind: "fresh-chat" },
+        ],
+      }),
+    });
+  });
+  await answerWith("NEEDS_FIX", "GOING_IN_CIRCLES", { prompt: SAME_TEXT, freshChatPrompt: FRESH_TEXT });
+  await askAndCopy();
+  const rounds = await page.$$eval("#browserai-rounds li", (l) => l.map((x) => ({
+    text: x.textContent.replace(/\s+/g, " ").trim(), current: x.getAttribute("aria-current"), markHidden: x.querySelector(".ba-mark").getAttribute("aria-hidden") })));
+  check("browser AI: the rounds so far are listed in order, each with a mark and words",
+    (await shown("#browserai-rounds-wrap")) && (await text("#browserai-rounds-title")) === "The conversation so far" && rounds.length === 3 &&
+    /Round 1.*cut off/.test(rounds[0].text) && /Round 2.*mistakes to fix/.test(rounds[1].text) && rounds.every((r) => r.markHidden === "true"), JSON.stringify(rounds));
+  check("browser AI: the round still waiting for its answer says so and is the current step; a new conversation is named",
+    /Round 3.*new conversation.*waiting for the answer/.test(rounds[2].text) && rounds[2].current === "step" && rounds[0].current === null && rounds[1].current === null, JSON.stringify(rounds));
+  const roundsAxe = await axeScan("browserai-step3-rounds");
+  delete a11yMeasured["browserai-step3-rounds"];
+  check("browser AI: step 3 with the rounds list has no accessibility violations",
+    Object.values(roundsAxe.counts).reduce((a, b) => a + b, 0) === 0, JSON.stringify(roundsAxe.targets).slice(0, 400));
+  await page.evaluate(() => { window.__statusFails = true; });
+  await answerWith("TRUNCATED", "TRUNCATED", { prompt: SAME_TEXT, freshChatPrompt: FRESH_TEXT });
+  const noStatus = await askAndCopy();
+  check("browser AI: if the rounds cannot be read, the sentence and its button still work",
+    noStatus.sentence === "The answer was cut off. Copy this message so the AI sends it complete." && noStatus.clip === SAME_TEXT, JSON.stringify(noStatus));
+  await page.evaluate(() => { window.__statusFails = false; window.__statusAnswer = null; window.__ingestAnswer = null; });
+
   // a ready answer for a NEW app: the preview is the CLI's sentences, no box to tick, Apply with a place to keep it
   await page.fill("#browserai-paste", "STUB-CREATE");
   await page.click("#browserai-check");
@@ -824,6 +903,7 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
 
   // a conversation given up on is closed in the CLI too
   await page.click("#browserai-again");
+  check("browser AI: starting over empties the rounds list", !(await shown("#browserai-rounds-wrap")) && (await page.$$eval("#browserai-rounds li", (l) => l.length)) === 0, "");
   await page.fill("#browserai-ask", "one more change");
   await page.click("#browserai-continue");
   await page.waitForTimeout(200);
