@@ -76,6 +76,23 @@ release. Ships in the next tag.
   `relay-watch-state`.
 - **Use a browser AI: what the answer would change, in Portuguese** -- the preview sentences and the
   removal/rename warnings were English in a Portuguese window. `npdev ai relay` now writes them in
+- **Use a browser AI: the answer is picked up when you save it** (Manager 0.13.31) -- some chat AIs
+  hand the answer over as a file (a `model.json`, a zip) instead of text to copy. While step 3 waits
+  the Manager now also looks at the Downloads folder every two seconds, so saving the file is the whole
+  job. Only the Rust side reads it (`src/relay_downloads.rs`, `src/relay_watch.rs`): files that appeared
+  after the waiting began (created or changed, so a browser's old `Last-Modified` does not hide one),
+  top level only, `.json` `.zip` `.txt` `.md`, up to the CLI's own size limits, and only once two polls
+  in a row saw the same size (a download still being written is never read). A file is kept only if its
+  text carries this conversation's `NPDEV-BEGIN <code>` marker or is a JSON object with one of the
+  protocol's keys (`concepts`, `upsert`, `remove`, `renames`, ...); a zip needs such a `model.json`,
+  `npdev-elements.json` or `npdev-submission.json` inside, read in memory and never extracted. Every
+  other file is forgotten (nothing stored or logged), and the Manager never moves, renames or deletes
+  anything. A match goes to `npdev ai relay ingest --file --source downloads-watch` and is drawn like
+  a pasted answer, saying "Got the answer from your Downloads folder". The same answer arriving by
+  Copy and by Download within ten seconds is checked once. One notice, one Stop and one switch cover
+  both places -- the switch is now **Watch the clipboard and the Downloads folder while waiting for
+  an AI**, so a person who had turned the clipboard watching off keeps it off -- and `relay-watch-state`
+  carries `sources`, so the notice names only the places really being read.
   the conversation's language (`npdev_relay_preview_pt.py`, from each line's `code` and `params`, so
   the words change but what a tick confirms does not); other languages are untouched, and a line it
   cannot write keeps its English text. Model names and the AI's own words stay as they are.

@@ -12,7 +12,8 @@
 //   * it never parses an answer (the older Prompter's extractCandidateModel is deliberately not used);
 //   * it never shows a path, a command or JSON on the main path -- the AI's own words, and any technical
 //     text, sit under "See details" as plain text, never markup and never a link;
-//   * it never reads the clipboard (it only writes the one text the user asked to copy);
+//   * it never reads the clipboard or the Downloads folder (it only writes the one text the user asked to
+//     copy; the Rust side's watchers read, and tell the page only what they found);
 //   * it applies only a READY answer, and only with every box the preview asked for ticked.
 //
 // Text is written to the page in English: the language engine (i18n.js) translates what a screen draws,
@@ -463,18 +464,29 @@
     }
   }
 
-  // ----------------------------------------------------------- watching the clipboard (the Rust side's job)
+  // ------------------------------------- watching the clipboard and the Downloads folder (the Rust side's job)
 
-  // While step 3 is open NPDev can notice the AI's answer the moment the person copies it (src/relay_watch.rs;
-  // Settings -> AI turns it off for good). This page never reads the clipboard: it starts and stops the watcher,
-  // draws the notice that it is on -- always, with the way to stop it -- and draws what the watcher found, which
-  // comes back as the same ingest result a pasted answer gets. `WATCH.code` is the conversation a watcher was
-  // asked for; `WATCH.stopped` is the one the person pressed Stop for, which stays stopped until they say so.
-  const WATCH = { code: null, state: "off", stopped: null };
+  // While step 3 is open NPDev can notice the AI's answer the moment the person copies it, or saves the file the
+  // AI offers (src/relay_watch.rs; Settings -> AI turns both off for good). This page never reads the clipboard
+  // or the folder: it starts and stops the watcher, draws the notice that it is on -- always, naming the places
+  // really being read, with the way to stop it -- and draws what the watcher found, which comes back as the same
+  // ingest result a pasted or dropped answer gets. `WATCH.code` is the conversation a watcher was asked for;
+  // `WATCH.stopped` is the one the person pressed Stop for, which stays stopped until they say so;
+  // `WATCH.sources` are the places the Rust side says it is reading ("clipboard", "downloads").
+  const WATCH = { code: null, state: "off", stopped: null, sources: [] };
   const WATCH_ON = "NPDev is watching your clipboard for the AI's answer. Anything else you copy is ignored and forgotten.";
-  const WATCH_STOPPED = "NPDev is not watching your clipboard. Paste the answer below.";
-  const WATCH_ERROR = "NPDev cannot watch the clipboard on this computer. Paste the answer below.";
+  const WATCH_ON_FILES = "NPDev is watching your Downloads folder for the AI's answer. Any other file is ignored and forgotten.";
+  const WATCH_ON_BOTH = "NPDev is watching your clipboard and your Downloads folder for the AI's answer. Anything else you copy or save is ignored and forgotten.";
+  const WATCH_STOPPED = "NPDev is not watching for the AI's answer. Paste the answer below.";
+  const WATCH_ERROR = "NPDev cannot watch for the AI's answer on this computer. Paste the answer below.";
   const WATCH_GOT = "Got the answer from your clipboard.";
+  const WATCH_GOT_FILES = "Got the answer from your Downloads folder.";
+
+  function watchOnText() {
+    const files = WATCH.sources.includes("downloads");
+    const clip = !WATCH.sources.length || WATCH.sources.includes("clipboard"); // no word on it: the clipboard, as before
+    return files && clip ? WATCH_ON_BOTH : files ? WATCH_ON_FILES : WATCH_ON;
+  }
 
   function drawWatch() {
     const box = $("browserai-watch-indicator");
@@ -486,7 +498,7 @@
     box.dataset.state = state;
     $("browserai-watch-mark").textContent = state === "on" ? "●" : state === "stopped" ? "○" : "⚠";
     // English, like everything drawn on the page: the language engine translates it (and re-draws it on a change).
-    $("browserai-watch-text").textContent = state === "on" ? WATCH_ON : state === "stopped" ? WATCH_STOPPED : WATCH_ERROR;
+    $("browserai-watch-text").textContent = state === "on" ? watchOnText() : state === "stopped" ? WATCH_STOPPED : WATCH_ERROR;
     $("browserai-watch-stop").hidden = state !== "on";
     $("browserai-watch-start").hidden = state !== "stopped";
   }
@@ -499,6 +511,7 @@
     WATCH.code = want;
     if (!want) {
       WATCH.state = "off";
+      WATCH.sources = [];
       drawWatch();
       try {
         await invoke("relay_watch_stop");
@@ -513,6 +526,7 @@
       const r = await invoke("relay_watch_start", { code: want });
       if (WATCH.code !== want) return; // the person moved on while it started: the next sync decides
       WATCH.state = r && r.watching ? "on" : "off"; // off by Settings: no watcher, so no notice either
+      WATCH.sources = r && Array.isArray(r.sources) ? r.sources : [];
     } catch (e) {
       if (WATCH.code === want) WATCH.state = "error";
     }
@@ -522,13 +536,14 @@
   function onWatchState(p) {
     if (!p || p.code !== S.code || p.code !== WATCH.code) return;
     WATCH.state = p.state === "on" || p.state === "error" ? p.state : "off";
+    if (Array.isArray(p.sources)) WATCH.sources = p.sources;
     drawWatch();
   }
 
   // The watcher found an answer and the CLI checked it: draw it exactly as if it had been pasted.
   function onWatchedAnswer(r) {
     if (!r || r.code !== S.code || !onStep3()) return;
-    announce(WATCH_GOT);
+    announce(r.source === "downloads-watch" ? WATCH_GOT_FILES : WATCH_GOT);
     handleAnswer(r);
     refreshRounds();
   }

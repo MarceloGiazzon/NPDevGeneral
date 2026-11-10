@@ -1067,11 +1067,12 @@
         never show one back.
       </p>
       <div id="providers-store" class="providers-store"></div>
-      <!-- "Use a browser AI": the only thing NPDev ever reads off the clipboard, and only while that screen waits
-           for an answer (src/relay_watch.rs). On unless the person turns it off here. -->
+      <!-- "Use a browser AI": the only things NPDev ever reads off the clipboard or out of Downloads, and only while
+           that screen waits for an answer (src/relay_watch.rs). One switch covers both, so a person who turned the
+           clipboard watching off never finds a new watcher behind it. On unless the person turns it off here. -->
       <div class="ba-setting" id="relay-watch-setting">
-        <label class="ba-field"><input type="checkbox" id="relay-watch-setting-box" checked> Watch the clipboard while waiting for an AI</label>
-        <p class="status-line" id="relay-watch-setting-hint">With "Use a browser AI", NPDev can notice the AI's answer when you copy it, so you do not have to paste it. It only looks while that screen is waiting, shows a notice the whole time, keeps only text that is that answer, and forgets everything else you copy.</p>
+        <label class="ba-field"><input type="checkbox" id="relay-watch-setting-box" checked> Watch the clipboard and the Downloads folder while waiting for an AI</label>
+        <p class="status-line" id="relay-watch-setting-hint">With "Use a browser AI", NPDev can notice the AI's answer when you copy it or save it as a file in your Downloads folder, so you do not have to paste it or pick it. It only looks while that screen is waiting, shows a notice the whole time, keeps only what is that answer, and forgets everything else you copy or save. It only reads files that appear after you start waiting, and never moves or deletes one.</p>
       </div>
       <div class="packs-toolbar">
         <div class="tabbar" id="ai-views">

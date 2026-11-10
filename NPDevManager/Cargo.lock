@@ -2557,7 +2557,7 @@ dependencies = [
 
 [[package]]
 name = "npdev-manager"
-version = "0.13.30"
+version = "0.13.31"
 dependencies = [
  "arboard",
  "chrono",
