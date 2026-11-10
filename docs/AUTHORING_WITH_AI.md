@@ -81,7 +81,7 @@ send the same text and classify an answer the same way.
 ```sh
 echo "A workshop app with customers, vehicles and work orders" > ask.txt
 ./npdev ai relay start --intent create --ask-file ask.txt --new-app-name workshop   # prints the prompt: paste it into a NEW chat
-./npdev ai relay ingest --code K7Q2 --text-file answer.txt                         # K7Q2 = the code in the prompt; answer.txt = the AI's reply
+./npdev ai relay ingest --code K7Q2 --text-file -                                  # K7Q2 = the code in the prompt; paste the AI's reply, then Ctrl+D (Ctrl+Z, Enter on Windows)
 ./npdev ai relay apply --code K7Q2 --parent-dir ~/apps                             # create the app (a change names its warnings with --confirm-warning)
 ./npdev ai relay undo --code K7Q2                                                  # change/fix only: put the previous model back
 ```

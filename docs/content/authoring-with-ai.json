@@ -47,7 +47,7 @@
         {
           "type": "fence",
           "lang": "sh",
-          "text": "echo \"A workshop app with customers, vehicles and work orders\" > ask.txt\n./npdev ai relay start --intent create --ask-file ask.txt --new-app-name workshop   # prints the prompt: paste it into a NEW chat\n./npdev ai relay ingest --code K7Q2 --text-file answer.txt                         # K7Q2 = the code in the prompt; answer.txt = the AI's reply\n./npdev ai relay apply --code K7Q2 --parent-dir ~/apps                             # create the app (a change names its warnings with --confirm-warning)\n./npdev ai relay undo --code K7Q2                                                  # change/fix only: put the previous model back"
+          "text": "echo \"A workshop app with customers, vehicles and work orders\" > ask.txt\n./npdev ai relay start --intent create --ask-file ask.txt --new-app-name workshop   # prints the prompt: paste it into a NEW chat\n./npdev ai relay ingest --code K7Q2 --text-file -                                  # K7Q2 = the code in the prompt; paste the AI's reply, then Ctrl+D (Ctrl+Z, Enter on Windows)\n./npdev ai relay apply --code K7Q2 --parent-dir ~/apps                             # create the app (a change names its warnings with --confirm-warning)\n./npdev ai relay undo --code K7Q2                                                  # change/fix only: put the previous model back"
         },
         {
           "type": "prose",

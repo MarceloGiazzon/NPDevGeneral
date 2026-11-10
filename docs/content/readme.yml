@@ -183,7 +183,7 @@ sections:
       | a `lifecycle` | a state machine on a status field: declared states and transitions, and a move the model does not allow is refused |
       | `softDelete` / `temporal` | rows that are never physically deleted (and can be restored), and effective-dated rows such as price lists and tax rates |
       | `sequences` + `nextNumber('…')` | document numbers such as `INV-2026-0001`, allocated atomically |
-      | `rollups` | a stored total on a parent (`likeCount`, `orderTotal`) kept equal to its children on every save |
+      | `rollups` | a stored count, sum, minimum, maximum or average on a parent (`likeCount`, `highestSlotRow`) kept equal to its children on every save |
       | `collaboration` | a comment thread with `@mentions`, and optional file attachments, on every record |
 - level: 3
   title: Behaviour
