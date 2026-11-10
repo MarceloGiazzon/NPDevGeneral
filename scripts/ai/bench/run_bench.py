@@ -7,6 +7,7 @@ text is fed back to the model). Stdlib only.
   python scripts/ai/bench/run_bench.py run --prompt bench-001              # real model (env below)
   python scripts/ai/bench/run_bench.py run --ablation no-knowledge ...     # knowledge cards off
   python scripts/ai/bench/run_bench.py run --arm direct-python --dry-run   # the AI writes the app directly (BENCH-1)
+  python scripts/ai/bench/run_bench.py run --arm relay --dry-run           # a browser-chat AI via `npdev ai relay` (T1.7)
   python scripts/ai/bench/run_bench.py compare <run-dir> [<run-dir> ...]   # per tier x arm report (BENCH-3)
   python scripts/ai/bench/run_bench.py report <run-dir> [<run-dir> ...]    # scorecard JSON
   python scripts/ai/bench/run_bench.py mine <run-dir> [<run-dir> ...]      # rank what AI authors get wrong
@@ -25,7 +26,8 @@ OpenAI-compatible URL):
 The base URL must be a free/local provider of NPDevCli/ai-providers.json unless --allow-paid is passed.
 
 Modules next to this file: author.py (prompts + model extraction), backends.py (allowlist + OpenAI-compatible
-and fake backends), direct.py (the "AI writes the app directly" arm), evolve.py (changes applied after a pass),
+and fake backends), direct.py (the "AI writes the app directly" arm), relay_arm.py (the browser-chat relay arm: one user
+message, no system role, ingest, same-chat repair), evolve.py (changes applied after a pass),
 compare.py (cross-arm report), stages.py (validate/generate/build/boot), probes.py (acceptance probes), test_bench.py
 (unit tests: python -m unittest discover -s scripts/ai/bench -p "test_bench.py").
 
@@ -53,6 +55,7 @@ import compare  # noqa: E402
 import direct  # noqa: E402
 import evolve  # noqa: E402
 import probes  # noqa: E402
+import relay_arm  # noqa: E402
 import stages  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -64,7 +67,8 @@ MAX_LOOPS_CAP = 5
 STAGE_ORDER = ["author", "validate", "generate", "build", "boot", "acceptance"]
 # BENCH-1/3: which route the model takes to a working app. `npdev` writes a model.json; the direct arms write a
 # whole application (direct.py). Same prompts, same loop cap, same acceptance probes.
-ARMS = ["npdev", "npdev-no-knowledge"] + direct.arm_ids()
+# T1.7: `relay` plays the person who carries a prompt to a browser chat AI (no system role) and the answer back.
+ARMS = ["npdev", "npdev-no-knowledge"] + direct.arm_ids() + [relay_arm.ARM_ID]
 
 
 def now_id() -> str:
@@ -717,6 +721,8 @@ def build_backend(args):
         raise backends.BackendRefused("--effort needs --provider (the model's declared effort levels are checked there)")
     if args.dry_run and getattr(args, "arm", "npdev").startswith("direct-"):
         return direct.FakeDirectBackend()
+    if args.dry_run and getattr(args, "arm", "npdev") == relay_arm.ARM_ID:
+        return relay_arm.FakeRelayBackend(REPO_ROOT / "NPDevSamples" / "npdev-canary" / "Input" / "model.json")
     if args.dry_run:
         canary = REPO_ROOT / "NPDevSamples" / "npdev-canary" / "Input" / "model.json"
         return backends.FakeBackend(canary)
@@ -745,6 +751,22 @@ def cmd_run(args) -> int:
         print("REFUSED: the direct arm runs code an AI wrote; it will not run as an administrator "
               "(owner decision D3). Start a normal, unelevated terminal.", file=sys.stderr)
         return 3
+    is_relay = arm == relay_arm.ARM_ID
+    if not is_relay and getattr(args, "relay_copy_fidelity", ()):
+        print("REFUSED: --relay-copy-fidelity belongs to --arm relay (the other arms never copy an answer by hand)",
+              file=sys.stderr)
+        return 3
+    if is_relay:
+        # the relay arm IS one chat with the compact bundle in its first message and repairs in that same chat:
+        # an option that changes any of that would label a run `relay` while measuring something else
+        conflicts = [flag for flag, bad in (("--evolve", getattr(args, "evolve", False)),
+                                            ("--ablation no-knowledge", args.ablation != "none"),
+                                            ("--repair-mode stateless", args.repair_mode == "stateless")) if bad]
+        if conflicts:
+            print(f"REFUSED: the relay arm does not support {', '.join(conflicts)} (it repairs in the same chat, "
+                  f"always carries the knowledge, and has no evolution phase yet)", file=sys.stderr)
+            return 3
+        args.repair_mode = relay_arm.REPAIR_MODE
     if args.max_loops is None:
         args.max_loops = 0 if args.dry_run else MAX_LOOPS_CAP
     args.max_loops = max(0, min(args.max_loops, MAX_LOOPS_CAP))
@@ -774,8 +796,9 @@ def cmd_run(args) -> int:
     knowledge = None
     if args.ablation == "none" and not is_direct:
         knowledge = (author.load_knowledge_file(Path(args.knowledge_file)) if args.knowledge_file
+                     else relay_arm.compact_knowledge() if is_relay
                      else author.load_core_context(stages.build_root()))
-    knowledge_info = author.describe_knowledge(knowledge, args.knowledge_file)
+    knowledge_info = author.describe_knowledge(knowledge, args.knowledge_file or (relay_arm.KNOWLEDGE_SOURCE if is_relay else None))
     print(f"run: {run_dir}  arm={arm} prompts={len(prompts)} ablation={args.ablation} maxLoops={args.max_loops}")
     started_at = datetime.datetime.now().isoformat(timespec="seconds")
     t0 = time.monotonic()
@@ -794,6 +817,7 @@ def cmd_run(args) -> int:
                 print(f"{prompt['id']}: skipped (already done)")
                 continue
         r = (direct.run_prompt_direct(prompt, backend, arm, run_dir, args) if is_direct
+             else relay_arm.run_prompt_relay(prompt, backend, knowledge, run_dir, args, run_attempt) if is_relay
              else run_prompt(prompt, backend, knowledge, run_dir, args))
         if getattr(args, "evolve", False) and r["passed"] and prompt.get("changes"):
             r = run_evolution(prompt, r, backend, knowledge, run_dir, args, arm)
@@ -818,6 +842,8 @@ def cmd_run(args) -> int:
                    {**{k: r.get(k) for k in ("promptId", "passed", "loopsUsed", "failingStage", "wallSeconds", "costUsd")},
                     "outcome": outcome_of(r), "infraKind": infra_kind_of(r), "tokens": r["tokens"]["total"]}
                    for r in results]}
+    if is_relay:
+        summary["relay"] = relay_arm.summarize(args, results)
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary["scorecard"], indent=2))
     return 0 if all(r["passed"] for r in results) else 1
@@ -880,7 +906,13 @@ def make_parser() -> argparse.ArgumentParser:
     r.add_argument("--arm", choices=ARMS, default="npdev",
                    help="which route the model takes to a working app: npdev (writes a model.json), "
                         "npdev-no-knowledge (same, knowledge cards off), or direct-python / direct-node / "
-                        "direct-spring (writes the whole application; BENCH-1). Same prompts, loop cap and acceptance")
+                        "direct-spring (writes the whole application; BENCH-1), or relay (T1.7: the way a person "
+                        "uses a browser chat AI -- ONE user message with the compact bundle, no system role, the "
+                        "answer read by `npdev ai relay`'s ingest, repairs in the same chat). Same prompts, loop "
+                        "cap and acceptance")
+    r.add_argument("--relay-copy-fidelity", type=relay_arm.parse_copy_fidelity, default=(), metavar="LIST",
+                   help="relay arm only: degrade each reply the way a lossy copy would before ingest reads it. "
+                        f"none (default), all, or a comma list of {', '.join(relay_arm.COPY_MUTATIONS)}")
     r.add_argument("--ablation", choices=["none", "no-knowledge"], default="none",
                    help="no-knowledge omits the knowledge-card context from the system prompt")
     r.add_argument("--prompts-dir", help="directory of bench-NNN-*.json (default NPDevSamples/ai-bench/prompts)")

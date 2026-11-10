@@ -24,6 +24,7 @@ import compare  # noqa: E402
 import direct  # noqa: E402
 import evolve  # noqa: E402
 import probes  # noqa: E402
+import relay_arm  # noqa: E402
 import run_bench  # noqa: E402
 import stages  # noqa: E402
 
@@ -1070,7 +1071,8 @@ class DirectArmTests(unittest.TestCase):
         self.assertIn("administrator", err.getvalue())
 
     def test_the_arm_choices_are_the_two_npdev_arms_and_the_three_stacks(self):
-        self.assertEqual(run_bench.ARMS, ["npdev", "npdev-no-knowledge", "direct-python", "direct-node", "direct-spring"])
+        self.assertEqual(run_bench.ARMS, ["npdev", "npdev-no-knowledge", "direct-python", "direct-node", "direct-spring",
+                                          "relay"])
 
 
 class EvolutionTests(unittest.TestCase):
@@ -1272,6 +1274,259 @@ class CompareTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertTrue((Path(td) / "cmp" / "comparison.json").exists())
             self.assertTrue((Path(td) / "cmp" / "comparison.html").exists())
+
+
+class RelayArmTests(unittest.TestCase):
+    """T1.7: the relay arm -- ONE user message with no system role, every reply read by `npdev ai relay`'s ingest,
+    repairs sent in the same chat. A fake chat AI and a fake attempt runner: no model, no Gradle, no app boot."""
+
+    PROMPT = {"id": "bench-905", "tier": "simple-crud", "title": "t", "prompt": "make a bike shop app", "acceptance": {}}
+    KNOWLEDGE = "## Authoring contract\nKNOWLEDGE-MARKER rules\n\n## Golden example: a\n{}\n"
+    GOOD = {"failingStage": None, "feedback": ""}
+
+    def _run(self, td, replies=None, outcomes=None, loops=3, mutations=(), stuck=0):
+        backend = relay_arm.FakeRelayBackend(CANARY_MODEL, replies=replies)
+        queue = iter(outcomes or [self.GOOD])
+        seen: list[str] = []
+
+        def runner(n, model_text, prompt, prompt_dir, args, stage_log):
+            seen.append(model_text)
+            return dict(next(queue), stages=stage_log)
+
+        args = mock.Mock(max_loops=loops, stop_when_stuck=stuck, relay_copy_fidelity=mutations)
+        result = relay_arm.run_prompt_relay(self.PROMPT, backend, self.KNOWLEDGE, Path(td) / "run-r", args, runner)
+        return result, backend, seen
+
+    @staticmethod
+    def _code() -> str:
+        return relay_arm.session_code("run-r", "bench-905")
+
+    @staticmethod
+    def _good_reply(rnd: int = 1) -> str:
+        return relay_arm.good_reply(RelayArmTests._code(), rnd, CANARY_MODEL.read_text(encoding="utf-8"))
+
+    def test_round_one_is_a_single_user_message_with_the_compact_bundle_and_no_system_role(self):
+        with tempfile.TemporaryDirectory() as td:
+            res, backend, seen = self._run(td)
+        first = backend.calls[0]
+        self.assertEqual([m["role"] for m in first], ["user"])
+        composed = relay_arm.relay_prompts.compose_round1(
+            relay_arm.relay_prompts.load_prompts(), code=self._code(), intent="create", ask="make a bike shop app",
+            language="English", knowledge=self.KNOWLEDGE)
+        self.assertEqual(first[0]["content"], composed)
+        self.assertTrue(first[0]["content"].startswith(f"NPDEV-PROMPT {self._code()}-1\n"))
+        self.assertIn("KNOWLEDGE-MARKER", first[0]["content"])
+        self.assertIn("make a bike shop app", first[0]["content"])
+        self.assertTrue(res["passed"])
+        self.assertEqual((res["arm"], res["repairMode"], res["loopsUsed"]), ("relay", "same-chat", 0))
+        self.assertTrue(res["firstAttemptPassed"])
+        self.assertEqual(res["tokens"], {"prompt": 1000, "completion": 500, "total": 1500})
+        self.assertEqual(res["relay"]["rounds"], [{"round": 1, "ingestOutcome": "PARSED", "findings": []}])
+        self.assertEqual(json.loads(seen[0]), json.loads(CANARY_MODEL.read_text(encoding="utf-8")),
+                         "the candidate is files[model.json].content, not the raw reply")
+
+    def test_a_failing_stage_is_repaired_in_the_same_chat_with_the_needs_fix_follow_up(self):
+        outcomes = [{"failingStage": "validate", "feedback": "- MISSING_NAMESPACE | $ | namespace is required"}, self.GOOD]
+        with tempfile.TemporaryDirectory() as td:
+            res, backend, seen = self._run(td, outcomes=outcomes)
+        self.assertEqual(len(backend.calls), 2)
+        second = backend.calls[1]
+        self.assertEqual([m["role"] for m in second], ["user", "assistant", "user"])
+        self.assertEqual(second[0], backend.calls[0][0], "the first message is never re-composed")
+        self.assertIn("```json", second[1]["content"])
+        follow = second[2]["content"]
+        self.assertTrue(follow.startswith(f"NPDEV-PROMPT {self._code()}-2\n"))
+        self.assertIn("NPDev checked your model and found these problems", follow)
+        self.assertIn("The 'validate' stage failed", follow)
+        self.assertIn("MISSING_NAMESPACE", follow)
+        self.assertNotIn("KNOWLEDGE-MARKER", follow, "a same-chat follow-up never repeats the knowledge")
+        self.assertTrue(res["passed"])
+        self.assertEqual(res["loopsUsed"], 1)
+        self.assertFalse(res["firstAttemptPassed"])
+        self.assertEqual(res["firstAttemptFailingStage"], "validate")
+        self.assertFalse(res["firstAttemptValid"], "failing at validate is not a valid first attempt")
+        self.assertEqual([r["ingestOutcome"] for r in res["relay"]["rounds"]], ["PARSED", "PARSED"])
+        self.assertEqual(res["tokens"]["total"], 3000)
+        self.assertEqual(len(seen), 2)
+
+    def test_every_unusable_answer_gets_its_own_same_chat_follow_up(self):
+        elided = ("NPDEV-BEGIN @CODE@-@ROUND@\nok\nNPDEV-FILE model.json\n```json\n"
+                  '{"namespace": "x", "concepts": [\n  ...\n]}\n```\nNPDEV-END @CODE@-@ROUND@ files=1\n')
+        bad_json = ('NPDEV-BEGIN @CODE@-@ROUND@\nok\nNPDEV-FILE model.json\n```json\n'
+                    '{"namespace": "x" "concepts": []}\n```\nNPDEV-END @CODE@-@ROUND@ files=1\n')
+        cut = self._good_reply()[: len(self._good_reply()) // 2]
+        cases = [("NO_FILES", "Sure, I can help with that. Tell me about the shop.", "Please answer with the files"),
+                 ("TRUNCATED", cut, "cut off before the end"),
+                 ("ELIDED", elided, "left parts out"),
+                 ("BAD_JSON", bad_json, "could not read the JSON"),
+                 ("FILE_LINK_ONLY", "Done, I saved it: [model.json](sandbox:/mnt/data/model.json)",
+                  "cannot open files or links")]
+        for outcome, reply, phrase in cases:
+            with self.subTest(outcome):
+                with tempfile.TemporaryDirectory() as td:
+                    res, backend, seen = self._run(td, replies=[reply])
+                self.assertEqual(res["relay"]["rounds"][0]["ingestOutcome"], outcome)
+                self.assertEqual(len(seen), 1, "the stages only ever see the second, usable answer")
+                follow = backend.calls[1][-1]["content"]
+                self.assertIn(phrase, follow)
+                self.assertTrue(follow.startswith(f"NPDEV-PROMPT {self._code()}-2\n"))
+                self.assertEqual(backend.calls[1][1]["content"],
+                                 reply.replace("@CODE@", self._code()).replace("@ROUND@", "1"),
+                                 "history holds what the AI really said")
+                self.assertTrue(res["passed"])
+                self.assertEqual((res["loopsUsed"], res["firstAttemptFailingStage"]), (1, "author"))
+                self.assertIn(f"ingest outcome {outcome}", res["attempts"][0]["feedbackExcerpt"])
+                self.assertEqual(res["attempts"][0]["stages"][0]["ingestOutcome"], outcome)
+
+    def test_an_outcome_that_needs_the_person_ends_the_prompt_without_a_follow_up(self):
+        for outcome, reply in (("QUESTIONS", "Which currency should the shop use?"),
+                               ("WRONG_SESSION", "NPDEV-BEGIN 0000-1\nhello\nNPDEV-END 0000-1 files=0\n")):
+            with self.subTest(outcome):
+                with tempfile.TemporaryDirectory() as td:
+                    res, backend, seen = self._run(td, replies=[reply])
+                self.assertEqual(len(backend.calls), 1)
+                self.assertEqual(seen, [])
+                self.assertFalse(res["passed"])
+                self.assertEqual((res["outcome"], res["failingStage"]), ("fail", "author"))
+                self.assertEqual(res["relay"]["stoppedNeedsPerson"], outcome)
+
+    def test_the_chat_services_limit_message_is_infrastructure_not_an_authoring_failure(self):
+        with tempfile.TemporaryDirectory() as td:
+            res, backend, seen = self._run(td, replies=["You've reached your daily message limit. Try again tomorrow."])
+        self.assertEqual((res["outcome"], res["infraKind"]), ("infra", "quota"))
+        self.assertEqual(len(backend.calls), 1)
+        self.assertEqual(run_bench.outcome_of(res), "infra")
+
+    def test_an_unreachable_model_stops_the_prompt_as_infrastructure(self):
+        class Down:
+            info = backends.BackendInfo("down", "fake", "fake://down", "down")
+
+            def complete(self, messages):
+                raise backends.BackendError("HTTP 429 from down: quota")
+
+        args = mock.Mock(max_loops=3, stop_when_stuck=0, relay_copy_fidelity=())
+        with tempfile.TemporaryDirectory() as td:
+            res = relay_arm.run_prompt_relay(self.PROMPT, Down(), self.KNOWLEDGE, Path(td) / "run-r", args,
+                                             lambda *a, **k: self.fail("no model answer, no stage"))
+        self.assertEqual((res["outcome"], res["infraKind"]), ("infra", "quota"))
+
+    def test_rounds_are_bounded_by_max_loops_and_stuck_runs_stop_early(self):
+        same = {"failingStage": "validate", "feedback": "- E1 | $ | the same error"}
+        with tempfile.TemporaryDirectory() as td:
+            res, backend, _ = self._run(td, outcomes=[same] * 10, loops=2)
+        self.assertEqual((len(backend.calls), res["loopsUsed"], res["passed"]), (3, 2, False))
+        self.assertEqual(res["failingStage"], "validate")
+        with tempfile.TemporaryDirectory() as td:
+            res, backend, _ = self._run(td, outcomes=[same] * 10, loops=5, stuck=2)
+        self.assertTrue(res["stoppedStuck"])
+        self.assertEqual(len(backend.calls), 2)
+
+    def test_the_copy_fidelity_mutators_degrade_exactly_what_they_say(self):
+        reply = self._good_reply()
+        self.assertEqual(relay_arm.mutate_copy(reply, ()), reply)
+        no_fences = relay_arm.mutate_copy(reply, ("fences",))
+        self.assertNotIn("```", no_fences)
+        self.assertIn("NPDEV-BEGIN", no_fences)
+        no_markers = relay_arm.mutate_copy(reply, ("markers",))
+        self.assertNotIn("NPDEV-", no_markers)
+        self.assertIn("```json", no_markers)
+        smart = relay_arm.mutate_copy(reply, ("smart-quotes",))
+        self.assertNotIn('"', smart)
+        self.assertIn("“namespace”", smart)
+        button = relay_arm.mutate_copy(reply, ("copy-button",))
+        self.assertEqual(button.count("\nCopy\n"), 3, "after each of the two code blocks and at the very end")
+        self.assertTrue(button.endswith("\nCopy\n"))
+        # the order is fixed whatever order is asked for
+        self.assertEqual(relay_arm.mutate_copy(reply, ("fences", "copy-button")),
+                         relay_arm.mutate_copy(reply, ("copy-button", "fences")))
+
+    def test_ingest_reads_the_same_model_through_every_copy_fidelity_mutation(self):
+        want = json.loads(CANARY_MODEL.read_text(encoding="utf-8"))
+        policy = relay_arm.ingest.load_policy()
+        for spec in ("fences", "markers", "smart-quotes", "copy-button", "fences,markers", "all"):
+            with self.subTest(spec):
+                seen = relay_arm.mutate_copy(self._good_reply(), relay_arm.parse_copy_fidelity(spec))
+                result = relay_arm.ingest.ingest_text(seen, session=self._code(), expected_round=1, policy=policy)
+                self.assertEqual(result["outcome"], "PARSED", result["findings"])
+                self.assertEqual(json.loads(relay_arm.candidate_model(result)), want)
+
+    def test_a_mutated_reply_reaches_ingest_but_the_history_keeps_the_original(self):
+        outcomes = [{"failingStage": "validate", "feedback": "- E1 | $ | x"}, self.GOOD]
+        with tempfile.TemporaryDirectory() as td:
+            res, backend, seen = self._run(td, outcomes=outcomes, mutations=("fences", "smart-quotes"))
+            adir = Path(td) / "run-r" / "bench-905" / "attempt-0"
+            copied = (adir / "author-reply-copied.txt").read_text(encoding="utf-8")
+            original = (adir / "author-reply.txt").read_text(encoding="utf-8")
+            self.assertTrue((adir / "ingest-result.json").exists())
+        self.assertNotIn("```", copied)
+        self.assertIn("```json", original)
+        self.assertEqual(backend.calls[1][1]["content"], original)
+        self.assertEqual(res["relay"]["copyFidelity"], ["smart-quotes", "fences"])
+        self.assertEqual(set(res["relay"]["rounds"][0]["findings"]), {"fences-missing", "json-repaired"})
+        self.assertEqual(json.loads(seen[0]), json.loads(CANARY_MODEL.read_text(encoding="utf-8")))
+
+    def test_the_copy_fidelity_flag_parses_and_rejects_a_typo(self):
+        parse = relay_arm.parse_copy_fidelity
+        self.assertEqual(parse(None), ())
+        self.assertEqual(parse("none"), ())
+        self.assertEqual(parse("all"), relay_arm.COPY_MUTATIONS)
+        self.assertEqual(parse("fences, markers"), ("markers", "fences"))
+        with self.assertRaises(__import__("argparse").ArgumentTypeError):
+            parse("fences,smart-quote")
+
+    def test_the_session_code_is_stable_per_run_and_prompt_and_uses_the_protocol_alphabet(self):
+        a = relay_arm.session_code("r1", "bench-001")
+        self.assertEqual(a, relay_arm.session_code("r1", "bench-001"))
+        self.assertNotEqual(a, relay_arm.session_code("r1", "bench-002"))
+        self.assertEqual(len(a), 4)
+        self.assertTrue(set(a) <= set(relay_arm.ingest.SESSION_ALPHABET))
+
+    def test_the_summary_block_hashes_what_was_measured_and_counts_ingest_outcomes(self):
+        results = [{"relay": {"rounds": [{"ingestOutcome": "NO_FILES"}, {"ingestOutcome": "PARSED"}]}},
+                   {"relay": {"rounds": [{"ingestOutcome": "PARSED"}]}}, {"promptId": "old-result-without-relay"}]
+        block = relay_arm.summarize(mock.Mock(relay_copy_fidelity=("fences",)), results)
+        self.assertEqual(block["ingestOutcomeHistogram"], {"NO_FILES": 1, "PARSED": 2})
+        self.assertEqual(block["firstRoundParsedRate"], 0.5)
+        self.assertEqual(block["meanRoundsPerPrompt"], 1.5)
+        self.assertEqual(block["copyFidelity"], ["fences"])
+        self.assertEqual(len(block["promptsSha256"]), 16)
+        self.assertEqual(len(block["ingestPolicySha256"]), 16)
+
+    def test_the_cli_runs_the_relay_arm_in_dry_run_mode_and_records_the_relay_block(self):
+        def runner(n, model_text, prompt, prompt_dir, args, stage_log):
+            return {"stages": stage_log, "failingStage": None, "feedback": "", "modelText": model_text}
+
+        out = io.StringIO()
+        with tempfile.TemporaryDirectory() as td, contextlib.redirect_stdout(out), \
+                mock.patch.object(run_bench, "run_attempt", side_effect=runner):
+            rc = run_bench.main(["run", "--arm", "relay", "--dry-run", "--out-root", td, "--run-id", "rr1",
+                                 "--relay-copy-fidelity", "all"])
+            summary = json.loads((Path(td) / "rr1" / "summary.json").read_text(encoding="utf-8"))
+            result = json.loads((Path(td) / "rr1" / "bench-900" / "result.json").read_text(encoding="utf-8"))
+        self.assertEqual(rc, 0)
+        self.assertEqual((summary["arm"], summary["repairMode"], summary["ablation"]), ("relay", "same-chat", "none"))
+        self.assertIn("compact", summary["knowledge"]["source"])
+        self.assertGreater(summary["knowledge"]["bytes"], 5000)
+        self.assertEqual(summary["relay"]["copyFidelity"], list(relay_arm.COPY_MUTATIONS))
+        self.assertEqual(summary["relay"]["firstRoundParsedRate"], 1.0)
+        self.assertEqual(result["arm"], "relay")
+        self.assertEqual(summary["scorecard"]["passRateCompleted"], 1.0)
+
+    def test_the_cli_refuses_options_that_would_label_another_measurement_relay(self):
+        for argv in (["--arm", "relay", "--evolve"], ["--arm", "relay", "--ablation", "no-knowledge"],
+                     ["--arm", "relay", "--repair-mode", "stateless"], ["--arm", "npdev", "--relay-copy-fidelity", "all"]):
+            with self.subTest(argv):
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                    rc = run_bench.main(["run", "--dry-run", *argv])
+                self.assertEqual(rc, 3)
+                self.assertIn("REFUSED", err.getvalue())
+
+    def test_the_other_arms_never_see_the_relay_block(self):
+        with tempfile.TemporaryDirectory() as td, contextlib.redirect_stdout(io.StringIO()):
+            run_bench.main(["run", "--arm", "direct-python", "--dry-run", "--out-root", td, "--run-id", "d1"])
+            summary = json.loads((Path(td) / "d1" / "summary.json").read_text(encoding="utf-8"))
+        self.assertNotIn("relay", summary)
 
 
 if __name__ == "__main__":

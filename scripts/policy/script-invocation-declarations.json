@@ -56,6 +56,9 @@
     "scripts/ai/bench/probes.py": {
       "invocation": "orchestrated"
     },
+    "scripts/ai/bench/relay_arm.py": {
+      "invocation": "orchestrated"
+    },
     "scripts/ai/bench/run_bench.py": {
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"
