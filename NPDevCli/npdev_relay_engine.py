@@ -212,6 +212,92 @@ def list_sessions() -> dict:
     return {"ok": True, "sessions": [session_summary(s) for s in rs.list_open()]}
 
 
+CSV_COLUMNS = ("date", "target", "plan", "prompt_id", "intent", "round", "prompt_bytes", "paste_ok", "answer_chars", "copy_method",
+               "outcome", "findings", "final", "rounds_to_pass", "minutes", "notes")
+# How the answer reached the Manager, in the words the calibration log uses. The clipboard watcher cannot tell the AI's Copy
+# button from a hand-made selection, so it says "clipboard" and the person corrects the row if it matters.
+COPY_METHOD = {"clipboard-watch": "clipboard", "paste": "manual-paste", "drop": "drop", "file-picker": "file", "downloads-watch": "download"}
+
+
+def _minutes(session: dict):
+    try:
+        from datetime import datetime
+        a = datetime.fromisoformat(str(session.get("createdAt")).replace("Z", "+00:00"))
+        b = datetime.fromisoformat(str(session.get("updatedAt")).replace("Z", "+00:00"))
+        return round((b - a).total_seconds() / 60, 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def _round_rows(session: dict) -> list:
+    """One calibration-log row per round of a session. Columns this program cannot know (plan, prompt_id, notes) are left blank
+    for the person; `paste_ok` is `yes` when an answer came back for a round that was pasted, `attachment` when it went as a file."""
+    rounds = session["rounds"]
+    passed_at = next((r["round"] for r in rounds if r.get("outcome") == rs.READY_OUTCOME), None)
+    state = session.get("state")
+    final = "passed" if passed_at else ("abandoned" if state == "abandoned" else "open")
+    rows = []
+    for entry in rounds:
+        number = entry["round"]
+        directory = rs.round_dir(session, number)
+        answer_chars = None
+        try:
+            answer_chars = len((directory / "answer-raw.txt").read_text(encoding="utf-8"))
+        except OSError:
+            pass
+        codes = []
+        try:
+            stored = json.loads((directory / "result.json").read_text(encoding="utf-8"))
+            codes = sorted({f.get("code") for f in stored.get("findings") or [] if f.get("severity") in ("error", "warning") and f.get("code")})
+        except (OSError, ValueError):
+            pass
+        delivery = entry.get("delivery")
+        rows.append({
+            "date": str(session.get("createdAt") or "")[:10], "target": session.get("target"), "plan": "", "prompt_id": "",
+            "intent": session.get("intent"), "round": number, "prompt_bytes": entry.get("promptBytes"),
+            "paste_ok": "attachment" if delivery == "attachment" else ("yes" if entry.get("outcome") else ""),
+            "answer_chars": answer_chars, "copy_method": COPY_METHOD.get(entry.get("answerSource"), ""),
+            "outcome": entry.get("outcome") or "", "findings": " ".join(codes), "final": final,
+            "rounds_to_pass": passed_at if passed_at else "", "minutes": _minutes(session), "notes": "",
+        })
+    return rows
+
+
+def stats() -> dict:
+    """What the conversations on this computer say about each chat AI: the log rows for the calibration run (ACCEPTANCE section C),
+    and, per target, how many conversations passed, how many rounds they took, the largest prompt that got an answer and the
+    largest complete answer. Read-only, from the stored sessions; nothing here is sent anywhere."""
+    rows, by_target = [], {}
+    for session in rs.list_all():
+        session_rows = _round_rows(session)
+        rows.extend(session_rows)
+        t = by_target.setdefault(session.get("target"), {"target": session.get("target"), "conversations": 0, "passed": 0, "roundsToPass": [],
+                                                           "outcomes": {}, "largestPromptWithAnAnswer": 0, "largestReadyAnswer": 0})
+        if not session["rounds"]:
+            continue
+        t["conversations"] += 1
+        if session_rows and session_rows[0]["final"] == "passed":
+            t["passed"] += 1
+            t["roundsToPass"].append(session_rows[0]["rounds_to_pass"])
+        for row in session_rows:
+            if row["outcome"]:
+                t["outcomes"][row["outcome"]] = t["outcomes"].get(row["outcome"], 0) + 1
+                if row["paste_ok"] == "yes" and row["prompt_bytes"]:
+                    t["largestPromptWithAnAnswer"] = max(t["largestPromptWithAnAnswer"], row["prompt_bytes"])
+                if row["outcome"] == rs.READY_OUTCOME and row["answer_chars"]:
+                    t["largestReadyAnswer"] = max(t["largestReadyAnswer"], row["answer_chars"])
+    summary = []
+    for t in by_target.values():
+        rounds = t.pop("roundsToPass")
+        t["averageRoundsToPass"] = round(sum(rounds) / len(rounds), 2) if rounds else None
+        t["passedInTwoRoundsOrFewer"] = sum(1 for r in rounds if r <= 2)
+        t["suggestedOutputBudgetChars"] = int(t["largestReadyAnswer"] * 0.8) if t["largestReadyAnswer"] else None
+        summary.append(t)
+    summary.sort(key=lambda t: str(t["target"]))
+    rows.sort(key=lambda r: (r["date"], str(r["target"]), r["round"]))
+    return {"ok": True, "columns": list(CSV_COLUMNS), "rows": rows, "byTarget": summary}
+
+
 def abort(code: str) -> dict:
     try:
         session = rs.abandon(code)

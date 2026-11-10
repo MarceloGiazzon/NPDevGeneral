@@ -346,8 +346,8 @@ def record_answer(session: dict, round_number: int, raw: str, result: dict, sour
     return entry
 
 
-def list_open() -> list:
-    """Every session that is not done or abandoned, newest first. Damaged folders are skipped."""
+def list_all() -> list:
+    """Every session on disk, closed ones too, newest first. Damaged folders are skipped."""
     base = root()
     if not base.is_dir():
         return []
@@ -356,13 +356,16 @@ def list_open() -> list:
         if not child.is_dir() or not _CODE_RE.match(child.name):
             continue
         try:
-            session = load(child.name)
+            found.append(load(child.name))
         except RelaySessionError:
             continue
-        if session.get("state") not in CLOSED_STATES:
-            found.append(session)
     found.sort(key=lambda s: (s.get("updatedAt") or s.get("createdAt") or "", s["code"]), reverse=True)
     return found
+
+
+def list_open() -> list:
+    """Every session that is not done or abandoned, newest first. Damaged folders are skipped."""
+    return [s for s in list_all() if s.get("state") not in CLOSED_STATES]
 
 
 def abandon(code: str) -> dict:

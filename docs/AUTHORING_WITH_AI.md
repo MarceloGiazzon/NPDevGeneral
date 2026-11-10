@@ -103,7 +103,10 @@ refuses to start until it gets a separate, itemized acknowledgment of that data 
 answer but does not offer to apply it; `relay apply` itself still writes the model, for someone who will
 acknowledge the change when they deploy it.
 Conversations are kept in the per-user NPDev folder (`ai-relay/<code>/`) and survive restarts:
-`relay list`, `relay status --code`, `relay abort --code`. An answer the AI saved as a file works
+`relay list`, `relay status --code`, `relay abort --code`; `relay targets` lists the chat AIs it knows, and
+`relay stats --csv` prints one row per round (which AI, how many rounds it took, how the answer came
+back) -- the rows a calibration run for a chat AI needs, read from the conversations on this computer.
+An answer the AI saved as a file works
 too: `relay ingest --code K7Q2 --file model.json` (or a `.zip`, which is read in memory and never
 extracted).
 

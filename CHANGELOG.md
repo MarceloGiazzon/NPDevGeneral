@@ -142,6 +142,13 @@ release. Ships in the next tag.
   translation templates both matched a sentence, the shorter won and a Portuguese rename read half in
   English -- the template with more fixed words is now tried first (`ui/i18n.js`). After a check, focus
   now lands on the preview's button (it was requested while the buttons were still disabled).
+- **`npdev ai relay stats`: what the conversations on this computer say about each chat AI** -- read-only,
+  from the stored conversations, nothing sent anywhere. `--csv` prints one row per round in the calibration
+  log's column order (`date,target,plan,prompt_id,intent,round,prompt_bytes,paste_ok,answer_chars,copy_method,outcome,findings,final,rounds_to_pass,minutes,notes`;
+  plan, prompt_id and notes are the person's to fill in), so a calibration run no longer means writing rows by
+  hand; `--json` adds, per AI, how many conversations passed, the average rounds, how many passed in two or
+  fewer, the largest prompt that got an answer and the largest complete answer (with an output budget of 80% of
+  it). Conversations made while testing NPDev are in there too: filter by `target`.
 - **Agent Access** (`agentAccess` model block): a generated app serves a standard MCP endpoint
   (`/api/mcp`) so Claude Code/Desktop or any MCP client can use its data as tools, and optionally
   runs a Telegram bot linking a Telegram account to an app user for plain-language chat -- every

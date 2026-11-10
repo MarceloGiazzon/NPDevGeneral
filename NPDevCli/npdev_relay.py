@@ -114,6 +114,10 @@ def add_arguments(ai_sub) -> None:
     abort.add_argument("--code", required=True)
     json_flag(abort)
 
+    stats = rsub.add_parser("stats", help="What the conversations on this computer say about each chat AI (the calibration-log rows).")
+    stats.add_argument("--csv", action="store_true", help="One row per round, in the calibration log's column order.")
+    json_flag(stats)
+
     targets = rsub.add_parser("targets", help="The chat AIs this NPDev knows: where to open each and how much text it takes.")
     json_flag(targets)
 
@@ -128,9 +132,9 @@ def run(args) -> int:
     try:
         handler = {"start": _run_start, "prompt": _run_prompt, "ingest": _run_ingest, "status": _run_status,
                    "list": _run_list, "abort": _run_abort, "apply": _run_apply, "undo": _run_undo,
-                   "targets": _run_targets, "target": _run_target}.get(action)
+                   "targets": _run_targets, "target": _run_target, "stats": _run_stats}.get(action)
         if handler is None:
-            raise AiConfigError("npdev ai relay needs a verb: start, prompt, ingest, apply, undo, status, list, abort, targets or target (see --help)")
+            raise AiConfigError("npdev ai relay needs a verb: start, prompt, ingest, apply, undo, status, list, abort, targets, target or stats (see --help)")
         return handler(args)
     except sessions.SessionNotFound as exc:
         return _fail(args, str(exc))
@@ -369,4 +373,27 @@ def _run_target(args) -> int:
         return _print_json(payload)
     verdict = "fits a paste" if payload["fits"] else "too long to paste: attach it as a file"
     print(f"{payload['code']} -> {payload['target']['id']}: {payload['chars']} characters, {verdict}")
+    return 0
+
+
+def _run_stats(args) -> int:
+    payload = engine.stats()
+    if args.json:
+        return _print_json(payload)
+    if args.csv:
+        import csv
+        import io
+        buffer = io.StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=payload["columns"], lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(payload["rows"])
+        emit_text(buffer.getvalue())
+        return 0
+    if not payload["byTarget"]:
+        print("(no conversations yet)")
+    for t in payload["byTarget"]:
+        average = "-" if t["averageRoundsToPass"] is None else t["averageRoundsToPass"]
+        print(f"{str(t['target']):<15} {t['passed']}/{t['conversations']} passed  {average} rounds on average  "
+              f"{t['passedInTwoRoundsOrFewer']} in two or fewer  largest prompt answered {t['largestPromptWithAnAnswer']}  "
+              f"largest ready answer {t['largestReadyAnswer']}")
     return 0

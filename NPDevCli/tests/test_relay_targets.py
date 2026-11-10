@@ -21,7 +21,7 @@ import npdev_relay_engine as engine  # noqa: E402
 import npdev_relay_prompts as rp  # noqa: E402
 import npdev_relay_session as sessions  # noqa: E402
 import npdev_relay_targets as rt  # noqa: E402
-from test_relay_engine import EngineCase  # noqa: E402
+from test_relay_engine import EngineCase, answer  # noqa: E402
 
 
 class TargetsFileTests(unittest.TestCase):
@@ -173,6 +173,71 @@ class AttachmentTests(EngineCase):
         written = engine.write_attachment(out["code"])
         self.assertNotIn("downloads", str(written["file"]).lower())
         self.assertTrue(str(written["file"]).startswith(str(sessions.root())))
+
+
+class StatsTests(EngineCase):
+    """`relay stats`: the calibration-log rows and the per-AI numbers, read back from the stored conversations."""
+
+    def conversation_that_took_two_rounds(self, target="chatgpt"):
+        code = self.start()["code"]
+        engine.choose_target(code, target)
+        first = engine.ingest(code, "Sure, I will build that for you.", source="paste")
+        self.assertNotEqual(first["outcome"], "READY")
+        second = engine.ingest(code, answer(code, 2), source="clipboard-watch")
+        self.assertEqual(second["outcome"], "READY", second["findings"])
+        return code
+
+    def test_a_conversation_that_passed_in_two_rounds_is_two_rows_with_the_same_final_and_rounds(self):
+        code = self.conversation_that_took_two_rounds()
+        rows = [r for r in engine.stats()["rows"] if r["target"] == "chatgpt"]
+        self.assertEqual([r["round"] for r in rows], [1, 2])
+        self.assertEqual([r["final"] for r in rows], ["passed", "passed"])
+        self.assertEqual([r["rounds_to_pass"] for r in rows], [2, 2])
+        self.assertEqual(rows[0]["outcome"], "NO_FILES")
+        self.assertEqual(rows[1]["outcome"], "READY")
+        self.assertEqual([r["copy_method"] for r in rows], ["manual-paste", "clipboard"])
+        self.assertEqual([r["paste_ok"] for r in rows], ["yes", "yes"])
+        self.assertEqual(rows[1]["answer_chars"], len(answer(code, 2)))
+        self.assertEqual(set(engine.CSV_COLUMNS), set(rows[0]), "the rows carry exactly the calibration log's columns")
+        for blank in ("plan", "prompt_id", "notes"):
+            self.assertEqual(rows[0][blank], "", f"{blank} is the person's to fill in")
+
+    def test_the_summary_per_target_says_how_it_went(self):
+        self.conversation_that_took_two_rounds("chatgpt")
+        abandoned = self.start()["code"]
+        engine.abort(abandoned)
+        summary = {t["target"]: t for t in engine.stats()["byTarget"]}
+        chat = summary["chatgpt"]
+        self.assertEqual((chat["conversations"], chat["passed"], chat["averageRoundsToPass"], chat["passedInTwoRoundsOrFewer"]), (1, 1, 2.0, 1))
+        self.assertEqual(chat["outcomes"], {"NO_FILES": 1, "READY": 1})
+        self.assertGreater(chat["largestPromptWithAnAnswer"], 0)
+        self.assertEqual(chat["suggestedOutputBudgetChars"], int(chat["largestReadyAnswer"] * 0.8))
+        generic = summary["generic"]
+        self.assertEqual((generic["conversations"], generic["passed"], generic["averageRoundsToPass"]), (1, 0, None))
+
+    def test_a_prompt_sent_as_a_file_is_marked_attachment_and_an_unanswered_round_is_not_called_pasted(self):
+        code = self.start()["code"]
+        engine.write_attachment(code)
+        row = engine.stats()["rows"][0]
+        self.assertEqual((row["paste_ok"], row["outcome"], row["final"]), ("attachment", "", "open"))
+
+    def test_nothing_on_disk_is_an_empty_report_not_an_error(self):
+        report = engine.stats()
+        self.assertEqual((report["ok"], report["rows"], report["byTarget"]), (True, [], []))
+
+    def test_the_command_line_prints_csv_in_the_logs_column_order(self):
+        self.conversation_that_took_two_rounds()
+        import argparse
+        root = argparse.ArgumentParser()
+        ai = root.add_subparsers(dest="c").add_parser("ai")
+        relay_cli.add_arguments(ai.add_subparsers(dest="s"))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.assertEqual(relay_cli.run(root.parse_args(["ai", "relay", "stats", "--csv"])), 0)
+        lines = buf.getvalue().strip().splitlines()
+        self.assertEqual(lines[0], ",".join(engine.CSV_COLUMNS))
+        self.assertEqual(len(lines), 3)
+        self.assertTrue(lines[1].startswith("20") and ",chatgpt," in lines[1])
 
 
 if __name__ == "__main__":
