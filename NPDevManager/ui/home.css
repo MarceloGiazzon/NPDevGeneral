@@ -29,6 +29,7 @@ main:has(#screen-home:not([hidden])) { max-width: 1120px; }
 }
 .home-card[data-when="doctorHasFailures"], .home-card[data-when="lastOperationFailed"] { --home-tone: var(--t-negative); --home-tint: var(--t-negative-tint); }
 .home-card[data-when="noApps"], .home-card[data-when="appsAllStopped"], .home-card[data-when="doctorNeverRun"] { --home-tone: var(--t-warning); --home-tint: var(--t-warning-tint); }
+.home-card[data-when="browserAiOpen"] { --home-tone: var(--t-info); --home-tint: var(--t-info-tint); }
 .home-card[data-when="appRunning"], .home-card[data-when="none"] { --home-tone: var(--t-positive); --home-tint: var(--t-positive-tint); }
 .home-card-icon {
   flex: none;

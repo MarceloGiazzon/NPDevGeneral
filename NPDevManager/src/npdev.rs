@@ -1031,6 +1031,28 @@ pub async fn run_relay_status(
     run_relay_json(python_exe, npdev_cli, java_home, &["ai", "relay", "status", "--code", code, "--json"], "status").await
 }
 
+/// `npdev ai relay prompt --code X` -- the text a conversation already composed (the latest round, or `round`),
+/// so a person who closed the window mid-conversation can copy it again. Nothing is composed or saved.
+pub async fn run_relay_stored_prompt(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    code: &str,
+    round: Option<u32>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return relay_fixture(FIXTURE_RELAY_PROMPT, "relay-prompt");
+    }
+    check_relay_code(code)?;
+    let round_text = round.map(|r| r.to_string());
+    let mut args: Vec<&str> = vec!["ai", "relay", "prompt", "--code", code];
+    if let Some(r) = round_text.as_deref() {
+        args.extend(["--round", r]);
+    }
+    args.push("--json");
+    run_relay_json(python_exe, npdev_cli, java_home, &args, "prompt").await
+}
+
 /// `npdev ai relay list` -- the sessions still open, so a window closed mid-conversation can pick one up.
 pub async fn run_relay_list(python_exe: &Path, npdev_cli: &Path, java_home: Option<&str>) -> Result<Value, String> {
     if fake_mode() {

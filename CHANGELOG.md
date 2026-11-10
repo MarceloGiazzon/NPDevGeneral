@@ -76,6 +76,9 @@ release. Ships in the next tag.
   `relay-watch-state`.
 - **Use a browser AI: what the answer would change, in Portuguese** -- the preview sentences and the
   removal/rename warnings were English in a Portuguese window. `npdev ai relay` now writes them in
+  the conversation's language (`npdev_relay_preview_pt.py`, from each line's `code` and `params`, so
+  the words change but what a tick confirms does not); other languages are untouched, and a line it
+  cannot write keeps its English text. Model names and the AI's own words stay as they are.
 - **Use a browser AI: the answer is picked up when you save it** (Manager 0.13.31) -- some chat AIs
   hand the answer over as a file (a `model.json`, a zip) instead of text to copy. While step 3 waits
   the Manager now also looks at the Downloads folder every two seconds, so saving the file is the whole
@@ -93,9 +96,23 @@ release. Ships in the next tag.
   both places -- the switch is now **Watch the clipboard and the Downloads folder while waiting for
   an AI**, so a person who had turned the clipboard watching off keeps it off -- and `relay-watch-state`
   carries `sources`, so the notice names only the places really being read.
-  the conversation's language (`npdev_relay_preview_pt.py`, from each line's `code` and `params`, so
-  the words change but what a tick confirms does not); other languages are untouched, and a line it
-  cannot write keeps its English text. Model names and the AI's own words stay as they are.
+- **Use a browser AI: a conversation left half-way comes back from Home** (Manager 0.13.32) -- the CLI
+  already kept every conversation on disk, but a window closed in the middle of one had no way back in.
+  Home now asks `npdev ai relay list` once it is drawn (the CLI takes one to three seconds while the
+  Manager starts, so Home does not wait for it; a failure means no card) and, when a conversation is still
+  open, makes it the next step: **You have a conversation with an AI in
+  progress -- Continue**, with the person's own request (cut to 80 characters) under it. Continue opens
+  the screen and lands on the step the conversation is really at, from `relay status` and the new
+  `relay_stored_prompt` command (`npdev ai relay prompt --code`, the latest round's stored text, nothing
+  composed again): an answer that was READY and never applied goes to its preview; an answer that was
+  not ready goes to step 3 with the same sentence and the message to send that it had; a conversation
+  never answered goes to step 2 with the text to copy again. Coming back to the conversation the window
+  is already in changes nothing, and one that cannot be read, or was finished meanwhile, says so in a
+  sentence and leaves a fresh step 1. A conversation nobody touched for 14 days is left alone (it
+  stays on disk): one forgotten chat would otherwise be the next step for good, hiding every other
+  card. A re-read of the app list no longer turns an open change into a
+  create. Home's card text now fills `{app}`/`{ask}`/... with function replacers, so a request or an
+  app name containing `$&` shows as typed.
 - **Agent Access** (`agentAccess` model block): a generated app serves a standard MCP endpoint
   (`/api/mcp`) so Claude Code/Desktop or any MCP client can use its data as tools, and optionally
   runs a Telegram bot linking a Telegram account to an app user for plain-language chat -- every

@@ -197,6 +197,13 @@ window.__TAURI__ = {
           window.__relayStatuses = (window.__relayStatuses || []).concat([args]);
           if (window.__statusFails) throw "status unavailable";
           return window.__statusAnswer || F.relay.status;
+        // Home's "conversation in progress" card (F3 T3.4): the open conversations the CLI lists (none unless a check puts the
+        // captured list in __relayListAnswer) and the stored text of a conversation's latest round (the captured prompt).
+        case "relay_list":
+          if (window.__relayListDelay) await new Promise((r) => setTimeout(r, window.__relayListDelay)); // the real CLI takes 1-3 s while the Manager starts
+          if (window.__relayListFails) throw "list unavailable";
+          return window.__relayListAnswer || {};
+        case "relay_stored_prompt": window.__relayStoredPrompts = (window.__relayStoredPrompts || []).concat([args]); return window.__storedAnswer || F.relay.prompt;
         case "relay_pick_answer_files": window.__pickCalls = (window.__pickCalls || 0) + 1; return window.__pickAnswer || [];
         case "relay_apply": window.__relayApplies = (window.__relayApplies || []).concat([args]); return window.__applyAnswer || F.relay.apply;
         case "relay_undo": window.__relayUndos = (window.__relayUndos || []).concat([args]); return window.__undoAnswer || F.relay.undo;
@@ -264,7 +271,7 @@ await page.addInitScript({
       needsFix: fixture("relay-ingest-needs-fix.json"), create: fixture("relay-ingest-ready-create.json"),
       change: fixture("relay-ingest-ready-change.json"), removal: fixture("relay-ingest-ready-removal.json"),
       apply: fixture("relay-apply.json"), undo: fixture("relay-undo.json"), abort: fixture("relay-abort.json"),
-      status: fixture("relay-status.json"),
+      status: fixture("relay-status.json"), list: fixture("relay-list.json"),
     },
     dbProvision: fixture("db-provision.json"),
     catalogue: (() => {
@@ -403,6 +410,164 @@ await page.evaluate(async () => { window.__scanEmpty = false; NPDevHome.reset();
 check("Home has no horizontal scroll in a narrow window", await page.evaluate(() => document.querySelector("main").scrollWidth <= document.querySelector("main").clientWidth + 1), "");
 await page.screenshot({ path: path.join(OUT, "home-narrow.png"), fullPage: true });
 await page.setViewportSize({ width: 1400, height: 1000 });
+
+// ---- Home (browser-AI relay F3 T3.4): a conversation left open comes back as a card, and Continue puts the person -------
+// where they were. The CLI keeps the conversation (relay_list / relay_status / relay_stored_prompt, all captured answers);
+// what this asserts is that Home draws the card from the list, hands the code to the screen, and the screen lands on the
+// step the conversation is really at -- without composing anything new.
+{
+  const shown = (sel) => page.$eval(sel, (e) => !e.hidden && e.offsetParent !== null).catch(() => false);
+  const text = (sel) => page.$eval(sel, (e) => e.textContent.trim()).catch(() => null);
+  const homeAgain = () => page.evaluate(async () => { NPDevHome.reset(); await window.__npdevShowScreen("home"); await NPDevHome.refresh(); });
+  const cardNow = () => page.evaluate(() => ({ when: document.querySelector(".home-card").dataset.when, title: document.querySelector(".home-title").textContent,
+    detail: document.querySelector(".home-detail")?.textContent, button: document.querySelector(".home-action")?.textContent }));
+  const steps = () => page.evaluate(() => [1, 2, 3, 4, 5].map((n) => document.getElementById("browserai-step-" + n).dataset.state).join(","));
+  // "Now" is the real clock: the captured list is from the day it was captured, and a conversation untouched for two weeks is not offered.
+  const listWith = (patch) => page.evaluate((p) => { const l = structuredClone(window.__FIXTURES__.relay.list); Object.assign(l.sessions[0], { updatedAt: new Date().toISOString() }, p); window.__relayListAnswer = l; }, patch);
+  const statusWith = (sessionPatch, last) => page.evaluate(([p, lr]) => {
+    const st = structuredClone(window.__FIXTURES__.relay.status); Object.assign(st.session, p);
+    st.lastResult = lr ? structuredClone(window.__FIXTURES__.relay[lr]) : null; window.__statusAnswer = st; }, [sessionPatch, last]);
+  const leave = async () => { await page.evaluate(() => document.getElementById("browserai-else").click()); await page.waitForTimeout(150); };
+  const continueHome = async (target) => {
+    await homeAgain();
+    await page.click(".home-action");
+    await page.waitForFunction((t) => document.getElementById(t) && document.getElementById(t).dataset.state === "current", target, { timeout: 4000 }).catch(() => {});
+    await page.waitForTimeout(100);
+  };
+  await page.evaluate(() => {
+    window.__clip = null;
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (t) => { window.__clip = t; } } });
+    window.__relayStarts = []; window.__relayStoredPrompts = []; window.__relayIngests = []; window.__watchStarts = []; window.__relayStatuses = [];
+    window.__statusAnswer = null; window.__statusFails = false; window.__relayListFails = false;
+  });
+
+  await page.evaluate(() => { window.__relayListFails = true; });
+  await homeAgain();
+  check("Home: a conversation list the CLI could not give means no card, never a broken Home", (await cardNow()).when === "appRunning", JSON.stringify(await cardNow()));
+  await page.evaluate(() => { window.__relayListFails = false; window.__relayListAnswer = { ok: true, sessions: [] }; });
+  await homeAgain();
+  check("Home: no open conversation, no card", (await cardNow()).when === "appRunning", JSON.stringify(await cardNow()));
+  await listWith({});
+  await homeAgain();
+  const resumeCard = await cardNow();
+  check("Home: an open conversation is the next step, and Continue is its one button",
+    resumeCard.when === "browserAiOpen" && resumeCard.title === "You have a conversation with an AI in progress" && resumeCard.button === "Continue" &&
+    resumeCard.detail === "Started with: customers and their orders. Continue from where you left off; nothing is lost." &&
+    (await page.$$eval(".home-card .home-card-actions button", (b) => b.length)) === 1, JSON.stringify(resumeCard));
+  await page.screenshot({ path: path.join(OUT, "home-resume.png"), fullPage: true });
+  // The CLI is slow to answer while the Manager starts (1-3 s on the real window): Home draws first and the card follows.
+  await page.evaluate(() => { window.__relayListDelay = 1500; });
+  await page.evaluate(() => { NPDevHome.reset(); window.__npdevShowScreen("home"); NPDevHome.refresh(); });
+  await page.waitForFunction(() => document.querySelector("#home-root .home-card"), null, { timeout: 3000 });
+  check("Home: a slow conversation list does not hold Home back -- the usual card is drawn first", (await cardNow()).when === "appRunning", JSON.stringify(await cardNow()));
+  await page.waitForFunction(() => document.querySelector(".home-card")?.dataset.when === "browserAiOpen", null, { timeout: 4000 }).catch(() => {});
+  check("Home: ...and the conversation card takes its place when the list arrives", (await cardNow()).when === "browserAiOpen" && (await cardNow()).button === "Continue", JSON.stringify(await cardNow()));
+  await page.evaluate(() => { window.__relayListDelay = 0; });
+  await listWith({ ask: "paint $& the $1 wall" });
+  await homeAgain();
+  check("Home: the person's own words reach the card as text, not as a replacement pattern", /Started with: paint \$& the \$1 wall\./.test((await cardNow()).detail || ""), (await cardNow()).detail);
+  await listWith({ ask: "x".repeat(200) });
+  await homeAgain();
+  const longDetail = (await cardNow()).detail || "";
+  check("Home: a long request is cut to 80 characters with an ellipsis", longDetail.includes("x".repeat(79) + "…") && !longDetail.includes("x".repeat(80)), longDetail);
+  await listWith({ ask: "" });
+  await homeAgain();
+  check("Home: with no request (a fix) the card names the app or the new name instead", /Started with: TrialOrders\./.test((await cardNow()).detail || ""), (await cardNow()).detail);
+  await listWith({ updatedAt: new Date(Date.now() - 13 * 86400000).toISOString() });
+  await homeAgain();
+  check("Home: a conversation untouched for 13 days is still offered", (await cardNow()).when === "browserAiOpen", JSON.stringify(await cardNow()));
+  await listWith({ updatedAt: new Date(Date.now() - 15 * 86400000).toISOString() });
+  await homeAgain();
+  check("Home: a conversation untouched for 15 days no longer takes the next-step card (it would hide every other one for good)", (await cardNow()).when === "appRunning", JSON.stringify(await cardNow()));
+  await listWith({});
+  await page.selectOption("#lang-picker", "pt");
+  await homeAgain();
+  const resumePt = await cardNow();
+  check("Home: the card speaks Portuguese when asked",
+    resumePt.title === "Você tem uma conversa com uma IA em andamento" && resumePt.button === "Continuar" && /^Começou com: customers and their orders\./.test(resumePt.detail), JSON.stringify(resumePt));
+  await page.selectOption("#lang-picker", "en");
+
+  // Continue, a conversation whose text was never answered: step 2, the stored text to copy again.
+  await continueHome("browserai-step-2");
+  check("Continue: opens Use a browser AI on the conversation's own step 2, with no new conversation composed",
+    (await page.evaluate(() => window.__npdevCurrentScreen)) === "browserai" && (await steps()) === "done,current,todo,todo,todo" && (await page.evaluate(() => window.__relayStarts.length)) === 0, await steps());
+  check("Continue: the stored text of the latest round was asked for by its code",
+    JSON.stringify(await page.evaluate(() => window.__relayStoredPrompts)) === JSON.stringify([{ code: "ZWW4", round: null }]) &&
+    (await page.evaluate(() => window.__relayStatuses.every((s) => s.code === "ZWW4") && window.__relayStatuses.length >= 1)), JSON.stringify(await page.evaluate(() => window.__relayStoredPrompts)));
+  check("Continue: step 1 shows the request and the new app's name again, and the text is the stored one",
+    (await page.$eval("#browserai-ask", (e) => e.value)) === "customers and their orders" && (await page.$eval("#browserai-newname", (e) => e.value)) === "TrialOrders" &&
+    (await page.$eval("#browserai-intent-create", (e) => e.checked)) && (await page.$eval("#browserai-prompt-text", (e) => e.textContent)).startsWith("NPDEV-PROMPT ZWW4-1"), "");
+  check("Continue: step 2 is not watching for an answer yet", (await page.evaluate(() => window.__watchStarts.length)) === 0, "");
+  await page.click("#browserai-copy");
+  await page.waitForTimeout(250);
+  check("Continue: Copy puts the stored text on the clipboard, byte for byte, and step 3 starts watching this conversation",
+    (await page.evaluate(() => window.__clip === window.__FIXTURES__.relay.prompt.prompt)) && (await steps()) === "done,done,current,todo,todo" &&
+    JSON.stringify(await page.evaluate(() => window.__watchStarts)) === JSON.stringify([{ code: "ZWW4" }]), await steps());
+  await page.fill("#browserai-paste", "STUB-TRUNCATED pasted");
+  await page.click("#browserai-check");
+  await page.waitForTimeout(250);
+  check("Continue: an answer pasted into the picked-up conversation is checked under its code",
+    await page.evaluate(() => { const i = window.__relayIngests.at(-1); return !!i && i.code === "ZWW4" && i.source === "paste"; }), "");
+  const askedBefore = await page.evaluate(() => window.__relayStoredPrompts.length);
+  await homeAgain();
+  await page.click(".home-action");
+  await page.waitForTimeout(300);
+  check("Continue: coming back to the conversation the window is already in changes nothing and asks the CLI for nothing",
+    (await page.evaluate(() => window.__relayStoredPrompts.length)) === askedBefore && (await page.evaluate(() => window.__npdevCurrentScreen)) === "browserai" && (await steps()) === "done,done,current,todo,todo", await steps());
+  await leave();
+  check("Home: giving the conversation up takes its card away at once, before any re-read of the list",
+    (await page.evaluate(() => document.querySelector("#home-root .home-card")?.dataset.when)) === "appRunning", await page.evaluate(() => document.querySelector("#home-root .home-card")?.dataset.when));
+
+  // An answer that was READY and never applied: the preview, ready to apply.
+  await statusWith({ state: "ready-to-apply", rounds: [{ round: 1, promptKind: "round1", outcome: "READY" }], round: 1 }, "create");
+  await continueHome("browserai-step-4");
+  const readyPreview = await page.evaluate(() => window.__FIXTURES__.relay.create.preview);
+  check("Continue: a READY answer not applied yet lands on its preview, drawn from the CLI's own sentences",
+    (await steps()) === "done,done,done,current,todo" && (await shown("#browserai-apply")) &&
+    (await page.$$eval("#browserai-preview li", (l) => l.length)) >= readyPreview.sentences.length, await steps());
+  await leave();
+
+  // An answer that was not ready, the follow-up message already waiting: step 3 with the sentence and button it had.
+  await statusWith({ state: "waiting-answer", round: 2, rounds: [{ round: 1, promptKind: "round1", outcome: "TRUNCATED" }, { round: 2, promptKind: "same-chat" }] }, "truncated");
+  await page.evaluate(() => { window.__watchStarts = []; });
+  await continueHome("browserai-step-3");
+  check("Continue: an answer that was not ready lands on step 3 with the same sentence and the message to copy",
+    (await steps()) === "done,done,current,todo,todo" && (await text("#browserai-outcome")) === "The answer was cut off. Copy this message so the AI sends it complete." &&
+    (await shown("#browserai-outcome-button")) && (await page.$eval("#browserai-outcome-button", (b) => b.dataset.copy === window.__FIXTURES__.relay.truncated.next.prompt)), String(await text("#browserai-outcome")));
+  check("Continue: the rounds so far are listed, the second one waiting for its answer",
+    await (async () => {
+      const r = await page.$$eval("#browserai-rounds li", (l) => l.map((x) => x.textContent.replace(/\s+/g, " ").trim()));
+      return r.length === 2 && /Round 1.*cut off/.test(r[0]) && /Round 2.*waiting for the answer/.test(r[1]);
+    })() &&
+    JSON.stringify(await page.evaluate(() => window.__watchStarts)) === JSON.stringify([{ code: "ZWW4" }]), JSON.stringify(await page.$$eval("#browserai-rounds li", (l) => l.map((x) => x.textContent))));
+  await leave();
+
+  // A change to an app this window's list does not show: it stays a change, with that app chosen.
+  await statusWith({ intent: "change", appDir: "D:\\Elsewhere\\Unlisted-App", newAppName: null }, null);
+  await continueHome("browserai-step-2");
+  check("Continue: a change to an app that is not in the list stays a change, with that app picked",
+    (await page.$eval("#browserai-intent-change", (e) => e.checked)) && !(await page.$eval("#browserai-intent-change", (e) => e.disabled)) &&
+    (await page.$eval("#browserai-app", (e) => e.value)) === "D:\\Elsewhere\\Unlisted-App" && (await page.$eval("#browserai-app", (e) => e.selectedOptions[0].textContent)) === "Unlisted-App" &&
+    !(await shown("#browserai-newname")), "");
+  await leave();
+
+  // A conversation that cannot be opened: one sentence, no half-open screen, nothing stuck.
+  await page.evaluate(() => { window.__statusAnswer = null; window.__statusFails = true; });
+  await continueHome("browserai-step-1");
+  check("Continue: a conversation that cannot be read says so and leaves the first step open",
+    (await text("#browserai-step1-note")) === "That conversation could not be opened. You can start a new one." && (await steps()) === "current,todo,todo,todo,todo" &&
+    !(await page.$eval("#browserai-continue", (b) => b.disabled)), String(await text("#browserai-step1-note")));
+  await page.evaluate(() => { window.__statusFails = false; });
+  await statusWith({ state: "done" }, null);
+  await continueHome("browserai-step-1");
+  check("Continue: a conversation that was finished meanwhile is not reopened",
+    (await text("#browserai-step1-note")) === "That conversation could not be opened. You can start a new one." && (await steps()) === "current,todo,todo,todo,todo", String(await text("#browserai-step1-note")));
+
+  await page.evaluate(() => { window.__relayListAnswer = null; window.__statusAnswer = null; window.__statusFails = false; window.__relayListFails = false; });
+  // A place opens on the screen last used in it: leave "Apps" on its own list, as the sections after this expect.
+  await page.evaluate(() => window.__npdevShowScreen("apps"));
+  await homeAgain();
+}
 
 await page.click('.tabs .place[data-place="settings"]');
 await page.waitForTimeout(200);

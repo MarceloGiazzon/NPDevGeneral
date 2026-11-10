@@ -100,6 +100,8 @@
   const MAX_ROUNDS_SHOWN = 8;
   const COPIED = "Copied. Now paste it into your AI and send it.";
   const WENT_WRONG = "Something went wrong. Nothing was changed. Try again.";
+  const RESUMED = "Your conversation is open again. Pick up where you left off.";
+  const RESUME_FAILED = "That conversation could not be opened. You can start a new one.";
 
   // ------------------------------------------------------------------------------------ the steps
 
@@ -189,6 +191,8 @@
   function onAppChanged(userPicked) {
     const has = !!$("browserai-app").value;
     $("browserai-intent-change").disabled = !has;
+    // Once a conversation is open its kind is fixed (a re-read of the app list must not turn a change into a create).
+    if (S.code && !userPicked) return;
     if (userPicked || (!has && S.intent === "change")) setIntent(has ? "change" : "create");
     else if (has && S.phase === "compose" && !$("browserai-ask").value.trim()) setIntent("change");
   }
@@ -708,6 +712,7 @@
         return note("browserai-apply-note", why || "The change could not be applied. Nothing was changed.", true);
       }
       S.applied = r;
+      conversationClosed(S.code);
       note("browserai-apply-note", ""); // "Applying…" must not stay behind the folded step
       showDone(r);
       S.builtAppDir = await generatedAppDir(r);
@@ -939,12 +944,30 @@
   async function startOver(abandon) {
     if (S.busy) return;
     if (abandon && S.code) {
+      const closing = S.code;
       try {
-        await invoke("relay_abort", { code: S.code });
+        await invoke("relay_abort", { code: closing });
+        conversationClosed(closing);
       } catch (e) {
         /* the conversation just stays listed as open; it is harmless */
       }
     }
+    forgetConversation();
+    setPhase("compose");
+    focusStep();
+    // The app just made (or the one just changed) may not be in the list this screen drew when it opened.
+    refreshApps();
+  }
+
+  // Home keeps the card of the conversation it last saw, and the screen stays drawn while this one is in use: tell it when
+  // a conversation is over (given up here, or applied), so Home does not offer a finished one while it re-reads the list.
+  function conversationClosed(code) {
+    if (code && window.NPDevHome && window.NPDevHome.relayClosed) window.NPDevHome.relayClosed(code);
+  }
+
+  // Everything this window holds about the conversation it was in, so the next one (a new one, or one picked up
+  // again) starts clean. The request typed in step 1 stays: the person may want to edit it.
+  function forgetConversation() {
     S.code = null;
     drawRounds([]);
     S.promptText = "";
@@ -962,10 +985,82 @@
     note("browserai-apply-note", "");
     note("browserai-progress", "");
     announce("");
-    setPhase("compose");
-    focusStep();
-    // The app just made (or the one just changed) may not be in the list this screen drew when it opened.
-    refreshApps();
+  }
+
+  // ----------------------------------------------------------- coming back to a conversation (F3 T3.4)
+
+  // A conversation lives on disk (the CLI keeps it), so a window closed in the middle of one can pick it up: Home's
+  // the resume card calls this with the code `relay_list` gave it. Nothing is decided here --
+  // `relay_status` says where the conversation stands and what the last checked answer was, `relay_stored_prompt`
+  // gives back the text of its latest round. The person lands where they left off:
+  //   * an answer that is READY and not applied yet -> its preview (step 4);
+  //   * an answer that was not ready, the message for the AI already waiting -> step 3 with the same sentence and
+  //     button it had, so "copy this message to the AI" is still one click away;
+  //   * no answer yet -> step 2, the text to copy (copying it a second time is harmless: same text, same code).
+  // Resolves to true when the conversation is on screen.
+  async function resume(code) {
+    if (typeof code !== "string" || !code) return false;
+    if (S.code === code && S.phase !== "compose") return true; // this window is already in it
+    if (S.busy) return false;
+    setBusy(true);
+    try {
+      forgetConversation();
+      setPhase("compose");
+      note("browserai-step1-note", "Opening your conversation…");
+      let st;
+      let stored;
+      try {
+        [st, stored] = await Promise.all([invoke("relay_status", { code }), invoke("relay_stored_prompt", { code, round: null })]);
+      } catch (e) {
+        return resumeFailed();
+      }
+      const session = st && st.ok !== false ? st.session : null;
+      const open = session && session.code === code && session.state !== "done" && session.state !== "abandoned";
+      if (!open || !stored || stored.ok === false || typeof stored.prompt !== "string") return resumeFailed();
+
+      S.code = code;
+      S.appDir = session.appDir || null;
+      S.promptText = stored.prompt;
+      $("browserai-prompt-text").textContent = stored.prompt;
+      $("browserai-ask").value = session.ask || "";
+      $("browserai-newname").value = session.newAppName || "";
+      // A fix is a change to an app: this window's two kinds are "new app" and "change this one".
+      setIntent(session.intent === "create" ? "create" : "change");
+      await refreshApps();
+      if (session.appDir) {
+        const picker = $("browserai-app");
+        const label = String(session.appDir).split(/[\\/]+/).filter(Boolean).pop() || session.appDir;
+        if (![...picker.options].some((o) => o.value === session.appDir)) picker.append(new Option(label, session.appDir));
+        picker.value = session.appDir;
+        onAppChanged(false); // only to enable the "change" choice: the kind of conversation is already fixed
+      }
+      note("browserai-step1-note", "");
+
+      const last = st.lastResult;
+      drawRounds(Array.isArray(session.rounds) ? session.rounds : []);
+      if (session.state === "ready-to-apply" && last && last.outcome === "READY") {
+        S.result = last;
+        renderPreview(last);
+        setPhase("preview");
+      } else if (last && last.outcome && last.outcome !== "READY") {
+        setPhase("waiting");
+        handleAnswer(last);
+      } else {
+        note("browserai-copy-note", "");
+        setPhase("copy");
+      }
+      announce(RESUMED);
+      focusStep();
+      return true;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function resumeFailed() {
+    forgetConversation();
+    note("browserai-step1-note", RESUME_FAILED, true);
+    return false;
   }
 
   // ------------------------------------------------------------------------------------- wiring
@@ -1036,4 +1131,5 @@
 
   window.__npdevInitBrowserAi = initBrowserAi;
   window.__npdevRefreshBrowserAi = refreshApps;
+  window.__npdevResumeBrowserAi = resume; // Home's resume card (home.js)
 })();

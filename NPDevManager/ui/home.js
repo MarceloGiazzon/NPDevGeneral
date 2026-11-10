@@ -27,6 +27,10 @@
   const PROVIDERS_TTL_MS = 60 * 1000;
   const MAX_APPS = 6;
   const MAX_ACTIVITY = 5;
+  const MAX_ABOUT = 80; // characters of the person's own request shown on the conversation card
+  // A conversation nobody touched for this long is left alone (it stays on disk): one forgotten chat would otherwise be
+  // the "next step" for good and hide every other card, and there is no way to dismiss a card here.
+  const RELAY_FRESH_DAYS = 14;
 
   const TEXT = {
     checking: { en: "Looking at your computer…", pt: "Olhando o seu computador…" },
@@ -39,6 +43,7 @@
     nextStep: { en: "Next step", pt: "Próximo passo" },
     allGood: { en: "All good", pt: "Tudo certo" },
     fallbackCard: { en: "Everything looks fine", pt: "Tudo certo por aqui" },
+    relayAboutFallback: { en: "your request", pt: "o seu pedido" },
 
     tileComputer: { en: "Computer", pt: "Computador" },
     computerReady: { en: "Ready", pt: "Pronto" },
@@ -111,6 +116,7 @@
   const ICON = {
     doctorNeverRun: "🔍",
     doctorHasFailures: "🔧",
+    browserAiOpen: "💬",
     noApps: "✨",
     lastOperationFailed: "⚠",
     appsAllStopped: "⏸",
@@ -207,6 +213,25 @@
 
   const safe = (p, fallback) => p.catch(() => fallback);
 
+  // The newest conversation with a browser AI that was left open (F3 T3.4), or null. The CLI keeps conversations on
+  // disk, so one survives closing the window; `relay_list` is how Home finds it. Any failure means "none".
+  // It is read AFTER Home is drawn (loadRelay below), not inside gather(): the CLI takes one to three seconds to answer
+  // while the Manager is still starting -- measured on the real window -- and a drop-it-if-slow rule lost the card at
+  // random, while waiting for it would have delayed the whole screen for an extra.
+  async function readRelay() {
+    try {
+      const r = await invoke("relay_list");
+      const fresh = (s) => {
+        const at = Date.parse(s.updatedAt || s.createdAt || "");
+        return Number.isNaN(at) || Date.now() - at < RELAY_FRESH_DAYS * 86400000; // a date that cannot be read cannot call it old
+      };
+      const open = r && Array.isArray(r.sessions) ? r.sessions.filter((s) => s && typeof s.code === "string" && s.code && s.state !== "done" && s.state !== "abandoned" && fresh(s)) : [];
+      return open[0] || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   async function gather() {
     const ran = flagSet() || !!doctorCache || !!window.__npdevLastDoctor;
     const [checks, apps, failed, ops, ai] = await Promise.all([
@@ -218,7 +243,17 @@
     ]);
     const failures = (checks || []).filter((c) => c.status === "fail" && !isNotApplicable(c));
     const running = apps.filter((a) => a.health === "running");
-    return { ran, checks, failures, apps, running, failed: failed || null, ops: Array.isArray(ops) ? ops : [], ai, at: new Date() };
+    return { ran, checks, failures, apps, running, failed: failed || null, ops: Array.isArray(ops) ? ops : [], ai, relay: null, at: new Date() };
+  }
+
+  // The conversation card, once Home is on screen: read the list, and redraw only if there is something to say (or a
+  // card to take away) -- the usual case, no conversation, redraws nothing. A newer draw has its own read, so a late
+  // answer for an older one is dropped.
+  async function loadRelay(c) {
+    const found = await readRelay();
+    if (lastContext !== c || (!found && !c.relay)) return;
+    c.relay = found;
+    render(c);
   }
 
   // ------------------------------------------------------------------------------------ the decision
@@ -228,6 +263,7 @@
   const WHEN = {
     doctorNeverRun: (c) => !c.ran,
     doctorHasFailures: (c) => c.ran && c.failures.length > 0,
+    browserAiOpen: (c) => !!c.relay,
     noApps: (c) => c.apps.length === 0,
     lastOperationFailed: (c) => !!c.failed,
     appsAllStopped: (c) => c.apps.length > 0 && c.running.length === 0,
@@ -237,13 +273,26 @@
   // The app the card talks about: the running one, else the one most worth starting (built first).
   const focusApp = (c) => c.running[0] || c.apps.find((a) => a.jarPath) || c.apps[0] || {};
 
+  // What a conversation with a browser AI is about, in the person's own words (shortened) -- or, with no request
+  // (a fix), the app it is for. It comes from disk, so it only ever reaches the page as text.
+  function relayAbout(s) {
+    const own = (v) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "");
+    const folder = s.appDir ? String(s.appDir).split(/[\\/]+/).filter(Boolean).pop() : "";
+    const about = own(s.ask) || own(s.newAppName) || own(folder);
+    if (!about) return t(TEXT.relayAboutFallback);
+    const chars = Array.from(about);
+    return chars.length > MAX_ABOUT ? chars.slice(0, MAX_ABOUT - 1).join("").trimEnd() + "…" : about;
+  }
+
+  // Function replacers, never a replacement string: an app name or a request may carry "$&" and the like.
   function fill(text, c) {
     const first = focusApp(c);
     return String(text)
-      .replace("{n}", String(c.failures.length))
-      .replace("{operation}", c.failed ? c.failed.intent : "")
-      .replace("{app}", first.name || "")
-      .replace("{url}", first.baseUrl || "");
+      .replace("{n}", () => String(c.failures.length))
+      .replace("{operation}", () => (c.failed ? c.failed.intent : ""))
+      .replace("{app}", () => first.name || "")
+      .replace("{url}", () => first.baseUrl || "")
+      .replace("{ask}", () => (c.relay ? relayAbout(c.relay) : ""));
   }
 
   function pick(c) {
@@ -276,9 +325,17 @@
     }
   }
 
+  // Back into the conversation: open the screen first (it re-reads its list of apps), then hand it the code.
+  async function resumeBrowserAi(c) {
+    const code = c.relay && c.relay.code;
+    await go("browserai");
+    if (code && window.__npdevResumeBrowserAi) await window.__npdevResumeBrowserAi(code);
+  }
+
   function perform(action, c) {
     if (!action) return;
     if (action.kind === "supportReport") return openSupport(c);
+    if (action.kind === "resumeBrowserAi") return resumeBrowserAi(c);
     if (action.kind === "openUrl") {
       const url = (c.running[0] || {}).baseUrl;
       if (url) invoke("open_url", { url }).catch(() => {});
@@ -601,17 +658,28 @@
 
   const redraw = () => lastContext && render(lastContext);
 
+  // The browser-AI screen says a conversation is over (given up, applied): take its card away at once, without waiting
+  // for the next read of the list to notice.
+  function relayClosed(code) {
+    if (!lastContext || !lastContext.relay || lastContext.relay.code !== code) return;
+    lastContext.relay = null;
+    render(lastContext);
+  }
+
   async function refresh() {
     if (busy) return;
     busy = true;
     const root = document.getElementById("home-root");
     if (root && !root.firstChild) root.append(h("p", { class: "home-loading" }, t(TEXT.checking)));
+    let drawn = null;
     try {
       if (!decisions.length) await loadDecisions();
-      render(await gather());
+      drawn = await gather();
+      render(drawn);
     } finally {
-      busy = false;
+      busy = false; // before the conversation read: a computer check answering meanwhile must still be able to redraw
     }
+    await loadRelay(drawn);
   }
 
   window.__npdevRefreshHome = refresh;
@@ -630,5 +698,5 @@
       /* nothing to clear */
     }
   }
-  window.NPDevHome = { refresh, pick, gather, reset, decisionsLoaded: () => decisions.length };
+  window.NPDevHome = { refresh, pick, gather, reset, relayClosed, decisionsLoaded: () => decisions.length };
 })();

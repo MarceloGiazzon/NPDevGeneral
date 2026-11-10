@@ -111,6 +111,18 @@
       "action": { "screen": "install", "label": { "en": "Install them", "pt": "Instalar" } }
     },
     {
+      "when": "browserAiOpen",
+      "card": {
+        "en": "You have a conversation with an AI in progress",
+        "pt": "Você tem uma conversa com uma IA em andamento"
+      },
+      "detail": {
+        "en": "Started with: {ask}. Continue from where you left off; nothing is lost.",
+        "pt": "Começou com: {ask}. Continue de onde parou; nada se perdeu."
+      },
+      "action": { "kind": "resumeBrowserAi", "label": { "en": "Continue", "pt": "Continuar" } }
+    },
+    {
       "when": "noApps",
       "card": {
         "en": "Your computer is ready. Create your first app",
