@@ -615,6 +615,11 @@
         </div>
         <div class="ba-step-body" id="browserai-body-3">
           <p class="subtitle">When the AI has finished, copy its whole answer and paste it here.</p>
+          <div class="ba-drop" id="browserai-drop" role="group" aria-labelledby="browserai-drop-label" data-over="false">
+            <span id="browserai-drop-label" class="ba-drop-label">Or drop the file the AI made here</span>
+            <button type="button" class="btn" id="browserai-pick-file">Choose a file</button>
+          </div>
+          <p class="ba-note" id="browserai-paste-hint">You can also press Ctrl+V anywhere on this step.</p>
           <label class="ba-field">Paste the AI's answer here
             <textarea id="browserai-paste" rows="6" autocomplete="off" spellcheck="false"></textarea>
           </label>

@@ -21,6 +21,11 @@ release. Ships in the next tag.
   Apply; a change can be undone. Ask AI on Home and Edit now lead here, and the API-key screen is
   one button away on both, carrying the request across. `npdev ai relay apply` now refuses a new
   app's name that is not one plain folder name (`../x`, `a/b`, `C:x`).
+- **Use a browser AI takes the answer three more ways** (Manager 0.13.25) -- on step 3, Ctrl+V works
+  anywhere (no need to click the box first), a Choose a file button opens the system dialog for the
+  file the AI made (`.json`, `.txt`, `.md`, `.zip`), and dropping that file on the window works too.
+  All three go through the same check as a pasted answer and tell the CLI how they arrived
+  (`paste`, `file-picker`, `drop`).
 - **Agent Access** (`agentAccess` model block): a generated app serves a standard MCP endpoint
   (`/api/mcp`) so Claude Code/Desktop or any MCP client can use its data as tools, and optionally
   runs a Telegram bot linking a Telegram account to an app user for plain-language chat -- every

@@ -31,6 +31,12 @@
 .ba-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7em; margin-top: 0.8em; }
 .ba-note { min-height: 1.3em; margin: 0.5em 0 0; color: var(--t-text-muted); }
 .ba-note.bad { color: var(--t-negative); }
+/* Where a file the AI made can be dropped (anywhere on the window works; this is where the eye goes), and the
+   button that does the same with a dialog. While a file is held over the window the box turns solid AND says so
+   in words -- the border is a second signal, never the only one. */
+.ba-drop { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7em; margin: 0.8em 0 0; padding: 0.8em 1em; border: 0.15em dashed var(--t-border-strong); border-radius: 0.4em; }
+.ba-drop[data-over="true"] { border-style: solid; border-color: var(--t-accent); background: var(--t-info-tint); }
+.ba-drop-label { flex: 1 1 14em; }
 .ba-notice { margin: 0.8em 0 0; padding: 0.5em 0.8em; border-left: 0.2em solid var(--t-info-edge); background: var(--t-info-tint); }
 #browserai-copy { font-weight: 700; padding-left: 1.6em; padding-right: 1.6em; }
 .ba-details { margin-top: 0.8em; }

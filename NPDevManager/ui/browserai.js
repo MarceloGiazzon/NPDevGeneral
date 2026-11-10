@@ -121,7 +121,7 @@
 
   function setBusy(on) {
     S.busy = on;
-    for (const id of ["browserai-continue", "browserai-check", "browserai-undo", "browserai-rebuild", "browserai-else", "browserai-again"]) {
+    for (const id of ["browserai-continue", "browserai-check", "browserai-pick-file", "browserai-undo", "browserai-rebuild", "browserai-else", "browserai-again"]) {
       const el = $(id);
       if (el) el.disabled = on;
     }
@@ -276,22 +276,98 @@
     $("browserai-outcome-details").hidden = !prose;
   }
 
-  async function onCheck() {
-    const text = $("browserai-paste").value;
-    showOutcome("", null, "");
-    if (!text.trim()) return showOutcome("Paste the AI's answer first.", null, "");
+  // Every way an answer arrives ends here: one call to the CLI (it decides what the answer is), one result.
+  // `source` is how it arrived and is passed on as it is -- the CLI logs it and the watchers (F3) add theirs.
+  async function runCheck(ask) {
+    if (S.busy) return;
     setBusy(true);
     showOutcome("Checking the answer…", null, "");
     try {
       let r;
       try {
-        r = await invoke("relay_ingest_text", { text, code: S.code, round: null });
+        r = await ask();
       } catch (e) {
         return showOutcome(WENT_WRONG, null, String(e));
       }
       handleAnswer(r);
     } finally {
       setBusy(false);
+    }
+  }
+
+  function checkText(text, source) {
+    return runCheck(() => invoke("relay_ingest_text", { text, code: S.code, round: null, source }));
+  }
+
+  function checkFiles(files, source) {
+    return runCheck(() => invoke("relay_ingest_file", { files, code: S.code, round: null, source }));
+  }
+
+  async function onCheck() {
+    const text = $("browserai-paste").value;
+    showOutcome("", null, "");
+    if (!text.trim()) return showOutcome("Paste the AI's answer first.", null, "");
+    return checkText(text, "paste");
+  }
+
+  // Ctrl+V anywhere on this step. Only the plain text of the paste event is read (the page never reads the
+  // clipboard by itself); the text lands in the box, so what was checked is what the person can see.
+  function onPasteAnywhere(e) {
+    if (!onStep3() || S.busy) return;
+    const target = e.target;
+    const editable = target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+    if (editable) return; // the answer box has its own handler; any other box keeps its paste
+    const text = e.clipboardData ? e.clipboardData.getData("text/plain") : "";
+    if (!text.trim()) return;
+    e.preventDefault();
+    $("browserai-paste").value = text;
+    showOutcome("", null, "");
+    checkText(text, "paste");
+  }
+
+  // The native dialog. Cancelling it is not an error.
+  async function onPickFile() {
+    if (S.busy) return;
+    let files;
+    try {
+      files = await invoke("relay_pick_answer_files");
+    } catch (e) {
+      return showOutcome(WENT_WRONG, null, String(e));
+    }
+    if (Array.isArray(files) && files.length) {
+      showOutcome("", null, "");
+      checkFiles(files, "file-picker");
+    }
+  }
+
+  // Files dropped on the window (Tauri hands over their paths; the CLI reads them, this page never does).
+  // Only the open conversation's step 3 takes a drop -- anywhere else it would have nowhere to go.
+  function onStep3() {
+    return !$("screen-browserai").hidden && S.phase === "waiting" && !!S.code;
+  }
+
+  function dragging(on) {
+    $("browserai-drop").dataset.over = on && onStep3() ? "true" : "false";
+    $("browserai-drop-label").textContent = on && onStep3() ? "Drop the file now" : "Or drop the file the AI made here";
+  }
+
+  function onDropped(paths) {
+    dragging(false);
+    if ($("screen-browserai").hidden || S.busy || !Array.isArray(paths) || !paths.length) return;
+    if (!onStep3()) return announce("Drop the file in step 3, after you have asked your AI.");
+    showOutcome("", null, "");
+    checkFiles(paths, "drop");
+  }
+
+  async function wireDrop() {
+    const listen = window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.listen;
+    if (!listen) return;
+    try {
+      await listen("tauri://drag-enter", () => dragging(true));
+      await listen("tauri://drag-leave", () => dragging(false));
+      await listen("tauri://drag-drop", (e) => onDropped(e && e.payload && e.payload.paths));
+    } catch (e) {
+      /* no drop in a window that cannot listen; the button and Ctrl+V still work */
     }
   }
 
@@ -546,6 +622,9 @@
     $("browserai-check").addEventListener("click", onCheck);
     // A paste into the box is checked at once: the person already did the work of copying the answer.
     $("browserai-paste").addEventListener("paste", () => setTimeout(onCheck, 0));
+    document.addEventListener("paste", onPasteAnywhere);
+    $("browserai-pick-file").addEventListener("click", onPickFile);
+    wireDrop();
     $("browserai-outcome-button").addEventListener("click", onOutcomeButton);
     $("browserai-apply").addEventListener("click", onApply);
     $("browserai-else").addEventListener("click", () => startOver(true));

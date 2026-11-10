@@ -1223,5 +1223,10 @@
   "The field {field} of {concept} is now marked as sensitive.": "O campo {field} de {concept} agora é marcado como sensível.",
   "The field {field} of {concept} is now no longer marked as sensitive.": "O campo {field} de {concept} deixa de ser marcado como sensível.",
   "The rules that keep the data of {concept} valid change.": "As regras que mantêm válidos os dados de {concept} mudam.",
-  "The permissions needed to use {concept} change: from {from_text} to {to_text}.": "As permissões necessárias para usar {concept} mudam: de {from_text} para {to_text}."
+  "The permissions needed to use {concept} change: from {from_text} to {to_text}.": "As permissões necessárias para usar {concept} mudam: de {from_text} para {to_text}.",
+  "Or drop the file the AI made here": "Ou solte aqui o arquivo que a IA criou",
+  "Choose a file": "Escolher arquivo",
+  "You can also press Ctrl+V anywhere on this step.": "Você também pode apertar Ctrl+V em qualquer lugar desta etapa.",
+  "Drop the file now": "Solte o arquivo agora",
+  "Drop the file in step 3, after you have asked your AI.": "Solte o arquivo na etapa 3, depois de pedir à IA."
 }

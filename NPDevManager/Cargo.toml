@@ -1,9 +1,9 @@
 [package]
 name = "npdev-manager"
-version = "0.13.24"
+version = "0.13.25"
 edition = "2021"
 description = "Installs and runs NPDev for someone who will never open a terminal."
-license = "MIT"
+license = "Apache-2.0"
 repository = "https://github.com/MarceloGiazzon/NPDevGeneral"
 
 [build-dependencies]

@@ -165,6 +165,15 @@ window.__TAURI__ = {
             : t.includes("STUB-REMOVAL") ? F.relay.removal : t.includes("STUB-CREATE") ? F.relay.create
             : t.includes("STUB-READY") ? F.relay.change : F.relay.parsed;
         }
+        // A file the AI made, dropped on the window or picked: the stub answers by the file's NAME (a marker in it), the
+        // way relay_ingest_text answers by a marker in the text -- so the same captured answers serve every route in.
+        case "relay_ingest_file": {
+          window.__relayFileIngests = (window.__relayFileIngests || []).concat([args]);
+          const n = (args.files || []).join("|");
+          return n.includes("STUB-TRUNCATED") ? F.relay.truncated : n.includes("STUB-NEEDS-FIX") ? F.relay.needsFix
+            : n.includes("STUB-REMOVAL") ? F.relay.removal : n.includes("STUB-CREATE") ? F.relay.create : F.relay.parsed;
+        }
+        case "relay_pick_answer_files": window.__pickCalls = (window.__pickCalls || 0) + 1; return window.__pickAnswer || [];
         case "relay_apply": window.__relayApplies = (window.__relayApplies || []).concat([args]); return window.__applyAnswer || F.relay.apply;
         case "relay_undo": window.__relayUndos = (window.__relayUndos || []).concat([args]); return window.__undoAnswer || F.relay.undo;
         case "relay_abort": window.__relayAborts = (window.__relayAborts || []).concat([args]); return F.relay.abort;
@@ -172,7 +181,8 @@ window.__TAURI__ = {
       }
     },
   },
-  event: { listen: async () => () => {} },
+  // The window's own events (tauri://drag-drop ...): kept so a check can fire them the way Tauri would.
+  event: { listen: async (name, cb) => { (window.__listeners = window.__listeners || {})[name] = (window.__listeners[name] || []).concat([cb]); return () => {}; } },
 };
 `;
 
@@ -551,6 +561,7 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
     window.NPDevWorkspace.clear();
     window.__clip = null;
     window.__relayStarts = []; window.__relayIngests = []; window.__relayApplies = []; window.__relayUndos = []; window.__relayAborts = [];
+    window.__relayFileIngests = []; window.__pickCalls = 0; window.__pickAnswer = null;
     window.__applyAnswer = null;
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (t) => { window.__clip = t; } } });
     return window.__npdevShowScreen("browserai");
@@ -599,6 +610,62 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
     clip === fixture("relay-prompt.json").prompt && (await shown("#browserai-paste")) && !(await shown("#browserai-copy")), `${(clip || "").length} chars`);
   check("browser AI: the copy is announced in a live region", (await text("#browserai-announce")) === "Copied. Now paste it into your AI and send it.", String(await text("#browserai-announce")));
 
+  // the other ways in (T2.3): Ctrl+V with nothing focused, the file dialog, a file dropped on the window. Each one
+  // reaches the CLI as the SAME check as a typed paste, told apart only by how it arrived.
+  const NEEDS_FIX_SENTENCE = "The AI made a mistake. Copy this message and paste it in the same conversation.";
+  const TRUNCATED_SENTENCE = "The answer was cut off. Copy this message so the AI sends it complete.";
+  const fireDrag = (name, paths) => page.evaluate(([n, p]) => { (window.__listeners[n] || []).forEach((f) => f({ payload: { paths: p, position: { x: 4, y: 4 } } })); }, [name, paths]);
+  check("browser AI: step 3 offers a drop place, a Choose-a-file button and says Ctrl+V works",
+    (await shown("#browserai-drop")) && (await text("#browserai-pick-file")) === "Choose a file" && /Ctrl\+V/.test(await text("#browserai-paste-hint")) &&
+    (await page.$eval("#browserai-drop", (e) => e.getAttribute("role") === "group" && !!e.getAttribute("aria-labelledby"))), "");
+  await page.evaluate(() => {
+    document.activeElement && document.activeElement.blur();
+    const dt = new DataTransfer();
+    dt.setData("text/plain", "STUB-TRUNCATED pasted without focusing the box");
+    document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(250);
+  check("browser AI: Ctrl+V anywhere on step 3 fills the box and checks it as a paste",
+    await page.evaluate(() => { const i = window.__relayIngests.at(-1); return window.__relayIngests.length === 1 && i.source === "paste" && i.code === "ZWW4" && i.text.startsWith("STUB-TRUNCATED pasted"); }) &&
+    (await page.$eval("#browserai-paste", (e) => e.value)).startsWith("STUB-TRUNCATED pasted") && (await text("#browserai-outcome")) === TRUNCATED_SENTENCE, String(await text("#browserai-outcome")));
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.setData("text/plain", "STUB-TRUNCATED into another box");
+    document.getElementById("browserai-ask").dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(150);
+  check("browser AI: a paste into some OTHER box is left alone (only unfocused Ctrl+V is taken)",
+    (await page.evaluate(() => window.__relayIngests.length)) === 1, "");
+  await page.evaluate(() => { window.__pickAnswer = ["D:\\Downloads\\STUB-NEEDS-FIX-answer.json"]; });
+  await page.click("#browserai-pick-file");
+  await page.waitForTimeout(250);
+  check("browser AI: Choose a file hands the picked path to the CLI as a file-picker answer for this conversation",
+    await page.evaluate(() => { const i = window.__relayFileIngests.at(-1); return window.__relayFileIngests.length === 1 && i.code === "ZWW4" && i.source === "file-picker" && i.files.length === 1 && /STUB-NEEDS-FIX-answer\.json$/.test(i.files[0]); }) &&
+    (await text("#browserai-outcome")) === NEEDS_FIX_SENTENCE, String(await text("#browserai-outcome")));
+  await page.evaluate(() => { window.__pickAnswer = []; });
+  await page.click("#browserai-pick-file");
+  await page.waitForTimeout(150);
+  check("browser AI: cancelling the file dialog checks nothing and says nothing",
+    (await page.evaluate(() => window.__pickCalls)) === 2 && (await page.evaluate(() => window.__relayFileIngests.length)) === 1 && (await text("#browserai-outcome")) === NEEDS_FIX_SENTENCE, "");
+  await fireDrag("tauri://drag-enter", ["D:\\Downloads\\STUB-TRUNCATED-answer.txt"]);
+  check("browser AI: a file held over the window changes the drop place in words and in its look, not by colour alone",
+    (await page.getAttribute("#browserai-drop", "data-over")) === "true" && (await text("#browserai-drop-label")) === "Drop the file now", String(await text("#browserai-drop-label")));
+  await fireDrag("tauri://drag-leave", []);
+  check("browser AI: moving the file away puts the drop place back",
+    (await page.getAttribute("#browserai-drop", "data-over")) === "false" && (await text("#browserai-drop-label")) === "Or drop the file the AI made here", "");
+  await fireDrag("tauri://drag-enter", ["x"]);
+  await fireDrag("tauri://drag-drop", ["D:\\Downloads\\STUB-TRUNCATED-answer.txt", "D:\\Downloads\\second.json"]);
+  await page.waitForTimeout(250);
+  check("browser AI: dropping files on the window hands ALL their paths to the CLI as a drop answer",
+    await page.evaluate(() => { const i = window.__relayFileIngests.at(-1); return window.__relayFileIngests.length === 2 && i.code === "ZWW4" && i.source === "drop" && i.files.length === 2 && /second\.json$/.test(i.files[1]); }) &&
+    (await text("#browserai-outcome")) === TRUNCATED_SENTENCE && (await page.getAttribute("#browserai-drop", "data-over")) === "false", String(await text("#browserai-outcome")));
+
+  // step 3 open with its drop place and an outcome showing: measured on its own (the later scan sees step 3 folded)
+  const step3Axe = await axeScan("browserai-step3");
+  delete a11yMeasured["browserai-step3"];
+  const step3Bad = Object.values(step3Axe.counts).reduce((a, b) => a + b, 0);
+  check("browser AI: step 3 with its drop place has no accessibility violations", step3Bad === 0, JSON.stringify(step3Axe.targets).slice(0, 400));
+
   // an answer that is not ready: one sentence, one button, and the button copies the CLI's message
   await page.fill("#browserai-paste", "STUB-TRUNCATED half an answer");
   await page.click("#browserai-check");
@@ -642,6 +709,10 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   await page.click("#browserai-again");
   check("browser AI: asking for something else returns to step 1 with the request still there",
     (await shown("#browserai-ask")) && (await page.$eval("#browserai-ask", (e) => e.value)) === "a small bike repair shop", "");
+  await fireDrag("tauri://drag-drop", ["D:\\x\\STUB-CREATE.json"]);
+  await page.waitForTimeout(150);
+  check("browser AI: a file dropped when no conversation is waiting for it goes nowhere and says where to drop it",
+    (await page.evaluate(() => window.__relayFileIngests.length)) === 2 && (await text("#browserai-announce")) === "Drop the file in step 3, after you have asked your AI.", String(await text("#browserai-announce")));
   await page.evaluate(() => {
     window.__relayStarts = []; window.__relayApplies = []; window.__relayUndos = []; window.__relayAborts = [];
     window.__applyAnswer = null;
@@ -728,6 +799,13 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   const ptOutcome = await text("#browserai-outcome");
   check("browser AI: in Portuguese the outcome is one Portuguese sentence with a Portuguese button",
     ptOutcome === "A IA cometeu um erro. Copie esta mensagem e cole na mesma conversa." && (await text("#browserai-outcome-button")) === "Copiar mensagem", String(ptOutcome));
+  check("browser AI: in Portuguese the drop place, its button and the Ctrl+V hint read in Portuguese",
+    (await text("#browserai-drop-label")) === "Ou solte aqui o arquivo que a IA criou" && (await text("#browserai-pick-file")) === "Escolher arquivo" &&
+    (await text("#browserai-paste-hint")) === "Você também pode apertar Ctrl+V em qualquer lugar desta etapa.", String(await text("#browserai-drop-label")));
+  await fireDrag("tauri://drag-enter", ["x"]);
+  check("browser AI: in Portuguese a file held over the window says so in Portuguese", (await text("#browserai-drop-label")) === "Solte o arquivo agora", String(await text("#browserai-drop-label")));
+  await fireDrag("tauri://drag-leave", []);
+  check("browser AI: in Portuguese the drop place goes back to its resting sentence", (await text("#browserai-drop-label")) === "Ou solte aqui o arquivo que a IA criou", "");
   await page.fill("#browserai-paste", "STUB-REMOVAL");
   await page.click("#browserai-check");
   await page.waitForTimeout(250);

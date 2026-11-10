@@ -796,12 +796,16 @@ pub async fn run_relay_ingest_text(
     text: &str,
     code: &str,
     round: Option<u32>,
+    source: Option<&str>,
 ) -> Result<Value, String> {
     if fake_mode() {
         return relay_fixture(relay_ingest_stub(text), "relay-ingest");
     }
     if code.is_empty() || code.len() > 16 || !code.chars().all(|c| c.is_ascii_alphanumeric()) {
         return Err("the session code is not valid".to_string());
+    }
+    if let Some(s) = source {
+        check_relay_token("how the answer arrived", s)?;
     }
     let text_file = TempTextFile::create("answer", text)?;
     let text_path = text_file.path_text();
@@ -810,6 +814,10 @@ pub async fn run_relay_ingest_text(
     if let Some(r) = round_text.as_deref() {
         args.push("--round");
         args.push(r);
+    }
+    if let Some(s) = source {
+        args.push("--source");
+        args.push(s);
     }
     args.push("--json");
     let mut command = build_command(python_exe, npdev_cli, &args, java_home, None);
@@ -2817,13 +2825,14 @@ mod relay_pipe_tests {
         let dir = scratch("ingest");
         let script = write_echo_cli(&dir);
         let answer = "NPDEV-BEGIN K7Q2-1\n{ \"a\": \"ação\" }\nNPDEV-END K7Q2-1 files=1";
-        let result = run_relay_ingest_text(&python, &script, None, answer, "K7Q2", Some(1))
+        let result = run_relay_ingest_text(&python, &script, None, answer, "K7Q2", Some(1), Some("paste"))
             .await
             .expect("the stand-in CLI answers");
         assert_eq!(result["text"], answer);
         let argv = result["argv"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect::<Vec<_>>();
         assert_eq!(&argv[..3], ["ai", "relay", "ingest"], "{argv:?}");
         assert!(argv.windows(2).any(|w| w == ["--code", "K7Q2"]) && argv.windows(2).any(|w| w == ["--round", "1"]), "{argv:?}");
+        assert!(argv.windows(2).any(|w| w == ["--source", "paste"]), "the way it arrived is passed on: {argv:?}");
         assert!(!argv.iter().any(|a| a.contains("NPDEV-BEGIN")), "the answer is not on argv: {argv:?}");
         for file in result["files"].as_array().unwrap() {
             assert!(!Path::new(file.as_str().unwrap()).exists(), "temporary file left behind: {file}");
@@ -2840,8 +2849,9 @@ mod relay_pipe_tests {
         let cli = Path::new("never-run.py");
         assert!(run_relay_prompt(python, cli, None, "format-the-disk", "x", None, "English").await.is_err());
         assert!(run_relay_prompt(python, cli, None, "create", "x", None, "--json").await.is_err());
-        assert!(run_relay_ingest_text(python, cli, None, "x", "--json", None).await.is_err());
-        assert!(run_relay_ingest_text(python, cli, None, "x", "", None).await.is_err());
+        assert!(run_relay_ingest_text(python, cli, None, "x", "--json", None, None).await.is_err());
+        assert!(run_relay_ingest_text(python, cli, None, "x", "", None, None).await.is_err());
+        assert!(run_relay_ingest_text(python, cli, None, "x", "K7Q2", None, Some("--json")).await.is_err());
     }
 
     fn argv_of(result: &Value) -> Vec<String> {
