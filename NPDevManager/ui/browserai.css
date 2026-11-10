@@ -37,6 +37,13 @@
 .ba-drop { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7em; margin: 0.8em 0 0; padding: 0.8em 1em; border: 0.15em dashed var(--t-border-strong); border-radius: 0.4em; }
 .ba-drop[data-over="true"] { border-style: solid; border-color: var(--t-accent); background: var(--t-info-tint); }
 .ba-drop-label { flex: 1 1 14em; }
+/* While the clipboard is being watched: a mark, words and the way to stop. Never colour alone. */
+.ba-watch { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6em; margin: 0.8em 0 0; padding: 0.5em 0.8em; border-left: 0.2em solid var(--t-info-edge); background: var(--t-info-tint); }
+.ba-watch[hidden] { display: none; }
+.ba-watch[data-state="error"] { border-left-color: var(--t-warning-edge); background: var(--t-warning-tint); }
+.ba-watch .ba-mark { flex: none; }
+.ba-watch-text { flex: 1 1 16em; }
+.ba-setting { margin: 0.8em 0; }
 .ba-notice { margin: 0.8em 0 0; padding: 0.5em 0.8em; border-left: 0.2em solid var(--t-info-edge); background: var(--t-info-tint); }
 #browserai-copy { font-weight: 700; padding-left: 1.6em; padding-right: 1.6em; }
 .ba-details { margin-top: 0.8em; }

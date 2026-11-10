@@ -60,6 +60,20 @@ release. Ships in the next tag.
   it is and what to do (stop the other app in Running apps, then try again); the app's own
   explanation stays under See what happened. Try again on a new app that is already running now stops
   it before regenerating it, as a change always did.
+- **Use a browser AI: the answer is picked up when you copy it** (Manager 0.13.30) -- while step 3 waits,
+  the Manager looks at the clipboard once a second, so pressing the chat AI's own Copy button is the
+  whole job: no switching back, no paste. Only the Rust side reads the clipboard (`arboard`, text only,
+  `src/relay_watch.rs`); the page starts and stops it and always shows a notice with a Stop button.
+  A text is looked at only if it carries this conversation's `NPDEV-BEGIN <code>` marker, or carries no
+  marker and is a JSON object with `concepts`; anything else is dropped on the spot (not stored, not
+  logged, not even its length -- only a SHA-256 of the last text stays in memory). A match goes to
+  `npdev ai relay ingest --source clipboard-watch` and is drawn exactly like a pasted answer; the
+  prompt echo and a wrong-conversation answer stay silent. It stops when the step is left, the answer
+  is ready, the conversation ends, or the switch **Watch the clipboard while waiting for an AI**
+  (Settings > AI, on by default) is turned off. A clipboard that stays unreachable for ten seconds
+  (a locked-down desktop, another program holding it) turns the notice into "cannot watch the clipboard
+  on this computer, paste the answer" instead of claiming to watch. New events `relay-answer` and
+  `relay-watch-state`.
 - **Use a browser AI: what the answer would change, in Portuguese** -- the preview sentences and the
   removal/rename warnings were English in a Portuguese window. `npdev ai relay` now writes them in
   the conversation's language (`npdev_relay_preview_pt.py`, from each line's `code` and `params`, so

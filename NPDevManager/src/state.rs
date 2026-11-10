@@ -184,6 +184,17 @@ pub struct ManagerState {
     /// Dark with every accessibility preference off, so a missing or older manager.json loads cleanly.
     #[serde(default)]
     pub appearance: crate::themes::Appearance,
+    /// "Watch the clipboard while waiting for an AI" (Settings -> AI; relay_watch.rs). `None` -- a manager.json
+    /// from before the switch existed, or a fresh one -- means ON: it is the default, and `bool`'s own default
+    /// (off) must not decide it. Only an explicit `Some(false)` turns the watcher off.
+    #[serde(default)]
+    pub relay_watch_clipboard: Option<bool>,
+}
+
+impl ManagerState {
+    pub fn relay_watch_clipboard_on(&self) -> bool {
+        self.relay_watch_clipboard.unwrap_or(true)
+    }
 }
 
 /// One configured way to reach a model, for the Prompter tab.
@@ -323,6 +334,9 @@ pub struct AppState {
     /// boundary rather than this being a kill switch -- because a run in the middle of `build` or
     /// `start` has a real child process underway that a hard abort would orphan.
     pub ai_loop_cancel: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    /// "Use a browser AI": the clipboard watcher of the conversation the person is waiting on, if any
+    /// (relay_watch.rs). One at a time, and only while the screen's waiting step is open.
+    pub relay_watch: Mutex<Option<crate::relay_watch::RelayWatch>>,
 }
 
 impl AppState {
@@ -333,6 +347,7 @@ impl AppState {
             engine: Mutex::new(None),
             dev_app_dir: Mutex::new(None),
             ai_loop_cancel: Mutex::new(HashMap::new()),
+            relay_watch: Mutex::new(None),
         }
     }
 }

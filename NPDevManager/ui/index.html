@@ -615,6 +615,14 @@
         </div>
         <div class="ba-step-body" id="browserai-body-3">
           <p class="subtitle">When the AI has finished, copy its whole answer and paste it here.</p>
+          <!-- Always on screen while NPDev looks at the clipboard (ui/browserai.js, src/relay_watch.rs), with the
+               way to stop it. A word and a mark, never colour alone. -->
+          <div class="ba-watch" id="browserai-watch-indicator" data-state="off" role="status" aria-live="polite" hidden>
+            <span class="ba-mark" id="browserai-watch-mark" aria-hidden="true">●</span>
+            <span class="ba-watch-text" id="browserai-watch-text"></span>
+            <button type="button" class="btn ghost" id="browserai-watch-stop" hidden>Stop watching</button>
+            <button type="button" class="btn ghost" id="browserai-watch-start" hidden>Watch again</button>
+          </div>
           <div class="ba-drop" id="browserai-drop" role="group" aria-labelledby="browserai-drop-label" data-over="false">
             <span id="browserai-drop-label" class="ba-drop-label">Or drop the file the AI made here</span>
             <button type="button" class="btn" id="browserai-pick-file">Choose a file</button>
@@ -1059,6 +1067,12 @@
         never show one back.
       </p>
       <div id="providers-store" class="providers-store"></div>
+      <!-- "Use a browser AI": the only thing NPDev ever reads off the clipboard, and only while that screen waits
+           for an answer (src/relay_watch.rs). On unless the person turns it off here. -->
+      <div class="ba-setting" id="relay-watch-setting">
+        <label class="ba-field"><input type="checkbox" id="relay-watch-setting-box" checked> Watch the clipboard while waiting for an AI</label>
+        <p class="status-line" id="relay-watch-setting-hint">With "Use a browser AI", NPDev can notice the AI's answer when you copy it, so you do not have to paste it. It only looks while that screen is waiting, shows a notice the whole time, keeps only text that is that answer, and forgets everything else you copy.</p>
+      </div>
       <div class="packs-toolbar">
         <div class="tabbar" id="ai-views">
           <button data-ai-view="providers" class="active">PROVIDERS</button>

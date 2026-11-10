@@ -106,6 +106,7 @@
     S.phase = phase;
     S.expanded = {};
     render();
+    syncWatch();
   }
 
   function render() {
@@ -460,6 +461,97 @@
     } catch (e) {
       /* no drop in a window that cannot listen; the button and Ctrl+V still work */
     }
+  }
+
+  // ----------------------------------------------------------- watching the clipboard (the Rust side's job)
+
+  // While step 3 is open NPDev can notice the AI's answer the moment the person copies it (src/relay_watch.rs;
+  // Settings -> AI turns it off for good). This page never reads the clipboard: it starts and stops the watcher,
+  // draws the notice that it is on -- always, with the way to stop it -- and draws what the watcher found, which
+  // comes back as the same ingest result a pasted answer gets. `WATCH.code` is the conversation a watcher was
+  // asked for; `WATCH.stopped` is the one the person pressed Stop for, which stays stopped until they say so.
+  const WATCH = { code: null, state: "off", stopped: null };
+  const WATCH_ON = "NPDev is watching your clipboard for the AI's answer. Anything else you copy is ignored and forgotten.";
+  const WATCH_STOPPED = "NPDev is not watching your clipboard. Paste the answer below.";
+  const WATCH_ERROR = "NPDev cannot watch the clipboard on this computer. Paste the answer below.";
+  const WATCH_GOT = "Got the answer from your clipboard.";
+
+  function drawWatch() {
+    const box = $("browserai-watch-indicator");
+    const stoppedHere = onStep3() && WATCH.stopped === S.code;
+    const show = onStep3() && (stoppedHere || WATCH.state === "on" || WATCH.state === "error");
+    box.hidden = !show;
+    if (!show) return;
+    const state = stoppedHere ? "stopped" : WATCH.state;
+    box.dataset.state = state;
+    $("browserai-watch-mark").textContent = state === "on" ? "●" : state === "stopped" ? "○" : "⚠";
+    // English, like everything drawn on the page: the language engine translates it (and re-draws it on a change).
+    $("browserai-watch-text").textContent = state === "on" ? WATCH_ON : state === "stopped" ? WATCH_STOPPED : WATCH_ERROR;
+    $("browserai-watch-stop").hidden = state !== "on";
+    $("browserai-watch-start").hidden = state !== "stopped";
+  }
+
+  // Idempotent: asks for exactly the watcher this moment calls for -- one for the open conversation while its
+  // step 3 is on screen -- and for no watcher at any other moment (another step, another screen, no conversation).
+  async function syncWatch() {
+    const want = onStep3() && WATCH.stopped !== S.code ? S.code : null;
+    if (want === WATCH.code) return drawWatch();
+    WATCH.code = want;
+    if (!want) {
+      WATCH.state = "off";
+      drawWatch();
+      try {
+        await invoke("relay_watch_stop");
+      } catch (e) {
+        /* nothing to stop, or the window is closing */
+      }
+      return;
+    }
+    WATCH.state = "off";
+    drawWatch();
+    try {
+      const r = await invoke("relay_watch_start", { code: want });
+      if (WATCH.code !== want) return; // the person moved on while it started: the next sync decides
+      WATCH.state = r && r.watching ? "on" : "off"; // off by Settings: no watcher, so no notice either
+    } catch (e) {
+      if (WATCH.code === want) WATCH.state = "error";
+    }
+    drawWatch();
+  }
+
+  function onWatchState(p) {
+    if (!p || p.code !== S.code || p.code !== WATCH.code) return;
+    WATCH.state = p.state === "on" || p.state === "error" ? p.state : "off";
+    drawWatch();
+  }
+
+  // The watcher found an answer and the CLI checked it: draw it exactly as if it had been pasted.
+  function onWatchedAnswer(r) {
+    if (!r || r.code !== S.code || !onStep3()) return;
+    announce(WATCH_GOT);
+    handleAnswer(r);
+    refreshRounds();
+  }
+
+  async function wireWatch() {
+    const listen = window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.listen;
+    if (!listen) return;
+    try {
+      await listen("relay-watch-state", (e) => onWatchState(e && e.payload));
+      await listen("relay-answer", (e) => onWatchedAnswer(e && e.payload));
+    } catch (e) {
+      /* no watching in a window that cannot listen; pasting still works */
+    }
+  }
+
+  function onWatchStop() {
+    WATCH.stopped = S.code;
+    syncWatch();
+  }
+
+  function onWatchAgain() {
+    WATCH.stopped = null;
+    syncWatch();
   }
 
   // One checked answer: READY goes to the preview; anything else is one sentence and at most one button.
@@ -863,6 +955,25 @@
 
   // ------------------------------------------------------------------------------------- wiring
 
+  // The switch lives in Settings -> AI (index.html #relay-watch-setting); this file owns the relay, so it wires it.
+  async function wireWatchSetting() {
+    const box = $("relay-watch-setting-box");
+    if (!box) return;
+    try {
+      box.checked = (await invoke("relay_watch_setting_get")) !== false;
+    } catch (e) {
+      /* the default is on, and the box starts ticked */
+    }
+    box.addEventListener("change", async () => {
+      const wanted = box.checked;
+      try {
+        box.checked = (await invoke("relay_watch_setting_set", { enabled: wanted })) !== false;
+      } catch (e) {
+        box.checked = !wanted; // not saved: the box says what is really true
+      }
+    });
+  }
+
   function initBrowserAi() {
     $("browserai-mode-api").addEventListener("click", () => switchTo("prompter", "browserai-ask", "browserai-app", "prompter-ask", "prompter-app"));
     $("prompter-mode-browser").addEventListener("click", () => {
@@ -879,6 +990,15 @@
     document.addEventListener("paste", onPasteAnywhere);
     $("browserai-pick-file").addEventListener("click", onPickFile);
     wireDrop();
+    wireWatch();
+    $("browserai-watch-stop").addEventListener("click", onWatchStop);
+    $("browserai-watch-start").addEventListener("click", onWatchAgain);
+    // Leaving this screen (or coming back to it) is when the watcher must stop (or start again).
+    new MutationObserver(syncWatch).observe($("screen-browserai"), { attributes: true, attributeFilter: ["hidden"] });
+    // A page that has just loaded has no notice on it, so a watcher left over from before the load (a dev reload)
+    // must not keep running unseen.
+    invoke("relay_watch_stop").catch(() => {});
+    wireWatchSetting();
     $("browserai-outcome-button").addEventListener("click", onOutcomeButton);
     $("browserai-apply").addEventListener("click", onApply);
     $("browserai-else").addEventListener("click", () => startOver(true));

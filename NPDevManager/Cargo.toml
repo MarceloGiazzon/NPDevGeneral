@@ -1,6 +1,6 @@
 [package]
 name = "npdev-manager"
-version = "0.13.29"
+version = "0.13.30"
 edition = "2021"
 description = "Installs and runs NPDev for someone who will never open a terminal."
 license = "Apache-2.0"
@@ -34,6 +34,10 @@ dirs = "6"
 # Native multi-folder picker for D7's "add a folder to inspect" -- the same dialog every other
 # Windows app uses for "pick some folders," instead of requiring an exact path typed by hand.
 rfd = "0.15"
+# "Use a browser AI" watches the clipboard while the person waits for their chat AI (relay_watch.rs):
+# text only -- no `image-data`, so no image decoder is pulled in for something that must never look at
+# anything but a string.
+arboard = { version = "3", default-features = false }
 
 # The Prompter's provider credentials live in the OS credential store, never in manager.json.
 # Per-target because the crate needs a platform backend chosen at compile time, and the right one

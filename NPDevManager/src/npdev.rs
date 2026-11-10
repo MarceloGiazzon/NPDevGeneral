@@ -848,7 +848,7 @@ fn relay_ingest_stub(marker_text: &str) -> &'static str {
 }
 
 /// A session code is what `relay start|prompt` printed: letters and digits, nothing else.
-fn check_relay_code(code: &str) -> Result<(), String> {
+pub(crate) fn check_relay_code(code: &str) -> Result<(), String> {
     if code.is_empty() || code.len() > 16 || !code.chars().all(|c| c.is_ascii_alphanumeric()) {
         return Err("the session code is not valid".to_string());
     }

@@ -201,6 +201,12 @@ window.__TAURI__ = {
         case "relay_apply": window.__relayApplies = (window.__relayApplies || []).concat([args]); return window.__applyAnswer || F.relay.apply;
         case "relay_undo": window.__relayUndos = (window.__relayUndos || []).concat([args]); return window.__undoAnswer || F.relay.undo;
         case "relay_abort": window.__relayAborts = (window.__relayAborts || []).concat([args]); return F.relay.abort;
+        // The clipboard watcher (F3 T3.1): there is no clipboard here, so a check plays the Rust side by firing the
+        // "relay-watch-state" and "relay-answer" listeners itself; these only record who asked for what.
+        case "relay_watch_start": window.__watchStarts = (window.__watchStarts || []).concat([args]); return window.__watchStartAnswer || { ok: true, watching: true, code: args.code };
+        case "relay_watch_stop": window.__watchStops = (window.__watchStops || 0) + 1; return { ok: true, watching: false };
+        case "relay_watch_setting_get": return window.__watchSetting !== false;
+        case "relay_watch_setting_set": window.__watchSettingSets = (window.__watchSettingSets || []).concat([args]); window.__watchSetting = args.enabled; return args.enabled;
         default: return {};
       }
     },
@@ -587,6 +593,7 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
     window.__clip = null;
     window.__relayStarts = []; window.__relayIngests = []; window.__relayApplies = []; window.__relayUndos = []; window.__relayAborts = [];
     window.__relayFileIngests = []; window.__pickCalls = 0; window.__pickAnswer = null;
+    window.__watchStarts = []; window.__watchStops = 0; window.__watchStartAnswer = null; window.__watchSettingSets = [];
     window.__launchLog = []; window.__fireOpsDone = true; window.__npdevPollMs = 5; window.__probeQueue = null; window.__buildExit = 0; window.__startError = null; window.__opened = null;
     window.__applyAnswer = null;
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (t) => { window.__clip = t; } } });
@@ -639,6 +646,41 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   check("browser AI: COPY puts the CLI's text on the clipboard byte for byte and moves to step 3",
     clip === fixture("relay-prompt.json").prompt && (await shown("#browserai-paste")) && !(await shown("#browserai-copy")), `${(clip || "").length} chars`);
   check("browser AI: the copy is announced in a live region", (await text("#browserai-announce")) === "Copied. Now paste it into your AI and send it.", String(await text("#browserai-announce")));
+
+  // the clipboard watcher (F3 T3.1): on while step 3 is open, always with a notice and a way to stop it. The page never
+  // reads the clipboard; the Rust side does, and these checks play it by firing the events it emits.
+  const fireWatch = (name, payload) => page.evaluate(([n, p]) => { (window.__listeners[n] || []).forEach((f) => f({ payload: p })); }, [name, payload]);
+  const WATCH_ON_TEXT = "NPDev is watching your clipboard for the AI's answer. Anything else you copy is ignored and forgotten.";
+  check("browser AI: waiting for the answer starts the clipboard watcher for THIS conversation, and says so with a way to stop it",
+    await page.evaluate(() => window.__watchStarts.length === 1 && window.__watchStarts[0].code === "ZWW4") &&
+    (await shown("#browserai-watch-indicator")) && (await text("#browserai-watch-text")) === WATCH_ON_TEXT &&
+    (await shown("#browserai-watch-stop")) && !(await shown("#browserai-watch-start")) &&
+    (await page.$eval("#browserai-watch-indicator", (e) => e.getAttribute("role") === "status" && e.getAttribute("aria-live") === "polite")), JSON.stringify(await page.evaluate(() => window.__watchStarts)));
+  await fireWatch("relay-watch-state", { state: "error", code: "ZWW4" });
+  check("browser AI: a clipboard that cannot be watched says so in words and leaves pasting as the way",
+    (await text("#browserai-watch-text")) === "NPDev cannot watch the clipboard on this computer. Paste the answer below." && !(await shown("#browserai-watch-stop")) && (await page.getAttribute("#browserai-watch-indicator", "data-state")) === "error", String(await text("#browserai-watch-text")));
+  await fireWatch("relay-watch-state", { state: "on", code: "ZWW4" });
+  await fireWatch("relay-watch-state", { state: "error", code: "OTHER" });
+  check("browser AI: a watcher state for ANOTHER conversation changes nothing here", (await text("#browserai-watch-text")) === WATCH_ON_TEXT, "");
+  await page.evaluate(() => { window.__relayStatuses = []; });
+  await fireWatch("relay-answer", Object.assign({}, fixture("relay-ingest-truncated.json"), { source: "clipboard-watch", code: "OTHER" }));
+  await page.waitForTimeout(150);
+  check("browser AI: an answer the watcher found for ANOTHER conversation is not drawn", !(await shown("#browserai-outcome")) && (await text("#browserai-announce")) === "Copied. Now paste it into your AI and send it.", String(await text("#browserai-outcome")));
+  await fireWatch("relay-answer", Object.assign({}, fixture("relay-ingest-truncated.json"), { source: "clipboard-watch", code: "ZWW4" }));
+  await page.waitForTimeout(250);
+  check("browser AI: an answer the watcher found is drawn as if it had been pasted, and the person is told where it came from",
+    (await text("#browserai-outcome")) === "The answer was cut off. Copy this message so the AI sends it complete." && (await text("#browserai-announce")) === "Got the answer from your clipboard." &&
+    (await page.evaluate(() => window.__relayStatuses.length)) === 1 && (await page.evaluate(() => window.__relayIngests.length)) === 0, String(await text("#browserai-outcome")));
+  await page.click("#browserai-watch-stop");
+  await page.waitForTimeout(150);
+  check("browser AI: Stop watching stops the watcher and says it is not watching, with a way to start again",
+    (await page.evaluate(() => window.__watchStops)) === 1 && (await text("#browserai-watch-text")) === "NPDev is not watching your clipboard. Paste the answer below." &&
+    !(await shown("#browserai-watch-stop")) && (await shown("#browserai-watch-start")), String(await page.evaluate(() => window.__watchStops)));
+  await page.click("#browserai-watch-start");
+  await page.waitForTimeout(150);
+  check("browser AI: Watch again asks for the watcher again",
+    (await page.evaluate(() => window.__watchStarts.length)) === 2 && (await text("#browserai-watch-text")) === WATCH_ON_TEXT && (await shown("#browserai-watch-stop")), "");
+  await page.evaluate(() => { window.__relayStatuses = []; window.__relayIngests = []; });
 
   // the other ways in (T2.3): Ctrl+V with nothing focused, the file dialog, a file dropped on the window. Each one
   // reaches the CLI as the SAME check as a typed paste, told apart only by how it arrived.
@@ -798,6 +840,20 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
     (await shown("#browserai-step-4")) && createPreview[0] === "A new app with 2 kinds of records and 7 fields." && createPreview.length === fixture("relay-ingest-ready-create.json").preview.sentences.length, JSON.stringify(createPreview));
   check("browser AI: step 4 asks for no tick when the CLI asked for none",
     (await page.$$eval("#browserai-confirms input", (b) => b.length)) === 0 && !(await page.$eval("#browserai-apply", (b) => b.disabled)), "");
+  check("browser AI: a ready answer ends the watching -- the notice goes and the watcher is stopped",
+    !(await shown("#browserai-watch-indicator")) && (await page.evaluate(() => window.__watchStops)) >= 2, String(await page.evaluate(() => window.__watchStops)));
+
+  // the Settings switch (the box lives on the AI settings screen; clicking it needs no screen change)
+  check("Settings: the clipboard-watching switch starts ticked (on is the default) and says what it does",
+    (await page.$eval("#relay-watch-setting-box", (b) => b.checked)) && /forgets everything else you copy/.test(await text("#relay-watch-setting-hint")), "");
+  await page.evaluate(() => document.getElementById("relay-watch-setting-box").click());
+  await page.waitForTimeout(150);
+  check("Settings: turning the switch off is saved and shown",
+    await page.evaluate(() => window.__watchSettingSets.length === 1 && window.__watchSettingSets[0].enabled === false) && !(await page.$eval("#relay-watch-setting-box", (b) => b.checked)), "");
+  await page.evaluate(() => document.getElementById("relay-watch-setting-box").click());
+  await page.waitForTimeout(150);
+  check("Settings: turning it back on is saved and shown",
+    await page.evaluate(() => window.__watchSettingSets.length === 2 && window.__watchSettingSets[1].enabled === true) && (await page.$eval("#relay-watch-setting-box", (b) => b.checked)), "");
   await page.evaluate(() => {
     window.__applyAnswer = Object.assign({}, window.__FIXTURES__.relay.apply, { created: true, backupPath: null, intent: "create", appDir: "/home/you/NPDev/Apps/Bike-shop" });
     window.__probeQueue = ["stopped", "running"]; // not up yet on the first look, up on the second
