@@ -139,13 +139,20 @@ def _plain_folder_name(name: str) -> bool:
 
 def _apply_create(session: dict, number: int, entry: dict, model_text: str, parent_dir) -> dict:
     target = session.get("appDir")
+    wrapper = None  # the app's own folder, when this call is the one that makes it
     if not target:
         name = (session.get("newAppName") or "").strip()
         if not name or not parent_dir:
             return _refuse("no-target", detail="say where the new app goes (--parent-dir) and what it is called")
         if not _plain_folder_name(name):
             return _refuse("bad-name", detail="the new app's name must be one plain folder name")
-        target = str(Path(parent_dir) / name)
+        # BUILD-5: `<parent>/<name>/<name>`, the layout the Manager's New app screen makes. Generation writes the
+        # app to `<model dir>-app` and its ArtifactNP to `<model dir>/../ArtifactNP`, so two apps whose model
+        # folders sat side by side in one parent would share -- and overwrite -- a single ArtifactNP.
+        wrapper = Path(parent_dir) / name
+        target = str(wrapper / name)
+        if wrapper.exists():
+            wrapper = None
     target_path = Path(target)
     existed = target_path.exists()
     cli = engine._cli_module()
@@ -163,7 +170,7 @@ def _apply_create(session: dict, number: int, entry: dict, model_text: str, pare
     report = engine.run_validation(model_path, rs.round_dir(session, number) / "validation-after-apply.json")
     if report is not None and report.get("status") == "failed":
         if not existed:
-            shutil.rmtree(target_path, ignore_errors=True)
+            shutil.rmtree(wrapper or target_path, ignore_errors=True)
         return _refuse("validation-failed-after-write", errors=engine.validation_lines(report))
     history = _commit_model(target_path, f"npdev relay: model from a browser AI (conversation {session['code']})")
     applied_at = _now()

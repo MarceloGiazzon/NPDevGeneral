@@ -40,6 +40,10 @@
     busy: false,
     expanded: {}, // a finished step the user opened again
     scanned: false,
+    builtAppDir: null, // the generated app of the applied answer: what is built, started and opened
+    launching: false, // building / starting it right now
+    launchToken: 0, // a later launch (or starting over) makes an earlier one stop drawing
+    openUrl: null,
   };
 
   // What the CLI says about an answer that is not ready, as one plain sentence and at most one button.
@@ -123,7 +127,8 @@
     S.busy = on;
     for (const id of ["browserai-continue", "browserai-check", "browserai-pick-file", "browserai-undo", "browserai-rebuild", "browserai-else", "browserai-again"]) {
       const el = $(id);
-      if (el) el.disabled = on;
+      // Undo and Update would fight the build that is running: they wait for it. Asking for something else does not.
+      if (el) el.disabled = on || (S.launching && (id === "browserai-undo" || id === "browserai-rebuild"));
     }
     // Apply is never just "not busy": it also waits for every box the preview asked for.
     updateApply();
@@ -510,9 +515,24 @@
       }
       S.applied = r;
       showDone(r);
+      S.builtAppDir = await generatedAppDir(r);
     } finally {
       setBusy(false);
       updateApply();
+    }
+    // Not awaited: a build takes minutes and the person may leave this screen or ask for something else meanwhile.
+    if (S.builtAppDir) launch();
+  }
+
+  // The folder the built app lives in. A change already knows it (the app that was picked); a new app was made as a
+  // model folder, and the one place that knows where its app goes is the Rust side.
+  async function generatedAppDir(r) {
+    if (r.created !== true) return S.appDir;
+    if (window.__npdevRefreshMonitor) window.__npdevRefreshMonitor().catch(() => {}); // the app list now has it
+    try {
+      return await invoke("relay_generated_app_dir", { modelDir: r.appDir });
+    } catch (e) {
+      return null;
     }
   }
 
@@ -521,7 +541,9 @@
   function showDone(r) {
     const created = r.created === true;
     note("browserai-progress", created ? "Done. Your new app was created." : "Done. The change is in your app.");
-    $("browserai-rebuild").hidden = created || !S.appDir;
+    showLaunchButtons({});
+    note("browserai-launch", "");
+    $("browserai-launch-details").hidden = true;
     $("browserai-go-apps").hidden = !created;
     $("browserai-undo").hidden = created || !r.backupPath; // a new app is not undone here
     setPhase("done");
@@ -532,21 +554,136 @@
     if (window.__npdevShowScreen) window.__npdevShowScreen("apps");
   }
 
-  // The same two calls the Prompter makes after it applies a model: regenerate, then build. The build streams
-  // its progress to the Monitor, so that is where the person is sent to watch it.
-  async function onRebuild() {
-    if (!S.appDir) return;
-    setBusy(true);
-    note("browserai-progress", "Updating the app…");
+  // ---------------------------------------------------- after Apply: build it, start it, wait until it answers
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  function showLaunchButtons({ open, rebuild, seeRun }) {
+    $("browserai-open").hidden = !open;
+    $("browserai-rebuild").hidden = !rebuild;
+    $("browserai-see-run").hidden = !seeRun;
+  }
+
+  async function probe(appDir) {
     try {
-      await invoke("generate_app_from_model", { appDir: S.appDir });
-      await invoke("run_ops_script", { appDir: S.appDir, script: "build-finalapp" });
-      if (window.__npdevShowScreen) window.__npdevShowScreen("monitor");
+      return (await invoke("monitor_probe", { appDir, includeInfo: false })) || {};
     } catch (e) {
-      note("browserai-progress", WENT_WRONG, true);
-    } finally {
-      setBusy(false);
+      return {};
     }
+  }
+
+  // build-finalapp streams `ops-event`; its `done` says how it ended. The listener is in place BEFORE the build
+  // starts (a fast failure must not be missed) and only a build's own `done` counts (stopping an app is an ops
+  // script too, and the Monitor shows every one of them).
+  function runBuild(appDir) {
+    return new Promise((resolve, reject) => {
+      let unlisten = null;
+      let finished = false;
+      const finish = (value, failed) => {
+        if (finished) return;
+        finished = true;
+        if (unlisten) unlisten();
+        failed ? reject(value) : resolve(value);
+      };
+      window.__TAURI__.event
+        .listen("ops-event", (ev) => {
+          const p = (ev && ev.payload) || {};
+          if (p.kind === "done" && (!p.script || p.script === "build-finalapp")) finish({ exitCode: p.exitCode, logFile: p.logFile || null }, false);
+        })
+        .then((fn) => {
+          if (finished) return fn();
+          unlisten = fn;
+          return invoke("run_ops_script", { appDir, script: "build-finalapp", confirm: null });
+        })
+        .catch((e) => finish(e, true));
+    });
+  }
+
+  // Generate, build, start and wait until the app answers; the progress is one live sentence. Every wait looks at
+  // whether this launch is still the current one (starting over, or a newer launch, ends the older one's drawing).
+  async function launch() {
+    const appDir = S.builtAppDir;
+    if (!appDir || S.launching) return;
+    const token = ++S.launchToken;
+    const current = () => token === S.launchToken;
+    const pollMs = window.__npdevPollMs || 3000; // the render check shortens it
+    const say = (text) => current() && note("browserai-launch", text, false);
+    const stop = (text, details) => {
+      if (!current()) return;
+      note("browserai-launch", text, true);
+      $("browserai-launch-prose").textContent = details || "";
+      $("browserai-launch-details").hidden = !details;
+      showLaunchButtons({ rebuild: true, seeRun: true });
+    };
+    S.launching = true;
+    S.openUrl = null;
+    showLaunchButtons({});
+    $("browserai-launch-details").hidden = true;
+    setBusy(S.busy);
+    try {
+      say("Preparing the app…");
+      try {
+        await invoke("generate_app_from_model", { appDir });
+      } catch (e) {
+        return stop("The app could not be built.", String(e));
+      }
+      // A running app holds its own files: it is stopped before it is built again, and started afterwards.
+      if (S.applied && S.applied.created !== true && (await probe(appDir)).health === "running") {
+        say("Stopping the running app so it can be rebuilt…");
+        try {
+          await invoke("stop_app", { appDir });
+        } catch (e) {
+          return stop("The app could not be built.", String(e));
+        }
+        for (let i = 0; i < 15 && current() && (await probe(appDir)).health === "running"; i++) await sleep(pollMs / 3);
+      }
+      if (!current()) return;
+      say("Building the app. This can take a few minutes.");
+      let built;
+      try {
+        built = await runBuild(appDir);
+      } catch (e) {
+        return stop("The app could not be built.", String(e));
+      }
+      if (!current()) return;
+      if (built.exitCode !== 0) return stop("The app could not be built.", `exit code ${built.exitCode}${built.logFile ? `\n${built.logFile}` : ""}`);
+      say("Starting the app…");
+      try {
+        await invoke("start_app", { appDir });
+      } catch (e) {
+        // Started earlier from this window and still up: nothing to start, only to wait for.
+        if (!/already running/i.test(String(e))) return stop("The app could not be started.", String(e));
+      }
+      let seen = {};
+      for (let i = 0; i < 60 && current(); i++) {
+        seen = await probe(appDir);
+        if (seen.health === "running") break;
+        await sleep(pollMs);
+      }
+      if (!current()) return;
+      if (seen.health !== "running") return stop("The app was started but has not answered yet. Look at it in Running apps.", seen.healthDetail || "");
+      S.openUrl = seen.baseUrl || null;
+      say("Your app is running.");
+      showLaunchButtons({ open: !!S.openUrl });
+    } finally {
+      if (current()) {
+        S.launching = false;
+        setBusy(S.busy);
+      }
+    }
+  }
+
+  async function onOpenApp() {
+    if (!S.openUrl) return;
+    try {
+      await invoke("open_url", { url: S.openUrl });
+    } catch (e) {
+      note("browserai-launch", WENT_WRONG, true);
+    }
+  }
+
+  function onSeeRun() {
+    if (window.__npdevShowScreen) window.__npdevShowScreen("monitor");
   }
 
   const UNDO_REFUSED = {
@@ -573,6 +710,8 @@
       }
       if (r && r.ok === true) {
         $("browserai-undo").hidden = true;
+        note("browserai-launch", "The app still shows the change until you update it.");
+        showLaunchButtons({ rebuild: !!S.builtAppDir });
         return note("browserai-progress", "Undone. Your app is as it was before.");
       }
       note("browserai-progress", (r && UNDO_REFUSED[r.error]) || "Nothing was undone.", true);
@@ -598,6 +737,13 @@
     S.promptText = "";
     S.result = null;
     S.applied = null;
+    S.launchToken++; // a build still running goes on, but no longer draws here
+    S.launching = false;
+    S.builtAppDir = null;
+    S.openUrl = null;
+    note("browserai-launch", "");
+    $("browserai-launch-details").hidden = true;
+    showLaunchButtons({});
     $("browserai-paste").value = "";
     showOutcome("", null, "");
     note("browserai-apply-note", "");
@@ -629,7 +775,9 @@
     $("browserai-apply").addEventListener("click", onApply);
     $("browserai-else").addEventListener("click", () => startOver(true));
     $("browserai-again").addEventListener("click", () => startOver(false));
-    $("browserai-rebuild").addEventListener("click", onRebuild);
+    $("browserai-rebuild").addEventListener("click", launch);
+    $("browserai-open").addEventListener("click", onOpenApp);
+    $("browserai-see-run").addEventListener("click", onSeeRun);
     $("browserai-go-apps").addEventListener("click", onGoApps);
     $("browserai-undo").addEventListener("click", onUndo);
     for (let n = 1; n <= 4; n++) {

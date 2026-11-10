@@ -87,8 +87,17 @@ window.__TAURI__ = {
         // Only the Home block turns the providers fixture on: the AI providers screen drawing it exposes provider
         // names and a key tooltip that are not in the pt catalogue yet (a known gap, not Home's).
         case "providers_list": return window.__providersBroken ? Promise.reject("python was not found") : F.providers;
-        case "start_app": window.__started = args.appDir; return null;
-        case "stop_app": window.__stopped = args.appDir; return { ok: true, how: "stub" };
+        // The browser-AI launch (build, start, wait): every step is logged in order so a check can read the sequence.
+        case "start_app": window.__started = args.appDir; (window.__launchLog = window.__launchLog || []).push("start:" + args.appDir); if (window.__startError) throw window.__startError; return null;
+        case "stop_app": window.__stopped = args.appDir; (window.__launchLog = window.__launchLog || []).push("stop:" + args.appDir); return { ok: true, how: "stub" };
+        case "generate_app_from_model": (window.__launchLog = window.__launchLog || []).push("generate:" + args.appDir); return null;
+        case "run_ops_script":
+          (window.__launchLog = window.__launchLog || []).push("run:" + args.script + ":" + args.appDir);
+          // Like the real one: the call returns at once and the build's end arrives later as an ops-event. Only the
+          // browser-AI block turns this on, so the Monitor's own checks are not handed events they never asked for.
+          if (window.__fireOpsDone) setTimeout(() => (window.__listeners["ops-event"] || []).forEach((f) => f({ payload: { kind: "done", script: args.script, exitCode: window.__buildExit || 0, logFile: "C:/apps/logs/ops-build.log" } })), 30);
+          return null;
+        case "relay_generated_app_dir": return args.modelDir + "-app";
         case "studio_history_list": return [];
         case "jobs_list": window.__jobsListCalls = (window.__jobsListCalls || 0) + 1; return window.__jobsEmpty ? { ok: true, jobs: [], summary: {} } : F.jobs;
         case "jobs_action": window.__jobsActions = (window.__jobsActions || []).concat([args.action + ":" + args.jobId]); return { ok: true };
@@ -119,7 +128,14 @@ window.__TAURI__ = {
         case "get_inspect_paths": return ["D:\\\\WorkSpace\\\\NPDev\\\\Build"];
         case "set_inspect_paths": return null;
         case "monitor_scan": return window.__scanEmpty ? F.scanEmpty : F.scan;
-        case "monitor_probe": case "read_info_json": return F.probe;
+        // __probeQueue: the health the next probes report (the last one repeats) -- how a check scripts "still stopped, then up".
+        case "monitor_probe": case "read_info_json": {
+          if (name === "monitor_probe" && window.__probeQueue) {
+            const h = window.__probeQueue.length > 1 ? window.__probeQueue.shift() : window.__probeQueue[0];
+            return Object.assign({}, F.probe, { health: h, healthDetail: h === "running" ? null : "nothing is listening on 127.0.0.1:8411" });
+          }
+          return F.probe;
+        }
         case "monitor_logs": return F.logs;
         case "engine_status": return Object.assign({}, F.engineRunning, { startedByThisWindow: false });
         case "explore_list": return F.list;
@@ -562,6 +578,7 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
     window.__clip = null;
     window.__relayStarts = []; window.__relayIngests = []; window.__relayApplies = []; window.__relayUndos = []; window.__relayAborts = [];
     window.__relayFileIngests = []; window.__pickCalls = 0; window.__pickAnswer = null;
+    window.__launchLog = []; window.__fireOpsDone = true; window.__npdevPollMs = 5; window.__probeQueue = null; window.__buildExit = 0; window.__startError = null; window.__opened = null;
     window.__applyAnswer = null;
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (t) => { window.__clip = t; } } });
     return window.__npdevShowScreen("browserai");
@@ -696,12 +713,24 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
     (await shown("#browserai-step-4")) && createPreview[0] === "A new app with 2 kinds of records and 7 fields." && createPreview.length === fixture("relay-ingest-ready-create.json").preview.sentences.length, JSON.stringify(createPreview));
   check("browser AI: step 4 asks for no tick when the CLI asked for none",
     (await page.$$eval("#browserai-confirms input", (b) => b.length)) === 0 && !(await page.$eval("#browserai-apply", (b) => b.disabled)), "");
-  await page.evaluate(() => { window.__applyAnswer = Object.assign({}, window.__FIXTURES__.relay.apply, { created: true, backupPath: null, intent: "create", appDir: "/home/you/NPDev/Apps/Bike-shop" }); });
+  await page.evaluate(() => {
+    window.__applyAnswer = Object.assign({}, window.__FIXTURES__.relay.apply, { created: true, backupPath: null, intent: "create", appDir: "/home/you/NPDev/Apps/Bike-shop" });
+    window.__probeQueue = ["stopped", "running"]; // not up yet on the first look, up on the second
+  });
   await page.click("#browserai-apply");
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(300);
   const createApply = await page.evaluate(() => window.__relayApplies);
   check("browser AI: Apply sends the conversation, no ticks, and the folder NPDev already keeps apps in",
     createApply.length === 1 && createApply[0].code === "ZWW4" && createApply[0].confirmed.length === 0 && createApply[0].parentDir === "D:\\WorkSpace\\NPDev\\Build", JSON.stringify(createApply));
+  check("browser AI: a new app is generated, built and started in that order, in ITS generated folder (never the model folder)",
+    JSON.stringify(await page.evaluate(() => window.__launchLog)) === JSON.stringify([
+      "generate:/home/you/NPDev/Apps/Bike-shop-app", "run:build-finalapp:/home/you/NPDev/Apps/Bike-shop-app", "start:/home/you/NPDev/Apps/Bike-shop-app"]),
+    JSON.stringify(await page.evaluate(() => window.__launchLog)));
+  check("browser AI: once the app answers, it says so and offers to open it",
+    (await text("#browserai-launch")) === "Your app is running." && (await shown("#browserai-open")) && !(await shown("#browserai-rebuild")) && !(await shown("#browserai-see-run")), String(await text("#browserai-launch")));
+  await page.click("#browserai-open");
+  await page.waitForTimeout(100);
+  check("browser AI: Open the app opens the address the Monitor reports for it", (await page.evaluate(() => window.__opened)) === "http://localhost:8411", String(await page.evaluate(() => window.__opened)));
   check("browser AI: a created app ends on 'Show my apps', with no Undo offered for it",
     (await text("#browserai-progress")) === "Done. Your new app was created." && (await shown("#browserai-go-apps")) && !(await shown("#browserai-undo")) && !(await shown("#browserai-rebuild")), String(await text("#browserai-progress")));
 
@@ -715,7 +744,8 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
     (await page.evaluate(() => window.__relayFileIngests.length)) === 2 && (await text("#browserai-announce")) === "Drop the file in step 3, after you have asked your AI.", String(await text("#browserai-announce")));
   await page.evaluate(() => {
     window.__relayStarts = []; window.__relayApplies = []; window.__relayUndos = []; window.__relayAborts = [];
-    window.__applyAnswer = null;
+    window.__applyAnswer = null; window.__launchLog = [];
+    window.__probeQueue = ["running", "stopped", "running"]; // the app is up when the change lands; down once stopped; up again at the end
     const p = document.getElementById("browserai-app");
     const opt = [...p.options].find((o) => /auxscreen/i.test(o.textContent));
     if (opt) { p.value = opt.value; p.dispatchEvent(new Event("change", { bubbles: true })); }
@@ -741,16 +771,56 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   await page.check("#browserai-confirms input");
   check("browser AI: ticking the box enables Apply", !(await page.$eval("#browserai-apply", (b) => b.disabled)), "");
   await page.click("#browserai-apply");
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(300);
   const changeApply = await page.evaluate(() => window.__relayApplies);
   check("browser AI: Apply names exactly the warning that was ticked, and no folder (the app exists)",
     changeApply.length === 1 && changeApply[0].confirmed.join() === "REMOVAL:field:Customer.firstName" && !changeApply[0].parentDir, JSON.stringify(changeApply));
-  check("browser AI: a changed app ends with Update the app and Undo",
-    (await text("#browserai-progress")) === "Done. The change is in your app." && (await shown("#browserai-rebuild")) && (await shown("#browserai-undo")) && !(await shown("#browserai-go-apps")), "");
+  const changeLog = await page.evaluate(() => window.__launchLog);
+  check("browser AI: a RUNNING app that is changed is generated, stopped, built, then started -- stopped BEFORE the build, since it holds its files",
+    changeLog.length === 4 && changeLog.map((l) => l.split(":")[0]).join() === "generate,stop,run,start" && changeLog.every((l) => /auxscreen$/i.test(l)), JSON.stringify(changeLog));
+  check("browser AI: a changed app ends with the change in, the app running, Open the app and Undo",
+    (await text("#browserai-progress")) === "Done. The change is in your app." && (await text("#browserai-launch")) === "Your app is running." &&
+    (await shown("#browserai-open")) && (await shown("#browserai-undo")) && !(await shown("#browserai-rebuild")) && !(await shown("#browserai-go-apps")), String(await text("#browserai-launch")));
   await page.click("#browserai-undo");
   await page.waitForTimeout(250);
   check("browser AI: Undo asks the CLI for this conversation and says so in a sentence",
     (await page.evaluate(() => window.__relayUndos.length)) === 1 && (await text("#browserai-progress")) === "Undone. Your app is as it was before." && !(await shown("#browserai-undo")), String(await text("#browserai-progress")));
+  check("browser AI: after Undo the running app still has the change, so Update the app now is offered and says why",
+    (await shown("#browserai-rebuild")) && (await text("#browserai-launch")) === "The app still shows the change until you update it.", String(await text("#browserai-launch")));
+
+  // what goes wrong while the app is made ready: one sentence each, the reason under 'See what happened', a way to try again
+  await page.evaluate(() => { window.__launchLog = []; window.__buildExit = 2; window.__probeQueue = ["stopped"]; });
+  await page.click("#browserai-rebuild");
+  await page.waitForTimeout(300);
+  check("browser AI: a build that fails says so, keeps the reason (exit code and log) under 'See what happened', and offers another try",
+    (await text("#browserai-launch")) === "The app could not be built." && (await page.$eval("#browserai-launch", (e) => e.classList.contains("bad"))) &&
+    /exit code 2/.test(await text("#browserai-launch-prose")) && /ops-build\.log/.test(await text("#browserai-launch-prose")) &&
+    (await shown("#browserai-launch-details")) && (await shown("#browserai-rebuild")) && (await shown("#browserai-see-run")) && !(await shown("#browserai-open")) &&
+    (await page.evaluate(() => window.__launchLog.every((l) => !l.startsWith("start:")))), String(await text("#browserai-launch")));
+  // the failure state is the richest on step 5 (a bad line, the reason under See what happened, three buttons): measured on its own
+  await page.evaluate(() => { document.getElementById("browserai-launch-details").open = true; });
+  const failAxe = await axeScan("browserai-failed");
+  delete a11yMeasured["browserai-failed"];
+  check("browser AI: step 5 after a failed build has no accessibility violations", Object.values(failAxe.counts).reduce((a, b) => a + b, 0) === 0, JSON.stringify(failAxe.targets).slice(0, 400));
+  await page.evaluate(() => { window.__buildExit = 0; window.__startError = "port 8080 is already in use"; });
+  await page.click("#browserai-rebuild");
+  await page.waitForTimeout(300);
+  check("browser AI: an app that will not start says so with the reason, and does not wait for it",
+    (await text("#browserai-launch")) === "The app could not be started." && /port 8080/.test(await text("#browserai-launch-prose")) && (await shown("#browserai-rebuild")), String(await text("#browserai-launch")));
+  await page.evaluate(() => { window.__startError = null; window.__probeQueue = ["stopped"]; });
+  await page.click("#browserai-rebuild");
+  await page.waitForTimeout(900);
+  check("browser AI: an app that starts but never answers says where to look, with the app's own words about why",
+    (await text("#browserai-launch")) === "The app was started but has not answered yet. Look at it in Running apps." && /127\.0\.0\.1:8411/.test(await text("#browserai-launch-prose")) && (await shown("#browserai-see-run")), String(await text("#browserai-launch")));
+  await page.click("#browserai-see-run");
+  await page.waitForTimeout(250);
+  check("browser AI: 'See it in Running apps' goes to the Monitor", (await page.evaluate(() => window.__npdevCurrentScreen)) === "monitor", "");
+  await page.evaluate(() => { window.__probeQueue = ["stopped", "running"]; return window.__npdevShowScreen("browserai"); });
+  await page.waitForTimeout(250);
+  await page.click("#browserai-rebuild");
+  await page.waitForTimeout(300);
+  check("browser AI: trying again once it works ends in 'Your app is running.', and the failure's reason is gone",
+    (await text("#browserai-launch")) === "Your app is running." && !(await shown("#browserai-launch-details")) && (await shown("#browserai-open")) && !(await shown("#browserai-rebuild")), String(await text("#browserai-launch")));
 
   // a conversation given up on is closed in the CLI too
   await page.click("#browserai-again");
@@ -815,9 +885,20 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   check("browser AI: the CLI's summary list is marked as English text, not silently half-translated",
     (await page.getAttribute("#browserai-preview", "lang")) === "en" && (await page.getAttribute("#browserai-preview", "translate")) === "no", "");
   await page.check("#browserai-confirms input");
-  await page.evaluate(() => { window.__applyAnswer = null; });
+  await page.evaluate(() => {
+    window.__applyAnswer = Object.assign({}, window.__FIXTURES__.relay.apply, { created: true, backupPath: null, intent: "create", appDir: "/home/you/NPDev/Apps/Oficina" });
+    window.__launchLog = []; window.__buildExit = 1; window.__probeQueue = ["running"];
+  });
   await page.click("#browserai-apply");
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(300);
+  check("browser AI: in Portuguese a build that fails is told in Portuguese, with its buttons",
+    (await text("#browserai-launch")) === "Não foi possível montar o app." && (await text("#browserai-launch-details summary")) === "Ver o que aconteceu" &&
+    (await text("#browserai-rebuild")) === "Atualizar o app agora" && (await text("#browserai-see-run")) === "Ver em Apps em execução", String(await text("#browserai-launch")));
+  await page.evaluate(() => { window.__buildExit = 0; });
+  await page.click("#browserai-rebuild");
+  await page.waitForTimeout(300);
+  check("browser AI: in Portuguese the app that runs is announced and offered in Portuguese",
+    (await text("#browserai-launch")) === "Seu app está funcionando." && (await text("#browserai-open")) === "Abrir o app", String(await text("#browserai-launch")));
   const ptMissing = await page.evaluate(() => {
     const visible = (e) => !!(e.offsetParent || e.getClientRects().length);
     const shownText = Array.from(document.querySelectorAll("#screen-browserai *")).filter((e) => visible(e)).map((e) => e.textContent);

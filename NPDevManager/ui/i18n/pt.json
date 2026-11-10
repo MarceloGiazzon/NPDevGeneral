@@ -1207,7 +1207,6 @@
   "The change could not be applied. Nothing was changed.": "Não foi possível aplicar a mudança. Nada foi alterado.",
   "Done. Your new app was created.": "Pronto. O seu novo app foi criado.",
   "Done. The change is in your app.": "Pronto. A mudança está no seu app.",
-  "Updating the app…": "Atualizando o app…",
   "There is nothing to undo.": "Não há nada para desfazer.",
   "A new app cannot be undone here. Delete it from My apps if you do not want it.": "Um app novo não pode ser desfeito aqui. Apague-o em Meus apps se não o quiser.",
   "The app or its saved copy could not be found, so nothing was undone.": "Não encontrei o app ou a cópia guardada dele, então nada foi desfeito.",
@@ -1228,5 +1227,17 @@
   "Choose a file": "Escolher arquivo",
   "You can also press Ctrl+V anywhere on this step.": "Você também pode apertar Ctrl+V em qualquer lugar desta etapa.",
   "Drop the file now": "Solte o arquivo agora",
-  "Drop the file in step 3, after you have asked your AI.": "Solte o arquivo na etapa 3, depois de pedir à IA."
+  "Drop the file in step 3, after you have asked your AI.": "Solte o arquivo na etapa 3, depois de pedir à IA.",
+  "Preparing the app…": "Preparando o app…",
+  "Stopping the running app so it can be rebuilt…": "Parando o app que está funcionando para montá-lo de novo…",
+  "Building the app. This can take a few minutes.": "Montando o app. Isso pode levar alguns minutos.",
+  "Starting the app…": "Iniciando o app…",
+  "Your app is running.": "Seu app está funcionando.",
+  "The app could not be built.": "Não foi possível montar o app.",
+  "The app could not be started.": "Não foi possível iniciar o app.",
+  "The app was started but has not answered yet. Look at it in Running apps.": "O app foi iniciado, mas ainda não respondeu. Veja em Apps em execução.",
+  "The app still shows the change until you update it.": "O app continua com a mudança até você atualizá-lo.",
+  "Open the app": "Abrir o app",
+  "See it in Running apps": "Ver em Apps em execução",
+  "See what happened": "Ver o que aconteceu"
 }

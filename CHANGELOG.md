@@ -26,6 +26,12 @@ release. Ships in the next tag.
   file the AI made (`.json`, `.txt`, `.md`, `.zip`), and dropping that file on the window works too.
   All three go through the same check as a pasted answer and tell the CLI how they arrived
   (`paste`, `file-picker`, `drop`).
+- **Use a browser AI finishes the job** (Manager 0.13.26) -- after Apply the app is generated, built,
+  started and waited for until it answers, with one live sentence per stage, then Open the app. A
+  change to an app that is running stops it first (a running app holds its own files). A failed build
+  or start says so in a sentence, keeps the reason under See what happened and offers another try;
+  Undo makes Update the app now available again. `npdev ai relay apply --parent-dir D` now puts a new
+  app in `D/<name>/<name>`, the folder layout New app makes, so two apps never share one `ArtifactNP`.
 - **Agent Access** (`agentAccess` model block): a generated app serves a standard MCP endpoint
   (`/api/mcp`) so Claude Code/Desktop or any MCP client can use its data as tools, and optionally
   runs a Telegram bot linking a Telegram account to an app user for plain-language chat -- every

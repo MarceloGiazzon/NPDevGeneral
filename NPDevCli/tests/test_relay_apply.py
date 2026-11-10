@@ -75,13 +75,25 @@ class CreateTests(ApplyCase):
         done = apply_mod.apply_round(session, None, [], parent_dir=str(self.dir / "apps"))
         self.assertTrue(done["ok"], done)
         self.assertTrue(done["created"])
-        written = json.loads((self.dir / "apps" / "myshop" / "model.json").read_text(encoding="utf-8"))
+        written = json.loads((self.dir / "apps" / "myshop" / "myshop" / "model.json").read_text(encoding="utf-8"))
         self.assertEqual(written["namespace"], "my.shop")
-        self.assertTrue((self.dir / "apps" / "myshop" / "config.json").is_file())  # the scaffold's own files
+        self.assertTrue((self.dir / "apps" / "myshop" / "myshop" / "config.json").is_file())  # the scaffold's own files
         reloaded = sessions.load(code)
         self.assertEqual(reloaded["state"], "done")
-        self.assertEqual(reloaded["appDir"], str(self.dir / "apps" / "myshop"))
+        self.assertEqual(reloaded["appDir"], str(self.dir / "apps" / "myshop" / "myshop"))
         self.assertTrue(reloaded["rounds"][0]["appliedAt"])
+
+    def test_every_new_app_gets_a_folder_of_its_own_so_artifacts_never_collide(self):
+        # BUILD-5: generation writes ArtifactNP next to the model folder's PARENT, so two apps must not share one.
+        parents = []
+        for name in ["first", "second"]:
+            code = engine.start(intent="create", ask="A shop", new_app_name=name)["code"]
+            engine.ingest(code, answer(code, 1, json.loads(SEED_MODEL), manifest()), source="paste")
+            done = apply_mod.apply_round(sessions.load(code), None, [], parent_dir=str(self.dir / "apps"))
+            self.assertTrue(done["ok"], done)
+            parents.append(Path(done["appDir"]).parent)
+        self.assertNotEqual(parents[0], parents[1])
+        self.assertEqual({p.parent for p in parents}, {self.dir / "apps"})
 
     def test_applying_twice_is_refused(self):
         code = engine.start(intent="create", ask="A shop", new_app_name="again")["code"]
@@ -121,7 +133,7 @@ class CreateTests(ApplyCase):
         apply_mod.apply_round(sessions.load(code), None, [], parent_dir=str(self.dir / "apps"))
         refused = apply_mod.undo(sessions.load(code))
         self.assertEqual(refused["error"], "create-undo-unsupported")
-        self.assertTrue((self.dir / "apps" / "keep" / "model.json").is_file())
+        self.assertTrue((self.dir / "apps" / "keep" / "keep" / "model.json").is_file())
 
 
 @unittest.skipIf(authoring.gate_unavailable_reason() is not None, "the authoring gate needs Java and the Gradle wrapper")
