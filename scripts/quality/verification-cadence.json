@@ -136,7 +136,7 @@
       "tier": "T2",
       "maxStaleness": "1-move",
       "invokedBy": "scripts/quality/run-all-gates.ps1 (gate: aiKnowledge)",
-      "description": "run-ai-knowledge-gate.ps1 -- static instrument checks + all in-repo check-*.py, including the script-inventory rule that fails if any checker is hosted by no gate."
+      "description": "run-ai-knowledge-gate.ps1 -- static instrument checks + all in-repo check-*.py, including the script-inventory rule that fails if any checker is hosted by no gate, and run-portable-tooling-check.ps1 (step 56, the path-neutrality scan + 5 npdev CLI commands the Linux CI maturity job runs)."
     },
     {
       "id": "generator",

@@ -2,11 +2,13 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-if command -v python3 >/dev/null 2>&1; then
-  exec python3 "$SCRIPT_DIR/NPDevCli/npdev_cli.py" "$@"
-fi
-if command -v python >/dev/null 2>&1; then
-  exec python "$SCRIPT_DIR/NPDevCli/npdev_cli.py" "$@"
-fi
+# `command -v` only proves a file with that name is on PATH. On Windows, Git Bash finds the Microsoft
+# Store stub (WindowsApps\python3.exe) first: it exists, but exits 49 "Python was not found". So a
+# candidate is chosen only if it can actually run something (tests/test_npdev_sh_python_probe.py).
+for py in python3 python; do
+  if command -v "$py" >/dev/null 2>&1 && "$py" -c "" >/dev/null 2>&1; then
+    exec "$py" "$SCRIPT_DIR/NPDevCli/npdev_cli.py" "$@"
+  fi
+done
 echo "npdev: python3 or python is required" >&2
 exit 127

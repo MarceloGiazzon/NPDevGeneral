@@ -1052,6 +1052,19 @@ try {
         $failures += "a Manager string has no translation: see scripts/quality/check-manager-i18n.py output above -- add it to NPDevManager/ui/i18n/<lang>.json (run the checker with --list to print what is missing)"
     }
 
+    # 2026-11-08: the CI job "Linux post-Beta0 maturity validation" runs run-portable-tooling-check.ps1,
+    # and until now nothing local did. Its path-neutrality scan reads every in-scope file for letter,
+    # colon, slash, so one stray string in NPDevCli turned that job red from 2026-11-05 through ~20
+    # pushes while T2 stayed green (a9563819 was "T2 green" and CI-red at once). Running it here puts
+    # the same scan, and the five `npdev` CLI commands it drives, inside T2 and inside the Ubuntu
+    # AI Knowledge Gate workflow, the same OS and toolchain as the maturity job. It could only run
+    # locally on Windows once ./npdev stopped trusting the Microsoft Store python3 stub.
+    Write-Host '[56/56] Checking the portable-tooling path-neutrality scan and the npdev CLI commands (the Linux CI maturity check)...'
+    pwsh -NoProfile -File "scripts/quality/run-portable-tooling-check.ps1"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "the portable-tooling check failed: see scripts/quality/run-portable-tooling-check.ps1 output above and scripts/reports/out/portable-tooling-report.json (pathNeutralityScan lists any drive-letter text; commands lists each npdev command's exit code) -- split the string or read the folder from the environment, never write a drive path in code"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red

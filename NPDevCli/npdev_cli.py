@@ -16100,7 +16100,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="npdev",
         formatter_class=GroupedHelpFormatter,
         epilog=(
-            "New here?  npdev init my-app && cd my-app && npdev run app\n"
+            "New here?  npdev init ../my-app && npdev dev --model ../my-app/model.json\n"
             "           then open http://localhost:8080\n"
             "\n"
             "Docs: docs/GETTING_STARTED.md, docs/YOUR_FIRST_APP.md"

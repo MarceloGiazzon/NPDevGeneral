@@ -150,7 +150,7 @@ jobs:
           key: manager-cargo-${{ runner.os }}-${{ hashFiles('NPDevManager/Cargo.lock') }}
 
       - name: Install the Tauri CLI
-        run: cargo install tauri-cli --version "^2" --locked
+        run: cargo install tauri-cli --version "=2.12.4" --locked
 
       # The UI is plain JS with no bundler (SPEC.md 1.1), so there is no npm step -- `frontendDist`
       # points straight at NPDevManager/ui.
@@ -269,7 +269,7 @@ jobs:
             file
 
       - name: Install the Tauri CLI
-        run: cargo install tauri-cli --version "^2" --locked
+        run: cargo install tauri-cli --version "=2.12.4" --locked
 
       - name: Build the AppImage
         working-directory: NPDevManager
