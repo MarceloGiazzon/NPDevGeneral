@@ -18,9 +18,13 @@ CASES = {c["name"]: c for c in json.loads(
     (HERE / "fixtures" / "relay" / "relay-ingest-cases.json").read_text(encoding="utf-8"))["cases"]}
 
 
+_STORE = tempfile.mkdtemp(prefix="npdev-relay-cli-test-")  # the tests never touch the user's own conversations
+
+
 def run_cli(*argv: str, stdin: str | None = None) -> subprocess.CompletedProcess:
+    env = {**os.environ, "NPDEV_AI_CONFIG": str(Path(_STORE) / "ai.json")}
     return subprocess.run([sys.executable, str(CLI), "ai", "relay", *argv], input=stdin,
-                          capture_output=True, text=True, encoding="utf-8", timeout=120)
+                          capture_output=True, text=True, encoding="utf-8", timeout=120, env=env)
 
 
 class PromptVerbTests(unittest.TestCase):
@@ -120,7 +124,10 @@ class IngestVerbTests(unittest.TestCase):
 
     def test_a_cut_off_answer_is_truncated_and_still_exit_zero(self):
         name = next(n for n, c in CASES.items() if c["expect"]["outcome"] == "TRUNCATED")
-        self.assertEqual(self.ingest(name)["outcome"], "TRUNCATED")
+        got = self.ingest(name)
+        self.assertEqual(got["outcome"], "TRUNCATED")
+        self.assertEqual(got["next"]["kind"], "copy-prompt")  # even with no saved conversation, the message to copy comes back
+        self.assertTrue(got["next"]["prompt"].startswith("NPDEV-PROMPT K7Q2-2"))
 
     def test_the_plain_text_form_is_one_outcome_line_then_files(self):
         case = CASES["ready-full-protocol"]

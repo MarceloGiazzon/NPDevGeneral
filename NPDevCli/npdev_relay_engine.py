@@ -254,8 +254,17 @@ def raw_from_files(paths: list[str], code: str, round_number: int, phase: str = 
 # --------------------------------------------------------------------------- ingest
 
 def stateless_ingest(raw: str, code: str, round_number: int, phase: str) -> dict:
-    """No session on disk (the Prompter's paste box): the text stage only, nothing saved."""
-    return ri.ingest_text(raw, session=code, expected_round=round_number, policy=ri.load_policy(), phase=phase)
+    """No session on disk (the Prompter's paste box): the text stage only, nothing saved. The short same-chat
+    follow-up still comes back in `next` -- it needs only the code and the round, not a stored conversation."""
+    result = ri.ingest_text(raw, session=code, expected_round=round_number, policy=ri.load_policy(), phase=phase)
+    outcome = result["outcome"]
+    if outcome in ("PROMPT_ECHO", "WRONG_SESSION", "STALE_ROUND", "QUESTIONS"):
+        result["next"] = {"kind": "user-action", "messageId": outcome}
+    elif outcome in SAME_CHAT_OUTCOMES:
+        errors = "\n".join(_finding_lines(result))
+        text = rp.compose_same_chat(rp.load_prompts(), code=code, rnd=round_number + 1, outcome=outcome, errors=errors)
+        result["next"] = {"kind": "copy-prompt", "messageId": outcome, "prompt": text}
+    return result
 
 
 def ingest(code: str, raw: str, *, source: str | None = None, round_number: int | None = None,
