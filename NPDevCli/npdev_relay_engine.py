@@ -21,6 +21,7 @@ from pathlib import Path
 import npdev_desire_paths as desire_paths
 import npdev_relay_ingest as ri
 import npdev_relay_prompts as rp
+import npdev_relay_scrub as scrub
 import npdev_relay_session as rs
 import npdev_relay_targets as rt
 from npdev_ai_config import AiConfigError
@@ -115,6 +116,8 @@ def start(*, intent: str, ask: str, app_dir=None, new_app_name=None, target: str
     model_text = ""
     if intent in ("change", "fix"):
         model_text = _read_text(find_model_file(app_dir))
+    # The text of a failed build or boot goes into a prompt that leaves the computer: scrubbed HERE, whoever the caller is.
+    errors, redactions = scrub.scrub_errors(errors, app_dir) if errors else (errors, {})
     bundle, manifest = build_knowledge()
     try:
         session = rs.create(intent, ask, target, language, app_dir, phase, interview=interview,
@@ -126,7 +129,8 @@ def start(*, intent: str, ask: str, app_dir=None, new_app_name=None, target: str
                              knowledge=bundle, model=model_text, errors=errors, interview=interview)
     rs.add_round(session, text, "round1")
     return {"ok": True, "code": session["code"], "intent": intent, "round": 1,
-            "bytes": len(text.encode("utf-8")), "knowledgeSha256": manifest["contentSha256"], "prompt": text}
+            "bytes": len(text.encode("utf-8")), "knowledgeSha256": manifest["contentSha256"], "prompt": text,
+            "errorRedactions": redactions}
 
 
 def stored_prompt(code: str, round_number: int | None = None) -> dict:

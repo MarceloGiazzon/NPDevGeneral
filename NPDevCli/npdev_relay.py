@@ -31,6 +31,7 @@ from pathlib import Path
 import npdev_relay_engine as engine
 import npdev_relay_ingest as ingest_mod
 import npdev_relay_prompts as prompts_mod
+import npdev_relay_scrub as scrub_mod
 import npdev_relay_session as sessions
 from npdev_ai_config import AiConfigError
 
@@ -62,7 +63,7 @@ def add_arguments(ai_sub) -> None:
     start.add_argument("--language", default=DEFAULT_LANGUAGE, help='Language the AI answers the user in.')
     start.add_argument("--interview", action="store_true", help="Let the AI ask a few questions first.")
     start.add_argument("--phase", default="mvp", choices=PHASES, help="Which files an answer may carry.")
-    start.add_argument("--errors-file", help="Fix: what went wrong (build or boot output, already redacted).")
+    start.add_argument("--errors-file", help="Fix: what went wrong (build or boot output). The CLI redacts secrets and anonymises local folders itself.")
     json_flag(start)
 
     prompt = rsub.add_parser("prompt", help="Print a prompt: a stored one (--code) or a new stateless one (--intent).")
@@ -73,7 +74,7 @@ def add_arguments(ai_sub) -> None:
     prompt.add_argument("--intent", choices=INTENTS, help="Compose a new round-1 prompt, saving nothing.")
     prompt.add_argument("--ask-file", help="What the user wants ('-' = stdin).")
     prompt.add_argument("--model-file", help="The app's current model.json (change and fix).")
-    prompt.add_argument("--errors-file", help="What went wrong (fix).")
+    prompt.add_argument("--errors-file", help="What went wrong (fix). Secrets are redacted and local folders anonymised before it goes into the prompt.")
     prompt.add_argument("--language", default=DEFAULT_LANGUAGE)
     prompt.add_argument("--interview", action="store_true")
     prompt.add_argument("--output", help="Write the prompt to this file instead of stdout.")
@@ -238,7 +239,7 @@ def _run_prompt(args) -> int:
 def _run_stateless_prompt(args) -> int:
     ask = (read_input(args.ask_file) or "").strip()
     model = read_input(args.model_file) or ""
-    errors = read_input(args.errors_file) or ""
+    errors, _redactions = scrub_mod.scrub_errors(read_input(args.errors_file) or "")  # leaves the computer in the prompt
     if args.ask_file is None:
         raise AiConfigError("say what the app should do (--ask-file)")
     if args.intent == "create" and not ask:

@@ -149,6 +149,15 @@ release. Ships in the next tag.
   hand; `--json` adds, per AI, how many conversations passed, the average rounds, how many passed in two or
   fewer, the largest prompt that got an answer and the largest complete answer (with an output budget of 80% of
   it). Conversations made while testing NPDev are in there too: filter by `target`.
+- **`fix` conversations scrub the error text themselves** (`npdev ai relay start|prompt --intent fix --errors-file`) -- the
+  prompt template told the AI the failure text had "secrets and personal paths removed", but nothing in the CLI did it: it
+  trusted whoever called. `npdev_relay_scrub.py` now makes the text safe before it enters a prompt that leaves the computer:
+  the app's own folder (generated app and the model folder beside it) becomes `<app>`, the home folder `<home>`, any other
+  absolute path `<path>/<last name>` (a stack trace still says which file), then the credentials and privacy data of
+  `npdev_redact` (one definition of "secret" for everything that leaves the machine). `start` reports how many of each kind it
+  replaced (`errorRedactions`, never what). Found while testing it, fixed before landing: a drive pattern that mangled
+  `https://` URLs, paths with spaces that leaked their tail, and redacting before anonymising, which rewrote the user name
+  inside the app's own folder so it no longer matched. The Manager has no button that sends build failures yet (REG-322).
 - **Agent Access** (`agentAccess` model block): a generated app serves a standard MCP endpoint
   (`/api/mcp`) so Claude Code/Desktop or any MCP client can use its data as tools, and optionally
   runs a Telegram bot linking a Telegram account to an app user for plain-language chat -- every
