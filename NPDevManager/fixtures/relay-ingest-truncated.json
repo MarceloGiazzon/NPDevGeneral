@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "npdev-ai-relay-ingest-result.v1",
+  "protocol": "npdev-relay-answer.v1",
+  "phase": "mvp",
+  "session": {
+    "expected": "ZWW4",
+    "expectedRound": 1,
+    "found": "ZWW4",
+    "foundRound": 1
+  },
+  "outcome": "TRUNCATED",
+  "files": [],
+  "findings": [
+    {
+      "code": "unclosed-block",
+      "severity": "error",
+      "detail": {
+        "label": "model.json",
+        "line": 4
+      }
+    },
+    {
+      "code": "end-marker-missing",
+      "severity": "warning"
+    }
+  ],
+  "normalization": [],
+  "prose": "I created Customer and Order, and linked each order to its customer."
+}

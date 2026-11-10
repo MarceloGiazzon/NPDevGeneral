@@ -24,6 +24,11 @@ const prompterState = {
   profiles: [],
   validatedCandidate: null,
   loopRunning: false,
+  // The session the prompt in the box belongs to (from relay_prompt), and what the pasted-answer
+  // check last said to copy back to the AI.
+  relayCode: null,
+  relayRound: null,
+  relayNextPrompt: null,
 };
 
 function pEsc(value) {
@@ -89,59 +94,51 @@ async function loadPrompterContext() {
 // ---------------------------------------------------------------------------------------------
 // Compose
 //
-// The prompt text is deliberately the same wording the generated agent-prompter.html builds,
-// including the 60k context cap. Two surfaces that describe the same platform in two different ways
-// would give two different answers for the same app, and neither would be wrong on its own.
+// The prompt is `npdev ai relay prompt`'s, not this file's. The CLI owns the wording, the authoring
+// knowledge and the session code the answer has to carry back, so this window, a terminal and the
+// browser-AI route all hand an AI the SAME measured text. Nothing below writes a word of it.
 // ---------------------------------------------------------------------------------------------
 
-const PROMPTER_CONTEXT_CHAR_CAP = 60000;
-
-function buildPrompterPrompt() {
-  const appName = document.getElementById("prompter-appname").value.trim() || "this app";
-  const ask =
-    document.getElementById("prompter-ask").value.trim() ||
-    "(describe what to build or change above)";
-  const includeContext = document.getElementById("prompter-include-context").checked;
-
-  let contextBlock = "";
-  if (includeContext && prompterState.context && prompterState.context.context) {
-    let json = JSON.stringify(prompterState.context.context, null, 2);
-    let truncated = false;
-    if (json.length > PROMPTER_CONTEXT_CHAR_CAP) {
-      json = json.slice(0, PROMPTER_CONTEXT_CHAR_CAP);
-      truncated = true;
-    }
-    contextBlock =
-      `\n=== Current model ("${appName}", from ${prompterState.context.source}) ===\n` +
-      json + (truncated ? "\n... (truncated)" : "") + "\n";
+/// Composes the prompt into the prompt box. Resolves to the text, or to "" when it could not be
+/// composed (the reason is already on screen). It never rejects: its callers are click handlers, and
+/// studio.js starts it without waiting.
+async function buildPrompterPrompt() {
+  const box = document.getElementById("prompter-prompt");
+  const ask = document.getElementById("prompter-ask").value.trim();
+  if (!ask) {
+    pStatus("describe what to build or change first", true);
+    return "";
   }
-
-  const prompt =
-    'You are helping extend an app built on NPDev, a JSON-model-driven app platform. An NPDev ' +
-    'app is described by a JSON "model": concepts (entities with typed fields), flows ' +
-    '(multi-step server-side operations), pages and a menu. Below is the current model for an ' +
-    `app called "${appName}", followed by what I want changed.\n\n` +
-    'Respond with ONLY the complete, updated model.json -- the entire file, valid and ready to ' +
-    'save as-is, with the requested change already applied. Do not output a diff, a patch, an ' +
-    'explanation, or any text outside the JSON, except the one note described below. Leave every ' +
-    'concept, field and flow not mentioned below byte-for-byte unchanged.\n\n' +
-    // MON-10: the birthDay/birthDate incident. NPDev already knows how to carry a rename across a
-    // schema change -- `renamedFrom` is read by the schema-lifecycle diff, and the runtime's own
-    // refusal hint (ImpactReportText.appendPossibleRenames) prints the exact key as the fix. The
-    // model author was simply never told it exists, so an AI-authored rename arrived as a drop plus
-    // an unrelated add, which is either refused or silently loses the column's data. Validation
-    // cannot catch this: it checks "is this a valid model", never "is this what was asked for".
-    'If your change RENAMES an existing field or concept, you MUST declare it rather than deleting ' +
-    'the old name and adding a new one: put "renamedFrom": "<oldName>" on the renamed field object ' +
-    '(or on the concept object for a table rename). A rename that is not declared reads to NPDev ' +
-    'as an unrelated drop-plus-add and will either be refused or lose that column\'s data. If your ' +
-    'change REMOVES a field on purpose, say so in a plain-sentence "deliberateRemovals" note after ' +
-    'the JSON -- prose only, with no braces in it.\n' +
-    contextBlock +
-    `\n=== What I want ===\n${ask}\n`;
-
-  document.getElementById("prompter-prompt").textContent = prompt;
-  return prompt;
+  // A change needs the app's model read from disk. Unticking "Include the current model" keeps the
+  // model on this machine, so that prompt is for a new app instead.
+  const changing =
+    !!prompterState.appDir &&
+    !!prompterState.context &&
+    prompterState.context.source === "model.json" &&
+    document.getElementById("prompter-include-context").checked;
+  pStatus("composing…");
+  try {
+    const result = await pInvoke("relay_prompt", {
+      intent: changing ? "change" : "create",
+      ask,
+      appDir: changing ? prompterState.appDir : null,
+      language: NPDevI18n.lang,
+    });
+    if (!result || result.ok === false || typeof result.prompt !== "string" || !result.prompt) {
+      throw (result && result.error) || "no prompt came back";
+    }
+    box.textContent = result.prompt;
+    // The answer carries this code back; it is what tells an answer to THIS prompt from any other.
+    prompterState.relayCode = result.code || null;
+    prompterState.relayRound = result.round || 1;
+    return result.prompt;
+  } catch (e) {
+    box.textContent = "";
+    prompterState.relayCode = null;
+    prompterState.relayRound = null;
+    pStatus(`could not compose the prompt: ${e}`, true);
+    return "";
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -362,7 +359,7 @@ async function sendPrompt() {
   }
   const box = document.getElementById("prompter-prompt");
   // Compose-before-send, enforced here rather than by convention.
-  if (!box.textContent.trim()) buildPrompterPrompt();
+  if (!box.textContent.trim() && !(await buildPrompterPrompt())) return;
 
   const sendBtn = document.getElementById("prompter-send");
   sendBtn.disabled = true;
@@ -592,10 +589,13 @@ async function runLoop() {
     return;
   }
   const box = document.getElementById("prompter-prompt");
-  if (!box.textContent.trim()) buildPrompterPrompt();
   const ask = document.getElementById("prompter-ask").value.trim();
   if (!ask) {
     loopStatus("describe what to build or change first");
+    return;
+  }
+  if (!box.textContent.trim() && !(await buildPrompterPrompt())) {
+    loopStatus("the prompt could not be composed");
     return;
   }
 
@@ -631,7 +631,7 @@ async function stopLoop() {
 // ---------------------------------------------------------------------------------------------
 // Validate + Apply
 //
-// The prompt now asks for a COMPLETE model.json (see buildPrompterPrompt above), so the answer
+// The prompt asks for a COMPLETE model.json (see buildPrompterPrompt above), so the answer
 // text is a candidate file, not something to merge by hand. Validate checks it against the real
 // DSL validator before anything touches disk; Apply only becomes available once that check has
 // passed, and writes exactly the candidate that was validated -- never a re-parse of the answer
@@ -735,7 +735,6 @@ function renderValidationReport(report) {
 }
 
 async function validatePrompterAnswer() {
-  const validateBtn = document.getElementById("prompter-validate");
   const answerText = document.getElementById("prompter-answer").textContent;
   const candidate = extractCandidateModel(answerText);
   document.getElementById("prompter-validate-pane").hidden = false;
@@ -748,6 +747,14 @@ async function validatePrompterAnswer() {
     document.getElementById("prompter-diagnostics").innerHTML = "";
     return;
   }
+  await validatePrompterCandidate(candidate);
+}
+
+/// The validate half, shared by the VALIDATE button (above, which finds the candidate in the response
+/// box) and the pasted-answer check (below, where the CLI has already found it): the candidate is
+/// checked by the real validator, and APPLY only appears for the exact object that passed.
+async function validatePrompterCandidate(candidate) {
+  const validateBtn = document.getElementById("prompter-validate");
   validateBtn.disabled = true;
   document.getElementById("prompter-validate-status").style.color = "";
   document.getElementById("prompter-validate-status").textContent = "validating…";
@@ -765,6 +772,127 @@ async function validatePrompterAnswer() {
     document.getElementById("prompter-diagnostics").innerHTML = "";
   } finally {
     validateBtn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Paste the answer back (an AI used in a browser)
+//
+// The user takes the prompt to any chat AI and pastes its answer into the box here. `npdev ai relay
+// ingest` says what that text is -- the answer to THIS prompt, a cut-off one, the prompt itself, a
+// "you are out of messages" notice -- and this window shows that verdict as one plain sentence. It
+// does not parse an answer itself (extractCandidateModel above belongs to the older Send path).
+// What the AI wrote around its files is the AI's voice, not NPDev's: it is shown as plain text and
+// nothing else -- never markup, never a link, never an instruction to follow.
+// ---------------------------------------------------------------------------------------------
+
+/// The one sentence for an ingest outcome. The wording is relay-messages.json's; the catalogue holds
+/// its pt pair. An outcome this window does not know yet gets the general sentence, not silence.
+function relayOutcomeSentence(outcome) {
+  switch (outcome) {
+    case "PROMPT_ECHO":
+      return NPDevI18n.tr("This is the text to paste INTO the AI, not its answer. Paste it in the AI, then copy what it answers.");
+    case "WRONG_SESSION":
+      return NPDevI18n.tr("This answer belongs to another conversation. Copy the answer to the text you copied last.");
+    case "STALE_ROUND":
+      return NPDevI18n.tr("This looks like the AI's previous answer. Copy the most recent one.");
+    case "LIMIT_REACHED":
+      return NPDevI18n.tr("Your AI reached its free limit. Take this conversation to another AI, or try again later.");
+    case "FILE_LINK_ONLY":
+      return NPDevI18n.tr("The AI made a file to download. Click its link to download it; NPDev picks it up by itself. Or copy this message to the AI so it writes the files in the answer.");
+    case "QUESTIONS":
+      return NPDevI18n.tr("The AI wants to know a few things. Answer it in the conversation, then copy its new answer.");
+    case "NO_FILES":
+      return NPDevI18n.tr("The AI answered without the app. Copy this message and paste it in the same conversation.");
+    case "TRUNCATED":
+      return NPDevI18n.tr("The answer was cut off. Copy this message so the AI sends it complete.");
+    case "ELIDED":
+      return NPDevI18n.tr("The AI left parts out. Copy this message so it sends everything.");
+    case "BAD_JSON":
+      return NPDevI18n.tr("The AI's answer has writing mistakes NPDev cannot read. Copy this message so it fixes them.");
+    case "PARTIAL":
+      return NPDevI18n.tr("Part of the answer cannot be used. Copy this message so the AI sends only what is needed.");
+    default:
+      return NPDevI18n.tr("The answer could not be used. Copy the AI's answer again, or ask it to send the files again.");
+  }
+}
+
+/// Puts the verdict on screen: the sentence, the AI's own words (plain text), and -- when the CLI
+/// hands one back -- the message to copy into the same conversation.
+function showRelayVerdict(sentence, prose, nextPrompt) {
+  const status = document.getElementById("prompter-validate-status");
+  status.style.color = sentence ? "var(--warn)" : "";
+  status.textContent = sentence;
+  document.getElementById("prompter-relay-prose").textContent = prose || "";
+  document.getElementById("prompter-relay-prose-box").hidden = !prose;
+  prompterState.relayNextPrompt = nextPrompt || null;
+  document.getElementById("prompter-relay-copy").hidden = !nextPrompt;
+}
+
+async function checkPastedAnswer() {
+  const button = document.getElementById("prompter-paste-check");
+  const text = document.getElementById("prompter-paste").value;
+  // Whatever an earlier check or validation left on screen belongs to an earlier answer.
+  document.getElementById("prompter-validate-pane").hidden = false;
+  document.getElementById("prompter-apply-pane").hidden = true;
+  document.getElementById("prompter-diagnostics").innerHTML = "";
+  prompterState.validatedCandidate = null;
+  showRelayVerdict("", "", null);
+  const status = document.getElementById("prompter-validate-status");
+  if (!text.trim()) {
+    showRelayVerdict(NPDevI18n.tr("paste the AI's answer first"), "", null);
+    return;
+  }
+  if (!prompterState.relayCode) {
+    showRelayVerdict(NPDevI18n.tr("compose the prompt first, take it to the AI, then paste its answer here"), "", null);
+    return;
+  }
+  button.disabled = true;
+  status.textContent = NPDevI18n.tr("checking the answer…");
+  try {
+    let result;
+    try {
+      result = await pInvoke("relay_ingest_text", {
+        text,
+        code: prompterState.relayCode,
+        round: prompterState.relayRound,
+      });
+    } catch (e) {
+      showRelayVerdict(NPDevI18n.tr("could not check the answer: {e}", { e }), "", null);
+      return;
+    }
+    if (!result || result.ok === false || !result.outcome) {
+      showRelayVerdict(NPDevI18n.tr("could not check the answer: {e}", { e: (result && result.error) || "-" }), "", null);
+      return;
+    }
+    const nextPrompt = result.next && typeof result.next.prompt === "string" ? result.next.prompt : null;
+    // PARSED is "the text is fine"; READY is the same text after the CLI also checked the model.
+    if (result.outcome !== "PARSED" && result.outcome !== "READY") {
+      showRelayVerdict(relayOutcomeSentence(result.outcome), result.prose, nextPrompt);
+      return;
+    }
+    const file = (result.files || []).find((f) => f.path === "model.json" && typeof f.content === "string");
+    if (!file) {
+      showRelayVerdict(relayOutcomeSentence("NO_FILES"), result.prose, nextPrompt);
+      return;
+    }
+    let candidate = null;
+    try {
+      candidate = JSON.parse(file.content);
+    } catch (e) {
+      candidate = null;
+    }
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      showRelayVerdict(relayOutcomeSentence("BAD_JSON"), result.prose, nextPrompt);
+      return;
+    }
+    // The model the AI proposed goes where a Send answer goes, and is then checked like any other.
+    document.getElementById("prompter-answer").textContent = file.content;
+    document.getElementById("prompter-answer-pane").hidden = false;
+    showRelayVerdict("", result.prose, null);
+    await validatePrompterCandidate(candidate);
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -838,13 +966,12 @@ function initPrompter() {
     await loadPrompterContext();
   });
   document.getElementById("prompter-profile").addEventListener("change", onProfileChanged);
-  document.getElementById("prompter-generate").addEventListener("click", () => {
-    buildPrompterPrompt();
-    pStatus("composed — read it, then press Send");
+  document.getElementById("prompter-generate").addEventListener("click", async () => {
+    if (await buildPrompterPrompt()) pStatus("composed — read it, then press Send");
   });
-  document.getElementById("prompter-copy").addEventListener("click", () => {
+  document.getElementById("prompter-copy").addEventListener("click", async () => {
     const box = document.getElementById("prompter-prompt");
-    if (!box.textContent.trim()) buildPrompterPrompt();
+    if (!box.textContent.trim() && !(await buildPrompterPrompt())) return;
     copyText(box.textContent, "prompt copied");
   });
   document.getElementById("prompter-copy-answer").addEventListener("click", () =>
@@ -854,6 +981,10 @@ function initPrompter() {
   document.getElementById("prompter-loop-run").addEventListener("click", runLoop);
   document.getElementById("prompter-loop-stop").addEventListener("click", stopLoop);
   document.getElementById("prompter-validate").addEventListener("click", validatePrompterAnswer);
+  document.getElementById("prompter-paste-check").addEventListener("click", checkPastedAnswer);
+  document.getElementById("prompter-relay-copy").addEventListener("click", () => {
+    if (prompterState.relayNextPrompt) copyText(prompterState.relayNextPrompt, "message copied");
+  });
   document.getElementById("prompter-apply").addEventListener("click", applyPrompterModel);
   // S17c: the Reflection Loop Console -- replay of persisted AI-loop transcripts.
   document.getElementById("reflect-refresh").addEventListener("click", refreshLoopHistory);

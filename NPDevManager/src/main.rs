@@ -1997,7 +1997,7 @@ const VERSION_DESCRIPTION: &str =
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "Plain found databases";
+const CURRENT_VERSION_TITLE: &str = "Use a browser AI";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {
@@ -2763,6 +2763,81 @@ async fn validate_prompter_model(state: State<'_, AppState>, candidate: Value) -
         npdev::run_validate_model(&python, &cli, java_home.as_deref(), &candidate_path.to_string_lossy()).await;
     let _ = std::fs::remove_file(&candidate_path);
     result
+}
+
+/// "Use a browser AI": the ONE prompt the Prompter shows, copies and sends. `npdev ai relay prompt`
+/// composes it (the measured wording, the authoring knowledge, a session code the answer will carry
+/// back); this command only gathers the inputs. `intent` is `create` or `change`; a change reads the
+/// app's own model.json from disk, the same file `prompter_app_context` reads, so the AI is shown the
+/// real model and not a re-serialisation of it. `language` is the Manager's language id (`pt`, `en`).
+#[tauri::command]
+async fn relay_prompt(
+    state: State<'_, AppState>,
+    intent: String,
+    ask: String,
+    app_dir: Option<String>,
+    language: Option<String>,
+) -> Result<Value, String> {
+    if !matches!(intent.as_str(), "create" | "change") {
+        return Err(format!("not an intent this window can compose: '{intent}'"));
+    }
+    if ask.trim().is_empty() {
+        return Err("describe what to build or change first".to_string());
+    }
+    let model_text = if intent == "change" && !npdev::fake_mode() {
+        let dir = app_dir
+            .as_deref()
+            .filter(|d| !d.trim().is_empty())
+            .ok_or_else(|| "a change needs an app to change".to_string())?;
+        let model_dir = model_dir_of_app(dir).ok_or_else(|| "could not find this app's model".to_string())?;
+        let model_path = PathBuf::from(model_dir).join("model.json");
+        Some(std::fs::read_to_string(&model_path).map_err(|e| format!("could not read this app's model: {e}"))?)
+    } else {
+        None
+    };
+    let language_name = npdev::relay_language_name(language.as_deref().unwrap_or("en"));
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    let java_home = resolve_java_home(&state);
+    // The ask is the user's own words and the model is their app: only the code and the round are logged.
+    let result = npdev::run_relay_prompt(
+        &python,
+        &cli,
+        java_home.as_deref(),
+        &intent,
+        &ask,
+        model_text.as_deref(),
+        language_name,
+    )
+    .await?;
+    log::info(format!(
+        "relay_prompt intent={intent} code={} round={}",
+        result.get("code").and_then(|c| c.as_str()).unwrap_or("-"),
+        result.get("round").and_then(|r| r.as_u64()).unwrap_or(0)
+    ));
+    Ok(result)
+}
+
+/// "Use a browser AI": what the user copied back from the chat AI, classified by `npdev ai relay
+/// ingest` (the CLI decides what the text is; this window never parses an answer). `code` and `round`
+/// are the ones `relay_prompt` returned for the prompt the user took to the AI.
+#[tauri::command]
+async fn relay_ingest_text(
+    state: State<'_, AppState>,
+    text: String,
+    code: String,
+    round: Option<u32>,
+) -> Result<Value, String> {
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    let java_home = resolve_java_home(&state);
+    let result = npdev::run_relay_ingest_text(&python, &cli, java_home.as_deref(), &text, &code, round).await?;
+    // Never the answer itself, which is the user's app.
+    log::info(format!(
+        "relay_ingest_text code={code} outcome={}",
+        result.get("outcome").and_then(|o| o.as_str()).unwrap_or("-")
+    ));
+    Ok(result)
 }
 
 /// Overwrites the app's real model.json with a VALIDATED candidate, after an explicit typed
@@ -3879,6 +3954,8 @@ the blast radius needs a baseline to diff against"
             save_secret_profile,
             delete_secret_profile,
             validate_prompter_model,
+            relay_prompt,
+            relay_ingest_text,
             apply_prompter_model,
             generate_app_from_model,
             studio_apply_live,

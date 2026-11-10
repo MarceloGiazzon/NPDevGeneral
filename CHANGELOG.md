@@ -8,6 +8,13 @@ Landed on `main` AFTER the `beta1.20` tag (`6ca4edfb`) and therefore **not** in 
 release. Ships in the next tag.
 
 ### Added
+- **`npdev ai relay`** -- use a chat AI in a browser, no API key and no MCP: `start`, `prompt`,
+  `ingest`, `apply`, `undo`, `status`, `list`, `abort`. It composes the measured prompt, sorts
+  whatever comes back into one outcome (ready, cut off, left parts out, asked questions, out of
+  quota, ...) with the next message to paste, validates it, runs the authoring gate for a change
+  (a rename, removal or security change needs the owner's explicit yes), applies with a backup and
+  undoes byte for byte. The Manager's Prompter now shows this same prompt and has a paste-back box.
+  See `docs/AUTHORING_WITH_AI.md`.
 - **Agent Access** (`agentAccess` model block): a generated app serves a standard MCP endpoint
   (`/api/mcp`) so Claude Code/Desktop or any MCP client can use its data as tools, and optionally
   runs a Telegram bot linking a Telegram account to an app user for plain-language chat -- every

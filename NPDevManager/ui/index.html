@@ -634,6 +634,19 @@
         <div id="reflect-timeline" hidden style="margin-top:12px"></div>
       </div>
 
+      <!-- An AI used in a browser: the prompt above goes into any chat AI, its answer is pasted here and
+           `npdev ai relay ingest` says what it is. Always visible -- it does not wait for Send. -->
+      <div class="pane" style="margin-top:14px" id="prompter-paste-pane">
+        <h3 aria-level="2">Use a browser AI</h3>
+        <p class="subtitle">Copy the prompt above, give it to any AI, then paste its answer here.</p>
+        <label class="subtitle" style="display:block;margin-top:8px">Paste the AI's answer here
+          <textarea id="prompter-paste" rows="6" style="width:100%" autocomplete="off" spellcheck="false"></textarea>
+        </label>
+        <div class="statusbar" style="margin-top:10px">
+          <button class="btn" id="prompter-paste-check">CHECK ANSWER</button>
+        </div>
+      </div>
+
       <div class="pane" style="margin-top:14px" id="prompter-answer-pane" hidden>
         <h3 aria-level="2">Response</h3>
         <pre class="runout" id="prompter-answer" style="max-height:420px"></pre>
@@ -646,6 +659,13 @@
       <div class="pane" style="margin-top:14px" id="prompter-validate-pane" hidden>
         <h3 aria-level="2">Validation</h3>
         <p class="subtitle" id="prompter-validate-status">—</p>
+        <div class="statusbar" style="margin-top:8px">
+          <button class="btn ghost" id="prompter-relay-copy" hidden>Copy message</button>
+        </div>
+        <div id="prompter-relay-prose-box" hidden style="margin-top:8px">
+          <p class="subtitle">What the AI wrote</p>
+          <pre class="runout" id="prompter-relay-prose" translate="no" style="max-height:200px"></pre>
+        </div>
         <div id="prompter-diagnostics"></div>
       </div>
 

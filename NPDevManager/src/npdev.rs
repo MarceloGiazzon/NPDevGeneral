@@ -656,6 +656,162 @@ pub async fn run_db_operation(
 }
 
 // ---------------------------------------------------------------------------------------------
+// relay -- "Use a browser AI": compose the one prompt any chat AI can answer, and check the answer
+// the user brings back. The Manager is a pipe here: every decision (what the prompt says, what an
+// answer means) is the CLI's, so a terminal and this window can never disagree about either.
+// ---------------------------------------------------------------------------------------------
+
+// Captured from the real CLI (`npdev ai relay prompt|ingest --json`) on 2026-11-09, session ZWW4 round 1.
+const FIXTURE_RELAY_PROMPT: &str = include_str!("../fixtures/relay-prompt.json");
+const FIXTURE_RELAY_INGEST_PARSED: &str = include_str!("../fixtures/relay-ingest-parsed.json");
+const FIXTURE_RELAY_INGEST_TRUNCATED: &str = include_str!("../fixtures/relay-ingest-truncated.json");
+
+/// A scratch text file that deletes itself when it goes out of scope, on every path out of the caller
+/// (an early `?` included). The ask, the app's model and a pasted answer are handed to the CLI this
+/// way and never on its command line: an argv is visible in every process listing, and the Manager's
+/// own run record (runs.rs) keeps it. The file is created exclusively (no following a planted link)
+/// and, on Unix, readable by its owner only.
+struct TempTextFile {
+    path: PathBuf,
+}
+
+impl TempTextFile {
+    fn create(label: &str, text: &str) -> Result<Self, String> {
+        use std::io::Write;
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let path = std::env::temp_dir().join(format!(
+            "npdev-relay-{label}-{}-{nanos}-{}.txt",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options
+            .open(&path)
+            .map_err(|e| format!("could not write a temporary file for the AI relay: {e}"))?;
+        // From here on the guard exists, so a failed write still removes the file.
+        let guard = Self { path };
+        file.write_all(text.as_bytes())
+            .map_err(|e| format!("could not write a temporary file for the AI relay: {e}"))?;
+        Ok(guard)
+    }
+
+    fn path_text(&self) -> String {
+        self.path.to_string_lossy().to_string()
+    }
+}
+
+impl Drop for TempTextFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// The Manager's language id (`en`, `pt`, `pt-BR` ...) -> the name the prompt composer tells the AI to
+/// answer in. Kept here so no screen carries these words; anything not Portuguese is English.
+pub fn relay_language_name(manager_language: &str) -> &'static str {
+    let id = manager_language.trim().to_ascii_lowercase();
+    match id.split(['-', '_']).next().unwrap_or("") {
+        "pt" => "Portuguese (Brazil)",
+        _ => "English",
+    }
+}
+
+/// `npdev ai relay prompt` -- the text to paste into a chat AI, plus the session code and round that the
+/// answer will carry back. `intent` is `create`, `change` (needs `model_text`) or `fix`. A refusal by the
+/// CLI (exit 2, `{"ok": false, "error": ...}`) is a RESULT like any other, not a transport error.
+pub async fn run_relay_prompt(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    intent: &str,
+    ask: &str,
+    model_text: Option<&str>,
+    language: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_RELAY_PROMPT).map_err(|e| format!("fixture relay-prompt did not parse: {e}"));
+    }
+    if !matches!(intent, "create" | "change" | "fix") {
+        return Err(format!("not a relay intent: '{intent}'"));
+    }
+    // The value goes after `--language` as its own argument, so only a leading dash could be misread.
+    if language.is_empty() || language.starts_with('-') || language.len() > 64 {
+        return Err("the language for the AI is not valid".to_string());
+    }
+    let ask_file = TempTextFile::create("ask", ask)?;
+    let model_file = match model_text {
+        Some(text) => Some(TempTextFile::create("model", text)?),
+        None => None,
+    };
+    let ask_path = ask_file.path_text();
+    let model_path = model_file.as_ref().map(TempTextFile::path_text);
+    let mut args: Vec<&str> = vec!["ai", "relay", "prompt", "--intent", intent, "--ask-file", ask_path.as_str()];
+    if let Some(path) = model_path.as_deref() {
+        args.push("--model-file");
+        args.push(path);
+    }
+    args.extend(["--language", language, "--json"]);
+    let mut command = build_command(python_exe, npdev_cli, &args, java_home, None);
+    // The ask, the model and the prompt are not ASCII; a Windows pipe would otherwise carry them in the
+    // console code page and the Manager reads this output as UTF-8.
+    command.env("PYTHONUTF8", "1");
+    let output = command
+        .output_recorded()
+        .await
+        .map_err(|e| format!("could not run relay prompt: {e}"))?;
+    parse_single_json(&output.stdout, &output.stderr, "relay prompt")
+}
+
+/// `npdev ai relay ingest` -- classify what the user copied back from the chat AI. Every outcome
+/// (including "this is not an answer") arrives as a normal result with exit 0; only a missing or
+/// unreadable output is an error.
+pub async fn run_relay_ingest_text(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    text: &str,
+    code: &str,
+    round: Option<u32>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        // Stub convention (like `db`'s STUB MODE): pasting text containing STUB-TRUNCATED gets the
+        // "cut off" answer, anything else the clean one -- both are real CLI captures.
+        let fixture = if text.contains("STUB-TRUNCATED") { FIXTURE_RELAY_INGEST_TRUNCATED } else { FIXTURE_RELAY_INGEST_PARSED };
+        return serde_json::from_str(fixture).map_err(|e| format!("fixture relay-ingest did not parse: {e}"));
+    }
+    if code.is_empty() || code.len() > 16 || !code.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err("the session code is not valid".to_string());
+    }
+    let text_file = TempTextFile::create("answer", text)?;
+    let text_path = text_file.path_text();
+    let round_text = round.map(|r| r.to_string());
+    let mut args: Vec<&str> = vec!["ai", "relay", "ingest", "--text-file", text_path.as_str(), "--code", code];
+    if let Some(r) = round_text.as_deref() {
+        args.push("--round");
+        args.push(r);
+    }
+    args.push("--json");
+    let mut command = build_command(python_exe, npdev_cli, &args, java_home, None);
+    command.env("PYTHONUTF8", "1");
+    let output = command
+        .output_recorded()
+        .await
+        .map_err(|e| format!("could not run relay ingest: {e}"))?;
+    parse_single_json(&output.stdout, &output.stderr, "relay ingest")
+}
+
+// ---------------------------------------------------------------------------------------------
 // setup / dev -- both stream JSON Lines; each parsed line is emitted as a Tauri event so the UI
 // can update a progress bar / log view live instead of freezing until the whole thing finishes.
 // ---------------------------------------------------------------------------------------------
@@ -2282,5 +2438,139 @@ mod process_layer_tests {
         assert!(out.text.contains("FAILURE: Build failed"), "{}", out.text);
         assert!(!out.text.contains("hunter-two-secret"), "{}", out.text);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// "Use a browser AI": the ask, the app's model and the pasted answer reach the CLI in temporary files,
+/// never on its command line, and those files are gone when the call returns. A real child process (a
+/// stand-in CLI that echoes what it was given) proves it; the CLI's own tests prove the answers.
+#[cfg(test)]
+mod relay_pipe_tests {
+    use super::*;
+
+    fn find_python() -> Option<PathBuf> {
+        for name in ["python", "python3"] {
+            if std::process::Command::new(name).arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
+                return Some(PathBuf::from(name));
+            }
+        }
+        None
+    }
+
+    /// A stand-in `npdev_cli.py`: prints its argv and the content of whatever files it was pointed at.
+    fn write_echo_cli(dir: &Path) -> PathBuf {
+        std::fs::create_dir_all(dir).unwrap();
+        let script = dir.join("echo_cli.py");
+        std::fs::write(
+            &script,
+            "import json, sys\n\
+             a = sys.argv[1:]\n\
+             def val(flag):\n\
+             \x20   return a[a.index(flag) + 1] if flag in a else None\n\
+             def read(flag):\n\
+             \x20   path = val(flag)\n\
+             \x20   return open(path, encoding='utf-8').read() if path else None\n\
+             print(json.dumps({'ok': True, 'argv': a, 'ask': read('--ask-file'), 'model': read('--model-file'),\n\
+             \x20                'text': read('--text-file'), 'files': [val(f) for f in ('--ask-file', '--model-file', '--text-file') if val(f)]}))\n",
+        )
+        .unwrap();
+        script
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("npdev-relay-test-{name}-{}", std::process::id()))
+    }
+
+    #[tokio::test]
+    async fn the_ask_and_the_model_travel_in_files_that_are_removed_afterwards() {
+        let Some(python) = find_python() else {
+            eprintln!("SKIPPED: no python on PATH");
+            return;
+        };
+        if fake_mode() {
+            eprintln!("SKIPPED: stub mode serves fixtures");
+            return;
+        }
+        let dir = scratch("prompt");
+        let script = write_echo_cli(&dir);
+        let ask = "Adicione o campo situação aos pedidos — é urgente";
+        let model = "{ \"namespace\": \"t.orders\" }";
+        let result = run_relay_prompt(&python, &script, None, "change", ask, Some(model), "Portuguese (Brazil)")
+            .await
+            .expect("the stand-in CLI answers");
+        assert_eq!(result["ask"], ask, "the ask arrives intact, accents included");
+        assert_eq!(result["model"], model);
+        let argv = result["argv"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(&argv[..3], ["ai", "relay", "prompt"], "{argv:?}");
+        assert!(argv.iter().any(|a| a == "--language") && argv.iter().any(|a| a == "Portuguese (Brazil)"), "{argv:?}");
+        assert!(argv.iter().any(|a| a == "--intent") && argv.iter().any(|a| a == "change"), "{argv:?}");
+        assert!(!argv.iter().any(|a| a.contains("situação") || a.contains("namespace")), "no content on argv: {argv:?}");
+        for file in result["files"].as_array().unwrap() {
+            assert!(!Path::new(file.as_str().unwrap()).exists(), "temporary file left behind: {file}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_pasted_answer_travels_in_a_file_with_its_code_and_round() {
+        let Some(python) = find_python() else {
+            eprintln!("SKIPPED: no python on PATH");
+            return;
+        };
+        if fake_mode() {
+            eprintln!("SKIPPED: stub mode serves fixtures");
+            return;
+        }
+        let dir = scratch("ingest");
+        let script = write_echo_cli(&dir);
+        let answer = "NPDEV-BEGIN K7Q2-1\n{ \"a\": \"ação\" }\nNPDEV-END K7Q2-1 files=1";
+        let result = run_relay_ingest_text(&python, &script, None, answer, "K7Q2", Some(1))
+            .await
+            .expect("the stand-in CLI answers");
+        assert_eq!(result["text"], answer);
+        let argv = result["argv"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(&argv[..3], ["ai", "relay", "ingest"], "{argv:?}");
+        assert!(argv.windows(2).any(|w| w == ["--code", "K7Q2"]) && argv.windows(2).any(|w| w == ["--round", "1"]), "{argv:?}");
+        assert!(!argv.iter().any(|a| a.contains("NPDEV-BEGIN")), "the answer is not on argv: {argv:?}");
+        for file in result["files"].as_array().unwrap() {
+            assert!(!Path::new(file.as_str().unwrap()).exists(), "temporary file left behind: {file}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn nothing_odd_reaches_the_command_line() {
+        if fake_mode() {
+            return;
+        }
+        let python = Path::new("python");
+        let cli = Path::new("never-run.py");
+        assert!(run_relay_prompt(python, cli, None, "format-the-disk", "x", None, "English").await.is_err());
+        assert!(run_relay_prompt(python, cli, None, "create", "x", None, "--json").await.is_err());
+        assert!(run_relay_ingest_text(python, cli, None, "x", "--json", None).await.is_err());
+        assert!(run_relay_ingest_text(python, cli, None, "x", "", None).await.is_err());
+    }
+
+    #[test]
+    fn the_managers_language_picks_the_ais_language() {
+        assert_eq!(relay_language_name("pt"), "Portuguese (Brazil)");
+        assert_eq!(relay_language_name("pt-BR"), "Portuguese (Brazil)");
+        assert_eq!(relay_language_name("en"), "English");
+        assert_eq!(relay_language_name(""), "English");
+        assert_eq!(relay_language_name("de"), "English");
+    }
+
+    #[test]
+    fn the_relay_fixtures_are_what_the_screens_expect() {
+        let prompt: Value = serde_json::from_str(FIXTURE_RELAY_PROMPT).unwrap();
+        assert_eq!(prompt["ok"], true);
+        assert!(prompt["prompt"].as_str().unwrap().starts_with("NPDEV-PROMPT "), "the composed text starts with its marker");
+        let code = prompt["code"].as_str().unwrap();
+        let parsed: Value = serde_json::from_str(FIXTURE_RELAY_INGEST_PARSED).unwrap();
+        assert_eq!(parsed["outcome"], "PARSED");
+        assert_eq!(parsed["session"]["expected"], code, "the captured answer belongs to the captured prompt's session");
+        assert!(parsed["files"].as_array().unwrap().iter().any(|f| f["path"] == "model.json" && f["content"].is_string()));
+        let truncated: Value = serde_json::from_str(FIXTURE_RELAY_INGEST_TRUNCATED).unwrap();
+        assert_eq!(truncated["outcome"], "TRUNCATED");
     }
 }

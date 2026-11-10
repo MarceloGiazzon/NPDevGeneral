@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "npdev-ai-relay-ingest-result.v1",
+  "protocol": "npdev-relay-answer.v1",
+  "phase": "mvp",
+  "session": {
+    "expected": "ZWW4",
+    "expectedRound": 1,
+    "found": "ZWW4",
+    "foundRound": 1
+  },
+  "outcome": "PARSED",
+  "files": [
+    {
+      "path": "model.json",
+      "status": "allowed",
+      "reason": null,
+      "kind": "json",
+      "labelSource": "file-marker",
+      "fenced": true,
+      "repairs": [],
+      "bytes": 756,
+      "sha256": "5ae0490689899fe03ef92e0e5002fc04198db816a9952cc06b6d0c4af77d52d3",
+      "content": "{\n  \"namespace\": \"trial.customerorders\",\n  \"dslVersion\": \"1.0.0\",\n  \"version\": \"1.0\",\n  \"concepts\": [\n    {\n      \"name\": \"Customer\",\n      \"fields\": [\n        {\n          \"name\": \"id\",\n          \"type\": \"uuid\",\n          \"id\": true,\n          \"required\": true\n        },\n        {\n          \"name\": \"name\",\n          \"type\": \"string\",\n          \"required\": true\n        }\n      ]\n    },\n    {\n      \"name\": \"Order\",\n      \"fields\": [\n        {\n          \"name\": \"id\",\n          \"type\": \"uuid\",\n          \"id\": true,\n          \"required\": true\n        },\n        {\n          \"name\": \"customerId\",\n          \"type\": \"uuid\",\n          \"required\": true\n        },\n        {\n          \"name\": \"total\",\n          \"type\": \"decimal\"\n        }\n      ]\n    }\n  ]\n}\n"
+    },
+    {
+      "path": "npdev-submission.json",
+      "status": "allowed",
+      "reason": null,
+      "kind": "json",
+      "labelSource": "file-marker",
+      "fenced": true,
+      "repairs": [],
+      "bytes": 162,
+      "sha256": "03040c7aef52f4d1a6b084e88756e50095f882a18e7090ef51865dde4d7297db",
+      "content": "{\n  \"request\": \"customers and their orders\",\n  \"renames\": [],\n  \"deliberateRemovals\": [],\n  \"securityChanges\": [],\n  \"couldNotExpress\": [],\n  \"assumptions\": []\n}\n"
+    }
+  ],
+  "findings": [],
+  "normalization": [],
+  "prose": "I created Customer and Order, and linked each order to its customer."
+}
