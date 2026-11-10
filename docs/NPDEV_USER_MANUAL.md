@@ -5,6 +5,14 @@
 > built and run for real — the examples are trimmed versions of apps that already exist and
 > already work in this workspace.
 
+> **Which workflow this manual covers.** There are three ways to build an app. The **`npdev`
+> CLI** (`npdev setup`, `npdev init ../my-app`, `npdev dev`) needs Java and Python but no
+> PowerShell, and is the quickest start (see `README.md` and `docs/YOUR_FIRST_APP.md`).
+> **NPDev Manager** does the same from a window, with no terminal (see `docs/MANAGER.md`).
+> This manual documents the third, the **AppGen folder workflow** (`AppGen\apps\<YourApp>\`,
+> PowerShell scripts), which the reference apps below use. The `model.json` you write in §5.3
+> and §6 is the same on all three paths.
+
 ---
 
 ## 1. What NPDev actually is
@@ -62,8 +70,8 @@ author, actually work day to day.
 ```
 ./
 │
-├── NPDev_General\          <- THE ENGINE. Java/TypeScript source code of the generator,
-│                              the runtime, the editor. You do NOT edit this to build an app.
+├── NPDev_General\          <- THE ENGINE. Source code of the generator, the runtime,
+│                              the CLI and the Manager. You do NOT edit this to build an app.
 │                              (This is also where the build/run *scripts* live —
 │                              scripts/appgen/ — because scripts are "engine", not "app".)
 │
@@ -89,8 +97,8 @@ edit the JSON under `AppGen\apps\<YourApp>\definition\` and regenerate.
 
 Before building your first app, two things must be true on your machine:
 
-1. **PowerShell 7**, Java (JDK), and the Gradle wrapper must work (already the case on this
-   workstation — the scripts use `pwsh.exe`/`gradlew.bat` under the hood).
+1. **PowerShell 7** and a **Java 17+ JDK** must work (the AppGen scripts use `pwsh.exe` and
+   the bundled Gradle wrapper under the hood). `npdev doctor` checks Java for you.
 2. **The RuntimeHost libraries must be staged once** (and again any time the NPDev engine
    itself changes). This is a one-time compile of the engine into a folder every generated
    app links against:
@@ -337,8 +345,8 @@ The older `"strategy": "DropAndRecreateOnStructureChange"` + `"allowDestructiveR
 pairing pre-authorizes **column** drops and type narrowings once, at authoring time, and is
 deprecated — see `docs/SCHEMA_EVOLUTION.md`. It never authorizes a whole-table destruction: dropping
 a concept, or applying a diff that cannot be executed item by item, requires the token regardless.
-**Most definitions shipped in this repo now use this recommended posture** (50 of the 63 `db.definition*.json` files under
-`NPDevSamples` and `AppGen\apps` at the 2026-10-12 count; 3 still use the deprecated `DropAndRecreateOnStructureChange`). Apps that still
+**Most definitions shipped in this repo now use this recommended posture** (58 of the 71 `db.definition*.json` files under
+`NPDevSamples` and `AppGen\apps` at the 2026-11-08 count; 10 are throwaway `Ephemeral` apps and 3 still use the deprecated `DropAndRecreateOnStructureChange`). Apps that still
 carry it say so in a `NOTICE` on every boot. Existing apps keep working unchanged.
 
 ### 5.3 `model.json` — the actual app
@@ -661,13 +669,15 @@ scoring/triage), design a screen that looks exactly the way you want instead of 
 table/form, and build workflows that don't complete in one HTTP call — they create a ticket,
 notify someone, and **wait** until that someone acts, potentially hours later.
 
-**Trust boundary:** a `plugin:java-source` handler runs in-process with the application's full
-privileges — trust it like your own code. Mounted plugin code is admission-checked (SEC-3/B30):
-a shared bytecode denylist refuses plugins that reference filesystem/network IO, process/system
-control, reflection, threads, scripting or detached async work, enforced at generation time and
-again at boot. Admission-checked is not sandboxed: memory and CPU are unbounded (only
-wall-clock time is bounded), and a hostile plugin is not contained. See SEC-3 for the tracked
-upgrade path to real containment (process isolation).
+**Trust boundary (B30):** a `plugin:java-source` handler is admission-checked twice, at
+generation and again at boot, against a shared bytecode denylist. A plugin that references
+filesystem or network IO, process or system control, reflection, threads, scripting or detached
+async work is refused. An admitted plugin then runs in a **separate OS process**, on a
+restricted classpath, with a runtime class denylist and memory/CPU ceilings (a cgroup on Linux,
+a Job Object on Windows). On Linux the child also gets an OS-level network and filesystem
+sandbox. That bounds a hostile plugin but does not fully contain one: on Windows its network
+egress is not blocked by the OS, and a plugin that busy-loops under its ceiling is not caught.
+Review plugins you did not write.
 
 This exact pattern is the `Claude` (Claude Support Desk) reference app, already proven
 green end-to-end. Three pieces, trimmed from its real `model.json`:

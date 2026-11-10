@@ -160,9 +160,15 @@ sections:
     | `emitEvent` | Broadcasts an event with data taken `from` a variable. |
     | `scheduleEvent` | Same as `emitEvent`, but delayed (`delaySeconds`/`delayMinutes`/`delayMs`). |
     | `branch` | Conditional: `condition`, then `then: [...]`, optional `else: [...]`. |
-    | `awaitEvent` | Pauses the flow until a matching event arrives — see §5/§6. |
+    | `awaitEvent` | Pauses the flow until a matching event arrives — see §5/§6. Add `task` and the wait becomes a **human task** in the assignee's inbox (`GET /api/tasks`), with a form and named outcomes. |
+    | `map` | Copies a value from one flow-state variable to another. |
+    | `forEach` | Bounded iteration over a collection (`collection`, `itemKey`, `steps`, `maxLoopIterations`); `parallelAwait: true` lets every iteration wait on its own event at once. |
+    | `callProcedure` | Calls a declared procedure (§8) and stores its result in flow state. |
     | `generatedAction` | Invokes a specific generated action by name. |
     | `return` | Ends the flow, producing `value` as the result. |
+
+    Any step can also carry `onFailure: [...]`: compensation steps that run in reverse order if a
+    later step fails for good (a saga, not a distributed transaction — see `docs/FLOWS.md` §5).
 
     Steps pass data to each other through simple named variables, conventionally prefixed with
     `$`: `$input` is always the incoming request body; a step can write `output: "$saved"` and a
@@ -322,6 +328,11 @@ sections:
     concept gets a working generic table+form page for free (see the manual, Level 2). Reach for
     a Panel only when you want something that doesn't look like a generic grid: a dashboard, a
     queue with specific columns, a console mixing several data sources.
+
+    A panel is still a *declared* screen: NPDev draws it. When no declaration fits (a drawing
+    board, a map, a storefront, a page with your own design), write a **hand-made page**
+    instead: a `web/*.html` file beside the model that runs inside the app's shell, or publicly
+    with no sign-in, and calls the same API. See `docs/reference/HAND_MADE_PAGES.md`.
 - level: 3
   title: Anatomy
   body: |2
@@ -344,7 +355,11 @@ sections:
     }
     ```
 
-    `layout.type` is `table` (the default rendering) or `grid`. With `grid`, each row of a
+    `layout.type` is `table` (the default rendering), `grid`, `console` or `dashboard`. The last
+    two render declared `widgets[]` instead of the data sources directly: `tile` (one aggregate
+    number), `chart` (bar, line or donut per `groupBy` value), `table`, `actions` and `history`
+    (see `NPDevSamples/f6-showcase`). Any layout can also carry `slots`, which mount your own
+    component `above`, `below` or instead of (`replace`) the generated body. With `grid`, each row of a
     dataSource becomes a card (`layout.fields`, or the
     declared `fieldBindings`, one line per field; an image file field as a thumbnail), in the
     business UI and in a workbench's selection list (set `selection: { "layout": "grid" }` on the
@@ -639,14 +654,18 @@ sections:
     }
     ```
 
-    **Step types available inside a procedure** (a superset of what a flow can do, oriented
-    around data access): `assign`, `mapValue`, `condition`/`if`, `loop`/`forEach`, `conceptQuery`,
-    `readConcept`, `listConcepts`, `runQuery`, `conceptCreate`/`conceptUpdate`/`saveConcept`,
-    `conceptDelete`/`deleteConcept`, `procedureCall`/`callProcedure`, `capabilityCall`,
-    `eventPublish`/`publishEvent`, `return`.
+    **Step types available inside a procedure** (a different vocabulary from a flow's, oriented
+    around data access, and with no `awaitEvent`: a procedure never pauses). The executor
+    dispatches 15 kinds; the names after a slash are accepted aliases:
+    `readConcept`, `listConcepts`, `runQuery`/`conceptQuery`, `saveConcept`/`conceptCreate`/`conceptUpdate`,
+    `patchConcept`, `deleteConcept`/`conceptDelete`, `callCapability`/`capabilityCall`,
+    `publishEvent`/`eventPublish`, `callProcedure`/`procedureCall`, `if`/`condition`,
+    `forEach`/`loop`, `mapList`, `mapValue`/`assign`, `computeValue`, `return`.
 
-    There is no per-procedure tracing or audit knob (`tracePolicy` and `auditPolicy` were both
-    retired because nothing read them). Audit logging is NOT a per-procedure setting — every concept create, update,
+    There is no per-procedure tracing or audit knob on an ordinary procedure (a top-level
+    `tracePolicy`/`auditPolicy` was retired because nothing read it). The one exception is an
+    untrusted-extension procedure: its `actionDescriptor` carries `tracePolicy`,
+    `idempotencyPolicy`, `auditResourceType` and `eventNameOnSuccess`, and those are read. Audit logging is NOT a per-procedure setting — every concept create, update,
     delete and restore reached through the governed path (`saveConcept`/`deleteConcept` steps
     included) is logged automatically, with a before/after field diff, no matter what the
     procedure declares.
@@ -747,12 +766,14 @@ sections:
                  │
                  └── Orchestration rule — reacts to the event, runs its own action automatically
 
-    Panel     — a hand-designed screen; its buttons call either a Flow or a Procedure
-    Procedure — server-side logic for a Panel button (or another Procedure) to call,
-                not its own public REST endpoint
+    Panel     — a declared screen; its buttons call either a Flow or a Procedure
+    Procedure — server-side logic for a Panel button, a flow step (callProcedure) or another
+                Procedure to call, not its own public REST endpoint
+    Hand-made page — web/*.html beside the model, for any screen no declaration fits
     ```
 
-    Everything above is authored the same way: JSON inside `model.json`, validated strictly,
-    regenerated with the same `Build-AppGenApp.ps1` → `_ops\Build-FinalApp.ps1` →
+    Everything above is authored the same way: JSON inside `model.json`, validated strictly.
+    `npdev dev --model <model.json>` regenerates and runs it on every save (many changes go live
+    with no restart). AppGen apps use the `Build-AppGenApp.ps1` → `_ops\Build-FinalApp.ps1` →
     `_ops\Start-App.ps1` sequence from the manual. Nothing here requires touching the NPDev
     engine itself.

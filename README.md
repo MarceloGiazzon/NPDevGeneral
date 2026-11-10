@@ -60,7 +60,7 @@ validator before anything is generated.
 | The idea | In your model | What it buys you |
 |---|---|---|
 | **Concepts are open boxes** | `concepts[]`, each with fields, rules, a `truthLevel` | Nothing is a black box. Look once and see a concept; look deeper and see its fields, its validations, its generated code |
-| **Invariants are declared, not encoded** | `invariants[]`, `unique`, `expression` | Business truth enforced server-side where it cannot be bypassed — and where a regeneration cannot quietly drop it |
+| **Invariants are declared, not encoded** | `concepts[].invariants[]` (`unique`, `expression`), `aggregates[].invariants[]` | Business truth enforced server-side where it cannot be bypassed — and where a regeneration cannot quietly drop it |
 | **Capabilities are contracts** | `capabilities[]` + `bindings[]` | A named promise: inputs, guarantees, outcomes. The implementation is swappable; the contract is not |
 | **Events are semantic facts** | `events[]` | `InvoiceCompleted`, not `invoiceService.complete()`. Causality is visible instead of buried in a call stack |
 | **Orchestration is declarative** | `orchestrationRules[]`, `flows[]` | *When `InvoiceCompleted`, require payment, then emit the fiscal document, then notify.* No glue code, full traceability, safe to regenerate |
@@ -109,7 +109,7 @@ app folder — `../my-app-app`, a sibling of the model folder, not the model fol
 **Four commands.** You now have list and edit screens, a REST API behind them, a database, and
 authentication.
 
-Leave `npdev dev` running. Add a field to `model.json`, save, and watch:
+Leave `npdev dev` running. Change `model.json`, save, and watch:
 
 ```
 14:09:02  changed: model.json
@@ -117,9 +117,15 @@ Leave `npdev dev` running. Add a field to `model.json`, save, and watch:
 14:09:47  ready in 45.2s   http://localhost:8080
 ```
 
-On Windows the app stops for the rebuild — Windows will not replace a jar a running process
-holds — so there is a short gap with no app on every save. On Linux and macOS the old app
-keeps serving until the new one is ready.
+Many changes never restart the app at all. A new flow, query, role grant, enum value, concept,
+or optional field is applied to the **running** app (`change applied live (model-reload)`).
+The app is regenerated, rebuilt and restarted only when it has to be: a field removed, renamed
+or retyped, or a required, unique or reference field added to an existing concept. `npdev dev`
+prints which of the two happened, and why.
+
+On Windows the app stops for a rebuild, because Windows will not replace a jar that a running
+process holds. So there is a short gap with no app while it rebuilds. On Linux and macOS the
+old app keeps serving until the new one is ready.
 
 The screens, the API and the database column are all there. **Get it wrong and it says so without
 taking your app down** — validation runs before anything is touched.
@@ -136,7 +142,7 @@ you write.**
 | You write | You get |
 |---|---|
 | a concept with fields | table, REST API, list/create/edit screens, validation |
-| **13 field types** — text, numbers, dates, enums, references, files, arrays, objects | the right column type, the right input widget, the right validation |
+| **14 field types** — text, uuid, numbers (int, integer, long, decimal), boolean, dates, enums, references, files, arrays, objects | the right column type, the right input widget, the right validation |
 | a `domainType` | format, validation, widget and label defined **once**, reused everywhere |
 | `{"type":"unique","fields":["isbn"]}` | a real DB constraint, server validation, and a clear error |
 | an `expression` invariant | business rules enforced where they cannot be bypassed |
@@ -144,30 +150,44 @@ you write.**
 | `extends` on a concept | inheritance — shared fields declared once |
 | `derivedExpression` | computed values evaluated server-side, so every client agrees |
 | `indexes` | the indexes your queries need, created and tracked |
+| a `lifecycle` | a state machine on a status field: declared states and transitions, and a move the model does not allow is refused |
+| `softDelete` / `temporal` | rows that are never physically deleted (and can be restored), and effective-dated rows such as price lists and tax rates |
+| `sequences` + `nextNumber('…')` | document numbers such as `INV-2026-0001`, allocated atomically |
+| `rollups` | a stored total on a parent (`likeCount`, `orderTotal`) kept equal to its children on every save |
+| `collaboration` | a comment thread with `@mentions`, and optional file attachments, on every record |
 
 ### Behaviour
 
 | You write | You get |
 |---|---|
-| a `flow` with steps | **13 step types** — call, branch, loop, create, update, emit, schedule, await, return |
+| a `flow` with steps | **13 step types**: invariant check, capability call, generated action, emit event, schedule event, return, branch, await event, create, update, map, for-each, call procedure |
 | any flow | **durable execution: it survives a process restart and resumes where it stopped** |
 | `awaitEvent` | a process that pauses for an approval or a webhook — for days, across deploys |
+| `awaitEvent` + `task` | a **human task** in the assignee's inbox, with a form and named outcomes, that resumes the flow when it is completed |
+| `onFailure` on a step | saga-style compensation: completed steps are undone in reverse order if a later step fails |
 | `forEach`, including parallel | isolated iterations that each resume correctly after a crash |
 | `scheduleEvent` / `schedule` | delayed and recurring work, with no separate scheduler |
 | a `procedure` | reusable server-side logic with parameters and a return value |
 | an `orchestrationRule` | when *this* event happens, run *that* |
 | a `capability` + `binding` | name an operation, swap its implementation without touching the model |
+| an operation `policy` | retries, timeouts, circuit breaker, bulkhead and idempotency keys, declared per operation |
+| `webhooks` | an inbound `POST /api/hooks/{source}`, HMAC-verified, that wakes a waiting flow or starts a new one |
+| a capability bound to `http-connector` | calls to an outside REST API with no client code; the base URL can be a property overridden per tenant |
 
 ### Screens
 
 | You write | You get |
 |---|---|
-| nothing | a generated admin UI for every concept, from day one |
+| nothing | a generated UI for every concept from day one: list, search, create, edit, CSV/XLSX export, CSV import with review |
 | a `panel` | a real screen with a route, several data sources, layout, and actions |
+| a panel with `layout: dashboard` or `console` | tiles, charts (bar/line/donut), tables, an action bar and a run history, declared as `widgets[]` |
 | `visibility` / `enabledWhen` | conditional display driven by rules, not JavaScript |
 | an `action` | a button that runs a flow — including ones that stream a generated file back |
 | an `aggregate` | a **master-detail-detail workbench**, saved in one transaction, with commit hooks |
+| a `document` | printable output: one-record documents, and list reports with grouping and totals as PDF and CSV |
 | a `guidePage` | in-app guidance attached to the screen it explains |
+| `appShell`, `settings.strings`, a theme | your own navigation and start page, your own wording in any language, and your own colours (`themes/<id>.json`) |
+| a `web/*.html` page beside the model | **a screen you design yourself**, inside the app's shell or **public, with no sign-in**, talking to the same API (see the escape hatches below) |
 
 ### Access
 
@@ -176,26 +196,29 @@ you write.**
 | `roles` + `grants` | roles and what they may do |
 | `permissionRequirements` on queries, procedures and panel actions; `visibility` on panels | the permissions a caller needs, declared next to the thing they protect |
 | row-level rules | control over *which rows* each user sees |
-| `sensitive` on a field | special handling in logs, traces, and exports |
+| `access.public` on a concept | the fields anonymous visitors may read, served at `/api/public/**` |
+| `sensitive` on a field | the value is masked in traces, event payloads, execution records, audit-trail diffs and AI review packs (CSV export does not mask it) |
 | — | JWT or API-key auth, a super-user key issued on first boot, and a built-in ControlPanel for users, roles and schedules |
-| — | optional Google/GitHub sign-in (env/keyring-configured, no model changes needed), on top of username+password |
+| the `identity` pack | self-service sign-up, password reset, invitations, change password, two-factor (TOTP) and session revocation |
+| — | optional Google, GitHub or any OpenID Connect sign-in (configured by environment or keyring, no model change), on top of username and password |
 
 ### Queries and reporting
 
 | You write | You get |
 |---|---|
 | a named `query` | parameterised, permission-checked queries — no SQL built by hand in a controller |
-| `groupBy` + `aggregates` + `having` | roll-ups (`sum`, `count`, `avg`) **joined across concepts** — dashboards without a reporting layer |
+| `groupBy` + `aggregates` + `having` | roll-ups (`count`, `sum`, `avg`, `min`, `max`) **joined across concepts** — dashboards without a reporting layer |
+| `lookups` + `computed` on a grouped query | a second concept's per-key total in each row, and arithmetic over the columns |
 | *(nothing)* | an audit trail: every create/update/delete/restore is logged automatically, with a field diff, whether or not you ask |
 
 ### Changing it later
 
 | You write | You get |
 |---|---|
-| **save the file** | `npdev dev` validates, regenerates, rebuilds and restarts — automatically |
+| **save the file** | `npdev dev` validates, then applies the change to the running app, or regenerates, rebuilds and restarts when a live apply is not possible — automatically |
 | a new field | the schema evolves against the live database — it is not dropped and recreated |
 | `renamedFrom` | the column and its contents move together |
-| `conversions` | reshape existing data as part of the change: split, copy, look up, merge |
+| `conversions` | reshape existing data as part of the change: copy, split, lookup, merge, convert, coalesce, case |
 | a typo | an error naming the exact path, **and your app still running on the last good model** |
 | — | destructive changes refused unless you acknowledge them explicitly |
 | — | snapshots around risky migrations, and a real lock so two instances cannot migrate at once |
@@ -205,9 +228,10 @@ you write.**
 | You write | You get |
 |---|---|
 | `fragments` | split a large model across files |
-| `packs` | reusable model modules shared between applications |
+| `packs` | reusable model modules shared between applications — built in: identity, workspace, approvals, contacts, helpdesk, inventory, leave, notification, purchasing, sales, tracing |
 | `contexts` + `imports` | bounded contexts, so one team's `Order` is not another's |
-| `propertyScopes` | configuration that cascades: global → tenant → user, in a declared order |
+| `propertyScopes` + `properties` | typed settings that cascade: the model's `default`, then per tenant, then per user, in the order you declare |
+| `agentAccess` | an AI assistant (MCP, Telegram, WhatsApp) that acts through the app's own API as the signed-in user, under that user's permissions |
 | — | multi-tenancy, H2 for development and PostgreSQL, MySQL or SQL Server for production |
 
 **Full reference: `docs/FEATURES.md`.**
@@ -225,10 +249,12 @@ copy cannot silently run:
 
 | Escape hatch | How it survives a regeneration |
 |---|---|
-| `untrustedExtensionEntrypoint` on a procedure | your own Java class, pinned by hash in the app's `untrusted-extension-manifest.json`, admitted through the same bytecode/AST safety gate as a mounted plugin |
-| `untrustedExtensionEntrypoint` on a panel | your own HTML/JS asset, hash-pinned into the app — for bringing an existing page with you |
-| a `capability` with a swapped `binding` | the contract stays in the model; the implementation is yours and is resolved at runtime |
-| the generated REST API | a bespoke frontend is just another client — outside the blast radius of a regeneration entirely |
+| a hand-made page, `web/*.html` beside the model | **any screen you can build in HTML/JS** (a drawing board, a map, a storefront, a public gallery). It is copied into the app on every generate, wrapped by the shell (navigation, sign-in, roles) or marked public, listed in the menu from `pages.json`, and calls the app through `NPDevShell.api` with the same token and errors as the generated UI. How-to: [`docs/reference/HAND_MADE_PAGES.md`](docs/reference/HAND_MADE_PAGES.md) |
+| a panel `slot`, a custom region, a custom widget | your own component above, below or **instead of** a generated panel body, inside a generated workbench (`render: "component"`), or for one field (`ui.widget: "custom"`) |
+| `metadata.untrustedExtensionEntrypoint` on a procedure | your own Java class, pinned by hash in the app's `untrusted-extension-manifest.json`, admitted through the same bytecode/AST safety gate as a mounted plugin |
+| `metadata.untrustedExtensionEntrypoint` on a panel | your own HTML/JS asset, hash-pinned into the app — for bringing an existing page with you |
+| a `capability` with a swapped `binding`, or a `customCapabilities` entry | the contract stays in the model; the implementation is yours and is resolved at runtime |
+| the generated REST API (with an OpenAPI description) | a separate frontend, mobile app or other service is just another client — outside the blast radius of a regeneration entirely |
 
 Regeneration deliberately spares exactly three directories inside a built app — `data`, `logs`,
 `secrets` — so a rebuild never costs you your database, your history, or your keys.
@@ -254,7 +280,7 @@ make, not something that happens to you.**
 
 ```
 Java 17 · Spring Boot · Gradle · H2 (dev) / PostgreSQL, MySQL or SQL Server (production)
-REST API · generated admin UI · JWT or API-key auth · Docker Compose included
+REST API + OpenAPI · generated UI · JWT, API-key or OIDC sign-in · Docker Compose + Caddy TLS recipe included
 ```
 
 **A normal Gradle project.** Open it in your IDE, read it, commit it, deploy it anywhere you deploy
@@ -301,21 +327,37 @@ layer is not there because you cannot write the code; it is there so you do not 
 fifth time — and so that when you do reach for code, the reach is surgical and it survives the next
 regeneration.
 
-**Not a good fit if you want** a bespoke consumer-facing UI (NPDev generates a functional admin
-interface, not a designed product surface), a microservice generator (one model is one deployable
-app), or frozen APIs today.
+**And it is not limited to back offices.** An app can have public pages that need no sign-in,
+self-service sign-up, Google, GitHub or OpenID Connect sign-in, screens you design yourself, its
+own theme and wording, and `npdev host` to put it on the internet. So it can serve customers as
+well as staff.
+
+**What NPDev does not do *for* you:**
+- **It does not design your brand.** The generated screens are functional, themable and
+  consistent, but they are not a designed product surface. A polished customer-facing screen is
+  one you write as a hand-made page, and it survives every regeneration (see the escape hatches
+  above).
+- **It does not split your system into microservices.** One model is one deployable app. Several
+  services are several apps, connected by their REST APIs, HTTP connectors, webhooks and shared
+  packs.
+- **It does not offer frozen APIs yet.** It is pre-1.0 (see below).
 
 ---
 
 ## Honest limitations
 
-- **Custom screens are hand-written.** You get a working admin UI plus declarable panels and
-  workbenches; a polished, bespoke frontend is built against the generated REST API like any other
-  client.
+- **A designed screen is one you write.** The generated UI, declared panels, dashboards and
+  workbenches are functional, not branded. A bespoke screen is a hand-made `web/*.html` page,
+  inside the app's shell or public, and regeneration keeps it.
+- **Public pages are read-only.** A page open to anonymous visitors reads only what
+  `access.public` declares, under `/api/public/**`. Anything that writes needs a signed-in user,
+  and self-service sign-up provides one.
 - **One model is one deployable app.** Bounded contexts exist inside a model; this is not a
   microservice generator.
-- **The app restarts to pick up a model change.** `npdev dev` makes that automatic and
-  reports it, but it is a restart, not hot reload.
+- **Some model changes still restart the app.** A new flow, query, role grant, concept or optional
+  field goes live with no restart. Removing, renaming or retyping a field, or adding a required,
+  unique or reference field, means a rebuild and restart. `npdev dev` does that automatically and
+  says which one happened.
 - **Pre-1.0 and deliberately unstable.** See below.
 
 The current, complete list of designed limits is `docs/ACCEPTED_BOUNDARIES.md` — kept accurate on
@@ -329,7 +371,7 @@ purpose, because a stale limitations page costs more trust than a short feature 
 ./npdev doctor                    # check this machine
 ./npdev setup                     # build NPDev's jars locally (once per clone)
 ./npdev init <name>               # scaffold a new model, with git history
-./npdev dev                       # watch the model; rebuild + restart on save
+./npdev dev                       # watch the model; apply live, or rebuild + restart, on save
 ./npdev run app                   # generate, build, boot, health-check (one shot)
 ./npdev validate model <path>     # full structural + semantic check, no generation (or just `./npdev validate <path>`)
 ./npdev generate app --model <m> --config <c> --output <dir>
@@ -338,7 +380,19 @@ purpose, because a stale limitations page costs more trust than a short feature 
 ./npdev db verify --app <dir>     # does the live database match the model? No app boot required.
 ```
 
-`npdev --help` describes every command. **Windows:** `npdev.bat`, same arguments.
+`npdev --help` describes every command. **Windows:** `npdev.bat`, same arguments. Beyond the
+ones above, it groups commands by when you need them:
+
+- **Test it:** `test` runs model-derived, REST and browser checks against one booted app.
+  `acceptance` and `seed` are here too.
+- **Start from what you have:** `import db` drafts a model from an existing JDBC database.
+  `add` scaffolds one concept, panel, flow or procedure.
+- **Put it in front of real users:** `host` (`plan`, `check`, `share` through a tunnel,
+  `deploy` to your own server), `package` and `upgrade` for a runnable bundle, and `service`
+  for OS-level supervision. See [`docs/HOSTING.md`](docs/HOSTING.md).
+- **Its database:** `db` (`verify`, `export`, `import`, `restore`, `promote`, …), `engines`,
+  `capabilities`.
+- **AI:** `ai` (bring your own provider), `providers`, `mcp`, `review`, `loop`.
 
 For AI-authored models, `./npdev normalize desire-paths <model.json>` rewrites the shapes AI
 authors commonly guess into canonical form before validation, reporting every change. AIs author
@@ -398,12 +452,9 @@ tags, so a tag is a point-in-time cut, not a live mirror of `HEAD` — check
 file. (`beta1.5` and `beta1.6` each accumulated drift against `main` before being superseded; the
 practice since is to cut the next tag fresh at `main` rather than try to move a published one.)
 
-**`main` is the sole working/release branch** (as of 2026-08-07, REG-139/I2 + FINAL_PLAN.md/F1) —
-no second long-lived branch is kept in sync with it, and all work lands directly on `main`. That
-policy claim is about there being no competing *release* branch, not about the repo having zero
-other branches at any given moment: short-lived feature/experiment branches accumulate on both
-`origin` and locally and are cleaned up periodically, some already fully merged and some abandoned
-mid-experiment — neither carries release state that isn't already on `main`. See
-`docs/RELEASE_PROCESS.md`'s "Merge cadence" section for why a drifting second *working* branch was
-a real, previously-recurring problem (150 and then 71 commits of drift), and why collapsing to one
-working branch removes that failure mode by construction.
+**`main` is the only branch.** All work is committed directly to `main`. No feature, topic or
+release branch exists, locally or on `origin`. A stray branch, for example one opened by
+Dependabot, is folded into `main` or deleted when it is found. See `docs/RELEASE_PROCESS.md`'s
+"Merge cadence" section for why a drifting second working branch was a real, recurring problem
+(150 and then 71 commits of drift), and why having one branch removes that failure mode by
+construction.

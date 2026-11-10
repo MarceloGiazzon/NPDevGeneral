@@ -25,9 +25,12 @@ long-running business processes — as source you own outright, not a scaffold y
    structured feedback for an LLM authoring a model directly, instead of a runtime crash three
    steps later.
 
-**The honest limitation, upfront:** custom business screens are hand-written against the generated
-REST API. NPDev generates a working generic admin UI, not a bespoke frontend — if your evaluator
-cares primarily about a polished custom UI out of the box, say so before they find it themselves.
+**The honest limitation, upfront:** NPDev does not design your brand. It generates a working,
+themable UI (lists, forms, workbenches, dashboards, reports). A polished, customer-facing screen is
+one you write as a hand-made HTML page, which runs inside the app's shell or publicly with no
+sign-in, calls the same API, and survives every regeneration. If your evaluator expects a designed
+custom UI out of the box, say so before they find it themselves, and show them the hand-made page
+path (`docs/reference/HAND_MADE_PAGES.md`) in the same breath.
 
 **Who this is likely to resonate with:**
 - Teams maintaining a legacy 4GL/low-code platform (GeneXus and similar) who recognize the
