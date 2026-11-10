@@ -1,0 +1,54 @@
+id: REG-324
+title: >-
+  The Manager never saw a script's exit code or log file: `npdev monitor ops --json` ended its stream with an indented
+  (multi-line) result, the Manager reads that stream one line at a time, so EVERY build reported "exit 0, no log" -- a failed
+  build was started, and the person waited minutes for an app that could not run
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-11-10
+closed: 2026-11-10
+source: >-
+  Found on the REAL Manager window while proving REG-322 (0.13.35, reg322-tour/tour.mjs, third run): the build log ends
+  "BUILD FAILED in 5s ... Build finished in 25,8 s (exit 1)" yet the screen carried on to start the app and, 4.5 minutes later,
+  said "The app was started but has not answered yet" -- the app's own log held "Unable to access jarfile ...", the jar a
+  failed build never made. The same symptom was recorded in September as RUN-35 (the AI loop recorded build-done on a failed
+  build) and worked around inside ai_loop.rs; the cause was never found.
+surface: cli/monitor-ops, manager/ops-events
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_monitor_ops_stream.py
+  - NPDevManager/src/npdev.rs
+  - NPDevManager/ui/browserai.js
+  - NPDevManager/ui/studio.js
+detail: |
+  Root cause. `_run_monitor_ops` (npdev_cli.py) streams the script's output as one `{"kind": "line"}` JSON object per line
+  and then printed its verdict with `json.dumps(result, indent=2)` -- an object spread over ten lines. The Manager's
+  `run_ops_script_streaming` / `run_ops_script_capture` (npdev.rs) parse stdout ONE LINE AT A TIME and take `exitCode` and
+  `logFile` from the last line that parses as a JSON value. No line of an indented object does, so the last parsed value was
+  always the last `{"kind": "line"}`, which carries neither: `exitCode` defaulted to 0 and `logFile` to null in the `done`
+  event of every script, not only builds.
+  What that broke, all at once: the browser-AI launch (browserai.js `built.exitCode !== 0` was never true, so a failed
+  build was "started" and then waited on for three minutes, and the failure screen's "exit code N + log path" was never
+  shown); the Studio rebuild (studio.js, same test: "rebuilt and restarted" after a failed build); the Monitor's run summary;
+  and the AI loop (RUN-35, worked around there by scanning the captured lines for "BUILD FAILED").
+  Fix. In `--json` mode the verdict is printed as ONE line (`json.dumps(result)`, flush), like every line before it, so the
+  contract the Rust side already documents (JSON Lines) is true. No Rust change: the same two parsers now see `exitCode` and
+  `logFile`. UI listeners (monitor.js, studio.js, browserai.js) act only on `line` / `done` events and ignore the verdict line.
+  Consequence worth knowing: the AI loop's `classify_build` cross-check (RUN-35) is now belt and braces, not the only defence.
+resolution: >-
+  Fixed 2026-11-10. `npdev monitor ops --json` ends on one JSON line carrying `exitCode`, `ok` and `logFile`. Proven on the REAL
+  window (Manager 0.13.35, reg322-tour/tour.mjs run 4 and 5): a real failing build (NPDEV_RUNTIMEHOST_LIBS pointing at a folder
+  that does not exist) now ends the launch in about 45 s with "The app could not be built." and `exit code 1` plus the log's path
+  under "See what happened", instead of 4.5 minutes later with "has not answered yet".
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_monitor_ops_stream.py#test_every_stdout_line_is_one_json_value_and_the_last_is_the_verdict_of_a_failed_build
+  asserts: >-
+    running an ops script that exits 1 with --json prints only lines that each parse as a JSON value on their own, every line
+    but the last a {"kind": "line"} carrying the script's own output in order, and the last the verdict with exitCode 1, ok
+    false and a logFile whose name is ops-build-finalapp-<stamp>.log and whose file holds the run's output; a clean run ends on
+    exitCode 0; without --json the plain "(exit N; captured to ...)" sentence is unchanged. Proven RED 2026-11-10 against the
+    previous code (stdout line 4 was a bare "{").
+  provenRed: true

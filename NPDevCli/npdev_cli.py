@@ -14481,7 +14481,13 @@ def _run_monitor_ops(args: argparse.Namespace) -> int:
         "output": "\n".join(captured),
     }
     if args.json:
-        print(json.dumps(result, indent=2))
+        # JSON LINES, like every {"kind": "line"} above it. The Manager reads this stream ONE LINE AT A TIME and takes
+        # `exitCode` and `logFile` from the last line that parses as a JSON value; an indented object parses on none of
+        # its lines, so every build looked like exit 0 with no log -- a failed build was "started" and the person waited
+        # minutes for an app that could not run (REG-324; RUN-35 had only worked around it inside the AI loop).
+        # `output` is left out of this line: every line of it was streamed above, and the Manager forwards the verdict as an
+        # event that the Monitor's run box APPENDS whenever it carries `output` (monitor.js) -- the whole run, printed twice.
+        print(json.dumps({key: value for key, value in result.items() if key != "output"}), flush=True)
     else:
         print(f"(exit {code}; captured to {log_path})")
     return 0 if code == 0 else 2

@@ -1,0 +1,40 @@
+id: REG-325
+title: >-
+  Use a browser AI: with an app selected in the workspace, typing the request of a NEW app snaps the screen to "change
+  that app", and an app-list refresh can do it again after the conversation is open -- Apply then refuses a new app with
+  "Give the new app a name first."
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-10
+source: >-
+  Found on the REAL Manager window while proving REG-322 (0.13.35, NPDev_General__OutsideRepo/reg322-tour/probe.mjs and
+  tour.mjs, first run). The window remembered a selected app (testH2S_2-app, kept in webview storage). Choosing "a new app"
+  and typing a request flipped the radios to "change" and hid the new-name field within seconds; in the first tour run the
+  conversation opened as a create (the stored session says create, newAppName set) and Apply was refused with no-target.
+surface: manager/browserai, manager/workspace
+files:
+  - NPDevManager/ui/workspace.js
+  - NPDevManager/ui/browserai.js
+detail: |
+  Root cause, read from the code and consistent with both observations:
+  (1) workspace.js (NAV-3) makes every app-scoped screen's picker follow the selected app: `applyToPicker` sets the picker and
+  dispatches a synthetic `change` event, and a MutationObserver re-applies it whenever the option list is repopulated (the
+  Monitor's refresh does that every few seconds).
+  (2) browserai.js listens to that `change` as if a person had picked: `onAppChanged(true)` -> `setIntent(has ? "change" :
+  "create")`. A synthetic event is indistinguishable there from a click, so the guard "once a conversation is open its kind is
+  fixed" (`if (S.code && !userPicked) return`) is bypassed.
+  (3) `onApply` fetches the folder a NEW app is made in only when `S.intent === "create"`; with the intent flipped to "change"
+  `parentDir` stays null, the CLI answers `no-target` ("say where the new app goes (--parent-dir) and what it is called") and the
+  screen says "Give the new app a name first." although a name was given.
+  Not caused by REG-322. Anyone with an app selected who asks for a new app on this screen can hit it; the render check never
+  does because it calls NPDevWorkspace.clear() first (check-manager-ui-render.mjs, the browser-AI block).
+  Direction (not decided): ignore picker changes that are not trusted events (`event.isTrusted`) once a conversation is open, or
+  have the screen keep its own intent for the life of a conversation; and decide what "Ask AI -> a new app" should do while a
+  workspace app is selected (offer "Change app" first?). The fix needs a real-window proof with an app selected, not only the
+  render check.
+resolution: >-
+  Done when, on the real window with an app selected in the workspace, choosing "a new app", typing a request and a name, and
+  pressing through to Apply makes the new app without the screen ever leaving "create" (including across an app-list refresh
+  while the conversation is open), proven by a tour that does NOT call NPDevWorkspace.clear(); and the render check has a case
+  where the workspace re-applies its app after the conversation opened.
