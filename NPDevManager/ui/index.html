@@ -565,6 +565,15 @@
           <div class="ba-intent" role="radiogroup" aria-labelledby="browserai-h-1">
             <label><input type="radio" name="browserai-intent" id="browserai-intent-create" value="create" checked> Create a new app</label>
             <label><input type="radio" name="browserai-intent" id="browserai-intent-change" value="change"> Change this app</label>
+            <label><input type="radio" name="browserai-intent" id="browserai-intent-pack" value="pack"> Make a reusable part</label>
+          </div>
+          <div id="browserai-pack-fields" hidden>
+            <label class="ba-field">Is it a new part, or a new version of one of yours?
+              <select id="browserai-packbase"><option value="">A new part</option></select>
+            </label>
+            <label class="ba-field" id="browserai-packname-label">What should the part be called?
+              <input type="text" id="browserai-packname" placeholder="e.g. ratings" autocomplete="off" maxlength="40">
+            </label>
           </div>
           <label class="ba-field" id="browserai-newname-label">What should the new app be called?
             <input type="text" id="browserai-newname" placeholder="e.g. Bike shop" autocomplete="off" maxlength="60">
@@ -913,6 +922,13 @@
         <button class="btn" id="packs-refresh">⟳ REFRESH</button>
         <span id="packs-status" class="status-line"></span>
       </div>
+
+      <h2 class="packs-h">Your own parts</h2>
+      <p class="subtitle">Parts you made with an AI are kept on this computer. Nothing is shared with anyone.</p>
+      <div class="packs-toolbar">
+        <button class="btn" id="packs-make-with-ai">Make a part with a browser AI</button>
+      </div>
+      <div id="packs-mine"></div>
 
       <h2 class="packs-h">In this app</h2>
       <div id="packs-list"></div>

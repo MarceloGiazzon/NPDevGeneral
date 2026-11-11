@@ -195,7 +195,61 @@
     S.intent = intent;
     $(`browserai-intent-${intent}`).checked = true;
     $("browserai-newname-label").hidden = intent !== "create";
+    $("browserai-pack-fields").hidden = intent !== "pack";
+    $("browserai-apply").textContent = tr(intent === "pack" ? "Save to My parts" : "Apply");
+    if (intent === "pack") refreshMyParts();
   }
+
+  // A part's name: lowercase letters, digits, dash and underscore, starting with a letter (what the CLI accepts).
+  const PACK_ID_OK = /^[a-z][a-z0-9_-]{0,59}$/;
+  function packIdFrom(text) {
+    return text
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  // The folder "My parts" lives in, and the parts already saved there (for "a new version of one of yours").
+  async function packsWorkspace() {
+    try {
+      const dir = await invoke("packs_workspace");
+      if (dir) return dir;
+    } catch (e) {
+      /* fall through to the folder picker */
+    }
+    try {
+      return await invoke("pick_db_transfer_folder", { title: tr("Choose the folder to keep your parts in") });
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function refreshMyParts() {
+    const picker = $("browserai-packbase");
+    const keep = picker.value;
+    let parts = [];
+    try {
+      const dir = await invoke("packs_workspace");
+      parts = dir ? await invoke("my_parts", { workspace: dir }) : [];
+    } catch (e) {
+      parts = [];
+    }
+    picker.replaceChildren(new Option(tr("A new part"), ""), ...parts.map((p) => new Option(`${p.id} (${p.version})`, p.path)));
+    if (keep && parts.some((p) => p.path === keep)) picker.value = keep;
+  }
+
+  // "Make a part with a browser AI" on the parts screen: open this screen with the third choice already picked.
+  window.__npdevBrowserAiMakePart = async function () {
+    if (window.__npdevShowScreen) window.__npdevShowScreen("browserai");
+    if (S.phase === "done") await startOver(false); // a finished conversation: start a fresh one for the part
+    if (S.phase === "compose") {
+      S.intentByHand = true;
+      setIntent("pack");
+    }
+  };
 
   // Picking an app means "change this app"; picking "a new app" means create. The person can still flip
   // the choice with the two buttons above the request. `userPicked` is false for the workspace putting its app back
@@ -253,6 +307,7 @@
     if (!ask) return note("browserai-step1-note", "Describe what you want first.", true);
     let appDir = null;
     let newAppName = null;
+    if (S.intent === "pack") return onContinuePack(ask);
     if (S.intent === "change") {
       appDir = $("browserai-app").value;
       if (!appDir) return note("browserai-step1-note", "Choose the app to change first.", true);
@@ -281,6 +336,32 @@
       }
       if (!r || r.ok === false || !r.code || typeof r.prompt !== "string") return note("browserai-step1-note", WENT_WRONG, true);
       openCopyStep(r, appDir);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onContinuePack(ask) {
+    const packId = packIdFrom($("browserai-packname").value);
+    if (!packId) return note("browserai-step1-note", "Give the part a name first.", true);
+    if (!PACK_ID_OK.test(packId)) return note("browserai-step1-note", "Use lowercase letters, numbers and dashes in the name, starting with a letter.", true);
+    setBusy(true);
+    note("browserai-step1-note", "Getting your text ready…");
+    try {
+      let r;
+      try {
+        r = await invoke("relay_start_pack", {
+          ask,
+          packId,
+          fromPack: $("browserai-packbase").value || null,
+          target: null,
+          language: (window.NPDevI18n && window.NPDevI18n.lang) || "en",
+        });
+      } catch (e) {
+        return note("browserai-step1-note", WENT_WRONG, true);
+      }
+      if (!r || r.ok === false || !r.code || typeof r.prompt !== "string") return note("browserai-step1-note", WENT_WRONG, true);
+      openCopyStep(r, null);
     } finally {
       setBusy(false);
     }
@@ -816,6 +897,8 @@
     "no-model": "This answer cannot be applied yet.",
     "confirmation-required": "Tick each box to say you agree.",
     "no-target": "Give the new app a name first.",
+    "pack-exists": "You already have a part with this name. Start again and choose a new version of it.",
+    "no-pack": "This answer cannot be applied yet.",
     "validator-unavailable": SENTENCES.JAVA_MISSING,
   };
 
@@ -823,7 +906,10 @@
     if (S.busy || !S.code || S.blocked) return;
     const confirmed = [...document.querySelectorAll("#browserai-confirms input:checked")].map((b) => b.dataset.code);
     let parentDir = null;
-    if (S.intent === "create") {
+    if (S.intent === "pack") {
+      parentDir = await packsWorkspace();
+      if (!parentDir) return note("browserai-apply-note", "Choose where to keep your parts first.", true);
+    } else if (S.intent === "create") {
       parentDir = await newAppParent();
       if (!parentDir) return note("browserai-apply-note", "Choose where to keep your apps first.", true);
     }
@@ -868,6 +954,7 @@
   // ------------------------------------------------------------------------------------ 5. done
 
   function showDone(r) {
+    if (r.intent === "pack") return showDonePack(r);
     const created = r.created === true;
     note("browserai-progress", created ? "Done. Your new app was created." : "Done. The change is in your app.");
     showLaunchButtons({});
@@ -879,7 +966,24 @@
     focusStep();
   }
 
+  // A saved part: it is in My parts, on this computer only. Nothing was published; Undo takes it back.
+  function showDonePack(r) {
+    note("browserai-progress", "Done. The part is saved in your own parts. Nothing was shared.");
+    showLaunchButtons({});
+    note("browserai-launch", "");
+    $("browserai-launch-details").hidden = true;
+    $("browserai-go-apps").hidden = false;
+    $("browserai-go-apps").textContent = tr("Show my parts");
+    $("browserai-undo").hidden = !r.backupManifestPath;
+    setPhase("done");
+    focusStep();
+  }
+
   function onGoApps() {
+    if (S.applied && S.applied.intent === "pack") {
+      if (window.__npdevShowScreen) window.__npdevShowScreen("packs");
+      return;
+    }
     if (window.__npdevShowScreen) window.__npdevShowScreen("apps");
   }
 
@@ -1111,6 +1215,7 @@
         $("browserai-undo").hidden = true;
         note("browserai-launch", "The app still shows the change until you update it.");
         showLaunchButtons({ rebuild: !!S.builtAppDir });
+        if (S.applied && S.applied.intent === "pack") return note("browserai-progress", "Undone. Your parts are as they were before.");
         return note("browserai-progress", "Undone. Your app is as it was before.");
       }
       note("browserai-progress", (r && UNDO_REFUSED[r.error]) || "Nothing was undone.", true);
@@ -1214,7 +1319,8 @@
       $("browserai-ask").value = session.ask || "";
       $("browserai-newname").value = session.newAppName || "";
       // A fix is a change to an app: this window's two kinds are "new app" and "change this one".
-      setIntent(session.intent === "create" ? "create" : "change");
+      setIntent(session.intent === "create" ? "create" : session.intent === "pack" ? "pack" : "change");
+      if (session.intent === "pack") $("browserai-packname").value = session.packId || "";
       await refreshApps();
       if (session.appDir) {
         const picker = $("browserai-app");
@@ -1284,6 +1390,13 @@
     $("browserai-app").addEventListener("change", (e) => onAppChanged(!(e && e.npdevFromWorkspace)));
     $("browserai-intent-create").addEventListener("change", () => { S.intentByHand = true; setIntent("create"); });
     $("browserai-intent-change").addEventListener("change", () => { S.intentByHand = true; setIntent("change"); });
+    $("browserai-intent-pack").addEventListener("change", () => { S.intentByHand = true; setIntent("pack"); });
+    $("browserai-ask").addEventListener("input", () => {
+      // The part's name is suggested from what the person wrote, until they type one themselves.
+      const box = $("browserai-packname");
+      if (S.intent === "pack" && !box.dataset.byHand) box.value = packIdFrom($("browserai-ask").value.split(/\s+/).slice(0, 3).join("-"));
+    });
+    $("browserai-packname").addEventListener("input", (e) => { if (e.isTrusted) e.target.dataset.byHand = "1"; });
     $("browserai-continue").addEventListener("click", onContinue);
     $("browserai-copy").addEventListener("click", onCopy);
     $("browserai-check").addEventListener("click", onCheck);

@@ -324,7 +324,30 @@ async function refreshPacks(options) {
   if (packsState.catalog) renderCatalog();
 }
 
+// "Your own parts": what a person made with a browser AI and saved on this computer. Read from the folder, never
+// judged here; making one is the Use a browser AI screen's job.
+async function packsRefreshMine() {
+  const box = document.getElementById("packs-mine");
+  let parts = [];
+  try {
+    const dir = await kInvoke("packs_workspace");
+    parts = dir ? await kInvoke("my_parts", { workspace: dir }) : [];
+  } catch (error) {
+    parts = [];
+  }
+  box.innerHTML = parts.length
+    ? `<ul class="packs-mine">${parts.map((p) => `<li><b>${packsEsc(p.id)}</b> <small>${packsEsc(T("version {version}", { version: p.version }))}</small></li>`).join("")}</ul>`
+    : `<p class="status-line">${packsEsc(T("You have not made a part yet."))}</p>`;
+}
+
 function initPacks() {
+  document.getElementById("packs-make-with-ai").addEventListener("click", () => {
+    if (window.__npdevBrowserAiMakePart) window.__npdevBrowserAiMakePart();
+  });
+  packsRefreshMine();
+  // Coming back to this screen (after saving a part, say) re-reads the folder: nothing else would.
+  new MutationObserver(() => { if (!document.getElementById("screen-packs").hidden) packsRefreshMine(); })
+    .observe(document.getElementById("screen-packs"), { attributes: true, attributeFilter: ["hidden"] });
   document.getElementById("packs-refresh").addEventListener("click", async () => {
     await packsRefreshAppPicker();
     await refreshPacks();
@@ -341,6 +364,7 @@ window.__npdevInitPacks = initPacks;
 // Entering the screen re-reads the app list too: an app made after the Manager started is not in the picker yet, and
 // without it the workspace's chosen app cannot be put back (the screen would quietly stay on an older app).
 window.__npdevRefreshPacks = async () => {
+  packsRefreshMine();
   await packsRefreshAppPicker();
   await refreshPacks();
 };

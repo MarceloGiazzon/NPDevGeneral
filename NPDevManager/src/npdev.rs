@@ -999,6 +999,56 @@ pub async fn run_relay_start(
     run_relay_json(python_exe, npdev_cli, java_home, &args, "start").await
 }
 
+/// `npdev ai relay start --intent pack` -- a conversation that writes a reusable PART (a pack). `pack_id` is the
+/// part's folder name (the AI never chooses it); `from_pack` is the existing part's pack.json when this is a NEW
+/// VERSION of it. Same answer shape as `run_relay_start`.
+pub async fn run_relay_start_pack(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    ask: &str,
+    pack_id: &str,
+    from_pack: Option<&str>,
+    target: Option<&str>,
+    language: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return relay_fixture(FIXTURE_RELAY_PROMPT, "relay-prompt");
+    }
+    check_relay_pack_id(pack_id)?;
+    check_relay_value("the language for the AI", language)?;
+    if language.len() > 64 {
+        return Err("the language for the AI is not valid".to_string());
+    }
+    if let Some(path) = from_pack {
+        check_relay_value("the part to start from", path)?;
+    }
+    if let Some(t) = target {
+        check_relay_token("the chat AI", t)?;
+    }
+    let ask_file = TempTextFile::create("ask", ask)?;
+    let ask_path = ask_file.path_text();
+    let mut args: Vec<&str> = vec!["ai", "relay", "start", "--intent", "pack", "--ask-file", ask_path.as_str(), "--pack-id", pack_id];
+    if let Some(path) = from_pack {
+        args.extend(["--from-pack", path]);
+    }
+    if let Some(t) = target {
+        args.extend(["--target", t]);
+    }
+    args.extend(["--language", language, "--json"]);
+    run_relay_json(python_exe, npdev_cli, java_home, &args, "start").await
+}
+
+/// A part's id: what the CLI accepts (lowercase letters, digits, `-` and `_`, starting with a letter). Checked here
+/// as well because it becomes a folder name and a command-line argument.
+fn check_relay_pack_id(value: &str) -> Result<(), String> {
+    let mut chars = value.chars();
+    let shape_ok = value.len() <= 60
+        && chars.next().is_some_and(|c| c.is_ascii_lowercase())
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_');
+    if shape_ok { Ok(()) } else { Err("the part's name is not valid".to_string()) }
+}
+
 /// `npdev ai relay ingest --file` -- the file(s) an AI made (`.json`, `.txt`, `.md` or `.zip`) and the
 /// user dropped, picked, or that the Manager found in Downloads. Same answer as `run_relay_ingest_text`.
 /// `source` says how it arrived (`drop`, `file-picker`, `downloads-watch`).
@@ -3062,6 +3112,31 @@ mod relay_pipe_tests {
 
     fn has_pair(argv: &[String], flag: &str, value: &str) -> bool {
         argv.windows(2).any(|w| w[0] == flag && w[1] == value)
+    }
+
+    #[tokio::test]
+    async fn a_pack_conversation_sends_the_ask_in_a_file_and_the_part_as_flags() {
+        let Some(python) = find_python() else {
+            eprintln!("SKIPPED: no python on PATH");
+            return;
+        };
+        if fake_mode() {
+            eprintln!("SKIPPED: stub mode serves fixtures");
+            return;
+        }
+        let dir = scratch("start-pack");
+        let script = write_echo_cli(&dir);
+        let result = run_relay_start_pack(&python, &script, None, "avaliações de corridas", "ratings", Some("some/pack.json"), None, "Portuguese (Brazil)")
+            .await
+            .expect("the stand-in CLI answers");
+        let argv = argv_of(&result);
+        assert!(has_pair(&argv, "--intent", "pack") && has_pair(&argv, "--pack-id", "ratings"), "{argv:?}");
+        assert!(has_pair(&argv, "--from-pack", "some/pack.json"), "{argv:?}");
+        assert!(!argv.iter().any(|a| a.contains("avalia")), "no content on argv: {argv:?}");
+        for bad in ["", "Ratings", "-x", "a b", "1abc", "a;b", "../x"] {
+            assert!(run_relay_start_pack(&python, &script, None, "x", bad, None, None, "English").await.is_err(), "accepted {bad:?}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
