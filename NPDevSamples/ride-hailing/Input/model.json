@@ -1,0 +1,565 @@
+{
+  "schemaVersion": "1.0.0",
+  "namespace": "sample.ridehailing",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "concepts": [
+    {
+      "name": "Rider",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "phone",
+          "type": "string"
+        },
+        {
+          "name": "account",
+          "type": "string",
+          "required": true,
+          "unique": true,
+          "description": "The rider's login (username). Row access compares it with $user.id.",
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        }
+      ],
+      "access": {
+        "read": "account == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem",
+        "write": "account == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem"
+      }
+    },
+    {
+      "name": "Driver",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "plate",
+          "type": "string",
+          "required": true,
+          "unique": true,
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": [
+            "AVAILABLE",
+            "BUSY",
+            "OFFLINE"
+          ],
+          "required": true,
+          "access": {
+            "write": "status != 'BUSY' || $user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "lat",
+          "type": "decimal",
+          "required": true,
+          "min": -90,
+          "max": 90
+        },
+        {
+          "name": "lng",
+          "type": "decimal",
+          "required": true,
+          "min": -180,
+          "max": 180
+        },
+        {
+          "name": "account",
+          "type": "string",
+          "required": true,
+          "unique": true,
+          "description": "The driver's login (username).",
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        }
+      ],
+      "access": {
+        "read": "account == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem",
+        "write": "account == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem"
+      }
+    },
+    {
+      "name": "Ride",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "rider",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "Rider"
+          }
+        },
+        {
+          "name": "driver",
+          "type": "reference",
+          "reference": {
+            "target": "Driver"
+          },
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": [
+            "REQUESTED",
+            "ASSIGNED",
+            "ACCEPTED",
+            "IN_PROGRESS",
+            "COMPLETED",
+            "CANCELLED",
+            "NO_DRIVER"
+          ],
+          "required": true
+        },
+        {
+          "name": "pickupLat",
+          "type": "decimal",
+          "required": true,
+          "min": -90,
+          "max": 90
+        },
+        {
+          "name": "pickupLng",
+          "type": "decimal",
+          "required": true,
+          "min": -180,
+          "max": 180
+        },
+        {
+          "name": "dropoffLat",
+          "type": "decimal",
+          "required": true,
+          "min": -90,
+          "max": 90
+        },
+        {
+          "name": "dropoffLng",
+          "type": "decimal",
+          "required": true,
+          "min": -180,
+          "max": 180
+        },
+        {
+          "name": "pickupDistanceKm",
+          "type": "decimal"
+        },
+        {
+          "name": "etaMinutes",
+          "type": "integer"
+        },
+        {
+          "name": "tripDistanceKm",
+          "type": "decimal"
+        },
+        {
+          "name": "fareCents",
+          "type": "decimal",
+          "derivedExpression": "300 + 120 * tripDistanceKm"
+        },
+        {
+          "name": "riderAccount",
+          "type": "string",
+          "required": true,
+          "description": "Login of the rider who asked for this ride. A rider can only create rides for themself (row write rule)."
+        },
+        {
+          "name": "driverAccount",
+          "type": "string",
+          "description": "Login of the assigned driver; set by the platform when a driver is matched.",
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "driverName",
+          "type": "string",
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "driverPlate",
+          "type": "string",
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "cancelledBy",
+          "type": "enum",
+          "enumValues": [
+            "RIDER",
+            "DRIVER",
+            "SYSTEM"
+          ]
+        }
+      ],
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          {
+            "value": "REQUESTED",
+            "initial": true
+          },
+          {
+            "value": "ASSIGNED"
+          },
+          {
+            "value": "ACCEPTED"
+          },
+          {
+            "value": "IN_PROGRESS"
+          },
+          {
+            "value": "COMPLETED",
+            "terminal": true
+          },
+          {
+            "value": "CANCELLED",
+            "terminal": true
+          },
+          {
+            "value": "NO_DRIVER",
+            "terminal": true
+          }
+        ],
+        "transitions": [
+          {
+            "from": "REQUESTED",
+            "to": "ASSIGNED",
+            "guard": "$user.isSystem || $user.roles.contains('Dispatcher')"
+          },
+          {
+            "from": "REQUESTED",
+            "to": "NO_DRIVER",
+            "guard": "$user.isSystem || $user.roles.contains('Dispatcher')"
+          },
+          {
+            "from": "REQUESTED",
+            "to": "CANCELLED",
+            "guard": "riderAccount == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem"
+          },
+          {
+            "from": "ASSIGNED",
+            "to": "ACCEPTED",
+            "guard": "driverAccount == $user.id || $user.isSystem"
+          },
+          {
+            "from": "ASSIGNED",
+            "to": "CANCELLED",
+            "guard": "riderAccount == $user.id || driverAccount == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem"
+          },
+          {
+            "from": "ACCEPTED",
+            "to": "IN_PROGRESS",
+            "guard": "driverAccount == $user.id || $user.isSystem"
+          },
+          {
+            "from": "ACCEPTED",
+            "to": "CANCELLED",
+            "guard": "riderAccount == $user.id || driverAccount == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem"
+          },
+          {
+            "from": "IN_PROGRESS",
+            "to": "COMPLETED",
+            "guard": "driverAccount == $user.id || $user.isSystem"
+          }
+        ]
+      },
+      "access": {
+        "read": "riderAccount == $user.id || driverAccount == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem",
+        "write": "riderAccount == $user.id || driverAccount == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem"
+      }
+    }
+  ],
+  "queries": [
+    {
+      "name": "AvailableDrivers",
+      "concept": "Driver",
+      "where": "status == 'AVAILABLE'"
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    },
+    {
+      "capability": "geo",
+      "adapter": "geo-inproc"
+    },
+    {
+      "capability": "notify",
+      "adapter": "notify"
+    }
+  ],
+  "procedures": [
+    {
+      "name": "MatchDriver",
+      "description": "Finds the closest AVAILABLE driver to the ride's pickup point (built-in geo capability) and assigns it, copying the driver's login, name and plate onto the ride so the rider never needs to read the Driver table. With nobody available the ride ends as NO_DRIVER.",
+      "steps": [
+        {
+          "name": "free-drivers",
+          "type": "runQuery",
+          "query": "AvailableDrivers",
+          "concept": "Driver",
+          "target": "free"
+        },
+        {
+          "name": "candidates",
+          "type": "mapList",
+          "items": "$free",
+          "as": "d",
+          "select": {
+            "id": "$d.id",
+            "lat": "$d.lat",
+            "lng": "$d.lng"
+          },
+          "target": "candidates"
+        },
+        {
+          "name": "pick",
+          "type": "capabilityCall",
+          "capability": "geo",
+          "operation": "closest",
+          "args": {
+            "lat": "$input.pickupLat",
+            "lng": "$input.pickupLng",
+            "candidates": "$candidates"
+          },
+          "target": "best"
+        },
+        {
+          "name": "trip",
+          "type": "capabilityCall",
+          "capability": "geo",
+          "operation": "distanceKm",
+          "args": {
+            "fromLat": "$input.pickupLat",
+            "fromLng": "$input.pickupLng",
+            "toLat": "$input.dropoffLat",
+            "toLng": "$input.dropoffLng"
+          },
+          "target": "tripLeg"
+        },
+        {
+          "name": "assigned",
+          "type": "if",
+          "condition": "$best.found",
+          "then": [
+            {
+              "name": "read-driver",
+              "type": "readConcept",
+              "concept": "Driver",
+              "id": "$best.id",
+              "target": "chosen"
+            },
+            {
+              "name": "assign-ride",
+              "type": "patchConcept",
+              "concept": "Ride",
+              "id": "$input.id",
+              "set": {
+                "driver": "$best.id",
+                "driverAccount": "$chosen.account",
+                "driverName": "$chosen.name",
+                "driverPlate": "$chosen.plate",
+                "status": "ASSIGNED",
+                "pickupDistanceKm": "$best.distanceKm",
+                "etaMinutes": "$best.etaMinutes",
+                "tripDistanceKm": "$tripLeg.distanceKm"
+              },
+              "target": "ride"
+            },
+            {
+              "name": "busy-driver",
+              "type": "patchConcept",
+              "concept": "Driver",
+              "id": "$best.id",
+              "set": {
+                "status": "BUSY"
+              },
+              "target": "driver"
+            }
+          ],
+          "else": [
+            {
+              "name": "no-driver",
+              "type": "patchConcept",
+              "concept": "Ride",
+              "id": "$input.id",
+              "set": {
+                "status": "NO_DRIVER"
+              },
+              "target": "ride"
+            }
+          ]
+        },
+        {
+          "name": "return-ride",
+          "type": "return",
+          "value": "$ride"
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "RequestRide",
+      "concept": "Ride",
+      "input": {
+        "concept": "Ride",
+        "mode": "create"
+      },
+      "steps": [
+        {
+          "name": "save",
+          "type": "createConcept",
+          "scope": "Ride",
+          "input": "$input",
+          "output": "$created"
+        },
+        {
+          "name": "match",
+          "type": "callProcedure",
+          "procedure": "MatchDriver",
+          "input": "$created",
+          "output": "$matched"
+        },
+        {
+          "name": "done",
+          "type": "return",
+          "value": "$matched"
+        }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save",
+        "unique",
+        "findById"
+      ]
+    },
+    {
+      "name": "geo",
+      "type": "GeoCapability",
+      "operations": [
+        "distanceKm",
+        "closest"
+      ]
+    },
+    {
+      "name": "notify",
+      "type": "NotifyCapability",
+      "operations": [
+        "send"
+      ]
+    }
+  ],
+  "packs": [
+    {
+      "$ref": "packs/identity/pack.json",
+      "as": "identity"
+    }
+  ],
+  "roles": [
+    {
+      "name": "Rider",
+      "grants": [
+        "EXECUTE_FLOW"
+      ],
+      "concepts": {
+        "Rider": [
+          "read",
+          "update"
+        ],
+        "Ride": [
+          "read",
+          "create",
+          "update"
+        ]
+      }
+    },
+    {
+      "name": "Driver",
+      "grants": [
+        "EXECUTE_FLOW"
+      ],
+      "concepts": {
+        "Driver": [
+          "read",
+          "update"
+        ],
+        "Ride": [
+          "read",
+          "update"
+        ]
+      }
+    },
+    {
+      "name": "Dispatcher",
+      "grants": [
+        "EXECUTE_FLOW",
+        "READ_EXECUTIONS"
+      ],
+      "concepts": {
+        "Rider": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ],
+        "Driver": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ],
+        "Ride": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      }
+    }
+  ]
+}

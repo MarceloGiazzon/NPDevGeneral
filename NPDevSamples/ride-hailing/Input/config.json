@@ -1,0 +1,53 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "ride-hailing",
+    "description": "Ride-hailing backend sample (S2): roles, offers with timeout, payments with a mock PSP, dynamic price, ratings, push, road route. Driven by NPDevSamples/ride-hailing/drive_s2.py.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": false,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "h2-local",
+    "database": "ride-hailing",
+    "resetMode": "reset"
+  },
+  "runtime": {
+    "springProfile": "dev,trial",
+    "serverPort": 8150,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "defaults": {
+    "auth.mode": "jwt"
+  },
+  "trialDefaults": {
+    "recommendedProfiles": "dev,trial",
+    "runtimeUrl": "http://localhost:8150/",
+    "databaseMode": "h2-local",
+    "notes": [
+      "Ride-hailing sample on port 8150."
+    ]
+  }
+}
