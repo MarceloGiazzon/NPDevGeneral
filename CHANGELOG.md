@@ -8,6 +8,16 @@ Landed on `main` AFTER the `beta1.20` tag (`6ca4edfb`) and therefore **not** in 
 release. Ships in the next tag.
 
 ### Added
+- **A browser-AI answer can carry fragments, written all or nothing and undone file by file** (REG-323, T4.1) -- with `--phase f4`
+  an answer may hold `fragments/*.json` and `contexts/*.json` beside `model.json`, for a new app or a change. The check stages the
+  app's current files plus the answer's into a folder, so the Java gate and the plain-words preview see the ONE model the files make
+  together (an app whose model is already split can also be changed by an answer that sends `model.json` alone). Apply saves the
+  previous bytes of every file -- or ABSENT -- and writes the fragments BEFORE `model.json`; if any write fails every file already
+  touched is put back and nothing is recorded as applied (a file that cannot be put back is named, not hidden). Undo puts every file
+  back, `model.json` first, deletes the ones the answer created, and refuses -- naming them -- when one was edited since. A kind of
+  file apply cannot write yet (themes, pages, element upserts) now sends the answer back by name instead of being dropped. Also fixed:
+  a create that failed after the scaffold left a half-made app behind on Windows (the scaffold's read-only `.git` defeated `rmtree`).
+  The prompts are unchanged, so the AI is not yet told it may use fragments (the next item).
 - **`npdev ai relay start --answer-size`, and a repeated cut-off now asks for less** (REG-326) -- a chat AI that cuts its answer
   short used to be asked for the same size again, and twice in a row sent the conversation to a fresh chat with the same demand.
   Now the first cut-off keeps the measured follow-up, and each repeat asks a NEW app for half the size (its core first, down to

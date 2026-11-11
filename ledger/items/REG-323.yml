@@ -14,6 +14,7 @@ files:
   - NPDevCli/relay-ingest-policy.json
   - NPDevCli/npdev_relay_apply.py
   - NPDevCli/npdev_relay_engine.py
+  - NPDevCli/npdev_relay_files.py
   - NPDevCli/npdev_relay_prompts.py
   - NPDevCli/relay-prompts.json
 detail: |
@@ -31,6 +32,13 @@ detail: |
   - quarantined code (JS pages, Java capabilities) needs PLAN section 8.1's six steps: pattern scan, bytecode inspector, a strong
     acceptance (checkbox and a separate button), provenance `origin: browser-ai`, one-click removal, a second confirmation before a JS
     page becomes public. This is the security-sensitive part: do it last, with the owner.
+  2026-11-11 T4.1 LANDED (apply, undo and validation of fragments/*.json + contexts/*.json): NPDevCli/npdev_relay_files.py holds the
+  all-or-nothing write (plan -> save backup list -> run; a failure restores every file already touched, ABSENT = delete), the staged
+  folder + the CLI's own composer the gate and the preview read, and the backup list undo reads (round entry `backupManifestPath`).
+  Not done by T4.1: the composer still shows the AI model.json only -- for a split app the fragments' content is NOT in the prompt, so
+  the AI cannot yet edit them; the briefing does not yet say fragments exist (relay-prompts.json is bench-measured: its own item); the
+  Manager never passes phase f4; quarantined code is still never written. A multi-file apply is NOT needed by T4.2 (an upsert expands
+  into one model.json).
   Suggested order (each its own commit, each behind phase f4): T4.2 element upsert (the one that unlocks big apps), T4.1 fragments,
   T4.5 config proposals (each knob located first in the property cascade; no writer, no knob), T4.3 themes/pages/seed/translations,
   T4.4 code quarantine.

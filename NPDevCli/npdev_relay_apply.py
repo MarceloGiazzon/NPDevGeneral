@@ -5,11 +5,16 @@
       change/fix  re-run the whole check on the model that is on disk NOW (the app may have moved since the
                   answer arrived), require the owner's yes for every warning that needs one, archive the
                   previous model (the backup), then write the new one.
+      An answer may also carry fragments/*.json and contexts/*.json (REG-323 T4.1): they are written BEFORE
+      model.json, all or nothing -- the previous bytes of every file (or ABSENT) are saved first, and a failed
+      write puts every file already touched back.
   undo(session, force=False)
-      put the archived model back (change/fix). A created app is never deleted from here.
+      put the archived model back (change/fix); with several files: put every file back and delete the ones the
+      answer created. A created app is never deleted from here.
 
 Nothing is written unless every check passes; every write is atomic. Code files an answer carried (quarantine)
-are never written in this phase. Stdlib only; the pipeline's own modules do the checking.
+and kinds of file this phase cannot apply yet (themes, pages, element upserts) are never written: the answer is
+refused by name instead of applied in part. Stdlib only; the pipeline's own modules do the checking.
 """
 from __future__ import annotations
 
@@ -17,13 +22,17 @@ import argparse
 import contextlib
 import io
 import json
+import os
 import shutil
+import stat
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import npdev_relay_authoring as authoring
 import npdev_relay_engine as engine
+import npdev_relay_files as files
 import npdev_relay_session as rs
 
 BACKUP_NAME = "model.before.json"
@@ -35,6 +44,22 @@ def _now() -> str:
 
 def _refuse(error: str, **extra) -> dict:
     return {"ok": False, "error": error, **extra}
+
+
+def _remove_tree(path) -> None:
+    """Delete a folder for good. The scaffold's `.git` holds read-only objects, which `rmtree` cannot remove on Windows
+    unless told to clear the attribute -- `ignore_errors=True` alone left a half-made app behind."""
+    def clear_and_retry(function, target, _error):
+        os.chmod(target, stat.S_IWRITE)
+        function(target)
+
+    try:
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(path, onexc=clear_and_retry)
+        else:
+            shutil.rmtree(path, onerror=clear_and_retry)
+    except OSError:
+        pass
 
 
 def _stored_result(session: dict, number: int) -> dict | None:
@@ -72,6 +97,9 @@ def apply_round(session: dict, number: int | None, confirmed, parent_dir=None) -
     model_text = _file_text(result, "model.json")
     if model_text is None:
         return _refuse("no-model")
+    extra, unsupported = files.answer_files(result)
+    if unsupported:
+        return _refuse("files-not-supported", paths=unsupported)
     manifest = None
     manifest_text = _file_text(result, "npdev-submission.json")
     if manifest_text:
@@ -80,15 +108,16 @@ def apply_round(session: dict, number: int | None, confirmed, parent_dir=None) -
         except ValueError:
             manifest = None
     if session["intent"] == "create":
-        return _apply_create(session, number, entry, model_text, parent_dir)
-    return _apply_change(session, number, entry, model_text, manifest, set(confirmed or ()))
+        return _apply_create(session, number, entry, model_text, parent_dir, extra)
+    return _apply_change(session, number, entry, model_text, manifest, set(confirmed or ()), extra)
 
 
 # --------------------------------------------------------------------------- change / fix
 
-def _apply_change(session: dict, number: int, entry: dict, model_text: str, manifest, confirmed: set) -> dict:
+def _apply_change(session: dict, number: int, entry: dict, model_text: str, manifest, confirmed: set,
+                  extra: dict | None = None) -> dict:
     work = rs.round_dir(session, number) / "apply-work"
-    evaluation = authoring.evaluate_for_apply(session, model_text, manifest, work)
+    evaluation = authoring.evaluate_for_apply(session, model_text, manifest, work, extra_files=extra)
     if evaluation["outcome"] != "READY":
         return _refuse("not-ready", outcome=evaluation["outcome"], baseMoved=bool(evaluation.get("baseMoved")),
                        errors=evaluation.get("errors") or [])
@@ -114,6 +143,9 @@ def _apply_change(session: dict, number: int, entry: dict, model_text: str, mani
     if gate["status"] != "passed":
         return _refuse("gate-refused", errors=[authoring.gate_error_line(d) for d in gate["diagnostics"]])
 
+    if extra:
+        return _apply_files(session, number, entry, model_path, candidate_bytes, extra, base_copy, backup_dir)
+
     backup_path = backup_dir / BACKUP_NAME
     authoring.atomic_write_bytes(backup_path, Path(base_copy).read_bytes())  # the model as the AI was shown it
     authoring.atomic_write_bytes(model_path, candidate_bytes)
@@ -127,6 +159,36 @@ def _apply_change(session: dict, number: int, entry: dict, model_text: str, mani
             "appliedAt": applied_at}
 
 
+def _apply_files(session: dict, number: int, entry: dict, model_path: Path, candidate_bytes: bytes, extra: dict,
+                 base_copy, backup_dir: Path) -> dict:
+    """Write the answer's fragments and then model.json as one step. The previous bytes of every file (or ABSENT) are
+    saved first; if any write fails the files already written are put back and nothing is recorded as applied."""
+    root = model_path.parent
+    try:
+        ops = files.plan(root, [(rel, extra[rel].encode("utf-8")) for rel in sorted(extra)]
+                         + [(model_path.name, candidate_bytes)])
+    except files.TreeError as exc:
+        return _refuse("unsafe-path", detail=str(exc))
+    if ops[-1].before is None or ops[-1].before != Path(base_copy).read_bytes():
+        return _refuse("not-ready", outcome="PARSED", baseMoved=True, errors=[])  # the model changed while we checked
+    applied_at = _now()
+    backup_path = backup_dir / BACKUP_NAME
+    authoring.atomic_write_bytes(backup_path, ops[-1].before)  # model.json as it is on disk now
+    manifest_path = files.save_backup(backup_dir, ops, applied_at)
+    try:
+        files.run(root, ops)
+    except files.TransactionError as exc:
+        return _refuse("write-failed", path=exc.path, detail=str(exc.cause)[-300:], notRestored=exc.not_restored)
+    written = [op.rel for op in ops]
+    entry["appliedAt"], entry["backupPath"], entry["backupManifestPath"] = applied_at, str(backup_path), str(manifest_path)
+    session["state"] = "done"
+    rs.save(session)
+    rs.append_event(session["code"], "applied", number, backupPath=str(backup_path), files=written)
+    return {"ok": True, "code": session["code"], "round": number, "intent": session["intent"], "created": False,
+            "appDir": session.get("appDir"), "modelPath": str(model_path), "backupPath": str(backup_path),
+            "backupManifestPath": str(manifest_path), "files": written, "appliedAt": applied_at}
+
+
 # --------------------------------------------------------------------------- create
 
 def _plain_folder_name(name: str) -> bool:
@@ -137,7 +199,7 @@ def _plain_folder_name(name: str) -> bool:
     return not any(ch in name for ch in '/\\:\0*?"<>|')
 
 
-def _apply_create(session: dict, number: int, entry: dict, model_text: str, parent_dir) -> dict:
+def _apply_create(session: dict, number: int, entry: dict, model_text: str, parent_dir, extra: dict | None = None) -> dict:
     target = session.get("appDir")
     wrapper = None  # the app's own folder, when this call is the one that makes it
     if not target:
@@ -166,13 +228,31 @@ def _apply_create(session: dict, number: int, entry: dict, model_text: str, pare
     if code not in (0, None):
         return _refuse("init-failed", detail=f"exit {code}")
     model_path = target_path / "model.json"
-    authoring.atomic_write_bytes(model_path, model_text.encode("utf-8"))
+    extra = extra or {}
+
+    def _abandon() -> None:
+        if not existed:
+            _remove_tree(wrapper or target_path)
+
+    try:
+        ops = files.plan(target_path, [(rel, extra[rel].encode("utf-8")) for rel in sorted(extra)]
+                         + [("model.json", model_text.encode("utf-8"))])
+        files.run(target_path, ops)  # fragments first, model.json last; all or nothing
+    except files.TreeError as exc:
+        _abandon()
+        return _refuse("unsafe-path", detail=str(exc))
+    except files.TransactionError as exc:
+        _abandon()
+        return _refuse("write-failed", path=exc.path, detail=str(exc.cause)[-300:], notRestored=exc.not_restored)
+    written = [op.rel for op in ops]
     report = engine.run_validation(model_path, rs.round_dir(session, number) / "validation-after-apply.json")
     if report is not None and report.get("status") == "failed":
-        if not existed:
-            shutil.rmtree(wrapper or target_path, ignore_errors=True)
+        if existed:
+            with contextlib.suppress(files.TransactionError):
+                files.run(target_path, files.restore_ops(ops))  # the folder was here before: leave it as the scaffold
+        _abandon()
         return _refuse("validation-failed-after-write", errors=engine.validation_lines(report))
-    history = _commit_model(target_path, f"npdev relay: model from a browser AI (conversation {session['code']})")
+    history = _commit_model(target_path, f"npdev relay: model from a browser AI (conversation {session['code']})", written)
     applied_at = _now()
     entry["appliedAt"] = applied_at
     session["appDir"] = str(target_path)
@@ -181,15 +261,15 @@ def _apply_create(session: dict, number: int, entry: dict, model_text: str, pare
     rs.append_event(session["code"], "applied", number, created=True)
     return {"ok": True, "code": session["code"], "round": number, "intent": "create", "created": True,
             "appDir": str(target_path), "modelPath": str(model_path), "backupPath": None, "appliedAt": applied_at,
-            "historyCommitted": history}
+            "files": written, "historyCommitted": history}
 
 
-def _commit_model(target: Path, message: str) -> bool:
-    """Best effort: the scaffold has a first commit; put the AI's model in a second one. Never fatal."""
+def _commit_model(target: Path, message: str, paths: list | None = None) -> bool:
+    """Best effort: the scaffold has a first commit; put the AI's model (and fragments) in a second one. Never fatal."""
     if not (target / ".git").exists():
         return False
     try:
-        subprocess.run(["git", "add", "model.json"], cwd=target, check=True, capture_output=True)
+        subprocess.run(["git", "add", "--", *(paths or ["model.json"])], cwd=target, check=True, capture_output=True)
         done = subprocess.run(["git", "commit", "--quiet", "-m", message], cwd=target, capture_output=True, text=True)
         if done.returncode != 0:  # a fresh machine has no git identity: commit under one scoped to this repository
             done = subprocess.run(["git", "-c", "user.name=NPDev", "-c", "user.email=npdev@localhost", "commit", "--quiet",
@@ -209,6 +289,8 @@ def undo(session: dict, force: bool = False) -> dict:
     if session["intent"] == "create":
         return _refuse("create-undo-unsupported",
                        detail="a created app is removed from the Apps screen, never by taking an answer back")
+    if entry.get("backupManifestPath"):
+        return _undo_files(session, entry, force)
     backup = entry.get("backupPath")
     if not backup or not Path(backup).is_file():
         return _refuse("backup-missing")
@@ -226,3 +308,31 @@ def undo(session: dict, force: bool = False) -> dict:
     rs.save(session)
     rs.append_event(session["code"], "undone", entry["round"])
     return {"ok": True, "code": session["code"], "round": entry["round"], "modelPath": str(model_path)}
+
+
+def _undo_files(session: dict, entry: dict, force: bool) -> dict:
+    """Put every file of a several-file answer back (model.json first), deleting the ones the answer created. Refuses,
+    naming them, when a file was edited since; all or nothing, like the write."""
+    model_path = authoring.resolve_model_path(session.get("appDir"))
+    if model_path is None:
+        return _refuse("app-missing")
+    root = model_path.parent
+    try:
+        saved = files.load_backup(entry["backupManifestPath"])
+        changed = files.changed_since(root, saved)
+    except files.TreeError as exc:
+        return _refuse("backup-missing", detail=str(exc))
+    if changed and not force:
+        return _refuse("app-changed-since-apply", changed=changed)
+    try:
+        files.run(root, files.undo_ops(root, saved))
+    except files.TreeError as exc:
+        return _refuse("backup-missing", detail=str(exc))
+    except files.TransactionError as exc:
+        return _refuse("undo-failed", path=exc.path, detail=str(exc.cause)[-300:], notRestored=exc.not_restored)
+    entry["appliedAt"], entry["backupPath"], entry["backupManifestPath"] = None, None, None
+    session["state"] = "answer-received"
+    rs.save(session)
+    rs.append_event(session["code"], "undone", entry["round"])
+    return {"ok": True, "code": session["code"], "round": entry["round"], "modelPath": str(model_path),
+            "files": [item.rel for item in reversed(saved)]}

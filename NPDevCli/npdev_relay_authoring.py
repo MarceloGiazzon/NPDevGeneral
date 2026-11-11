@@ -883,14 +883,35 @@ def _base_moved_result(findings, candidate_text, **detail) -> dict:
                    next={"kind": "user-action", "messageId": "BASE_MOVED"})
 
 
-def evaluate_create(session, candidate_model_text, ai_manifest) -> dict:
-    """Create intent: there is nothing to diff against, so no gate and no base. Same result shape."""
+SPLIT_ROOT_KEYS = ("fragments", "contexts", "packs")  # a model.json carrying any of these is made of more than itself
+
+
+def is_split_root(model) -> bool:
+    return isinstance(model, dict) and any(key in model for key in SPLIT_ROOT_KEYS)
+
+
+def evaluate_create(session, candidate_model_text, ai_manifest, *, work_dir=None, extra_files=None) -> dict:
+    """Create intent: there is nothing to diff against, so no gate and no base. Same result shape.
+
+    A model made of fragments is composed first (`extra_files` = {relative path: text} the answer carried, staged under
+    `work_dir`) and the preview describes the composed model."""
     findings: list = []
     try:
         candidate = json.loads(candidate_model_text)
     except (TypeError, ValueError) as exc:
         return _result("NEEDS_FIX", findings, errors=[f"model.json - not valid JSON ({exc}) - send the complete model.json"],
                        candidateModelText=candidate_model_text, next={"kind": "copy-prompt", "messageId": "NEEDS_FIX"})
+    if isinstance(candidate, dict) and (extra_files or is_split_root(candidate)):
+        import npdev_relay_files as files_mod  # lazy: that module imports this one
+
+        if work_dir is None:
+            raise ValueError("a model made of fragments needs a work folder to be staged in")
+        try:
+            staged = files_mod.stage(None, extra_files or {}, candidate_model_text, Path(work_dir) / "stage-candidate")
+            candidate = files_mod.compose(staged)
+        except files_mod.TreeError as exc:
+            return _result("NEEDS_FIX", findings, errors=[f"{exc} - send the complete model.json and every file it points at"],
+                           candidateModelText=candidate_model_text, next={"kind": "copy-prompt", "messageId": "NEEDS_FIX"})
     if not isinstance(candidate, dict) or not isinstance(candidate.get("concepts"), list):
         return _result("NEEDS_FIX", findings, errors=["model.json - it is not an app model (no concepts list) - send the complete model.json"],
                        candidateModelText=candidate_model_text, next={"kind": "copy-prompt", "messageId": "NEEDS_FIX"})
@@ -898,10 +919,15 @@ def evaluate_create(session, candidate_model_text, ai_manifest) -> dict:
                    candidateModelText=candidate_model_text, next={"kind": "apply", "messageId": "READY"})
 
 
-def _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_path) -> dict:
-    """The whole check; the public dict plus private `_`-keys apply needs (paths, parsed models)."""
+def _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_path, extra_files=None) -> dict:
+    """The whole check; the public dict plus private `_`-keys apply needs (paths, parsed models).
+
+    `extra_files` = {relative path: text} of the fragments/contexts the answer carried beside model.json. When there are
+    some, or the answer's or the app's model is split, both sides are staged as folders and composed, so the gate, the
+    diff and the preview all see the ONE model the files make together; otherwise this is the single-file check."""
+    extra_files = dict(extra_files or {})
     if (session or {}).get("intent") == "create":
-        return evaluate_create(session, candidate_model_text, ai_manifest)
+        return evaluate_create(session, candidate_model_text, ai_manifest, work_dir=work_dir, extra_files=extra_files)
     findings: list = []
     needs_fix = {"kind": "copy-prompt", "messageId": "NEEDS_FIX"}
     try:
@@ -909,7 +935,8 @@ def _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_pa
     except (TypeError, ValueError) as exc:
         return _result("NEEDS_FIX", findings, errors=[f"model.json - not valid JSON ({exc}) - send the complete model.json"],
                        candidateModelText=candidate_model_text, next=needs_fix)
-    if not isinstance(candidate, dict) or not isinstance(candidate.get("concepts"), list):
+    split_answer = bool(extra_files) or is_split_root(candidate)
+    if not isinstance(candidate, dict) or (not split_answer and not isinstance(candidate.get("concepts"), list)):
         return _result("NEEDS_FIX", findings, errors=["model.json - it is not an app model (no concepts list) - send the complete model.json"],
                        candidateModelText=candidate_model_text, next=needs_fix)
 
@@ -928,16 +955,51 @@ def _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_pa
         return _result("PARSED", findings + [_finding("app-model-unreadable", "error")],
                        candidateModelText=candidate_model_text, next={"kind": "user-action", "messageId": "APP_MODEL_UNREADABLE"})
 
+    import npdev_relay_files as files_mod  # lazy: that module imports this one
+
     work = Path(work_dir)
     work.mkdir(parents=True, exist_ok=True)
-    base_copy = work / "base-model.json"
-    atomic_write_bytes(base_copy, base_bytes)
     previous_sha = sha256_bytes(base_bytes)
+    raw_candidate = candidate
+    staged = split_answer
+    if not staged:
+        try:
+            staged = files_mod.is_split(model_path)
+        except files_mod.TreeError:
+            staged = False  # the gate below says what is wrong with it
+    if staged:
+        # Both sides become folders, so every `$ref` resolves and the diff compares what the files make together.
+        try:
+            base_copy = files_mod.stage(model_path, {}, None, work / "stage-base")
+            base_model = files_mod.compose(base_copy)
+        except files_mod.TreeError as exc:
+            return _result("PARSED", findings + [_finding("app-model-unreadable", "error", reason=str(exc))],
+                           candidateModelText=candidate_model_text,
+                           next={"kind": "user-action", "messageId": "APP_MODEL_UNREADABLE"})
+        try:
+            candidate_path = files_mod.stage(model_path, extra_files, candidate_model_text, work / "stage-candidate")
+            candidate = files_mod.compose(candidate_path)
+        except files_mod.TreeError as exc:
+            return _result("NEEDS_FIX", findings, errors=[f"{exc} - send the complete model.json and every file it points at"],
+                           candidateModelText=candidate_model_text, next=needs_fix)
+        if not isinstance(candidate.get("concepts"), list):
+            return _result("NEEDS_FIX", findings, errors=["model.json - it is not an app model (no concepts list) - send the complete model.json"],
+                           candidateModelText=candidate_model_text, next=needs_fix)
+    else:
+        base_copy = work / "base-model.json"
+        atomic_write_bytes(base_copy, base_bytes)
 
     submission, candidate2, translate_findings = translate_manifest(
         session, base_model, candidate, ai_manifest, previous_sha256=previous_sha)
     findings.extend(translate_findings)
-    candidate_text = candidate_model_text if candidate2 == candidate else model_to_text(candidate2)
+    if staged:
+        # Only a root scalar (the version) is ever changed by translation; it lives in model.json, never in a fragment.
+        raw2 = copy.deepcopy(raw_candidate)
+        if candidate2.get("version") != raw2.get("version"):
+            raw2["version"] = candidate2["version"]
+        candidate_text = candidate_model_text if raw2 == raw_candidate else model_to_text(raw2)
+    else:
+        candidate_text = candidate_model_text if candidate2 == candidate else model_to_text(candidate2)
     common = {"candidateModelText": candidate_text, "submission": submission}
 
     if _is_empty_diff(diff_models(base_model, candidate2)):
@@ -946,13 +1008,15 @@ def _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_pa
                        errors=["model.json - identical to the current model, nothing was changed - "
                                "apply the requested change and send the complete model.json"])
 
-    candidate_path, submission_path = work / "candidate-model.json", work / "submission.json"
-    atomic_write_bytes(candidate_path, candidate_text.encode("utf-8"))
+    if not staged:
+        candidate_path = work / "candidate-model.json"
+    submission_path = work / "submission.json"
+    atomic_write_bytes(candidate_path, candidate_text.encode("utf-8"))  # staged: model.json again, with the bumped version
     atomic_write_bytes(submission_path, (json.dumps(submission, indent=2) + "\n").encode("utf-8"))
     private = {"_modelPath": model_path, "_baseCopy": base_copy, "_candidatePath": candidate_path,
                "_submissionPath": submission_path, "_baseModel": base_model, "_candidate": candidate2,
                "_previousSha": previous_sha, "_ai": ai_manifest if isinstance(ai_manifest, dict) else {},
-               "_pending": []}
+               "_pending": [], "_extraFiles": extra_files, "_staged": staged}
 
     gate = run_gate(base_copy, candidate_path, submission_path, work / "gate")
     if not gate["available"]:
@@ -1008,7 +1072,7 @@ def _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_pa
                    pendingSecurityChanges=private["_pending"], **common, **private)
 
 
-def evaluate_change(session, candidate_model_text, ai_manifest, work_dir, *, app_model_path=None) -> dict:
+def evaluate_change(session, candidate_model_text, ai_manifest, work_dir, *, app_model_path=None, extra_files=None) -> dict:
     """The change/fix check the CLI runs after ingest + validation.
 
     `session` is the session dict (needs intent, appDir, baseModelSha256, ask); `candidate_model_text`
@@ -1021,11 +1085,11 @@ def evaluate_change(session, candidate_model_text, ai_manifest, work_dir, *, app
     The create intent is routed to evaluate_create. When the base moved there is no merge: S5 needs
     a manifest for the owner's own edits, which does not exist, so the answer is `baseMoved: True`
     and finding `base-moved`; the CLI offers a fresh round-1 prompt built from the current model."""
-    result = _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_path)
+    result = _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_path, extra_files)
     return {k: v for k, v in result.items() if not k.startswith("_")}
 
 
-def evaluate_for_apply(session, candidate_model_text, ai_manifest, work_dir, *, app_model_path=None) -> dict:
+def evaluate_for_apply(session, candidate_model_text, ai_manifest, work_dir, *, app_model_path=None, extra_files=None) -> dict:
     """evaluate_change plus the private paths, parsed models and pending security changes that apply needs
     (keys starting with an underscore). Never serialise this dict."""
-    return _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_path)
+    return _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_path, extra_files)

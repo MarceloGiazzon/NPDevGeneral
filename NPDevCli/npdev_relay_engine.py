@@ -484,10 +484,15 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
     if fixes:
         text = json.dumps(fixed, indent=2, ensure_ascii=False) + "\n"
         entry["content"], entry["bytes"], entry["sha256"] = text, len(text.encode("utf-8")), _sha256(text)
-    directory = rs.round_dir(session, number) / "files"
-    directory.mkdir(parents=True, exist_ok=True)
-    model_path = directory / "model.json"
-    model_path.write_bytes(entry["content"].encode("utf-8"))
+    import npdev_relay_files as files_mod
+
+    _, unsupported = files_mod.answer_files(result)
+    if unsupported:  # allowed by the ingest policy, but nothing here can apply them yet: never accept part of an answer
+        result["outcome"] = "NEEDS_FIX"
+        result["errorLines"] = [f"{path} - NPDev cannot apply this kind of file yet - send only model.json, "
+                                "npdev-submission.json and the files under fragments/ and contexts/" for path in unsupported]
+        return
+    model_path = _validation_model_path(session, number, result, entry, fixed)
     report = run_validation(model_path, rs.round_dir(session, number) / "validation-report.json")
     if report is None:
         result["findings"].append({"code": "validator-unavailable", "severity": "warning"})
@@ -498,6 +503,28 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
         result["errorLines"] = validation_lines(report)
         return
     finish_ready(session, number, result, entry)
+
+
+def _validation_model_path(session: dict, number: int, result: dict, entry: dict, model: dict) -> Path:
+    """The model.json the validator reads. Usually the answer's model.json written alone; when the model is split (the
+    answer carries fragments, points at some, or the app's own model is made of several files) a folder holding the
+    app's current files with the answer's on top, so every `$ref` resolves."""
+    import npdev_relay_authoring as authoring
+    import npdev_relay_files as files_mod
+
+    extra, _ = files_mod.answer_files(result)
+    base = authoring.resolve_model_path(session.get("appDir")) if session.get("intent") != "create" else None
+    try:
+        split = bool(extra) or authoring.is_split_root(model) or (base is not None and files_mod.is_split(base))
+        if split:
+            return files_mod.stage(base, extra, entry["content"], rs.round_dir(session, number) / "stage")
+    except files_mod.TreeError:
+        pass  # cannot be staged: the validator below says what is wrong, as it always has
+    directory = rs.round_dir(session, number) / "files"
+    directory.mkdir(parents=True, exist_ok=True)
+    model_path = directory / "model.json"
+    model_path.write_bytes(entry["content"].encode("utf-8"))
+    return model_path
 
 
 def _ai_manifest(result: dict):
@@ -517,9 +544,11 @@ def finish_ready(session: dict, number: int, result: dict, model_entry: dict) ->
     also pass the repo's authoring gate (renames, removals and security changes need the AI's manifest and,
     where only the owner can decide, the owner's yes)."""
     import npdev_relay_authoring as authoring
+    import npdev_relay_files as files_mod
 
     work = rs.round_dir(session, number) / "gate"
-    outcome = authoring.evaluate_change(session, model_entry["content"], _ai_manifest(result), work)
+    extra, _ = files_mod.answer_files(result)
+    outcome = authoring.evaluate_change(session, model_entry["content"], _ai_manifest(result), work, extra_files=extra)
     result["outcome"] = outcome["outcome"]
     result["findings"].extend(outcome["findings"])
     if outcome["preview"] is not None:

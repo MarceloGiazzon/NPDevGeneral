@@ -40,7 +40,8 @@
           "outcome": { "type": ["string", "null"] },
           "errorSignature": { "type": ["string", "null"] },
           "appliedAt": { "type": ["string", "null"] },
-          "backupPath": { "type": ["string", "null"] }
+          "backupPath": { "type": ["string", "null"] },
+          "backupManifestPath": { "type": ["string", "null"], "description": "Only when the answer carried fragments/contexts beside model.json: the list (files.json) with the previous bytes of every file, or ABSENT for one the answer created. Undo reads it; backupPath still names model.json's own backup." }
         }
       }
     }
