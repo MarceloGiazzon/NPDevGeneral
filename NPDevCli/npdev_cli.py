@@ -17348,6 +17348,18 @@ def build_parser() -> argparse.ArgumentParser:
     pack_diff.add_argument("new_pack", metavar="<newPack.json>")
     pack_diff.add_argument("--out", help="also write the JSON report to this path")
 
+    pack_push = pack_sub.add_parser(
+        "push", help="Put a pack from your own parts into your copy of the PUBLIC catalog; it goes public only with --confirm-public <id>@<version>."
+    )
+    pack_push.add_argument("--pack-dir", required=True, help="The folder holding the pack's pack.json (a part in your own parts).")
+    pack_push.add_argument("--npr-checkout", required=True, help="Your local clone of the public catalog (NPR).")
+    pack_push.add_argument("--dry-run", action="store_true", help="Check and show what would become public; touch nothing.")
+    pack_push.add_argument("--confirm-public", metavar="ID@VERSION",
+                           help="The owner's explicit yes: this exact part and version. Without it nothing is pushed.")
+    pack_push.add_argument("--remote", default="origin", help="The clone's remote (default: origin).")
+    pack_push.add_argument("--repository-url", help="The catalog's public URL (default: read from the remote).")
+    pack_push.add_argument("--json", action="store_true", help="One JSON document (what the Manager reads).")
+
     pack_publish = pack_sub.add_parser(
         "publish", help="Refuse a pack.json publish whose version bump is smaller than the diff requires."
     )
@@ -18892,6 +18904,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_pack_export(args)
         if args.command == "pack" and args.pack_command == "diff":
             return run_pack_diff(args)
+        if args.command == "pack" and args.pack_command == "push":
+            import npdev_pack_push
+
+            return npdev_pack_push.main(sys.modules[__name__], args)
         if args.command == "pack" and args.pack_command == "publish":
             return run_pack_publish(args)
         if args.command == "pack" and args.pack_command == "sign-keygen":
