@@ -1604,7 +1604,9 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalBooleanObject(stepNode.get("createIfMissing")),
                     toObjectMap(stepNode.get("select")),
                     toObjectValue(stepNode.get("left")),
-                    toObjectValue(stepNode.get("right"))
+                    toObjectValue(stepNode.get("right")),
+                    toObjectMap(stepNode.get("params")),
+                    optionalText(stepNode, "errorTarget")
             ));
         }
         return out;

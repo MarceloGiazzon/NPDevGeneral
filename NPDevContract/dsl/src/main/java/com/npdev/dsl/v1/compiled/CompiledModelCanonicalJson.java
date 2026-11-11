@@ -1563,6 +1563,11 @@ public final class CompiledModelCanonicalJson {
             // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, final item / REG-78): computeValue's operands.
             node.set("left", toAnyValueNode(step.left()));
             node.set("right", toAnyValueNode(step.right()));
+            // K2: runQuery's bound query parameters; K3: capabilityCall's soft-failure state key.
+            node.set("params", toObjectMap(step.params()));
+            if (step.errorTarget() != null && !step.errorTarget().isBlank()) {
+                node.put("errorTarget", step.errorTarget());
+            }
             steps.add(node);
         }
         return steps;

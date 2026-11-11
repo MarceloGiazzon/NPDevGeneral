@@ -406,7 +406,7 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         try {
             List<ConceptQuery.Filter> filters = query == null
                     ? List.of() : ConceptQueryPredicateCompiler.compileToConceptQueryFilters(
-                            query.where(), List.of(), Map.of(), context);
+                            query.where(), query.parameters(), resolveQueryParams(step, query, state), context);
             List<ConceptQuery.Sort> sorts = query == null
                     ? List.of() : ConceptQueryPredicateCompiler.compileOrderBy(query.orderBy());
             Integer declaredLimit = query == null ? null : query.limit();
@@ -469,10 +469,53 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         if (!result.ok()) {
             String code = result.error() == null ? "CAPABILITY_FAILED" : result.error().code();
             String message = result.error() == null ? "Capability failed." : result.error().message();
+            if (step.errorTarget() != null) {
+                // K3: a failed outside call is a normal business answer -- hand it to the model, succeed the step.
+                state.put(step.errorTarget(), errorDescription(result.error(), code, message));
+                if (step.outputKey() != null) {
+                    state.remove(step.outputKey());
+                }
+                return ProcedureStepResult.success(step);
+            }
             return ProcedureStepResult.failure(step, code, message);
+        }
+        if (step.errorTarget() != null) {
+            state.remove(step.errorTarget());
         }
         putOutput(state, step.outputKey(), result.value());
         return ProcedureStepResult.success(step);
+    }
+
+    /** K3: {code, message, kind, retryable, httpStatus?, details}. */
+    private static Map<String, Object> errorDescription(
+            com.npdev.kernel.CapabilityError error, String code, String message) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("code", code);
+        out.put("message", message);
+        com.npdev.kernel.CapabilityErrorKind kind = error == null ? null : error.kind();
+        out.put("kind", kind == null ? null : kind.name());
+        Map<String, Object> details = error == null || error.details() == null ? Map.of() : error.details();
+        Object httpStatus = details.get("httpStatus");
+        Integer status = httpStatus instanceof Number n ? n.intValue() : null;
+        boolean retryable = kind == com.npdev.kernel.CapabilityErrorKind.TRANSIENT
+                || kind == com.npdev.kernel.CapabilityErrorKind.RATE_LIMIT
+                || kind == com.npdev.kernel.CapabilityErrorKind.TIMEOUT
+                || (status != null && (status == 408 || status == 429 || status >= 500));
+        out.put("retryable", retryable);
+        if (status != null) {
+            out.put("httpStatus", status);
+        }
+        out.put("details", new LinkedHashMap<>(details));
+        return out;
+    }
+
+    /** K2: resolve a runQuery step's {@code params} (literal or $ref) into the query's bound parameter values. */
+    private Map<String, Object> resolveQueryParams(ProcedureStep step, CompiledQuery query, Map<String, Object> state) {
+        Map<String, Object> bound = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : step.queryParams().entrySet()) {
+            bound.put(entry.getKey(), resolveSetValue(state, entry.getValue(), step.name(), "params." + entry.getKey()));
+        }
+        return bound;
     }
 
     private ProcedureStepResult publishEvent(
@@ -701,19 +744,46 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         BigDecimal result = switch (operator) {
             case "add" -> left.add(right);
             case "subtract" -> left.subtract(right);
+            case "multiply" -> left.multiply(right);
+            case "min" -> left.min(right);
+            case "max" -> left.max(right);
+            case "divide" -> {
+                if (right.signum() == 0) {
+                    yield DIVIDE_BY_ZERO;
+                }
+                yield left.divide(right, 10, java.math.RoundingMode.HALF_EVEN);
+            }
+            case "round" -> {
+                BigDecimal places = right.stripTrailingZeros();
+                if (places.scale() > 0 || right.signum() < 0 || right.compareTo(BigDecimal.TEN) > 0) {
+                    yield INVALID_ROUND_PLACES;
+                }
+                yield left.setScale(right.intValueExact(), java.math.RoundingMode.HALF_UP);
+            }
             default -> null;
         };
+        if (result == DIVIDE_BY_ZERO) {
+            return ProcedureStepResult.failure(step, "COMPUTE_VALUE_DIVIDE_BY_ZERO",
+                    "Procedure computeValue divide by zero: left=" + leftRaw + ", right=" + rightRaw);
+        }
+        if (result == INVALID_ROUND_PLACES) {
+            return ProcedureStepResult.failure(step, "COMPUTE_VALUE_INVALID_OPERAND",
+                    "Procedure computeValue round needs a whole number of decimal places from 0 to 10; got right=" + rightRaw);
+        }
         if (result == null) {
             return ProcedureStepResult.failure(
                     step,
                     "COMPUTE_VALUE_UNKNOWN_OPERATOR",
-                    "Procedure computeValue has an unknown operator (expected add/subtract/addDays/daysBetween/today): "
+                    "Procedure computeValue has an unknown operator (expected add/subtract/multiply/divide/min/max/round/addDays/daysBetween/today): "
                             + step.operation()
             );
         }
         putOutput(state, step.outputKey(), normalizeComputedNumber(result));
         return ProcedureStepResult.success(step);
     }
+
+    private static final BigDecimal DIVIDE_BY_ZERO = new BigDecimal("0E-99");
+    private static final BigDecimal INVALID_ROUND_PLACES = new BigDecimal("0E-98");
 
     /** REG-313 (b): {@code today}/{@code addDays}/{@code daysBetween} -- the expression language's {@link DateFunctions}, lower-cased like the other operators. */
     private static final java.util.Set<String> COMPUTE_VALUE_DATE_OPERATORS = DateFunctions.NAMES.stream()

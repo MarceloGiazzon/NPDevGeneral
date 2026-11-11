@@ -127,13 +127,13 @@ class DefaultProcedureExecutorComputeValueTest {
     void unknownOperatorFailsWithAClearCode() {
         DefaultProcedureExecutor executor = newExecutor();
         ProcedureDefinition definition = new ProcedureDefinition(
-                "MultiplyUnsupported",
-                List.of(ProcedureStep.computeValue("multiply", "multiply", 2, 3, "product"))
+                "PowerUnsupported",
+                List.of(ProcedureStep.computeValue("power", "power", 2, 3, "product"))
         );
 
         ProcedureExecutionResult result = executor.execute(definition, Map.of(), CTX);
 
-        assertFalse(result.ok(), "only add/subtract are supported today");
+        assertFalse(result.ok(), "power is not an operator");
         assertEquals("COMPUTE_VALUE_UNKNOWN_OPERATOR", result.failureCode());
     }
 }

@@ -118,7 +118,8 @@ final class ComputeValueOperandValidation {
     private static Expect[] slotsFor(String operation) {
         String operator = operation == null ? "" : operation.trim().toLowerCase(Locale.ROOT);
         return switch (operator) {
-            case "add", "subtract" -> new Expect[] {Expect.NUMBER, Expect.NUMBER};
+            case "add", "subtract", "multiply", "divide", "min", "max" -> new Expect[] {Expect.NUMBER, Expect.NUMBER};
+            case "round" -> new Expect[] {Expect.NUMBER, Expect.WHOLE_NUMBER};
             case "adddays" -> new Expect[] {Expect.DATE, Expect.WHOLE_NUMBER};
             case "daysbetween" -> new Expect[] {Expect.DATE, Expect.DATE};
             default -> null;

@@ -2221,7 +2221,9 @@ public final class ModelCompiler {
                     step.createIfMissing(),
                     sortObjectMap(step.select()),
                     step.left(),
-                    step.right()
+                    step.right(),
+                    sortObjectMap(step.params()),
+                    step.errorTarget()
             ));
         }
         return out;

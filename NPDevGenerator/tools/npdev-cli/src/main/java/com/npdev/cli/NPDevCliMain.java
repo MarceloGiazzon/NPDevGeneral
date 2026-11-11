@@ -527,7 +527,7 @@ public final class NPDevCliMain {
                     target
             );
             case LIST_CONCEPTS -> ProcedureStep.listConcepts(stepName(step), concept, target);
-            case RUN_QUERY -> ProcedureStep.runQuery(stepName(step), normalized(step.query()), concept, target);
+            case RUN_QUERY -> ProcedureStep.runQuery(stepName(step), normalized(step.query()), concept, target).withQueryParams(step.params());
             case SAVE_CONCEPT -> ProcedureStep.saveConcept(
                     stepName(step),
                     concept,
@@ -552,7 +552,7 @@ public final class NPDevCliMain {
                     normalized(step.operation()),
                     step.args().values().stream().map(value -> refOf(value, String.valueOf(value))).toList(),
                     target
-            );
+            ).withErrorTarget(normalized(step.errorTarget()));
             case PUBLISH_EVENT -> ProcedureStep.publishEvent(stepName(step), normalized(step.event()), dataRef(step));
             case CALL_PROCEDURE -> ProcedureStep.callProcedure(stepName(step), normalized(step.procedure()), dataRef(step), target);
             case IF -> ProcedureStep.ifThenElse(

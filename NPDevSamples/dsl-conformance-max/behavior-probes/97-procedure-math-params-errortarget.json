@@ -1,0 +1,30 @@
+{
+  "probes": [
+    {
+      "id": "cf-procedure-computevalue-operators-runquery-params-errortarget",
+      "keywords": [
+        "flow.startEndpoint"
+      ],
+      "description": "K1/K2/K3: a procedure multiplies, divides, rounds, takes max/min (16.67 for 10 x 5 / 3), runs a query with its parameter bound from the flow input, and calls a capability with an errorTarget; the flow completes with the computed number.",
+      "steps": [
+        {
+          "name": "compute through the flow",
+          "method": "POST",
+          "path": "/api/flows/RunMathAndParams/execute",
+          "body": {
+            "price": 10,
+            "qty": 5,
+            "owner": "nobody@example.com"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output": 16.67
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

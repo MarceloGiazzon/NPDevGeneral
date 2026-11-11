@@ -128,10 +128,16 @@ Procedure steps: `{"type":"runQuery","query":"AvailableDrivers","concept":"Drive
 `{"type":"capabilityCall","capability":"geo","operation":"closest","args":{"lat":"$input.pickupLat","lng":"$input.pickupLng","candidates":"$rows"},"target":"best"}`,
 `{"type":"if","condition":"$best.found","then":[...],"else":[...]}`,
 `{"type":"patchConcept","concept":"Ride","id":"$input.id","set":{"driver":"$best.id","status":"ASSIGNED"},"target":"ride"}`.
+A query with parameters is run with `{"type":"runQuery","query":"ByCustomer","concept":"Order","params":{"who":"$input.customer"},"target":"rows"}`
+(every required parameter must be given; a literal or a `$ref`).
+An outside call that may fail as a normal answer (a declined card, a route service down): add `"errorTarget":"chargeError"` to the
+`capabilityCall`; on failure the step still succeeds, `target` stays unset and `$chargeError` holds `{code,message,kind,retryable,httpStatus}`;
+follow it with an `if` on `$chargeError`. Without `errorTarget` a failed call fails the whole procedure.
 The `query` is declared in `queries[]`; the flow step is
 `{"type":"callProcedure","procedure":"MatchDriver","input":"$created","output":"$matched"}`.
 A computed price is a field with `derivedExpression` (`+ - * /`), e.g. `"300 + 120 * tripDistanceKm"`; `computeValue`
-only does `add`, `subtract`, `addDays`, `daysBetween`.
+`computeValue` does `add`, `subtract`, `multiply`, `divide` (by zero fails the step), `min`, `max`, `round` (`right` = decimals 0..10),
+`addDays`, `daysBetween`, `today`.
 
 **A procedure that must act on rows the caller may not touch** (a rider's request marking a driver busy, writing the driver's login
 onto the ride) declares `"runAs":"system"`: its steps, and the procedures it calls, run as the tenant's system principal
@@ -143,7 +149,7 @@ or another procedure may call it (not an action); check the state first with an 
 `{"capability":"geo","adapter":"geo-inproc"}` in `bindings[]`. Both calls take one object in `args`, plain numbers:
 `distanceKm` `{"fromLat":..,"fromLng":..,"toLat":..,"toLng":..}` returns `{distanceKm}`;
 `closest` `{"lat":..,"lng":..,"candidates":[{"id":..,"lat":..,"lng":..}],"limit":3,"maxKm":10,"speedKmh":30}`
-(`limit`, `maxKm`, `speedKmh` optional) returns `{found, id, distanceKm, etaMinutes, ranked:[{id,distanceKm,etaMinutes}]}`,
+(`limit`, `maxKm`, `speedKmh`, `excludeIds` optional; `excludeIds` = ids already tried) returns `{found, id, distanceKm, etaMinutes, withinCount, ranked:[{id,distanceKm,etaMinutes}]}`,
 nearest first; with no candidate `found` is false (never an error). Straight-line distance, not road distance.
 
 **Your own code (a custom capability).** For logic no built-in has (surge pricing, scoring):

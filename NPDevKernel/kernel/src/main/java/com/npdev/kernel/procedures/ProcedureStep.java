@@ -28,8 +28,38 @@ public record ProcedureStep(
         List<ProcedureStep> elseSteps,
         List<ProcedureStep> steps,
         Map<String, Object> setValues,
-        boolean createIfMissing
+        boolean createIfMissing,
+        Map<String, Object> queryParams,
+        String errorTarget
 ) {
+    /** Pre-params/errorTarget constructor. */
+    public ProcedureStep(
+            String name, ProcedureStepType type, String conceptName, String idRef, String dataRef, String capability,
+            String capabilityType, String adapterId, String operation, List<String> argRefs, String outputKey,
+            String eventName, String payloadRef, String conditionRef, String collectionRef, String itemKey,
+            Object valueRef, String procedureName, Object returnRef, List<ProcedureStep> thenSteps,
+            List<ProcedureStep> elseSteps, List<ProcedureStep> steps, Map<String, Object> setValues,
+            boolean createIfMissing
+    ) {
+        this(name, type, conceptName, idRef, dataRef, capability, capabilityType, adapterId, operation, argRefs,
+                outputKey, eventName, payloadRef, conditionRef, collectionRef, itemKey, valueRef, procedureName,
+                returnRef, thenSteps, elseSteps, steps, setValues, createIfMissing, Map.of(), null);
+    }
+
+    /** K2: {@code runQuery} step parameters (name -> literal or {@code $ref}). */
+    public ProcedureStep withQueryParams(Map<String, Object> params) {
+        return new ProcedureStep(name, type, conceptName, idRef, dataRef, capability, capabilityType, adapterId,
+                operation, argRefs, outputKey, eventName, payloadRef, conditionRef, collectionRef, itemKey, valueRef,
+                procedureName, returnRef, thenSteps, elseSteps, steps, setValues, createIfMissing, params, errorTarget);
+    }
+
+    /** K3: a failed capability call is stored under this state key instead of failing the procedure. */
+    public ProcedureStep withErrorTarget(String key) {
+        return new ProcedureStep(name, type, conceptName, idRef, dataRef, capability, capabilityType, adapterId,
+                operation, argRefs, outputKey, eventName, payloadRef, conditionRef, collectionRef, itemKey, valueRef,
+                procedureName, returnRef, thenSteps, elseSteps, steps, setValues, createIfMissing, queryParams, key);
+    }
+
     public ProcedureStep {
         name = normalizeRequired(name, "name");
         if (type == null) {
@@ -56,6 +86,8 @@ public record ProcedureStep(
         elseSteps = elseSteps == null ? List.of() : List.copyOf(elseSteps);
         steps = steps == null ? List.of() : List.copyOf(steps);
         setValues = setValues == null ? Map.of() : Map.copyOf(setValues);
+        queryParams = queryParams == null ? Map.of() : java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(queryParams));
+        errorTarget = normalizeOptional(errorTarget);
     }
 
     public ProcedureStep(

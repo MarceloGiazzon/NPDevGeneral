@@ -1491,7 +1491,9 @@ public final class JsonModelParser {
                     readOptionalBoolean(stepNode, "createIfMissing"),
                     parseObjectMap(stepNode.get("select")),
                     parseJsonValue(stepNode.get("left")),
-                    parseJsonValue(stepNode.get("right"))
+                    parseJsonValue(stepNode.get("right")),
+                    parseObjectMap(stepNode.get("params")),
+                    readText(stepNode, "errorTarget")
             ));
         }
         return out;

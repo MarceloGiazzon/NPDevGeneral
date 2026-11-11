@@ -59,7 +59,7 @@ class ProcedureComputeValueValidationTest {
     @Test
     void unknownOperatorIsRejected() throws Exception {
         List<String> errors = validate(modelJson("""
-            { "name": "multiply", "type": "computeValue", "operation": "multiply",
+            { "name": "power", "type": "computeValue", "operation": "power",
               "left": 2, "right": 3, "target": "product" }
             """));
         assertTrue(errors.stream().anyMatch(e -> e.contains("computeValue requires operation to be one of")),

@@ -126,4 +126,44 @@ class InProcGeoCapabilityAdapterTest {
         CapabilityResult unknown = call("teleport", Map.of("lat", 1));
         assertEquals("GEO_OPERATION_UNSUPPORTED", unknown.error().code());
     }
+
+    private static final List<Map<String, Object>> THREE = List.of(
+            Map.of("id", "near", "lat", -34.901, "lng", -56.161),
+            Map.of("id", "mid", "lat", -34.93, "lng", -56.19),
+            Map.of("id", "far", "lat", -34.8, "lng", -56.0));
+
+    @Test
+    void excludeIdsAsStringsAndAsMapsSkipThoseCandidates() {
+        Map<String, Object> byString = value(call("closest", Map.of(
+                "lat", -34.9, "lng", -56.16, "candidates", THREE, "excludeIds", List.of("near"))));
+        assertEquals("mid", byString.get("id"));
+        Map<String, Object> byMap = value(call("closest", Map.of(
+                "lat", -34.9, "lng", -56.16, "candidates", THREE,
+                "excludeIds", List.of(Map.of("id", "near"), Map.of("id", "mid")))));
+        assertEquals("far", byMap.get("id"));
+        assertEquals(1, byMap.get("withinCount"));
+    }
+
+    @Test
+    void withinCountCountsAfterExclusionWithAndWithoutMaxKmAndBeforeLimit() {
+        Map<String, Object> all = value(call("closest", Map.of(
+                "lat", -34.9, "lng", -56.16, "candidates", THREE, "limit", 1)));
+        assertEquals(3, all.get("withinCount"), "all usable candidates, counted before the limit cut");
+        assertEquals(1, ((List<?>) all.get("ranked")).size());
+        Map<String, Object> close = value(call("closest", Map.of(
+                "lat", -34.9, "lng", -56.16, "candidates", THREE, "maxKm", 10)));
+        assertEquals(2, close.get("withinCount"), "far is beyond 10 km");
+    }
+
+    @Test
+    void emptyCandidatesAndEverythingExcludedGiveFoundFalseAndZero() {
+        Map<String, Object> none = value(call("closest", Map.of(
+                "lat", -34.9, "lng", -56.16, "candidates", List.of())));
+        assertFalse((Boolean) none.get("found"));
+        assertEquals(0, none.get("withinCount"));
+        Map<String, Object> excludedAll = value(call("closest", Map.of(
+                "lat", -34.9, "lng", -56.16, "candidates", THREE, "excludeIds", List.of("near", "mid", "far"))));
+        assertFalse((Boolean) excludedAll.get("found"));
+        assertEquals(0, excludedAll.get("withinCount"));
+    }
 }

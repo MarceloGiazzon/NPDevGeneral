@@ -110,9 +110,14 @@ final class PackValidation {
     private static final Set<String> PROCEDURE_COMPUTE_VALUE_STEP_TYPES =
             Set.of("computevalue", "compute_value", "compute", "arithmetic");
     /** Lower-cased, as compared; the executor lower-cases the operator too. REG-313 (b) added the date operations. */
-    private static final Set<String> PROCEDURE_COMPUTE_VALUE_OPERATORS =
-            Set.of("add", "subtract", "adddays", "daysbetween", "today");
-    private static final String PROCEDURE_COMPUTE_VALUE_OPERATOR_NAMES = "[add, subtract, addDays, daysBetween, today]";
+    private static final Set<String> PROCEDURE_COMPUTE_VALUE_OPERATORS = unionOf(ComputeValueOperators.NUMERIC, ComputeValueOperators.DATE);
+    private static final String PROCEDURE_COMPUTE_VALUE_OPERATOR_NAMES = ComputeValueOperators.NAMES;
+
+    private static Set<String> unionOf(Set<String> a, Set<String> b) {
+        Set<String> out = new java.util.HashSet<>(a);
+        out.addAll(b);
+        return Set.copyOf(out);
+    }
     private static final Set<String> PROCEDURE_CONCEPT_STEP_TYPES =
             Set.of("conceptquery", "readconcept", "read_concept", "listconcepts", "list_concepts",
                     "runquery", "run_query", "conceptcreate", "conceptupdate", "saveconcept", "save_concept",
@@ -732,6 +737,10 @@ final class PackValidation {
         for (CapabilityAst capability : modelAst.getCapabilities()) {
             capabilitiesByLower.put(normalize(capability.getName()), capability);
         }
+        Map<String, QueryAst> queriesByLower = new HashMap<>();
+        for (QueryAst query : modelAst.getQueries()) {
+            queriesByLower.put(normalize(query.name()), query);
+        }
         Set<String> seen = new HashSet<>();
         for (ProcedureAst procedure : modelAst.getProcedures()) {
             String procedureName = procedure.name();
@@ -764,6 +773,63 @@ final class PackValidation {
                     errors
             );
             ComputeValueOperandValidation.validate(procedureName, procedure.steps(), entitiesByLower, errors);
+            validateParamsAndErrorTarget(procedureName, "procedures[" + procedureName + "].steps", procedure.steps(),
+                    queriesByLower, errors);
+        }
+    }
+
+    /**
+     * K2/K3: {@code params} belongs to runQuery only and must bind the named query's declared parameters (every
+     * key declared, every required parameter without a default given); {@code errorTarget} belongs to a
+     * capability call only and must differ from its {@code target}.
+     */
+    private static void validateParamsAndErrorTarget(
+            String procedureName, String path, List<ProcedureStepAst> steps,
+            Map<String, QueryAst> queriesByLower, List<String> errors) {
+        int index = 0;
+        for (ProcedureStepAst step : steps) {
+            String stepPath = path + "[" + index + "]";
+            String type = normalize(step.type());
+            boolean isRunQuery = PROCEDURE_QUERY_STEP_TYPES.contains(type);
+            if (!step.params().isEmpty() && !isRunQuery) {
+                errors.add("Procedure " + procedureName + " step " + stepPath
+                        + ": params is only valid on a runQuery step (it binds the query's parameters)");
+            }
+            if (isRunQuery && hasText(step.query())) {
+                QueryAst query = queriesByLower.get(normalize(step.query()));
+                if (query != null) {
+                    Set<String> declared = new HashSet<>();
+                    for (ProcedureParameterAst parameter : query.parameters()) {
+                        declared.add(parameter.name());
+                    }
+                    for (String key : step.params().keySet()) {
+                        if (!declared.contains(key)) {
+                            errors.add("Procedure " + procedureName + " step " + stepPath + ": params." + key
+                                    + " is not a declared parameter of query " + query.name() + " (declared: " + declared + ")");
+                        }
+                    }
+                    for (ProcedureParameterAst parameter : query.parameters()) {
+                        if (parameter.required() && !hasText(parameter.defaultExpression())
+                                && !step.params().containsKey(parameter.name())) {
+                            errors.add("Procedure " + procedureName + " step " + stepPath + ": query " + query.name()
+                                    + " requires parameter '" + parameter.name() + "' -- give it in params");
+                        }
+                    }
+                }
+            }
+            if (step.errorTarget() != null) {
+                if (!PROCEDURE_CAPABILITY_CALL_STEP_TYPES.contains(type)) {
+                    errors.add("Procedure " + procedureName + " step " + stepPath
+                            + ": errorTarget is only valid on a capabilityCall step");
+                } else if (step.errorTarget().equals(step.target())) {
+                    errors.add("Procedure " + procedureName + " step " + stepPath
+                            + ": errorTarget must differ from target");
+                }
+            }
+            validateParamsAndErrorTarget(procedureName, stepPath + ".then", step.thenSteps(), queriesByLower, errors);
+            validateParamsAndErrorTarget(procedureName, stepPath + ".else", step.elseSteps(), queriesByLower, errors);
+            validateParamsAndErrorTarget(procedureName, stepPath + ".steps", step.steps(), queriesByLower, errors);
+            index++;
         }
     }
 

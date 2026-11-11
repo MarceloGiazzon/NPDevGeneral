@@ -4873,6 +4873,15 @@
         "right": {
           "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, final item / REG-78): computeValue's second operand -- same literal-vs-$ref convention as left."
         },
+        "params": {
+          "type": "object",
+          "description": "runQuery only: binds the query's declared parameters by name -- each value is a literal or a $ref into procedure state (the same literal-vs-$ref rule as patchConcept.set). Every key must be a parameter of the named query and every required parameter must be given (or have a defaultExpression)."
+        },
+        "errorTarget": {
+          "type": "string",
+          "minLength": 1,
+          "description": "capabilityCall only: a state key. When the outside call FAILS the step still succeeds, `target` stays unset and this key holds {code, message, kind, retryable, httpStatus?, details}; on success it is cleared. Follow it with an `if` on the key (a bare ref is truthy when an error happened). Without errorTarget a failed call fails the whole procedure."
+        },
         "createIfMissing": {
           "type": "boolean",
           "default": false,

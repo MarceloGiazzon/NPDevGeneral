@@ -20,8 +20,10 @@ import java.util.Map;
  * <ul>
  *   <li>{@code distanceKm}: {@code {fromLat, fromLng, toLat, toLng}} -> {@code {distanceKm}}</li>
  *   <li>{@code closest}: {@code {lat, lng, candidates:[{id, lat, lng}], limit?, maxKm?, speedKmh?}} ->
- *       {@code {found, id, distanceKm, etaMinutes, ranked:[{id, distanceKm}]}}; candidates without a
- *       usable position are skipped; {@code ranked} is ordered nearest first and cut at {@code limit}.</li>
+ *       {@code {found, id, distanceKm, etaMinutes, withinCount, ranked:[{id, distanceKm}]}}; candidates without a
+ *       usable position are skipped; {@code excludeIds} (ids as strings, or maps with an {@code id} key) are skipped
+ *       too; {@code withinCount} is how many usable candidates are within {@code maxKm} (all of them when it is
+ *       absent) BEFORE {@code limit} cuts {@code ranked}, which is ordered nearest first.</li>
  * </ul>
  *
  * Straight-line (haversine) distance, not road distance: say so to the person using it.
@@ -32,7 +34,7 @@ public final class InProcGeoCapabilityAdapter implements CapabilityAdapter {
     static final double DEFAULT_SPEED_KMH = 30.0;
     /** Positional order of each operation's arguments, for a procedure step's object-form args (keys in this order). */
     static final List<String> DISTANCE_ORDER = List.of("fromLat", "fromLng", "toLat", "toLng");
-    static final List<String> CLOSEST_ORDER = List.of("lat", "lng", "candidates", "limit", "maxKm", "speedKmh");
+    static final List<String> CLOSEST_ORDER = List.of("lat", "lng", "candidates", "limit", "maxKm", "speedKmh", "excludeIds");
 
     @Override
     public String adapterId() {
@@ -113,10 +115,19 @@ public final class InProcGeoCapabilityAdapter implements CapabilityAdapter {
         Double maxKm = args.get("maxKm") == null ? null : positiveOrDefault(args.get("maxKm"), 0, "maxKm");
         int limit = args.get("limit") == null ? Integer.MAX_VALUE : (int) positiveOrDefault(args.get("limit"), 1, "limit");
 
+        java.util.Set<String> excluded = new java.util.HashSet<>();
+        if (args.get("excludeIds") instanceof List<?> ids) {
+            for (Object id : ids) {
+                Object value = id instanceof Map<?, ?> m ? m.get("id") : id;
+                if (value != null) {
+                    excluded.add(String.valueOf(value));
+                }
+            }
+        }
         List<Map<String, Object>> ranked = new ArrayList<>();
         if (args.get("candidates") instanceof List<?> candidates) {
             for (Object row : candidates) {
-                if (!(row instanceof Map<?, ?> c) || c.get("id") == null) {
+                if (!(row instanceof Map<?, ?> c) || c.get("id") == null || excluded.contains(String.valueOf(c.get("id")))) {
                     continue;
                 }
                 Double cLat = optionalCoordinate(c.get("lat"), 90);
@@ -136,6 +147,7 @@ public final class InProcGeoCapabilityAdapter implements CapabilityAdapter {
             }
         }
         ranked.sort(Comparator.comparingDouble(e -> ((Number) e.get("distanceKm")).doubleValue()));
+        int withinCount = ranked.size();
         if (ranked.size() > limit) {
             ranked = new ArrayList<>(ranked.subList(0, limit));
         }
@@ -148,6 +160,7 @@ public final class InProcGeoCapabilityAdapter implements CapabilityAdapter {
             out.put("distanceKm", best.get("distanceKm"));
             out.put("etaMinutes", best.get("etaMinutes"));
         }
+        out.put("withinCount", withinCount);
         out.put("ranked", ranked);
         return out;
     }

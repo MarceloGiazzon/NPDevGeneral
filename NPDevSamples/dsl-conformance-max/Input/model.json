@@ -1949,6 +1949,20 @@
 
   "procedures": [
     {
+      "name": "MathParamsAndSoftFailureProcedure",
+      "description": "K1/K2/K3 coverage: computeValue multiply/divide/round/max/min, runQuery params binding the CatalogEntriesOwnedBy parameter, and a capabilityCall errorTarget (the call may fail and the procedure goes on).",
+      "steps": [
+        { "name": "subtotal", "type": "computeValue", "operation": "multiply", "left": "$input.price", "right": "$input.qty", "target": "subtotal" },
+        { "name": "third", "type": "computeValue", "operation": "divide", "left": "$subtotal", "right": 3, "target": "third" },
+        { "name": "rounded", "type": "computeValue", "operation": "round", "left": "$third", "right": 2, "target": "rounded" },
+        { "name": "floor-zero", "type": "computeValue", "operation": "max", "left": "$rounded", "right": 0, "target": "total" },
+        { "name": "cap", "type": "computeValue", "operation": "min", "left": "$total", "right": 1000000, "target": "capped" },
+        { "name": "owned", "type": "runQuery", "query": "CatalogEntriesOwnedBy", "concept": "WidgetCatalogEntry", "params": { "owner": "$input.owner" }, "target": "ownedRows" },
+        { "name": "soft-notify", "type": "capabilityCall", "capability": "notification", "operation": "send", "args": { "input": "$input" }, "target": "notified", "errorTarget": "notifyError" },
+        { "name": "return-capped", "type": "return", "value": "$capped" }
+      ]
+    },
+    {
       "name": "RunAsPlaceOrderForProcedure",
       "description": "A1 coverage: runAs \"system\". The caller may not write an order that belongs to someone else (WidgetOrder write rule: customerEmail == $user.id), but this elevated procedure may, and only a flow calls it. It checks the state first.",
       "runAs": "system",
@@ -2197,6 +2211,15 @@
   ],
 
   "flows": [
+    {
+      "name": "RunMathAndParams",
+      "startEndpoint": true,
+      "input": { "concept": "WidgetOrder", "mode": "create" },
+      "steps": [
+        { "name": "call-math", "type": "callProcedure", "procedure": "MathParamsAndSoftFailureProcedure", "input": "$input", "output": "$total" },
+        { "name": "return-total", "type": "return", "value": "$total" }
+      ]
+    },
     {
       "name": "RunAsPlaceOrderFor",
       "startEndpoint": true,
