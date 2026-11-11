@@ -18,6 +18,11 @@
 .PARAMETER ModelFile
     Optional model.json to copy over the sample's Input\model.json first (iterating on a staged model; the
     committed model is what the daily run uses).
+
+.PARAMETER KeepRunning
+    After the stages ran, leave the app and the three mocks up and print the URL and the logins the setup stage
+    created, so you can open the app in a browser or call the API by hand. Pressing Enter stops everything this
+    script started. Interactive use only.
 #>
 param(
     [string]$SampleId = "ride-hailing",
@@ -29,6 +34,7 @@ param(
     [int]$BootTimeoutSeconds = 300,
     [switch]$ReuseBuild,
     [string]$ModelFile = "",
+    [switch]$KeepRunning,
     [string]$ReportPath = "scripts/reports/out/ride-hailing-report.json"
 )
 
@@ -189,6 +195,16 @@ try {
     Write-JsonReport
     if ($Stages -eq "all") {
         & $py (Join-Path $repoRoot "scripts\quality\cadence_state.py") record --id "ride-hailing-s2" --tier T1 --result $report.status 2>&1 | Out-Null
+    }
+    if ($KeepRunning) {
+        # For a person who wants to look at the app in a browser (or poke the API) after the stages ran: leave the
+        # app and the three mocks up, and stop them ONLY when Enter is pressed -- never an orphan, never a kill of
+        # anything this script did not start.
+        Write-Section "Everything is up (press Enter to stop it)"
+        Write-Host "App (browser / API) : $baseUrl"
+        Write-Host "Logins from the setup stage (password Ride-hailing-S2-pass-1): admin, rider1, rider2, driver1, driver2, driver3, disp1"
+        Write-Host "Mocks               : payments http://127.0.0.1:$PspPort/mock/log   push http://127.0.0.1:$PushPort   routes http://127.0.0.1:$RoutePort"
+        [void](Read-Host "Press Enter to stop the app and the mocks")
     }
     if ($driveExit -ne 0) { throw "The ride-hailing acceptance run failed -- see $driveOut." }
     Write-Host "Ride-hailing acceptance green." -ForegroundColor Green
