@@ -65,6 +65,7 @@ class Run:
         self.results: list[tuple[str, bool, str]] = []
         self.tokens: dict[str, str] = {}
         self.ids: dict[str, str] = {}
+        self.seen_rides: set[str] = set()
 
     # ---- http ---------------------------------------------------------------------------------
     def call(self, method, path, body=None, who=None, base=None):
@@ -173,9 +174,16 @@ class Run:
         rid = self.rid(body)
         if not rid:
             s2, lst = self.call("GET", self.coll("rides"), None, rider)
-            items = lst.get("items", lst if isinstance(lst, list) else []) if isinstance(lst, (dict, list)) else []
+            if isinstance(lst, dict):
+                items = lst.get("content") or lst.get("items") or []
+            else:
+                items = lst if isinstance(lst, list) else []
             mine = [i.get("data", i) for i in items if (i.get("data", i)).get("riderAccount") == rider]
-            rid = mine[-1]["id"] if mine else None
+            # The list is ordered by id (not by age): the new ride is the one this run has not seen yet.
+            fresh = [i for i in mine if i["id"] not in self.seen_rides]
+            rid = fresh[-1]["id"] if fresh else None
+        if rid:
+            self.seen_rides.add(rid)
         return s, body, rid
 
 

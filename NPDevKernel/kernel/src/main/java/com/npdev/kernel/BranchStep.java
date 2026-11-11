@@ -62,7 +62,8 @@ final class BranchStep {
                         stepIndexOffset,
                         progressRecorder,
                         effectiveContext,
-                        completed
+                        completed,
+                        req.anchorIndex()
                 );
             } catch (RuntimeException failure) {
                 CompensationRunner.recordNestedFailure(flow, step, state, completed);

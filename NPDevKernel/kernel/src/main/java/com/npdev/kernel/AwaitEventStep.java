@@ -45,6 +45,7 @@ final class AwaitEventStep {
         String defaultCorrelationId = req.defaultCorrelationId();
         ExecutionContext effectiveContext = req.effectiveContext();
         int traceStepIndex = req.traceStepIndex();
+        int anchorIndex = req.anchorIndex();
         long stepStartedAt = req.stepStartedAt();
         Map<String, Object> stateBefore = req.stateBefore();
         Map<String, Object> stepInfo = req.stepInfo();
@@ -99,7 +100,7 @@ final class AwaitEventStep {
                     FlowStateCodec.AWAIT_STATE_KEY,
                     FlowStateCodec.buildAwaitState(
                             step,
-                            traceStepIndex,
+                            anchorIndex,
                             awaitRef,
                             deadlineEpochMs
                     )
@@ -121,7 +122,7 @@ final class AwaitEventStep {
                     flow.getName(),
                     emittedEvents,
                     step.getName(),
-                    traceStepIndex,
+                    anchorIndex,
                     step.getAwaitEventName(),
                     waitingCorrelationId,
                     "Awaited event not found for step: " + step.getName()
@@ -195,7 +196,9 @@ final class AwaitEventStep {
                     defaultCorrelationId,
                     stepIndexOffset,
                     progressRecorder,
-                    effectiveContext
+                    effectiveContext,
+                    null,
+                    req.anchorIndex()
             );
             if (nested.failedResult() != null) {
                 ExecutionResult nestedFailure = nested.failedResult();

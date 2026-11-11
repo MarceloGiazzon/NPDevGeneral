@@ -16,6 +16,11 @@ import java.util.Map;
  * collaborators it needs -- capability dispatch, event store, invariant engine, tracing, etc. --
  * exactly the shape {@code GeneratedCrudRuntimeSupport}/T2.B.3 used for its own instance-bound
  * methods). Immutable and rebuilt fresh on every step iteration; carrying no behavior of its own.
+ *
+ * <p>{@code anchorIndex} is the index, in the flow's TOP-LEVEL step list, of the step this one is (or
+ * is nested inside). {@code traceStepIndex} counts trace entries, nested steps included, so after a
+ * branch or loop that ran nested steps it runs ahead of the real position; a parked await must record
+ * the anchor, because a resume restarts the top-level list there.
  */
 record StepExecutionRequest(
         FlowDefinition flow,
@@ -33,6 +38,7 @@ record StepExecutionRequest(
         int traceStepIndex,
         long stepStartedAt,
         Map<String, Object> stateBefore,
-        Map<String, Object> stepInfo
+        Map<String, Object> stepInfo,
+        int anchorIndex
 ) {
 }

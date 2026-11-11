@@ -1300,8 +1300,36 @@ final EventBus eventBus;
             ExecutionContext executionContext,
             List<FlowStepDefinition> completedSink
     ) {
+        return executeSteps(flow, steps, input, state, emittedEvents, traceMeta, stepTraces, executionId,
+                defaultCorrelationId, stepIndexOffset, progressRecorder, executionContext, completedSink, -1);
+    }
+
+    /**
+     * {@code enclosingAnchorIndex} is -1 for the flow's own top-level list (each step's anchor is then
+     * {@code stepIndexOffset} plus its position in the list) and, for a nested list (branch arm, loop
+     * body, onTimeout), the anchor of the step that owns it, so every step in it shares that anchor.
+     */
+    StepExecutionOutcome executeSteps(
+            FlowDefinition flow,
+            List<FlowStepDefinition> steps,
+            Object input,
+            Map<String, Object> state,
+            List<EventEnvelope> emittedEvents,
+            FlowTraceMeta traceMeta,
+            List<StepTrace> stepTraces,
+            String executionId,
+            String defaultCorrelationId,
+            int stepIndexOffset,
+            StepProgressRecorder progressRecorder,
+            ExecutionContext executionContext,
+            List<FlowStepDefinition> completedSink,
+            int enclosingAnchorIndex
+    ) {
         ExecutionContext effectiveContext = normalizeExecutionContext(executionContext);
+        int position = 0;
         for (FlowStepDefinition step : steps) {
+            int anchorIndex = enclosingAnchorIndex >= 0 ? enclosingAnchorIndex : stepIndexOffset + position;
+            position++;
             int traceStepIndex = stepIndexOffset + stepTraces.size();
             long stepStartedAt = nowEpochMillis();
             executionTracer.onStepStart(
@@ -1329,7 +1357,8 @@ final EventBus eventBus;
                     traceStepIndex,
                     stepStartedAt,
                     stateBefore,
-                    stepInfo
+                    stepInfo,
+                    anchorIndex
             );
             try {
                 switch (step.getType()) {

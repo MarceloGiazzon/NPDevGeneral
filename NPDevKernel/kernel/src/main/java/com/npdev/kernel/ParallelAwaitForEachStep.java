@@ -213,7 +213,9 @@ final class ParallelAwaitForEachStep {
                     defaultCorrelationId,
                     0,
                     loopBodyProgressRecorder,
-                    effectiveContext
+                    effectiveContext,
+                    null,
+                    req.anchorIndex()
             );
             stepTraces.addAll(iterationTraces);
 
@@ -258,7 +260,7 @@ final class ParallelAwaitForEachStep {
                     flow.getName(),
                     emittedEvents,
                     step.getName(),
-                    traceStepIndex,
+                    req.anchorIndex(),
                     awaitStep.getAwaitEventName(),
                     firstOutstandingCorrelationId,
                     "Awaited event(s) not found for parallel forEach step: " + step.getName()

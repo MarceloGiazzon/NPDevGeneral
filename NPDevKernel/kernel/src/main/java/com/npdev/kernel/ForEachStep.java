@@ -184,7 +184,8 @@ final class ForEachStep {
                             0,
                             loopBodyProgressRecorder,
                             effectiveContext,
-                            completedInIteration
+                            completedInIteration,
+                            req.anchorIndex()
                     );
                 } catch (RuntimeException failure) {
                     CompensationRunner.recordNestedFailure(flow, step, state, completedInIteration);

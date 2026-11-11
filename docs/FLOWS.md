@@ -327,6 +327,25 @@ can actually be found, applying exponential backoff (base 5s, cap 300s) to anyth
 special. The instance was already durable before the crash; boot finds it and tries to resume it,
 exactly like the poller would have on its next tick anyway.
 
+### Where a parked await resumes (nested awaits)
+
+A parked await records the index of the **top-level** step it sits in (or inside: a `branch` arm, a
+`forEach` body, an `onTimeout` list) -- not a count of trace entries, which nested steps inflate. A resume
+restarts the top-level list at that step, so:
+
+- an await in a `forEach` body resumes inside the right round (the loop's own progress key), wherever the
+  loop sits in the flow;
+- an await in a `branch` arm re-enters the **whole branch step**: steps of that arm that come *before* the
+  await run again. Put the await first in its arm, or make the steps before it idempotent (the ride-hailing
+  sample's `MatchDriver` is a no-op unless the ride is still `REQUESTED` for exactly this reason);
+- to await more than once, use one `forEach` with a single await in its body rather than several awaits in
+  separate branches.
+
+A timed await is looked at again by its own deadline: the quiet-wait back-off (5 s, 10 s, 20 s ...) never
+schedules the next sweep past it, so a 20-second `timeout` fires at about 20 seconds, not at the next rung.
+A `callProcedure` output reaches flow state in its persisted JSON shape (`$out.data.status`, `$out.id`),
+so a condition reads the same value before and after the flow has parked.
+
 ### Human tasks — the optional `task` block (PROC-1)
 
 An `awaitEvent` step may carry a `task` block that turns the wait into a *human* task: who answers

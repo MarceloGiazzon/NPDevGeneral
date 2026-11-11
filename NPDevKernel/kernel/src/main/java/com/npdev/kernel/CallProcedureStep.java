@@ -1,5 +1,6 @@
 package com.npdev.kernel;
 
+import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.events.EventEnvelope;
 import com.npdev.kernel.procedures.ProcedureDefinition;
 import com.npdev.kernel.procedures.ProcedureExecutionResult;
@@ -91,13 +92,45 @@ final class CallProcedureStep {
         // Same convention DefaultProcedureExecutor's own nested callProcedure step already uses:
         // a "return" state key holds the procedure's declared result; fall back to the whole
         // accumulated state only if the procedure never named one.
-        Object output = result.state().containsKey("return") ? result.state().get("return") : result.state();
+        Object output = plainTree(result.state().containsKey("return") ? result.state().get("return") : result.state());
         String outputRef = KernelRunner.normalizeRef(step.getOutputRef());
         if (!outputRef.isBlank()) {
             state.put(outputRef, output);
         }
         state.put("last", output);
         return null;
+    }
+
+    /**
+     * A procedure's return value may hold {@link ConceptRecord}s (a patched/read row). Flow state is
+     * persisted as JSON, where such a row is {@code {conceptName,id,tenantId,data,rowVersion}} -- and
+     * {@link KernelRunner#resolveReference} only walks Maps, so left as a record {@code $out.data.status}
+     * resolved to nothing until the flow had parked once and been reloaded (a branch on it silently took
+     * the wrong arm). Hand flow state the same Map shape it will have after a reload, from the first step.
+     */
+    static Object plainTree(Object value) {
+        if (value instanceof ConceptRecord record) {
+            Map<String, Object> out = new java.util.LinkedHashMap<>();
+            out.put("conceptName", record.conceptName());
+            out.put("id", record.id());
+            out.put("tenantId", record.tenantId());
+            out.put("data", plainTree(record.data()));
+            out.put("rowVersion", record.rowVersion());
+            return out;
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> out = new java.util.LinkedHashMap<>();
+            map.forEach((k, v) -> out.put(String.valueOf(k), plainTree(v)));
+            return out;
+        }
+        if (value instanceof List<?> list) {
+            List<Object> out = new java.util.ArrayList<>(list.size());
+            for (Object item : list) {
+                out.add(plainTree(item));
+            }
+            return out;
+        }
+        return value;
     }
 
     private static KernelRunner.StepExecutionOutcome fail(

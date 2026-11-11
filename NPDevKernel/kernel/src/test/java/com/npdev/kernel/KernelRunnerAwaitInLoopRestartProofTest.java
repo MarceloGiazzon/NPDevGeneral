@@ -184,6 +184,95 @@ class KernelRunnerAwaitInLoopRestartProofTest {
         return CapabilityResult.success(approvalPayload);
     }
 
+    /**
+     * The ride-hailing offer loop: one round per candidate, each round = a no-op-able step plus a branch
+     * holding the single await, matched by PAYLOAD (not correlation). Round 2 must park after round 1's
+     * answer arrives, not complete the flow.
+     */
+    @Test
+    void branchWrappedPayloadMatchedAwaitParksEveryRound() {
+        RecordingEventInfrastructure events = new RecordingEventInfrastructure();
+        InMemoryFlowInstanceStore store = new InMemoryFlowInstanceStore();
+        InMemoryFlowDefinitionProvider provider = new InMemoryFlowDefinitionProvider()
+                .register(new FlowDefinition(
+                        "OfferLoopFlow",
+                        "Order",
+                        List.of(
+                                // A branch that runs nested steps BEFORE the loop: the trace count then runs
+                                // ahead of the real position, and a parked await must still record the loop's
+                                // own top-level index (1), or the resume restarts at the wrong step.
+                                FlowStepDefinition.branch(
+                                        "pre",
+                                        "$input.go == true",
+                                        List.of(
+                                                FlowStepDefinition.map("pre-1", "rideId", "p1"),
+                                                FlowStepDefinition.map("pre-2", "rideId", "p2"),
+                                                FlowStepDefinition.map("pre-3", "rideId", "p3")
+                                        ),
+                                        List.of()
+                                ),
+                                FlowStepDefinition.forEach(
+                                        "rounds",
+                                        "input.items",
+                                        "slot",
+                                        List.of(
+                                                FlowStepDefinition.branch(
+                                                        "offered",
+                                                        "$input.go == true",
+                                                        List.of(
+                                                                FlowStepDefinition.awaitEvent(
+                                                                        "await-offer", "ItemApproved", "a",
+                                                                        false, Map.of("rideId", "$input.rideId")),
+                                                                FlowStepDefinition.map("note", "a", "answer")
+                                                        ),
+                                                        List.of()
+                                                )
+                                        ),
+                                        3
+                                ),
+                                FlowStepDefinition.returnValue("done", "$input.rideId")
+                        )
+                ));
+        // The REAL consumption ledger matters here: with correlation matching off, only the idempotency
+        // store stops round 1 from consuming the event round 0 already used.
+        KernelRunner runner = new KernelRunner(
+                events,
+                (entityName, payload) -> List.of(),
+                provider,
+                (call, state) -> CapabilityResult.success(null),
+                com.npdev.kernel.ports.ExecutionTracer.NOOP,
+                events,
+                store,
+                com.npdev.kernel.ports.CorrelationOwnershipStore.noop(),
+                com.npdev.kernel.ports.CircuitBreakerStateStore.noop(),
+                com.npdev.kernel.ports.BulkheadStore.noop(),
+                new MapIdempotencyStore(),
+                com.npdev.kernel.capability.CapabilityPolicyOverrides.empty(),
+                com.npdev.kernel.ports.JsonCodec.noop(),
+                com.npdev.kernel.ports.SchemaValidator.noop(),
+                com.npdev.kernel.ports.MetricsSink.noop(),
+                com.npdev.kernel.ports.IdProvider.uuid()
+        );
+
+        ExecutionResult started = runner.execute("OfferLoopFlow",
+                Map.of("correlationId", "corr-offer", "items", List.of("d2", "d3"), "go", true, "rideId", "ride-1"));
+        assertEquals(ExecutionStatus.WAITING_EVENT, started.getStatus(), "round 0 parks");
+        assertEquals(1, started.getAwaitedStepIndex(), "the await reports the loop's top-level index, not a trace count");
+        String executionId = started.getExecutionId();
+
+        events.append(new EventEnvelope("evt-1", "ItemApproved", System.currentTimeMillis(),
+                Map.of("rideId", "ride-1", "answer", "DECLINE"), "unrelated", "test", "OfferLoopFlow", 0, "default", null));
+        ExecutionResult afterRound0 = runner.resumeExecution(executionId);
+        assertEquals(ExecutionStatus.WAITING_EVENT, afterRound0.getStatus(),
+                "round 1 must park for ITS answer, not consume round 0's event again or end the flow: "
+                        + afterRound0.getStatus() + " " + afterRound0.getError() + " out=" + afterRound0.getOutput());
+
+        events.append(new EventEnvelope("evt-2", "ItemApproved", System.currentTimeMillis(),
+                Map.of("rideId", "ride-1", "answer", "ACCEPT"), "unrelated", "test", "OfferLoopFlow", 0, "default", null));
+        ExecutionResult finalResult = runner.resumeExecution(executionId);
+        assertEquals(ExecutionStatus.OK, finalResult.getStatus());
+    }
+
     private static EventEnvelope approvalEvent(String correlationId, String payloadValue) {
         // Tenant must match ExecutionContext.anonymous().tenantId() ("default") -- the flow runs
         // under no explicit tenant, and KernelRunner.normalizeTenantOrDefault(null) resolves to
@@ -230,6 +319,27 @@ class KernelRunnerAwaitInLoopRestartProofTest {
                                 )
                         )
                 ));
+    }
+
+    private static final class MapIdempotencyStore implements com.npdev.kernel.ports.IdempotencyStore {
+        private final Map<String, com.npdev.kernel.capability.IdempotencyRecord> records = new ConcurrentHashMap<>();
+
+        @Override
+        public Optional<com.npdev.kernel.capability.IdempotencyRecord> find(String t, String c, String o, String k) {
+            return Optional.ofNullable(records.get(t + "|" + c + "|" + o + "|" + k));
+        }
+
+        @Override
+        public void saveSuccess(String t, String c, String o, String k, String json, long at) {
+            records.put(t + "|" + c + "|" + o + "|" + k, new com.npdev.kernel.capability.IdempotencyRecord(
+                    t, k, c, o, at, com.npdev.kernel.capability.IdempotencyRecord.STATUS_SUCCESS, json, null));
+        }
+
+        @Override
+        public void saveFailure(String t, String c, String o, String k, String code, long at) {
+            records.put(t + "|" + c + "|" + o + "|" + k, new com.npdev.kernel.capability.IdempotencyRecord(
+                    t, k, c, o, at, com.npdev.kernel.capability.IdempotencyRecord.STATUS_FAILED, null, code));
+        }
     }
 
     private static final class InMemoryFlowInstanceStore implements FlowInstanceStore {

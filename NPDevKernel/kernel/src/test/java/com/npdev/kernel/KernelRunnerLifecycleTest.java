@@ -1281,6 +1281,44 @@ class KernelRunnerLifecycleTest {
     }
 
     /**
+     * A timed await's quiet-wait backoff must never schedule the next sweep past the await's own
+     * deadline: the ladder (5s, 10s, 20s, 40s ...) otherwise lets a 20-second offer window expire
+     * at 38 seconds, because the sweep only claims instances whose nextEligibleResumeAt has passed.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void quietWaitBackoffNeverSchedulesTheNextSweepPastTheAwaitDeadline() {
+        RecordingEventInfrastructure eventInfrastructure = new RecordingEventInfrastructure();
+        FlowInstanceStoreStub flowInstanceStore = new FlowInstanceStoreStub();
+        KernelRunner runner = new KernelRunner(
+                eventInfrastructure,
+                (entityName, payload) -> List.of(),
+                flowProviderForAwaitFlowWithTimeout(),
+                (call, state) -> CapabilityResult.success(null),
+                eventInfrastructure,
+                flowInstanceStore
+        );
+        ExecutionResult waiting = runner.execute("AwaitApprovalWithTimeout", Map.of("correlationId", "corr-deadline-1"));
+        assertEquals(ExecutionStatus.WAITING_EVENT, waiting.getStatus());
+
+        FlowInstance parked = flowInstanceStore.findByExecutionId(waiting.getExecutionId()).orElseThrow();
+        long deadline = System.currentTimeMillis() + 2_000L;
+        Map<String, Object> awaitState = new LinkedHashMap<>((Map<String, Object>) parked.state().get("_npdev.await"));
+        awaitState.put("timeoutDeadlineEpochMs", deadline);
+        Map<String, Object> state = new LinkedHashMap<>(parked.state());
+        state.put("_npdev.await", awaitState);
+        flowInstanceStore.update(parked.markWaiting(
+                parked.currentStepIndex(), parked.waitingForEventName(), state, parked.updatedAtEpochMs()));
+
+        assertEquals(0, runner.resumeAllWaitingExecutions(100), "no event and not yet expired: nothing resumes");
+
+        FlowInstance after = flowInstanceStore.findByExecutionId(waiting.getExecutionId()).orElseThrow();
+        assertNotNull(after.nextEligibleResumeAtEpochMs());
+        assertTrue(after.nextEligibleResumeAtEpochMs() <= deadline,
+                "next sweep " + after.nextEligibleResumeAtEpochMs() + " must not be after the deadline " + deadline);
+    }
+
+    /**
      * R2.1: a WAITING_EVENT row parked at an arbitrary attempt count, so a test can stand one sweep
      * away from the cap without driving 20 real sweeps through a wall clock this kernel gives no
      * seam to fake. {@code nextEligibleResumeAtEpochMs} is deliberately far in the past so every

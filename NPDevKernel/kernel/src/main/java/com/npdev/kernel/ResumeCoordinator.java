@@ -417,6 +417,14 @@ final class ResumeCoordinator {
                 : instance.withResumeStreakReset();
         long delayMs = resumeDelayMillis(streakBase.resumeAttemptCount() + 1);
         long nextEligible = nowEpochMs + delayMs;
+        if (quietWait) {
+            // A timed await must be looked at again by its own deadline, not whenever the ladder
+            // (5s, 10s, 20s, 40s ...) next comes round -- else a 20s window expires at ~38s.
+            Long deadlineEpochMs = FlowStateCodec.awaitDeadlineEpochMs(instance.state());
+            if (deadlineEpochMs != null && deadlineEpochMs > nowEpochMs) {
+                nextEligible = Math.min(nextEligible, deadlineEpochMs);
+            }
+        }
         return streakBase.markResumeFailure(
                 errorCode,
                 nowEpochMs,

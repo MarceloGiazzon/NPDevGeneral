@@ -1559,6 +1559,25 @@
       "runAs": "system"
     },
     {
+      "name": "OfferCandidates",
+      "description": "The drivers free right now (at most 3 are offered the ride, one after another).",
+      "steps": [
+        {
+          "name": "free-drivers",
+          "type": "runQuery",
+          "query": "AvailableDrivers",
+          "concept": "Driver",
+          "target": "free"
+        },
+        {
+          "name": "return-free",
+          "type": "return",
+          "value": "$free"
+        }
+      ],
+      "runAs": "system"
+    },
+    {
       "name": "CreatePayment",
       "description": "Creates the PENDING Payment for a COMPLETED ride: amount = the ride's fare, card = the rider's token.",
       "steps": [
@@ -2407,112 +2426,36 @@
           "output": "$priced"
         },
         {
-          "name": "match-1",
+          "name": "candidates",
           "type": "callProcedure",
-          "procedure": "MatchDriver",
+          "procedure": "OfferCandidates",
           "input": "$created",
-          "output": "$m1"
+          "output": "$cands"
         },
         {
-          "name": "offered-1",
-          "type": "branch",
-          "condition": "$m1.data.status == 'ASSIGNED'",
-          "then": [
+          "name": "offer-rounds",
+          "type": "forEach",
+          "collection": "$cands",
+          "itemKey": "slot",
+          "maxLoopIterations": 3,
+          "steps": [
             {
-              "name": "await-1",
-              "type": "awaitEvent",
-              "awaitEvent": "RideOfferAnswered",
-              "awaitRef": "a1",
-              "match": {
-                "correlation": false,
-                "payload": {
-                  "rideId": "$created.id"
-                }
-              },
-              "timeout": 20,
-              "task": {
-                "title": "New ride: pickup ${m1.data.pickupDistanceKm} km away",
-                "description": "Accept within 20 seconds.",
-                "assignee": {
-                  "user": "$m1.data.driverAccount"
-                },
-                "outcomeField": "answer",
-                "outcomes": [
-                  {
-                    "value": "ACCEPT",
-                    "label": "Accept"
-                  },
-                  {
-                    "value": "DECLINE",
-                    "label": "Decline"
-                  }
-                ],
-                "record": "$created"
-              },
-              "onTimeout": [
-                {
-                  "name": "expire-1",
-                  "type": "callProcedure",
-                  "procedure": "ExpireOffer",
-                  "input": "$created",
-                  "output": "$x1"
-                }
-              ]
-            },
-            {
-              "name": "accepted-1",
-              "type": "branch",
-              "condition": "$a1.answer == 'ACCEPT'",
-              "then": [
-                {
-                  "name": "accept-1",
-                  "type": "callProcedure",
-                  "procedure": "AcceptOffer",
-                  "input": "$created",
-                  "output": "$accepted"
-                }
-              ],
-              "else": [
-                {
-                  "name": "declined-1",
-                  "type": "branch",
-                  "condition": "$a1.answer == 'DECLINE'",
-                  "then": [
-                    {
-                      "name": "decline-1",
-                      "type": "callProcedure",
-                      "procedure": "DeclineOffer",
-                      "input": "$created",
-                      "output": "$d1"
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "name": "attempt-2",
-          "type": "branch",
-          "condition": "$accepted == null",
-          "then": [
-            {
-              "name": "match-2",
+              "name": "match",
               "type": "callProcedure",
               "procedure": "MatchDriver",
               "input": "$created",
-              "output": "$m2"
+              "output": "$m"
             },
             {
-              "name": "offered-2",
+              "name": "offered",
               "type": "branch",
-              "condition": "$m2.data.status == 'ASSIGNED'",
+              "condition": "$m.data.status == 'ASSIGNED'",
               "then": [
                 {
-                  "name": "await-2",
+                  "name": "await-offer",
                   "type": "awaitEvent",
                   "awaitEvent": "RideOfferAnswered",
-                  "awaitRef": "a2",
+                  "awaitRef": "a",
                   "match": {
                     "correlation": false,
                     "payload": {
@@ -2521,10 +2464,10 @@
                   },
                   "timeout": 20,
                   "task": {
-                    "title": "New ride: pickup ${m2.data.pickupDistanceKm} km away",
+                    "title": "New ride: pickup ${m.data.pickupDistanceKm} km away",
                     "description": "Accept within 20 seconds.",
                     "assignee": {
-                      "user": "$m2.data.driverAccount"
+                      "user": "$m.data.driverAccount"
                     },
                     "outcomeField": "answer",
                     "outcomes": [
@@ -2541,21 +2484,21 @@
                   },
                   "onTimeout": [
                     {
-                      "name": "expire-2",
+                      "name": "expire-offer",
                       "type": "callProcedure",
                       "procedure": "ExpireOffer",
                       "input": "$created",
-                      "output": "$x2"
+                      "output": "$x"
                     }
                   ]
                 },
                 {
-                  "name": "accepted-2",
+                  "name": "accepted-offer",
                   "type": "branch",
-                  "condition": "$a2.answer == 'ACCEPT'",
+                  "condition": "$a.answer == 'ACCEPT'",
                   "then": [
                     {
-                      "name": "accept-2",
+                      "name": "accept-offer",
                       "type": "callProcedure",
                       "procedure": "AcceptOffer",
                       "input": "$created",
@@ -2564,108 +2507,16 @@
                   ],
                   "else": [
                     {
-                      "name": "declined-2",
+                      "name": "declined-offer",
                       "type": "branch",
-                      "condition": "$a2.answer == 'DECLINE'",
+                      "condition": "$a.answer == 'DECLINE'",
                       "then": [
                         {
-                          "name": "decline-2",
+                          "name": "decline-offer",
                           "type": "callProcedure",
                           "procedure": "DeclineOffer",
                           "input": "$created",
-                          "output": "$d2"
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "name": "attempt-3",
-          "type": "branch",
-          "condition": "$accepted == null",
-          "then": [
-            {
-              "name": "match-3",
-              "type": "callProcedure",
-              "procedure": "MatchDriver",
-              "input": "$created",
-              "output": "$m3"
-            },
-            {
-              "name": "offered-3",
-              "type": "branch",
-              "condition": "$m3.data.status == 'ASSIGNED'",
-              "then": [
-                {
-                  "name": "await-3",
-                  "type": "awaitEvent",
-                  "awaitEvent": "RideOfferAnswered",
-                  "awaitRef": "a3",
-                  "match": {
-                    "correlation": false,
-                    "payload": {
-                      "rideId": "$created.id"
-                    }
-                  },
-                  "timeout": 20,
-                  "task": {
-                    "title": "New ride: pickup ${m3.data.pickupDistanceKm} km away",
-                    "description": "Accept within 20 seconds.",
-                    "assignee": {
-                      "user": "$m3.data.driverAccount"
-                    },
-                    "outcomeField": "answer",
-                    "outcomes": [
-                      {
-                        "value": "ACCEPT",
-                        "label": "Accept"
-                      },
-                      {
-                        "value": "DECLINE",
-                        "label": "Decline"
-                      }
-                    ],
-                    "record": "$created"
-                  },
-                  "onTimeout": [
-                    {
-                      "name": "expire-3",
-                      "type": "callProcedure",
-                      "procedure": "ExpireOffer",
-                      "input": "$created",
-                      "output": "$x3"
-                    }
-                  ]
-                },
-                {
-                  "name": "accepted-3",
-                  "type": "branch",
-                  "condition": "$a3.answer == 'ACCEPT'",
-                  "then": [
-                    {
-                      "name": "accept-3",
-                      "type": "callProcedure",
-                      "procedure": "AcceptOffer",
-                      "input": "$created",
-                      "output": "$accepted"
-                    }
-                  ],
-                  "else": [
-                    {
-                      "name": "declined-3",
-                      "type": "branch",
-                      "condition": "$a3.answer == 'DECLINE'",
-                      "then": [
-                        {
-                          "name": "decline-3",
-                          "type": "callProcedure",
-                          "procedure": "DeclineOffer",
-                          "input": "$created",
-                          "output": "$d3"
+                          "output": "$d"
                         }
                       ]
                     }
