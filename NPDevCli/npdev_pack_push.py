@@ -70,7 +70,10 @@ def check_pack(cli, pack_dir: Path, checkout: Path, work: Path, validate) -> tup
         folder = work / "probe"
         model_path = relay_pack.stage_probe(folder, pack_id, text, relay_pack.probe_model(pack_id))
         verdict = validate(model_path, work / "validation.json")
-        if verdict is not None and verdict.get("status") == "failed":
+        if verdict is None:
+            # Publishing to everyone is the one place a check that could not run must NOT pass silently.
+            problems = ["NPDev could not check that an app can use this part on this computer (Java is needed). Nothing can be published until it can."]
+        elif verdict.get("status") == "failed":
             problems = relay_pack._lines(verdict, "probe")  # noqa: SLF001 -- one copy of the validator's wording
     return pack, previous, problems, report
 

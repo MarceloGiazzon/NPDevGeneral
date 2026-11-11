@@ -335,9 +335,134 @@ async function packsRefreshMine() {
   } catch (error) {
     parts = [];
   }
-  box.innerHTML = parts.length
-    ? `<ul class="packs-mine">${parts.map((p) => `<li><b>${packsEsc(p.id)}</b> <small>${packsEsc(T("version {version}", { version: p.version }))}</small></li>`).join("")}</ul>`
-    : `<p class="status-line">${packsEsc(T("You have not made a part yet."))}</p>`;
+  if (!Array.isArray(parts)) parts = [];
+  packsState.mine = parts;
+  const publishLabel = T("Publish to the public catalog");
+  const rows = parts.map((p, i) => `<li><b>${packsEsc(p.id)}</b> <small>${packsEsc(T("version {version}", { version: p.version }))}</small>
+            <button class="btn ghost" data-publish="${i}">${packsEsc(publishLabel)}</button></li>`);
+  const none = `<p class="status-line">${packsEsc(T("You have not made a part yet."))}</p>`;
+  box.innerHTML = parts.length ? `<ul class="packs-mine">${rows.join("")}</ul>` : none;
+  box.querySelectorAll("[data-publish]").forEach((b) => b.addEventListener("click", () => publishStart(packsState.mine[Number(b.dataset.publish)])));
+}
+
+// ---- Publish to the PUBLIC catalog. Every publish is its own confirmation: the person types the part's name, for this
+// part, now. Nothing is remembered, defaulted or batched; the CLI refuses a confirmation that is not exactly this part.
+const NPR_KEY = "npdev.manager.nprCheckout";
+function nprGet() {
+  try {
+    return window.localStorage.getItem(NPR_KEY) || "";
+  } catch (e) {
+    return "";
+  }
+}
+function nprSet(value) {
+  try {
+    window.localStorage.setItem(NPR_KEY, value);
+  } catch (e) {
+    /* the choice is just not remembered */
+  }
+}
+
+function publishBox() {
+  const box = document.getElementById("packs-publish");
+  box.hidden = false;
+  return box;
+}
+
+function publishClose() {
+  const box = document.getElementById("packs-publish");
+  box.hidden = true;
+  box.innerHTML = "";
+}
+
+async function publishChooseFolder(part) {
+  let folder = null;
+  try {
+    folder = await kInvoke("pick_db_transfer_folder", { title: T("Choose the folder where your copy of the public catalog lives") });
+  } catch (e) {
+    folder = null;
+  }
+  if (folder) {
+    nprSet(folder);
+    publishStart(part);
+  }
+}
+
+async function publishStart(part) {
+  const box = publishBox();
+  const checkout = nprGet();
+  if (!checkout) {
+    box.innerHTML = `<p>${packsEsc(T("Choose the folder where your copy of the public catalog lives."))}</p>
+      <p><button class="btn" id="packs-pub-choose">${packsEsc(T("Choose folder"))}</button>
+      <button class="btn ghost" id="packs-pub-cancel">${packsEsc(T("Cancel"))}</button></p>`;
+    document.getElementById("packs-pub-choose").addEventListener("click", () => publishChooseFolder(part));
+    document.getElementById("packs-pub-cancel").addEventListener("click", publishClose);
+    return;
+  }
+  box.innerHTML = `<p class="status-line">${packsEsc(T("Checking {name}…", { name: part.id }))}</p>`;
+  let r;
+  try {
+    r = await kInvoke("pack_push", { packDir: part.dir, nprCheckout: checkout, dryRun: true, confirmPublic: null });
+  } catch (e) {
+    r = { ok: false, problems: [T("The part could not be checked. Nothing was published.")] };
+  }
+  publishShow(part, checkout, r);
+}
+
+function publishShow(part, checkout, r) {
+  const box = publishBox();
+  const list = (items) => `<ul>${items.map((x) => `<li>${packsEsc(x)}</li>`).join("")}</ul>`;
+  const footer = `<p><button class="btn ghost" id="packs-pub-folder">${packsEsc(T("Change the catalog folder"))}</button>
+      <button class="btn ghost" id="packs-pub-cancel">${packsEsc(T("Cancel"))}</button></p>`;
+  let body;
+  if (!r || r.ok === false) {
+    const problems = (r && r.problems && r.problems.length ? r.problems : [T("The part could not be checked. Nothing was published.")]);
+    body = `<h3>${packsEsc(T("{name} cannot be published yet", { name: part.id }))}</h3>${list(problems)}${footer}`;
+  } else {
+    const s = r.summary || {};
+    body = `<h3>${packsEsc(T("What becomes public: {name} {version}", { name: part.id, version: part.version }))}</h3>
+      ${s.description ? `<p>${packsEsc(s.description)}</p>` : ""}
+      ${list(s.sentences || [])}
+      ${(s.changes || []).length ? `<p><b>${packsEsc(T("What changed since the last version"))}</b></p>${list(s.changes)}` : ""}
+      <p class="status-line err"><b>${packsEsc(T("Anyone on the internet will be able to see and use it."))}</b></p>
+      <label>${packsEsc(T("Type the part's name to publish: {name}", { name: part.id }))}
+        <input type="text" id="packs-pub-confirm" autocomplete="off" spellcheck="false"></label>
+      <p><button class="btn" id="packs-pub-go" disabled>${packsEsc(T("Publish"))}</button></p>${footer}`;
+  }
+  box.innerHTML = body;
+  document.getElementById("packs-pub-cancel").addEventListener("click", publishClose);
+  document.getElementById("packs-pub-folder").addEventListener("click", () => {
+    nprSet("");
+    publishStart(part);
+  });
+  const go = document.getElementById("packs-pub-go");
+  if (!go) return;
+  const input = document.getElementById("packs-pub-confirm");
+  input.addEventListener("input", () => {
+    go.disabled = input.value !== part.id;
+  });
+  go.addEventListener("click", async () => {
+    if (input.value !== part.id) return;
+    go.disabled = true;
+    box.insertAdjacentHTML("beforeend", `<p class="status-line" id="packs-pub-busy">${packsEsc(T("Publishing…"))}</p>`);
+    let done;
+    try {
+      done = await kInvoke("pack_push", { packDir: part.dir, nprCheckout: checkout, dryRun: false, confirmPublic: `${part.id}@${part.version}` });
+    } catch (e) {
+      done = { ok: false, problems: [] };
+    }
+    if (done && done.ok && done.pushed) {
+      box.innerHTML = `<p class="status-line ok"><b>${packsEsc(T("Published. It appears in Find more within a few minutes."))}</b></p>`;
+    } else {
+      const problems = (done && done.problems) || [];
+      box.innerHTML = `<p class="status-line err"><b>${packsEsc(T("Nothing was published."))}</b></p>${list(problems)}${footer}`;
+      document.getElementById("packs-pub-cancel").addEventListener("click", publishClose);
+      document.getElementById("packs-pub-folder").addEventListener("click", () => {
+        nprSet("");
+        publishStart(part);
+      });
+    }
+  });
 }
 
 function initPacks() {

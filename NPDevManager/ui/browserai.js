@@ -237,6 +237,7 @@
     } catch (e) {
       parts = [];
     }
+    if (!Array.isArray(parts)) parts = [];
     picker.replaceChildren(new Option(tr("A new part"), ""), ...parts.map((p) => new Option(`${p.id} (${p.version})`, p.path)));
     if (keep && parts.some((p) => p.path === keep)) picker.value = keep;
   }

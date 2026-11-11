@@ -1339,5 +1339,22 @@
   "Show my parts": "Mostrar meus pacotes",
   "Undone. Your parts are as they were before.": "Desfeito. Seus pacotes estão como antes.",
   "version {version}": "versão {version}",
-  "You have not made a part yet.": "Você ainda não fez nenhum pacote."
+  "You have not made a part yet.": "Você ainda não fez nenhum pacote.",
+  "Publish to the public catalog": "Publicar no catálogo público",
+  "Choose the folder where your copy of the public catalog lives": "Escolha a pasta onde está a sua cópia do catálogo público",
+  "Choose the folder where your copy of the public catalog lives.": "Escolha a pasta onde está a sua cópia do catálogo público.",
+  "Choose folder": "Escolher pasta",
+  "Cancel": "Cancelar",
+  "Checking {name}…": "Verificando {name}…",
+  "The part could not be checked. Nothing was published.": "Não foi possível verificar o pacote. Nada foi publicado.",
+  "{name} cannot be published yet": "{name} ainda não pode ser publicado",
+  "What becomes public: {name} {version}": "O que vai se tornar público: {name} {version}",
+  "What changed since the last version": "O que mudou desde a última versão",
+  "Anyone on the internet will be able to see and use it.": "Qualquer pessoa na internet poderá ver e usar.",
+  "Type the part's name to publish: {name}": "Digite o nome do pacote para publicar: {name}",
+  "Publish": "Publicar",
+  "Publishing…": "Publicando…",
+  "Published. It appears in Find more within a few minutes.": "Publicado. Ele aparece em Encontrar mais em poucos minutos.",
+  "Nothing was published.": "Nada foi publicado.",
+  "Change the catalog folder": "Trocar a pasta do catálogo"
 }

@@ -146,6 +146,12 @@ class PushTests(PushCase):
         self.assertIn("type is not allowed", " ".join(failed["problems"]))
         self.assertFalse((self.clone / "packs").exists())
 
+    def test_a_check_that_could_not_run_never_lets_a_part_through(self):
+        result = self.run_push(validate=lambda *_: None, confirm_public="ratings@1.0.0")
+        self.assertFalse(result["ok"])
+        self.assertIn("could not check", " ".join(result["problems"]))
+        self.assertEqual(self.bare_tags(), [])
+
     def test_a_folder_that_is_not_a_clone_of_the_catalog_is_refused(self):
         result = pp.push(self.cli, pack_dir=self.part, npr_checkout=self.part.parent, validate=lambda *_: PASSED)
         self.assertEqual(result["error"], "not-a-catalog-clone")

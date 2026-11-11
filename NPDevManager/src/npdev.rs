@@ -1039,6 +1039,45 @@ pub async fn run_relay_start_pack(
     run_relay_json(python_exe, npdev_cli, java_home, &args, "start").await
 }
 
+/// `npdev pack push` -- a part from "My parts" into the person's clone of the PUBLIC catalog. `confirm_public` is
+/// `<id>@<version>` and is the ONLY thing that makes the CLI push anything; `dry_run` checks and shows what would
+/// become public and touches nothing. The CLI decides every outcome; this only carries the words.
+pub async fn run_pack_push(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    pack_dir: &str,
+    npr_checkout: &str,
+    dry_run: bool,
+    confirm_public: Option<&str>,
+) -> Result<Value, String> {
+    check_relay_value("the part's folder", pack_dir)?;
+    check_relay_value("the catalog folder", npr_checkout)?;
+    if let Some(confirm) = confirm_public {
+        check_pack_confirmation(confirm)?;
+    }
+    let mut args: Vec<&str> = vec!["pack", "push", "--pack-dir", pack_dir, "--npr-checkout", npr_checkout];
+    if dry_run {
+        args.push("--dry-run");
+    }
+    if let Some(confirm) = confirm_public {
+        args.extend(["--confirm-public", confirm]);
+    }
+    args.push("--json");
+    run_relay_json(python_exe, npdev_cli, java_home, &args, "pack push").await
+}
+
+/// `<id>@<version>`: a part's name, an `@`, three numbers. Nothing else can ride on the command line as a confirmation.
+fn check_pack_confirmation(value: &str) -> Result<(), String> {
+    let Some((id, version)) = value.split_once('@') else {
+        return Err("the confirmation is not valid".to_string());
+    };
+    check_relay_pack_id(id)?;
+    let parts: Vec<&str> = version.split('.').collect();
+    let numbers_ok = parts.len() == 3 && parts.iter().all(|p| !p.is_empty() && p.len() <= 9 && p.chars().all(|c| c.is_ascii_digit()));
+    if numbers_ok { Ok(()) } else { Err("the confirmation is not valid".to_string()) }
+}
+
 /// A part's id: what the CLI accepts (lowercase letters, digits, `-` and `_`, starting with a letter). Checked here
 /// as well because it becomes a folder name and a command-line argument.
 fn check_relay_pack_id(value: &str) -> Result<(), String> {
@@ -3112,6 +3151,28 @@ mod relay_pipe_tests {
 
     fn has_pair(argv: &[String], flag: &str, value: &str) -> bool {
         argv.windows(2).any(|w| w[0] == flag && w[1] == value)
+    }
+
+    #[tokio::test]
+    async fn only_an_exact_part_and_version_reaches_the_command_line_as_a_publish_confirmation() {
+        let Some(python) = find_python() else {
+            eprintln!("SKIPPED: no python on PATH");
+            return;
+        };
+        if fake_mode() {
+            return;
+        }
+        let dir = scratch("push");
+        let script = write_echo_cli(&dir);
+        let ok = run_pack_push(&python, &script, None, "some/part", "some/npr", false, Some("ratings@1.0.0")).await.expect("echo CLI answers");
+        let argv = argv_of(&ok);
+        assert!(has_pair(&argv, "--confirm-public", "ratings@1.0.0") && !argv.iter().any(|a| a == "--dry-run"), "{argv:?}");
+        let dry = argv_of(&run_pack_push(&python, &script, None, "some/part", "some/npr", true, None).await.unwrap());
+        assert!(dry.iter().any(|a| a == "--dry-run") && !dry.iter().any(|a| a == "--confirm-public"), "{dry:?}");
+        for bad in ["", "ratings", "ratings@1.0", "ratings@1.0.0 --json", "-x@1.0.0", "ratings@a.b.c", "../x@1.0.0", "ratings@1.0.0;x"] {
+            assert!(run_pack_push(&python, &script, None, "p", "n", false, Some(bad)).await.is_err(), "accepted {bad:?}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
