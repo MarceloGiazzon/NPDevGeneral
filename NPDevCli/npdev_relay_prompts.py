@@ -80,7 +80,7 @@ def compose_round1(p: dict, *, code: str, intent: str, ask: str, language: str, 
 
 
 def compose_same_chat(p: dict, *, code: str, rnd: int, outcome: str, errors: str = "",
-                      budget: int | None = None) -> str | None:
+                      budget: int | None = None, intent: str | None = None) -> str | None:
     """The short follow-up for the same chat, or None when the outcome needs the USER, not the AI
     (QUESTIONS, LIMIT_REACHED, STALE_ROUND, WRONG_SESSION, PROMPT_ECHO, READY).
 
@@ -88,26 +88,36 @@ def compose_same_chat(p: dict, *, code: str, rnd: int, outcome: str, errors: str
     size again would be cut at the same place, so the follow-up asks for a smaller core instead."""
     if budget and outcome in ("TRUNCATED", "ELIDED"):
         return _wrap(p, code, rnd, _t(p["smaller"], code=code, round=rnd, budget=budget, files_expected=2))
-    template = p["sameChat"].get(outcome)
+    template = (p["pack"]["sameChat"].get(outcome) if intent == "pack" else None) or p["sameChat"].get(outcome)
     if template is None or outcome.startswith("_"):
         return None
     return _wrap(p, code, rnd, _t(template, code=code, round=rnd, errors=clip(errors), files_expected=2))
 
 
 def compose_fresh_chat(p: dict, *, code: str, rnd: int, ask: str, language: str, knowledge: str, model: str,
-                       errors: str, trail: list[str], budget: int | None = None) -> str:
+                       errors: str, trail: list[str], budget: int | None = None, intent: str | None = None) -> str:
     """Self-contained prompt for a NEW chat or ANOTHER AI (LIMIT_REACHED, the AI going in circles).
     budget: only after repeated cut-offs of a new app -- the same size limit as `compose_round1`."""
     values = dict(code=code, round=rnd, language=language, ask=ask.strip(), model=model.strip(),
                   errors=clip(errors), files_expected=2, knowledge=slim(knowledge).strip(),
                   trail="\n".join(f"- {t}" for t in trail) or "- (none)")
-    parts = [
-        _t(p["formatContract"], **values),
-        _t(p["language"], **values),
-        _t(p["interview"]["off"], **values),
-        _t(p["knowledgeHeading"], **values),
-        _t(p["freshChat"], **values),
-    ]
+    if intent == "pack":
+        parts = [
+            _t(p["pack"]["formatContract"], **values),
+            _t(p["language"], **values),
+            _t(p["interview"]["off"], **values),
+            _t(p["knowledgeHeading"], **values),
+            _t(p["pack"]["freshChat"], **values),
+            _t(p["pack"]["rules"], **values),
+        ]
+    else:
+        parts = [
+            _t(p["formatContract"], **values),
+            _t(p["language"], **values),
+            _t(p["interview"]["off"], **values),
+            _t(p["knowledgeHeading"], **values),
+            _t(p["freshChat"], **values),
+        ]
     if budget:
         parts.append(_t(p["sizeLimit"], budget=budget, **values))
     return _wrap(p, code, rnd, "\n\n".join(parts))

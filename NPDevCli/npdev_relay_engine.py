@@ -526,6 +526,11 @@ def _stored_duplicate(session: dict, raw: str):
 
 def _after_parsed(session: dict, number: int, result: dict) -> None:
     """PARSED -> desire paths -> validation -> READY / NEEDS_FIX (a missing validator keeps PARSED)."""
+    if session.get("intent") == "pack":  # P4.3: a pack has its own checks (npdev_relay_pack.py)
+        import npdev_relay_pack as relay_pack
+
+        relay_pack.after_parsed(session, number, result, validate=run_validation, cli=_cli_module())
+        return
     entry = next((f for f in result["files"] if f["path"] == "model.json" and f["status"] == "allowed"), None)
     if entry is None:
         return
@@ -694,11 +699,14 @@ def _error_text(result: dict) -> str:
 
 def _fresh_chat(session: dict, number: int, errors: str, budget: int | None = None) -> str:
     bundle, _ = build_knowledge()
-    base = session.get("baseModelSha256") and rs.session_dir(session["code"]) / "base-model.json"
+    if session.get("intent") == "pack":
+        base = rs.session_dir(session["code"]) / "base-pack.json"
+    else:
+        base = session.get("baseModelSha256") and rs.session_dir(session["code"]) / "base-model.json"
     model = _read_text(base) if base and base.is_file() else ""
     return rp.compose_fresh_chat(rp.load_prompts(), code=session["code"], rnd=number + 1, ask=session["ask"],
                                  language=session["language"], knowledge=bundle, model=model, errors=errors,
-                                 trail=list(session.get("trail") or []), budget=budget)
+                                 trail=list(session.get("trail") or []), budget=budget, intent=session.get("intent"))
 
 
 CUT_OFF_OUTCOMES = ("TRUNCATED", "ELIDED")
@@ -742,7 +750,7 @@ def _attach_next(session: dict, number: int, result: dict) -> None:
     if outcome in SAME_CHAT_OUTCOMES:
         budget = _cutoff_budget(session, result)
         text = rp.compose_same_chat(rp.load_prompts(), code=session["code"], rnd=number + 1, outcome=outcome,
-                                    errors=errors, budget=budget)
+                                    errors=errors, budget=budget, intent=session.get("intent"))
         result["next"] = {"kind": "copy-prompt", "messageId": outcome, "prompt": text,
                           "freshChatPrompt": _fresh_chat(session, number, errors, budget)}
         return
