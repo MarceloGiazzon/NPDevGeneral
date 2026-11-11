@@ -112,6 +112,11 @@ class Run:
             return s, rec
         rec = dict(rec.get("data", rec))
         rec.update(changes)
+        if who != "admin" and c == "rides":
+            # System-set price/match fields are field-scoped: a PUT that names them is denied for a
+            # driver even when unchanged, so leave them out (the gateway keeps the stored values).
+            for f in ("demandMultiplier", "surgeMultiplier", "peakMultiplier", "pickupDistanceKm", "zoneMultiplier"):
+                rec.pop(f, None)
         return self.call("PUT", self.item(c, i), rec, who)
 
     def flow(self, name, payload, who):
@@ -302,8 +307,8 @@ def stage_pay(r: Run):
     if not rid:
         r.check("pay: needs ride A from stage offer", False, "run --stages setup,offer,pay")
         return
-    s, _ = r.update("rides", rid, {"status": "IN_PROGRESS"}, "driver1")
-    r.check("pay: driver1 starts the trip (ACCEPTED -> IN_PROGRESS)", s in (200, 204), s)
+    s, b = r.update("rides", rid, {"status": "IN_PROGRESS"}, "driver1")
+    r.check("pay: driver1 starts the trip (ACCEPTED -> IN_PROGRESS)", s in (200, 204), f"{s} {b}")
     s, _ = r.update("rides", rid, {"status": "COMPLETED"}, "rider1")
     r.check("pay: the RIDER can NOT complete the trip (guard)", s in (400, 403, 409, 422), s)
 
