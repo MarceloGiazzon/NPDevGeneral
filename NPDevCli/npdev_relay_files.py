@@ -66,6 +66,9 @@ def answer_files(result: dict) -> tuple[dict, list]:
     unsupported: list = []
     for item in (result or {}).get("files") or []:
         path = item.get("path")
+        if path == LOCK_FILE and item.get("status") == "generated" and isinstance(item.get("content"), str):
+            supported[path] = item["content"]  # NPDev's own resolution of the answer's packs, never the AI's file
+            continue
         if item.get("status") != "allowed" or not isinstance(path, str) or not isinstance(item.get("content"), str):
             continue
         if path in NOT_EXTRA:
@@ -154,6 +157,81 @@ def stage(model_path, overlay: dict, model_text: str | None, dest) -> Path:
     if model_text is not None:
         authoring.atomic_write_bytes(dest / "model.json", model_text.encode("utf-8"))
     return dest / "model.json"
+
+
+# --------------------------------------------------------------------------- packs imported from the catalog (P2)
+
+class PackError(Exception):
+    """An answer imports packs that cannot be resolved here: the message is written for the AI (plain words, no paths)."""
+
+
+_OFFLINE_HINTS = ("could not resolve host", "unable to access", "failed to connect", "network is unreachable",
+                  "timed out", "unknownhost", "name resolution", "could not read from remote", "connection refused",
+                  "could not reach")
+OFFLINE_MESSAGE = ("This answer imports packs and NPDev could not download them (no internet). "
+                   "Connect and try again, or ask for an answer without packs.")
+
+
+def remote_pack_entries(model) -> list:
+    """The model's own `packs[]` entries that name a remote coordinate (`from`). Local `$ref` packs need no lock."""
+    entries = (model or {}).get("packs") if isinstance(model, dict) else None
+    return [e for e in entries or [] if isinstance(e, dict) and isinstance(e.get("from"), str) and e["from"].strip()]
+
+
+def pack_name(entry: dict) -> str:
+    """A short name for an entry in a message: its alias, else the id inside the coordinate (`.../packs/<id>@<id>-<v>`)."""
+    if isinstance(entry.get("as"), str) and entry["as"].strip():
+        return entry["as"].strip()
+    coordinate = str(entry.get("from") or "")
+    tail = coordinate.rsplit("//", 1)[-1].split("@", 1)[0].rstrip("/")
+    return tail.rsplit("/", 1)[-1] or coordinate
+
+
+def _locked_sources(lock_path: Path) -> set:
+    try:
+        packs = json.loads(lock_path.read_text(encoding="utf-8")).get("packs")
+    except (OSError, ValueError, AttributeError):
+        return set()
+    return {str(v.get("from")) for v in (packs.values() if isinstance(packs, dict) else []) if isinstance(v, dict)}
+
+
+def _pack_failure(entries: list, text: str) -> PackError:
+    lowered = text.lower()
+    if any(hint in lowered for hint in _OFFLINE_HINTS):
+        return PackError(OFFLINE_MESSAGE)
+    names = ", ".join(sorted({pack_name(e) for e in entries}))
+    if "unsigned" in lowered or "unknown_signer" in lowered or "bad_signature" in lowered:
+        return PackError(f"packs[] - pack {names} is not signed by a key NPDev trusts - import only packs from the "
+                         "list in the briefing, or model those concepts yourself")
+    return PackError(f"packs[] - NPDev could not download the pack(s) {names}: use only a `from` coordinate copied from "
+                     "the list in the briefing (never invent a pack), or model those concepts yourself")
+
+
+def resolve_packs(staged_model, model) -> str | None:
+    """Make the staged folder resolve the answer's remote packs: the same `pack update` the person would run, INTO the
+    staged folder (the lock lands beside `staged_model`), refusing anything but a real signature or the temporary trust
+    rule (`allow_unsigned` False). Returns the lock's text (to be written with the model on apply), or None when
+    nothing needed resolving. PackError when it cannot -- never a partial lock."""
+    import argparse
+    import contextlib
+    import io
+
+    entries = remote_pack_entries(model)
+    staged_model = Path(staged_model)
+    lock_path = staged_model.parent / LOCK_FILE
+    if not entries or all(str(e["from"]) in _locked_sources(lock_path) for e in entries):
+        return None
+    cli = _composer()
+    args = argparse.Namespace(model=str(staged_model), allow_unsigned=False, strict=False)
+    buffer = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buffer):
+            code = cli.run_pack_update(args)
+    except (cli.CliError, OSError, ValueError, SystemExit) as exc:
+        raise _pack_failure(entries, str(exc)) from exc
+    if code != 0 or not lock_path.is_file():
+        raise _pack_failure(entries, buffer.getvalue())
+    return lock_path.read_text(encoding="utf-8")
 
 
 def is_split(model_path) -> bool:

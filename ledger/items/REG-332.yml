@@ -1,0 +1,46 @@
+id: REG-332
+title: >-
+  A browser AI cannot use the NPR packs: an answer whose model imports a pack by `from` failed validation (no npdev.lock) and the
+  briefing told the AI not to try
+type: FEATURE
+severity: MEDIUM
+status: PARTIAL
+opened: 2026-11-11
+source: >-
+  Ride-hailing S2 plan, objective 9 (relay consumption of NPR packs); TASKS.md P1 + P2. Owner decision 2026-11-11: accept unsigned
+  packs from the owner's own NPR temporarily (until 2027-02-28) so a chat AI can import them.
+surface: cli/relay, cli/pack-trust, docs/authoring-for-ai
+detail: |
+  P1 (30a5f3ca): NPDevCli/pack-trust-defaults.json + _classify_pack_signature -- an unsigned pack whose source starts with a rule's
+  `match` is accepted without --allow-unsigned until `until`; the lock records signature.acceptedBy; `enforce` apps still refuse.
+  P2: the relay's staging step (npdev_relay_engine._validation_model_path) runs the CLI's own `pack update` INTO the staged folder when
+  the answer's packs[] has a remote `from` the staged lock does not already cover, with allow_unsigned False -- only a real signature
+  or the P1 rule lets a pack in. The resulting npdev.lock rides in the round's result as a `generated` file (answer_files returns it),
+  so apply writes it beside the model inside the same all-or-nothing write and undo removes it. Failures are a plain NEEDS_FIX: no
+  internet -> "This answer imports packs and NPDev could not download them (no internet)...", unknown/invented pack -> names it,
+  unsigned outside the rule -> says it is not trusted (never mentions --allow-unsigned, the AI cannot pass flags).
+  Briefing: the hand-pasted pack list and the "do NOT use packs[]" rule are gone from docs/content/authoring-for-ai.yml; the relay
+  bundle gets a "Pack catalog" section generated from the NPR catalog (live fetch, else the local cache, else no section) by
+  npdev_relay_engine.with_pack_catalog. Size: compact bundle 24,275 chars before, 23,650 after the contract edit, +1,498 for the
+  generated 13-pack list = 25,149 chars (+874).
+  NOT done: `pack update` always clones (a cached pack is not reused offline) -- offline therefore fails with the sentence above
+  even when the pack is cached; the catalog list itself does fall back to its cache. The real relay round with a real chat AI on the
+  owner's machine (P2 "Verify") has not been run.
+files:
+  - NPDevCli/npdev_relay_files.py
+  - NPDevCli/npdev_relay_engine.py
+  - NPDevCli/tests/test_relay_packs.py
+  - NPDevCli/pack-trust-defaults.json
+  - docs/content/authoring-for-ai.yml
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_relay_packs.py
+  asserts: >-
+    an answer with a remote pack is READY and carries the generated lock, apply writes it beside the new model, no internet /
+    invented pack / unsigned outside the rule are NEEDS_FIX with the plain sentence, a model without packs never calls the pack
+    machinery; a real git+file:// fixture through the real Gradle `pack update` is refused without the trust rule and accepted
+    (acceptedBy recorded) with it.
+  provenRed: false
+done_when: >-
+  A real chat AI's answer importing an NPR pack is READY through the relay on the owner's machine and the app builds with it.

@@ -46,9 +46,55 @@ def build_knowledge() -> tuple[str, dict]:
     import build_core_context
 
     try:
-        return build_core_context.build_bundle(compact=True)
+        bundle, manifest = build_core_context.build_bundle(compact=True)
     except (OSError, ValueError) as exc:
         raise AiConfigError(f"cannot build the authoring context: {exc}") from None
+    return with_pack_catalog(bundle, manifest)
+
+
+def pack_catalog_text(catalog: dict | None) -> str:
+    """The "Pack catalog" section of the briefing, made from the NPR catalog's own entries (never typed by hand):
+    one line per pack -- id, version, one sentence -- and the coordinate pattern once. "" when there is no catalog."""
+    entries = [e for e in (catalog or {}).get("packs") or [] if isinstance(e, dict) and e.get("pack") and e.get("from")]
+    if not entries:
+        return ""
+    repo = str((catalog or {}).get("repository") or "").rstrip("/")
+    repo = repo[:-4] if repo.endswith(".git") else repo
+    lines = ["## Pack catalog", "",
+             "Packs you MAY import (`packs[]`, see the contract above). Copy the `from` coordinate exactly; a pack not "
+             "listed here does not exist.", ""]
+    pattern_ok = []
+    for entry in sorted(entries, key=lambda e: str(e["pack"])):
+        description = " ".join(str(entry.get("description") or "").split())
+        description = re.sub(r"^(Built-in )?NPDev [\w -]*?\b(pack|model|tables)\b:?\s*", "", description)  # boilerplate lead
+        description = description.split(". ")[0].rstrip(".")  # the first sentence is the one-liner
+        description = description if len(description) <= 90 else description[:87].rstrip() + "..."
+        regular = repo and entry["from"] == f"git+{repo}.git//packs/{entry['pack']}@{entry['pack']}-{entry.get('version')}"
+        pattern_ok.append(bool(regular))
+        tail = "" if regular else f" -- from: `{entry['from']}`"
+        lines.append(f"- {entry['pack']} {entry.get('version')}" + (f" - {description}" if description else "") + tail)
+    if any(pattern_ok):
+        lines += ["", f"Coordinate: `{{\"from\": \"git+{repo}.git//packs/<id>@<id>-<version>\"}}`"
+                      + ("" if all(pattern_ok) else " (except where a line gives its own `from`)")]
+    return "\n".join(lines) + "\n"
+
+
+def with_pack_catalog(bundle: str, manifest: dict) -> tuple[str, dict]:
+    """The bundle plus the generated catalog section. Offline with nothing cached, or any failure: unchanged (the
+    contract then tells the AI to model the concepts itself)."""
+    try:
+        cli = _cli_module()
+        catalog, _meta = cli._load_pack_catalog(cli._pack_catalog_url(None), refresh=True)
+    except Exception:  # noqa: BLE001 -- CliError, no network, a broken cache: the briefing just has no list
+        return bundle, manifest
+    section = pack_catalog_text(catalog)
+    if not section:
+        return bundle, manifest
+    text = bundle.rstrip("\n") + "\n\n" + section
+    manifest = dict(manifest, bytes=len(text.encode("utf-8")), contentSha256=_sha256(text),
+                    sections=list(manifest.get("sections") or []) + [
+                        {"title": "Pack catalog", "source": "npdev pack search", "bytes": len(section.encode("utf-8"))}])
+    return text, manifest
 
 
 def find_model_file(app_dir) -> Path:
@@ -492,7 +538,12 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
         result["errorLines"] = [f"{path} - NPDev cannot apply this kind of file yet - send only model.json, "
                                 "npdev-submission.json and the files under fragments/ and contexts/" for path in unsupported]
         return
-    model_path = _validation_model_path(session, number, result, entry, fixed)
+    try:
+        model_path = _validation_model_path(session, number, result, entry, fixed)
+    except files_mod.PackError as exc:  # P2: the answer imports packs NPDev cannot resolve (offline, unknown, unsigned)
+        result["outcome"] = "NEEDS_FIX"
+        result["errorLines"] = [str(exc)]
+        return
     report = run_validation(model_path, rs.round_dir(session, number) / "validation-report.json")
     if report is None:
         result["findings"].append({"code": "validator-unavailable", "severity": "warning"})
@@ -515,9 +566,17 @@ def _validation_model_path(session: dict, number: int, result: dict, entry: dict
     extra, _ = files_mod.answer_files(result)
     base = authoring.resolve_model_path(session.get("appDir")) if session.get("intent") != "create" else None
     try:
-        split = bool(extra) or authoring.is_split_root(model) or (base is not None and files_mod.is_split(base))
+        packs = bool(files_mod.remote_pack_entries(model))
+        split = bool(extra) or packs or authoring.is_split_root(model) or (base is not None and files_mod.is_split(base))
         if split:
-            return files_mod.stage(base, extra, entry["content"], rs.round_dir(session, number) / "stage")
+            staged = files_mod.stage(base, extra, entry["content"], rs.round_dir(session, number) / "stage")
+            if packs:
+                lock_text = files_mod.resolve_packs(staged, model)  # PackError goes to the caller: a plain NEEDS_FIX
+                if lock_text is not None:
+                    result["files"] = [f for f in result["files"] if f.get("path") != files_mod.LOCK_FILE] + [
+                        {"path": files_mod.LOCK_FILE, "status": "generated", "content": lock_text,
+                         "bytes": len(lock_text.encode("utf-8")), "sha256": _sha256(lock_text)}]
+            return staged
     except files_mod.TreeError:
         pass  # cannot be staged: the validator below says what is wrong, as it always has
     directory = rs.round_dir(session, number) / "files"

@@ -103,18 +103,12 @@ and `"bindings":[{"capability":"persistence","adapter":"repository"}]`. Pure CRU
 
 **Packs: reuse a published concept set instead of inventing it.** Add to `packs[]` (no other keys
 than `from`, optional `as`); concepts of the pack are named `<as or id>::<Concept>`, e.g.
-`"reference":{"target":"identity::User"}`. The person then runs `npdev pack update --model <path>
---allow-unsigned`; you only write the entry:
-`{"from":"git+https://github.com/MarceloGiazzon/NPR.git//packs/<id>@<id>-<version>"}`.
-Published (id version): identity 1.4.0 (users, roles) · user 1.0.0 (password bond to identity::User) ·
-contacts 1.0.0 (organizations, people, addresses) · sales 1.0.0 (customers, price list, orders, invoices) ·
-purchasing 1.0.0 (suppliers, items, purchase orders, bills) · inventory 1.0.0 (warehouses, products,
-stock movements) · approvals 1.0.0 (request/approve tasks) · leave 1.0.0 (leave requests) · helpdesk 1.0.0
-(tickets, comments) · notification 1.0.0 (outgoing-notification log, `mailer.send` contract) ·
-tracing 1.0.2 (trace viewer) · workspace 1.1.0 (menus, scoped properties) · project-tracker-demo 1.0.0 (demo).
-Role-based packs name roles your app must bind to its own: if unsure, ask instead of guessing.
-**In a chat reply the person pastes back, do NOT use `packs[]`**: importing a pack needs a lock step (`npdev pack update`)
-that the chat flow does not run, so the model fails validation. Model the concepts yourself (your own `User`, `Customer`...).
+`"reference":{"target":"identity::User"}`. Import only a pack from the "Pack catalog" list in this
+brief (when it has one), copying its `from` coordinate exactly: never invent a pack, a version or a
+coordinate. NPDev downloads and locks the pack when it checks your answer (on the command line the
+person runs `npdev pack update --model <path>`); you only write the entry. Role-based packs name
+roles your app must bind to its own: if unsure, ask instead of guessing. With no catalog list, or
+no pack that fits, model the concepts yourself (your own `User`, `Customer`...).
 No pack exists for payments or ride-hailing: model those yourself. Distances and "nearest" are built in (see `geo`).
 
 **Fragments: split a big model.** `"fragments":[{"$ref":"fragments/billing.json"}]` (relative `.json` path,
