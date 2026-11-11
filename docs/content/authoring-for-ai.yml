@@ -123,6 +123,8 @@ sections:
     (tickets, comments) · notification 1.0.0 (outgoing-notification log, `mailer.send` contract) ·
     tracing 1.0.2 (trace viewer) · workspace 1.1.0 (menus, scoped properties) · project-tracker-demo 1.0.0 (demo).
     Role-based packs name roles your app must bind to its own: if unsure, ask instead of guessing.
+    **In a chat reply the person pastes back, do NOT use `packs[]`**: importing a pack needs a lock step (`npdev pack update`)
+    that the chat flow does not run, so the model fails validation. Model the concepts yourself (your own `User`, `Customer`...).
     No pack exists for payments or ride-hailing: model those yourself. Distances and "nearest" are built in (see `geo`).
 
     **Fragments: split a big model.** `"fragments":[{"$ref":"fragments/billing.json"}]` (relative `.json` path,
