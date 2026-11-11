@@ -39,6 +39,7 @@ import com.finalexec.npdev.service.RuntimePluginRuntimeRefResolver;
 import com.finalexec.npdev.service.RuntimePluginStatusSummary;
 import com.finalexec.npdev.service.RuntimeRefArtifactRealizationProvider;
 import com.finalexec.npdev.service.TimeBoundedPluginExecutionEngine;
+import com.npdev.adapters.geo.inproc.InProcGeoCapabilityAdapter;
 import com.npdev.adapters.mail.inproc.InProcMailCapabilityAdapter;
 import com.npdev.adapters.mail.smtp.SmtpMailCapabilityAdapter;
 import com.npdev.adapters.notification.inproc.InProcNotificationCapabilityAdapter;
@@ -320,6 +321,15 @@ public class NpdevPluginConfig {
         return namedRuntimePluginRealizationProvider(
                 "notificationWarningCapabilityAdapter",
                 InProcWarningNotificationCapabilityAdapter::new
+        );
+    }
+
+    // The built-in `geo` capability (distance + nearest candidate): pure arithmetic, so nothing to configure.
+    @Bean
+    public RuntimePluginRealizationProvider geoInProcRuntimePluginRealizationProvider() {
+        return namedRuntimePluginRealizationProvider(
+                "geoInProcCapabilityAdapter",
+                InProcGeoCapabilityAdapter::new
         );
     }
 

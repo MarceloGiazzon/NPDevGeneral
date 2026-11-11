@@ -84,6 +84,34 @@
       ]
     },
     {
+      "pluginId": "geo-inproc-plugin",
+      "displayName": "In-process geo plugin",
+      "version": "1.0.0",
+      "enabled": true,
+      "adapters": [
+        {
+          "capability": "geo",
+          "operation": "distanceKm",
+          "adapterId": "geo-inproc",
+          "bindingKey": "geo.distanceKm",
+          "implementation": {
+            "kind": "runtimeRef",
+            "ref": "geoInProcCapabilityAdapter"
+          }
+        },
+        {
+          "capability": "geo",
+          "operation": "closest",
+          "adapterId": "geo-inproc",
+          "bindingKey": "geo.closest",
+          "implementation": {
+            "kind": "runtimeRef",
+            "ref": "geoInProcCapabilityAdapter"
+          }
+        }
+      ]
+    },
+    {
       "pluginId": "mail-inproc-plugin",
       "displayName": "In-process mail plugin",
       "version": "1.0.0",

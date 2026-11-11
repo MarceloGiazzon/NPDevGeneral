@@ -8,6 +8,13 @@ Landed on `main` AFTER the `beta1.20` tag (`6ca4edfb`) and therefore **not** in 
 release. Ships in the next tag.
 
 ### Added
+- **A built-in `geo` capability: distance and "nearest" with no code** -- new adapter module `NPDevKernel/adapters/geo-inproc`
+  (`geo-inproc`, type `GeoCapability`) with `distanceKm` (`fromLat,fromLng,toLat,toLng`) and `closest` (`lat,lng,candidates[{id,lat,lng}]`,
+  optional `limit`, `maxKm`, `speedKmh`; returns `found,id,distanceKm,etaMinutes,ranked[]`). A model declares `{"name":"geo","type":"GeoCapability",...}`
+  and `{"capability":"geo","adapter":"geo-inproc"}` -- no Java to write or review, so a browser AI can use it through the relay (user code still
+  needs T4.4). Takes one map OR a procedure step's object-form args read positionally in key order (ProcedureRunner passes the VALUES), like `notify`
+  and `mail`. Wired in `NpdevPluginConfig`, both plugin manifests, `dev`/`alt` bindings and both CI test lists. Proven end to end on the ride-hailing
+  sample (nearest of three available drivers assigned, an offline closer one ignored, a fourth ride ending `NO_DRIVER`); 8 adapter tests.
 - **The AI authoring briefing now teaches packs, fragments, saving flows, procedures that hand queried rows to your own code, custom
   capabilities and HTTP connectors** (REG-327 for the persistence gap it exposed) -- `docs/content/authoring-for-ai.yml` gained "Reuse and
   extend": the 13 published packs with their `packs[].from` coordinate, `fragments[]`, a saving flow needing `persistence` declared and bound,

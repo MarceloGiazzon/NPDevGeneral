@@ -123,7 +123,7 @@ sections:
     (tickets, comments) · notification 1.0.0 (outgoing-notification log, `mailer.send` contract) ·
     tracing 1.0.2 (trace viewer) · workspace 1.1.0 (menus, scoped properties) · project-tracker-demo 1.0.0 (demo).
     Role-based packs name roles your app must bind to its own: if unsure, ask instead of guessing.
-    No pack exists for payments, geo or ride-hailing: model those yourself.
+    No pack exists for payments or ride-hailing: model those yourself. Distances and "nearest" are built in (see `geo`).
 
     **Fragments: split a big model.** `"fragments":[{"$ref":"fragments/billing.json"}]` (relative `.json` path,
     no `..`). A fragment file is a JSON object holding any of the model's arrays (`concepts`, `flows`,
@@ -133,20 +133,30 @@ sections:
     **Query rows, then run your logic on them.** A flow has no query step: use a procedure and `callProcedure` it.
     Procedure steps: `{"type":"runQuery","query":"AvailableDrivers","concept":"Driver","target":"free"}`,
     `{"type":"mapList","items":"$free","as":"d","select":{"id":"$d.id","lat":"$d.lat"},"target":"rows"}`,
-    `{"type":"capabilityCall","capability":"geo","operation":"findClosest","args":{"ride":"$input","drivers":"$rows"},"target":"best"}`,
+    `{"type":"capabilityCall","capability":"geo","operation":"closest","args":{"lat":"$input.pickupLat","lng":"$input.pickupLng","candidates":"$rows"},"target":"best"}`,
     `{"type":"if","condition":"$best.found","then":[...],"else":[...]}`,
-    `{"type":"patchConcept","concept":"Ride","id":"$input.id","set":{"status":"ASSIGNED"},"target":"ride"}`.
+    `{"type":"patchConcept","concept":"Ride","id":"$input.id","set":{"driver":"$best.id","status":"ASSIGNED"},"target":"ride"}`.
     The `query` is declared in `queries[]`; the flow step is
     `{"type":"callProcedure","procedure":"MatchDriver","input":"$created","output":"$matched"}`.
+    A computed price is a field with `derivedExpression` (`+ - * /`), e.g. `"300 + 120 * tripDistanceKm"`; `computeValue`
+    only does `add`, `subtract`, `addDays`, `daysBetween`.
 
-    **Your own code (a custom capability).** For logic no built-in has (distance, pricing, scoring):
-    `"customCapabilities":[{"name":"geo","type":"GeoCapability","operations":["findClosest"]}]` plus
-    `"bindings":[{"capability":"geo","adapter":"plugin:java-source"}]`, and two files:
-    `capabilities/geo/src/main/java/<pkg>/GeoCapability.java` (a plain class with a public no-arg constructor;
+    **Distances and nearest (built in, no code): the `geo` capability.** Declare
+    `{"name":"geo","type":"GeoCapability","operations":["distanceKm","closest"]}` in `capabilities[]` and
+    `{"capability":"geo","adapter":"geo-inproc"}` in `bindings[]`. Both calls take one object in `args`, plain numbers:
+    `distanceKm` `{"fromLat":..,"fromLng":..,"toLat":..,"toLng":..}` returns `{distanceKm}`;
+    `closest` `{"lat":..,"lng":..,"candidates":[{"id":..,"lat":..,"lng":..}],"limit":3,"maxKm":10,"speedKmh":30}`
+    (`limit`, `maxKm`, `speedKmh` optional) returns `{found, id, distanceKm, etaMinutes, ranked:[{id,distanceKm,etaMinutes}]}`,
+    nearest first; with no candidate `found` is false (never an error). Straight-line distance, not road distance.
+
+    **Your own code (a custom capability).** For logic no built-in has (surge pricing, scoring):
+    `"customCapabilities":[{"name":"surge","type":"SurgeCapability","operations":["multiplier"]}]` plus
+    `"bindings":[{"capability":"surge","adapter":"plugin:java-source"}]`, and two files:
+    `capabilities/surge/src/main/java/<pkg>/SurgeCapability.java` (a plain class with a public no-arg constructor;
     one public method per operation taking `Map`/`List` parameters named like the `args` keys and returning
     a `Map`; pure computation only: no files, network, threads, reflection) and
-    `capabilities/geo/capability.plugin.json`:
-    `{"packageFormatVersion":"1.0","packageId":"<app>-geo-pkg","pluginId":"<app>-geo-plugin","version":"1.0.0","capability":"geo","capabilityType":"GeoCapability","adapterId":"plugin:java-source","implementation":{"kind":"javaSource","sourceRoot":"capabilities/geo/src/main/java","mainClass":"<pkg>.GeoCapability","factory":{"kind":"defaultConstructor"}},"operationBindings":[{"operation":"findClosest","method":"findClosest","input":{"mode":"firstArgument","expectedType":"java.util.Map"},"output":{"mode":"returnValue","expectedType":"java.util.Map"}}],"trust":{"mode":"artifact-local-source","source":"external-artifact-bundle","level":"developer-supplied"},"generation":{"mount":"compileIntoGeneratedApp","emitManifestContribution":true,"emitPackageDescriptor":true,"emitBinding":true}}`.
+    `capabilities/surge/capability.plugin.json`:
+    `{"packageFormatVersion":"1.0","packageId":"<app>-surge-pkg","pluginId":"<app>-surge-plugin","version":"1.0.0","capability":"surge","capabilityType":"SurgeCapability","adapterId":"plugin:java-source","implementation":{"kind":"javaSource","sourceRoot":"capabilities/surge/src/main/java","mainClass":"<pkg>.SurgeCapability","factory":{"kind":"defaultConstructor"}},"operationBindings":[{"operation":"multiplier","method":"multiplier","input":{"mode":"firstArgument","expectedType":"java.util.Map"},"output":{"mode":"returnValue","expectedType":"java.util.Map"}}],"trust":{"mode":"artifact-local-source","source":"external-artifact-bundle","level":"developer-supplied"},"generation":{"mount":"compileIntoGeneratedApp","emitManifestContribution":true,"emitPackageDescriptor":true,"emitBinding":true}}`.
     The app's owner reviews these files before they apply. **In a chat reply that carries only `model.json`
     and `npdev-submission.json` you cannot deliver them:** do not write Java; state the need in
     `couldNotExpress` and model the rest, so the person can add the code later.

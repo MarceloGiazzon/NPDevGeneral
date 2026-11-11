@@ -42,6 +42,14 @@
       "tenantId": ""
     },
     {
+      "capability": "geo",
+      "capabilityType": "GeoCapability",
+      "adapterId": "geo-inproc",
+      "adapterClass": "com.npdev.adapters.geo.inproc.InProcGeoCapabilityAdapter",
+      "environment": "",
+      "tenantId": ""
+    },
+    {
       "capability": "mail",
       "capabilityType": "EmailCapability",
       "adapterId": "mail-inproc",

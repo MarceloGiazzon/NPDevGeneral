@@ -186,6 +186,7 @@ jobs:
             :adapters:external-ai-http:test \
             :adapters:external-ai-pack-core:test \
             :adapters:json-jackson:test \
+            :adapters:geo-inproc:test \
             :adapters:mail-inproc:test \
             :adapters:mail-smtp:test \
             :adapters:metrics-micrometer:test \
