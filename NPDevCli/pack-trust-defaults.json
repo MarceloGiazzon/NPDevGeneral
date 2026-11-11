@@ -1,0 +1,14 @@
+{
+  "_comment": "Temporary trust (owner decision 2026-11-11): UNSIGNED packs whose source starts with a rule's 'match' are accepted without --allow-unsigned until the rule's 'until' date. Read by _classify_pack_signature (npdev_cli.py) after the app's own npdev-trust.json; an app in mode 'enforce' still refuses unsigned packs; a signed pack is never affected. Each pack accepted this way is recorded in npdev.lock as signature.acceptedBy = 'trust-defaults:<rule id>'. After 'until' the file grants nothing.",
+  "schemaVersion": "npdev-pack-trust-defaults.v1",
+  "trustedUnsignedSources": [
+    {
+      "id": "own-npr-2026-11",
+      "match": "git+https://github.com/MarceloGiazzon/NPR",
+      "matchKind": "prefix",
+      "until": "2027-02-28",
+      "reason": "Owner decision 2026-11-11: packs are not signed yet; accept unsigned packs from the owner's own NPR so a model made by a browser AI can import NPR packs. Replace with signed packs (pack sign/verify already exist) before this date.",
+      "decidedBy": "owner"
+    }
+  ]
+}

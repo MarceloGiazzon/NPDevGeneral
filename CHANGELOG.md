@@ -8,6 +8,7 @@ Landed on `main` AFTER the `beta1.20` tag (`6ca4edfb`) and therefore **not** in 
 release. Ships in the next tag.
 
 ### Added
+- **Temporary trust for unsigned packs from the owner's NPR** -- `NPDevCli/pack-trust-defaults.json` lets `pack add`/`pack update` accept an unsigned pack whose source starts with a rule's `match`, without `--allow-unsigned`, until the rule's `until` date (2027-02-28). The lock records `signature.acceptedBy: trust-defaults:<id>`; an app in `enforce` mode still refuses; signed packs are unaffected; after the date the refusal says the trust ended.
 - **A built-in `geo` capability: distance and "nearest" with no code** -- new adapter module `NPDevKernel/adapters/geo-inproc`
   (`geo-inproc`, type `GeoCapability`) with `distanceKm` (`fromLat,fromLng,toLat,toLng`) and `closest` (`lat,lng,candidates[{id,lat,lng}]`,
   optional `limit`, `maxKm`, `speedKmh`; returns `found,id,distanceKm,etaMinutes,ranked[]`). A model declares `{"name":"geo","type":"GeoCapability",...}`

@@ -9857,6 +9857,35 @@ def _load_pack_trust_config(model_path: Path) -> dict:
     return {"mode": mode, "trustedKeys": trusted_keys}
 
 
+PACK_TRUST_DEFAULTS_FILE_NAME = "pack-trust-defaults.json"  # next to npdev_cli.py; temporary trust rules.
+
+
+def _load_pack_trust_defaults() -> list[dict]:
+    """Rules from `pack-trust-defaults.json`. A missing or broken file means no rules (never an error)."""
+    path = Path(__file__).resolve().parent / PACK_TRUST_DEFAULTS_FILE_NAME
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    rules = data.get("trustedUnsignedSources") if isinstance(data, dict) else None
+    if not isinstance(rules, list):
+        return []
+    return [r for r in rules if isinstance(r, dict) and r.get("id") and r.get("match") and r.get("until")]
+
+
+def _match_trust_default(from_coord: str, today: str | None = None, rules: list[dict] | None = None) -> tuple[dict | None, dict | None]:
+    """(active rule, expired rule) for an unsigned pack's source coordinate. `today` is an ISO date (tests pass it)."""
+    today = today or datetime.now(timezone.utc).date().isoformat()
+    expired = None
+    for rule in (_load_pack_trust_defaults() if rules is None else rules):
+        if not from_coord.startswith(str(rule["match"])):
+            continue
+        if today <= str(rule["until"]):
+            return rule, None
+        expired = expired or rule
+    return None, expired
+
+
 _GIT_COORDINATE_TRANSPORTS = ("https", "http", "ssh", "file", "git")
 
 
@@ -10975,7 +11004,7 @@ def _run_pack_gradle_task_with_tamper_guard(task: str, model_path: Path, args: a
     return code
 
 
-def _classify_pack_signature(pack_id: str, entry: dict, trust: dict, allow_unsigned: bool) -> dict:
+def _classify_pack_signature(pack_id: str, entry: dict, trust: dict, allow_unsigned: bool, today: str | None = None) -> dict:
     """R8.7's per-pack-entry trust decision, factored out of `_verify_pack_signatures` (R8.3: so
     `run_pack_verify` below can classify the SAME way -- read-only, never mutating/raising -- rather
     than inventing a second notion of "is this pack ok"). Pure: fetches the detached signature (the
@@ -11014,11 +11043,19 @@ def _classify_pack_signature(pack_id: str, entry: dict, trust: dict, allow_unsig
                 f"npdev-trust.json's mode to 'warn'."
             )}
         if not allow_unsigned:
+            rule, expired = _match_trust_default(from_coord, today)
+            if rule is not None:
+                print(f"pack {pack_id}: unsigned, accepted by the temporary trust rule {rule['id']} (until {rule['until']})")
+                return {"status": "UNSIGNED_ACCEPTED", "message": "",
+                        "signatureField": {"status": "unsigned", "allowedUnsigned": True,
+                                           "acceptedBy": f"trust-defaults:{rule['id']}"}}
+            ended = (f" The temporary trust for {expired['match']} ended on {expired['until']}."
+                     if expired is not None else "")
             return {"status": "UNSIGNED_REFUSED", "signatureField": None, "message": (
                 f"REFUSED (UNSIGNED): pack '{pack_id}' @ {entry.get('resolvedVersion')} "
                 f"({from_coord}) has no detached signature for digest {digest}. Pass "
                 f"--allow-unsigned to accept it explicitly -- that decision is recorded in "
-                f"npdev.lock, not silently inherited."
+                f"npdev.lock, not silently inherited.{ended}"
             )}
         return {"status": "UNSIGNED_ACCEPTED", "message": "",
                 "signatureField": {"status": "unsigned", "allowedUnsigned": True}}
