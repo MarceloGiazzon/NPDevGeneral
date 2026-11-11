@@ -1514,7 +1514,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toStringList(node.get("permissionRequirements")),
                 toGeneratedActionDescriptor(node.get("actionDescriptor")),
                 toObjectMap(node.get("metadata")),
-                optionalText(node, "uid")
+                optionalText(node, "uid"),
+                optionalText(node, "runAs")
         );
     }
 

@@ -4655,6 +4655,11 @@
           "pattern": "^[a-z0-9]{8,32}$",
           "description": "REG-209 (B1 lift, P2.1 extension): a stable identity for this procedure, generated once and never reused (npdev migrate assign-uids stamps one). When a live element's persisted uid matches a model procedure's uid but the name differs, the rename is resolved by identity -- declared by construction, no renamedFrom needed. Optional: a model with no uids behaves exactly as before."
         },
+        "runAs": {
+          "type": "string",
+          "enum": ["system"],
+          "description": "A procedure that must act on rows the caller may not touch (e.g. a rider's request marking a driver busy) declares runAs \"system\": its steps, and the procedures it calls, run with the tenant's system principal ($user.isSystem is true) while the audit records who it acted for. Only a flow or another procedure may call it - a runAs procedure cannot be exposed as an action. Check the state first (an if step). Absent = runs as the caller."
+        },
         "description": {
           "type": "string",
           "minLength": 1

@@ -133,6 +133,11 @@ The `query` is declared in `queries[]`; the flow step is
 A computed price is a field with `derivedExpression` (`+ - * /`), e.g. `"300 + 120 * tripDistanceKm"`; `computeValue`
 only does `add`, `subtract`, `addDays`, `daysBetween`.
 
+**A procedure that must act on rows the caller may not touch** (a rider's request marking a driver busy, writing the driver's login
+onto the ride) declares `"runAs":"system"`: its steps, and the procedures it calls, run as the tenant's system principal
+(`$user.isSystem`), and the audit records who it acted for. Rules written `... || $user.isSystem` let only it through. Only a flow
+or another procedure may call it (not an action); check the state first with an `if` step.
+
 **Distances and nearest (built in, no code): the `geo` capability.** Declare
 `{"name":"geo","type":"GeoCapability","operations":["distanceKm","closest"]}` in `capabilities[]` and
 `{"capability":"geo","adapter":"geo-inproc"}` in `bindings[]`. Both calls take one object in `args`, plain numbers:

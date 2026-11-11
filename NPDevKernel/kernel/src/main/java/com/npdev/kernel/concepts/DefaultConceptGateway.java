@@ -865,6 +865,10 @@ public final class DefaultConceptGateway implements ConceptGateway {
         meta.put("conceptName", conceptName);
         meta.put("recordId", id);
         meta.put("requestedTenantId", requestedTenantId);
+        String onBehalfOf = com.npdev.kernel.procedures.ProcedureElevation.onBehalfOf();
+        if (onBehalfOf != null) {
+            meta.put("onBehalfOf", onBehalfOf);
+        }
         auditLogStore.append(AuditRecord.create(
                 context.tenantId(),
                 context.actorId(),

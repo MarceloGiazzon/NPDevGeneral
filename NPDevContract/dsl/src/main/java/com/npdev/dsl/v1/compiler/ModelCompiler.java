@@ -568,7 +568,8 @@ public final class ModelCompiler {
                     sortedStrings(procedureAst.permissionRequirements()),
                     compileGeneratedActionDescriptor(procedureAst),
                     sortObjectMap(procedureAst.metadata()),
-                    procedureAst.uid()
+                    procedureAst.uid(),
+                    procedureAst.runAs()
             ));
         }
 

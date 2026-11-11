@@ -283,7 +283,7 @@
           "required": true,
           "ui": { "label": "Status" },
           "access": {
-            "write": "customerEmail == $user.id"
+            "write": "customerEmail == $user.id || $user.isSystem"
           }
         },
         {
@@ -331,7 +331,7 @@
       ],
       "access": {
         "read": "customerEmail == $user.id",
-        "write": "customerEmail == $user.id"
+        "write": "customerEmail == $user.id || $user.isSystem"
       }
     },
     {
@@ -1949,6 +1949,17 @@
 
   "procedures": [
     {
+      "name": "RunAsPlaceOrderForProcedure",
+      "description": "A1 coverage: runAs \"system\". The caller may not write an order that belongs to someone else (WidgetOrder write rule: customerEmail == $user.id), but this elevated procedure may, and only a flow calls it. It checks the state first.",
+      "runAs": "system",
+      "steps": [
+        { "name": "check-input", "type": "if", "condition": "$input.customerEmail", "then": [
+          { "name": "place-order", "type": "saveConcept", "concept": "WidgetOrder", "data": { "input": "$input" }, "target": "placed" }
+        ] },
+        { "name": "return-placed", "type": "return", "value": "$placed" }
+      ]
+    },
+    {
       "name": "StockTransferStampNoteProcedure",
       "metadata": { "purpose": "ENF-1: a StockTransferWorkbench action that StockTransfer's Draft state allows (lifecycleState.allowedActions)." },
       "steps": [ { "name": "stamp", "type": "return", "value": { "note": "stamped" } } ]
@@ -2186,6 +2197,15 @@
   ],
 
   "flows": [
+    {
+      "name": "RunAsPlaceOrderFor",
+      "startEndpoint": true,
+      "input": { "concept": "WidgetOrder", "mode": "create" },
+      "steps": [
+        { "name": "call-elevated", "type": "callProcedure", "procedure": "RunAsPlaceOrderForProcedure", "input": "$input", "output": "$placed" },
+        { "name": "return-placed", "type": "return", "value": "$placed" }
+      ]
+    },
     {
       "name": "RecordStripePayment",
       "input": { "concept": "WidgetCatalogEntry", "mode": "query" },

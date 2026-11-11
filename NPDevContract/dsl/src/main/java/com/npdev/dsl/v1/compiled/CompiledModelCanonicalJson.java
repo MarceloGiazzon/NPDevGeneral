@@ -1453,6 +1453,9 @@ public final class CompiledModelCanonicalJson {
             node.set("actionDescriptor", toGeneratedActionDescriptor(procedure.actionDescriptor()));
             node.set("metadata", toObjectMap(procedure.metadata()));
             node.put("uid", safe(procedure.uid()));
+            if (procedure.runAs() != null && !procedure.runAs().isBlank()) {
+                node.put("runAs", procedure.runAs());
+            }
             procedures.add(node);
         }
         return procedures;

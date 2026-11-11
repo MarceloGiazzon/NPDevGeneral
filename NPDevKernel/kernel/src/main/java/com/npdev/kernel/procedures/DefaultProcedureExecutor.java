@@ -139,6 +139,27 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
     ) {
         Objects.requireNonNull(definition, "definition");
         ExecutionContext effectiveContext = context == null ? ExecutionContext.anonymous() : context;
+        if (definition.runAsSystem() && !ExecutionContext.isSystem(effectiveContext)) {
+            // runAs: "system" -- same tenant, the platform's system principal; the original caller is kept for audit.
+            String callerActor = effectiveContext.actorId();
+            ExecutionContext elevated = ExecutionContext.system(effectiveContext.tenantId());
+            String previous = ProcedureElevation.swap(callerActor);
+            try {
+                return runSteps(definition, input, elevated, scope, recursionDepth);
+            } finally {
+                ProcedureElevation.swap(previous);
+            }
+        }
+        return runSteps(definition, input, effectiveContext, scope, recursionDepth);
+    }
+
+    private ProcedureExecutionResult runSteps(
+            ProcedureDefinition definition,
+            Map<String, Object> input,
+            ExecutionContext effectiveContext,
+            ProcedureExecutionScope scope,
+            int recursionDepth
+    ) {
         Map<String, Object> state = new LinkedHashMap<>();
         if (input != null) {
             state.putAll(input);
@@ -430,6 +451,9 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         Map<String, Object> adapterState = new LinkedHashMap<>(state);
         adapterState.putIfAbsent("tenantId", context.tenantId());
         adapterState.putIfAbsent("actorId", context.actorId());
+        if (ProcedureElevation.onBehalfOf() != null) {
+            adapterState.put("onBehalfOf", ProcedureElevation.onBehalfOf());
+        }
         CapabilityResult result = capabilityDispatcher.invoke(
                 new CapabilityCall(
                         step.capability(),

@@ -471,7 +471,7 @@ public final class NPDevCliMain {
         List<ProcedureStep> steps = procedure.steps().stream()
                 .map(NPDevCliMain::toProcedureStep)
                 .toList();
-        return new ProcedureDefinition(procedure.name(), steps);
+        return new ProcedureDefinition(procedure.name(), steps, "system".equals(procedure.runAs()));
     }
 
     private static Map<String, Object> procedureSummary(CompiledProcedure procedure) {

@@ -738,6 +738,16 @@ final class PackValidation {
             if (!seen.add(normalize(procedureName))) {
                 errors.add("Procedure " + procedureName + ": duplicate procedure name");
             }
+            if (procedure.runAs() != null) {
+                if (!"system".equals(procedure.runAs())) {
+                    errors.add("Procedure " + procedureName + ": runAs must be \"system\" (the only supported value), got \""
+                            + procedure.runAs() + "\"");
+                } else if (procedure.actionDescriptor() != null) {
+                    errors.add("Procedure " + procedureName + ": a runAs \"system\" procedure cannot be exposed as an action"
+                            + " (actionDescriptor): an elevated procedure may only be called from a flow or another procedure,"
+                            + " where the caller's own guards ran first");
+                }
+            }
             validateParameterNames("Procedure " + procedureName, procedure.parameters(), errors);
             ExpressionValidation.validateParameterDefaults("Procedure " + procedureName, false, procedure.parameters(), errors);
             if (procedure.steps().isEmpty()) {

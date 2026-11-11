@@ -8,6 +8,7 @@ Landed on `main` AFTER the `beta1.20` tag (`6ca4edfb`) and therefore **not** in 
 release. Ships in the next tag.
 
 ### Added
+- **`procedures[].runAs: "system"`** -- a procedure that must act on rows its caller may not touch (a rider's request marking a driver busy) runs its steps, and the procedures it calls, as the tenant's system principal (`$user.isSystem`); the tenant never changes and audit/capability state record `onBehalfOf` (the original caller). Only `system` is accepted; an elevated procedure with an `actionDescriptor` is refused. Additive, not breaking. New keyword threaded through the 4 schemas, parser, AST, compiler, canonical writer/reader, `ProcedureDefinition`; probe `96-run-as-system.json`.
 - **Temporary trust for unsigned packs from the owner's NPR** -- `NPDevCli/pack-trust-defaults.json` lets `pack add`/`pack update` accept an unsigned pack whose source starts with a rule's `match`, without `--allow-unsigned`, until the rule's `until` date (2027-02-28). The lock records `signature.acceptedBy: trust-defaults:<id>`; an app in `enforce` mode still refuses; signed packs are unaffected; after the date the refusal says the trust ended.
 - **A built-in `geo` capability: distance and "nearest" with no code** -- new adapter module `NPDevKernel/adapters/geo-inproc`
   (`geo-inproc`, type `GeoCapability`) with `distanceKm` (`fromLat,fromLng,toLat,toLng`) and `closest` (`lat,lng,candidates[{id,lat,lng}]`,

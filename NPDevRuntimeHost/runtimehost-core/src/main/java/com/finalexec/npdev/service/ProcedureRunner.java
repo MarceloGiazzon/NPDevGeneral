@@ -194,7 +194,8 @@ public class ProcedureRunner {
             CompiledProcedure procedure, Map<String, String> adapterIdByCapability) {
         return new ProcedureDefinition(
                 procedure.name(),
-                procedure.steps().stream().map(step -> toProcedureStep(step, adapterIdByCapability)).toList()
+                procedure.steps().stream().map(step -> toProcedureStep(step, adapterIdByCapability)).toList(),
+                "system".equals(procedure.runAs())
         );
     }
 

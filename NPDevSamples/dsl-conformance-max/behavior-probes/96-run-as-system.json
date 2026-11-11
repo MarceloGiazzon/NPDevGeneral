@@ -1,0 +1,85 @@
+{
+  "probes": [
+    {
+      "id": "cf-procedure-runas-system-writes-what-the-caller-may-not",
+      "keywords": [
+        "conceptAccess.write"
+      ],
+      "description": "A1: a procedure declared runAs \"system\" writes a row the CALLER may not write. WidgetOrder.write is customerEmail == $user.id, so alice cannot place an order for bob through REST (403 ROW_SCOPE_DENIED), but the flow RunAsPlaceOrderFor calls the elevated procedure RunAsPlaceOrderForProcedure and bob then sees the order. The tenant and the row rules are unchanged for everyone else.",
+      "steps": [
+        {
+          "name": "tag",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "tag-${rand}",
+            "rows": 1,
+            "cols": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "tag": "$.name"
+          }
+        },
+        {
+          "name": "alice cannot place an order for bob directly",
+          "apiKey": "${key_alice}",
+          "method": "POST",
+          "path": "/api/concepts/widget_orders",
+          "body": {
+            "customerEmail": "rep1probe-bob",
+            "status": "RA-denied-${tag}",
+            "lineCount": 1
+          },
+          "expect": {
+            "status": 403
+          }
+        },
+        {
+          "name": "alice places it through the elevated procedure",
+          "apiKey": "${key_alice}",
+          "method": "POST",
+          "path": "/api/flows/RunAsPlaceOrderFor/execute",
+          "body": {
+            "customerEmail": "rep1probe-bob",
+            "status": "RA-${tag}",
+            "lineCount": 1
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK"
+            }
+          }
+        },
+        {
+          "name": "bob sees the order the procedure wrote for him",
+          "apiKey": "${key_bob}",
+          "method": "GET",
+          "path": "/api/concepts/widget_orders?where=status:eq:RA-${tag}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 1
+              },
+              "$.content[0].customerEmail": "rep1probe-bob"
+            }
+          },
+          "save": {
+            "oid": "$.content[0].id"
+          }
+        },
+        {
+          "name": "cleanup",
+          "apiKey": "${key_bob}",
+          "method": "DELETE",
+          "path": "/api/widget_orders/${oid}",
+          "stopOnFail": false
+        }
+      ]
+    }
+  ]
+}

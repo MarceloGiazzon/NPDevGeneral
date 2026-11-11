@@ -13,7 +13,8 @@ public record CompiledProcedure(
         List<String> permissionRequirements,
         CompiledGeneratedActionDescriptorSpec actionDescriptor,
         Map<String, Object> metadata,
-        String uid
+        String uid,
+        String runAs
 ) {
     public CompiledProcedure(
             String name,
@@ -35,6 +36,7 @@ public record CompiledProcedure(
                 permissionRequirements,
                 null,
                 metadata,
+                null,
                 null
         );
     }
@@ -52,7 +54,24 @@ public record CompiledProcedure(
             Map<String, Object> metadata
     ) {
         this(name, description, parameters, variables, steps, returns, permissionRequirements,
-                actionDescriptor, metadata, null);
+                actionDescriptor, metadata, null, null);
+    }
+
+    /** Pre-runAs convenience constructor -- runs as the caller. */
+    public CompiledProcedure(
+            String name,
+            String description,
+            List<CompiledProcedureParameter> parameters,
+            List<CompiledProcedureVariable> variables,
+            List<CompiledProcedureStep> steps,
+            CompiledSchema returns,
+            List<String> permissionRequirements,
+            CompiledGeneratedActionDescriptorSpec actionDescriptor,
+            Map<String, Object> metadata,
+            String uid
+    ) {
+        this(name, description, parameters, variables, steps, returns, permissionRequirements,
+                actionDescriptor, metadata, uid, null);
     }
 
     public CompiledProcedure {

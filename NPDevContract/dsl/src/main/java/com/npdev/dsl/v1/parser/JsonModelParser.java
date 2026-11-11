@@ -1376,7 +1376,8 @@ public final class JsonModelParser {
                     parseTextArray(procedureNode.get("permissionRequirements")),
                     parseGeneratedActionDescriptor(procedureNode.get("actionDescriptor"), "procedures[" + name + "].actionDescriptor"),
                     parseObjectMap(procedureNode.get("metadata")),
-                    readText(procedureNode, "uid")
+                    readText(procedureNode, "uid"),
+                    readText(procedureNode, "runAs")
             ));
         }
         return out;
