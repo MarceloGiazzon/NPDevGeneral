@@ -38,8 +38,9 @@ class RelayStageError(AiConfigError):
 
 # --------------------------------------------------------------------------- helpers
 
-def build_knowledge() -> tuple[str, dict]:
-    """The compact authoring bundle the bench measures -- exactly what `npdev ai context` prints."""
+def build_knowledge(intent: str | None = None) -> tuple[str, dict]:
+    """The compact authoring bundle the bench measures -- exactly what `npdev ai context` prints. A conversation that
+    writes a PACK (`intent` "pack") gets the contract's "Writing a pack" section after it; no other intent does."""
     scripts_ai = str(Path(__file__).resolve().parents[1] / "scripts" / "ai")
     if scripts_ai not in sys.path:
         sys.path.insert(0, scripts_ai)
@@ -49,6 +50,13 @@ def build_knowledge() -> tuple[str, dict]:
         bundle, manifest = build_core_context.build_bundle(compact=True)
     except (OSError, ValueError) as exc:
         raise AiConfigError(f"cannot build the authoring context: {exc}") from None
+    if intent == "pack":
+        section = build_core_context.pack_section()
+        bundle = bundle.rstrip(chr(10)) + chr(10) * 2 + section
+        manifest = dict(manifest, bytes=len(bundle.encode("utf-8")), contentSha256=_sha256(bundle),
+                        sections=list(manifest.get("sections") or []) + [
+                            {"title": build_core_context.PACK_SECTION_TITLE, "source": "docs/content/authoring-for-ai.json",
+                             "bytes": len(section.encode("utf-8"))}])
     return with_pack_catalog(bundle, manifest)
 
 
@@ -190,7 +198,7 @@ def start(*, intent: str, ask: str, app_dir=None, new_app_name=None, target: str
         model_text = pack_base_text  # shown to the AI the way a change shows the current model
     # The text of a failed build or boot goes into a prompt that leaves the computer: scrubbed HERE, whoever the caller is.
     errors, redactions = scrub.scrub_errors(errors, app_dir) if errors else (errors, {})
-    bundle, manifest = build_knowledge()
+    bundle, manifest = build_knowledge(intent)
     profile = _profile(target)
     budget = rt.answer_budget(profile, 0, size) if profile else None
     try:
@@ -702,7 +710,7 @@ def _error_text(result: dict) -> str:
 
 
 def _fresh_chat(session: dict, number: int, errors: str, budget: int | None = None) -> str:
-    bundle, _ = build_knowledge()
+    bundle, _ = build_knowledge(session.get("intent"))
     if session.get("intent") == "pack":
         base = rs.session_dir(session["code"]) / "base-pack.json"
     else:

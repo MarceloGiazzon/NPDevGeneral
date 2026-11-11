@@ -1,0 +1,68 @@
+id: REG-334
+title: >-
+  A person could not make a reusable part (a pack) with a browser AI, keep it in their own parts, or publish it to the public catalog
+  with their own confirmation
+type: FEATURE
+severity: MEDIUM
+status: PARTIAL
+opened: 2026-11-11
+source: >-
+  Ride-hailing S2 plan, objective 8 (browser AI writes a PACK, then publish); TASKS.md P4, P5, P6. Owner rule: publishing to the
+  public catalog always needs the owner's explicit confirmation, every time, no remembered choice.
+surface: cli/relay, cli/pack, manager/browserai, manager/packs, docs/authoring-for-ai, bench/relay
+detail: |
+  P4.1-P4.3 (earlier): relay intent `pack` (session packId/packBase), the pack prompt, ingest checks (id, shape, no secret / binding /
+  NPDev-owned field, semver gate vs the previous version, a probe application imports it and validates).
+  P4.4: the rules-sheet rendering core moved to NPDevCli/npdev_pack_sheet.py (scripts/pack-repo/generate-pack-rules-sheet.py imports it);
+  the same module builds `plain_preview` -- what the part holds, who may see/change it, lifecycles, searches, services it needs, what
+  changed since the previous version, a warning when breaking -- returned as `result.preview` (same shape as an app preview) and written
+  in Portuguese by npdev_relay_preview_pt. Also fixed result.pack.gate / baseVersion, which read keys the publish report never had.
+  P4.5: `relay apply --parent-dir <packs folder>` writes <id>/pack.json with the all-or-nothing writer + backup manifest; refuses a
+  pack that exists and was not the conversation's base, and a base edited since; `relay undo` puts the old version back or removes a new
+  pack; refuses when edited since (--force). Session schema gains packDir.
+  P4.6 (Manager 0.13.38): third choice "Make a reusable part" on Use a browser AI, "Your own parts" + a button on the Ready-made parts
+  screen, "Save to My parts" (the folder is `packs` beside the first apps folder), Undo, pt translations. Real-window CDP tour 16/16
+  (OutsideRepo/p4-tour). The tour found a real bug in its own first run: after saving, the parts list did not refresh when the screen was
+  reopened -- fixed with a hidden-attribute observer; and "Make a part" from a finished conversation now starts a fresh one.
+  P5 (Manager 0.13.39): `npdev pack push --pack-dir --npr-checkout [--dry-run] [--confirm-public id@version]` (NPDevCli/npdev_pack_push.py):
+  checks (secrets, bindings, size, composes, version bump vs the clone's older version, published versions immutable; a validator that
+  could not run REFUSES, never passes), local commit + tag `<id>-<version>`, stops; only an exact confirmation pushes; a mismatch is
+  refused before anything is written; a failed push says nothing was published. Manager: "Publish to the public catalog" per part,
+  catalog clone chosen once (per-viewer setting in the webview storage), what-becomes-public summary, the part's name must be typed
+  exactly, Publish disabled until it matches. Tested against a LOCAL bare repository (12 tests) and a real-window tour 12/12 against a
+  scratch bare repository (OutsideRepo/p5-tour). A session never pushed to the real NPR; the owner publishes their first part themself.
+  P6: "Writing a pack" section in docs/content/authoring-for-ai.yml (1.9 KB; dropped from the compact bundle by
+  core-context-compact.json, so an app prompt is byte-identical: 26,199 chars; a pack prompt is 30,023). Appended only for intent pack
+  (npdev_relay_engine.build_knowledge(intent), scripts/ai/bench relay arm). Bench case NPDevSamples/ai-bench/pack-cases/bench-901 (arm
+  relay, intent pack: probe validation in place of the app stages). Measured 2026-11-11, one run each: gemini-3.6-flash PASSED in round 1,
+  9,294 tokens (8,436 in + 858 out); before the section's last revision it failed 3 rounds (ignored the pack id, invalid `category`, a bare
+  word in a query `where`) -- those three lessons are now in the section. groq (gpt-oss-120b), nvidia (nemotron) and openrouter returned
+  EMPTY replies (reasoning models, NO_FILES in every round) -- an infrastructure outcome, not a pack result.
+  NOT done: a real round with a real chat AI in a browser through the Manager (the bench is an API stand-in), and the owner publishing
+  one part. Rust unit tests exist (cargo test) for the argv of pack push / start pack.
+files:
+  - NPDevCli/npdev_pack_sheet.py
+  - NPDevCli/npdev_pack_push.py
+  - NPDevCli/npdev_relay_pack.py
+  - NPDevCli/npdev_relay_apply.py
+  - NPDevCli/npdev_relay_engine.py
+  - NPDevCli/npdev_relay_preview_pt.py
+  - NPDevManager/ui/browserai.js
+  - NPDevManager/ui/packs.js
+  - NPDevManager/src/main.rs
+  - NPDevManager/src/npdev.rs
+  - docs/content/authoring-for-ai.yml
+  - scripts/ai/bench/relay_arm.py
+  - NPDevSamples/ai-bench/pack-cases/bench-901-pack-ratings.json
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_pack_push.py
+  asserts: >-
+    a dry run touches nothing; no confirmation = local commit + tag only; a wrong confirmation is refused before anything is written;
+    the right one pushes commit and tag to a bare repository; a failed push says nothing was published; a published version is
+    immutable; a too-small version bump, a secret, a binding, a part that does not compose and a check that could not run are refused.
+  provenRed: false
+done_when: >-
+  A real round with a real chat AI, through the Manager window, produces a pack that lands in My parts with a readable preview, and the
+  owner publishes one part to the public catalog through the Manager themself.

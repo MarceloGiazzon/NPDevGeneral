@@ -1276,6 +1276,62 @@ class CompareTests(unittest.TestCase):
             self.assertTrue((Path(td) / "cmp" / "comparison.html").exists())
 
 
+class RelayPackCaseTests(unittest.TestCase):
+    """P6: a bench case that asks for a PACK (intent "pack") -- the pack prompt (compact bundle + "Writing a pack" + the
+    pack rules), the answer read in the pack phase, the pack checks and a probe validation in place of the app stages."""
+
+    PROMPT = {"id": "bench-901", "tier": "pack", "intent": "pack", "packId": "ratings", "title": "t", "prompt": "ratings of a ride"}
+    PACK = {"dslVersion": "1.0.0", "pack": "ratings", "version": "1.0.0", "namespace": "com.example.ratings",
+            "concepts": [{"name": "Rating", "fields": [{"name": "id", "type": "uuid", "id": True, "required": True}]}]}
+
+    @staticmethod
+    def _reply(code: str, pack: dict) -> str:
+        fence = "`" * 3
+        return (f"NPDEV-BEGIN {code}-1\nok\nNPDEV-FILE pack.json\n{fence}json\n{json.dumps(pack)}\n{fence}\n"
+                f"NPDEV-FILE npdev-submission.json\n{fence}json\n{json.dumps({'request': 'x', 'packId': 'ratings'})}\n{fence}\n"
+                f"NPDEV-END {code}-1 files=2\n")
+
+    def _run(self, pack: dict, validate_ok=True):
+        code = relay_arm.session_code("run-p", "bench-901")
+        backend = relay_arm.FakeRelayBackend(CANARY_MODEL, replies=[self._reply(code, pack)])
+        args = mock.Mock(max_loops=0, stop_when_stuck=0, relay_copy_fidelity=())
+        verdict = relay_arm.stages.StageResult("validate", validate_ok, 0.0, "" if validate_ok else "type is not allowed")
+        self.probes = []
+
+        def validate(model_path, log_dir, *rest):
+            self.probes.append(json.loads(Path(model_path).read_text(encoding="utf-8")))   # the temp folder is gone after the run
+            return verdict
+
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(relay_arm.stages, "stage_validate", side_effect=validate) as val:
+            result = relay_arm.run_prompt_relay(self.PROMPT, backend, "## Authoring contract\nKNOWLEDGE-MARKER\n", Path(td) / "run-p", args, None)
+        return result, backend, val
+
+    def test_the_prompt_is_the_pack_prompt_with_the_pack_section_and_the_answer_is_checked_as_a_pack(self):
+        result, backend, val = self._run(self.PACK)
+        text = backend.calls[0][0]["content"]
+        self.assertIn("reusable PACK", text)
+        self.assertIn("## Writing a pack", text)
+        self.assertIn("KNOWLEDGE-MARKER", text)
+        self.assertTrue(result["passed"], result)
+        self.assertEqual(self.probes[0]["packs"][0]["$ref"], "packs/ratings/pack.json")
+
+    def test_a_pack_for_another_id_fails_the_check_stage_with_the_reason(self):
+        result, _, val = self._run({**self.PACK, "pack": "other"})
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["failingStage"], "check")
+        self.assertIn("ratings", result["attempts"][0]["feedbackExcerpt"])
+        val.assert_not_called()
+
+    def test_a_pack_that_does_not_compose_fails_the_validate_stage(self):
+        result, _, _ = self._run(self.PACK, validate_ok=False)
+        self.assertEqual(result["failingStage"], "validate")
+
+    def test_an_app_prompt_never_carries_the_pack_section(self):
+        import build_core_context
+        compact, _ = build_core_context.build_bundle(compact=True)
+        self.assertNotIn("Writing a pack", compact)
+
+
 class RelayArmTests(unittest.TestCase):
     """T1.7: the relay arm -- ONE user message with no system role, every reply read by `npdev ai relay`'s ingest,
     repairs sent in the same chat. A fake chat AI and a fake attempt runner: no model, no Gradle, no app boot."""

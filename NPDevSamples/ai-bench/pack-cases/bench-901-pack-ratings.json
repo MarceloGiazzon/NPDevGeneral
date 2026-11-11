@@ -1,0 +1,8 @@
+{
+  "id": "bench-901",
+  "tier": "pack",
+  "intent": "pack",
+  "packId": "ratings",
+  "title": "A reusable ratings part",
+  "prompt": "I want a reusable part that any of my apps can add to let one person rate another after something they did together (a ride, an order, a job). A rating is 1 to 5 stars with an optional short comment. The person who gives it and the person who gets it are the only ones who may read it; only the person who gives it may change it. I also want a way to list all the ratings one person has received."
+}

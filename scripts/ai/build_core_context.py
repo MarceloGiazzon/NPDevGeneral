@@ -98,6 +98,18 @@ def render_authoring_contract(content_path: Path, drop_prefixes: tuple = ()) -> 
     return "\n".join(parts)
 
 
+PACK_SECTION_TITLE = "Writing a pack"
+
+
+def pack_section() -> str:
+    """The contract's "Writing a pack" section as markdown. The compact bundle drops it (core-context-compact.json), so an
+    app conversation never pays for it; only a conversation that writes a PACK appends it (P6)."""
+    doc = json.loads((repo_root() / "docs" / "content" / "authoring-for-ai.json").read_text(encoding="utf-8"))
+    section = next(s for s in doc["sections"] if s["title"] == PACK_SECTION_TITLE)
+    lines = ["#" * section["level"] + " " + section["title"], *section["body"].split(chr(10))]
+    return chr(10).join(lines).rstrip() + chr(10)
+
+
 def value_reference(schema: dict, path_prefixes: tuple = (), exclude: tuple = ()) -> str:
     """One line per enumerated JSON path of the canonical model schema: `$.flows[].input.mode:
     create|update|delete|query`. Walks properties/items and every $ref/allOf/anyOf/oneOf/if-then-else

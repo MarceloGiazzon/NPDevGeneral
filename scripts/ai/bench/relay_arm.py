@@ -68,6 +68,20 @@ COPY_MUTATIONS = ("copy-button", "markers", "smart-quotes", "fences")   # also t
 # inputs: the knowledge bundle and the session code
 # ---------------------------------------------------------------------------------------------
 
+def pack_ask(prompt: dict) -> str:
+    """The request of a pack conversation exactly as the engine composes it: a `Pack id:` line, then the person's words."""
+    return f"Pack id: {prompt['packId']}\n{prompt['prompt']}"
+
+
+def pack_section() -> str:
+    """The contract's "Writing a pack" section (what a pack conversation appends after the compact bundle)."""
+    scripts_ai = str(REPO_ROOT / "scripts" / "ai")
+    if scripts_ai not in sys.path:
+        sys.path.insert(0, scripts_ai)
+    import build_core_context
+    return build_core_context.pack_section()
+
+
 def compact_knowledge() -> str:
     """The compact bundle, built exactly like `npdev ai context` (npdev_ai._run_context) builds it."""
     scripts_ai = str(REPO_ROOT / "scripts" / "ai")
@@ -154,12 +168,39 @@ def mutate_copy(reply: str, mutations) -> str:
 # ingest result -> what the next prompt needs
 # ---------------------------------------------------------------------------------------------
 
-def candidate_model(result: dict) -> str | None:
-    """files[model.json].content of a PARSED ingest result (the text the bench validates)."""
+def candidate_model(result: dict, name: str = "model.json") -> str | None:
+    """files[model.json].content of a PARSED ingest result (the text the bench validates); `name` is pack.json for a
+    pack case."""
     for f in result.get("files") or []:
-        if f.get("path") == "model.json" and f.get("status") == "allowed" and f.get("content"):
+        if f.get("path") == name and f.get("status") == "allowed" and f.get("content"):
             return f["content"]
     return None
+
+
+def pack_attempt(n: int, pack_text: str, prompt: dict, prompt_dir: Path, args, stage_log: list) -> dict:
+    """The pack case's twin of run_bench.run_attempt: the checks `npdev ai relay` makes on a pack answer (shape, id,
+    no secret / binding / NPDev-owned field), then the model validator on a probe application that imports it by local
+    `$ref`. Same result shape: {"stages", "failingStage", "feedback", "modelText"}."""
+    import npdev_relay_pack as relay_pack
+    out = {"stages": stage_log, "failingStage": None, "feedback": "", "modelText": pack_text}
+    pack_id = prompt["packId"]
+    try:
+        pack = json.loads(pack_text)
+    except ValueError:
+        pack = None
+    errors = relay_pack.static_errors(pack, pack_id, pack_text)
+    if errors:
+        stage_log.append(stages.StageResult("check", False, 0.0, "\n".join(errors)).to_json())
+        out.update(failingStage="check", feedback="\n".join(errors))
+        return out
+    stage_log.append(stages.StageResult("check", True, 0.0, "").to_json())
+    attempt_dir = prompt_dir / f"attempt-{n}"
+    model_path = relay_pack.stage_probe(attempt_dir / "probe", pack_id, pack_text, relay_pack.probe_model(pack_id))
+    res = stages.stage_validate(model_path, attempt_dir)
+    stage_log.append(res.to_json())
+    if not res.ok:
+        out.update(failingStage="validate", feedback=res.detail)
+    return out
 
 
 def findings_text(result: dict) -> str:
@@ -199,11 +240,18 @@ def run_prompt_relay(prompt: dict, backend, knowledge: str | None, run_dir: Path
     started = time.monotonic()
     prompts = relay_prompts.load_prompts()
     policy = ingest.load_policy()
+    is_pack = prompt.get("intent") == "pack"       # P6: a case that asks for a PACK, not an application
+    file_name = "pack.json" if is_pack else "model.json"
+    attempt_runner = pack_attempt if is_pack else attempt_runner
+    if is_pack:
+        knowledge = (knowledge or "").rstrip() + "\n\n" + pack_section()      # only a pack conversation pays for it
     asked = set(getattr(args, "relay_copy_fidelity", None) or ())
     mutations = tuple(m for m in COPY_MUTATIONS if m in asked)      # recorded in the order they are applied
     code = session_code(run_dir.name, prompt["id"])
     messages = [{"role": "user", "content": relay_prompts.compose_round1(
-        prompts, code=code, intent="create", ask=prompt["prompt"], language=LANGUAGE, knowledge=knowledge or "")}]
+        prompts, code=code, intent="pack" if is_pack else "create",
+        ask=pack_ask(prompt) if is_pack else prompt["prompt"], language=LANGUAGE,
+        knowledge=knowledge or "")}]
     attempts: list[dict] = []
     rounds: list[dict] = []
     tokens_in = tokens_out = 0
@@ -244,10 +292,10 @@ def run_prompt_relay(prompt: dict, backend, knowledge: str | None, run_dir: Path
         seen = mutate_copy(completion.text, mutations)
         if seen != completion.text:
             (adir / "author-reply-copied.txt").write_text(seen, encoding="utf-8")   # what ingest actually saw
-        res = ingest.ingest_text(seen, session=code, expected_round=rnd, policy=policy)
+        res = ingest.ingest_text(seen, session=code, expected_round=rnd, policy=policy, phase="pack" if is_pack else "mvp")
         (adir / "ingest-result.json").write_text(json.dumps(res, indent=2), encoding="utf-8")
         outcome = res["outcome"]
-        model_text = candidate_model(res) if outcome == ingest.PARSED else None
+        model_text = candidate_model(res, file_name) if outcome == ingest.PARSED else None
         if outcome == ingest.PARSED and model_text is None:
             outcome = ingest.PARTIAL      # parsed, but no allowed model.json to validate
         errors = findings_text(res)
@@ -281,7 +329,7 @@ def run_prompt_relay(prompt: dict, backend, knowledge: str | None, run_dir: Path
         if n == args.max_loops:
             break
         follow_up = relay_prompts.compose_same_chat(prompts, code=code, rnd=rnd + 1, outcome=follow_outcome,
-                                                    errors=errors)
+                                                    errors=errors, intent="pack" if is_pack else None)
         if follow_up is None:
             needs_person = outcome      # this outcome needs the person; the bench has none
             break
