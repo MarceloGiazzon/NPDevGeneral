@@ -172,4 +172,14 @@ class DefaultProcedureExecutorK123Test {
         assertFalse(result.ok());
         assertEquals("CONNECTOR_HTTP_503", result.failureCode());
     }
+
+    @Test
+    void patchConceptSetMayClearAFieldWithAnExplicitNull() {
+        java.util.Map<String, Object> set = new java.util.LinkedHashMap<>();
+        set.put("driverAccount", null);
+        set.put("status", "REQUESTED");
+        ProcedureStep step = ProcedureStep.patchConcept("clear", "Ride", "$input.id", set, "ride");
+        assertTrue(step.setValues().containsKey("driverAccount"));
+        assertNull(step.setValues().get("driverAccount"));
+    }
 }

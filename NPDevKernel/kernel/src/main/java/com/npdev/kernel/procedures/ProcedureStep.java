@@ -85,7 +85,9 @@ public record ProcedureStep(
         thenSteps = thenSteps == null ? List.of() : List.copyOf(thenSteps);
         elseSteps = elseSteps == null ? List.of() : List.copyOf(elseSteps);
         steps = steps == null ? List.of() : List.copyOf(steps);
-        setValues = setValues == null ? Map.of() : Map.copyOf(setValues);
+        // Map.copyOf rejects null VALUES, but patchConcept.set may clear a field with an explicit null (REG-224, same fix
+        // as ProcedureStepAst/CompiledProcedureStep). Consumed by key, so an unmodifiable LinkedHashMap is enough.
+        setValues = setValues == null ? Map.of() : java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(setValues));
         queryParams = queryParams == null ? Map.of() : java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(queryParams));
         errorTarget = normalizeOptional(errorTarget);
     }

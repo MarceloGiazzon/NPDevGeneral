@@ -31,12 +31,57 @@
           "access": {
             "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
           }
+        },
+        {
+          "name": "paymentToken",
+          "type": "string",
+          "default": "tok_ok",
+          "description": "Demo card token at the payment provider. A real app stores the provider's customer/payment-method id here, never a card number."
+        },
+        {
+          "name": "ratingAvg",
+          "type": "decimal"
+        },
+        {
+          "name": "ridesRequested",
+          "type": "integer"
+        },
+        {
+          "name": "cancelsByRider",
+          "type": "integer"
+        },
+        {
+          "name": "cancelRate",
+          "type": "decimal",
+          "derivedExpression": "cancelsByRider / (ridesRequested + 0.000001)"
         }
       ],
       "access": {
         "read": "account == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem",
         "write": "account == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem"
-      }
+      },
+      "rollups": [
+        {
+          "field": "ratingAvg",
+          "from": "Ride",
+          "via": "rider",
+          "fn": "avg",
+          "of": "riderStars"
+        },
+        {
+          "field": "ridesRequested",
+          "from": "Ride",
+          "via": "rider",
+          "fn": "count"
+        },
+        {
+          "field": "cancelsByRider",
+          "from": "Ride",
+          "via": "rider",
+          "fn": "sum",
+          "of": "cancelledByRiderFlag"
+        }
+      ]
     },
     {
       "name": "Driver",
@@ -69,10 +114,7 @@
             "BUSY",
             "OFFLINE"
           ],
-          "required": true,
-          "access": {
-            "write": "status != 'BUSY' || $user.roles.contains('Dispatcher') || $user.isSystem"
-          }
+          "required": true
         },
         {
           "name": "lat",
@@ -97,12 +139,122 @@
           "access": {
             "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
           }
+        },
+        {
+          "name": "ratingAvg",
+          "type": "decimal",
+          "description": "Average of driverStars over this driver's rides (rollup)."
+        },
+        {
+          "name": "ridesAccepted",
+          "type": "integer",
+          "description": "Rides still linked to this driver = accepted ones (an expired/declined offer unlinks the driver)."
+        },
+        {
+          "name": "cancelsByDriver",
+          "type": "integer"
+        },
+        {
+          "name": "offersReceived",
+          "type": "integer"
+        },
+        {
+          "name": "offersMissed",
+          "type": "integer"
+        },
+        {
+          "name": "cancelRate",
+          "type": "decimal",
+          "derivedExpression": "cancelsByDriver / (ridesAccepted + 0.000001)",
+          "description": "Share of accepted rides this driver cancelled (0..1). The tiny constant avoids a division by zero."
+        },
+        {
+          "name": "acceptanceRate",
+          "type": "decimal",
+          "derivedExpression": "(offersReceived - offersMissed) / (offersReceived + 0.000001)"
         }
       ],
       "access": {
         "read": "account == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem",
         "write": "account == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem"
-      }
+      },
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          {
+            "value": "OFFLINE",
+            "initial": true
+          },
+          {
+            "value": "AVAILABLE"
+          },
+          {
+            "value": "BUSY"
+          }
+        ],
+        "transitions": [
+          {
+            "from": "OFFLINE",
+            "to": "AVAILABLE",
+            "guard": "account == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem"
+          },
+          {
+            "from": "AVAILABLE",
+            "to": "OFFLINE",
+            "guard": "account == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem"
+          },
+          {
+            "from": "AVAILABLE",
+            "to": "BUSY",
+            "guard": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          },
+          {
+            "from": "BUSY",
+            "to": "AVAILABLE",
+            "guard": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          },
+          {
+            "from": "BUSY",
+            "to": "OFFLINE",
+            "guard": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        ]
+      },
+      "rollups": [
+        {
+          "field": "ratingAvg",
+          "from": "Ride",
+          "via": "driver",
+          "fn": "avg",
+          "of": "driverStars"
+        },
+        {
+          "field": "ridesAccepted",
+          "from": "Ride",
+          "via": "driver",
+          "fn": "count"
+        },
+        {
+          "field": "cancelsByDriver",
+          "from": "Ride",
+          "via": "driver",
+          "fn": "sum",
+          "of": "cancelledByDriverFlag"
+        },
+        {
+          "field": "offersReceived",
+          "from": "RideOffer",
+          "via": "driver",
+          "fn": "count"
+        },
+        {
+          "field": "offersMissed",
+          "from": "RideOffer",
+          "via": "driver",
+          "fn": "sum",
+          "of": "expiredFlag"
+        }
+      ]
     },
     {
       "name": "Ride",
@@ -175,20 +327,30 @@
         },
         {
           "name": "pickupDistanceKm",
-          "type": "decimal"
+          "type": "decimal",
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
         },
         {
           "name": "etaMinutes",
-          "type": "integer"
+          "type": "integer",
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
         },
         {
           "name": "tripDistanceKm",
-          "type": "decimal"
+          "type": "decimal",
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
         },
         {
           "name": "fareCents",
           "type": "decimal",
-          "derivedExpression": "300 + 120 * tripDistanceKm"
+          "derivedExpression": "(300 + 120 * tripDistanceKm + 25 * tripMinutes) * surgeMultiplier",
+          "description": "Base R$3.00 + R$1.20/km + R$0.25/min, times the surge. tripMinutes is filled by the road route (stage 70); before that it counts as 0."
         },
         {
           "name": "riderAccount",
@@ -225,7 +387,143 @@
             "RIDER",
             "DRIVER",
             "SYSTEM"
-          ]
+          ],
+          "access": {
+            "write": "(cancelledBy == 'RIDER' && riderAccount == $user.id) || (cancelledBy == 'DRIVER' && driverAccount == $user.id) || $user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "currentOfferId",
+          "type": "string",
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "paymentId",
+          "type": "string",
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "tripMinutes",
+          "type": "decimal",
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "zoneName",
+          "type": "string",
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "zoneMultiplier",
+          "type": "decimal",
+          "default": 1.0,
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "peakMultiplier",
+          "type": "decimal",
+          "default": 1.0,
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "openNearby",
+          "type": "integer",
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "freeNearby",
+          "type": "integer",
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "demandMultiplier",
+          "type": "decimal",
+          "default": 1.0,
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "surgeMultiplier",
+          "type": "decimal",
+          "default": 1.0,
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "driverStars",
+          "type": "integer",
+          "min": 1,
+          "max": 5,
+          "description": "The rider's rating of the driver (1-5).",
+          "access": {
+            "write": "riderAccount == $user.id || $user.roles.contains('Dispatcher')"
+          }
+        },
+        {
+          "name": "driverComment",
+          "type": "string",
+          "maxLength": 500,
+          "access": {
+            "write": "riderAccount == $user.id || $user.roles.contains('Dispatcher')"
+          }
+        },
+        {
+          "name": "riderStars",
+          "type": "integer",
+          "min": 1,
+          "max": 5,
+          "description": "The driver's rating of the rider (1-5).",
+          "access": {
+            "write": "driverAccount == $user.id || $user.roles.contains('Dispatcher')"
+          }
+        },
+        {
+          "name": "cancelledByRiderFlag",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 1,
+          "access": {
+            "write": "riderAccount == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "cancelledByDriverFlag",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 1,
+          "access": {
+            "write": "driverAccount == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        },
+        {
+          "name": "distanceMethod",
+          "type": "enum",
+          "enumValues": [
+            "road",
+            "estimate"
+          ],
+          "access": {
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
         }
       ],
       "lifecycle": {
@@ -297,13 +595,373 @@
             "from": "IN_PROGRESS",
             "to": "COMPLETED",
             "guard": "driverAccount == $user.id || $user.isSystem"
+          },
+          {
+            "from": "ASSIGNED",
+            "to": "REQUESTED",
+            "guard": "$user.isSystem || $user.roles.contains('Dispatcher')"
           }
         ]
       },
       "access": {
         "read": "riderAccount == $user.id || driverAccount == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem",
         "write": "riderAccount == $user.id || driverAccount == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem"
+      },
+      "invariants": [
+        {
+          "name": "RateOnlyCompletedRides",
+          "expr": "(driverStars == null && riderStars == null) || status == 'COMPLETED'"
+        },
+        {
+          "name": "CancelFlagsOnlyWhenCancelled",
+          "expr": "(cancelledByRiderFlag == 0 && cancelledByDriverFlag == 0) || status == 'CANCELLED'"
+        }
+      ]
+    },
+    {
+      "name": "Credential",
+      "ui": {
+        "label": "Credential"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "userId",
+          "type": "reference",
+          "required": true,
+          "unique": true,
+          "ui": {
+            "label": "Identity user"
+          },
+          "reference": {
+            "target": "identity::User",
+            "onDelete": "cascade"
+          }
+        },
+        {
+          "name": "passwordHash",
+          "type": "string",
+          "required": true,
+          "maxLength": 200,
+          "ui": {
+            "label": "Password hash"
+          }
+        }
+      ]
+    },
+    {
+      "name": "RideOffer",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "ride",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "Ride"
+          }
+        },
+        {
+          "name": "driver",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "Driver"
+          }
+        },
+        {
+          "name": "driverAccount",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": [
+            "OFFERED",
+            "ACCEPTED",
+            "DECLINED",
+            "EXPIRED"
+          ],
+          "required": true
+        },
+        {
+          "name": "expiredFlag",
+          "type": "integer",
+          "default": 0,
+          "description": "1 when the driver let the offer run out; summed into Driver.missedOffers (stage 50)."
+        }
+      ],
+      "access": {
+        "read": "driverAccount == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem",
+        "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+      },
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          {
+            "value": "OFFERED",
+            "initial": true
+          },
+          {
+            "value": "ACCEPTED",
+            "terminal": true
+          },
+          {
+            "value": "DECLINED",
+            "terminal": true
+          },
+          {
+            "value": "EXPIRED",
+            "terminal": true
+          }
+        ],
+        "transitions": [
+          {
+            "from": "OFFERED",
+            "to": "ACCEPTED"
+          },
+          {
+            "from": "OFFERED",
+            "to": "DECLINED"
+          },
+          {
+            "from": "OFFERED",
+            "to": "EXPIRED"
+          }
+        ]
       }
+    },
+    {
+      "name": "Payment",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "ride",
+          "type": "reference",
+          "required": true,
+          "reference": {
+            "target": "Ride"
+          }
+        },
+        {
+          "name": "riderAccount",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "amountCents",
+          "type": "decimal",
+          "required": true,
+          "min": 0
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "required": true,
+          "default": "BRL"
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "required": true,
+          "description": "Card token at the provider (demo: tok_ok, tok_async, tok_decline, tok_flaky, tok_nowebhook...)."
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": [
+            "PENDING",
+            "RETRYING",
+            "PROCESSING",
+            "CAPTURED",
+            "FAILED",
+            "NEEDS_REVIEW",
+            "REFUNDED"
+          ],
+          "required": true
+        },
+        {
+          "name": "chargeId",
+          "type": "string"
+        },
+        {
+          "name": "failureCode",
+          "type": "string"
+        },
+        {
+          "name": "attempts",
+          "type": "integer",
+          "default": 0
+        }
+      ],
+      "access": {
+        "read": "riderAccount == $user.id || $user.roles.contains('Dispatcher') || $user.isSystem",
+        "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
+      },
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          {
+            "value": "PENDING",
+            "initial": true
+          },
+          {
+            "value": "RETRYING"
+          },
+          {
+            "value": "PROCESSING"
+          },
+          {
+            "value": "CAPTURED"
+          },
+          {
+            "value": "FAILED",
+            "terminal": true
+          },
+          {
+            "value": "NEEDS_REVIEW"
+          },
+          {
+            "value": "REFUNDED",
+            "terminal": true
+          }
+        ],
+        "transitions": [
+          {
+            "from": "PENDING",
+            "to": "CAPTURED"
+          },
+          {
+            "from": "PENDING",
+            "to": "PROCESSING"
+          },
+          {
+            "from": "PENDING",
+            "to": "RETRYING"
+          },
+          {
+            "from": "PENDING",
+            "to": "FAILED"
+          },
+          {
+            "from": "RETRYING",
+            "to": "CAPTURED"
+          },
+          {
+            "from": "RETRYING",
+            "to": "PROCESSING"
+          },
+          {
+            "from": "RETRYING",
+            "to": "FAILED"
+          },
+          {
+            "from": "RETRYING",
+            "to": "NEEDS_REVIEW"
+          },
+          {
+            "from": "PROCESSING",
+            "to": "CAPTURED"
+          },
+          {
+            "from": "PROCESSING",
+            "to": "FAILED"
+          },
+          {
+            "from": "PROCESSING",
+            "to": "NEEDS_REVIEW"
+          },
+          {
+            "from": "NEEDS_REVIEW",
+            "to": "CAPTURED",
+            "guard": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          },
+          {
+            "from": "NEEDS_REVIEW",
+            "to": "FAILED",
+            "guard": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          },
+          {
+            "from": "CAPTURED",
+            "to": "REFUNDED",
+            "guard": "$user.roles.contains('Dispatcher') || $user.isSystem"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Zone",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "unique": true
+        },
+        {
+          "name": "centerLat",
+          "type": "decimal",
+          "required": true,
+          "min": -90,
+          "max": 90
+        },
+        {
+          "name": "centerLng",
+          "type": "decimal",
+          "required": true,
+          "min": -180,
+          "max": 180
+        },
+        {
+          "name": "multiplier",
+          "type": "decimal",
+          "required": true,
+          "default": 1.0,
+          "min": 1,
+          "max": 3,
+          "description": "Fixed zone multiplier (airport, downtown...)."
+        },
+        {
+          "name": "peakMultiplier",
+          "type": "decimal",
+          "required": true,
+          "default": 1.0,
+          "min": 1,
+          "max": 3,
+          "description": "Switched by the PeakOn/PeakOff cron flows; 1.0 outside peak hours."
+        },
+        {
+          "name": "peakValue",
+          "type": "decimal",
+          "required": true,
+          "default": 1.3,
+          "min": 1,
+          "max": 3,
+          "description": "What peakMultiplier becomes during peak hours."
+        }
+      ]
     }
   ],
   "queries": [
@@ -311,6 +969,27 @@
       "name": "AvailableDrivers",
       "concept": "Driver",
       "where": "status == 'AVAILABLE'"
+    },
+    {
+      "name": "OffersForRide",
+      "concept": "RideOffer",
+      "where": "ride == :rideId",
+      "parameters": [
+        {
+          "name": "rideId",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "AllZones",
+      "concept": "Zone"
+    },
+    {
+      "name": "OpenRides",
+      "concept": "Ride",
+      "where": "status == 'REQUESTED' || status == 'ASSIGNED'"
     }
   ],
   "bindings": [
@@ -325,105 +1004,205 @@
     {
       "capability": "notify",
       "adapter": "notify"
+    },
+    {
+      "capability": "psp",
+      "adapter": "http-connector"
+    },
+    {
+      "capability": "routing",
+      "adapter": "http-connector"
     }
   ],
   "procedures": [
     {
       "name": "MatchDriver",
-      "description": "Finds the closest AVAILABLE driver to the ride's pickup point (built-in geo capability) and assigns it, copying the driver's login, name and plate onto the ride so the rider never needs to read the Driver table. With nobody available the ride ends as NO_DRIVER.",
+      "description": "Offers the ride to the closest AVAILABLE driver not tried before. Reads the ride fresh, so a ride the rider cancelled meanwhile is left alone. Creates a RideOffer, holds the driver as BUSY and moves the ride to ASSIGNED. Finding nobody leaves the ride REQUESTED (the flow decides when to give up). Drivers already offered this ride (its RideOffer rows) are skipped.",
       "steps": [
         {
-          "name": "free-drivers",
-          "type": "runQuery",
-          "query": "AvailableDrivers",
-          "concept": "Driver",
-          "target": "free"
+          "name": "read-ride",
+          "type": "readConcept",
+          "concept": "Ride",
+          "id": "$input.id",
+          "target": "ride"
         },
         {
-          "name": "candidates",
-          "type": "mapList",
-          "items": "$free",
-          "as": "d",
-          "select": {
-            "id": "$d.id",
-            "lat": "$d.lat",
-            "lng": "$d.lng"
-          },
-          "target": "candidates"
-        },
-        {
-          "name": "pick",
-          "type": "capabilityCall",
-          "capability": "geo",
-          "operation": "closest",
-          "args": {
-            "lat": "$input.pickupLat",
-            "lng": "$input.pickupLng",
-            "candidates": "$candidates"
-          },
-          "target": "best"
-        },
-        {
-          "name": "trip",
-          "type": "capabilityCall",
-          "capability": "geo",
-          "operation": "distanceKm",
-          "args": {
-            "fromLat": "$input.pickupLat",
-            "fromLng": "$input.pickupLng",
-            "toLat": "$input.dropoffLat",
-            "toLng": "$input.dropoffLng"
-          },
-          "target": "tripLeg"
-        },
-        {
-          "name": "assigned",
+          "name": "still-requested",
           "type": "if",
-          "condition": "$best.found",
+          "condition": "$ride.status == 'REQUESTED'",
           "then": [
             {
-              "name": "read-driver",
-              "type": "readConcept",
-              "concept": "Driver",
-              "id": "$best.id",
-              "target": "chosen"
-            },
-            {
-              "name": "assign-ride",
-              "type": "patchConcept",
-              "concept": "Ride",
-              "id": "$input.id",
-              "set": {
-                "driver": "$best.id",
-                "driverAccount": "$chosen.account",
-                "driverName": "$chosen.name",
-                "driverPlate": "$chosen.plate",
-                "status": "ASSIGNED",
-                "pickupDistanceKm": "$best.distanceKm",
-                "etaMinutes": "$best.etaMinutes",
-                "tripDistanceKm": "$tripLeg.distanceKm"
+              "name": "tried-offers",
+              "type": "runQuery",
+              "query": "OffersForRide",
+              "concept": "RideOffer",
+              "params": {
+                "rideId": "$ride.id"
               },
-              "target": "ride"
+              "target": "offers"
             },
             {
-              "name": "busy-driver",
+              "name": "tried-drivers",
+              "type": "mapList",
+              "items": "$offers",
+              "as": "o",
+              "select": {
+                "id": "$o.driver"
+              },
+              "target": "tried"
+            },
+            {
+              "name": "free-drivers",
+              "type": "runQuery",
+              "query": "AvailableDrivers",
+              "concept": "Driver",
+              "target": "free"
+            },
+            {
+              "name": "candidates",
+              "type": "mapList",
+              "items": "$free",
+              "as": "d",
+              "select": {
+                "id": "$d.id",
+                "lat": "$d.lat",
+                "lng": "$d.lng"
+              },
+              "target": "candidates"
+            },
+            {
+              "name": "pick",
+              "type": "capabilityCall",
+              "capability": "geo",
+              "operation": "closest",
+              "args": {
+                "lat": "$ride.pickupLat",
+                "lng": "$ride.pickupLng",
+                "candidates": "$candidates",
+                "limit": 100,
+                "maxKm": 15,
+                "speedKmh": 30,
+                "excludeIds": "$tried"
+              },
+              "target": "best"
+            },
+            {
+              "name": "found",
+              "type": "if",
+              "condition": "$best.found",
+              "then": [
+                {
+                  "name": "read-driver",
+                  "type": "readConcept",
+                  "concept": "Driver",
+                  "id": "$best.id",
+                  "target": "chosen"
+                },
+                {
+                  "name": "create-offer",
+                  "type": "patchConcept",
+                  "concept": "RideOffer",
+                  "id": "$newOfferId",
+                  "createIfMissing": true,
+                  "set": {
+                    "ride": "$ride.id",
+                    "driver": "$best.id",
+                    "driverAccount": "$chosen.account",
+                    "status": "OFFERED",
+                    "expiredFlag": 0
+                  },
+                  "target": "offer"
+                },
+                {
+                  "name": "assign-ride",
+                  "type": "patchConcept",
+                  "concept": "Ride",
+                  "id": "$ride.id",
+                  "set": {
+                    "driver": "$best.id",
+                    "driverAccount": "$chosen.account",
+                    "driverName": "$chosen.name",
+                    "driverPlate": "$chosen.plate",
+                    "status": "ASSIGNED",
+                    "pickupDistanceKm": "$best.distanceKm",
+                    "etaMinutes": "$best.etaMinutes",
+                    "currentOfferId": "$offer.id"
+                  },
+                  "target": "ride"
+                },
+                {
+                  "name": "hold-driver",
+                  "type": "patchConcept",
+                  "concept": "Driver",
+                  "id": "$best.id",
+                  "set": {
+                    "status": "BUSY"
+                  },
+                  "target": "driver"
+                },
+                {
+                  "name": "notify-driver",
+                  "type": "capabilityCall",
+                  "capability": "notify",
+                  "operation": "send",
+                  "args": {
+                    "to": "$chosen.account",
+                    "title": "New ride offer",
+                    "body": "Pickup ${pickupDistanceKm} km away. Open your tasks and accept within 20 seconds.",
+                    "templateVars": "$ride",
+                    "link": "/npdev-business-ui/collab/tasks.html"
+                  },
+                  "target": "notified"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "return-ride",
+          "type": "return",
+          "value": "$ride"
+        }
+      ],
+      "runAs": "system"
+    },
+    {
+      "name": "ReleaseOffer",
+      "description": "Shared by the timeout and the decline paths: frees the driver, clears the driver from the ride and puts the ride back to REQUESTED so the next attempt can offer it to someone else. Does nothing when the ride is no longer ASSIGNED (cancelled or accepted meanwhile).",
+      "steps": [
+        {
+          "name": "read-ride",
+          "type": "readConcept",
+          "concept": "Ride",
+          "id": "$input.id",
+          "target": "ride"
+        },
+        {
+          "name": "still-assigned",
+          "type": "if",
+          "condition": "$ride.status == 'ASSIGNED'",
+          "then": [
+            {
+              "name": "free-driver",
               "type": "patchConcept",
               "concept": "Driver",
-              "id": "$best.id",
+              "id": "$ride.driver",
               "set": {
-                "status": "BUSY"
+                "status": "AVAILABLE"
               },
               "target": "driver"
-            }
-          ],
-          "else": [
+            },
             {
-              "name": "no-driver",
+              "name": "back-to-requested",
               "type": "patchConcept",
               "concept": "Ride",
-              "id": "$input.id",
+              "id": "$ride.id",
               "set": {
-                "status": "NO_DRIVER"
+                "status": "REQUESTED",
+                "driver": null,
+                "driverAccount": null,
+                "driverName": null,
+                "driverPlate": null
               },
               "target": "ride"
             }
@@ -434,7 +1213,1167 @@
           "type": "return",
           "value": "$ride"
         }
+      ],
+      "runAs": "system"
+    },
+    {
+      "name": "ExpireOffer",
+      "description": "awaitEvent timeout path: the driver did not answer in time.",
+      "steps": [
+        {
+          "name": "read-ride",
+          "type": "readConcept",
+          "concept": "Ride",
+          "id": "$input.id",
+          "target": "ride"
+        },
+        {
+          "name": "mark-offer",
+          "type": "if",
+          "condition": "$ride.status == 'ASSIGNED'",
+          "then": [
+            {
+              "name": "expire",
+              "type": "patchConcept",
+              "concept": "RideOffer",
+              "id": "$ride.currentOfferId",
+              "set": {
+                "status": "EXPIRED",
+                "expiredFlag": 1
+              },
+              "target": "offer"
+            }
+          ]
+        },
+        {
+          "name": "release",
+          "type": "callProcedure",
+          "procedure": "ReleaseOffer",
+          "data": {
+            "id": "$ride.id"
+          },
+          "target": "released"
+        },
+        {
+          "name": "return-ride",
+          "type": "return",
+          "value": "$released"
+        }
+      ],
+      "runAs": "system"
+    },
+    {
+      "name": "DeclineOffer",
+      "description": "The driver answered DECLINE.",
+      "steps": [
+        {
+          "name": "read-ride",
+          "type": "readConcept",
+          "concept": "Ride",
+          "id": "$input.id",
+          "target": "ride"
+        },
+        {
+          "name": "mark-offer",
+          "type": "if",
+          "condition": "$ride.status == 'ASSIGNED'",
+          "then": [
+            {
+              "name": "decline",
+              "type": "patchConcept",
+              "concept": "RideOffer",
+              "id": "$ride.currentOfferId",
+              "set": {
+                "status": "DECLINED"
+              },
+              "target": "offer"
+            }
+          ]
+        },
+        {
+          "name": "release",
+          "type": "callProcedure",
+          "procedure": "ReleaseOffer",
+          "data": {
+            "id": "$ride.id"
+          },
+          "target": "released"
+        },
+        {
+          "name": "return-ride",
+          "type": "return",
+          "value": "$released"
+        }
+      ],
+      "runAs": "system"
+    },
+    {
+      "name": "AcceptOffer",
+      "description": "The driver answered ACCEPT in time: offer ACCEPTED, ride ACCEPTED.",
+      "steps": [
+        {
+          "name": "read-ride",
+          "type": "readConcept",
+          "concept": "Ride",
+          "id": "$input.id",
+          "target": "ride"
+        },
+        {
+          "name": "still-assigned",
+          "type": "if",
+          "condition": "$ride.status == 'ASSIGNED'",
+          "then": [
+            {
+              "name": "accept-offer",
+              "type": "patchConcept",
+              "concept": "RideOffer",
+              "id": "$ride.currentOfferId",
+              "set": {
+                "status": "ACCEPTED"
+              },
+              "target": "offer"
+            },
+            {
+              "name": "accept-ride",
+              "type": "patchConcept",
+              "concept": "Ride",
+              "id": "$ride.id",
+              "set": {
+                "status": "ACCEPTED"
+              },
+              "target": "ride"
+            },
+            {
+              "name": "notify-rider",
+              "type": "capabilityCall",
+              "capability": "notify",
+              "operation": "send",
+              "args": {
+                "to": "$ride.riderAccount",
+                "title": "Your driver is on the way",
+                "body": "${driverName} (${driverPlate}) arrives in about ${etaMinutes} min.",
+                "templateVars": "$ride"
+              },
+              "target": "notified"
+            }
+          ]
+        },
+        {
+          "name": "return-ride",
+          "type": "return",
+          "value": "$ride"
+        }
+      ],
+      "runAs": "system"
+    },
+    {
+      "name": "GiveUp",
+      "description": "After the last attempt: a ride still REQUESTED ends as NO_DRIVER.",
+      "steps": [
+        {
+          "name": "read-ride",
+          "type": "readConcept",
+          "concept": "Ride",
+          "id": "$input.id",
+          "target": "ride"
+        },
+        {
+          "name": "still-requested",
+          "type": "if",
+          "condition": "$ride.status == 'REQUESTED'",
+          "then": [
+            {
+              "name": "no-driver",
+              "type": "patchConcept",
+              "concept": "Ride",
+              "id": "$ride.id",
+              "set": {
+                "status": "NO_DRIVER"
+              },
+              "target": "ride"
+            },
+            {
+              "name": "notify-rider",
+              "type": "capabilityCall",
+              "capability": "notify",
+              "operation": "send",
+              "args": {
+                "to": "$ride.riderAccount",
+                "title": "No driver available",
+                "body": "Nobody accepted your ride. Please try again in a few minutes.",
+                "templateVars": "$ride"
+              },
+              "target": "notified"
+            }
+          ]
+        },
+        {
+          "name": "return-ride",
+          "type": "return",
+          "value": "$ride"
+        }
+      ],
+      "runAs": "system"
+    },
+    {
+      "name": "ReadRide",
+      "description": "Returns the ride as it is now (the flow's answer).",
+      "steps": [
+        {
+          "name": "read-ride",
+          "type": "readConcept",
+          "concept": "Ride",
+          "id": "$input.id",
+          "target": "ride"
+        },
+        {
+          "name": "return-ride",
+          "type": "return",
+          "value": "$ride"
+        }
       ]
+    },
+    {
+      "name": "MeasureTrip",
+      "description": "Trip length and time by road (OSRM). On any routing error: straight line x 1.3 at 30 km/h, marked 'estimate'.",
+      "steps": [
+        {
+          "name": "read-ride",
+          "type": "readConcept",
+          "concept": "Ride",
+          "id": "$input.id",
+          "target": "ride"
+        },
+        {
+          "name": "metres",
+          "type": "capabilityCall",
+          "capability": "routing",
+          "operation": "routeMetres",
+          "args": {
+            "fromLng": "$ride.pickupLng",
+            "fromLat": "$ride.pickupLat",
+            "toLng": "$ride.dropoffLng",
+            "toLat": "$ride.dropoffLat"
+          },
+          "target": "metres",
+          "errorTarget": "routeError"
+        },
+        {
+          "name": "seconds",
+          "type": "capabilityCall",
+          "capability": "routing",
+          "operation": "routeSeconds",
+          "args": {
+            "fromLng": "$ride.pickupLng",
+            "fromLat": "$ride.pickupLat",
+            "toLng": "$ride.dropoffLng",
+            "toLat": "$ride.dropoffLat"
+          },
+          "target": "seconds",
+          "errorTarget": "routeError"
+        },
+        {
+          "name": "routed",
+          "type": "if",
+          "condition": "$routeError",
+          "then": [
+            {
+              "name": "line",
+              "type": "capabilityCall",
+              "capability": "geo",
+              "operation": "distanceKm",
+              "args": {
+                "fromLat": "$ride.pickupLat",
+                "fromLng": "$ride.pickupLng",
+                "toLat": "$ride.dropoffLat",
+                "toLng": "$ride.dropoffLng"
+              },
+              "target": "line"
+            },
+            {
+              "name": "detour",
+              "type": "computeValue",
+              "operation": "multiply",
+              "left": "$line.distanceKm",
+              "right": 1.3,
+              "target": "km"
+            },
+            {
+              "name": "minutes",
+              "type": "computeValue",
+              "operation": "multiply",
+              "left": "$km",
+              "right": 2,
+              "target": "minutes"
+            },
+            {
+              "name": "save-estimate",
+              "type": "patchConcept",
+              "concept": "Ride",
+              "id": "$ride.id",
+              "set": {
+                "tripDistanceKm": "$km",
+                "tripMinutes": "$minutes",
+                "distanceMethod": "estimate"
+              },
+              "target": "ride"
+            }
+          ],
+          "else": [
+            {
+              "name": "km",
+              "type": "computeValue",
+              "operation": "divide",
+              "left": "$metres",
+              "right": 1000,
+              "target": "km"
+            },
+            {
+              "name": "min",
+              "type": "computeValue",
+              "operation": "divide",
+              "left": "$seconds",
+              "right": 60,
+              "target": "minutes"
+            },
+            {
+              "name": "save-road",
+              "type": "patchConcept",
+              "concept": "Ride",
+              "id": "$ride.id",
+              "set": {
+                "tripDistanceKm": "$km",
+                "tripMinutes": "$minutes",
+                "distanceMethod": "road"
+              },
+              "target": "ride"
+            }
+          ]
+        },
+        {
+          "name": "return-ride",
+          "type": "return",
+          "value": "$ride"
+        }
+      ],
+      "runAs": "system"
+    },
+    {
+      "name": "CreatePayment",
+      "description": "Creates the PENDING Payment for a COMPLETED ride: amount = the ride's fare, card = the rider's token.",
+      "steps": [
+        {
+          "name": "read-ride",
+          "type": "readConcept",
+          "concept": "Ride",
+          "id": "$input.id",
+          "target": "ride"
+        },
+        {
+          "name": "read-rider",
+          "type": "readConcept",
+          "concept": "Rider",
+          "id": "$ride.rider",
+          "target": "rider"
+        },
+        {
+          "name": "create-payment",
+          "type": "patchConcept",
+          "concept": "Payment",
+          "id": "$newPaymentId",
+          "createIfMissing": true,
+          "set": {
+            "ride": "$ride.id",
+            "riderAccount": "$ride.riderAccount",
+            "amountCents": "$ride.fareCents",
+            "currency": "BRL",
+            "source": "$rider.paymentToken",
+            "status": "PENDING",
+            "attempts": 0
+          },
+          "target": "payment"
+        },
+        {
+          "name": "link-ride",
+          "type": "patchConcept",
+          "concept": "Ride",
+          "id": "$ride.id",
+          "set": {
+            "paymentId": "$payment.id"
+          },
+          "target": "ride"
+        },
+        {
+          "name": "return-payment",
+          "type": "return",
+          "value": "$payment"
+        }
+      ],
+      "runAs": "system"
+    },
+    {
+      "name": "ChargePayment",
+      "description": "One charge attempt. succeeded -> CAPTURED; processing -> PROCESSING (the webhook decides later); a transient error (timeout, 429, 5xx) -> RETRYING while attempts < 3; anything else (a decline) -> FAILED with the provider's code. Never throws: the error is captured by errorTarget (K3).",
+      "steps": [
+        {
+          "name": "read-payment",
+          "type": "readConcept",
+          "concept": "Payment",
+          "id": "$input.id",
+          "target": "pay"
+        },
+        {
+          "name": "count-attempt",
+          "type": "computeValue",
+          "operation": "add",
+          "left": "$pay.attempts",
+          "right": 1,
+          "target": "n"
+        },
+        {
+          "name": "charge",
+          "type": "capabilityCall",
+          "capability": "psp",
+          "operation": "createCharge",
+          "args": {
+            "paymentId": "$pay.id",
+            "amountCents": "$pay.amountCents",
+            "currency": "$pay.currency",
+            "source": "$pay.source"
+          },
+          "target": "charge",
+          "errorTarget": "chargeError"
+        },
+        {
+          "name": "charge-ok",
+          "type": "if",
+          "condition": "$chargeError",
+          "then": [
+            {
+              "name": "transient",
+              "type": "if",
+              "condition": "$chargeError.retryable",
+              "then": [
+                {
+                  "name": "attempts-left",
+                  "type": "if",
+                  "condition": "$n < 3",
+                  "then": [
+                    {
+                      "name": "retrying",
+                      "type": "patchConcept",
+                      "concept": "Payment",
+                      "id": "$pay.id",
+                      "set": {
+                        "status": "RETRYING",
+                        "failureCode": "$chargeError.code",
+                        "attempts": "$n"
+                      },
+                      "target": "pay"
+                    }
+                  ],
+                  "else": [
+                    {
+                      "name": "review",
+                      "type": "patchConcept",
+                      "concept": "Payment",
+                      "id": "$pay.id",
+                      "set": {
+                        "status": "NEEDS_REVIEW",
+                        "failureCode": "$chargeError.code",
+                        "attempts": "$n"
+                      },
+                      "target": "pay"
+                    }
+                  ]
+                }
+              ],
+              "else": [
+                {
+                  "name": "failed",
+                  "type": "patchConcept",
+                  "concept": "Payment",
+                  "id": "$pay.id",
+                  "set": {
+                    "status": "FAILED",
+                    "failureCode": "$chargeError.code",
+                    "attempts": "$n"
+                  },
+                  "target": "pay"
+                }
+              ]
+            }
+          ],
+          "else": [
+            {
+              "name": "succeeded",
+              "type": "if",
+              "condition": "$charge.status == 'succeeded'",
+              "then": [
+                {
+                  "name": "captured",
+                  "type": "patchConcept",
+                  "concept": "Payment",
+                  "id": "$pay.id",
+                  "set": {
+                    "status": "CAPTURED",
+                    "chargeId": "$charge.id",
+                    "attempts": "$n"
+                  },
+                  "target": "pay"
+                }
+              ],
+              "else": [
+                {
+                  "name": "processing",
+                  "type": "patchConcept",
+                  "concept": "Payment",
+                  "id": "$pay.id",
+                  "set": {
+                    "status": "PROCESSING",
+                    "chargeId": "$charge.id",
+                    "attempts": "$n"
+                  },
+                  "target": "pay"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "return-payment",
+          "type": "return",
+          "value": "$pay"
+        }
+      ],
+      "runAs": "system"
+    },
+    {
+      "name": "ApplyPaymentUpdate",
+      "description": "Applies the provider's webhook (PaymentUpdated) to a PROCESSING payment. A late or repeated webhook for a payment already final changes nothing.",
+      "steps": [
+        {
+          "name": "read-payment",
+          "type": "readConcept",
+          "concept": "Payment",
+          "id": "$input.paymentId",
+          "target": "pay"
+        },
+        {
+          "name": "still-processing",
+          "type": "if",
+          "condition": "$pay.status == 'PROCESSING'",
+          "then": [
+            {
+              "name": "ok",
+              "type": "if",
+              "condition": "$input.status == 'succeeded'",
+              "then": [
+                {
+                  "name": "captured",
+                  "type": "patchConcept",
+                  "concept": "Payment",
+                  "id": "$pay.id",
+                  "set": {
+                    "status": "CAPTURED"
+                  },
+                  "target": "pay"
+                }
+              ],
+              "else": [
+                {
+                  "name": "failed",
+                  "type": "patchConcept",
+                  "concept": "Payment",
+                  "id": "$pay.id",
+                  "set": {
+                    "status": "FAILED",
+                    "failureCode": "$input.type"
+                  },
+                  "target": "pay"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "return-payment",
+          "type": "return",
+          "value": "$pay"
+        }
+      ],
+      "runAs": "system"
+    },
+    {
+      "name": "MarkPaymentReview",
+      "description": "awaitEvent timeout: no webhook arrived in time; a person must look (Dispatcher).",
+      "steps": [
+        {
+          "name": "read-payment",
+          "type": "readConcept",
+          "concept": "Payment",
+          "id": "$input.id",
+          "target": "pay"
+        },
+        {
+          "name": "still-processing",
+          "type": "if",
+          "condition": "$pay.status == 'PROCESSING'",
+          "then": [
+            {
+              "name": "review",
+              "type": "patchConcept",
+              "concept": "Payment",
+              "id": "$pay.id",
+              "set": {
+                "status": "NEEDS_REVIEW",
+                "failureCode": "webhook_timeout"
+              },
+              "target": "pay"
+            }
+          ]
+        },
+        {
+          "name": "return-payment",
+          "type": "return",
+          "value": "$pay"
+        }
+      ],
+      "runAs": "system"
+    },
+    {
+      "name": "ReadPayment",
+      "steps": [
+        {
+          "name": "read-payment",
+          "type": "readConcept",
+          "concept": "Payment",
+          "id": "$input.id",
+          "target": "pay"
+        },
+        {
+          "name": "return-payment",
+          "type": "return",
+          "value": "$pay"
+        }
+      ],
+      "runAs": "system"
+    },
+    {
+      "name": "PriceRide",
+      "description": "Works out the ride's surge multiplier (zone x peak x demand) and stores the parts on the ride, so the rider and the Dispatcher can see WHY a price is what it is.",
+      "steps": [
+        {
+          "name": "read-ride",
+          "type": "readConcept",
+          "concept": "Ride",
+          "id": "$input.id",
+          "target": "ride"
+        },
+        {
+          "name": "zones",
+          "type": "runQuery",
+          "query": "AllZones",
+          "concept": "Zone",
+          "target": "zones"
+        },
+        {
+          "name": "zone-points",
+          "type": "mapList",
+          "items": "$zones",
+          "as": "z",
+          "select": {
+            "id": "$z.id",
+            "lat": "$z.centerLat",
+            "lng": "$z.centerLng"
+          },
+          "target": "zonePoints"
+        },
+        {
+          "name": "nearest-zone",
+          "type": "capabilityCall",
+          "capability": "geo",
+          "operation": "closest",
+          "args": {
+            "lat": "$ride.pickupLat",
+            "lng": "$ride.pickupLng",
+            "candidates": "$zonePoints",
+            "limit": 100,
+            "maxKm": 5
+          },
+          "target": "zoneHit"
+        },
+        {
+          "name": "zone-default",
+          "type": "assign",
+          "target": "zoneMult",
+          "value": 1
+        },
+        {
+          "name": "peak-default",
+          "type": "assign",
+          "target": "peakMult",
+          "value": 1
+        },
+        {
+          "name": "zone-name-default",
+          "type": "assign",
+          "target": "zoneLabel",
+          "value": "none"
+        },
+        {
+          "name": "in-zone",
+          "type": "if",
+          "condition": "$zoneHit.found",
+          "then": [
+            {
+              "name": "read-zone",
+              "type": "readConcept",
+              "concept": "Zone",
+              "id": "$zoneHit.id",
+              "target": "zone"
+            },
+            {
+              "name": "zone-mult",
+              "type": "mapValue",
+              "value": "$zone.multiplier",
+              "target": "zoneMult"
+            },
+            {
+              "name": "peak-mult",
+              "type": "mapValue",
+              "value": "$zone.peakMultiplier",
+              "target": "peakMult"
+            },
+            {
+              "name": "zone-label",
+              "type": "mapValue",
+              "value": "$zone.name",
+              "target": "zoneLabel"
+            }
+          ]
+        },
+        {
+          "name": "open-rides",
+          "type": "runQuery",
+          "query": "OpenRides",
+          "concept": "Ride",
+          "target": "open"
+        },
+        {
+          "name": "open-points",
+          "type": "mapList",
+          "items": "$open",
+          "as": "r",
+          "select": {
+            "id": "$r.id",
+            "lat": "$r.pickupLat",
+            "lng": "$r.pickupLng"
+          },
+          "target": "openPoints"
+        },
+        {
+          "name": "open-near",
+          "type": "capabilityCall",
+          "capability": "geo",
+          "operation": "closest",
+          "args": {
+            "lat": "$ride.pickupLat",
+            "lng": "$ride.pickupLng",
+            "candidates": "$openPoints",
+            "limit": 100,
+            "maxKm": 3
+          },
+          "target": "openHit"
+        },
+        {
+          "name": "free-drivers",
+          "type": "runQuery",
+          "query": "AvailableDrivers",
+          "concept": "Driver",
+          "target": "free"
+        },
+        {
+          "name": "free-points",
+          "type": "mapList",
+          "items": "$free",
+          "as": "d",
+          "select": {
+            "id": "$d.id",
+            "lat": "$d.lat",
+            "lng": "$d.lng"
+          },
+          "target": "freePoints"
+        },
+        {
+          "name": "free-near",
+          "type": "capabilityCall",
+          "capability": "geo",
+          "operation": "closest",
+          "args": {
+            "lat": "$ride.pickupLat",
+            "lng": "$ride.pickupLng",
+            "candidates": "$freePoints",
+            "limit": 100,
+            "maxKm": 3
+          },
+          "target": "freeHit"
+        },
+        {
+          "name": "free-at-least-1",
+          "type": "computeValue",
+          "operation": "max",
+          "left": "$freeHit.withinCount",
+          "right": 1,
+          "target": "freeN"
+        },
+        {
+          "name": "ratio",
+          "type": "computeValue",
+          "operation": "divide",
+          "left": "$openHit.withinCount",
+          "right": "$freeN",
+          "target": "ratio"
+        },
+        {
+          "name": "excess",
+          "type": "computeValue",
+          "operation": "subtract",
+          "left": "$ratio",
+          "right": 1,
+          "target": "excess"
+        },
+        {
+          "name": "half-excess",
+          "type": "computeValue",
+          "operation": "multiply",
+          "left": "$excess",
+          "right": 0.5,
+          "target": "halfExcess"
+        },
+        {
+          "name": "demand-raw",
+          "type": "computeValue",
+          "operation": "add",
+          "left": "$halfExcess",
+          "right": 1,
+          "target": "demandRaw"
+        },
+        {
+          "name": "demand-floor",
+          "type": "computeValue",
+          "operation": "max",
+          "left": "$demandRaw",
+          "right": 1,
+          "target": "demandFloor"
+        },
+        {
+          "name": "demand",
+          "type": "computeValue",
+          "operation": "min",
+          "left": "$demandFloor",
+          "right": 2.5,
+          "target": "demand"
+        },
+        {
+          "name": "zone-x-peak",
+          "type": "computeValue",
+          "operation": "multiply",
+          "left": "$zoneMult",
+          "right": "$peakMult",
+          "target": "zp"
+        },
+        {
+          "name": "times-demand",
+          "type": "computeValue",
+          "operation": "multiply",
+          "left": "$zp",
+          "right": "$demand",
+          "target": "surgeRaw"
+        },
+        {
+          "name": "cap",
+          "type": "computeValue",
+          "operation": "min",
+          "left": "$surgeRaw",
+          "right": 3,
+          "target": "surgeCapped"
+        },
+        {
+          "name": "round",
+          "type": "computeValue",
+          "operation": "round",
+          "left": "$surgeCapped",
+          "right": 2,
+          "target": "surge"
+        },
+        {
+          "name": "save-price",
+          "type": "patchConcept",
+          "concept": "Ride",
+          "id": "$ride.id",
+          "set": {
+            "zoneName": "$zoneLabel",
+            "zoneMultiplier": "$zoneMult",
+            "peakMultiplier": "$peakMult",
+            "openNearby": "$openHit.withinCount",
+            "freeNearby": "$freeHit.withinCount",
+            "demandMultiplier": "$demand",
+            "surgeMultiplier": "$surge"
+          },
+          "target": "ride"
+        },
+        {
+          "name": "return-ride",
+          "type": "return",
+          "value": "$ride"
+        }
+      ],
+      "runAs": "system"
+    },
+    {
+      "name": "SetPeak",
+      "description": "Peak hours start: every zone's peakMultiplier becomes its peakValue.",
+      "steps": [
+        {
+          "name": "zones",
+          "type": "runQuery",
+          "query": "AllZones",
+          "concept": "Zone",
+          "target": "zones"
+        },
+        {
+          "name": "each-zone",
+          "type": "forEach",
+          "items": "$zones",
+          "as": "z",
+          "steps": [
+            {
+              "name": "peak-on",
+              "type": "patchConcept",
+              "concept": "Zone",
+              "id": "$z.id",
+              "set": {
+                "peakMultiplier": "$z.peakValue"
+              },
+              "target": "zone"
+            }
+          ]
+        },
+        {
+          "name": "done",
+          "type": "return",
+          "value": "$zones"
+        }
+      ]
+    },
+    {
+      "name": "ClearPeak",
+      "description": "Peak hours end: every zone's peakMultiplier goes back to 1.0.",
+      "steps": [
+        {
+          "name": "zones",
+          "type": "runQuery",
+          "query": "AllZones",
+          "concept": "Zone",
+          "target": "zones"
+        },
+        {
+          "name": "each-zone",
+          "type": "forEach",
+          "items": "$zones",
+          "as": "z",
+          "steps": [
+            {
+              "name": "peak-off",
+              "type": "patchConcept",
+              "concept": "Zone",
+              "id": "$z.id",
+              "set": {
+                "peakMultiplier": 1.0
+              },
+              "target": "zone"
+            }
+          ]
+        },
+        {
+          "name": "done",
+          "type": "return",
+          "value": "$zones"
+        }
+      ]
+    },
+    {
+      "name": "AfterCancel",
+      "description": "Runs after a ride was CANCELLED: frees its driver (if any) and tells the other side.",
+      "steps": [
+        {
+          "name": "read-ride",
+          "type": "readConcept",
+          "concept": "Ride",
+          "id": "$input.id",
+          "target": "ride"
+        },
+        {
+          "name": "is-cancelled",
+          "type": "if",
+          "condition": "$ride.status == 'CANCELLED'",
+          "then": [
+            {
+              "name": "had-driver",
+              "type": "if",
+              "condition": "$ride.driver",
+              "then": [
+                {
+                  "name": "free-driver",
+                  "type": "patchConcept",
+                  "concept": "Driver",
+                  "id": "$ride.driver",
+                  "set": {
+                    "status": "AVAILABLE"
+                  },
+                  "target": "driver"
+                },
+                {
+                  "name": "by-rider",
+                  "type": "if",
+                  "condition": "$ride.cancelledBy == 'RIDER'",
+                  "then": [
+                    {
+                      "name": "tell-driver",
+                      "type": "capabilityCall",
+                      "capability": "notify",
+                      "operation": "send",
+                      "args": {
+                        "to": "$ride.driverAccount",
+                        "title": "Ride cancelled by the rider",
+                        "body": "You are available again.",
+                        "templateVars": "$ride"
+                      },
+                      "target": "n1"
+                    }
+                  ],
+                  "else": [
+                    {
+                      "name": "tell-rider",
+                      "type": "capabilityCall",
+                      "capability": "notify",
+                      "operation": "send",
+                      "args": {
+                        "to": "$ride.riderAccount",
+                        "title": "Your driver cancelled",
+                        "body": "Please request a new ride.",
+                        "templateVars": "$ride"
+                      },
+                      "target": "n2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "return-ride",
+          "type": "return",
+          "value": "$ride"
+        }
+      ],
+      "runAs": "system"
+    },
+    {
+      "name": "NotifyPaymentResult",
+      "description": "Tells the rider how the payment ended.",
+      "steps": [
+        {
+          "name": "read-payment",
+          "type": "readConcept",
+          "concept": "Payment",
+          "id": "$input.id",
+          "target": "pay"
+        },
+        {
+          "name": "captured",
+          "type": "if",
+          "condition": "$pay.status == 'CAPTURED'",
+          "then": [
+            {
+              "name": "receipt",
+              "type": "capabilityCall",
+              "capability": "notify",
+              "operation": "send",
+              "args": {
+                "to": "$pay.riderAccount",
+                "title": "Receipt: R$ ${amountCents} cents paid",
+                "body": "Thank you for riding with us.",
+                "templateVars": "$pay"
+              },
+              "target": "n"
+            }
+          ],
+          "else": [
+            {
+              "name": "problem",
+              "type": "capabilityCall",
+              "capability": "notify",
+              "operation": "send",
+              "args": {
+                "to": "$pay.riderAccount",
+                "title": "Payment problem (${status})",
+                "body": "We could not charge your card yet. Code: ${failureCode}.",
+                "templateVars": "$pay"
+              },
+              "target": "n"
+            }
+          ]
+        },
+        {
+          "name": "return-payment",
+          "type": "return",
+          "value": "$pay"
+        }
+      ],
+      "runAs": "system"
+    },
+    {
+      "name": "RemindToRate",
+      "description": "10 minutes after the trip: if the rider has not rated the driver yet, remind them.",
+      "steps": [
+        {
+          "name": "read-ride",
+          "type": "readConcept",
+          "concept": "Ride",
+          "id": "$input.id",
+          "target": "ride"
+        },
+        {
+          "name": "not-rated",
+          "type": "if",
+          "condition": "$ride.driverStars",
+          "then": [],
+          "else": [
+            {
+              "name": "remind",
+              "type": "capabilityCall",
+              "capability": "notify",
+              "operation": "send",
+              "args": {
+                "to": "$ride.riderAccount",
+                "title": "How was your trip with ${driverName}?",
+                "body": "Rate your driver from 1 to 5 stars.",
+                "templateVars": "$ride"
+              },
+              "target": "n"
+            }
+          ]
+        },
+        {
+          "name": "return-ride",
+          "type": "return",
+          "value": "$ride"
+        }
+      ],
+      "runAs": "system"
     }
   ],
   "flows": [
@@ -454,16 +2393,615 @@
           "output": "$created"
         },
         {
-          "name": "match",
+          "name": "measure",
+          "type": "callProcedure",
+          "procedure": "MeasureTrip",
+          "input": "$created",
+          "output": "$measured"
+        },
+        {
+          "name": "price",
+          "type": "callProcedure",
+          "procedure": "PriceRide",
+          "input": "$created",
+          "output": "$priced"
+        },
+        {
+          "name": "match-1",
           "type": "callProcedure",
           "procedure": "MatchDriver",
           "input": "$created",
-          "output": "$matched"
+          "output": "$m1"
+        },
+        {
+          "name": "offered-1",
+          "type": "branch",
+          "condition": "$m1.data.status == 'ASSIGNED'",
+          "then": [
+            {
+              "name": "await-1",
+              "type": "awaitEvent",
+              "awaitEvent": "RideOfferAnswered",
+              "awaitRef": "a1",
+              "match": {
+                "correlation": false,
+                "payload": {
+                  "rideId": "$created.id"
+                }
+              },
+              "timeout": 20,
+              "task": {
+                "title": "New ride: pickup ${m1.data.pickupDistanceKm} km away",
+                "description": "Accept within 20 seconds.",
+                "assignee": {
+                  "user": "$m1.data.driverAccount"
+                },
+                "outcomeField": "answer",
+                "outcomes": [
+                  {
+                    "value": "ACCEPT",
+                    "label": "Accept"
+                  },
+                  {
+                    "value": "DECLINE",
+                    "label": "Decline"
+                  }
+                ],
+                "record": "$created"
+              },
+              "onTimeout": [
+                {
+                  "name": "expire-1",
+                  "type": "callProcedure",
+                  "procedure": "ExpireOffer",
+                  "input": "$created",
+                  "output": "$x1"
+                }
+              ]
+            },
+            {
+              "name": "accepted-1",
+              "type": "branch",
+              "condition": "$a1.answer == 'ACCEPT'",
+              "then": [
+                {
+                  "name": "accept-1",
+                  "type": "callProcedure",
+                  "procedure": "AcceptOffer",
+                  "input": "$created",
+                  "output": "$accepted"
+                }
+              ],
+              "else": [
+                {
+                  "name": "declined-1",
+                  "type": "branch",
+                  "condition": "$a1.answer == 'DECLINE'",
+                  "then": [
+                    {
+                      "name": "decline-1",
+                      "type": "callProcedure",
+                      "procedure": "DeclineOffer",
+                      "input": "$created",
+                      "output": "$d1"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "attempt-2",
+          "type": "branch",
+          "condition": "$accepted == null",
+          "then": [
+            {
+              "name": "match-2",
+              "type": "callProcedure",
+              "procedure": "MatchDriver",
+              "input": "$created",
+              "output": "$m2"
+            },
+            {
+              "name": "offered-2",
+              "type": "branch",
+              "condition": "$m2.data.status == 'ASSIGNED'",
+              "then": [
+                {
+                  "name": "await-2",
+                  "type": "awaitEvent",
+                  "awaitEvent": "RideOfferAnswered",
+                  "awaitRef": "a2",
+                  "match": {
+                    "correlation": false,
+                    "payload": {
+                      "rideId": "$created.id"
+                    }
+                  },
+                  "timeout": 20,
+                  "task": {
+                    "title": "New ride: pickup ${m2.data.pickupDistanceKm} km away",
+                    "description": "Accept within 20 seconds.",
+                    "assignee": {
+                      "user": "$m2.data.driverAccount"
+                    },
+                    "outcomeField": "answer",
+                    "outcomes": [
+                      {
+                        "value": "ACCEPT",
+                        "label": "Accept"
+                      },
+                      {
+                        "value": "DECLINE",
+                        "label": "Decline"
+                      }
+                    ],
+                    "record": "$created"
+                  },
+                  "onTimeout": [
+                    {
+                      "name": "expire-2",
+                      "type": "callProcedure",
+                      "procedure": "ExpireOffer",
+                      "input": "$created",
+                      "output": "$x2"
+                    }
+                  ]
+                },
+                {
+                  "name": "accepted-2",
+                  "type": "branch",
+                  "condition": "$a2.answer == 'ACCEPT'",
+                  "then": [
+                    {
+                      "name": "accept-2",
+                      "type": "callProcedure",
+                      "procedure": "AcceptOffer",
+                      "input": "$created",
+                      "output": "$accepted"
+                    }
+                  ],
+                  "else": [
+                    {
+                      "name": "declined-2",
+                      "type": "branch",
+                      "condition": "$a2.answer == 'DECLINE'",
+                      "then": [
+                        {
+                          "name": "decline-2",
+                          "type": "callProcedure",
+                          "procedure": "DeclineOffer",
+                          "input": "$created",
+                          "output": "$d2"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "attempt-3",
+          "type": "branch",
+          "condition": "$accepted == null",
+          "then": [
+            {
+              "name": "match-3",
+              "type": "callProcedure",
+              "procedure": "MatchDriver",
+              "input": "$created",
+              "output": "$m3"
+            },
+            {
+              "name": "offered-3",
+              "type": "branch",
+              "condition": "$m3.data.status == 'ASSIGNED'",
+              "then": [
+                {
+                  "name": "await-3",
+                  "type": "awaitEvent",
+                  "awaitEvent": "RideOfferAnswered",
+                  "awaitRef": "a3",
+                  "match": {
+                    "correlation": false,
+                    "payload": {
+                      "rideId": "$created.id"
+                    }
+                  },
+                  "timeout": 20,
+                  "task": {
+                    "title": "New ride: pickup ${m3.data.pickupDistanceKm} km away",
+                    "description": "Accept within 20 seconds.",
+                    "assignee": {
+                      "user": "$m3.data.driverAccount"
+                    },
+                    "outcomeField": "answer",
+                    "outcomes": [
+                      {
+                        "value": "ACCEPT",
+                        "label": "Accept"
+                      },
+                      {
+                        "value": "DECLINE",
+                        "label": "Decline"
+                      }
+                    ],
+                    "record": "$created"
+                  },
+                  "onTimeout": [
+                    {
+                      "name": "expire-3",
+                      "type": "callProcedure",
+                      "procedure": "ExpireOffer",
+                      "input": "$created",
+                      "output": "$x3"
+                    }
+                  ]
+                },
+                {
+                  "name": "accepted-3",
+                  "type": "branch",
+                  "condition": "$a3.answer == 'ACCEPT'",
+                  "then": [
+                    {
+                      "name": "accept-3",
+                      "type": "callProcedure",
+                      "procedure": "AcceptOffer",
+                      "input": "$created",
+                      "output": "$accepted"
+                    }
+                  ],
+                  "else": [
+                    {
+                      "name": "declined-3",
+                      "type": "branch",
+                      "condition": "$a3.answer == 'DECLINE'",
+                      "then": [
+                        {
+                          "name": "decline-3",
+                          "type": "callProcedure",
+                          "procedure": "DeclineOffer",
+                          "input": "$created",
+                          "output": "$d3"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "give-up",
+          "type": "branch",
+          "condition": "$accepted == null",
+          "then": [
+            {
+              "name": "no-driver",
+              "type": "callProcedure",
+              "procedure": "GiveUp",
+              "input": "$created",
+              "output": "$gaveUp"
+            }
+          ]
+        },
+        {
+          "name": "final",
+          "type": "callProcedure",
+          "procedure": "ReadRide",
+          "input": "$created",
+          "output": "$final"
         },
         {
           "name": "done",
           "type": "return",
-          "value": "$matched"
+          "value": "$final"
+        }
+      ]
+    },
+    {
+      "name": "CompleteRide",
+      "concept": "Ride",
+      "input": {
+        "concept": "Ride",
+        "mode": "update"
+      },
+      "steps": [
+        {
+          "name": "complete",
+          "type": "updateConcept",
+          "scope": "Ride",
+          "input": "$input",
+          "output": "$done"
+        },
+        {
+          "name": "create-payment",
+          "type": "callProcedure",
+          "procedure": "CreatePayment",
+          "input": "$done",
+          "output": "$p"
+        },
+        {
+          "name": "charge-1",
+          "type": "callProcedure",
+          "procedure": "ChargePayment",
+          "input": "$p.data",
+          "output": "$c1"
+        },
+        {
+          "name": "retry-2",
+          "type": "branch",
+          "condition": "$c1.data.status == 'RETRYING'",
+          "then": [
+            {
+              "name": "wait-2",
+              "type": "scheduleEvent",
+              "event": "ChargeRetryDue",
+              "delaySeconds": 10,
+              "data": {
+                "paymentId": "$p.data.id"
+              }
+            },
+            {
+              "name": "woke-2",
+              "type": "awaitEvent",
+              "awaitEvent": "ChargeRetryDue",
+              "awaitRef": "w2",
+              "match": {
+                "correlation": true
+              }
+            },
+            {
+              "name": "charge-2",
+              "type": "callProcedure",
+              "procedure": "ChargePayment",
+              "input": "$p.data",
+              "output": "$c2"
+            },
+            {
+              "name": "retry-3",
+              "type": "branch",
+              "condition": "$c2.data.status == 'RETRYING'",
+              "then": [
+                {
+                  "name": "wait-3",
+                  "type": "scheduleEvent",
+                  "event": "ChargeRetryDue",
+                  "delaySeconds": 30,
+                  "data": {
+                    "paymentId": "$p.data.id"
+                  }
+                },
+                {
+                  "name": "woke-3",
+                  "type": "awaitEvent",
+                  "awaitEvent": "ChargeRetryDue",
+                  "awaitRef": "w3",
+                  "match": {
+                    "correlation": true
+                  }
+                },
+                {
+                  "name": "charge-3",
+                  "type": "callProcedure",
+                  "procedure": "ChargePayment",
+                  "input": "$p.data",
+                  "output": "$c3"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "now",
+          "type": "callProcedure",
+          "procedure": "ReadPayment",
+          "input": "$p.data",
+          "output": "$pay"
+        },
+        {
+          "name": "wait-webhook",
+          "type": "branch",
+          "condition": "$pay.data.status == 'PROCESSING'",
+          "then": [
+            {
+              "name": "await-provider",
+              "type": "awaitEvent",
+              "awaitEvent": "PaymentUpdated",
+              "awaitRef": "pu",
+              "match": {
+                "correlation": false,
+                "payload": {
+                  "paymentId": "$p.data.id"
+                }
+              },
+              "timeout": 120,
+              "onTimeout": [
+                {
+                  "name": "to-review",
+                  "type": "callProcedure",
+                  "procedure": "MarkPaymentReview",
+                  "input": "$p.data",
+                  "output": "$rv"
+                }
+              ]
+            },
+            {
+              "name": "got-webhook",
+              "type": "branch",
+              "condition": "$pu != null",
+              "then": [
+                {
+                  "name": "apply",
+                  "type": "callProcedure",
+                  "procedure": "ApplyPaymentUpdate",
+                  "input": "$pu",
+                  "output": "$applied"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tell-rider",
+          "type": "callProcedure",
+          "procedure": "NotifyPaymentResult",
+          "input": "$p.data",
+          "output": "$told"
+        },
+        {
+          "name": "rate-later",
+          "type": "scheduleEvent",
+          "event": "RateReminderDue",
+          "delaySeconds": 600,
+          "data": {
+            "rideId": "$done.id"
+          }
+        },
+        {
+          "name": "rate-woke",
+          "type": "awaitEvent",
+          "awaitEvent": "RateReminderDue",
+          "awaitRef": "rw",
+          "match": {
+            "correlation": true
+          }
+        },
+        {
+          "name": "rate-reminder",
+          "type": "callProcedure",
+          "procedure": "RemindToRate",
+          "input": "$done",
+          "output": "$reminded"
+        },
+        {
+          "name": "final",
+          "type": "callProcedure",
+          "procedure": "ReadRide",
+          "input": "$done",
+          "output": "$final"
+        },
+        {
+          "name": "done",
+          "type": "return",
+          "value": "$final"
+        }
+      ]
+    },
+    {
+      "name": "PeakOnMorning",
+      "concept": "Zone",
+      "schedule": {
+        "cron": "0 0 7 * * MON-FRI"
+      },
+      "steps": [
+        {
+          "name": "on",
+          "type": "callProcedure",
+          "procedure": "SetPeak",
+          "input": "$input",
+          "output": "$r"
+        },
+        {
+          "name": "done",
+          "type": "return",
+          "value": "$r"
+        }
+      ]
+    },
+    {
+      "name": "PeakOffMorning",
+      "concept": "Zone",
+      "schedule": {
+        "cron": "0 0 10 * * MON-FRI"
+      },
+      "steps": [
+        {
+          "name": "off",
+          "type": "callProcedure",
+          "procedure": "ClearPeak",
+          "input": "$input",
+          "output": "$r"
+        },
+        {
+          "name": "done",
+          "type": "return",
+          "value": "$r"
+        }
+      ]
+    },
+    {
+      "name": "PeakOnEvening",
+      "concept": "Zone",
+      "schedule": {
+        "cron": "0 0 17 * * MON-FRI"
+      },
+      "steps": [
+        {
+          "name": "on",
+          "type": "callProcedure",
+          "procedure": "SetPeak",
+          "input": "$input",
+          "output": "$r"
+        },
+        {
+          "name": "done",
+          "type": "return",
+          "value": "$r"
+        }
+      ]
+    },
+    {
+      "name": "PeakOffEvening",
+      "concept": "Zone",
+      "schedule": {
+        "cron": "0 0 20 * * MON-FRI"
+      },
+      "steps": [
+        {
+          "name": "off",
+          "type": "callProcedure",
+          "procedure": "ClearPeak",
+          "input": "$input",
+          "output": "$r"
+        },
+        {
+          "name": "done",
+          "type": "return",
+          "value": "$r"
+        }
+      ]
+    },
+    {
+      "name": "CancelRide",
+      "concept": "Ride",
+      "input": {
+        "concept": "Ride",
+        "mode": "update"
+      },
+      "steps": [
+        {
+          "name": "cancel",
+          "type": "updateConcept",
+          "scope": "Ride",
+          "input": "$input",
+          "output": "$cancelled"
+        },
+        {
+          "name": "after",
+          "type": "callProcedure",
+          "procedure": "AfterCancel",
+          "input": "$cancelled",
+          "output": "$after"
+        },
+        {
+          "name": "done",
+          "type": "return",
+          "value": "$after"
         }
       ]
     }
@@ -492,6 +3030,124 @@
       "operations": [
         "send"
       ]
+    },
+    {
+      "name": "psp",
+      "type": "HttpConnector",
+      "http": {
+        "baseUrlProperty": "pspBaseUrl",
+        "auth": {
+          "type": "bearer",
+          "secretEnvVar": "PSP_API_KEY"
+        },
+        "headers": {
+          "Accept": "application/json"
+        },
+        "timeoutMs": 5000,
+        "maxRetries": 0
+      },
+      "operations": [
+        {
+          "name": "createCharge",
+          "sideEffects": "external",
+          "http": {
+            "method": "POST",
+            "path": "/v1/charges",
+            "params": [
+              "paymentId",
+              "amountCents",
+              "currency",
+              "source"
+            ],
+            "headers": {
+              "Idempotency-Key": "charge-{paymentId}"
+            },
+            "body": {
+              "paymentId": "{paymentId}",
+              "amountCents": "{amountCents}",
+              "currency": "{currency}",
+              "source": "{source}"
+            }
+          }
+        },
+        {
+          "name": "refundCharge",
+          "sideEffects": "external",
+          "http": {
+            "method": "POST",
+            "path": "/v1/refunds",
+            "params": [
+              "paymentId",
+              "chargeId",
+              "amountCents"
+            ],
+            "headers": {
+              "Idempotency-Key": "refund-{paymentId}"
+            },
+            "body": {
+              "chargeId": "{chargeId}",
+              "amountCents": "{amountCents}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "routing",
+      "type": "HttpConnector",
+      "http": {
+        "baseUrlProperty": "routingBaseUrl",
+        "auth": {
+          "type": "none"
+        },
+        "headers": {
+          "Accept": "application/json"
+        },
+        "timeoutMs": 3000,
+        "maxRetries": 1
+      },
+      "operations": [
+        {
+          "name": "routeMetres",
+          "sideEffects": "reads",
+          "http": {
+            "method": "GET",
+            "path": "/route/v1/driving/{fromLng},{fromLat};{toLng},{toLat}",
+            "params": [
+              "fromLng",
+              "fromLat",
+              "toLng",
+              "toLat"
+            ],
+            "query": {
+              "overview": "false"
+            },
+            "response": {
+              "pointer": "/routes/0/distance"
+            }
+          }
+        },
+        {
+          "name": "routeSeconds",
+          "sideEffects": "reads",
+          "http": {
+            "method": "GET",
+            "path": "/route/v1/driving/{fromLng},{fromLat};{toLng},{toLat}",
+            "params": [
+              "fromLng",
+              "fromLat",
+              "toLng",
+              "toLat"
+            ],
+            "query": {
+              "overview": "false"
+            },
+            "response": {
+              "pointer": "/routes/0/duration"
+            }
+          }
+        }
+      ]
     }
   ],
   "packs": [
@@ -515,6 +3171,9 @@
           "read",
           "create",
           "update"
+        ],
+        "Payment": [
+          "read"
         ]
       }
     },
@@ -531,6 +3190,9 @@
         "Ride": [
           "read",
           "update"
+        ],
+        "RideOffer": [
+          "read"
         ]
       }
     },
@@ -558,7 +3220,90 @@
           "create",
           "update",
           "delete"
+        ],
+        "RideOffer": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ],
+        "Payment": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ],
+        "Zone": [
+          "read",
+          "create",
+          "update",
+          "delete"
         ]
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "RideOfferAnswered",
+      "payload": [
+        "rideId",
+        "answer"
+      ]
+    },
+    {
+      "name": "PaymentUpdated",
+      "payload": [
+        "pspEventId",
+        "type",
+        "paymentId",
+        "status",
+        "chargeId"
+      ]
+    },
+    {
+      "name": "ChargeRetryDue",
+      "payload": [
+        "paymentId"
+      ]
+    },
+    {
+      "name": "RateReminderDue",
+      "payload": [
+        "rideId"
+      ]
+    }
+  ],
+  "properties": [
+    {
+      "name": "pspBaseUrl",
+      "type": "string",
+      "default": "http://127.0.0.1:8701",
+      "label": "Payment provider base URL (the mock PSP by default)"
+    },
+    {
+      "name": "routingBaseUrl",
+      "type": "string",
+      "default": "http://127.0.0.1:8703",
+      "label": "OSRM route service base URL (the mock by default)"
+    }
+  ],
+  "webhooks": [
+    {
+      "source": "psp",
+      "hmacSecretEnvVar": "NPDEV_WEBHOOK_PSP_SECRET",
+      "signature": {
+        "scheme": "stripe-v1",
+        "header": "Stripe-Signature",
+        "toleranceSeconds": 300
+      },
+      "idempotencyKey": "id",
+      "eventName": "PaymentUpdated",
+      "fieldMapping": {
+        "pspEventId": "id",
+        "type": "type",
+        "paymentId": "data.object.metadata.paymentId",
+        "status": "data.object.status",
+        "chargeId": "data.object.id"
       }
     }
   ]

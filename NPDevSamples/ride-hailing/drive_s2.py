@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -85,8 +86,9 @@ class Run:
                 return e.code, {"raw": raw.decode("utf-8", "replace")[:500]}
 
     def check(self, name, ok, detail=""):
-        self.results.append((name, bool(ok), "" if ok else str(detail)[:400]))
-        print(("PASS " if ok else "FAIL ") + name + ("" if ok else f"  -- {str(detail)[:400]}"), flush=True)
+        limit = int(os.environ.get("DRIVE_DETAIL_CHARS", "400"))
+        self.results.append((name, bool(ok), "" if ok else str(detail)[:limit]))
+        print(("PASS " if ok else "FAIL ") + name + ("" if ok else f"  -- {str(detail)[:limit]}"), flush=True)
         return ok
 
     # ---- helpers ------------------------------------------------------------------------------
@@ -96,13 +98,13 @@ class Run:
     def item(self, c, i):
         return self.ep["item"].format(collection=c, id=i)
 
-    def create(self, c, data, who="admin"):
+    def create(self, c, data, who="disp1"):
         return self.call("POST", self.coll(c), data, who)
 
-    def get(self, c, i, who="admin"):
+    def get(self, c, i, who="disp1"):
         return self.call("GET", self.item(c, i), None, who)
 
-    def update(self, c, i, changes, who="admin"):
+    def update(self, c, i, changes, who="disp1"):
         """GET then PUT the merged record (the generated controller's PUT replaces the record)."""
         s, rec = self.get(c, i, who)
         if s != 200:
@@ -251,7 +253,8 @@ def stage_offer(r: Run):
         return
     r.ids["rideA"] = rid
     t = r.wait_task("driver1")
-    r.check("offer: the closest driver (driver1) gets the offer task", t, "no task for driver1")
+    r.check("offer: the closest driver (driver1) gets the offer task", t,
+            f"no task for driver1; flow answered {str(body)[:3000]}; disp1 sees {r.tasks('disp1')}")
     r.check("offer: driver2 sees NO task for it", not r.tasks("driver2"), r.tasks("driver2"))
     s, b = r.answer("driver2", t, "ACCEPT") if t else (0, {})
     r.check("offer: driver2 can NOT answer driver1's task (403)", s == 403, f"{s} {b}")
