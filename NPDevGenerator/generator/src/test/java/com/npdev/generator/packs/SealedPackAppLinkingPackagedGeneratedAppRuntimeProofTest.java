@@ -423,6 +423,7 @@ final class SealedPackAppLinkingPackagedGeneratedAppRuntimeProofTest {
                         ":adapters:file-store-inproc:jar",
                         ":adapters:file-store-objectstore:jar",
                         ":adapters:flow-compiled:jar",
+                        ":adapters:geo-inproc:jar",
                         ":adapters:idp-github:jar",
                         ":adapters:idp-google:jar",
                         ":adapters:idp-oidc:jar",

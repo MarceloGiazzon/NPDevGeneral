@@ -23,7 +23,7 @@ uma segunda linha mostra as telas dele, com uma frase dizendo para que ele serve
 |---|---|---|
 | ⌂ **Início** | O que fazer a seguir, num cartão só. | Início |
 | 🔧 **Preparar** | Deixe este computador pronto para criar apps. Você faz isso uma vez só. | Verificar o computador, Instalar o que falta |
-| ▦ **Meus apps** | Crie um app, inicie, altere e compartilhe. | Todos os apps, Iniciar e parar, Editar, Usar IA do navegador, Usar IA com chave de API, Dados, Compartilhar, Navegador (testes), Regras (testes), Impacto (avançado), Pacotes (avançado) |
+| ▦ **Meus apps** | Crie um app, inicie, altere e compartilhe. | Todos os apps, Iniciar e parar, Editar, Usar IA do navegador, Usar IA com chave de API, Dados, Compartilhar, Pacotes prontos, Navegador (testes), Regras (testes), Impacto (avançado) |
 | ◉ **Atividade** | Tudo o que está rodando neste computador, num relance. | Apps em execução, Tarefas |
 | ⚙ **Configurações** | IA, credenciais, versões. Você ajusta isso uma vez. | IA, Credenciais, Aparência, Versões, Computador, Instalação, Verificações (avançado), Avaliações (avançado) |
 

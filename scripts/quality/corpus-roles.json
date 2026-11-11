@@ -71,6 +71,8 @@
     "NPDevSamples/f6-showcase": "showcase",
     "NPDevSamples/journeys": "probe",
     "NPDevSamples/ride-hailing": "showcase",
+    "AppGen/apps/ride-hailing-s1": "showcase",
+    "AppGen/apps/ride-hailing-s1-javacap": "engine-variant",
     "NPDevSamples/npdev-init-seed": "showcase",
     "NPDevSamples/dom-helpdesk": "showcase",
     "NPDevSamples/dom-inventory": "showcase",

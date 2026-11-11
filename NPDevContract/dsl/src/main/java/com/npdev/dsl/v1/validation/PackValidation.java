@@ -793,7 +793,7 @@ final class PackValidation {
             boolean isRunQuery = PROCEDURE_QUERY_STEP_TYPES.contains(type);
             if (!step.params().isEmpty() && !isRunQuery) {
                 errors.add("Procedure " + procedureName + " step " + stepPath
-                        + ": params is only valid on a runQuery step (it binds the query's parameters)");
+                        + ": params is only valid on a runQuery step (it binds the query's parameters) -- suggestedFix: put params on a runQuery step, or remove it");
             }
             if (isRunQuery && hasText(step.query())) {
                 QueryAst query = queriesByLower.get(normalize(step.query()));
@@ -805,7 +805,7 @@ final class PackValidation {
                     for (String key : step.params().keySet()) {
                         if (!declared.contains(key)) {
                             errors.add("Procedure " + procedureName + " step " + stepPath + ": params." + key
-                                    + " is not a declared parameter of query " + query.name() + " (declared: " + declared + ")");
+                                    + " is not a declared parameter of query " + query.name() + " (declared: " + declared + ") -- suggestedFix: use one of the declared parameter names, or declare it on the query");
                         }
                     }
                     for (ProcedureParameterAst parameter : query.parameters()) {
@@ -820,10 +820,10 @@ final class PackValidation {
             if (step.errorTarget() != null) {
                 if (!PROCEDURE_CAPABILITY_CALL_STEP_TYPES.contains(type)) {
                     errors.add("Procedure " + procedureName + " step " + stepPath
-                            + ": errorTarget is only valid on a capabilityCall step");
+                            + ": errorTarget is only valid on a capabilityCall step -- suggestedFix: remove errorTarget, or make this step a capabilityCall");
                 } else if (step.errorTarget().equals(step.target())) {
                     errors.add("Procedure " + procedureName + " step " + stepPath
-                            + ": errorTarget must differ from target");
+                            + ": errorTarget must differ from target -- suggestedFix: point errorTarget at a different step than target");
                 }
             }
             validateParamsAndErrorTarget(procedureName, stepPath + ".then", step.thenSteps(), queriesByLower, errors);

@@ -434,6 +434,7 @@ final class HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest {
                         // catch it (confirmed live in CI, 2026-09-29: a clean Linux runner's
                         // runtimehost-core compile failed with "package com.npdev.adapters.idp.google
                         // does not exist"). See docs/ADAPTER_REGISTRATION_CHECKLIST.md.
+                        ":adapters:geo-inproc:jar",
                         ":adapters:idp-github:jar",
                         ":adapters:idp-google:jar",
                         ":adapters:idp-oidc:jar",
