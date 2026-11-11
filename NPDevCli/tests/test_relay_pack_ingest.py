@@ -195,3 +195,105 @@ class RealValidatorTests(EngineCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PackApplyTests(EngineCase):
+    """P4.5: apply writes pack.json into the pack workspace (all or nothing, with a backup); undo takes it back."""
+
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch.object(engine, "run_validation", return_value=PASSED)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.workspace = self.dir / "packs"
+
+    def ingest(self, pack, *, base=None):
+        base_file = None
+        if base is not None:
+            base_file = self.dir / "base.json"
+            base_file.write_text(json.dumps(base), encoding="utf-8")
+        started = engine.start(intent="pack", ask="ratings", pack_id="ratings",
+                               from_pack=str(base_file) if base_file else None)
+        return engine.ingest(started["code"], pack_answer(started["code"], pack))
+
+    @staticmethod
+    def with_(**changes):
+        return {**GOOD, **changes}
+
+    def ready(self, pack=None, *, base=None):
+        result = self.ingest(pack or GOOD, base=base)
+        self.assertEqual(result["outcome"], "READY")
+        return engine.load_session(result["session"]["expected"])
+
+    def test_apply_writes_the_pack_into_its_folder_and_undo_removes_it(self):
+        import npdev_relay_apply as apply_mod
+
+        session = self.ready()
+        done = apply_mod.apply_round(session, None, [], parent_dir=str(self.workspace))
+        self.assertTrue(done["ok"], done)
+        written = self.workspace / "ratings" / "pack.json"
+        self.assertEqual(json.loads(written.read_text(encoding="utf-8"))["pack"], "ratings")
+        self.assertEqual(done["packPath"], str(written))
+        undone = apply_mod.undo(engine.load_session(session["code"]))
+        self.assertTrue(undone["ok"], undone)
+        self.assertFalse(written.exists())
+        self.assertFalse((self.workspace / "ratings").exists())
+
+    def test_apply_needs_the_packs_folder_and_never_overwrites_an_existing_pack(self):
+        import npdev_relay_apply as apply_mod
+
+        session = self.ready()
+        self.assertEqual(apply_mod.apply_round(session, None, [])["error"], "no-target")
+        (self.workspace / "ratings").mkdir(parents=True)
+        (self.workspace / "ratings" / "pack.json").write_text("{}", encoding="utf-8")
+        self.assertEqual(apply_mod.apply_round(session, None, [], parent_dir=str(self.workspace))["error"], "pack-exists")
+        self.assertEqual((self.workspace / "ratings" / "pack.json").read_text(encoding="utf-8"), "{}")
+
+    def test_a_new_version_replaces_the_old_one_and_undo_puts_it_back(self):
+        import npdev_relay_apply as apply_mod
+
+        (self.workspace / "ratings").mkdir(parents=True)
+        target = self.workspace / "ratings" / "pack.json"
+        target.write_text(json.dumps(GOOD), encoding="utf-8")
+        newer = self.with_(version="1.1.0")
+        report = {"allowed": True, "message": "ok", "overallClassification": "ADDITIVE", "findings": []}
+
+        def gate(args):
+            Path(args.out).write_text(json.dumps(report), encoding="utf-8")
+            return 0
+
+        with mock.patch.object(engine._cli_module(), "run_pack_publish", side_effect=gate):
+            session = self.ready(newer, base=GOOD)
+        self.assertTrue(apply_mod.apply_round(session, None, [], parent_dir=str(self.workspace))["ok"])
+        self.assertEqual(json.loads(target.read_text(encoding="utf-8"))["version"], "1.1.0")
+        self.assertTrue(apply_mod.undo(engine.load_session(session["code"]))["ok"])
+        self.assertEqual(json.loads(target.read_text(encoding="utf-8"))["version"], "1.0.0")
+
+    def test_a_pack_edited_after_the_conversation_began_is_not_overwritten(self):
+        import npdev_relay_apply as apply_mod
+
+        (self.workspace / "ratings").mkdir(parents=True)
+        target = self.workspace / "ratings" / "pack.json"
+        target.write_text(json.dumps(GOOD), encoding="utf-8")
+        newer = self.with_(version="1.1.0")
+        report = {"allowed": True, "message": "ok", "findings": []}
+
+        def gate(args):
+            Path(args.out).write_text(json.dumps(report), encoding="utf-8")
+            return 0
+
+        with mock.patch.object(engine._cli_module(), "run_pack_publish", side_effect=gate):
+            session = self.ready(newer, base=GOOD)
+        target.write_text(json.dumps(self.with_(description="edited by hand")), encoding="utf-8")
+        refused = apply_mod.apply_round(session, None, [], parent_dir=str(self.workspace))
+        self.assertEqual((refused["ok"], refused["error"], refused["baseMoved"]), (False, "not-ready", True))
+
+    def test_undo_refuses_when_the_pack_was_edited_since_apply(self):
+        import npdev_relay_apply as apply_mod
+
+        session = self.ready()
+        apply_mod.apply_round(session, None, [], parent_dir=str(self.workspace))
+        (self.workspace / "ratings" / "pack.json").write_text("{}", encoding="utf-8")
+        refused = apply_mod.undo(engine.load_session(session["code"]))
+        self.assertEqual(refused["error"], "app-changed-since-apply")
+        self.assertTrue(apply_mod.undo(engine.load_session(session["code"]), force=True)["ok"])

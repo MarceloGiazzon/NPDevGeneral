@@ -102,7 +102,7 @@ def add_arguments(ai_sub) -> None:
     apply.add_argument("--round", type=int, help="Which round to apply (default: the latest).")
     apply.add_argument("--confirm-warning", action="append", default=[], metavar="CODE",
                        help="The owner's yes to one preview warning (repeatable); every warning that needs it must be named.")
-    apply.add_argument("--parent-dir", help="Create: the folder the new app goes into.")
+    apply.add_argument("--parent-dir", help="Create: the folder the new app goes into. Pack: the folder that holds your packs.")
     json_flag(apply)
 
     undo = rsub.add_parser("undo", help="Put back the model an applied answer replaced.")
@@ -325,7 +325,7 @@ def _run_undo(args) -> int:
 
     session = engine.load_session(args.code)
     payload = npdev_relay_apply.undo(session, force=args.force)
-    return _report_action(args, payload, "restored the previous model" if payload.get("ok") else "not undone")
+    return _report_action(args, payload, "took the answer back" if payload.get("ok") else "not undone")
 
 
 def _report_action(args, payload: dict, label: str) -> int:

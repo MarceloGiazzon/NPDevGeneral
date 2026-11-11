@@ -8,6 +8,9 @@
       An answer may also carry fragments/*.json and contexts/*.json (REG-323 T4.1): they are written BEFORE
       model.json, all or nothing -- the previous bytes of every file (or ABSENT) are saved first, and a failed
       write puts every file already touched back.
+      pack    write the AI's pack.json into <parent_dir>/<packId>/ (the pack workspace) with the all-or-nothing writer
+              and a backup; a new VERSION of an existing pack must still find the old pack.json untouched. Nothing is
+              published here.
   undo(session, force=False)
       put the archived model back (change/fix); with several files: put every file back and delete the ones the
       answer created. A created app is never deleted from here.
@@ -94,6 +97,8 @@ def apply_round(session: dict, number: int | None, confirmed, parent_dir=None) -
     result = _stored_result(session, number)
     if result is None or result.get("outcome") != "READY":
         return _refuse("not-ready", outcome=(result or {}).get("outcome"))
+    if session["intent"] == "pack":
+        return _apply_pack(session, number, entry, result, parent_dir)
     model_text = _file_text(result, "model.json")
     if model_text is None:
         return _refuse("no-model")
@@ -187,6 +192,54 @@ def _apply_files(session: dict, number: int, entry: dict, model_path: Path, cand
     return {"ok": True, "code": session["code"], "round": number, "intent": session["intent"], "created": False,
             "appDir": session.get("appDir"), "modelPath": str(model_path), "backupPath": str(backup_path),
             "backupManifestPath": str(manifest_path), "files": written, "appliedAt": applied_at}
+
+
+# --------------------------------------------------------------------------- pack
+
+def _lf(data: bytes) -> bytes:
+    return data.replace(b"\r\n", b"\n")
+
+
+def _apply_pack(session: dict, number: int, entry: dict, result: dict, parent_dir) -> dict:
+    """Put the accepted pack.json in `<parent_dir>/<packId>/pack.json`. Never overwrites a pack the conversation did not
+    start from, and never a pack that was edited since the conversation began."""
+    pack_text = _file_text(result, "pack.json")
+    if pack_text is None:
+        return _refuse("no-pack")
+    pack_id = session.get("packId") or ""
+    if not parent_dir:
+        return _refuse("no-target", detail="say which folder holds your packs (--parent-dir)")
+    parent = Path(parent_dir)
+    rel = f"{pack_id}/pack.json"
+    try:
+        ops = files.plan(parent, [(rel, pack_text.encode("utf-8"))])
+    except files.TreeError as exc:
+        return _refuse("unsafe-path", detail=str(exc))
+    base_path = rs.session_dir(session["code"]) / "base-pack.json"
+    if session.get("packBase"):
+        base_bytes = base_path.read_bytes() if base_path.is_file() else None
+        if base_bytes is None or ops[0].before is None or _lf(ops[0].before) != _lf(base_bytes):
+            return _refuse("not-ready", outcome="PARSED", baseMoved=True, errors=[])  # the pack changed while the AI worked
+    elif ops[0].before is not None:
+        return _refuse("pack-exists", detail=f'a pack "{pack_id}" is already in that folder: start a new-version conversation from it')
+    backup_dir = rs.session_dir(session["code"]) / "backup"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    parent.mkdir(parents=True, exist_ok=True)
+    applied_at = _now()
+    manifest_path = files.save_backup(backup_dir, ops, applied_at)
+    try:
+        files.run(parent, ops)
+    except files.TransactionError as exc:
+        return _refuse("write-failed", path=exc.path, detail=str(exc.cause)[-300:], notRestored=exc.not_restored)
+    pack_dir = parent / pack_id
+    entry["appliedAt"], entry["backupManifestPath"] = applied_at, str(manifest_path)
+    session["packDir"] = str(pack_dir)
+    session["state"] = "done"
+    rs.save(session)
+    rs.append_event(session["code"], "applied", number, files=[rel])
+    return {"ok": True, "code": session["code"], "round": number, "intent": "pack", "created": ops[0].before is None,
+            "packId": pack_id, "packDir": str(pack_dir), "packPath": str(pack_dir / "pack.json"),
+            "backupManifestPath": str(manifest_path), "files": [rel], "appliedAt": applied_at}
 
 
 # --------------------------------------------------------------------------- create
@@ -286,6 +339,11 @@ def undo(session: dict, force: bool = False) -> dict:
     if not applied:
         return _refuse("nothing-to-undo")
     entry = applied[-1]
+    if session["intent"] == "pack":
+        pack_dir = session.get("packDir")
+        if not pack_dir or not entry.get("backupManifestPath"):
+            return _refuse("backup-missing")
+        return _undo_files(session, entry, force, root=Path(pack_dir).parent)
     if session["intent"] == "create":
         return _refuse("create-undo-unsupported",
                        detail="a created app is removed from the Apps screen, never by taking an answer back")
@@ -310,13 +368,15 @@ def undo(session: dict, force: bool = False) -> dict:
     return {"ok": True, "code": session["code"], "round": entry["round"], "modelPath": str(model_path)}
 
 
-def _undo_files(session: dict, entry: dict, force: bool) -> dict:
+def _undo_files(session: dict, entry: dict, force: bool, root: Path | None = None) -> dict:
     """Put every file of a several-file answer back (model.json first), deleting the ones the answer created. Refuses,
     naming them, when a file was edited since; all or nothing, like the write."""
-    model_path = authoring.resolve_model_path(session.get("appDir"))
-    if model_path is None:
-        return _refuse("app-missing")
-    root = model_path.parent
+    model_path = None
+    if root is None:
+        model_path = authoring.resolve_model_path(session.get("appDir"))
+        if model_path is None:
+            return _refuse("app-missing")
+        root = model_path.parent
     try:
         saved = files.load_backup(entry["backupManifestPath"])
         changed = files.changed_since(root, saved)
@@ -334,5 +394,5 @@ def _undo_files(session: dict, entry: dict, force: bool) -> dict:
     session["state"] = "answer-received"
     rs.save(session)
     rs.append_event(session["code"], "undone", entry["round"])
-    return {"ok": True, "code": session["code"], "round": entry["round"], "modelPath": str(model_path),
+    return {"ok": True, "code": session["code"], "round": entry["round"], "modelPath": str(model_path) if model_path else None,
             "files": [item.rel for item in reversed(saved)]}

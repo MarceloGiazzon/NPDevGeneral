@@ -20,6 +20,7 @@
     "newAppName": { "type": ["string", "null"], "description": "intent=create: the folder name the user chose." },
     "packId": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$", "description": "intent=pack: the id of the pack being written (the folder in the packs workspace); the AI never chooses it." },
     "packBase": { "type": ["string", "null"], "description": "intent=pack: sha256 of the existing pack.json when this conversation writes a NEW VERSION of it (saved as base-pack.json); null for a brand-new pack." },
+    "packDir": { "type": "string", "description": "intent=pack: the folder the applied pack.json was written into (set by apply; undo reads it)." },
     "baseModelSha256": { "type": ["string", "null"], "description": "sha256 of model.json when the session started (change/fix). Differs at apply time -> merge S5 or refuse with a plain message." },
     "knowledgeSha256": { "type": "string", "description": "contentSha256 of the compact bundle used (build_core_context manifest)." },
     "answerSize": { "description": "How long an answer the person asked for (new apps only): small, medium or large (a share of the chosen AI's answer budget) or a number of characters. Absent = automatic: no size is stated in the prompt.", "oneOf": [ { "enum": ["small", "medium", "large"] }, { "type": "integer", "minimum": 4000 } ] },
