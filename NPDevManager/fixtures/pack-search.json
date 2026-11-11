@@ -1,0 +1,130 @@
+{
+  "schemaVersion": "npdev-pack-search.v1",
+  "command": "pack search",
+  "ok": true,
+  "query": "",
+  "catalogSource": "https://raw.githubusercontent.com/MarceloGiazzon/NPR/main/catalog-index.json",
+  "catalogStatus": "stale",
+  "catalogFetchedAt": "2026-11-11T15:59:29Z",
+  "catalogStaleReason": "network not attempted (--offline)",
+  "count": 13,
+  "results": [
+    {
+      "pack": "approvals",
+      "version": "1.0.0",
+      "description": "Built-in NPDev approvals pack: anyone with the 'requester' role files an approval request, a person with the 'approver' role decides it from My tasks (approve or reject, with a comment), and the pack records who decided, when and why. The two roles are logical: the importing app binds them to its own role names with provides.roleBindings { \"requester\": ..., \"approver\": ... }, and composition refuses when either is unbound. A resumed flow applies the decision as the person who started it and without that person's roles, so the rules also admit the platform's trusted resume principal (role ADMIN); who filed a request is the starter of its flow execution (My tasks shows it).",
+      "category": "other",
+      "author": "NPDev",
+      "path": "packs/approvals",
+      "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/approvals@approvals-1.0.0"
+    },
+    {
+      "pack": "contacts",
+      "version": "1.0.0",
+      "description": "Built-in NPDev contacts pack: organizations (customers, suppliers, partners), the people who work there, and their postal addresses -- with list/detail/edit screens and the common queries. Reference it from any business app instead of re-modelling a CRM-lite by hand.",
+      "category": "other",
+      "author": "NPDev",
+      "path": "packs/contacts",
+      "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/contacts@contacts-1.0.0"
+    },
+    {
+      "pack": "helpdesk",
+      "version": "1.0.0",
+      "description": "NPDev helpdesk pack: agents, ticket categories, tickets and ticket comments. A person with the 'requester' role raises tickets and adds comments but cannot read the queue; 'helpdeskAgent' works tickets (takes, waits on the requester, resolves, reopens, closes) and comments; 'helpdeskManager' also maintains agents and categories. A ticket is NEW, then OPEN, PENDING (waiting for the requester) and RESOLVED, and finally CLOSED; a ticket cannot be taken, paused, resolved or reopened without an assigned agent (it may still be closed without action straight from NEW). How many tickets are in each state and how many each agent holds are derived by queries. The three roles are logical: the importing app binds them with provides.roleBindings { \"requester\": ..., \"helpdeskAgent\": ..., \"helpdeskManager\": ... } (composition refuses when one is unbound) and grants them read/create/update on the pack's concepts in its own roles[] (see the dom-helpdesk sample).",
+      "category": "other",
+      "author": "NPDev",
+      "path": "packs/helpdesk",
+      "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/helpdesk@helpdesk-1.0.0"
+    },
+    {
+      "pack": "identity",
+      "version": "1.4.0",
+      "description": "Built-in NPDev identity model: users, roles, and their assignments. Intended as the persistent backing for in-app super-user administration and per-user preferences.",
+      "category": "security",
+      "author": "NPDev",
+      "path": "packs/identity",
+      "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/identity@identity-1.4.0"
+    },
+    {
+      "pack": "inventory",
+      "version": "1.0.0",
+      "description": "NPDev inventory and warehouse pack: warehouses, storage locations, products and a stock-movement ledger. A person with the 'stockkeeper' role records movements (receipt, issue, transfer, adjustment in/out) as DRAFT and posts them; only POSTED movements count towards stock, and a posted movement is undone by reversing it, never by editing it. A person with the 'inventoryManager' role does the same and also maintains warehouses, locations and products. The two roles are logical: the importing app binds them to its own role names with provides.roleBindings { \"stockkeeper\": ..., \"inventoryManager\": ... } (composition refuses when either is unbound) and grants those roles read/create/update on the pack's concepts in its own roles[] (manager: also delete; stockkeeper: read-only on warehouses, locations and products). On-hand stock is derived (queries StockByProduct and StockByProductLocation), not stored, so it cannot drift from the ledger. NOT enforced by the pack: a movement that would take a location below zero (that needs a read of the current balance inside the posting transaction); the rules sheet lists it as a rule for the importing app to add. Numeric bounds and the per-warehouse unique location code are declared as invariants (enforced today) in addition to field min and the unique index, because field.min/max and compound unique indexes are not yet enforced by the platform (REG-255, REG-257).",
+      "category": "other",
+      "author": "NPDev",
+      "path": "packs/inventory",
+      "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/inventory@inventory-1.0.0"
+    },
+    {
+      "pack": "leave",
+      "version": "1.0.0",
+      "description": "NPDev leave-request pack: leave types and leave requests decided by an approver. A person with the 'employee' role files a request through the RequestLeave flow; the flow first checks the request's rules (a request that breaks them never reaches an approver) and then puts a task on My tasks for anyone with the 'leaveApprover' role, who approves or rejects it with a comment (the same human-task pattern as the approvals pack); 'hrAdmin' maintains the leave types and may cancel. A request is PENDING, then APPROVED or REJECTED, and a PENDING or APPROVED request may be CANCELLED. How many days each employee has had approved is derived by a query, never typed in. A resumed flow applies the decision as the person who started it and without that person's roles, so the rules also admit the platform's trusted resume principal (role ADMIN). The three roles are logical: the importing app binds them with provides.roleBindings { \"employee\": ..., \"leaveApprover\": ..., \"hrAdmin\": ... } (composition refuses when one is unbound) and grants them on the pack's concepts in its own roles[]. The flow persists, so the importing app must also declare a persistence capability and bind it (and bind the eventBus): see the dom-leave sample.",
+      "category": "other",
+      "author": "NPDev",
+      "path": "packs/leave",
+      "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/leave@leave-1.0.0"
+    },
+    {
+      "pack": "notification",
+      "version": "1.0.0",
+      "description": "Outgoing-notification audit trail plus a pluggable `mailer.send` capability contract. The pack declares WHAT a notification needs (an addressable mailer capability); the consuming app supplies the concrete implementation (e.g. the mail-smtp adapter) as an untrusted extension. Genuinely app-independent: any app that sends transactional messages needs this shape, and none of it depends on which app is asking.",
+      "category": "other",
+      "author": "NPDev",
+      "path": "packs/notification",
+      "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/notification@notification-1.0.0"
+    },
+    {
+      "pack": "project-tracker-demo",
+      "version": "1.0.0",
+      "description": "Demo pack exported from the superuser-admin-console sample to prove the export-concept-to-pack.ps1 script end to end.",
+      "category": "other",
+      "author": "NPDev Sample Author",
+      "path": "packs/project-tracker-demo",
+      "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/project-tracker-demo@project-tracker-demo-1.0.0"
+    },
+    {
+      "pack": "purchasing",
+      "version": "1.0.0",
+      "description": "NPDev purchasing pack: suppliers, a purchasable-item list, purchase orders with lines, and supplier bills. A person with the 'buyer' role drafts purchase orders and adds lines; 'purchasingManager' also approves orders, maintains suppliers and the item list and may do anything a payables clerk can; 'payables' records supplier bills and their payment. An order is DRAFT, then APPROVED, then RECEIVED (or CANCELLED); a bill is OPEN, then PAID (or VOID). Order totals and the amount owed per supplier are derived by queries, never typed in. The three roles are logical: the importing app binds them with provides.roleBindings { \"buyer\": ..., \"purchasingManager\": ..., \"payables\": ... } (composition refuses when one is unbound) and grants them read/create/update on the pack's concepts in its own roles[] (see the dom-purchasing sample). Numeric bounds are declared as invariants (enforced today) beside field min, because field.min/max are not yet enforced by the platform (REG-255).",
+      "category": "other",
+      "author": "NPDev",
+      "path": "packs/purchasing",
+      "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/purchasing@purchasing-1.0.0"
+    },
+    {
+      "pack": "sales",
+      "version": "1.0.0",
+      "description": "NPDev sales pack: customers, a price list, sales orders with lines, and invoices. A person with the 'salesRep' role drafts orders and adds lines; 'salesManager' also confirms orders, maintains customers and the price list and may do anything an accountant can; 'accountant' issues invoices and records payment. An order is DRAFT, then CONFIRMED, then INVOICED (or CANCELLED); an invoice is ISSUED, then PAID (or VOID). Order totals and the amount owed per customer are derived by queries, never typed in. The three roles are logical: the importing app binds them with provides.roleBindings { \"salesRep\": ..., \"salesManager\": ..., \"accountant\": ... } (composition refuses when one is unbound) and grants them read/create/update on the pack's concepts in its own roles[] (see the dom-sales sample). Numeric bounds are declared as invariants (enforced today) beside field min, because field.min/max are not yet enforced by the platform (REG-255).",
+      "category": "other",
+      "author": "NPDev",
+      "path": "packs/sales",
+      "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/sales@sales-1.0.0"
+    },
+    {
+      "pack": "tracing",
+      "version": "1.0.2",
+      "description": "Built-in NPDev tracing pack: declarative trace retention, a human-readable trace viewer panel, and safe redaction defaults. Wraps the existing kernel tracing adapters (tracing-inproc, tracestore-postgres, tracing-redaction-default) so an app author can toggle tracing on and an app user can actually read the log.",
+      "category": "other",
+      "author": "NPDev",
+      "path": "packs/tracing",
+      "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/tracing@tracing-1.0.2"
+    },
+    {
+      "pack": "user",
+      "version": "1.0.0",
+      "description": "Portable credential bond for an identity::User: a password hash tied 1:1 to an identity user. Depends on the identity pack for the actual account (username/roles/etc.) -- this pack only adds the credential.",
+      "category": "security",
+      "author": "Marcelo Giazzon",
+      "path": "packs/user",
+      "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/user@user-1.0.0"
+    },
+    {
+      "pack": "workspace",
+      "version": "1.1.0",
+      "description": "Built-in NPDev workspace tables: navigation Menus (internal NPDev UI, business UIs, and hand-authored companion pages) and the scoped-property cascade's storage (PropertyValue -- one row per (scopeType, scopeId, propKey), row PRESENCE is the is-set signal against the declared properties[]/propertyScopes[] cascade; see RC-A3's PropertyResolver). Generic by design so they can evolve with system maturity. userId / parentMenuId / requiredRole are soft references (plain strings) to the identity pack and to other menus; they harden into bonds when the built-in packs compose into an app. Menu.kind: INTERNAL targets a fixed platform surface (preferences/store/boxview/promotion), BUSINESS targets a concept or declared Panel by name, PAGE targets a literal relative URL to a hand-authored static page, GROUP is a non-navigable label node whose children (via parentMenuId) form a submenu -- its target is unused and seeds as an empty string. seedKey/seedOrigin/seedFingerprint/overrideOf (1.1.0, W1.2) are row-provenance columns WorkspaceMenuSeeder's reconcile mode uses to tell a platform-managed (origin=generated) row from one an app author created directly via generic CRUD (origin=user, seedKey null); overrideOf links a preserved-edit clone back to the generated row it diverged from -- see WORKSPACE-MENU-AND-GUIDEPAGES.md's \"Seeder modes\".",
+      "category": "web-ui",
+      "author": "NPDev",
+      "path": "packs/workspace",
+      "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/workspace@workspace-1.1.0"
+    }
+  ]
+}

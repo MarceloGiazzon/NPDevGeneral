@@ -105,7 +105,7 @@ window.__TAURI__ = {
         case "jobs_list": window.__jobsListCalls = (window.__jobsListCalls || 0) + 1; return window.__jobsEmpty ? { ok: true, jobs: [], summary: {} } : F.jobs;
         case "jobs_action": window.__jobsActions = (window.__jobsActions || []).concat([args.action + ":" + args.jobId]); return { ok: true };
         case "recent_operations": return [{ operation: "install-java", intent: "install Java (JDK 17)", label: { en: "Install Java", pt: "Instalar o Java" }, startedAt: "2026-11-03T10:00:00Z", endedAt: "2026-11-03T10:01:00Z", running: false, ok: false }];
-        case "list_apps": return [{ name: "auxscreen", directory: "D:\\\\WorkSpace\\\\NPDev\\\\Build\\\\generated-finalapps\\\\auxscreen", created_at: "2026-11-03" }];
+        case "list_apps": if (window.__apps) return window.__apps; return [{ name: "auxscreen", directory: "D:\\\\WorkSpace\\\\NPDev\\\\Build\\\\generated-finalapps\\\\auxscreen", created_at: "2026-11-03" }];
         case "list_engines": return { engines: window.__engines || [] };
         // The New-app database card (dbsetup.js). Each answer is overridable per case by the checks below.
         case "detect_databases": return window.__detect ? JSON.parse(JSON.stringify(window.__detect)) : {};
@@ -232,6 +232,11 @@ window.__TAURI__ = {
         case "relay_watch_stop": window.__watchStops = (window.__watchStops || 0) + 1; return { ok: true, watching: false };
         case "relay_watch_setting_get": return window.__watchSetting !== false;
         case "relay_watch_setting_set": window.__watchSettingSets = (window.__watchSettingSets || []).concat([args]); window.__watchSetting = args.enabled; return args.enabled;
+        // Ready-made parts (P3): the CLI's captured answers; a check overrides them with window.__packList / __packSearch / __packChangeAnswer.
+        case "pack_list": return window.__packList || F.packs.list;
+        case "pack_why": return F.packs.why;
+        case "pack_search": window.__packSearches = (window.__packSearches || []).concat([args.query]); return window.__packSearch || F.packs.search;
+        case "pack_change": window.__packChanges = (window.__packChanges || []).concat([args]); return window.__packChangeAnswer || F.packs.done;
         default: return {};
       }
     },
@@ -292,6 +297,8 @@ await page.addInitScript({
       targets: fixture("relay-targets.json"), chosen: fixture("relay-target-chosen.json"),
       chosenBig: fixture("relay-target-chosen-big.json"), attachment: fixture("relay-attachment.json"),
     },
+    packs: { list: fixture("pack-list.json"), why: fixture("pack-why.json"), search: fixture("pack-search.json"),
+      done: fixture("pack-change-done.json"), notInCatalog: fixture("pack-change-not-in-catalog.json"), invalid: fixture("pack-change-invalid.json") },
     dbProvision: fixture("db-provision.json"),
     catalogue: (() => {
       const dir = path.join(REPO, "NPDevManager", "fixtures", "theme-catalogue");
@@ -922,9 +929,9 @@ const advancedNotes = await page.evaluate(async () => {
   await window.__npdevShowScreen("run");
   return out;
 });
-check("advanced screens carry the Advanced note and Edit, Data and Share do not",
-  ["provenance", "packs", "verification", "evals", "monitor", "jobs"].every((k) => advancedNotes[k]) &&
-  !advancedNotes.studio && !advancedNotes.dbio && !advancedNotes.hosting, JSON.stringify(advancedNotes));
+check("advanced screens carry the Advanced note and Edit, Data, Share and Ready-made parts do not",
+  ["provenance", "verification", "evals", "monitor", "jobs"].every((k) => advancedNotes[k]) &&
+  !advancedNotes.packs && !advancedNotes.studio && !advancedNotes.dbio && !advancedNotes.hosting, JSON.stringify(advancedNotes));
 check("Edit folds the JSON editor and hands a described change to Use a browser AI, words filled in and 'change this app' chosen",
   editHandoff.jsonFolded && editHandoff.screen === "browserai" && editHandoff.ask === "add a phone number to customers" && editHandoff.intentChange, JSON.stringify(editHandoff));
 await page.click("#workspace-bar .ws-change");
@@ -2334,6 +2341,87 @@ if (process.env.NPDEV_A11Y_WRITE === "1") {
   }
   a11yBaseline.comment = "ACC-4. Ratchet floor per Manager screen (dark theme, stub fixtures), written by scripts/quality/check-manager-ui-render.mjs with NPDEV_A11Y_WRITE=1 from a real axe-core scan. Counts are violation NODE counts per impact; the floor may only fall. Never hand-edit a count downward.";
   writeFileSync(A11Y_BASELINE_PATH, JSON.stringify(a11yBaseline, null, 2) + "\n");
+}
+
+// ---- P3: Ready-made parts -- the app's parts with plain chips, an Update button, the catalog, and add with its refusals ----
+{
+  await page.evaluate(() => {
+    const l = structuredClone(window.__FIXTURES__.packs.list);
+    l.packs.user.signature.acceptedBy = "trust-defaults:own-npr"; l.packs.user.trustUntil = "2027-02-28"; l.packs.user.latestVersion = "1.1.0";
+    window.__packList = l; window.__packChanges = []; window.__packSearches = [];
+  });
+  await page.evaluate(async () => { await window.__npdevShowScreen("packs"); await window.__npdevRefreshPacks(); });
+  await page.waitForSelector("#packs-catalog .pcard", { timeout: 4000 });
+  const parts = await page.evaluate(() => ({
+    rows: document.querySelectorAll("#packs-list .prow").length,
+    text: document.getElementById("packs-list").textContent.replace(/\s+/g, " "),
+    updates: [...document.querySelectorAll("#packs-list [data-update]")].map((b) => b.textContent.trim()),
+    cards: document.querySelectorAll("#packs-catalog .pcard").length,
+    adds: document.querySelectorAll("#packs-catalog [data-add]").length,
+    already: document.querySelectorAll("#packs-catalog .pcard .pchip").length,
+    note: document.getElementById("packs-catalog-note").textContent,
+  }));
+  check("parts: the app's parts are listed with plain status chips, no digest and no lock words",
+    parts.rows === 3 && /accepted until/.test(parts.text) && /Part of your app/.test(parts.text) &&
+    !/sha256|digest|unsigned|signature|verified/i.test(parts.text), parts.text);
+  check("parts: an Update button appears only where the catalog has a newer version", JSON.stringify(parts.updates) === '["Update to 1.1.0"]', JSON.stringify(parts.updates));
+  check("parts: the catalog lists every part, the ones already in the app say so and cannot be added twice",
+    parts.cards === 13 && parts.already === 3 && parts.adds === 10, JSON.stringify(parts));
+  check("parts: a saved (offline) catalog says so in one sentence", /Showing the list saved on .+ Connect to the internet/.test(parts.note), parts.note);
+  await page.fill("#packs-search", "stock");
+  await page.click("#packs-search-go");
+  await page.waitForTimeout(200);
+  check("parts: searching asks the CLI with the typed words", (await page.evaluate(() => window.__packSearches.at(-1))) === "stock", "");
+  await page.click('#packs-catalog [data-add="contacts"]');
+  await page.waitForSelector("#packs-result.ok", { timeout: 4000 });
+  const added = await page.evaluate(() => ({ args: window.__packChanges.at(-1), text: document.getElementById("packs-result").textContent.replace(/\s+/g, " "),
+    rebuild: !!document.getElementById("packs-rebuild") }));
+  check("parts: Add sends the app and the part, and the answer is a sentence with a Rebuild button",
+    added.args.packId === "contacts" && /auxscreen/i.test(added.args.appDir) && /contacts was added/.test(added.text) && added.rebuild, JSON.stringify(added));
+  await page.evaluate(() => { window.__packChangeAnswer = window.__FIXTURES__.packs.invalid; });
+  await page.click('#packs-catalog [data-add="sales"]');
+  await page.waitForSelector("#packs-result.bad", { timeout: 4000 });
+  const refused = await page.evaluate(() => ({ text: document.getElementById("packs-result").textContent.replace(/\s+/g, " "), details: !!document.querySelector("#packs-result details") }));
+  check("parts: an add that would break the app says nothing was changed and keeps the reason under Details",
+    /would stop working, so it was not added\. Nothing was changed/.test(refused.text) && refused.details, refused.text);
+  await page.evaluate(() => { window.__packChangeAnswer = window.__FIXTURES__.packs.notInCatalog; });
+  await page.click('#packs-catalog [data-add="sales"]');
+  await page.waitForFunction(() => /not in the catalog/.test(document.getElementById("packs-result").textContent), null, { timeout: 4000 });
+  check("parts: a part the catalog does not have is said plainly", true, "");
+  await page.click('#packs-list [data-update="user"]');
+  await page.waitForTimeout(300);
+  check("parts: Update asks the CLI to update the app's parts (no part named)", (await page.evaluate(() => window.__packChanges.at(-1).packId)) === null, "");
+  await page.evaluate(() => { window.__packChangeAnswer = null; window.__packSearch = { error: "offline" }; });
+  await page.click("#packs-search-go");
+  await page.waitForTimeout(250);
+  check("parts: no list at all (offline, nothing saved) is one plain sentence",
+    /could not be loaded\. Connect to the internet/.test(await page.textContent("#packs-catalog")), "");
+  // An app made AFTER the Manager started is not in the screen's picker yet: entering the screen must re-read the list,
+  // or the workspace's chosen app cannot be put back and the screen quietly stays on an older app (seen in the real window).
+  const follows = await page.evaluate(async () => {
+    const late = { name: "latecomer", directory: "D:\\Apps\\latecomer\\latecomer", created_at: "2026-11-11" };
+    window.__apps = [{ name: "auxscreen", directory: "D:\\WorkSpace\\NPDev\\Build\\generated-finalapps\\auxscreen", created_at: "2026-11-03" }, late];
+    await window.NPDevWorkspace.select(late);
+    await window.__npdevShowScreen("packs");
+    await window.__npdevRefreshPacks();
+    const value = document.getElementById("packs-app-picker").value;
+    window.__apps = null;
+    return value;
+  });
+  check("parts: an app made after start-up is followed when the workspace chooses it", /latecomer/.test(follows), follows);
+  await page.evaluate(async () => { window.__packSearch = null; await NPDevI18n.setLang("pt"); });
+  await page.click("#packs-search-go");
+  await page.waitForSelector('#packs-catalog [data-add="sales"]', { timeout: 4000 });
+  // an INVALID answer carries the validator's own English sentence: it is data and must not count as untranslated
+  await page.evaluate(() => { window.__packChangeAnswer = window.__FIXTURES__.packs.invalid; });
+  await page.click('#packs-catalog [data-add="sales"]');
+  await page.waitForSelector("#packs-result.bad", { timeout: 4000 });
+  const ptParts = await page.evaluate(() => {
+    const shown = document.getElementById("screen-packs").textContent.replace(/\s+/g, " ");
+    return { missing: NPDevI18n.missingNow().filter((x) => shown.includes(x)), title: document.querySelector("#screen-packs h1").textContent };
+  });
+  check("parts (pt): nothing on the screen is left in English", ptParts.missing.length === 0 && ptParts.title === "Pacotes prontos", JSON.stringify(ptParts));
+  await page.evaluate(() => NPDevI18n.setLang("en"));
 }
 
 check("no console or page errors while rendering either screen", consoleErrors.length === 0,

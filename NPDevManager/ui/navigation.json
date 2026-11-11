@@ -48,10 +48,10 @@
         { "screen": "prompter", "label": { "en": "Use an AI with an API key", "pt": "Usar IA com chave de API" }, "hint": { "en": "Send your request straight to an AI service you set up with a key.", "pt": "Envie o pedido direto para um serviço de IA que você configurou com uma chave." }, "workspace": true },
         { "screen": "dbio", "label": { "en": "Data", "pt": "Dados" }, "workspace": true },
         { "screen": "hosting", "label": { "en": "Share", "pt": "Compartilhar" }, "workspace": true },
+        { "screen": "packs", "label": { "en": "Ready-made parts", "pt": "Pacotes prontos" }, "hint": { "en": "Add finished pieces (customers, stock, ratings...) to your app.", "pt": "Adicione partes prontas (clientes, estoque, avaliações...) ao seu app." }, "workspace": true },
         { "screen": "scrap", "label": { "en": "Browser", "pt": "Navegador" }, "hint": { "en": "Browser checks: a robot browser clicks through your app.", "pt": "Testes no navegador: um navegador robô clica pelo seu app." }, "group": "checks", "workspace": true },
         { "screen": "gpuchecks", "label": { "en": "Data rules", "pt": "Regras" }, "hint": { "en": "Data-rule checks: test your app's data rules.", "pt": "Testes de regras: testa as regras de dados do seu app." }, "group": "checks", "workspace": true },
-        { "screen": "provenance", "label": { "en": "Impact", "pt": "Impacto" }, "group": "advanced", "workspace": true },
-        { "screen": "packs", "label": { "en": "Packs", "pt": "Pacotes" }, "group": "advanced", "workspace": true }
+        { "screen": "provenance", "label": { "en": "Impact", "pt": "Impacto" }, "group": "advanced", "workspace": true }
       ]
     },
     {

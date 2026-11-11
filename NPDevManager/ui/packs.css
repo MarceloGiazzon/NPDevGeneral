@@ -65,3 +65,23 @@
 .pwhy-list li { margin-bottom: 4px; }
 
 #screen-packs .status-line.err { color: var(--err); }
+
+/* P3: "Ready-made parts" -- the section headings, the catalog cards and the plain result box. */
+#screen-packs .packs-h { font-size: 14px; margin: 18px 0 8px; color: var(--text); }
+#screen-packs input[type="search"] {
+  background: var(--t-bg-sunken); color: var(--text); border: 1px solid var(--t-border); border-radius: 6px;
+  padding: 6px 10px; font-family: var(--font-ui); font-size: 12.5px; min-width: 260px;
+}
+.pcard { background: var(--bg2); border: 1px solid var(--t-surface-raised); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+.pcard-main { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pcard-desc { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.pcard .pcat { font-size: 10.5px; color: var(--t-text-muted); letter-spacing: .4px; text-transform: uppercase; }
+.pchip { font-size: 11px; padding: 1px 8px; border-radius: 10px; }
+.pchip.ok { color: var(--ok); background: var(--t-positive-tint); border: 1px solid var(--t-positive-edge); }
+.pchip.note { color: var(--warn); background: var(--t-warning-tint); border: 1px solid var(--t-warning-edge); }
+.pchip.plain { color: var(--info); background: var(--t-info-tint); border: 1px solid var(--t-info-edge); }
+#packs-result { border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; font-size: 12.5px; border: 1px solid var(--t-border); }
+#packs-result.ok { border-color: var(--t-positive-edge); background: var(--t-positive-tint); }
+#packs-result.bad { border-color: var(--t-negative-edge); background: var(--t-negative-tint); }
+#packs-result details { margin-top: 6px; color: var(--muted); font-size: 11.5px; }
+#packs-result .btn { margin-top: 8px; }

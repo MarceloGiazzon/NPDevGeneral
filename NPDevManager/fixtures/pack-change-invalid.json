@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "npdev-pack-change.v1",
+  "command": "pack add",
+  "action": "add",
+  "pack": "helpdesk",
+  "ok": false,
+  "code": "INVALID",
+  "message": "With this part the app would stop working, so it was not added.",
+  "details": [
+    "pack 'helpdesk' (via app -> helpdesk) references role('helpdeskManager'), which the app does not declare in provides.roleBindings.'helpdeskManager' -- composition refuses (an unbound role must fail at composition, never silently reach runtime)"
+  ]
+}

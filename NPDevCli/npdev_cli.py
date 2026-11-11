@@ -11501,7 +11501,15 @@ def run_pack_deprecate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _pack_json_mode(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "json", False)) and not getattr(args, "managed", False)
+
+
 def run_pack_add(args: argparse.Namespace) -> int:
+    if _pack_json_mode(args):  # P3: one JSON document for the Manager; it restores model.json + npdev.lock on a refusal
+        import npdev_pack_manage
+
+        return npdev_pack_manage.main(sys.modules[__name__], "add", args)
     from_catalog = getattr(args, "from_catalog", None)
     if from_catalog:
         _add_pack_from_catalog(Path(args.model), from_catalog, args)
@@ -11509,6 +11517,10 @@ def run_pack_add(args: argparse.Namespace) -> int:
 
 
 def run_pack_update(args: argparse.Namespace) -> int:
+    if _pack_json_mode(args):
+        import npdev_pack_manage
+
+        return npdev_pack_manage.main(sys.modules[__name__], "update", args)
     return _run_pack_gradle_task_with_tamper_guard("packUpdate", Path(args.model), args)
 
 
@@ -11563,6 +11575,9 @@ def run_pack_list(args: argparse.Namespace) -> int:
     code, report, stdout = _run_pack_gradle_task_raw("packList", Path(args.model))
     if code == 0 and isinstance(report, dict) and report:
         _enrich_pack_list_report(Path(args.model), report)
+        import npdev_pack_manage  # P3: trustUntil + latestVersion, for the Manager's plain status chips
+
+        npdev_pack_manage.enrich(sys.modules[__name__], report.get("packs"))
         print(json.dumps(report, indent=2))
     elif stdout:
         print(stdout)
@@ -17197,6 +17212,9 @@ def build_parser() -> argparse.ArgumentParser:
     pack_sub = pack.add_subparsers(dest="pack_command")
     pack_add = pack_sub.add_parser("add", help="Resolve the pack graph and write npdev.lock.")
     pack_add.add_argument("--model", required=True, help="path to the model.json to resolve")
+    pack_add.add_argument("--json", action="store_true",
+                        help="print ONE JSON document (npdev-pack-change.v1: ok, code, message) and put model.json and "
+                             "npdev.lock back if the pack is refused or the app stops validating -- what the Manager calls")
     # R8.4: resolve a pack by NAME against the catalog instead of hand-writing a 'from' coordinate.
     pack_add.add_argument(
         "--from-catalog", dest="from_catalog", default=None, metavar="<packId>",
@@ -17229,6 +17247,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pack_update = pack_sub.add_parser("update", help="Re-resolve the pack graph and rewrite npdev.lock.")
     pack_update.add_argument("--model", required=True, help="path to the model.json to resolve")
+    pack_update.add_argument("--json", action="store_true",
+                        help="print ONE JSON document (npdev-pack-change.v1: ok, code, message) and put model.json and "
+                             "npdev.lock back if the pack is refused or the app stops validating -- what the Manager calls")
     pack_update.add_argument(
         "--allow-unsigned", dest="allow_unsigned", action="store_true",
         help="accept a remote pack with no detached signature. Recorded in npdev.lock "

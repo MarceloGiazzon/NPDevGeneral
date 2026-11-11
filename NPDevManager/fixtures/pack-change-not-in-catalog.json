@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "npdev-pack-change.v1",
+  "command": "pack add",
+  "action": "add",
+  "pack": "nosuchpack",
+  "ok": false,
+  "code": "NOT_IN_CATALOG",
+  "message": "That part is not in the catalog.",
+  "details": [
+    "no pack named 'nosuchpack' in the catalog (https://raw.githubusercontent.com/MarceloGiazzon/NPR/main/catalog-index.json). Available: approvals, contacts, helpdesk, identity, inventory, leave, notification, project-tracker-demo, purchasing, sales, tracing, user, workspace"
+  ]
+}

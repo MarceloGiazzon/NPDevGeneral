@@ -1,0 +1,56 @@
+id: REG-333
+title: >-
+  The Manager's Packs screen was an advanced, read-only list: it could not browse the catalog, add a part, update one or say in plain
+  words why a part was accepted
+type: FEATURE
+severity: MEDIUM
+status: DONE
+opened: 2026-11-11
+closed: 2026-11-11
+source: >-
+  Ride-hailing S2 plan, objective 7 (Manager: browse, add, update, trust); TASKS.md P3. Owner order: the Manager is for people who do
+  not know what a lock or a digest is.
+surface: manager/packs, cli/pack
+detail: |
+  CLI (NPDevCli/npdev_pack_manage.py): `pack add --from-catalog <id> --json` and `pack update --json` print ONE npdev-pack-change.v1
+  document (ok, code DONE|ALREADY|UNTRUSTED|OFFLINE|NOT_IN_CATALOG|INVALID|NO_MODEL|FAILED, message, details). model.json and npdev.lock
+  are snapshotted first and put back when the part is refused or the app stops validating with it (the plain `pack add` left the new
+  packs[] entry behind after a refusal). `pack list` now also reports `trustUntil` (end date of the temporary trust rule that accepted
+  an unsigned pack) and `latestVersion` (only when the CACHED catalog has a newer one; listing never touches the network).
+  Manager 0.13.37: screen "Ready-made parts" (nav: main list, workspace screen), sections "In this app" (name, version, status chip,
+  Update, Why is it here?) and "Find more" (search, cards, Add to this app, saved-copy note when offline). pack_search / pack_change
+  Rust commands are thin pipes with fixtures captured from real CLI runs (pack-search, pack-change-done / -not-in-catalog / -invalid).
+  Words the screen never shows: lock, digest, signature, semver, coordinate. A real add of `helpdesk` to a scratch app was refused
+  because the app does not bind the pack's role -- the refusal path is therefore real, not simulated.
+  Real-window tour (CDP, release exe 0.13.37, real CLI, real network to the owner's NPR), 11/11: scratch app, 13-part catalog, search,
+  a real add of `contacts` (accepted by the temporary trust rule, lock records acceptedBy), a real refused add of `helpdesk` (model.json
+  and npdev.lock byte-identical afterwards), Portuguese with nothing left in English. Screenshots + tour.mjs: OutsideRepo p3-tour/.
+  The tour found a PRE-EXISTING bug: the screen's app picker was filled only at start-up or on Refresh, so an app made afterwards was not
+  in it and the workspace's chosen app could not be put back -- the screen stayed on an older app (the first tour run added `contacts`
+  to the owner's testH2S_2 scratch app; reverted with git checkout + rm npdev.lock, nothing else changed). Entering the screen now
+  re-reads the app list; render-check case proven red against the old behaviour (376/377 -> 377/377). The validator's English detail
+  lines and the catalog's author-written descriptions are data (translate="no"), the description shown is its first sentence.
+  NOT done here (belong to P4/P5): "My parts", "Make a part with a browser AI", "Publish to the public catalog".
+  Untested: Rust unit tests (cargo test cannot link on this machine: aws-lc-sys/NASM); the Rust side is covered by cargo check, the
+  render check (376 checks, fixtures through the real UI) and the real-window tour.
+files:
+  - NPDevCli/npdev_pack_manage.py
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_pack_manage.py
+  - NPDevManager/ui/packs.js
+  - NPDevManager/ui/index.html
+  - NPDevManager/src/npdev.rs
+  - NPDevManager/src/main.rs
+  - scripts/quality/check-manager-ui-render.mjs
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_pack_manage.py
+  asserts: >-
+    a valid add is kept; an untrusted / offline / not-in-catalog part is refused and model.json + npdev.lock are put back; an add that
+    breaks validation is undone with the validator's words (file paths removed); a validator that cannot run does not undo the add;
+    `pack list` gains trustUntil and latestVersion only when true; --json does not recurse. The render check drives the screen.
+  provenRed: false
+done_when: >-
+  The real Manager window can search the catalog, add a part to an app (accepted by the temporary trust rule), refuse a part the app
+  cannot take without changing the app, and says all of it in plain words in English and Portuguese.

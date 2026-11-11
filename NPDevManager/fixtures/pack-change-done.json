@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "npdev-pack-change.v1",
+  "command": "pack add",
+  "action": "add",
+  "pack": "contacts",
+  "ok": true,
+  "code": "DONE",
+  "message": "Done.",
+  "details": [],
+  "validated": true
+}

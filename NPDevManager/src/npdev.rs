@@ -134,6 +134,15 @@ const FIXTURE_PACK_LIST_DEPRECATED: &str = include_str!("../fixtures/pack-list-d
 /// W3.2. Captured live from `python NPDevCli/npdev_cli.py pack why --model <path> identity`
 /// against the same WmsOfficePackTest app.
 const FIXTURE_PACK_WHY: &str = include_str!("../fixtures/pack-why.json");
+/// P3. Captured live from `python NPDevCli/npdev_cli.py pack search --json --offline` (the catalog of 13 packs the
+/// owner's NPR publishes, served from the local cache, so `catalogStatus` is "stale" -- the offline state is real).
+const FIXTURE_PACK_SEARCH: &str = include_str!("../fixtures/pack-search.json");
+/// P3. Captured live from `npdev pack add --model <scratch app> --from-catalog contacts --json` (accepted by the
+/// temporary trust rule, validated), and the two refusals a real run produced: a pack the catalog does not have, and
+/// `helpdesk`, which the scratch app could not take because it does not bind the role the pack names (the app is put back).
+const FIXTURE_PACK_CHANGE_DONE: &str = include_str!("../fixtures/pack-change-done.json");
+const FIXTURE_PACK_CHANGE_NOT_IN_CATALOG: &str = include_str!("../fixtures/pack-change-not-in-catalog.json");
+const FIXTURE_PACK_CHANGE_INVALID: &str = include_str!("../fixtures/pack-change-invalid.json");
 /// Data mobility tab: hand-written, not captured -- shaped exactly like the real
 /// `npdev-cli-result.v1` envelope `run_db_export`/`run_db_import` (npdev_cli.py) emit with --json.
 const FIXTURE_DB_EXPORT_RESULT: &str = include_str!("../fixtures/db-export-result.json");
@@ -2101,6 +2110,58 @@ pub async fn run_pack_why(
     let args = vec!["pack".to_string(), "why".to_string(), "--model".to_string(), model,
                     pack_id.to_string()];
     run_json(python_exe, npdev_cli, &args, java_home, "pack why").await
+}
+
+/// P3, "Find more": `npdev pack search [query] --json [--offline]` -- the catalog, cached and offline-tolerant (the CLI says
+/// whether what it returned is fresh or a saved copy). Verbatim.
+pub async fn run_pack_search(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    query: &str,
+    offline: bool,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_PACK_SEARCH).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let mut args = vec!["pack".to_string(), "search".to_string()];
+    if !query.trim().is_empty() {
+        args.push(query.trim().to_string());
+    }
+    args.push("--json".to_string());
+    if offline {
+        args.push("--offline".to_string());
+    }
+    run_json(python_exe, npdev_cli, &args, java_home, "pack search").await
+}
+
+/// P3: add a catalog part to an app (`pack add --model <m> --from-catalog <id> --json`) or bring its parts up to date
+/// (`pack update --model <m> --json`). The CLI answers with ONE npdev-pack-change.v1 document and has already put
+/// model.json and npdev.lock back when the part was refused or the app stopped validating; no decision lives here.
+pub async fn run_pack_change(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    pack_id: Option<&str>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        let text = match fake_pack_scenario().as_str() {
+            "not-in-catalog" => FIXTURE_PACK_CHANGE_NOT_IN_CATALOG,
+            "invalid" => FIXTURE_PACK_CHANGE_INVALID,
+            _ => FIXTURE_PACK_CHANGE_DONE,
+        };
+        return serde_json::from_str(text).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let model = format!("{app_dir}/model.json");
+    let mut args = vec!["pack".to_string(), if pack_id.is_some() { "add" } else { "update" }.to_string(),
+                        "--model".to_string(), model];
+    if let Some(id) = pack_id {
+        args.push("--from-catalog".to_string());
+        args.push(id.to_string());
+    }
+    args.push("--json".to_string());
+    run_json(python_exe, npdev_cli, &args, java_home, "pack change").await
 }
 
 /// The data-mobility tab's export half -- `npdev db export --app <dir> --out <dir> --format <f>

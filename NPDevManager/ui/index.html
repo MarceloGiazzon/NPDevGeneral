@@ -901,13 +901,12 @@
       <div class="verify-table-wrap" id="verify-table-wrap" hidden></div>
     </section>
 
-    <!-- The Packs tab (W3.2, NPDEV_ROADMAP_2026-09-12): installed packs for one app, with
-         version/digest/signature/deprecation state, `pack why`, and an export-a-copy action.
-         Thin pipe over `npdev pack list`/`pack why` -- nothing here decides what a signature or a
-         deprecation means, the CLI already enriched the report before this ever renders it. -->
+    <!-- Ready-made parts (W3.2, reshaped by P3): the parts one app uses, and a catalog to add more from. Thin pipe over
+         `npdev pack list` / `pack why` / `pack search` / `pack add --json` / `pack update --json` -- nothing here decides
+         what a signature, an update or a refusal means; the CLI already did, in plain codes this screen only words. -->
     <section id="screen-packs" class="screen" hidden>
-      <h1>Packs</h1>
-      <p class="subtitle">Packs are ready-made parts an app can include, such as user accounts and sign-in. This lists the ones this app uses and the exact version of each.</p>
+      <h1>Ready-made parts</h1>
+      <p class="subtitle">Add finished pieces (customers, stock, ratings...) to your app.</p>
 
       <div class="packs-toolbar">
         <label id="packs-app-label" hidden>App <select id="packs-app-picker"></select></label>
@@ -915,8 +914,18 @@
         <span id="packs-status" class="status-line"></span>
       </div>
 
+      <h2 class="packs-h">In this app</h2>
       <div id="packs-list"></div>
       <div id="packs-why" hidden></div>
+
+      <h2 class="packs-h">Find more</h2>
+      <div class="packs-toolbar">
+        <input id="packs-search" type="search" placeholder="Search, for example customers or stock" />
+        <button class="btn" id="packs-search-go">SEARCH</button>
+        <span id="packs-catalog-note" class="status-line"></span>
+      </div>
+      <div id="packs-result" hidden></div>
+      <div id="packs-catalog"></div>
     </section>
 
     <!-- S15 (NPDEV_MEGA_ROADMAP.md, Track B): Impact explorer -- the interactive view over S14's
