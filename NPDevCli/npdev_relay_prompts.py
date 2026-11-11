@@ -55,6 +55,18 @@ def compose_round1(p: dict, *, code: str, intent: str, ask: str, language: str, 
     complete file, so a size limit there would contradict the format contract."""
     values = dict(code=code, round=1, language=language, ask=ask.strip(), model=model.strip(),
                   errors=clip(errors), files_expected=2, knowledge=knowledge.strip())
+    if intent == "pack":
+        # A pack conversation swaps the format contract (pack.json, not model.json) and adds the pack rules after the
+        # shared authoring knowledge; the language, interview and knowledge parts are the same ones an app gets.
+        parts = [
+            _t(p["pack"]["formatContract"], **values),
+            _t(p["language"], **values),
+            _t(p["interview"]["on" if interview else "off"], **values),
+            _t(p["knowledgeHeading"], **values),
+            _t(p["intent"]["pack"], **values),
+            _t(p["pack"]["rules"], **values),
+        ]
+        return _wrap(p, code, 1, "\n\n".join(parts))
     parts = [
         _t(p["formatContract"], **values),
         _t(p["language"], **values),

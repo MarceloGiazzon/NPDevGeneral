@@ -1,0 +1,41 @@
+NPDEV-BEGIN K7QX-1
+I wrote a reusable "ratings" pack: a Rating record with 1-5 stars, a comment and who rated whom, plus a query for the ratings of one subject.
+NPDEV-FILE pack.json
+```json
+{
+  "dslVersion": "1.0.0",
+  "pack": "ratings",
+  "version": "1.0.0",
+  "namespace": "com.example.ratings",
+  "description": "Star ratings (1-5) with an optional comment that one person gives about another after something they did together (a ride, an order, a job).",
+  "category": "other",
+  "author": "browser-ai",
+  "concepts": [
+    {
+      "name": "Rating",
+      "ui": { "label": "Rating" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "subjectAccount", "type": "string", "required": true, "description": "Login of the person being rated." },
+        { "name": "authorAccount", "type": "string", "required": true, "description": "Login of the person who rates." },
+        { "name": "aboutRecord", "type": "string", "required": true, "description": "Id of the thing they did together." },
+        { "name": "stars", "type": "integer", "required": true, "min": 1, "max": 5 },
+        { "name": "comment", "type": "string", "maxLength": 500 }
+      ],
+      "access": {
+        "read": "authorAccount == $user.id || subjectAccount == $user.id || $user.isSystem",
+        "write": "authorAccount == $user.id || $user.isSystem"
+      }
+    }
+  ],
+  "queries": [
+    { "name": "RatingsOfSubject", "concept": "Rating", "where": "subjectAccount == :subject",
+      "parameters": [ { "name": "subject", "type": "string", "required": true } ] }
+  ]
+}
+```
+NPDEV-FILE npdev-submission.json
+```json
+{ "request": "a reusable ratings pack", "packId": "ratings", "packVersion": "1.0.0", "renames": [], "deliberateRemovals": [], "securityChanges": [], "couldNotExpress": ["an average per subject: a consumer app adds a rollup on its own person record"], "assumptions": ["accounts are usernames, compared with $user.id"] }
+```
+NPDEV-END K7QX-1 files=2

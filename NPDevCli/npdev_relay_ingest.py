@@ -546,9 +546,11 @@ def ingest_text(raw: str, *, session: str, expected_round: int, policy: dict, ph
         return done(PARTIAL)
 
     usable = [f for f in result["files"] if f["status"] != "denied"]
-    has_model = any(f["path"] in ("model.json", "npdev-elements.json") and f["status"] == "allowed" for f in usable)
+    # The file that makes an answer usable: the model for an app, pack.json for a pack conversation.
+    main_files = ("pack.json",) if phase == "pack" else ("model.json", "npdev-elements.json")
+    has_model = any(f["path"] in main_files and f["status"] == "allowed" for f in usable)
     if not has_model:
-        ctx.add("missing-model", "error")
+        ctx.add("missing-pack" if phase == "pack" else "missing-model", "error")
         return done(PARTIAL if usable or rejected else NO_FILES)
     if rejected:
         return done(PARTIAL)

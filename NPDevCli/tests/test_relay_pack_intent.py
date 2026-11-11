@@ -101,5 +101,50 @@ class CliFlagTests(unittest.TestCase):
         self.assertEqual((args.intent, args.pack_id, args.from_pack), ("pack", "ratings", "p.json"))
 
 
+class PromptTests(EngineCase):
+    """P4.2: the round-1 prompt of a pack conversation."""
+
+    def prompt(self, **kw):
+        return engine.start(intent="pack", ask="ratings for trips", pack_id="ratings", **kw)["prompt"]
+
+    def test_the_prompt_asks_for_pack_json_and_never_for_model_json(self):
+        text = self.prompt()
+        self.assertIn("NPDEV-FILE pack.json", text)
+        self.assertIn("NPDEV-FILE npdev-submission.json", text)
+        self.assertNotIn("NPDEV-FILE model.json", text)
+        self.assertIn("files=2", text)
+
+    def test_the_prompt_carries_the_pack_rules(self):
+        text = self.prompt()
+        for rule in ("EXACTLY the pack id given above", "NEW VERSION", "CONTRACT only", "No code", "signature",
+                     "who may read and write", "packs/<pack id>/pack.json"):
+            self.assertIn(rule, text, rule)
+        self.assertIn("Pack id: ratings", text)
+
+    def test_the_example_marker_survived_templating_as_a_literal_ref(self):
+        self.assertIn('{"$ref": "packs/<pack id>/pack.json"', self.prompt())
+
+    def test_an_app_prompt_is_untouched_by_the_pack_sections(self):
+        text = engine.start(intent="create", ask="a todo app")["prompt"]
+        self.assertNotIn("PACK", text)
+        self.assertIn("NPDEV-FILE model.json", text)
+
+
+class ExampleAnswerTests(unittest.TestCase):
+    def test_the_example_pack_answer_parses_in_the_pack_phase(self):
+        policy = ri.load_policy()
+        raw = (HERE / "fixtures" / "relay" / "example-pack-answer.txt").read_text(encoding="utf-8")
+        result = ri.ingest_text(raw, session="K7QX", expected_round=1, policy=policy, phase="pack")
+        self.assertEqual(result["outcome"], ri.PARSED)
+        self.assertEqual([(f["path"], f["status"]) for f in result["files"]],
+                         [("pack.json", "allowed"), ("npdev-submission.json", "allowed")])
+
+    def test_an_answer_without_pack_json_says_so(self):
+        raw = ("NPDEV-BEGIN K7QX-1\nhi\nNPDEV-FILE npdev-submission.json\n```json\n{}\n```\n"
+               "NPDEV-END K7QX-1 files=1\n")
+        result = ri.ingest_text(raw, session="K7QX", expected_round=1, policy=ri.load_policy(), phase="pack")
+        self.assertIn("missing-pack", [f["code"] for f in result["findings"]])
+
+
 if __name__ == "__main__":
     unittest.main()
