@@ -76,9 +76,14 @@ def cli_path() -> Path:
     return repo_root() / "NPDevCli" / "npdev_cli.py"
 
 
-def run_cli(args: list[str], timeout: int = 600) -> dict[str, Any]:
-    """Invoke the portable CLI and capture its result. Returns a structured envelope."""
+def run_cli(args: list[str], timeout: int = 600, env: dict[str, str] | None = None) -> dict[str, Any]:
+    """Invoke the portable CLI and capture its result. Returns a structured envelope.
+
+    `env` replaces the child's whole environment when given (None = inherit, the historical
+    behaviour). The validation service passes it to switch the validation journal off.
+    """
     cmd = [sys.executable, str(cli_path()), *args]
+    extra: dict[str, Any] = {} if env is None else {"env": env}
     try:
         completed = subprocess.run(
             cmd,
@@ -87,6 +92,7 @@ def run_cli(args: list[str], timeout: int = 600) -> dict[str, Any]:
             capture_output=True,
             text=True,
             timeout=timeout,
+            **extra,
         )
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": f"cli timed out after {timeout}s", "args": args}

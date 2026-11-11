@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.dev/schemas/ai/npdev-validation-service-response.schema.json",
+  "title": "NPDev validation service: response",
+  "description": "What POST /api/validate (and the MCP tool npdev_validate, as the text of its result) returns for one model.json (NPDevMcp/validation_service.py). The same shape for every HTTP code: status is passed|warning|failed when the validator ran, rejected when the input or the service refused it. The validator's machine path is never part of it.",
+  "type": "object",
+  "required": ["contractVersion", "status", "summary", "nextStep", "diagnostics", "truncated", "autoFixable", "service"],
+  "additionalProperties": false,
+  "properties": {
+    "contractVersion": { "const": "npdev-validation-service.v1" },
+    "status": { "enum": ["passed", "warning", "failed", "rejected"] },
+    "code": {
+      "description": "Only on status=rejected: why.",
+      "enum": ["invalid_json", "not_an_object", "too_large", "unsupported_media_type", "length_required", "bad_request",
+               "busy", "rate_limited", "validator_unavailable", "internal_error", "not_found", "method_not_allowed"]
+    },
+    "message": { "type": "string", "description": "Only on status=rejected: the reason in one sentence." },
+    "line": { "type": "integer", "minimum": 1, "description": "Only on code=invalid_json." },
+    "column": { "type": "integer", "minimum": 1, "description": "Only on code=invalid_json." },
+    "detail": { "type": "string", "description": "Only on code=validator_unavailable: the tail of the validator's own stderr, paths removed." },
+    "summary": {
+      "type": "object",
+      "required": ["errors", "warnings"],
+      "additionalProperties": false,
+      "properties": {
+        "errors": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "nextStep": { "type": "string", "description": "One plain-English sentence: what the AI should do next." },
+    "diagnostics": {
+      "type": "array",
+      "description": "Errors first, then warnings, cut at maxDiagnostics. Empty fields are omitted.",
+      "items": {
+        "type": "object",
+        "required": ["severity", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "severity": { "type": "string" },
+          "code": { "type": "string" },
+          "path": { "type": "string" },
+          "message": { "type": "string" },
+          "suggestedFix": { "type": "string" },
+          "hint": { "type": "string" },
+          "layer": { "type": "string" },
+          "concept": { "type": "string" },
+          "section": { "type": "string" },
+          "helpKey": { "type": "string" },
+          "boundaryId": { "type": "string" }
+        }
+      }
+    },
+    "truncated": {
+      "description": "null when nothing was cut.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["shown", "omitted"],
+          "additionalProperties": false,
+          "properties": {
+            "shown": { "type": "integer", "minimum": 0 },
+            "omitted": { "type": "integer", "minimum": 1 }
+          }
+        }
+      ]
+    },
+    "autoFixable": { "type": "array", "items": {} },
+    "report": { "type": "object", "description": "Only with ?full=1: the whole npdev-validation-report.v2, model = model.json." },
+    "service": {
+      "type": "object",
+      "required": ["elapsedMs", "validator", "serviceVersion"],
+      "additionalProperties": false,
+      "properties": {
+        "elapsedMs": { "type": "integer", "minimum": 0 },
+        "validator": { "type": "string" },
+        "serviceVersion": { "type": "string" }
+      }
+    }
+  }
+}

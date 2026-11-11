@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NPDev model validator</title>
+<style>
+  :root { --bg:#fff; --fg:#1b1f24; --muted:#5b6570; --line:#d5dae0; --ok:#0a6b2b; --bad:#b00020; --warn:#8a5a00; --card:#f6f8fa; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171a; --fg:#e6e9ec; --muted:#9aa4af; --line:#333a41; --ok:#5fd08a; --bad:#ff7a8a; --warn:#f0c060; --card:#1c2024; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:15px/1.45 system-ui, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.lead { color: var(--muted); margin: 0 0 12px; }
+  textarea { width:100%; min-height:220px; font:13px/1.4 ui-monospace, Consolas, monospace; background:var(--card); color:var(--fg);
+             border:1px solid var(--line); border-radius:6px; padding:8px; resize:vertical; }
+  textarea.drag { outline: 2px dashed var(--ok); }
+  button { font:inherit; padding:8px 18px; border-radius:6px; border:1px solid var(--line); background:var(--fg); color:var(--bg); cursor:pointer; }
+  button:focus-visible, textarea:focus-visible { outline: 3px solid var(--warn); outline-offset: 2px; }
+  #status { font-size: 22px; font-weight: 600; margin: 14px 0 6px; }
+  #status[data-s="passed"], #status[data-s="warning"] { color: var(--ok); }
+  #status[data-s="failed"], #status[data-s="rejected"] { color: var(--bad); }
+  #next { color: var(--muted); margin: 0 0 10px; }
+  table { border-collapse: collapse; width:100%; margin: 8px 0 14px; font-size: 13px; }
+  th, td { text-align:left; vertical-align: top; border-bottom:1px solid var(--line); padding:6px 8px; }
+  td.sev-error { color: var(--bad); font-weight:600; } td.sev-warning { color: var(--warn); font-weight:600; }
+  pre { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:10px; overflow:auto; max-height: 360px; font-size:12px; }
+  details { margin-top: 16px; color: var(--muted); } code { font-family: ui-monospace, Consolas, monospace; }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:8px; }
+</style>
+</head>
+<body data-npdev-status="idle">
+<main>
+  <h1>NPDev model validator</h1>
+  <p class="lead">Paste a <code>model.json</code>, drop a file, or open this page with the model in the address. Nothing leaves your computer.</p>
+  <label for="model" class="lead">model.json</label>
+  <textarea id="model" spellcheck="false" placeholder='{ "namespace": "my.app", ... }'></textarea>
+  <div class="row"><button id="go" type="button">Validate</button><span id="hint" class="lead"></span></div>
+
+  <div id="status" role="status" aria-live="polite" data-s="idle">Waiting for a model</div>
+  <p id="next"></p>
+  <div id="diag"></div>
+  <pre id="npdev-result" aria-label="Result as JSON">{}</pre>
+  <script type="application/json" id="npdev-result-json">{}</script>
+
+  <details>
+    <summary>How an AI can use this page</summary>
+    <ol>
+      <li><b>Navigate</b> to <code>/#model=&lt;URL-encoded model JSON&gt;</code> (or <code>#model64=&lt;base64url&gt;</code>). The page validates by itself; the hash never reaches the server.</li>
+      <li>Or open <code>/?modelUrl=&lt;https link to a raw model.json&gt;</code>: the browser fetches it and validates.</li>
+      <li>Or type/paste the JSON into the box and press <b>Validate</b>; or drop a <code>.json</code> file on it.</li>
+      <li>Read the result from: the console line starting with <code>NPDEV_VALIDATION_RESULT</code>; the <code>&lt;pre id="npdev-result"&gt;</code> text; <code>&lt;script id="npdev-result-json"&gt;</code>; the tab title; <code>document.body.dataset.npdevStatus</code>; or <code>window.npdevLastResult</code>.</li>
+      <li>From JavaScript on this origin: <code>fetch('/api/validate', {method:'POST', body: JSON.stringify(model)})</code>. Fix the errors and repeat until <code>status</code> is <code>passed</code> or <code>warning</code>.</li>
+    </ol>
+  </details>
+</main>
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var BASE = (location.protocol === "http:" || location.protocol === "https:") ? "" : "http://127.0.0.1:8780";
+
+  function show(result) {
+    window.npdevLastResult = result;
+    var status = result && result.status || "unknown";
+    var errors = result && result.summary ? result.summary.errors : 0;
+    var warnings = result && result.summary ? result.summary.warnings : 0;
+    var line;
+    if (status === "passed") { line = "✔ valid"; }
+    else if (status === "warning") { line = "✔ valid (" + warnings + " warning" + (warnings === 1 ? "" : "s") + ")"; }
+    else if (status === "failed") { line = "✖ " + errors + " error" + (errors === 1 ? "" : "s"); }
+    else { line = "✖ rejected" + (result && result.code ? ": " + result.code : ""); }
+    var s = $("status"); s.textContent = line; s.setAttribute("data-s", status);
+    $("next").textContent = result && result.nextStep || "";
+    var text = JSON.stringify(result, null, 2);
+    $("npdev-result").textContent = text;
+    $("npdev-result-json").textContent = JSON.stringify(result);
+    document.title = "NPDev: " + status + (status === "failed" ? " (" + errors + " error" + (errors === 1 ? "" : "s") + ")" : "");
+    document.body.dataset.npdevStatus = status;
+    console.log("NPDEV_VALIDATION_RESULT " + JSON.stringify(result));
+    renderTable(result && result.diagnostics || []);
+  }
+
+  function renderTable(list) {
+    var host = $("diag"); host.textContent = "";
+    if (!list.length) { return; }
+    var table = document.createElement("table");
+    var head = document.createElement("tr");
+    ["Severity", "Path", "Message", "Suggestion"].forEach(function (h) {
+      var th = document.createElement("th"); th.textContent = h; head.appendChild(th);
+    });
+    table.appendChild(head);
+    list.forEach(function (d) {
+      var tr = document.createElement("tr");
+      var cells = [d.severity, d.path, d.message, [d.suggestedFix, d.hint].filter(Boolean).join(" ")];
+      cells.forEach(function (c, i) {
+        var td = document.createElement("td"); td.textContent = c || "";
+        if (i === 0) { td.className = "sev-" + d.severity; }
+        tr.appendChild(td);
+      });
+      table.appendChild(tr);
+    });
+    host.appendChild(table);
+  }
+
+  function validate(text) {
+    $("status").textContent = "Validating..."; $("status").setAttribute("data-s", "idle");
+    document.body.dataset.npdevStatus = "running";
+    return fetch(BASE + "/api/validate?maxDiagnostics=200", {
+      method: "POST", headers: { "Content-Type": "text/plain" }, body: text
+    }).then(function (r) { return r.json(); }).then(show).catch(function (e) {
+      show({ contractVersion: "npdev-validation-service.v1", status: "rejected", code: "service_unreachable",
+             message: String(e), summary: { errors: 0, warnings: 0 }, diagnostics: [],
+             nextStep: "The validation service did not answer. Is it running?" });
+    });
+  }
+
+  function b64urlToText(value) {
+    var b64 = value.replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4) { b64 += "="; }
+    var bin = atob(b64), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) { bytes[i] = bin.charCodeAt(i); }
+    return new TextDecoder("utf-8").decode(bytes);
+  }
+
+  function hashParams() {
+    var out = {}, raw = location.hash.replace(/^#/, "");
+    raw.split("&").forEach(function (pair) {
+      var at = pair.indexOf("="); if (at < 0) { return; }
+      out[pair.slice(0, at)] = pair.slice(at + 1);
+    });
+    return out;
+  }
+
+  function fromAddress() {
+    var h = hashParams(), q = new URLSearchParams(location.search);
+    try {
+      if (h.model !== undefined) { return Promise.resolve(decodeURIComponent(h.model)); }
+      if (h.model64 !== undefined) { return Promise.resolve(b64urlToText(h.model64)); }
+    } catch (e) { return Promise.resolve("{ not decodable: " + e); }
+    if (q.get("modelUrl")) {
+      // fetched by THIS browser, never by the service (no server-side request is made)
+      return fetch(q.get("modelUrl")).then(function (r) { return r.text(); });
+    }
+    return null;
+  }
+
+  $("go").addEventListener("click", function () { validate($("model").value); });
+  var box = $("model");
+  box.addEventListener("dragover", function (e) { e.preventDefault(); box.classList.add("drag"); });
+  box.addEventListener("dragleave", function () { box.classList.remove("drag"); });
+  box.addEventListener("drop", function (e) {
+    e.preventDefault(); box.classList.remove("drag");
+    var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!file) { return; }
+    var reader = new FileReader();
+    reader.onload = function () { box.value = String(reader.result); validate(box.value); };
+    reader.readAsText(file);
+  });
+
+  var start = fromAddress();
+  if (start) {
+    start.then(function (text) { box.value = text; return validate(text); }).catch(function (e) {
+      show({ contractVersion: "npdev-validation-service.v1", status: "rejected", code: "model_unavailable",
+             message: String(e), summary: { errors: 0, warnings: 0 }, diagnostics: [],
+             nextStep: "The model could not be loaded from the address." });
+    });
+  } else {
+    document.body.dataset.npdevStatus = "idle";
+  }
+})();
+</script>
+</body>
+</html>

@@ -7315,6 +7315,37 @@ def _merge_mcp_config(config_path: Path, entry: dict) -> tuple[dict, str | None]
     return config, str(backup_path)
 
 
+def run_validator_command(args: argparse.Namespace) -> int:
+    """`npdev validator serve|doctor|rotate-token` -- forwards to NPDevMcp/validation_service.py.
+
+    The service is a separate stdlib program (so an online AI's connector never loads this 19k-line
+    CLI per request); this command is only the short door to it. It stays in the foreground and
+    inherits stdin/stdout, so Ctrl+C stops it.
+    """
+    service = repo_root() / "NPDevMcp" / "validation_service.py"
+    if not service.is_file():
+        raise CliError(f"validation service not found: {service}")
+    forwarded: list[str] = []
+    command = args.validator_command
+    if command == "doctor":
+        forwarded.append("--doctor")
+    elif command == "rotate-token":
+        forwarded.append("--rotate-token")
+    for flag, dest in (("--host", "host"), ("--port", "port"), ("--token-file", "token_file"),
+                       ("--max-body-bytes", "max_body_bytes"), ("--max-concurrent", "max_concurrent")):
+        value = getattr(args, dest, None)
+        if value is not None:
+            forwarded += [flag, str(value)]
+    for flag, dest in (("--mcp", "mcp"), ("--capture", "capture"), ("--quiet", "quiet"),
+                       ("--i-know-this-is-public", "public_ok")):
+        if getattr(args, dest, False):
+            forwarded.append(flag)
+    try:
+        return subprocess.call([sys.executable, str(service), *forwarded], cwd=repo_root())
+    except KeyboardInterrupt:
+        return 0
+
+
 def run_mcp_install(args: argparse.Namespace) -> int:
     """I6: writes/merges an MCP client config pointing at NPDevMcp/server.py. The largest
     built-but-unreachable capability in the project before this -- 16 MCP tools and no config
@@ -16115,7 +16146,7 @@ HELP_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
                      "widgets")),
     ("Change a model safely", ("inspect", "impact", "migration", "migrate", "normalize", "add", "author",
                                "pack", "import", "truth")),
-    ("AI", ("ai", "providers", "mcp", "review", "loop", "eval", "tester")),
+    ("AI", ("ai", "providers", "mcp", "validator", "review", "loop", "eval", "tester")),
     ("Operate", ("service", "host", "package", "upgrade", "monitor", "bench", "report", "verify",
                  "admin")),
 )
@@ -16959,6 +16990,35 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_install.add_argument(
         "--print", dest="print_only", action="store_true",
         help="Print the config block instead of writing any file (default when --client is omitted).",
+    )
+
+    validator = subparsers.add_parser(
+        "validator", help="Let an online AI check your model.json: a local service with a page and an "
+                          "optional MCP connector."
+    )
+    validator_sub = validator.add_subparsers(dest="validator_command")
+    validator_serve = validator_sub.add_parser(
+        "serve", help="Start the validation service in the foreground (Ctrl+C stops it). It listens on "
+                      "127.0.0.1 only; open http://127.0.0.1:8780 in a browser."
+    )
+    validator_serve.add_argument("--host", default=None)
+    validator_serve.add_argument("--port", type=int, default=None, help="Default 8780.")
+    validator_serve.add_argument("--mcp", action="store_true",
+                                 help="Also serve MCP at /mcp/<token> (for a public tunnel to a chat AI).")
+    validator_serve.add_argument("--token-file", default=None)
+    validator_serve.add_argument("--max-body-bytes", type=int, default=None)
+    validator_serve.add_argument("--max-concurrent", type=int, default=None)
+    validator_serve.add_argument("--capture", action="store_true",
+                                 help="Keep the validation journal on (default: off).")
+    validator_serve.add_argument("--quiet", action="store_true", help="No access lines on the console.")
+    validator_serve.add_argument("--i-know-this-is-public", dest="public_ok", action="store_true")
+    validator_doctor = validator_sub.add_parser(
+        "doctor", help="Say whether the service can start: fast validator jar, Java, free port (JSON)."
+    )
+    validator_doctor.add_argument("--host", default=None)
+    validator_doctor.add_argument("--port", type=int, default=None)
+    validator_sub.add_parser(
+        "rotate-token", help="Make a new secret for the MCP connector link (the old link stops working)."
     )
 
     validate = subparsers.add_parser(
@@ -19049,6 +19109,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_admin_create(args)
         if args.command == "mcp" and args.mcp_command == "install":
             return run_mcp_install(args)
+        if args.command == "validator" and args.validator_command in ("serve", "doctor", "rotate-token"):
+            return run_validator_command(args)
         if args.command == "generate" and args.generate_command == "app":
             run_generate(args)
             return 0
