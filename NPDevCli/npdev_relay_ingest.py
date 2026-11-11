@@ -355,7 +355,9 @@ def check_path(raw: str, policy: dict, phase: str) -> tuple[str, str, str | None
         return p, "quarantine", "code"
     if any(fnmatch.fnmatchcase(p, g) for g in rules["allowed"]):
         return p, "allowed", None
-    later = [name for name, r in phases.items() if name != phase
+    # The pack phase is isolated both ways: pack.json in an app conversation, or model.json in a pack
+    # conversation, is simply not allowed -- neither is "a later phase" of the other.
+    later = [name for name, r in phases.items() if name != phase and "pack" not in (name, phase)
              and any(fnmatch.fnmatchcase(p, g) for g in r["allowed"] + r["quarantine"])]
     return p, "denied", ("later-phase" if later else "not-in-allowlist")
 

@@ -12,7 +12,8 @@
   "intent": {
     "create": "Task: create a NEW application.\n\nWhat I want:\n$ask",
     "change": "Task: CHANGE an existing application. Below is its current model.json. Return the COMPLETE updated model.json with my change applied, and leave every concept, field, flow and page I did not mention exactly as it is. If the change RENAMES a field or concept, keep the data by declaring \"renamedFrom\": \"<old name>\" on the renamed object (never delete-and-add). Never remove anything I did not ask to remove.\n\nCurrent model.json:\n```json\n$model\n```\n\nWhat I want changed:\n$ask",
-    "fix": "Task: the application below FAILED. Fix the cause in the model and return the COMPLETE corrected model.json.\n\nCurrent model.json:\n```json\n$model\n```\n\nWhat failed (from NPDev, secrets and personal paths removed):\n$errors"
+    "fix": "Task: the application below FAILED. Fix the cause in the model and return the COMPLETE corrected model.json.\n\nCurrent model.json:\n```json\n$model\n```\n\nWhat failed (from NPDev, secrets and personal paths removed):\n$errors",
+    "pack": "Task: write a reusable NPDev PACK (a part other apps import), not an application. Return pack.json (and npdev-submission.json).\n\n$ask\n\nCurrent pack.json, when this is a new version of an existing pack (empty for a new pack):\n```json\n$model\n```"
   },
   "attachmentMessage": "Please follow the instructions in the attached file, and answer in exactly the format it describes.",
   "knowledgeHeading": "=== NPDev authoring knowledge (contract, allowed values, verified examples) ===\n$knowledge\n=== end of NPDev authoring knowledge ===",

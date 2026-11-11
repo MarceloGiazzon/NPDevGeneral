@@ -5,7 +5,7 @@ The engine lives in the CLI so the Manager, the bench and a terminal user all se
 classify an answer the SAME way. This module is only the command-line surface; the pipeline is
 npdev_relay_engine.py.
 
-  npdev ai relay start   --intent create|change|fix --ask-file F [--app-dir D] [--new-app-name N] [--target T]
+  npdev ai relay start   --intent create|change|fix|pack --ask-file F [--pack-id ID [--from-pack pack.json]] [--app-dir D] [--new-app-name N] [--target T]
                          [--language L] [--interview] [--phase mvp|f4]
                          [--answer-size auto|small|medium|large|CHARS]      open a conversation, print round 1
   npdev ai relay prompt  --code C [--round N] [--as attachment]             print a stored prompt again
@@ -60,6 +60,8 @@ def add_arguments(ai_sub) -> None:
     start.add_argument("--ask-file", required=True, help="What the user wants ('-' = stdin). A file, not argv.")
     start.add_argument("--app-dir", help="The app (change and fix): its model folder or generated folder.")
     start.add_argument("--new-app-name", help="Create: the folder name for the new app.")
+    start.add_argument("--pack-id", help="Pack: the id of the reusable part being written (lowercase letters, digits, - and _).")
+    start.add_argument("--from-pack", help="Pack: an existing pack.json, when this conversation writes a NEW VERSION of it.")
     start.add_argument("--target", default="generic", choices=TARGETS, help="Which chat AI the user is going to.")
     start.add_argument("--language", default=DEFAULT_LANGUAGE, help='Language the AI answers the user in.')
     start.add_argument("--interview", action="store_true", help="Let the AI ask a few questions first.")
@@ -213,7 +215,8 @@ def _run_start(args) -> int:
     payload = engine.start(
         intent=args.intent, ask=read_input(args.ask_file) or "", app_dir=args.app_dir, new_app_name=args.new_app_name,
         target=args.target, language=args.language or DEFAULT_LANGUAGE, interview=bool(args.interview),
-        phase=args.phase, errors=read_input(args.errors_file) or "", answer_size=args.answer_size)
+        phase=args.phase, errors=read_input(args.errors_file) or "", answer_size=args.answer_size,
+        pack_id=args.pack_id, from_pack=args.from_pack)
     if args.json:
         return _print_json(payload)
     emit_text(payload["prompt"])

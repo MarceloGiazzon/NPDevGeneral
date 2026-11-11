@@ -159,8 +159,11 @@ def _profile(target_id: str):
 
 def start(*, intent: str, ask: str, app_dir=None, new_app_name=None, target: str = "generic",
           language: str = "English", interview: bool = False, phase: str = "mvp", errors: str = "",
-          answer_size=None) -> dict:
+          answer_size=None, pack_id=None, from_pack=None) -> dict:
     """Open a session and compose round 1. change/fix need the app (its model is what the AI is shown).
+
+    intent "pack" (P4): the AI writes a reusable pack, not an app. `pack_id` names it; `from_pack` (a pack.json
+    path) starts a NEW VERSION of an existing pack and is what the AI is shown as the current pack.
 
     answer_size: None/"auto" (the default: the prompt is exactly the measured one), "small"/"medium"/"large" or a
     number of characters -- a new app is then asked to start with its core so the answer fits. The returned
@@ -176,9 +179,15 @@ def start(*, intent: str, ask: str, app_dir=None, new_app_name=None, target: str
         raise RelayStageError("say what the app should do")
     if intent == "change" and not ask:
         raise RelayStageError("say what should change")
+    if intent == "pack" and not ask:
+        raise RelayStageError("say what the reusable part should hold")
     model_text = ""
+    pack_base_text = None
     if intent in ("change", "fix"):
         model_text = _read_text(find_model_file(app_dir))
+    if intent == "pack" and from_pack:
+        pack_base_text = _read_text(Path(from_pack))
+        model_text = pack_base_text  # shown to the AI the way a change shows the current model
     # The text of a failed build or boot goes into a prompt that leaves the computer: scrubbed HERE, whoever the caller is.
     errors, redactions = scrub.scrub_errors(errors, app_dir) if errors else (errors, {})
     bundle, manifest = build_knowledge()
@@ -187,9 +196,12 @@ def start(*, intent: str, ask: str, app_dir=None, new_app_name=None, target: str
     try:
         session = rs.create(intent, ask, target, language, app_dir, phase, interview=interview,
                             new_app_name=new_app_name, base_model_text=model_text if model_text else None,
-                            knowledge_sha256=manifest["contentSha256"], answer_size=size)
+                            knowledge_sha256=manifest["contentSha256"], answer_size=size,
+                            pack_id=pack_id, pack_base_text=pack_base_text)
     except rs.RelaySessionError as exc:
         raise RelayStageError(str(exc)) from None
+    if intent == "pack":
+        ask = f"Pack id: {pack_id}\n{ask}"
     text = rp.compose_round1(rp.load_prompts(), code=session["code"], intent=intent, ask=ask, language=language,
                              knowledge=bundle, model=model_text, errors=errors, interview=interview,
                              budget=budget if size is not None else None)

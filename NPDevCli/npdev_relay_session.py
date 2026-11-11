@@ -33,9 +33,10 @@ import npdev_relay_ingest as relay_ingest
 
 SCHEMA_VERSION = "npdev-ai-relay-session.v1"
 ROOT_DIR_NAME = "ai-relay"
-INTENTS = ("create", "change", "fix")
+INTENTS = ("create", "change", "fix", "pack")
 TARGETS = ("chatgpt", "gemini", "claude", "grok", "kimi", "deepseek", "google-ai-mode", "generic")
-PHASES = ("mvp", "f4")
+PHASES = ("mvp", "f4", "pack")
+PACK_ID_PATTERN = r"^[a-z][a-z0-9_-]*$"  # the same pattern pack.schema.json puts on `pack`
 PROMPT_KINDS = ("round1", "same-chat", "fresh-chat")
 DELIVERIES = ("paste", "attachment")
 ANSWER_SOURCES = ("clipboard-watch", "paste", "drop", "file-picker", "downloads-watch")
@@ -193,14 +194,22 @@ def _claim_new_code() -> str:
 
 def create(intent: str, ask: str, target: str, language: str, app_dir, phase: str, *,
            interview: bool = False, new_app_name=None, base_model_text=None, knowledge_sha256=None,
-           answer_size=None) -> dict:
+           answer_size=None, pack_id=None, pack_base_text=None) -> dict:
     """Start a session: claim a free code, write session.json (state waiting-answer, no rounds yet).
 
     `base_model_text` (change/fix: the text of model.json right now) is saved as base-model.json and its
     sha256 recorded as baseModelSha256, so apply can tell whether the model moved on in the meantime.
+    `pack_id` (intent pack) names the reusable part being written; `pack_base_text` (a NEW VERSION of an existing
+    pack) is that pack's current pack.json, saved as base-pack.json with its sha256 in packBase.
     """
     if intent not in INTENTS:
         raise RelaySessionError(f"Unknown intent {intent!r}.")
+    if intent == "pack":
+        phase = "pack"
+        if not pack_id or not re.fullmatch(PACK_ID_PATTERN, pack_id):
+            raise RelaySessionError("A pack conversation needs a pack id: lowercase letters, digits, '-' or '_', starting with a letter.")
+    elif pack_id or pack_base_text is not None:
+        raise RelaySessionError("A pack id belongs to a pack conversation only.")
     if target not in TARGETS:
         raise RelaySessionError(f"Unknown target {target!r}.")
     if phase not in PHASES:
@@ -233,6 +242,13 @@ def create(intent: str, ask: str, target: str, language: str, app_dir, phase: st
         data = base_model_text.encode("utf-8", errors="replace")
         _atomic_write(session_dir(code) / "base-model.json", data)
         session["baseModelSha256"] = _sha256(data)
+    if pack_id:
+        session["packId"] = pack_id
+        session["packBase"] = None
+        if pack_base_text is not None:
+            data = pack_base_text.encode("utf-8", errors="replace")
+            _atomic_write(session_dir(code) / "base-pack.json", data)
+            session["packBase"] = _sha256(data)
     _write_json(session_dir(code) / "session.json", session)
     append_event(code, "session-created", None, intent=intent, target=target, phase=phase)
     return session

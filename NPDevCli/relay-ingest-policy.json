@@ -37,6 +37,11 @@
           "web/*.html", "web/*.css", "web/*.svg"
         ],
         "quarantine": ["capabilities/*", "conversion-hooks/*", "web/*.js", "web/*.mjs"]
+      },
+      "pack": {
+        "_comment": "Used ONLY by a conversation whose intent is 'pack' (a browser AI writes a reusable pack, not an app). Code stays out: a pack.json carries customCapabilities CONTRACTS only, never code. The relay stores pack.json as <packs workspace>/<packId>/pack.json -- the AI never chooses the folder. example-model.json is an OPTIONAL tiny consumer model that imports the pack by local $ref, used to prove the pack composes.",
+        "allowed": ["pack.json", "npdev-submission.json", "example-model.json"],
+        "quarantine": []
       }
     }
   },
