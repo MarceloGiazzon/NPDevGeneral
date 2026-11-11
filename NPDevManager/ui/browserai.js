@@ -49,6 +49,7 @@
     targets: null, // the chat AIs the CLI lists (relay_targets), read once
     target: null, // the one picked for this conversation
     blocked: false, // the answer would delete stored data, which this window cannot do (the CLI says so: needsSchemaAcknowledgment)
+    intentByHand: false, // the person chose the kind (a new app, or a change to an app) with the two buttons themselves: a re-read of the app list must not undo it
   };
 
   // What the CLI says about an answer that is not ready, as one plain sentence and at most one button.
@@ -197,14 +198,16 @@
   }
 
   // Picking an app means "change this app"; picking "a new app" means create. The person can still flip
-  // the choice with the two buttons above the request.
+  // the choice with the two buttons above the request. `userPicked` is false for the workspace putting its app back
+  // in the picker and for this window re-reading its list: neither is a decision (REG-325).
   function onAppChanged(userPicked) {
     const has = !!$("browserai-app").value;
     $("browserai-intent-change").disabled = !has;
     // Once a conversation is open its kind is fixed (a re-read of the app list must not turn a change into a create).
     if (S.code && !userPicked) return;
+    if (userPicked) S.intentByHand = false; // a pick decides again
     if (userPicked || (!has && S.intent === "change")) setIntent(has ? "change" : "create");
-    else if (has && S.phase === "compose" && !$("browserai-ask").value.trim()) setIntent("change");
+    else if (has && S.phase === "compose" && !$("browserai-ask").value.trim() && !S.intentByHand) setIntent("change");
   }
 
   // Both screens carry the typed request and the chosen app across, so switching loses nothing.
@@ -1148,6 +1151,7 @@
   // again) starts clean. The request typed in step 1 stays: the person may want to edit it.
   function forgetConversation() {
     S.code = null;
+    S.intentByHand = false;
     drawRounds([]);
     S.promptText = "";
     S.result = null;
@@ -1276,9 +1280,10 @@
     $("prompter-mode-browser").addEventListener("click", () => {
       switchTo("browserai", "prompter-ask", "prompter-app", "browserai-ask", "browserai-app");
     });
-    $("browserai-app").addEventListener("change", () => onAppChanged(true));
-    $("browserai-intent-create").addEventListener("change", () => setIntent("create"));
-    $("browserai-intent-change").addEventListener("change", () => setIntent("change"));
+    // The workspace flags the `change` it fires to put its app in this picker (workspace.js): that is not a pick.
+    $("browserai-app").addEventListener("change", (e) => onAppChanged(!(e && e.npdevFromWorkspace)));
+    $("browserai-intent-create").addEventListener("change", () => { S.intentByHand = true; setIntent("create"); });
+    $("browserai-intent-change").addEventListener("change", () => { S.intentByHand = true; setIntent("change"); });
     $("browserai-continue").addEventListener("click", onContinue);
     $("browserai-copy").addEventListener("click", onCopy);
     $("browserai-check").addEventListener("click", onCheck);

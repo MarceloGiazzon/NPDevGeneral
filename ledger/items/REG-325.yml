@@ -5,8 +5,9 @@ title: >-
   "Give the new app a name first."
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-10
+closed: 2026-11-10
 source: >-
   Found on the REAL Manager window while proving REG-322 (0.13.35, NPDev_General__OutsideRepo/reg322-tour/probe.mjs and
   tour.mjs, first run). The window remembered a selected app (testH2S_2-app, kept in webview storage). Choosing "a new app"
@@ -38,3 +39,26 @@ resolution: >-
   pressing through to Apply makes the new app without the screen ever leaving "create" (including across an app-list refresh
   while the conversation is open), proven by a tour that does NOT call NPDevWorkspace.clear(); and the render check has a case
   where the workspace re-applies its app after the conversation opened.
+  Fixed 2026-11-10 (Manager 0.13.36): workspace.js flags the `change` it fires to put its app in a picker
+  (`event.npdevFromWorkspace`); browserai.js's picker listener passes `userPicked = false` for a flagged event; and a choice
+  made with the two intent buttons is remembered (`S.intentByHand`) so a re-read of the list with nothing typed no longer
+  flips it back to "change". `event.isTrusted` was NOT used: Playwright's selectOption / dispatchEvent are untrusted, so the
+  render check and every tour that simulates a pick would have stopped counting as picks.
+  Proof: render check 365/365 (the new case runs with an app SELECTED and a list rebuilt before typing, while typing, after
+  Continue and before Apply; with the listener change undone it aborts on the hidden new-name field, i.e. it bites); real
+  window (reg325-tour/tour.mjs, 14/14): app selected, "a new app" clicked, six real app-list re-reads that each put the app back,
+  8 s after typing, a stored conversation of intent create with no appDir, a re-read with the conversation open, Apply sent
+  with parentDir, a new app made and its (deliberately failing) build started, workspace app still selected, nothing left behind.
+  The INSTALLED 0.13.36 exe (not byte-identical to Build\manager-target\release\npdev-manager.exe) was probed over CDP and serves
+  the same flag in both scripts (reg325-tour/probe-installed.mjs).
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: scripts/quality/check-manager-ui-render.mjs#rebuildPicker
+  asserts: >-
+    with an app selected in the workspace and its app in the Ask-AI list, choosing "a new app" by hand stays a new app when the
+    workspace puts its app back in the picker (a flagged synthetic change) before a word is typed, while the request and name
+    are typed, after Continue opened the conversation, and before Apply; the conversation starts as intent create with no appDir
+    and Apply reaches the CLI with the folder a new app is made in (parentDir) and without "Give the new app a name first".
+    Proven RED 2026-11-10 by undoing the listener change: the run aborts on the hidden new-name field.
+  provenRed: true

@@ -1495,6 +1495,69 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   check("browser AI: Ask AI (Home, Edit) lands here, not on the API-key screen",
     await page.evaluate(async () => { await window.NPDevWorkspace.open({ name: "auxscreen", directory: "D:\\WorkSpace\\NPDev\\Build\\generated-finalapps\\auxscreen" }, "ask-ai"); return window.__npdevCurrentScreen === "browserai"; }), "");
 
+  // REG-325: an app selected in the workspace puts itself back in this screen's picker (a synthetic `change`) whenever the
+  // list is rebuilt. That is not the person choosing: a NEW app stays a new app -- before a word is typed, while it is
+  // typed, and after the conversation is open -- and Apply still makes it (it needs the folder only a create looks up).
+  // The walks above clear the workspace first; this one runs with an app SELECTED, as the real window does.
+  const rebuildPicker = () => page.evaluate(() => {
+    const p = document.getElementById("browserai-app");
+    p.replaceChildren(...[...p.options].map((o) => new Option(o.textContent, o.value)));
+  });
+  const WS_APP = "/home/you/NPDev/Apps/Crane-app";
+  await page.evaluate(async (dir) => {
+    window.__relayStarts = []; window.__relayApplies = []; window.__relayAborts = [];
+    document.getElementById("browserai-ask").value = "";
+    // the app must be in this screen's list, or the workspace has nothing to put back (that is the whole bug)
+    const was = window.__keepMonitorApps;
+    window.__npdevMonitorApps = () => was().concat([{ name: "Crane", appDir: dir, isAppRoot: true, health: "stopped" }]);
+    await window.__npdevRefreshBrowserAi();
+    return window.NPDevWorkspace.select({ name: "Crane", appDir: dir });
+  }, WS_APP);
+  await page.evaluate(() => window.__npdevShowScreen("browserai"));
+  await page.waitForTimeout(300);
+  check("browser AI: with an app selected in the workspace the screen opens on 'change that app'",
+    (await page.$eval("#browserai-app", (e) => e.value)) === WS_APP && (await page.$eval("#browserai-intent-change", (e) => e.checked)), "");
+  await page.evaluate(() => document.getElementById("browserai-intent-create").click());
+  await rebuildPicker();
+  await page.waitForTimeout(200);
+  check("browser AI: the workspace putting its app back in the picker does not undo 'a new app' chosen by hand, even before a word is typed",
+    (await page.$eval("#browserai-app", (e) => e.value)) === WS_APP && (await page.$eval("#browserai-intent-create", (e) => e.checked)) && (await shown("#browserai-newname")), "");
+  await page.fill("#browserai-ask", "a crane rental list");
+  await page.fill("#browserai-newname", "Crane lift");
+  await rebuildPicker();
+  await page.waitForTimeout(200);
+  check("browser AI: nor while the request is typed: still a new app, the request and the name still there",
+    (await page.$eval("#browserai-intent-create", (e) => e.checked)) && (await shown("#browserai-newname")) &&
+    (await page.$eval("#browserai-ask", (e) => e.value)) === "a crane rental list" && (await page.$eval("#browserai-newname", (e) => e.value)) === "Crane lift", "");
+  await page.click("#browserai-continue");
+  await page.waitForTimeout(250);
+  const wsStarts = await page.evaluate(() => window.__relayStarts);
+  check("browser AI: the conversation opens as a NEW app with no app named -- never a change to the workspace's app",
+    wsStarts.length === 1 && wsStarts[0].intent === "create" && wsStarts[0].newAppName === "Crane-lift" && !wsStarts[0].appDir, JSON.stringify(wsStarts));
+  await rebuildPicker();
+  await page.waitForTimeout(200);
+  check("browser AI: and a re-read of the app list with the conversation open leaves it a new app",
+    (await page.$eval("#browserai-intent-create", (e) => e.checked)) && (await shown("#browserai-copy")), "");
+  await page.evaluate(() => {
+    window.__applyAnswer = Object.assign({}, window.__FIXTURES__.relay.apply, { created: true, backupPath: null, intent: "create", appDir: "/home/you/NPDev/Apps/Crane-lift" });
+    window.__probeQueue = ["stopped", "running"]; window.__buildExit = 0; window.__launchLog = [];
+  });
+  await page.click("#browserai-copy");
+  await page.fill("#browserai-paste", "STUB-READY");
+  await page.click("#browserai-check");
+  await page.waitForTimeout(250);
+  await rebuildPicker();
+  await page.waitForTimeout(200);
+  await page.click("#browserai-apply");
+  await settled();
+  const wsApply = await page.evaluate(() => window.__relayApplies);
+  check("browser AI: Apply makes the new app in the folder NPDev keeps apps in (not 'give the new app a name first', not no-target)",
+    wsApply.length === 1 && wsApply[0].parentDir === "D:\\WorkSpace\\NPDev\\Build" &&
+    !/Give the new app a name first/.test((await text("#browserai-apply-note")) || ""), JSON.stringify(wsApply));
+  await page.evaluate(() => { window.__relayAborts = []; window.__applyAnswer = null; window.__npdevMonitorApps = window.__keepMonitorApps; });
+  await page.click("#browserai-again");
+  await page.waitForTimeout(250);
+
   // the same walk in Portuguese: every sentence the screen draws is in the catalogue and reads in Portuguese
   await page.evaluate(() => { window.NPDevWorkspace.clear(); return NPDevI18n.setLang("pt"); });
   await page.waitForTimeout(400);

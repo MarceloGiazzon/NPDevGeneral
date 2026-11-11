@@ -161,6 +161,12 @@ release. Ships in the next tag.
   The verdict is now one JSON line (`exitCode`, `ok`, `logFile`; without `output`, which was already
   streamed and which the Monitor's run box would print twice). A real failing build now ends in about
   45 seconds on "The app could not be built." with its exit code and log path.
+- **Fixed: with an app selected, asking for a NEW app on "Use a browser AI" turned into "change that app"**
+  (Manager 0.13.36, REG-325) -- the workspace puts its selected app back in a screen's app list whenever the
+  list is rebuilt, by firing the same `change` a click fires, and this screen read that as the person picking
+  an app. Within seconds the choice flipped to "change", the new-name field vanished, and Apply then said "Give
+  the new app a name first" for a name that had been given. The workspace now flags its own `change`, the
+  screen ignores the flag, and a choice the person made with the two buttons stays until they pick an app.
 - **`npdev ai relay stats`: what the conversations on this computer say about each chat AI** -- read-only,
   from the stored conversations, nothing sent anywhere. `--csv` prints one row per round in the calibration
   log's column order (`date,target,plan,prompt_id,intent,round,prompt_bytes,paste_ok,answer_chars,copy_method,outcome,findings,final,rounds_to_pass,minutes,notes`;

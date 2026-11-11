@@ -87,7 +87,11 @@
     const option = [...picker.options].find((o) => matches(selected, o.value));
     if (option && picker.value !== option.value) {
       picker.value = option.value;
-      picker.dispatchEvent(new Event("change", { bubbles: true }));
+      // The screen's own code refreshes on this `change`, as it does when a person picks. It is NOT a pick: the flag lets a
+      // screen that treats a pick as a decision (Ask AI: "this app" means "change it") tell the two apart (REG-325).
+      const ev = new Event("change", { bubbles: true });
+      ev.npdevFromWorkspace = true;
+      picker.dispatchEvent(ev);
     }
   }
 
