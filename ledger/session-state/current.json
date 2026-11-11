@@ -1,24 +1,21 @@
 {
-  "closedAt": "2026-11-11T20:28:19.5123879Z",
+  "closedAt": "2026-11-11T23:18:44.1656888Z",
   "branch": "main",
-  "head": "ee0149f0",
-  "headSubject": "fix(gates): Z2 findings -- suggestedFix on the K2/K3 procedure messages, geo-inproc in the adapter-jar proof lists, corpusRole for the two AppGen ride-hailing S1 models; gate ratchet + Manager guide refresh",
-  "summary": "Ride-hailing S2 plan finished in code: P4.4 plain-words pack preview (pt), P4.5 apply/undo into the pack workspace, P4.6 Manager 0.13.38 (make a part with a browser AI; real-window tour 16/16), P5 pack push + Manager 0.13.39 publish with typed-name confirmation (tests vs local bare repo; tour 12/12 vs scratch repo; nothing pushed to the real NPR), P6 Writing a pack section + bench pack case (gemini passed round 1, 9,294 tokens). Z2: full T2 run was red on 3 pre-existing items (dsl suggestedFix x4, geo-inproc in adapter proof lists, corpusRole for 2 AppGen S1 models) -- fixed, generator gate re-run green, dsl tests, validate-corpus and relay_apply re-verified alone; the full 4-gate run was NOT repeated (aiKnowledge takes ~51 min). One Gradle authorDiffGate hung 35 min at 16:30 (lock, CPU idle) and was killed by hand.",
-  "nextStep": "Owner actions: (1) publish one part to the real NPR through Manager 0.13.39 yourself (REG-334 done_when), (2) run one real round with a real chat AI to make a part (REG-332/334). Then decide REG-330 and REG-320/321. If wanting a clean full green: run run-all-gates.ps1 once more (about 1h).",
+  "head": "6de8441e",
+  "headSubject": "feat(validator): B6 tunnel script, D docs + card + REG-335; drain chunked bodies before the 413",
+  "summary": "Built the validation service from the owner's plan: validation_service.py (REST + page + stateless MCP allowlist), static/validate.html, response schema, npdev validator serve/doctor/rotate-token, Start-ValidatorTunnel.ps1, docs/card/REG-335. 56 tests green (one real-jar end to end), page verified in real Chrome, tunnel script verified with a fake cloudflared. Spikes S1/S2 researched (Claude.ai Free and Le Chat Free accept a no-auth remote MCP connector; ChatGPT needs paid).",
+  "nextStep": "Owner: run Start-ValidatorTunnel.ps1 with a real cloudflared and add the printed URL as a custom connector in Claude.ai Free or Le Chat, ask a chat AI to write and validate a model (B8); record in OutsideRepo/VALIDATION_SERVICE_PLAN_2026-11-11/ACCEPTANCE-RESULTS.md. Then decide MCP default diagnostics (20 vs 50) and whether to do the Manager card (phase C).",
   "plan": "",
-  "blocked": "Owner: REG-330 decision; first real publish to NPR; a real chat-AI round. Open question: why authorDiffGate Gradle hung once (no repro).",
-  "verified": "NPDevCli relay suites 273 OK; test_pack_push 12 OK; bench 116 OK; Manager render check 377/377; cargo tests for relay/publish OK; generator gate green; Manager tours p4 16/16 p5 12/12",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "blocked": "Owner: B8/A5 real AI acceptance, S3 cloudflared, S4/S5. Pre-existing red: check-doc-references.py (authoring-for-ai.json cites capabilities/surge/capability.plugin.json, which does not exist).",
+  "verified": "python -m unittest NPDevMcp.tests.test_validation_service (52) + NPDevCli.tests.test_validator_command (4) green x3; full NPDevMcp discover 127 tests; run-portable-tooling-check, run-script-inventory-check, check-executable-line-endings, build_knowledge --validate-only green. NOT run: the 4-gate run-all-gates.ps1 (owner asked for speed), the aiKnowledge gate.",
+  "dirtyCount": 2,
+  "dirtyFiles": [
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl"
+  ],
   "unpushed": 0,
   "landedCommits": [
-    "ee0149f0 fix(gates): Z2 findings -- suggestedFix on the K2/K3 procedure messages, geo-inproc in the adapter-jar proof lists, corpusRole for the two AppGen ride-hailing S1 models; gate ratchet + Manager guide refresh",
-    "fd372d53 feat(relay): 'Writing a pack' briefing section + a pack case in the bench relay arm (P6); ledger REG-334",
-    "1d68358e feat(manager): publish a part to the public catalog, always with the owner's own confirmation (P5, Manager 0.13.39)",
-    "1b667019 feat(packs): npdev pack push -- a part into a clone of the public catalog, public only with --confirm-public <id>@<version> (P5, CLI)",
-    "d6b5752e feat(manager): make a reusable part with a browser AI -- third choice on Use a browser AI, Your own parts on the parts screen (P4.6, Manager 0.13.38)",
-    "2c4c799e feat(relay): apply and undo for a pack answer, into the pack workspace (P4.5)",
-    "d90fd9fc feat(relay): a pack answer comes back with a plain-words preview, in the person's language (P4.4)",
-    "3175ff56 ledger: session handoff 2026-11-11 (twelfth part) -- P4.1-P4.3 relay pack intent, prompt, ingest checks"
+    "6de8441e feat(validator): B6 tunnel script, D docs + card + REG-335; drain chunked bodies before the 413",
+    "69ca4064 feat(validator): N1-N6 core, A1/A3 page + access log, B1-B7 MCP transport, npdev validator CLI"
   ]
 }
