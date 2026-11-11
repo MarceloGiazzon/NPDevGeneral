@@ -8,6 +8,12 @@ Landed on `main` AFTER the `beta1.20` tag (`6ca4edfb`) and therefore **not** in 
 release. Ships in the next tag.
 
 ### Added
+- **The AI authoring briefing now teaches packs, fragments, saving flows, procedures that hand queried rows to your own code, custom
+  capabilities and HTTP connectors** (REG-327 for the persistence gap it exposed) -- `docs/content/authoring-for-ai.yml` gained "Reuse and
+  extend": the 13 published packs with their `packs[].from` coordinate, `fragments[]`, a saving flow needing `persistence` declared and bound,
+  `runQuery -> mapList -> capabilityCall` inside a procedure, `customCapabilities` + `plugin:java-source`, and `http-connector`. A chat reply that
+  carries only `model.json` is told NOT to use fragments or Java (the relay cannot take them before phase f4 / T4.4). The compact bundle grew
+  from 16.6k to 21.8k characters; `relay-prompts.json` is untouched (bench arm not re-run).
 - **A browser-AI answer can carry fragments, written all or nothing and undone file by file** (REG-323, T4.1) -- with `--phase f4`
   an answer may hold `fragments/*.json` and `contexts/*.json` beside `model.json`, for a new app or a change. The check stages the
   app's current files plus the answer's into a folder, so the Java gate and the plain-words preview see the ONE model the files make

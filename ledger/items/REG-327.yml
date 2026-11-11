@@ -1,0 +1,29 @@
+id: REG-327
+title: >-
+  A model whose flow saves (createConcept/updateConcept) passes `validate model` with 0 errors but the app refuses to start
+  until `persistence` is declared as a capability AND bound to `repository` -- and the AI authoring contract said never to write it
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-11
+source: >-
+  Ride-hailing sample S1 (2026-11-11, AppGen/apps/ride-hailing-s1): a model written exactly as the authoring contract taught
+  (no persistence capability, no persistence binding) validated clean, generated and compiled, then the app died at boot with
+  "Model flow 'RequestRide' persists via capability 'persistence' but no persistence capability binding is registered".
+surface: dsl/semantic-validator, runtime-host/startup-validator, docs/authoring-for-ai
+files:
+  - docs/content/authoring-for-ai.yml
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation
+  - NPDevRuntimeHost (StartupValidator, com.npdev.adapters.runtime.validation)
+detail: |
+  Pure CRUD needs no persistence declaration (derived). A flow with createConcept/updateConcept does: StartupValidator.configError
+  throws at boot. `npdev validate model` does not know, so every AI that follows the contract and writes a saving flow hands the
+  person an app that builds and then does not start -- the worst place to find out.
+  Done so far (2026-11-11): the contract (docs/content/authoring-for-ai.yml) now says a saving flow needs
+  `capabilities[persistence]` + `bindings[persistence -> repository]`, so the briefing no longer teaches the opposite.
+  Still open (owner decision): (a) the platform derives the capability and binding whenever any flow has a saving step (preferred:
+  "accepted implies enforced", nothing for an AI to forget), or (b) `validate model` reports it as an error with a suggestedFix.
+  Either way add a behaviour probe or a validator test that a saving flow without the declaration is not silently accepted.
+done_when: >-
+  A model with a saving flow and no persistence declaration either starts (derived) or is refused by `npdev validate model` with
+  a named error and suggestedFix; the "Reuse and extend" paragraph of the authoring contract is then simplified to match.

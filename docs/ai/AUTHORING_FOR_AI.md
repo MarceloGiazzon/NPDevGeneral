@@ -24,8 +24,9 @@ A model of only `concepts` + `fields` is a complete app: every concept gets REST
 checks of `required`, `unique`, `min`/`max`/`maxLength`, enum, reference, `lifecycle` and
 `invariants`. **Do not write:**
 - create/update/delete flows or `invariantCheck` steps that only save a record;
-- a `persistence` capability, or `persistence`/`eventBus` bindings (derived; `repository` and
-  `inproc` are the only values anyway);
+- a `persistence` capability, or `persistence`/`eventBus` bindings, **while the model has no
+  flow** (derived; `repository` and `inproc` are the only values anyway). A flow that saves
+  needs them: see "Reuse and extend";
 - an invariant restating a field flag (`x != null && x != ''` → `required`; one-field unique →
   `unique: true`; `x >= 0` → `"min": 0`). Invariants are for cross-field rules;
 - `ui.label` equal to the humanized name (`dueDate` → "Due Date"). `missing_*_label` warnings
@@ -92,6 +93,57 @@ Exact shapes (verified); copy them, do not invent keys.
 - **Reaction to a status change:** the lifecycle transition names an `event`, `events[]` declares it with a
   `payload`, and an orchestration creates a record from it:
   `"orchestrations":[{"name":"LogReturn","trigger":{"type":"event","event":"LoanReturned"},"actions":[{"type":"create","concept":"ReturnLog","map":{"loan":"$event.id"}}]}]`.
+
+## Reuse and extend: packs, fragments, your own code, outside APIs
+
+**A flow that saves needs persistence declared.** `createConcept`/`updateConcept` steps fail at
+app start (validation still passes) unless the model has
+`"capabilities":[{"name":"persistence","type":"PersistenceCapability","operations":["save","unique","findById"]}]`
+and `"bindings":[{"capability":"persistence","adapter":"repository"}]`. Pure CRUD needs neither.
+
+**Packs: reuse a published concept set instead of inventing it.** Add to `packs[]` (no other keys
+than `from`, optional `as`); concepts of the pack are named `<as or id>::<Concept>`, e.g.
+`"reference":{"target":"identity::User"}`. The person then runs `npdev pack update --model <path>
+--allow-unsigned`; you only write the entry:
+`{"from":"git+https://github.com/MarceloGiazzon/NPR.git//packs/<id>@<id>-<version>"}`.
+Published (id version): identity 1.4.0 (users, roles) · user 1.0.0 (password bond to identity::User) ·
+contacts 1.0.0 (organizations, people, addresses) · sales 1.0.0 (customers, price list, orders, invoices) ·
+purchasing 1.0.0 (suppliers, items, purchase orders, bills) · inventory 1.0.0 (warehouses, products,
+stock movements) · approvals 1.0.0 (request/approve tasks) · leave 1.0.0 (leave requests) · helpdesk 1.0.0
+(tickets, comments) · notification 1.0.0 (outgoing-notification log, `mailer.send` contract) ·
+tracing 1.0.2 (trace viewer) · workspace 1.1.0 (menus, scoped properties) · project-tracker-demo 1.0.0 (demo).
+Role-based packs name roles your app must bind to its own: if unsure, ask instead of guessing.
+No pack exists for payments, geo or ride-hailing: model those yourself.
+
+**Fragments: split a big model.** `"fragments":[{"$ref":"fragments/billing.json"}]` (relative `.json` path,
+no `..`). A fragment file is a JSON object holding any of the model's arrays (`concepts`, `flows`,
+`capabilities`, `bindings`, `roles`, `queries`, `procedures`...). Deliver each as its own file.
+**In a chat reply that must be ONE `model.json`, do not use fragments**: keep everything in the model.
+
+**Query rows, then run your logic on them.** A flow has no query step: use a procedure and `callProcedure` it.
+Procedure steps: `{"type":"runQuery","query":"AvailableDrivers","concept":"Driver","target":"free"}`,
+`{"type":"mapList","items":"$free","as":"d","select":{"id":"$d.id","lat":"$d.lat"},"target":"rows"}`,
+`{"type":"capabilityCall","capability":"geo","operation":"findClosest","args":{"ride":"$input","drivers":"$rows"},"target":"best"}`,
+`{"type":"if","condition":"$best.found","then":[...],"else":[...]}`,
+`{"type":"patchConcept","concept":"Ride","id":"$input.id","set":{"status":"ASSIGNED"},"target":"ride"}`.
+The `query` is declared in `queries[]`; the flow step is
+`{"type":"callProcedure","procedure":"MatchDriver","input":"$created","output":"$matched"}`.
+
+**Your own code (a custom capability).** For logic no built-in has (distance, pricing, scoring):
+`"customCapabilities":[{"name":"geo","type":"GeoCapability","operations":["findClosest"]}]` plus
+`"bindings":[{"capability":"geo","adapter":"plugin:java-source"}]`, and two files:
+`capabilities/geo/src/main/java/<pkg>/GeoCapability.java` (a plain class with a public no-arg constructor;
+one public method per operation taking `Map`/`List` parameters named like the `args` keys and returning
+a `Map`; pure computation only: no files, network, threads, reflection) and
+`capabilities/geo/capability.plugin.json`:
+`{"packageFormatVersion":"1.0","packageId":"<app>-geo-pkg","pluginId":"<app>-geo-plugin","version":"1.0.0","capability":"geo","capabilityType":"GeoCapability","adapterId":"plugin:java-source","implementation":{"kind":"javaSource","sourceRoot":"capabilities/geo/src/main/java","mainClass":"<pkg>.GeoCapability","factory":{"kind":"defaultConstructor"}},"operationBindings":[{"operation":"findClosest","method":"findClosest","input":{"mode":"firstArgument","expectedType":"java.util.Map"},"output":{"mode":"returnValue","expectedType":"java.util.Map"}}],"trust":{"mode":"artifact-local-source","source":"external-artifact-bundle","level":"developer-supplied"},"generation":{"mount":"compileIntoGeneratedApp","emitManifestContribution":true,"emitPackageDescriptor":true,"emitBinding":true}}`.
+The app's owner reviews these files before they apply. **In a chat reply that carries only `model.json`
+and `npdev-submission.json` you cannot deliver them:** do not write Java; state the need in
+`couldNotExpress` and model the rest, so the person can add the code later.
+
+**An outside REST API, no code.** A capability of type `HttpConnector` bound to adapter `http-connector`:
+`{"name":"maps","type":"HttpConnector","http":{"baseUrl":"https://maps.example.com/v1","auth":{"type":"apiKeyHeader","name":"X-Key","secretEnvVar":"MAPS_API_KEY"},"timeoutMs":5000,"maxRetries":1},"operations":[{"name":"route","sideEffects":"reads","http":{"method":"GET","path":"/route","query":{"from":"$from"}}}]}`
+and `{"capability":"maps","adapter":"http-connector"}`. Secrets are environment-variable names, never values.
 
 ## Field types
 
