@@ -34,10 +34,17 @@ public final class NotifyCapabilityHandler implements CapabilityAdapter {
 
     private final NotificationStore store;
     private final LongSupplier clock;
+    private final PushGateway push;
 
     public NotifyCapabilityHandler(NotificationStore store, LongSupplier clock) {
+        this(store, clock, null);
+    }
+
+    /** N1: {@code push} (nullable) also forwards each stored notification to a push gateway, in the background. */
+    public NotifyCapabilityHandler(NotificationStore store, LongSupplier clock, PushGateway push) {
         this.store = store;
         this.clock = clock;
+        this.push = push;
     }
 
     @Override
@@ -94,6 +101,9 @@ public final class NotifyCapabilityHandler implements CapabilityAdapter {
         for (String recipient : recipients) {
             store.insert(new NotificationStore.Notification(UUID.randomUUID().toString(), tenant, recipient,
                     renderedTitle, renderedBody, link, source, now, null));
+            if (push != null && push.enabled()) {
+                push.send(recipient, renderedTitle, renderedBody, link, tenant); // never throws, never blocks
+            }
         }
         return CapabilityResult.success(Map.of("notified", recipients.size()));
     }

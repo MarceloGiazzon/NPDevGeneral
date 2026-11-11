@@ -6,6 +6,8 @@ import com.finalexec.notify.MentionNotificationNotifier;
 import com.finalexec.notify.JdbcNotificationStore;
 import com.finalexec.notify.NotificationStore;
 import com.finalexec.notify.NotifyCapabilityHandler;
+import com.finalexec.notify.PushGateway;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -38,8 +40,18 @@ public class NpdevNotificationConfig {
         return new MentionNotificationNotifier(store, System::currentTimeMillis);
     }
 
+    /** N1: off unless {@code npdev.notify.push.url} is set. The key is read from the env var NAMED by key-env. */
     @Bean
-    public NotifyCapabilityHandler notifyCapabilityHandler(NotificationStore store) {
-        return new NotifyCapabilityHandler(store, System::currentTimeMillis);
+    public PushGateway pushGateway(
+            @Value("${npdev.notify.push.url:}") String url,
+            @Value("${npdev.notify.push.key-env:}") String keyEnv,
+            @Value("${npdev.notify.push.format:generic}") String format,
+            @Value("${npdev.notify.push.ntfy-topic-prefix:}") String topicPrefix) {
+        return new PushGateway(url, keyEnv, format, topicPrefix, 1000L, null);
+    }
+
+    @Bean
+    public NotifyCapabilityHandler notifyCapabilityHandler(NotificationStore store, PushGateway pushGateway) {
+        return new NotifyCapabilityHandler(store, System::currentTimeMillis, pushGateway);
     }
 }

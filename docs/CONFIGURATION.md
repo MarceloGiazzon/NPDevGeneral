@@ -265,6 +265,18 @@ an unset bucket does fail at boot (`NpdevFileStoreConfig` throws at bean creatio
 | `NPDEV_FILESTORE_OBJECTSTORE_BUCKET` / `_ENDPOINT` / `_REGION` / `_ACCESSKEYID` / `_SECRETACCESSKEY` | Only the bucket is required when `NPDEV_FILESTORE_PROVIDER=objectstore`; region defaults to `us-east-1`, endpoint and credentials default to blank. See `docs/DEPLOYMENT.md`. |
 | `NPDEV_MAIL_SMTP_HOST` | SMTP host when the `mail-smtp` adapter is bound instead of `mail-inproc`. See `docs/reference/EMAIL_NOTIFICATIONS.md`. |
 
+## Push notifications (optional, off by default)
+
+`notify.send` always writes the in-app notification (the bell). When `npdev.notify.push.url` is set it ALSO forwards each notification to a push gateway,
+in the background (3 attempts, 1 s / 2 s backoff, 5xx or IO errors only; a 4xx is given up at once; one log line per give-up). It never fails or slows `notify.send`.
+
+| Property | Purpose |
+|---|---|
+| `npdev.notify.push.url` | Gateway URL. Empty (default) = push off. |
+| `npdev.notify.push.key-env` | The NAME of the environment variable holding a bearer key (never the key itself). |
+| `npdev.notify.push.format` | `generic` (POST `{to, title, body, link, data}` as JSON) or `ntfy` (POST the body as text to `<url>/<prefix><to>`, title in the `Title` header; ntfy.sh is a free push service with a phone app). |
+| `npdev.notify.push.ntfy-topic-prefix` | Prefix for the ntfy topic. ntfy.sh topics are PUBLIC: anyone who knows a topic can read it, so use a long unguessable prefix. |
+
 ## Persistence capability binding (checked at boot)
 
 A model whose flows persist data — `createConcept`/`updateConcept`/`saveConcept` steps, or a direct

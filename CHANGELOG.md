@@ -8,6 +8,7 @@ Landed on `main` AFTER the `beta1.20` tag (`6ca4edfb`) and therefore **not** in 
 release. Ships in the next tag.
 
 ### Added
+- **Push for `notify.send`** (N1) -- `npdev.notify.push.url` (+ `key-env`, `format` generic|ntfy, `ntfy-topic-prefix`) forwards each in-app notification to a push gateway in the background (3 attempts, never blocks or fails the step). Off by default; see `docs/CONFIGURATION.md`.
 - **`computeValue` operators `multiply`, `divide`, `min`, `max`, `round`** (K1) -- `divide` scales to 10 places (HALF_EVEN) and a zero divisor fails the step `COMPUTE_VALUE_DIVIDE_BY_ZERO`; `round` takes 0..10 decimals (HALF_UP). One operator list (`ComputeValueOperators`) read by the validator and pinned to the executor by a test.
 - **`runQuery` step `params`** (K2) -- binds the query's declared parameters (literal or `$ref`); an unknown key or a missing required parameter is refused at validation, and at run time a required parameter nobody bound fails the step instead of returning every row.
 - **`capabilityCall` `errorTarget`** (K3) -- a failed outside call stores `{code,message,kind,retryable,httpStatus?,details}` under that state key and the procedure goes on; success clears it. Without it a failed call still fails the procedure.
