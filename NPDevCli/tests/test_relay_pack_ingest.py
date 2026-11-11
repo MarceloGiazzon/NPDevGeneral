@@ -127,6 +127,56 @@ class IngestPackTests(EngineCase):
             report.update(allowed=True, message="ok")
             self.assertEqual(self.ingest(newer, base=GOOD)["outcome"], "READY")
 
+    # P4.4: a READY pack carries a plain-words preview (the same shape an app preview has), in the person's language.
+    def test_a_ready_pack_has_a_plain_preview_with_what_it_holds_and_who_may_see_it(self):
+        preview = self.ingest(GOOD)["preview"]
+        text = " ".join(preview["sentences"])
+        self.assertIn('"ratings" (version 1.0.0)', text)
+        self.assertIn("Nothing is replaced", text)
+        self.assertIn("Rating: 5 fields", text)
+        self.assertIn("seen by only the people a rule allows", text)
+        self.assertIn("Search RatingsOfSubject", text)
+        self.assertEqual(len(preview["lines"]), len(preview["sentences"]))
+        self.assertFalse(preview["dataLoss"])
+        self.assertNotIn("$user", text)  # no expression syntax reaches a person
+
+    def test_the_preview_is_written_in_portuguese_when_the_session_asks_for_it(self):
+        started = engine.start(intent="pack", ask="ratings", pack_id="ratings", language="Portuguese (Brazil)")
+        result = engine.ingest(started["code"], pack_answer(started["code"], GOOD))
+        text = " ".join(result["preview"]["sentences"])
+        self.assertIn('Um pacote reutilizável "ratings" (versão 1.0.0)', text)
+        self.assertIn("Nada é substituído", text)
+        self.assertIn("Rating: 5 campos", text)
+        self.assertIn("visto por só as pessoas que uma regra permite", text)
+        self.assertIn("Busca RatingsOfSubject", text)
+        self.assertEqual([l["code"] for l in result["preview"]["lines"]][:2], ["PACK_SUMMARY", "PACK_NEW"])
+
+    def test_a_new_version_shows_what_changed_and_warns_when_it_is_breaking(self):
+        newer = self.with_(version="2.0.0")
+        report = {"allowed": True, "message": "ok", "overallClassification": "BREAKING",
+                  "findings": [{"section": "concepts", "path": "Rating.stars", "classification": "BREAKING", "message": "field stars removed"},
+                               {"section": "queries", "path": "Q", "classification": "ADDITIVE", "message": "query Q added"}]}
+
+        def gate(args):
+            Path(args.out).write_text(json.dumps(report), encoding="utf-8")
+            return 0
+
+        with mock.patch.object(engine._cli_module(), "run_pack_publish", side_effect=gate):
+            result = self.ingest(newer, base=GOOD)
+        self.assertEqual(result["outcome"], "READY")
+        self.assertEqual((result["pack"]["baseVersion"], result["pack"]["gate"]), ("1.0.0", "BREAKING"))
+        text = " ".join(result["preview"]["sentences"])
+        self.assertIn("Version 1.0.0 becomes 2.0.0", text)
+        self.assertIn("field stars removed", text)
+        self.assertEqual([w["code"] for w in result["preview"]["warnings"]], ["PACK_BREAKING"])
+
+    def test_the_rules_sheet_core_the_script_now_imports_still_renders_a_page(self):
+        import npdev_pack_sheet
+
+        page = npdev_pack_sheet.render(GOOD)
+        self.assertIn("<h1>ratings pack", page)
+        self.assertIn("Rating", page)
+
 
 class RealValidatorTests(EngineCase):
     def setUp(self):

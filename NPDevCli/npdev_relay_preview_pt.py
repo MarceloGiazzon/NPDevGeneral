@@ -42,6 +42,7 @@ ITEM_PT = {
     "orchestrations": ("automação", "automações", "f"),
     "ruleProfiles": ("perfil de regras", "perfis de regras", "m"),
     "contexts": ("área", "áreas", "f"),
+    "customCapabilities": ("serviço de que precisa", "serviços de que precisa", "m"),
 }
 
 # What changed about one field or concept, by the key that changed (mirrors the CLI's `_attr_words`).
@@ -68,6 +69,12 @@ ATTR_OTHER_PT = "as configurações"
 DEFAULT_PT = "o padrão"
 SENSITIVE_PT = {"marked as sensitive": "marcado como sensível", "no longer marked as sensitive": "não mais marcado como sensível"}
 
+# What a pack's version change is, and who an access rule admits (P4.4).
+PACK_CHANGE_PT = {"ADDITIVE": "algo novo", "BREAKING": "algo removido ou mudado em que os apps podem se apoiar", "PATCH": "um ajuste pequeno"}
+PACK_KIND_PT = {"ADDITIVE": "Novidade", "BREAKING": "Atenção, pode quebrar apps", "PATCH": "Ajuste"}
+PACK_WHO_PT = {"anyone": "qualquer pessoa conectada", "nobody": "ninguém",
+               "rule": "só as pessoas que uma regra permite (por exemplo, o dono do registro)"}
+
 # Every preview line and warning, by the CLI's own code / family. Same placeholders as the English templates.
 TEMPLATES_PT = {
     "CREATE_SUMMARY": "Um app novo com {counts_text}.",
@@ -93,6 +100,16 @@ TEMPLATES_PT = {
     "SECURITY:invariant": "As regras que mantêm os dados de {concept} válidos mudam.",
     "SECURITY:permissionRequirements": "As permissões necessárias para usar {concept} mudam: de {from_text} para {to_text}.",
     "AI_SECURITY_NOTE": "A IA diz sobre acesso: {text}",
+    "PACK_SUMMARY": "Um pacote reutilizável \"{pack}\" (versão {version}) com {counts_text}.",
+    "PACK_NEW": "Nada é substituído: este é um pacote novo.",
+    "PACK_NEW_VERSION": "A versão {old} passa a ser a {new}{change_text}.",
+    "PACK_ACCESS": "{label}: visto por {read_text}; alterado por {write_text}.",
+    "PACK_LIFECYCLE": "{label} passa por: {states_text}.",
+    "PACK_QUERY": "Busca {name}: lê registros de {concept}.",
+    "PACK_NEEDS": "Pede ao app que o usar: {names_text}.",
+    "PACK_CHANGE": "{kind_text}: {message}",
+    "PACK_MORE": "...e mais {count} {what}.",
+    "PACK_BREAKING": "Esta versão remove ou muda algo em que os apps que já usam o pacote podem se apoiar: eles vão precisar de uma atualização.",
     "COULD_NOT_EXPRESS": "A IA não conseguiu fazer esta parte: {text}",
 }
 
@@ -171,9 +188,32 @@ def _line_text(code: str, p: dict):
         return template.format(what_text=_join(_humanize(k) for k in words))
     if code == "MORE":
         return template.format(count_text=str(p["count_text"]))
-    if code in ("CREATE_NOTHING_DELETED", "NO_CHANGES"):
+    if code in ("CREATE_NOTHING_DELETED", "NO_CHANGES", "PACK_NEW"):
         return template
+    if code == "PACK_SUMMARY":
+        counts = [(key, n) for key, n in p["counts"] if n]
+        return template.format(pack=p["pack"], version=p["version"],
+                               counts_text=_join([_pl(n, key) for key, n in counts]) if counts else "nada ainda")
+    if code == "PACK_NEW_VERSION":
+        change = PACK_CHANGE_PT.get(p.get("change"))
+        return template.format(old=p["old"], new=p["new"], change_text=f" ({change})" if change else "")
+    if code == "PACK_ACCESS":
+        return template.format(label=p["label"], read_text=_who_pt(p["read_kind"], p["read_roles"]),
+                               write_text=_who_pt(p["write_kind"], p["write_roles"]))
+    if code == "PACK_LIFECYCLE":
+        return template.format(label=p["label"], states_text=_join(p["states"]))
+    if code == "PACK_NEEDS":
+        return template.format(names_text=_join(p["names"]))
+    if code == "PACK_CHANGE":
+        return template.format(kind_text=PACK_KIND_PT.get(p.get("classification"), "Mudança"), message=p["message"])
+    if code == "PACK_MORE":
+        what = "tipos de registro" if p.get("key") == "concepts" else "mudanças"
+        return template.format(count=p["count"], what=what)
     return template.format(**{k: v for k, v in p.items()})
+
+
+def _who_pt(kind: str, roles) -> str:
+    return _join(roles) if kind == "roles" and roles else PACK_WHO_PT.get(kind, kind)
 
 
 def _humanize(key: str) -> str:

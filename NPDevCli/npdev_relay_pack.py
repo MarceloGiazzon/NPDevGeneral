@@ -23,6 +23,7 @@ import re
 import argparse
 from pathlib import Path
 
+import npdev_pack_sheet as pack_sheet
 import npdev_redact
 import npdev_relay_session as rs
 
@@ -163,8 +164,15 @@ def after_parsed(session: dict, number: int, result: dict, *, validate, cli) -> 
             result["validation"] = verdict
             return
     result["validation"] = verdict
-    result["pack"] = {"id": pack_id, "version": pack.get("version"), "baseVersion": (report or {}).get("oldVersion"),
-                      "gate": (report or {}).get("classification") or (report or {}).get("decision")}
+    base = None
+    if session.get("packBase") and base_path.is_file():
+        try:
+            base = json.loads(base_path.read_text(encoding="utf-8"))
+        except ValueError:
+            base = None
+    result["pack"] = {"id": pack_id, "version": pack.get("version"), "baseVersion": (base or {}).get("version"),
+                      "gate": (report or {}).get("overallClassification")}
+    result["preview"] = pack_sheet.plain_preview(pack, base, report)
     result["outcome"] = "READY"
 
 

@@ -530,6 +530,10 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
         import npdev_relay_pack as relay_pack
 
         relay_pack.after_parsed(session, number, result, validate=run_validation, cli=_cli_module())
+        if result.get("preview"):
+            import npdev_relay_preview_pt as preview_pt
+
+            result["preview"] = preview_pt.localize_preview(result["preview"], session.get("language"))
         return
     entry = next((f for f in result["files"] if f["path"] == "model.json" and f["status"] == "allowed"), None)
     if entry is None:
