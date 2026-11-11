@@ -33,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -332,20 +333,56 @@ public class WebhookInboundController {
             // tenant claim of its own to stamp the event with, so borrow the tenant from whichever
             // instance is actually parked on this correlationId -- the same "resume under the waiting
             // instance's own tenant" reasoning ResumeCoordinator itself already documents. No match
-            // (event arriving before the flow parks, or an untenanted app) leaves tenantId null, which
-            // EventStore's own filter treats as "unscoped" and matches any instance.
-            String tenantId = resolveTenantForCorrelation(correlationId);
-
-            EventEnvelope event = EventEnvelope.of(
-                    webhook.eventName(), payload, correlationId, UUID.randomUUID().toString(),
-                    "external", 0, Map.of(), tenantId, null);
-            eventStore.append(event);
-            if (eventBus != null) {
-                // INT-6: the store append above resumes awaitEvent; the bus publish is what
-                // orchestrationRules (kernelRunner.subscribeEvent) listen on.
-                eventBus.publish(event);
+            // (a payload-matched awaitEvent has no correlation, so the random one finds nothing; or the
+            // event arrives before the flow parks) falls back to the HOME tenant. It must NOT stay null:
+            // the JDBC event store filters `tenant_id = ?` on read, so a null-tenant row is never read
+            // back by a tenant-scoped instance and the await only ever ended by its timeout (found with
+            // the ride-hailing sample's tok_async webhook, 2026-11-11).
+            // Fallback order: the instance parked on this correlationId, else every distinct tenant that
+            // has an instance waiting on this event NAME (one event per tenant -- the await's own payload
+            // match decides who it is for), else the home tenant.
+            List<String> tenantIds = new ArrayList<>();
+            String correlated = resolveTenantForCorrelation(correlationId);
+            if (correlated != null) {
+                tenantIds.add(correlated);
+            } else {
+                for (FlowInstance instance : flowInstanceStore.findWaitingByEvent(webhook.eventName())) {
+                    String t = instance == null ? null : instance.tenantId();
+                    if (t != null && !t.isBlank() && !tenantIds.contains(t)) {
+                        tenantIds.add(t);
+                    }
+                }
+                if (tenantIds.isEmpty()) {
+                    tenantIds.add(homeTenant);
+                }
             }
-            LOG.info("webhook '{}' verified: published event '{}' (eventId={})", source, webhook.eventName(), event.eventId());
+
+            EventEnvelope event = null;
+            for (String tenantId : tenantIds) {
+                event = EventEnvelope.of(
+                        webhook.eventName(), payload, correlationId, UUID.randomUUID().toString(),
+                        "external", 0, Map.of(), tenantId, null);
+                eventStore.append(event);
+                if (eventBus != null) {
+                    // INT-6: the store append above resumes awaitEvent; the bus publish is what
+                    // orchestrationRules (kernelRunner.subscribeEvent) listen on.
+                    eventBus.publish(event);
+                }
+                // Resume a parked awaitEvent NOW, the way emitEvent/scheduleEvent already do. The store
+                // append alone leaves it to the resume sweep, which re-checks a quiet instance only every
+                // ~30 s (its claim lease outlives the quiet attempt), so a webhook arriving seconds after
+                // the flow parked sat unread for that long. The sweep stays as the fallback.
+                KernelRunner resumer = kernelRunner == null ? null : kernelRunner.getIfAvailable();
+                if (resumer != null) {
+                    try {
+                        resumer.resumeFlow(correlationId, event);
+                    } catch (RuntimeException resumeFailure) {
+                        LOG.warn("webhook '{}' immediate resume failed ({}); the resume sweep will retry",
+                                source, resumeFailure.getClass().getSimpleName());
+                    }
+                }
+            }
+            LOG.info("webhook '{}' verified: published event '{}' (eventId={}, tenants={})", source, webhook.eventName(), event.eventId(), tenantIds);
             response.put("eventId", event.eventId());
             response.put("eventName", event.eventName());
         }

@@ -389,7 +389,7 @@
             "SYSTEM"
           ],
           "access": {
-            "write": "(cancelledBy == 'RIDER' && riderAccount == $user.id) || (cancelledBy == 'DRIVER' && driverAccount == $user.id) || $user.roles.contains('Dispatcher') || $user.isSystem"
+            "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
           }
         },
         {
@@ -2224,7 +2224,7 @@
     },
     {
       "name": "AfterCancel",
-      "description": "Runs after a ride was CANCELLED: frees its driver (if any) and tells the other side.",
+      "description": "Runs after a ride was CANCELLED: records who cancelled (from the flag the caller was allowed to set), frees its driver (if any) and tells the other side.",
       "steps": [
         {
           "name": "read-ride",
@@ -2238,6 +2238,60 @@
           "type": "if",
           "condition": "$ride.status == 'CANCELLED'",
           "then": [
+            {
+              "name": "who-driver",
+              "type": "if",
+              "condition": "$ride.cancelledByDriverFlag == 1",
+              "then": [
+                {
+                  "name": "set-by-driver",
+                  "type": "patchConcept",
+                  "concept": "Ride",
+                  "id": "$ride.id",
+                  "set": {
+                    "cancelledBy": "DRIVER"
+                  },
+                  "target": "w1"
+                }
+              ],
+              "else": [
+                {
+                  "name": "set-by-rider",
+                  "type": "patchConcept",
+                  "concept": "Ride",
+                  "id": "$ride.id",
+                  "set": {
+                    "cancelledBy": "RIDER"
+                  },
+                  "target": "w2"
+                }
+              ]
+            },
+            {
+              "name": "read-rider",
+              "type": "readConcept",
+              "concept": "Rider",
+              "id": "$ride.rider",
+              "target": "rd"
+            },
+            {
+              "name": "rider-rate",
+              "type": "computeValue",
+              "operation": "divide",
+              "left": "$rd.cancelsByRider",
+              "right": "$rd.ridesRequested",
+              "target": "rate"
+            },
+            {
+              "name": "save-rider-rate",
+              "type": "patchConcept",
+              "concept": "Rider",
+              "id": "$ride.rider",
+              "set": {
+                "cancelRate": "$rate"
+              },
+              "target": "rdSaved"
+            },
             {
               "name": "had-driver",
               "type": "if",
@@ -2256,7 +2310,7 @@
                 {
                   "name": "by-rider",
                   "type": "if",
-                  "condition": "$ride.cancelledBy == 'RIDER'",
+                  "condition": "$ride.cancelledByRiderFlag == 1",
                   "then": [
                     {
                       "name": "tell-driver",

@@ -1,0 +1,32 @@
+id: REG-330
+title: >-
+  A flow's createConcept/updateConcept skips the concept's FIELD-level write rules, so anyone allowed to run the flow can set a
+  field the concept would refuse them over the REST concept API
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-11
+source: >-
+  Ride-hailing sample S2 cancel stage (2026-11-11): rider2 called POST /api/v1/flows/CancelRide/execute with
+  cancelledByDriverFlag=1 and got 200, although field access.write for that flag is `driverAccount == $user.id || Dispatcher ||
+  system`; the same write as PUT /api/concepts/rides/{id} is refused (FIELD_SCOPE_DENIED).
+surface: kernel/flow-engine, runtimehost/persistence-adapter
+detail: |
+  Flow persistence steps compile to capability persistence.save and go straight to the repository adapter; only the concept
+  gateway (REST CRUD, procedure patchConcept) calls ConceptGatewaySemanticPolicy.deniedWriteFields. The lifecycle transition
+  guard IS enforced on the flow path (ACCEPTED -> COMPLETED is refused with "Status transition ... is not allowed"); field-level
+  access.write is not. Permission needed to reach it is only flow.execute + capability.invoke(persistence).
+  Owner decision 2026-11-11: no platform change now. The sample keeps the user-facing path correct (its cancel checks drive the
+  concept PUT, where the gateway enforces the field rules) and AfterCancel derives who cancelled from the flags. Procedures
+  (patchConcept) are the way to get gateway enforcement inside a flow today.
+  Open: (a) route flow createConcept/updateConcept through the ConceptGateway as the calling user (needs the full T2 gate plus the
+  dsl/generator/runtimehost suites: flows that rely on writing as the caller may start to fail), or (b) record it as an accepted
+  boundary with a behaviour probe that pins the current behaviour, or (c) make `validate model` warn when a flow's saved concept
+  has field-level access.write rules.
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/CapabilityInvoker.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/DefaultConceptGateway.java
+  - NPDevSamples/ride-hailing/Input/model.json
+done_when: >-
+  Either a flow save is refused for a field the caller may not write (with a behaviour probe), or the gap is a named accepted
+  boundary with its witness and the validator says so.

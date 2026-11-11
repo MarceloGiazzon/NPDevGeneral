@@ -1,0 +1,42 @@
+id: REG-328
+title: >-
+  Flows that park inside a branch or a forEach body resumed at the wrong step, a timed await could fire far past its deadline, and a
+  flow condition on a callProcedure result was false until the flow had parked once
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-11-11
+closed: 2026-11-11
+source: >-
+  Ride-hailing sample S2 offer flow (stage 20, 2026-11-11): "the offer does not park". Three independent kernel faults hid behind
+  that one symptom.
+surface: kernel/flow-engine
+detail: |
+  (1) An awaitEvent nested in a branch or forEach body recorded its trace COUNT as the resume index. Earlier nested steps inflate
+  that count, so after a park the flow restarted at the wrong top-level step (it re-ran measure and price). It now records the
+  index of the ENCLOSING top-level step (StepExecutionRequest.anchorIndex). docs/FLOWS.md: "Where a parked await resumes".
+  (2) The quiet-wait resume back-off (5 s, 10 s, 20 s, 40 s ...) could schedule the next sweep past a timed await's deadline, so a
+  20 s offer fired at ~38 s. ResumeCoordinator.applyResumeBackoff now clamps to the deadline.
+  (3) callProcedure output held ConceptRecord objects, not Maps, so `$m.data.status` in a branch condition was false until the
+  flow had parked once and been rehydrated from persisted JSON. CallProcedureStep.plainTree gives the live output the persisted shape.
+resolution: >-
+  Fixed in the kernel with tests, commit 3fdf044e. Proven live: the ride-hailing offer stage is 32/32 (accept, decline then next
+  driver, timeout then next driver, all ignore then NO_DRIVER) and the whole run is 74/74.
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/AwaitEventStep.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ResumeCoordinator.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/CallProcedureStep.java
+  - docs/FLOWS.md
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerLifecycleTest.java#quietWaitBackoffNeverSchedulesTheNextSweepPastTheAwaitDeadline
+  asserts: >-
+    a timed await's next quiet-wait sweep is never scheduled past its deadline. The other two faults are pinned by
+    KernelRunnerBranchAwaitTest#awaitInsideTakenBranchParksTheFlow and
+    KernelRunnerBranchAwaitTest#procedureOutputHoldingAConceptRecordResolvesLikeItsPersistedJsonShape, and the loop case by
+    KernelRunnerAwaitInLoopRestartProofTest#branchWrappedPayloadMatchedAwaitParksEveryRound.
+  provenRed: false
+done_when: >-
+  A flow that parks in a branch or forEach body resumes at its enclosing step, a timed await expires at its deadline, and a
+  branch on a callProcedure result behaves the same before and after the first park.

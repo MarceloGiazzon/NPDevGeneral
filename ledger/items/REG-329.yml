@@ -1,0 +1,41 @@
+id: REG-329
+title: >-
+  An inbound webhook that resumes a payload-matched awaitEvent never reached the flow: the event was stored with a null tenant and,
+  even with a tenant, waited ~30 s for the resume sweep
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-11-11
+closed: 2026-11-11
+source: >-
+  Ride-hailing sample S2, payment scenario tok_async (2026-11-11): the mock provider's signed webhook returned 200 and the app
+  logged "published event 'PaymentUpdated'", but the Payment stayed PROCESSING and the awaiting CompleteRide flow only moved when
+  its 120 s timeout fired.
+surface: runtimehost/webhook-inbound
+detail: |
+  Two faults stacked. (1) WebhookInboundController stamped the event with the tenant of the instance parked on its correlationId.
+  A payload-matched await (match.correlation false) has no correlation, so the random one found nothing and the event was stored
+  with tenant NULL; JdbcEventStore.readByEventName filters `tenant_id = ?`, so a tenant-scoped instance never read it back. The
+  controller javadoc claimed a null tenant is "unscoped and matches any instance" -- false for the JDBC store.
+  (2) The controller only appended to the EventStore. The resume sweep re-checks a quiet instance at most every ~30 s because the
+  instance's claim lease (RESUME_CLAIM_LEASE_MS) is not released after a quiet attempt, so a webhook seconds after the park waited.
+  emitEvent and scheduleEvent already resume at once; the webhook door did not.
+resolution: >-
+  The event takes the tenant of the instance waiting on its correlationId, else of every instance waiting on its event NAME (one
+  event per distinct tenant, the await's payload match decides who it is for), else the home tenant. After each publish the
+  controller calls KernelRunner.resumeFlow, so a parked await resumes immediately; the sweep stays as the fallback. The 30 s
+  claim lease on a quiet instance is unchanged and still bounds every OTHER way an event can reach a parked flow.
+files:
+  - NPDevRuntimeHost/src/main/java/com/finalexec/api/WebhookInboundController.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/api/WebhookInboundControllerTest.java
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/api/WebhookInboundControllerTest.java#thePublishedEventResumesAParkedAwaitImmediatelyNotOnlyViaTheSweep
+  asserts: >-
+    a signed webhook with a payload-only mapping appends the event and calls KernelRunner.resumeFlow with its correlation id and
+    envelope; sibling tests pin the tenant (the waiting instance's tenant by event name, the home tenant when nobody waits,
+    never null). Live: ride-hailing paymore[tok_async] now ends CAPTURED within its 25 s window.
+  provenRed: false
+done_when: >-
+  A webhook-delivered event resumes a parked payload-matched awaitEvent without waiting for the sweep.

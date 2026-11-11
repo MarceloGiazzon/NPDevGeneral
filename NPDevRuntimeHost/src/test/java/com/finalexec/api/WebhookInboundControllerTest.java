@@ -209,6 +209,68 @@ class WebhookInboundControllerTest {
         assertEquals("acme-tenant", captor.getValue().tenantId());
     }
 
+    @Test
+    void anEventNobodyIsParkedOnByCorrelationIsStampedWithTheHomeTenantNotNull() throws Exception {
+        // A payload-matched awaitEvent has no correlation, so findWaitingByCorrelation finds nothing for
+        // the random one. A null-tenant row is never read back by the tenant-scoped JDBC event store, so
+        // the awaiting flow only ever ended by its timeout (ride-hailing tok_async, 2026-11-11).
+        CompiledWebhook webhook = webhookWithMapping(Map.of("reference", "txnRef"));
+        MockMvc mvc = mockMvc(webhook, resolvingSecretFor(SECRET_ENV_VAR, SECRET));
+
+        String body = "{\"txnRef\":\"TXN-1\"}";
+        mvc.perform(post("/api/hooks/" + SOURCE)
+                        .header("X-Npdev-Webhook-Signature", "sha256=" + hmacHex(SECRET, body))
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<EventEnvelope> captor = ArgumentCaptor.forClass(EventEnvelope.class);
+        verify(eventStore).append(captor.capture());
+        assertEquals(com.finalexec.config.DefaultTenant.id(), captor.getValue().tenantId());
+    }
+
+    @Test
+    void aPayloadMatchedEventTakesTheTenantOfTheInstanceWaitingOnItsEventName() throws Exception {
+        CompiledWebhook webhook = webhookWithMapping(Map.of("reference", "txnRef"));
+        FlowInstance waiting = Mockito.mock(FlowInstance.class);
+        when(waiting.tenantId()).thenReturn("acme-tenant");
+        when(flowInstanceStore.findWaitingByEvent(EVENT_NAME)).thenReturn(List.of(waiting));
+        when(compiledModel.findWebhookBySource(SOURCE)).thenReturn(Optional.of(webhook));
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(
+                new WebhookInboundController(
+                        compiledModel, eventStore, flowInstanceStore, new ObjectMapper(),
+                        resolvingSecretFor(SECRET_ENV_VAR, SECRET))
+        ).build();
+
+        String body = "{\"txnRef\":\"TXN-1\"}";
+        mvc.perform(post("/api/hooks/" + SOURCE)
+                        .header("X-Npdev-Webhook-Signature", "sha256=" + hmacHex(SECRET, body))
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<EventEnvelope> captor = ArgumentCaptor.forClass(EventEnvelope.class);
+        verify(eventStore).append(captor.capture());
+        assertEquals("acme-tenant", captor.getValue().tenantId());
+    }
+
+    @Test
+    void thePublishedEventResumesAParkedAwaitImmediatelyNotOnlyViaTheSweep() throws Exception {
+        CompiledWebhook webhook = webhookWithMapping(Map.of("reference", "txnRef"));
+        MockMvc mvc = providerMvc(webhook);
+
+        String body = "{\"txnRef\":\"TXN-1\"}";
+        mvc.perform(post("/api/hooks/" + SOURCE)
+                        .header("X-Npdev-Webhook-Signature", "sha256=" + hmacHex(SECRET, body))
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<EventEnvelope> published = ArgumentCaptor.forClass(EventEnvelope.class);
+        verify(eventStore).append(published.capture());
+        verify(kernelRunner).resumeFlow(eq(published.getValue().correlationId()), eq(published.getValue()));
+    }
+
     // ---- INT-6: provider signature schemes, form bodies, startFlow, replay de-dupe, event bus ----
 
     private static final Instant NOW = Instant.parse("2026-10-17T12:00:00Z");

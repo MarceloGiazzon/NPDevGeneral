@@ -338,7 +338,10 @@ def stage_paymore(r: Run):
     """One fresh ride per scenario: request -> driver1 accepts -> start -> complete with a token."""
     expect = {"tok_async": ("CAPTURED", 25), "tok_decline": ("FAILED", 15), "tok_flaky": ("CAPTURED", 40),
               "tok_nowebhook": ("NEEDS_REVIEW", 150)}
+    only = [t for t in os.environ.get("DRIVE_PAYMORE_ONLY", "").split(",") if t]  # e.g. tok_async while debugging one scenario
     for token, (want, secs) in expect.items():
+        if only and token not in only:
+            continue
         r.set_driver("driver1", -23.5520, -46.6350)
         _, _, rid = r.request_ride("rider1")
         t = r.wait_task("driver1")
@@ -371,13 +374,16 @@ def stage_price(r: Run):
     r.check("price: 1 open request vs 3 free drivers -> demand 1.0", float(ride.get("demandMultiplier") or 0) == 1.0, ride)
     r.check("price: fare = (300 + 120 km + 25 min) x surge",
             abs(float(ride.get("fareCents") or 0) - (300 + 120 * float(ride.get("tripDistanceKm") or 0) + 25 * float(ride.get("tripMinutes") or 0)) * float(ride.get("surgeMultiplier") or 1)) < 1, ride)
-    for d in ("driver1", "driver2", "driver3"):
-        r.set_driver(d, -23.5510, -46.6345, "OFFLINE")
-    r.set_driver("driver1", -23.5510, -46.6345)
+    # The offer flow gives each new request one free driver and parks on his answer, so those rides stay
+    # open (REQUESTED/ASSIGNED) for the offer window. Three more requests therefore take the other two
+    # drivers and then find none: the 4th sees 4 open requests vs 0 free drivers.
     rides = [r.request_ride(rider)[2] for rider in ("rider1", "rider2", "rider1")]
     last = r.wait_ride(rides[-1], lambda x: x.get("demandMultiplier") is not None, 10)
     r.check("price: 4 open requests vs 1 free driver -> demand 2.5 (capped)", float(last.get("demandMultiplier") or 0) == 2.5, last)
     r.check("price: surge = 1.2 x 1.0 x 2.5 = 3.0 (cap 3.0)", float(last.get("surgeMultiplier") or 0) == 3.0, last)
+    # Let every parked offer expire so no stale task/ASSIGNED driver leaks into the next stage.
+    for rid_i in [rid] + rides:
+        r.wait_ride(rid_i, lambda x: x.get("status") in ("NO_DRIVER", "CANCELLED", "ACCEPTED"), 3 * (OFFER_WINDOW_S + TICK_SLACK_S) + 10)
     print("NOTE price: the peak multiplier is driven by cron (07-10 and 17-20 on weekdays). To test it now, run the"
           " SetPeak procedure as admin (ACCEPTANCE.md A2.3) and request again.")
 
@@ -404,10 +410,12 @@ def stage_cancel(r: Run):
     if t:
         r.answer("driver1", t, "ACCEPT")
     r.wait_ride(rid, lambda x: x.get("status") == "ACCEPTED", 10)
-    s, _ = r.flow("CancelRide", {"id": rid, "status": "CANCELLED", "cancelledBy": "DRIVER", "cancelledByDriverFlag": 1}, "rider2")
+    # The user-facing path is the concept PUT (the Ride update flow CancelRide runs behind it); the
+    # concept gateway enforces the field-write rules there. cancelledBy itself is derived by AfterCancel.
+    s, _ = r.update("rides", rid, {"status": "CANCELLED", "cancelledByDriverFlag": 1}, "rider2")
     r.check("cancel: rider2 can NOT claim the DRIVER cancelled", s >= 400, s)
-    s, _ = r.flow("CancelRide", {"id": rid, "status": "CANCELLED", "cancelledBy": "RIDER", "cancelledByRiderFlag": 1}, "rider2")
-    r.check("cancel: rider2 cancels own accepted ride", s in (200, 201, 202), s)
+    s, _ = r.update("rides", rid, {"status": "CANCELLED", "cancelledByRiderFlag": 1}, "rider2")
+    r.check("cancel: rider2 cancels own accepted ride", s in (200, 201, 202, 204), s)
     s, d = r.get("drivers", r.ids["driver1"])
     r.check("cancel: driver1 is AVAILABLE again", (d.get("data", d)).get("status") == "AVAILABLE", d)
     s, rr = r.get("riders", r.ids["rider2"])

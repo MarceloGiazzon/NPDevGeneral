@@ -10,5 +10,10 @@ It is the yardstick for "can NPDev express a real backend". Port **8150**, `auth
 - `drive_s2.py` — REST acceptance driver, one PASS/FAIL line per rule:
   `python -I drive_s2.py --base http://localhost:8150 --stages setup,roles`.
 
+- `pwsh -NoProfile -File scripts/quality/run-ride-hailing.ps1 -Stages all` — generates, builds and boots the sample
+  on a wiped database, starts the three mocks and runs `drive_s2.py` (a full run takes several minutes: the offer
+  window is 20 s, a missing webhook 120 s). `-ReuseBuild` skips generate+build, but needs `Output\App`.
+  `DRIVE_PAYMORE_ONLY=tok_async` limits the `paymore` stage to one payment scenario.
+
 Payments are proven against the mock only; a real provider needs your own sandbox keys. Road distance needs an
 OSRM server you run. The driver position arrives by polling.

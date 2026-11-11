@@ -775,6 +775,10 @@
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"
     },
+    "scripts/quality/run-ride-hailing.ps1": {
+      "invocation": "manual-runbook",
+      "documentedIn": "NPDevSamples/ride-hailing/README.md"
+    },
     "scripts/quality/run-shell-scenarios.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"

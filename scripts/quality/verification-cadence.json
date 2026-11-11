@@ -104,6 +104,13 @@
       "description": "dsl-conformance-max still emits cleanly (NPDevSamples/scripts/generate-sample-app.ps1 -SampleId dsl-conformance-max -NoAssembleFinalApp -- emission only, no build/boot)."
     },
     {
+    "id": "ride-hailing-s2",
+    "tier": "T1",
+    "maxStaleness": "1-wave",
+    "invokedBy": "scripts/quality/run-ride-hailing.ps1",
+    "description": "Ride-hailing S2 acceptance: generate + build + boot NPDevSamples/ride-hailing (jwt auth, wiped database) with its three mocks (payments with signed webhooks, push, routes) and drive 74 REST checks: roles, driver offers with a timeout and decline/next-driver, payments incl. async webhook / retry / missing webhook, surge price, ratings, cancel rules, push, route. Takes several minutes and boots a real app, so T1/T2, never the static aiKnowledge gate."
+  },
+  {
     "id": "jrn-journeys",
     "tier": "T1",
     "maxStaleness": "1-wave",

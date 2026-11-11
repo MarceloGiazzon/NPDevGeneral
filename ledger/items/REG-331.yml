@@ -1,0 +1,25 @@
+id: REG-331
+title: >-
+  A derivedExpression that reads a rollup field is not re-derived when the rollup changes: Rider.cancelRate stayed 0.0 while
+  cancelsByRider was 1
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-11-11
+source: >-
+  Ride-hailing sample S2 cancel stage (2026-11-11): rider2 cancels one ride, GET /api/concepts/riders/{id} returns
+  cancelsByRider=1 and cancelRate=0.0 although cancelRate is `cancelsByRider / (ridesRequested + 0.000001)`.
+surface: runtimehost/rollup, kernel/derived-expressions
+detail: |
+  docs/reference/ROLLUP_FIELDS.md: a child write recomputes the parent's rollup fields with a narrow UPDATE that does not touch
+  the parent row version. Derived expressions are evaluated when the concept is saved through the gateway, so that narrow update
+  never re-runs them and any derivedExpression over a rollup field keeps its old value until the parent itself is saved.
+  Sample workaround (2026-11-11): AfterCancel reads the rider, divides cancelsByRider by ridesRequested and patches cancelRate.
+  Open: recompute the parent's derived fields in the same transaction as the rollup, or have the validator refuse a
+  derivedExpression that names a rollup field, or document it in ROLLUP_FIELDS.md "Limits".
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/RollupConceptStoreDecorator.java
+  - docs/reference/ROLLUP_FIELDS.md
+  - NPDevSamples/ride-hailing/Input/model.json
+done_when: >-
+  A derivedExpression over a rollup field is correct after a child write, or is refused/documented with a named limit.
