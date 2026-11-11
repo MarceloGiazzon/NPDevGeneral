@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "knowledge-card.v1",
+  "id": "recipe-validation-service",
+  "type": "recipe",
+  "title": "Validation service: let an online AI check a model.json (REST page or MCP connector) -- npdev validator",
+  "body": "`npdev validator serve` (= `python NPDevMcp/validation_service.py`) runs a local stdlib HTTP service on 127.0.0.1:8780 that validates the CONTENT of ONE model.json with the real warm-jar validator and answers contract `npdev-validation-service.v1`: `status` passed|warning|failed (the validator ran) or rejected (bad input: invalid_json with line/column, not_an_object, too_large, busy, validator_unavailable...), `summary`, `nextStep` (one sentence), `diagnostics` (errors first, empty fields omitted, 50 by default, `maxDiagnostics` up to 500) and `truncated`. `npdev validator doctor` says whether it can start; it refuses to start without npdev-ai-tools.jar (the Gradle fallback is slow and locks).\n\nPath A: `GET /` is a page (paste, drop, `#model=<urlencoded>` / `#model64=<base64url>`, `?modelUrl=`); the result is the console line `NPDEV_VALIDATION_RESULT {json}`, `<pre id=\"npdev-result\">`, the tab title and `window.npdevLastResult`; `POST /api/validate` takes the model as body (Content-Type application/json or text/plain, or the envelope {\"model\": {...}}). Path B (`--mcp`): stateless Streamable HTTP at `/mcp/<secret>` offering only npdev_validate, npdev_core_context, npdev_search_examples, npdev_search_fix, npdev_check_support, npdev_get_schema (20 diagnostics by default); `scripts/ai/Start-ValidatorTunnel.ps1` adds a cloudflared quick tunnel and prints the connector URL (it changes every run).\n\nLimits (v1): one file only (no $ref fragments, no config.json, no remote packs), 2 MB, two validations at once, journal off unless --capture. A `failed` status is a successful tool call: loop on the diagnostics until passed or warning.",
+  "keywords": [
+    "npdev validator",
+    "validation service",
+    "validation_service.py",
+    "online AI",
+    "chat AI",
+    "MCP connector",
+    "custom connector",
+    "cloudflared",
+    "tunnel",
+    "/api/validate",
+    "NPDEV_VALIDATION_RESULT",
+    "npdev-validation-service.v1",
+    "nextStep"
+  ],
+  "appliesTo": [
+    "model-authoring",
+    "cli",
+    "mcp"
+  ],
+  "sourceRefs": [
+    "NPDevMcp/validation_service.py",
+    "NPDevMcp/README.md",
+    "schemas/ai/npdev-validation-service-response.schema.json",
+    "docs/AUTHORING_WITH_AI.md"
+  ],
+  "status": "active"
+}

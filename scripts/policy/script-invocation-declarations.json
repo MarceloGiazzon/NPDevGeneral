@@ -28,6 +28,10 @@
       "invocation": "manual-runbook",
       "documentedIn": "NPDevContract/examples/ai-authoring/README.md"
     },
+    "scripts/ai/Start-ValidatorTunnel.ps1": {
+      "invocation": "manual-runbook",
+      "documentedIn": "NPDevMcp/README.md"
+    },
     "scripts/ai/Prepare-Session.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"

@@ -110,6 +110,60 @@ An answer the AI saved as a file works
 too: `relay ingest --code K7Q2 --file model.json` (or a `.zip`, which is read in memory and never
 extracted).
 
+## Validate from an online AI — npdev validator
+
+A chat AI that cannot run NPDev can still get the real validator's answer. `npdev validator serve`
+starts a small service on your own computer that takes the CONTENT of one `model.json`, runs the same
+validator as `npdev validate model` and answers with a short report an AI can read: `status`
+(`passed`, `warning`, `failed`), the errors first, and a `nextStep` sentence. It listens on
+`127.0.0.1` only and needs the fast validator jar (`npdev doctor` / `npdev validator doctor` say if
+it is missing; `scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars` stages it once).
+
+```sh
+./npdev validator doctor     # can it start? fast jar, Java, free port
+./npdev validator serve      # page + REST API on http://127.0.0.1:8780 (Ctrl+C stops it)
+```
+
+**Path A — a page and a REST call (an AI that can drive a browser, and you).** Open
+`http://127.0.0.1:8780/`: paste a model or drop a file and press Validate. An agent can instead
+navigate to `/#model=<URL-encoded JSON>` (or `#model64=<base64url>`); the page validates by itself
+and the hash never reaches the server. `/?modelUrl=<https link to a raw model.json>` makes the
+browser fetch the model itself. The result is available as the console line starting with
+`NPDEV_VALIDATION_RESULT`, the `<pre id="npdev-result">` text, the tab title and
+`window.npdevLastResult`. An agent that can run JavaScript on that page can call
+`fetch('/api/validate', {method: 'POST', body: JSON.stringify(model)})` and read the JSON.
+To have an online AI write its own small client, paste this into it:
+
+```text
+Write a single self-contained HTML file (no libraries). On load, it POSTs the JSON in the
+<script id="model" type="application/json"> tag to http://127.0.0.1:8780/api/validate with
+Content-Type text/plain, then prints the response with
+console.log("NPDEV_VALIDATION_RESULT " + JSON.stringify(json)) and shows it in <pre id="npdev-result">.
+The response format: { status, summary, nextStep, diagnostics[] }.
+```
+
+That only closes the loop when the AI is a browser agent (or you paste the result back). For a plain
+chat AI use Path B.
+
+**Path B — MCP, for a chat AI that accepts a custom connector.** `./npdev validator serve --mcp`
+also serves a read-only MCP endpoint at `/mcp/<secret>` (the secret lives in the Build folder;
+`./npdev validator rotate-token` makes a new one). It offers six tools only: `npdev_validate`,
+`npdev_core_context`, `npdev_search_examples`, `npdev_search_fix`, `npdev_check_support` and
+`npdev_get_schema` — nothing that reads a file path, generates or builds. To reach it from the
+internet, install `cloudflared` yourself (the script never downloads it) and run the script below; it
+prints the connector address to paste into the AI. The address changes on every run, and while it
+runs, anyone who has that link can validate models on your computer.
+
+```sh
+pwsh -NoProfile -File scripts/ai/Start-ValidatorTunnel.ps1
+```
+
+Limits of version 1: one `model.json` only (a model split into `$ref` fragments, `config.json` and
+remote packs are not supported; the built-in packs are), at most 2 MB, 50 diagnostics per answer
+(20 over MCP; `maxDiagnostics` changes it, up to 500), at most two validations at a time. The
+validation journal is off, so a stranger's model never reaches your records (`--capture` turns it
+back on). Each call takes about a second.
+
 ## Verifying the connection yourself
 
 `npdev mcp install` cannot confirm your GUI client actually loaded the config — that needs a

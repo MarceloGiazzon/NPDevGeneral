@@ -1,0 +1,52 @@
+id: REG-335
+title: >-
+  An online chat AI or a browser agent could not get the real validator's verdict on a model.json it wrote
+type: FEATURE
+severity: MEDIUM
+status: PARTIAL
+opened: 2026-11-11
+source: >-
+  Validation service plan (OutsideRepo/VALIDATION_SERVICE_PLAN_2026-11-11/PLAN.md): the owner wants an online AI to write a model.json,
+  validate it against the real NPDev validator and fix it until it passes, without a local MCP client.
+surface: mcp/validation-service, cli/validator, docs/authoring-with-ai
+detail: |
+  Built (2026-11-11): NPDevMcp/validation_service.py -- stdlib HTTP service, 127.0.0.1:8780, real warm-jar validator through the CLI as an
+  isolated subprocess (refuses to start without the jar; journal off unless --capture). Contract npdev-validation-service.v1
+  (schemas/ai/npdev-validation-service-response.schema.json): status passed|warning|failed|rejected, nextStep, errors-first diagnostics,
+  truncated, machine path never returned. Path A: self-contained page NPDevMcp/static/validate.html (hash/modelUrl/paste/drop in; console
+  line, pre, json script, title, dataset, window var out), POST /api/validate with CORS + Private-Network preflight, health, schema.
+  Path B (--mcp): stateless Streamable HTTP at /mcp/<token> (version negotiation, 202 for notifications, batch refused, 404 on a wrong
+  token, Origin guard, per-client rate limit on tools/call, capped output) with a six-tool read-only allowlist (npdev_validate,
+  npdev_core_context, npdev_search_examples, npdev_search_fix, npdev_check_support, npdev_get_schema; extra arguments such as refresh are
+  dropped). `npdev validator serve|doctor|rotate-token`; scripts/ai/Start-ValidatorTunnel.ps1 (cloudflared quick tunnel, never downloads
+  it, stops only what it started; tested against a fake cloudflared). server.run_cli gained an optional env. Docs: authoring-with-ai.yml
+  section, NPDevMcp/README.md, knowledge card recipe-validation-service. 56 tests (one end to end with the real jar), ~1.1 s per call.
+  Choices that differ from the plan text: MCP default is 20 diagnostics (the plan left 20 vs 50 open); a request with no Content-Length
+  and no chunking is 411 (the plan said 413); only tools/call counts against the rate limit; an over-limit body is drained (bounded) before
+  the 413 so a client reads the answer instead of a reset.
+  NOT done (needs the owner or a real online AI): the Phase 0 spikes that need accounts or a tunnel binary (S3 cloudflared on this
+  machine, S4 an https page calling 127.0.0.1, S5 an AI sandbox fetch), B8 (a real chat AI closes the loop through a connector), A5 (a real
+  browser agent closes the loop), and the optional phases (N7 structural mode, B9 OAuth, C Manager card).
+files:
+  - NPDevMcp/validation_service.py
+  - NPDevMcp/static/validate.html
+  - NPDevMcp/tests/test_validation_service.py
+  - NPDevCli/tests/test_validator_command.py
+  - NPDevCli/npdev_cli.py
+  - NPDevMcp/server.py
+  - schemas/ai/npdev-validation-service-response.schema.json
+  - scripts/ai/Start-ValidatorTunnel.ps1
+  - docs/content/authoring-with-ai.yml
+  - NPDevMcp/README.md
+  - NPDevMcp/knowledge/cards/recipe-validation-service.json
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: NPDevMcp/tests/test_validation_service.py
+  asserts: >-
+    the six-tool allowlist is exact and no schema asks for a file; extra arguments are dropped; the token and the scratch path never appear in a
+    response or log; 413/415/422/429/500/503 carry no stack trace; the real jar validates a model end to end.
+  provenRed: false
+done_when: >-
+  One online chat AI, through an MCP custom connector, and one browser agent, through the page, each write a model.json and loop on the
+  verdict by themselves until status is passed or warning (acceptance recorded outside the repo).

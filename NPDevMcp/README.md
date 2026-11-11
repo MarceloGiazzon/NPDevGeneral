@@ -73,6 +73,28 @@ Or as a raw client config entry:
 
 `NPDEV_ROOT` is optional (defaults to the repo root inferred from this file's location).
 
+## HTTP mode (validation service)
+
+`server.py` speaks MCP on stdio for a client that runs on this computer. For an **online** AI there is a
+second, separate program: `validation_service.py` (`python NPDevMcp/validation_service.py [--mcp]
+[--port N]`, or `npdev validator serve`). It takes the *content* of one `model.json`, runs the real
+validator through the warm `npdev-ai-tools.jar` (it refuses to start without it; `npdev validator doctor`
+says why) and answers `npdev-validation-service.v1` (`schemas/ai/npdev-validation-service-response.schema.json`).
+
+- **Path A** (any AI that drives a browser, and you): `GET /` is a self-contained page,
+  `POST /api/validate` the REST call, `GET /api/health`, `GET /api/schema/model`. Binds `127.0.0.1`.
+- **Path B** (`--mcp`): stateless Streamable HTTP at `/mcp/<secret>` with a six-tool **read-only allowlist**
+  (`npdev_validate`, `npdev_core_context`, `npdev_search_examples`, `npdev_search_fix`,
+  `npdev_check_support`, `npdev_get_schema`) -- never the stdio tool table. The secret is in
+  `<Build>/validation-service/token.txt` (`npdev validator rotate-token`). To reach it from the internet:
+  `pwsh -NoProfile -File scripts/ai/Start-ValidatorTunnel.ps1` (cloudflared quick tunnel; the script never
+  downloads cloudflared and only stops processes it started).
+- Safety: no body or token is ever logged (`<Build>/validation-service/logs/access.log`), the machine path
+  never leaves the process, the validation journal is off unless `--capture`, 2 MB body cap, at most two
+  validations at once, Origin check and a per-client rate limit on `/mcp/`.
+- Tests: `python -m unittest NPDevMcp.tests.test_validation_service -v` (the validator is injected; one test
+  uses the real jar). This module prints nothing on import -- `server.py` must never import it at top level.
+
 ## Notes / follow-ups
 
 - First `npdev_validate` call compiles the DSL module (one-time). Subsequent calls reuse the
