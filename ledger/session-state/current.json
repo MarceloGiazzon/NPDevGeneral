@@ -1,18 +1,19 @@
 {
-  "closedAt": "2026-11-11T13:49:56.1083677Z",
+  "closedAt": "2026-11-11T17:07:32.9537939Z",
   "branch": "main",
-  "head": "c76845d2",
-  "headSubject": "fix(runtimehost): inbound webhook resumes a payload-matched await at once and stamps a real tenant; ride-hailing S2 74/74",
-  "summary": "Ride-hailing S2 is 74/74 (run-ride-hailing.ps1 -Stages all, 5m28s). Fixed: price stage (rides stay open under the offer flow), cancel stage (drives concept PUT; AfterCancel derives cancelledBy + rider cancelRate), tok_async = REG-329 platform bug (inbound webhook event had tenant NULL and waited ~30 s for the resume sweep; WebhookInboundController now stamps the waiting instances' tenant and calls KernelRunner.resumeFlow; 3 new unit tests pass, 14/14 in the class). Registered run-ride-hailing.ps1 (invocation declaration, cadence ride-hailing-s2, sample README); script-inventory + cadence-coverage + done-item-guards green. Ledger REG-328 (3 kernel flow fixes) + REG-329 DONE, REG-330 (flow saves skip FIELD-level write rules; lifecycle guard IS enforced) + REG-331 (derivedExpression over a rollup not re-derived) OPEN. Kit delta 50 + drive_s2.py synced in OutsideRepo; stage.py --upto 95 reproduces the sample model exactly. Pushed c76845d2 to main.",
-  "nextStep": "Do P2..P6 and Z2 from D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\RIDE_HAILING_S2_PLAN_2026-11-11\\impl\\TASKS.md (P2 = relay accepts a model importing NPR packs, line 287; P5 publish to NPR needs the owner's explicit confirmation). Owner call pending on REG-330: the chosen sample workaround is done but the boundary row (ACCEPTED_BOUNDARIES.md + ledger/boundaries B37 + counts in CLAUDE.md) was NOT added; decide platform fix vs boundary. Run the full T2 gate + runtimehost/dsl/generator suites before closing the Move (only targeted tests ran this session). clean-workspace-state.ps1 deletes the sample's built app, so the next ride-hailing run needs one full build (no -ReuseBuild).",
-  "plan": "",
-  "blocked": "",
-  "verified": "run-ride-hailing.ps1 -Stages all: 74/74. WebhookInboundControllerTest 14/14 in the assembled app. check-cadence-coverage, run-script-inventory-check, check-done-item-guards --no-baseline-ok green. NOT run: full T2 gate, dsl/generator/runtimehost suites, :kernel:test again (no kernel source changed this session).",
+  "head": "86a89e62",
+  "headSubject": "feat(manager): Ready-made parts -- browse the catalog, add, update, plain trust status (REG-333, P3, Manager 0.13.37)",
+  "summary": "Ride-hailing S2 plan: P2 landed (7d8a8502, relay accepts NPR pack imports, REG-332 PARTIAL) and P3 landed (86a89e62, Manager 0.13.37 Ready-made parts screen + pack add/update --json CLI, REG-333 DONE, real-window tour 11/11). The first tour run wrongly added contacts to the owner's scratch app testH2S_2 (reverted via its own git; picker-staleness bug fixed).",
+  "nextStep": "Do P4 from D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\RIDE_HAILING_S2_PLAN_2026-11-11\\impl\\TASKS.md (line ~326): P4.1 first - merge the kit's packs\\relay-pack-phase.delta.json into NPDevCli/relay-ingest-policy.json (paths.phases.pack), add 'npdev ai relay start --intent pack --pack-id <id> [--from-pack ...]' and packId/packBase to the relay session schema; then P4.2-P4.6, P5 (needs the owner's explicit confirmation; a session never runs the confirmed push), P6, Z2 (full T2 gate once).",
+  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\RIDE_HAILING_S2_PLAN_2026-11-11\\impl\\TASKS.md",
+  "blocked": "Owner decisions pending: REG-330 (platform fix for flow field-write rules vs accepted-boundary row); P2's real relay round with a chat AI (REG-332 stays PARTIAL until run); P5 publish to NPR needs explicit confirmation.",
+  "verified": "NPDevCli tests: relay suites (119) and pack_manage/relay_packs/pack_catalog/trust/tamper (69) OK. Manager render check 377/377 (new case proven red 376/377). check-manager-i18n, version-bump, css-tokens, script-inventory, twin-pair, done-item-guards, portable-tooling green. cargo check OK. Real-window CDP tour 11/11. NOT run: full T2 gate, dsl/generator/runtimehost suites, Rust unit tests (cargo test cannot link here).",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "c76845d2 fix(runtimehost): inbound webhook resumes a payload-matched await at once and stamps a real tenant; ride-hailing S2 74/74",
-    "2946ea8a ledger: session handoff 2026-11-11 (ninth part) -- ride-hailing offer flow green, three kernel fixes, 69/74"
+    "86a89e62 feat(manager): Ready-made parts -- browse the catalog, add, update, plain trust status (REG-333, P3, Manager 0.13.37)",
+    "7d8a8502 feat(relay): a browser AI's answer may import NPR packs (REG-332, P2)",
+    "8a8be83f ledger: session handoff 2026-11-11 (tenth part) -- ride-hailing S2 74/74, webhook resume fix (REG-329)"
   ]
 }
