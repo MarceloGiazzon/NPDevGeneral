@@ -8,6 +8,14 @@ Landed on `main` AFTER the `beta1.20` tag (`6ca4edfb`) and therefore **not** in 
 release. Ships in the next tag.
 
 ### Added
+- **`npdev ai relay start --answer-size`, and a repeated cut-off now asks for less** (REG-326) -- a chat AI that cuts its answer
+  short used to be asked for the same size again, and twice in a row sent the conversation to a fresh chat with the same demand.
+  Now the first cut-off keeps the measured follow-up, and each repeat asks a NEW app for half the size (its core first, down to
+  4000 characters) in the same chat. `--answer-size auto|small|medium|large|CHARS` (default auto) states a size up front for a new
+  app; auto adds nothing, so every default prompt is byte-identical to the measured one. `start` also reports `wholeFileFits` for a
+  change or a fix: whether that model can be written out whole in one answer (it cannot above 60% of the chat's answer budget;
+  fragments and element upserts, REG-323, are what lets such a model be changed). The budget numbers are still placeholders until
+  the calibration run; no provider publishes its chat answer limit.
 - **`npdev ai relay`** -- use a chat AI in a browser, no API key and no MCP: `start`, `prompt`,
   `ingest`, `apply`, `undo`, `status`, `list`, `abort`. It composes the measured prompt, sorts
   whatever comes back into one outcome (ready, cut off, left parts out, asked questions, out of

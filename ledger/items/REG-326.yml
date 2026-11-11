@@ -1,0 +1,57 @@
+id: REG-326
+title: >-
+  Use a browser AI: the answer budget of each chat AI (outputBudgetChars) was data nothing read -- a cut-off answer was asked
+  for again at the SAME size, two in a row became "going in circles", and nothing said whether a model fits one answer
+type: FEATURE
+severity: LOW
+status: DONE
+opened: 2026-11-10
+closed: 2026-11-10
+source: >-
+  Owner question 2026-11-10 ("a slide control to choose the size") after a web check found that NO provider publishes a
+  per-response output cap for its chat app (Gemini, Claude, ChatGPT help pages read; Google AI Mode's own answer agreed): the
+  budget in relay-targets.json is a placeholder until the calibration run, and grep showed only the targets validator read it.
+surface: cli/relay
+files:
+  - NPDevCli/npdev_relay_targets.py
+  - NPDevCli/npdev_relay_prompts.py
+  - NPDevCli/npdev_relay_engine.py
+  - NPDevCli/npdev_relay_session.py
+  - NPDevCli/npdev_relay.py
+  - NPDevCli/relay-prompts.json
+  - schemas/ai/ai-relay-session.schema.json
+  - NPDevCli/tests/test_relay_answer_size.py
+detail: |
+  What changed (CLI only; the Manager is untouched and gets it through the same `start` / `ingest` JSON):
+  - `rt.answer_budget(profile, shrink, size)` -- the budget, or "small/medium/large" (1/4, 1/2, all of it) or an exact number,
+    halved once per repeated cut-off, never below 4000 characters. `rt.whole_file_fits` is the plan's T4.2 rule
+    (model <= 60% of the budget).
+  - `relay start --answer-size auto|small|medium|large|CHARS` (default auto). Auto adds NOTHING to any prompt: every default
+    prompt is byte-identical to the bench-measured one (the test pins sha256 of six of them, taken before the change).
+    A size is stated only for a NEW app ("start with the core"); a change or a fix must return the whole file, so it is never
+    told to write less. `start` returns `answerBudgetChars`, and for change/fix `modelChars` + `wholeFileFits`.
+  - A cut-off (TRUNCATED/ELIDED) of a new app keeps the measured follow-up the first time. From the second in a row each
+    follow-up asks for half the size ("SMALLER", new `smaller` template) and is no longer treated as going in circles; at the
+    4000-character floor it becomes the fresh-chat prompt, which now states the size too.
+  What this does NOT do: a big existing model that does not fit (wholeFileFits false) still cannot be changed through a chat
+  with a small answer budget -- that needs fragments / element upserts (REG-323). The numbers are still placeholders until the
+  owner's calibration run; the Manager has no slider yet (the plan: label it by outcome, default automatic, characters only
+  under Details), which only makes sense once fragments exist.
+resolution: >-
+  Done when the answer budget is read by the composer and the engine without changing any default prompt, a repeated cut-off of
+  a new app shrinks the request instead of repeating it, and `start` says whether a change can be written out whole -- all
+  proven by tests, including that the default prompts are unchanged and that the shrinking tests fail without the feature.
+  Proof 2026-11-10: NPDevCli/tests/test_relay_answer_size.py (18 tests), the six default-prompt hashes equal to the ones taken
+  before the change, the two shrinking/size tests red with `_cutoff_budget` and `answer_budget` patched out, and all 194 relay
+  tests green (3 min, real validator included).
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_relay_answer_size.py#test_a_repeated_cut_off_asks_for_less_each_time_until_it_changes_chat
+  asserts: >-
+    a new app whose answer was cut off twice gets a follow-up asking for half the size (12000, then 6000 characters) and is not
+    sent to a fresh chat until the 4000-character floor, where the fresh-chat prompt states that size; the first cut-off keeps
+    the measured follow-up text.
+    Proven RED 2026-11-10 by patching the shrinking out (`_cutoff_budget` returns None, `answer_budget` fixed at 24000): the
+    repeated-cut-off test and the chosen-size test both fail.
+  provenRed: true

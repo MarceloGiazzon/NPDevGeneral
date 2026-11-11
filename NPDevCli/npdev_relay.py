@@ -6,7 +6,8 @@ classify an answer the SAME way. This module is only the command-line surface; t
 npdev_relay_engine.py.
 
   npdev ai relay start   --intent create|change|fix --ask-file F [--app-dir D] [--new-app-name N] [--target T]
-                         [--language L] [--interview] [--phase mvp|f4]      open a conversation, print round 1
+                         [--language L] [--interview] [--phase mvp|f4]
+                         [--answer-size auto|small|medium|large|CHARS]      open a conversation, print round 1
   npdev ai relay prompt  --code C [--round N] [--as attachment]             print a stored prompt again
   npdev ai relay prompt  --intent ... --ask-file F [--model-file F] ...     stateless: compose, save nothing
   npdev ai relay ingest  --code C (--text-file F | --file F ...) [--source S]
@@ -63,6 +64,9 @@ def add_arguments(ai_sub) -> None:
     start.add_argument("--language", default=DEFAULT_LANGUAGE, help='Language the AI answers the user in.')
     start.add_argument("--interview", action="store_true", help="Let the AI ask a few questions first.")
     start.add_argument("--phase", default="mvp", choices=PHASES, help="Which files an answer may carry.")
+    start.add_argument("--answer-size", default="auto", metavar="auto|small|medium|large|CHARS",
+                       help="New app: how long an answer to ask the AI for. auto (default) states no size; small, medium "
+                            "and large are a share of the chosen AI's answer budget; a number is exact characters.")
     start.add_argument("--errors-file", help="Fix: what went wrong (build or boot output). The CLI redacts secrets and anonymises local folders itself.")
     json_flag(start)
 
@@ -209,7 +213,7 @@ def _run_start(args) -> int:
     payload = engine.start(
         intent=args.intent, ask=read_input(args.ask_file) or "", app_dir=args.app_dir, new_app_name=args.new_app_name,
         target=args.target, language=args.language or DEFAULT_LANGUAGE, interview=bool(args.interview),
-        phase=args.phase, errors=read_input(args.errors_file) or "")
+        phase=args.phase, errors=read_input(args.errors_file) or "", answer_size=args.answer_size)
     if args.json:
         return _print_json(payload)
     emit_text(payload["prompt"])

@@ -103,9 +103,26 @@ def load_session(code: str) -> dict:
 
 # --------------------------------------------------------------------------- start / prompts
 
+def _profile(target_id: str):
+    """The chat AI's profile (its answer budget among other numbers), or None when the list does not know it."""
+    try:
+        return rt.find(target_id)
+    except rt.RelayTargetsError:
+        return None
+
+
 def start(*, intent: str, ask: str, app_dir=None, new_app_name=None, target: str = "generic",
-          language: str = "English", interview: bool = False, phase: str = "mvp", errors: str = "") -> dict:
-    """Open a session and compose round 1. change/fix need the app (its model is what the AI is shown)."""
+          language: str = "English", interview: bool = False, phase: str = "mvp", errors: str = "",
+          answer_size=None) -> dict:
+    """Open a session and compose round 1. change/fix need the app (its model is what the AI is shown).
+
+    answer_size: None/"auto" (the default: the prompt is exactly the measured one), "small"/"medium"/"large" or a
+    number of characters -- a new app is then asked to start with its core so the answer fits. The returned
+    `wholeFileFits` says, for a change or a fix, whether this model can be written out whole in ONE answer."""
+    try:
+        size = rt.parse_answer_size(answer_size)
+    except rt.RelayTargetsError as exc:
+        raise RelayStageError(str(exc)) from None
     ask = (ask or "").strip()
     if intent not in rs.INTENTS:
         raise RelayStageError(f"unknown intent {intent!r}")
@@ -119,18 +136,26 @@ def start(*, intent: str, ask: str, app_dir=None, new_app_name=None, target: str
     # The text of a failed build or boot goes into a prompt that leaves the computer: scrubbed HERE, whoever the caller is.
     errors, redactions = scrub.scrub_errors(errors, app_dir) if errors else (errors, {})
     bundle, manifest = build_knowledge()
+    profile = _profile(target)
+    budget = rt.answer_budget(profile, 0, size) if profile else None
     try:
         session = rs.create(intent, ask, target, language, app_dir, phase, interview=interview,
                             new_app_name=new_app_name, base_model_text=model_text if model_text else None,
-                            knowledge_sha256=manifest["contentSha256"])
+                            knowledge_sha256=manifest["contentSha256"], answer_size=size)
     except rs.RelaySessionError as exc:
         raise RelayStageError(str(exc)) from None
     text = rp.compose_round1(rp.load_prompts(), code=session["code"], intent=intent, ask=ask, language=language,
-                             knowledge=bundle, model=model_text, errors=errors, interview=interview)
+                             knowledge=bundle, model=model_text, errors=errors, interview=interview,
+                             budget=budget if size is not None else None)
     rs.add_round(session, text, "round1")
-    return {"ok": True, "code": session["code"], "intent": intent, "round": 1,
-            "bytes": len(text.encode("utf-8")), "knowledgeSha256": manifest["contentSha256"], "prompt": text,
-            "errorRedactions": redactions}
+    result = {"ok": True, "code": session["code"], "intent": intent, "round": 1,
+              "bytes": len(text.encode("utf-8")), "knowledgeSha256": manifest["contentSha256"], "prompt": text,
+              "errorRedactions": redactions, "answerBudgetChars": budget}
+    if intent in ("change", "fix") and profile:
+        # The plan's rule (T4.2): above 60% of the budget the model cannot be rewritten whole in one answer.
+        result["modelChars"] = len(model_text)
+        result["wholeFileFits"] = rt.whole_file_fits(profile, len(model_text), 0, size)
+    return result
 
 
 def stored_prompt(code: str, round_number: int | None = None) -> dict:
@@ -567,13 +592,36 @@ def _error_text(result: dict) -> str:
     return "\n".join(lines)
 
 
-def _fresh_chat(session: dict, number: int, errors: str) -> str:
+def _fresh_chat(session: dict, number: int, errors: str, budget: int | None = None) -> str:
     bundle, _ = build_knowledge()
     base = session.get("baseModelSha256") and rs.session_dir(session["code"]) / "base-model.json"
     model = _read_text(base) if base and base.is_file() else ""
     return rp.compose_fresh_chat(rp.load_prompts(), code=session["code"], rnd=number + 1, ask=session["ask"],
                                  language=session["language"], knowledge=bundle, model=model, errors=errors,
-                                 trail=list(session.get("trail") or []))
+                                 trail=list(session.get("trail") or []), budget=budget)
+
+
+CUT_OFF_OUTCOMES = ("TRUNCATED", "ELIDED")
+
+
+def _cutoff_budget(session: dict, result: dict):
+    """For a REPEATED cut-off of a NEW app: the smaller number of characters to ask for now, else None.
+
+    The first cut-off keeps the measured follow-up ("send it again complete"): it may have been a fluke, and the format
+    contract already lets the AI say "too long" in a sentence. From the second one in a row, the same chat asked for the
+    same size would be cut at the same place, so each repeat halves the size (never below MIN_ANSWER_CHARS). A change
+    or a fix must return the complete file, so it cannot shrink: `start` reports `wholeFileFits` for those instead."""
+    if result["outcome"] not in CUT_OFF_OUTCOMES or session.get("intent") != "create":
+        return None
+    streak = 0
+    for line in reversed(session.get("trail") or []):
+        if str(line).split(":", 1)[0] not in CUT_OFF_OUTCOMES:
+            break
+        streak += 1
+    profile = _profile(session.get("target") or "generic")
+    if streak == 0 or profile is None:
+        return None
+    return rt.answer_budget(profile, streak, session.get("answerSize"))
 
 
 def _attach_next(session: dict, number: int, result: dict) -> None:
@@ -592,9 +640,11 @@ def _attach_next(session: dict, number: int, result: dict) -> None:
         result["next"] = {"kind": "copy-prompt", "messageId": "LIMIT_REACHED", "prompt": fresh, "freshChatPrompt": fresh}
         return
     if outcome in SAME_CHAT_OUTCOMES:
-        text = rp.compose_same_chat(rp.load_prompts(), code=session["code"], rnd=number + 1, outcome=outcome, errors=errors)
+        budget = _cutoff_budget(session, result)
+        text = rp.compose_same_chat(rp.load_prompts(), code=session["code"], rnd=number + 1, outcome=outcome,
+                                    errors=errors, budget=budget)
         result["next"] = {"kind": "copy-prompt", "messageId": outcome, "prompt": text,
-                          "freshChatPrompt": _fresh_chat(session, number, errors)}
+                          "freshChatPrompt": _fresh_chat(session, number, errors, budget)}
         return
     if outcome == "PARSED":  # text fine, but this machine cannot validate: the Manager's "Java missing" assistant
         result["next"] = {"kind": "user-action", "messageId": "JAVA_MISSING"}
@@ -607,6 +657,9 @@ def _check_going_in_circles(session: dict, number: int, result: dict) -> None:
         return
     if session["rounds"][number - 2].get("errorSignature") != signature:
         return
+    budget = _cutoff_budget(session, result)
+    if budget is not None and budget > rt.MIN_ANSWER_CHARS:
+        return  # a repeated cut-off is not "the same mistake": the follow-up already asks for something smaller
     result["findings"].append({"code": "going-in-circles", "severity": "warning"})
-    fresh = _fresh_chat(session, number, _error_text(result))
+    fresh = _fresh_chat(session, number, _error_text(result), budget)
     result["next"] = {"kind": "copy-prompt", "messageId": "GOING_IN_CIRCLES", "prompt": fresh, "freshChatPrompt": fresh}

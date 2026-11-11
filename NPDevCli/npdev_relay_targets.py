@@ -89,3 +89,54 @@ def find(target_id: str, path: Path | None = None) -> dict:
 def fits(profile: dict, chars: int) -> bool:
     """Does a text of `chars` characters go into this chat as a plain paste?"""
     return chars <= profile["maxPasteChars"]
+
+
+# --------------------------------------------------------------------------- how long an ANSWER may be
+#
+# `outputBudgetChars` is a placeholder until the owner's calibration run (see the module docstring), so everything
+# below is "probably", and a prompt built from it must never be the default: only an explicit answer size, or a
+# repeated cut-off, may put a number in front of the AI.
+
+MIN_ANSWER_CHARS = 4000          # below this an app's core no longer fits; stop shrinking and change chat instead
+WHOLE_FILE_SHARE = 0.6           # plan T4.2: a model above this share of the budget cannot be rewritten whole
+SIZE_WORDS = {"small": 4, "medium": 2, "large": 1}   # the budget divided by this
+AUTO = "auto"
+
+
+def parse_answer_size(value):
+    """None for "automatic" (nothing is added to any prompt), else "small"/"medium"/"large" or a number of characters."""
+    if value is None or (isinstance(value, str) and value.strip().lower() == AUTO):
+        return None
+    if isinstance(value, bool):
+        raise RelayTargetsError("The answer size must be auto, small, medium, large or a number of characters.")
+    if isinstance(value, int):
+        number = value
+    else:
+        text = str(value).strip().lower()
+        if text in SIZE_WORDS:
+            return text
+        if not text.isdigit():
+            raise RelayTargetsError("The answer size must be auto, small, medium, large or a number of characters.")
+        number = int(text)
+    if number < MIN_ANSWER_CHARS:
+        raise RelayTargetsError(f"The answer size must be at least {MIN_ANSWER_CHARS} characters.")
+    return number
+
+
+def answer_budget(profile: dict, shrink: int = 0, size=None) -> int:
+    """How many characters of model.json to ask this chat for: its budget (or the chosen size of it), halved once per
+    repeated cut-off, never below MIN_ANSWER_CHARS."""
+    size = parse_answer_size(size)
+    if isinstance(size, int):
+        base = size
+    elif size in SIZE_WORDS:
+        base = profile["outputBudgetChars"] // SIZE_WORDS[size]
+    else:
+        base = profile["outputBudgetChars"]
+    return max(MIN_ANSWER_CHARS, base // (2 ** max(0, shrink)))
+
+
+def whole_file_fits(profile: dict, model_chars: int, shrink: int = 0, size=None) -> bool:
+    """Can a model of `model_chars` characters be written out WHOLE in one answer from this chat? A change or a fix
+    must return the complete file, so a big model that does not fit needs fragments or element upserts (REG-323)."""
+    return model_chars <= WHOLE_FILE_SHARE * answer_budget(profile, shrink, size)

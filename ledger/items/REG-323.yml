@@ -25,6 +25,7 @@ detail: |
   - there is no expander for `npdev-elements.json` (base + upserts by `name` + removals -> the full model); each root key of
     model.schema.json must first be confirmed to identify its elements by `name`;
   - the composer (npdev_relay_prompts.py) cannot choose "whole file" vs "upsert" by `len(base model) > target outputBudgetChars * 0.6`
+    (REG-326 landed the MEASUREMENT: `relay start` returns `wholeFileFits` by exactly that rule; the CHOICE still waits for the expander)
     -- and relay-prompts.json is BENCH-MEASURED: changing prompt text means re-measuring, and the bench compiles the generator from the
     repo, so never edit platform code while a bench run is on;
   - quarantined code (JS pages, Java capabilities) needs PLAN section 8.1's six steps: pattern scan, bytecode inspector, a strong

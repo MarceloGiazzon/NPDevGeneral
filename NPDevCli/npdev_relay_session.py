@@ -192,7 +192,8 @@ def _claim_new_code() -> str:
 
 
 def create(intent: str, ask: str, target: str, language: str, app_dir, phase: str, *,
-           interview: bool = False, new_app_name=None, base_model_text=None, knowledge_sha256=None) -> dict:
+           interview: bool = False, new_app_name=None, base_model_text=None, knowledge_sha256=None,
+           answer_size=None) -> dict:
     """Start a session: claim a free code, write session.json (state waiting-answer, no rounds yet).
 
     `base_model_text` (change/fix: the text of model.json right now) is saved as base-model.json and its
@@ -226,6 +227,8 @@ def create(intent: str, ask: str, target: str, language: str, app_dir, phase: st
     }
     if knowledge_sha256:
         session["knowledgeSha256"] = knowledge_sha256
+    if answer_size is not None:  # absent = automatic; an old session without it stays valid
+        session["answerSize"] = answer_size
     if base_model_text is not None:
         data = base_model_text.encode("utf-8", errors="replace")
         _atomic_write(session_dir(code) / "base-model.json", data)
