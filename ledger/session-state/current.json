@@ -1,26 +1,19 @@
 {
-  "closedAt": "2026-11-12T05:41:36.7429485Z",
+  "closedAt": "2026-11-12T06:26:57.9996502Z",
   "branch": "main",
-  "head": "816ead73",
-  "headSubject": "feat(packs)!: helpdesk and leave 1.2.0 -- a requester or employee sees only their own records",
-  "summary": "Verified REG-337 on approvals: new NPDevSamples/dom-approvals sample + probe showed requestedBy null for every request filed through RequestApproval (1.1.0). Fixed in approvals 1.2.0 with a FileApprovalRequest saveConcept procedure (leave pattern); catalog, BREAKING.md, PACK_DESIGN, REG-337 and the dsl-conformance-max pack copy updated. Probe now 26/26.",
-  "nextStep": "First, after 14:05 UTC on 2026-11-12 run: git fetch --prune && git branch -r (only origin/main = Dependabot fix confirmed; if dependabot branches are back, bundle them to D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\branch-archive then git push origin --delete each). Then fix REG-337 at the root: make a flow createConcept step apply a field's $user / now() defaultExpression like a REST create (kernel flow createConcept + concept gateway; see D:\\WorkSpace\\NPDev\\NPDev_General\\ledger\\items\\REG-337.yml), then drop the FileLeaveRequest / FileApprovalRequest workarounds and leave's '|| employeeId == null' write branch with D:\\WorkSpace\\NPDev\\NPDev_General\\NPDevSamples\\dom-leave\\probe\\leave_probe.py and D:\\WorkSpace\\NPDev\\NPDev_General\\NPDevSamples\\dom-approvals\\probe\\approvals_probe.py still green.",
+  "head": "ea07cdad",
+  "headSubject": "docs: pack authoring -- parentField, pack-qualified rollup, validator lint and tunnel notes",
+  "summary": "Reviewed two browser-AI pack rounds (13 packs wave 1, then 6 modules 1.0.1): found access/promise defects, sent 18-item feedback, added NPDevMcp/pack_lint.py (5 LINT_* codes) to the validation service, strengthened the outside-repo authoring guide and validate_pack.py, documented rules in PACK_DESIGN/AUTHORING_WITH_AI. Verified the public ngrok connector returns the lint; the 'token changed' report was really a dead tunnel.",
+  "nextStep": "Owner re-uploads D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_AUTHORING_BROWSER_AI_2026-11-12\\NPDEV_PACK_AUTHORING_GUIDE_FOR_BROWSER_AI.md and FEEDBACK_WAVE1.md to the browser AI. When its next Downloads zip arrives (foundations 7 packs still unanswered: items 10-17; quotes needs rollup from 'quotes::QuoteLine'), run validate_pack.py on each pack in that folder, then build a dom-quotes/dom-leads consumer sample with probe. Separately, verify the dependabot branch check (git fetch --prune && git branch -r) and the REG-337 approvals state from the previous NEXT.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_SINGLE_OWNER_2026-11-12\\PLAN.md",
-  "blocked": "Dependabot verification waits for the Thursday 14:04 UTC run. Packs from the browser AI come from the owner separate chat; when one arrives run D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_AUTHORING_BROWSER_AI_2026-11-12\\validate_pack.py on it, then a sample with probe.",
-  "verified": "dom-approvals probe 26/26 on a generated, built, booted app with wiped DB (run with D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_SINGLE_OWNER_2026-11-12\\run-dom-probe.ps1); dsl-conformance-max 20-flow behaviour probes 28/28 (incl. both RequestApproval probes); gradlew :NPDevContract:dsl:test --tests *Pack* executed uncached, green; validate-corpus 80/80; pack-shared-not-forked, pack-coordinates-pinned, pack-coverage, pack-catalog --check, doc-inventory, no-markdown-reads, markdown-links, record-surfaces, done-item-guards (--no-baseline-ok) OK. NOT run: run-all-gates (owner said later). Open on approvals: a requester can name another person as requestedBy through the flow (stored as given; audit-integrity gap, no read exposure) - noted in REG-337.",
-  "dirtyCount": 10,
-  "dirtyFiles": [
-    " M BREAKING.md",
-    " M NPDevContract/pack-catalog/pack-catalog.json",
-    " M NPDevContract/packs/approvals/pack.json",
-    " M NPDevSamples/dsl-conformance-max/Input/packs/approvals/pack.json",
-    " M docs/PACK_DESIGN.md",
-    " M ledger/items/REG-337.yml",
-    " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl",
-    " M scripts/quality/corpus-roles.json",
-    "?? NPDevSamples/dom-approvals/"
-  ],
+  "blocked": "",
+  "verified": "NPDevMcp test_pack_lint (15) + test_validation_service (52) green; live POST to local and public ngrok /mcp returned LINT_OWNER_WRITE_NO_BLANK; check-doc-inventory, check-markdown-links, check-no-markdown-reads, check-record-surfaces, portable-tooling OK. NOT run: run-all-gates, any probe on a generated app for the new browser-AI packs.",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
   "unpushed": 0,
-  "landedCommits": []
+  "landedCommits": [
+    "ea07cdad docs: pack authoring -- parentField, pack-qualified rollup, validator lint and tunnel notes",
+    "929baa83 feat(mcp): validation service lints access and promise mistakes found in browser-AI packs",
+    "00063820 feat(packs)!: approvals 1.2.0 -- a request filed through the flow records who filed it"
+  ]
 }
