@@ -76,6 +76,7 @@
           "why": { "type": ["string", "null"], "maxLength": 300 },
           "valueText": { "type": ["string", "null"], "maxLength": 80 },
           "preview": { "type": "string" },
+          "text": { "type": "string", "description": "READY only: the sentence the Manager shows for this item, in the person's language (`preview` is always English). Wording only: nothing keys off it." },
           "value": { "type": ["string", "boolean", "integer", "number"], "description": "`applicable` only: the value that will be written (it passed the allowlist entry's type and values)." },
           "confirmCode": { "type": "string", "description": "`applicable` only: `config:<property>`, the code `relay apply --confirm-warning` takes to apply this one change." }
         }

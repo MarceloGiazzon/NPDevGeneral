@@ -455,7 +455,7 @@ class ComposerTests(ComposerCase):
         for key in POLICY["elements"]["identityKeys"] + list(POLICY["elements"]["wholeFileOnly"]):
             self.assertIn(key, out["prompt"])
 
-    def test_a_model_that_fits_and_every_other_phase_get_exactly_the_measured_prompt(self):
+    def test_every_other_phase_gets_exactly_the_measured_prompt_and_a_small_f4_model_gets_no_file_list(self):
         small = self.make_app()
         measured = self.begin(small, phase="mvp")
         for out in (measured, self.begin(small, phase="f4"), self.begin(self.make_split_app(), phase="mvp"),
@@ -463,8 +463,14 @@ class ComposerTests(ComposerCase):
             self.assertEqual(out["answerMode"], "whole")
             self.assertNotIn("npdev-elements.json", out["prompt"])
             self.assertNotIn("File fragments/", out["prompt"])
-        same = engine.start(intent="change", ask="Add a phone number to the customer", app_dir=str(small), phase="f4", target="chatgpt")
-        self.assertEqual(same["prompt"].replace(same["code"], "XXXX"), measured["prompt"].replace(measured["code"], "XXXX"))
+        # f4 also teaches themes/pages/menu/seeds (relay-prompts-f4.json `more`; tests/test_relay_prompts_f4.py), so a small f4
+        # model's prompt is the measured one plus that text, and nothing else.
+        f4 = engine.start(intent="change", ask="Add a phone number to the customer", app_dir=str(small), phase="f4", target="chatgpt")
+        plain = measured["prompt"].replace(measured["code"], "XXXX")
+        grown = f4["prompt"].replace(f4["code"], "XXXX")
+        self.assertNotEqual(grown, plain)
+        self.assertIn(engine.rp.compose_f4_more(engine.rp.load_f4_prompts()), f4["prompt"])
+        self.assertEqual(grown.replace(engine.rp.compose_f4_more(engine.rp.load_f4_prompts()), "").count("File fragments/"), 0)
 
     def test_the_upsert_the_prompt_asks_for_is_the_upsert_ingest_accepts(self):
         app = self.make_big_app()

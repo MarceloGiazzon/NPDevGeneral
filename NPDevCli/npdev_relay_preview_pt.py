@@ -263,3 +263,30 @@ def localize_preview(preview, language):
         if text:
             warning["text"] = text
     return out
+
+
+CONFIG_PT = {
+    # applicable: one sentence per allowlisted property (relay-config-allowlist.json holds the English); {value} is the value
+    "ui.theme.name": "A IA pediu para usar o tema {value} em todo o app. Isso muda as configurações do app quando você aplicar a resposta, e dá para desfazer.",
+    "ui.theme.choices": "A IA pediu para oferecer estes temas para as pessoas escolherem: {value}. Isso muda as configurações do app quando você aplicar a resposta, e dá para desfazer.",
+}
+CONFIG_STATUS_PT = {
+    "not-a-chat-setting": "A IA sugeriu mudar {property} para {value}. Você pode fazer isso em Configurações.",
+    "no-writer": "A IA sugeriu mudar {property} para {value}. Você pode fazer isso em Configurações.",
+    "value-not-allowed": "A IA sugeriu {value} para {property}, que não é um valor aceito pelo NPDev. Você pode ajustar em Configurações.",
+    "never-from-a-chat": "A IA pediu para mudar {property}. O NPDev nunca muda isso a partir de um chat, então nada foi mudado.",
+}
+
+
+def config_item_text(item: dict, language) -> str:
+    """The one sentence the owner reads for a config proposal (ui: `text`). English is the item's own `preview`; Portuguese
+    falls back to it for a property or reason this table does not know, so a new allowlisted knob is never blank."""
+    english = str(item.get("preview") or "")
+    if not is_portuguese(language):
+        return english
+    params = {"property": item.get("property", ""), "value": item.get("valueText") if item.get("valueText") is not None else ""}
+    template = CONFIG_PT.get(str(item.get("property"))) if item.get("status") == "applicable" else CONFIG_STATUS_PT.get(str(item.get("reason")))
+    try:
+        return template.format(**params) if template else english
+    except (KeyError, IndexError, ValueError):
+        return english

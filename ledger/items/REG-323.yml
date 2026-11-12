@@ -24,6 +24,9 @@ files:
   - NPDevCli/relay-config-allowlist.json
   - NPDevCli/npdev_relay_prompts.py
   - NPDevCli/relay-prompts.json
+  - NPDevCli/relay-prompts-f4.json
+  - NPDevCli/npdev_relay_preview_pt.py
+  - NPDevManager/ui/browserai.js
 detail: |
   Where things stand: relay-ingest-policy.json already lists the `f4` phase (allowed: npdev-elements.json, npdev-config-proposal.json,
   fragments/*.json, contexts/*.json, themes/*.json, web/*.html|css|svg; quarantine: capabilities/*, conversion-hooks/*, web/*.js|mjs),
@@ -65,7 +68,7 @@ detail: |
   files: every fragments/ and contexts/ file is shown as it is, with how to return the changed ones; `modelChars`/`wholeFileFits` then
   describe the LARGEST single file; a reachable file that cannot be changed from here is named and left out), `upsert` (one file above
   60% of the answer budget: ask for npdev-elements.json instead of model.json, with the list names read from the policy), `whole`
-  (everything else: NOTHING is added). The text is in its OWN file, NPDevCli/relay-prompts-f4.json, so relay-prompts.json -- bench-measured,
+  (everything else: no file list; since 2026-11-12 every f4 change/fix also gets `more`). The text is in its OWN file, NPDevCli/relay-prompts-f4.json, so relay-prompts.json -- bench-measured,
   its sha256 recorded by the bench -- is untouched and every prompt outside phase f4 is byte-identical to the measured one (test). The
   briefing is stored as base-f4.txt in the session folder so a fresh-chat prompt carries the same one. **THE f4 TEXT IS NOT MEASURED**:
   run the relay bench arm on a split app and on a model above the budget before the Manager ever passes phase f4 (and never edit
@@ -158,10 +161,21 @@ detail: |
   data-seeds/demo.json + index.json are in the app, workspace-menu-pages-seed.json holds GROUP Shop -> BUSINESS Customer + PAGE
   orders.html (target normalised), static/orders.html is there. The app was NOT booted: "Load sample data" was never clicked and the
   menu never opened in a browser. Tests: test_relay_seeds (34) and test_relay_menu (30); 20 mutations each turned a test red (one survivor
-  was found and its test fixed). NOT done: the f4 PROMPT (relay-prompts-f4.json) still teaches only fragments/contexts/upsert -- the AI
-  is not told it may send themes, pages, menu or seeds, and that text is unmeasured (bench run needed before the Manager passes f4);
-  removing a menu node, page or seed from a chat; type-checking seed field VALUES (the write path does it and names the field);
+  was found and its test fixed). NOT done: removing a menu node, page or seed from a chat; type-checking seed field VALUES (the write path does it and names the field);
   detecting that a seed repeats records already loaded (running one twice adds twice, by design).
+  F4 PROMPT + MANAGER TICK (2026-11-12): the f4 prompt now teaches the files that are not the model. relay-prompts-f4.json gained `more`
+  (themes/<id>.json with basedOn, web/*.html|css|svg with pages.json, menu.json, seeds/<id>.json, and npdev-config-proposal.json as the
+  way to SELECT a theme) and `examples`; every f4 change/fix carries it after the files/upsert briefing (whole mode too: a small f4
+  model's prompt is now the measured prompt PLUS `more`, and nothing else; mvp/create stay byte-identical). tests/test_relay_prompts_f4.py
+  runs every example through the real checker (theme, config, pages+menu, seed), pins that every path the f4 policy allows is named in
+  the text, and that the generator list and the 10,000-row cap are read from the policy. THE TEXT IS STILL UNMEASURED: the relay bench
+  has not run on it, and the Manager still never passes f4. The Manager tick: ingest's `configProposals[]` items gain `text` (the
+  sentence in the person's language: npdev_relay_preview_pt.config_item_text, English = `preview`); the browser-AI preview shows an
+  applicable item as ONE OPTIONAL box (unticked, never gates Apply), a suggestion/refusal as a plain line, and Apply sends the ticked
+  `config:<property>` codes through the existing --confirm-warning list (the Rust side already accepted that shape). The done sentence
+  says the settings were applied when `configApplied` is non-empty. Tested: 5 new check-manager-ui-render.mjs checks, 3 new
+  test_relay_config tests, 16 test_relay_prompts_f4 tests. NOT proved: Apply of a config change on the REAL Manager window (the render
+  test stubs the CLI), and nothing was booted.
   Suggested order (each its own commit, each behind phase f4): T4.2 element upsert (DONE above), T4.1 fragments (DONE, incl. composer),
   T4.5 config proposals (DONE, allowlist empty by finding), T4.3 themes/pages/seed/translations, T4.4 code quarantine (with the owner).
 resolution: >-

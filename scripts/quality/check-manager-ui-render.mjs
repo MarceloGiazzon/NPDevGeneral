@@ -1407,6 +1407,44 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   check("browser AI: 'Ask for something else' on a preview closes that conversation",
     (await page.evaluate(() => window.__relayAborts.length)) === 1 && (await shown("#browserai-ask")), "");
 
+  // REG-323 F4: what the AI asked for OUTSIDE the model (the app's look) is an OPTIONAL tick the CLI describes: it starts unticked,
+  // never gates Apply, only an applicable one is a box (the rest is told as a line), and only the ticked one is sent back.
+  await page.fill("#browserai-ask", "make the look blue");
+  await page.click("#browserai-continue");
+  await page.waitForTimeout(200);
+  await page.click("#browserai-copy");
+  await page.evaluate(() => {
+    window.__relayApplies = [];
+    window.__probeQueue = ["stopped", "stopped", "running"];
+    window.__ingestAnswer = Object.assign({}, window.__FIXTURES__.relay.change, { configProposals: [
+      { property: "ui.theme.name", status: "applicable", reason: "allowlisted", why: null, valueText: "harbor", value: "harbor", confirmCode: "config:ui.theme.name",
+        preview: "The AI asked to use the theme harbor for the whole app.", text: "A IA pediu para usar o tema harbor em todo o app." },
+      { property: "console.mode", status: "suggestion", reason: "not-a-chat-setting", why: null, valueText: "dark", preview: "The AI suggested changing console.mode to dark. You can do that in Settings.", text: "A IA sugeriu mudar console.mode para dark. Você pode fazer isso em Configurações." },
+      { property: "database.host", status: "refused", reason: "never-from-a-chat", why: null, valueText: null, preview: "The AI asked to change database.host. NPDev never changes that from a chat, so nothing was changed.", text: "A IA pediu para mudar database.host. O NPDev nunca muda isso a partir de um chat, então nada foi mudado." },
+    ] });
+  });
+  await page.fill("#browserai-paste", "STUB-READY");
+  await page.click("#browserai-check");
+  await page.waitForTimeout(250);
+  const offerBoxes = await page.$$eval("#browserai-offers-list label", (l) => l.map((x) => ({ text: x.textContent.trim(), ticked: x.querySelector("input").checked, code: x.querySelector("input").dataset.configCode })));
+  const previewLines = await page.$$eval("#browserai-preview li", (l) => l.map((x) => x.textContent));
+  check("browser AI: an applicable config proposal is ONE optional box, unticked, with the CLI's sentence and its code",
+    offerBoxes.length === 1 && offerBoxes[0].text === "A IA pediu para usar o tema harbor em todo o app." && offerBoxes[0].ticked === false && offerBoxes[0].code === "config:ui.theme.name" && (await shown("#browserai-offers")), JSON.stringify(offerBoxes));
+  check("browser AI: a suggestion and a refusal are told as lines, never offered as a box",
+    previewLines.some((t) => t.includes("console.mode")) && previewLines.some((t) => t.includes("database.host")) && offerBoxes.length === 1, JSON.stringify(previewLines));
+  check("browser AI: an unticked offer does not hold Apply back", !(await page.$eval("#browserai-apply", (b) => b.disabled)), "");
+  await page.check("#browserai-offers-list input");
+  await page.click("#browserai-apply");
+  await page.waitForTimeout(300);
+  const offerApply = await page.evaluate(() => window.__relayApplies);
+  check("browser AI: Apply sends the ticked config code among the confirmations, and nothing else",
+    offerApply.length === 1 && offerApply[0].confirmed.join() === "config:ui.theme.name", JSON.stringify(offerApply));
+  await page.evaluate(() => { window.__ingestAnswer = null; window.__applyAnswer = null; });
+  await settled();
+  await page.click("#browserai-again");
+  await page.waitForTimeout(250);
+  check("browser AI: starting over leaves no offer behind", !(await shown("#browserai-offers")), "");
+
   // REG-322: a failed build ends on a button that opens a fix conversation about the SAME app; its Apply runs the same launch again
   await page.evaluate(() => {
     window.__relayStarts = []; window.__relayApplies = []; window.__relayAborts = []; window.__relayFixStarts = [];

@@ -1261,6 +1261,8 @@
   "The change could not be applied. Nothing was changed.": "Não foi possível aplicar a mudança. Nada foi alterado.",
   "Done. Your new app was created.": "Pronto. O seu novo app foi criado.",
   "Done. The change is in your app.": "Pronto. A mudança está no seu app.",
+  "Done. The change and the settings you ticked are in your app.": "Pronto. A mudança e as configurações que você marcou estão no seu app.",
+  "The AI also asked for these changes. Tick only the ones you want.": "A IA também pediu estas mudanças. Marque só as que você quer.",
   "There is nothing to undo.": "Não há nada para desfazer.",
   "A new app cannot be undone here. Delete it from My apps if you do not want it.": "Um app novo não pode ser desfeito aqui. Apague-o em Meus apps se não o quiser.",
   "The app or its saved copy could not be found, so nothing was undone.": "Não encontrei o app ou a cópia guardada dele, então nada foi desfeito.",

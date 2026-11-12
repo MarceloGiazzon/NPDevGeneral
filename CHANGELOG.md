@@ -47,6 +47,15 @@ release. Ships in the next tag.
   which the AI already changes through `model.json` -- the one exception, found later with T4.3, is the app's theme choice
   (`ui.theme.name` / `ui.theme.choices`, a `config.json` default); a knob needs an existing CLI command that writes it before it
   earns an entry.
+- **The f4 prompt now tells a browser AI it may send themes, pages, a menu and sample data -- and the Manager shows the app-look change as an optional tick** (REG-323, F4) --
+  every `--phase f4` change or fix prompt carries a short section after its file briefing: `themes/<id>.json` (with `basedOn`), `web/*.html|css|svg`
+  plus `pages.json`, `menu.json`, `seeds/<id>.json`, and `npdev-config-proposal.json` as the way to choose the app's theme; each with an
+  example the tests run through the real checker, so the text cannot teach a shape ingest refuses. A small f4 model's prompt is now the
+  measured prompt plus that section (before, it got nothing extra); other phases and a create are unchanged. The text has NOT been
+  measured with the relay bench, and the Manager still never passes phase f4. In the Manager's browser-AI preview, a theme or theme-choice
+  change the AI asked for is one optional box, unticked and never blocking Apply, with the sentence in the person's language; a
+  suggestion or a refusal is a plain line. Apply sends the ticked `config:<property>` codes and the done line says the settings were
+  applied. Proved by the render test with a stubbed CLI, not yet on the real window.
 - **A browser-AI answer can carry sample data and the menu tree, and `npdev dev` / `run` now carry a model's seeds** (REG-323, F4) --
   with `--phase f4` an answer may carry `seeds/<id>.json` and `menu.json`, written with the model all or nothing and undone with
   it. A seed is checked with the seed schema's and the seed runner's rules before anything is written: its `id` must be its file name
@@ -60,8 +69,7 @@ release. Ships in the next tag.
   Manager runs an app) never staged `seeds/` into the app, only `generate app` did, so "Load sample data" was empty for an app run
   from the Manager; both now stage them, and a seed that is not JSON stops the phase with the reason. Proved on a real generation of
   a relay-made folder (seed staged, menu rows `Shop > Customers` + `Shop > Orders page`, page in the static folder); the app was not
-  booted. The f4 prompt still teaches only fragments, contexts and upserts, so an AI is not yet told it may send these files. The
-  Manager never passes phase f4.
+  booted. The Manager never passes phase f4.
 - **A browser-AI answer can carry hand-made pages, and a `web/` folder beside the model is now mounted without a flag** (REG-323,
   T4.3b) -- with `--phase f4` an answer may carry `web/*.html|css|svg` and a `pages.json` (`[{path, label, requiredRole?,
   ordinal?}]`, `path` relative to `web/`). They are written with the model all or nothing and undone with it. The generator

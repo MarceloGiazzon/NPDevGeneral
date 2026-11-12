@@ -218,6 +218,43 @@ class ConfigAnswerTests(ElementsAnswerCase):
         self.assertNotIn("configProposals", result)
         self.assertIn("path-denied", [f["code"] for f in result["findings"]])
 
+    def ready(self, language: str | None = None) -> dict:
+        app = self.make_app()
+        kwargs = {"language": language} if language else {}
+        code = engine.start(intent="change", ask="Add a phone number to the customer", app_dir=str(app), phase="f4", **kwargs)["code"]
+        result = engine.ingest(code, answer_of(code, 1, {
+            "model.json": with_phone(json.loads(SEED_MODEL)), "npdev-submission.json": manifest(),
+            "npdev-config-proposal.json": proposal(("ui.theme.name", "retro"), ("console.mode", "quiet"), ("database.password", "x"),
+                                                    ("ui.theme.choices", "nope"))}), source="paste")
+        self.assertEqual(result["outcome"], "READY", (result["findings"], result.get("errorLines")))
+        return result
+
+    def test_every_proposal_of_a_ready_answer_carries_the_sentence_the_manager_shows_in_english_by_default(self):
+        items = self.ready()["configProposals"]
+        self.assertEqual([i["status"] for i in items], ["applicable", "suggestion", "refused", "suggestion"])
+        for item in items:
+            self.assertEqual(item["text"], item["preview"])
+        self.assertEqual(items[0]["confirmCode"], "config:ui.theme.name")
+
+    def test_in_portuguese_each_sentence_is_portuguese_and_the_codes_do_not_change(self):
+        portuguese = self.ready("Portuguese (Brazil)")["configProposals"]
+        self.assertEqual([i["confirmCode"] for i in portuguese if "confirmCode" in i], ["config:ui.theme.name"])
+        for item in portuguese:
+            self.assertNotEqual(item["text"], item["preview"], item)  # `preview` stays English: the words changed, nothing else
+        self.assertIn("retro", portuguese[0]["text"])
+        self.assertIn("database.password", portuguese[2]["text"])
+        self.assertNotIn("x", [w for w in portuguese[2]["text"].split()])  # the refused value is still never echoed
+
+    def test_a_portuguese_sentence_exists_for_every_knob_and_every_reason_the_sorter_can_give(self):
+        import npdev_relay_preview_pt as pt
+
+        for entry in ALLOWLIST["entries"]:
+            self.assertIn(entry["property"], pt.CONFIG_PT, "a new allowlisted knob needs its Portuguese sentence")
+        for reason in ("not-a-chat-setting", "never-from-a-chat", "value-not-allowed", "no-writer"):
+            self.assertIn(reason, pt.CONFIG_STATUS_PT)
+        schema = json.loads((REPO / "schemas" / "ai" / "ai-relay-ingest-result.schema.json").read_text(encoding="utf-8"))
+        self.assertIn("text", schema["properties"]["configProposals"]["items"]["properties"])
+
 
 if __name__ == "__main__":
     unittest.main()

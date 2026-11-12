@@ -84,4 +84,7 @@
 .ba-safe .ba-mark { flex: none; width: 1.4em; text-align: center; color: var(--t-positive); }
 .ba-confirm { display: flex; gap: 0.6em; align-items: flex-start; margin: 0.4em 0; padding: 0.4em 0.6em; border: 1px solid var(--t-warning-edge); background: var(--t-warning-tint); }
 .ba-confirm input { flex: none; margin-top: 0.25em; }
+.ba-offer { display: flex; gap: 0.6em; align-items: flex-start; margin: 0.4em 0; padding: 0.4em 0.6em; border: 1px solid var(--t-border, currentColor); }
+.ba-offer input { flex: none; margin-top: 0.25em; }
+.ba-offers-note { margin: 0.6em 0 0.2em; }
 .ba-progress { margin: 0.4em 0; font-weight: 600; }

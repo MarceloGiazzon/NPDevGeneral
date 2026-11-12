@@ -862,6 +862,7 @@
         list.append(li("warn", "⚠", w.text));
       }
     }
+    renderOffers(r, blocked, li, list);
     $("browserai-safe").hidden = !(S.intent === "change" && p.dataLoss === false && !needsYes);
     $("browserai-prose").textContent = r.prose || "";
     $("browserai-details").hidden = !r.prose;
@@ -870,6 +871,35 @@
     $("browserai-apply").hidden = blocked;
     note("browserai-apply-note", needsYes ? "Tick each box to say you agree." : "");
     updateApply();
+  }
+
+  // The settings the AI asked for outside the model (today: the app's look). From `result.configProposals` ONLY: the CLI
+  // says which are applicable (an allowlisted knob with a valid value), writes the sentence in the person's language and
+  // gives the code Apply must send back. Each box starts UNTICKED and is optional: an untouched one changes nothing, and
+  // it never gates Apply (unlike a confirm box above). Everything else the AI proposed is told, never offered.
+  function renderOffers(r, blocked, li, list) {
+    const box = $("browserai-offers");
+    const holder = $("browserai-offers-list");
+    holder.replaceChildren();
+    let offered = 0;
+    for (const item of r.configProposals || []) {
+      const text = item.text || item.preview || "";
+      if (item.status === "applicable" && item.confirmCode && !blocked) {
+        offered += 1;
+        const label = document.createElement("label");
+        label.className = "ba-offer";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.dataset.configCode = item.confirmCode;
+        const span = document.createElement("span");
+        span.textContent = text;
+        label.append(input, span);
+        holder.append(label);
+      } else if (text) {
+        list.append(li("", "•", text));
+      }
+    }
+    box.hidden = offered === 0;
   }
 
   function updateApply() {
@@ -905,7 +935,10 @@
 
   async function onApply() {
     if (S.busy || !S.code || S.blocked) return;
-    const confirmed = [...document.querySelectorAll("#browserai-confirms input:checked")].map((b) => b.dataset.code);
+    const confirmed = [
+      ...[...document.querySelectorAll("#browserai-confirms input:checked")].map((b) => b.dataset.code),
+      ...[...document.querySelectorAll("#browserai-offers-list input:checked")].map((b) => b.dataset.configCode),
+    ];
     let parentDir = null;
     if (S.intent === "pack") {
       parentDir = await packsWorkspace();
@@ -957,7 +990,8 @@
   function showDone(r) {
     if (r.intent === "pack") return showDonePack(r);
     const created = r.created === true;
-    note("browserai-progress", created ? "Done. Your new app was created." : "Done. The change is in your app.");
+    const settings = Array.isArray(r.configApplied) && r.configApplied.length > 0;
+    note("browserai-progress", created ? "Done. Your new app was created." : settings ? "Done. The change and the settings you ticked are in your app." : "Done. The change is in your app.");
     showLaunchButtons({});
     note("browserai-launch", "");
     $("browserai-launch-details").hidden = true;

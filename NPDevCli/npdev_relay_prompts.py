@@ -51,6 +51,16 @@ def compose_f4_upsert(p4: dict, keys: list, whole_only: list) -> str:
     return _t(p4["upsert"], keys=", ".join(keys), wholeOnly=", ".join(whole_only))
 
 
+def compose_f4_more(p4: dict) -> str:
+    """The files an f4 answer may carry besides the model (themes, pages, menu, seeds, theme selection), with examples that
+    tests/test_relay_prompts_f4.py runs through the real checkers, and the lists read from the ingest policy."""
+    import npdev_relay_seeds as seeds_mod
+
+    seed_cfg = seeds_mod.load_policy()
+    shown = {f"{key}Example": json.dumps(value, ensure_ascii=False) for key, value in p4["examples"].items()}
+    return _t(p4["more"], generators=", ".join(seed_cfg["generators"]), maxRecords=f"{seed_cfg['maxExpandedRecords']:,}", **shown)
+
+
 def attachment_message(p: dict) -> str:
     """The one short line to write in the chat next to an attached prompt file (the file carries everything else)."""
     return p["attachmentMessage"]

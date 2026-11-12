@@ -686,6 +686,12 @@
           <ul class="ba-preview" id="browserai-preview" lang="en" translate="no"></ul>
           <p class="ba-safe" id="browserai-safe" hidden><span class="ba-mark" aria-hidden="true">✓</span> <span>Nothing will be deleted. Your data stays.</span></p>
           <div id="browserai-confirms"></div>
+          <!-- Changes the AI asked for OUTSIDE the app's model (its look). Each is optional and starts unticked: the CLI says
+               which ones may be applied and writes the sentence; Apply sends the ticked ones back (relay apply --confirm-warning). -->
+          <div id="browserai-offers" hidden>
+            <p class="ba-offers-note">The AI also asked for these changes. Tick only the ones you want.</p>
+            <div id="browserai-offers-list" translate="no"></div>
+          </div>
           <p class="ba-blocked" id="browserai-blocked" role="status" hidden>NPDev cannot delete a kind of record or a field from here yet. Your app protects its data and would refuse to start after this change. Press Ask for something else and tell the AI to keep it.</p>
           <div class="ba-actions">
             <button type="button" class="btn" id="browserai-apply">Apply</button>

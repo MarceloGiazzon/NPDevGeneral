@@ -171,14 +171,24 @@ F4_BRIEFING_FILE = "base-f4.txt"  # the f4 briefing round 1 carried, kept so a f
 def f4_briefing(*, phase: str, intent: str, model_path, model_text: str, profile, size) -> dict:
     """What a phase-f4 change/fix adds to the prompt: {"extra": text, "mode": whole|files|upsert, "chars": int}.
 
+    Every f4 change/fix ALSO carries the `more` text (themes, pages, menu, sample data, theme selection): the AI cannot send
+    what it was never told it may. Only a phase other than f4, or a create, is left byte-identical to the measured prompt.
+
     files   the app is made of several files: show each one the answer may change (the AI cannot edit what it never saw)
             and say how to return them. `chars` is then the LARGEST single file, the one that must fit in an answer.
     upsert  one file, too big to write out whole in one answer (plan T4.2's rule, `wholeFileFits`): ask for
             npdev-elements.json instead of model.json.
-    whole   everything else, and every phase other than f4: NOTHING is added, so the prompt is the measured one."""
+    whole   everything else: no file list is added (the model fits in one answer)."""
     out = {"extra": "", "mode": "whole", "chars": len(model_text)}
     if phase != "f4" or intent not in ("change", "fix"):
         return out
+    out = _f4_files_or_upsert(out, model_path=model_path, model_text=model_text, profile=profile, size=size)
+    more = rp.compose_f4_more(rp.load_f4_prompts())
+    out["extra"] = out["extra"] + "\n\n" + more if out["extra"] else more
+    return out
+
+
+def _f4_files_or_upsert(out: dict, *, model_path, model_text: str, profile, size) -> dict:
     import npdev_relay_files as files_mod
 
     try:
@@ -897,6 +907,11 @@ def finish_ready(session: dict, number: int, result: dict, model_entry: dict) ->
         result["preview"] = preview_pt.localize_preview(outcome["preview"], session.get("language"))
     if outcome["errors"]:
         result["errorLines"] = list(outcome["errors"])
+    if result.get("configProposals"):
+        import npdev_relay_preview_pt as preview_pt
+
+        for item in result["configProposals"]:  # `text`: the sentence the Manager shows next to the owner's optional tick
+            item["text"] = preview_pt.config_item_text(item, session.get("language"))
     text = outcome.get("candidateModelText")
     if text and text != model_entry["content"]:  # the gate bumped the version: keep what apply will write
         model_entry["content"], model_entry["bytes"], model_entry["sha256"] = text, len(text.encode("utf-8")), _sha256(text)
