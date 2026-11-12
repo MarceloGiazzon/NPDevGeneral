@@ -154,6 +154,13 @@ Found in the first packs written by a browser AI (2026-11-12); `NPDevMcp/pack_li
   an invariant or a terminal state, or do not say them. `LINT_UNENFORCED_PROMISE`.
 - **Everything in a pack is English**, no accented characters. `LINT_NON_ENGLISH`.
 
+Two things a pack author can use, both validated on `quotes` and `payables` 1.0.1:
+
+- **`parentField('<referenceField>', '<parentField>')`** in a child's `access.read`/`write` reads the parent's field,
+  e.g. `parentField('quoteId', 'status') != 'APPROVED'` locks a quote's lines once it is final.
+- **A rollup inside a pack names its child pack-qualified**: `"from": "quotes::QuoteLine"`. The unqualified name
+  passes when the pack is wrapped alone and then fails on composition with "unknown concept".
+
 ## See also
 
 - [`docs/MANAGER.md`](MANAGER.md) § 9 · Packs — the Manager's Packs tab: what's resolved and locked
