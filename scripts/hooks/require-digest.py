@@ -27,6 +27,9 @@ expensive pattern without going through scripts/ai/run_digest.py.
 Everything it knows lives in scripts/policy/output-digest-policy.json under
 `enforcement` -- add a command family there, never here.
 
+A second, softer list, `warnCommands`, only WARNS (exit 0, JSON on stdout) -- for long-running commands that
+are not worth blocking.  `enforcement.warnMode` (warn | block | off) or $NPDEV_DIGEST_WARN tunes it.
+
 Escape hatches, in order of preference:
   * add -DryRun / -ListOnly / --help  (declared in exemptSubstrings)
   * set NPDEV_DIGEST_BYPASS=1         (deliberate, visible, per-shell)
@@ -145,6 +148,22 @@ def first_expensive(command: str, patterns: list[str]) -> str | None:
     return None
 
 
+def warn_mode(enforce: dict) -> str:
+    """`warn` (default: the command runs, the agent is told), `block` (treated like expensiveCommands) or `off`.
+    $NPDEV_DIGEST_WARN overrides the policy's enforcement.warnMode for one shell."""
+    mode = (os.environ.get("NPDEV_DIGEST_WARN") or enforce.get("warnMode") or "warn").strip().lower()
+    return mode if mode in ("warn", "block", "off") else "warn"
+
+
+def warn(enforce: dict, hit: str) -> None:
+    """Let the command run, but say so: `systemMessage` is what the user sees, `additionalContext` is what the
+    agent is told before the tool runs. Exit code stays 0."""
+    text = str(enforce.get("warnMessage") or "'{hit}' can run for minutes; prefer scripts/ai/run_digest.py.").replace("{hit}", hit)
+    sys.stdout.write(json.dumps({"systemMessage": text,
+                                 "hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": text}}))
+    sys.stdout.flush()
+
+
 def main() -> int:
     if os.environ.get("NPDEV_DIGEST_BYPASS"):
         return 0
@@ -175,7 +194,14 @@ def main() -> int:
 
     hit = first_expensive(command, enforce.get("expensiveCommands", []))
     if not hit:
-        return 0
+        mode = warn_mode(enforce)
+        soft = first_expensive(command, enforce.get("warnCommands", [])) if mode != "off" else None
+        if not soft:
+            return 0
+        if mode == "warn":
+            warn(enforce, soft)
+            return 0
+        hit = soft  # warnMode "block": a warnCommands hit is treated like an expensive one
 
     # Blocked. stderr is what the agent is shown.
     sys.stderr.write(

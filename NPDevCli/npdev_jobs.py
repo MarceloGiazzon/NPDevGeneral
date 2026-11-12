@@ -167,12 +167,19 @@ def new_record(job_id: str, title: str, argv: list[str], cwd: str, log_path: str
     }
 
 
-def heartbeat(build_root: Path, job_id: str, lines: int, last_line: str) -> None:
+def heartbeat(build_root: Path, job_id: str, lines: int, last_line: str, pulse: dict | None = None) -> None:
+    """`pulse` (optional, from run_digest.py) says HOW the job is running, not only that it is: phase RUNNING /
+    QUIET (no output but still computing) / STALLED? (no output, no CPU), seconds since the last output line, and
+    the CPU seconds of the process tree. A heartbeat proves the writer lives; the pulse tells slow from stuck."""
     rec = read_record(build_root, job_id)
     if not rec or rec.get("status") not in ("running", "paused"):
         return
     rec["heartbeatAt"] = now_iso()
-    rec["progress"] = {"lines": lines, "lastLine": npdev_redact.redact_text(last_line, classes=("secret",))[0][:300]}
+    progress = {"lines": lines, "lastLine": npdev_redact.redact_text(last_line, classes=("secret",))[0][:300]}
+    for key in ("phase", "quietSeconds", "cpuSeconds"):
+        if pulse and pulse.get(key) is not None:
+            progress[key] = pulse[key]
+    rec["progress"] = progress
     write_record(build_root, rec)
 
 
@@ -244,7 +251,8 @@ def summary(build_root: Path) -> dict:
     newest = running[0] if running else None
     return {"running": len(running), "lost": len(lost),
             "newest": ({"title": newest["title"], "elapsedSeconds": newest["elapsedSeconds"],
-                        "lastLine": (newest.get("progress") or {}).get("lastLine", "")} if newest else None)}
+                        "lastLine": (newest.get("progress") or {}).get("lastLine", ""),
+                        "phase": (newest.get("progress") or {}).get("phase", "")} if newest else None)}
 
 
 # ---------------------------------------------------------------------------------------- actions

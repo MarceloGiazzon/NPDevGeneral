@@ -107,6 +107,34 @@ class RecordsAndLostTests(unittest.TestCase):
         self.assertEqual(got["progress"]["lines"], 12)
         self.assertNotIn("gsk_abcdef", got["progress"]["lastLine"])
 
+    def test_the_heartbeat_keeps_the_pulse_and_the_summary_shows_the_phase(self):
+        rec = record()
+        jobs.write_record(self.root, rec)
+        pulse = {"phase": "QUIET", "quietSeconds": 95.0, "cpuSeconds": 41.5, "elapsedSeconds": 200.0}
+        jobs.heartbeat(self.root, rec["jobId"], 7, "compiling", pulse)
+        got = jobs.read_record(self.root, rec["jobId"])["progress"]
+        self.assertEqual((got["phase"], got["quietSeconds"], got["cpuSeconds"]), ("QUIET", 95.0, 41.5))
+        self.assertNotIn("elapsedSeconds", got, "only the declared pulse fields are stored")
+        self.assertEqual(jobs.summary(self.root)["newest"]["phase"], "QUIET")
+        # no psutil -> no CPU number: the key is absent rather than null, which the schema would reject
+        jobs.heartbeat(self.root, rec["jobId"], 8, "x", {"phase": "RUNNING", "quietSeconds": 1.0, "cpuSeconds": None})
+        self.assertNotIn("cpuSeconds", jobs.read_record(self.root, rec["jobId"])["progress"])
+        # the old call shape (no pulse) still works and simply carries no phase
+        jobs.heartbeat(self.root, rec["jobId"], 9, "y")
+        self.assertNotIn("phase", jobs.read_record(self.root, rec["jobId"])["progress"])
+
+    def test_a_record_with_a_pulse_still_matches_the_job_schema(self):
+        try:
+            import jsonschema
+        except ImportError:
+            self.skipTest("jsonschema not installed")
+        schema = json.loads((Path(__file__).resolve().parents[2] / "schemas" / "ai" / "job-record.schema.json")
+                            .read_text(encoding="utf-8"))
+        rec = jobs.new_record("20261112T100000Z-pulse", "Pulse", ["x"], "/w", "/l.log", 1, 2, {"kind": "terminal"})
+        jobs.write_record(self.root, rec)
+        jobs.heartbeat(self.root, rec["jobId"], 3, "line", {"phase": "STALLED?", "quietSeconds": 400.0, "cpuSeconds": 12.0})
+        jsonschema.validate(jobs.read_record(self.root, rec["jobId"]), schema)
+
     def test_the_launcher_comes_from_the_environment(self):
         self.assertEqual(jobs.launcher_info({"CLAUDE_CODE_SESSION_ID": "abc-123"}), {"kind": "claude-code", "sessionId": "abc-123"})
         self.assertEqual(jobs.launcher_info({"CI": "true", "CLAUDE_CODE_SESSION_ID": "x"})["kind"], "ci")

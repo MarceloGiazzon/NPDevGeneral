@@ -9,6 +9,14 @@
     "contextAfter": 6,
     "maxLineLength": 300
   },
+  "heartbeat": {
+    "description": "A wrapped command must never be a black box: run_digest.py prints '[run] ...' at once and '[hb] ...' every stdoutSeconds even when the command prints nothing, so a background job's log is never empty and a slow job is told apart from a dead one. States: RUNNING = output within quietAfterSeconds; QUIET = no output but the process tree still burns CPU (slow, not dead); STALLED? = no output AND no CPU for stalledAfterSeconds (probably hung; advisory only, nothing is ever killed). Overrides, strongest first: --heartbeat/--quiet-after/--stalled-after, then NPDEV_HEARTBEAT_SECONDS / NPDEV_HEARTBEAT_QUIET_AFTER / NPDEV_HEARTBEAT_STALLED_AFTER, then this section. stdoutSeconds 0 turns the stdout heartbeat off.",
+    "stdoutSeconds": 30,
+    "quietAfterSeconds": 60,
+    "stalledAfterSeconds": 300,
+    "cpuActiveRatio": 0.01,
+    "lastLineChars": 60
+  },
   "families": [
     {
       "name": "gradle",
@@ -147,6 +155,14 @@
       "npm run build",
       "pytest"
     ],
+    "warnMode": "warn",
+    "warnModeDescription": "What a warnCommands hit does: 'warn' lets the command run and tells the agent once per call, 'block' treats it like expensiveCommands, 'off' says nothing. NPDEV_DIGEST_WARN=warn|block|off overrides this per shell.",
+    "warnCommands": [
+      "run_bench.py",
+      "npm run test:smoke",
+      "npm run test"
+    ],
+    "warnMessage": "'{hit}' can run for minutes. Prefer: python scripts/ai/run_digest.py -- <your command>  (full log on disk, a [hb] heartbeat every 30 s shows RUNNING/QUIET/STALLED?, so the job is never blind). Silence: NPDEV_DIGEST_WARN=off.",
     "exemptSubstrings": [
       "run_digest.py",
       "--version",

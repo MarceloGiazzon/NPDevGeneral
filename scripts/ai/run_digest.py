@@ -17,6 +17,11 @@ Pattern knowledge lives in scripts/policy/output-digest-policy.json, never here:
 to teach it a new tool, add a family to that file.
 
 Exit code is the wrapped command's own, so this composes inside gates and CI.
+
+A wrapped command is never a black box.  The digest keeps the output off the terminal, so while it runs this
+prints `[run] ...` at once and `[hb] ...` every 30 s (RUNNING / QUIET = slow but computing / STALLED? = no output
+and no CPU), which is what a background job's log -- `ptrack tail -f` -- shows.  Tune it in the policy's
+`heartbeat` section, with $NPDEV_HEARTBEAT_SECONDS, or per run with --heartbeat N (0 = off).
 """
 from __future__ import annotations
 
@@ -163,6 +168,138 @@ def digest(lines: list[str], fam: dict, defaults: dict, failed: bool) -> list[st
     return out
 
 
+# ------------------------------------------------------------------------------------------ the pulse
+# A wrapped command must never be a black box. The digest keeps its output off the terminal by design, so without
+# a pulse a background job's log stays at 0 bytes until the very end and nobody can tell slow from dead.
+# Values live in scripts/policy/output-digest-policy.json -> "heartbeat"; these are only the fallback if that
+# section is missing.
+HEARTBEAT_FALLBACK = {"stdoutSeconds": 30.0, "quietAfterSeconds": 60.0, "stalledAfterSeconds": 300.0,
+                      "cpuActiveRatio": 0.01, "lastLineChars": 60}
+HEARTBEAT_ENV = {"stdoutSeconds": "NPDEV_HEARTBEAT_SECONDS", "quietAfterSeconds": "NPDEV_HEARTBEAT_QUIET_AFTER",
+                 "stalledAfterSeconds": "NPDEV_HEARTBEAT_STALLED_AFTER"}
+
+
+def heartbeat_settings(policy: dict, cli: dict, env: dict | None = None) -> dict:
+    """policy section < environment < command line. A bad value is ignored, never fatal."""
+    env = os.environ if env is None else env
+    cfg = dict(HEARTBEAT_FALLBACK)
+    cfg.update({k: v for k, v in (policy.get("heartbeat") or {}).items() if k in HEARTBEAT_FALLBACK})
+    for key, name in HEARTBEAT_ENV.items():
+        raw = env.get(name)
+        if raw not in (None, ""):
+            try:
+                cfg[key] = float(raw)
+            except ValueError:
+                pass
+    for key, value in cli.items():
+        if value is not None:
+            cfg[key] = float(value)
+    return cfg
+
+
+class TreeCpu:
+    """CPU seconds burned by the command's whole process tree, or None when psutil is missing.
+
+    A child that exits takes its CPU time out of the live tree, so the last reading per process is kept: the
+    total only ever grows, which is what "is it still computing?" needs."""
+
+    def __init__(self, pid: int):
+        self._seen: dict[tuple[int, float], float] = {}
+        try:
+            import psutil
+            self._psutil = psutil
+            self._root = psutil.Process(pid)
+        except Exception:
+            self._psutil = None
+
+    @property
+    def available(self) -> bool:
+        return self._psutil is not None
+
+    def total(self) -> float | None:
+        if self._psutil is None:
+            return None
+        try:
+            procs = [self._root, *self._root.children(recursive=True)]
+        except Exception:
+            procs = []
+        for p in procs:
+            try:
+                t = p.cpu_times()
+                self._seen[(p.pid, p.create_time())] = t.user + t.system
+            except Exception:
+                continue  # it exited between listing and reading
+        return sum(self._seen.values())
+
+
+class Pulse:
+    """Decides RUNNING / QUIET / STALLED? from two clocks: the last output line and the last time CPU advanced.
+
+    RUNNING   output within quietAfterSeconds
+    QUIET     no output for a while but the tree still burns CPU: slow, not dead (or CPU unknown: cannot tell)
+    STALLED?  no output AND no CPU for stalledAfterSeconds: probably hung. Advisory -- nothing is ever killed
+              (a Gradle daemon is not always a descendant, so its work can look like silence)."""
+
+    def __init__(self, cfg: dict, now: float):
+        self.cfg = cfg
+        self.started = now
+        self.last_output = now
+        self.last_active = now
+        self._cpu: float | None = None
+        self._cpu_at = now
+
+    def output(self, now: float) -> None:
+        self.last_output = now
+
+    def sample(self, now: float, cpu_total: float | None) -> dict:
+        if cpu_total is not None and self._cpu is not None:
+            dt = now - self._cpu_at
+            if dt > 0 and (cpu_total - self._cpu) / dt >= self.cfg["cpuActiveRatio"]:
+                self.last_active = now
+        if cpu_total is not None:
+            self._cpu, self._cpu_at = cpu_total, now
+        quiet = max(0.0, now - self.last_output)
+        if quiet < self.cfg["quietAfterSeconds"]:
+            phase = "RUNNING"
+        elif cpu_total is None:
+            phase = "QUIET"
+        elif now - max(self.last_output, self.last_active) >= self.cfg["stalledAfterSeconds"]:
+            phase = "STALLED?"
+        else:
+            phase = "QUIET"
+        return {"phase": phase, "elapsedSeconds": now - self.started, "quietSeconds": round(quiet, 1),
+                "cpuSeconds": None if cpu_total is None else round(cpu_total, 1)}
+
+
+def clock(seconds: float) -> str:
+    s = int(seconds)
+    return f"{s // 3600}:{(s % 3600) // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60:02d}:{s % 60:02d}"
+
+
+def opening_line(shown: str, pid: int, logpath: Path, cfg: dict, cpu_on: bool) -> str:
+    return (f"[run] {shown[:80]} | pid={pid} | log={logpath} | heartbeat={cfg['stdoutSeconds']:g}s "
+            f"quiet={cfg['quietAfterSeconds']:g}s stalled={cfg['stalledAfterSeconds']:g}s cpu={'on' if cpu_on else 'off'}")
+
+
+def heartbeat_line(snap: dict, lines: int, last_line: str, cfg: dict) -> str:
+    out = f"[hb] {clock(snap['elapsedSeconds'])} {snap['phase']} lines={lines} quiet={snap['quietSeconds']:g}s"
+    if snap["cpuSeconds"] is not None:
+        out += f" cpu={snap['cpuSeconds']:g}s"
+    chars = int(cfg["lastLineChars"])
+    tail = " ".join(last_line.split()).replace('"', "'")[:chars]
+    if chars > 0 and tail:
+        out += f' last="{tail}"'
+    return out
+
+
+def say(text: str) -> None:
+    """A heartbeat is best-effort: a closed or broken stdout must never stop the command it reports on."""
+    try:
+        print(text, flush=True)
+    except (OSError, ValueError):
+        pass
+
+
 def tolerate_console_encoding() -> None:
     # A cp1252 Windows console cannot encode a check mark or a box-drawing glyph; printing one used to
     # raise UnicodeEncodeError after the command had finished, losing the verdict (QUAL-63).
@@ -181,6 +318,13 @@ def main() -> int:
     ap.add_argument("--tail", type=int, help="also print the last N raw lines")
     ap.add_argument("--keep-going", action="store_true",
                     help="always exit 0 (report-only; the digest still shows the real code)")
+    ap.add_argument("--heartbeat", type=float, metavar="SECONDS",
+                    help="print a [hb] line this often while the command runs, even if it prints nothing "
+                         "(0 = off; default: policy heartbeat.stdoutSeconds, or $NPDEV_HEARTBEAT_SECONDS)")
+    ap.add_argument("--quiet-after", type=float, metavar="SECONDS",
+                    help="no output for this long = QUIET (default: policy, or $NPDEV_HEARTBEAT_QUIET_AFTER)")
+    ap.add_argument("--stalled-after", type=float, metavar="SECONDS",
+                    help="no output and no CPU for this long = STALLED? (default: policy, or $NPDEV_HEARTBEAT_STALLED_AFTER)")
     ap.add_argument("command", nargs=argparse.REMAINDER)
     args = ap.parse_args()
 
@@ -201,6 +345,8 @@ def main() -> int:
     argv = [resolved] + cmd[1:]
     fam = pick_family(policy, joined, args.family)
     defaults = policy["defaults"]
+    cfg = heartbeat_settings(policy, {"stdoutSeconds": args.heartbeat, "quietAfterSeconds": args.quiet_after,
+                                      "stalledAfterSeconds": args.stalled_after})
 
     label = args.label or re.sub(r"[^A-Za-z0-9._-]+", "-", Path(cmd[0]).name + "-" + "-".join(cmd[1:3]))[:60]
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -230,6 +376,12 @@ def main() -> int:
             job_id, fam.get("title") or label, cmd, os.getcwd(), str(logpath), proc.pid, os.getpid(), jobs.launcher_info())))
 
         drained = threading.Event()
+        pulse = Pulse(cfg, time.monotonic())
+        cpu = TreeCpu(proc.pid)
+        hb_every = cfg["stdoutSeconds"]
+        if hb_every > 0:
+            shown_cmd = " ".join(joined.split())
+            say(opening_line(shown_cmd, proc.pid, logpath, cfg, cpu.available))
 
         def pump() -> None:
             for raw in proc.stdout:
@@ -239,6 +391,7 @@ def main() -> int:
                 log.flush()
                 os.fsync(log.fileno())
                 lines.append(raw.rstrip("\n"))
+                pulse.output(time.monotonic())
 
         # Read on a thread and stop at the COMMAND's exit, not at EOF: a Gradle daemon the command
         # forked inherits the pipe and outlives it, so EOF never came and the runner hung forever
@@ -247,14 +400,32 @@ def main() -> int:
         reader.start()
         # a heartbeat every few seconds while the command runs: it is what lets `npdev jobs` tell a job that is
         # quietly working from one whose writer died (JOBS-1). The last line is redacted by the jobs module.
+        # Two cadences share one wait: the registry record (jobs.HEARTBEAT_SECONDS, `npdev jobs` / the status line)
+        # and the stdout line (cfg stdoutSeconds, what a background log or `ptrack tail` shows).
+        registry_every = jobs.HEARTBEAT_SECONDS if jobs else 0
+        ticks = [x for x in (registry_every, hb_every) if x > 0]
+        tick = min(ticks) if ticks else None
+        next_registry = time.monotonic() + registry_every
+        next_stdout = time.monotonic() + hb_every
         while True:
             try:
-                code = proc.wait(timeout=jobs.HEARTBEAT_SECONDS if jobs else None)
+                code = proc.wait(timeout=tick)
                 break
             except subprocess.TimeoutExpired:
+                now = time.monotonic()
+                due_registry = registry_every > 0 and now >= next_registry - 0.05
+                due_stdout = hb_every > 0 and now >= next_stdout - 0.05
+                if not (due_registry or due_stdout):
+                    continue
+                snap = pulse.sample(now, cpu.total())
                 snapshot = lines[-1] if lines else ""
                 count = len(lines)
-                job(lambda: jobs.heartbeat(broot, job_id, count, snapshot))
+                if due_registry:
+                    next_registry = now + registry_every
+                    job(lambda: jobs.heartbeat(broot, job_id, count, snapshot, snap))
+                if due_stdout:
+                    next_stdout = now + hb_every
+                    say(heartbeat_line(snap, count, snapshot, cfg))
         reader.join(timeout=OUTPUT_DRAIN_GRACE_SECONDS)
         drained.set()
         lines = list(lines)

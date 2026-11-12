@@ -94,6 +94,21 @@
           "type": "string",
           "maxLength": 120,
           "description": "Optional, e.g. 'gate 2/4: runtimehost'."
+        },
+        "phase": {
+          "type": "string",
+          "enum": ["RUNNING", "QUIET", "STALLED?"],
+          "description": "How the job is running: RUNNING = output recently; QUIET = no output but the process tree still burns CPU (slow, not dead); STALLED? = no output and no CPU for a long time (advisory)."
+        },
+        "quietSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Seconds since the job last printed a line."
+        },
+        "cpuSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "description": "CPU seconds burned by the job's whole process tree so far (absent when psutil is not installed)."
         }
       }
     },

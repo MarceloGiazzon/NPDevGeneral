@@ -137,7 +137,9 @@ def jobs_segment() -> str:
         secs = int(newest.get("elapsedSeconds") or 0)
         took = f"{secs // 3600}h{(secs % 3600) // 60:02d}m" if secs >= 3600 else (f"{secs // 60}m" if secs >= 60 else f"{secs}s")
         title = str(newest.get("title") or "job")[:24]
-        parts.append(f"{CYAN}⏵ {title} {took}" + (f" (+{s['running'] - 1} more)" if s["running"] > 1 else "") + RESET)
+        phase = newest.get("phase")  # QUIET = slow but computing; STALLED? = no output and no CPU (advisory)
+        mark = f" {RED}{BOLD}STALLED?{RESET}{CYAN}" if phase == "STALLED?" else (f" {YELLOW}quiet{RESET}{CYAN}" if phase == "QUIET" else "")
+        parts.append(f"{CYAN}⏵ {title} {took}{mark}" + (f" (+{s['running'] - 1} more)" if s["running"] > 1 else "") + RESET)
     if s["lost"]:
         parts.append(f"{RED}{BOLD}⚠ {s['lost']} lost{RESET}")
     return " ".join(parts)
