@@ -1,21 +1,20 @@
 {
-  "closedAt": "2026-11-11T23:18:44.1656888Z",
+  "closedAt": "2026-11-12T00:14:13.8515027Z",
   "branch": "main",
-  "head": "6de8441e",
-  "headSubject": "feat(validator): B6 tunnel script, D docs + card + REG-335; drain chunked bodies before the 413",
-  "summary": "Built the validation service from the owner's plan: validation_service.py (REST + page + stateless MCP allowlist), static/validate.html, response schema, npdev validator serve/doctor/rotate-token, Start-ValidatorTunnel.ps1, docs/card/REG-335. 56 tests green (one real-jar end to end), page verified in real Chrome, tunnel script verified with a fake cloudflared. Spikes S1/S2 researched (Claude.ai Free and Le Chat Free accept a no-auth remote MCP connector; ChatGPT needs paid).",
-  "nextStep": "Owner: run Start-ValidatorTunnel.ps1 with a real cloudflared and add the printed URL as a custom connector in Claude.ai Free or Le Chat, ask a chat AI to write and validate a model (B8); record in OutsideRepo/VALIDATION_SERVICE_PLAN_2026-11-11/ACCEPTANCE-RESULTS.md. Then decide MCP default diagnostics (20 vs 50) and whether to do the Manager card (phase C).",
-  "plan": "",
-  "blocked": "Owner: B8/A5 real AI acceptance, S3 cloudflared, S4/S5. Pre-existing red: check-doc-references.py (authoring-for-ai.json cites capabilities/surge/capability.plugin.json, which does not exist).",
-  "verified": "python -m unittest NPDevMcp.tests.test_validation_service (52) + NPDevCli.tests.test_validator_command (4) green x3; full NPDevMcp discover 127 tests; run-portable-tooling-check, run-script-inventory-check, check-executable-line-endings, build_knowledge --validate-only green. NOT run: the 4-gate run-all-gates.ps1 (owner asked for speed), the aiKnowledge gate.",
-  "dirtyCount": 2,
-  "dirtyFiles": [
-    " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl"
-  ],
+  "head": "7b81654b",
+  "headSubject": "feat(ride-hailing): run-ride-hailing.ps1 -KeepRunning leaves the app and mocks up for browser/API poking; Enter stops them",
+  "summary": "Built the validation service from the owner's plan (validation_service.py REST + page + stateless MCP allowlist, npdev validator CLI, Start-ValidatorTunnel.ps1, docs/card/REG-335, MCP coverage floor 67.59 to 77.42), proved the loop with a real free-tier LLM through the MCP endpoint, researched spikes S1/S2, added -KeepRunning to run-ride-hailing.ps1, and gave the owner test instructions for both recent plans.",
+  "nextStep": "Owner: winget install --id Cloudflare.cloudflared, then pwsh -NoProfile -File D:\\WorkSpace\\NPDev\\NPDev_General\\scripts\\ai\\Start-ValidatorTunnel.ps1, add the printed URL as a custom connector (Claude.ai Free: No sign-in; or Le Chat) and run the B8 script in D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\VALIDATION_SERVICE_PLAN_2026-11-11\\ACCEPTANCE-RESULTS.md, recording the result there; then decide MCP default diagnostics 20 vs 50 (MCP_DEFAULT_MAX_DIAGNOSTICS in NPDevMcp/validation_service.py) and whether to build the Manager card (phase C). Also open from the previous plan: a real chat-AI pack round and the owner's first publish (REG-334).",
+  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\VALIDATION_SERVICE_PLAN_2026-11-11\\PLAN.md",
+  "blocked": "Owner only: B8/A5 real online-AI acceptance, real cloudflared run (S3), S4/S5; REG-334 real chat-AI pack round and first publish. Pre-existing red, not mine: scripts/quality/check-doc-references.py (docs/content/authoring-for-ai.json cites capabilities/surge/capability.plugin.json, which does not exist; the policy frozenCount may only shrink).",
+  "verified": "Ran: NPDevMcp.tests.test_validation_service (52) + NPDevCli.tests.test_validator_command (4) green 3x; full NPDevMcp discover 127 OK under coverage; run-portable-tooling-check, run-script-inventory-check, check-executable-line-endings, build_knowledge --validate-only, check-coverage-ratchet (NPDevMcp 77.42) all green; real-Chrome page check 3/3 (impl/browser_check.py); real gemini-3.6-flash loop through the MCP endpoint, 2 cases passed in 1 round each; tunnel script with a fake cloudflared. NOT run to completion: the aiKnowledge gate (started, stopped by request at step 10/39, no failure seen); weeklyPaperwork not run (owner said not now); run-all-gates not run; run-ride-hailing.ps1 -KeepRunning only parse-checked, never executed; no third-party MCP client run; no real chat AI or browser agent run.",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "6de8441e feat(validator): B6 tunnel script, D docs + card + REG-335; drain chunked bodies before the 413",
-    "69ca4064 feat(validator): N1-N6 core, A1/A3 page + access log, B1-B7 MCP transport, npdev validator CLI"
+    "7b81654b feat(ride-hailing): run-ride-hailing.ps1 -KeepRunning leaves the app and mocks up for browser/API poking; Enter stops them",
+    "f48c4e4c ledger: REG-335 stand-in evidence -- a real free-tier LLM closes the validate loop through the MCP endpoint",
+    "9a9ca63a chore(coverage): NPDevMcp floor 67.59 -> 77.42 (validation service tests)",
+    "446419bb ledger: session handoff 2026-11-11 (validation service built)"
   ]
 }
