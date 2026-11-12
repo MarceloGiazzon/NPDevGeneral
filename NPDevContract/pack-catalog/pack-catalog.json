@@ -1,10 +1,10 @@
 {
-  "catalogVersion": 1,
+  "catalogVersion": 2,
   "source": {
     "kind": "dummy",
     "label": "Catálogo dummy de planejamento",
-    "note": "Escrito à mão para planejamento. Será substituído pelo JSON gerado a partir dos pack.json reais + roadmap dos propostos.",
-    "updated": "2026-11-11"
+    "note": "Escrito à mão para planejamento. Os packs 'existing' espelham NPDevContract/packs; os 'proposed' trazem onda de prioridade (1 = próxima). Será substituído pelo JSON gerado a partir dos pack.json reais + roadmap dos propostos.",
+    "updated": "2026-11-12"
   },
   "eras": [
     "Fundação",
@@ -13,51 +13,266 @@
     "Domínio",
     "Vertical",
     "Especialidade",
-    "Nicho"
+    "Nicho",
+    "Fronteira",
+    "Horizonte"
   ],
   "lanes": [
     {
       "id": "platform",
       "name": "Plataforma",
+      "group": "Base",
       "color": "#8fa9bf"
     },
     {
       "id": "people",
       "name": "Pessoas e organizações",
+      "group": "Base",
       "color": "#dc9c6e"
     },
     {
       "id": "ops",
       "name": "Operação interna",
+      "group": "Gestão",
       "color": "#aebb6e"
     },
     {
+      "id": "hr",
+      "name": "Recursos humanos",
+      "group": "Gestão",
+      "color": "#c9b37a"
+    },
+    {
+      "id": "finance",
+      "name": "Financeiro",
+      "group": "Gestão",
+      "color": "#9fcf9a"
+    },
+    {
+      "id": "legal",
+      "name": "Jurídico e contábil",
+      "group": "Gestão",
+      "color": "#b0a6d6"
+    },
+    {
       "id": "commerce",
-      "name": "Comércio e finanças",
+      "name": "Comércio e vendas",
+      "group": "Comércio",
       "color": "#d8b25c"
+    },
+    {
+      "id": "crm",
+      "name": "Marketing e CRM",
+      "group": "Comércio",
+      "color": "#e7a35f"
     },
     {
       "id": "supply",
       "name": "Suprimentos e logística",
+      "group": "Operação",
       "color": "#82b67c"
+    },
+    {
+      "id": "fleet",
+      "name": "Frota e transporte",
+      "group": "Operação",
+      "color": "#6fae9c"
+    },
+    {
+      "id": "industry",
+      "name": "Indústria",
+      "group": "Operação",
+      "color": "#a3a3b8"
+    },
+    {
+      "id": "agro",
+      "name": "Agronegócio",
+      "group": "Operação",
+      "color": "#b9c46a"
+    },
+    {
+      "id": "construction",
+      "name": "Construção",
+      "group": "Operação",
+      "color": "#c99a7a"
     },
     {
       "id": "services",
       "name": "Serviços e agenda",
+      "group": "Serviços",
       "color": "#74c7d0"
     },
     {
       "id": "health",
       "name": "Saúde",
+      "group": "Serviços",
       "color": "#e48383"
+    },
+    {
+      "id": "pets",
+      "name": "Pets",
+      "group": "Serviços",
+      "color": "#e0a8c0"
     },
     {
       "id": "beauty",
       "name": "Beleza e bem-estar",
+      "group": "Serviços",
       "color": "#c891d8"
+    },
+    {
+      "id": "food",
+      "name": "Alimentação",
+      "group": "Setores",
+      "color": "#f0b07a"
+    },
+    {
+      "id": "education",
+      "name": "Educação",
+      "group": "Setores",
+      "color": "#8fb6e8"
+    },
+    {
+      "id": "realestate",
+      "name": "Imóveis e condomínios",
+      "group": "Setores",
+      "color": "#d4c08a"
+    },
+    {
+      "id": "hospitality",
+      "name": "Hotelaria e turismo",
+      "group": "Setores",
+      "color": "#7cc6b6"
+    },
+    {
+      "id": "events",
+      "name": "Eventos",
+      "group": "Setores",
+      "color": "#e78fb3"
+    },
+    {
+      "id": "nonprofit",
+      "name": "Terceiro setor",
+      "group": "Setores",
+      "color": "#a9c7a0"
     }
   ],
   "packs": [
+    {
+      "id": "audit-log",
+      "name": "Auditoria",
+      "glyph": "Au",
+      "lane": "platform",
+      "status": "proposed",
+      "wave": 1,
+      "summary": "Quem mudou o quê e quando, em qualquer registro, com política de retenção.",
+      "concepts": [
+        "AuditEvent",
+        "AuditPolicy"
+      ],
+      "requires": [
+        "identity"
+      ]
+    },
+    {
+      "id": "br-core",
+      "name": "Brasil essencial",
+      "glyph": "BR",
+      "lane": "platform",
+      "status": "proposed",
+      "summary": "Tipos de campo validados para o Brasil: CPF, CNPJ, CEP com endereço, telefone e chave Pix. Usado por quase todo pack de negócio daqui.",
+      "concepts": [
+        "TaxId (CPF/CNPJ)",
+        "BrAddress (CEP)",
+        "PixKey"
+      ],
+      "requires": [],
+      "wave": 1
+    },
+    {
+      "id": "comments",
+      "name": "Comentários e menções",
+      "glyph": "Cm",
+      "lane": "platform",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Conversa por registro, com @menção que notifica.",
+      "concepts": [
+        "Comment",
+        "Mention"
+      ],
+      "requires": [
+        "identity"
+      ]
+    },
+    {
+      "id": "consent-lgpd",
+      "name": "Consentimento LGPD",
+      "glyph": "Lg",
+      "lane": "platform",
+      "status": "proposed",
+      "summary": "Termos, aceite registrado por pessoa e pedidos do titular (acesso, correção, exclusão).",
+      "concepts": [
+        "ConsentTerm",
+        "ConsentGrant",
+        "DataSubjectRequest"
+      ],
+      "requires": [
+        "person"
+      ],
+      "wave": 1
+    },
+    {
+      "id": "custom-fields",
+      "name": "Campos personalizados",
+      "glyph": "Cp",
+      "lane": "platform",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "O usuário final cria campos extras sem regerar o app.",
+      "concepts": [
+        "CustomFieldDef",
+        "CustomFieldValue"
+      ],
+      "requires": []
+    },
+    {
+      "id": "documents",
+      "name": "Documentos",
+      "glyph": "Dc",
+      "lane": "platform",
+      "status": "proposed",
+      "summary": "Arquivos anexados a qualquer registro, com versões e quem enviou.",
+      "concepts": [
+        "Document",
+        "DocumentVersion",
+        "Attachment"
+      ],
+      "requires": [
+        "identity"
+      ],
+      "wave": 1
+    },
+    {
+      "id": "e-signature",
+      "name": "Assinatura eletrônica",
+      "glyph": "Ae",
+      "lane": "platform",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Enviar documento para assinatura e guardar a evidência.",
+      "concepts": [
+        "SignatureRequest",
+        "Signer",
+        "SignatureEvidence"
+      ],
+      "requires": [
+        "documents"
+      ],
+      "capabilities": [
+        "eSignProvider"
+      ]
+    },
     {
       "id": "identity",
       "name": "Identidade",
@@ -79,31 +294,41 @@
       "requires": []
     },
     {
-      "id": "workspace",
-      "name": "Workspace",
+      "id": "messaging",
+      "name": "WhatsApp e SMS",
       "glyph": "Ws",
       "lane": "platform",
-      "status": "existing",
-      "version": "1.1.0",
-      "summary": "Menus de navegação e valores de propriedades do app.",
+      "status": "proposed",
+      "wave": 1,
+      "summary": "Mensagens por WhatsApp e SMS com modelos aprovados e respostas recebidas.",
       "concepts": [
-        "Menu",
-        "PropertyValue"
+        "MessageTemplate",
+        "Conversation",
+        "InboundMessage"
       ],
-      "requires": []
+      "requires": [
+        "notification"
+      ],
+      "capabilities": [
+        "whatsappProvider"
+      ]
     },
     {
-      "id": "tracing",
-      "name": "Rastreamento",
-      "glyph": "Tr",
+      "id": "multi-company",
+      "name": "Multiempresa",
+      "glyph": "Mu",
       "lane": "platform",
-      "status": "existing",
-      "version": "1.0.2",
-      "summary": "Retenção declarativa de traces, painel de leitura e redação segura de dados sensíveis.",
+      "status": "proposed",
+      "wave": 1,
+      "summary": "Várias empresas e filiais no mesmo app, com dados separados por empresa.",
       "concepts": [
-        "TraceEntry"
+        "Company",
+        "Branch",
+        "CompanyUser"
       ],
-      "requires": []
+      "requires": [
+        "identity"
+      ]
     },
     {
       "id": "notification",
@@ -122,46 +347,111 @@
       ]
     },
     {
-      "id": "br-core",
-      "name": "Brasil essencial",
-      "glyph": "BR",
+      "id": "tags",
+      "name": "Etiquetas",
+      "glyph": "Et",
       "lane": "platform",
       "status": "proposed",
-      "summary": "Tipos de campo validados para o Brasil: CPF, CNPJ, CEP com endereço, telefone e chave Pix. Usado por quase todo pack de negócio daqui.",
+      "wave": 2,
+      "summary": "Etiquetas livres aplicáveis a qualquer registro.",
       "concepts": [
-        "TaxId (CPF/CNPJ)",
-        "BrAddress (CEP)",
-        "PixKey"
+        "Tag",
+        "TagAssignment"
       ],
       "requires": []
     },
     {
-      "id": "documents",
-      "name": "Documentos",
-      "glyph": "Dc",
+      "id": "tracing",
+      "name": "Rastreamento",
+      "glyph": "Tr",
+      "lane": "platform",
+      "status": "existing",
+      "version": "1.0.2",
+      "summary": "Retenção declarativa de traces, painel de leitura e redação segura de dados sensíveis.",
+      "concepts": [
+        "TraceEntry"
+      ],
+      "requires": []
+    },
+    {
+      "id": "webhooks",
+      "name": "Webhooks",
+      "glyph": "We",
       "lane": "platform",
       "status": "proposed",
-      "summary": "Arquivos anexados a qualquer registro, com versões e quem enviou.",
+      "wave": 2,
+      "summary": "Avisar sistemas externos quando algo acontece, com novas tentativas.",
       "concepts": [
-        "Document",
-        "DocumentVersion",
-        "Attachment"
+        "WebhookSubscription",
+        "DeliveryAttempt"
       ],
-      "requires": [
-        "identity"
+      "requires": [],
+      "capabilities": [
+        "httpOut"
       ]
     },
     {
-      "id": "consent-lgpd",
-      "name": "Consentimento LGPD",
-      "glyph": "Lg",
+      "id": "workspace",
+      "name": "Workspace",
+      "glyph": "Ws",
       "lane": "platform",
-      "status": "proposed",
-      "summary": "Termos, aceite registrado por pessoa e pedidos do titular (acesso, correção, exclusão).",
+      "status": "existing",
+      "version": "1.1.0",
+      "summary": "Menus de navegação e valores de propriedades do app.",
       "concepts": [
-        "ConsentTerm",
-        "ConsentGrant",
-        "DataSubjectRequest"
+        "Menu",
+        "PropertyValue"
+      ],
+      "requires": []
+    },
+    {
+      "id": "contacts",
+      "name": "Contatos",
+      "glyph": "Ct",
+      "lane": "people",
+      "status": "existing",
+      "version": "1.0.0",
+      "summary": "Organizações (clientes, fornecedores, parceiros), as pessoas que trabalham nelas e seus endereços.",
+      "concepts": [
+        "Organization",
+        "Contact",
+        "Address"
+      ],
+      "requires": []
+    },
+    {
+      "id": "customer-portal",
+      "name": "Portal do cliente",
+      "glyph": "Pc",
+      "lane": "people",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Área onde o cliente final entra para ver e fazer as próprias coisas.",
+      "concepts": [
+        "PortalAccount",
+        "PortalInvite"
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "households",
+      "name": "Família e dependentes",
+      "glyph": "Fd",
+      "lane": "people",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Grupo familiar e dependentes de uma pessoa.",
+      "concepts": [
+        "Household",
+        "Dependent"
+      ],
+      "specializations": [
+        [
+          "Dependent",
+          "PersonProfile"
+        ]
       ],
       "requires": [
         "person"
@@ -181,22 +471,8 @@
       "requires": [
         "identity",
         "br-core"
-      ]
-    },
-    {
-      "id": "contacts",
-      "name": "Contatos",
-      "glyph": "Ct",
-      "lane": "people",
-      "status": "existing",
-      "version": "1.0.0",
-      "summary": "Organizações (clientes, fornecedores, parceiros), as pessoas que trabalham nelas e seus endereços.",
-      "concepts": [
-        "Organization",
-        "Contact",
-        "Address"
       ],
-      "requires": []
+      "wave": 1
     },
     {
       "id": "staff",
@@ -218,7 +494,8 @@
       ],
       "requires": [
         "person"
-      ]
+      ],
+      "wave": 1
     },
     {
       "id": "approvals",
@@ -235,19 +512,41 @@
       "requires": []
     },
     {
-      "id": "leave",
-      "name": "Férias e ausências",
-      "glyph": "Fé",
+      "id": "assets",
+      "name": "Patrimônio",
+      "glyph": "Pa",
       "lane": "ops",
-      "status": "existing",
-      "version": "1.0.0",
-      "summary": "Tipos de ausência e pedidos decididos por um aprovador.",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Bens da empresa, com quem estão e manutenção.",
       "concepts": [
-        "LeaveType",
-        "LeaveRequest"
+        "Asset",
+        "AssetAssignment",
+        "AssetMaintenance"
       ],
       "requires": [
-        "approvals"
+        "staff"
+      ]
+    },
+    {
+      "id": "facilities",
+      "name": "Reserva de salas",
+      "glyph": "Rs",
+      "lane": "ops",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Reserva de salas e espaços internos.",
+      "concepts": [
+        "RoomBooking"
+      ],
+      "specializations": [
+        [
+          "RoomBooking",
+          "Booking"
+        ]
+      ],
+      "requires": [
+        "scheduling"
       ]
     },
     {
@@ -267,6 +566,431 @@
       "requires": []
     },
     {
+      "id": "project-tracker-demo",
+      "name": "Projeto (demo)",
+      "glyph": "Pd",
+      "lane": "ops",
+      "status": "existing",
+      "version": "1.0.0",
+      "summary": "Pack de demonstração exportado do sample superuser-admin-console. Prova o script de exportação; não é para uso real.",
+      "concepts": [
+        "Project"
+      ],
+      "requires": [],
+      "demo": true
+    },
+    {
+      "id": "projects",
+      "name": "Projetos",
+      "glyph": "Pr",
+      "lane": "ops",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Projetos com marcos e apontamento de horas.",
+      "concepts": [
+        "Project",
+        "Milestone",
+        "TimeEntry"
+      ],
+      "requires": [
+        "tasks"
+      ]
+    },
+    {
+      "id": "quality",
+      "name": "Qualidade",
+      "glyph": "Qu",
+      "lane": "ops",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Não conformidades, ações corretivas e auditorias internas.",
+      "concepts": [
+        "NonConformity",
+        "CorrectiveAction",
+        "InternalAudit"
+      ],
+      "requires": [
+        "tasks"
+      ]
+    },
+    {
+      "id": "tasks",
+      "name": "Tarefas e checklists",
+      "glyph": "Tc",
+      "lane": "ops",
+      "status": "proposed",
+      "wave": 1,
+      "summary": "Tarefas com responsável, prazo e checklist.",
+      "concepts": [
+        "Task",
+        "Checklist",
+        "ChecklistItem"
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "benefits",
+      "name": "Benefícios",
+      "glyph": "Be",
+      "lane": "hr",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Planos de benefício e adesões.",
+      "concepts": [
+        "BenefitPlan",
+        "BenefitEnrollment"
+      ],
+      "requires": [
+        "staff"
+      ]
+    },
+    {
+      "id": "leave",
+      "name": "Férias e ausências",
+      "glyph": "Fé",
+      "lane": "hr",
+      "status": "existing",
+      "version": "1.0.0",
+      "summary": "Tipos de ausência e pedidos decididos por um aprovador.",
+      "concepts": [
+        "LeaveType",
+        "LeaveRequest"
+      ],
+      "requires": [
+        "approvals"
+      ]
+    },
+    {
+      "id": "onboarding",
+      "name": "Admissão",
+      "glyph": "Ad",
+      "lane": "hr",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Passos e documentos para admitir quem foi contratado.",
+      "concepts": [
+        "OnboardingPlan",
+        "OnboardingTask"
+      ],
+      "requires": [
+        "recruitment",
+        "documents"
+      ]
+    },
+    {
+      "id": "payroll-br",
+      "name": "Folha de pagamento",
+      "glyph": "Fp",
+      "lane": "hr",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Cálculo da folha e holerites, com envio ao eSocial.",
+      "concepts": [
+        "PayrollRun",
+        "Payslip",
+        "PayItem"
+      ],
+      "requires": [
+        "staff",
+        "br-core"
+      ],
+      "capabilities": [
+        "esocial"
+      ]
+    },
+    {
+      "id": "performance",
+      "name": "Avaliação de desempenho",
+      "glyph": "Ad",
+      "lane": "hr",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Ciclos de avaliação e metas.",
+      "concepts": [
+        "ReviewCycle",
+        "PerformanceReview",
+        "Goal"
+      ],
+      "requires": [
+        "staff"
+      ]
+    },
+    {
+      "id": "recruitment",
+      "name": "Recrutamento",
+      "glyph": "Re",
+      "lane": "hr",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Vagas, candidatos e entrevistas.",
+      "concepts": [
+        "JobOpening",
+        "Candidate",
+        "JobApplication",
+        "Interview"
+      ],
+      "specializations": [
+        [
+          "Candidate",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "time-clock",
+      "name": "Ponto eletrônico",
+      "glyph": "Pe",
+      "lane": "hr",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Marcação de ponto, espelho e regras de hora extra.",
+      "concepts": [
+        "ClockEntry",
+        "Timesheet",
+        "OvertimeRule"
+      ],
+      "requires": [
+        "staff"
+      ]
+    },
+    {
+      "id": "training",
+      "name": "Treinamentos",
+      "glyph": "Tr",
+      "lane": "hr",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Treinamentos internos e certificados.",
+      "concepts": [
+        "TrainingCourse",
+        "TrainingSession",
+        "TrainingCertificate"
+      ],
+      "requires": [
+        "staff"
+      ]
+    },
+    {
+      "id": "accounting-br",
+      "name": "Contabilidade",
+      "glyph": "Co",
+      "lane": "finance",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Plano de contas e lançamentos contábeis.",
+      "concepts": [
+        "LedgerAccount",
+        "JournalEntry",
+        "JournalLine"
+      ],
+      "requires": [
+        "cash-flow",
+        "fiscal-br"
+      ]
+    },
+    {
+      "id": "bank-reconciliation",
+      "name": "Conciliação bancária",
+      "glyph": "Cb",
+      "lane": "finance",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Extrato importado casado com os lançamentos.",
+      "concepts": [
+        "BankStatement",
+        "StatementLine",
+        "ReconciliationMatch"
+      ],
+      "requires": [
+        "cash-flow"
+      ],
+      "capabilities": [
+        "openFinance"
+      ]
+    },
+    {
+      "id": "boleto",
+      "name": "Boleto",
+      "glyph": "Bo",
+      "lane": "finance",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Emissão de boleto e leitura do arquivo de retorno.",
+      "concepts": [
+        "Boleto",
+        "BoletoReturnFile"
+      ],
+      "requires": [
+        "receivables",
+        "br-core"
+      ],
+      "capabilities": [
+        "bankGateway"
+      ]
+    },
+    {
+      "id": "budgeting",
+      "name": "Orçamento empresarial",
+      "glyph": "Oe",
+      "lane": "finance",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Orçado contra realizado por centro de custo.",
+      "concepts": [
+        "Budget",
+        "BudgetLine"
+      ],
+      "requires": [
+        "cost-centers"
+      ]
+    },
+    {
+      "id": "cash-flow",
+      "name": "Fluxo de caixa",
+      "glyph": "Fc",
+      "lane": "finance",
+      "status": "proposed",
+      "wave": 1,
+      "summary": "Contas bancárias, lançamentos e previsão de caixa.",
+      "concepts": [
+        "BankAccount",
+        "CashEntry",
+        "CashForecast"
+      ],
+      "requires": [
+        "receivables",
+        "payables"
+      ]
+    },
+    {
+      "id": "cost-centers",
+      "name": "Centros de custo",
+      "glyph": "Cc",
+      "lane": "finance",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Rateio de receitas e despesas por centro de custo.",
+      "concepts": [
+        "CostCenter",
+        "CostAllocation"
+      ],
+      "requires": []
+    },
+    {
+      "id": "expenses",
+      "name": "Reembolso de despesas",
+      "glyph": "Rd",
+      "lane": "finance",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Despesas do funcionário aprovadas e reembolsadas.",
+      "concepts": [
+        "ExpenseReport",
+        "ExpenseItem"
+      ],
+      "specializations": [
+        [
+          "ExpenseReport",
+          "ApprovalRequest"
+        ]
+      ],
+      "requires": [
+        "staff",
+        "approvals"
+      ]
+    },
+    {
+      "id": "payables",
+      "name": "Contas a pagar",
+      "glyph": "Cp",
+      "lane": "finance",
+      "status": "proposed",
+      "wave": 1,
+      "summary": "Títulos a pagar e agenda de pagamentos.",
+      "concepts": [
+        "Payable",
+        "PaymentSchedule"
+      ],
+      "requires": [
+        "contacts"
+      ]
+    },
+    {
+      "id": "receivables",
+      "name": "Contas a receber",
+      "glyph": "Cr",
+      "lane": "finance",
+      "status": "proposed",
+      "wave": 1,
+      "summary": "Títulos a receber, parcelas e cobrança.",
+      "concepts": [
+        "Receivable",
+        "Installment",
+        "CollectionAttempt"
+      ],
+      "requires": [
+        "contacts",
+        "payments"
+      ]
+    },
+    {
+      "id": "accounting-office",
+      "name": "Escritório contábil",
+      "glyph": "Ec",
+      "lane": "legal",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Empresas clientes, obrigações do mês e pedidos de documento.",
+      "concepts": [
+        "ClientCompany",
+        "MonthlyObligation",
+        "DocumentRequest"
+      ],
+      "specializations": [
+        [
+          "ClientCompany",
+          "Organization"
+        ]
+      ],
+      "requires": [
+        "contacts",
+        "documents",
+        "tasks"
+      ]
+    },
+    {
+      "id": "law-firm",
+      "name": "Escritório de advocacia",
+      "glyph": "Ea",
+      "lane": "legal",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Processos, audiências, prazos e horas faturáveis.",
+      "concepts": [
+        "LegalCase",
+        "Hearing",
+        "LegalDeadline",
+        "BillableHours"
+      ],
+      "specializations": [
+        [
+          "Hearing",
+          "Appointment"
+        ]
+      ],
+      "requires": [
+        "contacts",
+        "documents",
+        "tasks",
+        "appointments"
+      ]
+    },
+    {
       "id": "catalog",
       "name": "Catálogo de produtos",
       "glyph": "Cp",
@@ -278,60 +1002,66 @@
         "ProductVariant",
         "ProductCategory"
       ],
-      "requires": []
+      "requires": [],
+      "wave": 1
     },
     {
-      "id": "sales",
-      "name": "Vendas",
-      "glyph": "Vd",
-      "lane": "commerce",
-      "status": "existing",
-      "version": "1.0.0",
-      "summary": "Clientes, lista de preços, pedidos de venda com itens e faturas.",
-      "concepts": [
-        "Customer",
-        "SalesItem",
-        "SalesOrder",
-        "SalesOrderLine",
-        "Invoice"
-      ],
-      "requires": []
-    },
-    {
-      "id": "payments",
-      "name": "Pagamentos",
-      "glyph": "Pg",
+      "id": "commissions",
+      "name": "Comissões",
+      "glyph": "Co",
       "lane": "commerce",
       "status": "proposed",
-      "summary": "Cobranças, meios de pagamento e estornos, com Pix nativo. O gateway real entra como capacidade plugável.",
+      "wave": 2,
+      "summary": "Regras de comissão e apuração por vendedor.",
       "concepts": [
-        "Payment",
-        "PaymentMethod",
-        "PixCharge",
-        "Refund"
-      ],
-      "requires": [
-        "br-core"
-      ],
-      "capabilities": [
-        "paymentGateway"
-      ]
-    },
-    {
-      "id": "price-lists",
-      "name": "Listas de preço",
-      "glyph": "Lp",
-      "lane": "commerce",
-      "status": "proposed",
-      "summary": "Várias tabelas de preço por canal, cliente ou período, com regras de desconto.",
-      "concepts": [
-        "PriceList",
-        "PriceListEntry",
-        "DiscountRule"
+        "CommissionRule",
+        "CommissionEntry"
       ],
       "requires": [
         "sales",
-        "catalog"
+        "staff"
+      ]
+    },
+    {
+      "id": "coupons",
+      "name": "Cupons e promoções",
+      "glyph": "Cp",
+      "lane": "commerce",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Cupons de desconto e promoções por período.",
+      "concepts": [
+        "Coupon",
+        "Promotion"
+      ],
+      "requires": [
+        "sales"
+      ]
+    },
+    {
+      "id": "ecommerce",
+      "name": "Loja virtual",
+      "glyph": "Lv",
+      "lane": "commerce",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Carrinho, checkout e pedido online.",
+      "concepts": [
+        "Cart",
+        "Checkout",
+        "OnlineOrder"
+      ],
+      "specializations": [
+        [
+          "OnlineOrder",
+          "SalesOrder"
+        ]
+      ],
+      "requires": [
+        "catalog",
+        "sales",
+        "payments",
+        "shipping"
       ]
     },
     {
@@ -352,23 +1082,105 @@
       ],
       "capabilities": [
         "fiscalAuthority"
+      ],
+      "wave": 1
+    },
+    {
+      "id": "loyalty",
+      "name": "Fidelidade",
+      "glyph": "Fi",
+      "lane": "commerce",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Pontos por compra e resgate de prêmios.",
+      "concepts": [
+        "LoyaltyProgram",
+        "PointsLedger",
+        "Reward"
+      ],
+      "requires": [
+        "sales",
+        "person"
       ]
     },
     {
-      "id": "subscriptions",
-      "name": "Assinaturas",
-      "glyph": "As",
+      "id": "marketplace",
+      "name": "Marketplace",
+      "glyph": "Ma",
       "lane": "commerce",
       "status": "proposed",
-      "summary": "Planos, assinaturas e ciclos de cobrança recorrente.",
+      "wave": 3,
+      "summary": "Vários vendedores na mesma loja, com repasse.",
       "concepts": [
-        "Plan",
-        "Subscription",
-        "BillingCycle"
+        "Seller",
+        "Listing",
+        "Payout"
+      ],
+      "specializations": [
+        [
+          "Seller",
+          "Organization"
+        ]
       ],
       "requires": [
-        "payments",
-        "contacts"
+        "ecommerce",
+        "providers"
+      ]
+    },
+    {
+      "id": "payments",
+      "name": "Pagamentos",
+      "glyph": "Pg",
+      "lane": "commerce",
+      "status": "proposed",
+      "summary": "Cobranças, meios de pagamento e estornos, com Pix nativo. O gateway real entra como capacidade plugável.",
+      "concepts": [
+        "Payment",
+        "PaymentMethod",
+        "PixCharge",
+        "Refund"
+      ],
+      "requires": [
+        "br-core"
+      ],
+      "capabilities": [
+        "paymentGateway"
+      ],
+      "wave": 1
+    },
+    {
+      "id": "price-lists",
+      "name": "Listas de preço",
+      "glyph": "Lp",
+      "lane": "commerce",
+      "status": "proposed",
+      "summary": "Várias tabelas de preço por canal, cliente ou período, com regras de desconto.",
+      "concepts": [
+        "PriceList",
+        "PriceListEntry",
+        "DiscountRule"
+      ],
+      "requires": [
+        "sales",
+        "catalog"
+      ],
+      "wave": 2
+    },
+    {
+      "id": "quotes",
+      "name": "Orçamentos de venda",
+      "glyph": "Ov",
+      "lane": "commerce",
+      "status": "proposed",
+      "wave": 1,
+      "summary": "Orçamento que vira pedido quando o cliente aprova.",
+      "concepts": [
+        "Quote",
+        "QuoteLine"
+      ],
+      "requires": [
+        "sales",
+        "catalog"
       ]
     },
     {
@@ -394,89 +1206,142 @@
         "catalog",
         "inventory",
         "payments"
-      ]
-    },
-    {
-      "id": "inventory",
-      "name": "Estoque",
-      "glyph": "Es",
-      "lane": "supply",
-      "status": "existing",
-      "version": "1.0.0",
-      "summary": "Armazéns, posições, produtos e um razão de movimentações.",
-      "concepts": [
-        "Warehouse",
-        "StorageLocation",
-        "Product",
-        "StockMovement"
       ],
-      "requires": []
+      "wave": 2
     },
     {
-      "id": "purchasing",
-      "name": "Compras",
-      "glyph": "Co",
-      "lane": "supply",
-      "status": "existing",
-      "version": "1.0.0",
-      "summary": "Fornecedores, itens compráveis, pedidos de compra com itens e contas a pagar.",
-      "concepts": [
-        "Supplier",
-        "PurchaseItem",
-        "PurchaseOrder",
-        "PurchaseOrderLine",
-        "SupplierBill"
-      ],
-      "requires": []
-    },
-    {
-      "id": "providers",
-      "name": "Prestadores",
-      "glyph": "Pr",
-      "lane": "supply",
+      "id": "returns",
+      "name": "Trocas e devoluções",
+      "glyph": "Td",
+      "lane": "commerce",
       "status": "proposed",
-      "summary": "Prestadores de serviço, contratos e níveis de serviço acordados.",
+      "wave": 2,
+      "summary": "Pedido de troca ou devolução com volta ao estoque.",
       "concepts": [
-        "Provider",
-        "ProviderContract",
-        "ServiceLevel"
+        "ReturnRequest",
+        "ReturnLine"
       ],
       "requires": [
-        "contacts"
-      ]
-    },
-    {
-      "id": "storage-units",
-      "name": "Unidades de armazenagem",
-      "glyph": "Ua",
-      "lane": "supply",
-      "status": "proposed",
-      "summary": "Paletes, caixas e contêineres rastreados como unidades, com seus movimentos.",
-      "concepts": [
-        "StorageUnit",
-        "UnitContent",
-        "UnitMovement"
-      ],
-      "requires": [
+        "sales",
         "inventory"
       ]
     },
     {
-      "id": "shipping",
-      "name": "Expedição",
-      "glyph": "Ex",
-      "lane": "supply",
-      "status": "proposed",
-      "summary": "Remessas, manifestos de carga e transportadoras.",
+      "id": "sales",
+      "name": "Vendas",
+      "glyph": "Vd",
+      "lane": "commerce",
+      "status": "existing",
+      "version": "1.0.0",
+      "summary": "Clientes, lista de preços, pedidos de venda com itens e faturas.",
       "concepts": [
-        "Shipment",
-        "Manifest",
-        "ManifestLine",
-        "Carrier"
+        "Customer",
+        "SalesItem",
+        "SalesOrder",
+        "SalesOrderLine",
+        "Invoice"
+      ],
+      "requires": []
+    },
+    {
+      "id": "subscriptions",
+      "name": "Assinaturas",
+      "glyph": "As",
+      "lane": "commerce",
+      "status": "proposed",
+      "summary": "Planos, assinaturas e ciclos de cobrança recorrente.",
+      "concepts": [
+        "Plan",
+        "Subscription",
+        "BillingCycle"
       ],
       "requires": [
-        "inventory",
+        "payments",
         "contacts"
+      ],
+      "wave": 2
+    },
+    {
+      "id": "campaigns",
+      "name": "Campanhas",
+      "glyph": "Ca",
+      "lane": "crm",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Campanhas para um público, por WhatsApp, SMS ou e-mail.",
+      "concepts": [
+        "Campaign",
+        "Audience",
+        "CampaignSend"
+      ],
+      "requires": [
+        "leads",
+        "messaging"
+      ]
+    },
+    {
+      "id": "leads",
+      "name": "Leads",
+      "glyph": "Le",
+      "lane": "crm",
+      "status": "proposed",
+      "wave": 1,
+      "summary": "Interessados e de onde vieram.",
+      "concepts": [
+        "Lead",
+        "LeadSource"
+      ],
+      "requires": [
+        "contacts"
+      ]
+    },
+    {
+      "id": "pipeline",
+      "name": "Funil de vendas",
+      "glyph": "Fv",
+      "lane": "crm",
+      "status": "proposed",
+      "wave": 1,
+      "summary": "Oportunidades por etapa do funil.",
+      "concepts": [
+        "Opportunity",
+        "PipelineStage",
+        "SalesActivity"
+      ],
+      "requires": [
+        "leads",
+        "quotes"
+      ]
+    },
+    {
+      "id": "public-forms",
+      "name": "Formulários públicos",
+      "glyph": "Fp",
+      "lane": "crm",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Formulário aberto na web que cria registros.",
+      "concepts": [
+        "PublicForm",
+        "FormSubmission"
+      ],
+      "requires": []
+    },
+    {
+      "id": "surveys",
+      "name": "Pesquisas e NPS",
+      "glyph": "Pn",
+      "lane": "crm",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Pesquisas de satisfação e NPS.",
+      "concepts": [
+        "Survey",
+        "SurveyQuestion",
+        "SurveyResponse"
+      ],
+      "requires": [
+        "person"
       ]
     },
     {
@@ -502,33 +1367,40 @@
         "shipping",
         "person",
         "payments"
-      ]
+      ],
+      "wave": 2
     },
     {
-      "id": "food-delivery",
-      "name": "Delivery de comida",
-      "glyph": "Dc",
+      "id": "inventory",
+      "name": "Estoque",
+      "glyph": "Es",
+      "lane": "supply",
+      "status": "existing",
+      "version": "1.0.0",
+      "summary": "Armazéns, posições, produtos e um razão de movimentações.",
+      "concepts": [
+        "Warehouse",
+        "StorageLocation",
+        "Product",
+        "StockMovement"
+      ],
+      "requires": []
+    },
+    {
+      "id": "lots-serials",
+      "name": "Lotes e validade",
+      "glyph": "Lv",
       "lane": "supply",
       "status": "proposed",
-      "summary": "Cardápio, adicionais e comanda de cozinha.",
+      "wave": 2,
+      "summary": "Rastreio por lote e número de série, com alerta de validade.",
       "concepts": [
-        "MenuItem",
-        "MenuAddon",
-        "KitchenTicket"
-      ],
-      "specializations": [
-        [
-          "MenuItem",
-          "Product"
-        ],
-        [
-          "FoodOrder",
-          "DeliveryOrder"
-        ]
+        "Lot",
+        "SerialNumber",
+        "ExpiryAlert"
       ],
       "requires": [
-        "delivery",
-        "catalog"
+        "inventory"
       ]
     },
     {
@@ -539,7 +1411,7 @@
       "status": "proposed",
       "summary": "Receita, item controlado e conferência na entrega.",
       "concepts": [
-        "Prescription",
+        "PrescriptionUpload",
         "ControlledItem",
         "DispenseCheck"
       ],
@@ -553,22 +1425,369 @@
         "delivery",
         "catalog",
         "documents"
+      ],
+      "wave": 3
+    },
+    {
+      "id": "providers",
+      "name": "Prestadores",
+      "glyph": "Pr",
+      "lane": "supply",
+      "status": "proposed",
+      "summary": "Prestadores de serviço, contratos e níveis de serviço acordados.",
+      "concepts": [
+        "Provider",
+        "ProviderContract",
+        "ServiceLevel"
+      ],
+      "requires": [
+        "contacts"
+      ],
+      "wave": 2
+    },
+    {
+      "id": "purchasing",
+      "name": "Compras",
+      "glyph": "Co",
+      "lane": "supply",
+      "status": "existing",
+      "version": "1.0.0",
+      "summary": "Fornecedores, itens compráveis, pedidos de compra com itens e contas a pagar.",
+      "concepts": [
+        "Supplier",
+        "PurchaseItem",
+        "PurchaseOrder",
+        "PurchaseOrderLine",
+        "SupplierBill"
+      ],
+      "requires": []
+    },
+    {
+      "id": "requisitions",
+      "name": "Requisição de compra",
+      "glyph": "Rc",
+      "lane": "supply",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Pedido interno de compra que passa por aprovação.",
+      "concepts": [
+        "Requisition",
+        "RequisitionLine"
+      ],
+      "specializations": [
+        [
+          "Requisition",
+          "ApprovalRequest"
+        ]
+      ],
+      "requires": [
+        "purchasing",
+        "approvals"
       ]
     },
     {
-      "id": "scheduling",
-      "name": "Agenda",
-      "glyph": "Ag",
-      "lane": "services",
+      "id": "shipping",
+      "name": "Expedição",
+      "glyph": "Ex",
+      "lane": "supply",
       "status": "proposed",
-      "summary": "Recursos (pessoa, sala, equipamento), disponibilidade e reservas. Evita conflito de horário.",
+      "summary": "Remessas, manifestos de carga e transportadoras.",
       "concepts": [
-        "Resource",
-        "Availability",
-        "Booking"
+        "Shipment",
+        "Manifest",
+        "ManifestLine",
+        "Carrier"
+      ],
+      "requires": [
+        "inventory",
+        "contacts"
+      ],
+      "wave": 2
+    },
+    {
+      "id": "storage-units",
+      "name": "Unidades de armazenagem",
+      "glyph": "Ua",
+      "lane": "supply",
+      "status": "proposed",
+      "summary": "Paletes, caixas e contêineres rastreados como unidades, com seus movimentos.",
+      "concepts": [
+        "StorageUnit",
+        "UnitContent",
+        "UnitMovement"
+      ],
+      "requires": [
+        "inventory"
+      ],
+      "wave": 2
+    },
+    {
+      "id": "supplier-quotes",
+      "name": "Cotação de fornecedores",
+      "glyph": "Cf",
+      "lane": "supply",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Pedir preço a vários fornecedores e comparar.",
+      "concepts": [
+        "RequestForQuote",
+        "SupplierQuote"
+      ],
+      "requires": [
+        "purchasing"
+      ]
+    },
+    {
+      "id": "wms",
+      "name": "Armazém (WMS)",
+      "glyph": "Aw",
+      "lane": "supply",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Separação em ondas, armazenagem e inventário cíclico.",
+      "concepts": [
+        "PickWave",
+        "PickTask",
+        "PutawayTask",
+        "CycleCount"
+      ],
+      "requires": [
+        "storage-units",
+        "shipping"
+      ]
+    },
+    {
+      "id": "fleet",
+      "name": "Frota",
+      "glyph": "Fr",
+      "lane": "fleet",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Veículos, motoristas, abastecimento e manutenção.",
+      "concepts": [
+        "Vehicle",
+        "Driver",
+        "FuelLog",
+        "VehicleMaintenance"
+      ],
+      "specializations": [
+        [
+          "Driver",
+          "PersonProfile"
+        ]
       ],
       "requires": [
         "person"
+      ]
+    },
+    {
+      "id": "live-tracking",
+      "name": "Rastreio em tempo real",
+      "glyph": "Rt",
+      "lane": "fleet",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Posição dos veículos e cercas virtuais.",
+      "concepts": [
+        "PositionPing",
+        "Geofence"
+      ],
+      "requires": [
+        "fleet"
+      ]
+    },
+    {
+      "id": "ride-hailing",
+      "name": "Transporte por app",
+      "glyph": "Tp",
+      "lane": "fleet",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Pedido de corrida, viagem, tarifa e avaliação.",
+      "concepts": [
+        "RideRequest",
+        "Trip",
+        "Fare",
+        "TripRating"
+      ],
+      "requires": [
+        "fleet",
+        "payments"
+      ]
+    },
+    {
+      "id": "route-planning",
+      "name": "Roteirização",
+      "glyph": "Ro",
+      "lane": "fleet",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Planejamento de rotas com paradas.",
+      "concepts": [
+        "RoutePlan",
+        "RouteStop"
+      ],
+      "requires": [
+        "fleet",
+        "shipping"
+      ],
+      "capabilities": [
+        "mapsProvider"
+      ]
+    },
+    {
+      "id": "bom",
+      "name": "Estrutura de produto",
+      "glyph": "Ep",
+      "lane": "industry",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Do que cada produto é feito (BOM).",
+      "concepts": [
+        "BillOfMaterials",
+        "BomLine"
+      ],
+      "requires": [
+        "catalog",
+        "inventory"
+      ]
+    },
+    {
+      "id": "mrp",
+      "name": "Planejamento MRP",
+      "glyph": "Pm",
+      "lane": "industry",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Calcula o que produzir e comprar.",
+      "concepts": [
+        "MrpRun",
+        "PlannedOrder"
+      ],
+      "requires": [
+        "production",
+        "purchasing"
+      ]
+    },
+    {
+      "id": "plant-maintenance",
+      "name": "Manutenção industrial",
+      "glyph": "Mi",
+      "lane": "industry",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Manutenção preventiva e corretiva de máquinas.",
+      "concepts": [
+        "MaintenancePlan",
+        "MaintenanceOrder"
+      ],
+      "requires": [
+        "assets"
+      ]
+    },
+    {
+      "id": "production",
+      "name": "Ordem de produção",
+      "glyph": "Op",
+      "lane": "industry",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Ordens de produção por centro de trabalho e apontamento.",
+      "concepts": [
+        "ProductionOrder",
+        "WorkCenter",
+        "ProductionReport"
+      ],
+      "requires": [
+        "bom"
+      ]
+    },
+    {
+      "id": "crops",
+      "name": "Lavoura",
+      "glyph": "La",
+      "lane": "agro",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Plantio, aplicação de insumos e colheita.",
+      "concepts": [
+        "Planting",
+        "InputApplication",
+        "Harvest"
+      ],
+      "requires": [
+        "farm",
+        "inventory"
+      ]
+    },
+    {
+      "id": "farm",
+      "name": "Fazenda",
+      "glyph": "Fa",
+      "lane": "agro",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Fazendas, talhões e safras.",
+      "concepts": [
+        "Farm",
+        "FieldPlot",
+        "CropSeason"
+      ],
+      "requires": [
+        "contacts"
+      ]
+    },
+    {
+      "id": "livestock",
+      "name": "Pecuária",
+      "glyph": "Pe",
+      "lane": "agro",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Animais, lotes, pesagens e eventos sanitários.",
+      "concepts": [
+        "Animal",
+        "Herd",
+        "WeighIn",
+        "AnimalHealthEvent"
+      ],
+      "requires": [
+        "farm"
+      ]
+    },
+    {
+      "id": "construction-works",
+      "name": "Obras",
+      "glyph": "Ob",
+      "lane": "construction",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Obra, etapas, pedido de material e diário de obra.",
+      "concepts": [
+        "ConstructionSite",
+        "WorkStage",
+        "MaterialRequest",
+        "DailyLog"
+      ],
+      "requires": [
+        "projects",
+        "inventory"
+      ]
+    },
+    {
+      "id": "measurements",
+      "name": "Medições",
+      "glyph": "Me",
+      "lane": "construction",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Medição do que foi executado para faturar.",
+      "concepts": [
+        "Measurement",
+        "MeasurementLine"
+      ],
+      "requires": [
+        "construction-works"
       ]
     },
     {
@@ -591,7 +1810,8 @@
       ],
       "requires": [
         "scheduling"
-      ]
+      ],
+      "wave": 1
     },
     {
       "id": "field-service",
@@ -614,7 +1834,141 @@
       "requires": [
         "appointments",
         "inventory"
+      ],
+      "wave": 2
+    },
+    {
+      "id": "home-cleaning",
+      "name": "Limpeza e conservação",
+      "glyph": "Lc",
+      "lane": "services",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Serviço de limpeza agendado no endereço.",
+      "concepts": [
+        "CleaningJob"
+      ],
+      "specializations": [
+        [
+          "CleaningJob",
+          "WorkOrder"
+        ]
+      ],
+      "requires": [
+        "field-service"
       ]
+    },
+    {
+      "id": "online-booking",
+      "name": "Agendamento online",
+      "glyph": "Ao",
+      "lane": "services",
+      "status": "proposed",
+      "wave": 1,
+      "summary": "O cliente escolhe o horário sozinho numa página pública.",
+      "concepts": [
+        "BookingPage",
+        "PublicSlot"
+      ],
+      "requires": [
+        "appointments",
+        "customer-portal"
+      ]
+    },
+    {
+      "id": "repair-shop",
+      "name": "Assistência técnica",
+      "glyph": "At",
+      "lane": "services",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Entrada do aparelho, conserto e devolução.",
+      "concepts": [
+        "RepairOrder",
+        "DeviceIntake"
+      ],
+      "specializations": [
+        [
+          "RepairOrder",
+          "WorkOrder"
+        ]
+      ],
+      "requires": [
+        "field-service"
+      ]
+    },
+    {
+      "id": "scheduling",
+      "name": "Agenda",
+      "glyph": "Ag",
+      "lane": "services",
+      "status": "proposed",
+      "summary": "Recursos (pessoa, sala, equipamento), disponibilidade e reservas. Evita conflito de horário.",
+      "concepts": [
+        "Resource",
+        "Availability",
+        "Booking"
+      ],
+      "requires": [
+        "person"
+      ],
+      "wave": 1
+    },
+    {
+      "id": "service-contracts",
+      "name": "Contratos de serviço",
+      "glyph": "Cs",
+      "lane": "services",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Contratos recorrentes com nível de serviço.",
+      "concepts": [
+        "ServiceContract",
+        "ServiceLevelTarget"
+      ],
+      "requires": [
+        "contacts",
+        "subscriptions"
+      ]
+    },
+    {
+      "id": "service-queues",
+      "name": "Fila de atendimento",
+      "glyph": "Fa",
+      "lane": "services",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Senha e chamada por ordem de chegada.",
+      "concepts": [
+        "ServiceQueue",
+        "QueueTicket"
+      ],
+      "requires": [
+        "appointments"
+      ]
+    },
+    {
+      "id": "cardiology",
+      "name": "Cardiologia",
+      "glyph": "Ca",
+      "lane": "health",
+      "status": "proposed",
+      "summary": "Consulta cardiológica, ECG e escore de risco.",
+      "concepts": [
+        "CardioAttendance",
+        "EcgExam",
+        "RiskScore"
+      ],
+      "specializations": [
+        [
+          "CardioAttendance",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ],
+      "wave": 2
     },
     {
       "id": "clinic",
@@ -643,7 +1997,8 @@
         "appointments",
         "consent-lgpd",
         "documents"
-      ]
+      ],
+      "wave": 1
     },
     {
       "id": "dental",
@@ -665,23 +2020,173 @@
       ],
       "requires": [
         "clinic"
+      ],
+      "wave": 1
+    },
+    {
+      "id": "inpatient",
+      "name": "Internação",
+      "glyph": "In",
+      "lane": "health",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Leitos, internação e evolução de enfermagem.",
+      "concepts": [
+        "Admission",
+        "Bed",
+        "Ward",
+        "NursingNote"
+      ],
+      "requires": [
+        "clinic"
       ]
     },
     {
-      "id": "cardiology",
-      "name": "Cardiologia",
-      "glyph": "Ca",
+      "id": "lab",
+      "name": "Laboratório",
+      "glyph": "La",
       "lane": "health",
       "status": "proposed",
-      "summary": "Consulta cardiológica, ECG e escore de risco.",
+      "wave": 2,
+      "summary": "Pedido de exame, coleta e resultado.",
       "concepts": [
-        "CardioAttendance",
-        "EcgExam",
-        "RiskScore"
+        "LabOrder",
+        "Sample",
+        "LabResult"
       ],
       "specializations": [
         [
-          "CardioAttendance",
+          "LabOrder",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ]
+    },
+    {
+      "id": "nutrition",
+      "name": "Nutrição",
+      "glyph": "Nu",
+      "lane": "health",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Consulta, plano alimentar e medidas.",
+      "concepts": [
+        "NutritionConsult",
+        "MealPlan",
+        "BodyMeasure"
+      ],
+      "specializations": [
+        [
+          "NutritionConsult",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ]
+    },
+    {
+      "id": "ophthalmology",
+      "name": "Oftalmologia",
+      "glyph": "Of",
+      "lane": "health",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Exame oftalmológico e receita de lentes.",
+      "concepts": [
+        "EyeExam",
+        "LensPrescription"
+      ],
+      "specializations": [
+        [
+          "EyeExam",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ]
+    },
+    {
+      "id": "pediatrics",
+      "name": "Pediatria",
+      "glyph": "Pe",
+      "lane": "health",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Consulta pediátrica, curva de crescimento e vacinas.",
+      "concepts": [
+        "PediatricAttendance",
+        "GrowthChart",
+        "VaccineRecord"
+      ],
+      "specializations": [
+        [
+          "PediatricAttendance",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic",
+        "households"
+      ]
+    },
+    {
+      "id": "physiotherapy",
+      "name": "Fisioterapia",
+      "glyph": "Fi",
+      "lane": "health",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Sessões e plano de exercícios.",
+      "concepts": [
+        "PhysioSession",
+        "ExercisePlan"
+      ],
+      "specializations": [
+        [
+          "PhysioSession",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ]
+    },
+    {
+      "id": "prescriptions",
+      "name": "Receituário",
+      "glyph": "Re",
+      "lane": "health",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Receita assinada digitalmente.",
+      "concepts": [
+        "MedicalPrescription",
+        "PrescribedItem"
+      ],
+      "requires": [
+        "clinic",
+        "e-signature"
+      ]
+    },
+    {
+      "id": "psychology",
+      "name": "Psicologia",
+      "glyph": "Ps",
+      "lane": "health",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Sessões de terapia e anotações sigilosas.",
+      "concepts": [
+        "TherapySession",
+        "SessionNote"
+      ],
+      "specializations": [
+        [
+          "TherapySession",
           "Attendance"
         ]
       ],
@@ -709,6 +2214,191 @@
       ],
       "requires": [
         "clinic"
+      ],
+      "wave": 2
+    },
+    {
+      "id": "telemedicine",
+      "name": "Telemedicina",
+      "glyph": "Te",
+      "lane": "health",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Consulta por vídeo.",
+      "concepts": [
+        "TeleSession",
+        "VideoRoom"
+      ],
+      "specializations": [
+        [
+          "TeleSession",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ],
+      "capabilities": [
+        "videoProvider"
+      ]
+    },
+    {
+      "id": "tiss-billing",
+      "name": "Faturamento TISS",
+      "glyph": "Ft",
+      "lane": "health",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Guias e lotes no padrão TISS para convênios.",
+      "concepts": [
+        "TissGuide",
+        "TissBatch"
+      ],
+      "requires": [
+        "clinic",
+        "fiscal-br"
+      ]
+    },
+    {
+      "id": "grooming",
+      "name": "Banho e tosa",
+      "glyph": "Bt",
+      "lane": "pets",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Agenda de banho e tosa.",
+      "concepts": [
+        "GroomingBooking"
+      ],
+      "specializations": [
+        [
+          "GroomingBooking",
+          "Appointment"
+        ]
+      ],
+      "requires": [
+        "pets",
+        "appointments",
+        "catalog"
+      ]
+    },
+    {
+      "id": "pet-hotel",
+      "name": "Hotel para pets",
+      "glyph": "Hp",
+      "lane": "pets",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Hospedagem de animais.",
+      "concepts": [
+        "PetStay"
+      ],
+      "specializations": [
+        [
+          "PetStay",
+          "Booking"
+        ]
+      ],
+      "requires": [
+        "pets",
+        "scheduling"
+      ]
+    },
+    {
+      "id": "pets",
+      "name": "Cadastro de pets",
+      "glyph": "Cp",
+      "lane": "pets",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Animais e seus tutores.",
+      "concepts": [
+        "Pet",
+        "Tutor"
+      ],
+      "specializations": [
+        [
+          "Tutor",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "vet",
+      "name": "Veterinária",
+      "glyph": "Ve",
+      "lane": "pets",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Atendimento veterinário e carteira de vacinação.",
+      "concepts": [
+        "VetAttendance",
+        "Vaccination"
+      ],
+      "specializations": [
+        [
+          "VetAttendance",
+          "Appointment"
+        ]
+      ],
+      "requires": [
+        "pets",
+        "appointments"
+      ]
+    },
+    {
+      "id": "aesthetics",
+      "name": "Estética",
+      "glyph": "Et",
+      "lane": "beauty",
+      "status": "proposed",
+      "summary": "Procedimento estético com termo de consentimento e fotos de antes e depois.",
+      "concepts": [
+        "AestheticProcedure",
+        "BeforeAfterPhoto",
+        "ProcedureConsent"
+      ],
+      "specializations": [
+        [
+          "AestheticProcedure",
+          "ServiceBooking"
+        ]
+      ],
+      "requires": [
+        "beauty-salon",
+        "consent-lgpd",
+        "documents"
+      ],
+      "wave": 2
+    },
+    {
+      "id": "barbershop",
+      "name": "Barbearia",
+      "glyph": "Ba",
+      "lane": "beauty",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Agenda de barbearia e clube de assinatura.",
+      "concepts": [
+        "BarberBooking",
+        "BarberClubPlan"
+      ],
+      "specializations": [
+        [
+          "BarberBooking",
+          "ServiceBooking"
+        ],
+        [
+          "BarberClubPlan",
+          "Plan"
+        ]
+      ],
+      "requires": [
+        "beauty-salon",
+        "subscriptions"
       ]
     },
     {
@@ -742,30 +2432,794 @@
         "appointments",
         "catalog",
         "payments"
-      ]
+      ],
+      "wave": 1
     },
     {
-      "id": "aesthetics",
-      "name": "Estética",
-      "glyph": "Et",
+      "id": "gym",
+      "name": "Academia",
+      "glyph": "Ac",
       "lane": "beauty",
       "status": "proposed",
-      "summary": "Procedimento estético com termo de consentimento e fotos de antes e depois.",
+      "wave": 2,
+      "summary": "Alunos, aulas, acesso e treino.",
       "concepts": [
-        "AestheticProcedure",
-        "BeforeAfterPhoto",
-        "ProcedureConsent"
+        "GymMember",
+        "ClassSession",
+        "GymCheckIn",
+        "WorkoutPlan"
       ],
       "specializations": [
         [
-          "AestheticProcedure",
-          "ServiceBooking"
+          "GymMember",
+          "PersonProfile"
+        ],
+        [
+          "ClassSession",
+          "Booking"
         ]
       ],
       "requires": [
+        "subscriptions",
+        "scheduling",
+        "person"
+      ]
+    },
+    {
+      "id": "personal-trainer",
+      "name": "Personal trainer",
+      "glyph": "Pt",
+      "lane": "beauty",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Alunos do personal e avaliação física.",
+      "concepts": [
+        "TrainingClient",
+        "Assessment"
+      ],
+      "requires": [
+        "gym"
+      ]
+    },
+    {
+      "id": "spa",
+      "name": "Spa e massagem",
+      "glyph": "Sm",
+      "lane": "beauty",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Pacotes de spa e salas.",
+      "concepts": [
+        "SpaPackage",
+        "TherapyRoom"
+      ],
+      "requires": [
+        "beauty-salon"
+      ]
+    },
+    {
+      "id": "studio-classes",
+      "name": "Estúdio de pilates e yoga",
+      "glyph": "Ep",
+      "lane": "beauty",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Turmas pequenas com reposição de aula.",
+      "concepts": [
+        "StudioClass"
+      ],
+      "specializations": [
+        [
+          "StudioClass",
+          "ClassSession"
+        ]
+      ],
+      "requires": [
+        "gym"
+      ]
+    },
+    {
+      "id": "catering",
+      "name": "Buffet",
+      "glyph": "Bu",
+      "lane": "food",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Buffet para eventos.",
+      "concepts": [
+        "CateringOrder"
+      ],
+      "requires": [
+        "kitchen",
+        "events"
+      ]
+    },
+    {
+      "id": "food-delivery",
+      "name": "Delivery de comida",
+      "glyph": "Dc",
+      "lane": "food",
+      "status": "proposed",
+      "summary": "Pedido de comida com zona de entrega, ligado à cozinha.",
+      "concepts": [
+        "FoodOrder",
+        "DeliveryZone"
+      ],
+      "specializations": [
+        [
+          "FoodOrder",
+          "DeliveryOrder"
+        ]
+      ],
+      "requires": [
+        "delivery",
+        "kitchen"
+      ],
+      "wave": 2
+    },
+    {
+      "id": "kitchen",
+      "name": "Cozinha",
+      "glyph": "Co",
+      "lane": "food",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Cardápio, adicionais e comanda de cozinha.",
+      "concepts": [
+        "MenuItem",
+        "MenuAddon",
+        "KitchenTicket"
+      ],
+      "specializations": [
+        [
+          "MenuItem",
+          "Product"
+        ]
+      ],
+      "requires": [
+        "catalog"
+      ]
+    },
+    {
+      "id": "recipe-costing",
+      "name": "Ficha técnica",
+      "glyph": "Ft",
+      "lane": "food",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Receita, ingredientes e custo do prato.",
+      "concepts": [
+        "Recipe",
+        "RecipeIngredient",
+        "PlateCost"
+      ],
+      "requires": [
+        "kitchen",
+        "inventory"
+      ]
+    },
+    {
+      "id": "restaurant",
+      "name": "Restaurante",
+      "glyph": "Re",
+      "lane": "food",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Mesas, pedido por mesa e conta.",
+      "concepts": [
+        "DiningTable",
+        "TableOrder",
+        "TableBill"
+      ],
+      "specializations": [
+        [
+          "TableOrder",
+          "SalesOrder"
+        ]
+      ],
+      "requires": [
+        "kitchen",
+        "sales",
+        "payments"
+      ]
+    },
+    {
+      "id": "driving-school",
+      "name": "Autoescola",
+      "glyph": "Au",
+      "lane": "education",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Aulas práticas e agenda de exames.",
+      "concepts": [
+        "DrivingLesson",
+        "LicenseExam"
+      ],
+      "specializations": [
+        [
+          "DrivingLesson",
+          "Booking"
+        ]
+      ],
+      "requires": [
+        "school",
+        "fleet"
+      ]
+    },
+    {
+      "id": "grades",
+      "name": "Notas e frequência",
+      "glyph": "Nf",
+      "lane": "education",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Avaliações, notas e presença.",
+      "concepts": [
+        "SchoolAssessment",
+        "Grade",
+        "AttendanceRecord"
+      ],
+      "requires": [
+        "school"
+      ]
+    },
+    {
+      "id": "library",
+      "name": "Biblioteca",
+      "glyph": "Bi",
+      "lane": "education",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Acervo, empréstimos e reservas.",
+      "concepts": [
+        "Book",
+        "Loan",
+        "BookHold"
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "online-courses",
+      "name": "Cursos online",
+      "glyph": "Co",
+      "lane": "education",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Módulos, aulas e progresso do aluno.",
+      "concepts": [
+        "CourseModule",
+        "Lesson",
+        "LessonProgress"
+      ],
+      "requires": [
+        "school",
+        "payments"
+      ]
+    },
+    {
+      "id": "school",
+      "name": "Escola",
+      "glyph": "Es",
+      "lane": "education",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Alunos, responsáveis, cursos, turmas e matrículas.",
+      "concepts": [
+        "Student",
+        "Guardian",
+        "Course",
+        "ClassGroup",
+        "Enrollment"
+      ],
+      "specializations": [
+        [
+          "Student",
+          "PersonProfile"
+        ],
+        [
+          "Guardian",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "person",
+        "scheduling"
+      ]
+    },
+    {
+      "id": "tuition",
+      "name": "Mensalidades",
+      "glyph": "Me",
+      "lane": "education",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Plano de mensalidade e cobrança.",
+      "concepts": [
+        "TuitionPlan",
+        "TuitionInvoice"
+      ],
+      "specializations": [
+        [
+          "TuitionInvoice",
+          "Receivable"
+        ]
+      ],
+      "requires": [
+        "school",
+        "receivables"
+      ]
+    },
+    {
+      "id": "condo",
+      "name": "Condomínio",
+      "glyph": "Co",
+      "lane": "realestate",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Taxa condominial, reservas de áreas comuns e assembleias.",
+      "concepts": [
+        "Condominium",
+        "CondoFee",
+        "CommonAreaBooking",
+        "Assembly"
+      ],
+      "specializations": [
+        [
+          "CondoFee",
+          "Receivable"
+        ],
+        [
+          "CommonAreaBooking",
+          "Booking"
+        ]
+      ],
+      "requires": [
+        "properties",
+        "receivables",
+        "scheduling"
+      ]
+    },
+    {
+      "id": "properties",
+      "name": "Imóveis",
+      "glyph": "Im",
+      "lane": "realestate",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Imóveis e unidades.",
+      "concepts": [
+        "Property",
+        "PropertyUnit"
+      ],
+      "requires": [
+        "contacts",
+        "br-core"
+      ]
+    },
+    {
+      "id": "property-sales",
+      "name": "Venda de imóveis",
+      "glyph": "Vi",
+      "lane": "realestate",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Anúncio, visita ao imóvel e proposta.",
+      "concepts": [
+        "PropertyListing",
+        "PropertyShowing",
+        "PurchaseProposal"
+      ],
+      "specializations": [
+        [
+          "PropertyShowing",
+          "Appointment"
+        ]
+      ],
+      "requires": [
+        "properties",
+        "pipeline",
+        "appointments"
+      ]
+    },
+    {
+      "id": "rentals",
+      "name": "Locação",
+      "glyph": "Lo",
+      "lane": "realestate",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Contrato de aluguel, cobrança e garantia.",
+      "concepts": [
+        "Lease",
+        "RentInvoice",
+        "LeaseGuarantee"
+      ],
+      "specializations": [
+        [
+          "RentInvoice",
+          "Receivable"
+        ]
+      ],
+      "requires": [
+        "properties",
+        "receivables",
+        "e-signature"
+      ]
+    },
+    {
+      "id": "channel-manager",
+      "name": "Canais de reserva",
+      "glyph": "Cr",
+      "lane": "hospitality",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Sincroniza preço e disponibilidade com sites de reserva.",
+      "concepts": [
+        "ChannelListing",
+        "RateSync"
+      ],
+      "requires": [
+        "hotel"
+      ],
+      "capabilities": [
+        "otaChannel"
+      ]
+    },
+    {
+      "id": "hotel",
+      "name": "Hotel e pousada",
+      "glyph": "Hp",
+      "lane": "hospitality",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Quartos, hospedagem, hóspedes e conta.",
+      "concepts": [
+        "Room",
+        "RoomStay",
+        "Guest",
+        "Folio"
+      ],
+      "specializations": [
+        [
+          "RoomStay",
+          "Booking"
+        ],
+        [
+          "Guest",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "scheduling",
+        "payments",
+        "person"
+      ]
+    },
+    {
+      "id": "tours",
+      "name": "Agência de turismo",
+      "glyph": "At",
+      "lane": "hospitality",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Pacotes, viajantes e roteiro.",
+      "concepts": [
+        "TourPackage",
+        "Traveler",
+        "Itinerary"
+      ],
+      "specializations": [
+        [
+          "TourPackage",
+          "Product"
+        ],
+        [
+          "Traveler",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "catalog",
+        "payments",
+        "person"
+      ]
+    },
+    {
+      "id": "event-checkin",
+      "name": "Credenciamento",
+      "glyph": "Cr",
+      "lane": "events",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Crachá e leitura de acesso na entrada.",
+      "concepts": [
+        "Badge",
+        "AccessScan"
+      ],
+      "requires": [
+        "events"
+      ]
+    },
+    {
+      "id": "events",
+      "name": "Eventos",
+      "glyph": "Ev",
+      "lane": "events",
+      "status": "proposed",
+      "wave": 2,
+      "summary": "Evento, ingresso, participantes e local.",
+      "concepts": [
+        "Event",
+        "EventTicket",
+        "Attendee",
+        "Venue"
+      ],
+      "specializations": [
+        [
+          "Attendee",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "catalog",
+        "payments",
+        "person"
+      ]
+    },
+    {
+      "id": "church",
+      "name": "Igreja",
+      "glyph": "Ig",
+      "lane": "nonprofit",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Membros, ministérios e cultos.",
+      "concepts": [
+        "ChurchMember",
+        "Ministry",
+        "WorshipService"
+      ],
+      "specializations": [
+        [
+          "ChurchMember",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "donations",
+        "households",
+        "events"
+      ]
+    },
+    {
+      "id": "donations",
+      "name": "Doações",
+      "glyph": "Do",
+      "lane": "nonprofit",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Doadores, doações e campanhas de arrecadação.",
+      "concepts": [
+        "Donor",
+        "Donation",
+        "FundraisingCampaign"
+      ],
+      "specializations": [
+        [
+          "Donor",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "person",
+        "payments"
+      ]
+    },
+    {
+      "id": "volunteers",
+      "name": "Voluntários",
+      "glyph": "Vo",
+      "lane": "nonprofit",
+      "status": "proposed",
+      "wave": 3,
+      "summary": "Voluntários e escala.",
+      "concepts": [
+        "Volunteer",
+        "VolunteerShift"
+      ],
+      "specializations": [
+        [
+          "Volunteer",
+          "PersonProfile"
+        ],
+        [
+          "VolunteerShift",
+          "Booking"
+        ]
+      ],
+      "requires": [
+        "person",
+        "scheduling"
+      ]
+    }
+  ],
+  "laneGroups": [
+    {
+      "id": "Base",
+      "name": "Base"
+    },
+    {
+      "id": "Gestão",
+      "name": "Gestão"
+    },
+    {
+      "id": "Comércio",
+      "name": "Comércio"
+    },
+    {
+      "id": "Operação",
+      "name": "Operação"
+    },
+    {
+      "id": "Serviços",
+      "name": "Serviços"
+    },
+    {
+      "id": "Setores",
+      "name": "Setores"
+    }
+  ],
+  "kits": [
+    {
+      "id": "dental-clinic",
+      "name": "Clínica odontológica",
+      "packs": [
+        "dental",
+        "online-booking",
+        "receivables",
+        "messaging",
+        "fiscal-br"
+      ]
+    },
+    {
+      "id": "multi-clinic",
+      "name": "Clínica multiprofissional",
+      "packs": [
+        "clinic",
+        "psychology",
+        "physiotherapy",
+        "nutrition",
+        "telemedicine",
+        "online-booking",
+        "receivables",
+        "tiss-billing"
+      ]
+    },
+    {
+      "id": "salon",
+      "name": "Salão e barbearia",
+      "packs": [
         "beauty-salon",
-        "consent-lgpd",
-        "documents"
+        "barbershop",
+        "online-booking",
+        "commissions",
+        "messaging",
+        "loyalty"
+      ]
+    },
+    {
+      "id": "restaurant-delivery",
+      "name": "Restaurante com delivery",
+      "packs": [
+        "restaurant",
+        "food-delivery",
+        "recipe-costing",
+        "fiscal-br",
+        "coupons"
+      ]
+    },
+    {
+      "id": "retail",
+      "name": "Loja física e virtual",
+      "packs": [
+        "retail-store",
+        "ecommerce",
+        "fiscal-br",
+        "loyalty",
+        "returns",
+        "coupons"
+      ]
+    },
+    {
+      "id": "distributor",
+      "name": "Distribuidora",
+      "packs": [
+        "sales",
+        "quotes",
+        "purchasing",
+        "inventory",
+        "lots-serials",
+        "shipping",
+        "fiscal-br",
+        "receivables",
+        "payables"
+      ]
+    },
+    {
+      "id": "school",
+      "name": "Escola",
+      "packs": [
+        "school",
+        "grades",
+        "tuition",
+        "messaging",
+        "customer-portal"
+      ]
+    },
+    {
+      "id": "condo-admin",
+      "name": "Administradora de condomínios",
+      "packs": [
+        "condo",
+        "boleto",
+        "documents",
+        "messaging"
+      ]
+    },
+    {
+      "id": "gym",
+      "name": "Academia",
+      "packs": [
+        "gym",
+        "studio-classes",
+        "receivables",
+        "messaging"
+      ]
+    },
+    {
+      "id": "field-service",
+      "name": "Serviços em campo",
+      "packs": [
+        "field-service",
+        "service-contracts",
+        "fleet",
+        "receivables"
+      ]
+    },
+    {
+      "id": "pet",
+      "name": "Pet shop e veterinária",
+      "packs": [
+        "vet",
+        "grooming",
+        "retail-store",
+        "online-booking"
+      ]
+    },
+    {
+      "id": "factory",
+      "name": "Pequena indústria",
+      "packs": [
+        "production",
+        "mrp",
+        "sales",
+        "fiscal-br",
+        "lots-serials",
+        "quality"
+      ]
+    },
+    {
+      "id": "back-office",
+      "name": "Gestão administrativa",
+      "packs": [
+        "cash-flow",
+        "bank-reconciliation",
+        "cost-centers",
+        "expenses",
+        "time-clock",
+        "tasks"
       ]
     }
   ]
