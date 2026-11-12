@@ -175,13 +175,19 @@ sections:
       `./npdev validator rotate-token` makes a new one). It offers six tools only: `npdev_validate`,
       `npdev_core_context`, `npdev_search_examples`, `npdev_search_fix`, `npdev_check_support` and
       `npdev_get_schema` — nothing that reads a file path, generates or builds. To reach it from the
-      internet, install `cloudflared` yourself (the script never downloads it) and run the script below; it
-      prints the connector address to paste into the AI. The address changes on every run, and while it
-      runs, anyone who has that link can validate models on your computer.
+      internet, run the script below; it prints the connector address to paste into the AI, and while it
+      runs, anyone who has that link can validate models on your computer. The script never downloads a
+      tunnel program, so install one yourself. **Use ngrok**: a free account gives you one address that
+      never changes, so you add the connector once and it keeps working. Sign up at ngrok, install it, run
+      `ngrok config add-authtoken <your token>` once, then run the script with `-NgrokDomain` and your
+      free ngrok domain; it remembers the domain, so later runs need no arguments. Without an ngrok
+      domain the script falls back to a `cloudflared` quick tunnel (no account), whose address changes on
+      every run, so the connector must be added again each time.
   - type: fence
     lang: sh
     text: |-
-      pwsh -NoProfile -File scripts/ai/Start-ValidatorTunnel.ps1
+      pwsh -NoProfile -File scripts/ai/Start-ValidatorTunnel.ps1 -NgrokDomain name-1234.ngrok-free.app   # first time only
+      pwsh -NoProfile -File scripts/ai/Start-ValidatorTunnel.ps1                                         # every run after
   - type: prose
     text: |2
 

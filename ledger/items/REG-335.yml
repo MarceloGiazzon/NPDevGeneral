@@ -26,10 +26,17 @@ detail: |
   the 413 so a client reads the answer instead of a reset.
   Stand-in evidence (2026-11-11, outside the repo, impl/ai_loop.py): a real free-tier LLM (gemini-3.6-flash) read npdev_core_context and called
   npdev_validate through the REAL MCP endpoint -- a fresh library app reached `warning` in 1 round (6,865 + 444 tokens) and a model with 2
-  planted errors reached `passed` in 1 round (7,902 + 970 tokens). Not a chat UI with a connector, so B8 proper is still open.
-  NOT done (needs the owner or a real online AI): the Phase 0 spikes that need accounts or a tunnel binary (S3 cloudflared on this
-  machine, S4 an https page calling 127.0.0.1, S5 an AI sandbox fetch), B8 (a real chat AI closes the loop through a connector), A5 (a real
-  browser agent closes the loop), and the optional phases (N7 structural mode, B9 OAuth, C Manager card).
+  planted errors reached `passed` in 1 round (7,902 + 970 tokens). Not a chat UI with a connector.
+  Owner acceptance (2026-11-12, real cloudflared tunnel, Claude.ai paid plan): B8 positive (a library app, 1 validation, `warning`, 16 label
+  warnings) and negative (a flow naming a missing concept: `failed`, 1 error, suggestedFix quoted back; the AI asked instead of fixing).
+  Finding: a quick-tunnel address is new on every start, so after the tunnel was restarted the Claude.ai connector pointed at a dead address
+  ("connector's server isn't responding"; no request reached the service). Fix: Start-ValidatorTunnel.ps1 gained -Provider
+  auto|cloudflare|ngrok, -NgrokDomain (the free ngrok static domain, remembered in tunnel.json) and -StateDir; with ngrok the connector URL
+  is fixed, so it is added once. Verified against a fake ngrok only (argument shape, saved domain, auth-failure hint, own-service path);
+  a real ngrok run has not happened yet.
+  NOT done (needs the owner or a real online AI): a real ngrok run of the fixed-address tunnel, B8 on a Free Claude.ai account, the Phase 0
+  spikes S4 (an https page calling 127.0.0.1) and S5 (an AI sandbox fetch), A5 (a real browser agent closes the loop), and the optional
+  phases (N7 structural mode, B9 OAuth, C Manager card).
 files:
   - NPDevMcp/validation_service.py
   - NPDevMcp/static/validate.html

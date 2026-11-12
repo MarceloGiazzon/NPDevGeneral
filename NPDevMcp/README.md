@@ -87,8 +87,10 @@ says why) and answers `npdev-validation-service.v1` (`schemas/ai/npdev-validatio
   (`npdev_validate`, `npdev_core_context`, `npdev_search_examples`, `npdev_search_fix`,
   `npdev_check_support`, `npdev_get_schema`) -- never the stdio tool table. The secret is in
   `<Build>/validation-service/token.txt` (`npdev validator rotate-token`). To reach it from the internet:
-  `pwsh -NoProfile -File scripts/ai/Start-ValidatorTunnel.ps1` (cloudflared quick tunnel; the script never
-  downloads cloudflared and only stops processes it started).
+  `pwsh -NoProfile -File scripts/ai/Start-ValidatorTunnel.ps1 -NgrokDomain <your free ngrok domain>` (ngrok: one
+  fixed address, remembered in `tunnel.json`, so the connector is added once; without a domain it falls back to a
+  cloudflared quick tunnel whose address changes every run; the script never downloads a tunnel program and only
+  stops processes it started).
 - Safety: no body or token is ever logged (`<Build>/validation-service/logs/access.log`), the machine path
   never leaves the process, the validation journal is off unless `--capture`, 2 MB body cap, at most two
   validations at once, Origin check and a per-client rate limit on `/mcp/`.
