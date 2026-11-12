@@ -15,8 +15,13 @@
       put the archived model back (change/fix); with several files: put every file back and delete the ones the
       answer created. A created app is never deleted from here.
 
+A config proposal the owner CONFIRMED (REG-323 T4.5b: an allowlisted setting such as the app's theme, offered as
+`configProposals[]` with a `confirmCode`) is applied in the same step: config.json's new text comes from the CLI's own
+writer, goes through the same all-or-nothing transaction and backup, and undo puts the old config.json back. A proposal
+the owner did not confirm is simply not applied (it stays a suggestion); the result says which was which.
+
 Nothing is written unless every check passes; every write is atomic. Code files an answer carried (quarantine)
-and kinds of file this phase cannot apply yet (themes, pages, element upserts) are never written: the answer is
+and kinds of file this phase cannot apply yet (pages, element upserts) are never written: the answer is
 refused by name instead of applied in part. Stdlib only; the pipeline's own modules do the checking.
 """
 from __future__ import annotations
@@ -112,17 +117,83 @@ def apply_round(session: dict, number: int | None, confirmed, parent_dir=None) -
             manifest = json.loads(manifest_text)
         except ValueError:
             manifest = None
+    config_changes, config_skipped = _config_changes(session, result, extra, set(confirmed or ()))
     if session["intent"] == "create":
-        return _apply_create(session, number, entry, model_text, parent_dir, extra)
-    return _apply_change(session, number, entry, model_text, manifest, set(confirmed or ()), extra)
+        return _with_config_report(_apply_create(session, number, entry, model_text, parent_dir, extra, config_changes),
+                                   config_skipped)
+    return _with_config_report(_apply_change(session, number, entry, model_text, manifest, set(confirmed or ()), extra,
+                                             config_changes), config_skipped)
+
+
+# --------------------------------------------------------------------------- config proposals the owner confirmed
+
+def _config_changes(session: dict, result: dict, extra: dict, confirmed: set) -> tuple:
+    """([(setting id, value, writer name)] to apply, [{property, reason}] not applied). An item is applied only when the
+    owner confirmed its code AND it still passes the allowlist now (the stored result is data, not authority): the
+    check runs again against the themes that exist today plus the ones this answer carries."""
+    import npdev_relay_config as config_mod
+    import npdev_relay_themes as themes_mod
+
+    offered = [i for i in result.get("configProposals") or [] if i.get("status") == "applicable"]
+    if not offered:
+        return [], []
+    base = authoring.resolve_model_path(session.get("appDir")) if session["intent"] != "create" else None
+    context = {"themes": themes_mod.known_ids(base.parent if base else None, list(extra))}
+    allowlist = config_mod.load_allowlist()
+    writers = {config_mod.normalize_property(e["property"]).casefold(): e.get("writer") for e in allowlist["entries"]}
+    changes, skipped = [], []
+    for item in offered:
+        prop = item.get("property", "")
+        if item.get("confirmCode") not in confirmed:
+            skipped.append({"property": prop, "reason": "not-confirmed"})
+            continue
+        again = config_mod.evaluate({"changes": [{"property": prop, "value": item.get("value")}]}, allowlist, context)["items"]
+        if not again or again[0]["status"] != "applicable":
+            skipped.append({"property": prop, "reason": "no-longer-allowed"})
+            continue
+        changes.append((again[0]["property"], again[0]["value"], writers[again[0]["property"].casefold()]))
+    return changes, skipped
+
+
+class ConfigWriteError(Exception):
+    """The config.json change cannot be made; nothing has been written yet."""
+
+
+def _config_op(root: Path, changes: list) -> tuple:
+    """((relative path, new bytes) or None, [{property, value}] applied, [{property, reason}] skipped). Reads the config.json
+    that is on disk NOW and asks the registered writer for its new text; ConfigWriteError when the writer refuses."""
+    import npdev_relay_config as config_mod
+
+    if not changes:
+        return None, [], []
+    target = Path(root) / "config.json"
+    try:
+        text = target.read_text(encoding="utf-8")
+    except OSError:
+        return None, [], [{"property": prop, "reason": "no-config-file"} for prop, _value, _writer in changes]
+    new_text = text
+    for prop, value, writer in changes:
+        try:
+            new_text = config_mod.WRITERS[writer](new_text, prop, value)
+        except (KeyError, ValueError) as exc:
+            raise ConfigWriteError(f"{prop}: {exc}") from exc
+    applied = [{"property": prop, "value": value} for prop, value, _writer in changes]
+    return ("config.json", new_text.encode("utf-8")), applied, []
+
+
+def _with_config_report(payload: dict, skipped: list) -> dict:
+    if payload.get("ok") and skipped:
+        payload["configSkipped"] = skipped + payload.get("configSkipped", [])
+    return payload
 
 
 # --------------------------------------------------------------------------- change / fix
 
 def _apply_change(session: dict, number: int, entry: dict, model_text: str, manifest, confirmed: set,
-                  extra: dict | None = None) -> dict:
+                  extra: dict | None = None, config_changes: list | None = None) -> dict:
     work = rs.round_dir(session, number) / "apply-work"
-    evaluation = authoring.evaluate_for_apply(session, model_text, manifest, work, extra_files=extra)
+    evaluation = authoring.evaluate_for_apply(session, model_text, manifest, work, extra_files=extra,
+                                              config_offers=[(prop, value) for prop, value, _writer in config_changes or []])
     if evaluation["outcome"] != "READY":
         return _refuse("not-ready", outcome=evaluation["outcome"], baseMoved=bool(evaluation.get("baseMoved")),
                        errors=evaluation.get("errors") or [])
@@ -148,8 +219,9 @@ def _apply_change(session: dict, number: int, entry: dict, model_text: str, mani
     if gate["status"] != "passed":
         return _refuse("gate-refused", errors=[authoring.gate_error_line(d) for d in gate["diagnostics"]])
 
-    if extra:
-        return _apply_files(session, number, entry, model_path, candidate_bytes, extra, base_copy, backup_dir)
+    if extra or config_changes:
+        return _apply_files(session, number, entry, model_path, candidate_bytes, extra or {}, base_copy, backup_dir,
+                            config_changes)
 
     backup_path = backup_dir / BACKUP_NAME
     authoring.atomic_write_bytes(backup_path, Path(base_copy).read_bytes())  # the model as the AI was shown it
@@ -165,13 +237,18 @@ def _apply_change(session: dict, number: int, entry: dict, model_text: str, mani
 
 
 def _apply_files(session: dict, number: int, entry: dict, model_path: Path, candidate_bytes: bytes, extra: dict,
-                 base_copy, backup_dir: Path) -> dict:
-    """Write the answer's fragments and then model.json as one step. The previous bytes of every file (or ABSENT) are
-    saved first; if any write fails the files already written are put back and nothing is recorded as applied."""
+                 base_copy, backup_dir: Path, config_changes: list | None = None) -> dict:
+    """Write the answer's fragments, themes, the confirmed config change and then model.json as one step. The previous
+    bytes of every file (or ABSENT) are saved first; if any write fails the files already written are put back and
+    nothing is recorded as applied."""
     root = model_path.parent
     try:
+        config_op, config_applied, config_skipped = _config_op(root, config_changes or [])
+    except ConfigWriteError as exc:
+        return _refuse("config-write-refused", detail=str(exc))
+    try:
         ops = files.plan(root, [(rel, extra[rel].encode("utf-8")) for rel in sorted(extra)]
-                         + [(model_path.name, candidate_bytes)])
+                         + ([config_op] if config_op else []) + [(model_path.name, candidate_bytes)])
     except files.TreeError as exc:
         return _refuse("unsafe-path", detail=str(exc))
     if ops[-1].before is None or ops[-1].before != Path(base_copy).read_bytes():
@@ -189,9 +266,14 @@ def _apply_files(session: dict, number: int, entry: dict, model_path: Path, cand
     session["state"] = "done"
     rs.save(session)
     rs.append_event(session["code"], "applied", number, backupPath=str(backup_path), files=written)
-    return {"ok": True, "code": session["code"], "round": number, "intent": session["intent"], "created": False,
+    done = {"ok": True, "code": session["code"], "round": number, "intent": session["intent"], "created": False,
             "appDir": session.get("appDir"), "modelPath": str(model_path), "backupPath": str(backup_path),
             "backupManifestPath": str(manifest_path), "files": written, "appliedAt": applied_at}
+    if config_applied:
+        done["configApplied"] = config_applied
+    if config_skipped:
+        done["configSkipped"] = config_skipped
+    return done
 
 
 # --------------------------------------------------------------------------- pack
@@ -252,7 +334,8 @@ def _plain_folder_name(name: str) -> bool:
     return not any(ch in name for ch in '/\\:\0*?"<>|')
 
 
-def _apply_create(session: dict, number: int, entry: dict, model_text: str, parent_dir, extra: dict | None = None) -> dict:
+def _apply_create(session: dict, number: int, entry: dict, model_text: str, parent_dir, extra: dict | None = None,
+                  config_changes: list | None = None) -> dict:
     target = session.get("appDir")
     wrapper = None  # the app's own folder, when this call is the one that makes it
     if not target:
@@ -288,9 +371,14 @@ def _apply_create(session: dict, number: int, entry: dict, model_text: str, pare
             _remove_tree(wrapper or target_path)
 
     try:
+        config_op, config_applied, config_skipped = _config_op(target_path, config_changes or [])  # the scaffold's own config.json
+    except ConfigWriteError as exc:
+        _abandon()
+        return _refuse("config-write-refused", detail=str(exc))
+    try:
         ops = files.plan(target_path, [(rel, extra[rel].encode("utf-8")) for rel in sorted(extra)]
-                         + [("model.json", model_text.encode("utf-8"))])
-        files.run(target_path, ops)  # fragments first, model.json last; all or nothing
+                         + ([config_op] if config_op else []) + [("model.json", model_text.encode("utf-8"))])
+        files.run(target_path, ops)  # fragments and themes first, model.json last; all or nothing
     except files.TreeError as exc:
         _abandon()
         return _refuse("unsafe-path", detail=str(exc))
@@ -312,9 +400,14 @@ def _apply_create(session: dict, number: int, entry: dict, model_text: str, pare
     session["state"] = "done"
     rs.save(session)
     rs.append_event(session["code"], "applied", number, created=True)
-    return {"ok": True, "code": session["code"], "round": number, "intent": "create", "created": True,
+    done = {"ok": True, "code": session["code"], "round": number, "intent": "create", "created": True,
             "appDir": str(target_path), "modelPath": str(model_path), "backupPath": None, "appliedAt": applied_at,
             "files": written, "historyCommitted": history}
+    if config_applied:
+        done["configApplied"] = config_applied
+    if config_skipped:
+        done["configSkipped"] = config_skipped
+    return done
 
 
 def _commit_model(target: Path, message: str, paths: list | None = None) -> bool:

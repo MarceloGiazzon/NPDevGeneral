@@ -1,20 +1,35 @@
 {
-  "_comment": "REG-323 T4.5 / plan D-9. A browser AI never sends config.json (the ingest policy denies it); it may PROPOSE property changes in npdev-config-proposal.json, and npdev_relay_config.py sorts each one. `entries` is EMPTY ON PURPOSE (finding of 2026-11-12, see `located`): config.schema.json holds nothing a person would ask a chat AI to change, and every user-facing knob that was imagined (language, date format, currency, page size, time zone) lives in model.json, which the AI already changes through model.json. A knob gets an entry only if it lives OUTSIDE model.json AND an existing CLI command writes it (`writer`, registered in npdev_relay_config.WRITERS): no writer, no knob. Until then every proposal is shown as 'you can do that in Settings' and never applied.",
+  "_comment": "REG-323 T4.5 / T4.5b / plan D-9. A browser AI never sends config.json (the ingest policy denies it); it may PROPOSE property changes in npdev-config-proposal.json, and npdev_relay_config.py sorts each one. A knob gets an entry only if it lives OUTSIDE model.json (the AI already changes model.json) AND an existing CLI writer sets it (`writer`, registered in npdev_relay_config.WRITERS): no writer, no knob. Language, date format, currency, page size and time zone live in model.json and have no entry (see `located`); the app's theme (ui.theme.name, ui.theme.choices) is config.json defaults, written by `npdev config set-default`, so it has two. An applicable item is applied ONLY when the owner confirms its `confirmCode` (config:<property>), inside the same all-or-nothing write as the model, and undo restores the old config.json. Every other proposal is shown as 'you can do that in Settings' and never applied.",
   "schemaVersion": "npdev-relay-config-allowlist.v1",
-  "entries": [],
+  "entries": [
+    {
+      "property": "ui.theme.name",
+      "type": "themeId",
+      "where": "config.json defaults (a flat key)",
+      "preview": "The AI asked to use the theme {value} for the whole app. This changes config.json when you apply the answer, and you can undo it.",
+      "writer": "config-default"
+    },
+    {
+      "property": "ui.theme.choices",
+      "type": "themeIds",
+      "where": "config.json defaults (a flat key)",
+      "preview": "The AI asked to offer these themes for people to choose from: {value}. This changes config.json when you apply the answer, and you can undo it.",
+      "writer": "config-default"
+    }
+  ],
   "entryShape": {
     "property": "dotted path in config.json, e.g. console.mode",
-    "type": "string | enum | boolean | integer",
+    "type": "string | enum | boolean | integer | themeId (one theme that exists or arrives with the answer) | themeIds (\"*\" or a comma list of them)",
     "values": "for enum: the allowed values; for integer: {\"min\": n, \"max\": n}",
     "preview": "one English sentence with {value}",
-    "writer": "the name of a function registered in npdev_relay_config.WRITERS that calls an existing CLI command (never a raw file write)"
+    "writer": "the name of a function registered in npdev_relay_config.WRITERS: the CLI's own pure writer (`npdev config set-default`, npdev_config_defaults.set_default_text), whose output the apply step puts on disk inside its all-or-nothing transaction -- never a raw file write"
   },
   "located": [
     { "idea": "default UI language", "where": "model.json", "how": "settings.locale (informational tag) and settings.strings (the text that is actually overridden)" },
     { "idea": "date format", "where": "model.json", "how": "settings.ui.dateFormat" },
     { "idea": "rows per page", "where": "model.json", "how": "settings.ui.pageRows" },
     { "idea": "currency", "where": "model.json", "how": "presentationMetadata.currency on the field or concept that shows money" },
-    { "idea": "default theme", "where": "config.json + themes/", "how": "the app's theme is config.json defaults[\"ui.theme.name\"] (a built-in id or a themes/<id>.json beside model.json) and defaults[\"ui.theme.choices\"] the ones an end user may pick (flat keys; model.schema.json's settings.ui takes only pageRows and dateFormat); guidePage.theme in model.json sets one guide page's own look. No CLI command writes `defaults` yet, so there is no entry: the theme FILE arrives with T4.3 (a themes/*.json answer), the selection stays the owner's" },
+    { "idea": "default theme", "where": "config.json + themes/", "how": "the app's theme is config.json defaults[\"ui.theme.name\"] (a built-in id or a themes/<id>.json beside model.json) and defaults[\"ui.theme.choices\"] the ones an end user may pick (flat keys; model.schema.json's settings.ui takes only pageRows and dateFormat); guidePage.theme in model.json sets one guide page's own look. Since T4.5b `npdev config set-default` writes `defaults`, and both settings have an entry: the theme FILE arrives as themes/*.json (T4.3a), the selection as a config proposal the owner ticks" },
     { "idea": "time zone", "where": "model.json", "how": "no built-in setting: declare a properties[] entry so the scoped-property cascade carries it" },
     { "idea": "app display name", "where": "nowhere separate", "how": "scenario.name is the app's IDENTITY (it names the output folder), so it is never changed from a chat" }
   ],

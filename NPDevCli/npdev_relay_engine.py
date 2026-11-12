@@ -587,7 +587,7 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
 
             result["preview"] = preview_pt.localize_preview(result["preview"], session.get("language"))
         return
-    _sort_config_proposal(result)  # T4.5: what the AI suggested about settings is shown, never written
+    _sort_config_proposal(session, result)  # T4.5: what the AI suggested about settings is shown; only a ticked one is applied
     if not _expand_elements(session, number, result):  # T4.2: an element-upsert answer becomes an ordinary model.json
         return
     entry = next((f for f in result["files"] if f["path"] == "model.json" and f["status"] == "allowed"), None)
@@ -644,7 +644,8 @@ def _check_themes(session: dict, result: dict, model: dict) -> bool:
     extra, _ = files_mod.answer_files(result)
     sent = {path: text for path, text in extra.items() if themes_mod.is_theme_path(path)}
     base = authoring.resolve_model_path(session.get("appDir")) if session.get("intent") != "create" else None
-    checked = themes_mod.check(sent, model, base.parent if base else None)
+    proposed = {i["property"]: i["value"] for i in result.get("configProposals") or [] if i.get("status") == "applicable"}
+    checked = themes_mod.check(sent, model, base.parent if base else None, proposed=proposed)
     result["findings"].extend(checked["findings"])
     if checked["errors"]:
         result["outcome"] = "NEEDS_FIX"
@@ -653,10 +654,21 @@ def _check_themes(session: dict, result: dict, model: dict) -> bool:
     return True
 
 
-def _sort_config_proposal(result: dict) -> None:
-    """T4.5: the answer's npdev-config-proposal.json (phase f4) becomes `result["configProposals"]`, one item per change:
-    `suggestion` (you can do that in Settings) or `refused` (never from a chat). NOTHING is written to the app for it, and a
-    malformed proposal never blocks the model it came with (a warning finding, the rest of the answer goes on)."""
+def _config_context(session: dict, result: dict) -> dict:
+    """What a proposed value may be checked against: the ids of the themes that exist or arrive with this answer."""
+    import npdev_relay_authoring as authoring
+    import npdev_relay_themes as themes_mod
+
+    base = authoring.resolve_model_path(session.get("appDir")) if session.get("intent") != "create" else None
+    paths = [f["path"] for f in result["files"] if f.get("status") == "allowed" and themes_mod.is_theme_path(f.get("path"))]
+    return {"themes": themes_mod.known_ids(base.parent if base else None, paths)}
+
+
+def _sort_config_proposal(session: dict, result: dict) -> None:
+    """T4.5/T4.5b: the answer's npdev-config-proposal.json (phase f4) becomes `result["configProposals"]`, one item per
+    change: `suggestion` (you can do that in Settings), `refused` (never from a chat) or `applicable` (an allowlisted knob
+    with a valid value: it is APPLIED only when the owner confirms its `confirmCode`, see npdev_relay_apply). Nothing is written
+    here, and a malformed proposal never blocks the model it came with (a warning finding, the rest of the answer goes on)."""
     import npdev_relay_config as config_mod
 
     found = next((f for f in result["files"] if f["path"] == "npdev-config-proposal.json" and f["status"] == "allowed"), None)
@@ -666,12 +678,16 @@ def _sort_config_proposal(result: dict) -> None:
         proposal = json.loads(found["content"])
     except ValueError:
         proposal = None
-    sorted_ = config_mod.evaluate(proposal)
+    sorted_ = config_mod.evaluate(proposal, context=_config_context(session, result))
     for line in sorted_["errors"]:
         result["findings"].append({"code": "config-proposal-ignored", "severity": "warning", "detail": {"why": line}})
     if sorted_["items"]:
         result["configProposals"] = sorted_["items"]
         for item in sorted_["items"]:
+            if item["status"] == "applicable":   # the owner's tick applies it: apply says what it did with it
+                result["findings"].append({"code": "config-change-offered", "severity": "info",
+                                           "detail": {"property": item["property"], "confirmCode": item["confirmCode"]}})
+                continue
             result["findings"].append({"code": "config-not-applied", "severity": "info",
                                        "detail": {"property": item["property"], "status": item["status"], "reason": item["reason"]}})
 
@@ -821,7 +837,9 @@ def finish_ready(session: dict, number: int, result: dict, model_entry: dict) ->
 
     work = rs.round_dir(session, number) / "gate"
     extra, _ = files_mod.answer_files(result)
-    outcome = authoring.evaluate_change(session, model_entry["content"], _ai_manifest(result), work, extra_files=extra)
+    offers = [(i["property"], i["value"]) for i in result.get("configProposals") or [] if i.get("status") == "applicable"]
+    outcome = authoring.evaluate_change(session, model_entry["content"], _ai_manifest(result), work, extra_files=extra,
+                                        config_offers=offers)
     result["outcome"] = outcome["outcome"]
     result["findings"].extend(outcome["findings"])
     if outcome["preview"] is not None:

@@ -47,14 +47,25 @@ release. Ships in the next tag.
   which the AI already changes through `model.json` -- the one exception, found later with T4.3, is the app's theme choice
   (`ui.theme.name` / `ui.theme.choices`, a `config.json` default); a knob needs an existing CLI command that writes it before it
   earns an entry.
+- **`npdev config set-default`, and the first settings a browser AI may change -- with the owner's tick** (REG-323, T4.5b) --
+  `npdev config set-default --app <folder> --key ui.theme.name --value sunny` writes one flat key of `config.json`'s `defaults`
+  (the only way before was editing the file by hand); everything else in the file is kept. With `--phase f4` an answer's
+  `npdev-config-proposal.json` may now propose `ui.theme.name` (a theme that exists, or arrives in the same answer) and
+  `ui.theme.choices` (a list of themes, or `*`): they come back as `configProposals[]` with `status: applicable` and a
+  `confirmCode` (`config:ui.theme.name`). `relay apply --confirm-warning config:ui.theme.name` writes the setting inside the same
+  all-or-nothing step as the model and the theme file, and `relay undo` puts the old `config.json` back byte for byte; a proposal
+  nobody confirmed is not applied (the result's `configSkipped` says so), the stored value is checked again at apply time, and an
+  app with no `config.json` gets the rest of the answer and is told. An answer that only selects a theme is a change, not
+  "nothing changed". Every other setting stays "you can do that in Settings", and the never-from-a-chat list (database, ports,
+  secrets, identity, egress) is unchanged. The Manager never passes phase f4 and has no tick for it yet.
 - **A browser-AI answer can carry themes, checked with the generator's own rules before they are written** (REG-323, T4.3a) -- with
   `--phase f4` an answer may carry `themes/<id>.json`; it is written with `model.json` all or nothing and undone with it. The
   generator fails generation of the WHOLE app on one bad theme, so each is checked first, in the same words: file named `<id>.json`,
   at most 20,000 bytes, valid JSON, not a built-in id, structure and WCAG contrast of the theme as used after `basedOn` (the failing
   colour pair is named), and a `model.json` that tries to pick the theme (`settings.ui.theme`, which the schema does not have) is sent
   back with the way out. An answer that changes only a theme, leaving `model.json` identical, is no longer refused as "nothing
-  changed". Which theme the app USES is `config.json`'s `ui.theme.name`, which a chat cannot write: an unselected theme is saved
-  with a `theme-not-selected` warning naming that setting. The Python theme validator moved to `NPDevCli/npdev_theme_validate.py`
+  changed". Which theme the app USES is `config.json`'s `ui.theme.name`, which a chat cannot write by itself (the owner's tick,
+  below): an unselected theme is saved with a `theme-not-selected` warning naming that setting. The Python theme validator moved to `NPDevCli/npdev_theme_validate.py`
   (one copy; `scripts/quality/check-themes.py` imports it). Pages (`web/*.html|css|svg`) and seed data are not applied yet: no caller
   of `npdev generate app` mounts a `web/` folder by convention. The Manager never passes phase f4.
 - **A phase-f4 prompt now tells the AI what to send back** (REG-323, T4.1 composer + T4.2 choice) -- `relay start` returns `answerMode`:

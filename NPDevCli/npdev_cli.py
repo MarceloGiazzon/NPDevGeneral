@@ -37,6 +37,7 @@ import npdev_engines
 import npdev_monitor
 # `inspect bonds --diagram` renders the SAME bonds/concepts inspect_bonds() already computed as a
 # self-contained SVG/HTML page. Stdlib-only inside, same rule as the two imports above.
+import npdev_config_defaults
 import npdev_desire_paths
 import npdev_diagram
 import npdev_rename_cascade
@@ -17091,6 +17092,22 @@ def build_parser() -> argparse.ArgumentParser:
     normalize_dp.add_argument("--output", help="write the fixed model here (default: stdout)")
     normalize_dp.add_argument("--report", help="write the list of fixes here as JSON")
 
+    config_verb = subparsers.add_parser(
+        "config", help="Change an app's config.json without editing it by hand."
+    )
+    config_sub = config_verb.add_subparsers(dest="config_command")
+    config_default = config_sub.add_parser(
+        "set-default",
+        help="Set one app-wide default (config.json `defaults`, a flat dotted setting id) -- e.g. "
+             "`--key ui.theme.name --value sunny` picks the app's theme. Everything else in the file is kept as it is.",
+    )
+    config_default.add_argument("--app", required=True, help="the app's folder (or its config.json)")
+    config_default.add_argument("--key", required=True, help="the setting id, e.g. ui.theme.name")
+    config_default.add_argument("--value", required=True)
+    config_default.add_argument("--type", dest="value_type", choices=npdev_config_defaults.TYPES, default="string",
+                                help="what --value stands for (default: string)")
+    config_default.add_argument("--dry-run", action="store_true", help="say what would change; write nothing")
+
     migrate = subparsers.add_parser(
         "migrate", help="Rewrite existing models after a breaking DSL change (npdev migrate dsl-2)."
     )
@@ -18955,6 +18972,13 @@ def main(argv: list[str] | None = None) -> int:
             for line in npdev_desire_paths.summary_lines(fixes):
                 print(line, file=sys.stderr)
             write_or_print_json(fixed, args.output)
+            return 0
+        if args.command == "config" and args.config_command == "set-default":
+            try:
+                report = npdev_config_defaults.run(args.app, args.key, args.value, args.value_type, args.dry_run)
+            except ValueError as exc:
+                raise CliError(str(exc)) from exc
+            print(json.dumps(report, indent=2, ensure_ascii=False))
             return 0
         if args.command == "migrate" and args.migrate_command == "legacy-model":
             migrate_legacy_model(args)

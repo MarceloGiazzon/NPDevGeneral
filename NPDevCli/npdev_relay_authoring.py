@@ -707,12 +707,21 @@ def _is_empty_diff(diff: dict) -> bool:
     return not any(diff[k] for k in diff)
 
 
-def _theme_files_changed(model_path, extra_files) -> bool:
-    """True when the answer carries a theme file the app does not have yet, or with different content (REG-323 T4.3): a
-    theme-only change leaves the model identical and is still a change."""
+def _files_changed(model_path, extra_files, config_offers) -> bool:
+    """True when the answer changes something besides the model's content: a theme file the app does not have yet or with
+    different content (REG-323 T4.3), or a config setting whose value would differ from what config.json says now
+    (T4.5b, `config_offers` = [(setting id, value)]). A theme-only or setting-only answer leaves the model identical and
+    is still a change."""
     import npdev_relay_themes as themes_mod
 
-    return bool(themes_mod.changed(Path(model_path).parent, extra_files))
+    root = Path(model_path).parent
+    if themes_mod.changed(root, extra_files):
+        return True
+    if not config_offers:
+        return False
+    current = themes_mod.read_config(root).get("defaults")
+    current = current if isinstance(current, dict) else {}
+    return any(key not in current or current[key] != value for key, value in config_offers)
 
 
 def _ai_note_lists(ai_manifest) -> tuple:
@@ -927,7 +936,8 @@ def evaluate_create(session, candidate_model_text, ai_manifest, *, work_dir=None
                    candidateModelText=candidate_model_text, next={"kind": "apply", "messageId": "READY"})
 
 
-def _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_path, extra_files=None) -> dict:
+def _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_path, extra_files=None,
+              config_offers=None) -> dict:
     """The whole check; the public dict plus private `_`-keys apply needs (paths, parsed models).
 
     `extra_files` = {relative path: text} of the fragments/contexts the answer carried beside model.json. When there are
@@ -1010,7 +1020,7 @@ def _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_pa
         candidate_text = candidate_model_text if candidate2 == candidate else model_to_text(candidate2)
     common = {"candidateModelText": candidate_text, "submission": submission}
 
-    if _is_empty_diff(diff_models(base_model, candidate2)) and not _theme_files_changed(model_path, extra_files):
+    if _is_empty_diff(diff_models(base_model, candidate2)) and not _files_changed(model_path, extra_files, config_offers):
         findings.append(_finding("no-changes", "error"))
         return _result("NEEDS_FIX", findings, next=needs_fix, **common,
                        errors=["model.json - identical to the current model, nothing was changed - "
@@ -1080,7 +1090,8 @@ def _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_pa
                    pendingSecurityChanges=private["_pending"], **common, **private)
 
 
-def evaluate_change(session, candidate_model_text, ai_manifest, work_dir, *, app_model_path=None, extra_files=None) -> dict:
+def evaluate_change(session, candidate_model_text, ai_manifest, work_dir, *, app_model_path=None, extra_files=None,
+                    config_offers=None) -> dict:
     """The change/fix check the CLI runs after ingest + validation.
 
     `session` is the session dict (needs intent, appDir, baseModelSha256, ask); `candidate_model_text`
@@ -1093,11 +1104,12 @@ def evaluate_change(session, candidate_model_text, ai_manifest, work_dir, *, app
     The create intent is routed to evaluate_create. When the base moved there is no merge: S5 needs
     a manifest for the owner's own edits, which does not exist, so the answer is `baseMoved: True`
     and finding `base-moved`; the CLI offers a fresh round-1 prompt built from the current model."""
-    result = _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_path, extra_files)
+    result = _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_path, extra_files, config_offers)
     return {k: v for k, v in result.items() if not k.startswith("_")}
 
 
-def evaluate_for_apply(session, candidate_model_text, ai_manifest, work_dir, *, app_model_path=None, extra_files=None) -> dict:
+def evaluate_for_apply(session, candidate_model_text, ai_manifest, work_dir, *, app_model_path=None, extra_files=None,
+                       config_offers=None) -> dict:
     """evaluate_change plus the private paths, parsed models and pending security changes that apply needs
     (keys starting with an underscore). Never serialise this dict."""
-    return _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_path, extra_files)
+    return _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_path, extra_files, config_offers)

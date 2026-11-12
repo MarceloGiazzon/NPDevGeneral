@@ -113,9 +113,19 @@ def _leaves(node, prefix=""):
 
 
 class AllowlistMatchesTheSchemasTests(unittest.TestCase):
-    def test_no_knob_has_an_entry_until_one_has_a_writer_and_apply_is_wired(self):
-        self.assertEqual(ALLOWLIST["entries"], [], "a first entry means building the apply step, the owner's tick and undo with it")
-        self.assertEqual(config.WRITERS, {})
+    def test_a_knob_has_an_entry_only_with_a_writer_and_only_the_themes_have_one_so_far(self):
+        # T4.5b built the apply step, the owner's tick and undo with the first knobs (test_relay_config_apply)
+        self.assertEqual([e["property"] for e in ALLOWLIST["entries"]], ["ui.theme.name", "ui.theme.choices"])
+        for entry in ALLOWLIST["entries"]:
+            self.assertIn(entry["writer"], config.WRITERS, entry["property"])
+        self.assertEqual(sorted(config.WRITERS), ["config-default"])
+
+    def test_the_themes_the_allowlist_offers_really_are_config_defaults_the_generator_reads(self):
+        java = (REPO / "NPDevContract" / "dsl" / "src" / "main" / "java" / "com" / "npdev" / "dsl" / "v1" / "settings"
+                / "NpdevSettings.java").read_text(encoding="utf-8")
+        for entry in ALLOWLIST["entries"]:
+            self.assertIn(f'"{entry["property"]}"', java, f'{entry["property"]} is no longer a setting id of NpdevSettings')
+        self.assertIn("string", CONFIG_SCHEMA["properties"]["defaults"]["additionalProperties"]["type"])
 
     def test_the_sensitive_properties_of_config_json_are_all_refused(self):
         leaves = set(_leaves(CONFIG_SCHEMA))
@@ -154,8 +164,12 @@ class AllowlistMatchesTheSchemasTests(unittest.TestCase):
         self.assertEqual(set(schema["properties"]["changes"]["items"]["properties"]), {"property", "value", "why"})
         result = json.loads((REPO / "schemas" / "ai" / "ai-relay-ingest-result.schema.json").read_text(encoding="utf-8"))
         item = result["properties"]["configProposals"]["items"]
-        for sample in config.evaluate(proposal(("console.mode", 1), ("database.host", "h")))["items"]:
-            self.assertEqual(set(sample), set(item["properties"]))
+        applicable = config.evaluate({"changes": [{"property": "ui.theme.name", "value": "retro"}]},
+                                     context={"themes": {"retro"}})["items"]
+        self.assertEqual(applicable[0]["status"], "applicable")
+        for sample in config.evaluate(proposal(("console.mode", 1), ("database.host", "h")))["items"] + applicable:
+            self.assertTrue(set(item["required"]) <= set(sample))
+            self.assertTrue(set(sample) <= set(item["properties"]), set(sample) - set(item["properties"]))
             self.assertIn(sample["status"], item["properties"]["status"]["enum"])
             self.assertIn(sample["reason"], item["properties"]["reason"]["enum"])
 

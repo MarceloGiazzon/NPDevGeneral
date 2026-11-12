@@ -64,7 +64,7 @@
     "desirePathFixes": { "type": "array", "description": "READY/NEEDS_FIX only: what `normalize desire-paths` rewrote." },
     "configProposals": {
       "type": "array",
-      "description": "Phase f4 (REG-323 T4.5): what the AI suggested about settings in npdev-config-proposal.json, one item per change. NOTHING in it is ever written to the app. `suggestion` = 'you can do that in Settings'; `refused` = a property NPDev never changes from a chat (its value is not echoed); `applicable` is reserved for the first allowlisted knob and does not occur while relay-config-allowlist.json has no entries.",
+      "description": "Phase f4 (REG-323 T4.5): what the AI suggested about settings in npdev-config-proposal.json, one item per change. NOTHING in it is ever written to the app. `suggestion` = 'you can do that in Settings'; `refused` = a property NPDev never changes from a chat (its value is not echoed); `applicable` = an allowlisted knob (relay-config-allowlist.json: the app's theme, ui.theme.name and ui.theme.choices) with a valid value; it is applied ONLY if the owner confirms its `confirmCode` when applying, and then undone with the rest of the answer.",
       "items": {
         "type": "object",
         "required": ["property", "status", "reason", "preview"],
@@ -75,7 +75,9 @@
           "reason": { "enum": ["not-a-chat-setting", "never-from-a-chat", "value-not-allowed", "no-writer", "allowlisted"] },
           "why": { "type": ["string", "null"], "maxLength": 300 },
           "valueText": { "type": ["string", "null"], "maxLength": 80 },
-          "preview": { "type": "string" }
+          "preview": { "type": "string" },
+          "value": { "type": ["string", "boolean", "integer", "number"], "description": "`applicable` only: the value that will be written (it passed the allowlist entry's type and values)." },
+          "confirmCode": { "type": "string", "description": "`applicable` only: `config:<property>`, the code `relay apply --confirm-warning` takes to apply this one change." }
         }
       }
     },

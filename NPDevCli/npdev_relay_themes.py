@@ -9,8 +9,9 @@ an app that no longer builds. So an answer's themes get the generator's own rule
 
 Which theme the app USES is not decided here: `ui.theme.name` / `ui.theme.choices` live in config.json's `defaults` envelope
 (flat keys), never in model.json (model.schema.json's settings.ui takes only pageRows and dateFormat), and a chat cannot
-write config.json. So a theme the app does not select yet is saved with a `theme-not-selected` warning that names the
-setting, and a model that carries `settings.ui.theme` is sent back with the way out (see `misplaced_selection`).
+write config.json. A selection arrives as a config proposal the owner ticks (npdev_relay_config, T4.5b); a theme the app does
+not select, and that no proposal selects, is saved with a `theme-not-selected` warning that names the setting, and a model
+that carries `settings.ui.theme` is sent back with the way out (see `misplaced_selection`).
 
 Cases an AI gets wrong, each answered in plain words and tested: the file sent under another name than its id, a theme
 that reuses a built-in id, a low-contrast colour pair (named), a colour that is not #rrggbb, CSS smuggled into a colour or a
@@ -112,6 +113,16 @@ def _ancestors(theme_id: str, catalog: dict) -> list:
     return chain
 
 
+def known_ids(app_dir, answer_paths=()) -> set:
+    """The theme ids a setting may name: NPDev's own, the app's (`themes/*.json` now) and those an answer carries (the
+    file name is the id: `check` refuses a file whose name and id differ)."""
+    out = set(tv.BUILT_IN_IDS) | set(app_catalog(app_dir))
+    for path in answer_paths:
+        if is_theme_path(path):
+            out.add(path.rsplit("/", 1)[-1][: -len(".json")])
+    return out
+
+
 def changed(app_dir, answer_files: dict) -> list:
     """The answer's theme files that differ from the app's now (a new file, or different JSON -- re-indenting alone is not a
     difference). An answer that only changes a theme leaves model.json identical, and must not be refused as "nothing changed"."""
@@ -128,7 +139,7 @@ def changed(app_dir, answer_files: dict) -> list:
     return out
 
 
-def check(answer_themes: dict, model, app_dir=None) -> dict:  # model: the answer's parsed model.json (or None)
+def check(answer_themes: dict, model, app_dir=None, proposed=None) -> dict:  # model: the answer's parsed model.json (or None)
     """`answer_themes` is {path: text} of the answer's `themes/*.json`. Returns {"errors": [lines for the AI], "findings":
     [{code, severity, detail}], "themes": [ids the answer adds or replaces]}. Errors mean NEEDS_FIX; nothing is written."""
     errors: list = []
@@ -176,7 +187,10 @@ def check(answer_themes: dict, model, app_dir=None) -> dict:  # model: the answe
     misplaced = misplaced_selection(model)
     if misplaced:
         errors.append(misplaced)
-    chosen = selection(read_config(app_dir))   # what the app selects NOW: the answer cannot change config.json
+    config = read_config(app_dir)   # what the app selects NOW: the answer cannot change config.json
+    if proposed:                    # ... unless the owner ticks a config proposal: that selection counts as used
+        config = {"defaults": {**(config.get("defaults") if isinstance(config.get("defaults"), dict) else {}), **proposed}}
+    chosen = selection(config)
 
     used: set = set()
     if chosen["choices"] == "*":
