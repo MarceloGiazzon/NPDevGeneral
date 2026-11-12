@@ -1,306 +1,200 @@
 {
-  "catalogVersion": 2,
+  "catalogVersion": 3,
   "source": {
     "kind": "dummy",
     "label": "Catálogo dummy de planejamento",
-    "note": "Escrito à mão para planejamento. Os packs 'existing' espelham NPDevContract/packs; os 'proposed' trazem onda de prioridade (1 = próxima). Será substituído pelo JSON gerado a partir dos pack.json reais + roadmap dos propostos.",
-    "updated": "2026-11-12"
+    "updated": "2026-11-12",
+    "note": "Escrito à mão para planejamento. 'existing' espelha NPDevContract/packs; 'proposed' traz onda de prioridade (1 = próxima). Será substituído pelo JSON gerado a partir dos pack.json reais + roadmap dos propostos."
   },
-  "eras": [
-    "Fundação",
-    "Base",
-    "Núcleo",
-    "Domínio",
-    "Vertical",
-    "Especialidade",
-    "Nicho",
-    "Fronteira",
-    "Horizonte"
-  ],
-  "lanes": [
+  "levels": [
     {
-      "id": "platform",
-      "name": "Plataforma",
-      "group": "Base",
-      "color": "#8fa9bf"
+      "id": "fundamentos",
+      "name": "Fundamentos",
+      "kinds": [
+        "data-type",
+        "rule",
+        "capability"
+      ],
+      "about": "Tipos de dado, regras e capacidades que os módulos usam."
     },
     {
-      "id": "people",
-      "name": "Pessoas e organizações",
-      "group": "Base",
+      "id": "modulos",
+      "name": "Módulos",
+      "kinds": [
+        "module",
+        "specialization"
+      ],
+      "about": "Uma área do negócio controlada no app, de um conceito a vários."
+    },
+    {
+      "id": "solucoes",
+      "name": "Soluções",
+      "kinds": [
+        "solution"
+      ],
+      "about": "Um sistema pronto para um tipo de negócio, montado com módulos."
+    }
+  ],
+  "kinds": {
+    "data-type": "Tipo de dado",
+    "rule": "Regra",
+    "capability": "Capacidade",
+    "module": "Módulo",
+    "specialization": "Especialização",
+    "solution": "Solução"
+  },
+  "areas": [
+    {
+      "id": "pessoas",
+      "name": "Pessoas e acesso",
       "color": "#dc9c6e"
     },
     {
-      "id": "ops",
-      "name": "Operação interna",
-      "group": "Gestão",
-      "color": "#aebb6e"
-    },
-    {
-      "id": "hr",
-      "name": "Recursos humanos",
-      "group": "Gestão",
-      "color": "#c9b37a"
-    },
-    {
-      "id": "finance",
-      "name": "Financeiro",
-      "group": "Gestão",
-      "color": "#9fcf9a"
-    },
-    {
-      "id": "legal",
-      "name": "Jurídico e contábil",
-      "group": "Gestão",
-      "color": "#b0a6d6"
-    },
-    {
-      "id": "commerce",
-      "name": "Comércio e vendas",
-      "group": "Comércio",
+      "id": "vendas",
+      "name": "Clientes e vendas",
       "color": "#d8b25c"
     },
     {
-      "id": "crm",
-      "name": "Marketing e CRM",
-      "group": "Comércio",
-      "color": "#e7a35f"
+      "id": "financeiro",
+      "name": "Financeiro e fiscal",
+      "color": "#9fcf9a"
     },
     {
-      "id": "supply",
-      "name": "Suprimentos e logística",
-      "group": "Operação",
-      "color": "#82b67c"
-    },
-    {
-      "id": "fleet",
-      "name": "Frota e transporte",
-      "group": "Operação",
-      "color": "#6fae9c"
-    },
-    {
-      "id": "industry",
-      "name": "Indústria",
-      "group": "Operação",
-      "color": "#a3a3b8"
-    },
-    {
-      "id": "agro",
-      "name": "Agronegócio",
-      "group": "Operação",
-      "color": "#b9c46a"
-    },
-    {
-      "id": "construction",
-      "name": "Construção",
-      "group": "Operação",
-      "color": "#c99a7a"
-    },
-    {
-      "id": "services",
-      "name": "Serviços e agenda",
-      "group": "Serviços",
+      "id": "agenda",
+      "name": "Agenda e atendimento",
       "color": "#74c7d0"
     },
     {
-      "id": "health",
-      "name": "Saúde",
-      "group": "Serviços",
-      "color": "#e48383"
+      "id": "estoque",
+      "name": "Estoque e logística",
+      "color": "#82b67c"
+    },
+    {
+      "id": "operacao",
+      "name": "Equipe e operação",
+      "color": "#aebb6e"
+    },
+    {
+      "id": "comunicacao",
+      "name": "Comunicação e integrações",
+      "color": "#8fa9e0"
+    },
+    {
+      "id": "documentos",
+      "name": "Documentos e conformidade",
+      "color": "#b0a6d6"
+    }
+  ],
+  "sectors": [
+    {
+      "id": "saude",
+      "name": "Saúde"
+    },
+    {
+      "id": "beleza",
+      "name": "Beleza e bem-estar"
+    },
+    {
+      "id": "alimentacao",
+      "name": "Alimentação"
+    },
+    {
+      "id": "comercio",
+      "name": "Comércio e varejo"
+    },
+    {
+      "id": "educacao",
+      "name": "Educação"
+    },
+    {
+      "id": "imoveis",
+      "name": "Imóveis e condomínios"
+    },
+    {
+      "id": "servicos",
+      "name": "Serviços em campo"
+    },
+    {
+      "id": "industria",
+      "name": "Indústria e construção"
+    },
+    {
+      "id": "agro",
+      "name": "Agronegócio"
+    },
+    {
+      "id": "hospitalidade",
+      "name": "Hotelaria e eventos"
     },
     {
       "id": "pets",
-      "name": "Pets",
-      "group": "Serviços",
-      "color": "#e0a8c0"
+      "name": "Pets"
     },
     {
-      "id": "beauty",
-      "name": "Beleza e bem-estar",
-      "group": "Serviços",
-      "color": "#c891d8"
+      "id": "terceiro",
+      "name": "Terceiro setor"
     },
     {
-      "id": "food",
-      "name": "Alimentação",
-      "group": "Setores",
-      "color": "#f0b07a"
+      "id": "escritorios",
+      "name": "Escritórios"
     },
     {
-      "id": "education",
-      "name": "Educação",
-      "group": "Setores",
-      "color": "#8fb6e8"
-    },
-    {
-      "id": "realestate",
-      "name": "Imóveis e condomínios",
-      "group": "Setores",
-      "color": "#d4c08a"
-    },
-    {
-      "id": "hospitality",
-      "name": "Hotelaria e turismo",
-      "group": "Setores",
-      "color": "#7cc6b6"
-    },
-    {
-      "id": "events",
-      "name": "Eventos",
-      "group": "Setores",
-      "color": "#e78fb3"
-    },
-    {
-      "id": "nonprofit",
-      "name": "Terceiro setor",
-      "group": "Setores",
-      "color": "#a9c7a0"
+      "id": "transporte",
+      "name": "Transporte e logística"
     }
   ],
   "packs": [
     {
-      "id": "audit-log",
-      "name": "Auditoria",
-      "glyph": "Au",
-      "lane": "platform",
+      "id": "no-show-policy",
+      "name": "Política de faltas",
+      "kind": "rule",
+      "need": "Cobrar ou bloquear quem falta sem avisar",
+      "summary": "Conta faltas por cliente e aplica a política escolhida.",
+      "area": "agenda",
+      "sectors": [],
       "status": "proposed",
-      "wave": 1,
-      "summary": "Quem mudou o quê e quando, em qualquer registro, com política de retenção.",
-      "concepts": [
-        "AuditEvent",
-        "AuditPolicy"
+      "wave": 2,
+      "concepts": [],
+      "appliesTo": [
+        "Appointment"
       ],
       "requires": [
-        "identity"
+        "appointments"
       ]
     },
     {
-      "id": "br-core",
-      "name": "Brasil essencial",
-      "glyph": "BR",
-      "lane": "platform",
-      "status": "proposed",
-      "summary": "Tipos de campo validados para o Brasil: CPF, CNPJ, CEP com endereço, telefone e chave Pix. Usado por quase todo pack de negócio daqui.",
-      "concepts": [
-        "TaxId (CPF/CNPJ)",
-        "BrAddress (CEP)",
-        "PixKey"
+      "id": "channel-manager",
+      "name": "Canais de reserva",
+      "kind": "capability",
+      "need": "Sincronizar preço e vagas com sites de reserva",
+      "summary": "Sincroniza preço e disponibilidade com sites de reserva.",
+      "area": "comunicacao",
+      "sectors": [
+        "hospitalidade"
       ],
-      "requires": [],
-      "wave": 1
-    },
-    {
-      "id": "comments",
-      "name": "Comentários e menções",
-      "glyph": "Cm",
-      "lane": "platform",
       "status": "proposed",
-      "wave": 2,
-      "summary": "Conversa por registro, com @menção que notifica.",
+      "wave": 3,
       "concepts": [
-        "Comment",
-        "Mention"
+        "ChannelListing",
+        "RateSync"
       ],
       "requires": [
-        "identity"
-      ]
-    },
-    {
-      "id": "consent-lgpd",
-      "name": "Consentimento LGPD",
-      "glyph": "Lg",
-      "lane": "platform",
-      "status": "proposed",
-      "summary": "Termos, aceite registrado por pessoa e pedidos do titular (acesso, correção, exclusão).",
-      "concepts": [
-        "ConsentTerm",
-        "ConsentGrant",
-        "DataSubjectRequest"
-      ],
-      "requires": [
-        "person"
-      ],
-      "wave": 1
-    },
-    {
-      "id": "custom-fields",
-      "name": "Campos personalizados",
-      "glyph": "Cp",
-      "lane": "platform",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "O usuário final cria campos extras sem regerar o app.",
-      "concepts": [
-        "CustomFieldDef",
-        "CustomFieldValue"
-      ],
-      "requires": []
-    },
-    {
-      "id": "documents",
-      "name": "Documentos",
-      "glyph": "Dc",
-      "lane": "platform",
-      "status": "proposed",
-      "summary": "Arquivos anexados a qualquer registro, com versões e quem enviou.",
-      "concepts": [
-        "Document",
-        "DocumentVersion",
-        "Attachment"
-      ],
-      "requires": [
-        "identity"
-      ],
-      "wave": 1
-    },
-    {
-      "id": "e-signature",
-      "name": "Assinatura eletrônica",
-      "glyph": "Ae",
-      "lane": "platform",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Enviar documento para assinatura e guardar a evidência.",
-      "concepts": [
-        "SignatureRequest",
-        "Signer",
-        "SignatureEvidence"
-      ],
-      "requires": [
-        "documents"
+        "hotel"
       ],
       "capabilities": [
-        "eSignProvider"
+        "otaChannel"
       ]
-    },
-    {
-      "id": "identity",
-      "name": "Identidade",
-      "glyph": "Id",
-      "lane": "platform",
-      "status": "existing",
-      "version": "1.4.0",
-      "summary": "Usuários, papéis e suas atribuições, com sessões, MFA, identidades externas e redefinição de senha.",
-      "concepts": [
-        "User",
-        "Role",
-        "UserRole",
-        "PasswordResetToken",
-        "UserRolePermission",
-        "ExternalIdentity",
-        "UserMfa",
-        "UserSession"
-      ],
-      "requires": []
     },
     {
       "id": "messaging",
       "name": "WhatsApp e SMS",
-      "glyph": "Ws",
-      "lane": "platform",
+      "kind": "capability",
+      "need": "Falar com clientes por WhatsApp e SMS",
+      "summary": "Mensagens por WhatsApp e SMS com modelos aprovados e respostas recebidas.",
+      "area": "comunicacao",
+      "sectors": [],
       "status": "proposed",
       "wave": 1,
-      "summary": "Mensagens por WhatsApp e SMS com modelos aprovados e respostas recebidas.",
       "concepts": [
         "MessageTemplate",
         "Conversation",
@@ -314,30 +208,15 @@
       ]
     },
     {
-      "id": "multi-company",
-      "name": "Multiempresa",
-      "glyph": "Mu",
-      "lane": "platform",
-      "status": "proposed",
-      "wave": 1,
-      "summary": "Várias empresas e filiais no mesmo app, com dados separados por empresa.",
-      "concepts": [
-        "Company",
-        "Branch",
-        "CompanyUser"
-      ],
-      "requires": [
-        "identity"
-      ]
-    },
-    {
       "id": "notification",
       "name": "Notificações",
-      "glyph": "Nt",
-      "lane": "platform",
+      "kind": "capability",
+      "need": "Enviar e-mails e guardar o que foi enviado",
+      "summary": "Trilha de auditoria das mensagens enviadas e um contrato plugável de envio de e-mail.",
+      "area": "comunicacao",
+      "sectors": [],
       "status": "existing",
       "version": "1.0.0",
-      "summary": "Trilha de auditoria das mensagens enviadas e um contrato plugável de envio de e-mail.",
       "concepts": [
         "OutgoingMessage"
       ],
@@ -347,40 +226,44 @@
       ]
     },
     {
-      "id": "tags",
-      "name": "Etiquetas",
-      "glyph": "Et",
-      "lane": "platform",
+      "id": "phone-br",
+      "name": "Telefone brasileiro",
+      "kind": "data-type",
+      "need": "Guardar telefones no formato brasileiro",
+      "summary": "Celular e fixo com DDD, prontos para WhatsApp e SMS.",
+      "area": "comunicacao",
+      "sectors": [],
       "status": "proposed",
-      "wave": 2,
-      "summary": "Etiquetas livres aplicáveis a qualquer registro.",
-      "concepts": [
-        "Tag",
-        "TagAssignment"
-      ],
+      "wave": 1,
+      "concepts": [],
       "requires": []
     },
     {
-      "id": "tracing",
-      "name": "Rastreamento",
-      "glyph": "Tr",
-      "lane": "platform",
-      "status": "existing",
-      "version": "1.0.2",
-      "summary": "Retenção declarativa de traces, painel de leitura e redação segura de dados sensíveis.",
-      "concepts": [
-        "TraceEntry"
-      ],
-      "requires": []
+      "id": "video-call",
+      "name": "Chamada de vídeo",
+      "kind": "capability",
+      "need": "Fazer chamadas de vídeo",
+      "summary": "Contrato de sala de vídeo.",
+      "area": "comunicacao",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [],
+      "requires": [],
+      "capabilities": [
+        "videoProvider"
+      ]
     },
     {
       "id": "webhooks",
       "name": "Webhooks",
-      "glyph": "We",
-      "lane": "platform",
+      "kind": "capability",
+      "need": "Avisar outros sistemas quando algo acontece",
+      "summary": "Avisar sistemas externos quando algo acontece, com novas tentativas.",
+      "area": "comunicacao",
+      "sectors": [],
       "status": "proposed",
       "wave": 2,
-      "summary": "Avisar sistemas externos quando algo acontece, com novas tentativas.",
       "concepts": [
         "WebhookSubscription",
         "DeliveryAttempt"
@@ -391,1971 +274,360 @@
       ]
     },
     {
-      "id": "workspace",
-      "name": "Workspace",
-      "glyph": "Ws",
-      "lane": "platform",
-      "status": "existing",
-      "version": "1.1.0",
-      "summary": "Menus de navegação e valores de propriedades do app.",
-      "concepts": [
-        "Menu",
-        "PropertyValue"
+      "id": "clinical-record-retention",
+      "name": "Guarda de prontuário",
+      "kind": "rule",
+      "need": "Guardar prontuários pelo prazo legal",
+      "summary": "Impede apagar prontuário antes de 20 anos do último registro.",
+      "area": "documentos",
+      "sectors": [
+        "saude"
       ],
-      "requires": []
-    },
-    {
-      "id": "contacts",
-      "name": "Contatos",
-      "glyph": "Ct",
-      "lane": "people",
-      "status": "existing",
-      "version": "1.0.0",
-      "summary": "Organizações (clientes, fornecedores, parceiros), as pessoas que trabalham nelas e seus endereços.",
-      "concepts": [
-        "Organization",
-        "Contact",
-        "Address"
-      ],
-      "requires": []
-    },
-    {
-      "id": "customer-portal",
-      "name": "Portal do cliente",
-      "glyph": "Pc",
-      "lane": "people",
       "status": "proposed",
       "wave": 2,
-      "summary": "Área onde o cliente final entra para ver e fazer as próprias coisas.",
-      "concepts": [
-        "PortalAccount",
-        "PortalInvite"
+      "concepts": [],
+      "appliesTo": [
+        "ClinicalNote"
       ],
       "requires": [
-        "person"
+        "clinic"
       ]
     },
     {
-      "id": "households",
-      "name": "Família e dependentes",
-      "glyph": "Fd",
-      "lane": "people",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Grupo familiar e dependentes de uma pessoa.",
-      "concepts": [
-        "Household",
-        "Dependent"
-      ],
-      "specializations": [
-        [
-          "Dependent",
-          "PersonProfile"
-        ]
-      ],
-      "requires": [
-        "person"
-      ]
-    },
-    {
-      "id": "person",
-      "name": "Pessoa e perfis",
-      "glyph": "Pe",
-      "lane": "people",
-      "status": "proposed",
-      "summary": "Uma pessoa, vários perfis. A mesma Person pode ser paciente, cliente e entregador. Os verticais especializam PersonProfile em vez de criar outro tipo de usuário.",
-      "concepts": [
-        "Person",
-        "PersonProfile"
-      ],
-      "requires": [
-        "identity",
-        "br-core"
-      ],
-      "wave": 1
-    },
-    {
-      "id": "staff",
-      "name": "Equipe",
-      "glyph": "Eq",
-      "lane": "people",
-      "status": "proposed",
-      "summary": "Funcionários, times e turnos. Base para escalas, comissões e quem atende.",
-      "concepts": [
-        "Employee",
-        "Team",
-        "Shift"
-      ],
-      "specializations": [
-        [
-          "Employee",
-          "PersonProfile"
-        ]
-      ],
-      "requires": [
-        "person"
-      ],
-      "wave": 1
-    },
-    {
-      "id": "approvals",
-      "name": "Aprovações",
-      "glyph": "Ap",
-      "lane": "ops",
-      "status": "existing",
-      "version": "1.0.0",
-      "summary": "Quem tem o papel requester abre um pedido de aprovação, e o aprovador decide.",
-      "concepts": [
-        "ApprovalRequest",
-        "ApprovalDecision"
-      ],
-      "requires": []
-    },
-    {
-      "id": "assets",
-      "name": "Patrimônio",
-      "glyph": "Pa",
-      "lane": "ops",
+      "id": "e-signature",
+      "name": "Assinatura eletrônica",
+      "kind": "capability",
+      "need": "Coletar assinatura eletrônica em documentos",
+      "summary": "Enviar documento para assinatura e guardar a evidência.",
+      "area": "documentos",
+      "sectors": [],
       "status": "proposed",
       "wave": 2,
-      "summary": "Bens da empresa, com quem estão e manutenção.",
       "concepts": [
-        "Asset",
-        "AssetAssignment",
-        "AssetMaintenance"
+        "SignatureRequest",
+        "Signer",
+        "SignatureEvidence"
       ],
       "requires": [
-        "staff"
-      ]
-    },
-    {
-      "id": "facilities",
-      "name": "Reserva de salas",
-      "glyph": "Rs",
-      "lane": "ops",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Reserva de salas e espaços internos.",
-      "concepts": [
-        "RoomBooking"
-      ],
-      "specializations": [
-        [
-          "RoomBooking",
-          "Booking"
-        ]
-      ],
-      "requires": [
-        "scheduling"
-      ]
-    },
-    {
-      "id": "helpdesk",
-      "name": "Helpdesk",
-      "glyph": "Hd",
-      "lane": "ops",
-      "status": "existing",
-      "version": "1.0.0",
-      "summary": "Agentes, categorias, chamados e comentários.",
-      "concepts": [
-        "HelpdeskAgent",
-        "TicketCategory",
-        "Ticket",
-        "TicketComment"
-      ],
-      "requires": []
-    },
-    {
-      "id": "project-tracker-demo",
-      "name": "Projeto (demo)",
-      "glyph": "Pd",
-      "lane": "ops",
-      "status": "existing",
-      "version": "1.0.0",
-      "summary": "Pack de demonstração exportado do sample superuser-admin-console. Prova o script de exportação; não é para uso real.",
-      "concepts": [
-        "Project"
-      ],
-      "requires": [],
-      "demo": true
-    },
-    {
-      "id": "projects",
-      "name": "Projetos",
-      "glyph": "Pr",
-      "lane": "ops",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Projetos com marcos e apontamento de horas.",
-      "concepts": [
-        "Project",
-        "Milestone",
-        "TimeEntry"
-      ],
-      "requires": [
-        "tasks"
-      ]
-    },
-    {
-      "id": "quality",
-      "name": "Qualidade",
-      "glyph": "Qu",
-      "lane": "ops",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Não conformidades, ações corretivas e auditorias internas.",
-      "concepts": [
-        "NonConformity",
-        "CorrectiveAction",
-        "InternalAudit"
-      ],
-      "requires": [
-        "tasks"
-      ]
-    },
-    {
-      "id": "tasks",
-      "name": "Tarefas e checklists",
-      "glyph": "Tc",
-      "lane": "ops",
-      "status": "proposed",
-      "wave": 1,
-      "summary": "Tarefas com responsável, prazo e checklist.",
-      "concepts": [
-        "Task",
-        "Checklist",
-        "ChecklistItem"
-      ],
-      "requires": [
-        "person"
-      ]
-    },
-    {
-      "id": "benefits",
-      "name": "Benefícios",
-      "glyph": "Be",
-      "lane": "hr",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Planos de benefício e adesões.",
-      "concepts": [
-        "BenefitPlan",
-        "BenefitEnrollment"
-      ],
-      "requires": [
-        "staff"
-      ]
-    },
-    {
-      "id": "leave",
-      "name": "Férias e ausências",
-      "glyph": "Fé",
-      "lane": "hr",
-      "status": "existing",
-      "version": "1.0.0",
-      "summary": "Tipos de ausência e pedidos decididos por um aprovador.",
-      "concepts": [
-        "LeaveType",
-        "LeaveRequest"
-      ],
-      "requires": [
-        "approvals"
-      ]
-    },
-    {
-      "id": "onboarding",
-      "name": "Admissão",
-      "glyph": "Ad",
-      "lane": "hr",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Passos e documentos para admitir quem foi contratado.",
-      "concepts": [
-        "OnboardingPlan",
-        "OnboardingTask"
-      ],
-      "requires": [
-        "recruitment",
         "documents"
-      ]
-    },
-    {
-      "id": "payroll-br",
-      "name": "Folha de pagamento",
-      "glyph": "Fp",
-      "lane": "hr",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Cálculo da folha e holerites, com envio ao eSocial.",
-      "concepts": [
-        "PayrollRun",
-        "Payslip",
-        "PayItem"
-      ],
-      "requires": [
-        "staff",
-        "br-core"
       ],
       "capabilities": [
-        "esocial"
+        "eSignProvider"
       ]
     },
     {
-      "id": "performance",
-      "name": "Avaliação de desempenho",
-      "glyph": "Ad",
-      "lane": "hr",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Ciclos de avaliação e metas.",
-      "concepts": [
-        "ReviewCycle",
-        "PerformanceReview",
-        "Goal"
-      ],
-      "requires": [
-        "staff"
-      ]
-    },
-    {
-      "id": "recruitment",
-      "name": "Recrutamento",
-      "glyph": "Re",
-      "lane": "hr",
+      "id": "lgpd-retention",
+      "name": "Retenção LGPD",
+      "kind": "rule",
+      "need": "Apagar ou anonimizar dados vencidos",
+      "summary": "Prazo de guarda por tipo de dado, com anonimização no fim.",
+      "area": "documentos",
+      "sectors": [],
       "status": "proposed",
       "wave": 2,
-      "summary": "Vagas, candidatos e entrevistas.",
-      "concepts": [
-        "JobOpening",
-        "Candidate",
-        "JobApplication",
-        "Interview"
-      ],
-      "specializations": [
-        [
-          "Candidate",
-          "PersonProfile"
-        ]
+      "concepts": [],
+      "appliesTo": [
+        "Person",
+        "ConsentGrant"
       ],
       "requires": [
-        "person"
+        "consent-lgpd"
       ]
     },
     {
-      "id": "time-clock",
-      "name": "Ponto eletrônico",
-      "glyph": "Pe",
-      "lane": "hr",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Marcação de ponto, espelho e regras de hora extra.",
-      "concepts": [
-        "ClockEntry",
-        "Timesheet",
-        "OvertimeRule"
+      "id": "maps",
+      "name": "Mapas e rotas",
+      "kind": "capability",
+      "need": "Calcular rotas e distâncias",
+      "summary": "Contrato de geocodificação e rotas.",
+      "area": "estoque",
+      "sectors": [
+        "transporte"
       ],
-      "requires": [
-        "staff"
-      ]
-    },
-    {
-      "id": "training",
-      "name": "Treinamentos",
-      "glyph": "Tr",
-      "lane": "hr",
       "status": "proposed",
       "wave": 3,
-      "summary": "Treinamentos internos e certificados.",
-      "concepts": [
-        "TrainingCourse",
-        "TrainingSession",
-        "TrainingCertificate"
-      ],
-      "requires": [
-        "staff"
-      ]
-    },
-    {
-      "id": "accounting-br",
-      "name": "Contabilidade",
-      "glyph": "Co",
-      "lane": "finance",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Plano de contas e lançamentos contábeis.",
-      "concepts": [
-        "LedgerAccount",
-        "JournalEntry",
-        "JournalLine"
-      ],
-      "requires": [
-        "cash-flow",
-        "fiscal-br"
-      ]
-    },
-    {
-      "id": "bank-reconciliation",
-      "name": "Conciliação bancária",
-      "glyph": "Cb",
-      "lane": "finance",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Extrato importado casado com os lançamentos.",
-      "concepts": [
-        "BankStatement",
-        "StatementLine",
-        "ReconciliationMatch"
-      ],
-      "requires": [
-        "cash-flow"
-      ],
+      "concepts": [],
+      "requires": [],
       "capabilities": [
-        "openFinance"
+        "mapsProvider"
       ]
+    },
+    {
+      "id": "min-stock",
+      "name": "Estoque mínimo",
+      "kind": "rule",
+      "need": "Avisar quando o estoque fica baixo",
+      "summary": "Gera alerta e sugestão de compra abaixo do mínimo.",
+      "area": "estoque",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [],
+      "appliesTo": [
+        "StockMovement"
+      ],
+      "requires": [
+        "inventory"
+      ]
+    },
+    {
+      "id": "vehicle-plate",
+      "name": "Placa de veículo",
+      "kind": "data-type",
+      "need": "Validar placas de veículo",
+      "summary": "Placa no padrão antigo e no Mercosul.",
+      "area": "estoque",
+      "sectors": [
+        "transporte"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [],
+      "requires": []
     },
     {
       "id": "boleto",
       "name": "Boleto",
-      "glyph": "Bo",
-      "lane": "finance",
+      "kind": "capability",
+      "need": "Emitir boletos e ler o retorno do banco",
+      "summary": "Emissão de boleto e leitura do arquivo de retorno.",
+      "area": "financeiro",
+      "sectors": [],
       "status": "proposed",
       "wave": 2,
-      "summary": "Emissão de boleto e leitura do arquivo de retorno.",
       "concepts": [
         "Boleto",
         "BoletoReturnFile"
       ],
       "requires": [
         "receivables",
-        "br-core"
+        "cpf-cnpj"
       ],
       "capabilities": [
         "bankGateway"
       ]
     },
     {
-      "id": "budgeting",
-      "name": "Orçamento empresarial",
-      "glyph": "Oe",
-      "lane": "finance",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Orçado contra realizado por centro de custo.",
-      "concepts": [
-        "Budget",
-        "BudgetLine"
-      ],
-      "requires": [
-        "cost-centers"
-      ]
-    },
-    {
-      "id": "cash-flow",
-      "name": "Fluxo de caixa",
-      "glyph": "Fc",
-      "lane": "finance",
-      "status": "proposed",
-      "wave": 1,
-      "summary": "Contas bancárias, lançamentos e previsão de caixa.",
-      "concepts": [
-        "BankAccount",
-        "CashEntry",
-        "CashForecast"
-      ],
-      "requires": [
-        "receivables",
-        "payables"
-      ]
-    },
-    {
-      "id": "cost-centers",
-      "name": "Centros de custo",
-      "glyph": "Cc",
-      "lane": "finance",
+      "id": "card-charge",
+      "name": "Cobrança no cartão",
+      "kind": "capability",
+      "need": "Cobrar no cartão de crédito",
+      "summary": "Contrato de cobrança em cartão; o gateway real é ligado no app.",
+      "area": "financeiro",
+      "sectors": [],
       "status": "proposed",
       "wave": 2,
-      "summary": "Rateio de receitas e despesas por centro de custo.",
-      "concepts": [
-        "CostCenter",
-        "CostAllocation"
+      "concepts": [],
+      "requires": [],
+      "capabilities": [
+        "cardGateway"
+      ]
+    },
+    {
+      "id": "late-fees",
+      "name": "Juros e multa por atraso",
+      "kind": "rule",
+      "need": "Cobrar juros e multa de quem paga atrasado",
+      "summary": "Multa e juros diários sobre parcelas vencidas, dentro do limite legal.",
+      "area": "financeiro",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [],
+      "appliesTo": [
+        "Receivable",
+        "Installment"
       ],
+      "requires": [
+        "receivables"
+      ]
+    },
+    {
+      "id": "nfe-issuer",
+      "name": "Transmissão de nota fiscal",
+      "kind": "capability",
+      "need": "Transmitir notas fiscais à Sefaz e à prefeitura",
+      "summary": "Contrato de emissão; o emissor real é ligado no app.",
+      "area": "financeiro",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [],
+      "requires": [],
+      "capabilities": [
+        "fiscalAuthority"
+      ]
+    },
+    {
+      "id": "open-finance",
+      "name": "Extrato automático",
+      "kind": "capability",
+      "need": "Importar extratos bancários sozinho",
+      "summary": "Contrato de leitura de extrato via Open Finance.",
+      "area": "financeiro",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [],
+      "requires": [],
+      "capabilities": [
+        "openFinance"
+      ]
+    },
+    {
+      "id": "pix-charge",
+      "name": "Cobrança Pix",
+      "kind": "capability",
+      "need": "Gerar cobranças Pix e receber a confirmação",
+      "summary": "Contrato de cobrança Pix; o provedor real é ligado no app.",
+      "area": "financeiro",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [],
+      "requires": [],
+      "capabilities": [
+        "pixProvider"
+      ]
+    },
+    {
+      "id": "pix-key",
+      "name": "Chave Pix",
+      "kind": "data-type",
+      "need": "Validar chaves Pix",
+      "summary": "CPF, CNPJ, e-mail, telefone ou chave aleatória, cada um com sua validação.",
+      "area": "financeiro",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [],
       "requires": []
     },
     {
-      "id": "expenses",
-      "name": "Reembolso de despesas",
-      "glyph": "Rd",
-      "lane": "finance",
+      "id": "approval-tiers",
+      "name": "Alçadas de aprovação",
+      "kind": "rule",
+      "need": "Definir quem aprova até quanto",
+      "summary": "Escolhe o aprovador pelo valor do pedido.",
+      "area": "operacao",
+      "sectors": [],
       "status": "proposed",
       "wave": 2,
-      "summary": "Despesas do funcionário aprovadas e reembolsadas.",
-      "concepts": [
-        "ExpenseReport",
-        "ExpenseItem"
-      ],
-      "specializations": [
-        [
-          "ExpenseReport",
-          "ApprovalRequest"
-        ]
+      "concepts": [],
+      "appliesTo": [
+        "ApprovalRequest"
       ],
       "requires": [
-        "staff",
         "approvals"
       ]
     },
     {
-      "id": "payables",
-      "name": "Contas a pagar",
-      "glyph": "Cp",
-      "lane": "finance",
-      "status": "proposed",
-      "wave": 1,
-      "summary": "Títulos a pagar e agenda de pagamentos.",
-      "concepts": [
-        "Payable",
-        "PaymentSchedule"
-      ],
-      "requires": [
-        "contacts"
-      ]
-    },
-    {
-      "id": "receivables",
-      "name": "Contas a receber",
-      "glyph": "Cr",
-      "lane": "finance",
-      "status": "proposed",
-      "wave": 1,
-      "summary": "Títulos a receber, parcelas e cobrança.",
-      "concepts": [
-        "Receivable",
-        "Installment",
-        "CollectionAttempt"
-      ],
-      "requires": [
-        "contacts",
-        "payments"
-      ]
-    },
-    {
-      "id": "accounting-office",
-      "name": "Escritório contábil",
-      "glyph": "Ec",
-      "lane": "legal",
+      "id": "esocial",
+      "name": "Envio ao eSocial",
+      "kind": "capability",
+      "need": "Enviar os eventos trabalhistas ao eSocial",
+      "summary": "Contrato de transmissão ao eSocial.",
+      "area": "operacao",
+      "sectors": [],
       "status": "proposed",
       "wave": 3,
-      "summary": "Empresas clientes, obrigações do mês e pedidos de documento.",
-      "concepts": [
-        "ClientCompany",
-        "MonthlyObligation",
-        "DocumentRequest"
-      ],
-      "specializations": [
-        [
-          "ClientCompany",
-          "Organization"
-        ]
-      ],
-      "requires": [
-        "contacts",
-        "documents",
-        "tasks"
-      ]
-    },
-    {
-      "id": "law-firm",
-      "name": "Escritório de advocacia",
-      "glyph": "Ea",
-      "lane": "legal",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Processos, audiências, prazos e horas faturáveis.",
-      "concepts": [
-        "LegalCase",
-        "Hearing",
-        "LegalDeadline",
-        "BillableHours"
-      ],
-      "specializations": [
-        [
-          "Hearing",
-          "Appointment"
-        ]
-      ],
-      "requires": [
-        "contacts",
-        "documents",
-        "tasks",
-        "appointments"
-      ]
-    },
-    {
-      "id": "catalog",
-      "name": "Catálogo de produtos",
-      "glyph": "Cp",
-      "lane": "commerce",
-      "status": "proposed",
-      "summary": "Cadastro mestre de produtos e serviços, com variações e categorias. Vendas, estoque e verticais apontam para ele.",
-      "concepts": [
-        "Product",
-        "ProductVariant",
-        "ProductCategory"
-      ],
+      "concepts": [],
       "requires": [],
-      "wave": 1
+      "capabilities": [
+        "esocial"
+      ]
     },
     {
-      "id": "commissions",
-      "name": "Comissões",
-      "glyph": "Co",
-      "lane": "commerce",
+      "id": "cep",
+      "name": "CEP",
+      "kind": "data-type",
+      "need": "Preencher o endereço a partir do CEP",
+      "summary": "Tipo de campo CEP com máscara e consulta de endereço.",
+      "area": "pessoas",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [],
+      "requires": []
+    },
+    {
+      "id": "cpf-cnpj",
+      "name": "CPF e CNPJ",
+      "kind": "data-type",
+      "need": "Aceitar só CPF e CNPJ válidos",
+      "summary": "Tipos de campo com dígito verificador, máscara e normalização.",
+      "area": "pessoas",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [],
+      "requires": []
+    },
+    {
+      "id": "professional-registry",
+      "name": "Registro profissional",
+      "kind": "data-type",
+      "need": "Validar registros profissionais",
+      "summary": "CRM, CRO, CREFITO e outros, com UF.",
+      "area": "pessoas",
+      "sectors": [
+        "saude"
+      ],
       "status": "proposed",
       "wave": 2,
-      "summary": "Regras de comissão e apuração por vendedor.",
-      "concepts": [
-        "CommissionRule",
-        "CommissionEntry"
+      "concepts": [],
+      "requires": []
+    },
+    {
+      "id": "credit-limit",
+      "name": "Limite de crédito",
+      "kind": "rule",
+      "need": "Barrar venda acima do limite de crédito do cliente",
+      "summary": "Soma o que o cliente deve e bloqueia o pedido que passar do limite.",
+      "area": "vendas",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [],
+      "appliesTo": [
+        "SalesOrder"
       ],
       "requires": [
         "sales",
-        "staff"
+        "receivables"
       ]
     },
     {
-      "id": "coupons",
-      "name": "Cupons e promoções",
-      "glyph": "Cp",
-      "lane": "commerce",
+      "id": "discount-cap",
+      "name": "Teto de desconto",
+      "kind": "rule",
+      "need": "Limitar o desconto conforme quem vende",
+      "summary": "Desconto máximo por papel; acima disso o pedido pede aprovação.",
+      "area": "vendas",
+      "sectors": [],
       "status": "proposed",
       "wave": 2,
-      "summary": "Cupons de desconto e promoções por período.",
-      "concepts": [
-        "Coupon",
-        "Promotion"
+      "concepts": [],
+      "appliesTo": [
+        "SalesOrder",
+        "SalesOrderLine"
       ],
       "requires": [
         "sales"
       ]
     },
     {
-      "id": "ecommerce",
-      "name": "Loja virtual",
-      "glyph": "Lv",
-      "lane": "commerce",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Carrinho, checkout e pedido online.",
-      "concepts": [
-        "Cart",
-        "Checkout",
-        "OnlineOrder"
-      ],
-      "specializations": [
-        [
-          "OnlineOrder",
-          "SalesOrder"
-        ]
-      ],
-      "requires": [
-        "catalog",
-        "sales",
-        "payments",
-        "shipping"
-      ]
-    },
-    {
-      "id": "fiscal-br",
-      "name": "Nota fiscal",
-      "glyph": "NF",
-      "lane": "commerce",
-      "status": "proposed",
-      "summary": "NF-e e NFS-e a partir de pedidos e faturas, com perfil tributário. A emissão real é uma capacidade plugável.",
-      "concepts": [
-        "FiscalDocument",
-        "FiscalItem",
-        "TaxProfile"
-      ],
-      "requires": [
-        "sales",
-        "br-core"
-      ],
-      "capabilities": [
-        "fiscalAuthority"
-      ],
-      "wave": 1
-    },
-    {
-      "id": "loyalty",
-      "name": "Fidelidade",
-      "glyph": "Fi",
-      "lane": "commerce",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Pontos por compra e resgate de prêmios.",
-      "concepts": [
-        "LoyaltyProgram",
-        "PointsLedger",
-        "Reward"
-      ],
-      "requires": [
-        "sales",
-        "person"
-      ]
-    },
-    {
-      "id": "marketplace",
-      "name": "Marketplace",
-      "glyph": "Ma",
-      "lane": "commerce",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Vários vendedores na mesma loja, com repasse.",
-      "concepts": [
-        "Seller",
-        "Listing",
-        "Payout"
-      ],
-      "specializations": [
-        [
-          "Seller",
-          "Organization"
-        ]
-      ],
-      "requires": [
-        "ecommerce",
-        "providers"
-      ]
-    },
-    {
-      "id": "payments",
-      "name": "Pagamentos",
-      "glyph": "Pg",
-      "lane": "commerce",
-      "status": "proposed",
-      "summary": "Cobranças, meios de pagamento e estornos, com Pix nativo. O gateway real entra como capacidade plugável.",
-      "concepts": [
-        "Payment",
-        "PaymentMethod",
-        "PixCharge",
-        "Refund"
-      ],
-      "requires": [
-        "br-core"
-      ],
-      "capabilities": [
-        "paymentGateway"
-      ],
-      "wave": 1
-    },
-    {
-      "id": "price-lists",
-      "name": "Listas de preço",
-      "glyph": "Lp",
-      "lane": "commerce",
-      "status": "proposed",
-      "summary": "Várias tabelas de preço por canal, cliente ou período, com regras de desconto.",
-      "concepts": [
-        "PriceList",
-        "PriceListEntry",
-        "DiscountRule"
-      ],
-      "requires": [
-        "sales",
-        "catalog"
-      ],
-      "wave": 2
-    },
-    {
-      "id": "quotes",
-      "name": "Orçamentos de venda",
-      "glyph": "Ov",
-      "lane": "commerce",
-      "status": "proposed",
-      "wave": 1,
-      "summary": "Orçamento que vira pedido quando o cliente aprova.",
-      "concepts": [
-        "Quote",
-        "QuoteLine"
-      ],
-      "requires": [
-        "sales",
-        "catalog"
-      ]
-    },
-    {
-      "id": "retail-store",
-      "name": "Loja física",
-      "glyph": "Lj",
-      "lane": "commerce",
-      "status": "proposed",
-      "summary": "Ponto de venda, caixa e venda de balcão, ligada ao estoque.",
-      "concepts": [
-        "PointOfSale",
-        "CashRegister",
-        "StoreSale"
-      ],
-      "specializations": [
-        [
-          "StoreSale",
-          "SalesOrder"
-        ]
-      ],
-      "requires": [
-        "sales",
-        "catalog",
-        "inventory",
-        "payments"
-      ],
-      "wave": 2
-    },
-    {
-      "id": "returns",
-      "name": "Trocas e devoluções",
-      "glyph": "Td",
-      "lane": "commerce",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Pedido de troca ou devolução com volta ao estoque.",
-      "concepts": [
-        "ReturnRequest",
-        "ReturnLine"
-      ],
-      "requires": [
-        "sales",
-        "inventory"
-      ]
-    },
-    {
-      "id": "sales",
-      "name": "Vendas",
-      "glyph": "Vd",
-      "lane": "commerce",
-      "status": "existing",
-      "version": "1.0.0",
-      "summary": "Clientes, lista de preços, pedidos de venda com itens e faturas.",
-      "concepts": [
-        "Customer",
-        "SalesItem",
-        "SalesOrder",
-        "SalesOrderLine",
-        "Invoice"
-      ],
-      "requires": []
-    },
-    {
-      "id": "subscriptions",
-      "name": "Assinaturas",
-      "glyph": "As",
-      "lane": "commerce",
-      "status": "proposed",
-      "summary": "Planos, assinaturas e ciclos de cobrança recorrente.",
-      "concepts": [
-        "Plan",
-        "Subscription",
-        "BillingCycle"
-      ],
-      "requires": [
-        "payments",
-        "contacts"
-      ],
-      "wave": 2
-    },
-    {
-      "id": "campaigns",
-      "name": "Campanhas",
-      "glyph": "Ca",
-      "lane": "crm",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Campanhas para um público, por WhatsApp, SMS ou e-mail.",
-      "concepts": [
-        "Campaign",
-        "Audience",
-        "CampaignSend"
-      ],
-      "requires": [
-        "leads",
-        "messaging"
-      ]
-    },
-    {
-      "id": "leads",
-      "name": "Leads",
-      "glyph": "Le",
-      "lane": "crm",
-      "status": "proposed",
-      "wave": 1,
-      "summary": "Interessados e de onde vieram.",
-      "concepts": [
-        "Lead",
-        "LeadSource"
-      ],
-      "requires": [
-        "contacts"
-      ]
-    },
-    {
-      "id": "pipeline",
-      "name": "Funil de vendas",
-      "glyph": "Fv",
-      "lane": "crm",
-      "status": "proposed",
-      "wave": 1,
-      "summary": "Oportunidades por etapa do funil.",
-      "concepts": [
-        "Opportunity",
-        "PipelineStage",
-        "SalesActivity"
-      ],
-      "requires": [
-        "leads",
-        "quotes"
-      ]
-    },
-    {
-      "id": "public-forms",
-      "name": "Formulários públicos",
-      "glyph": "Fp",
-      "lane": "crm",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Formulário aberto na web que cria registros.",
-      "concepts": [
-        "PublicForm",
-        "FormSubmission"
-      ],
-      "requires": []
-    },
-    {
-      "id": "surveys",
-      "name": "Pesquisas e NPS",
-      "glyph": "Pn",
-      "lane": "crm",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Pesquisas de satisfação e NPS.",
-      "concepts": [
-        "Survey",
-        "SurveyQuestion",
-        "SurveyResponse"
-      ],
-      "requires": [
-        "person"
-      ]
-    },
-    {
-      "id": "delivery",
-      "name": "Delivery",
-      "glyph": "Dl",
-      "lane": "supply",
-      "status": "proposed",
-      "summary": "Pedido de entrega, entregador, rota e comprovante de entrega.",
-      "concepts": [
-        "DeliveryOrder",
-        "Courier",
-        "DeliveryRoute",
-        "ProofOfDelivery"
-      ],
-      "specializations": [
-        [
-          "Courier",
-          "PersonProfile"
-        ]
-      ],
-      "requires": [
-        "shipping",
-        "person",
-        "payments"
-      ],
-      "wave": 2
-    },
-    {
-      "id": "inventory",
-      "name": "Estoque",
-      "glyph": "Es",
-      "lane": "supply",
-      "status": "existing",
-      "version": "1.0.0",
-      "summary": "Armazéns, posições, produtos e um razão de movimentações.",
-      "concepts": [
-        "Warehouse",
-        "StorageLocation",
-        "Product",
-        "StockMovement"
-      ],
-      "requires": []
-    },
-    {
-      "id": "lots-serials",
-      "name": "Lotes e validade",
-      "glyph": "Lv",
-      "lane": "supply",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Rastreio por lote e número de série, com alerta de validade.",
-      "concepts": [
-        "Lot",
-        "SerialNumber",
-        "ExpiryAlert"
-      ],
-      "requires": [
-        "inventory"
-      ]
-    },
-    {
-      "id": "pharmacy-delivery",
-      "name": "Delivery de farmácia",
-      "glyph": "Df",
-      "lane": "supply",
-      "status": "proposed",
-      "summary": "Receita, item controlado e conferência na entrega.",
-      "concepts": [
-        "PrescriptionUpload",
-        "ControlledItem",
-        "DispenseCheck"
-      ],
-      "specializations": [
-        [
-          "ControlledItem",
-          "Product"
-        ]
-      ],
-      "requires": [
-        "delivery",
-        "catalog",
-        "documents"
-      ],
-      "wave": 3
-    },
-    {
-      "id": "providers",
-      "name": "Prestadores",
-      "glyph": "Pr",
-      "lane": "supply",
-      "status": "proposed",
-      "summary": "Prestadores de serviço, contratos e níveis de serviço acordados.",
-      "concepts": [
-        "Provider",
-        "ProviderContract",
-        "ServiceLevel"
-      ],
-      "requires": [
-        "contacts"
-      ],
-      "wave": 2
-    },
-    {
-      "id": "purchasing",
-      "name": "Compras",
-      "glyph": "Co",
-      "lane": "supply",
-      "status": "existing",
-      "version": "1.0.0",
-      "summary": "Fornecedores, itens compráveis, pedidos de compra com itens e contas a pagar.",
-      "concepts": [
-        "Supplier",
-        "PurchaseItem",
-        "PurchaseOrder",
-        "PurchaseOrderLine",
-        "SupplierBill"
-      ],
-      "requires": []
-    },
-    {
-      "id": "requisitions",
-      "name": "Requisição de compra",
-      "glyph": "Rc",
-      "lane": "supply",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Pedido interno de compra que passa por aprovação.",
-      "concepts": [
-        "Requisition",
-        "RequisitionLine"
-      ],
-      "specializations": [
-        [
-          "Requisition",
-          "ApprovalRequest"
-        ]
-      ],
-      "requires": [
-        "purchasing",
-        "approvals"
-      ]
-    },
-    {
-      "id": "shipping",
-      "name": "Expedição",
-      "glyph": "Ex",
-      "lane": "supply",
-      "status": "proposed",
-      "summary": "Remessas, manifestos de carga e transportadoras.",
-      "concepts": [
-        "Shipment",
-        "Manifest",
-        "ManifestLine",
-        "Carrier"
-      ],
-      "requires": [
-        "inventory",
-        "contacts"
-      ],
-      "wave": 2
-    },
-    {
-      "id": "storage-units",
-      "name": "Unidades de armazenagem",
-      "glyph": "Ua",
-      "lane": "supply",
-      "status": "proposed",
-      "summary": "Paletes, caixas e contêineres rastreados como unidades, com seus movimentos.",
-      "concepts": [
-        "StorageUnit",
-        "UnitContent",
-        "UnitMovement"
-      ],
-      "requires": [
-        "inventory"
-      ],
-      "wave": 2
-    },
-    {
-      "id": "supplier-quotes",
-      "name": "Cotação de fornecedores",
-      "glyph": "Cf",
-      "lane": "supply",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Pedir preço a vários fornecedores e comparar.",
-      "concepts": [
-        "RequestForQuote",
-        "SupplierQuote"
-      ],
-      "requires": [
-        "purchasing"
-      ]
-    },
-    {
-      "id": "wms",
-      "name": "Armazém (WMS)",
-      "glyph": "Aw",
-      "lane": "supply",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Separação em ondas, armazenagem e inventário cíclico.",
-      "concepts": [
-        "PickWave",
-        "PickTask",
-        "PutawayTask",
-        "CycleCount"
-      ],
-      "requires": [
-        "storage-units",
-        "shipping"
-      ]
-    },
-    {
-      "id": "fleet",
-      "name": "Frota",
-      "glyph": "Fr",
-      "lane": "fleet",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Veículos, motoristas, abastecimento e manutenção.",
-      "concepts": [
-        "Vehicle",
-        "Driver",
-        "FuelLog",
-        "VehicleMaintenance"
-      ],
-      "specializations": [
-        [
-          "Driver",
-          "PersonProfile"
-        ]
-      ],
-      "requires": [
-        "person"
-      ]
-    },
-    {
-      "id": "live-tracking",
-      "name": "Rastreio em tempo real",
-      "glyph": "Rt",
-      "lane": "fleet",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Posição dos veículos e cercas virtuais.",
-      "concepts": [
-        "PositionPing",
-        "Geofence"
-      ],
-      "requires": [
-        "fleet"
-      ]
-    },
-    {
-      "id": "ride-hailing",
-      "name": "Transporte por app",
-      "glyph": "Tp",
-      "lane": "fleet",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Pedido de corrida, viagem, tarifa e avaliação.",
-      "concepts": [
-        "RideRequest",
-        "Trip",
-        "Fare",
-        "TripRating"
-      ],
-      "requires": [
-        "fleet",
-        "payments"
-      ]
-    },
-    {
-      "id": "route-planning",
-      "name": "Roteirização",
-      "glyph": "Ro",
-      "lane": "fleet",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Planejamento de rotas com paradas.",
-      "concepts": [
-        "RoutePlan",
-        "RouteStop"
-      ],
-      "requires": [
-        "fleet",
-        "shipping"
-      ],
-      "capabilities": [
-        "mapsProvider"
-      ]
-    },
-    {
-      "id": "bom",
-      "name": "Estrutura de produto",
-      "glyph": "Ep",
-      "lane": "industry",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Do que cada produto é feito (BOM).",
-      "concepts": [
-        "BillOfMaterials",
-        "BomLine"
-      ],
-      "requires": [
-        "catalog",
-        "inventory"
-      ]
-    },
-    {
-      "id": "mrp",
-      "name": "Planejamento MRP",
-      "glyph": "Pm",
-      "lane": "industry",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Calcula o que produzir e comprar.",
-      "concepts": [
-        "MrpRun",
-        "PlannedOrder"
-      ],
-      "requires": [
-        "production",
-        "purchasing"
-      ]
-    },
-    {
-      "id": "plant-maintenance",
-      "name": "Manutenção industrial",
-      "glyph": "Mi",
-      "lane": "industry",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Manutenção preventiva e corretiva de máquinas.",
-      "concepts": [
-        "MaintenancePlan",
-        "MaintenanceOrder"
-      ],
-      "requires": [
-        "assets"
-      ]
-    },
-    {
-      "id": "production",
-      "name": "Ordem de produção",
-      "glyph": "Op",
-      "lane": "industry",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Ordens de produção por centro de trabalho e apontamento.",
-      "concepts": [
-        "ProductionOrder",
-        "WorkCenter",
-        "ProductionReport"
-      ],
-      "requires": [
-        "bom"
-      ]
-    },
-    {
-      "id": "crops",
-      "name": "Lavoura",
-      "glyph": "La",
-      "lane": "agro",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Plantio, aplicação de insumos e colheita.",
-      "concepts": [
-        "Planting",
-        "InputApplication",
-        "Harvest"
-      ],
-      "requires": [
-        "farm",
-        "inventory"
-      ]
-    },
-    {
-      "id": "farm",
-      "name": "Fazenda",
-      "glyph": "Fa",
-      "lane": "agro",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Fazendas, talhões e safras.",
-      "concepts": [
-        "Farm",
-        "FieldPlot",
-        "CropSeason"
-      ],
-      "requires": [
-        "contacts"
-      ]
-    },
-    {
-      "id": "livestock",
-      "name": "Pecuária",
-      "glyph": "Pe",
-      "lane": "agro",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Animais, lotes, pesagens e eventos sanitários.",
-      "concepts": [
-        "Animal",
-        "Herd",
-        "WeighIn",
-        "AnimalHealthEvent"
-      ],
-      "requires": [
-        "farm"
-      ]
-    },
-    {
-      "id": "construction-works",
-      "name": "Obras",
-      "glyph": "Ob",
-      "lane": "construction",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Obra, etapas, pedido de material e diário de obra.",
-      "concepts": [
-        "ConstructionSite",
-        "WorkStage",
-        "MaterialRequest",
-        "DailyLog"
-      ],
-      "requires": [
-        "projects",
-        "inventory"
-      ]
-    },
-    {
-      "id": "measurements",
-      "name": "Medições",
-      "glyph": "Me",
-      "lane": "construction",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Medição do que foi executado para faturar.",
-      "concepts": [
-        "Measurement",
-        "MeasurementLine"
-      ],
-      "requires": [
-        "construction-works"
-      ]
-    },
-    {
-      "id": "appointments",
-      "name": "Atendimentos e visitas",
-      "glyph": "At",
-      "lane": "services",
-      "status": "proposed",
-      "summary": "Agendamento com check-in, no-show e visita realizada. Todo vertical de serviço especializa Appointment.",
-      "concepts": [
-        "Appointment",
-        "Visit",
-        "CheckIn"
-      ],
-      "specializations": [
-        [
-          "Appointment",
-          "Booking"
-        ]
-      ],
-      "requires": [
-        "scheduling"
-      ],
-      "wave": 1
-    },
-    {
-      "id": "field-service",
-      "name": "Serviço em campo",
-      "glyph": "Sc",
-      "lane": "services",
-      "status": "proposed",
-      "summary": "Ordem de serviço no endereço do cliente, relatório da visita e peças usadas.",
-      "concepts": [
-        "WorkOrder",
-        "VisitReport",
-        "PartUsed"
-      ],
-      "specializations": [
-        [
-          "WorkOrder",
-          "Appointment"
-        ]
-      ],
-      "requires": [
-        "appointments",
-        "inventory"
-      ],
-      "wave": 2
-    },
-    {
-      "id": "home-cleaning",
-      "name": "Limpeza e conservação",
-      "glyph": "Lc",
-      "lane": "services",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Serviço de limpeza agendado no endereço.",
-      "concepts": [
-        "CleaningJob"
-      ],
-      "specializations": [
-        [
-          "CleaningJob",
-          "WorkOrder"
-        ]
-      ],
-      "requires": [
-        "field-service"
-      ]
-    },
-    {
-      "id": "online-booking",
-      "name": "Agendamento online",
-      "glyph": "Ao",
-      "lane": "services",
-      "status": "proposed",
-      "wave": 1,
-      "summary": "O cliente escolhe o horário sozinho numa página pública.",
-      "concepts": [
-        "BookingPage",
-        "PublicSlot"
-      ],
-      "requires": [
-        "appointments",
-        "customer-portal"
-      ]
-    },
-    {
-      "id": "repair-shop",
-      "name": "Assistência técnica",
-      "glyph": "At",
-      "lane": "services",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Entrada do aparelho, conserto e devolução.",
-      "concepts": [
-        "RepairOrder",
-        "DeviceIntake"
-      ],
-      "specializations": [
-        [
-          "RepairOrder",
-          "WorkOrder"
-        ]
-      ],
-      "requires": [
-        "field-service"
-      ]
-    },
-    {
-      "id": "scheduling",
-      "name": "Agenda",
-      "glyph": "Ag",
-      "lane": "services",
-      "status": "proposed",
-      "summary": "Recursos (pessoa, sala, equipamento), disponibilidade e reservas. Evita conflito de horário.",
-      "concepts": [
-        "Resource",
-        "Availability",
-        "Booking"
-      ],
-      "requires": [
-        "person"
-      ],
-      "wave": 1
-    },
-    {
-      "id": "service-contracts",
-      "name": "Contratos de serviço",
-      "glyph": "Cs",
-      "lane": "services",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Contratos recorrentes com nível de serviço.",
-      "concepts": [
-        "ServiceContract",
-        "ServiceLevelTarget"
-      ],
-      "requires": [
-        "contacts",
-        "subscriptions"
-      ]
-    },
-    {
-      "id": "service-queues",
-      "name": "Fila de atendimento",
-      "glyph": "Fa",
-      "lane": "services",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Senha e chamada por ordem de chegada.",
-      "concepts": [
-        "ServiceQueue",
-        "QueueTicket"
-      ],
-      "requires": [
-        "appointments"
-      ]
-    },
-    {
-      "id": "cardiology",
-      "name": "Cardiologia",
-      "glyph": "Ca",
-      "lane": "health",
-      "status": "proposed",
-      "summary": "Consulta cardiológica, ECG e escore de risco.",
-      "concepts": [
-        "CardioAttendance",
-        "EcgExam",
-        "RiskScore"
-      ],
-      "specializations": [
-        [
-          "CardioAttendance",
-          "Attendance"
-        ]
-      ],
-      "requires": [
-        "clinic"
-      ],
-      "wave": 2
-    },
-    {
-      "id": "clinic",
-      "name": "Clínica",
-      "glyph": "Cl",
-      "lane": "health",
-      "status": "proposed",
-      "summary": "Paciente, atendimento, evolução clínica e convênio. Base de todas as especialidades.",
-      "concepts": [
-        "PatientProfile",
-        "Attendance",
-        "ClinicalNote",
-        "HealthInsurance"
-      ],
-      "specializations": [
-        [
-          "PatientProfile",
-          "PersonProfile"
-        ],
-        [
-          "Attendance",
-          "Appointment"
-        ]
-      ],
-      "requires": [
-        "appointments",
-        "consent-lgpd",
-        "documents"
-      ],
-      "wave": 1
-    },
-    {
-      "id": "dental",
-      "name": "Odontologia",
-      "glyph": "Od",
-      "lane": "health",
-      "status": "proposed",
-      "summary": "Odontograma, plano de tratamento e procedimento por dente.",
-      "concepts": [
-        "DentalAttendance",
-        "ToothChart",
-        "TreatmentPlan"
-      ],
-      "specializations": [
-        [
-          "DentalAttendance",
-          "Attendance"
-        ]
-      ],
-      "requires": [
-        "clinic"
-      ],
-      "wave": 1
-    },
-    {
-      "id": "inpatient",
-      "name": "Internação",
-      "glyph": "In",
-      "lane": "health",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Leitos, internação e evolução de enfermagem.",
-      "concepts": [
-        "Admission",
-        "Bed",
-        "Ward",
-        "NursingNote"
-      ],
-      "requires": [
-        "clinic"
-      ]
-    },
-    {
-      "id": "lab",
-      "name": "Laboratório",
-      "glyph": "La",
-      "lane": "health",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Pedido de exame, coleta e resultado.",
-      "concepts": [
-        "LabOrder",
-        "Sample",
-        "LabResult"
-      ],
-      "specializations": [
-        [
-          "LabOrder",
-          "Attendance"
-        ]
-      ],
-      "requires": [
-        "clinic"
-      ]
-    },
-    {
-      "id": "nutrition",
-      "name": "Nutrição",
-      "glyph": "Nu",
-      "lane": "health",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Consulta, plano alimentar e medidas.",
-      "concepts": [
-        "NutritionConsult",
-        "MealPlan",
-        "BodyMeasure"
-      ],
-      "specializations": [
-        [
-          "NutritionConsult",
-          "Attendance"
-        ]
-      ],
-      "requires": [
-        "clinic"
-      ]
-    },
-    {
-      "id": "ophthalmology",
-      "name": "Oftalmologia",
-      "glyph": "Of",
-      "lane": "health",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Exame oftalmológico e receita de lentes.",
-      "concepts": [
-        "EyeExam",
-        "LensPrescription"
-      ],
-      "specializations": [
-        [
-          "EyeExam",
-          "Attendance"
-        ]
-      ],
-      "requires": [
-        "clinic"
-      ]
-    },
-    {
-      "id": "pediatrics",
-      "name": "Pediatria",
-      "glyph": "Pe",
-      "lane": "health",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Consulta pediátrica, curva de crescimento e vacinas.",
-      "concepts": [
-        "PediatricAttendance",
-        "GrowthChart",
-        "VaccineRecord"
-      ],
-      "specializations": [
-        [
-          "PediatricAttendance",
-          "Attendance"
-        ]
-      ],
-      "requires": [
-        "clinic",
-        "households"
-      ]
-    },
-    {
-      "id": "physiotherapy",
-      "name": "Fisioterapia",
-      "glyph": "Fi",
-      "lane": "health",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Sessões e plano de exercícios.",
-      "concepts": [
-        "PhysioSession",
-        "ExercisePlan"
-      ],
-      "specializations": [
-        [
-          "PhysioSession",
-          "Attendance"
-        ]
-      ],
-      "requires": [
-        "clinic"
-      ]
-    },
-    {
-      "id": "prescriptions",
-      "name": "Receituário",
-      "glyph": "Re",
-      "lane": "health",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Receita assinada digitalmente.",
-      "concepts": [
-        "MedicalPrescription",
-        "PrescribedItem"
-      ],
-      "requires": [
-        "clinic",
-        "e-signature"
-      ]
-    },
-    {
-      "id": "psychology",
-      "name": "Psicologia",
-      "glyph": "Ps",
-      "lane": "health",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Sessões de terapia e anotações sigilosas.",
-      "concepts": [
-        "TherapySession",
-        "SessionNote"
-      ],
-      "specializations": [
-        [
-          "TherapySession",
-          "Attendance"
-        ]
-      ],
-      "requires": [
-        "clinic"
-      ]
-    },
-    {
-      "id": "radiology",
-      "name": "Radiologia",
-      "glyph": "Rx",
-      "lane": "health",
-      "status": "proposed",
-      "summary": "Pedido de exame de imagem, execução e laudo.",
-      "concepts": [
-        "ImagingOrder",
-        "ImagingExam",
-        "RadiologyReport"
-      ],
-      "specializations": [
-        [
-          "ImagingExam",
-          "Attendance"
-        ]
-      ],
-      "requires": [
-        "clinic"
-      ],
-      "wave": 2
-    },
-    {
-      "id": "telemedicine",
-      "name": "Telemedicina",
-      "glyph": "Te",
-      "lane": "health",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Consulta por vídeo.",
-      "concepts": [
-        "TeleSession",
-        "VideoRoom"
-      ],
-      "specializations": [
-        [
-          "TeleSession",
-          "Attendance"
-        ]
-      ],
-      "requires": [
-        "clinic"
-      ],
-      "capabilities": [
-        "videoProvider"
-      ]
-    },
-    {
-      "id": "tiss-billing",
-      "name": "Faturamento TISS",
-      "glyph": "Ft",
-      "lane": "health",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Guias e lotes no padrão TISS para convênios.",
-      "concepts": [
-        "TissGuide",
-        "TissBatch"
-      ],
-      "requires": [
-        "clinic",
-        "fiscal-br"
-      ]
-    },
-    {
-      "id": "grooming",
-      "name": "Banho e tosa",
-      "glyph": "Bt",
-      "lane": "pets",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Agenda de banho e tosa.",
-      "concepts": [
-        "GroomingBooking"
-      ],
-      "specializations": [
-        [
-          "GroomingBooking",
-          "Appointment"
-        ]
-      ],
-      "requires": [
-        "pets",
-        "appointments",
-        "catalog"
-      ]
-    },
-    {
-      "id": "pet-hotel",
-      "name": "Hotel para pets",
-      "glyph": "Hp",
-      "lane": "pets",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Hospedagem de animais.",
-      "concepts": [
-        "PetStay"
-      ],
-      "specializations": [
-        [
-          "PetStay",
-          "Booking"
-        ]
-      ],
-      "requires": [
-        "pets",
-        "scheduling"
-      ]
-    },
-    {
-      "id": "pets",
-      "name": "Cadastro de pets",
-      "glyph": "Cp",
-      "lane": "pets",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Animais e seus tutores.",
-      "concepts": [
-        "Pet",
-        "Tutor"
-      ],
-      "specializations": [
-        [
-          "Tutor",
-          "PersonProfile"
-        ]
-      ],
-      "requires": [
-        "person"
-      ]
-    },
-    {
-      "id": "vet",
-      "name": "Veterinária",
-      "glyph": "Ve",
-      "lane": "pets",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Atendimento veterinário e carteira de vacinação.",
-      "concepts": [
-        "VetAttendance",
-        "Vaccination"
-      ],
-      "specializations": [
-        [
-          "VetAttendance",
-          "Appointment"
-        ]
-      ],
-      "requires": [
-        "pets",
-        "appointments"
-      ]
-    },
-    {
       "id": "aesthetics",
       "name": "Estética",
-      "glyph": "Et",
-      "lane": "beauty",
-      "status": "proposed",
+      "kind": "specialization",
+      "need": "Fazer procedimentos estéticos com termo e fotos",
       "summary": "Procedimento estético com termo de consentimento e fotos de antes e depois.",
+      "area": "agenda",
+      "sectors": [
+        "beleza"
+      ],
+      "status": "proposed",
+      "wave": 2,
       "concepts": [
         "AestheticProcedure",
         "BeforeAfterPhoto",
@@ -2371,17 +643,45 @@
         "beauty-salon",
         "consent-lgpd",
         "documents"
+      ]
+    },
+    {
+      "id": "appointments",
+      "name": "Atendimentos e visitas",
+      "kind": "specialization",
+      "need": "Agendar atendimentos, com check-in e controle de faltas",
+      "summary": "Agendamento com check-in, no-show e visita realizada. Todo vertical de serviço especializa Appointment.",
+      "area": "agenda",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "Appointment",
+        "Visit",
+        "CheckIn"
       ],
-      "wave": 2
+      "specializations": [
+        [
+          "Appointment",
+          "Booking"
+        ]
+      ],
+      "requires": [
+        "scheduling"
+      ]
     },
     {
       "id": "barbershop",
       "name": "Barbearia",
-      "glyph": "Ba",
-      "lane": "beauty",
+      "kind": "specialization",
+      "need": "Agendar na barbearia, com clube de assinatura",
+      "summary": "Agenda de barbearia e clube de assinatura.",
+      "area": "agenda",
+      "sectors": [
+        "beleza"
+      ],
       "status": "proposed",
       "wave": 2,
-      "summary": "Agenda de barbearia e clube de assinatura.",
       "concepts": [
         "BarberBooking",
         "BarberClubPlan"
@@ -2404,10 +704,15 @@
     {
       "id": "beauty-salon",
       "name": "Salão de beleza",
-      "glyph": "Sb",
-      "lane": "beauty",
-      "status": "proposed",
+      "kind": "specialization",
+      "need": "Agendar serviços de beleza e pagar comissão",
       "summary": "Serviços, profissional, reserva de horário e comissão.",
+      "area": "agenda",
+      "sectors": [
+        "beleza"
+      ],
+      "status": "proposed",
+      "wave": 1,
       "concepts": [
         "BeautyService",
         "Professional",
@@ -2432,17 +737,234 @@
         "appointments",
         "catalog",
         "payments"
+      ]
+    },
+    {
+      "id": "cardiology",
+      "name": "Cardiologia",
+      "kind": "specialization",
+      "need": "Fazer consultas cardiológicas com ECG e risco",
+      "summary": "Consulta cardiológica, ECG e escore de risco.",
+      "area": "agenda",
+      "sectors": [
+        "saude"
       ],
-      "wave": 1
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "CardioAttendance",
+        "EcgExam",
+        "RiskScore"
+      ],
+      "specializations": [
+        [
+          "CardioAttendance",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ]
+    },
+    {
+      "id": "clinic",
+      "name": "Clínica",
+      "kind": "specialization",
+      "need": "Atender pacientes com prontuário e convênio",
+      "summary": "Paciente, atendimento, evolução clínica e convênio. Base de todas as especialidades.",
+      "area": "agenda",
+      "sectors": [
+        "saude"
+      ],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "PatientProfile",
+        "Attendance",
+        "ClinicalNote",
+        "HealthInsurance"
+      ],
+      "specializations": [
+        [
+          "PatientProfile",
+          "PersonProfile"
+        ],
+        [
+          "Attendance",
+          "Appointment"
+        ]
+      ],
+      "requires": [
+        "appointments",
+        "consent-lgpd",
+        "documents",
+        "professional-registry"
+      ]
+    },
+    {
+      "id": "dental",
+      "name": "Odontologia",
+      "kind": "specialization",
+      "need": "Tratar pacientes com odontograma e plano de tratamento",
+      "summary": "Odontograma, plano de tratamento e procedimento por dente.",
+      "area": "agenda",
+      "sectors": [
+        "saude"
+      ],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "DentalAttendance",
+        "ToothChart",
+        "TreatmentPlan"
+      ],
+      "specializations": [
+        [
+          "DentalAttendance",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ]
+    },
+    {
+      "id": "driving-school",
+      "name": "Autoescola",
+      "kind": "specialization",
+      "need": "Agendar aulas práticas e exames de direção",
+      "summary": "Aulas práticas e agenda de exames.",
+      "area": "agenda",
+      "sectors": [
+        "educacao"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "DrivingLesson",
+        "LicenseExam"
+      ],
+      "specializations": [
+        [
+          "DrivingLesson",
+          "Booking"
+        ]
+      ],
+      "requires": [
+        "school",
+        "fleet"
+      ]
+    },
+    {
+      "id": "event-checkin",
+      "name": "Credenciamento",
+      "kind": "module",
+      "need": "Credenciar participantes na entrada",
+      "summary": "Crachá e leitura de acesso na entrada.",
+      "area": "agenda",
+      "sectors": [
+        "hospitalidade"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "Badge",
+        "AccessScan"
+      ],
+      "requires": [
+        "events"
+      ]
+    },
+    {
+      "id": "facilities",
+      "name": "Reserva de salas",
+      "kind": "specialization",
+      "need": "Reservar salas e espaços internos",
+      "summary": "Reserva de salas e espaços internos.",
+      "area": "agenda",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "RoomBooking"
+      ],
+      "specializations": [
+        [
+          "RoomBooking",
+          "Booking"
+        ]
+      ],
+      "requires": [
+        "scheduling"
+      ]
+    },
+    {
+      "id": "field-service",
+      "name": "Serviço em campo",
+      "kind": "specialization",
+      "need": "Atender ordens de serviço no endereço do cliente",
+      "summary": "Ordem de serviço no endereço do cliente, relatório da visita e peças usadas.",
+      "area": "agenda",
+      "sectors": [
+        "servicos"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "WorkOrder",
+        "VisitReport",
+        "PartUsed"
+      ],
+      "specializations": [
+        [
+          "WorkOrder",
+          "Appointment"
+        ]
+      ],
+      "requires": [
+        "appointments",
+        "inventory"
+      ]
+    },
+    {
+      "id": "grooming",
+      "name": "Banho e tosa",
+      "kind": "specialization",
+      "need": "Agendar banho e tosa",
+      "summary": "Agenda de banho e tosa.",
+      "area": "agenda",
+      "sectors": [
+        "pets"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "GroomingBooking"
+      ],
+      "specializations": [
+        [
+          "GroomingBooking",
+          "Appointment"
+        ]
+      ],
+      "requires": [
+        "pets",
+        "appointments",
+        "catalog"
+      ]
     },
     {
       "id": "gym",
       "name": "Academia",
-      "glyph": "Ac",
-      "lane": "beauty",
+      "kind": "specialization",
+      "need": "Controlar alunos, aulas e acesso da academia",
+      "summary": "Alunos, aulas, acesso e treino.",
+      "area": "agenda",
+      "sectors": [
+        "beleza"
+      ],
       "status": "proposed",
       "wave": 2,
-      "summary": "Alunos, aulas, acesso e treino.",
       "concepts": [
         "GymMember",
         "ClassSession",
@@ -2466,415 +988,60 @@
       ]
     },
     {
-      "id": "personal-trainer",
-      "name": "Personal trainer",
-      "glyph": "Pt",
-      "lane": "beauty",
+      "id": "helpdesk",
+      "name": "Helpdesk",
+      "kind": "module",
+      "need": "Atender chamados de clientes ou da equipe",
+      "summary": "Agentes, categorias, chamados e comentários.",
+      "area": "agenda",
+      "sectors": [],
+      "status": "existing",
+      "version": "1.0.0",
+      "concepts": [
+        "HelpdeskAgent",
+        "TicketCategory",
+        "Ticket",
+        "TicketComment"
+      ],
+      "requires": []
+    },
+    {
+      "id": "home-cleaning",
+      "name": "Limpeza e conservação",
+      "kind": "specialization",
+      "need": "Agendar limpeza no endereço do cliente",
+      "summary": "Serviço de limpeza agendado no endereço.",
+      "area": "agenda",
+      "sectors": [
+        "servicos"
+      ],
       "status": "proposed",
       "wave": 3,
-      "summary": "Alunos do personal e avaliação física.",
       "concepts": [
-        "TrainingClient",
-        "Assessment"
-      ],
-      "requires": [
-        "gym"
-      ]
-    },
-    {
-      "id": "spa",
-      "name": "Spa e massagem",
-      "glyph": "Sm",
-      "lane": "beauty",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Pacotes de spa e salas.",
-      "concepts": [
-        "SpaPackage",
-        "TherapyRoom"
-      ],
-      "requires": [
-        "beauty-salon"
-      ]
-    },
-    {
-      "id": "studio-classes",
-      "name": "Estúdio de pilates e yoga",
-      "glyph": "Ep",
-      "lane": "beauty",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Turmas pequenas com reposição de aula.",
-      "concepts": [
-        "StudioClass"
+        "CleaningJob"
       ],
       "specializations": [
         [
-          "StudioClass",
-          "ClassSession"
+          "CleaningJob",
+          "WorkOrder"
         ]
       ],
       "requires": [
-        "gym"
-      ]
-    },
-    {
-      "id": "catering",
-      "name": "Buffet",
-      "glyph": "Bu",
-      "lane": "food",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Buffet para eventos.",
-      "concepts": [
-        "CateringOrder"
-      ],
-      "requires": [
-        "kitchen",
-        "events"
-      ]
-    },
-    {
-      "id": "food-delivery",
-      "name": "Delivery de comida",
-      "glyph": "Dc",
-      "lane": "food",
-      "status": "proposed",
-      "summary": "Pedido de comida com zona de entrega, ligado à cozinha.",
-      "concepts": [
-        "FoodOrder",
-        "DeliveryZone"
-      ],
-      "specializations": [
-        [
-          "FoodOrder",
-          "DeliveryOrder"
-        ]
-      ],
-      "requires": [
-        "delivery",
-        "kitchen"
-      ],
-      "wave": 2
-    },
-    {
-      "id": "kitchen",
-      "name": "Cozinha",
-      "glyph": "Co",
-      "lane": "food",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Cardápio, adicionais e comanda de cozinha.",
-      "concepts": [
-        "MenuItem",
-        "MenuAddon",
-        "KitchenTicket"
-      ],
-      "specializations": [
-        [
-          "MenuItem",
-          "Product"
-        ]
-      ],
-      "requires": [
-        "catalog"
-      ]
-    },
-    {
-      "id": "recipe-costing",
-      "name": "Ficha técnica",
-      "glyph": "Ft",
-      "lane": "food",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Receita, ingredientes e custo do prato.",
-      "concepts": [
-        "Recipe",
-        "RecipeIngredient",
-        "PlateCost"
-      ],
-      "requires": [
-        "kitchen",
-        "inventory"
-      ]
-    },
-    {
-      "id": "restaurant",
-      "name": "Restaurante",
-      "glyph": "Re",
-      "lane": "food",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Mesas, pedido por mesa e conta.",
-      "concepts": [
-        "DiningTable",
-        "TableOrder",
-        "TableBill"
-      ],
-      "specializations": [
-        [
-          "TableOrder",
-          "SalesOrder"
-        ]
-      ],
-      "requires": [
-        "kitchen",
-        "sales",
-        "payments"
-      ]
-    },
-    {
-      "id": "driving-school",
-      "name": "Autoescola",
-      "glyph": "Au",
-      "lane": "education",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Aulas práticas e agenda de exames.",
-      "concepts": [
-        "DrivingLesson",
-        "LicenseExam"
-      ],
-      "specializations": [
-        [
-          "DrivingLesson",
-          "Booking"
-        ]
-      ],
-      "requires": [
-        "school",
-        "fleet"
-      ]
-    },
-    {
-      "id": "grades",
-      "name": "Notas e frequência",
-      "glyph": "Nf",
-      "lane": "education",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Avaliações, notas e presença.",
-      "concepts": [
-        "SchoolAssessment",
-        "Grade",
-        "AttendanceRecord"
-      ],
-      "requires": [
-        "school"
-      ]
-    },
-    {
-      "id": "library",
-      "name": "Biblioteca",
-      "glyph": "Bi",
-      "lane": "education",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Acervo, empréstimos e reservas.",
-      "concepts": [
-        "Book",
-        "Loan",
-        "BookHold"
-      ],
-      "requires": [
-        "person"
-      ]
-    },
-    {
-      "id": "online-courses",
-      "name": "Cursos online",
-      "glyph": "Co",
-      "lane": "education",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Módulos, aulas e progresso do aluno.",
-      "concepts": [
-        "CourseModule",
-        "Lesson",
-        "LessonProgress"
-      ],
-      "requires": [
-        "school",
-        "payments"
-      ]
-    },
-    {
-      "id": "school",
-      "name": "Escola",
-      "glyph": "Es",
-      "lane": "education",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Alunos, responsáveis, cursos, turmas e matrículas.",
-      "concepts": [
-        "Student",
-        "Guardian",
-        "Course",
-        "ClassGroup",
-        "Enrollment"
-      ],
-      "specializations": [
-        [
-          "Student",
-          "PersonProfile"
-        ],
-        [
-          "Guardian",
-          "PersonProfile"
-        ]
-      ],
-      "requires": [
-        "person",
-        "scheduling"
-      ]
-    },
-    {
-      "id": "tuition",
-      "name": "Mensalidades",
-      "glyph": "Me",
-      "lane": "education",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Plano de mensalidade e cobrança.",
-      "concepts": [
-        "TuitionPlan",
-        "TuitionInvoice"
-      ],
-      "specializations": [
-        [
-          "TuitionInvoice",
-          "Receivable"
-        ]
-      ],
-      "requires": [
-        "school",
-        "receivables"
-      ]
-    },
-    {
-      "id": "condo",
-      "name": "Condomínio",
-      "glyph": "Co",
-      "lane": "realestate",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Taxa condominial, reservas de áreas comuns e assembleias.",
-      "concepts": [
-        "Condominium",
-        "CondoFee",
-        "CommonAreaBooking",
-        "Assembly"
-      ],
-      "specializations": [
-        [
-          "CondoFee",
-          "Receivable"
-        ],
-        [
-          "CommonAreaBooking",
-          "Booking"
-        ]
-      ],
-      "requires": [
-        "properties",
-        "receivables",
-        "scheduling"
-      ]
-    },
-    {
-      "id": "properties",
-      "name": "Imóveis",
-      "glyph": "Im",
-      "lane": "realestate",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Imóveis e unidades.",
-      "concepts": [
-        "Property",
-        "PropertyUnit"
-      ],
-      "requires": [
-        "contacts",
-        "br-core"
-      ]
-    },
-    {
-      "id": "property-sales",
-      "name": "Venda de imóveis",
-      "glyph": "Vi",
-      "lane": "realestate",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Anúncio, visita ao imóvel e proposta.",
-      "concepts": [
-        "PropertyListing",
-        "PropertyShowing",
-        "PurchaseProposal"
-      ],
-      "specializations": [
-        [
-          "PropertyShowing",
-          "Appointment"
-        ]
-      ],
-      "requires": [
-        "properties",
-        "pipeline",
-        "appointments"
-      ]
-    },
-    {
-      "id": "rentals",
-      "name": "Locação",
-      "glyph": "Lo",
-      "lane": "realestate",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Contrato de aluguel, cobrança e garantia.",
-      "concepts": [
-        "Lease",
-        "RentInvoice",
-        "LeaseGuarantee"
-      ],
-      "specializations": [
-        [
-          "RentInvoice",
-          "Receivable"
-        ]
-      ],
-      "requires": [
-        "properties",
-        "receivables",
-        "e-signature"
-      ]
-    },
-    {
-      "id": "channel-manager",
-      "name": "Canais de reserva",
-      "glyph": "Cr",
-      "lane": "hospitality",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Sincroniza preço e disponibilidade com sites de reserva.",
-      "concepts": [
-        "ChannelListing",
-        "RateSync"
-      ],
-      "requires": [
-        "hotel"
-      ],
-      "capabilities": [
-        "otaChannel"
+        "field-service"
       ]
     },
     {
       "id": "hotel",
       "name": "Hotel e pousada",
-      "glyph": "Hp",
-      "lane": "hospitality",
+      "kind": "specialization",
+      "need": "Hospedar: quartos, reservas e conta do hóspede",
+      "summary": "Quartos, hospedagem, hóspedes e conta.",
+      "area": "agenda",
+      "sectors": [
+        "hospitalidade"
+      ],
       "status": "proposed",
       "wave": 2,
-      "summary": "Quartos, hospedagem, hóspedes e conta.",
       "concepts": [
         "Room",
         "RoomStay",
@@ -2898,13 +1065,2730 @@
       ]
     },
     {
-      "id": "tours",
-      "name": "Agência de turismo",
-      "glyph": "At",
-      "lane": "hospitality",
+      "id": "inpatient",
+      "name": "Internação",
+      "kind": "module",
+      "need": "Controlar leitos e internações",
+      "summary": "Leitos, internação e evolução de enfermagem.",
+      "area": "agenda",
+      "sectors": [
+        "saude"
+      ],
       "status": "proposed",
       "wave": 3,
+      "concepts": [
+        "Admission",
+        "Bed",
+        "Ward",
+        "NursingNote"
+      ],
+      "requires": [
+        "clinic"
+      ]
+    },
+    {
+      "id": "lab",
+      "name": "Laboratório",
+      "kind": "specialization",
+      "need": "Coletar e liberar exames de laboratório",
+      "summary": "Pedido de exame, coleta e resultado.",
+      "area": "agenda",
+      "sectors": [
+        "saude"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "LabOrder",
+        "Sample",
+        "LabResult"
+      ],
+      "specializations": [
+        [
+          "LabOrder",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ]
+    },
+    {
+      "id": "nutrition",
+      "name": "Nutrição",
+      "kind": "specialization",
+      "need": "Fazer consultas com plano alimentar e medidas",
+      "summary": "Consulta, plano alimentar e medidas.",
+      "area": "agenda",
+      "sectors": [
+        "saude"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "NutritionConsult",
+        "MealPlan",
+        "BodyMeasure"
+      ],
+      "specializations": [
+        [
+          "NutritionConsult",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ]
+    },
+    {
+      "id": "online-booking",
+      "name": "Agendamento online",
+      "kind": "module",
+      "need": "Deixar o cliente marcar horário sozinho",
+      "summary": "O cliente escolhe o horário sozinho numa página pública.",
+      "area": "agenda",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "BookingPage",
+        "PublicSlot"
+      ],
+      "requires": [
+        "appointments",
+        "customer-portal"
+      ]
+    },
+    {
+      "id": "ophthalmology",
+      "name": "Oftalmologia",
+      "kind": "specialization",
+      "need": "Fazer exames de vista e receita de lentes",
+      "summary": "Exame oftalmológico e receita de lentes.",
+      "area": "agenda",
+      "sectors": [
+        "saude"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "EyeExam",
+        "LensPrescription"
+      ],
+      "specializations": [
+        [
+          "EyeExam",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ]
+    },
+    {
+      "id": "pediatrics",
+      "name": "Pediatria",
+      "kind": "specialization",
+      "need": "Acompanhar crescimento e vacinas de crianças",
+      "summary": "Consulta pediátrica, curva de crescimento e vacinas.",
+      "area": "agenda",
+      "sectors": [
+        "saude"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "PediatricAttendance",
+        "GrowthChart",
+        "VaccineRecord"
+      ],
+      "specializations": [
+        [
+          "PediatricAttendance",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic",
+        "households"
+      ]
+    },
+    {
+      "id": "personal-trainer",
+      "name": "Personal trainer",
+      "kind": "module",
+      "need": "Acompanhar alunos e avaliações físicas",
+      "summary": "Alunos do personal e avaliação física.",
+      "area": "agenda",
+      "sectors": [
+        "beleza"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "TrainingClient",
+        "Assessment"
+      ],
+      "requires": [
+        "gym"
+      ]
+    },
+    {
+      "id": "pet-hotel",
+      "name": "Hotel para pets",
+      "kind": "specialization",
+      "need": "Hospedar pets",
+      "summary": "Hospedagem de animais.",
+      "area": "agenda",
+      "sectors": [
+        "pets"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "PetStay"
+      ],
+      "specializations": [
+        [
+          "PetStay",
+          "Booking"
+        ]
+      ],
+      "requires": [
+        "pets",
+        "scheduling"
+      ]
+    },
+    {
+      "id": "physiotherapy",
+      "name": "Fisioterapia",
+      "kind": "specialization",
+      "need": "Atender sessões com plano de exercícios",
+      "summary": "Sessões e plano de exercícios.",
+      "area": "agenda",
+      "sectors": [
+        "saude"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "PhysioSession",
+        "ExercisePlan"
+      ],
+      "specializations": [
+        [
+          "PhysioSession",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ]
+    },
+    {
+      "id": "prescriptions",
+      "name": "Receituário",
+      "kind": "module",
+      "need": "Emitir receitas com assinatura digital",
+      "summary": "Receita assinada digitalmente.",
+      "area": "agenda",
+      "sectors": [
+        "saude"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "MedicalPrescription",
+        "PrescribedItem"
+      ],
+      "requires": [
+        "clinic",
+        "e-signature"
+      ]
+    },
+    {
+      "id": "psychology",
+      "name": "Psicologia",
+      "kind": "specialization",
+      "need": "Atender sessões de terapia com sigilo",
+      "summary": "Sessões de terapia e anotações sigilosas.",
+      "area": "agenda",
+      "sectors": [
+        "saude"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "TherapySession",
+        "SessionNote"
+      ],
+      "specializations": [
+        [
+          "TherapySession",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ]
+    },
+    {
+      "id": "radiology",
+      "name": "Radiologia",
+      "kind": "specialization",
+      "need": "Pedir, fazer e laudar exames de imagem",
+      "summary": "Pedido de exame de imagem, execução e laudo.",
+      "area": "agenda",
+      "sectors": [
+        "saude"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "ImagingOrder",
+        "ImagingExam",
+        "RadiologyReport"
+      ],
+      "specializations": [
+        [
+          "ImagingExam",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ]
+    },
+    {
+      "id": "repair-shop",
+      "name": "Assistência técnica",
+      "kind": "specialization",
+      "need": "Consertar aparelhos de clientes",
+      "summary": "Entrada do aparelho, conserto e devolução.",
+      "area": "agenda",
+      "sectors": [
+        "servicos"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "RepairOrder",
+        "DeviceIntake"
+      ],
+      "specializations": [
+        [
+          "RepairOrder",
+          "WorkOrder"
+        ]
+      ],
+      "requires": [
+        "field-service"
+      ]
+    },
+    {
+      "id": "scheduling",
+      "name": "Agenda",
+      "kind": "module",
+      "need": "Reservar pessoas, salas e equipamentos sem conflito",
+      "summary": "Recursos (pessoa, sala, equipamento), disponibilidade e reservas. Evita conflito de horário.",
+      "area": "agenda",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "Resource",
+        "Availability",
+        "Booking"
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "service-queues",
+      "name": "Fila de atendimento",
+      "kind": "module",
+      "need": "Chamar clientes por senha",
+      "summary": "Senha e chamada por ordem de chegada.",
+      "area": "agenda",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "ServiceQueue",
+        "QueueTicket"
+      ],
+      "requires": [
+        "appointments"
+      ]
+    },
+    {
+      "id": "spa",
+      "name": "Spa e massagem",
+      "kind": "module",
+      "need": "Vender pacotes de spa e massagem",
+      "summary": "Pacotes de spa e salas.",
+      "area": "agenda",
+      "sectors": [
+        "beleza"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "SpaPackage",
+        "TherapyRoom"
+      ],
+      "requires": [
+        "beauty-salon"
+      ]
+    },
+    {
+      "id": "studio-classes",
+      "name": "Estúdio de pilates e yoga",
+      "kind": "specialization",
+      "need": "Montar turmas pequenas com reposição de aula",
+      "summary": "Turmas pequenas com reposição de aula.",
+      "area": "agenda",
+      "sectors": [
+        "beleza"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "StudioClass"
+      ],
+      "specializations": [
+        [
+          "StudioClass",
+          "ClassSession"
+        ]
+      ],
+      "requires": [
+        "gym"
+      ]
+    },
+    {
+      "id": "telemedicine",
+      "name": "Telemedicina",
+      "kind": "specialization",
+      "need": "Atender por vídeo",
+      "summary": "Consulta por vídeo.",
+      "area": "agenda",
+      "sectors": [
+        "saude"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "TeleSession",
+        "VideoRoom"
+      ],
+      "specializations": [
+        [
+          "TeleSession",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic",
+        "video-call"
+      ]
+    },
+    {
+      "id": "vet",
+      "name": "Veterinária",
+      "kind": "specialization",
+      "need": "Atender pets, com carteira de vacinação",
+      "summary": "Atendimento veterinário e carteira de vacinação.",
+      "area": "agenda",
+      "sectors": [
+        "pets"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "VetAttendance",
+        "Vaccination"
+      ],
+      "specializations": [
+        [
+          "VetAttendance",
+          "Appointment"
+        ]
+      ],
+      "requires": [
+        "pets",
+        "appointments"
+      ]
+    },
+    {
+      "id": "campaigns",
+      "name": "Campanhas",
+      "kind": "module",
+      "need": "Enviar campanhas para um público",
+      "summary": "Campanhas para um público, por WhatsApp, SMS ou e-mail.",
+      "area": "comunicacao",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Campaign",
+        "Audience",
+        "CampaignSend"
+      ],
+      "requires": [
+        "leads",
+        "messaging"
+      ]
+    },
+    {
+      "id": "comments",
+      "name": "Comentários e menções",
+      "kind": "module",
+      "need": "Conversar sobre um registro, com @menção",
+      "summary": "Conversa por registro, com @menção que notifica.",
+      "area": "comunicacao",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Comment",
+        "Mention"
+      ],
+      "requires": [
+        "identity"
+      ]
+    },
+    {
+      "id": "public-forms",
+      "name": "Formulários públicos",
+      "kind": "module",
+      "need": "Receber dados por formulário na web",
+      "summary": "Formulário aberto na web que cria registros.",
+      "area": "comunicacao",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "PublicForm",
+        "FormSubmission"
+      ],
+      "requires": []
+    },
+    {
+      "id": "surveys",
+      "name": "Pesquisas e NPS",
+      "kind": "module",
+      "need": "Medir satisfação e NPS",
+      "summary": "Pesquisas de satisfação e NPS.",
+      "area": "comunicacao",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Survey",
+        "SurveyQuestion",
+        "SurveyResponse"
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "audit-log",
+      "name": "Auditoria",
+      "kind": "module",
+      "need": "Saber quem mudou o quê e quando",
+      "summary": "Quem mudou o quê e quando, em qualquer registro, com política de retenção.",
+      "area": "documentos",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "AuditEvent",
+        "AuditPolicy"
+      ],
+      "requires": [
+        "identity"
+      ]
+    },
+    {
+      "id": "consent-lgpd",
+      "name": "Consentimento LGPD",
+      "kind": "module",
+      "need": "Registrar consentimentos e atender pedidos da LGPD",
+      "summary": "Termos, aceite registrado por pessoa e pedidos do titular (acesso, correção, exclusão).",
+      "area": "documentos",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "ConsentTerm",
+        "ConsentGrant",
+        "DataSubjectRequest"
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "documents",
+      "name": "Documentos",
+      "kind": "module",
+      "need": "Anexar arquivos a qualquer registro, com versões",
+      "summary": "Arquivos anexados a qualquer registro, com versões e quem enviou.",
+      "area": "documentos",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "Document",
+        "DocumentVersion",
+        "Attachment"
+      ],
+      "requires": [
+        "identity"
+      ]
+    },
+    {
+      "id": "tracing",
+      "name": "Rastreamento",
+      "kind": "module",
+      "need": "Ver o que o app fez, sem expor dados sensíveis",
+      "summary": "Retenção declarativa de traces, painel de leitura e redação segura de dados sensíveis.",
+      "area": "documentos",
+      "sectors": [],
+      "status": "existing",
+      "version": "1.0.2",
+      "concepts": [
+        "TraceEntry"
+      ],
+      "requires": []
+    },
+    {
+      "id": "bom",
+      "name": "Estrutura de produto",
+      "kind": "module",
+      "need": "Definir do que cada produto é feito",
+      "summary": "Do que cada produto é feito (BOM).",
+      "area": "estoque",
+      "sectors": [
+        "industria"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "BillOfMaterials",
+        "BomLine"
+      ],
+      "requires": [
+        "catalog",
+        "inventory"
+      ]
+    },
+    {
+      "id": "delivery",
+      "name": "Delivery",
+      "kind": "module",
+      "need": "Entregar pedidos com rota e comprovante",
+      "summary": "Pedido de entrega, entregador, rota e comprovante de entrega.",
+      "area": "estoque",
+      "sectors": [
+        "alimentacao",
+        "comercio",
+        "transporte"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "DeliveryOrder",
+        "Courier",
+        "DeliveryRoute",
+        "ProofOfDelivery"
+      ],
+      "specializations": [
+        [
+          "Courier",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "shipping",
+        "person",
+        "payments"
+      ]
+    },
+    {
+      "id": "fleet",
+      "name": "Frota",
+      "kind": "module",
+      "need": "Cuidar de veículos e motoristas",
+      "summary": "Veículos, motoristas, abastecimento e manutenção.",
+      "area": "estoque",
+      "sectors": [
+        "transporte",
+        "servicos"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Vehicle",
+        "Driver",
+        "FuelLog",
+        "VehicleMaintenance"
+      ],
+      "specializations": [
+        [
+          "Driver",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "person",
+        "vehicle-plate"
+      ]
+    },
+    {
+      "id": "food-delivery",
+      "name": "Delivery de comida",
+      "kind": "specialization",
+      "need": "Entregar comida por zona de entrega",
+      "summary": "Pedido de comida com zona de entrega, ligado à cozinha.",
+      "area": "estoque",
+      "sectors": [
+        "alimentacao"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "FoodOrder",
+        "DeliveryZone"
+      ],
+      "specializations": [
+        [
+          "FoodOrder",
+          "DeliveryOrder"
+        ]
+      ],
+      "requires": [
+        "delivery",
+        "kitchen"
+      ]
+    },
+    {
+      "id": "inventory",
+      "name": "Estoque",
+      "kind": "module",
+      "need": "Saber o que tem em estoque e onde",
+      "summary": "Armazéns, posições, produtos e um razão de movimentações.",
+      "area": "estoque",
+      "sectors": [
+        "comercio",
+        "industria"
+      ],
+      "status": "existing",
+      "version": "1.0.0",
+      "concepts": [
+        "Warehouse",
+        "StorageLocation",
+        "Product",
+        "StockMovement"
+      ],
+      "requires": []
+    },
+    {
+      "id": "live-tracking",
+      "name": "Rastreio em tempo real",
+      "kind": "module",
+      "need": "Ver os veículos em tempo real",
+      "summary": "Posição dos veículos e cercas virtuais.",
+      "area": "estoque",
+      "sectors": [
+        "transporte"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "PositionPing",
+        "Geofence"
+      ],
+      "requires": [
+        "fleet"
+      ]
+    },
+    {
+      "id": "lots-serials",
+      "name": "Lotes e validade",
+      "kind": "module",
+      "need": "Rastrear lote, número de série e validade",
+      "summary": "Rastreio por lote e número de série, com alerta de validade.",
+      "area": "estoque",
+      "sectors": [
+        "comercio",
+        "industria",
+        "saude"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Lot",
+        "SerialNumber",
+        "ExpiryAlert"
+      ],
+      "requires": [
+        "inventory"
+      ]
+    },
+    {
+      "id": "pharmacy-delivery",
+      "name": "Delivery de farmácia",
+      "kind": "module",
+      "need": "Entregar remédios com receita conferida",
+      "summary": "Receita, item controlado e conferência na entrega.",
+      "area": "estoque",
+      "sectors": [
+        "saude",
+        "comercio"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "PrescriptionUpload",
+        "ControlledItem",
+        "DispenseCheck"
+      ],
+      "specializations": [
+        [
+          "ControlledItem",
+          "Product"
+        ]
+      ],
+      "requires": [
+        "delivery",
+        "catalog",
+        "documents"
+      ]
+    },
+    {
+      "id": "providers",
+      "name": "Prestadores",
+      "kind": "module",
+      "need": "Contratar prestadores com nível de serviço",
+      "summary": "Prestadores de serviço, contratos e níveis de serviço acordados.",
+      "area": "estoque",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Provider",
+        "ProviderContract",
+        "ServiceLevel"
+      ],
+      "requires": [
+        "contacts"
+      ]
+    },
+    {
+      "id": "purchasing",
+      "name": "Compras",
+      "kind": "module",
+      "need": "Comprar de fornecedores e pagar as contas",
+      "summary": "Fornecedores, itens compráveis, pedidos de compra com itens e contas a pagar.",
+      "area": "estoque",
+      "sectors": [
+        "comercio",
+        "industria"
+      ],
+      "status": "existing",
+      "version": "1.0.0",
+      "concepts": [
+        "Supplier",
+        "PurchaseItem",
+        "PurchaseOrder",
+        "PurchaseOrderLine",
+        "SupplierBill"
+      ],
+      "requires": []
+    },
+    {
+      "id": "recipe-costing",
+      "name": "Ficha técnica",
+      "kind": "module",
+      "need": "Saber quanto custa cada prato",
+      "summary": "Receita, ingredientes e custo do prato.",
+      "area": "estoque",
+      "sectors": [
+        "alimentacao"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Recipe",
+        "RecipeIngredient",
+        "PlateCost"
+      ],
+      "requires": [
+        "kitchen",
+        "inventory"
+      ]
+    },
+    {
+      "id": "requisitions",
+      "name": "Requisição de compra",
+      "kind": "specialization",
+      "need": "Pedir compras internas com aprovação",
+      "summary": "Pedido interno de compra que passa por aprovação.",
+      "area": "estoque",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Requisition",
+        "RequisitionLine"
+      ],
+      "specializations": [
+        [
+          "Requisition",
+          "ApprovalRequest"
+        ]
+      ],
+      "requires": [
+        "purchasing",
+        "approvals"
+      ]
+    },
+    {
+      "id": "ride-hailing",
+      "name": "Transporte por app",
+      "kind": "module",
+      "need": "Oferecer corridas por app",
+      "summary": "Pedido de corrida, viagem, tarifa e avaliação.",
+      "area": "estoque",
+      "sectors": [
+        "transporte"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "RideRequest",
+        "Trip",
+        "Fare",
+        "TripRating"
+      ],
+      "requires": [
+        "fleet",
+        "payments"
+      ]
+    },
+    {
+      "id": "route-planning",
+      "name": "Roteirização",
+      "kind": "module",
+      "need": "Planejar rotas de entrega",
+      "summary": "Planejamento de rotas com paradas.",
+      "area": "estoque",
+      "sectors": [
+        "transporte"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "RoutePlan",
+        "RouteStop"
+      ],
+      "requires": [
+        "fleet",
+        "shipping",
+        "maps"
+      ]
+    },
+    {
+      "id": "shipping",
+      "name": "Expedição",
+      "kind": "module",
+      "need": "Despachar remessas com manifesto de carga",
+      "summary": "Remessas, manifestos de carga e transportadoras.",
+      "area": "estoque",
+      "sectors": [
+        "comercio",
+        "transporte"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Shipment",
+        "Manifest",
+        "ManifestLine",
+        "Carrier"
+      ],
+      "requires": [
+        "inventory",
+        "contacts"
+      ]
+    },
+    {
+      "id": "storage-units",
+      "name": "Unidades de armazenagem",
+      "kind": "module",
+      "need": "Rastrear paletes e caixas",
+      "summary": "Paletes, caixas e contêineres rastreados como unidades, com seus movimentos.",
+      "area": "estoque",
+      "sectors": [
+        "comercio",
+        "industria",
+        "transporte"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "StorageUnit",
+        "UnitContent",
+        "UnitMovement"
+      ],
+      "requires": [
+        "inventory"
+      ]
+    },
+    {
+      "id": "supplier-quotes",
+      "name": "Cotação de fornecedores",
+      "kind": "module",
+      "need": "Cotar preço com vários fornecedores",
+      "summary": "Pedir preço a vários fornecedores e comparar.",
+      "area": "estoque",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "RequestForQuote",
+        "SupplierQuote"
+      ],
+      "requires": [
+        "purchasing"
+      ]
+    },
+    {
+      "id": "wms",
+      "name": "Armazém (WMS)",
+      "kind": "module",
+      "need": "Separar e guardar mercadoria no armazém",
+      "summary": "Separação em ondas, armazenagem e inventário cíclico.",
+      "area": "estoque",
+      "sectors": [
+        "comercio",
+        "transporte"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "PickWave",
+        "PickTask",
+        "PutawayTask",
+        "CycleCount"
+      ],
+      "requires": [
+        "storage-units",
+        "shipping"
+      ]
+    },
+    {
+      "id": "accounting-br",
+      "name": "Contabilidade",
+      "kind": "module",
+      "need": "Fazer a contabilidade: plano de contas e lançamentos",
+      "summary": "Plano de contas e lançamentos contábeis.",
+      "area": "financeiro",
+      "sectors": [
+        "escritorios"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "LedgerAccount",
+        "JournalEntry",
+        "JournalLine"
+      ],
+      "requires": [
+        "cash-flow",
+        "fiscal-br"
+      ]
+    },
+    {
+      "id": "bank-reconciliation",
+      "name": "Conciliação bancária",
+      "kind": "module",
+      "need": "Conferir o extrato com os lançamentos",
+      "summary": "Extrato importado casado com os lançamentos.",
+      "area": "financeiro",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "BankStatement",
+        "StatementLine",
+        "ReconciliationMatch"
+      ],
+      "requires": [
+        "cash-flow",
+        "open-finance"
+      ]
+    },
+    {
+      "id": "budgeting",
+      "name": "Orçamento empresarial",
+      "kind": "module",
+      "need": "Comparar o orçado com o realizado",
+      "summary": "Orçado contra realizado por centro de custo.",
+      "area": "financeiro",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "Budget",
+        "BudgetLine"
+      ],
+      "requires": [
+        "cost-centers"
+      ]
+    },
+    {
+      "id": "cash-flow",
+      "name": "Fluxo de caixa",
+      "kind": "module",
+      "need": "Ver o caixa de hoje e o previsto",
+      "summary": "Contas bancárias, lançamentos e previsão de caixa.",
+      "area": "financeiro",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "BankAccount",
+        "CashEntry",
+        "CashForecast"
+      ],
+      "requires": [
+        "receivables",
+        "payables"
+      ]
+    },
+    {
+      "id": "condo",
+      "name": "Condomínio",
+      "kind": "module",
+      "need": "Administrar condomínio: taxas, reservas e assembleias",
+      "summary": "Taxa condominial, reservas de áreas comuns e assembleias.",
+      "area": "financeiro",
+      "sectors": [
+        "imoveis"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Condominium",
+        "CondoFee",
+        "CommonAreaBooking",
+        "Assembly"
+      ],
+      "specializations": [
+        [
+          "CondoFee",
+          "Receivable"
+        ],
+        [
+          "CommonAreaBooking",
+          "Booking"
+        ]
+      ],
+      "requires": [
+        "properties",
+        "receivables",
+        "scheduling"
+      ]
+    },
+    {
+      "id": "cost-centers",
+      "name": "Centros de custo",
+      "kind": "module",
+      "need": "Ratear custos por centro de custo",
+      "summary": "Rateio de receitas e despesas por centro de custo.",
+      "area": "financeiro",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "CostCenter",
+        "CostAllocation"
+      ],
+      "requires": []
+    },
+    {
+      "id": "donations",
+      "name": "Doações",
+      "kind": "module",
+      "need": "Receber doações e organizar campanhas",
+      "summary": "Doadores, doações e campanhas de arrecadação.",
+      "area": "financeiro",
+      "sectors": [
+        "terceiro"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "Donor",
+        "Donation",
+        "FundraisingCampaign"
+      ],
+      "specializations": [
+        [
+          "Donor",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "person",
+        "payments"
+      ]
+    },
+    {
+      "id": "expenses",
+      "name": "Reembolso de despesas",
+      "kind": "specialization",
+      "need": "Reembolsar despesas aprovadas",
+      "summary": "Despesas do funcionário aprovadas e reembolsadas.",
+      "area": "financeiro",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "ExpenseReport",
+        "ExpenseItem"
+      ],
+      "specializations": [
+        [
+          "ExpenseReport",
+          "ApprovalRequest"
+        ]
+      ],
+      "requires": [
+        "staff",
+        "approvals"
+      ]
+    },
+    {
+      "id": "fiscal-br",
+      "name": "Nota fiscal",
+      "kind": "module",
+      "need": "Emitir NF-e e NFS-e dos seus pedidos",
+      "summary": "NF-e e NFS-e a partir de pedidos e faturas, com perfil tributário. A emissão real é uma capacidade plugável.",
+      "area": "financeiro",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "FiscalDocument",
+        "FiscalItem",
+        "TaxProfile"
+      ],
+      "requires": [
+        "sales",
+        "cpf-cnpj",
+        "nfe-issuer"
+      ]
+    },
+    {
+      "id": "measurements",
+      "name": "Medições",
+      "kind": "module",
+      "need": "Medir o que foi executado para faturar",
+      "summary": "Medição do que foi executado para faturar.",
+      "area": "financeiro",
+      "sectors": [
+        "industria"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "Measurement",
+        "MeasurementLine"
+      ],
+      "requires": [
+        "construction-works"
+      ]
+    },
+    {
+      "id": "payables",
+      "name": "Contas a pagar",
+      "kind": "module",
+      "need": "Programar o que a empresa tem a pagar",
+      "summary": "Títulos a pagar e agenda de pagamentos.",
+      "area": "financeiro",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "Payable",
+        "PaymentSchedule"
+      ],
+      "requires": [
+        "contacts"
+      ]
+    },
+    {
+      "id": "payments",
+      "name": "Pagamentos",
+      "kind": "module",
+      "need": "Receber pagamentos, inclusive por Pix, e estornar",
+      "summary": "Cobranças, meios de pagamento e estornos, com Pix nativo. O gateway real entra como capacidade plugável.",
+      "area": "financeiro",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "Payment",
+        "PaymentMethod",
+        "PixCharge",
+        "Refund"
+      ],
+      "requires": [
+        "pix-key",
+        "pix-charge"
+      ]
+    },
+    {
+      "id": "payroll-br",
+      "name": "Folha de pagamento",
+      "kind": "module",
+      "need": "Calcular a folha de pagamento",
+      "summary": "Cálculo da folha e holerites, com envio ao eSocial.",
+      "area": "financeiro",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "PayrollRun",
+        "Payslip",
+        "PayItem"
+      ],
+      "requires": [
+        "staff",
+        "cpf-cnpj",
+        "esocial"
+      ]
+    },
+    {
+      "id": "receivables",
+      "name": "Contas a receber",
+      "kind": "module",
+      "need": "Saber quem deve e cobrar",
+      "summary": "Títulos a receber, parcelas e cobrança.",
+      "area": "financeiro",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "Receivable",
+        "Installment",
+        "CollectionAttempt"
+      ],
+      "requires": [
+        "contacts",
+        "payments"
+      ]
+    },
+    {
+      "id": "rentals",
+      "name": "Locação",
+      "kind": "module",
+      "need": "Alugar imóveis e cobrar o aluguel",
+      "summary": "Contrato de aluguel, cobrança e garantia.",
+      "area": "financeiro",
+      "sectors": [
+        "imoveis"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Lease",
+        "RentInvoice",
+        "LeaseGuarantee"
+      ],
+      "specializations": [
+        [
+          "RentInvoice",
+          "Receivable"
+        ]
+      ],
+      "requires": [
+        "properties",
+        "receivables",
+        "e-signature"
+      ]
+    },
+    {
+      "id": "subscriptions",
+      "name": "Assinaturas",
+      "kind": "module",
+      "need": "Cobrar planos e assinaturas recorrentes",
+      "summary": "Planos, assinaturas e ciclos de cobrança recorrente.",
+      "area": "financeiro",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Plan",
+        "Subscription",
+        "BillingCycle"
+      ],
+      "requires": [
+        "payments",
+        "contacts"
+      ]
+    },
+    {
+      "id": "tiss-billing",
+      "name": "Faturamento TISS",
+      "kind": "module",
+      "need": "Faturar convênios no padrão TISS",
+      "summary": "Guias e lotes no padrão TISS para convênios.",
+      "area": "financeiro",
+      "sectors": [
+        "saude"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "TissGuide",
+        "TissBatch"
+      ],
+      "requires": [
+        "clinic",
+        "fiscal-br"
+      ]
+    },
+    {
+      "id": "tuition",
+      "name": "Mensalidades",
+      "kind": "specialization",
+      "need": "Cobrar mensalidades",
+      "summary": "Plano de mensalidade e cobrança.",
+      "area": "financeiro",
+      "sectors": [
+        "educacao"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "TuitionPlan",
+        "TuitionInvoice"
+      ],
+      "specializations": [
+        [
+          "TuitionInvoice",
+          "Receivable"
+        ]
+      ],
+      "requires": [
+        "school",
+        "receivables"
+      ]
+    },
+    {
+      "id": "accounting-office",
+      "name": "Escritório contábil",
+      "kind": "specialization",
+      "need": "Atender as empresas clientes do escritório contábil",
+      "summary": "Empresas clientes, obrigações do mês e pedidos de documento.",
+      "area": "operacao",
+      "sectors": [
+        "escritorios"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "ClientCompany",
+        "MonthlyObligation",
+        "DocumentRequest"
+      ],
+      "specializations": [
+        [
+          "ClientCompany",
+          "Organization"
+        ]
+      ],
+      "requires": [
+        "contacts",
+        "documents",
+        "tasks"
+      ]
+    },
+    {
+      "id": "approvals",
+      "name": "Aprovações",
+      "kind": "module",
+      "need": "Pedir e decidir aprovações",
+      "summary": "Quem tem o papel requester abre um pedido de aprovação, e o aprovador decide.",
+      "area": "operacao",
+      "sectors": [],
+      "status": "existing",
+      "version": "1.0.0",
+      "concepts": [
+        "ApprovalRequest",
+        "ApprovalDecision"
+      ],
+      "requires": []
+    },
+    {
+      "id": "assets",
+      "name": "Patrimônio",
+      "kind": "module",
+      "need": "Controlar o patrimônio da empresa",
+      "summary": "Bens da empresa, com quem estão e manutenção.",
+      "area": "operacao",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Asset",
+        "AssetAssignment",
+        "AssetMaintenance"
+      ],
+      "requires": [
+        "staff"
+      ]
+    },
+    {
+      "id": "benefits",
+      "name": "Benefícios",
+      "kind": "module",
+      "need": "Gerir planos de benefício da equipe",
+      "summary": "Planos de benefício e adesões.",
+      "area": "operacao",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "BenefitPlan",
+        "BenefitEnrollment"
+      ],
+      "requires": [
+        "staff"
+      ]
+    },
+    {
+      "id": "construction-works",
+      "name": "Obras",
+      "kind": "module",
+      "need": "Tocar obras com diário e pedido de material",
+      "summary": "Obra, etapas, pedido de material e diário de obra.",
+      "area": "operacao",
+      "sectors": [
+        "industria"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "ConstructionSite",
+        "WorkStage",
+        "MaterialRequest",
+        "DailyLog"
+      ],
+      "requires": [
+        "projects",
+        "inventory"
+      ]
+    },
+    {
+      "id": "crops",
+      "name": "Lavoura",
+      "kind": "module",
+      "need": "Registrar plantio, insumos e colheita",
+      "summary": "Plantio, aplicação de insumos e colheita.",
+      "area": "operacao",
+      "sectors": [
+        "agro"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "Planting",
+        "InputApplication",
+        "Harvest"
+      ],
+      "requires": [
+        "farm",
+        "inventory"
+      ]
+    },
+    {
+      "id": "custom-fields",
+      "name": "Campos personalizados",
+      "kind": "module",
+      "need": "Deixar o usuário criar campos extras",
+      "summary": "O usuário final cria campos extras sem regerar o app.",
+      "area": "operacao",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "CustomFieldDef",
+        "CustomFieldValue"
+      ],
+      "requires": []
+    },
+    {
+      "id": "farm",
+      "name": "Fazenda",
+      "kind": "module",
+      "need": "Cadastrar fazendas, talhões e safras",
+      "summary": "Fazendas, talhões e safras.",
+      "area": "operacao",
+      "sectors": [
+        "agro"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "Farm",
+        "FieldPlot",
+        "CropSeason"
+      ],
+      "requires": [
+        "contacts"
+      ]
+    },
+    {
+      "id": "grades",
+      "name": "Notas e frequência",
+      "kind": "module",
+      "need": "Lançar notas e frequência",
+      "summary": "Avaliações, notas e presença.",
+      "area": "operacao",
+      "sectors": [
+        "educacao"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "SchoolAssessment",
+        "Grade",
+        "AttendanceRecord"
+      ],
+      "requires": [
+        "school"
+      ]
+    },
+    {
+      "id": "law-firm",
+      "name": "Escritório de advocacia",
+      "kind": "module",
+      "need": "Acompanhar processos, prazos e audiências",
+      "summary": "Processos, audiências, prazos e horas faturáveis.",
+      "area": "operacao",
+      "sectors": [
+        "escritorios"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "LegalCase",
+        "Hearing",
+        "LegalDeadline",
+        "BillableHours"
+      ],
+      "specializations": [
+        [
+          "Hearing",
+          "Appointment"
+        ]
+      ],
+      "requires": [
+        "contacts",
+        "documents",
+        "tasks",
+        "appointments"
+      ]
+    },
+    {
+      "id": "leave",
+      "name": "Férias e ausências",
+      "kind": "module",
+      "need": "Pedir e aprovar férias e ausências",
+      "summary": "Tipos de ausência e pedidos decididos por um aprovador.",
+      "area": "operacao",
+      "sectors": [],
+      "status": "existing",
+      "version": "1.0.0",
+      "concepts": [
+        "LeaveType",
+        "LeaveRequest"
+      ],
+      "requires": [
+        "approvals"
+      ]
+    },
+    {
+      "id": "library",
+      "name": "Biblioteca",
+      "kind": "module",
+      "need": "Emprestar e reservar livros",
+      "summary": "Acervo, empréstimos e reservas.",
+      "area": "operacao",
+      "sectors": [
+        "educacao"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "Book",
+        "Loan",
+        "BookHold"
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "livestock",
+      "name": "Pecuária",
+      "kind": "module",
+      "need": "Acompanhar animais, pesagens e sanidade",
+      "summary": "Animais, lotes, pesagens e eventos sanitários.",
+      "area": "operacao",
+      "sectors": [
+        "agro"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "Animal",
+        "Herd",
+        "WeighIn",
+        "AnimalHealthEvent"
+      ],
+      "requires": [
+        "farm"
+      ]
+    },
+    {
+      "id": "mrp",
+      "name": "Planejamento MRP",
+      "kind": "module",
+      "need": "Calcular o que produzir e o que comprar",
+      "summary": "Calcula o que produzir e comprar.",
+      "area": "operacao",
+      "sectors": [
+        "industria"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "MrpRun",
+        "PlannedOrder"
+      ],
+      "requires": [
+        "production",
+        "purchasing"
+      ]
+    },
+    {
+      "id": "onboarding",
+      "name": "Admissão",
+      "kind": "module",
+      "need": "Admitir quem foi contratado",
+      "summary": "Passos e documentos para admitir quem foi contratado.",
+      "area": "operacao",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "OnboardingPlan",
+        "OnboardingTask"
+      ],
+      "requires": [
+        "recruitment",
+        "documents"
+      ]
+    },
+    {
+      "id": "performance",
+      "name": "Avaliação de desempenho",
+      "kind": "module",
+      "need": "Avaliar desempenho e acompanhar metas",
+      "summary": "Ciclos de avaliação e metas.",
+      "area": "operacao",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "ReviewCycle",
+        "PerformanceReview",
+        "Goal"
+      ],
+      "requires": [
+        "staff"
+      ]
+    },
+    {
+      "id": "plant-maintenance",
+      "name": "Manutenção industrial",
+      "kind": "module",
+      "need": "Manter as máquinas em dia",
+      "summary": "Manutenção preventiva e corretiva de máquinas.",
+      "area": "operacao",
+      "sectors": [
+        "industria"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "MaintenancePlan",
+        "MaintenanceOrder"
+      ],
+      "requires": [
+        "assets"
+      ]
+    },
+    {
+      "id": "production",
+      "name": "Ordem de produção",
+      "kind": "module",
+      "need": "Programar e apontar a produção",
+      "summary": "Ordens de produção por centro de trabalho e apontamento.",
+      "area": "operacao",
+      "sectors": [
+        "industria"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "ProductionOrder",
+        "WorkCenter",
+        "ProductionReport"
+      ],
+      "requires": [
+        "bom"
+      ]
+    },
+    {
+      "id": "projects",
+      "name": "Projetos",
+      "kind": "module",
+      "need": "Tocar projetos com marcos e horas",
+      "summary": "Projetos com marcos e apontamento de horas.",
+      "area": "operacao",
+      "sectors": [
+        "escritorios",
+        "industria"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Project",
+        "Milestone",
+        "TimeEntry"
+      ],
+      "requires": [
+        "tasks"
+      ]
+    },
+    {
+      "id": "properties",
+      "name": "Imóveis",
+      "kind": "module",
+      "need": "Cadastrar imóveis e unidades",
+      "summary": "Imóveis e unidades.",
+      "area": "operacao",
+      "sectors": [
+        "imoveis"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Property",
+        "PropertyUnit"
+      ],
+      "requires": [
+        "contacts",
+        "cep"
+      ]
+    },
+    {
+      "id": "quality",
+      "name": "Qualidade",
+      "kind": "module",
+      "need": "Tratar não conformidades e auditorias internas",
+      "summary": "Não conformidades, ações corretivas e auditorias internas.",
+      "area": "operacao",
+      "sectors": [
+        "industria"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "NonConformity",
+        "CorrectiveAction",
+        "InternalAudit"
+      ],
+      "requires": [
+        "tasks"
+      ]
+    },
+    {
+      "id": "staff",
+      "name": "Equipe",
+      "kind": "specialization",
+      "need": "Cadastrar equipe, times e turnos",
+      "summary": "Funcionários, times e turnos. Base para escalas, comissões e quem atende.",
+      "area": "operacao",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "Employee",
+        "Team",
+        "Shift"
+      ],
+      "specializations": [
+        [
+          "Employee",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "tags",
+      "name": "Etiquetas",
+      "kind": "module",
+      "need": "Etiquetar qualquer registro",
+      "summary": "Etiquetas livres aplicáveis a qualquer registro.",
+      "area": "operacao",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Tag",
+        "TagAssignment"
+      ],
+      "requires": []
+    },
+    {
+      "id": "tasks",
+      "name": "Tarefas e checklists",
+      "kind": "module",
+      "need": "Distribuir tarefas e checklists",
+      "summary": "Tarefas com responsável, prazo e checklist.",
+      "area": "operacao",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "Task",
+        "Checklist",
+        "ChecklistItem"
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "time-clock",
+      "name": "Ponto eletrônico",
+      "kind": "module",
+      "need": "Registrar ponto e horas extras",
+      "summary": "Marcação de ponto, espelho e regras de hora extra.",
+      "area": "operacao",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "ClockEntry",
+        "Timesheet",
+        "OvertimeRule"
+      ],
+      "requires": [
+        "staff"
+      ]
+    },
+    {
+      "id": "training",
+      "name": "Treinamentos",
+      "kind": "module",
+      "need": "Treinar a equipe e emitir certificados",
+      "summary": "Treinamentos internos e certificados.",
+      "area": "operacao",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "TrainingCourse",
+        "TrainingSession",
+        "TrainingCertificate"
+      ],
+      "requires": [
+        "staff"
+      ]
+    },
+    {
+      "id": "volunteers",
+      "name": "Voluntários",
+      "kind": "specialization",
+      "need": "Escalar voluntários",
+      "summary": "Voluntários e escala.",
+      "area": "operacao",
+      "sectors": [
+        "terceiro"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "Volunteer",
+        "VolunteerShift"
+      ],
+      "specializations": [
+        [
+          "Volunteer",
+          "PersonProfile"
+        ],
+        [
+          "VolunteerShift",
+          "Booking"
+        ]
+      ],
+      "requires": [
+        "person",
+        "scheduling"
+      ]
+    },
+    {
+      "id": "workspace",
+      "name": "Workspace",
+      "kind": "module",
+      "need": "Organizar os menus e as configurações do app",
+      "summary": "Menus de navegação e valores de propriedades do app.",
+      "area": "operacao",
+      "sectors": [],
+      "status": "existing",
+      "version": "1.1.0",
+      "concepts": [
+        "Menu",
+        "PropertyValue"
+      ],
+      "requires": []
+    },
+    {
+      "id": "church",
+      "name": "Igreja",
+      "kind": "specialization",
+      "need": "Cuidar de membros, ministérios e cultos",
+      "summary": "Membros, ministérios e cultos.",
+      "area": "pessoas",
+      "sectors": [
+        "terceiro"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "ChurchMember",
+        "Ministry",
+        "WorshipService"
+      ],
+      "specializations": [
+        [
+          "ChurchMember",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "donations",
+        "households",
+        "events"
+      ]
+    },
+    {
+      "id": "contacts",
+      "name": "Contatos",
+      "kind": "module",
+      "need": "Cadastrar empresas, seus contatos e endereços",
+      "summary": "Organizações (clientes, fornecedores, parceiros), as pessoas que trabalham nelas e seus endereços.",
+      "area": "pessoas",
+      "sectors": [],
+      "status": "existing",
+      "version": "1.0.0",
+      "concepts": [
+        "Organization",
+        "Contact",
+        "Address"
+      ],
+      "requires": []
+    },
+    {
+      "id": "customer-portal",
+      "name": "Portal do cliente",
+      "kind": "module",
+      "need": "Dar ao cliente uma área própria no app",
+      "summary": "Área onde o cliente final entra para ver e fazer as próprias coisas.",
+      "area": "pessoas",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "PortalAccount",
+        "PortalInvite"
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "households",
+      "name": "Família e dependentes",
+      "kind": "specialization",
+      "need": "Registrar família e dependentes",
+      "summary": "Grupo familiar e dependentes de uma pessoa.",
+      "area": "pessoas",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "Household",
+        "Dependent"
+      ],
+      "specializations": [
+        [
+          "Dependent",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "identity",
+      "name": "Identidade",
+      "kind": "module",
+      "need": "Controlar quem entra no app e o que cada um pode fazer",
+      "summary": "Usuários, papéis e suas atribuições, com sessões, MFA, identidades externas e redefinição de senha.",
+      "area": "pessoas",
+      "sectors": [],
+      "status": "existing",
+      "version": "1.4.0",
+      "concepts": [
+        "User",
+        "Role",
+        "UserRole",
+        "PasswordResetToken",
+        "UserRolePermission",
+        "ExternalIdentity",
+        "UserMfa",
+        "UserSession"
+      ],
+      "requires": []
+    },
+    {
+      "id": "multi-company",
+      "name": "Multiempresa",
+      "kind": "module",
+      "need": "Atender várias empresas e filiais no mesmo app",
+      "summary": "Várias empresas e filiais no mesmo app, com dados separados por empresa.",
+      "area": "pessoas",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "Company",
+        "Branch",
+        "CompanyUser"
+      ],
+      "requires": [
+        "identity"
+      ]
+    },
+    {
+      "id": "person",
+      "name": "Pessoa e perfis",
+      "kind": "module",
+      "need": "Ter um só cadastro de pessoa com vários papéis",
+      "summary": "Uma pessoa, vários perfis. A mesma Person pode ser paciente, cliente e entregador. Os verticais especializam PersonProfile em vez de criar outro tipo de usuário.",
+      "area": "pessoas",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "Person",
+        "PersonProfile"
+      ],
+      "requires": [
+        "identity",
+        "cpf-cnpj",
+        "phone-br"
+      ]
+    },
+    {
+      "id": "pets",
+      "name": "Cadastro de pets",
+      "kind": "module",
+      "need": "Cadastrar pets e seus tutores",
+      "summary": "Animais e seus tutores.",
+      "area": "pessoas",
+      "sectors": [
+        "pets"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Pet",
+        "Tutor"
+      ],
+      "specializations": [
+        [
+          "Tutor",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "recruitment",
+      "name": "Recrutamento",
+      "kind": "specialization",
+      "need": "Contratar: vagas, candidatos e entrevistas",
+      "summary": "Vagas, candidatos e entrevistas.",
+      "area": "pessoas",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "JobOpening",
+        "Candidate",
+        "JobApplication",
+        "Interview"
+      ],
+      "specializations": [
+        [
+          "Candidate",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "school",
+      "name": "Escola",
+      "kind": "specialization",
+      "need": "Matricular alunos em cursos e turmas",
+      "summary": "Alunos, responsáveis, cursos, turmas e matrículas.",
+      "area": "pessoas",
+      "sectors": [
+        "educacao"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Student",
+        "Guardian",
+        "Course",
+        "ClassGroup",
+        "Enrollment"
+      ],
+      "specializations": [
+        [
+          "Student",
+          "PersonProfile"
+        ],
+        [
+          "Guardian",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "person",
+        "scheduling"
+      ]
+    },
+    {
+      "id": "catalog",
+      "name": "Catálogo de produtos",
+      "kind": "module",
+      "need": "Ter um cadastro único de produtos e serviços",
+      "summary": "Cadastro mestre de produtos e serviços, com variações e categorias. Vendas, estoque e verticais apontam para ele.",
+      "area": "vendas",
+      "sectors": [
+        "comercio"
+      ],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "Product",
+        "ProductVariant",
+        "ProductCategory"
+      ],
+      "requires": []
+    },
+    {
+      "id": "catering",
+      "name": "Buffet",
+      "kind": "module",
+      "need": "Vender buffet para eventos",
+      "summary": "Buffet para eventos.",
+      "area": "vendas",
+      "sectors": [
+        "alimentacao",
+        "hospitalidade"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "CateringOrder"
+      ],
+      "requires": [
+        "kitchen",
+        "events"
+      ]
+    },
+    {
+      "id": "commissions",
+      "name": "Comissões",
+      "kind": "module",
+      "need": "Calcular a comissão de quem vende",
+      "summary": "Regras de comissão e apuração por vendedor.",
+      "area": "vendas",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "CommissionRule",
+        "CommissionEntry"
+      ],
+      "requires": [
+        "sales",
+        "staff"
+      ]
+    },
+    {
+      "id": "coupons",
+      "name": "Cupons e promoções",
+      "kind": "module",
+      "need": "Criar cupons e promoções",
+      "summary": "Cupons de desconto e promoções por período.",
+      "area": "vendas",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Coupon",
+        "Promotion"
+      ],
+      "requires": [
+        "sales"
+      ]
+    },
+    {
+      "id": "ecommerce",
+      "name": "Loja virtual",
+      "kind": "specialization",
+      "need": "Vender online com carrinho e checkout",
+      "summary": "Carrinho, checkout e pedido online.",
+      "area": "vendas",
+      "sectors": [
+        "comercio"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Cart",
+        "Checkout",
+        "OnlineOrder"
+      ],
+      "specializations": [
+        [
+          "OnlineOrder",
+          "SalesOrder"
+        ]
+      ],
+      "requires": [
+        "catalog",
+        "sales",
+        "payments",
+        "shipping"
+      ]
+    },
+    {
+      "id": "events",
+      "name": "Eventos",
+      "kind": "module",
+      "need": "Vender ingressos e controlar participantes",
+      "summary": "Evento, ingresso, participantes e local.",
+      "area": "vendas",
+      "sectors": [
+        "hospitalidade"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "Event",
+        "EventTicket",
+        "Attendee",
+        "Venue"
+      ],
+      "specializations": [
+        [
+          "Attendee",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "catalog",
+        "payments",
+        "person"
+      ]
+    },
+    {
+      "id": "kitchen",
+      "name": "Cozinha",
+      "kind": "specialization",
+      "need": "Montar o cardápio e mandar pedidos para a cozinha",
+      "summary": "Cardápio, adicionais e comanda de cozinha.",
+      "area": "vendas",
+      "sectors": [
+        "alimentacao"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "MenuItem",
+        "MenuAddon",
+        "KitchenTicket"
+      ],
+      "specializations": [
+        [
+          "MenuItem",
+          "Product"
+        ]
+      ],
+      "requires": [
+        "catalog"
+      ]
+    },
+    {
+      "id": "leads",
+      "name": "Leads",
+      "kind": "module",
+      "need": "Captar interessados e saber de onde vieram",
+      "summary": "Interessados e de onde vieram.",
+      "area": "vendas",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "Lead",
+        "LeadSource"
+      ],
+      "requires": [
+        "contacts"
+      ]
+    },
+    {
+      "id": "loyalty",
+      "name": "Fidelidade",
+      "kind": "module",
+      "need": "Dar pontos por compra e trocar por prêmios",
+      "summary": "Pontos por compra e resgate de prêmios.",
+      "area": "vendas",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "LoyaltyProgram",
+        "PointsLedger",
+        "Reward"
+      ],
+      "requires": [
+        "sales",
+        "person"
+      ]
+    },
+    {
+      "id": "marketplace",
+      "name": "Marketplace",
+      "kind": "specialization",
+      "need": "Vender produtos de vários lojistas",
+      "summary": "Vários vendedores na mesma loja, com repasse.",
+      "area": "vendas",
+      "sectors": [
+        "comercio"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "Seller",
+        "Listing",
+        "Payout"
+      ],
+      "specializations": [
+        [
+          "Seller",
+          "Organization"
+        ]
+      ],
+      "requires": [
+        "ecommerce",
+        "providers"
+      ]
+    },
+    {
+      "id": "online-courses",
+      "name": "Cursos online",
+      "kind": "module",
+      "need": "Vender cursos online e acompanhar o progresso",
+      "summary": "Módulos, aulas e progresso do aluno.",
+      "area": "vendas",
+      "sectors": [
+        "educacao"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "CourseModule",
+        "Lesson",
+        "LessonProgress"
+      ],
+      "requires": [
+        "school",
+        "payments"
+      ]
+    },
+    {
+      "id": "pipeline",
+      "name": "Funil de vendas",
+      "kind": "module",
+      "need": "Acompanhar oportunidades no funil de vendas",
+      "summary": "Oportunidades por etapa do funil.",
+      "area": "vendas",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "Opportunity",
+        "PipelineStage",
+        "SalesActivity"
+      ],
+      "requires": [
+        "leads",
+        "quotes"
+      ]
+    },
+    {
+      "id": "price-lists",
+      "name": "Listas de preço",
+      "kind": "module",
+      "need": "Ter preços diferentes por canal, cliente ou período",
+      "summary": "Várias tabelas de preço por canal, cliente ou período, com regras de desconto.",
+      "area": "vendas",
+      "sectors": [
+        "comercio"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "PriceList",
+        "PriceListEntry",
+        "DiscountRule"
+      ],
+      "requires": [
+        "sales",
+        "catalog"
+      ]
+    },
+    {
+      "id": "property-sales",
+      "name": "Venda de imóveis",
+      "kind": "module",
+      "need": "Anunciar imóveis, marcar visitas e receber propostas",
+      "summary": "Anúncio, visita ao imóvel e proposta.",
+      "area": "vendas",
+      "sectors": [
+        "imoveis"
+      ],
+      "status": "proposed",
+      "wave": 3,
+      "concepts": [
+        "PropertyListing",
+        "PropertyShowing",
+        "PurchaseProposal"
+      ],
+      "specializations": [
+        [
+          "PropertyShowing",
+          "Appointment"
+        ]
+      ],
+      "requires": [
+        "properties",
+        "pipeline",
+        "appointments"
+      ]
+    },
+    {
+      "id": "quotes",
+      "name": "Orçamentos de venda",
+      "kind": "module",
+      "need": "Enviar orçamentos que viram pedido",
+      "summary": "Orçamento que vira pedido quando o cliente aprova.",
+      "area": "vendas",
+      "sectors": [],
+      "status": "proposed",
+      "wave": 1,
+      "concepts": [
+        "Quote",
+        "QuoteLine"
+      ],
+      "requires": [
+        "sales",
+        "catalog"
+      ]
+    },
+    {
+      "id": "restaurant",
+      "name": "Restaurante",
+      "kind": "specialization",
+      "need": "Atender mesas e fechar a conta",
+      "summary": "Mesas, pedido por mesa e conta.",
+      "area": "vendas",
+      "sectors": [
+        "alimentacao"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "DiningTable",
+        "TableOrder",
+        "TableBill"
+      ],
+      "specializations": [
+        [
+          "TableOrder",
+          "SalesOrder"
+        ]
+      ],
+      "requires": [
+        "kitchen",
+        "sales",
+        "payments"
+      ]
+    },
+    {
+      "id": "retail-store",
+      "name": "Loja física",
+      "kind": "specialization",
+      "need": "Vender no balcão com caixa",
+      "summary": "Ponto de venda, caixa e venda de balcão, ligada ao estoque.",
+      "area": "vendas",
+      "sectors": [
+        "comercio"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "PointOfSale",
+        "CashRegister",
+        "StoreSale"
+      ],
+      "specializations": [
+        [
+          "StoreSale",
+          "SalesOrder"
+        ]
+      ],
+      "requires": [
+        "sales",
+        "catalog",
+        "inventory",
+        "payments"
+      ]
+    },
+    {
+      "id": "returns",
+      "name": "Trocas e devoluções",
+      "kind": "module",
+      "need": "Receber trocas e devoluções",
+      "summary": "Pedido de troca ou devolução com volta ao estoque.",
+      "area": "vendas",
+      "sectors": [
+        "comercio"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "ReturnRequest",
+        "ReturnLine"
+      ],
+      "requires": [
+        "sales",
+        "inventory"
+      ]
+    },
+    {
+      "id": "sales",
+      "name": "Vendas",
+      "kind": "module",
+      "need": "Vender: pedidos, itens e faturas",
+      "summary": "Clientes, lista de preços, pedidos de venda com itens e faturas.",
+      "area": "vendas",
+      "sectors": [
+        "comercio"
+      ],
+      "status": "existing",
+      "version": "1.0.0",
+      "concepts": [
+        "Customer",
+        "SalesItem",
+        "SalesOrder",
+        "SalesOrderLine",
+        "Invoice"
+      ],
+      "requires": []
+    },
+    {
+      "id": "service-contracts",
+      "name": "Contratos de serviço",
+      "kind": "module",
+      "need": "Vender contratos de serviço com prazo de atendimento",
+      "summary": "Contratos recorrentes com nível de serviço.",
+      "area": "vendas",
+      "sectors": [
+        "servicos"
+      ],
+      "status": "proposed",
+      "wave": 2,
+      "concepts": [
+        "ServiceContract",
+        "ServiceLevelTarget"
+      ],
+      "requires": [
+        "contacts",
+        "subscriptions"
+      ]
+    },
+    {
+      "id": "tours",
+      "name": "Agência de turismo",
+      "kind": "module",
+      "need": "Vender pacotes de viagem",
       "summary": "Pacotes, viajantes e roteiro.",
+      "area": "vendas",
+      "sectors": [
+        "hospitalidade"
+      ],
+      "status": "proposed",
+      "wave": 3,
       "concepts": [
         "TourPackage",
         "Traveler",
@@ -2927,167 +3811,514 @@
       ]
     },
     {
-      "id": "event-checkin",
-      "name": "Credenciamento",
-      "glyph": "Cr",
-      "lane": "events",
+      "id": "accounting-firm",
+      "name": "Escritório contábil",
+      "kind": "solution",
+      "need": "Um sistema pronto para escritório contábil",
+      "summary": "Combina: accounting-office, accounting-br, e-signature.",
+      "area": null,
+      "sectors": [
+        "escritorios"
+      ],
       "status": "proposed",
-      "wave": 3,
-      "summary": "Crachá e leitura de acesso na entrada.",
-      "concepts": [
-        "Badge",
-        "AccessScan"
+      "concepts": [],
+      "includes": [
+        "accounting-office",
+        "accounting-br",
+        "e-signature"
       ],
       "requires": [
-        "events"
+        "accounting-office",
+        "accounting-br",
+        "e-signature"
       ]
     },
     {
-      "id": "events",
-      "name": "Eventos",
-      "glyph": "Ev",
-      "lane": "events",
-      "status": "proposed",
-      "wave": 2,
-      "summary": "Evento, ingresso, participantes e local.",
-      "concepts": [
-        "Event",
-        "EventTicket",
-        "Attendee",
-        "Venue"
+      "id": "aesthetics-clinic",
+      "name": "Clínica de estética",
+      "kind": "solution",
+      "need": "Um sistema pronto para clínica de estética",
+      "summary": "Combina: aesthetics, online-booking, receivables.",
+      "area": null,
+      "sectors": [
+        "beleza"
       ],
-      "specializations": [
-        [
-          "Attendee",
-          "PersonProfile"
-        ]
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "aesthetics",
+        "online-booking",
+        "receivables"
       ],
       "requires": [
-        "catalog",
-        "payments",
-        "person"
+        "aesthetics",
+        "online-booking",
+        "receivables"
       ]
     },
     {
-      "id": "church",
+      "id": "back-office",
+      "name": "Gestão administrativa",
+      "kind": "solution",
+      "need": "O administrativo de qualquer empresa",
+      "summary": "Combina: cash-flow, bank-reconciliation, cost-centers, expenses, time-clock, tasks, approval-tiers.",
+      "area": null,
+      "sectors": [],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "cash-flow",
+        "bank-reconciliation",
+        "cost-centers",
+        "expenses",
+        "time-clock",
+        "tasks",
+        "approval-tiers"
+      ],
+      "requires": [
+        "cash-flow",
+        "bank-reconciliation",
+        "cost-centers",
+        "expenses",
+        "time-clock",
+        "tasks",
+        "approval-tiers"
+      ]
+    },
+    {
+      "id": "barbershop-sol",
+      "name": "Barbearia",
+      "kind": "solution",
+      "need": "Um sistema pronto para barbearia",
+      "summary": "Combina: barbershop, online-booking, commissions, messaging.",
+      "area": null,
+      "sectors": [
+        "beleza"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "barbershop",
+        "online-booking",
+        "commissions",
+        "messaging"
+      ],
+      "requires": [
+        "barbershop",
+        "online-booking",
+        "commissions",
+        "messaging"
+      ]
+    },
+    {
+      "id": "beauty-salon-sol",
+      "name": "Salão de beleza",
+      "kind": "solution",
+      "need": "Um sistema pronto para salão de beleza",
+      "summary": "Combina: beauty-salon, online-booking, commissions, messaging, loyalty, no-show-policy.",
+      "area": null,
+      "sectors": [
+        "beleza"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "beauty-salon",
+        "online-booking",
+        "commissions",
+        "messaging",
+        "loyalty",
+        "no-show-policy"
+      ],
+      "requires": [
+        "beauty-salon",
+        "online-booking",
+        "commissions",
+        "messaging",
+        "loyalty",
+        "no-show-policy"
+      ]
+    },
+    {
+      "id": "builder",
+      "name": "Construtora",
+      "kind": "solution",
+      "need": "Um sistema pronto para construtora",
+      "summary": "Combina: construction-works, measurements, purchasing, payables.",
+      "area": null,
+      "sectors": [
+        "industria"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "construction-works",
+        "measurements",
+        "purchasing",
+        "payables"
+      ],
+      "requires": [
+        "construction-works",
+        "measurements",
+        "purchasing",
+        "payables"
+      ]
+    },
+    {
+      "id": "carrier",
+      "name": "Transportadora",
+      "kind": "solution",
+      "need": "Um sistema pronto para transportadora",
+      "summary": "Combina: shipping, route-planning, live-tracking, fiscal-br.",
+      "area": null,
+      "sectors": [
+        "transporte"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "shipping",
+        "route-planning",
+        "live-tracking",
+        "fiscal-br"
+      ],
+      "requires": [
+        "shipping",
+        "route-planning",
+        "live-tracking",
+        "fiscal-br"
+      ]
+    },
+    {
+      "id": "church-sol",
       "name": "Igreja",
-      "glyph": "Ig",
-      "lane": "nonprofit",
+      "kind": "solution",
+      "need": "Um sistema pronto para igreja",
+      "summary": "Combina: church, donations, volunteers.",
+      "area": null,
+      "sectors": [
+        "terceiro"
+      ],
       "status": "proposed",
-      "wave": 3,
-      "summary": "Membros, ministérios e cultos.",
-      "concepts": [
-        "ChurchMember",
-        "Ministry",
-        "WorshipService"
-      ],
-      "specializations": [
-        [
-          "ChurchMember",
-          "PersonProfile"
-        ]
-      ],
-      "requires": [
+      "concepts": [],
+      "includes": [
+        "church",
         "donations",
-        "households",
-        "events"
-      ]
-    },
-    {
-      "id": "donations",
-      "name": "Doações",
-      "glyph": "Do",
-      "lane": "nonprofit",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Doadores, doações e campanhas de arrecadação.",
-      "concepts": [
-        "Donor",
-        "Donation",
-        "FundraisingCampaign"
-      ],
-      "specializations": [
-        [
-          "Donor",
-          "PersonProfile"
-        ]
+        "volunteers"
       ],
       "requires": [
-        "person",
-        "payments"
+        "church",
+        "donations",
+        "volunteers"
       ]
     },
     {
-      "id": "volunteers",
-      "name": "Voluntários",
-      "glyph": "Vo",
-      "lane": "nonprofit",
-      "status": "proposed",
-      "wave": 3,
-      "summary": "Voluntários e escala.",
-      "concepts": [
-        "Volunteer",
-        "VolunteerShift"
+      "id": "clinical-lab",
+      "name": "Laboratório de análises",
+      "kind": "solution",
+      "need": "Um sistema pronto para laboratório",
+      "summary": "Combina: lab, tiss-billing, lots-serials, customer-portal.",
+      "area": null,
+      "sectors": [
+        "saude"
       ],
-      "specializations": [
-        [
-          "Volunteer",
-          "PersonProfile"
-        ],
-        [
-          "VolunteerShift",
-          "Booking"
-        ]
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "lab",
+        "tiss-billing",
+        "lots-serials",
+        "customer-portal"
       ],
       "requires": [
-        "person",
-        "scheduling"
+        "lab",
+        "tiss-billing",
+        "lots-serials",
+        "customer-portal"
       ]
-    }
-  ],
-  "laneGroups": [
-    {
-      "id": "Base",
-      "name": "Base"
     },
     {
-      "id": "Gestão",
-      "name": "Gestão"
+      "id": "condo-admin",
+      "name": "Administradora de condomínios",
+      "kind": "solution",
+      "need": "Um sistema pronto para administradora de condomínios",
+      "summary": "Combina: condo, boleto, documents, messaging, late-fees.",
+      "area": null,
+      "sectors": [
+        "imoveis"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "condo",
+        "boleto",
+        "documents",
+        "messaging",
+        "late-fees"
+      ],
+      "requires": [
+        "condo",
+        "boleto",
+        "documents",
+        "messaging",
+        "late-fees"
+      ]
     },
-    {
-      "id": "Comércio",
-      "name": "Comércio"
-    },
-    {
-      "id": "Operação",
-      "name": "Operação"
-    },
-    {
-      "id": "Serviços",
-      "name": "Serviços"
-    },
-    {
-      "id": "Setores",
-      "name": "Setores"
-    }
-  ],
-  "kits": [
     {
       "id": "dental-clinic",
       "name": "Clínica odontológica",
-      "packs": [
+      "kind": "solution",
+      "need": "Um sistema pronto para clínica odontológica",
+      "summary": "Combina: dental, online-booking, receivables, messaging, fiscal-br, no-show-policy, clinical-record-retention.",
+      "area": null,
+      "sectors": [
+        "saude"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
         "dental",
         "online-booking",
         "receivables",
         "messaging",
-        "fiscal-br"
+        "fiscal-br",
+        "no-show-policy",
+        "clinical-record-retention"
+      ],
+      "requires": [
+        "dental",
+        "online-booking",
+        "receivables",
+        "messaging",
+        "fiscal-br",
+        "no-show-policy",
+        "clinical-record-retention"
+      ]
+    },
+    {
+      "id": "distributor",
+      "name": "Distribuidora",
+      "kind": "solution",
+      "need": "Um sistema pronto para distribuidora",
+      "summary": "Combina: quotes, credit-limit, purchasing, lots-serials, shipping, fiscal-br, receivables, payables, min-stock.",
+      "area": null,
+      "sectors": [
+        "comercio"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "quotes",
+        "credit-limit",
+        "purchasing",
+        "lots-serials",
+        "shipping",
+        "fiscal-br",
+        "receivables",
+        "payables",
+        "min-stock"
+      ],
+      "requires": [
+        "quotes",
+        "credit-limit",
+        "purchasing",
+        "lots-serials",
+        "shipping",
+        "fiscal-br",
+        "receivables",
+        "payables",
+        "min-stock"
+      ]
+    },
+    {
+      "id": "driving-school-sol",
+      "name": "Autoescola",
+      "kind": "solution",
+      "need": "Um sistema pronto para autoescola",
+      "summary": "Combina: driving-school, tuition.",
+      "area": null,
+      "sectors": [
+        "educacao"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "driving-school",
+        "tuition"
+      ],
+      "requires": [
+        "driving-school",
+        "tuition"
+      ]
+    },
+    {
+      "id": "event-organizer",
+      "name": "Organizadora de eventos",
+      "kind": "solution",
+      "need": "Um sistema pronto para organizar eventos",
+      "summary": "Combina: events, event-checkin, catering, campaigns.",
+      "area": null,
+      "sectors": [
+        "hospitalidade"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "events",
+        "event-checkin",
+        "catering",
+        "campaigns"
+      ],
+      "requires": [
+        "events",
+        "event-checkin",
+        "catering",
+        "campaigns"
+      ]
+    },
+    {
+      "id": "farm-sol",
+      "name": "Fazenda",
+      "kind": "solution",
+      "need": "Um sistema pronto para fazenda",
+      "summary": "Combina: crops, livestock, cost-centers, payables.",
+      "area": null,
+      "sectors": [
+        "agro"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "crops",
+        "livestock",
+        "cost-centers",
+        "payables"
+      ],
+      "requires": [
+        "crops",
+        "livestock",
+        "cost-centers",
+        "payables"
+      ]
+    },
+    {
+      "id": "field-service-sol",
+      "name": "Serviços em campo",
+      "kind": "solution",
+      "need": "Um sistema pronto para empresa de serviços em campo",
+      "summary": "Combina: field-service, service-contracts, fleet, receivables.",
+      "area": null,
+      "sectors": [
+        "servicos"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "field-service",
+        "service-contracts",
+        "fleet",
+        "receivables"
+      ],
+      "requires": [
+        "field-service",
+        "service-contracts",
+        "fleet",
+        "receivables"
+      ]
+    },
+    {
+      "id": "gym-sol",
+      "name": "Academia",
+      "kind": "solution",
+      "need": "Um sistema pronto para academia",
+      "summary": "Combina: gym, studio-classes, receivables, messaging.",
+      "area": null,
+      "sectors": [
+        "beleza"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "gym",
+        "studio-classes",
+        "receivables",
+        "messaging"
+      ],
+      "requires": [
+        "gym",
+        "studio-classes",
+        "receivables",
+        "messaging"
+      ]
+    },
+    {
+      "id": "inn",
+      "name": "Pousada",
+      "kind": "solution",
+      "need": "Um sistema pronto para pousada",
+      "summary": "Combina: hotel, channel-manager, messaging.",
+      "area": null,
+      "sectors": [
+        "hospitalidade"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "hotel",
+        "channel-manager",
+        "messaging"
+      ],
+      "requires": [
+        "hotel",
+        "channel-manager",
+        "messaging"
+      ]
+    },
+    {
+      "id": "law-office",
+      "name": "Escritório de advocacia",
+      "kind": "solution",
+      "need": "Um sistema pronto para escritório de advocacia",
+      "summary": "Combina: law-firm, e-signature, receivables.",
+      "area": null,
+      "sectors": [
+        "escritorios"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "law-firm",
+        "e-signature",
+        "receivables"
+      ],
+      "requires": [
+        "law-firm",
+        "e-signature",
+        "receivables"
       ]
     },
     {
       "id": "multi-clinic",
       "name": "Clínica multiprofissional",
-      "packs": [
-        "clinic",
+      "kind": "solution",
+      "need": "Um sistema pronto para clínica com várias especialidades",
+      "summary": "Combina: psychology, physiotherapy, nutrition, telemedicine, online-booking, receivables, tiss-billing.",
+      "area": null,
+      "sectors": [
+        "saude"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "psychology",
+        "physiotherapy",
+        "nutrition",
+        "telemedicine",
+        "online-booking",
+        "receivables",
+        "tiss-billing"
+      ],
+      "requires": [
         "psychology",
         "physiotherapy",
         "nutrition",
@@ -3098,21 +4329,171 @@
       ]
     },
     {
-      "id": "salon",
-      "name": "Salão e barbearia",
-      "packs": [
-        "beauty-salon",
-        "barbershop",
-        "online-booking",
-        "commissions",
-        "messaging",
-        "loyalty"
+      "id": "ngo",
+      "name": "ONG",
+      "kind": "solution",
+      "need": "Um sistema pronto para ONG",
+      "summary": "Combina: donations, volunteers, campaigns.",
+      "area": null,
+      "sectors": [
+        "terceiro"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "donations",
+        "volunteers",
+        "campaigns"
+      ],
+      "requires": [
+        "donations",
+        "volunteers",
+        "campaigns"
       ]
     },
     {
-      "id": "restaurant-delivery",
+      "id": "online-school",
+      "name": "Escola online",
+      "kind": "solution",
+      "need": "Um sistema pronto para vender cursos online",
+      "summary": "Combina: online-courses, coupons, campaigns.",
+      "area": null,
+      "sectors": [
+        "educacao"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "online-courses",
+        "coupons",
+        "campaigns"
+      ],
+      "requires": [
+        "online-courses",
+        "coupons",
+        "campaigns"
+      ]
+    },
+    {
+      "id": "pet-shop",
+      "name": "Pet shop e veterinária",
+      "kind": "solution",
+      "need": "Um sistema pronto para pet shop com veterinária",
+      "summary": "Combina: vet, grooming, retail-store, online-booking.",
+      "area": null,
+      "sectors": [
+        "pets"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "vet",
+        "grooming",
+        "retail-store",
+        "online-booking"
+      ],
+      "requires": [
+        "vet",
+        "grooming",
+        "retail-store",
+        "online-booking"
+      ]
+    },
+    {
+      "id": "psychology-office",
+      "name": "Consultório de psicologia",
+      "kind": "solution",
+      "need": "Um sistema pronto para consultório de psicologia",
+      "summary": "Combina: psychology, online-booking, telemedicine, receivables.",
+      "area": null,
+      "sectors": [
+        "saude"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "psychology",
+        "online-booking",
+        "telemedicine",
+        "receivables"
+      ],
+      "requires": [
+        "psychology",
+        "online-booking",
+        "telemedicine",
+        "receivables"
+      ]
+    },
+    {
+      "id": "realty",
+      "name": "Imobiliária",
+      "kind": "solution",
+      "need": "Um sistema pronto para imobiliária",
+      "summary": "Combina: rentals, property-sales, boleto, late-fees.",
+      "area": null,
+      "sectors": [
+        "imoveis"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "rentals",
+        "property-sales",
+        "boleto",
+        "late-fees"
+      ],
+      "requires": [
+        "rentals",
+        "property-sales",
+        "boleto",
+        "late-fees"
+      ]
+    },
+    {
+      "id": "repair-shop-sol",
+      "name": "Assistência técnica",
+      "kind": "solution",
+      "need": "Um sistema pronto para assistência técnica",
+      "summary": "Combina: repair-shop, quotes, receivables, messaging.",
+      "area": null,
+      "sectors": [
+        "servicos"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "repair-shop",
+        "quotes",
+        "receivables",
+        "messaging"
+      ],
+      "requires": [
+        "repair-shop",
+        "quotes",
+        "receivables",
+        "messaging"
+      ]
+    },
+    {
+      "id": "restaurant-sol",
       "name": "Restaurante com delivery",
-      "packs": [
+      "kind": "solution",
+      "need": "Um sistema pronto para restaurante com entrega",
+      "summary": "Combina: restaurant, food-delivery, recipe-costing, fiscal-br, coupons.",
+      "area": null,
+      "sectors": [
+        "alimentacao"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "restaurant",
+        "food-delivery",
+        "recipe-costing",
+        "fiscal-br",
+        "coupons"
+      ],
+      "requires": [
         "restaurant",
         "food-delivery",
         "recipe-costing",
@@ -3121,9 +4502,26 @@
       ]
     },
     {
-      "id": "retail",
+      "id": "retail-sol",
       "name": "Loja física e virtual",
-      "packs": [
+      "kind": "solution",
+      "need": "Um sistema pronto para loja com venda no balcão e online",
+      "summary": "Combina: retail-store, ecommerce, fiscal-br, loyalty, returns, coupons.",
+      "area": null,
+      "sectors": [
+        "comercio"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "retail-store",
+        "ecommerce",
+        "fiscal-br",
+        "loyalty",
+        "returns",
+        "coupons"
+      ],
+      "requires": [
         "retail-store",
         "ecommerce",
         "fiscal-br",
@@ -3133,93 +4531,84 @@
       ]
     },
     {
-      "id": "distributor",
-      "name": "Distribuidora",
-      "packs": [
-        "sales",
-        "quotes",
-        "purchasing",
-        "inventory",
-        "lots-serials",
-        "shipping",
-        "fiscal-br",
-        "receivables",
-        "payables"
+      "id": "ride-app",
+      "name": "App de corridas",
+      "kind": "solution",
+      "need": "Um sistema pronto para app de corridas",
+      "summary": "Combina: ride-hailing, live-tracking, card-charge.",
+      "area": null,
+      "sectors": [
+        "transporte"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
+        "ride-hailing",
+        "live-tracking",
+        "card-charge"
+      ],
+      "requires": [
+        "ride-hailing",
+        "live-tracking",
+        "card-charge"
       ]
     },
     {
-      "id": "school",
+      "id": "school-sol",
       "name": "Escola",
-      "packs": [
+      "kind": "solution",
+      "need": "Um sistema pronto para escola",
+      "summary": "Combina: school, grades, tuition, messaging, customer-portal, late-fees.",
+      "area": null,
+      "sectors": [
+        "educacao"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
         "school",
         "grades",
         "tuition",
         "messaging",
-        "customer-portal"
+        "customer-portal",
+        "late-fees"
+      ],
+      "requires": [
+        "school",
+        "grades",
+        "tuition",
+        "messaging",
+        "customer-portal",
+        "late-fees"
       ]
     },
     {
-      "id": "condo-admin",
-      "name": "Administradora de condomínios",
-      "packs": [
-        "condo",
-        "boleto",
-        "documents",
-        "messaging"
-      ]
-    },
-    {
-      "id": "gym",
-      "name": "Academia",
-      "packs": [
-        "gym",
-        "studio-classes",
-        "receivables",
-        "messaging"
-      ]
-    },
-    {
-      "id": "field-service",
-      "name": "Serviços em campo",
-      "packs": [
-        "field-service",
-        "service-contracts",
-        "fleet",
-        "receivables"
-      ]
-    },
-    {
-      "id": "pet",
-      "name": "Pet shop e veterinária",
-      "packs": [
-        "vet",
-        "grooming",
-        "retail-store",
-        "online-booking"
-      ]
-    },
-    {
-      "id": "factory",
+      "id": "small-factory",
       "name": "Pequena indústria",
-      "packs": [
+      "kind": "solution",
+      "need": "Um sistema pronto para pequena indústria",
+      "summary": "Combina: production, mrp, sales, fiscal-br, lots-serials, quality.",
+      "area": null,
+      "sectors": [
+        "industria"
+      ],
+      "status": "proposed",
+      "concepts": [],
+      "includes": [
         "production",
         "mrp",
         "sales",
         "fiscal-br",
         "lots-serials",
         "quality"
-      ]
-    },
-    {
-      "id": "back-office",
-      "name": "Gestão administrativa",
-      "packs": [
-        "cash-flow",
-        "bank-reconciliation",
-        "cost-centers",
-        "expenses",
-        "time-clock",
-        "tasks"
+      ],
+      "requires": [
+        "production",
+        "mrp",
+        "sales",
+        "fiscal-br",
+        "lots-serials",
+        "quality"
       ]
     }
   ]
