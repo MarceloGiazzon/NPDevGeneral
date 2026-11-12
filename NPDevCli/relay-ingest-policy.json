@@ -34,7 +34,7 @@
         "allowed": [
           "model.json", "npdev-submission.json", "npdev-elements.json", "npdev-config-proposal.json",
           "fragments/*.json", "contexts/*.json", "themes/*.json",
-          "web/*.html", "web/*.css", "web/*.svg"
+          "web/*.html", "web/*.css", "web/*.svg", "pages.json"
         ],
         "quarantine": ["capabilities/*", "conversion-hooks/*", "web/*.js", "web/*.mjs"]
       },
@@ -70,6 +70,33 @@
     "\\son[a-z]+\\s*=",
     "javascript:"
   ],
+  "markupScan": {
+    "_comment": "Which kinds of non-JSON file are scanned for code before they are accepted. A match QUARANTINES the file (reason `<kind>-has-script`): it is code, however it is named. htmlScriptPatterns above is the list for html AND svg (an svg is XML a browser runs scripts in: <script>, onload=, javascript: hrefs); cssScriptPatterns is for css (legacy script hooks). .svg was not scanned before 2026-11-12 -- a script in an svg would have walked past the JS quarantine.",
+    "html": [".html", ".htm"],
+    "svg": [".svg"],
+    "css": [".css"],
+    "cssScriptPatterns": [
+      "javascript:",
+      "expression\\s*\\(",
+      "-moz-binding",
+      "\\bbehavior\\s*:"
+    ]
+  },
+  "pages": {
+    "_comment": "F4/T4.3b (npdev_relay_pages.py reads ONLY this section). Hand-made pages are web/*.html|css|svg beside model.json, mounted into the app's static folder at generation; pages.json ([{path,label,requiredRole?,ordinal?}], path relative to web/) gives a page its menu entry (CompanionPagesMenuEmitter). reservedFiles / reservedDirectories are the names FinalAppAssembler.requireNoReservedWebAssetCollision refuses (twin-pair rule web-asset-reserved-names-two-place): a web/ file with one of them FAILS GENERATION of the whole app, so the relay says so first. externalReferencePatterns find a page that fetches from another site (the app serves no CSP for its own pages): a warning, never a refusal. maxLabelChars bounds a menu label.",
+    "reservedFiles": [
+      "shell.js", "shell.css", "npdev-review.js", "npdev-xlsx.js", "npdev-expr.js", "info.html", "info.json",
+      "model-surface.html", "model-authoring.html", "npdev-theme.js", "npdev-a11y.css", "npdev-display.js"
+    ],
+    "reservedDirectories": ["npdev-business-ui", "npdev-workbench", "themes"],
+    "globalCssFiles": ["theme.css"],
+    "externalReferencePatterns": [
+      { "id": "attribute-url", "regex": "\\b(?:src|href|action|data|poster|srcset)\\s*=\\s*[\"']?\\s*(?:https?:)?//([^/\"'\\s>)]+)" },
+      { "id": "css-url", "regex": "url\\(\\s*[\"']?\\s*(?:https?:)?//([^/\"'\\s)]+)" },
+      { "id": "css-import", "regex": "@import\\s+[\"']?\\s*(?:https?:)?//([^/\"'\\s;)]+)" }
+    ],
+    "maxLabelChars": 80
+  },
   "elisionPatterns": [
     { "id": "ellipsis-line", "regex": "^[ \\t]*(\\.\\.\\.|\u2026)[ \\t]*,?[ \\t]*$" },
     { "id": "elision-comment", "regex": "(^|[,\\[{(])[ \\t]*(//|/\\*)[^\\n]*?(\\.\\.\\.|\u2026|\\brest\\b|remaining|unchanged|same as|as before|\\bother\\b|existing|\\bkeep\\b|omitted|truncated|\\bresto\\b|restante|demais|igual|inalterad|mantid|outros|outras|existentes|anterior|omitid)" },

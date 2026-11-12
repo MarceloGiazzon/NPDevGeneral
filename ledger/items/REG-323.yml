@@ -18,6 +18,7 @@ files:
   - NPDevCli/npdev_relay_themes.py
   - NPDevCli/npdev_theme_validate.py
   - NPDevCli/npdev_config_defaults.py
+  - NPDevCli/npdev_relay_pages.py
   - NPDevCli/npdev_relay_config.py
   - NPDevCli/relay-config-allowlist.json
   - NPDevCli/npdev_relay_prompts.py
@@ -93,9 +94,7 @@ detail: |
   answer (model.json identical) is a change, not "nothing changed" (proved against the real Gradle gate). WHICH theme the app uses is
   config.json defaults ui.theme.name, which no chat can write: an unselected theme is saved with a `theme-not-selected` warning
   naming the setting, and `theme-added` / `theme-replaced` info findings say what happens. NOT done: (a) selecting the theme -- DONE
-  by T4.5b right below; (b) pages `web/*.html|css|svg`: NO caller of `npdev generate app` mounts <app>/web by
-  convention (R10 made --web-assets explicit-only; only Build-NpdevApp.ps1 passes it), the page also needs a pages.json entry to
-  reach the menu, and `themes/` is a reserved directory name of web assets -- so T4.3b is a mount decision first; (c) seed data
+  by T4.5b right below; (b) pages `web/*.html|css|svg` -- DONE by T4.3b right below; (c) seed data
   (`seeds/*.json`, staged by the CLI from the model folder, not in the f4 allowlist) and translations (`settings.strings` already
   travels inside model.json: nothing to apply). The Manager never passes phase f4.
   2026-11-12 T4.5b LANDED (the first allowlisted knobs, with the apply step, the owner's tick and undo): `npdev config set-default`
@@ -112,6 +111,25 @@ detail: |
   selecting a theme counts as the theme being selected (no `theme-not-selected`). The Portuguese preview sentence is not
   translated (preview text is English-only, T2.2b). NOT done: the Manager tick (the Manager never passes phase f4); other knobs
   (each needs its own entry, type and test); `ui.theme.mode`/`ui.density` are config defaults too and could get entries the same way.
+  2026-11-12 T4.3b LANDED (hand-made pages): `web/*.html|css|svg` and `pages.json` are applied and undone like a fragment after
+  npdev_relay_pages.check -- a web file named like a platform file (FinalAppAssembler's RESERVED_WEB_ASSET_FILES / _DIRECTORIES, which
+  FAIL GENERATION of the whole app; the names are in relay-ingest-policy.json `pages` and pinned by twin-pair rule
+  web-asset-reserved-names-two-place) is sent back naming the rule; a pages.json entry whose page was not sent is an error; a new
+  page nobody links, a role the model does not declare, a page that loads from another site and a web/theme.css (restyles every
+  screen) are warnings. pages.json is MERGED by path with the app's file at apply time (`pages_mod.prepare`, against the disk NOW; the
+  AI usually sends only its new entry; the existing entries and any keys they carry are kept; an unreadable existing file stops the
+  apply before any write: `pages-write-refused`). `web/orders.html` in an entry's path and a missing label are understood. A
+  page-only answer is a change (`_files_changed`). CODE is still never accepted: ingest quarantined html with <script>/on*=/javascript:
+  already, but an .svg was NOT scanned (a script in it walked past the JS quarantine) -- now `markupScan` covers svg and css
+  (`expression(`, `-moz-binding`, `behavior:`, `javascript:`), reason `<kind>-has-script`. MOUNT: no caller mounted <app>/web by
+  convention -- `generate app` only with --web-assets, and `_generate_phase_captured` (what `npdev dev` and `run` use, i.e. the
+  Manager's way) never -- so `resolve_web_assets_root` now mounts `<model folder>/web` when the flag is absent in BOTH paths (a
+  mistyped flag is still an error; the five NPDevSamples web folders were checked for reserved-name collisions: none). PROVED on a
+  real `generate app` of a relay-made app (create + page + pages.json + theme + confirmed ui.theme.name): static/orders.html is in the
+  app, workspace-menu-pages-seed.json has the PAGE entry, themes/index.json default is the chosen theme. NOT done: removing a page or
+  a menu entry from a chat (nothing deletes files yet); watching web/, themes/ and pages.json in `npdev dev` (a relay apply rewrites
+  model.json last, so it rebuilds anyway, but a hand edit of a page does not); `menu.json` (groups and nesting) is not in the allowlist;
+  seed data (`seeds/*.json`) is not either; running JS is T4.4. The Manager never passes phase f4.
   Suggested order (each its own commit, each behind phase f4): T4.2 element upsert (DONE above), T4.1 fragments (DONE, incl. composer),
   T4.5 config proposals (DONE, allowlist empty by finding), T4.3 themes/pages/seed/translations, T4.4 code quarantine (with the owner).
 resolution: >-

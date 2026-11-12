@@ -3,7 +3,7 @@ accepted, written all-or-nothing with the model and taken back by undo.
 
 Why it matters: the generator's ThemeEmitter FAILS GENERATION of the whole app on one bad theme file, so a theme that slips
 through turns a chat answer into an app that no longer builds. The first half tests the check on its own (stdlib, no app,
-no Java); the second half drives whole answers through ingest -> apply -> undo with the Java validator real and the
+no Java); the second half drives whole answers through ingest -> apply -> undo with the Java validator and the
 authoring gate stubbed (as test_relay_files does), plus one run against the real gate.
 
 Which theme the app USES is `ui.theme.name` / `ui.theme.choices` in config.json's `defaults` -- never in model.json -- and

@@ -47,6 +47,23 @@ release. Ships in the next tag.
   which the AI already changes through `model.json` -- the one exception, found later with T4.3, is the app's theme choice
   (`ui.theme.name` / `ui.theme.choices`, a `config.json` default); a knob needs an existing CLI command that writes it before it
   earns an entry.
+- **A browser-AI answer can carry hand-made pages, and a `web/` folder beside the model is now mounted without a flag** (REG-323,
+  T4.3b) -- with `--phase f4` an answer may carry `web/*.html|css|svg` and a `pages.json` (`[{path, label, requiredRole?,
+  ordinal?}]`, `path` relative to `web/`). They are written with the model all or nothing and undone with it. The generator
+  fails generation of the WHOLE app when a web file has a name the platform ships (`shell.js`, `info.html`, anything under
+  `themes/` ...), so that is said first, naming the rule; the names live in `relay-ingest-policy.json` and are pinned to
+  `FinalAppAssembler` by a twin-pair rule. `pages.json` is MERGED by path with the one in the app when the owner applies (an AI
+  that sends only the page it adds does not delete the other menu entries); `web/orders.html` in an entry's path, a missing label
+  and the same page twice are understood; an entry whose page was not sent, a role the model does not declare and a new page
+  nobody links are told (error / warning / warning). A page that loads from another site, or a `web/theme.css` that restyles every
+  screen, is a warning. An answer that only adds a page is a change, not "nothing changed". **A script is still never accepted:**
+  `<script>`, `on*=` handlers and `javascript:` in html were quarantined before; an `.svg` was NOT scanned at all (a script in it
+  would have walked past the JS quarantine) and now is, and css gets its legacy script hooks (`expression(`, `-moz-binding`,
+  `behavior:`, `javascript:`) checked too. To make pages reachable, `npdev dev`, `run` and `generate app` now mount `<model
+  folder>/web` when `--web-assets` is absent (before, `npdev dev` -- how the Manager runs an app -- mounted nothing, and
+  `generate app` only with the flag); a mistyped `--web-assets` is still an error. Proved on a real generation: a relay-made app's
+  `orders.html` is in the static folder, its menu seed has the "Orders overview" entry, and the theme the owner confirmed is the
+  generated default. The Manager never passes phase f4.
 - **`npdev config set-default`, and the first settings a browser AI may change -- with the owner's tick** (REG-323, T4.5b) --
   `npdev config set-default --app <folder> --key ui.theme.name --value sunny` writes one flat key of `config.json`'s `defaults`
   (the only way before was editing the file by hand); everything else in the file is kept. With `--phase f4` an answer's

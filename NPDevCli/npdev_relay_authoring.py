@@ -708,14 +708,15 @@ def _is_empty_diff(diff: dict) -> bool:
 
 
 def _files_changed(model_path, extra_files, config_offers) -> bool:
-    """True when the answer changes something besides the model's content: a theme file the app does not have yet or with
-    different content (REG-323 T4.3), or a config setting whose value would differ from what config.json says now
+    """True when the answer changes something besides the model's content: a theme file or a web page the app does not
+    have yet or with different content (REG-323 T4.3), a pages.json entry that is new, or a config setting whose value would differ from what config.json says now
     (T4.5b, `config_offers` = [(setting id, value)]). A theme-only or setting-only answer leaves the model identical and
     is still a change."""
+    import npdev_relay_pages as pages_mod
     import npdev_relay_themes as themes_mod
 
     root = Path(model_path).parent
-    if themes_mod.changed(root, extra_files):
+    if themes_mod.changed(root, extra_files) or pages_mod.changed(root, extra_files):
         return True
     if not config_offers:
         return False

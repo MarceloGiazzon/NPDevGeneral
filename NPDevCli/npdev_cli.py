@@ -2599,6 +2599,19 @@ def _emit_static_pages(repo_root_path: Path, final_app_out: Path, config_path: P
         print(f"npdev: emitted {label}", file=sys.stderr)
 
 
+def resolve_web_assets_root(explicit, model) -> Path | None:
+    """The folder of hand-written screens (html/css/svg) the generator mounts into the app's static folder: the one named
+    by `--web-assets`, else a `web/` folder beside the model, else None (nothing is mounted). CliError when the named
+    folder does not exist -- a typo must not silently build an app without its pages."""
+    if explicit:
+        path = Path(explicit).expanduser().resolve()
+        if not path.is_dir():
+            raise CliError(f"--web-assets not found or not a directory: {path}")
+        return path
+    beside = Path(model).expanduser().resolve().parent / "web"
+    return beside if beside.is_dir() else None
+
+
 def stage_seeds_into_final_app(definition_dir: Path, final_app_out: Path) -> int:
     """WMS-12 follow-up 3: `definition/seeds/*.json` -> the final app's
     `src/main/resources/npdev-seed/data-seeds/` classpath folder, with an index.json manifest --
@@ -2705,17 +2718,14 @@ def run_generate(args: argparse.Namespace) -> None:
             "--clean",
             "--cleanFinalApp",
         ]
-        # R10 (EXT-1, "custom-screen mount"): explicit-only, no filesystem-convention guessing --
-        # same discipline as every other path flag above. Absent means no mount, unchanged
-        # behavior (the FinalAppAssembler.Options.webAssetsRoot() default). Gives `npdev generate
-        # app` the identical mount Build-NpdevApp.ps1's apps/<App>/web convention already has,
-        # instead of that PowerShell script being the only caller with the capability at all.
-        web_assets = getattr(args, "web_assets", None)
-        if web_assets:
-            web_assets_path = Path(web_assets).expanduser().resolve()
-            if not web_assets_path.is_dir():
-                raise CliError(f"--web-assets not found or not a directory: {web_assets_path}")
-            generator_args += ["--webAssetsRoot", str(web_assets_path)]
+        # R10 (EXT-1, "custom-screen mount"): `--web-assets` names the folder of hand-written screens.
+        # Since REG-323 T4.3b a `web/` folder BESIDE the model is mounted too when the flag is absent
+        # (resolve_web_assets_root): the browser-AI relay writes pages there, and `npdev dev` -- the way
+        # the Manager runs an app -- has no flag to carry. Gives `npdev generate app` the identical mount
+        # Build-NpdevApp.ps1's apps/<App>/web convention already has.
+        web_root = resolve_web_assets_root(getattr(args, "web_assets", None), model)
+        if web_root is not None:
+            generator_args += ["--webAssetsRoot", str(web_root)]
         args_str = " ".join(f'"{item}"' if " " in item else item for item in generator_args)
         command = [str(wrapper), *gradle_project_cache_args("generator"), ":generator:run",
                    "--no-daemon", "--console=plain", f"--args={args_str}"]
@@ -3227,6 +3237,12 @@ def _generate_phase_captured(
             "--clean",
             "--cleanFinalApp",
         ]
+        try:
+            web_root = resolve_web_assets_root(getattr(args, "web_assets", None), model)
+        except CliError as exc:
+            return False, str(exc)
+        if web_root is not None:   # the same mount `generate app` has: `npdev dev` and `run` carry pages too
+            generator_args += ["--webAssetsRoot", str(web_root)]
         args_str = " ".join(f'"{item}"' if " " in item else item for item in generator_args)
         command = [str(wrapper), *gradle_project_cache_args("generator"), ":generator:run",
                    "--no-daemon", "--console=plain", f"--args={args_str}"]
@@ -17878,8 +17894,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="R10 (EXT-1, 'custom-screen mount'): optional directory of hand-written screens "
              "(HTML/CSS/JS) to mount into the generated app's src/main/resources/static, served "
              "same-origin with no CORS. Same mechanism Build-NpdevApp.ps1's apps/<App>/web "
-             "convention uses (FinalAppAssembler.mountWebAssets via --webAssetsRoot) -- omit for "
-             "the previous, unchanged behavior.",
+             "convention uses (FinalAppAssembler.mountWebAssets via --webAssetsRoot). Omit it and a "
+             "`web/` folder beside the model is mounted if there is one (REG-323 T4.3b: `npdev dev` and "
+             "`run` have no flag); with neither, nothing is mounted.",
     )
 
     run = subparsers.add_parser(

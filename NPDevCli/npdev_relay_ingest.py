@@ -73,6 +73,10 @@ def load_policy(path: Path | None = None) -> dict:
     policy["_limit"] = [re.compile(p, flags) for p in policy["limitPatterns"]]
     policy["_link"] = [(p["id"], p["strength"], re.compile(p["regex"], flags)) for p in policy["fileLinkPatterns"]]
     policy["_html_script"] = [re.compile(p, flags) for p in policy["htmlScriptPatterns"]]
+    scan = policy.get("markupScan") or {}
+    policy["_css_script"] = [re.compile(p, flags) for p in scan.get("cssScriptPatterns", [])]
+    policy["_markup_kinds"] = [(kind, tuple(scan.get(kind, [])), policy["_html_script"] if kind != "css" else policy["_css_script"])
+                               for kind in ("html", "svg", "css")]
     policy["_echo_start"] = re.compile(policy["promptEcho"]["startRegex"], flags)
     policy["_echo_end"] = re.compile(policy["promptEcho"]["endRegex"], flags)
     return policy
@@ -527,9 +531,11 @@ def ingest_text(raw: str, *, session: str, expected_round: int, policy: dict, ph
     rejected = 0
     for name, entry in files.items():
         path, status, reason = check_path(name, policy, phase)
-        if status != "denied" and path.endswith((".html", ".htm")) and any(
-                rx.search(entry["content"]) for rx in policy["_html_script"]):
-            status, reason = "quarantine", "html-has-script"
+        if status != "denied":
+            for kind, suffixes, patterns in policy["_markup_kinds"]:
+                if suffixes and path.lower().endswith(suffixes) and any(rx.search(entry["content"]) for rx in patterns):
+                    status, reason = "quarantine", f"{kind}-has-script"   # code, however it is named (html -> html-has-script)
+                    break
         out = {"path": path, "status": status, "reason": reason, "kind": entry["kind"],
                "labelSource": entry["labelSource"], "fenced": entry["fenced"], "repairs": entry["repairs"],
                "bytes": len(entry["content"].encode("utf-8")), "sha256": _sha(entry["content"])}

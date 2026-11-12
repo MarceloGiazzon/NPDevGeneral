@@ -891,6 +891,34 @@
       "NPDevManager/src/themes.rs",
       "NPDevCli/npdev_theme_validate.py"
     ]
+  },
+  {
+    "id": "web-asset-reserved-names-two-place",
+    "citedBy": "REG-323",
+    "description": "The names a web/ file may NOT have are declared in TWO places: the generator's FinalAppAssembler (RESERVED_WEB_ASSET_FILES / RESERVED_WEB_ASSET_DIRECTORIES), which FAILS GENERATION of the whole app on a collision, and the browser-AI relay's relay-ingest-policy.json (`pages.reservedFiles` / `reservedDirectories`), which tells the AI so before a page is accepted. A name added to the Java list and not to the policy turns a chat answer into an app that no longer builds. Quoted so each name must appear as a string literal.",
+    "kind": "field-in-all-files",
+    "trackedFields": [
+      "\"shell.js\"",
+      "\"shell.css\"",
+      "\"npdev-review.js\"",
+      "\"npdev-xlsx.js\"",
+      "\"npdev-expr.js\"",
+      "\"info.html\"",
+      "\"info.json\"",
+      "\"model-surface.html\"",
+      "\"model-authoring.html\"",
+      "\"npdev-theme.js\"",
+      "\"npdev-a11y.css\"",
+      "\"npdev-display.js\"",
+      "\"npdev-business-ui\"",
+      "\"npdev-workbench\"",
+      "\"themes\""
+    ],
+    "caseSensitive": true,
+    "files": [
+      "NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java",
+      "NPDevCli/relay-ingest-policy.json"
+    ]
   }
 ]
 }

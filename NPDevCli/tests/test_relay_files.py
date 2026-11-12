@@ -174,7 +174,7 @@ class TransactionTests(unittest.TestCase):
 
 
 class AnswerFilesTests(unittest.TestCase):
-    def test_fragments_contexts_and_themes_are_applicable_and_everything_else_is_named(self):
+    def test_fragments_contexts_themes_and_pages_are_applicable_and_everything_else_is_named(self):
         result = {"files": [
             {"path": "themes/dark.json", "status": "allowed", "content": "{}"},
             {"path": "model.json", "status": "allowed", "content": "{}"},
@@ -183,12 +183,15 @@ class AnswerFilesTests(unittest.TestCase):
             {"path": "contexts/b.json", "status": "allowed", "content": "{\"b\":1}"},
             {"path": "web/page.html", "status": "allowed", "content": "<p>"},
             {"path": "web/more.css", "status": "allowed", "content": "p{}"},
+            {"path": "pages.json", "status": "allowed", "content": "[]"},
+            {"path": "menu.json", "status": "allowed", "content": "{}"},
             {"path": "capabilities/X.java", "status": "quarantine", "content": "class X {}"},
             {"path": "secrets/key", "status": "denied"},
         ]}
         supported, unsupported = files.answer_files(result)
-        self.assertEqual(supported, {"fragments/a.json": "{\"a\":1}", "contexts/b.json": "{\"b\":1}", "themes/dark.json": "{}"})
-        self.assertEqual(unsupported, ["web/more.css", "web/page.html"])
+        self.assertEqual(supported, {"fragments/a.json": "{\"a\":1}", "contexts/b.json": "{\"b\":1}", "themes/dark.json": "{}",
+                                     "web/page.html": "<p>", "web/more.css": "p{}", "pages.json": "[]"})
+        self.assertEqual(unsupported, ["menu.json"])
 
 
 class ComposeTests(unittest.TestCase):
@@ -339,7 +342,9 @@ class SplitChangeTests(SplitAnswerCase):
         before = snapshot(app)
         code = self.start(app)
         extra = {"web/page.html": "<p>hi</p>"}
-        result = engine.ingest(code, self.answer_split(code, with_phone(json.loads(SEED_MODEL)), extra=extra), source="paste")
+        # every kind the policy allows is applicable today: shrink what apply can write to prove the guard still holds
+        with mock.patch.object(files, "SUPPORTED", ("fragments/*.json", "contexts/*.json", "themes/*.json")):
+            result = engine.ingest(code, self.answer_split(code, with_phone(json.loads(SEED_MODEL)), extra=extra), source="paste")
         self.assertEqual(result["outcome"], "NEEDS_FIX")
         self.assertIn("web/page.html", " ".join(result["errorLines"]))
         self.assertEqual(snapshot(app), before)
@@ -354,7 +359,8 @@ class SplitChangeTests(SplitAnswerCase):
         data = json.loads(stored.read_text(encoding="utf-8"))
         data["files"].append({"path": "web/page.html", "status": "allowed", "content": "<p>"})
         stored.write_text(json.dumps(data), encoding="utf-8")
-        refused = apply_mod.apply_round(session, None, [])
+        with mock.patch.object(files, "SUPPORTED", ("fragments/*.json", "contexts/*.json", "themes/*.json")):
+            refused = apply_mod.apply_round(session, None, [])
         self.assertEqual((refused["ok"], refused["error"], refused["paths"]), (False, "files-not-supported", ["web/page.html"]))
         self.assertEqual(snapshot(app), before)
 

@@ -616,6 +616,8 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
         return
     if not _check_themes(session, result, fixed):  # T4.3: the generator refuses a bad theme for the WHOLE app
         return
+    if not _check_pages(session, result, fixed):   # T4.3b: ... and a web file named like a platform file
+        return
     try:
         model_path = _validation_model_path(session, number, result, entry, fixed)
     except files_mod.PackError as exc:  # P2: the answer imports packs NPDev cannot resolve (offline, unknown, unsigned)
@@ -662,6 +664,28 @@ def _config_context(session: dict, result: dict) -> dict:
     base = authoring.resolve_model_path(session.get("appDir")) if session.get("intent") != "create" else None
     paths = [f["path"] for f in result["files"] if f.get("status") == "allowed" and themes_mod.is_theme_path(f.get("path"))]
     return {"themes": themes_mod.known_ids(base.parent if base else None, paths)}
+
+
+def _check_pages(session: dict, result: dict, model: dict) -> bool:
+    """T4.3b: the answer's web/* files and pages.json get the generator's rules BEFORE anything is accepted (a web file with a
+    platform name fails every generation of the app) and the menu entries are checked against the pages. False when the
+    answer needs a fix."""
+    import npdev_relay_authoring as authoring
+    import npdev_relay_files as files_mod
+    import npdev_relay_pages as pages_mod
+
+    extra, _ = files_mod.answer_files(result)
+    sent = {path: text for path, text in extra.items() if pages_mod.is_page_file(path)}
+    if not sent:
+        return True
+    base = authoring.resolve_model_path(session.get("appDir")) if session.get("intent") != "create" else None
+    checked = pages_mod.check(sent, model, base.parent if base else None)
+    result["findings"].extend(checked["findings"])
+    if checked["errors"]:
+        result["outcome"] = "NEEDS_FIX"
+        result["errorLines"] = checked["errors"]
+        return False
+    return True
 
 
 def _sort_config_proposal(session: dict, result: dict) -> None:

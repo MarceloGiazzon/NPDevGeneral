@@ -21,8 +21,9 @@ writer, goes through the same all-or-nothing transaction and backup, and undo pu
 the owner did not confirm is simply not applied (it stays a suggestion); the result says which was which.
 
 Nothing is written unless every check passes; every write is atomic. Code files an answer carried (quarantine)
-and kinds of file this phase cannot apply yet (pages, element upserts) are never written: the answer is
-refused by name instead of applied in part. Stdlib only; the pipeline's own modules do the checking.
+and kinds of file this phase cannot apply yet are never written: the answer is refused by name instead of applied in
+part. Web pages (REG-323 T4.3b) are written like fragments; a pages.json is MERGED by path with the one in the app at
+that moment (the AI usually sends only the entries it adds), never replaced. Stdlib only; the pipeline's own modules do the checking.
 """
 from __future__ import annotations
 
@@ -41,6 +42,7 @@ from pathlib import Path
 import npdev_relay_authoring as authoring
 import npdev_relay_engine as engine
 import npdev_relay_files as files
+import npdev_relay_pages as pages_mod
 import npdev_relay_session as rs
 
 BACKUP_NAME = "model.before.json"
@@ -247,6 +249,10 @@ def _apply_files(session: dict, number: int, entry: dict, model_path: Path, cand
     except ConfigWriteError as exc:
         return _refuse("config-write-refused", detail=str(exc))
     try:
+        extra = pages_mod.prepare(root, extra)   # pages.json is MERGED with the one on disk now, never replaced
+    except ValueError as exc:
+        return _refuse("pages-write-refused", detail=str(exc))
+    try:
         ops = files.plan(root, [(rel, extra[rel].encode("utf-8")) for rel in sorted(extra)]
                          + ([config_op] if config_op else []) + [(model_path.name, candidate_bytes)])
     except files.TreeError as exc:
@@ -375,6 +381,11 @@ def _apply_create(session: dict, number: int, entry: dict, model_text: str, pare
     except ConfigWriteError as exc:
         _abandon()
         return _refuse("config-write-refused", detail=str(exc))
+    try:
+        extra = pages_mod.prepare(target_path, extra)
+    except ValueError as exc:
+        _abandon()
+        return _refuse("pages-write-refused", detail=str(exc))
     try:
         ops = files.plan(target_path, [(rel, extra[rel].encode("utf-8")) for rel in sorted(extra)]
                          + ([config_op] if config_op else []) + [("model.json", model_text.encode("utf-8"))])
