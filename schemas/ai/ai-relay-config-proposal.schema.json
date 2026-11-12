@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.dev/schemas/ai/ai-relay-config-proposal.schema.json",
+  "title": "NPDev browser-AI relay: configuration proposal (npdev-config-proposal.json)",
+  "description": "D-9 / plan 4.9 / F4. The AI never sends config.json; it PROPOSES property changes. Each change is applied only if 'property' has an entry in NPDevCli/relay-config-allowlist.json, its value passes that entry's type/values, and the user leaves its preview line ticked. The writer is the CLI, never a file paste. Anything else is shown as 'the AI suggested changing X; you can do that in Settings'.",
+  "type": "object",
+  "required": ["changes"],
+  "additionalProperties": false,
+  "properties": {
+    "changes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["property", "value"],
+        "additionalProperties": false,
+        "properties": {
+          "property": { "type": "string", "minLength": 1 },
+          "value": {},
+          "why": { "type": "string", "maxLength": 300 }
+        }
+      }
+    }
+  }
+}

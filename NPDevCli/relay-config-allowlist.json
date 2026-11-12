@@ -1,0 +1,26 @@
+{
+  "_comment": "REG-323 T4.5 / plan D-9. A browser AI never sends config.json (the ingest policy denies it); it may PROPOSE property changes in npdev-config-proposal.json, and npdev_relay_config.py sorts each one. `entries` is EMPTY ON PURPOSE (finding of 2026-11-12, see `located`): config.schema.json holds nothing a person would ask a chat AI to change, and every user-facing knob that was imagined (language, date format, currency, page size, time zone) lives in model.json, which the AI already changes through model.json. A knob gets an entry only if it lives OUTSIDE model.json AND an existing CLI command writes it (`writer`, registered in npdev_relay_config.WRITERS): no writer, no knob. Until then every proposal is shown as 'you can do that in Settings' and never applied.",
+  "schemaVersion": "npdev-relay-config-allowlist.v1",
+  "entries": [],
+  "entryShape": {
+    "property": "dotted path in config.json, e.g. console.mode",
+    "type": "string | enum | boolean | integer",
+    "values": "for enum: the allowed values; for integer: {\"min\": n, \"max\": n}",
+    "preview": "one English sentence with {value}",
+    "writer": "the name of a function registered in npdev_relay_config.WRITERS that calls an existing CLI command (never a raw file write)"
+  },
+  "located": [
+    { "idea": "default UI language", "where": "model.json", "how": "settings.locale (informational tag) and settings.strings (the text that is actually overridden)" },
+    { "idea": "date format", "where": "model.json", "how": "settings.ui.dateFormat" },
+    { "idea": "rows per page", "where": "model.json", "how": "settings.ui.pageRows" },
+    { "idea": "currency", "where": "model.json", "how": "presentationMetadata.currency on the field or concept that shows money" },
+    { "idea": "default theme", "where": "model.json / themes", "how": "guidePage.theme for guide pages; an app-wide theme is a themes/*.json file (T4.3), not a config.json knob" },
+    { "idea": "time zone", "where": "model.json", "how": "no built-in setting: declare a properties[] entry so the scoped-property cascade carries it" },
+    { "idea": "app display name", "where": "nowhere separate", "how": "scenario.name is the app's IDENTITY (it names the output folder), so it is never changed from a chat" }
+  ],
+  "neverAllowed": [
+    "database.*", "scenario.name", "artifact.*", "finalExec.*", "externalAi.*",
+    "runtime.serverPort", "runtime.javaArgs", "trialDefaults.apiKey",
+    "port", "*.port", "*password*", "*secret*", "*token*", "*apikey*", "*api_key*", "*credential*", "*egress*", "*auth*", "*identity*"
+  ]
+}

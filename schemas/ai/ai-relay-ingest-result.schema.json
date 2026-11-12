@@ -62,6 +62,23 @@
     "prose": { "type": "string", "description": "The AI's words outside the files. DISPLAY AS PLAIN TEXT ONLY (textContent), never as HTML, links not clickable." },
     "validation": { "type": "object", "description": "READY/NEEDS_FIX only: the npdev-validation-report.v2 of the composed model." },
     "desirePathFixes": { "type": "array", "description": "READY/NEEDS_FIX only: what `normalize desire-paths` rewrote." },
+    "configProposals": {
+      "type": "array",
+      "description": "Phase f4 (REG-323 T4.5): what the AI suggested about settings in npdev-config-proposal.json, one item per change. NOTHING in it is ever written to the app. `suggestion` = 'you can do that in Settings'; `refused` = a property NPDev never changes from a chat (its value is not echoed); `applicable` is reserved for the first allowlisted knob and does not occur while relay-config-allowlist.json has no entries.",
+      "items": {
+        "type": "object",
+        "required": ["property", "status", "reason", "preview"],
+        "additionalProperties": false,
+        "properties": {
+          "property": { "type": "string" },
+          "status": { "enum": ["suggestion", "refused", "applicable"] },
+          "reason": { "enum": ["not-a-chat-setting", "never-from-a-chat", "value-not-allowed", "no-writer", "allowlisted"] },
+          "why": { "type": ["string", "null"], "maxLength": 300 },
+          "valueText": { "type": ["string", "null"], "maxLength": 80 },
+          "preview": { "type": "string" }
+        }
+      }
+    },
     "preview": {
       "type": "object",
       "description": "READY only: the plain-language preview the Manager shows (plan 2, step 4). Built from the diff-gate report and the compiled model, never by the UI.",

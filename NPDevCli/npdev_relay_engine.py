@@ -587,6 +587,7 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
 
             result["preview"] = preview_pt.localize_preview(result["preview"], session.get("language"))
         return
+    _sort_config_proposal(result)  # T4.5: what the AI suggested about settings is shown, never written
     if not _expand_elements(session, number, result):  # T4.2: an element-upsert answer becomes an ordinary model.json
         return
     entry = next((f for f in result["files"] if f["path"] == "model.json" and f["status"] == "allowed"), None)
@@ -629,6 +630,29 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
         result["errorLines"] = validation_lines(report)
         return
     finish_ready(session, number, result, entry)
+
+
+def _sort_config_proposal(result: dict) -> None:
+    """T4.5: the answer's npdev-config-proposal.json (phase f4) becomes `result["configProposals"]`, one item per change:
+    `suggestion` (you can do that in Settings) or `refused` (never from a chat). NOTHING is written to the app for it, and a
+    malformed proposal never blocks the model it came with (a warning finding, the rest of the answer goes on)."""
+    import npdev_relay_config as config_mod
+
+    found = next((f for f in result["files"] if f["path"] == "npdev-config-proposal.json" and f["status"] == "allowed"), None)
+    if found is None:
+        return
+    try:
+        proposal = json.loads(found["content"])
+    except ValueError:
+        proposal = None
+    sorted_ = config_mod.evaluate(proposal)
+    for line in sorted_["errors"]:
+        result["findings"].append({"code": "config-proposal-ignored", "severity": "warning", "detail": {"why": line}})
+    if sorted_["items"]:
+        result["configProposals"] = sorted_["items"]
+        for item in sorted_["items"]:
+            result["findings"].append({"code": "config-not-applied", "severity": "info",
+                                       "detail": {"property": item["property"], "status": item["status"], "reason": item["reason"]}})
 
 
 def _put_file(result: dict, path: str, text: str) -> None:

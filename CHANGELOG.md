@@ -39,6 +39,12 @@ release. Ships in the next tag.
   rename with or without the new content, a removal of something already gone, an element that shrank to under half (warned: an AI that
   thinks upsert merges). An element kept in a fragment file, or a base that moved since the AI was shown it, is refused with the way
   out and never guessed. Removing a concept still needs the owner's confirmation. The Manager never passes phase f4.
+- **A browser AI's suggestions about settings are shown, never applied** (REG-323, T4.5) -- with `--phase f4` an answer may carry
+  `npdev-config-proposal.json`. Each change is sorted into "you can do that in Settings" or "refused" (database, ports, secrets,
+  identity, egress and the app's own name are never changed from a chat; the value is not echoed back), and `relay ingest` returns
+  them as `configProposals`; nothing is written to the app. The allowlist of knobs the relay could apply is EMPTY by finding: every
+  setting a person would ask for (language, date format, rows per page, currency, guide theme, time zone) lives in `model.json`,
+  which the AI already changes through `model.json`; a knob needs an existing CLI command that writes it before it earns an entry.
 - **A phase-f4 prompt now tells the AI what to send back** (REG-323, T4.1 composer + T4.2 choice) -- `relay start` returns `answerMode`:
   `files` for an app made of several files (every fragment and context is shown as it is, with how to return the changed ones; the size
   rule uses the largest single file), `upsert` for one file above 60% of the answer budget (ask for `npdev-elements.json` instead of
