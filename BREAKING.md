@@ -6,6 +6,10 @@ one-line entry here, in the same commit that makes the change. While NPDev has n
 (owner, 2026-11-12) a change ships without an `npdev migrate` codemod; this repo's own models are
 migrated directly in the same commit. Earlier entries name the codemods written before that.
 
+## 2026-11-12 — approvals 1.2.0: a request filed through the flow records who filed it
+
+**What changes.** The `RequestApproval` flow now saves the request through a new procedure `FileApprovalRequest` (one `saveConcept` as the caller) instead of a `createConcept` step, so `ApprovalRequest.requestedBy` is the filing login from the moment the row exists. In 1.1.0 it stayed empty while the request was pending, because a flow's own `createConcept` step does not fill a `$user.id` default (REG-337; measured on the new `NPDevSamples/dom-approvals` sample). **Who is affected.** Only apps that read `requestedBy` of a pending request; no model change is needed.
+
 ## 2026-11-12 — helpdesk and leave 1.2.0: a requester or employee sees only their own records
 
 **What changes.** `helpdesk::Ticket` reads, and the requester role's writes, are scoped to `requesterId == $user.id`; `leave::LeaveRequest` reads, and the employee role's writes, are scoped to `employeeId == $user.id`. ADMIN, `helpdeskManager`, `helpdeskAgent`, `leaveApprover` and `hrAdmin` see every row as before, and grouped queries over both concepts are scoped to the caller's rows. The rules are written without parentheses on purpose: the engine only pushes a flat `||`/`&&` read rule into SQL. The `RequestLeave` flow now files the request through a new procedure `FileLeaveRequest`, because a flow's own `createConcept` step does not fill a `$user.id` default (REG-337).

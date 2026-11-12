@@ -1,20 +1,26 @@
 {
-  "closedAt": "2026-11-12T00:14:13.8515027Z",
+  "closedAt": "2026-11-12T05:41:36.7429485Z",
   "branch": "main",
-  "head": "7b81654b",
-  "headSubject": "feat(ride-hailing): run-ride-hailing.ps1 -KeepRunning leaves the app and mocks up for browser/API poking; Enter stops them",
-  "summary": "Built the validation service from the owner's plan (validation_service.py REST + page + stateless MCP allowlist, npdev validator CLI, Start-ValidatorTunnel.ps1, docs/card/REG-335, MCP coverage floor 67.59 to 77.42), proved the loop with a real free-tier LLM through the MCP endpoint, researched spikes S1/S2, added -KeepRunning to run-ride-hailing.ps1, and gave the owner test instructions for both recent plans.",
-  "nextStep": "Owner: winget install --id Cloudflare.cloudflared, then pwsh -NoProfile -File D:\\WorkSpace\\NPDev\\NPDev_General\\scripts\\ai\\Start-ValidatorTunnel.ps1, add the printed URL as a custom connector (Claude.ai Free: No sign-in; or Le Chat) and run the B8 script in D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\VALIDATION_SERVICE_PLAN_2026-11-11\\ACCEPTANCE-RESULTS.md, recording the result there; then decide MCP default diagnostics 20 vs 50 (MCP_DEFAULT_MAX_DIAGNOSTICS in NPDevMcp/validation_service.py) and whether to build the Manager card (phase C). Also open from the previous plan: a real chat-AI pack round and the owner's first publish (REG-334).",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\VALIDATION_SERVICE_PLAN_2026-11-11\\PLAN.md",
-  "blocked": "Owner only: B8/A5 real online-AI acceptance, real cloudflared run (S3), S4/S5; REG-334 real chat-AI pack round and first publish. Pre-existing red, not mine: scripts/quality/check-doc-references.py (docs/content/authoring-for-ai.json cites capabilities/surge/capability.plugin.json, which does not exist; the policy frozenCount may only shrink).",
-  "verified": "Ran: NPDevMcp.tests.test_validation_service (52) + NPDevCli.tests.test_validator_command (4) green 3x; full NPDevMcp discover 127 OK under coverage; run-portable-tooling-check, run-script-inventory-check, check-executable-line-endings, build_knowledge --validate-only, check-coverage-ratchet (NPDevMcp 77.42) all green; real-Chrome page check 3/3 (impl/browser_check.py); real gemini-3.6-flash loop through the MCP endpoint, 2 cases passed in 1 round each; tunnel script with a fake cloudflared. NOT run to completion: the aiKnowledge gate (started, stopped by request at step 10/39, no failure seen); weeklyPaperwork not run (owner said not now); run-all-gates not run; run-ride-hailing.ps1 -KeepRunning only parse-checked, never executed; no third-party MCP client run; no real chat AI or browser agent run.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "head": "816ead73",
+  "headSubject": "feat(packs)!: helpdesk and leave 1.2.0 -- a requester or employee sees only their own records",
+  "summary": "Verified REG-337 on approvals: new NPDevSamples/dom-approvals sample + probe showed requestedBy null for every request filed through RequestApproval (1.1.0). Fixed in approvals 1.2.0 with a FileApprovalRequest saveConcept procedure (leave pattern); catalog, BREAKING.md, PACK_DESIGN, REG-337 and the dsl-conformance-max pack copy updated. Probe now 26/26.",
+  "nextStep": "First, after 14:05 UTC on 2026-11-12 run: git fetch --prune && git branch -r (only origin/main = Dependabot fix confirmed; if dependabot branches are back, bundle them to D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\branch-archive then git push origin --delete each). Then fix REG-337 at the root: make a flow createConcept step apply a field's $user / now() defaultExpression like a REST create (kernel flow createConcept + concept gateway; see D:\\WorkSpace\\NPDev\\NPDev_General\\ledger\\items\\REG-337.yml), then drop the FileLeaveRequest / FileApprovalRequest workarounds and leave's '|| employeeId == null' write branch with D:\\WorkSpace\\NPDev\\NPDev_General\\NPDevSamples\\dom-leave\\probe\\leave_probe.py and D:\\WorkSpace\\NPDev\\NPDev_General\\NPDevSamples\\dom-approvals\\probe\\approvals_probe.py still green.",
+  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_SINGLE_OWNER_2026-11-12\\PLAN.md",
+  "blocked": "Dependabot verification waits for the Thursday 14:04 UTC run. Packs from the browser AI come from the owner separate chat; when one arrives run D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_AUTHORING_BROWSER_AI_2026-11-12\\validate_pack.py on it, then a sample with probe.",
+  "verified": "dom-approvals probe 26/26 on a generated, built, booted app with wiped DB (run with D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_SINGLE_OWNER_2026-11-12\\run-dom-probe.ps1); dsl-conformance-max 20-flow behaviour probes 28/28 (incl. both RequestApproval probes); gradlew :NPDevContract:dsl:test --tests *Pack* executed uncached, green; validate-corpus 80/80; pack-shared-not-forked, pack-coordinates-pinned, pack-coverage, pack-catalog --check, doc-inventory, no-markdown-reads, markdown-links, record-surfaces, done-item-guards (--no-baseline-ok) OK. NOT run: run-all-gates (owner said later). Open on approvals: a requester can name another person as requestedBy through the flow (stored as given; audit-integrity gap, no read exposure) - noted in REG-337.",
+  "dirtyCount": 10,
+  "dirtyFiles": [
+    " M BREAKING.md",
+    " M NPDevContract/pack-catalog/pack-catalog.json",
+    " M NPDevContract/packs/approvals/pack.json",
+    " M NPDevSamples/dsl-conformance-max/Input/packs/approvals/pack.json",
+    " M docs/PACK_DESIGN.md",
+    " M ledger/items/REG-337.yml",
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl",
+    " M scripts/quality/corpus-roles.json",
+    "?? NPDevSamples/dom-approvals/"
+  ],
   "unpushed": 0,
-  "landedCommits": [
-    "7b81654b feat(ride-hailing): run-ride-hailing.ps1 -KeepRunning leaves the app and mocks up for browser/API poking; Enter stops them",
-    "f48c4e4c ledger: REG-335 stand-in evidence -- a real free-tier LLM closes the validate loop through the MCP endpoint",
-    "9a9ca63a chore(coverage): NPDevMcp floor 67.59 -> 77.42 (validation service tests)",
-    "446419bb ledger: session handoff 2026-11-11 (validation service built)"
-  ]
+  "landedCommits": []
 }

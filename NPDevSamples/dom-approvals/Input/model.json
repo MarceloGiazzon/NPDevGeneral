@@ -1,0 +1,69 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.domapprovals",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "A consumer of the built-in approvals pack. Binds its two logical roles to REQUESTER and APPROVER and grants them the pack's concepts; probe/approvals_probe.py files requests through the RequestApproval flow, decides them from My tasks and checks who is recorded as the requester (REG-337), the decision rows and the lifecycle."
+  },
+  "packs": [
+    {
+      "$ref": "packs/approvals/pack.json",
+      "as": "approvals"
+    }
+  ],
+  "provides": {
+    "roleBindings": {
+      "requester": "REQUESTER",
+      "approver": "APPROVER"
+    }
+  },
+  "roles": [
+    {
+      "name": "APPROVER",
+      "concepts": {
+        "approvals::ApprovalRequest": [
+          "read"
+        ],
+        "approvals::ApprovalDecision": [
+          "read"
+        ]
+      },
+      "grants": [
+        "READ_EXECUTIONS"
+      ]
+    },
+    {
+      "name": "REQUESTER",
+      "concepts": {
+        "approvals::ApprovalRequest": [
+          "read",
+          "create"
+        ]
+      },
+      "grants": [
+        "EXECUTE_FLOW"
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save",
+        "findById"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    },
+    {
+      "capability": "eventBus",
+      "adapter": "inproc"
+    }
+  ]
+}
