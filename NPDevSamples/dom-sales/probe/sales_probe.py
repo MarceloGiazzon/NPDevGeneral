@@ -71,28 +71,40 @@ def rows(query, key, value):
     return [x for x in ((r or {}).get("rows", []) if isinstance(r, dict) else []) if x.get(key) == value]
 
 
-cust = make("mgr", P + "customers", {"code": "C" + R, "name": "Acme " + R, "creditLimit": 1000, "active": True})
-i1 = make("mgr", P + "sales_items", {"sku": "I1" + R, "description": "Ten", "unitPrice": 10, "active": True})
-i2 = make("mgr", P + "sales_items", {"sku": "I2" + R, "description": "Twenty", "unitPrice": 20, "active": True})
+# Since sales 2.0.0 the organization lives in the contacts pack and the product in the products pack;
+# a customer and a price-list item are satellites that point back at them.
+org = make("mgr", "/api/contacts_organizations", {"name": "Acme " + R, "kind": "CUSTOMER", "active": True})
+org2 = make("mgr", "/api/contacts_organizations", {"name": "Other " + R, "kind": "CUSTOMER", "active": True})
+p1 = make("mgr", "/api/products_products", {"sku": "I1" + R, "name": "Ten", "kind": "GOOD", "unit": "UNIT", "active": True})
+p2 = make("mgr", "/api/products_products", {"sku": "I2" + R, "name": "Twenty", "kind": "GOOD", "unit": "UNIT", "active": True})
+p3 = make("mgr", "/api/products_products", {"sku": "I3" + R, "name": "Spare", "kind": "GOOD", "unit": "UNIT", "active": True})
+cust = make("mgr", P + "customers", {"code": "C" + R, "organizationId": org.get("id"), "creditLimit": 1000, "active": True})
+i1 = make("mgr", P + "sales_items", {"productId": p1.get("id"), "unitPrice": 10, "active": True})
+i2 = make("mgr", P + "sales_items", {"productId": p2.get("id"), "unitPrice": 20, "active": True})
 cid = cust.get("id")
+check("the customer points at its organization", cust.get("organizationId") == org.get("id"), cust)
+s, body = call("rep", "GET", "/api/contacts_organizations/" + str(org.get("id")))
+check("a rep can read the customer's organization", s == 200, s)
 
 # roles
-refused("a rep cannot create a customer", "rep", P + "customers", {"code": "X" + R, "name": "x", "active": True}, (401, 403))
+refused("a rep cannot create a customer", "rep", P + "customers", {"code": "X" + R, "organizationId": org2.get("id"), "active": True}, (401, 403))
 refused("an accountant cannot create an order", "acct", P + "sales_orders", {"orderNumber": "A" + R, "customerId": cid}, (401, 403))
-refused("a negative credit limit is refused", "mgr", P + "customers", {"code": "N" + R, "name": "n", "creditLimit": -1, "active": True})
-refused("a negative price is refused", "mgr", P + "sales_items", {"sku": "N" + R, "description": "n", "unitPrice": -1, "active": True})
-refused("a duplicate customer code is refused", "mgr", P + "customers", {"code": "C" + R, "name": "dup", "active": True}, (409, 422))
+refused("a negative credit limit is refused", "mgr", P + "customers", {"code": "N" + R, "organizationId": org2.get("id"), "creditLimit": -1, "active": True})
+refused("a negative price is refused", "mgr", P + "sales_items", {"productId": p3.get("id"), "unitPrice": -1, "active": True})
+refused("a duplicate customer code is refused", "mgr", P + "customers", {"code": "C" + R, "organizationId": org2.get("id"), "active": True}, (409, 422))
+refused("an organization has at most one customer record", "mgr", P + "customers", {"code": "D" + R, "organizationId": org.get("id"), "active": True}, (409, 422))
+refused("a customer for a missing organization is refused", "mgr", P + "customers", {"code": "M" + R, "organizationId": str(uuid.uuid4()), "active": True}, (404, 409, 422))
 
 # order and lines
 o1 = make("rep", P + "sales_orders", {"orderNumber": "SO1" + R, "customerId": cid})
 check("a new order starts as DRAFT", o1.get("status") == "DRAFT", o1.get("status"))
 oid = o1.get("id")
-l1 = make("rep", P + "sales_order_lines", {"orderId": oid, "itemId": i1.get("id"), "quantity": 3, "unitPrice": 10})
-l2 = make("rep", P + "sales_order_lines", {"orderId": oid, "itemId": i2.get("id"), "quantity": 2, "unitPrice": 20})
+l1 = make("rep", P + "sales_order_lines", {"orderId": oid, "productId": p1.get("id"), "quantity": 3, "unitPrice": 10})
+l2 = make("rep", P + "sales_order_lines", {"orderId": oid, "productId": p2.get("id"), "quantity": 2, "unitPrice": 20})
 check("line total is derived: 3 x 10 = 30", float(l1.get("lineTotal", -1)) == 30, l1)
-refused("quantity 0 is refused", "rep", P + "sales_order_lines", {"orderId": oid, "itemId": i1.get("id"), "quantity": 0, "unitPrice": 10})
-refused("a negative unit price on a line is refused", "rep", P + "sales_order_lines", {"orderId": oid, "itemId": i1.get("id"), "quantity": 1, "unitPrice": -5})
-refused("a line for a missing order is refused", "rep", P + "sales_order_lines", {"orderId": str(uuid.uuid4()), "itemId": i1.get("id"), "quantity": 1, "unitPrice": 1})
+refused("quantity 0 is refused", "rep", P + "sales_order_lines", {"orderId": oid, "productId": p1.get("id"), "quantity": 0, "unitPrice": 10})
+refused("a negative unit price on a line is refused", "rep", P + "sales_order_lines", {"orderId": oid, "productId": p1.get("id"), "quantity": 1, "unitPrice": -5})
+refused("a line for a missing order is refused", "rep", P + "sales_order_lines", {"orderId": str(uuid.uuid4()), "productId": p1.get("id"), "quantity": 1, "unitPrice": 1})
 
 s, body = call("plain", "GET", P + "sales_orders")
 check("a user with no sales role cannot see the order", s in (401, 403) or ("SO1" + R) not in json.dumps(body), s)

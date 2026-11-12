@@ -1,0 +1,345 @@
+#!/usr/bin/env python3
+"""Build the pack catalog the viewer (NPDevContract/pack-catalog/pack-tree.html) shows.
+
+The catalog used to be one hand-written JSON that mixed two kinds of truth: facts a real pack already
+states (its version, concepts, satellites, dependencies) and planning data no pack states (the
+proposed packs, the levels, the areas, a one-line "what do I need this for"). The first kind drifts
+the moment someone edits a pack.json. So the two are split:
+
+  * `NPDevContract/pack-catalog/pack-roadmap.json` -- hand-maintained. catalogVersion, levels,
+    kinds, areas, sectors, every PROPOSED pack in full, and for each EXISTING pack only the
+    presentation overlay (name, kind, need, summary, area, sectors).
+  * `NPDevContract/packs/<id>/pack.json` -- the real packs. For an existing pack this script takes
+    its version, concepts, satellites, specializations, requires and capabilities from here and
+    never from the roadmap.
+
+The output is `pack-catalog.json` in exactly the format the viewer reads, with
+`source.kind = "generated"`. By default it goes to `<Build root>/reports/pack-catalog-view/` together
+with a copy of `pack-tree.html`, so that folder can be served as is:
+
+    python scripts/pack-repo/build-pack-catalog-view.py
+    python -m http.server -d <Build root>/reports/pack-catalog-view
+
+    python scripts/pack-repo/build-pack-catalog-view.py --out <dir>   # write into <dir> instead
+    python scripts/pack-repo/build-pack-catalog-view.py --check       # validate only, write nothing
+
+`NPDevContract/pack-catalog/pack-catalog.json` in the repo is a SNAPSHOT of this output (the file the
+published viewer fetches from its own folder). Refresh it after changing the roadmap or a pack with
+`--out NPDevContract/pack-catalog`.
+
+Every existing pack directory must have an overlay in the roadmap, except the demo pack listed in
+SKIPPED_PACKS. The script fails (exit 1, nothing written) when:
+  * a real pack has no overlay, or an overlay is marked "existing" without a real pack, or a
+    proposed pack shares its id with a real pack (promote it: reduce it to its overlay);
+  * an overlay carries a technical fact (those come from pack.json);
+  * a `requires` / `includes` id does not exist in the catalog, or the dependencies form a cycle;
+  * a roadmap entry uses an unknown kind, area or sector.
+Concept names declared by more than one pack are printed as warnings (never a failure).
+
+Manual tool, not a gate. Output never goes inside the repo unless --out names a folder there.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime
+import json
+import re
+import shutil
+import sys
+from pathlib import PurePosixPath, Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+PACKS_DIR = REPO_ROOT / "NPDevContract" / "packs"
+CATALOG_DIR = REPO_ROOT / "NPDevContract" / "pack-catalog"
+DEFAULT_ROADMAP = CATALOG_DIR / "pack-roadmap.json"
+VIEWER_NAME = "pack-tree.html"
+CATALOG_NAME = "pack-catalog.json"
+
+# build_root() is the repo's one Build-root resolver (NPDEV_BUILD_ROOT, else the sibling "Build" of
+# the repo root identified by its contents) -- reused, never re-implemented here.
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "ai"))
+from npdev_ai_common import build_root  # noqa: E402
+
+# A directory under NPDevContract/packs that has a pack.json but is not part of the catalog.
+SKIPPED_PACKS = {"project-tracker-demo"}
+
+# The only keys a roadmap entry for an EXISTING pack may carry: id, the status marker that ties it
+# to its pack directory, and the presentation overlay.
+OVERLAY_KEYS = ("id", "name", "kind", "need", "summary", "area", "sectors")
+EXISTING_ENTRY_KEYS = OVERLAY_KEYS + ("status",)
+REQUIRED_KEYS = ("id", "name", "kind", "need", "summary", "sectors", "status")
+
+SOURCE_LABEL = "Catálogo gerado dos pack.json reais + roadmap"
+SOURCE_NOTE = ("Gerado por scripts/pack-repo/build-pack-catalog-view.py a partir de pack-roadmap.json "
+               "e de NPDevContract/packs/<id>/pack.json. 'existing' vem dos pack.json reais; "
+               "'proposed' vem do roadmap, com a onda de prioridade (1 = próxima).")
+
+_FROM_PACK_ID = re.compile(r"//packs/([^@/]+)@")
+
+
+def _read_json(path: Path):
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def _concept_ref_name(ref: str) -> str:
+    """'products::Product' -> 'Product' (the base concept's own name, without its pack prefix)."""
+    return ref.split("::")[-1]
+
+
+def dependency_ids(doc: dict, pack_dir_name: str, errors: list[str]) -> list[str]:
+    """Ids of the packs this pack depends on: its own `packs[]` entries, by `pack`, else derived
+    from `$ref` (`packs/<id>/pack.json` -> `<id>`, `x.json` -> `x`), else from a `from` coordinate's
+    `//packs/<id>@tag` subpath."""
+    ids: list[str] = []
+    for entry in doc.get("packs") or []:
+        dep = None
+        if isinstance(entry, dict) and isinstance(entry.get("pack"), str):
+            dep = entry["pack"]
+        elif isinstance(entry, dict) and isinstance(entry.get("$ref"), str):
+            ref = PurePosixPath(entry["$ref"].replace("\\", "/"))
+            dep = ref.parent.name if ref.name == "pack.json" and ref.parent.name not in ("", ".") else ref.stem
+        elif isinstance(entry, dict) and isinstance(entry.get("from"), str):
+            match = _FROM_PACK_ID.search(entry["from"])
+            dep = match.group(1) if match else None
+        if not dep:
+            errors.append(f"{pack_dir_name}/pack.json: cannot derive a pack id from packs[] entry {entry!r}")
+            continue
+        if dep not in ids:
+            ids.append(dep)
+    return ids
+
+
+def capability_names(doc: dict) -> list[str]:
+    """`requires.capabilities` (what the pack needs) then `customCapabilities[].name` (what it
+    declares), without duplicates."""
+    names: list[str] = []
+    requires = doc.get("requires")
+    if isinstance(requires, dict):
+        names.extend(c for c in requires.get("capabilities") or [] if isinstance(c, str))
+    for custom in doc.get("customCapabilities") or []:
+        if isinstance(custom, dict) and isinstance(custom.get("name"), str):
+            names.append(custom["name"])
+    return list(dict.fromkeys(names))
+
+
+def pack_facts(doc: dict, pack_dir_name: str, errors: list[str]) -> dict:
+    """Everything the catalog says about an existing pack that comes from its pack.json."""
+    concepts = [c for c in doc.get("concepts") or [] if isinstance(c, dict) and isinstance(c.get("name"), str)]
+    facts: dict = {
+        "version": doc.get("version"),
+        "concepts": [c["name"] for c in concepts],
+    }
+    if not facts["version"]:
+        errors.append(f"{pack_dir_name}/pack.json has no 'version'")
+    specializations = [[c["name"], _concept_ref_name(c["specializes"])]
+                       for c in concepts if isinstance(c.get("specializes"), str)]
+    satellites = [[c["name"], _concept_ref_name(c["satelliteOf"])]
+                  for c in concepts if isinstance(c.get("satelliteOf"), str)]
+    if specializations:
+        facts["specializations"] = specializations
+    if satellites:
+        facts["satellites"] = satellites
+    facts["requires"] = dependency_ids(doc, pack_dir_name, errors)
+    capabilities = capability_names(doc)
+    if capabilities:
+        facts["capabilities"] = capabilities
+    return facts
+
+
+def load_real_packs(packs_dir: Path, errors: list[str]) -> dict[str, dict]:
+    """{pack id: pack.json document} for every directory with a pack.json, minus SKIPPED_PACKS."""
+    packs: dict[str, dict] = {}
+    for pack_json in sorted(packs_dir.glob("*/pack.json")):
+        pack_id = pack_json.parent.name
+        if pack_id in SKIPPED_PACKS:
+            continue
+        doc = _read_json(pack_json)
+        if doc.get("pack") != pack_id:
+            errors.append(f"{pack_id}/pack.json declares pack={doc.get('pack')!r}, expected {pack_id!r}")
+        packs[pack_id] = doc
+    return packs
+
+
+def validate_roadmap_entry(entry: dict, roadmap: dict, errors: list[str]) -> None:
+    pack_id = entry.get("id", "<no id>")
+    for key in REQUIRED_KEYS:
+        if key not in entry:
+            errors.append(f"roadmap pack {pack_id}: missing '{key}'")
+    if entry.get("kind") not in roadmap["kinds"]:
+        errors.append(f"roadmap pack {pack_id}: unknown kind {entry.get('kind')!r}")
+    area_ids = {a["id"] for a in roadmap["areas"]}
+    if entry.get("area") is not None and entry.get("area") not in area_ids:
+        errors.append(f"roadmap pack {pack_id}: unknown area {entry.get('area')!r}")
+    sector_ids = {s["id"] for s in roadmap["sectors"]}
+    for sector in entry.get("sectors") or []:
+        if sector not in sector_ids:
+            errors.append(f"roadmap pack {pack_id}: unknown sector {sector!r}")
+    if entry.get("status") not in ("existing", "proposed"):
+        errors.append(f"roadmap pack {pack_id}: status must be 'existing' or 'proposed', got {entry.get('status')!r}")
+
+
+def build_catalog(roadmap: dict, real_packs: dict[str, dict], date: str,
+                  errors: list[str], warnings: list[str]) -> dict:
+    """The catalog document, in the viewer's format. Problems are appended to `errors`."""
+    seen: set[str] = set()
+    packs: list[dict] = []
+    for entry in roadmap["packs"]:
+        pack_id = entry.get("id")
+        if pack_id in seen:
+            errors.append(f"roadmap lists pack id {pack_id!r} more than once")
+            continue
+        seen.add(pack_id)
+        validate_roadmap_entry(entry, roadmap, errors)
+
+        if entry.get("status") == "existing":
+            extra = [k for k in entry if k not in EXISTING_ENTRY_KEYS]
+            if extra:
+                errors.append(f"roadmap pack {pack_id}: technical fact(s) {extra} belong in pack.json, "
+                              f"not in the overlay of an existing pack")
+            doc = real_packs.get(pack_id)
+            if doc is None:
+                errors.append(f"roadmap pack {pack_id} is marked 'existing' but NPDevContract/packs/{pack_id}/pack.json "
+                              f"does not exist")
+                continue
+            generated = {k: entry.get(k) for k in OVERLAY_KEYS}
+            generated["status"] = "existing"
+            facts = pack_facts(doc, pack_id, errors)
+            for key in ("version", "concepts", "specializations", "satellites", "requires", "capabilities"):
+                if key in facts:
+                    generated[key] = facts[key]
+            packs.append(generated)
+        else:
+            if pack_id in real_packs:
+                errors.append(f"roadmap pack {pack_id} is marked 'proposed' but NPDevContract/packs/{pack_id}/pack.json "
+                              f"exists -- promote it: keep only the overlay and set status to 'existing'")
+            packs.append(dict(entry))
+
+    for pack_id in sorted(set(real_packs) - seen):
+        errors.append(f"pack {pack_id} has NPDevContract/packs/{pack_id}/pack.json but no overlay in the roadmap "
+                      f"(add one with status 'existing', or list the directory in SKIPPED_PACKS if it is a demo)")
+
+    check_references(packs, errors)
+    check_cycles(packs, errors)
+    check_duplicate_concepts(packs, warnings)
+
+    return {
+        "catalogVersion": roadmap["catalogVersion"],
+        "source": {
+            "kind": "generated",
+            "label": SOURCE_LABEL,
+            "updated": date,
+            "note": SOURCE_NOTE,
+        },
+        "levels": roadmap["levels"],
+        "kinds": roadmap["kinds"],
+        "areas": roadmap["areas"],
+        "sectors": roadmap["sectors"],
+        "packs": packs,
+    }
+
+
+def check_references(packs: list[dict], errors: list[str]) -> None:
+    ids = {p["id"] for p in packs}
+    for pack in packs:
+        for field in ("requires", "includes"):
+            for ref in pack.get(field) or []:
+                if ref not in ids:
+                    errors.append(f"pack {pack['id']}: {field} id {ref!r} is not in the catalog")
+
+
+def check_cycles(packs: list[dict], errors: list[str]) -> None:
+    """Depth-first search over requires + includes; reports each cycle once, as a path."""
+    edges = {p["id"]: [r for f in ("requires", "includes") for r in p.get(f) or []] for p in packs}
+    done: set[str] = set()
+    reported: set[frozenset] = set()
+
+    def visit(node: str, trail: list[str]) -> None:
+        if node in trail:
+            cycle = trail[trail.index(node):] + [node]
+            key = frozenset(cycle)
+            if key not in reported:
+                reported.add(key)
+                errors.append("dependency cycle: " + " -> ".join(cycle))
+            return
+        if node in done or node not in edges:
+            return
+        for nxt in edges[node]:
+            visit(nxt, trail + [node])
+        done.add(node)
+
+    for node in edges:
+        visit(node, [])
+
+
+def check_duplicate_concepts(packs: list[dict], warnings: list[str]) -> None:
+    owners: dict[str, list[str]] = {}
+    for pack in packs:
+        for name in dict.fromkeys(pack.get("concepts") or []):
+            owners.setdefault(name, []).append(pack["id"])
+    for name in sorted(owners):
+        if len(owners[name]) > 1:
+            warnings.append(f"concept {name!r} is declared by {len(owners[name])} packs: {', '.join(owners[name])}")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--out", help="Output directory (default: <Build root>/reports/pack-catalog-view). "
+                                  "Gets pack-catalog.json and a copy of pack-tree.html.")
+    ap.add_argument("--check", action="store_true",
+                    help="Validate the roadmap against the real packs and write nothing; exit 1 if inconsistent.")
+    ap.add_argument("--roadmap", default=str(DEFAULT_ROADMAP), help="Roadmap JSON (default: pack-catalog/pack-roadmap.json).")
+    ap.add_argument("--packs-dir", default=str(PACKS_DIR), help="Directory of <id>/pack.json packs (default: NPDevContract/packs).")
+    ap.add_argument("--date", default=datetime.date.today().isoformat(),
+                    help="Value of source.updated (default: today, YYYY-MM-DD).")
+    args = ap.parse_args()
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
+    roadmap_path = Path(args.roadmap)
+    packs_dir = Path(args.packs_dir)
+    if not roadmap_path.is_file():
+        print(f"build-pack-catalog-view: no roadmap at {roadmap_path}", file=sys.stderr)
+        return 2
+    if not packs_dir.is_dir():
+        print(f"build-pack-catalog-view: no packs directory at {packs_dir}", file=sys.stderr)
+        return 2
+
+    errors: list[str] = []
+    warnings: list[str] = []
+    roadmap = _read_json(roadmap_path)
+    real_packs = load_real_packs(packs_dir, errors)
+    catalog = build_catalog(roadmap, real_packs, args.date, errors, warnings)
+
+    for warning in warnings:
+        print(f"build-pack-catalog-view: warning: {warning}")
+    if errors:
+        for error in errors:
+            print(f"build-pack-catalog-view: ERROR: {error}", file=sys.stderr)
+        print(f"build-pack-catalog-view: {len(errors)} problem(s); nothing written.", file=sys.stderr)
+        return 1
+
+    existing = sum(1 for p in catalog["packs"] if p["status"] == "existing")
+    summary = f"{len(catalog['packs'])} packs ({existing} existing, {len(catalog['packs']) - existing} proposed)"
+    if args.check:
+        print(f"build-pack-catalog-view: --check OK, {summary}, {len(warnings)} warning(s); nothing written.")
+        return 0
+
+    out_dir = Path(args.out) if args.out else build_root() / "reports" / "pack-catalog-view"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    catalog_path = out_dir / CATALOG_NAME
+    text = json.dumps(catalog, ensure_ascii=False, indent=2) + "\n"
+    catalog_path.write_bytes(text.encode("utf-8"))
+    viewer_src = CATALOG_DIR / VIEWER_NAME
+    viewer_dst = out_dir / VIEWER_NAME
+    if viewer_dst.resolve() != viewer_src.resolve():
+        shutil.copyfile(viewer_src, viewer_dst)
+    print(f"build-pack-catalog-view: wrote {catalog_path.resolve()} -- {summary}")
+    print(f"build-pack-catalog-view: serve it with: python -m http.server -d {out_dir.resolve()}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

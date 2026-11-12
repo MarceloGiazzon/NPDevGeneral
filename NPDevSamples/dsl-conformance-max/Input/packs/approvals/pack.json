@@ -2,9 +2,9 @@
   "$schema": "../../../../../NPDevContract/schemas/pack.schema.json",
   "dslVersion": "1.0.0",
   "pack": "approvals",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "namespace": "com.npdev.approvals",
-  "description": "Built-in NPDev approvals pack: anyone with the 'requester' role files an approval request, a person with the 'approver' role decides it from My tasks (approve or reject, with a comment), and the pack records who decided, when and why. The two roles are logical: the importing app binds them to its own role names with provides.roleBindings { \"requester\": ..., \"approver\": ... }, and composition refuses when either is unbound. A resumed flow applies the decision as the person who started it and without that person's roles, so the rules also admit the platform's trusted resume principal (role ADMIN); who filed a request is the starter of its flow execution (My tasks shows it).",
+  "description": "Built-in NPDev approvals pack: anyone with the 'requester' role files an approval request, a person with the 'approver' role decides it from My tasks (approve or reject, with a comment), and the pack records who decided, when and why. The two roles are logical: the importing app binds them to its own role names with provides.roleBindings { \"requester\": ..., \"approver\": ... }, and composition refuses when either is unbound. A resumed flow applies the decision as the person who started it and without that person's roles, so the rules also admit the platform's trusted resume principal (role ADMIN); who filed a request is recorded on the request itself as their login (requestedBy, filled from $user.id) and is also the starter of its flow execution (My tasks shows it).",
   "category": "other",
   "author": "NPDev",
   "concepts": [
@@ -28,6 +28,16 @@
           "maxLength": 200,
           "ui": {
             "label": "Title"
+          }
+        },
+        {
+          "name": "requestedBy",
+          "type": "string",
+          "required": false,
+          "maxLength": 254,
+          "defaultExpression": "$user.id",
+          "ui": {
+            "label": "Requested by (login)"
           }
         },
         {

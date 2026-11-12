@@ -17,6 +17,10 @@
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"
     },
+    "scripts/pack-repo/build-pack-catalog-view.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "docs/PACK_DESIGN.md"
+    },
     "scripts/docs/capture-capability-docs.py": {
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"

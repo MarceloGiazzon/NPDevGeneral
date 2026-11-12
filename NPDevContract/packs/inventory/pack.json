@@ -2,11 +2,17 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "1.0.0",
   "pack": "inventory",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "namespace": "com.npdev.inventory",
-  "description": "NPDev inventory and warehouse pack: warehouses, storage locations, products and a stock-movement ledger. A person with the 'stockkeeper' role records movements (receipt, issue, transfer, adjustment in/out) as DRAFT and posts them; only POSTED movements count towards stock, and a posted movement is undone by reversing it, never by editing it. A person with the 'inventoryManager' role does the same and also maintains warehouses, locations and products. The two roles are logical: the importing app binds them to its own role names with provides.roleBindings { \"stockkeeper\": ..., \"inventoryManager\": ... } (composition refuses when either is unbound) and grants those roles read/create/update on the pack's concepts in its own roles[] (manager: also delete; stockkeeper: read-only on warehouses, locations and products). On-hand stock is derived (queries StockByProduct and StockByProductLocation), not stored, so it cannot drift from the ledger. NOT enforced by the pack: a movement that would take a location below zero (that needs a read of the current balance inside the posting transaction); the rules sheet lists it as a rule for the importing app to add. Numeric bounds and the per-warehouse unique location code are declared as invariants (enforced today) in addition to field min and the unique index, because field.min/max and compound unique indexes are not yet enforced by the platform (REG-255, REG-257).",
+  "description": "NPDev inventory and warehouse pack: warehouses, storage locations, products and a stock-movement ledger. What is stocked lives in the products pack (products::Product); this pack keeps only the stock data about a product (minimum stock) in a StockItem satellite pointing back to it, and every movement points at the product itself. A person with the 'stockkeeper' role records movements (receipt, issue, transfer, adjustment in/out) as DRAFT and posts them; only POSTED movements count towards stock, and a posted movement is undone by reversing it, never by editing it. A person with the 'inventoryManager' role does the same and also maintains warehouses, locations and products. The two roles are logical: the importing app binds them to its own role names with provides.roleBindings { \"stockkeeper\": ..., \"inventoryManager\": ... } (composition refuses when either is unbound) and grants those roles read/create/update on the pack's concepts in its own roles[] (manager: also delete; stockkeeper: read-only on warehouses, locations and products). On-hand stock is derived (queries StockByProduct and StockByProductLocation), not stored, so it cannot drift from the ledger. NOT enforced by the pack: a movement that would take a location below zero (that needs a read of the current balance inside the posting transaction); the rules sheet lists it as a rule for the importing app to add. Numeric bounds and the per-warehouse unique location code are declared as invariants (enforced today) in addition to field min and the unique index, because field.min/max and compound unique indexes are not yet enforced by the platform (REG-255, REG-257).",
   "category": "other",
   "author": "NPDev",
+  "packs": [
+    {
+      "pack": "products",
+      "version": "^1.0"
+    }
+  ],
   "metadata": {
     "summary": "Keeps track of what is in which warehouse. Warehouses have storage locations; products are received, issued, transferred between locations or adjusted by stock movements. A movement starts as a draft, becomes real when posted, and a posted movement is undone by reversing it. Stock on hand is always calculated from the posted movements, never typed in.",
     "reviewNotes": [
@@ -162,10 +168,11 @@
       ]
     },
     {
-      "name": "Product",
+      "name": "StockItem",
+      "satelliteOf": "products::Product",
       "truthLevel": "T2",
       "ui": {
-        "label": "Product"
+        "label": "Stock item"
       },
       "fields": [
         {
@@ -175,38 +182,17 @@
           "required": true
         },
         {
-          "name": "sku",
-          "type": "string",
+          "name": "productId",
+          "type": "reference",
+          "ui": {
+            "label": "Product"
+          },
           "required": true,
           "unique": true,
-          "maxLength": 40,
-          "ui": {
-            "label": "SKU"
-          }
-        },
-        {
-          "name": "name",
-          "type": "string",
-          "required": true,
-          "maxLength": 200,
-          "ui": {
-            "label": "Name"
-          }
-        },
-        {
-          "name": "unit",
-          "type": "enum",
-          "required": true,
-          "default": "UNIT",
-          "enumValues": [
-            "UNIT",
-            "BOX",
-            "KG",
-            "LITER",
-            "METER"
-          ],
-          "ui": {
-            "label": "Unit"
+          "reference": {
+            "target": "products::Product",
+            "displayField": "name",
+            "onDelete": "restrict"
           }
         },
         {
@@ -218,15 +204,6 @@
           "min": 0,
           "ui": {
             "label": "Minimum stock"
-          }
-        },
-        {
-          "name": "active",
-          "type": "boolean",
-          "required": true,
-          "default": true,
-          "ui": {
-            "label": "Active"
           }
         }
       ],
@@ -286,8 +263,9 @@
             "label": "Product"
           },
           "reference": {
-            "target": "Product",
-            "displayField": "name"
+            "target": "products::Product",
+            "displayField": "name",
+            "onDelete": "restrict"
           }
         },
         {
@@ -471,14 +449,6 @@
   ],
   "queries": [
     {
-      "name": "ActiveProducts",
-      "concept": "Product",
-      "where": "active == true",
-      "orderBy": [
-        "name"
-      ]
-    },
-    {
       "name": "OpenMovements",
       "concept": "StockMovement",
       "where": "status == 'DRAFT'",
@@ -598,9 +568,9 @@
       }
     },
     {
-      "name": "Products",
-      "concept": "Product",
-      "route": "/products",
+      "name": "StockItems",
+      "concept": "StockItem",
+      "route": "/stock-items",
       "surfaces": [
         "selection",
         "detail",
@@ -608,11 +578,8 @@
       ],
       "selection": {
         "columns": [
-          "sku",
-          "name",
-          "unit",
-          "minimumStock",
-          "active"
+          "productId",
+          "minimumStock"
         ]
       }
     },

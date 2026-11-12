@@ -56,20 +56,27 @@ def make(who, path, body, expect=201):
 wh = make("manager", "/api/inventory_warehouses", {"code": "MAIN" + R, "name": "Main warehouse", "active": True})
 a1 = make("manager", "/api/inventory_storage_locations", {"warehouseId": wh.get("id"), "code": "A1", "kind": "STORAGE", "active": True})
 b1 = make("manager", "/api/inventory_storage_locations", {"warehouseId": wh.get("id"), "code": "B1", "kind": "PICKING", "active": True})
-prod = make("manager", "/api/inventory_products", {"sku": "SKU-" + R, "name": "Widget", "unit": "UNIT", "active": True})
+# Since inventory 2.0.0 the product lives in the products pack; inventory keeps its stock data in a StockItem satellite.
+prod = make("manager", "/api/products_products", {"sku": "SKU-" + R, "name": "Widget", "kind": "GOOD", "unit": "UNIT", "active": True})
+spare = make("manager", "/api/products_products", {"sku": "SPARE-" + R, "name": "Spare", "kind": "GOOD", "unit": "UNIT", "active": True})
+item = make("manager", "/api/inventory_stock_items", {"productId": prod.get("id"), "minimumStock": 10})
 pid, la, lb = prod.get("id"), a1.get("id"), b1.get("id")
 
 s, r = call("manager", "POST", "/api/inventory_storage_locations", {"warehouseId": wh.get("id"), "code": "A1", "kind": "STORAGE", "active": True})
 check("a duplicate location code in the same warehouse is refused", s in (409, 422), (s, r))
-s, r = call("manager", "POST", "/api/inventory_products", {"sku": "NEG" + R, "name": "n", "unit": "UNIT", "active": True, "minimumStock": -1})
+s, r = call("manager", "POST", "/api/inventory_stock_items", {"productId": spare.get("id"), "minimumStock": -1})
 check("a negative minimum stock is refused", s == 422, (s, r))
 # role enforcement
 s, _ = call("keeper", "POST", "/api/inventory_warehouses", {"code": "X", "name": "x", "active": True})
 check("keeper cannot create a warehouse", s in (401, 403), s)
 s, _ = call("plain", "GET", "/api/inventory_stock_movements")
 check("a user with neither role cannot read movements", s in (401, 403), s)
-s, _ = call("keeper", "GET", "/api/inventory_products")
+s, _ = call("keeper", "GET", "/api/inventory_stock_items")
+check("keeper can read stock items", s == 200, s)
+s, _ = call("keeper", "GET", "/api/products_products")
 check("keeper can read products", s == 200, s)
+s, r = call("manager", "POST", "/api/inventory_stock_items", {"productId": prod.get("id"), "minimumStock": 1})
+check("a product has at most one stock item", s in (409, 422), (s, r))
 
 # invariants
 s, r = call("keeper", "POST", "/api/inventory_stock_movements", {"type": "RECEIPT", "productId": pid, "quantity": 5})

@@ -2,11 +2,21 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "1.0.0",
   "pack": "sales",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "namespace": "com.npdev.sales",
-  "description": "NPDev sales pack: customers, a price list, sales orders with lines, and invoices. A person with the 'salesRep' role drafts orders and adds lines; 'salesManager' also confirms orders, maintains customers and the price list and may do anything an accountant can; 'accountant' issues invoices and records payment. An order is DRAFT, then CONFIRMED, then INVOICED (or CANCELLED); an invoice is ISSUED, then PAID (or VOID). Order totals and the amount owed per customer are derived by queries, never typed in. The three roles are logical: the importing app binds them with provides.roleBindings { \"salesRep\": ..., \"salesManager\": ..., \"accountant\": ... } (composition refuses when one is unbound) and grants them read/create/update on the pack's concepts in its own roles[] (see the dom-sales sample). Numeric bounds are declared as invariants (enforced today) beside field min, because field.min/max are not yet enforced by the platform (REG-255).",
+  "description": "NPDev sales pack: customers, a price list, sales orders with lines, and invoices. It keeps only what selling needs: who the customer is lives in the contacts pack (contacts::Organization) and what is sold lives in the products pack (products::Product); a Customer is the selling data about an organization (code, credit limit) and a price-list item is the selling price of a product, each a satellite pointing back to it. A person with the 'salesRep' role drafts orders and adds lines; 'salesManager' also confirms orders, maintains customers and the price list and may do anything an accountant can; 'accountant' issues invoices and records payment. An order is DRAFT, then CONFIRMED, then INVOICED (or CANCELLED); an invoice is ISSUED, then PAID (or VOID). Order totals and the amount owed per customer are derived by queries, never typed in. The three roles are logical: the importing app binds them with provides.roleBindings { \"salesRep\": ..., \"salesManager\": ..., \"accountant\": ... } (composition refuses when one is unbound) and grants them read/create/update on the pack's concepts in its own roles[] (see the dom-sales sample). Numeric bounds are declared as invariants (enforced today) beside field min, because field.min/max are not yet enforced by the platform (REG-255).",
   "category": "other",
   "author": "NPDev",
+  "packs": [
+    {
+      "pack": "contacts",
+      "version": "^1.0"
+    },
+    {
+      "pack": "products",
+      "version": "^1.0"
+    }
+  ],
   "metadata": {
     "summary": "Sells to customers. A customer buys items from a price list; a sales order lists what they want, line by line, and moves from draft to confirmed to invoiced. An invoice records how much is owed and when, and is later marked paid. Order totals and what each customer still owes are always calculated from the lines and invoices, never typed in.",
     "reviewNotes": [
@@ -18,12 +28,14 @@
       "A line copies the unit price when it is entered (so later price-list changes do not rewrite old orders), but nothing checks it against the price list.",
       "Stock is not reserved or reduced by a sale. Linking sales to the inventory pack is a decision for the first app that needs both.",
       "A confirmed order may still be cancelled; cancelling an order that already has an invoice does not void the invoice.",
-      "Today numeric bounds are enforced through the rules above; the field-level min/max declarations are repeated for documentation only because the platform does not enforce them yet."
+      "Today numeric bounds are enforced through the rules above; the field-level min/max declarations are repeated for documentation only because the platform does not enforce them yet.",
+      "Lists and pickers show a customer by its code, not by the organization's name: a reference shows one field of the record it points at, and the name lives on the organization. Say whether pickers must show the name."
     ]
   },
   "concepts": [
     {
       "name": "Customer",
+      "satelliteOf": "contacts::Organization",
       "truthLevel": "T2",
       "ui": {
         "label": "Customer"
@@ -36,6 +48,20 @@
           "required": true
         },
         {
+          "name": "organizationId",
+          "type": "reference",
+          "ui": {
+            "label": "Organization"
+          },
+          "required": true,
+          "unique": true,
+          "reference": {
+            "target": "contacts::Organization",
+            "displayField": "name",
+            "onDelete": "restrict"
+          }
+        },
+        {
           "name": "code",
           "type": "string",
           "ui": {
@@ -44,33 +70,6 @@
           "required": true,
           "unique": true,
           "maxLength": 30
-        },
-        {
-          "name": "name",
-          "type": "string",
-          "ui": {
-            "label": "Name"
-          },
-          "required": true,
-          "maxLength": 200
-        },
-        {
-          "name": "taxId",
-          "type": "string",
-          "ui": {
-            "label": "Tax id"
-          },
-          "required": false,
-          "maxLength": 40
-        },
-        {
-          "name": "email",
-          "type": "string",
-          "ui": {
-            "label": "Email"
-          },
-          "required": false,
-          "maxLength": 254
         },
         {
           "name": "creditLimit",
@@ -107,6 +106,7 @@
     },
     {
       "name": "SalesItem",
+      "satelliteOf": "products::Product",
       "truthLevel": "T2",
       "ui": {
         "label": "Price list item"
@@ -119,23 +119,18 @@
           "required": true
         },
         {
-          "name": "sku",
-          "type": "string",
+          "name": "productId",
+          "type": "reference",
           "ui": {
-            "label": "SKU"
+            "label": "Product"
           },
           "required": true,
           "unique": true,
-          "maxLength": 40
-        },
-        {
-          "name": "description",
-          "type": "string",
-          "ui": {
-            "label": "Description"
-          },
-          "required": true,
-          "maxLength": 300
+          "reference": {
+            "target": "products::Product",
+            "displayField": "name",
+            "onDelete": "restrict"
+          }
         },
         {
           "name": "unitPrice",
@@ -202,7 +197,7 @@
           "required": true,
           "reference": {
             "target": "Customer",
-            "displayField": "name"
+            "displayField": "code"
           }
         },
         {
@@ -330,15 +325,16 @@
           }
         },
         {
-          "name": "itemId",
+          "name": "productId",
           "type": "reference",
           "ui": {
-            "label": "Item"
+            "label": "Product"
           },
           "required": true,
           "reference": {
-            "target": "SalesItem",
-            "displayField": "sku"
+            "target": "products::Product",
+            "displayField": "name",
+            "onDelete": "restrict"
           }
         },
         {
@@ -444,7 +440,7 @@
           "required": true,
           "reference": {
             "target": "Customer",
-            "displayField": "name"
+            "displayField": "code"
           }
         },
         {
@@ -586,7 +582,7 @@
       "concept": "Customer",
       "where": "active == true",
       "orderBy": [
-        "name"
+        "code"
       ]
     },
     {
@@ -663,8 +659,7 @@
       "selection": {
         "columns": [
           "code",
-          "name",
-          "email",
+          "organizationId",
           "creditLimit",
           "active"
         ]
@@ -681,8 +676,7 @@
       ],
       "selection": {
         "columns": [
-          "sku",
-          "description",
+          "productId",
           "unitPrice",
           "active"
         ]
@@ -718,7 +712,7 @@
       "selection": {
         "columns": [
           "orderId",
-          "itemId",
+          "productId",
           "quantity",
           "unitPrice",
           "lineTotal"

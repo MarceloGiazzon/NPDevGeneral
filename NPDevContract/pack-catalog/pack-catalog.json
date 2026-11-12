@@ -1,10 +1,10 @@
 {
-  "catalogVersion": 3,
+  "catalogVersion": 4,
   "source": {
-    "kind": "dummy",
-    "label": "Catálogo dummy de planejamento",
+    "kind": "generated",
+    "label": "Catálogo gerado dos pack.json reais + roadmap",
     "updated": "2026-11-12",
-    "note": "Escrito à mão para planejamento. 'existing' espelha NPDevContract/packs; 'proposed' traz onda de prioridade (1 = próxima). Será substituído pelo JSON gerado a partir dos pack.json reais + roadmap dos propostos."
+    "note": "Gerado por scripts/pack-repo/build-pack-catalog-view.py a partir de pack-roadmap.json e de NPDevContract/packs/<id>/pack.json. 'existing' vem dos pack.json reais; 'proposed' vem do roadmap, com a onda de prioridade (1 = próxima)."
   },
   "levels": [
     {
@@ -222,7 +222,8 @@
       ],
       "requires": [],
       "capabilities": [
-        "sendMail"
+        "sendMail",
+        "mailer"
       ]
     },
     {
@@ -735,7 +736,7 @@
       ],
       "requires": [
         "appointments",
-        "catalog",
+        "products",
         "payments"
       ]
     },
@@ -950,7 +951,7 @@
       "requires": [
         "pets",
         "appointments",
-        "catalog"
+        "products"
       ]
     },
     {
@@ -996,7 +997,7 @@
       "area": "agenda",
       "sectors": [],
       "status": "existing",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "concepts": [
         "HelpdeskAgent",
         "TicketCategory",
@@ -1682,7 +1683,7 @@
         "BomLine"
       ],
       "requires": [
-        "catalog",
+        "products",
         "inventory"
       ]
     },
@@ -1780,21 +1781,29 @@
       "name": "Estoque",
       "kind": "module",
       "need": "Saber o que tem em estoque e onde",
-      "summary": "Armazéns, posições, produtos e um razão de movimentações.",
+      "summary": "Armazéns, posições e movimentações de estoque dos produtos de Produtos, com estoque mínimo por item.",
       "area": "estoque",
       "sectors": [
         "comercio",
         "industria"
       ],
       "status": "existing",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "concepts": [
         "Warehouse",
         "StorageLocation",
-        "Product",
+        "StockItem",
         "StockMovement"
       ],
-      "requires": []
+      "satellites": [
+        [
+          "StockItem",
+          "Product"
+        ]
+      ],
+      "requires": [
+        "products"
+      ]
     },
     {
       "id": "live-tracking",
@@ -1865,7 +1874,7 @@
       ],
       "requires": [
         "delivery",
-        "catalog",
+        "products",
         "documents"
       ]
     },
@@ -1893,14 +1902,14 @@
       "name": "Compras",
       "kind": "module",
       "need": "Comprar de fornecedores e pagar as contas",
-      "summary": "Fornecedores, itens compráveis, pedidos de compra com itens e contas a pagar.",
+      "summary": "Pedidos de compra e contas de fornecedor. O fornecedor é a organização do Contatos e o produto vem de Produtos.",
       "area": "estoque",
       "sectors": [
         "comercio",
         "industria"
       ],
       "status": "existing",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "concepts": [
         "Supplier",
         "PurchaseItem",
@@ -1908,7 +1917,20 @@
         "PurchaseOrderLine",
         "SupplierBill"
       ],
-      "requires": []
+      "satellites": [
+        [
+          "Supplier",
+          "Organization"
+        ],
+        [
+          "PurchaseItem",
+          "Product"
+        ]
+      ],
+      "requires": [
+        "contacts",
+        "products"
+      ]
     },
     {
       "id": "recipe-costing",
@@ -2530,7 +2552,7 @@
       "area": "operacao",
       "sectors": [],
       "status": "existing",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "concepts": [
         "ApprovalRequest",
         "ApprovalDecision"
@@ -2717,14 +2739,12 @@
       "area": "operacao",
       "sectors": [],
       "status": "existing",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "concepts": [
         "LeaveType",
         "LeaveRequest"
       ],
-      "requires": [
-        "approvals"
-      ]
+      "requires": []
     },
     {
       "id": "library",
@@ -3116,7 +3136,7 @@
       "area": "pessoas",
       "sectors": [],
       "status": "existing",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "concepts": [
         "Organization",
         "Contact",
@@ -3314,25 +3334,6 @@
       ]
     },
     {
-      "id": "catalog",
-      "name": "Catálogo de produtos",
-      "kind": "module",
-      "need": "Ter um cadastro único de produtos e serviços",
-      "summary": "Cadastro mestre de produtos e serviços, com variações e categorias. Vendas, estoque e verticais apontam para ele.",
-      "area": "vendas",
-      "sectors": [
-        "comercio"
-      ],
-      "status": "proposed",
-      "wave": 1,
-      "concepts": [
-        "Product",
-        "ProductVariant",
-        "ProductCategory"
-      ],
-      "requires": []
-    },
-    {
       "id": "catering",
       "name": "Buffet",
       "kind": "module",
@@ -3414,7 +3415,7 @@
         ]
       ],
       "requires": [
-        "catalog",
+        "products",
         "sales",
         "payments",
         "shipping"
@@ -3445,7 +3446,7 @@
         ]
       ],
       "requires": [
-        "catalog",
+        "products",
         "payments",
         "person"
       ]
@@ -3474,7 +3475,7 @@
         ]
       ],
       "requires": [
-        "catalog"
+        "products"
       ]
     },
     {
@@ -3604,7 +3605,7 @@
       ],
       "requires": [
         "sales",
-        "catalog"
+        "products"
       ]
     },
     {
@@ -3652,7 +3653,7 @@
       ],
       "requires": [
         "sales",
-        "catalog"
+        "products"
       ]
     },
     {
@@ -3709,7 +3710,7 @@
       ],
       "requires": [
         "sales",
-        "catalog",
+        "products",
         "inventory",
         "payments"
       ]
@@ -3736,11 +3737,11 @@
       ]
     },
     {
-      "id": "sales",
-      "name": "Vendas",
+      "id": "products",
+      "name": "Produtos",
       "kind": "module",
-      "need": "Vender: pedidos, itens e faturas",
-      "summary": "Clientes, lista de preços, pedidos de venda com itens e faturas.",
+      "need": "Ter um cadastro único de produtos e serviços",
+      "summary": "O cadastro de produtos e serviços para o qual vendas, compras e estoque apontam.",
       "area": "vendas",
       "sectors": [
         "comercio"
@@ -3748,13 +3749,43 @@
       "status": "existing",
       "version": "1.0.0",
       "concepts": [
+        "Product"
+      ],
+      "requires": []
+    },
+    {
+      "id": "sales",
+      "name": "Vendas",
+      "kind": "module",
+      "need": "Vender: pedidos, itens e faturas",
+      "summary": "Pedidos, itens e faturas. O cliente é a organização do Contatos e o produto vem de Produtos; aqui ficam só código, limite de crédito e preço.",
+      "area": "vendas",
+      "sectors": [
+        "comercio"
+      ],
+      "status": "existing",
+      "version": "2.0.0",
+      "concepts": [
         "Customer",
         "SalesItem",
         "SalesOrder",
         "SalesOrderLine",
         "Invoice"
       ],
-      "requires": []
+      "satellites": [
+        [
+          "Customer",
+          "Organization"
+        ],
+        [
+          "SalesItem",
+          "Product"
+        ]
+      ],
+      "requires": [
+        "contacts",
+        "products"
+      ]
     },
     {
       "id": "service-contracts",
@@ -3805,7 +3836,7 @@
         ]
       ],
       "requires": [
-        "catalog",
+        "products",
         "payments",
         "person"
       ]

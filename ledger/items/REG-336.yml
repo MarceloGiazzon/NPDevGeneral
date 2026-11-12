@@ -1,0 +1,25 @@
+id: REG-336
+title: >-
+  A reference to a satellite (sales::Customer, purchasing::Supplier) shows the satellite's code, not the name of the record it extends
+type: FEATURE
+severity: LOW
+status: OPEN
+opened: 2026-11-12
+source: >-
+  Single-owner refactor of the built-in packs (2026-11-12, BREAKING.md entry of that date): Customer and Supplier became satellites of
+  contacts::Organization, whose `name` is where the human-readable name lives.
+surface: dsl/reference-displayField, generator/business-ui, kernel/reference-labels
+detail: |
+  `reference.displayField` names one field of the reference's own target (BusinessUiEmitter, ConceptAggregateReferenceLabels read
+  target.get(displayField)); it cannot follow a path. A SalesOrder.customerId therefore shows the Customer's `code` in lists and pickers,
+  because the organization's `name` is one hop further (Customer.organizationId -> Organization.name). Same for SupplierBill/PurchaseOrder
+  and any future satellite. Both packs carry a reviewNote saying so.
+  Possible fix: let displayField (and searchFields) take a one-hop path through a reference field of the target, e.g.
+  "organizationId.name", resolved by the same label lookup that already joins the target row.
+files:
+  - NPDevContract/packs/sales/pack.json
+  - NPDevContract/packs/purchasing/pack.json
+verification: NOT_VERIFIED
+done_when: >-
+  A sales order list and its customer picker in a generated dom-sales app show the organization's name for each customer, without the
+  sales pack copying the name onto Customer.

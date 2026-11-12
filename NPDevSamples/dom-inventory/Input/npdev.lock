@@ -1,0 +1,15 @@
+{
+  "schemaVersion" : "npdev-lock.v1",
+  "packs" : {
+    "inventory" : {
+      "resolvedVersion" : "2.0.0",
+      "digest" : "sha256:f57f380e2acdb7e96b09e1c0732f221df2903258b977ea992deee6fdd61a87b9",
+      "sourcePath" : "packs/inventory/pack.json"
+    },
+    "products" : {
+      "resolvedVersion" : "1.0.0",
+      "digest" : "sha256:eb94f991fbd3417631303825fea7c5e59c130bd48924ad15e01a503e5959a43b",
+      "sourcePath" : "packs/products/pack.json"
+    }
+  }
+}

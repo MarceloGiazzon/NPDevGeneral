@@ -71,28 +71,35 @@ def rows(query, key, value):
     return [x for x in ((r or {}).get("rows", []) if isinstance(r, dict) else []) if x.get(key) == value]
 
 
-sup = make("mgr", P + "suppliers", {"code": "S" + R, "name": "Acme Supply " + R, "paymentTermsDays": 30, "active": True})
-i1 = make("mgr", P + "purchase_items", {"sku": "I1" + R, "description": "Ten", "standardCost": 10, "active": True})
-i2 = make("mgr", P + "purchase_items", {"sku": "I2" + R, "description": "Twenty", "standardCost": 20, "active": True})
+# Since purchasing 2.0.0 the organization lives in the contacts pack and the product in the products pack;
+# a supplier and a purchase item are satellites that point back at them.
+org = make("mgr", "/api/contacts_organizations", {"name": "Acme Supply " + R, "kind": "SUPPLIER", "active": True})
+org2 = make("mgr", "/api/contacts_organizations", {"name": "Other Supply " + R, "kind": "SUPPLIER", "active": True})
+p1 = make("mgr", "/api/products_products", {"sku": "I1" + R, "name": "Ten", "kind": "GOOD", "unit": "UNIT", "active": True})
+p2 = make("mgr", "/api/products_products", {"sku": "I2" + R, "name": "Twenty", "kind": "GOOD", "unit": "UNIT", "active": True})
+p3 = make("mgr", "/api/products_products", {"sku": "I3" + R, "name": "Spare", "kind": "GOOD", "unit": "UNIT", "active": True})
+sup = make("mgr", P + "suppliers", {"code": "S" + R, "organizationId": org.get("id"), "paymentTermsDays": 30, "active": True})
+i1 = make("mgr", P + "purchase_items", {"productId": p1.get("id"), "standardCost": 10, "active": True})
+i2 = make("mgr", P + "purchase_items", {"productId": p2.get("id"), "standardCost": 20, "active": True})
 sid = sup.get("id")
-
-# roles and invariants
-refused("a buyer cannot create a supplier", "buyer", P + "suppliers", {"code": "X" + R, "name": "x", "active": True}, (401, 403))
+check("the supplier points at its organization", sup.get("organizationId") == org.get("id"), sup)
+refused("an organization has at most one supplier record", "mgr", P + "suppliers", {"code": "D" + R, "organizationId": org.get("id"), "active": True}, (409, 422))
+refused("a buyer cannot create a supplier", "buyer", P + "suppliers", {"code": "X" + R, "organizationId": org2.get("id"), "active": True}, (401, 403))
 refused("payables cannot create an order", "pay", P + "purchase_orders", {"orderNumber": "A" + R, "supplierId": sid}, (401, 403))
-refused("negative payment terms are refused", "mgr", P + "suppliers", {"code": "N" + R, "name": "n", "paymentTermsDays": -1, "active": True})
-refused("a negative standard cost is refused", "mgr", P + "purchase_items", {"sku": "N" + R, "description": "n", "standardCost": -1, "active": True})
-refused("a duplicate supplier code is refused", "mgr", P + "suppliers", {"code": "S" + R, "name": "dup", "active": True}, (409, 422))
+refused("negative payment terms are refused", "mgr", P + "suppliers", {"code": "N" + R, "organizationId": org2.get("id"), "paymentTermsDays": -1, "active": True})
+refused("a negative standard cost is refused", "mgr", P + "purchase_items", {"productId": p3.get("id"), "standardCost": -1, "active": True})
+refused("a duplicate supplier code is refused", "mgr", P + "suppliers", {"code": "S" + R, "organizationId": org2.get("id"), "active": True}, (409, 422))
 
 # order and lines
 o1 = make("buyer", P + "purchase_orders", {"orderNumber": "PO1" + R, "supplierId": sid})
 check("a new order starts as DRAFT", o1.get("status") == "DRAFT", o1.get("status"))
 oid = o1.get("id")
-l1 = make("buyer", P + "purchase_order_lines", {"orderId": oid, "itemId": i1.get("id"), "quantity": 3, "unitCost": 10})
-l2 = make("buyer", P + "purchase_order_lines", {"orderId": oid, "itemId": i2.get("id"), "quantity": 2, "unitCost": 20})
+l1 = make("buyer", P + "purchase_order_lines", {"orderId": oid, "productId": p1.get("id"), "quantity": 3, "unitCost": 10})
+l2 = make("buyer", P + "purchase_order_lines", {"orderId": oid, "productId": p2.get("id"), "quantity": 2, "unitCost": 20})
 check("line total is derived: 3 x 10 = 30", float(l1.get("lineTotal", -1)) == 30, l1)
-refused("quantity 0 is refused", "buyer", P + "purchase_order_lines", {"orderId": oid, "itemId": i1.get("id"), "quantity": 0, "unitCost": 10})
-refused("a negative unit cost on a line is refused", "buyer", P + "purchase_order_lines", {"orderId": oid, "itemId": i1.get("id"), "quantity": 1, "unitCost": -5})
-refused("a line for a missing order is refused", "buyer", P + "purchase_order_lines", {"orderId": str(uuid.uuid4()), "itemId": i1.get("id"), "quantity": 1, "unitCost": 1})
+refused("quantity 0 is refused", "buyer", P + "purchase_order_lines", {"orderId": oid, "productId": p1.get("id"), "quantity": 0, "unitCost": 10})
+refused("a negative unit cost on a line is refused", "buyer", P + "purchase_order_lines", {"orderId": oid, "productId": p1.get("id"), "quantity": 1, "unitCost": -5})
+refused("a line for a missing order is refused", "buyer", P + "purchase_order_lines", {"orderId": str(uuid.uuid4()), "productId": p1.get("id"), "quantity": 1, "unitCost": 1})
 
 s, body = call("plain", "GET", P + "purchase_orders")
 check("a user with no purchasing role cannot see the order", s in (401, 403) or ("PO1" + R) not in json.dumps(body), s)

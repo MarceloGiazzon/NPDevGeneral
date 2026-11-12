@@ -59,12 +59,19 @@ def seed_sales(base, keys, volume, ratio, rng, workers, run):
     mgr, rep = keys["mgr"], keys["rep"]
     counts = {name: sized(volume, r) for name, r in ratio.items()}
     started = time.time()
+    # sales 2.0.0: the organization lives in contacts and the product in products; a customer and a
+    # price-list item are satellites pointing back at them, so those rows are created first.
+    orgs = post_all(base, mgr, "/api/contacts_organizations",
+                    [{"name": f"Customer {run}-{i:06d}", "kind": "CUSTOMER", "active": True}
+                     for i in range(counts["customers"])], workers)
     customers = post_all(base, mgr, "/api/sales_customers",
-                         [{"code": f"LC{run}{i}", "name": f"Customer {run}-{i:06d}", "creditLimit": rng.randint(1, 100) * 1000, "active": True}
-                          for i in range(counts["customers"])], workers)
+                         [{"code": f"LC{run}{i}", "organizationId": org, "creditLimit": rng.randint(1, 100) * 1000, "active": True}
+                          for i, org in enumerate(orgs)], workers)
+    products = post_all(base, mgr, "/api/products_products",
+                        [{"sku": f"LI{run}{i}", "name": f"Item {i:05d}", "kind": "GOOD", "unit": "UNIT", "active": True}
+                         for i in range(counts["items"])], workers)
     items = post_all(base, mgr, "/api/sales_sales_items",
-                     [{"sku": f"LI{run}{i}", "description": f"Item {i:05d}", "unitPrice": rng.randint(1, 500), "active": True}
-                      for i in range(counts["items"])], workers)
+                     [{"productId": product, "unitPrice": rng.randint(1, 500), "active": True} for product in products], workers)
     orders = post_all(base, rep, "/api/sales_sales_orders",
                       [{"orderNumber": f"LO{run}{i}", "customerId": rng.choice(customers)} for i in range(counts["orders"])], workers)
     # a deterministic third of the orders is confirmed so the filtered list returns rows
@@ -75,7 +82,7 @@ def seed_sales(base, keys, volume, ratio, rng, workers, run):
         return status, payload
 
     run_parallel(confirm_one, confirm, workers)
-    lines = [{"orderId": rng.choice(orders), "itemId": rng.choice(items), "quantity": rng.randint(1, 20), "unitPrice": rng.randint(1, 500)}
+    lines = [{"orderId": rng.choice(orders), "productId": rng.choice(products), "quantity": rng.randint(1, 20), "unitPrice": rng.randint(1, 500)}
              for _ in range(counts["lines"])]
     made = len(post_all(base, rep, "/api/sales_sales_order_lines", lines, workers))
     print(f"seeded customers={len(customers)} items={len(items)} orders={len(orders)} lines={made} in {time.time() - started:.0f}s")

@@ -1514,6 +1514,18 @@ def run_migrate_label_locales(args: argparse.Namespace) -> int:
     return 1 if invalid_count > 0 else 0
 
 
+def run_migrate_business_packs_2(args: argparse.Namespace) -> int:
+    """2026-11-12: wires `business_packs_v2_migration.run` to `npdev migrate business-packs-2`, the
+    codemod for sales/purchasing/inventory 2.0.0 (single owner per concept: contacts::Organization,
+    products::Product). Dry-run by default; --write applies. See the module docstring."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import business_packs_v2_migration as codemod  # local import: optional dep
+
+    packs_source = Path(args.packs_source).expanduser().resolve() if args.packs_source else None
+    report = Path(args.report).expanduser() if args.report else None
+    return codemod.run(args.input, write=args.write, packs_source=packs_source, report=report)
+
+
 def run_migrate_procedure_args_order(args: argparse.Namespace) -> int:
     """#34: wires `dsl_v2_migration.migrate_procedure_args_order` to `npdev migrate
     procedure-args-order`. Procedure step `args` used to bind in alphabetical key order and now
@@ -17241,6 +17253,24 @@ def build_parser() -> argparse.ArgumentParser:
     migrate_label_locales.add_argument(
         "--report", help="write a JSON report of every file's outcome to this path")
 
+    # 2026-11-12: sales/purchasing/inventory 2.0.0 point at contacts::Organization and
+    # products::Product instead of keeping their own copy.
+    migrate_business_packs = migrate_sub.add_parser(
+        "business-packs-2",
+        help="Move a model onto sales/purchasing/inventory 2.0.0 (customer, supplier and product have one owner).",
+    )
+    migrate_business_packs.add_argument(
+        "--input", required=True, nargs="+",
+        help="model.json files, or directories searched recursively for model.json",
+    )
+    migrate_business_packs.add_argument(
+        "--write", action="store_true",
+        help="apply changes in place (model and local pack copies); without this flag, reports what would change",
+    )
+    migrate_business_packs.add_argument(
+        "--packs-source", help="directory holding the built-in packs (default: this checkout's NPDevContract/packs)")
+    migrate_business_packs.add_argument("--report", help="write a JSON report of every model's outcome to this path")
+
     # #34: procedure step args bind in declared order now; this one-shot pass keeps an existing
     # model's alphabetical binding.
     migrate_procedure_args = migrate_sub.add_parser(
@@ -18947,6 +18977,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_migrate_bounded_contexts(args)
         if args.command == "migrate" and args.migrate_command == "label-locales":
             return run_migrate_label_locales(args)
+        if args.command == "migrate" and args.migrate_command == "business-packs-2":
+            return run_migrate_business_packs_2(args)
         if args.command == "migrate" and args.migrate_command == "procedure-args-order":
             return run_migrate_procedure_args_order(args)
         if args.command == "migration" and args.migration_command == "diff":

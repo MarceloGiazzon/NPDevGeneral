@@ -93,6 +93,10 @@ refused("a duplicate category code is refused", "mgr", P + "ticket_categories", 
 t1 = make("req", P + "tickets", ticket("1", priority="HIGH"))
 check("a new ticket starts as NEW", t1.get("status") == "NEW", t1.get("status"))
 tid = t1.get("id")
+# On a wiped database no NEW ticket survives to the end of this run (all are taken or closed), so the NEW group is checked
+# here, while t1 is still NEW, instead of after the lifecycle.
+by = rows("TicketsByStatus", "status", "NEW")
+check("TicketsByStatus has a NEW group", len(by) == 1 and int(by[0].get("tickets", 0)) >= 1, by)
 check("a requester cannot read the queue", call("req", "GET", P + "tickets")[0] in (401, 403), None)
 check("a user with no helpdesk role cannot see the ticket", (lambda s, b: s in (401, 403) or ("T1" + R) not in json.dumps(b))(*call("plain", "GET", P + "tickets")), None)
 refused("a ticket without a subject is refused", "req", P + "tickets", {k: v for k, v in ticket("2").items() if k != "subject"})
@@ -129,8 +133,6 @@ move("agent", t4.get("id"), "OPEN", extra={"assignedAgentId": aid})
 move("agent", t4.get("id"), "RESOLVED")
 
 # derived views
-by = rows("TicketsByStatus", "status", "NEW")
-check("TicketsByStatus has a NEW group", len(by) == 1 and int(by[0].get("tickets", 0)) >= 1, by)
 load = rows("WorkloadByAgent", "assignedAgentId", aid)
 print("WorkloadByAgent:", json.dumps(load)[:240])
 check("the agent holds 1 open ticket (t3) and 1 resolved (t4); t1 is closed",

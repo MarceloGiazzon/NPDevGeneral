@@ -9,6 +9,15 @@ quietly forks: what to expose, how to wire behavior, and how a consumer should a
 ## Built-in business packs
 
 - `contacts` (`NPDevContract/packs/contacts/pack.json`) — `Organization` (customer / supplier / partner), `Contact` and `Address`, with list/detail/edit screens at `/organizations`, `/contacts`, `/addresses` and the queries `ActiveOrganizations`, `Customers`, `Suppliers`, `ActiveContacts`. Consume it with `packs: [{"$ref": "packs/contacts/pack.json", "as": "contacts"}]` and point your own references at `contacts::Organization`.
+- `products` (`NPDevContract/packs/products/pack.json`) — `Product` (SKU, name, kind good/service, unit), the one product register every other pack points at, with a `/products` screen and the `ActiveProducts` query.
+- `sales`, `purchasing`, `inventory` — **one owner per concept.** They do not keep their own copy of the other party or of the product: they declare `packs: [{"pack": "contacts", "version": "^1.0"}, {"pack": "products", "version": "^1.0"}]` (inventory only `products`) and keep only their own data in satellites — `sales::Customer` / `purchasing::Supplier` (code, credit limit / payment terms) over `contacts::Organization`, `sales::SalesItem` / `purchasing::PurchaseItem` (price / cost) and `inventory::StockItem` (minimum stock) over `products::Product`; order lines and stock movements point at the product itself. A consumer imports the business pack and gets the two dependencies transitively; it needs an `npdev.lock` (`npdev pack update`) and role grants on `contacts::Organization` / `products::Product`. Follow the same rule when you write a pack: point at an existing owner (`<pack>::Concept` + a `packs[]` dependency) instead of re-declaring a customer, product or person.
+- `helpdesk`, `leave`, `approvals` — a person is recorded as their login (`$user.id`): `requesterId`, `authorId`, `employeeId`, `requestedBy`, and `decidedBy`/`completedBy` from My tasks. Not a reference to `identity::User`: an app may authenticate with static keys or an external identity provider and have no user rows at all.
+
+The pack catalog viewer (`NPDevContract/pack-catalog/pack-tree.html`) reads `pack-catalog.json` next to it. That file is
+generated: `python scripts/pack-repo/build-pack-catalog-view.py` merges the hand-maintained
+`NPDevContract/pack-catalog/pack-roadmap.json` (presentation of each pack plus the proposed packs) with the real `pack.json`
+files (versions, concepts, dependencies, satellites) and writes `<BuildRoot>/reports/pack-catalog-view/`; `--out
+NPDevContract/pack-catalog` refreshes the repo snapshot, `--check` only validates.
 
 ## Public surface vs `private` vs `extensionPoints`
 

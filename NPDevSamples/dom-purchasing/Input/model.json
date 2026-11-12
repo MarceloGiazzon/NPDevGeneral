@@ -52,6 +52,18 @@
           "create",
           "update",
           "delete"
+        ],
+        "contacts::Organization": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ],
+        "products::Product": [
+          "read",
+          "create",
+          "update",
+          "delete"
         ]
       }
     },
@@ -76,6 +88,12 @@
         ],
         "purchasing::SupplierBill": [
           "read"
+        ],
+        "contacts::Organization": [
+          "read"
+        ],
+        "products::Product": [
+          "read"
         ]
       }
     },
@@ -98,6 +116,12 @@
           "read",
           "create",
           "update"
+        ],
+        "contacts::Organization": [
+          "read"
+        ],
+        "products::Product": [
+          "read"
         ]
       }
     }

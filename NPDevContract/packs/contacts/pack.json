@@ -2,7 +2,7 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "1.0.0",
   "pack": "contacts",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "namespace": "com.npdev.contacts",
   "description": "Built-in NPDev contacts pack: organizations (customers, suppliers, partners), the people who work there, and their postal addresses -- with list/detail/edit screens and the common queries. Reference it from any business app instead of re-modelling a CRM-lite by hand.",
   "category": "other",
@@ -10,6 +10,7 @@
   "concepts": [
     {
       "name": "Organization",
+      "truthLevel": "T2",
       "ui": { "label": "Organization" },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -32,6 +33,7 @@
     },
     {
       "name": "Contact",
+      "truthLevel": "T2",
       "ui": { "label": "Contact" },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -53,6 +55,7 @@
     },
     {
       "name": "Address",
+      "truthLevel": "T2",
       "ui": { "label": "Address" },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },

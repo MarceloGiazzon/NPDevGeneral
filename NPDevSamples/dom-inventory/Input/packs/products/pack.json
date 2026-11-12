@@ -1,0 +1,51 @@
+{
+  "$schema": "../../schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "products",
+  "version": "1.0.0",
+  "namespace": "com.npdev.products",
+  "description": "Built-in NPDev products pack: the single product and service register every other pack points at. A product is what you sell, buy or stock, identified by its SKU. Selling price, purchase cost and stock levels are not here: the sales, purchasing and inventory packs keep their own data about a product in a satellite that points back to it, so the product itself is registered once.",
+  "category": "other",
+  "author": "NPDev",
+  "metadata": {
+    "summary": "One register of products and services, identified by SKU, with a unit of measure. Sales, purchasing and inventory all point at it instead of keeping their own copy.",
+    "reviewNotes": [
+      "A product has one unit of measure. Say whether you buy in one unit and sell in another (box of 12 vs unit).",
+      "No variants (size, colour): each variant is its own product with its own SKU. Say whether you need variants grouped under one product.",
+      "No categories yet. Say how you group products, if at all."
+    ]
+  },
+  "concepts": [
+    {
+      "name": "Product",
+      "truthLevel": "T2",
+      "ui": { "label": "Product" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "sku", "type": "string", "required": true, "unique": true, "maxLength": 60, "ui": { "label": "SKU" } },
+        { "name": "name", "type": "string", "required": true, "maxLength": 200, "ui": { "label": "Name" } },
+        { "name": "description", "type": "string", "required": false, "maxLength": 2000, "ui": { "label": "Description" } },
+        { "name": "kind", "type": "enum", "required": true, "default": "GOOD",
+          "enumValues": ["GOOD", "SERVICE"], "ui": { "label": "Kind" } },
+        { "name": "unit", "type": "enum", "required": true, "default": "UNIT",
+          "enumValues": ["UNIT", "BOX", "KG", "LITER", "METER", "HOUR"], "ui": { "label": "Unit" } },
+        { "name": "active", "type": "boolean", "required": true, "default": true, "ui": { "label": "Active" } }
+      ],
+      "indexes": [
+        { "name": "idx_products_product_name", "fields": ["name"] }
+      ]
+    }
+  ],
+  "queries": [
+    { "name": "ActiveProducts", "concept": "Product", "where": "active == true", "orderBy": ["name"] }
+  ],
+  "autoPanels": [
+    {
+      "name": "Products",
+      "concept": "Product",
+      "route": "/products",
+      "surfaces": ["selection", "detail", "transaction"],
+      "selection": { "columns": ["sku", "name", "kind", "unit", "active"] }
+    }
+  ]
+}

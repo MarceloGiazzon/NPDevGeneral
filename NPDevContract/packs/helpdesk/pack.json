@@ -2,7 +2,7 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "1.0.0",
   "pack": "helpdesk",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "namespace": "com.npdev.helpdesk",
   "description": "NPDev helpdesk pack: agents, ticket categories, tickets and ticket comments. A person with the 'requester' role raises tickets and adds comments but cannot read the queue; 'helpdeskAgent' works tickets (takes, waits on the requester, resolves, reopens, closes) and comments; 'helpdeskManager' also maintains agents and categories. A ticket is NEW, then OPEN, PENDING (waiting for the requester) and RESOLVED, and finally CLOSED; a ticket cannot be taken, paused, resolved or reopened without an assigned agent (it may still be closed without action straight from NEW). How many tickets are in each state and how many each agent holds are derived by queries. The three roles are logical: the importing app binds them with provides.roleBindings { \"requester\": ..., \"helpdeskAgent\": ..., \"helpdeskManager\": ... } (composition refuses when one is unbound) and grants them read/create/update on the pack's concepts in its own roles[] (see the dom-helpdesk sample).",
   "category": "other",
@@ -11,7 +11,7 @@
     "summary": "Handles support requests. Someone raises a ticket describing a problem; an agent takes it, may ask the requester for more information, resolves it, and a resolved ticket is later closed or reopened. Every ticket carries a priority and a category, and a ticket that is being worked always has an agent. How many tickets are in each state and how many each agent holds is always calculated, never typed in.",
     "reviewNotes": [
       "There are no response or resolution deadlines (SLAs) and no breach warnings. Say what time targets each priority has.",
-      "A requester can raise tickets but cannot see them again: the pack gates reads by role, and a ticket records its requester only as free text (requesterName, requesterEmail), so there is no field a per-row rule such as requesterId == $user.id could compare. The platform supports that rule (access.read); it needs the model to carry the requester's login on the ticket. Say whether requesters must see their own tickets.",
+      "A requester can raise tickets but cannot see them again: reads are gated by role. The ticket now records the requester's login (requesterId, filled from $user.id), so a per-row rule requesterId == $user.id is possible; it is not switched on. Say whether requesters must see their own tickets.",
       "Internal notes are a flag on a comment and are hidden only by role (requesters cannot read comments at all). They are not hidden from any agent.",
       "Priority is chosen by whoever raises the ticket and is not recomputed. Say whether agents may change it and whether priority drives assignment.",
       "Assignment is manual: nothing picks an agent, balances load or skips inactive agents. Say how tickets should be routed.",
@@ -34,6 +34,16 @@
           "type": "uuid",
           "id": true,
           "required": true
+        },
+        {
+          "name": "userId",
+          "type": "string",
+          "ui": {
+            "label": "Login"
+          },
+          "required": false,
+          "unique": true,
+          "maxLength": 254
         },
         {
           "name": "fullName",
@@ -162,6 +172,16 @@
             "target": "HelpdeskAgent",
             "displayField": "fullName"
           }
+        },
+        {
+          "name": "requesterId",
+          "type": "string",
+          "ui": {
+            "label": "Requester login"
+          },
+          "required": false,
+          "maxLength": 254,
+          "defaultExpression": "$user.id"
         },
         {
           "name": "requesterName",
@@ -363,6 +383,16 @@
             "displayField": "ticketNumber",
             "onDelete": "cascade"
           }
+        },
+        {
+          "name": "authorId",
+          "type": "string",
+          "ui": {
+            "label": "Author login"
+          },
+          "required": false,
+          "maxLength": 254,
+          "defaultExpression": "$user.id"
         },
         {
           "name": "authorName",
