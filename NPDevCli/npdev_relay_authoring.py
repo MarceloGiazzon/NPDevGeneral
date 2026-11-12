@@ -707,6 +707,14 @@ def _is_empty_diff(diff: dict) -> bool:
     return not any(diff[k] for k in diff)
 
 
+def _theme_files_changed(model_path, extra_files) -> bool:
+    """True when the answer carries a theme file the app does not have yet, or with different content (REG-323 T4.3): a
+    theme-only change leaves the model identical and is still a change."""
+    import npdev_relay_themes as themes_mod
+
+    return bool(themes_mod.changed(Path(model_path).parent, extra_files))
+
+
 def _ai_note_lists(ai_manifest) -> tuple:
     ai = ai_manifest if isinstance(ai_manifest, dict) else {}
 
@@ -1002,7 +1010,7 @@ def _evaluate(session, candidate_model_text, ai_manifest, work_dir, app_model_pa
         candidate_text = candidate_model_text if candidate2 == candidate else model_to_text(candidate2)
     common = {"candidateModelText": candidate_text, "submission": submission}
 
-    if _is_empty_diff(diff_models(base_model, candidate2)):
+    if _is_empty_diff(diff_models(base_model, candidate2)) and not _theme_files_changed(model_path, extra_files):
         findings.append(_finding("no-changes", "error"))
         return _result("NEEDS_FIX", findings, next=needs_fix, **common,
                        errors=["model.json - identical to the current model, nothing was changed - "

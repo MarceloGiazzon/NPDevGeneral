@@ -29,7 +29,7 @@ from pathlib import Path
 
 import npdev_relay_authoring as authoring
 
-SUPPORTED = ("fragments/*.json", "contexts/*.json")
+SUPPORTED = ("fragments/*.json", "contexts/*.json", "themes/*.json")  # themes: checked first by npdev_relay_themes (T4.3)
 NOT_EXTRA = ("model.json", "npdev-submission.json", "npdev-elements.json",   # elements: EXPANDED into model.json (T4.2)
              "npdev-config-proposal.json")                                    # config proposal: SORTED, never written (T4.5)
 BACKUP_SCHEMA = "npdev-relay-backup.v1"
@@ -82,7 +82,7 @@ def answer_files(result: dict) -> tuple[dict, list]:
 
 
 def is_supported(path: str) -> bool:
-    """True for a file an answer may carry beside model.json today (a fragment or a context)."""
+    """True for a file an answer may carry beside model.json today (a fragment, a context or a theme)."""
     return any(fnmatch.fnmatchcase(path, pattern) for pattern in SUPPORTED)
 
 

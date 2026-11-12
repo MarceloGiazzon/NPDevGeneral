@@ -14,7 +14,7 @@
     { "idea": "date format", "where": "model.json", "how": "settings.ui.dateFormat" },
     { "idea": "rows per page", "where": "model.json", "how": "settings.ui.pageRows" },
     { "idea": "currency", "where": "model.json", "how": "presentationMetadata.currency on the field or concept that shows money" },
-    { "idea": "default theme", "where": "model.json / themes", "how": "guidePage.theme for guide pages; an app-wide theme is a themes/*.json file (T4.3), not a config.json knob" },
+    { "idea": "default theme", "where": "config.json + themes/", "how": "the app's theme is config.json defaults[\"ui.theme.name\"] (a built-in id or a themes/<id>.json beside model.json) and defaults[\"ui.theme.choices\"] the ones an end user may pick (flat keys; model.schema.json's settings.ui takes only pageRows and dateFormat); guidePage.theme in model.json sets one guide page's own look. No CLI command writes `defaults` yet, so there is no entry: the theme FILE arrives with T4.3 (a themes/*.json answer), the selection stays the owner's" },
     { "idea": "time zone", "where": "model.json", "how": "no built-in setting: declare a properties[] entry so the scoped-property cascade carries it" },
     { "idea": "app display name", "where": "nowhere separate", "how": "scenario.name is the app's IDENTITY (it names the output folder), so it is never changed from a chat" }
   ],

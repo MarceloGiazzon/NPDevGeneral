@@ -174,20 +174,21 @@ class TransactionTests(unittest.TestCase):
 
 
 class AnswerFilesTests(unittest.TestCase):
-    def test_fragments_and_contexts_are_applicable_and_everything_else_is_named(self):
+    def test_fragments_contexts_and_themes_are_applicable_and_everything_else_is_named(self):
         result = {"files": [
+            {"path": "themes/dark.json", "status": "allowed", "content": "{}"},
             {"path": "model.json", "status": "allowed", "content": "{}"},
             {"path": "npdev-submission.json", "status": "allowed", "content": "{}"},
             {"path": "fragments/a.json", "status": "allowed", "content": "{\"a\":1}"},
             {"path": "contexts/b.json", "status": "allowed", "content": "{\"b\":1}"},
-            {"path": "themes/dark.json", "status": "allowed", "content": "{}"},
             {"path": "web/page.html", "status": "allowed", "content": "<p>"},
+            {"path": "web/more.css", "status": "allowed", "content": "p{}"},
             {"path": "capabilities/X.java", "status": "quarantine", "content": "class X {}"},
             {"path": "secrets/key", "status": "denied"},
         ]}
         supported, unsupported = files.answer_files(result)
-        self.assertEqual(supported, {"fragments/a.json": "{\"a\":1}", "contexts/b.json": "{\"b\":1}"})
-        self.assertEqual(unsupported, ["themes/dark.json", "web/page.html"])
+        self.assertEqual(supported, {"fragments/a.json": "{\"a\":1}", "contexts/b.json": "{\"b\":1}", "themes/dark.json": "{}"})
+        self.assertEqual(unsupported, ["web/more.css", "web/page.html"])
 
 
 class ComposeTests(unittest.TestCase):
@@ -337,10 +338,10 @@ class SplitChangeTests(SplitAnswerCase):
         app = self.make_app()
         before = snapshot(app)
         code = self.start(app)
-        extra = {"themes/dark.json": {"name": "dark"}}
+        extra = {"web/page.html": "<p>hi</p>"}
         result = engine.ingest(code, self.answer_split(code, with_phone(json.loads(SEED_MODEL)), extra=extra), source="paste")
         self.assertEqual(result["outcome"], "NEEDS_FIX")
-        self.assertIn("themes/dark.json", " ".join(result["errorLines"]))
+        self.assertIn("web/page.html", " ".join(result["errorLines"]))
         self.assertEqual(snapshot(app), before)
 
     def test_apply_itself_refuses_a_stored_answer_with_a_file_it_cannot_write(self):
@@ -351,10 +352,10 @@ class SplitChangeTests(SplitAnswerCase):
         session = sessions.load(code)
         stored = sessions.round_dir(session, 1) / "result.json"
         data = json.loads(stored.read_text(encoding="utf-8"))
-        data["files"].append({"path": "themes/dark.json", "status": "allowed", "content": "{}"})
+        data["files"].append({"path": "web/page.html", "status": "allowed", "content": "<p>"})
         stored.write_text(json.dumps(data), encoding="utf-8")
         refused = apply_mod.apply_round(session, None, [])
-        self.assertEqual((refused["ok"], refused["error"], refused["paths"]), (False, "files-not-supported", ["themes/dark.json"]))
+        self.assertEqual((refused["ok"], refused["error"], refused["paths"]), (False, "files-not-supported", ["web/page.html"]))
         self.assertEqual(snapshot(app), before)
 
 

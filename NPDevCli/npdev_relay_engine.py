@@ -612,7 +612,9 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
     if unsupported:  # allowed by the ingest policy, but nothing here can apply them yet: never accept part of an answer
         result["outcome"] = "NEEDS_FIX"
         result["errorLines"] = [f"{path} - NPDev cannot apply this kind of file yet - send only model.json, "
-                                "npdev-submission.json and the files under fragments/ and contexts/" for path in unsupported]
+                                "npdev-submission.json and the files under fragments/, contexts/ and themes/" for path in unsupported]
+        return
+    if not _check_themes(session, result, fixed):  # T4.3: the generator refuses a bad theme for the WHOLE app
         return
     try:
         model_path = _validation_model_path(session, number, result, entry, fixed)
@@ -630,6 +632,25 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
         result["errorLines"] = validation_lines(report)
         return
     finish_ready(session, number, result, entry)
+
+
+def _check_themes(session: dict, result: dict, model: dict) -> bool:
+    """T4.3: the answer's themes/*.json, and the theme names its model uses, get the generator's own rules BEFORE anything is
+    accepted (a theme the generator refuses fails every generation of the app). False when the answer needs a fix."""
+    import npdev_relay_authoring as authoring
+    import npdev_relay_files as files_mod
+    import npdev_relay_themes as themes_mod
+
+    extra, _ = files_mod.answer_files(result)
+    sent = {path: text for path, text in extra.items() if themes_mod.is_theme_path(path)}
+    base = authoring.resolve_model_path(session.get("appDir")) if session.get("intent") != "create" else None
+    checked = themes_mod.check(sent, model, base.parent if base else None)
+    result["findings"].extend(checked["findings"])
+    if checked["errors"]:
+        result["outcome"] = "NEEDS_FIX"
+        result["errorLines"] = checked["errors"]
+        return False
+    return True
 
 
 def _sort_config_proposal(result: dict) -> None:

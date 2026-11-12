@@ -15,6 +15,8 @@ files:
   - NPDevCli/npdev_relay_apply.py
   - NPDevCli/npdev_relay_engine.py
   - NPDevCli/npdev_relay_files.py
+  - NPDevCli/npdev_relay_themes.py
+  - NPDevCli/npdev_theme_validate.py
   - NPDevCli/npdev_relay_prompts.py
   - NPDevCli/relay-prompts.json
 detail: |
@@ -67,7 +69,10 @@ detail: |
   = settings.locale/settings.strings, date format = settings.ui.dateFormat, rows per page = settings.ui.pageRows, currency =
   presentationMetadata.currency, guide-page theme = guidePage.theme, time zone = a properties[] entry (no built-in setting),
   app display name = scenario.name, which is the app's IDENTITY and never changes from a chat; config.schema.json itself holds
-  nothing a person would ask a chat AI to change. So NPDevCli/relay-config-allowlist.json has `entries: []` BY FINDING (a knob needs
+  nothing a person would ask a chat AI to change. CORRECTED 2026-11-12 (found while doing T4.3a): the APP-WIDE theme choice is NOT
+  in model.json -- `ui.theme.name` / `ui.theme.choices` are flat keys of config.json's `defaults` envelope (model.schema.json's
+  settings.ui takes only pageRows and dateFormat); the `located` list now says so. They still earn no allowlist entry: no CLI command
+  writes `defaults`. So NPDevCli/relay-config-allowlist.json has `entries: []` BY FINDING (a knob needs
   an existing CLI writer: no writer, no knob), with the `located` list pinned to model.schema.json by test and the `neverAllowed`
   globs pinned against every sensitive leaf of config.schema.json. npdev_relay_config.evaluate sorts each change of an
   npdev-config-proposal.json into `suggestion` ("you can do that in Settings"), `refused` (never from a chat: value not echoed,
@@ -76,6 +81,21 @@ detail: |
   apply). A malformed proposal is a warning and never blocks the model it came with. NOT built, on purpose: the apply step, the owner's
   tick on a preview line, the writer and its undo -- they are built WITH the first allowlisted knob, which needs a CLI command
   that writes it first. The proposal's Portuguese preview sentence is not translated (T2.2b: preview text is English-only today).
+  2026-11-12 T4.3a LANDED (themes): `themes/*.json` is applied and undone like a fragment (npdev_relay_files.SUPPORTED) after
+  npdev_relay_themes.check gives it the generator's own rules -- one file per theme named <id>.json, at most 20,000 bytes, valid
+  JSON, not a built-in id, structure + WCAG contrast of the theme AS USED after basedOn (depth <= 3, no cycle), the failing colour
+  pair named -- because ThemeEmitter fails generation of the whole app on one bad theme. The Python validator now lives in
+  NPDevCli/npdev_theme_validate.py (one copy: scripts/quality/check-themes.py imports it; twin-pair rule
+  theme-allowed-keys-four-place names it). A model.json that tries `settings.ui.theme` is sent back with the way out. A theme-only
+  answer (model.json identical) is a change, not "nothing changed" (proved against the real Gradle gate). WHICH theme the app uses is
+  config.json defaults ui.theme.name, which no chat can write: an unselected theme is saved with a `theme-not-selected` warning
+  naming the setting, and `theme-added` / `theme-replaced` info findings say what happens. NOT done: (a) selecting the theme -- it
+  needs the first allowlisted knob, i.e. a CLI command that writes config.json `defaults`, then the apply step, the owner's tick on
+  the preview line and the undo (T4.5b); (b) pages `web/*.html|css|svg`: NO caller of `npdev generate app` mounts <app>/web by
+  convention (R10 made --web-assets explicit-only; only Build-NpdevApp.ps1 passes it), the page also needs a pages.json entry to
+  reach the menu, and `themes/` is a reserved directory name of web assets -- so T4.3b is a mount decision first; (c) seed data
+  (`seeds/*.json`, staged by the CLI from the model folder, not in the f4 allowlist) and translations (`settings.strings` already
+  travels inside model.json: nothing to apply). The Manager never passes phase f4.
   Suggested order (each its own commit, each behind phase f4): T4.2 element upsert (DONE above), T4.1 fragments (DONE, incl. composer),
   T4.5 config proposals (DONE, allowlist empty by finding), T4.3 themes/pages/seed/translations, T4.4 code quarantine (with the owner).
 resolution: >-

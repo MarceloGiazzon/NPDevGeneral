@@ -47,96 +47,10 @@ THEMES_DIR = ROOT / "NPDevContract" / "themes"
 SEASONS_DIR = ROOT / "NPDevSamples" / "themes" / "seasons"
 TOKENS_CSS = ROOT / "NPDevManager" / "ui" / "tokens.css"
 
-SCHEMA = "npdev-theme.v1"
-TOKENS = ["bg", "surface", "surfaceRaised", "border", "borderStrong", "text", "textMuted",
-          "accent", "onAccent", "positive", "negative", "warning", "info"]
-HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
-FONT = re.compile(r'^[A-Za-z0-9 ,"\'-]{1,200}$')
-ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")
-ELEVATIONS = {"flat", "soft", "bevel", "glow"}
-ALLOWED_KEYS = {"$schema", "schema", "id", "name", "names", "version", "author", "description", "descriptions", "license",
-                "colorScheme", "basedOn", "colors", "darkColors", "typography", "shape"}
-BUILT_IN_IDS = {"npdev-dark", "npdev-light", "retro", "synth", "farm", "warm", "windows", "high-contrast",
-                "npdev-default"}
-# (foreground, background, minimum) -- WCAG 2.2: 1.4.3 text 4.5:1, 1.4.11 UI components 3:1.
-CONTRAST_RULES = [
-    ("text", "bg", 4.5), ("text", "surface", 4.5), ("text", "surfaceRaised", 4.5),
-    ("textMuted", "bg", 4.5), ("textMuted", "surface", 4.5),
-    ("accent", "bg", 4.5), ("accent", "surface", 4.5), ("onAccent", "accent", 4.5),
-    ("positive", "surface", 4.5), ("negative", "surface", 4.5),
-    ("warning", "surface", 4.5), ("info", "surface", 4.5),
-    ("borderStrong", "surface", 3.0), ("borderStrong", "bg", 3.0),
-]
-
-
-def _channel(c: int) -> float:
-    c = c / 255
-    return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
-
-
-def luminance(hex_color: str) -> float:
-    n = int(hex_color[1:], 16)
-    return 0.2126 * _channel((n >> 16) & 255) + 0.7152 * _channel((n >> 8) & 255) + 0.0722 * _channel(n & 255)
-
-
-def contrast_ratio(a: str, b: str) -> float:
-    la, lb = luminance(a), luminance(b)
-    hi, lo = max(la, lb), min(la, lb)
-    return (hi + 0.05) / (lo + 0.05)
-
-
-def validate(theme: object, strict: bool = False) -> list[str]:
-    """Same checks, same messages as validate() in theme-engine.js. Returns the error list."""
-    if not isinstance(theme, dict):
-        return ["not a JSON object"]
-    errors: list[str] = []
-    if theme.get("schema") != SCHEMA:
-        errors.append(f'schema must be "{SCHEMA}"')
-    if not ID.match(str(theme.get("id") or "")):
-        errors.append(f"id must match {ID.pattern}")
-    if not theme.get("name") or len(str(theme["name"])) > 40:
-        errors.append("name is required (max 40 characters)")
-    if theme.get("colorScheme") not in ("light", "dark"):
-        errors.append("colorScheme must be light or dark")
-    for key in theme:
-        if key not in ALLOWED_KEYS:
-            errors.append(f"unknown key: {key}")
-    for set_name in ("colors", "darkColors"):
-        color_set = theme.get(set_name)
-        if color_set is None:
-            continue
-        for key, value in color_set.items():
-            if key not in TOKENS:
-                errors.append(f"{set_name}.{key} is not a token")
-            elif not HEX.match(str(value)):
-                errors.append(f"{set_name}.{key} must be #rrggbb, got {json.dumps(value)}")
-    if not theme.get("basedOn"):
-        for token in TOKENS:
-            if not (theme.get("colors") or {}).get(token):
-                errors.append(f"colors.{token} is required (or use basedOn)")
-    if theme.get("darkColors") and theme.get("colorScheme") != "light":
-        errors.append("a theme with darkColors must have colorScheme light")
-    typography = theme.get("typography") or {}
-    for key in ("fontUi", "fontMono"):
-        if key in typography and not FONT.match(str(typography[key])):
-            errors.append(f"typography.{key} has characters outside [A-Za-z0-9 ,\"'-]")
-    shape = theme.get("shape") or {}
-    if "radius" in shape:
-        radius = shape["radius"]
-        if not (isinstance(radius, int) and not isinstance(radius, bool) and 0 <= radius <= 24):
-            errors.append("shape.radius must be an integer 0..24")
-    if "elevation" in shape and shape["elevation"] not in ELEVATIONS:
-        errors.append("shape.elevation must be flat, soft, bevel or glow")
-    for set_name in ("colors", "darkColors"):
-        color_set = theme.get(set_name)
-        if not color_set or any(not HEX.match(str(color_set.get(t) or "")) for t in TOKENS):
-            continue
-        for fg, bg, floor in CONTRAST_RULES:
-            minimum = 7.0 if strict and floor == 4.5 else floor
-            ratio = round(contrast_ratio(color_set[fg], color_set[bg]) * 100) / 100
-            if contrast_ratio(color_set[fg], color_set[bg]) < minimum:
-                errors.append(f"{set_name}: {fg} on {bg} is {ratio}:1, needs {minimum:g}:1")
-    return errors
+# The validator lives in NPDevCli (REG-323 T4.3): the relay checks a browser AI's theme with it BEFORE writing it, so one
+# module serves both callers. The four-place key rule (theme-allowed-keys-four-place) now names that module.
+sys.path.insert(0, str(ROOT / "NPDevCli"))
+from npdev_theme_validate import ALLOWED_KEYS, BUILT_IN_IDS, validate  # noqa: E402,F401  (ALLOWED_KEYS: re-exported)
 
 
 def theme_files() -> list[Path]:
