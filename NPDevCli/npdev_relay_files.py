@@ -30,7 +30,7 @@ from pathlib import Path
 import npdev_relay_authoring as authoring
 
 SUPPORTED = ("fragments/*.json", "contexts/*.json")
-NOT_EXTRA = ("model.json", "npdev-submission.json")
+NOT_EXTRA = ("model.json", "npdev-submission.json", "npdev-elements.json")  # the last is EXPANDED into model.json (T4.2)
 BACKUP_SCHEMA = "npdev-relay-backup.v1"
 BACKUP_MANIFEST = "files.json"
 BACKUP_TREE = "tree"

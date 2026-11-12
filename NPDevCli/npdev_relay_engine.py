@@ -543,6 +543,8 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
 
             result["preview"] = preview_pt.localize_preview(result["preview"], session.get("language"))
         return
+    if not _expand_elements(session, number, result):  # T4.2: an element-upsert answer becomes an ordinary model.json
+        return
     entry = next((f for f in result["files"] if f["path"] == "model.json" and f["status"] == "allowed"), None)
     if entry is None:
         return
@@ -583,6 +585,100 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
         result["errorLines"] = validation_lines(report)
         return
     finish_ready(session, number, result, entry)
+
+
+def _put_file(result: dict, path: str, text: str) -> None:
+    """Add or replace the file `path` of the result with `text`, in the same entry shape ingest writes."""
+    entry = {"path": path, "status": "allowed", "reason": None, "kind": "json", "labelSource": None, "fenced": False,
+             "repairs": [], "bytes": len(text.encode("utf-8")), "sha256": _sha256(text), "content": text}
+    files = result["files"]
+    for index, item in enumerate(files):
+        if item.get("path") == path and item.get("status") == "allowed":
+            files[index] = {**item, **{k: entry[k] for k in ("bytes", "sha256", "content")}}
+            return
+    files.append(entry)
+
+
+def _merge_expanded_manifest(result: dict, expanded: dict) -> None:
+    """What the elements file says about renames and removals of concepts, under whatever npdev-submission.json the AI
+    sent: the authoring gate wants them there, and the elements file already says them. The AI's own entries stay."""
+    base = _ai_manifest(result) or {}
+    manifest = dict(base)
+    added = 0
+    renames = list(manifest.get("renames") or []) if isinstance(manifest.get("renames"), list) else []
+    for item in expanded["manifest"]["renames"]:
+        if not any(isinstance(r, dict) and r.get("from") == item["from"] and r.get("to") == item["to"] for r in renames):
+            renames.append(item)
+            added += 1
+    removals = list(manifest.get("deliberateRemovals") or []) if isinstance(manifest.get("deliberateRemovals"), list) else []
+    named = {(r if isinstance(r, str) else (r or {}).get("name")) for r in removals}
+    for item in expanded["manifest"]["deliberateRemovals"]:
+        if item["name"] not in named:
+            removals.append({**item, "reason": manifest.get("request") or "removed in npdev-elements.json"})
+            added += 1
+    if not added:
+        return
+    manifest["renames"], manifest["deliberateRemovals"] = renames, removals
+    _put_file(result, "npdev-submission.json", json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
+
+
+def _expand_elements(session: dict, number: int, result: dict) -> bool:
+    """T4.2: an answer made of npdev-elements.json (and no model.json) is applied to the model the AI was shown, and the
+    full model becomes the answer's model.json -- so desire paths, validation, the authoring gate, the preview, apply and
+    undo treat it exactly like a whole-file answer. Returns False when this stage settled the outcome itself (the result
+    already says why); True when the pipeline goes on."""
+    import npdev_relay_authoring as authoring
+    import npdev_relay_elements as elements_mod
+    import npdev_relay_files as files_mod
+
+    allowed = [f for f in result["files"] if f["status"] == "allowed"]
+    found = next((f for f in allowed if f["path"] == "npdev-elements.json"), None)
+    if found is None:
+        return True
+    if any(f["path"] == "model.json" for f in allowed):  # both sent: the whole model is the clearer statement
+        result["findings"].append({"code": "elements-ignored", "severity": "warning", "detail": {"reason": "model-json-also-sent"}})
+        return True
+
+    def needs_fix(*lines: str) -> bool:
+        result["outcome"], result["errorLines"] = "NEEDS_FIX", list(lines)
+        return False
+
+    def base_moved(reason: str) -> bool:  # not the AI's fault: same shape the authoring gate gives
+        result["findings"].append({"code": "base-moved", "severity": "warning", "detail": {"reason": reason}})
+        result["next"], result["baseMoved"] = {"kind": "user-action", "messageId": "BASE_MOVED"}, True
+        return False
+
+    if session.get("intent") == "create":
+        return needs_fix("npdev-elements.json - a new app has no model to change element by element - send the complete model.json")
+    try:
+        elements = json.loads(found["content"])
+    except ValueError as exc:
+        return needs_fix(f"npdev-elements.json - not valid JSON ({exc}) - send it again")
+    model_path = authoring.resolve_model_path(session.get("appDir"))
+    if model_path is None or not model_path.is_file():
+        return base_moved("app-model-missing")
+    base_bytes = model_path.read_bytes()
+    if not authoring.model_matches_base(base_bytes, session.get("baseModelSha256")):
+        return base_moved("model-changed")  # the app moved on since the AI was shown it: an upsert would land on the wrong base
+    try:
+        base = json.loads(base_bytes.decode("utf-8-sig"))
+    except ValueError:
+        return base_moved("app-model-unreadable")
+    composed = None
+    try:
+        if files_mod.is_split(model_path):
+            composed = files_mod.compose(model_path)
+    except files_mod.TreeError:
+        return base_moved("app-model-unreadable")
+    expanded = elements_mod.expand(base, elements, ri.load_policy(), composed=composed)
+    result["findings"].extend(expanded["findings"])
+    if not expanded["ok"]:
+        return needs_fix(*expanded["errors"])
+    text = json.dumps(expanded["model"], indent=2, ensure_ascii=False) + "\n"
+    _put_file(result, "model.json", text)
+    _merge_expanded_manifest(result, expanded)
+    result["findings"].append({"code": "elements-expanded", "severity": "info", "detail": dict(expanded["changes"])})
+    return True
 
 
 def _validation_model_path(session: dict, number: int, result: dict, entry: dict, model: dict) -> Path:

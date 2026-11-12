@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.dev/schemas/ai/ai-relay-elements.schema.json",
+  "title": "NPDev browser-AI relay: element upsert (npdev-elements.json)",
+  "description": "F4 (plan 4.6). For models too big to send back whole: the AI returns only the root-array ELEMENTS it created or changed, each COMPLETE, plus removals and renames. NPDev expands it deterministically: start from the base model; for each upsert key K and element e, replace the element of base[K] whose 'name' equals e.name, or append; apply removals; then run the normal pipeline (desire-paths, validate, diff gate, which checks renames/removals against npdev-submission.json). Keys of 'upsert' must be root array keys of model.schema.json (concepts, flows, pages, ...); the expander rejects any other. Element identity is 'name' -- confirm per key in model.schema.json before enabling a key (task T4.2).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "upsert": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "object", "required": ["name"] }
+      }
+    },
+    "remove": {
+      "type": "object",
+      "description": "Root key -> names to remove, e.g. {\"concepts\": [\"OldThing\"]}. Field-level removals are expressed by upserting the whole concept without the field.",
+      "additionalProperties": { "type": "array", "items": { "type": "string" } }
+    },
+    "renames": {
+      "type": "array",
+      "items": { "type": "object", "required": ["from", "to"], "properties": { "from": { "type": "string" }, "to": { "type": "string" } } }
+    },
+    "request": { "type": "string" }
+  },
+  "anyOf": [ { "required": ["upsert"] }, { "required": ["remove"] } ]
+}

@@ -30,6 +30,16 @@ release. Ships in the next tag.
   `runQuery -> mapList -> capabilityCall` inside a procedure, `customCapabilities` + `plugin:java-source`, and `http-connector`. A chat reply that
   carries only `model.json` is told NOT to use fragments or Java (the relay cannot take them before phase f4 / T4.4). The compact bundle grew
   from 16.6k to 21.8k characters; `relay-prompts.json` is untouched (bench arm not re-run).
+- **A browser-AI answer can be an element upsert, for a model too big to send back whole** (REG-323, T4.2) -- with `--phase f4` a change or
+  fix may answer `npdev-elements.json` (`upsert` of complete elements by `name`, `remove`, `renames`) instead of `model.json`. NPDev applies
+  it to the model the AI was shown and then treats the result exactly like a whole-file answer: same validation, same authoring gate,
+  same preview, same apply and undo, and the same model (test). 20 root arrays can be upserted (their elements require `name` in
+  `model.schema.json`; a test pins the list to the schema); the others say why and ask for the whole file. It absorbs the usual
+  slips instead of failing: a key in the singular or another case, one element sent as an object, the same element twice (last wins), a
+  rename with or without the new content, a removal of something already gone, an element that shrank to under half (warned: an AI that
+  thinks upsert merges). An element kept in a fragment file, or a base that moved since the AI was shown it, is refused with the way
+  out and never guessed. Removing a concept still needs the owner's confirmation. Not yet: the composer does not choose upsert over
+  whole-file or tell the AI the format exists (`relay-prompts.json` is bench-measured), and the Manager never passes phase f4.
 - **A browser-AI answer can carry fragments, written all or nothing and undone file by file** (REG-323, T4.1) -- with `--phase f4`
   an answer may hold `fragments/*.json` and `contexts/*.json` beside `model.json`, for a new app or a change. The check stages the
   app's current files plus the answer's into a folder, so the Java gate and the plain-words preview see the ONE model the files make
